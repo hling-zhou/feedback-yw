@@ -1,0 +1,233 @@
+import { Card, Table, Tag, Typography } from 'antd'
+import { Link } from 'react-router-dom'
+import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import TrendChart from '../charts/TrendChart.jsx'
+import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
+import OverviewConclusionsPanel from './OverviewConclusionsPanel.jsx'
+import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
+import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
+import { PLANNING_RECOMMENDATIONS_ANCHOR_ID } from '../../domain/overviewConclusions.js'
+
+/**
+ * @param {Object} props
+ * @param {import('../../domain/snapshot.js').OverviewSnapshot | null} props.snapshot
+ * @param {Partial<Record<import('../../domain/enums.js').DataSourceType, import('../../domain/snapshot.js').InsightSnapshot>>} props.sourceSnapshots
+ * @param {(source: import('../../domain/enums.js').DataSourceType) => void} [props.onSourceTab]
+ * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
+ * @param {import('../../lib/types.js').FeedbackRecord[]} [props.complaintRecords]
+ * @param {import('../../storage/orderVolumeStore.js').OrderVolumeRow[]} [props.orderVolumes]
+ * @param {() => void} [props.onRebuildSnapshots]
+ * @param {boolean} [props.snapshotRebuilding]
+ * @param {boolean} [props.rebuildDisabled]
+ * @param {import('../../lib/types.js').FeedbackRecord[]} [props.feedbacks]
+ * @param {(feedback: import('../../lib/types.js').FeedbackRecord) => void} [props.onOpenFeedback]
+ */
+export default function OverviewTab({
+  snapshot,
+  sourceSnapshots,
+  onSourceTab,
+  currentPeriod,
+  complaintRecords = [],
+  orderVolumes = [],
+  onRebuildSnapshots,
+  snapshotRebuilding,
+  rebuildDisabled,
+  feedbacks = [],
+  onOpenFeedback,
+}) {
+  if (!snapshot) {
+    return (
+      <Card>
+        <Typography.Text type="secondary">请先生成洞察快照。</Typography.Text>
+      </Card>
+    )
+  }
+
+  const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
+  const trend = Array.isArray(snapshot.crossSourceMetrics?.monthly_trend)
+    ? snapshot.crossSourceMetrics.monthly_trend
+    : []
+
+  const wanTouRows = buildWanTouByProducts({
+    period: currentPeriod,
+    records: complaintRecords,
+    orderVolumes,
+    productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
+  })
+
+  const sourceRows = DATA_SOURCE_TYPES.map((type) => {
+    const summary = snapshot.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
+    return {
+      key: type,
+      source: DATA_SOURCE_LABELS[type],
+      count: summary?.recordCount ?? 0,
+      negativePct: summary?.negativePct,
+      topProduct: summary?.topProduct,
+      status: sourceSnapshots[type]?.status,
+    }
+  })
+
+  const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
+  const recommendationCount = snapshot.conclusions?.recommendations?.length ?? 0
+  const generatedAtLabel = snapshot.generatedAt?.slice(0, 16).replace('T', ' ')
+
+  return (
+    <div className="space-y-6">
+      <WorkbenchAnalysisHint
+        className="!rounded-lg"
+        recommendationCount={recommendationCount}
+        planningAnchor={`#${PLANNING_RECOMMENDATIONS_ANCHOR_ID}`}
+      />
+
+      <Typography.Text type="secondary" className="block text-xs">
+        周期内反馈 {total} 条 · 有数据来源 {activeSourceCount}/{DATA_SOURCE_TYPES.length} · 快照{' '}
+        {generatedAtLabel}
+      </Typography.Text>
+
+      <PlanningRecommendationsPanel
+        conclusions={snapshot.conclusions}
+        feedbacks={feedbacks}
+        onOpenFeedback={onOpenFeedback}
+      />
+
+      <OverviewConclusionsPanel
+        conclusions={snapshot.conclusions}
+        snapshotStatus={snapshot.status}
+        onSourceTab={onSourceTab}
+        onRebuild={onRebuildSnapshots}
+        rebuilding={snapshotRebuilding}
+        rebuildDisabled={rebuildDisabled}
+      />
+
+      {wanTouRows.length > 0 && (
+        <Card
+          title="各产品万投比（投诉工单）"
+          extra={
+            <Typography.Text type="secondary" className="text-xs">
+              {currentPeriod?.label || '当前周期'} · 月粒度=当月；年粒度=12月月均
+            </Typography.Text>
+          }
+        >
+          <div data-pdf-chart="overview-wan-tou" className="rounded-lg bg-white">
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="productName"
+            dataSource={wanTouRows}
+            columns={[
+              { title: '产品', dataIndex: 'productName', ellipsis: true },
+              {
+                title: '万投比',
+                dataIndex: 'displayRatio',
+                width: 100,
+                render: (v) => formatWanTouRatio(v),
+              },
+              { title: '投诉工单', dataIndex: 'totalComplaints', width: 90 },
+              {
+                title: '粒度',
+                dataIndex: 'granularityLabel',
+                width: 180,
+                ellipsis: true,
+              },
+              {
+                title: '订单维护',
+                width: 100,
+                render: (_, r) =>
+                  r.missingOrderMonths?.length ? (
+                    <Typography.Text type="warning" className="text-xs">
+                      缺 {r.missingOrderMonths.length} 月
+                    </Typography.Text>
+                  ) : (
+                    <Typography.Text type="success" className="text-xs">
+                      已维护
+                    </Typography.Text>
+                  ),
+              },
+            ]}
+          />
+          </div>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            分母请在 <Link to="/settings">设置 → 产品月订单数</Link> 中按产品、月份维护。
+          </Typography.Text>
+        </Card>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="各数据来源概览" className="min-w-0">
+          <Table
+            size="small"
+            pagination={false}
+            dataSource={sourceRows}
+            columns={[
+              { title: '来源', dataIndex: 'source' },
+              { title: '条数', dataIndex: 'count', width: 80 },
+              {
+                title: '负面占比',
+                width: 100,
+                render: (_, r) =>
+                  r.negativePct != null ? `${r.negativePct}%` : '—',
+              },
+              { title: 'Top 产品', dataIndex: 'topProduct', ellipsis: true },
+              {
+                title: '快照',
+                width: 90,
+                render: (_, r) => {
+                  const st = r.status
+                  if (st === 'stale') return <Tag color="orange">待更新</Tag>
+                  if (st === 'ready') return <Tag color="green">就绪</Tag>
+                  return <Tag>—</Tag>
+                },
+              },
+              {
+                title: '',
+                width: 100,
+                render: (_, r) =>
+                  onSourceTab ? (
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        onSourceTab(r.key)
+                      }}
+                    >
+                      查看
+                    </a>
+                  ) : null,
+              },
+            ]}
+          />
+        </Card>
+
+        {trend.length > 0 ? (
+          <Card title="跨源月度趋势（工单类合计）" className="min-w-0">
+            <div data-pdf-chart="overview-trend" className="rounded-lg bg-white p-2">
+              <TrendChart
+                data={trend}
+                areas={[
+                  { dataKey: 'count', name: '条数', stroke: '#4F46E5', fill: 'url(#trendFill)' },
+                ]}
+              />
+            </div>
+            <Typography.Text type="secondary" className="mt-2 block text-xs">
+              仅合并具备月度趋势的数据来源；用后即评/调研等指标请见各分源 Tab。
+            </Typography.Text>
+          </Card>
+        ) : (
+          <Card title="跨源月度趋势（工单类合计）" className="min-w-0">
+            <Typography.Text type="secondary" className="text-sm">
+              当前周期暂无月度趋势数据。
+            </Typography.Text>
+          </Card>
+        )}
+      </div>
+
+      <Card>
+        <Typography.Text type="secondary" className="text-xs">
+          无数据？<Link to="/import">去导入</Link>
+          {' · '}
+          <Link to="/feedbacks">反馈库</Link>
+        </Typography.Text>
+      </Card>
+    </div>
+  )
+}

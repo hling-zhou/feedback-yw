@@ -1,0 +1,107 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  extractLlmAssistantText,
+  getLlmCompletionText,
+  isLlmAvailable,
+  normalizeLlmBaseUrl,
+  parseLlmMessageContent,
+  refreshLlmServerStatus,
+} from './llmClient.js'
+
+vi.mock('./apiClient.js', () => ({
+  apiFetch: vi.fn(),
+}))
+
+import { apiFetch } from './apiClient.js'
+
+afterEach(() => {
+  vi.mocked(apiFetch).mockReset()
+})
+
+describe('normalizeLlmBaseUrl', () => {
+  it('normalizes base url', () => {
+    expect(normalizeLlmBaseUrl('https://api.openai.com/v1/')).toBe('https://api.openai.com/v1')
+  })
+})
+
+describe('isLlmAvailable', () => {
+  it('is true when settings has llmApiKey', () => {
+    expect(isLlmAvailable({ llmApiKey: 'sk-local' })).toBe(true)
+  })
+
+  it('uses refreshed server cache even when llmServerConfigured is false in settings', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ configured: true })
+    await refreshLlmServerStatus()
+    expect(isLlmAvailable({ llmServerConfigured: false })).toBe(true)
+  })
+
+  it('is false when no key and server not configured', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ configured: false })
+    await refreshLlmServerStatus()
+    expect(isLlmAvailable({ llmServerConfigured: false })).toBe(false)
+  })
+})
+
+describe('extractLlmAssistantText', () => {
+  it('prefers content over reasoning_content', () => {
+    expect(
+      extractLlmAssistantText({
+        content: '{"ok":true}',
+        reasoning_content: '思考过程',
+      }),
+    ).toBe('{"ok":true}')
+  })
+
+  it('falls back to reasoning_content when content is empty', () => {
+    expect(
+      extractLlmAssistantText({
+        content: '',
+        reasoning_content: '{"measures":["a"]}',
+      }),
+    ).toBe('{"measures":["a"]}')
+  })
+})
+
+describe('getLlmCompletionText', () => {
+  it('reads glm-style completion payload', () => {
+    const text = getLlmCompletionText({
+      choices: [
+        {
+          message: {
+            content: '你好',
+            reasoning_content: '思考…',
+          },
+        },
+      ],
+    })
+    expect(text).toBe('你好')
+  })
+})
+
+describe('parseLlmMessageContent', () => {
+  it('parses json inside closed fence', () => {
+    expect(parseLlmMessageContent('```json\n{"measures":["x"]}\n```')).toEqual({
+      measures: ['x'],
+    })
+  })
+
+  it('parses json when only opening fence is present', () => {
+    expect(parseLlmMessageContent('```json\n{"measures":["优化A"]}')).toEqual({
+      measures: ['优化A'],
+    })
+  })
+})
+
+describe('refreshLlmServerStatus', () => {
+  it('caches configured flag from API', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ configured: true })
+    await expect(refreshLlmServerStatus()).resolves.toBe(true)
+    expect(isLlmAvailable()).toBe(true)
+  })
+
+  it('returns false when status request fails', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error('network'))
+    await expect(refreshLlmServerStatus()).resolves.toBe(false)
+    expect(isLlmAvailable()).toBe(false)
+  })
+})

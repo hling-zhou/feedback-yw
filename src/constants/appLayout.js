@@ -1,0 +1,13 @@
+/** 侧栏展开宽度（px），与 AppShell Layout.Sider width 保持一致 */
+export const APP_SIDER_WIDTH = 224
+
+/** 侧栏折叠宽度（px），与 Layout.Sider collapsedWidth 保持一致 */
+export const APP_SIDER_COLLAPSED_WIDTH = 72
+
+/** 视口 ≤ 991.98px 时自动折叠（Ant Design `lg` breakpoint） */
+export const APP_SIDER_BREAKPOINT = 'lg'
+
+/** @param {boolean} collapsed */
+export function getAppSiderWidthPx(collapsed) {
+  return collapsed ? APP_SIDER_COLLAPSED_WIDTH : APP_SIDER_WIDTH
+}

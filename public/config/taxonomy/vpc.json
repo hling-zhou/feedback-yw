@@ -1,0 +1,484 @@
+{
+  "key": "vpc",
+  "name": "虚拟私有云",
+  "match": [
+    "虚拟私有云",
+    "VPC",
+    "vpc",
+    "专有网络",
+    "私有网络"
+  ],
+  "journeys": [
+    {
+      "id": "discover",
+      "label": "认知与组网规划",
+      "description": "了解 VPC 能力、网段规划、多 VPC/混合云组网；资费与配额咨询（报障类请结合请求场景=报障与恢复）",
+      "children": [
+        {
+          "id": "discover-intro",
+          "label": "产品与能力咨询",
+          "description": "VPC 功能咨询、是否支持、子网回收通知、功能使用说明",
+          "keywords": [
+            "咨询",
+            "了解",
+            "VPC",
+            "虚拟私有云",
+            "专有网络",
+            "是否支持",
+            "产品介绍",
+            "IPv6",
+            "能力",
+            "VPC功能使用咨询",
+            "功能使用咨询",
+            "子网回收",
+            "回收子网",
+            "短信提示"
+          ]
+        },
+        {
+          "id": "discover-rules",
+          "label": "业务规则与全局咨询",
+          "description": "业务规则咨询、全局流转、VPC 日志/规格规则、政务网互通规则",
+          "keywords": [
+            "业务规则咨询",
+            "全局流转",
+            "VPC业务规则咨询",
+            "虚拟私有云业务规则咨询",
+            "业务规则",
+            "VPC日志",
+            "vpC日志",
+            "规则咨询",
+            "查询"
+          ]
+        },
+        {
+          "id": "discover-cidr",
+          "label": "网段与容量规划",
+          "description": "CIDR、掩码、子网数量、网段重叠、特殊网段申请",
+          "keywords": [
+            "网段",
+            "CIDR",
+            "规划",
+            "掩码",
+            "重叠",
+            "网段冲突",
+            "子网数量",
+            "容量",
+            "地址段",
+            "网段复用",
+            "7.0.0.0",
+            "192.168",
+            "10."
+          ]
+        },
+        {
+          "id": "discover-architecture",
+          "label": "组网与架构咨询",
+          "description": "多 VPC、多地域、与 IDC/专线/VPN/政务网组网拓扑",
+          "keywords": [
+            "组网",
+            "架构",
+            "方案",
+            "混合云",
+            "三层",
+            "拓扑",
+            "多VPC",
+            "跨地域",
+            "政务网",
+            "打通互访"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "provision",
+      "label": "创建与基础资源",
+      "description": "创建 VPC/子网、安装交付、可用区选择、配额权限、网段变更",
+      "children": [
+        {
+          "id": "provision-create",
+          "label": "创建VPC与子网",
+          "description": "新建 VPC、子网、VPC 订购开通",
+          "keywords": [
+            "创建",
+            "新建",
+            "开通",
+            "创建VPC",
+            "创建子网",
+            "创建失败",
+            "无法创建",
+            "VPC订购",
+            "VPC订购/开通",
+            "订购/开通"
+          ]
+        },
+        {
+          "id": "provision-delivery",
+          "label": "安装交付与权限开通",
+          "description": "VPC 安装交付、资源池订购权限、后台协助开通",
+          "keywords": [
+            "VPC安装交付",
+            "安装交付",
+            "虚拟私有云安装交付",
+            "开通权限",
+            "订购权限",
+            "开通对应资源池",
+            "后台协助开通",
+            "资源池的订购权限"
+          ]
+        },
+        {
+          "id": "provision-az-subnet",
+          "label": "可用区与子网选择",
+          "description": "子网灰掉、VPC 子网无法选择、AZ/资源池限制",
+          "keywords": [
+            "可用区",
+            "AZ",
+            "子网无法选择",
+            "VPC子网无法选择",
+            "选不了",
+            "灰掉",
+            "资源池",
+            "华东",
+            "苏州",
+            "华中",
+            "长沙"
+          ]
+        },
+        {
+          "id": "provision-quota",
+          "label": "配额与权限",
+          "description": "VPC/子网/对等连接配额提升、灰度与权限申请（含误挂「退订」节点的配额单）",
+          "keywords": [
+            "配额",
+            "配额不足",
+            "配额提升",
+            "提高配额",
+            "配额至",
+            "提升到",
+            "权限",
+            "权限不足",
+            "RAM",
+            "IAM",
+            "订单失败",
+            "上限",
+            "满上限",
+            "灰度申请",
+            "申请提升vpc配额",
+            "VPC配额"
+          ]
+        },
+        {
+          "id": "provision-subnet-change",
+          "label": "变更网段与VPC业务变更",
+          "description": "VPC 业务变更、删除修改、子网不互通、添加/修改子网",
+          "keywords": [
+            "添加子网",
+            "网段变更",
+            "VPC变更",
+            "VPC业务变更",
+            "虚拟私有云业务变更",
+            "扩容",
+            "修改网段",
+            "子网扩容",
+            "变更子网",
+            "VPC删除修改",
+            "删除修改操作",
+            "子网不互通",
+            "两台主机",
+            "不互通"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "route-nat",
+      "label": "路由与网关",
+      "description": "路由表、NAT 网关、对等连接、终端节点",
+      "children": [
+        {
+          "id": "route-table",
+          "label": "路由表与默认路由",
+          "description": "路由不通、缺默认路由、路由优先级、自定义路由",
+          "keywords": [
+            "路由表",
+            "默认路由",
+            "路由策略",
+            "路由规则",
+            "下一跳",
+            "路由不通"
+          ]
+        },
+        {
+          "id": "route-nat",
+          "label": "NAT网关",
+          "description": "SNAT/DNAT、NAT 创建绑定、出网路径",
+          "keywords": [
+            "NAT",
+            "NAT网关",
+            "SNAT",
+            "DNAT",
+            "NAT创建",
+            "绑定NAT"
+          ]
+        },
+        {
+          "id": "route-peering",
+          "label": "对等连接与云互联",
+          "description": "跨 VPC、跨账号 Peering、对等连接配额/满额",
+          "keywords": [
+            "对等连接",
+            "Peering",
+            "云互联",
+            "跨VPC",
+            "跨账号",
+            "跨账户",
+            "互联",
+            "对等连接满",
+            "对等连接上限",
+            "满上限"
+          ]
+        },
+        {
+          "id": "route-endpoint",
+          "label": "终端节点与私有连接",
+          "description": "PrivateLink、终端节点、私有服务访问",
+          "keywords": [
+            "终端节点",
+            "PrivateLink",
+            "私有连接",
+            "终端节点服务",
+            "VPC终端"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "label": "安全与访问控制",
+      "description": "安全组、网络 ACL、VPC 语境下的访问策略",
+      "children": [
+        {
+          "id": "security-group",
+          "label": "安全组配置与异常",
+          "description": "安全组不生效、放通仍不通、与 ECS 网卡/虚拟网卡联动",
+          "keywords": [
+            "安全组",
+            "安全组配置异常",
+            "不生效",
+            "放通",
+            "端口",
+            "入方向",
+            "出方向",
+            "网卡",
+            "虚拟网卡",
+            "updatePortSecurityGroups",
+            "修改虚拟网卡安全组"
+          ]
+        },
+        {
+          "id": "security-acl",
+          "label": "网络ACL",
+          "description": "子网 ACL 满额、规则顺序、ACL 拦截",
+          "keywords": [
+            "网络ACL",
+            "ACL",
+            "子网ACL",
+            "访问控制列表",
+            "规则顺序",
+            "ACL规则",
+            "ACL规则已满",
+            "acl规则已满",
+            "规则已满"
+          ]
+        },
+        {
+          "id": "security-policy",
+          "label": "封堵与白名单",
+          "description": "平台封堵、出口策略、内网白名单",
+          "keywords": [
+            "封堵",
+            "白名单",
+            "黑名单",
+            "出口策略",
+            "内网访问"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operate",
+      "label": "业务连通与运行",
+      "description": "内网/出网不通、云主机换 VPC、HAVIP、链路质量",
+      "children": [
+        {
+          "id": "operate-internal",
+          "label": "内网互通异常",
+          "description": "同 VPC 跨子网、跨 AZ、EOS/内网地址不通",
+          "keywords": [
+            "内网不通",
+            "子网不通",
+            "跨子网",
+            "跨AZ",
+            "ping不通",
+            "内网访问",
+            "互通",
+            "内网地址不通",
+            "eos内网",
+            "endpoint地址"
+          ]
+        },
+        {
+          "id": "operate-egress",
+          "label": "出网与入网异常",
+          "description": "经 NAT/EIP 仍不通、外网访问异常",
+          "keywords": [
+            "出网",
+            "入网",
+            "无法上网",
+            "外网不通",
+            "访问外网",
+            "无法连接外网",
+            "linux系统主机无法连接外网"
+          ]
+        },
+        {
+          "id": "operate-ecs",
+          "label": "与云主机网卡联动",
+          "description": "更换 VPC、多网卡路由、云主机迁移 VPC",
+          "keywords": [
+            "更换VPC",
+            "云主机更换VPC",
+            "多网卡",
+            "主网卡",
+            "弹性网卡",
+            "ENI",
+            "网卡绑定",
+            "云主机",
+            "ECS",
+            "部署的网站"
+          ]
+        },
+        {
+          "id": "operate-havip",
+          "label": "HAVIP与高可用",
+          "description": "VPC 下 HAVIP 无法使用、HA VIP 异常",
+          "keywords": [
+            "HAVIP",
+            "HA VIP",
+            "HAVIP无法使用",
+            "havip",
+            "高可用IP"
+          ]
+        },
+        {
+          "id": "operate-quality",
+          "label": "时延与链路质量",
+          "description": "丢包、延迟、抖动、不稳定",
+          "keywords": [
+            "丢包",
+            "延迟",
+            "抖动",
+            "慢",
+            "不稳定",
+            "质量差",
+            "卡顿"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hybrid",
+      "label": "混合云与专线接入",
+      "description": "专线接入 VPC、跨账号/跨资源池；专线开通交付归云专线产品",
+      "children": [
+        {
+          "id": "hybrid-dc",
+          "label": "专线接入VPC",
+          "description": "用户侧子网、边界网关、互联地址（VPC 配置侧）",
+          "keywords": [
+            "专线接入",
+            "云专线",
+            "用户侧子网",
+            "边界网关",
+            "互联地址",
+            "dummy"
+          ]
+        },
+        {
+          "id": "hybrid-cross-account",
+          "label": "跨账号与跨资源池",
+          "description": "跨资源池路由、同一 VPC、跨账户对接",
+          "keywords": [
+            "跨资源池",
+            "同一vpc",
+            "跨账号",
+            "跨账户",
+            "用户子网相同",
+            "同一云账号"
+          ]
+        },
+        {
+          "id": "hybrid-vpn",
+          "label": "VPN与其他接入",
+          "description": "VPN 网关、IPsec、SSL VPN 接入 VPC",
+          "keywords": [
+            "VPN",
+            "IPsec",
+            "SSL VPN",
+            "VPN网关",
+            "隧道"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "label": "变更退订与治理",
+      "description": "迁移割接、退订释放、账单计费",
+      "children": [
+        {
+          "id": "lifecycle-change",
+          "label": "变更与迁移",
+          "description": "VPC 迁移、割接（非业务变更类见 provision-subnet-change）",
+          "keywords": [
+            "迁移",
+            "割接",
+            "搬迁",
+            "切换"
+          ]
+        },
+        {
+          "id": "lifecycle-release",
+          "label": "退订与释放",
+          "description": "删除 VPC、资源退订释放、依赖残留（纯配额类见 provision-quota）",
+          "keywords": [
+            "VPC退订",
+            "退订VPC",
+            "释放VPC",
+            "删除VPC",
+            "无法删除",
+            "销毁",
+            "依赖",
+            "残留",
+            "已经全部退订"
+          ]
+        },
+        {
+          "id": "lifecycle-billing",
+          "label": "账单与计费咨询",
+          "description": "VPC 相关计费项、账单、扣费规则",
+          "keywords": [
+            "账单",
+            "计费",
+            "扣费",
+            "资费",
+            "出账",
+            "费用",
+            "计费咨询"
+          ]
+        }
+      ]
+    }
+  ]
+}

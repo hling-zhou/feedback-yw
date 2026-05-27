@@ -1,0 +1,399 @@
+import { hasPermission } from '../../src/domain/auth/permissions.js'
+import { requireAdmin, requirePermission } from '../middleware.js'
+import { bumpDataRevision, getDataRevision } from '../dataRevision.js'
+import { storageRepository } from '../storageRepository.js'
+import {
+  getProductCatalogPublishStatus,
+  publishProductCatalogToFiles,
+} from '../productCatalogPublish.js'
+import { logAuditFromRequest } from '../audit.js'
+import { scheduleConfigAutoPublish } from '../autoPublishConfig.js'
+import { getTaxonomyPublishStatus, publishTaxonomyToFiles } from '../taxonomyPublish.js'
+import { readTaxonomyManagedMetaHydrated } from '../taxonomyMetaHygiene.js'
+
+/** @param {import('fastify').FastifyRequest} request */
+function assertWritePermission(request, reply, permissions) {
+  const user = request.user
+  if (!user) {
+    reply.code(401).send({ error: '未登录' })
+    return false
+  }
+  const allowed = permissions.some((p) => hasPermission(user.role, p))
+  if (!allowed) {
+    reply.code(403).send({ error: '无权限执行此操作' })
+    return false
+  }
+  return true
+}
+
+/**
+ * @param {import('fastify').FastifyInstance} app
+ */
+export function registerStorageRoutes(app) {
+  app.post('/api/storage/init', { preHandler: requirePermission('view') }, async () => {
+    await storageRepository.init()
+    return { ok: true, stats: storageRepository.getStats() }
+  })
+
+  app.get('/api/storage/stats', { preHandler: requirePermission('view') }, async () => {
+    return storageRepository.getStats()
+  })
+
+  app.get('/api/storage/revision', { preHandler: requirePermission('view') }, async () => {
+    return getDataRevision()
+  })
+
+  app.get('/api/storage/periods', { preHandler: requirePermission('view') }, async () => {
+    return { periods: storageRepository.listInsightPeriods() }
+  })
+
+  app.put('/api/storage/periods', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const body = /** @type {{ period?: import('../src/domain/insightPeriod.js').InsightPeriod }} */ (
+      request.body || {}
+    )
+    if (!body.period?.id) {
+      reply.code(400).send({ error: '缺少 period' })
+      return
+    }
+    storageRepository.putInsightPeriod(body.period)
+    return { ok: true }
+  })
+
+  app.get(
+    '/api/storage/periods/:id',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const { id } = /** @type {{ id: string }} */ (request.params)
+      const period = storageRepository.getInsightPeriod(id)
+      if (!period) {
+        reply.code(404).send({ error: '周期不存在' })
+        return
+      }
+      return { period }
+    },
+  )
+
+  app.get('/api/storage/records', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {import('../src/storage/adapter.js').RecordQuery} */ (request.query || {})
+    return storageRepository.listRecords(q)
+  })
+
+  app.get(
+    '/api/storage/records/:id',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const { id } = /** @type {{ id: string }} */ (request.params)
+      const record = storageRepository.getRecord(id)
+      if (!record) {
+        reply.code(404).send({ error: '记录不存在' })
+        return
+      }
+      return { record }
+    },
+  )
+
+  app.put('/api/storage/records', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const body = /** @type {{ records?: import('../src/domain/records.js').InsightRecord[] }} */ (
+      request.body || {}
+    )
+    if (!Array.isArray(body.records)) {
+      reply.code(400).send({ error: '缺少 records 数组' })
+      return
+    }
+    storageRepository.replaceAllRecords(body.records)
+    logAuditFromRequest(request, 'storage.replace_all_records', {
+      count: body.records.length,
+    })
+    return { ok: true, count: body.records.length }
+  })
+
+  app.patch('/api/storage/records/:id', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const { id } = /** @type {{ id: string }} */ (request.params)
+    const body = /** @type {{ record?: import('../src/domain/records.js').InsightRecord }} */ (
+      request.body || {}
+    )
+    if (!body.record?.id || body.record.id !== id) {
+      reply.code(400).send({ error: 'record.id 不匹配' })
+      return
+    }
+    storageRepository.putRecord(body.record)
+    return { ok: true }
+  })
+
+  app.post('/api/storage/records/batch', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const body = /** @type {{ records?: import('../src/domain/records.js').InsightRecord[] }} */ (
+      request.body || {}
+    )
+    if (!Array.isArray(body.records)) {
+      reply.code(400).send({ error: '缺少 records 数组' })
+      return
+    }
+    storageRepository.putRecords(body.records)
+    const sample = body.records[0]
+    logAuditFromRequest(request, 'storage.import_batch', {
+      count: body.records.length,
+      dataSourceType: sample?.dataSourceType,
+      importMonth: sample?.importMonth,
+      importBatchId: sample?.importBatchId,
+    })
+    return { ok: true, count: body.records.length }
+  })
+
+  app.delete('/api/storage/records/:id', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const { id } = /** @type {{ id: string }} */ (request.params)
+    storageRepository.deleteRecord(id)
+    logAuditFromRequest(request, 'storage.delete_record', { recordId: id })
+    return { ok: true }
+  })
+
+  app.delete('/api/storage/imported-data', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['deleteData'])) return
+    const statsBefore = storageRepository.getStats()
+    const pendingBefore = storageRepository.listTagCandidates({ status: 'pending' }).length
+    storageRepository.clearImportedData()
+    logAuditFromRequest(request, 'storage.clear_imported_data', {
+      recordsCleared: statsBefore.records,
+      snapshotsCleared: statsBefore.snapshots,
+      pendingTagCandidatesCleared: pendingBefore,
+    })
+    return { ok: true }
+  })
+
+  app.get('/api/storage/runs', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {{ insightPeriodId?: string; dataSourceType?: string }} */ (request.query || {})
+    if (!q.insightPeriodId) return { runs: [] }
+    return {
+      runs: storageRepository.listAnalysisRuns(q.insightPeriodId, q.dataSourceType),
+    }
+  })
+
+  app.get(
+    '/api/storage/runs/by-idempotency',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const q = /** @type {{ key?: string }} */ (request.query || {})
+      const key = q.key?.trim()
+      if (!key) {
+        reply.code(400).send({ error: '缺少 key 参数' })
+        return
+      }
+      return { run: storageRepository.findRunByIdempotencyKey(key) }
+    },
+  )
+
+  app.get(
+    '/api/storage/runs/:id',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const { id } = /** @type {{ id: string }} */ (request.params)
+      const run = storageRepository.getAnalysisRun(id)
+      if (!run) {
+        reply.code(404).send({ error: '运行记录不存在' })
+        return
+      }
+      return { run }
+    },
+  )
+
+  app.put('/api/storage/runs', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import'])) return
+    const body = /** @type {{ run?: import('../src/domain/analysisRun.js').AnalysisRun }} */ (
+      request.body || {}
+    )
+    if (!body.run?.id) {
+      reply.code(400).send({ error: '缺少 run' })
+      return
+    }
+    storageRepository.putAnalysisRun(body.run)
+    return { ok: true }
+  })
+
+  app.get('/api/storage/artifacts', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {{ runId?: string; debug?: string }} */ (request.query || {})
+    if (!q.runId) return { artifacts: [] }
+    return {
+      artifacts: storageRepository.listArtifactsByRun(q.runId, q.debug === '1' || q.debug === 'true'),
+    }
+  })
+
+  app.put('/api/storage/artifacts', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import'])) return
+    const body = /** @type {{
+      artifact?: import('../src/domain/analysisRun.js').RecordArtifact | import('../src/domain/analysisRun.js').RunArtifact
+      debug?: boolean
+    }} */ (request.body || {})
+    if (!body.artifact?.id) {
+      reply.code(400).send({ error: '缺少 artifact' })
+      return
+    }
+    storageRepository.putArtifact(body.artifact, Boolean(body.debug))
+    return { ok: true }
+  })
+
+  app.get('/api/storage/snapshots', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {{ insightPeriodId?: string }} */ (request.query || {})
+    if (!q.insightPeriodId) return { snapshots: [] }
+    return { snapshots: storageRepository.listSnapshotsByPeriod(q.insightPeriodId) }
+  })
+
+  app.get(
+    '/api/storage/snapshots/:id',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const { id } = /** @type {{ id: string }} */ (request.params)
+      const snapshot = storageRepository.getSnapshot(decodeURIComponent(id))
+      if (!snapshot) {
+        reply.code(404).send({ error: '快照不存在' })
+        return
+      }
+      return { snapshot }
+    },
+  )
+
+  app.put('/api/storage/snapshots', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const body = /** @type {{
+      snapshot?: import('../src/domain/snapshot.js').InsightSnapshot | import('../src/domain/snapshot.js').OverviewSnapshot
+    }} */ (request.body || {})
+    if (!body.snapshot?.id) {
+      reply.code(400).send({ error: '缺少 snapshot' })
+      return
+    }
+    storageRepository.putSnapshot(body.snapshot)
+    return { ok: true }
+  })
+
+  app.get(
+    '/api/storage/meta/:key',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      const { key } = /** @type {{ key: string }} */ (request.params)
+      const decodedKey = decodeURIComponent(key)
+      if (decodedKey === 'taxonomy_managed') {
+        return { value: readTaxonomyManagedMetaHydrated() }
+      }
+      return { value: storageRepository.getMeta(decodedKey) }
+    },
+  )
+
+  app.put('/api/storage/meta/:key', async (request, reply) => {
+    const { key } = /** @type {{ key: string }} */ (request.params)
+    const decodedKey = decodeURIComponent(key)
+    const tagMetaKeys = ['taxonomy_managed', 'taxonomy_overrides', 'tag_library_version', 'product_catalog_managed_v1']
+    const perms = []
+    if (tagMetaKeys.includes(decodedKey)) perms.push('manageTags')
+    else if (decodedKey === 'product_order_volumes_v1') perms.push('editOrderVolumes')
+    else if (decodedKey === 'app_settings_shared_v1' || decodedKey === 'recommendation_feedback_v1') {
+      perms.push('manageTeamSettings')
+    } else perms.push('view')
+    if (!assertWritePermission(request, reply, perms)) return
+    const body = /** @type {{ value?: unknown }} */ (request.body || {})
+    storageRepository.putMeta(decodedKey, body.value ?? null)
+    if (tagMetaKeys.includes(decodedKey) || decodedKey === 'product_catalog_managed_v1') {
+      bumpDataRevision()
+    }
+    if (decodedKey === 'taxonomy_managed' || decodedKey === 'product_catalog_managed_v1') {
+      scheduleConfigAutoPublish(decodedKey, request.user?.username)
+    }
+    return { ok: true }
+  })
+
+  app.get('/api/storage/tag-candidates', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {{ status?: string; tagType?: string }} */ (request.query || {})
+    return { candidates: storageRepository.listTagCandidates(q) }
+  })
+
+  app.put('/api/storage/tag-candidates', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['manageTags'])) return
+    const body = /** @type {{
+      candidate?: import('../src/domain/tagCandidate.js').TagCandidate
+      candidates?: import('../src/domain/tagCandidate.js').TagCandidate[]
+    }} */ (request.body || {})
+    if (body.candidates?.length) {
+      storageRepository.putTagCandidates(body.candidates)
+      return { ok: true, count: body.candidates.length }
+    }
+    if (body.candidate?.id) {
+      storageRepository.putTagCandidate(body.candidate)
+      return { ok: true }
+    }
+    reply.code(400).send({ error: '缺少 candidate 或 candidates' })
+  })
+
+  app.delete('/api/storage/tag-candidates/:id', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['manageTags'])) return
+    const { id } = /** @type {{ id: string }} */ (request.params)
+    storageRepository.deleteTagCandidate(id)
+    return { ok: true }
+  })
+
+  app.get(
+    '/api/storage/taxonomy/publish-status',
+    { preHandler: requirePermission('view') },
+    async () => getTaxonomyPublishStatus(),
+  )
+
+  app.post('/api/storage/taxonomy/publish', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['manageTags'])) return
+    const body = /** @type {{ writeJson?: boolean }} */ (request.body || {})
+    try {
+      const result = publishTaxonomyToFiles({
+        writeJson: body.writeJson !== false,
+        publishedBy: request.user?.username || 'unknown',
+      })
+      logAuditFromRequest(request, 'storage.publish_taxonomy', {
+        excelPath: result.excelPath,
+        jsonFiles: result.jsonFiles?.length,
+      })
+      return result
+    } catch (err) {
+      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  app.get(
+    '/api/storage/product-catalog/publish-status',
+    { preHandler: requirePermission('view') },
+    async () => getProductCatalogPublishStatus(),
+  )
+
+  app.post('/api/storage/product-catalog/publish', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['manageTags'])) return
+    const body = /** @type {{ writeJson?: boolean }} */ (request.body || {})
+    try {
+      const result = publishProductCatalogToFiles({
+        writeJson: body.writeJson !== false,
+        publishedBy: request.user?.username || 'unknown',
+      })
+      logAuditFromRequest(request, 'storage.publish_product_catalog', {
+        excelPath: result.excelPath,
+        jsonPath: result.jsonPath,
+        productCount: result.stats?.products,
+      })
+      return result
+    } catch (err) {
+      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  app.post(
+    '/api/storage/bootstrap-from-local',
+    { preHandler: [requirePermission('import'), requireAdmin()] },
+    async (request, reply) => {
+      const body = /** @type {Parameters<typeof storageRepository.bootstrapFromLocal>[0]} */ (
+        request.body || {}
+      )
+      try {
+        const result = storageRepository.bootstrapFromLocal(body)
+        logAuditFromRequest(request, 'storage.bootstrap_from_local', result)
+        return { ok: true, ...result }
+      } catch (err) {
+        reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  )
+}

@@ -1,0 +1,159 @@
+/**
+ * 列映射预设（按数据来源）
+ * @typedef {import('./parseFile.js').ColumnPreset} ColumnPreset
+ */
+
+/** @type {ColumnPreset} */
+export const MOBILE_CLOUD_TICKET_PRESET = {
+  id: 'mobile-cloud-ticket',
+  name: '移动云投诉工单',
+  description: '以「处理意见」为主进行四维打标（请求场景、问题类型、用户旅程、用户情绪）；受理内容用于抽取客户原话',
+  dataSourceTypes: ['complaint_ticket'],
+  columnMap: {
+    ticketId: '工单流水号',
+    createdAt: '受理时间',
+    productSpec: '具体投诉产品',
+    resourcePool: '所属资源池',
+    source: '受理渠道',
+    rawText: '受理内容',
+    handlingText: '处理意见',
+    responseText: '解决方案（必填）',
+    rootCauseCol: '根因（必填）',
+    problemTypeCol: '投诉原因 一级（初判）',
+    problemTypeL1FinalCol: '投诉原因 一级（终判）',
+    problemTypeL2FinalCol: '投诉原因 二级（终判）',
+    problemTypeL3FinalCol: '投诉原因 三级（终判）',
+  },
+  rawTextMerge: ['追加信息'],
+}
+
+/** @type {ColumnPreset} */
+export const CONSULTATION_TICKET_PRESET = {
+  id: 'consultation-ticket',
+  name: '咨询工单',
+  description: '与投诉工单类似；优先映射处理意见 / 咨询答复列',
+  dataSourceTypes: ['consultation_ticket'],
+  columnMap: {
+    ticketId: '工单流水号',
+    createdAt: '受理时间',
+    productSpec: '产品规格',
+    resourcePool: '所属资源池',
+    source: '受理渠道',
+    rawText: '受理内容',
+    handlingText: '处理意见',
+    responseText: '解决方案',
+    rootCauseCol: '根因',
+    problemTypeCol: '投诉原因 一级（初判）',
+  },
+  rawTextMerge: ['追加信息'],
+}
+
+/** @type {ColumnPreset} */
+export const POST_USE_RATING_PRESET = {
+  id: 'post-use-rating',
+  name: '用后即评',
+  description: '评分与评论列（统计分析能力后续补充）',
+  dataSourceTypes: ['post_use_rating'],
+  columnMap: {
+    createdAt: '评价时间',
+    productSpec: '产品',
+    commentText: '评价内容',
+    rawText: '评价内容',
+  },
+  rawTextMerge: [],
+}
+
+/** @type {ColumnPreset} */
+export const USER_SURVEY_PRESET = {
+  id: 'user-survey',
+  name: '用户调研',
+  description: '调研题目与作答列',
+  dataSourceTypes: ['user_survey'],
+  columnMap: {
+    createdAt: '提交时间',
+    productSpec: '产品',
+    openText: '开放回答',
+    rawText: '开放回答',
+  },
+  rawTextMerge: [],
+}
+
+/** @type {ColumnPreset} */
+export const GENERIC_PRESET = {
+  id: 'generic',
+  name: '通用文本',
+  description: '标题 + 正文或单一文本列',
+  dataSourceTypes: ['other'],
+  columnMap: {
+    createdAt: '时间',
+    rawText: '内容',
+    handlingText: '内容',
+  },
+  rawTextMerge: [],
+}
+
+/** @type {ColumnPreset[]} */
+export const COLUMN_PRESETS = [
+  MOBILE_CLOUD_TICKET_PRESET,
+  CONSULTATION_TICKET_PRESET,
+  POST_USE_RATING_PRESET,
+  USER_SURVEY_PRESET,
+  GENERIC_PRESET,
+]
+
+/**
+ * @param {string[]} headers
+ * @param {import('../domain/enums.js').DataSourceType} [dataSourceType]
+ * @returns {ColumnPreset | null}
+ */
+export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
+  const has = (name) => headers.includes(name)
+
+  if (dataSourceType === 'consultation_ticket') {
+    if (has('处理意见') || has('工单流水号')) {
+      return CONSULTATION_TICKET_PRESET
+    }
+    if (has('咨询内容') || has('答复内容')) {
+      return {
+        ...CONSULTATION_TICKET_PRESET,
+        columnMap: {
+          ...CONSULTATION_TICKET_PRESET.columnMap,
+          rawText: has('咨询内容') ? '咨询内容' : '受理内容',
+          handlingText: has('答复内容') ? '答复内容' : '处理意见',
+        },
+      }
+    }
+  }
+
+  if (dataSourceType === 'complaint_ticket' && has('工单流水号') && has('处理意见')) {
+    return MOBILE_CLOUD_TICKET_PRESET
+  }
+
+  if (dataSourceType === 'post_use_rating' && (has('评价内容') || has('评分'))) {
+    return POST_USE_RATING_PRESET
+  }
+
+  if (dataSourceType === 'user_survey' && (has('开放回答') || has('题目'))) {
+    return USER_SURVEY_PRESET
+  }
+
+  if (dataSourceType === 'other' && (has('内容') || has('反馈'))) {
+    return GENERIC_PRESET
+  }
+
+  if (!dataSourceType || dataSourceType === 'complaint_ticket') {
+    if (has('工单流水号') && has('处理意见')) return MOBILE_CLOUD_TICKET_PRESET
+  }
+
+  return null
+}
+
+/**
+ * @param {import('../domain/enums.js').DataSourceType} dataSourceType
+ * @returns {ColumnPreset[]}
+ */
+export function getPresetsForSource(dataSourceType) {
+  return COLUMN_PRESETS.filter(
+    (p) => !p.dataSourceTypes || p.dataSourceTypes.includes(dataSourceType),
+  )
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "weights": {
+    "journey_hotspot": 1.0,
+    "problem_type": 0.9,
+    "wan_tou": 1.2,
+    "root_cause": 1.0,
+    "risk_negative": 1.1,
+    "risk_trend": 1.0
+  }
+}

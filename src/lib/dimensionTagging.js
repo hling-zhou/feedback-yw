@@ -1,0 +1,216 @@
+import { getSharedProblemTypes, getSharedRequestScenes } from './taxonomyLoader.js'
+import {
+  matchThemesByDescription,
+  matchSharedDimensionHybridBatch,
+  matchSharedDimensionLlmBatch,
+  canUseSemanticMatch,
+  usesLlmThemeMatch,
+  mergeSharedDimensionLabel,
+  resolveThemeOverflowOrigin,
+  isInThemeLibrary,
+} from './themeSemantic.js'
+import { captureProblemTypeCandidateIfNeeded, captureRequestSceneCandidateIfNeeded } from './tagCandidates.js'
+import { buildTaggingTextForRecord } from './taggingText.js'
+
+/** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
+
+const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
+const UNCLASSIFIED_PROBLEM = '未分类'
+
+/**
+ * 仅用标签库规则（关键词 + 说明）对打标正文匹配「问题类型」，不读取导入表投诉原因列。
+ * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+export function resolveProblemTypeFromConfig(text, rules) {
+  return matchSharedLabel(text || '', rules)
+}
+
+/**
+ * @param {FeedbackRecord} record
+ * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+function resolveLocalProblemTypeLabel(record, text, rules) {
+  const ds = record.dataSourceType || 'complaint_ticket'
+  if (TICKET_LIKE_SOURCES.includes(ds)) {
+    return matchSharedLabel(text, rules)
+  }
+  const existing = record.problemType?.trim()
+  if (existing && isInThemeLibrary(existing, rules)) return existing
+  if (existing && existing !== UNCLASSIFIED_PROBLEM) {
+    const fromExisting = matchSharedLabel(existing, rules)
+    if (fromExisting !== UNCLASSIFIED_PROBLEM) return fromExisting
+  }
+  return matchSharedLabel(text, rules)
+}
+
+/**
+ * 投诉/咨询工单：问题类型仅 config 关键词匹配（不调 LLM）；其余来源保持混合打标。
+ * @param {FeedbackRecord[]} records
+ * @param {string[]} texts
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ * @param {import('./storage.js').AppSettings} settings
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+export async function matchProblemTypesForRecords(records, texts, rules, settings, onProgress) {
+  const local = records.map((r, i) => resolveLocalProblemTypeLabel(r, texts[i], rules))
+
+  const themeRules = toThemeRules(rules)
+  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings)) {
+    return local.map((label) => ({ label, overflowOrigin: null }))
+  }
+
+  /** @type {{ label: string; overflowOrigin: 'llm' | 'local_overflow' | null }[]} */
+  const results = local.map((label) => ({ label, overflowOrigin: null }))
+  /** @type {number[]} */
+  const llmIndices = []
+
+  for (let i = 0; i < records.length; i++) {
+    const ds = records[i].dataSourceType || 'complaint_ticket'
+    if (TICKET_LIKE_SOURCES.includes(ds)) {
+      // 投诉/咨询工单：问题类型仅来自标签库（关键词+说明），永不走 LLM，避免库外标签
+      continue
+    }
+    const label = local[i]
+    if (!isInThemeLibrary(label, themeRules) || label === UNCLASSIFIED_PROBLEM) {
+      llmIndices.push(i)
+    }
+  }
+
+  const BATCH = 8
+  for (let b = 0; b < llmIndices.length; b += BATCH) {
+    const idxBatch = llmIndices.slice(b, b + BATCH)
+    const chunk = idxBatch.map((i) => texts[i])
+    const localChunk = idxBatch.map((i) => local[i])
+    try {
+      const llmBatch = await matchSharedDimensionLlmBatch(chunk, themeRules, settings, localChunk)
+      idxBatch.forEach((i, j) => {
+        const llmLabel = llmBatch[j]?.[0] || UNCLASSIFIED_PROBLEM
+        const label = mergeSharedDimensionLabel(local[i], llmLabel, themeRules)
+        results[i] = {
+          label,
+          overflowOrigin: resolveThemeOverflowOrigin(label, local[i], llmLabel, themeRules),
+        }
+      })
+    } catch (err) {
+      console.warn('问题类型 LLM 打标失败，该批保留本地结果:', err)
+      idxBatch.forEach((i) => {
+        results[i] = { label: local[i], overflowOrigin: null }
+      })
+    }
+    onProgress?.(Math.min(b + BATCH, llmIndices.length), llmIndices.length)
+  }
+
+  return results
+}
+
+/**
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ * @returns {import('./themes.js').ThemeRule[]}
+ */
+function toThemeRules(rules) {
+  return (rules || []).map((r) => ({
+    id: r.label,
+    label: r.label,
+    description: r.description || '',
+    keywords: r.keywords || [],
+  }))
+}
+
+/**
+ * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+export function matchSharedLabel(text, rules) {
+  const labels = matchThemesByDescription(text, toThemeRules(rules))
+  return labels[0] || '未分类'
+}
+
+/**
+ * @param {string[]} texts
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ * @param {import('./storage.js').AppSettings} settings
+ * @param {(done: number, total: number) => void} [onProgress]
+ * @param {string[]} [existingLabels]
+ */
+export async function matchSharedLabelsBatch(
+  texts,
+  rules,
+  settings,
+  onProgress,
+  existingLabels = [],
+) {
+  const themeRules = toThemeRules(rules)
+  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings)) {
+    return texts.map((t, i) => {
+      const existing = existingLabels[i]?.trim()
+      if (existing && existing !== '未分类') {
+        return { label: existing, overflowOrigin: null }
+      }
+      return { label: matchSharedLabel(t, rules), overflowOrigin: null }
+    })
+  }
+  return matchSharedDimensionHybridBatch(texts, themeRules, settings, onProgress, existingLabels)
+}
+
+export { buildTaggingTextForRecord as taggingTextForRecord } from './taggingText.js'
+
+/**
+ * @param {import('./types.js').FeedbackRecord[]} records
+ * @param {import('./storage.js').AppSettings} settings
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+export async function enrichRecordsWithSharedDimensions(records, settings, onProgress) {
+  if (!records.length) return records
+
+  const requestRules = getSharedRequestScenes()
+  const problemRules = getSharedProblemTypes()
+  const texts = records.map(buildTaggingTextForRecord)
+  const total = records.length
+
+  const requestResults = await matchSharedLabelsBatch(
+    texts,
+    requestRules,
+    settings,
+    (done, t) => {
+      onProgress?.(Math.floor(done / 2), t)
+    },
+    records.map((r) => r.requestScene || ''),
+  )
+  const problemResults = await matchProblemTypesForRecords(
+    records,
+    texts,
+    problemRules,
+    settings,
+    (done, t) => {
+      onProgress?.(Math.floor(total / 2 + done / 2), t)
+    },
+  )
+
+  return records.map((r, i) => {
+    const requestScene = requestResults[i]?.label || r.requestScene || '未分类'
+    const problemType = problemResults[i]?.label || r.problemType || '未分类'
+
+    captureRequestSceneCandidateIfNeeded({
+      requestScene,
+      requestScenes: requestRules,
+      recordId: r.id,
+      sourceText: texts[i],
+      insightPeriodId: r.insightPeriodId,
+      dataSourceType: r.dataSourceType,
+      origin: requestResults[i]?.overflowOrigin ?? 'local_overflow',
+    })
+    captureProblemTypeCandidateIfNeeded({
+      problemType,
+      problemTypes: problemRules,
+      recordId: r.id,
+      sourceText: texts[i],
+      insightPeriodId: r.insightPeriodId,
+      dataSourceType: r.dataSourceType,
+      origin: problemResults[i]?.overflowOrigin ?? 'local_overflow',
+    })
+
+    return { ...r, requestScene, problemType }
+  })
+}

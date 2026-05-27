@@ -1,0 +1,246 @@
+{
+  "key": "generic",
+  "name": "通用产品",
+  "match": [],
+  "problemTypes": [
+    {
+      "label": "客户体验类",
+      "keywords": [
+        "体验",
+        "不满",
+        "投诉"
+      ]
+    },
+    {
+      "label": "可用性/故障",
+      "keywords": [
+        "故障",
+        "不可用",
+        "崩溃",
+        "异常"
+      ]
+    },
+    {
+      "label": "性能类",
+      "keywords": [
+        "慢",
+        "卡",
+        "延迟",
+        "超时"
+      ]
+    },
+    {
+      "label": "计费账单",
+      "keywords": [
+        "计费",
+        "账单",
+        "扣费"
+      ]
+    },
+    {
+      "label": "功能需求",
+      "keywords": [
+        "功能",
+        "建议",
+        "希望"
+      ]
+    },
+    {
+      "label": "流程与服务",
+      "keywords": [
+        "流程",
+        "客服",
+        "响应",
+        "等待"
+      ]
+    }
+  ],
+  "journeys": [
+    {
+      "id": "consult",
+      "label": "咨询了解",
+      "description": "产品咨询与了解",
+      "children": [
+        {
+          "id": "consult-general",
+          "label": "产品咨询",
+          "description": "一般咨询",
+          "keywords": [
+            "咨询",
+            "了解"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "onboard",
+      "label": "开通使用",
+      "description": "开通与初始配置",
+      "children": [
+        {
+          "id": "onboard-setup",
+          "label": "开通配置",
+          "description": "开通与配置",
+          "keywords": [
+            "开通",
+            "配置"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operate",
+      "label": "日常运维",
+      "description": "日常使用与运维",
+      "children": [
+        {
+          "id": "operate-run",
+          "label": "使用运维",
+          "description": "日常运维",
+          "keywords": [
+            "使用",
+            "运维"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "incident",
+      "label": "故障处理",
+      "description": "故障排查与修复",
+      "children": [
+        {
+          "id": "incident-fix",
+          "label": "排障修复",
+          "description": "故障处理",
+          "keywords": [
+            "故障",
+            "排查"
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": [
+    {
+      "id": "login",
+      "label": "登录注册",
+      "description": "用户无法正常登录、注册、找回密码、验证码收不到、账号权限相关问题",
+      "keywords": [
+        "登录",
+        "注册",
+        "密码",
+        "验证码",
+        "账号"
+      ]
+    },
+    {
+      "id": "performance",
+      "label": "性能体验",
+      "description": "系统响应慢、页面卡顿、加载超时、操作延迟等性能类问题",
+      "keywords": [
+        "慢",
+        "卡",
+        "加载",
+        "延迟",
+        "超时"
+      ]
+    },
+    {
+      "id": "billing",
+      "label": "计费账单",
+      "description": "账单金额异常、扣费争议、退款、发票、套餐资费相关问题",
+      "keywords": [
+        "计费",
+        "账单",
+        "扣费",
+        "退款",
+        "发票"
+      ]
+    },
+    {
+      "id": "feature",
+      "label": "功能需求",
+      "description": "希望新增功能、现有功能不满足、产品能力缺失或改进建议",
+      "keywords": [
+        "功能",
+        "希望",
+        "建议",
+        "增加",
+        "缺少"
+      ]
+    },
+    {
+      "id": "support",
+      "label": "客服态度",
+      "description": "客服响应慢、服务态度、沟通体验、回访不及时等服务类问题",
+      "keywords": [
+        "客服",
+        "态度",
+        "回复",
+        "等待",
+        "联系"
+      ]
+    },
+    {
+      "id": "network",
+      "label": "网络连接",
+      "description": "网络波动、断网、连接不稳定、带宽异常等网络连通性问题",
+      "keywords": [
+        "网络",
+        "断网",
+        "连接",
+        "波动",
+        "信号"
+      ]
+    },
+    {
+      "id": "ui",
+      "label": "界面交互",
+      "description": "界面难用、找不到入口、操作流程复杂、交互设计不合理",
+      "keywords": [
+        "界面",
+        "操作",
+        "按钮",
+        "找不到",
+        "难用"
+      ]
+    },
+    {
+      "id": "data",
+      "label": "数据同步",
+      "description": "数据丢失、同步失败、备份恢复、报表数据不准确等问题",
+      "keywords": [
+        "数据",
+        "同步",
+        "丢失",
+        "备份",
+        "导出"
+      ]
+    },
+    {
+      "id": "cloud",
+      "label": "云主机/资源",
+      "description": "云主机 ECS、实例、资源池、虚拟机、弹性计算等资源类产品问题",
+      "keywords": [
+        "云主机",
+        "ECS",
+        "资源池",
+        "实例",
+        "弹性计算"
+      ]
+    },
+    {
+      "id": "fault",
+      "label": "故障/不可用",
+      "description": "服务中断、宕机、故障无法复现、业务不可用等严重可用性问题",
+      "keywords": [
+        "故障",
+        "不可用",
+        "中断",
+        "宕机",
+        "无法复现"
+      ]
+    }
+  ]
+}

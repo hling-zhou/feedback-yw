@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-ink-50 text-ink-800 font-sans;
+  }
+}
+
+@layer components {
+  /* AppShell 根节点设置 --app-sider-width，底部会话条等与侧栏对齐 */
+  .app-shell-root {
+    --app-sider-width: 224px;
+  }
+
+  .app-shell-session-banner {
+    left: var(--app-sider-width);
+  }
+
+  /** 页面区块间距（替代 mt-6 / 24px） */
+  .page-section {
+    @apply mt-5;
+  }
+
+  /** 次级区块间距（替代 mt-4 / 16px） */
+  .page-section-sm {
+    @apply mt-3;
+  }
+
+  /** 纵向堆叠 gap（替代 gap-4） */
+  .page-stack {
+    @apply flex flex-col gap-3;
+  }
+
+  /** 工具栏：周期选择 + 操作按钮行 */
+  .page-toolbar {
+    @apply mt-5 flex flex-wrap items-end gap-3;
+  }
+
+  @media (min-width: 1024px) {
+    .page-toolbar.page-toolbar-nowrap {
+      flex-wrap: nowrap;
+    }
+  }
+
+  /** 双列栅格 */
+  .page-grid-2 {
+    @apply grid gap-3 sm:grid-cols-2;
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "description": "目标产品与产品规格关系表。导入时仅分析 enabled=true 的产品及其规格。",
+  "products": [
+    {
+      "key": "eip",
+      "name": "弹性公网IP",
+      "enabled": true,
+      "taxonomyKey": "eip",
+      "acceptParentName": true,
+      "specs": [
+        {
+          "name": "弹性公网IP-移动IP",
+          "match": [
+            "弹性公网IP-移动IP",
+            "弹性公网 IP-移动IP",
+            "弹性公网ip-移动ip",
+            "弹性公网IP移动IP"
+          ]
+        },
+        {
+          "name": "弹性公网IP-IPv6带宽",
+          "match": [
+            "弹性公网IP-IPv6带宽",
+            "弹性公网 IP-IPv6带宽",
+            "弹性公网IP-IPv6 带宽",
+            "弹性公网ip-ipv6带宽"
+          ]
+        },
+        {
+          "name": "弹性公网IP-共享带宽",
+          "match": [
+            "共享带宽",
+            "弹性公网IP-共享带宽",
+            "弹性公网 IP-共享带宽",
+            "弹性公网ip-共享带宽",
+            "弹性公网IP共享带宽"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "dc",
+      "name": "云专线",
+      "enabled": true,
+      "taxonomyKey": "dc",
+      "acceptParentName": true,
+      "specs": []
+    },
+    {
+      "key": "slb",
+      "name": "弹性负载均衡",
+      "enabled": true,
+      "taxonomyKey": "slb",
+      "acceptParentName": true,
+      "specs": []
+    },
+    {
+      "key": "vpc",
+      "name": "虚拟私有云",
+      "enabled": true,
+      "taxonomyKey": "vpc",
+      "acceptParentName": true,
+      "specs": [
+        {
+          "name": "虚拟私有云",
+          "match": [
+            "虚拟私有云",
+            "VPC",
+            "vpc",
+            "专有网络",
+            "私有网络"
+          ]
+        }
+      ]
+    }
+  ],
+  "updatedAt": "2026-05-23T16:31:18.380Z"
+}
