@@ -52,7 +52,7 @@ export default function AppShell() {
 
   return (
     <Layout
-      className="app-shell-root min-h-screen"
+      className="app-shell-root"
       style={{ '--app-sider-width': `${getAppSiderWidthPx(collapsed)}px` }}
     >
       <Layout.Sider
@@ -63,7 +63,7 @@ export default function AppShell() {
         width={APP_SIDER_WIDTH}
         collapsedWidth={APP_SIDER_COLLAPSED_WIDTH}
         theme="light"
-        className="border-r border-ink-200 !bg-white"
+        className="app-shell-sider border-r border-ink-200 !bg-white"
       >
         <div className="flex h-full min-h-0 flex-col">
           <div
@@ -155,8 +155,8 @@ export default function AppShell() {
         </div>
       </Layout.Sider>
 
-      <Layout className="min-w-0">
-        <Layout.Content className="min-h-screen min-w-0 overflow-x-auto bg-ink-50 p-3 sm:p-4 lg:p-5">
+      <Layout className="app-shell-main min-w-0">
+        <Layout.Content className="min-w-0 bg-ink-50 p-3 sm:p-4 lg:p-5">
           <ImportSessionGuard />
           <RetagSessionGuard />
           <Outlet />

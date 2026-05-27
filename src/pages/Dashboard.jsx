@@ -9,7 +9,6 @@ import JourneyFeedbackSection from '../components/JourneyFeedbackSection.jsx'
 import ProductDrillDown from '../components/ProductDrillDown.jsx'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
-export { PageHeader }
 import { listProducts, listResourcePools, getTaxonomy } from '../lib/productTaxonomy.js'
 import { countByField, filterFeedbacks } from '../lib/productAnalytics.js'
 import { monthlyTrend } from '../lib/analytics.js'

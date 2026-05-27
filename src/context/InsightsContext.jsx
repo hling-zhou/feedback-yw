@@ -1594,41 +1594,6 @@ export function InsightsProvider({ children }) {
     [adapter, feedbacks, settings, currentPeriod, scheduleSnapshotRebuild, storageReady],
   )
 
-  const reprocessAllThemes = useCallback(async () => {
-    if (!feedbacks.length) return 0
-    setReprocessing(true)
-    reprocessingRef.current = true
-    try {
-      const updated = await reprocessAllThemesAndSentiment(feedbacks, settings)
-      feedbacksRef.current = updated
-      setFeedbacks(updated)
-      if (storageReady) {
-        skipPersistRef.current = true
-        try {
-          await persistRecordUpdates(adapter, updated)
-          if (typeof adapter.getDataRevision === 'function') {
-            const rev = await adapter.getDataRevision()
-            dataRevisionRef.current = rev.revision
-          }
-        } finally {
-          skipPersistRef.current = false
-        }
-      }
-      if (currentPeriod) {
-        scheduleSnapshotRebuild({
-          period: currentPeriod,
-          recordsForBuild: updated,
-          reason: 'data',
-          debounceMs: 600,
-        })
-      }
-      return updated.length
-    } finally {
-      reprocessingRef.current = false
-      setReprocessing(false)
-    }
-  }, [adapter, feedbacks, settings, currentPeriod, scheduleSnapshotRebuild, storageReady])
-
   const reprocessAllTagsCore = useCallback(
     async (targetRecords, reportProgress, options = {}) => {
       const list = targetRecords?.length ? targetRecords : feedbacksRef.current
@@ -1918,7 +1883,6 @@ export function InsightsProvider({ children }) {
       replaceAll,
       clearAll,
       reprocessOne,
-      reprocessAllThemes,
       reprocessAllCustomerQuotes,
       reprocessAllTags,
       reprocessing,
@@ -2004,7 +1968,6 @@ export function InsightsProvider({ children }) {
       replaceAll,
       clearAll,
       reprocessOne,
-      reprocessAllThemes,
       reprocessAllCustomerQuotes,
       reprocessAllTags,
       reprocessing,

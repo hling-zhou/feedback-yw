@@ -3,12 +3,12 @@ import {
   clearRetagSessionMarker,
   formatBulkRetagScopeLabel,
   formatInterruptedRetagMessage,
-  formatRetagFinishedToast,
   persistRetagSessionMarker,
   readRetagSessionMarker,
   updateRetagSessionMarkerProgress,
   RETAG_SESSION_STORAGE_KEY,
 } from './retagSession.js'
+import { formatBulkRetagResultMessage } from './journeyRetagSummary.js'
 
 describe('retagSession', () => {
   beforeEach(() => {
@@ -60,24 +60,15 @@ describe('retagSession', () => {
         progress: '正在完整打标 (10/50)…',
       }),
     ).toContain('未识别环节')
-    expect(
-      formatRetagFinishedToast({
-        total: 50,
-        beforeUnknown: 10,
-        afterUnknown: 4,
-        scope: 'filtered',
-        summary: { count: 4, reasons: {}, samples: [] },
-      }),
-    ).toContain('新识别 6 条')
-    expect(
-      formatRetagFinishedToast({
-        total: 50,
-        beforeUnknown: 10,
-        afterUnknown: 4,
-        scope: 'filtered',
-        summary: { count: 4, reasons: {}, samples: [] },
-      }),
-    ).toContain('筛选结果')
+    const finishedMsg = formatBulkRetagResultMessage({
+      total: 50,
+      beforeUnknown: 10,
+      afterUnknown: 4,
+      scope: 'filtered',
+      summary: { count: 4, reasons: {}, samples: [] },
+    })
+    expect(finishedMsg).toContain('新识别 6 条')
+    expect(finishedMsg).toContain('筛选结果')
   })
 
   it('clearRetagSessionMarker removes storage', () => {

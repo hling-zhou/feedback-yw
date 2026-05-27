@@ -112,24 +112,3 @@ export function formatInterruptedRetagMessage(marker) {
   return parts.join(' · ')
 }
 
-/**
- * @param {RetagFinishedPayload} payload
- */
-export function formatRetagFinishedToast(payload) {
-  const resolved = Math.max(0, payload.beforeUnknown - payload.afterUnknown)
-  const scopeHint =
-    payload.scope && payload.scope !== 'all' ? formatBulkRetagScopeLabel(payload.scope) : ''
-  const parts = [
-    scopeHint
-      ? `${scopeHint}：已完成 ${payload.total} 条四维重新打标`
-      : `已完成 ${payload.total} 条四维重新打标`,
-  ]
-  if (payload.beforeUnknown > 0 || payload.afterUnknown > 0) {
-    parts.push(
-      `未识别旅程 ${payload.beforeUnknown} → ${payload.afterUnknown}${
-        resolved > 0 ? `（新识别 ${resolved} 条）` : ''
-      }`,
-    )
-  }
-  return parts.join('；')
-}
