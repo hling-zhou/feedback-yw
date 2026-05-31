@@ -291,7 +291,7 @@ export default function Feedbacks() {
     }
   }
 
-  const { openBulkRetagModal, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
+  const { openBulkRetagModal, startScopedBulkRetag, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
     useBulkRetagModal({ filteredRecords: filtered })
 
   return (
@@ -342,56 +342,62 @@ export default function Feedbacks() {
       )}
 
       <div className="page-section page-stack">
-        {needsTicketLlmCount > 0 && (
-          <Alert
-            type="info"
-            showIcon
-            title={`有 ${needsTicketLlmCount} 条工单的客户请求/痛点/优化建议仍为规则打标`}
-            description="多为导入时未配置 API Key 或 LLM 额度不足。可在下方筛选「待 LLM 增强」，再批量重新打标并选择「仅未完成 LLM 增强的工单」。"
-            action={
-              <PermissionGate permission="retag">
-                <Button
-                  size="small"
-                  type="primary"
-                  loading={bulkRetagBusy}
-                  disabled={bulkRetagDisabled}
-                  title={bulkRetagDisabledTip}
-                  onClick={() => {
-                    setTicketLlmFilter('needs_llm')
-                    openBulkRetagModal()
-                  }}
-                >
-                  补打 LLM
-                </Button>
-              </PermissionGate>
-            }
-          />
-        )}
-
-        {needsJourneyLlmCount > 0 && (
-          <Alert
-            type="info"
-            showIcon
-            title={`有 ${needsJourneyLlmCount} 条工单的用户旅程仍待 LLM 增强`}
-            description="多为导入中断、额度不足或未识别环节。可在下方筛选「待旅程 LLM」，再批量重新打标并选择「仅未完成旅程 LLM 增强的工单」。"
-            action={
-              <PermissionGate permission="retag">
-                <Button
-                  size="small"
-                  type="primary"
-                  loading={bulkRetagBusy}
-                  disabled={bulkRetagDisabled}
-                  title={bulkRetagDisabledTip}
-                  onClick={() => {
-                    setTicketLlmFilter('needs_journey_llm')
-                    openBulkRetagModal()
-                  }}
-                >
-                  补打旅程 LLM
-                </Button>
-              </PermissionGate>
-            }
-          />
+        {(needsTicketLlmCount > 0 || needsJourneyLlmCount > 0) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-1.5 text-sm text-sky-900">
+            {needsTicketLlmCount > 0 && (
+              <span
+                className="inline-flex flex-wrap items-center gap-2"
+                title="客户请求/痛点/优化建议仍为规则打标；多为导入时未配置 API Key 或额度不足"
+              >
+                <span>{needsTicketLlmCount} 条客户请求/痛点/优化建议待 LLM</span>
+                <PermissionGate permission="retag">
+                  <Button
+                    size="small"
+                    type="link"
+                    className="!px-0 !h-auto"
+                    loading={bulkRetagBusy}
+                    disabled={bulkRetagDisabled}
+                    title={bulkRetagDisabledTip}
+                    onClick={() => {
+                      setTicketLlmFilter('needs_llm')
+                      startScopedBulkRetag('needs_ticket_llm')
+                    }}
+                  >
+                    补打
+                  </Button>
+                </PermissionGate>
+              </span>
+            )}
+            {needsTicketLlmCount > 0 && needsJourneyLlmCount > 0 && (
+              <span className="text-sky-300" aria-hidden>
+                |
+              </span>
+            )}
+            {needsJourneyLlmCount > 0 && (
+              <span
+                className="inline-flex flex-wrap items-center gap-2"
+                title="用户旅程仍待 LLM 增强；多为导入中断、额度不足或未识别环节"
+              >
+                <span>{needsJourneyLlmCount} 条旅程待 LLM</span>
+                <PermissionGate permission="retag">
+                  <Button
+                    size="small"
+                    type="link"
+                    className="!px-0 !h-auto"
+                    loading={bulkRetagBusy}
+                    disabled={bulkRetagDisabled}
+                    title={bulkRetagDisabledTip}
+                    onClick={() => {
+                      setTicketLlmFilter('needs_journey_llm')
+                      startScopedBulkRetag('needs_journey_llm')
+                    }}
+                  >
+                    补打旅程
+                  </Button>
+                </PermissionGate>
+              </span>
+            )}
+          </div>
         )}
 
         {missingTags > 0 && (
@@ -519,7 +525,7 @@ export default function Feedbacks() {
           value={ticketLlmFilter}
           options={[
             { label: '全部 LLM 状态', value: '' },
-            { label: '待 LLM 增强', value: 'needs_llm' },
+            { label: '待 LLM（请求/痛点/优化）', value: 'needs_llm' },
             { label: '待旅程 LLM', value: 'needs_journey_llm' },
             { label: 'LLM 已增强', value: 'full_llm' },
           ]}

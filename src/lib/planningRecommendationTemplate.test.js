@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { FINAL_CLUSTER_TOP_N } from './painPointClustering/constants.js'
 import {
   buildEvidenceNoteForSignal,
   buildFallbackPrimaryAction,
@@ -8,7 +9,6 @@ import {
   buildPrimaryActionForSignal,
   buildScopeLabel,
   formatScopedSummary,
-  LARGE_PRODUCT_TICKET_THRESHOLD,
   PLANNING_RECOMMENDATION_LIMITS,
   trackingMetricsForSignal,
 } from './planningRecommendationTemplate.js'
@@ -79,12 +79,13 @@ describe('planningRecommendationTemplate', () => {
     expect(buildProblemTypePrimaryAction('性能与质量')).toBeNull()
   })
 
-  it('buildPlanningRecommendationsHelpSections aligns with quota constants', () => {
+  it('buildPlanningRecommendationsHelpSections aligns with V2 clustering constants', () => {
     const sections = buildPlanningRecommendationsHelpSections()
     const blob = JSON.stringify(sections)
-    expect(sections.length).toBeGreaterThanOrEqual(5)
-    expect(blob).toContain(String(LARGE_PRODUCT_TICKET_THRESHOLD))
-    expect(blob).toContain('云专线')
+    expect(sections).toHaveLength(3)
+    expect(blob).toContain('痛点聚类')
+    expect(blob).toContain(String(FINAL_CLUSTER_TOP_N))
+    expect(blob).toContain('painPoint')
     expect(blob).toContain('刷新洞察')
   })
 })

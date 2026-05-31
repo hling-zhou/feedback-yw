@@ -1,4 +1,10 @@
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import {
+  FINAL_CLUSTER_TOP_N,
+  LOW_VALUE_PROBLEM_TYPES,
+  PRIMARY_CLUSTER_THRESHOLD,
+  SECONDARY_CLUSTER_THRESHOLD,
+} from './painPointClustering/constants.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendationScope} OverviewRecommendationScope */
 /** @typedef {import('../domain/overviewConclusions.js').RecommendationCategory} RecommendationCategory */
@@ -462,70 +468,41 @@ export function buildEvidenceNoteForSignal(params) {
 }
 
 /**
- * 工作台「行动建议」问号说明：与规则引擎常量对齐的完整生成规则
+ * 工作台「行动建议」问号说明：与 V2 痛点聚类生成规则对齐
  * @returns {{ title: string; paragraphs?: string[]; items?: string[] }[]}
  */
 export function buildPlanningRecommendationsHelpSections() {
-  const { minDetails, maxDetails, maxSummaryLength, maxDetailLength, maxItems } =
-    PLANNING_RECOMMENDATION_LIMITS
+  const { maxItems } = PLANNING_RECOMMENDATION_LIMITS
+  const lowValueTypes = [...LOW_VALUE_PROBLEM_TYPES].join('、')
+
   return [
     {
       title: '生成时机与数据范围',
       paragraphs: [
-        '在洞察工作台点击「生成 / 刷新洞察」后，系统基于当前洞察周期内的投诉单与咨询单工单生成，并写入周期快照。',
+        '在洞察工作台点击「生成 / 刷新洞察」后，基于当前洞察周期内的投诉单与咨询单工单写入周期快照；面板带「V2 痛点聚类」标签表示使用新版引擎。',
         '导入数据、修改标签或批量重新打标后，需再次刷新洞察，行动建议才会与最新工单分布一致。',
-        '批量重新打标不会覆盖已在工单详情中人工保存过的四维标签（请求场景、问题类型、用户旅程、用户情绪）。',
+        '聚类与行动建议依赖工单的「需求痛点挖掘」（painPoint）字段；未打标或仍为规则占位时，可能无法形成 V2 Top 10。',
       ],
     },
     {
-      title: '条数规则（按产品工单量）',
+      title: '主路径：V2 痛点聚类（每产品 Top 10）',
       items: [
-        `周期内每个产品（该品工单数 ≥ 3）至少 1 条；全模块合计不超过 ${maxItems} 条。`,
-        '工单数 < 30：1 条',
-        '30～99 条：2 条',
-        '100～299 条：3 条',
-        `≥ ${LARGE_PRODUCT_TICKET_THRESHOLD} 条：按体量在 ${LARGE_PRODUCT_REC_MIN}～${LARGE_PRODUCT_REC_MAX} 条之间缩放（结合多议题分散，避免只保留单一热点）`,
+        '按产品分别处理周期内全部投诉/咨询工单，每个产品取优先级最高的最多 10 个「最终痛点群组」各生成 1 条行动建议。',
+        `一次聚类：按「产品 + 数据来源 + 一级用户旅程」分组，对组内 painPoint 做 Jaccard 层次聚类（阈值 ${PRIMARY_CLUSTER_THRESHOLD}，簇 ≥2 条工单）。`,
+        `剔除低价值一次群组：问题类型为「${lowValueTypes}」的群组不参与二次聚类（可在数据覆盖说明中备注剔除数量）。`,
+        `二次聚类：跨来源、跨一级环节合并一次群组代表性文本（阈值 ${SECONDARY_CLUSTER_THRESHOLD}），得到产品级最终痛点群组。`,
+        `各产品按综合优先级排序，取 Top ${FINAL_CLUSTER_TOP_N}；全模块展示时再按高/中/低优先级截断，合计不超过 ${maxItems} 条。`,
+        '来源 Tab 旅程区展示一次聚类结果；洞察概览行动建议使用二次聚类（最终群组）结果。',
       ],
     },
     {
-      title: '议题维度（大单量产品）',
+      title: '优先级评分（最终群组）',
       items: [
-        '按产品分别生成候选，再按配额选取；优先覆盖不同分析轴，避免同产品多条建议仅重复同一话术。',
-        `二级用户旅程（journeyL2）：大单量最多取 Top ${8} 个环节`,
-        `问题类型（problemType）：最多 Top ${6} 类；若某类型已由主导旅程覆盖，则不再单独重复`,
-        `请求场景（requestScene）：最多 Top ${4} 类，用于补充旅程/类型未覆盖的咨询场景`,
-        '同一产品下，不同旅程、问题类型或请求场景不会仅因摘要措辞相近而被合并为一条',
-      ],
-    },
-    {
-      title: '优先级与类别排序',
-      items: [
-        '建议类型优先顺序：产品/功能设计 > 体验与文档自助 > 监控预警 > 流程与协同（与产品规划讨论习惯对齐）',
-        '展示与选取时，同类中再按高 / 中 / 低优先级排序',
-        '内容须为可落地举措（含建立、优化、上线、诊断、预检、打通等动作词），避免空泛统计描述',
-      ],
-    },
-    {
-      title: '概述与详细意见格式',
-      items: [
-        `概述 summary：1～2 句，≤${maxSummaryLength} 字；推荐句式「建议{产品·环节/问题类型}：{动作}，{预期价值}」`,
-        `详细意见 details：${minDetails}～${maxDetails} 条，每条 ≤${maxDetailLength} 字；与洞察中「业务优化举措」同标准（环节 playbook、类型归纳、人工复核举措等）`,
-        '依据说明 evidenceNote、指标 metrics、依据工单号由系统保留，概述中不写占比、万投比、工单原文或处理意见复述',
-        '若开启「规则 + LLM」润色，仅润色概述与详细意见表述，不改范围、优先级与依据字段',
-      ],
-    },
-    {
-      title: '产品专项话术',
-      items: [
-        '云专线、弹性负载均衡（SLB）、弹性公网 IP（EIP）等配置了产品画像：按二级旅程优先匹配专用改进方向（如专线开通/路由、监听/后端/健康检查、EIP 配额/连通等）',
-        '无画像产品时，按问题类型 playbook 或旅程/类型组合生成',
-      ],
-    },
-    {
-      title: '补充信号（样本允许时）',
-      items: [
-        '万投比异常产品、有效根因聚类、跨源负面情绪占比偏高、工单量环比明显上升等，可在配额未满时追加少量建议',
-        '某产品无法形成足够具体的候选时，会尝试按该产品 Top 旅程或问题类型补 1 条；仍不足则本期可能无行动建议，并提示补充打标/人工复核',
+        '影响广度（1～5 分）：群组工单数 ÷ 该产品周期内总工单数，按占比区间映射。',
+        '业务危害度（1～5 分）：最高问题类型严重度 × 0.6 + P90 情绪烈度 × 0.4。',
+        '综合优先级 = 0.5 × 影响广度 + 0.5 × 业务危害度；同分优先业务危害度更高者。',
+        '展示优先级：综合分 ≥4 → 高，≥3 → 中，否则为低。',
+        '客户等级（金牌/银牌/铜牌/普通）仅作展示，不参与评分。',
       ],
     },
   ]

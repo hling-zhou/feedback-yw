@@ -339,12 +339,13 @@ enrichmentStats: {
 }
 ```
 
-导入失败 warning 引导：**反馈库 → 待 LLM 增强 → 补打**，勿默认全量重打。
+导入失败 warning 引导：**反馈库顶部「补打」/「补打旅程」**（或筛选后工具栏批量重打），勿默认全量重打。
 
 ### 6.2 UI
 
-- 反馈库筛选项：**待 LLM 增强**（已有）、**待旅程 LLM**（新增）
-- 批量重打范围对应 `needs_ticket_llm` / `needs_journey_llm`
+- 反馈库顶部紧凑提示条 + **补打** / **补打旅程**（`startScopedBulkRetag`，跳过确认弹窗）
+- 筛选项：**待 LLM（请求/痛点/优化）**、**待旅程 LLM**
+- 工具栏 **批量重新打标** 仍打开确认弹窗，可选 `needs_ticket_llm` / `needs_journey_llm` 等范围
 
 ### 6.3 回归用例
 

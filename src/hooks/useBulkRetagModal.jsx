@@ -76,124 +76,198 @@ export function useBulkRetagModal({ filteredRecords }) {
         ? '当前洞察周期内暂无反馈数据'
         : undefined
 
-  const openBulkRetagModal = useCallback(() => {
+  const isScopeAvailable = useCallback(
+    /** @param {BulkRetagScope} scope */
+    (scope) => {
+      switch (scope) {
+        case 'unknown_journey':
+          return unknownJourneyCount > 0
+        case 'needs_ticket_llm':
+          return needsTicketLlmCount > 0
+        case 'needs_journey_llm':
+          return needsJourneyLlmCount > 0
+        case 'filtered':
+          return filteredCount > 0
+        case 'period_all':
+          return periodCount > 0
+        default:
+          return false
+      }
+    },
+    [
+      unknownJourneyCount,
+      needsTicketLlmCount,
+      needsJourneyLlmCount,
+      filteredCount,
+      periodCount,
+    ],
+  )
+
+  const resolveDefaultScope = useCallback(
+    /** @param {BulkRetagScope | undefined} preferred */
+    (preferred) => {
+      if (preferred && isScopeAvailable(preferred)) return preferred
+      if (periodCount > 0 && needsTicketLlmCount > 0) return 'needs_ticket_llm'
+      if (periodCount > 0) return 'period_all'
+      return 'filtered'
+    },
+    [isScopeAvailable, periodCount, needsTicketLlmCount],
+  )
+
+  const runBulkRetag = useCallback(
+    /** @param {{ scope: BulkRetagScope; forceOverrideManualTags?: boolean; retagDimensionsAfterTicketLlm?: boolean }} opts */
+    (opts) => {
+      const records = resolveBulkRetagRecords(opts.scope)
+      if (!records.length) {
+        message.warning('所选范围内没有可打标的工单')
+        return
+      }
+      void startBulkRetag({
+        scope: opts.scope,
+        records,
+        forceOverrideManualTags: opts.forceOverrideManualTags === true,
+        retagDimensionsAfterTicketLlm:
+          opts.retagDimensionsAfterTicketLlm ?? settings.retagDimensionsAfterTicketLlm !== false,
+      }).catch((e) => {
+        message.error(e?.message || '批量重新打标失败')
+      })
+    },
+    [resolveBulkRetagRecords, startBulkRetag, settings.retagDimensionsAfterTicketLlm],
+  )
+
+  const guardBulkRetagStart = useCallback(() => {
     if (!canOpenBulkRetag) {
       message.warning('当前洞察周期内暂无反馈数据')
-      return
+      return false
     }
     if (bulkRetagBlockedByImport) {
       message.warning(RETAG_BLOCKED_BY_IMPORT_TIP)
-      return
+      return false
     }
     if (bulkRetagBusy) {
       message.warning(RETAG_IN_PROGRESS_TIP)
-      return
+      return false
     }
+    return true
+  }, [bulkRetagBlockedByImport, bulkRetagBusy, canOpenBulkRetag])
 
-    let selectedScope =
-      periodCount > 0 && needsTicketLlmCount > 0
-        ? 'needs_ticket_llm'
-        : periodCount > 0
-          ? 'period_all'
-          : 'filtered'
-    const scopeChoice = { value: selectedScope }
-    const forceOverrideChoice = { value: false }
-    const retagDimensionsChoice = { value: settings.retagDimensionsAfterTicketLlm !== false }
+  /** 跳过确认弹窗，按固定 scope 直接启动（反馈库「补打 / 补打旅程」） */
+  const startScopedBulkRetag = useCallback(
+    /** @param {BulkRetagScope} scope */
+    (scope) => {
+      if (!guardBulkRetagStart()) return
+      if (!isScopeAvailable(scope)) {
+        message.warning('所选范围内没有可打标的工单')
+        return
+      }
+      runBulkRetag({ scope })
+    },
+    [guardBulkRetagStart, isScopeAvailable, runBulkRetag],
+  )
 
-    Modal.confirm({
-      title: '批量重新打标',
-      width: 520,
-      content: (
-        <div className="pt-1">
-          <Typography.Paragraph type="secondary" className="!mb-3">
-            将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。用户情绪以客户请求内容、需求痛点为准。默认保留工单详情中人工保存过的标签维度。
-          </Typography.Paragraph>
-          <Radio.Group
-            defaultValue={selectedScope}
-            className="flex flex-col gap-2"
-            onChange={(e) => {
-              scopeChoice.value = e.target.value
-            }}
-          >
-            <Radio value="period_all" disabled={periodCount === 0}>
-              {BULK_RETAG_SCOPE_LABELS.period_all}（{periodCount} 条）
-            </Radio>
-            <Radio value="unknown_journey" disabled={unknownJourneyCount === 0}>
-              {BULK_RETAG_SCOPE_LABELS.unknown_journey}（{unknownJourneyCount} 条）
-            </Radio>
-            <Radio value="needs_ticket_llm" disabled={needsTicketLlmCount === 0}>
-              {BULK_RETAG_SCOPE_LABELS.needs_ticket_llm}（{needsTicketLlmCount} 条）
-            </Radio>
-            <Radio value="needs_journey_llm" disabled={needsJourneyLlmCount === 0}>
-              {BULK_RETAG_SCOPE_LABELS.needs_journey_llm}（{needsJourneyLlmCount} 条）
-            </Radio>
-            <Radio value="filtered" disabled={filteredCount === 0}>
-              {BULK_RETAG_SCOPE_LABELS.filtered}（{filteredCount} 条）
-            </Radio>
-          </Radio.Group>
-          <Checkbox
-            className="!mt-3"
-            defaultChecked={retagDimensionsChoice.value}
-            onChange={(e) => {
-              retagDimensionsChoice.value = e.target.checked
-            }}
-          >
-            工单 LLM 成功后重打请求场景与问题类型
-          </Checkbox>
-          <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-            默认与团队设置一致。仅对 ticket LLM 成功写入客户请求或痛点的工单生效；不勾选则保留规则初标结果。
-          </Typography.Paragraph>
-          <Checkbox
-            className="!mt-3"
-            onChange={(e) => {
-              forceOverrideChoice.value = e.target.checked
-            }}
-          >
-            强制覆盖全部人工内容
-          </Checkbox>
-          <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-            勾选后将清空各工单的人工标签标记与人工复核文本（根因、优化方案、举措、优化建议），用本次打标结果全量覆盖请求场景、问题类型、用户旅程、用户情绪及自动优化建议。
-          </Typography.Paragraph>
-          <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
-            {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。
-          </Typography.Paragraph>
-        </div>
-      ),
-      okText: '继续',
-      cancelText: '取消',
-      onOk: () => {
-        const records = resolveBulkRetagRecords(scopeChoice.value)
-        if (!records.length) {
-          message.warning('所选范围内没有可打标的工单')
-          return Promise.reject(new Error('empty scope'))
-        }
-        const scope = scopeChoice.value
-        void startBulkRetag({
-          scope,
-          records,
-          forceOverrideManualTags: forceOverrideChoice.value,
-          retagDimensionsAfterTicketLlm: retagDimensionsChoice.value,
-        }).catch((e) => {
-          message.error(e?.message || '批量重新打标失败')
-        })
-      },
-    })
-  }, [
-    bulkRetagBlockedByImport,
-    bulkRetagBusy,
-    canOpenBulkRetag,
-    filteredCount,
-    periodCount,
-    resolveBulkRetagRecords,
-    startBulkRetag,
-    unknownJourneyCount,
-    needsTicketLlmCount,
-    needsJourneyLlmCount,
-    settings.retagDimensionsAfterTicketLlm,
-  ])
+  const openBulkRetagModal = useCallback(
+    /** @param {{ initialScope?: BulkRetagScope }} [options] */
+    (options = {}) => {
+      if (!guardBulkRetagStart()) return
+
+      const selectedScope = resolveDefaultScope(options.initialScope)
+      const scopeChoice = { value: selectedScope }
+      const forceOverrideChoice = { value: false }
+      const retagDimensionsChoice = { value: settings.retagDimensionsAfterTicketLlm !== false }
+
+      Modal.confirm({
+        title: '批量重新打标',
+        width: 520,
+        content: (
+          <div className="pt-1">
+            <Typography.Paragraph type="secondary" className="!mb-3">
+              将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。用户情绪以客户请求内容、需求痛点为准。默认保留工单详情中人工保存过的标签维度。
+            </Typography.Paragraph>
+            <Radio.Group
+              defaultValue={selectedScope}
+              className="flex flex-col gap-2"
+              onChange={(e) => {
+                scopeChoice.value = e.target.value
+              }}
+            >
+              <Radio value="period_all" disabled={periodCount === 0}>
+                {BULK_RETAG_SCOPE_LABELS.period_all}（{periodCount} 条）
+              </Radio>
+              <Radio value="unknown_journey" disabled={unknownJourneyCount === 0}>
+                {BULK_RETAG_SCOPE_LABELS.unknown_journey}（{unknownJourneyCount} 条）
+              </Radio>
+              <Radio value="needs_ticket_llm" disabled={needsTicketLlmCount === 0}>
+                {BULK_RETAG_SCOPE_LABELS.needs_ticket_llm}（{needsTicketLlmCount} 条）
+              </Radio>
+              <Radio value="needs_journey_llm" disabled={needsJourneyLlmCount === 0}>
+                {BULK_RETAG_SCOPE_LABELS.needs_journey_llm}（{needsJourneyLlmCount} 条）
+              </Radio>
+              <Radio value="filtered" disabled={filteredCount === 0}>
+                {BULK_RETAG_SCOPE_LABELS.filtered}（{filteredCount} 条）
+              </Radio>
+            </Radio.Group>
+            <Checkbox
+              className="!mt-3"
+              defaultChecked={retagDimensionsChoice.value}
+              onChange={(e) => {
+                retagDimensionsChoice.value = e.target.checked
+              }}
+            >
+              工单 LLM 成功后重打请求场景与问题类型
+            </Checkbox>
+            <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+              默认与团队设置一致。仅对 ticket LLM 成功写入客户请求或痛点的工单生效；不勾选则保留规则初标结果。
+            </Typography.Paragraph>
+            <Checkbox
+              className="!mt-3"
+              onChange={(e) => {
+                forceOverrideChoice.value = e.target.checked
+              }}
+            >
+              强制覆盖全部人工内容
+            </Checkbox>
+            <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+              勾选后将清空各工单的人工标签标记与人工复核文本（根因、优化方案、举措、优化建议），用本次打标结果全量覆盖请求场景、问题类型、用户旅程、用户情绪及自动优化建议。
+            </Typography.Paragraph>
+            <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
+              {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。
+            </Typography.Paragraph>
+          </div>
+        ),
+        okText: '继续',
+        cancelText: '取消',
+        onOk: () => {
+          const scope = scopeChoice.value
+          const records = resolveBulkRetagRecords(scope)
+          if (!records.length) {
+            message.warning('所选范围内没有可打标的工单')
+            return Promise.reject(new Error('empty scope'))
+          }
+          runBulkRetag({
+            scope,
+            forceOverrideManualTags: forceOverrideChoice.value,
+            retagDimensionsAfterTicketLlm: retagDimensionsChoice.value,
+          })
+        },
+      })
+    },
+    [
+      guardBulkRetagStart,
+      filteredCount,
+      periodCount,
+      resolveBulkRetagRecords,
+      resolveDefaultScope,
+      runBulkRetag,
+      unknownJourneyCount,
+      needsTicketLlmCount,
+      needsJourneyLlmCount,
+      settings.retagDimensionsAfterTicketLlm,
+    ],
+  )
 
   return {
     openBulkRetagModal,
+    startScopedBulkRetag,
     bulkRetagBusy,
     bulkRetagDisabled,
     bulkRetagDisabledTip,

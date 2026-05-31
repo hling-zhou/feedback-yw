@@ -59,12 +59,12 @@ export function buildEnrichmentRetagWarnings(stats, journeyPendingCount = 0) {
   const warnings = []
   if (stats.ticketLlmFailed > 0) {
     warnings.push(
-      `${stats.ticketLlmFailed} 条工单的客户请求/痛点/优化建议 LLM 增强未完成。请前往反馈库 → 筛选「待 LLM 增强」→ 批量重新打标，选择「仅未完成 LLM 增强的工单」。`,
+      `${stats.ticketLlmFailed} 条工单的客户请求/痛点/优化建议 LLM 增强未完成。请前往反馈库点击顶部「补打」。`,
     )
   }
   if (journeyPendingCount > 0) {
     warnings.push(
-      `${journeyPendingCount} 条工单的用户旅程 LLM 增强未完成。请前往反馈库 → 筛选「待旅程 LLM」→ 批量重新打标，选择「仅未完成旅程 LLM 增强的工单」。`,
+      `${journeyPendingCount} 条工单的用户旅程 LLM 增强未完成。请前往反馈库点击顶部「补打旅程」。`,
     )
   }
   return warnings

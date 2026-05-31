@@ -196,6 +196,7 @@
 | TAG-CL-09 | P1 | 快照集成 | `painPointClustering` 写入来源快照 | `painPointClusteringIntegration.test.js` |
 | TAG-CL-10 | P2 | 空痛点跳过 / L1 回退 / label 辅助 | P2 区块 | `painPointClustering.test.js` |
 | TAG-CL-11 | P2 | exact 预合并 key | 标点空白归一 | `normalizePainPoint.test.js` |
+| TAG-CL-13 | P2 | 行动建议「生成规则」问号弹窗 | 文案含 V2 聚类流程与 Top N 常量 | `planningRecommendationTemplate.test.js` |
 
 #### 5.4.6 洞察快照重建 Job（TAG-IR）
 
@@ -353,6 +354,7 @@ npm run test:e2e
 | `src/snapshots/painPointClusteringIntegration.test.js` | TAG-CL-09 快照集成 |
 | `src/lib/painPointClustering/clusteringTop10Golden.test.js` | TAG-CL-12 M2-4 Top10 Kendall τ |
 | `src/lib/painPointClustering/kendallTau.test.js` | Kendall τ 工具 |
+| `src/lib/planningRecommendationTemplate.test.js` | TAG-CL-13 行动建议生成规则 UI |
 | `server/insightRebuildJob.test.js` | TAG-IR 服务端快照重建 Job |
 | `src/domain/insightRebuildJob.test.js` | Job 领域模型 |
 

@@ -42,8 +42,8 @@ describe('importEnrichmentStats', () => {
   it('buildEnrichmentRetagWarnings guides retag scopes', () => {
     const stats = { ...createEmptyEnrichmentStats(), ticketLlmFailed: 2 }
     const warnings = buildEnrichmentRetagWarnings(stats, 3)
-    expect(warnings[0]).toContain('待 LLM 增强')
-    expect(warnings[1]).toContain('待旅程 LLM')
+    expect(warnings[0]).toContain('补打')
+    expect(warnings[1]).toContain('补打旅程')
   })
 
   it('countOptimizationRetries', () => {
