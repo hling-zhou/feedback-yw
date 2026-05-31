@@ -24,14 +24,14 @@
   → buildOverviewConclusions.recommendations
 
 来源 Tab 旅程区
-  → buildJourneyClusterView（实时，基于当前 scoped 工单）
-  → 一次群组 / 未聚类单点
+  → resolveJourneyClusterViewForDisplay（优先读快照 `aggregates.painPointClustering`）
+  → 无快照时频次回退（不在 UI 路径 live 聚类）
 ```
 
 ## 快照与兼容
 
 - **新生成快照**：来源快照含 `painPointClustering.clusteringVersion = v2.0`；概览含 `recommendationsMeta.recommendationEngine = pain_cluster_v2`。
-- **旧快照**：概览缺少 `recommendationEngine` 时，`OverviewTab` 调用 `rehydrateOverviewRecommendations` 用当前工单临时重算行动建议，并提示重新生成快照。
+- **旧快照**：概览缺少有效 `recommendationEngine: pain_cluster_v2` 时，**不**在浏览器内 live 重算；`OverviewTab` 调用 `prepareOverviewConclusionsForDisplay` 隐藏行动建议并提示「生成 / 刷新洞察」。重算仅在快照重建（后续：服务端 Job）时执行。
 - **V2 无 Top 10**：自动回退 `buildPlanningRecommendations`（legacy），UI 显示 `legacyFallback` 警告。
 
 ## 关键字段
@@ -46,8 +46,8 @@
 
 ## 阈值（`constants.js`）
 
-- 一次聚类 Jaccard 阈值：**0.35**
-- 二次聚类 Jaccard 阈值：**0.3**
+- 一次聚类 Jaccard 阈值：**0.3**
+- 二次聚类 Jaccard 阈值：**0.2**
 - 每产品 Top N：**10**
 
 ## Legacy 保留

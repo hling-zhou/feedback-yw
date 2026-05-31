@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, Col, Collapse, Empty, Row, Tag, Typography } from 'antd'
+import { Card, Col, Collapse, Empty, Row, Tag, Typography, Alert } from 'antd'
 import JourneyFlowChart from './charts/JourneyFlowChart.jsx'
 import JourneyViz from './charts/JourneyViz.jsx'
 import { buildJourneyInsights, journeyChartData } from '../lib/journeyInsights.js'
-import { buildJourneyClusterView } from '../lib/painPointClustering/index.js'
+import { resolveJourneyClusterViewForDisplay } from '../lib/painPointClustering/index.js'
 import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWorkbenchAnalysisUrl } from '../lib/workbenchAnalysisLink.js'
 
@@ -36,6 +36,7 @@ function buildClusterFeedbacksHref(recordIds, items, dataSourceType) {
  *   taxonomy: { journeys: import('../lib/productTaxonomy.js').JourneyL1[]; name?: string };
  *   productName?: string;
  *   dataSourceType?: import('../domain/enums.js').DataSourceType;
+ *   painPointClustering?: import('../lib/painPointClustering/buildSourceClusterSnapshot.js').SourcePainPointClusterSnapshot | null;
  *   journeySel: { l1?: string; l2?: string };
  *   onJourneySelect: (l1: string, l2?: string) => void;
  * }}
@@ -45,6 +46,7 @@ export default function JourneyFeedbackSection({
   taxonomy,
   productName,
   dataSourceType,
+  painPointClustering,
   journeySel,
   onJourneySelect,
 }) {
@@ -86,14 +88,27 @@ export default function JourneyFeedbackSection({
   const clusterView = useMemo(() => {
     const product = productName || taxonomy.name
     if (!product || !activeL1 || !segmentItems.length) return null
-    return buildJourneyClusterView({
+    return resolveJourneyClusterViewForDisplay({
+      painPointClustering,
       records: items,
       product,
       dataSourceType,
       journeyL1: activeL1,
       journeyL2: activeL2 || undefined,
     })
-  }, [items, productName, taxonomy.name, dataSourceType, activeL1, activeL2, segmentItems.length])
+  }, [
+    items,
+    painPointClustering,
+    productName,
+    taxonomy.name,
+    dataSourceType,
+    activeL1,
+    activeL2,
+    segmentItems.length,
+  ])
+
+  const clusteringFromSnapshot = clusterView?.clusterSource === 'snapshot'
+  const clusteringFrequencyFallback = clusterView?.clusterSource === 'frequency_fallback'
 
   const segmentCount = currentChild?.count ?? (viewingL1Summary ? segmentItems.length : 0)
   const segmentNegativePct =
@@ -106,6 +121,18 @@ export default function JourneyFeedbackSection({
       : 0)
 
   const visibleGroups = clusterView?.groups.filter((g) => g.ticketCount > 0) || []
+  const frequencyPainPoints = clusterView?.frequencyPainPoints || []
+  const showFrequencyFallback = visibleGroups.length === 0 && frequencyPainPoints.length > 0
+  const painPointRows = showFrequencyFallback
+    ? frequencyPainPoints
+    : visibleGroups.map((g) => ({
+        key: g.id,
+        painPoint: g.representativePainPoint,
+        ticketCount: g.ticketCount,
+        problemType: g.problemType,
+        recordIds: g.recordIds,
+        isCluster: true,
+      }))
 
   const handleSelectL1 = (l1) => {
     setActiveL1(l1)
@@ -121,7 +148,7 @@ export default function JourneyFeedbackSection({
 
   if (!items.length) {
     return (
-      <Card title="用户旅程 · 痛点聚类">
+      <Card title="按旅程环节聚合反馈">
         <Empty description="当前筛选下暂无数据" />
       </Card>
     )
@@ -131,9 +158,9 @@ export default function JourneyFeedbackSection({
     <Card
       title={
         <span>
-          用户旅程 · 痛点聚类
+          按旅程环节聚合反馈
           <Typography.Text type="secondary" className="ml-2 text-xs font-normal">
-            按产品 + 数据来源 + 一级环节 Jaccard 一次聚类（阈值 0.35，≥2 条成组）
+            按一级旅程展示需求痛点聚类 / 高频痛点（非 LLM 优化举措）
           </Typography.Text>
         </span>
       }
@@ -210,36 +237,53 @@ export default function JourneyFeedbackSection({
               </div>
 
               <Card size="small" className="!border-brand-200 !bg-brand-50/30">
+                {clusteringFrequencyFallback && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    className="!mb-3"
+                    message="聚类数据待刷新"
+                    description="当前无有效洞察快照聚类结果，暂按痛点原文频次展示。请在洞察工作台点击「生成 / 刷新洞察」。"
+                  />
+                )}
                 <Typography.Text strong className="text-brand-800 text-xs">
-                  痛点群组
-                  {activeL2 ? '（本二级环节子集）' : '（一级环节）'}
+                  {showFrequencyFallback ? '高频痛点' : '痛点群组'}
+                  {clusteringFromSnapshot && !showFrequencyFallback ? (
+                    <Tag color="blue" className="ml-2 !text-[10px]">
+                      快照
+                    </Tag>
+                  ) : null}
+                  {activeL2 ? '（本二级环节）' : '（一级环节）'}
                 </Typography.Text>
                 <Typography.Paragraph type="secondary" className="!mb-3 !mt-2 !text-[11px]">
-                  {activeL2
-                    ? '展示各群组在本二级环节内的工单子集；不做 L2 聚类。'
-                    : '同一一级环节下语义相近的需求痛点合并为群组；孤立单点见下方折叠区。'}
+                  {showFrequencyFallback
+                    ? '语义聚类暂无 ≥2 条群组，按「需求痛点挖掘」原文频次展示 Top 列表。'
+                    : activeL2
+                      ? '展示各群组在本二级环节内的工单子集；不做 L2 聚类。'
+                      : '同一一级环节下语义相近的需求痛点合并为群组；孤立单点见下方折叠区。'}
                 </Typography.Paragraph>
 
-                {visibleGroups.length > 0 ? (
+                {painPointRows.length > 0 ? (
                   <ul className="space-y-3">
-                    {visibleGroups.map((group, index) => {
+                    {painPointRows.map((row, index) => {
                       const feedbacksHref = buildClusterFeedbacksHref(
-                        group.recordIds,
+                        row.recordIds,
                         items,
                         dataSourceType,
                       )
                       return (
                         <li
-                          key={group.id}
+                          key={row.key || `${row.painPoint}-${index}`}
                           className="rounded-lg border border-brand-100 bg-white/80 p-3"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <Typography.Text strong className="text-sm text-ink-900">
-                              {index + 1}. {group.representativePainPoint}
+                              {index + 1}. {row.painPoint}
                             </Typography.Text>
                             <div className="flex shrink-0 flex-wrap gap-1">
-                              <Tag color="blue">{group.ticketCount} 条</Tag>
-                              <Tag>{group.problemType}</Tag>
+                              <Tag color="blue">{row.ticketCount} 条</Tag>
+                              <Tag>{row.problemType}</Tag>
+                              {row.isCluster && <Tag color="purple">语义群组</Tag>}
                             </div>
                           </div>
                           {feedbacksHref && (
@@ -247,7 +291,7 @@ export default function JourneyFeedbackSection({
                               to={feedbacksHref}
                               className="mt-2 inline-block text-xs text-indigo-600 hover:underline"
                             >
-                              查看群组工单
+                              查看相关工单
                             </Link>
                           )}
                         </li>
@@ -259,8 +303,8 @@ export default function JourneyFeedbackSection({
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     description={
                       activeL2
-                        ? '本二级环节下暂无 ≥2 条的痛点群组'
-                        : '本一级环节下暂无 ≥2 条的痛点群组'
+                        ? '本二级环节下暂无有效「需求痛点挖掘」'
+                        : '本一级环节下暂无有效「需求痛点挖掘」；请完成打标后刷新洞察'
                     }
                   />
                 )}

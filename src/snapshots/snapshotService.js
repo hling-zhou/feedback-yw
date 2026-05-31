@@ -7,6 +7,7 @@ import { preserveRecommendationUserOverrides } from '../lib/planningRecommendati
 import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
 import { polishOverviewConclusionsWithLLM } from '../lib/overviewConclusionsLLM.js'
+import { yieldToMainThread } from '../lib/yieldToMainThread.js'
 
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
 
@@ -197,7 +198,7 @@ export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress
 
   for (const type of DATA_SOURCE_TYPES) {
     onProgress?.(type, done, total)
-    // 不把空的 rebuilding 快照写入库，避免每次 put 触发 revision 轮询导致工作台闪烁
+    await yieldToMainThread()
     const snap = await rebuildSourceSnapshot({
       adapter,
       period,
@@ -207,9 +208,11 @@ export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress
     sourceSnapshots[type] = snap
     done += 1
     onProgress?.(type, done, total)
+    await yieldToMainThread()
   }
 
   onProgress?.('overview', done, total)
+  await yieldToMainThread()
   const overview = await rebuildOverviewSnapshot({
     adapter,
     period,

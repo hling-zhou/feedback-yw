@@ -7,13 +7,52 @@ import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
 
+/** 概览展示：旧快照不展示行动建议时的提示文案 */
+export const OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE =
+  '各产品行动建议（V2 痛点聚类 Top 10）需通过「生成 / 刷新洞察」生成。当前快照未包含有效 V2 结果，暂不展示行动建议。'
+
 /**
- * 旧版概览快照（无 recommendationEngine）需在展示时用当前工单重算行动建议
+ * 旧版概览快照（无 recommendationEngine）曾需 live 重算；展示路径应调用
+ * {@link prepareOverviewConclusionsForDisplay}，仅在服务端/手动重建时使用 {@link rehydrateOverviewRecommendations}。
  * @param {OverviewConclusions | null | undefined} conclusions
  */
 export function needsOverviewRecommendationsRehydrate(conclusions) {
   if (!conclusions || conclusions.insufficientData) return false
-  return !conclusions.recommendationsMeta?.recommendationEngine
+  const meta = conclusions.recommendationsMeta
+  const engine = meta?.recommendationEngine
+  if (!engine) return true
+  if (engine === 'legacy_planning' || meta?.legacyFallback === true) return true
+  return false
+}
+
+/**
+ * 概览 Tab 只读展示：旧/legacy 快照不展示行动建议（含旧版 legacy 列表），仅保留其余结论字段。
+ *
+ * @param {OverviewConclusions | null | undefined} conclusions
+ * @returns {{ conclusions: OverviewConclusions | null | undefined; recommendationsPendingRefresh: boolean }}
+ */
+export function prepareOverviewConclusionsForDisplay(conclusions) {
+  if (!conclusions || !needsOverviewRecommendationsRehydrate(conclusions)) {
+    return { conclusions, recommendationsPendingRefresh: false }
+  }
+
+  const notes = [...(conclusions.dataCoverageNotes || [])]
+  if (!notes.includes(OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE)) {
+    notes.push(OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE)
+  }
+
+  return {
+    conclusions: {
+      ...conclusions,
+      recommendations: [],
+      recommendationsMeta: {
+        ...conclusions.recommendationsMeta,
+        displaySuppressed: true,
+      },
+      dataCoverageNotes: notes,
+    },
+    recommendationsPendingRefresh: true,
+  }
 }
 
 /**
@@ -23,6 +62,14 @@ export function needsOverviewRecommendationsRehydrate(conclusions) {
  * @returns {OverviewConclusions}
  */
 export function rehydrateOverviewRecommendations(conclusions, ticketRecords, settings) {
+  const meta = conclusions.recommendationsMeta
+  if (
+    meta?.recommendationEngine === 'pain_cluster_v2' &&
+    meta?.legacyFallback !== true &&
+    !meta?.rehydratedAt
+  ) {
+    return conclusions
+  }
   if (!needsOverviewRecommendationsRehydrate(conclusions)) return conclusions
 
   /** @type {string[]} */

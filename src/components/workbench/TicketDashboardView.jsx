@@ -247,6 +247,7 @@ export default function TicketDashboardView({
           taxonomy={taxonomy}
           productName={taxonomyProduct}
           dataSourceType={snapshot.dataSourceType}
+          painPointClustering={snapshot.aggregates?.painPointClustering}
           journeySel={journeySel}
           onJourneySelect={(l1, l2) => setJourneySel({ l1, l2: l2 || undefined })}
         />

@@ -1,5 +1,4 @@
 import { CLUSTERING_VERSION } from './constants.js'
-import { buildClusterRecommendationsFromPipeline } from './buildClusterActionRecommendations.js'
 
 /** @typedef {import('./runProductClusteringPipeline.js').ProductClusteringResult} ProductClusteringResult */
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
@@ -50,19 +49,9 @@ export function resolveSourcePainPointClustering(aggregates, records) {
   if (stored?.clusteringVersion === CLUSTERING_VERSION && stored.products) {
     return { ...stored, source: 'snapshot' }
   }
-  const { pipelineResults } = buildClusterRecommendationsFromPipeline(records)
-  const products = Object.fromEntries(
-    pipelineResults.map((r) => [
-      r.product,
-      {
-        primaryClusters: r.primaryClusters,
-        isolatedRecordIds: r.isolatedRecords.map((rec) => rec.id),
-      },
-    ]),
-  )
   return {
     clusteringVersion: CLUSTERING_VERSION,
-    products,
-    source: 'live',
+    products: {},
+    source: 'missing',
   }
 }

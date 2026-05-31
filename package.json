@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "clear:imported": "node scripts/clear-imported-data.mjs",
     "generate:taxonomy-xlsx": "node scripts/generate-taxonomy-xlsx.mjs",
-    "generate:product-catalog-xlsx": "node scripts/generate-product-catalog-xlsx.mjs"
+    "generate:product-catalog-xlsx": "node scripts/generate-product-catalog-xlsx.mjs",
+    "benchmark:clustering": "node scripts/benchmark-clustering.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.3",

@@ -50,20 +50,15 @@ describe('clusteringSnapshot', () => {
     expect(resolved.products['弹性公网 IP'].primaryClusters).toHaveLength(1)
   })
 
-  it('resolveSourcePainPointClustering recomputes when snapshot is stale', () => {
-    const product = '弹性公网 IP'
-    const pain = '安全组规则未放行导致公网端口无法访问'
-    const records = [
-      makeRecord({ product, painPoint: pain }),
-      makeRecord({ product, painPoint: pain }),
-    ]
+  it('resolveSourcePainPointClustering returns missing when snapshot is stale', () => {
+    const records = [makeRecord(), makeRecord()]
     const resolved = resolveSourcePainPointClustering(
       { painPointClustering: { clusteringVersion: 'v1.0' } },
       records,
     )
-    expect(resolved.source).toBe('live')
+    expect(resolved.source).toBe('missing')
     expect(resolved.clusteringVersion).toBe(CLUSTERING_VERSION)
-    expect(resolved.products[product]?.primaryClusters.length).toBeGreaterThanOrEqual(1)
+    expect(resolved.products).toEqual({})
   })
 
   it('summarizeClusteringExclusions and formatClusteringExclusionNote', () => {

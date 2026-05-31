@@ -3,16 +3,19 @@
 export const CLUSTERING_VERSION = 'v2.0'
 
 /** 一次聚类 Jaccard 层次聚类切分阈值 */
-export const PRIMARY_CLUSTER_THRESHOLD = 0.35
+export const PRIMARY_CLUSTER_THRESHOLD = 0.3
 
 /** 二次聚类阈值 */
-export const SECONDARY_CLUSTER_THRESHOLD = 0.3
+export const SECONDARY_CLUSTER_THRESHOLD = 0.2
 
 /** 每产品最终群组 Top N */
 export const FINAL_CLUSTER_TOP_N = 10
 
 /** 簇最小工单数（一次聚类） */
 export const PRIMARY_MIN_CLUSTER_SIZE = 2
+
+/** 单组 unique 数超过此值时记录 diagnostics 告警（M1） */
+export const PRIMARY_CLUSTER_MAX_ITEMS = 150
 
 /** 不参与二次聚类的问题类型（取群组多数票） */
 export const LOW_VALUE_PROBLEM_TYPES = new Set(['配额与权限申请', '其他'])

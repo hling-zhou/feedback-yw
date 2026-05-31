@@ -12,6 +12,7 @@ export { buildSourceSnapshot } from './buildSourceSnapshot.js'
 export { buildOverviewSnapshot } from './buildOverviewSnapshot.js'
 export {
   needsOverviewRecommendationsRehydrate,
+  prepareOverviewConclusionsForDisplay,
   rehydrateOverviewRecommendations,
 } from './rehydrateOverviewRecommendations.js'
 export {

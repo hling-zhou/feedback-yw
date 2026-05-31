@@ -1,6 +1,7 @@
-export { CLUSTERING_VERSION, FINAL_CLUSTER_TOP_N, LOW_VALUE_PROBLEM_TYPES } from './constants.js'
+export { CLUSTERING_VERSION, FINAL_CLUSTER_TOP_N, LOW_VALUE_PROBLEM_TYPES, PRIMARY_CLUSTER_THRESHOLD, SECONDARY_CLUSTER_THRESHOLD } from './constants.js'
 export { tokenizePainPointText, tokenSetFromPainPoint, jaccardSimilarity } from './textTokenize.js'
-export { clusterByJaccard } from './jaccardHierarchical.js'
+export { clusterByJaccard, hierarchicalClusterValidNaive, averageLinkageSimilarity } from './jaccardHierarchical.js'
+export { buildCandidatePairKeys, buildSparseLeafSimilarities, pairKey } from './jaccardCandidatePairs.js'
 export { getSeverityFromProblemType, getMaxSeverity } from './severity.js'
 export { getEmotionIntensity, getP90EmotionIntensity } from './emotionIntensity.js'
 export {
@@ -19,7 +20,14 @@ export {
   runMultiProductClusteringPipeline,
   listClusteringProducts,
 } from './runProductClusteringPipeline.js'
-export { buildJourneyClusterView } from './buildJourneyClusterView.js'
+export {
+  buildJourneyClusterView,
+  buildJourneyClusterViewFromSnapshot,
+  buildJourneyClusterViewFrequencyOnly,
+  resolveJourneyClusterViewForDisplay,
+  buildJourneyPainPointFrequency,
+  scopeRecordsForJourneyView,
+} from './buildJourneyClusterView.js'
 export { buildSourcePainPointClusterSnapshot } from './buildSourceClusterSnapshot.js'
 export {
   buildClusterActionRecommendations,

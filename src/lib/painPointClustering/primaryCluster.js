@@ -1,5 +1,6 @@
-import { PRIMARY_CLUSTER_THRESHOLD, PRIMARY_MIN_CLUSTER_SIZE } from './constants.js'
+import { PRIMARY_CLUSTER_THRESHOLD, PRIMARY_MIN_CLUSTER_SIZE, PRIMARY_CLUSTER_MAX_ITEMS } from './constants.js'
 import { clusterByJaccard } from './jaccardHierarchical.js'
+import { normalizePainPointKey } from './normalizePainPoint.js'
 import {
   buildPrimaryClusterLabel,
   getRecordDataSourceType,
@@ -57,6 +58,15 @@ export function runPrimaryClustering(records, product) {
   let clusterSeq = 0
   for (const [key, groupRecords] of groups) {
     const [prod, dataSourceType, journeyL1] = key.split('\0')
+    const uniqueKeys = new Set(
+      groupRecords.map((r) => normalizePainPointKey(getRecordPainPoint(r))),
+    )
+    if (import.meta.env?.DEV && uniqueKeys.size > PRIMARY_CLUSTER_MAX_ITEMS) {
+      console.info(
+        `[pain-cluster] 大组 ${prod}/${dataSourceType}/${journeyL1}: ${groupRecords.length} 条, ${uniqueKeys.size} unique`,
+      )
+    }
+
     const { clusters, isolated } = clusterByJaccard(
       groupRecords,
       getRecordPainPoint,

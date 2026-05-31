@@ -1,18 +1,15 @@
 import { useMemo } from 'react'
-import { Card, Table, Tag, Typography } from 'antd'
+import { Alert, Card, Table, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
-import { useInsights } from '../../context/InsightsContext.jsx'
-import { filterRecordsForScope } from '../../snapshots/recordScope.js'
-import { rehydrateOverviewRecommendations } from '../../snapshots/rehydrateOverviewRecommendations.js'
+import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
 import OverviewConclusionsPanel from './OverviewConclusionsPanel.jsx'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
 import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
+import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import { PLANNING_RECOMMENDATIONS_ANCHOR_ID } from '../../domain/overviewConclusions.js'
-
-const TICKET_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
 
 /**
  * @param {Object} props
@@ -41,15 +38,10 @@ export default function OverviewTab({
   feedbacks = [],
   onOpenFeedback,
 }) {
-  const { settings } = useInsights()
-
-  const displayConclusions = useMemo(() => {
-    if (!snapshot?.conclusions || !currentPeriod) return snapshot?.conclusions
-    const ticketRecords = TICKET_SOURCES.flatMap((type) =>
-      filterRecordsForScope(feedbacks, currentPeriod, type),
-    )
-    return rehydrateOverviewRecommendations(snapshot.conclusions, ticketRecords, settings)
-  }, [snapshot?.conclusions, currentPeriod, feedbacks, settings])
+  const { conclusions: displayConclusions, recommendationsPendingRefresh } = useMemo(
+    () => prepareOverviewConclusionsForDisplay(snapshot?.conclusions),
+    [snapshot?.conclusions],
+  )
 
   if (!snapshot) {
     return (
@@ -99,6 +91,28 @@ export default function OverviewTab({
         周期内反馈 {total} 条 · 有数据来源 {activeSourceCount}/{DATA_SOURCE_TYPES.length} · 快照{' '}
         {generatedAtLabel}
       </Typography.Text>
+
+      {recommendationsPendingRefresh && (
+        <Alert
+          type="warning"
+          showIcon
+          title="行动建议待刷新"
+          description="当前快照未包含 V2 痛点聚类行动建议。请点击「生成 / 刷新洞察」后查看各产品 Top 10 建议。"
+          action={
+            onRebuildSnapshots ? (
+              <RebuildInsightsButton
+                size="small"
+                type="primary"
+                loading={Boolean(snapshotRebuilding)}
+                disabled={rebuildDisabled}
+                onClick={() => onRebuildSnapshots()}
+              >
+                刷新洞察
+              </RebuildInsightsButton>
+            ) : null
+          }
+        />
+      )}
 
       <PlanningRecommendationsPanel
         conclusions={displayConclusions}

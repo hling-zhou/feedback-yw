@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Space, Spin, Tabs, Typography } from 'antd'
+import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import OverviewTab from '../components/workbench/OverviewTab.jsx'
@@ -114,80 +114,78 @@ export default function InsightWorkbench() {
     [activeTab],
   )
 
-  const tabItems = useMemo(() => {
-    const items = [
-      {
-        key: TAB_OVERVIEW,
-        label: '综合概述',
-        children: (
-          <OverviewTab
-            snapshot={overviewDisplay}
-            sourceSnapshots={sourceSnapshots}
-            onSourceTab={(type) => setActiveTab(type)}
-            currentPeriod={currentPeriod}
-            complaintRecords={complaintRecords}
-            orderVolumes={orderVolumes}
-            onRebuildSnapshots={rebuildAllSnapshots}
-            snapshotRebuilding={snapshotRebuilding}
-            rebuildDisabled={rebuildDisabled}
-            feedbacks={feedbacks}
-            onOpenFeedback={setSelectedFeedback}
-          />
-        ),
-      },
-    ]
-
-    for (const type of DATA_SOURCE_TYPES) {
-      const snap = sourceSnapshots[type]
-      const label = DATA_SOURCE_LABELS[type]
-      items.push({
-        key: type,
-        label,
-        children: isTicketSource(type) ? (
-          snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap) ? (
-            <TicketDashboardView
-              snapshot={snap}
-              sourceLabel={label}
-              product={ticketProduct}
-              onProductChange={setTicketProduct}
-            />
-          ) : (
-            <WorkbenchSourceEmpty
-              sourceType={type}
-              sourceLabel={label}
-              feedbacks={feedbacks}
-              currentPeriod={currentPeriod}
-              onRebuild={rebuildAllSnapshots}
-              rebuilding={snapshotRebuilding}
-              rebuildDisabled={rebuildDisabled}
-            />
-          )
-        ) : type === 'post_use_rating' ? (
-          snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap) ? (
-            <PostUseRatingDashboardView snapshot={snap} sourceLabel={label} />
-          ) : (
-            <WorkbenchSourceEmpty
-              sourceType={type}
-              sourceLabel={label}
-              feedbacks={feedbacks}
-              currentPeriod={currentPeriod}
-              onRebuild={rebuildAllSnapshots}
-              rebuilding={snapshotRebuilding}
-              rebuildDisabled={rebuildDisabled}
-            />
-          )
-        ) : (
-          <SourcePlaceholderTab
-            sourceLabel={label}
-            dataSourceType={type}
-            snapshot={snap || null}
-          />
-        ),
-      })
+  const activeTabContent = useMemo(() => {
+    if (activeTab === TAB_OVERVIEW) {
+      return (
+        <OverviewTab
+          snapshot={overviewDisplay}
+          sourceSnapshots={sourceSnapshots}
+          onSourceTab={(type) => setActiveTab(type)}
+          currentPeriod={currentPeriod}
+          complaintRecords={complaintRecords}
+          orderVolumes={orderVolumes}
+          onRebuildSnapshots={rebuildAllSnapshots}
+          snapshotRebuilding={snapshotRebuilding}
+          rebuildDisabled={rebuildDisabled}
+          feedbacks={feedbacks}
+          onOpenFeedback={setSelectedFeedback}
+        />
+      )
     }
 
-    return items
+    const snap = sourceSnapshots[activeTab]
+    const label = DATA_SOURCE_LABELS[activeTab]
+
+    if (isTicketSource(activeTab)) {
+      if (snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap)) {
+        return (
+          <TicketDashboardView
+            snapshot={snap}
+            sourceLabel={label}
+            product={ticketProduct}
+            onProductChange={setTicketProduct}
+          />
+        )
+      }
+      return (
+        <WorkbenchSourceEmpty
+          sourceType={activeTab}
+          sourceLabel={label}
+          feedbacks={feedbacks}
+          currentPeriod={currentPeriod}
+          onRebuild={rebuildAllSnapshots}
+          rebuilding={snapshotRebuilding}
+          rebuildDisabled={rebuildDisabled}
+        />
+      )
+    }
+
+    if (activeTab === 'post_use_rating') {
+      if (snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap)) {
+        return <PostUseRatingDashboardView snapshot={snap} sourceLabel={label} />
+      }
+      return (
+        <WorkbenchSourceEmpty
+          sourceType={activeTab}
+          sourceLabel={label}
+          feedbacks={feedbacks}
+          currentPeriod={currentPeriod}
+          onRebuild={rebuildAllSnapshots}
+          rebuilding={snapshotRebuilding}
+          rebuildDisabled={rebuildDisabled}
+        />
+      )
+    }
+
+    return (
+      <SourcePlaceholderTab
+        sourceLabel={label}
+        dataSourceType={activeTab}
+        snapshot={snap || null}
+      />
+    )
   }, [
+    activeTab,
     sourceSnapshots,
     overviewDisplay,
     currentPeriod,
@@ -198,7 +196,6 @@ export default function InsightWorkbench() {
     rebuildAllSnapshots,
     rebuildDisabled,
     ticketProduct,
-    setSelectedFeedback,
   ])
 
   const hasAnyData = Object.values(sourceSnapshots).some(
@@ -279,12 +276,7 @@ export default function InsightWorkbench() {
             activeSourceTab={activeTab}
             onSourceTabChange={setActiveTab}
           />
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={tabItems}
-            renderTabBar={() => null}
-          />
+          <div key={activeTab}>{activeTabContent}</div>
         </Spin>
       )}
 

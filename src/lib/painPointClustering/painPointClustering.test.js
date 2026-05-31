@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   breadthScoreFromShare,
   buildJourneyClusterView,
+  buildJourneyClusterViewFromSnapshot,
+  buildSourcePainPointClusterSnapshot,
+  resolveJourneyClusterViewForDisplay,
   clusterByJaccard,
+  hierarchicalClusterValidNaive,
   filterLowValuePrimaryClusters,
   getEmotionIntensity,
   getP90EmotionIntensity,
@@ -15,6 +19,7 @@ import {
   scoreAndRankFinalClusters,
   tokenizePainPointText,
   tokenSetFromPainPoint,
+  PRIMARY_CLUSTER_THRESHOLD,
 } from './index.js'
 import { percentile90 } from './emotionIntensity.js'
 import { getMaxSeverity } from './severity.js'
@@ -76,7 +81,7 @@ describe('painPointClustering/jaccardHierarchical', () => {
     const { clusters, isolated } = clusterByJaccard(
       items,
       (x) => x.text,
-      0.35,
+      PRIMARY_CLUSTER_THRESHOLD,
       2,
     )
     expect(clusters.length).toBe(1)
@@ -821,5 +826,158 @@ describe('P2: buildJourneyClusterView 边缘', () => {
     })
     const totalTickets = view.groups.reduce((sum, g) => sum + g.ticketCount, 0)
     expect(totalTickets).toBe(2)
+  })
+})
+
+describe('M1: clusterByJaccard exact pre-merge', () => {
+  it('merges identical normalized pain points without hierarchical clustering', () => {
+    const items = [
+      { id: '1', text: '安全组规则未放行导致公网端口无法访问' },
+      { id: '2', text: '安全组规则未放行导致公网端口无法访问' },
+      { id: '3', text: '  安全组  规则未放行导致公网端口无法访问  ' },
+    ]
+    const { clusters, isolated } = clusterByJaccard(
+      items,
+      (x) => x.text,
+      0.99,
+      2,
+    )
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0]).toHaveLength(3)
+    expect(isolated).toHaveLength(0)
+  })
+
+  it('keeps semantically similar unique texts mergeable via hierarchical step', () => {
+    const items = [
+      { id: '1', text: '带宽超限导致性能下降' },
+      { id: '2', text: '带宽超限导致性能下降问题' },
+    ]
+    const { clusters, isolated } = clusterByJaccard(items, (x) => x.text, 0.2, 1)
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0]).toHaveLength(2)
+    expect(isolated).toHaveLength(0)
+  })
+})
+
+describe('M2: sparse average linkage vs naive', () => {
+  /**
+   * @param {string[][]} clusters
+   */
+  function clusterSignature(clusters) {
+    return clusters
+      .map((c) =>
+        [...c]
+          .map((x) => x.id)
+          .sort()
+          .join(','),
+      )
+      .sort()
+      .join('|')
+  }
+
+  it('matches naive clustering on small synthetic set', () => {
+    const items = [
+      { id: '1', text: '安全组规则未放行导致公网端口无法访问' },
+      { id: '2', text: '安全组规则未放行导致公网端口无法访问问题' },
+      { id: '3', text: '带宽超限导致性能下降' },
+      { id: '4', text: '带宽超限导致性能下降问题' },
+      { id: '5', text: '完全不同的独立痛点描述' },
+    ]
+    const sparse = clusterByJaccard(items, (x) => x.text, 0.2, 2)
+    const valid = items.map((item) => ({
+      item,
+      tokens: tokenSetFromPainPoint(item.text),
+    }))
+    const tokenSets = valid.map((v) => v.tokens)
+    const naiveResult = hierarchicalClusterValidNaive(valid, tokenSets, 0.2, 2)
+    expect(clusterSignature(sparse.clusters)).toBe(clusterSignature(naiveResult.clusters))
+  })
+})
+
+describe('L0-1: resolveJourneyClusterViewForDisplay / snapshot', () => {
+  it('reads primary clusters from source snapshot and matches live slice', () => {
+    const product = '弹性公网 IP'
+    const pain = '安全组规则未放行导致公网端口无法访问'
+    const records = [
+      makeRecord({
+        product,
+        painPoint: pain,
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+      }),
+      makeRecord({
+        product,
+        painPoint: pain,
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+      }),
+      makeRecord({
+        product,
+        painPoint: pain,
+        journeyL1: '业务使用与连通',
+        journeyL2: '其他二级环节',
+      }),
+    ]
+    const snapshot = buildSourcePainPointClusterSnapshot(records)
+    const productClustering = snapshot.products[product]
+
+    const fromSnapshot = buildJourneyClusterViewFromSnapshot({
+      productClustering,
+      records,
+      product,
+      dataSourceType: 'complaint_ticket',
+      journeyL1: '业务使用与连通',
+      journeyL2: '公网访问不通',
+    })
+    expect(fromSnapshot.clusterSource).toBe('snapshot')
+    expect(fromSnapshot.groups.some((g) => g.ticketCount === 2)).toBe(true)
+
+    const live = buildJourneyClusterView({
+      records,
+      product,
+      dataSourceType: 'complaint_ticket',
+      journeyL1: '业务使用与连通',
+      journeyL2: '公网访问不通',
+    })
+    expect(fromSnapshot.groups[0]?.ticketCount).toBe(live.groups[0]?.ticketCount)
+  })
+
+  it('intersects snapshot clusters with current scoped records (resource pool filter)', () => {
+    const product = 'EIP'
+    const pain = '安全组规则未放行导致端口不通'
+    const allRecords = [
+      makeRecord({ product, painPoint: pain, journeyL1: 'L1', resourcePool: '池A' }),
+      makeRecord({ product, painPoint: pain, journeyL1: 'L1', resourcePool: '池A' }),
+      makeRecord({ product, painPoint: pain, journeyL1: 'L1', resourcePool: '池B' }),
+    ]
+    const snapshot = buildSourcePainPointClusterSnapshot(allRecords)
+    const scoped = allRecords.filter((r) => r.resourcePool === '池A')
+
+    const view = buildJourneyClusterViewFromSnapshot({
+      productClustering: snapshot.products[product],
+      records: scoped,
+      product,
+      dataSourceType: 'complaint_ticket',
+      journeyL1: 'L1',
+    })
+    expect(view.groups[0]?.ticketCount).toBe(2)
+  })
+
+  it('falls back to frequency when snapshot missing', () => {
+    const product = 'EIP'
+    const records = [
+      makeRecord({ product, painPoint: '痛点A', journeyL1: 'L1' }),
+      makeRecord({ product, painPoint: '痛点A', journeyL1: 'L1' }),
+    ]
+    const view = resolveJourneyClusterViewForDisplay({
+      painPointClustering: null,
+      records,
+      product,
+      dataSourceType: 'complaint_ticket',
+      journeyL1: 'L1',
+    })
+    expect(view.clusterSource).toBe('frequency_fallback')
+    expect(view.groups).toEqual([])
+    expect(view.frequencyPainPoints[0]?.ticketCount).toBe(2)
   })
 })
