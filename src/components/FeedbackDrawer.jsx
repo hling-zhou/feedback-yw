@@ -378,7 +378,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
             {getDisplayCustomerRequest(feedback) || '—'}
           </Typography.Paragraph>
           <Typography.Text type="secondary" className="mt-2 block text-xs">
-            全生命周期精炼摘要（≤80 字，最长 120）；用户情绪分析亦以此字段与「需求痛点」为准。
+            工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
           </Typography.Text>
         </Card>
 
@@ -394,6 +394,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
             {getDisplayPainPoint(feedback) || '—'}
           </Typography.Paragraph>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
+          </Typography.Text>
         </Card>
 
         <Card
@@ -432,7 +435,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 人工复核后的优化建议
               </Typography.Text>
               <Typography.Text type="secondary" className="mb-2 block text-xs">
-                若有人工复核后的优化建议，原优化建议不参与后续的阶段二和三，以人工复核后的优化建议为准。
+                若有人工复核后的优化建议，原优化建议不参与后续的聚类分析，以人工复核后的优化建议为准。
               </Typography.Text>
               <Form.Item className="!mb-0">
                 <Input.TextArea

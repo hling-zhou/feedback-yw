@@ -56,7 +56,7 @@ describe('planningRecommendationSections', () => {
     const pool = [
       makeRecord({
         manualReviewOptimization: '建立端口不通类工单自动化诊断脚本，首响自动输出拦截报告。',
-        optimizationProduct: '不应参与阶段二/三的旧自动建议内容。',
+        optimizationProduct: '不应参与聚类分析的旧自动建议内容。',
       }),
     ]
     const sections = buildPlanningRecommendationSections(
