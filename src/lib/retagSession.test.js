@@ -31,10 +31,10 @@ describe('retagSession', () => {
       total: 120,
       progress: '正在本地打标 (10/120)…',
     })
-    updateRetagSessionMarkerProgress('正在完整打标 (50/120)…')
+    updateRetagSessionMarkerProgress('正在增强打标 (50/120)…')
     const marker = readRetagSessionMarker()
     expect(marker?.total).toBe(120)
-    expect(marker?.progress).toBe('正在完整打标 (50/120)…')
+    expect(marker?.progress).toBe('正在增强打标 (50/120)…')
   })
 
   it('clears invalid marker', () => {
@@ -49,7 +49,7 @@ describe('retagSession', () => {
         startedAt: new Date().toISOString(),
         total: 50,
         scope: 'unknown_journey',
-        progress: '正在完整打标 (10/50)…',
+        progress: '正在增强打标 (10/50)…',
       }),
     ).toContain('共 50 条')
     expect(
@@ -57,7 +57,7 @@ describe('retagSession', () => {
         startedAt: new Date().toISOString(),
         total: 50,
         scope: 'unknown_journey',
-        progress: '正在完整打标 (10/50)…',
+        progress: '正在增强打标 (10/50)…',
       }),
     ).toContain('未识别环节')
     const finishedMsg = formatBulkRetagResultMessage({

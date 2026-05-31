@@ -3,11 +3,11 @@ export const TAGGING_IN_PROGRESS_TITLE = '打标进行中'
 export const TAGGING_TASK_LEAVE_HINT = '可切换至其他页面，完成后将通知您'
 
 /**
- * 导入流程中是否处于打标阶段（完整四维打标或子步骤）
+ * 导入流程中是否处于打标阶段（规则初标、增强打标或子步骤）
  * @param {string | undefined} progress
  */
 export function isImportTaggingPhase(progress) {
-  return /打标/.test(progress || '')
+  return /(?:规则初标|增强打标|打标)/.test(progress || '')
 }
 
 /**

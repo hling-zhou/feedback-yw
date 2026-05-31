@@ -3,23 +3,33 @@
  * @typedef {import('./parseFile.js').ColumnPreset} ColumnPreset
  */
 
+import { PRIMARY_TICKET_ID_HEADERS } from './parseFile.js'
+
+/**
+ * @param {string[]} headers
+ */
+function hasPrimaryTicketIdHeader(headers) {
+  return PRIMARY_TICKET_ID_HEADERS.some((name) => headers.includes(name))
+}
+
 /** @type {ColumnPreset} */
 export const MOBILE_CLOUD_TICKET_PRESET = {
   id: 'mobile-cloud-ticket',
   name: '移动云投诉工单',
-  description: '以「处理意见」为主进行四维打标（请求场景、问题类型、用户旅程、用户情绪）；受理内容用于抽取客户原话',
+  description:
+    '以「处理意见」为主进行四维打标（请求场景、问题类型、用户旅程、用户情绪），并生成客户请求内容、需求痛点挖掘与优化建议（规则初标，导入后 LLM 增强）；受理内容用于抽取客户原话',
   dataSourceTypes: ['complaint_ticket'],
   columnMap: {
     ticketId: '工单流水号',
     createdAt: '受理时间',
     productSpec: '具体投诉产品',
     resourcePool: '所属资源池',
+    customerTierCol: '移动云客户服务等级',
     source: '受理渠道',
     rawText: '受理内容',
     handlingText: '处理意见',
     responseText: '解决方案（必填）',
     rootCauseCol: '根因（必填）',
-    problemTypeCol: '投诉原因 一级（初判）',
     problemTypeL1FinalCol: '投诉原因 一级（终判）',
     problemTypeL2FinalCol: '投诉原因 二级（终判）',
     problemTypeL3FinalCol: '投诉原因 三级（终判）',
@@ -31,19 +41,20 @@ export const MOBILE_CLOUD_TICKET_PRESET = {
 export const CONSULTATION_TICKET_PRESET = {
   id: 'consultation-ticket',
   name: '咨询工单',
-  description: '与投诉工单类似；优先映射处理意见 / 咨询答复列',
+  description:
+    '与投诉工单类似；优先映射处理意见 / 咨询答复列；含客户请求、需求痛点与优化建议分析',
   dataSourceTypes: ['consultation_ticket'],
   columnMap: {
     ticketId: '工单流水号',
     createdAt: '受理时间',
     productSpec: '产品规格',
     resourcePool: '所属资源池',
+    customerTierCol: '移动云客户服务等级',
     source: '受理渠道',
     rawText: '受理内容',
     handlingText: '处理意见',
     responseText: '解决方案',
     rootCauseCol: '根因',
-    problemTypeCol: '投诉原因 一级（初判）',
   },
   rawTextMerge: ['追加信息'],
 }
@@ -110,7 +121,7 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
   const has = (name) => headers.includes(name)
 
   if (dataSourceType === 'consultation_ticket') {
-    if (has('处理意见') || has('工单流水号')) {
+    if (has('处理意见') || hasPrimaryTicketIdHeader(headers)) {
       return CONSULTATION_TICKET_PRESET
     }
     if (has('咨询内容') || has('答复内容')) {
@@ -125,7 +136,7 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
     }
   }
 
-  if (dataSourceType === 'complaint_ticket' && has('工单流水号') && has('处理意见')) {
+  if (dataSourceType === 'complaint_ticket' && hasPrimaryTicketIdHeader(headers) && has('处理意见')) {
     return MOBILE_CLOUD_TICKET_PRESET
   }
 
@@ -142,7 +153,7 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
   }
 
   if (!dataSourceType || dataSourceType === 'complaint_ticket') {
-    if (has('工单流水号') && has('处理意见')) return MOBILE_CLOUD_TICKET_PRESET
+    if (hasPrimaryTicketIdHeader(headers) && has('处理意见')) return MOBILE_CLOUD_TICKET_PRESET
   }
 
   return null

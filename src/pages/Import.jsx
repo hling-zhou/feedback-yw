@@ -27,6 +27,7 @@ import { STANDARD_FIELDS } from '../lib/types.js'
 import {
   parseUploadFile,
   applyColumnMap,
+  applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
 } from '../lib/parseFile.js'
 import { getPresetsForSource } from '../lib/columnPresets.js'
@@ -47,8 +48,7 @@ import {
 import { isStubPipeline } from '../analysis/registry.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { downloadFailuresCsv } from '../lib/export.js'
-import { buildQuotePreviewRows, rowHasQuoteSourceText } from '../lib/importPreview.js'
-import { computeQuoteExtractionVersion } from '../lib/quoteExtraction.js'
+import { buildTaggingPreviewRows, rowHasQuoteSourceText } from '../lib/importPreview.js'
 import QuoteImportPreviewTable from '../components/QuoteImportPreviewTable.jsx'
 import {
   MAX_IMPORT_FILES,
@@ -329,7 +329,7 @@ export default function Import() {
     for (const key of Object.keys(map)) {
       if (!headers.includes(map[key])) delete map[key]
     }
-    setColumnMap(map)
+    setColumnMap(applyDefaultTicketIdMapping(headers, map, dataSourceType))
     setRawTextMerge((preset.rawTextMerge || []).filter((c) => headers.includes(c)))
     setActivePreset(preset)
   }
@@ -390,19 +390,14 @@ export default function Import() {
     return mappedAll.filter(rowHasQuoteSourceText)
   }, [step, mappedAll, ticketSource, columnMap, rawTextMerge])
 
-  const quotePreviewRows = useMemo(() => {
+  const taggingPreviewRows = useMemo(() => {
     if (step < 2) return []
-    return buildQuotePreviewRows(quotePreviewSourceRows, {
+    return buildTaggingPreviewRows(quotePreviewSourceRows, {
       dataSourceType,
       settings,
       limit: 3,
     })
   }, [step, quotePreviewSourceRows, dataSourceType, settings])
-
-  const quoteExtractionVersionLabel = useMemo(
-    () => computeQuoteExtractionVersion(settings),
-    [settings],
-  )
 
   const enabledProducts = getEnabledProducts()
 
@@ -498,7 +493,7 @@ export default function Import() {
         row.importedAt = importedAt
       })
 
-      reportProgress(`正在执行分析流水线 (0/${inScope.length})…`)
+      reportProgress(`正在规则初标 (0/${inScope.length})…`)
 
       let records
       let failures
@@ -522,7 +517,7 @@ export default function Import() {
           )
         }
 
-        reportProgress(`正在完整打标 (0/${records.length})…`)
+        reportProgress(`正在增强打标 (0/${records.length})…`)
         const enriched = await enrichTicketRecordsForImport(
           records,
           settings,
@@ -885,12 +880,11 @@ export default function Import() {
                 className="!mt-3"
                 type="info"
                 showIcon
-                title={`共 ${rows.length} 行 · 列映射变更时下方实时刷新客户原话样例（不做完整打标）`}
+                title={`共 ${rows.length} 行 · 列映射变更时下方实时刷新打标语料样例（不做完整打标）`}
               />
             )}
             <QuoteImportPreviewTable
-              rows={quotePreviewRows}
-              versionLabel={quoteExtractionVersionLabel}
+              rows={taggingPreviewRows}
               emptyText={
                 ticketSource && !columnMap.rawText && !columnMap.handlingText
                   ? '请先映射受理内容或处理意见列'
@@ -1005,10 +999,7 @@ export default function Import() {
               预览确认
             </Typography.Title>
             <Typography.Text type="secondary" className="mt-1 block text-xs">
-              下方展示按当前团队规则抽取的<strong>客户原话</strong>样例（最多 3 条）；确认导入后将依次完成四维打标与用户情绪分析。
-            </Typography.Text>
-            <Typography.Text type="secondary" className="mt-1 block text-xs">
-              规则版本：{quoteExtractionVersionLabel}
+              下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、四维、优化建议），再依次增强：请求场景与问题类型 → 用户旅程 → 客户请求/需求痛点/优化建议（配置 API Key 时 LLM）→ 用户情绪。
             </Typography.Text>
             <Typography.Text type="secondary" className="mt-1 block text-xs">
               数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]}
@@ -1032,8 +1023,7 @@ export default function Import() {
               </div>
             </div>
             <QuoteImportPreviewTable
-              rows={quotePreviewRows}
-              versionLabel={quoteExtractionVersionLabel}
+              rows={taggingPreviewRows}
               emptyText="无样例行（请检查列映射与产品范围）"
             />
           </Card>
@@ -1068,13 +1058,15 @@ export default function Import() {
             title="导入完成"
             subTitle={
               <>
-                分析成功 {importResult.run.successCount} 条
+                分析产出 {importResult.records.length} 条
+                {importResult.run.total > importResult.records.length &&
+                  `（共 ${importResult.run.total} 行，${importResult.run.failureCount} 行未产出记录）`}
                 {importResult.ingest != null && (
                   <>
                     {' '}
                     · 本次新增入库 {importResult.ingest.added} 条
                     {importResult.ingest.skippedDuplicates > 0 &&
-                      `（重复跳过 ${importResult.ingest.skippedDuplicates} 条）`}
+                      `（与库内重复跳过 ${importResult.ingest.skippedDuplicates} 条）`}
                     {' '}
                     · 库内合计 {importResult.ingest.totalAfter} 条
                   </>

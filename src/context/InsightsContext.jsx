@@ -17,6 +17,11 @@ import {
   isApiStorageAdapter,
   clearAllFeedbacks,
 } from '../storage/feedbackStore.js'
+import {
+  isClearAllImportedData,
+  recordMatchesClearFilter,
+  validateClearImportedDataOptions,
+} from '../storage/clearImportedData.js'
 import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
 import { mergeManualTagFieldsOnUserEdit } from '../lib/manualTagFields.js'
@@ -1495,35 +1500,67 @@ export function InsightsProvider({ children }) {
     [adapter, storageReady, periods],
   )
 
-  const clearAll = useCallback(async () => {
-    if (reprocessingRef.current) {
-      throw new Error(RETAG_IN_PROGRESS_TIP)
-    }
-    clearInProgressRef.current = true
-    try {
-      if (storageReady) {
-        await clearAllFeedbacks(adapter)
+  const clearImportedData = useCallback(
+    async (options = {}) => {
+      if (reprocessingRef.current) {
+        throw new Error(RETAG_IN_PROGRESS_TIP)
       }
-      setFeedbacks([])
-      setTotalRecordCount(0)
-      loadedPeriodIdsRef.current = new Set()
-      setSourceSnapshots({})
-      setOverviewSnapshot(null)
-      setSnapshotsStale(false)
-      if (storageReady) {
-        const remaining = await getTotalRecordCount(adapter)
-        if (remaining > 0) {
-          await clearAllFeedbacks(adapter)
+      const validationError = validateClearImportedDataOptions(options)
+      if (validationError) {
+        throw new Error(validationError)
+      }
+      const clearAllData = isClearAllImportedData(options)
+      const period = options.insightPeriodId
+        ? periods.find((p) => p.id === options.insightPeriodId) ?? null
+        : null
+
+      clearInProgressRef.current = true
+      try {
+        if (storageReady) {
+          await clearAllFeedbacks(adapter, options)
+        }
+        if (clearAllData) {
+          feedbacksRef.current = []
           setFeedbacks([])
           setTotalRecordCount(0)
+          loadedPeriodIdsRef.current = new Set()
+          setSourceSnapshots({})
+          setOverviewSnapshot(null)
+          setSnapshotsStale(false)
+        } else {
+          setFeedbacks((prev) =>
+            prev.filter((fb) => !recordMatchesClearFilter(fb, options, period)),
+          )
+          feedbacksRef.current = feedbacksRef.current.filter(
+            (fb) => !recordMatchesClearFilter(fb, options, period),
+          )
+          if (options.insightPeriodId) {
+            loadedPeriodIdsRef.current.delete(options.insightPeriodId)
+          }
         }
-        await reloadSnapshots(currentPeriodId)
-        await reloadTagCandidates()
+        if (storageReady) {
+          if (clearAllData) {
+            const remaining = await getTotalRecordCount(adapter)
+            if (remaining > 0) {
+              await clearAllFeedbacks(adapter, options)
+              feedbacksRef.current = []
+              setFeedbacks([])
+              setTotalRecordCount(0)
+            }
+          } else {
+            setTotalRecordCount(await getTotalRecordCount(adapter))
+          }
+          await reloadSnapshots(currentPeriodId)
+          await reloadTagCandidates()
+        }
+      } finally {
+        clearInProgressRef.current = false
       }
-    } finally {
-      clearInProgressRef.current = false
-    }
-  }, [adapter, storageReady, currentPeriodId, reloadSnapshots, reloadTagCandidates])
+    },
+    [adapter, storageReady, currentPeriodId, periods, reloadSnapshots, reloadTagCandidates],
+  )
+
+  const clearAll = useCallback(async () => clearImportedData({ all: true }), [clearImportedData])
 
   const reprocessOne = useCallback(
     async (id) => {
@@ -1618,14 +1655,20 @@ export function InsightsProvider({ children }) {
       for (let i = 0; i < list.length; i += batchSize) {
         const chunk = list.slice(i, i + batchSize)
         for (const fb of chunk) {
-          retagged.push(reprocessFeedbackRecord(fb, llmSettings))
+          retagged.push(
+            reprocessFeedbackRecord(fb, llmSettings, {
+              forceOverrideManualTags: options.forceOverrideManualTags === true,
+            }),
+          )
         }
-        progress(`正在本地打标 (${Math.min(i + batchSize, total)}/${total})…`)
+        progress(`正在规则初标 (${Math.min(i + batchSize, total)}/${total})…`)
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
 
       const updatedSubset = await reprocessAllThemesAndSentiment(retagged, llmSettings, (done, t) => {
-        progress(`正在完整打标 (${done}/${t})…`)
+        progress(`正在增强打标 (${done}/${t})…`)
+      }, {
+        forceOverrideManualTags: options.forceOverrideManualTags === true,
       })
 
       const byId = new Map(updatedSubset.map((record) => [record.id, record]))
@@ -1674,7 +1717,7 @@ export function InsightsProvider({ children }) {
 
   const startBulkRetag = useCallback(
     async (options = {}) => {
-      const { scope = 'period_all', records } = options
+      const { scope = 'period_all', records, forceOverrideManualTags = false } = options
       const list = records?.length ? records : feedbacksRef.current
       if (!list.length) return null
       if (importLockRef.current) {
@@ -1686,7 +1729,10 @@ export function InsightsProvider({ children }) {
 
       beginRetagSession({ total: list.length, scope })
       try {
-        const result = await reprocessAllTagsCore(list, setRetagSessionProgress, { scope })
+        const result = await reprocessAllTagsCore(list, setRetagSessionProgress, {
+          scope,
+          forceOverrideManualTags,
+        })
         if (result) notifyRetagFinished(result)
         return result
       } catch (err) {
@@ -1882,6 +1928,7 @@ export function InsightsProvider({ children }) {
       updateFeedback,
       replaceAll,
       clearAll,
+      clearImportedData,
       reprocessOne,
       reprocessAllCustomerQuotes,
       reprocessAllTags,
@@ -1967,6 +2014,7 @@ export function InsightsProvider({ children }) {
       updateFeedback,
       replaceAll,
       clearAll,
+      clearImportedData,
       reprocessOne,
       reprocessAllCustomerQuotes,
       reprocessAllTags,
