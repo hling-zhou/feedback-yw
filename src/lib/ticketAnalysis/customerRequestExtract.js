@@ -101,6 +101,115 @@ export function getCustomerRequestPriorityTier(candidate) {
   return 2
 }
 
+/** 移动云工单：`开始&客服组.xxx&处理意见：` 多段流转 */
+const WORKFLOW_HANDLING_BLOCK_RE =
+  /(?:^|\n)(?:(?:开始|首处理|协办|反馈)&[^\n]*?&处理意见[：:])([\s\S]*?)(?=(?:(?:^|\n)(?:开始|首处理|协办|反馈)&)|$)/g
+
+/** 旧式：`协办&网络组：` 单段组名 */
+const LEGACY_WORKFLOW_BLOCK_SPLIT_RE =
+  /(?:^|[。；;\n]\s*)(?:协办|反馈|开始|首处理|详细内容)&[^&\n]{1,40}[：:]/
+
+const WORKFLOW_INLINE_DETAIL_RE =
+  /详细内容\s*[：:]\s*([\s\S]*?)(?=联系时间\s*[：:]|##|产品名称\s*[：:]|受理渠道\s*[：:]|$)/i
+
+const WORKFLOW_NUMBERED_DEMAND_RE =
+  /(?:^|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=\d+[、.．]\s*(?:【?(?:问题原因|产品|目前进展|预处理|协助|解决方案|处理人|是否验证|回单)|产品UUID|预处理|协助请求)|$)/i
+
+const WORKFLOW_CUSTOMER_REACTION_RE =
+  /客户反应[，,]\s*([\s\S]{8,400}?)(?=(?:，|,)?(?:36\.\*|uuid\s*[：:]|联系时间|##资源ID|产品名称|受理渠道)|$)/i
+
+/** 平台回单/客服口径模板，非客户诉求 */
+const CUSTOMER_SERVICE_REPLY_RE =
+  /您好[!！].*(?:关于您反映的问题|关于您反馈的问题|经.{0,12}(?:核实|排查)|深感抱歉)/
+
+/**
+ * 客户请求候选是否应视为平台侧内容而丢弃
+ * @param {string} text
+ */
+export function isCustomerRequestPlatformNoise(text) {
+  const t = (text || '').trim()
+  if (!t) return true
+  if (CUSTOMER_SERVICE_REPLY_RE.test(t)) return true
+  if (!isPlatformActionContent(t)) return false
+  // 「需要建群处理 + 请排查 + 带宽/故障」等混合句保留客户诉求
+  if (
+    t.length >= 16 &&
+    /(?:请排查|客户反应|带宽|超时|无法|不通|故障|下载|镜像)/.test(t) &&
+    !/^(?:已协助|已为您|已处理|经排查|定位为)/.test(t)
+  ) {
+    return false
+  }
+  return true
+}
+
+/**
+ * 去掉资源 ID、联系时间等尾部元数据
+ * @param {string} text
+ */
+export function stripCustomerDemandMetadataTail(text) {
+  return (text || '')
+    .replace(/(?:，|,)\s*36\.\*[\s\S]*$/i, '')
+    .replace(/(?:，|,)\s*uuid\s*[：:][\s\S]*$/i, '')
+    .replace(/(?:联系时间|##资源ID|产品名称|受理渠道)[：:\s][\s\S]*$/i, '')
+    .trim()
+}
+
+/**
+ * @param {string} corpus
+ * @returns {string[]}
+ */
+export function splitWorkflowHandlingBlocks(corpus) {
+  if (!corpus?.trim()) return []
+  /** @type {string[]} */
+  const blocks = []
+  for (const match of corpus.matchAll(WORKFLOW_HANDLING_BLOCK_RE)) {
+    const body = match[1]?.trim()
+    if (body) blocks.push(body)
+  }
+  return blocks
+}
+
+/**
+ * 从单段 `&处理意见：` 正文中抽取客户诉求
+ * @param {string} body
+ */
+export function extractCustomerDemandFromWorkflowBody(body) {
+  let t = stripInternalWorkflowPrefix(body)
+  if (!t) return ''
+
+  const fromQuote = resolveDisplayCustomerQuote(t, {})
+  if (
+    fromQuote &&
+    !isFormattedTemplateContent(fromQuote) &&
+    !isCustomerRequestPlatformNoise(fromQuote)
+  ) {
+    return stripCustomerDemandMetadataTail(cleanCustomerRequestPhrase(fromQuote))
+  }
+
+  const numbered = t.match(WORKFLOW_NUMBERED_DEMAND_RE)
+  if (numbered?.[1]) {
+    return stripCustomerDemandMetadataTail(cleanCustomerRequestPhrase(numbered[1]))
+  }
+
+  const inlineDetail = t.match(WORKFLOW_INLINE_DETAIL_RE)
+  if (inlineDetail?.[1]) {
+    const detail = stripCustomerDemandMetadataTail(cleanCustomerRequestPhrase(inlineDetail[1]))
+    if (detail && !isFormattedTemplateContent(detail) && isCustomerDemandLike(detail)) {
+      return detail
+    }
+  }
+
+  const reaction = t.match(WORKFLOW_CUSTOMER_REACTION_RE)
+  if (reaction?.[1]) {
+    const phrase = stripCustomerDemandMetadataTail(
+      cleanCustomerRequestPhrase(`客户反应，${reaction[1]}`),
+    )
+    if (phrase && isCustomerDemandLike(phrase)) return phrase
+  }
+
+  return ''
+}
+
 /**
  * 从协办/反馈/详细内容等环节提取客户侧表述片段
  * @param {string} corpus
@@ -114,12 +223,12 @@ export function extractLifecycleCustomerPhrases(corpus) {
   const seen = new Set()
 
   const add = (raw) => {
-    const cleaned = cleanCustomerRequestPhrase(raw)
+    const cleaned = cleanCustomerRequestPhrase(stripCustomerDemandMetadataTail(raw))
     if (!cleaned || cleaned.length < 2) return
     const key = cleaned.replace(/\s+/g, '')
     if (seen.has(key)) return
     if (isMeaninglessCustomerText(cleaned)) return
-    if (isPlatformActionContent(cleaned)) return
+    if (isCustomerRequestPlatformNoise(cleaned)) return
     if (isInternalCsBackendText(cleaned)) return
     if (isFormattedTemplateContent(cleaned)) return
     if (!isCustomerDemandLike(cleaned)) return
@@ -127,26 +236,40 @@ export function extractLifecycleCustomerPhrases(corpus) {
     phrases.push(cleaned)
   }
 
+  for (const blockBody of splitWorkflowHandlingBlocks(corpus)) {
+    const demand = extractCustomerDemandFromWorkflowBody(blockBody)
+    if (demand) add(demand)
+  }
+
   for (const m of corpus.matchAll(/客户原话[：:]\s*[「"']?([^」"'\n]{2,200})/g)) {
     add(m[1])
   }
 
-  const blocks = corpus.split(/(?:^|[。；;\n]\s*)(?:协办|反馈|开始|首处理|详细内容)&[^&\n]{1,20}[：:]/)
+  const blocks = corpus.split(LEGACY_WORKFLOW_BLOCK_SPLIT_RE)
   for (const block of blocks) {
     const body = stripInternalWorkflowPrefix(block)
-    const voice = body.match(/客户(?:反馈|表示|补充|咨询|原话)[：:，,]?\s*([^。；;\n]{2,200})/)
+    const voice = body.match(
+      /客户(?:反馈|表示|补充|咨询|原话|反应)[：:，,]?\s*([^。；;\n]{2,200})/,
+    )
     if (voice?.[1]) {
       add(voice[1])
       continue
     }
     const beforeHandoff = body.split(/(?:协办|反馈)&[^&\n]+[：:]/)[0]?.trim()
-    if (beforeHandoff && beforeHandoff.length >= 4) add(beforeHandoff)
+    if (
+      beforeHandoff &&
+      beforeHandoff.length >= 4 &&
+      !/(?:^|\n)\s*处理意见\s*[：:]/.test(beforeHandoff) &&
+      !isCustomerRequestPlatformNoise(beforeHandoff)
+    ) {
+      add(beforeHandoff)
+    }
   }
 
   const detail = corpus.match(/详细内容[：:]([^\n|]{2,400})/)
   if (detail?.[1]) {
-    for (const part of detail[1].split(/(?:协办|反馈)&[^&\n]{1,20}[：:]/)) {
-      const voice = part.match(/客户(?:反馈|表示|补充)[：:，,]?\s*([^。；;\n]{2,200})/)
+    for (const part of detail[1].split(LEGACY_WORKFLOW_BLOCK_SPLIT_RE)) {
+      const voice = part.match(/客户(?:反馈|表示|补充|反应)[：:，,]?\s*([^。；;\n]{2,200})/)
       if (voice?.[1]) add(voice[1])
     }
   }
@@ -290,7 +413,7 @@ export function collectCustomerRequestCandidates(input) {
     (c) =>
       c.text &&
       !isMeaninglessCustomerText(c.text) &&
-      !isPlatformActionContent(c.text) &&
+      !isCustomerRequestPlatformNoise(c.text) &&
       !isInternalCsBackendText(c.text) &&
       !isFormattedTemplateContent(c.text) &&
       isCustomerDemandLike(c.text),

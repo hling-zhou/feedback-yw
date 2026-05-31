@@ -127,4 +127,23 @@ describe('customerRequestExtract lifecycle rules', () => {
     })
     expect(result).toBe('')
   })
+
+  it('extracts customer demand from mobile-cloud workflow blocks with &处理意见 delimiter', () => {
+    const handling = [
+      '开始&客服组.南基客服专席组-01L0&处理意见：客户标签：请求节点：全局流转详细内容：客户反应，带宽问题，平台服务更新，下载了三个镜像，一次1G左右的量就把带宽打满了，30M的带宽不应该这么容易就被打满了，请排查原因，需要建群处理，36.*.*.128联系时间：9:00',
+      '',
+      '首处理&客服组.01&处理意见：1、客户需求：客户反应，带宽问题，平台服务更新，下载了三个镜像，一次1G左右的量就把带宽打满了，30M的带宽不应该这么容易就被打满了，请排查原因，需要建群处理2、产品UUID：36.*.*.128',
+      '',
+      '协办&网络安全一组&处理意见：1、【客户问题】:客户反应，带宽问题，平台服务更新，下载了三个镜像，一次1G左右的量就把带宽打满了，30M的带宽不应该这么容易就被打满了，请排查原因，需要建群处理2、【问题原因】:同上',
+      '',
+      '反馈&客服组.01&处理意见：您好!关于您反映的问题，经过XX云技术专家核实目前底层排查网络未发现异常。造成的不便我们深感抱歉!',
+    ].join('\n')
+
+    const result = extractCustomerRequest({ rawText: '', handlingText: handling, customerQuote: '' })
+    expect(result).toMatch(/带宽/)
+    expect(result).toMatch(/镜像|30M/)
+    expect(result).not.toMatch(/您好!关于您反映/)
+    expect(result).not.toMatch(/联系时间|36\.\*/)
+    expect(result.length).toBeLessThanOrEqual(120)
+  })
 })

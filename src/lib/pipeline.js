@@ -43,7 +43,7 @@ export function processRow(row, useRegex = true, settings = null) {
 
   const tags = analyzeTicket(
     {
-      rawText: taggingText,
+      rawText,
       handlingText,
       customerQuote: '',
       product: resolved.productName,
