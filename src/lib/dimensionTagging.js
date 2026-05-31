@@ -1,6 +1,11 @@
 import { getSharedProblemTypes, getSharedRequestScenes } from './taxonomyLoader.js'
 import { classifyProblemType, PROBLEM_TYPE_OTHER } from './problemTypeClassifier.js'
 import {
+  classifyRequestScene,
+  REQUEST_SCENE_DEFAULT,
+} from './requestSceneClassifier.js'
+import { migrateRequestSceneLabel } from './tagLibrary/migrateSharedTags.js'
+import {
   matchThemesByDescription,
   matchSharedDimensionHybridBatch,
   matchSharedDimensionLlmBatch,
@@ -56,6 +61,53 @@ function resolveLocalProblemTypeLabel(record, text, rules) {
 }
 
 /**
+ * 请求场景：决策树 classifier 优先；未命中时回退旧版关键词/说明打分
+ * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+export function resolveRequestSceneFromConfig(text, rules) {
+  const corpus = (text || '').trim()
+  if (!corpus) return REQUEST_SCENE_DEFAULT
+
+  const classified = classifyRequestScene(corpus, rules)
+  if (classified !== REQUEST_SCENE_DEFAULT) return classified
+
+  const legacy = matchSharedLabel(corpus, rules)
+  if (legacy && legacy !== UNCLASSIFIED_PROBLEM) return legacy
+
+  return REQUEST_SCENE_DEFAULT
+}
+
+/**
+ * @param {FeedbackRecord} record
+ * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+function resolveLocalRequestSceneLabel(record, text, rules) {
+  const ds = record.dataSourceType || 'complaint_ticket'
+  const themeRules = toThemeRules(rules)
+
+  let existing = record.requestScene?.trim()
+  const migrated = migrateRequestSceneLabel(existing)
+  if (migrated) existing = migrated
+
+  if (existing && existing !== UNCLASSIFIED_PROBLEM && isInThemeLibrary(existing, themeRules)) {
+    return existing
+  }
+
+  if (TICKET_LIKE_SOURCES.includes(ds)) {
+    return resolveRequestSceneFromConfig(text, rules)
+  }
+
+  if (existing && existing !== UNCLASSIFIED_PROBLEM) {
+    const fromExisting = matchSharedLabel(existing, rules)
+    if (fromExisting !== UNCLASSIFIED_PROBLEM) return fromExisting
+  }
+
+  return resolveRequestSceneFromConfig(text, rules)
+}
+
+/**
  * 请求场景仅 config 关键词/说明匹配（与问题类型一致，永不调 LLM）。
  * @param {FeedbackRecord[]} records
  * @param {string[]} texts
@@ -65,15 +117,11 @@ function resolveLocalProblemTypeLabel(record, text, rules) {
  */
 export async function matchRequestScenesForRecords(records, texts, rules, _settings, onProgress) {
   void _settings
-  const themeRules = toThemeRules(rules)
   onProgress?.(texts.length, texts.length)
-  return texts.map((text, i) => {
-    const existing = records[i]?.requestScene?.trim()
-    if (existing && existing !== UNCLASSIFIED_PROBLEM && isInThemeLibrary(existing, themeRules)) {
-      return { label: existing, overflowOrigin: null }
-    }
-    return { label: matchSharedLabel(text, rules), overflowOrigin: null }
-  })
+  return texts.map((text, i) => ({
+    label: resolveLocalRequestSceneLabel(records[i], texts[i], rules),
+    overflowOrigin: null,
+  }))
 }
 
 /**

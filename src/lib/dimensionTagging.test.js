@@ -4,8 +4,10 @@ import {
   matchProblemTypesForRecords,
   matchRequestScenesForRecords,
   resolveProblemTypeFromConfig,
+  resolveRequestSceneFromConfig,
 } from './dimensionTagging.js'
 import { REQUEST_SCENES_BUILTIN, PROBLEM_TYPES_BUILTIN } from './sharedTagDefs.js'
+import { REQUEST_SCENE_DEFAULT, REQUEST_SCENE_FAULT } from './requestSceneClassifier.js'
 
 vi.mock('./themeSemantic.js', async (importOriginal) => {
   const mod = await importOriginal()
@@ -21,8 +23,11 @@ vi.mock('./themeSemantic.js', async (importOriginal) => {
 
 describe('dimensionTagging', () => {
   it('matches request scene by keywords', () => {
-    const label = matchSharedLabel('客户报障公网IP无法访问需要排查', REQUEST_SCENES_BUILTIN)
-    expect(label).toBe('报障与恢复')
+    const label = resolveRequestSceneFromConfig(
+      '客户报障公网IP无法访问需要排查',
+      REQUEST_SCENES_BUILTIN,
+    )
+    expect(label).toBe(REQUEST_SCENE_FAULT)
   })
 
   it('matches problem type by description tokens', () => {
@@ -105,7 +110,7 @@ describe('dimensionTagging', () => {
       REQUEST_SCENES_BUILTIN,
       { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
     )
-    expect(results[0].label).toBe('未分类')
+    expect(results[0].label).toBe(REQUEST_SCENE_DEFAULT)
     expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
   })
 
@@ -124,6 +129,6 @@ describe('dimensionTagging', () => {
       REQUEST_SCENES_BUILTIN,
       { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
     )
-    expect(results[0].label).toBe('报障与恢复')
+    expect(results[0].label).toBe(REQUEST_SCENE_FAULT)
   })
 })

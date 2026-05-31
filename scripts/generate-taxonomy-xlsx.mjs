@@ -7,7 +7,7 @@ import { writeFileSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import * as XLSX from 'xlsx'
-import { PROBLEM_TYPES_BUILTIN } from '../src/lib/sharedTagDefs.js'
+import { PROBLEM_TYPES_BUILTIN, REQUEST_SCENES_BUILTIN } from '../src/lib/sharedTagDefs.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
@@ -39,7 +39,9 @@ function buildJourneyIndex(journeys) {
   return { l1ById, l2ById }
 }
 
+const index = loadJson('index')
 const products = loadAllProducts()
+const requestSceneSource = REQUEST_SCENES_BUILTIN
 const eip = products.find((p) => p.key === 'eip') || products[0]
 const eipJourneyIdx = buildJourneyIndex(eip?.journeys)
 
@@ -63,6 +65,12 @@ const guideRows = [
     用途与填写要点:
       '一级/二级 ID·名称·说明、参考关键词。旅程打标与主题标签均只维护本表（必填）',
     示例: 'vpc | provision | 资源申请与开通 | … | create-vpc | 创建VPC与子网 | …',
+  },
+  {
+    工作表: '请求场景',
+    适用产品: '全平台共用',
+    用途与填写要点: '无产品Key。请求场景名称、说明、参考关键词（全产品共用，与问题类型同级）',
+    示例: '报障与排错 | 现网异常需排查恢复 | 故障,不通,异常',
   },
   {
     工作表: '通用问题类型',
@@ -137,6 +145,18 @@ for (const p of products) {
   }
 }
 
+const requestSceneRows = requestSceneSource.map((rs) => ({
+  请求场景名称: rs.label,
+  请求场景说明: rs.description || '',
+  参考关键词: (rs.keywords || []).join(','),
+}))
+
+const sharedRequestScenesJson = requestSceneSource.map((rs) => ({
+  label: rs.label,
+  description: rs.description || '',
+  keywords: [...(rs.keywords || [])],
+}))
+
 const problemRows = PROBLEM_TYPES_BUILTIN.map((pt) => ({
   问题类型名称: pt.label,
   问题类型说明: pt.description || '',
@@ -206,6 +226,7 @@ const wb = XLSX.utils.book_new()
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(guideRows), '填写说明')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productRows), '产品识别')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(journeyRows), '用户旅程')
+XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(requestSceneRows), '请求场景')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(problemRows), '通用问题类型')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(serviceRows), '请求节点-服务类型')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(issueRows), '请求节点-问题子类')
@@ -213,14 +234,14 @@ XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(issueRows), '请求节
 writeFileSync(outPath, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
 
 const indexPath = join(taxonomyDir, 'index.json')
-const index = loadJson('index')
-index.version = Math.max(index.version || 3, 4)
+index.version = Math.max(index.version || 3, 5)
 index.sharedProblemTypes = sharedProblemTypesJson
+index.sharedRequestScenes = sharedRequestScenesJson
 writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`)
 
 console.log(
   '已生成',
   outPath,
-  `（${products.length} 个产品：${products.map((p) => p.key).join(', ')}；通用问题类型 ${problemRows.length} 类）`,
+  `（${products.length} 个产品：${products.map((p) => p.key).join(', ')}；请求场景 ${requestSceneRows.length} 类；通用问题类型 ${problemRows.length} 类）`,
 )
-console.log('已同步', indexPath, 'sharedProblemTypes → 12 类')
+console.log('已同步', indexPath, 'sharedRequestScenes / sharedProblemTypes')

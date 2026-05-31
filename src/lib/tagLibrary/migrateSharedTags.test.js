@@ -35,7 +35,7 @@ describe('migrateSharedTags', () => {
       REQUEST_SCENES_BUILTIN.map((t) => t.label),
     )
     expect(
-      snapshot.sharedRequestScenes.find((t) => t.label === '报障与恢复')?.keywords,
+      snapshot.sharedRequestScenes.find((t) => t.label === '报障与排错')?.keywords,
     ).toContain('报障')
   })
 
@@ -75,7 +75,7 @@ describe('migrateSharedTags', () => {
       problemType: '性能与稳定性',
     }
     expect(migrateSharedTagsOnRecord(record)).toBe(true)
-    expect(record.requestScene).toBe('报障与恢复')
+    expect(record.requestScene).toBe('报障与排错')
     expect(record.problemType).toBe('性能问题')
   })
 
@@ -87,13 +87,22 @@ describe('migrateSharedTags', () => {
     }
   })
 
-  it('is idempotent for records already on 12-class labels', () => {
+  it('is idempotent for records already on V2 request scene labels', () => {
     const record = {
-      requestScene: '报障与恢复',
+      requestScene: '报障与排错',
       problemType: '可用性/连通性故障',
     }
     expect(migrateSharedTagsOnRecord(record)).toBe(false)
     expect(record.problemType).toBe('可用性/连通性故障')
+  })
+
+  it('migrates V1 request scene labels on record', () => {
+    const record = {
+      requestScene: '报障与恢复',
+      problemType: '可用性/连通性故障',
+    }
+    expect(migrateSharedTagsOnRecord(record)).toBe(true)
+    expect(record.requestScene).toBe('报障与排错')
   })
 
   it('PROBLEM_TYPE_LABEL_MIGRATION covers all legacy 9-class labels', () => {

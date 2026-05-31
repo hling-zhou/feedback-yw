@@ -25,7 +25,7 @@ describe('tagTicketDimensions (P2a)', () => {
       taxonomyKey: 'eip',
     })
 
-    expect(dims.requestScene).toBe('报障与恢复')
+    expect(dims.requestScene).toBe('报障与排错')
     expect(dims.problemType).toMatch(/配置与操作|可用性\/连通性故障/)
     expect(dims.journeyL2).toMatch(/访问控制|白名单/)
   })
@@ -39,7 +39,7 @@ describe('tagTicketDimensions (P2a)', () => {
       taxonomyKey: 'dc',
     })
 
-    expect(dims.requestScene).toBe('报障与恢复')
+    expect(dims.requestScene).toBe('报障与排错')
     expect(dims.problemType).toBe('可用性/连通性故障')
     expect(dims.journeyL1).toBe('无法识别')
     expect(dims.journeyL2).toBe('无法识别')
@@ -59,7 +59,7 @@ describe('tagTicketDimensions (P2a)', () => {
       taxonomyKey: 'eip',
     })
 
-    expect(dims.requestScene).toMatch(/产品能力咨询|使用与配置/)
-    expect(dims.requestScene).not.toBe('报障与恢复')
+    expect(dims.requestScene).toMatch(/产品信息咨询|操作指导/)
+    expect(dims.requestScene).not.toBe('报障与排错')
   })
 })

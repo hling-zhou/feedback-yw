@@ -38,7 +38,7 @@ describe('matchRequestSceneFromPath', () => {
       'eip',
       scenes,
     )
-    expect(result).toBe('产品能力咨询')
+    expect(result).toBe('产品信息咨询')
   })
 
   it('example2 path segment 3 → 报障与恢复', () => {
@@ -47,7 +47,7 @@ describe('matchRequestSceneFromPath', () => {
       'dc',
       REQUEST_SCENES_BUILTIN,
     )
-    expect(result).toBe('报障与恢复')
+    expect(result).toBe('报障与排错')
   })
 })
 

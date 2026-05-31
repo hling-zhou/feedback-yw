@@ -24,6 +24,7 @@
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
 - **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
+- **请求场景 V2 决策树**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；技术说明 [TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化见 §5.4.2 TAG-RS
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -144,6 +145,18 @@
 | TAG-LLM-22 | P0 | O-golden optimization 率 | unified ≥ separate×90% | ticketLlmGolden.test |
 | TAG-LLM-23 | P0 | Token 调用降幅 | 500 条 ≥40% | ticketLlmGolden.unit.test + `scripts/benchmark-ticket-llm.mjs` |
 | TAG-LLM-24 | P1 | 洞察聚类稳定性 | 同 pain+journeyL1 簇数变化 <10% | insightClusterStability.test |
+
+#### 5.4.2 请求场景 V2 决策树（TAG-RS）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-RS-01 | P0 | 规则文档 §4 golden 10 条 | 与文档一致分类 | `requestSceneClassifier.test.js` |
+| TAG-RS-02 | P0 | 无关键词短文本 | 默认「产品信息咨询」 | `requestSceneClassifier.test.js` |
+| TAG-RS-03 | P0 | 投诉工单请求场景 | 决策树，不调 LLM | `dimensionTagging.test.js` |
+| TAG-RS-04 | P0 | 单条导入 + 路径兜底 | 内容优先 / 路径 fallback | `ticketDimensionTagging.test.js` |
+| TAG-RS-05 | P1 | V1 标签迁移 | `报障与恢复` → `报障与排错` 等 | `migrateSharedTags.test.js` |
+| TAG-RS-06 | P1 | 标签库 9 类 | Excel/index 与 `REQUEST_SCENES_BUILTIN` 一致 | `ensureBuiltinRequestScenes.test.js` + 手工核对 `打标配置.xlsx` |
+| TAG-RS-07 | P1 | 历史工单刷新 | 批量重新打标后请求场景为 V2 标签 | 手工：反馈库 → 批量重新打标 → 抽样 |
 
 ### 5.5 快照与洞察（INS / SNP）
 

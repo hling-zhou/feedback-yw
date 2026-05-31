@@ -4,7 +4,7 @@ import { resolveJourneyDefinition, resolveTagDefinition } from './tagDefinitions
 describe('resolveTagDefinition', () => {
   const taxonomy = {
     requestScenes: [
-      { label: '报障与恢复', description: '现网异常需恢复', keywords: ['故障'] },
+      { label: '报障与排错', description: '现网异常需排查恢复', keywords: ['故障'] },
     ],
     problemTypes: [{ label: '自定义问题类型', keywords: ['慢', '卡'] }],
     journeys: [
@@ -19,10 +19,10 @@ describe('resolveTagDefinition', () => {
   it('reads request scene description from taxonomy', () => {
     const def = resolveTagDefinition({
       dimension: 'requestScene',
-      label: '报障与恢复',
+      label: '报障与排错',
       taxonomy,
     })
-    expect(def.body).toBe('现网异常需恢复')
+    expect(def.body).toBe('现网异常需排查恢复')
     expect(def.source).toBe('taxonomy')
   })
 

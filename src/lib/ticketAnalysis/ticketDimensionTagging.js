@@ -1,4 +1,4 @@
-import { matchSharedLabel } from '../dimensionTagging.js'
+import { resolveRequestSceneFromConfig } from '../dimensionTagging.js'
 import { classifyProblemType, PROBLEM_TYPE_OTHER } from '../problemTypeClassifier.js'
 import { matchJourneyByDescription } from '../ticketTagging.js'
 import { finalizeCorpusFuzzy } from './ticketAnalysisCorpus.js'
@@ -36,12 +36,20 @@ function resolveProblemTypeForTicket(input, text, problemTypeRules) {
 
 /**
  * @param {string} text
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} requestSceneRules
+ */
+function resolveRequestSceneForTicket(text, requestSceneRules) {
+  return normalizeTagLabel(resolveRequestSceneFromConfig(text, requestSceneRules), 'dimension')
+}
+
+/**
+ * @param {string} text
  * @param {import('../productTaxonomy.js').ProductTaxonomy} taxonomy
  * @param {string} taxonomyKey
  */
 function matchSceneAndJourneyFromText(text, taxonomy, taxonomyKey) {
   return {
-    requestScene: matchSharedLabel(text, taxonomy.requestScenes),
+    requestScene: resolveRequestSceneForTicket(text, taxonomy.requestScenes),
     journey: matchJourneyByDescription(text, taxonomy.journeys, taxonomyKey, {
       useRequestNode: false,
     }),

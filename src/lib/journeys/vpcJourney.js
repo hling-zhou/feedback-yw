@@ -517,9 +517,9 @@ export const VPC_NODE_ISSUE_MAP = {
 }
 
 export const VPC_REQUEST_SCENE_PATH_MAP = {
-  产品使用问题: '产品能力咨询',
-  故障报修: '报障与恢复',
-  报障: '报障与恢复',
+  产品使用问题: '产品信息咨询',
+  故障报修: '报障与排错',
+  报障: '报障与排错',
 }
 
 export const VPC_PROBLEM_TYPE_PATH_MAP = {

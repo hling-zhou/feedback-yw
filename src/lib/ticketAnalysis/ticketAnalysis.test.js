@@ -61,7 +61,7 @@ describe('analyzeTicket (P0 rules)', () => {
       productKey: 'dc',
     })
 
-    expect(result.requestScene).toBe('报障与恢复')
+    expect(result.requestScene).toBe('报障与排错')
     expect(result.problemType).toBe('可用性/连通性故障')
     expect(result.journeyL1).toBe('无法识别')
     expect(result.customerRequest).toMatch(/专线不通/)
@@ -163,7 +163,7 @@ describe('analyzeTicketAsync (P1 LLM)', () => {
 
     expect(result.customerRequestSource).toBe('llm')
     expect(result.painPoint).toBe('专线链路中断导致业务无法互通。')
-    expect(result.requestScene).toBe('报障与恢复')
+    expect(result.requestScene).toBe('报障与排错')
     expect(result.optimizationProduct).toMatch(/专线控制台|拓扑/)
     expect(result.optimizationService).toMatch(/催办|空转/)
   })

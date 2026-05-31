@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { enrichTicketRecordsForImport } from './importEnrichment.js'
 
 const enrichRecordsWithSharedDimensions = vi.fn(async (records) =>
-  records.map((r) => ({ ...r, requestScene: '报障与恢复', problemType: '性能问题' })),
+  records.map((r) => ({ ...r, requestScene: '报障与排错', problemType: '性能问题' })),
 )
 vi.mock('./dimensionTagging.js', () => ({
   enrichRecordsWithSharedDimensions: (...args) => enrichRecordsWithSharedDimensions(...args),
@@ -53,7 +53,7 @@ describe('enrichTicketRecordsForImport', () => {
 
     const { records: out, warnings } = await enrichTicketRecordsForImport(records, {}, () => {})
 
-    expect(out[0].requestScene).toBe('报障与恢复')
+    expect(out[0].requestScene).toBe('报障与排错')
     expect(out[0].problemType).toBe('性能问题')
     expect(out[0].journeyL1).toBe('日常运维')
     expect(out[0].painPoint).toBe('LLM痛点')

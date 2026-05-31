@@ -1,7 +1,7 @@
 # 工单分析 P0 规则层技术说明
 
-**版本**：2026-06-02（P0 LLM 打标：unified / 门控 / ticket_first / 补打扩展）  
-**关联业务规范**：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md)（V2）  
+**版本**：2026-06-02（P0 LLM 打标 + **请求场景 V2 决策树**）  
+**关联业务规范**：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md)（V2）、[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)（V2.0）  
 **适用范围**：单条工单分析中，**无大模型 API Key** 时的最终输出，以及 **有 Key 时 LLM 层的候选收集与 fallback**。  
 **UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 
@@ -169,6 +169,31 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 
 ---
 
+## 5.5 请求场景 V2 决策树（2026-06-02）
+
+对齐 [data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md) V2.0：**9 类**、序号 1→9 **命中即停**（与问题类型 `problemTypeClassifier.js` 同模式）。
+
+| 模块 | 职责 |
+|------|------|
+| `requestSceneClassifier.js` | `classifyRequestScene()` / `matchRequestSceneByDecisionTree()` |
+| `sharedTagDefs.js` | `REQUEST_SCENES_BUILTIN`（SSOT）、`REQUEST_SCENE_LABEL_MIGRATION`（V1→V2） |
+| `dimensionTagging.js` | `resolveRequestSceneFromConfig()` — 决策树优先，回退 `matchSharedLabel` |
+| `ticketDimensionTagging.js` | 单条导入四维打标 |
+
+**9 类标签**（优先级从高到低）：报障与排错 → 资源操作申请 → 操作指导 → 进度催办与协同 → 产品信息咨询 → 方案咨询与设计 → 费用与账务 → 信息查询 → 服务申诉与投诉。
+
+**默认类**：无有效关键词时归 **产品信息咨询**（`REQUEST_SCENE_DEFAULT`）。
+
+**否定 / 互斥**（代码内实现，非 Excel 配置）：如「如何退订」不归资源操作申请；「退订时报错」归资源操作申请；「申请+催办」归资源操作申请；强服务投诉优先于纯催办等（见 `requestSceneClassifier.test.js` §4 golden）。
+
+**配置发布**：`npm run generate:taxonomy-xlsx` 从 `REQUEST_SCENES_BUILTIN` 生成 Excel/`index.json`（`index.version` ≥ 5）。标签管理「发布打标配置」与之 sheet 顺序一致。
+
+**历史数据**：旧标签名（如 `报障与恢复`）经 `migrateRequestSceneLabel()` 映射；**决策树结果**需反馈库 **批量重新打标** 后才会刷新。
+
+**待 Sprint 2**：ticket LLM 成功后按 LLM 客户请求/痛点重打请求场景与问题类型；问题类型 §3 对端排除全文兜底（方案 A）。
+
+---
+
 ## 6. 与 LLM 层协作
 
 | 场景 | P0 输出用途 | 最终字段来源 |
@@ -176,7 +201,7 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | 无 API Key | 直接写入 record | `customerRequestSource='rule'`，`painPointSource='rule'` |
 | 有 API Key | 候选 + `ruleFallback` 传入 LLM | LLM 成功则 `llm`，失败回退 P0 |
 | 四维打标 | 始终用 **规则版** `customerRequest` | LLM 摘要不改变打标输入 |
-| **请求场景** | 始终本地规则（标签库关键词/说明） | **不走 LLM**；与投诉/咨询工单的问题类型一致 |
+| **请求场景** | 决策树 + 关键词（`requestSceneClassifier.js`） | **不走 LLM**；与投诉/咨询工单的问题类型一致 |
 | **问题类型**（投诉/咨询） | 决策树 + 关键词 | **不走 LLM** |
 | **用户旅程** | 本地 + 可选 LLM（`themeMatchMode`） | 设置页「用户旅程匹配方式」 |
 
@@ -232,12 +257,16 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | `customerRequestExtract.test.js` | 生命周期、append 覆盖首句、模板过滤、120 字截断 |
 | `painPointExtract.test.js` | customerRequest 优先于 rootCause、需求改写、80 字上限 |
 | `ticketAnalysis.test.js` | `analyzeTicket (P0 rules)` 端到端 |
+| `requestSceneClassifier.test.js` | V2.0 §4 golden 10 条 + 默认类 / 互斥边界 |
+| `dimensionTagging.test.js` | 请求场景决策树 + 投诉工单不调 LLM |
 | `validateTicketAnalysisPair.test.js` | 空值 fallback、引导语拒绝、总长压缩 |
 
 ```bash
 npm test -- --run src/lib/ticketAnalysis/customerRequestExtract.test.js
 npm test -- --run src/lib/ticketAnalysis/painPointExtract.test.js
 npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
+npm test -- --run src/lib/requestSceneClassifier.test.js
+npm test -- --run src/lib/dimensionTagging.test.js
 ```
 
 ---
@@ -254,8 +283,8 @@ npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
 ## 10. 相关文档
 
 - [从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) — 业务规范 V2  
+- [请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md) — 请求场景 V2.0 业务规则  
+- [问题类型自动化分类（问题类型分类与判定规则）.md](../data/问题类型自动化分类（问题类型分类与判定规则）.md) — 问题类型 V2.0  
 - [LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — P0 改造设计  
 - [LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md) — 发布 / UAT 检查清单  
-- [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划
-- [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划（LLM 使用 mock / 规则回退）
-- [LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — LLM 打标 P0 优化（合并 ticket LLM、旅程门控、流水线重排、optimization 三层保障）
+- [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划（含 TAG-RS V2）
