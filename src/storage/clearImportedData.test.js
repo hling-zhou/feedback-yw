@@ -169,6 +169,31 @@ describe('clearImportedData', () => {
     ).toContain('交集')
   })
 
+  it('recordMatchesClearFilter resolves period from id when period object omitted', () => {
+    const inScope = {
+      id: '1',
+      importMonth: '2026-05',
+      dataSourceType: 'complaint_ticket',
+      customerQuote: 'x',
+      requestScene: '',
+      problemType: '',
+      journeyL1: '',
+      journeyL2: '',
+      problemSummary: '',
+      solutionSummary: '',
+      rootCause: '',
+      optimizationSuggestion: '',
+      sentiment: 'neutral',
+      themes: [],
+      status: 'open',
+      importedAt: '2026-05-01T00:00:00.000Z',
+    }
+    const outScope = { ...inScope, id: '2', importMonth: '2026-04' }
+    const opts = { insightPeriodId: period.id, dataSourceType: 'complaint_ticket' }
+    expect(recordMatchesClearFilter(inScope, opts)).toBe(true)
+    expect(recordMatchesClearFilter(outScope, opts)).toBe(false)
+  })
+
   it('analysisRunMatchesClearFilter', () => {
     const run = {
       id: 'run-1',

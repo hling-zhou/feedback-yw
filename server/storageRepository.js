@@ -3,7 +3,7 @@ import {
   LEGACY_INSIGHT_PERIOD_ID,
   SCHEMA_VERSION,
 } from '../src/domain/constants.js'
-import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod } from '../src/domain/insightPeriod.js'
+import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod, resolveInsightPeriod } from '../src/domain/insightPeriod.js'
 import {
   buildRecordsWhereClause,
   parseRecordPagination,
@@ -89,7 +89,8 @@ export const storageRepository = {
   },
 
   getInsightPeriod(id) {
-    return this.listInsightPeriods().find((p) => p.id === id) ?? null
+    const fromList = this.listInsightPeriods().find((p) => p.id === id) ?? null
+    return resolveInsightPeriod(id, fromList)
   },
 
   /**

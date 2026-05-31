@@ -1,5 +1,5 @@
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
-import { normalizeInsightPeriod, recordMatchesPeriod } from '../domain/insightPeriod.js'
+import { normalizeInsightPeriod, recordMatchesPeriod, resolveInsightPeriod } from '../domain/insightPeriod.js'
 import {
   overviewSnapshotId,
   sourceSnapshotId,
@@ -142,13 +142,15 @@ export function recordMatchesClearFilter(record, options, period = null) {
     return false
   }
   if (options.insightPeriodId) {
-    const normalized = period ? normalizeInsightPeriod(period) : null
+    const normalized =
+      period != null
+        ? normalizeInsightPeriod(period)
+        : resolveInsightPeriod(options.insightPeriodId, null)
     if (normalized) {
       if (!recordMatchesPeriod(record, normalized)) return false
     } else if (record.insightPeriodId) {
       if (record.insightPeriodId !== options.insightPeriodId) return false
     } else {
-      // 无周期元数据时按数据月份/受理时间判断，与列表筛选口径一致
       return false
     }
   }

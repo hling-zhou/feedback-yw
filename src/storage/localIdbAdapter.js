@@ -3,7 +3,7 @@ import {
   LEGACY_INSIGHT_PERIOD_ID,
   SCHEMA_VERSION,
 } from '../domain/constants.js'
-import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod } from '../domain/insightPeriod.js'
+import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod, resolveInsightPeriod } from '../domain/insightPeriod.js'
 import {
   idbClearStore,
   idbDelete,
@@ -111,7 +111,8 @@ export function createLocalIdbAdapter() {
 
     async getInsightPeriod(id) {
       const list = await this.listInsightPeriods()
-      return list.find((p) => p.id === id) ?? null
+      const fromList = list.find((p) => p.id === id) ?? null
+      return resolveInsightPeriod(id, fromList)
     },
 
     async listRecords(query = {}) {

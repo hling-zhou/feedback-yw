@@ -3,6 +3,7 @@ import { createLocalIdbAdapter } from './localIdbAdapter.js'
 import { resetDatabaseForTests } from './idb.js'
 import {
   clearAllFeedbacks,
+  clearAllImportedData,
   loadFeedbacksFromAdapter,
   migrateLegacyFeedbacksIfNeeded,
   persistFeedbacks,
@@ -134,5 +135,44 @@ describe('feedbackStore SSOT', () => {
     expect(list).toHaveLength(0)
     const candidates = await adapter.listTagCandidates()
     expect(candidates.map((c) => c.id)).toEqual(['tc-approved'])
+  })
+
+  it('clearAllImportedData respects scoped options (does not wipe unrelated records)', async () => {
+    const adapter = createLocalIdbAdapter()
+    const base = {
+      rawText: '1',
+      customerQuote: '1',
+      problemType: '未分类',
+      journeyL1: '未识别环节',
+      journeyL2: '未识别子环节',
+    }
+    await persistFeedbacks(adapter, [
+      {
+        id: 'may-complaint',
+        ...base,
+        importMonth: '2026-05',
+        dataSourceType: 'complaint_ticket',
+      },
+      {
+        id: 'may-consult',
+        ...base,
+        importMonth: '2026-05',
+        dataSourceType: 'consultation_ticket',
+      },
+      {
+        id: 'apr-complaint',
+        ...base,
+        importMonth: '2026-04',
+        dataSourceType: 'complaint_ticket',
+      },
+    ])
+
+    await clearAllImportedData(adapter, {
+      insightPeriodId: 'period:month:2026-05',
+      dataSourceType: 'complaint_ticket',
+    })
+
+    const remaining = await loadFeedbacksFromAdapter(adapter)
+    expect(remaining.map((r) => r.id).sort()).toEqual(['apr-complaint', 'may-consult'])
   })
 })

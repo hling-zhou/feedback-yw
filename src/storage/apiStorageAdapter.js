@@ -1,4 +1,5 @@
 import { apiFetch } from '../lib/apiClient.js'
+import { resolveInsightPeriod } from '../domain/insightPeriod.js'
 import { chunkRecordsForUpload } from '../lib/recordUploadChunks.js'
 
 /**
@@ -45,7 +46,7 @@ export function createApiStorageAdapter() {
         const data = await storageFetch(`/periods/${encodeURIComponent(id)}`)
         return data.period ?? null
       } catch (err) {
-        if (err.status === 404) return null
+        if (err.status === 404) return resolveInsightPeriod(id, null)
         throw err
       }
     },

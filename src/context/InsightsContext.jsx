@@ -15,7 +15,7 @@ import {
   persistRecordUpdate,
   persistRecordUpdates,
   isApiStorageAdapter,
-  clearAllFeedbacks,
+  clearAllImportedData,
 } from '../storage/feedbackStore.js'
 import {
   isClearAllImportedData,
@@ -46,6 +46,7 @@ import {
   insightPeriodFromSpec,
   normalizeInsightPeriod,
   periodSpecFromImportMonth,
+  resolveInsightPeriod,
   selectionFromPeriod,
 } from '../domain/insightPeriod.js'
 import { normalizeImportMonth } from '../lib/importUtils.js'
@@ -1511,13 +1512,16 @@ export function InsightsProvider({ children }) {
       }
       const clearAllData = isClearAllImportedData(options)
       const period = options.insightPeriodId
-        ? periods.find((p) => p.id === options.insightPeriodId) ?? null
+        ? resolveInsightPeriod(
+            options.insightPeriodId,
+            periods.find((p) => p.id === options.insightPeriodId) ?? null,
+          )
         : null
 
       clearInProgressRef.current = true
       try {
         if (storageReady) {
-          await clearAllFeedbacks(adapter, options)
+          await clearAllImportedData(adapter, options)
         }
         if (clearAllData) {
           feedbacksRef.current = []
@@ -1542,7 +1546,7 @@ export function InsightsProvider({ children }) {
           if (clearAllData) {
             const remaining = await getTotalRecordCount(adapter)
             if (remaining > 0) {
-              await clearAllFeedbacks(adapter, options)
+              await clearAllImportedData(adapter, options)
               feedbacksRef.current = []
               setFeedbacks([])
               setTotalRecordCount(0)

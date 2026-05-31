@@ -1,6 +1,6 @@
 # Feedback Insights 系统测试计划
 
-**版本**：2026-05-25  
+**版本**：2026-06-02（增补条件清空回归）
 **适用分支**：当前 `main` / 工作区  
 **关联**：清空数据加固、投诉终判导入、共享 SQLite 存储
 
@@ -158,12 +158,12 @@
 | CLR-01 | P0 | 空参数 API | `DELETE /api/storage/imported-data` 无 query | **400**，不删数据 | **待补** integration |
 | CLR-02 | P0 | 全部清空 | `?scope=all` 或 `{ all: true }` | 删 records/snapshots/runs/artifacts/pending；保留设置/标签库/已处理候选 | clearImportedData + feedbackStore |
 | CLR-03 | P0 | 设置页条件清空校验 | 仅选周期或仅选来源 | UI 禁用或 validateScoped 报错 | clearImportedData.test |
-| CLR-04 | P0 | Q2 + 投诉交集 | 准备 §3.2 数据集，清空 `period:quarter:2026-Q2` + `complaint_ticket` | 仅删 Q2 投诉；**保留**咨询、2022 投诉、Q1 投诉 | recordMatchesClearFilter；**待补** repository 集成 |
+| CLR-04 | P0 | Q2 + 投诉交集 | 准备 §3.2 数据集，清空 `period:quarter:2026-Q2` + `complaint_ticket` | 仅删 Q2 投诉；**保留**咨询、2022 投诉、Q1 投诉 | `clearImportedData.test` + `feedbackStore.test`（IDB scoped）；repository 集成待补 |
 | CLR-05 | P0 | 仅来源（API） | `?dataSourceType=complaint_ticket` | 删所有月份投诉；不删咨询 | describeClearImportedScopeRisk + 手工 |
 | CLR-06 | P0 | 仅周期（API） | `?insightPeriodId=...Q2` | 删 Q2 月范围内全部来源 | 手工 |
 | CLR-07 | P1 | 快照删除范围 | 条件清空后 | 对应 `snapshot:{period}:{source}` 删除 | snapshotMatchesClearFilter |
 | CLR-08 | P1 | 审计日志 | 清空后查审计 | `storage.clear_imported_data` 含 scope/period/source/deleted 计数 | 手工 |
-| CLR-09 | P1 | clearAll 上下文 | 设置「清空全部数据」 | 传 `{ all: true }`，非 `{}` | InsightsContext 代码审查 |
+| CLR-09 | P1 | clearAll 上下文 | 设置「清空全部数据」 | 传 `{ all: true }`；条件清空须走 `clearAllImportedData(options)`，**不得**经 `clearAllFeedbacks()` | InsightsContext + feedbackStore.test |
 | CLR-10 | P2 | 浏览器 IDB 脚本 | `scripts/clear-in-browser.js` | 仅清本地 IDB，不动服务端库 | 文档/手工 |
 
 ### 5.8 配置与构建（CFG / BLD）
@@ -248,12 +248,13 @@ npm run test:e2e
 
 ## 9. 与历史事故的对照（回归必测）
 
-**事故**：用户以为只清「2026 Q2 投诉」，实际删掉全部 132 条。
+**事故**：用户以为只清「2026 Q2 投诉」，实际删掉全部 132 条（根因：`InsightsContext` 误调 `clearAllFeedbacks()`，忽略 scoped options）。
 
 | 检查点 | 对应用例 |
 |--------|----------|
 | 空 `{}` 不等于全部清空 | CLR-01、CLR-02 |
 | 设置页必须周期+来源才能点「清空选中范围」 | CLR-03 |
+| 条件清空走 `clearAllImportedData(options)`，非 `clearAllFeedbacks()` | CLR-09、feedbackStore scoped 测 |
 | 审计 `clear_imported_data` 应带 `insightPeriodId`/`dataSourceType`（条件清空时） | CLR-08 |
 | Q2∩投诉 不删咨询/2022 | CLR-04 |
 
@@ -263,8 +264,8 @@ npm run test:e2e
 
 | 测试文件 | 主要覆盖 |
 |----------|----------|
-| `src/storage/clearImportedData.test.js` | CLR-02~07 过滤逻辑 |
-| `src/storage/feedbackStore.test.js` | STG-01、CLR-02 IDB 全清 |
+| `src/storage/clearImportedData.test.js` | CLR-02~07 过滤逻辑；周期 ID 无 meta 时 `recordMatchesClearFilter` |
+| `src/storage/feedbackStore.test.js` | STG-01、CLR-02 IDB 全清；**CLR-04** scoped 条件清空 |
 | `src/test/smoke.integration.test.js` | IMP-01~04、PER-01、TAG-07 |
 | `server/routes/storage.permissions.test.js` | SEC-01~04 |
 | `e2e/smoke.spec.js` | E2E-01 / INS-01 |

@@ -14,9 +14,13 @@
 | Excel/JSON 导入 | 写库 | `adapter.putRecords` 增量写入 |
 | 工单详情编辑/打标 | 写库 | `persistRecordUpdate` → `putRecord` |
 | 批量重新打标 | 写库 | 客户请求/痛点 LLM **分批即时** `persistRecordUpdates`；任务结束后再全量同步一次 |
+| 设置页「清空选中范围」 | 写库 | `clearAllImportedData(adapter, { insightPeriodId, dataSourceType })`；周期 ID 经 `resolveInsightPeriod` 解析（不必先写入 meta） |
+| 设置页「全部清空」 | 写库 | `clearAllImportedData(adapter, { all: true })`；**勿**与条件清空混用同一入口 |
 | 他人导入后同步 | 读库 | `dataRevision` 轮询 → `syncSharedDataFromServer` |
 
 **不会**把整份 `feedbacks` 数组 debounce 全量写回共享库（会误删其他月份数据）；这是刻意设计，见 `InsightsContext` 注释。
+
+> **2026-06-02 修复**：此前 `InsightsContext` 误调 `clearAllFeedbacks()`（内部写死 `{ all: true }`），导致「清空选中范围」实际删全部。现已改为 `clearAllImportedData(adapter, options)`。
 
 发版替换 `dist/` 或 API 代码 **不会** 清空 `records` 表；只要 **`server/data/auth.db`（或 `AUTH_DATABASE_PATH`）在持久卷上** 即可。
 
