@@ -40,3 +40,14 @@ export {
   isSourceSnapshotClusteringStale,
   resolveSourcePainPointClustering,
 } from './clusteringSnapshot.js'
+export {
+  CLUSTERING_TOP10_TAU_MIN,
+  kendallTauBetweenRankings,
+  meetsClusteringTop10Tau,
+} from './kendallTau.js'
+export {
+  clusterTop10Fingerprint,
+  clusterRecordIdsFingerprint,
+  productTop10Fingerprints,
+  topClusterFingerprints,
+} from './clusterTop10Fingerprint.js'

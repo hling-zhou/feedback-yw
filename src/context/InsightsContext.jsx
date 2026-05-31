@@ -83,6 +83,7 @@ import {
   SNAPSHOT_AUTO_REBUILD_DEBOUNCE_MS,
   snapshotsHavePeriodData,
 } from '../lib/snapshotAutoRebuild.js'
+import { formatInsightRebuildProgress } from '../lib/insightRebuildClient.js'
 import {
   compactDuplicateTagCandidates,
   upsertPendingTagCandidate,
@@ -665,12 +666,35 @@ export function InsightsProvider({ children }) {
   }, [markSnapshotsStale])
 
   const executeSnapshotRebuild = useCallback(
-    async ({ period, recordsForBuild, updateUi = true }) => {
+    async ({ period, recordsForBuild, updateUi = true, preferServerJob = true }) => {
       if (!period || !storageReady) return null
-      const mergedFeedbacks = recordsForBuild ?? feedbacksRef.current
+
+      const useServerJob =
+        preferServerJob &&
+        typeof adapter.startInsightRebuild === 'function' &&
+        typeof adapter.waitForInsightRebuild === 'function'
+
       snapshotRebuildInProgressRef.current = true
       setSnapshotRebuilding('all')
       try {
+        if (useServerJob) {
+          const { job } = await adapter.startInsightRebuild(period.id)
+          await adapter.waitForInsightRebuild(job.id, (runningJob) => {
+            setSnapshotRebuilding(formatInsightRebuildProgress(runningJob) || '重建中…')
+          })
+          if (updateUi && period.id === currentPeriodId) {
+            await reloadSnapshots(currentPeriodId)
+            setSnapshotsStale(false)
+            setSnapshotStaleReason(null)
+          } else if (period.id !== currentPeriodId) {
+            setSnapshotsStale(true)
+            setSnapshotStaleReason('data')
+          }
+          emit('SnapshotBuilt', { periodId: period.id, scope: 'all', serverJob: true })
+          return null
+        }
+
+        const mergedFeedbacks = recordsForBuild ?? feedbacksRef.current
         const result = await rebuildAllSnapshotsService(
           adapter,
           period,
@@ -696,7 +720,7 @@ export function InsightsProvider({ children }) {
         setSnapshotRebuilding(null)
       }
     },
-    [adapter, currentPeriodId, settings, storageReady],
+    [adapter, currentPeriodId, settings, storageReady, reloadSnapshots],
   )
 
   const scheduleSnapshotRebuild = useCallback(

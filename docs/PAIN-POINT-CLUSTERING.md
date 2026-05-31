@@ -26,12 +26,17 @@
 来源 Tab 旅程区
   → resolveJourneyClusterViewForDisplay（优先读快照 `aggregates.painPointClustering`）
   → 无快照时频次回退（不在 UI 路径 live 聚类）
+
+洞察快照重建（共享 API 库）
+  → POST /api/storage/insight-rebuild（服务端 Job）
+  → rebuildAllSnapshots（SQLite 读工单 → 写 snapshots）
+  → 前端 poll GET /api/storage/insight-rebuild/:id → reloadSnapshots
 ```
 
 ## 快照与兼容
 
 - **新生成快照**：来源快照含 `painPointClustering.clusteringVersion = v2.0`；概览含 `recommendationsMeta.recommendationEngine = pain_cluster_v2`。
-- **旧快照**：概览缺少有效 `recommendationEngine: pain_cluster_v2` 时，**不**在浏览器内 live 重算；`OverviewTab` 调用 `prepareOverviewConclusionsForDisplay` 隐藏行动建议并提示「生成 / 刷新洞察」。重算仅在快照重建（后续：服务端 Job）时执行。
+- **旧快照**：概览缺少有效 `recommendationEngine: pain_cluster_v2` 时，**不**在浏览器内 live 重算；`OverviewTab` 调用 `prepareOverviewConclusionsForDisplay` 隐藏行动建议并提示「生成 / 刷新洞察」。重算经 **服务端 Insight Rebuild Job**（`POST /api/storage/insight-rebuild`）在 API 进程后台执行，前端轮询任务状态后读快照。
 - **V2 无 Top 10**：自动回退 `buildPlanningRecommendations`（legacy），UI 显示 `legacyFallback` 警告。
 
 ## 关键字段
@@ -64,5 +69,9 @@
 ```bash
 npm test -- --run src/lib/painPointClustering src/snapshots/rehydrateOverviewRecommendations.test.js src/snapshots/painPointClusteringIntegration.test.js src/snapshots/insightClusterStability.test.js src/snapshots/buildOverviewConclusions.test.js
 ```
+
+M2-4 Top10 golden 回归：`clusteringTop10Golden.test.js`（τ ≥ 0.85）。更新 golden：`npm run generate:clustering-golden`
+
+服务端 Job 测试（需 SQLite）：`npm test -- --run server/insightRebuildJob.test.js`
 
 用例索引见 [TEST-PLAN.md](./TEST-PLAN.md) §5.4.5 **TAG-CL**（约 70+ 自动化用例）。

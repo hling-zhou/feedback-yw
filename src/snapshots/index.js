@@ -21,5 +21,6 @@ export {
   rebuildOverviewSnapshot,
   rebuildAllSnapshots,
   markPeriodSnapshotsStale,
+  markPeriodSnapshotsRebuilding,
   overlayStaleStatus,
 } from './snapshotService.js'

@@ -25,16 +25,25 @@ import { runSecondaryClustering } from './secondaryCluster.js'
  */
 
 /**
+ * @typedef {import('./primaryCluster.js').ClusteringPipelineOptions} ClusteringPipelineOptions
+ */
+
+/**
  * 单产品完整聚类 pipeline（V2）
  *
  * @param {import('../types.js').FeedbackRecord[]} records 周期内该产品全部工单（可含多来源）
  * @param {string} product
+ * @param {ClusteringPipelineOptions} [pipelineOptions]
  */
-export function runProductClusteringPipeline(records, product) {
+export function runProductClusteringPipeline(records, product, pipelineOptions = {}) {
   const productRecords = records.filter((r) => (r.product || '').trim() === product)
   const productTotalTickets = productRecords.length
 
-  const { primaryClusters, isolatedRecords } = runPrimaryClustering(productRecords, product)
+  const { primaryClusters, isolatedRecords } = runPrimaryClustering(
+    productRecords,
+    product,
+    pipelineOptions,
+  )
 
   const {
     retained,
@@ -43,7 +52,7 @@ export function runProductClusteringPipeline(records, product) {
     excludedTicketCount,
   } = filterLowValuePrimaryClusters(primaryClusters)
 
-  const finalClusters = runSecondaryClustering(retained, product)
+  const finalClusters = runSecondaryClustering(retained, product, pipelineOptions)
   const topFinalClusters = scoreAndRankFinalClusters(
     finalClusters,
     productRecords,

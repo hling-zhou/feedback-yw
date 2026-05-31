@@ -417,6 +417,16 @@ export function initBusinessSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_analysis_runs_period ON analysis_runs(insight_period_id);
 
+    CREATE TABLE IF NOT EXISTS insight_rebuild_jobs (
+      id TEXT PRIMARY KEY,
+      insight_period_id TEXT NOT NULL,
+      idempotency_key TEXT,
+      status TEXT NOT NULL,
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_insight_rebuild_jobs_period ON insight_rebuild_jobs(insight_period_id);
+    CREATE INDEX IF NOT EXISTS idx_insight_rebuild_jobs_idempotency ON insight_rebuild_jobs(idempotency_key);
+
     CREATE TABLE IF NOT EXISTS artifacts (
       id TEXT PRIMARY KEY,
       run_id TEXT NOT NULL,

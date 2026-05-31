@@ -389,9 +389,10 @@ function prepareHierarchicalValid(remainder, getText) {
  * @param {(item: T) => string} getText
  * @param {number} threshold
  * @param {number} [minSize]
+ * @param {{ useNaiveHierarchical?: boolean; minSharedTokens?: number }} [pipelineOptions]
  * @returns {{ clusters: T[][]; isolated: T[] }}
  */
-export function clusterByJaccard(items, getText, threshold, minSize = 2) {
+export function clusterByJaccard(items, getText, threshold, minSize = 2, pipelineOptions = {}) {
   if (!items?.length) return { clusters: [], isolated: [] }
 
   const { exactClusters, remainder, invalid } = exactMergeByNormalizedText(items, getText)
@@ -420,12 +421,9 @@ export function clusterByJaccard(items, getText, threshold, minSize = 2) {
   }
 
   const tokenSets = valid.map((v) => v.tokens)
-  const { clusters: hierMemberClusters, isolated: hierIsolatedItems } = hierarchicalClusterValid(
-    valid,
-    tokenSets,
-    threshold,
-    minSize,
-  )
+  const { clusters: hierMemberClusters, isolated: hierIsolatedItems } = pipelineOptions.useNaiveHierarchical
+    ? hierarchicalClusterValidNaive(valid, tokenSets, threshold, minSize)
+    : hierarchicalClusterValid(valid, tokenSets, threshold, minSize, pipelineOptions)
 
   /** @type {Map<T, T[]>} */
   const membersByRep = new Map(valid.map((v) => [v.item, v.members]))

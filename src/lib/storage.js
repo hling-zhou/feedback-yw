@@ -70,6 +70,11 @@ const DEFAULT_SETTINGS = {
   llmModel: '',
 }
 
+/** @returns {AppSettings} */
+export function getDefaultAppSettings() {
+  return { ...DEFAULT_SETTINGS }
+}
+
 /** 旧版默认填充（加载时视为未配置，避免误连 OpenAI） */
 const LEGACY_DEFAULT_LLM_BASE_URL = 'https://api.openai.com/v1'
 const LEGACY_DEFAULT_LLM_MODEL = 'gpt-4o-mini'

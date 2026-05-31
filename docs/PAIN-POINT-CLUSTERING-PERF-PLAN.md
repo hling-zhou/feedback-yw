@@ -55,19 +55,19 @@
 | M2-1 | 倒排索引候选对 | ✅ |
 | M2-2 | NN-chain 层次聚类内核 | ✅ |
 | M2-3 | 大组降级（>150 unique → Top150 + minSharedTokens 阶梯） | ✅ |
-| M2-4 | Golden 对比（Top10 Kendall τ ≥ 0.85） | 待办 |
+| M2-4 | Golden 对比（Top10 Kendall τ ≥ 0.85） | ✅ `clusteringTop10Golden.test.js` |
 
 ## Phase L — 长期架构
 
 | ID | 任务 | 优先级 | 状态 |
 |----|------|--------|------|
 | L0-1 | 旅程 Tab 读 `aggregates.painPointClustering` 快照 | P1 | ✅ |
-| L0-2 | Dashboard 无快照时仅频次回退 | P2 | 待办 |
+| L0-2 | Dashboard 无快照时仅频次回退 | P2 | 跳过（UI 已无 live 聚类；工作台来源 Tab 已读快照；legacy `/dashboard` 无导航） |
 | L1-1 | 概览只读 + `prepareOverviewConclusionsForDisplay` | P1 | ✅ |
 | L1-2 | 概览持久化 pipeline 中间态 | P2 | 待办 |
 | L2-1 | Web Worker（IDB 过渡） | P2 | 待办 |
-| **L2-2** | **服务端 Insight Rebuild Job** | **P1** | 待办 |
-| L2-3 | 导入后自动入队 | P1 | 待办 |
+| **L2-2** | **服务端 Insight Rebuild Job** | **P1** | ✅ |
+| L2-3 | 导入后自动入队 | P1 | ✅（经 `rebuildSnapshotsForImportMonth` → 服务端 Job） |
 | L3-1 | Clustering Artifact 分表 | P3 | 待办 |
 | L3-2 | 增量聚类 | P3 | 待办 |
 
@@ -77,7 +77,11 @@
 2. L0-1 + S3 + S4
 3. M1 → M2（降低 Server Job 单次耗时）
 4. **L2-2 Server Job**（共享库 P1）
-5. L2-3、L1-2、L3
+5. L2-3、M2-4、L1-2、L3（L0-2 暂不需要）
+
+## L0-2 结论（2026-06-03）
+
+代码扫描：`JourneyFeedbackSection` → `resolveJourneyClusterViewForDisplay` 仅 **快照** 或 **频次回退**，无浏览器 live 聚类。Legacy `pages/Dashboard.jsx`（`/dashboard`，侧栏未链接）不传快照，始终频次回退，但不触发层次聚类。**性能目标已满足，L0-2 不排期**；若需产品一致可 redirect `/dashboard` → `/workbench`。
 
 ## 相关模块
 
@@ -88,6 +92,8 @@
 | `src/components/workbench/OverviewTab.jsx` | 概览只读 |
 | `src/pages/InsightWorkbench.jsx` | Tab 懒加载 |
 | `src/lib/painPointClustering/buildSourceClusterSnapshot.js` | 分源快照一次聚类 |
-| `server/businessDb.js` | L2 Job 持久化扩展点 |
+| `server/insightRebuildJob.js` | L2-2 后台重建入口 |
+| `server/routes/storage.js` | `POST/GET /api/storage/insight-rebuild` |
+| `src/lib/insightRebuildClient.js` | 前端入队 + 轮询 |
 
 规范依据：[`data/痛点聚类与痛点群组优先级评定标准.md`](../data/痛点聚类与痛点群组优先级评定标准.md) V2.0

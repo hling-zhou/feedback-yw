@@ -1,6 +1,6 @@
 # Feedback Insights 系统测试计划
 
-**版本**：2026-06-02（增补 V2 golden TAG-CR/PP、痛点聚类 TAG-CL）
+**版本**：2026-06-03（Insight Rebuild Job、M2-4 Top10 golden）
 **适用分支**：当前 `main` / 工作区  
 **关联**：清空数据加固、投诉终判导入、共享 SQLite 存储
 
@@ -10,7 +10,7 @@
 
 | 目标 | 说明 |
 |------|------|
-| 回归保护 | 确认 697+ 单元测试通过，构建无报错 |
+| 回归保护 | 确认 720+ 单元测试通过，构建无报错 |
 | 核心业务 | 导入 → 周期筛选 → 洞察/打标 → 快照 → 报告链路可用 |
 | 高风险项 | **清空数据**（选定范围 vs 全部）不误删；权限与审计正确 |
 | 数据口径 | 列表/统计按 `importMonth` 与洞察周期一致；投诉终判字段入库完整 |
@@ -26,7 +26,8 @@
 - **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 - **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化 §5.4.2 TAG-RS、§5.4.3 TAG-RT
 - **客户请求 / 痛点 V2 golden**（2026-06-02）：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) §1.4/§2.4；夹具 `fixtures/v2TicketExamples.js`；自动化 §5.4.4 TAG-CR/TAG-PP
-- **痛点聚类 & 行动建议 Phase 1**（V2.0）：[`docs/PAIN-POINT-CLUSTERING.md`](./PAIN-POINT-CLUSTERING.md)；自动化 §5.4.5 TAG-CL
+- **痛点聚类 & 行动建议 Phase 1**（V2.0）：[`docs/PAIN-POINT-CLUSTERING.md`](./PAIN-POINT-CLUSTERING.md)；自动化 §5.4.5 TAG-CL；性能/Job 见 [`PAIN-POINT-CLUSTERING-PERF-PLAN.md`](./PAIN-POINT-CLUSTERING-PERF-PLAN.md)
+- **Insight Rebuild Job**（L2-2）：共享库快照后台重建；`POST/GET /api/storage/insight-rebuild`；导入后自动入队
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -73,7 +74,7 @@
 
 | 层级 | 工具 | 命令 | 自动化 |
 |------|------|------|--------|
-| L1 单元 | Vitest | `npm test` | 是（119 文件，约 697 case） |
+| L1 单元 | Vitest | `npm test` | 是（126 文件，约 722 case） |
 | L2 集成冒烟 | Vitest `src/test/smoke.integration.test.js` | 含在 `npm test` | 是 |
 | L3 API/权限 | Vitest `server/routes/storage.permissions.test.js` 等 | 需 SQLite 可用 | 部分 skip |
 | L4 构建 | Vite | `npm run build` | 是 |
@@ -191,9 +192,19 @@
 | TAG-CL-06 | P0 | 来源快照 + 旅程 Tab | 读快照 L2 子集；无快照频次回退 | `painPointClustering.test.js` L0-1 |
 | TAG-CL-07 | P1 | 概览重算 / legacy 回退 | V2 引擎 + legacyFallback | `rehydrateOverviewRecommendations.test.js` |
 | TAG-CL-08 | P1 | 聚类稳定性 | mock 前后簇数变化 <10% | `insightClusterStability.test.js` |
+| TAG-CL-12 | P1 | M2-4 Top10 golden | 固定夹具 Top10 与 golden τ≥0.85；优化 vs naive τ≥0.85 | `clusteringTop10Golden.test.js` |
 | TAG-CL-09 | P1 | 快照集成 | `painPointClustering` 写入来源快照 | `painPointClusteringIntegration.test.js` |
 | TAG-CL-10 | P2 | 空痛点跳过 / L1 回退 / label 辅助 | P2 区块 | `painPointClustering.test.js` |
 | TAG-CL-11 | P2 | exact 预合并 key | 标点空白归一 | `normalizePainPoint.test.js` |
+
+#### 5.4.6 洞察快照重建 Job（TAG-IR）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-IR-01 | P0 | 服务端异步重建 | 入队 → running → succeeded；快照 status=ready | `server/insightRebuildJob.test.js` |
+| TAG-IR-02 | P0 | 同周期去重 | active job 存在时不重复入队 | `server/insightRebuildJob.test.js` |
+| TAG-IR-03 | P1 | 前端重建路径 | `InsightsContext` 优先 `startInsightRebuild` + 轮询 | 代码审查；手工工作台「生成/刷新洞察」 |
+| TAG-IR-04 | P1 | 导入后入队 | `rebuildSnapshotsForImportMonth` 触发 Job | 手工导入后观察 Network |
 
 ### 5.5 快照与洞察（INS / SNP）
 
@@ -201,6 +212,7 @@
 |----|--------|------|------|------|--------|
 | SNP-01 | P1 | 来源快照构建 | 有记录 + 周期 | snapshot id 符合约定 | buildSourceSnapshot |
 | SNP-02 | P1 | 概览结论 | 有快照数据 | 结论结构合法 | buildOverviewConclusions |
+| SNP-03 | P1 | 服务端 Job 重建 | POST insight-rebuild | 周期快照 ready；概览含 pain_cluster_v2 | TAG-IR-01 + 手工 |
 | INS-01 | P0 | 周期条数一致 | 洞察分析页 | 侧栏/标题/描述三处 count 相同 | E2E-01 |
 | INS-02 | P1 | 投诉原因统计 | 列表有终判字段 | 统计按 `complaintCauseL1Final` | 手工 |
 | INS-03 | P2 | 报告导出 | 导出 PDF/对比 | 不崩溃 | quoteComparison 等 |
@@ -339,6 +351,9 @@ npm run test:e2e
 | `src/lib/ticketAnalysis/v2TicketExamples.test.js` | TAG-CR / TAG-PP（§1.4/§2.4 golden） |
 | `src/lib/painPointClustering/*.test.js` | TAG-CL-01~11（聚类、行动建议、normalize） |
 | `src/snapshots/painPointClusteringIntegration.test.js` | TAG-CL-09 快照集成 |
-| `src/snapshots/insightClusterStability.test.js` | TAG-CL-08 聚类稳定性 |
+| `src/lib/painPointClustering/clusteringTop10Golden.test.js` | TAG-CL-12 M2-4 Top10 Kendall τ |
+| `src/lib/painPointClustering/kendallTau.test.js` | Kendall τ 工具 |
+| `server/insightRebuildJob.test.js` | TAG-IR 服务端快照重建 Job |
+| `src/domain/insightRebuildJob.test.js` | Job 领域模型 |
 
-**当前基线（2026-06-02）**：`npm test` → 697 passed，14 skipped（3 文件需 SQLite）。
+**当前基线（2026-06-03）**：`npm test` → 722 passed，14 skipped（3 文件需 SQLite；`storage.permissions` bootstrap 测 1 known flake）。

@@ -32,10 +32,15 @@ export function primaryGroupKey(product, dataSourceType, journeyL1) {
 }
 
 /**
+ * @typedef {{ useNaiveHierarchical?: boolean; minSharedTokens?: number }} ClusteringPipelineOptions
+ */
+
+/**
  * @param {import('../types.js').FeedbackRecord[]} records
  * @param {string} product
+ * @param {ClusteringPipelineOptions} [pipelineOptions]
  */
-export function runPrimaryClustering(records, product) {
+export function runPrimaryClustering(records, product, pipelineOptions = {}) {
   /** @type {PrimaryPainCluster[]} */
   const primaryClusters = []
   /** @type {import('../types.js').FeedbackRecord[]} */
@@ -72,6 +77,7 @@ export function runPrimaryClustering(records, product) {
       getRecordPainPoint,
       PRIMARY_CLUSTER_THRESHOLD,
       PRIMARY_MIN_CLUSTER_SIZE,
+      pipelineOptions,
     )
     isolatedRecords.push(...isolated)
 

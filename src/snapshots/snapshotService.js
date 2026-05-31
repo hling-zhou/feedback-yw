@@ -155,6 +155,37 @@ export async function rebuildOverviewSnapshot({
 }
 
 /**
+ * 将周期内快照标记为 rebuilding（服务端 Job 开始前）
+ * @param {import('../storage/adapter.js').StorageAdapter} adapter
+ * @param {string} insightPeriodId
+ */
+export async function markPeriodSnapshotsRebuilding(adapter, insightPeriodId) {
+  const { sourceSnapshots, overviewSnapshot } = await loadSnapshotsForPeriod(
+    adapter,
+    insightPeriodId,
+  )
+  for (const type of DATA_SOURCE_TYPES) {
+    const snap = sourceSnapshots[type]
+    if (snap) {
+      await adapter.putSnapshot({ ...snap, status: 'rebuilding' })
+    } else {
+      await adapter.putSnapshot({
+        ...buildSourceSnapshot({
+          insightPeriodId,
+          dataSourceType: type,
+          records: [],
+          status: 'stale',
+        }),
+        status: 'rebuilding',
+      })
+    }
+  }
+  if (overviewSnapshot) {
+    await adapter.putSnapshot({ ...overviewSnapshot, status: 'rebuilding' })
+  }
+}
+
+/**
  * @param {StorageAdapter} adapter
  * @param {string} insightPeriodId
  */

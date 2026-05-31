@@ -1,6 +1,11 @@
 import { apiFetch } from '../lib/apiClient.js'
 import { resolveInsightPeriod } from '../domain/insightPeriod.js'
 import { chunkRecordsForUpload } from '../lib/recordUploadChunks.js'
+import {
+  fetchInsightRebuildJob,
+  startInsightRebuild,
+  waitForInsightRebuild,
+} from '../lib/insightRebuildClient.js'
 
 /**
  * @typedef {Object} PutRecordsOptions
@@ -236,6 +241,18 @@ export function createApiStorageAdapter() {
         method: 'PUT',
         body: JSON.stringify({ candidates }),
       })
+    },
+
+    async startInsightRebuild(insightPeriodId) {
+      return startInsightRebuild(insightPeriodId)
+    },
+
+    async getInsightRebuildJob(jobId) {
+      return fetchInsightRebuildJob(jobId)
+    },
+
+    async waitForInsightRebuild(jobId, onProgress) {
+      return waitForInsightRebuild(jobId, { onProgress })
     },
   }
 }

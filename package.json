@@ -14,7 +14,8 @@
     "clear:imported": "node scripts/clear-imported-data.mjs",
     "generate:taxonomy-xlsx": "node scripts/generate-taxonomy-xlsx.mjs",
     "generate:product-catalog-xlsx": "node scripts/generate-product-catalog-xlsx.mjs",
-    "benchmark:clustering": "node scripts/benchmark-clustering.mjs"
+    "benchmark:clustering": "node scripts/benchmark-clustering.mjs",
+    "generate:clustering-golden": "node scripts/generate-clustering-top10-golden.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.3",

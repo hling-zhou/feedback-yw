@@ -20,8 +20,9 @@ import { buildFinalClusterLabel } from './clusterLabel.js'
 /**
  * @param {PrimaryPainCluster[]} retainedPrimary
  * @param {string} product
+ * @param {import('./primaryCluster.js').ClusteringPipelineOptions} [pipelineOptions]
  */
-export function runSecondaryClustering(retainedPrimary, product) {
+export function runSecondaryClustering(retainedPrimary, product, pipelineOptions = {}) {
   if (!retainedPrimary.length) {
     return /** @type {FinalPainCluster[]} */ ([])
   }
@@ -31,6 +32,7 @@ export function runSecondaryClustering(retainedPrimary, product) {
     (c) => c.representativePainPoint || c.label,
     SECONDARY_CLUSTER_THRESHOLD,
     1,
+    pipelineOptions,
   )
 
   /** @type {FinalPainCluster[]} */

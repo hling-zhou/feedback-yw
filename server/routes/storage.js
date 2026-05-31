@@ -10,6 +10,11 @@ import { logAuditFromRequest } from '../audit.js'
 import { scheduleConfigAutoPublish } from '../autoPublishConfig.js'
 import { getTaxonomyPublishStatus, publishTaxonomyToFiles } from '../taxonomyPublish.js'
 import { readTaxonomyManagedMetaHydrated } from '../taxonomyMetaHygiene.js'
+import {
+  enqueueInsightRebuild,
+  getInsightRebuildJob,
+  listInsightRebuildJobs as listInsightRebuildJobsForPeriod,
+} from '../insightRebuildJob.js'
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertWritePermission(request, reply, permissions) {
@@ -274,6 +279,52 @@ export function registerStorageRoutes(app) {
     storageRepository.putSnapshot(body.snapshot)
     return { ok: true }
   })
+
+  app.post('/api/storage/insight-rebuild', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    const body = /** @type {{ insightPeriodId?: string }} */ (request.body || {})
+    const insightPeriodId = body.insightPeriodId?.trim()
+    if (!insightPeriodId) {
+      reply.code(400).send({ error: '缺少 insightPeriodId' })
+      return
+    }
+    try {
+      const result = await enqueueInsightRebuild(insightPeriodId, request.user?.username)
+      logAuditFromRequest(request, 'storage.insight_rebuild_enqueue', {
+        jobId: result.job.id,
+        insightPeriodId,
+        started: result.started,
+      })
+      return result
+    } catch (err) {
+      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  app.get('/api/storage/insight-rebuild', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const q = /** @type {{ insightPeriodId?: string; limit?: string }} */ (request.query || {})
+    const insightPeriodId = q.insightPeriodId?.trim()
+    if (!insightPeriodId) {
+      reply.code(400).send({ error: '缺少 insightPeriodId' })
+      return
+    }
+    const limit = Math.min(20, Math.max(1, Number(q.limit) || 5))
+    return { jobs: listInsightRebuildJobsForPeriod(insightPeriodId, limit) }
+  })
+
+  app.get(
+    '/api/storage/insight-rebuild/:id',
+    { preHandler: requirePermission('view') },
+    async (request, reply) => {
+      const { id } = /** @type {{ id: string }} */ (request.params)
+      const job = getInsightRebuildJob(decodeURIComponent(id))
+      if (!job) {
+        reply.code(404).send({ error: '重建任务不存在' })
+        return
+      }
+      return { job }
+    },
+  )
 
   app.get(
     '/api/storage/meta/:key',

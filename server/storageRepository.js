@@ -220,6 +220,7 @@ export const storageRepository = {
         DELETE FROM records;
         DELETE FROM snapshots;
         DELETE FROM analysis_runs;
+        DELETE FROM insight_rebuild_jobs;
         DELETE FROM artifacts;
         DELETE FROM tag_candidates WHERE status = 'pending';
       `)
@@ -337,6 +338,80 @@ export const storageRepository = {
       runs = runs.filter((r) => r.dataSourceType === dataSourceType)
     }
     return runs
+  },
+
+  putInsightRebuildJob(job) {
+    const db = getDb()
+    db.prepare(
+      `INSERT OR REPLACE INTO insight_rebuild_jobs (id, insight_period_id, idempotency_key, status, payload)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      job.id,
+      job.insightPeriodId,
+      job.idempotencyKey ?? null,
+      job.status,
+      stringifyJson(job),
+    )
+  },
+
+  getInsightRebuildJob(id) {
+    const row = getDb().prepare('SELECT payload FROM insight_rebuild_jobs WHERE id = ?').get(id)
+    return row ? parseJson(row.payload) : null
+  },
+
+  findActiveInsightRebuildJob(insightPeriodId) {
+    const rows = getDb()
+      .prepare(
+        `SELECT payload FROM insight_rebuild_jobs
+         WHERE insight_period_id = ?
+         AND status IN ('queued', 'running')`,
+      )
+      .all(insightPeriodId)
+    /** @type {import('../src/domain/insightRebuildJob.js').InsightRebuildJob | null} */
+    let latest = null
+    for (const row of rows) {
+      const job = parseJson(row.payload)
+      if (!job || (job.status !== 'queued' && job.status !== 'running')) continue
+      if (!latest || String(job.createdAt || '') > String(latest.createdAt || '')) {
+        latest = job
+      }
+    }
+    return latest
+  },
+
+  listInsightRebuildJobs(insightPeriodId, limit = 10) {
+    const rows = getDb()
+      .prepare(
+        `SELECT payload FROM insight_rebuild_jobs
+         WHERE insight_period_id = ?
+         ORDER BY json_extract(payload, '$.createdAt') DESC
+         LIMIT ?`,
+      )
+      .all(insightPeriodId, limit)
+    return rows.map((r) => parseJson(r.payload))
+  },
+
+  recoverOrphanedInsightRebuildJobs() {
+    const db = getDb()
+    const rows = db
+      .prepare(`SELECT id, payload FROM insight_rebuild_jobs WHERE status IN ('queued', 'running')`)
+      .all()
+    const now = new Date().toISOString()
+    for (const row of rows) {
+      const job = parseJson(row.payload)
+      if (!job) continue
+      const recovered = {
+        ...job,
+        status: 'failed',
+        errorSummary: '服务重启，任务已中断',
+        finishedAt: now,
+        progress: { ...job.progress, stage: null },
+      }
+      db.prepare(
+        `UPDATE insight_rebuild_jobs SET status = ?, payload = ? WHERE id = ?`,
+      ).run('failed', stringifyJson(recovered), row.id)
+    }
+    return rows.length
   },
 
   putArtifact(artifact, debug = false) {
