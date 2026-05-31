@@ -367,8 +367,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
 
         <Card
           title={
-            <span className="inline-flex items-center gap-2">
-              客户请求内容
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="shrink-0">客户请求内容</span>
+              <Typography.Text type="secondary" className="text-xs font-normal">
+                工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
+              </Typography.Text>
               <CustomerRequestSourceTag record={feedback} />
             </span>
           }
@@ -377,15 +380,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
             {getDisplayCustomerRequest(feedback) || '—'}
           </Typography.Paragraph>
-          <Typography.Text type="secondary" className="mt-2 block text-xs">
-            工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
-          </Typography.Text>
         </Card>
 
         <Card
           title={
-            <span className="inline-flex items-center gap-2">
-              需求痛点挖掘
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="shrink-0">需求痛点挖掘</span>
+              <Typography.Text type="secondary" className="text-xs font-normal">
+                从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
+              </Typography.Text>
               <PainPointSourceTag record={feedback} />
             </span>
           }
@@ -394,9 +397,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
             {getDisplayPainPoint(feedback) || '—'}
           </Typography.Paragraph>
-          <Typography.Text type="secondary" className="mt-2 block text-xs">
-            从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
-          </Typography.Text>
         </Card>
 
         <Card
