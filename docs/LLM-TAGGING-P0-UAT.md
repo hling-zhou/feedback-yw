@@ -1,7 +1,7 @@
 # LLM 打标 P0 — 发布 / UAT 检查清单
 
 **版本**：2026-06-02  
-**适用版本**：commit `522b4bf` 及之后（含 Phase A~E）  
+**适用版本**：commit `693e667` 及之后（含 Phase A~E、Post-LLM 重打、V2 golden）  
 **关联**：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md)、[TEST-PLAN.md](./TEST-PLAN.md)、[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md)
 
 ---
@@ -14,7 +14,7 @@
 |---|-----|-------------|------|
 | 1.1 | 全量单元测试 | `npm test` | ☐ |
 | 1.2 | 前端构建 | `npm run build` | ☐ |
-| 1.3 | P0 LLM 专项 | `npm test -- src/lib/ticketAnalysis/ticketLlmGolden.test.js src/lib/journeyMatchConfidence.test.js src/lib/applyThemes.test.js src/lib/importEnrichment.test.js` | ☐ |
+| 1.3 | P0 LLM 专项 | `npm test -- src/lib/ticketAnalysis/ticketLlmGolden.test.js src/lib/ticketAnalysis/v2TicketExamples.test.js src/lib/journeyMatchConfidence.test.js src/lib/applyThemes.test.js src/lib/importEnrichment.test.js` | ☐ |
 | 1.4 | Token 预算模型 | `node scripts/benchmark-ticket-llm.mjs 500` → 降幅 ≥40% | ☐ |
 | 1.5 | E2E 冒烟（可选） | `npm run test:e2e` | ☐ |
 

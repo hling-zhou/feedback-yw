@@ -37,7 +37,7 @@ export function runSecondaryClustering(retainedPrimary, product) {
   const finalClusters = []
 
   clusters.forEach((primaryGroup, index) => {
-    const recordIds = [...new Set(primaryGroup.flatMap((p) => p.recordIds))]
+    const recordIds = [...new Set(primaryGroup.flatMap((p) => p.recordIds))].sort()
     const representativePainPoint =
       primaryGroup
         .slice()

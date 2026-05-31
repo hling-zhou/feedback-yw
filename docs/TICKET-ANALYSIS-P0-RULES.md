@@ -271,6 +271,7 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | `ticketAnalysis.test.js` | `analyzeTicket (P0 rules)` 端到端 |
 | `requestSceneClassifier.test.js` | V2.0 §4 golden 10 条 + 默认类 / 互斥边界 |
 | `dimensionTagging.test.js` | 请求场景决策树 + 投诉工单不调 LLM + Post-LLM 重打 |
+| `v2TicketExamples.test.js` | V2 §1.4 客户请求 + §2.4 痛点 golden（TAG-CR / TAG-PP） |
 | `validateTicketAnalysisPair.test.js` | 空值 fallback、引导语拒绝、总长压缩 |
 
 ```bash
@@ -280,6 +281,7 @@ npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
 npm test -- --run src/lib/requestSceneClassifier.test.js
 npm test -- --run src/lib/dimensionTagging.test.js
 npm test -- --run src/lib/ticketAnalysis/dimensionTaggingText.test.js
+npm test -- --run src/lib/ticketAnalysis/v2TicketExamples.test.js
 ```
 
 ---
@@ -287,7 +289,7 @@ npm test -- --run src/lib/ticketAnalysis/dimensionTaggingText.test.js
 ## 9. 已知限制与后续
 
 - 规则层不产出 V2 §1.4 式精炼摘要，需配置 LLM API Key。  
-- V2 全部示例尚未做成独立回归夹具（`fixtures/v2-ticket-examples.json` 待补）。  
+- V2 §1.4 / §2.4 示例已纳入 `fixtures/v2TicketExamples.js`（规则层关键词 + LLM golden Jaccard）；规则层痛点仍为片段/截断，精炼摘要依赖 LLM。  
 - 「客户提供了 MTR 结果则保留结果描述」暂未单独实现，依赖句内删除 + 候选保留逻辑。  
 - **Post-LLM 维度重打**（默认开）：仅当 `customerRequestSource='llm'` 或 `painPointSource='llm'` 时，按 LLM 语料重打请求场景/问题类型；可在设置或批量重打弹窗关闭。单条 `analyzeTicketAsync` 路径仍只做规则初标 + ticket LLM，不自动重打（需批量重打或重新导入增强段）。  
 - 历史 V1 请求场景标签需 **批量重新打标**（建议含 ticket LLM）后才会刷新为 V2 决策树结果。

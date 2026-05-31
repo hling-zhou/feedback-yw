@@ -1,6 +1,6 @@
 # Feedback Insights 系统测试计划
 
-**版本**：2026-06-02（增补条件清空回归）
+**版本**：2026-06-02（增补 V2 golden TAG-CR/PP、痛点聚类 TAG-CL）
 **适用分支**：当前 `main` / 工作区  
 **关联**：清空数据加固、投诉终判导入、共享 SQLite 存储
 
@@ -10,7 +10,7 @@
 
 | 目标 | 说明 |
 |------|------|
-| 回归保护 | 确认 379+ 单元测试通过，构建无报错 |
+| 回归保护 | 确认 697+ 单元测试通过，构建无报错 |
 | 核心业务 | 导入 → 周期筛选 → 洞察/打标 → 快照 → 报告链路可用 |
 | 高风险项 | **清空数据**（选定范围 vs 全部）不误删；权限与审计正确 |
 | 数据口径 | 列表/统计按 `importMonth` 与洞察周期一致；投诉终判字段入库完整 |
@@ -24,7 +24,9 @@
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
 - **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
-- **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；技术说明 [TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化见 §5.4.2 TAG-RS、§5.4.3 TAG-RT
+- **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化 §5.4.2 TAG-RS、§5.4.3 TAG-RT
+- **客户请求 / 痛点 V2 golden**（2026-06-02）：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) §1.4/§2.4；夹具 `fixtures/v2TicketExamples.js`；自动化 §5.4.4 TAG-CR/TAG-PP
+- **痛点聚类 & 行动建议 Phase 1**（V2.0）：[`docs/PAIN-POINT-CLUSTERING.md`](./PAIN-POINT-CLUSTERING.md)；自动化 §5.4.5 TAG-CL
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -71,7 +73,7 @@
 
 | 层级 | 工具 | 命令 | 自动化 |
 |------|------|------|--------|
-| L1 单元 | Vitest | `npm test` | 是（84 文件，约 393 case） |
+| L1 单元 | Vitest | `npm test` | 是（119 文件，约 697 case） |
 | L2 集成冒烟 | Vitest `src/test/smoke.integration.test.js` | 含在 `npm test` | 是 |
 | L3 API/权限 | Vitest `server/routes/storage.permissions.test.js` 等 | 需 SQLite 可用 | 部分 skip |
 | L4 构建 | Vite | `npm run build` | 是 |
@@ -167,6 +169,31 @@
 | TAG-RT-03 | P0 | §3 对端排除 | 全文含协办诊断 → 问题类型 `产品功能咨询` | `dimensionTagging.test.js` |
 | TAG-RT-04 | P1 | 关闭重打 | `retagDimensionsAfterTicketLlm=false` 跳过重打 | `applyThemes.test.js` O-06 |
 | TAG-RT-05 | P1 | 设置与批量重打 | 团队设置 + 弹窗单次覆盖 | 手工：设置 → 维度打标；反馈库批量重打弹窗 |
+
+#### 5.4.4 客户请求 / 痛点 V2 golden（TAG-CR / TAG-PP）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-CR-01 | P0 | §1.4 共 11 条 | 规则层：关键词 + ≤120 字；LLM mock：Jaccard ≥0.85 | `v2TicketExamples.test.js` |
+| TAG-CR-02 | P0 | validateTicketAnalysisPair | LLM golden 客户请求校验通过 | `v2TicketExamples.test.js` |
+| TAG-PP-01 | P0 | §2.4 共 10 条 | 规则层：关键词 + ≤80 字、无引导语；LLM mock：Jaccard ≥0.85 | `v2TicketExamples.test.js` |
+| TAG-PP-02 | P0 | validateTicketAnalysisPair | LLM golden 痛点校验通过 | `v2TicketExamples.test.js` |
+
+#### 5.4.5 痛点聚类 Phase 1（TAG-CL）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-CL-01 | P0 | 一次聚类分组 + Jaccard | 产品×来源×L1；簇≥2；孤立点 | `painPointClustering.test.js` |
+| TAG-CL-02 | P0 | 低价值剔除 | `配额与权限申请`/`其他` 不进二次聚类 | `painPointClustering.test.js` |
+| TAG-CL-03 | P0 | 二次聚类 + recordIds 去重 | 跨 L1/来源合并；ID 去重 | `painPointClustering.test.js` |
+| TAG-CL-04 | P0 | Top10 评分 | 广度+危害度公式、并列排序、截断 | `painPointClustering.test.js` |
+| TAG-CL-05 | P0 | §8 行动建议 | harmScore/customerTier/分布行 | `buildClusterActionRecommendations.test.js` |
+| TAG-CL-06 | P0 | 来源快照 + 旅程 Tab | 读快照 L2 子集；无快照频次回退 | `painPointClustering.test.js` L0-1 |
+| TAG-CL-07 | P1 | 概览重算 / legacy 回退 | V2 引擎 + legacyFallback | `rehydrateOverviewRecommendations.test.js` |
+| TAG-CL-08 | P1 | 聚类稳定性 | mock 前后簇数变化 <10% | `insightClusterStability.test.js` |
+| TAG-CL-09 | P1 | 快照集成 | `painPointClustering` 写入来源快照 | `painPointClusteringIntegration.test.js` |
+| TAG-CL-10 | P2 | 空痛点跳过 / L1 回退 / label 辅助 | P2 区块 | `painPointClustering.test.js` |
+| TAG-CL-11 | P2 | exact 预合并 key | 标点空白归一 | `normalizePainPoint.test.js` |
 
 ### 5.5 快照与洞察（INS / SNP）
 
@@ -309,5 +336,9 @@ npm run test:e2e
 | `e2e/smoke.spec.js` | E2E-01 / INS-01 |
 | `src/domain/complaintCause.test.js` | 终判字段解析 |
 | `src/lib/recordFactory.test.js` | 入库字段复制 |
+| `src/lib/ticketAnalysis/v2TicketExamples.test.js` | TAG-CR / TAG-PP（§1.4/§2.4 golden） |
+| `src/lib/painPointClustering/*.test.js` | TAG-CL-01~11（聚类、行动建议、normalize） |
+| `src/snapshots/painPointClusteringIntegration.test.js` | TAG-CL-09 快照集成 |
+| `src/snapshots/insightClusterStability.test.js` | TAG-CL-08 聚类稳定性 |
 
-**当前基线（2026-05-25）**：`npm test` → 379 passed，14 skipped（3 文件需 SQLite）。
+**当前基线（2026-06-02）**：`npm test` → 697 passed，14 skipped（3 文件需 SQLite）。

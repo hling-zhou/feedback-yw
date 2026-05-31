@@ -524,7 +524,7 @@ describe('P0: runSecondaryClustering 边界', () => {
       { id: 'p2', product: 'P', dataSourceType: 'consultation_ticket', journeyL1: 'L2', label: 'L2', representativePainPoint: pain + '问题', problemType: '性能问题', recordIds: ['r2', 'r3', 'r4'], ticketCount: 3 },
     ]
     const finals = runSecondaryClustering(primary, 'P')
-    expect(finals[0].recordIds).toEqual(['r1', 'r2', 'r3', 'r4'])
+    expect([...finals[0].recordIds].sort()).toEqual(['r1', 'r2', 'r3', 'r4'])
     expect(finals[0].ticketCount).toBe(4)
   })
 
@@ -689,7 +689,8 @@ describe('P2: primaryCluster 空值与缺失回退', () => {
     ]
     const { primaryClusters, isolatedRecords } = runPrimaryClustering(records, product)
     const totalInClusters = primaryClusters.reduce((sum, c) => sum + c.ticketCount, 0)
-    expect(totalInClusters + isolatedRecords.length).toBeLessThanOrEqual(2)
+    expect(totalInClusters).toBe(2)
+    expect(isolatedRecords).toHaveLength(0)
   })
 
   it('journeyL1 缺失 → 回退为「未识别环节」', () => {

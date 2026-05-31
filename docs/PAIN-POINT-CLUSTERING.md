@@ -62,5 +62,7 @@
 ## 测试
 
 ```bash
-npm test -- src/lib/painPointClustering src/snapshots/rehydrateOverviewRecommendations.test.js src/snapshots/painPointClusteringIntegration.test.js src/snapshots/buildOverviewConclusions.test.js
+npm test -- --run src/lib/painPointClustering src/snapshots/rehydrateOverviewRecommendations.test.js src/snapshots/painPointClusteringIntegration.test.js src/snapshots/insightClusterStability.test.js src/snapshots/buildOverviewConclusions.test.js
 ```
+
+用例索引见 [TEST-PLAN.md](./TEST-PLAN.md) §5.4.5 **TAG-CL**（约 70+ 自动化用例）。
