@@ -1,7 +1,7 @@
 # LLM 打标 P0 优化 — 改造设计
 
 **版本**：2026-06-02  
-**状态**：Phase A~D（P0-1~P0-4）已实现 — unified ticket LLM + 旅程门控 + 流水线重排 + 补打扩展  
+**状态**：Phase A~E（P0 全项）已实现 — unified ticket LLM + 旅程门控 + 流水线重排 + 补打 + 离线验收  
 **目标**：全量 ~1400 条场景 token 降 **40~60%**；消除「ticket LLM 失败、旅程 token 白打」  
 **关联**：[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md)、[TEST-PLAN.md](./TEST-PLAN.md)
 
