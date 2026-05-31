@@ -44,21 +44,53 @@ export async function enrichRecordsWithThemes(records, _settings, onProgress) {
 /**
  * @param {import('./types.js').FeedbackRecord[]} records
  * @param {import('./storage.js').AppSettings} settings
- * @param {(done: number, total: number) => void} [onProgress]
+ * @param {(done: number, total: number, stage?: string) => void} [onProgress]
+ * @param {{ forceOverrideManualTags?: boolean; onTicketLlmBatchPersist?: (records: import('./types.js').FeedbackRecord[]) => Promise<void> | void; ticketLlmOnly?: boolean }} [options]
  */
 export async function reprocessAllThemesAndSentiment(records, settings, onProgress, options = {}) {
   const total = records.length
   const llmSettings = await resolveSettingsForLlm(settings)
+
+  if (options.ticketLlmOnly) {
+    let enriched = records
+    if (canUseSemanticMatch(llmSettings)) {
+      enriched = await enrichRecordsWithTicketLlm(
+        enriched,
+        llmSettings,
+        (done) => {
+          onProgress?.(done, total, '客户请求/痛点/优化建议')
+        },
+        { onBatchPersist: options.onTicketLlmBatchPersist },
+      )
+    }
+    const originalById = new Map(records.map((r) => [r.id, r]))
+    return enriched.map((r, i) => {
+      onProgress?.(i + 1, total, '用户情绪')
+      const original = originalById.get(r.id) ?? r
+      const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r))
+      const next = {
+        ...r,
+        themes: themesFromJourney(r),
+        sentiment,
+        urgencyLevel,
+        customerQuote: r.customerRequest?.trim() || r.customerQuote || '',
+      }
+      return preserveManualTags(original, next, {
+        forceOverride: options.forceOverrideManualTags === true,
+      })
+    })
+  }
+
   const needsJourneyLlm =
     recordsNeedJourneyLlmProposal(records) || records.some(recordHasUnknownJourney)
 
   let enriched = records
   enriched = await enrichRecordsWithSharedDimensions(enriched, llmSettings, (done) => {
-    onProgress?.(Math.floor(done * 0.35), total)
+    onProgress?.(done, total, '请求场景与问题类型')
   })
   if (canUseSemanticMatch(llmSettings)) {
     enriched = await enrichRecordsWithJourneys(enriched, llmSettings, (done) => {
-      onProgress?.(Math.floor(total * 0.35 + done * 0.55), total)
+      onProgress?.(done, total, '用户旅程')
     })
   } else if (needsJourneyLlm) {
     console.warn(
@@ -67,15 +99,20 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
   }
 
   if (canUseSemanticMatch(llmSettings)) {
-    enriched = await enrichRecordsWithTicketLlm(enriched, llmSettings, (done) => {
-      onProgress?.(Math.floor(total * 0.9 + done * 0.08), total)
-    })
+    enriched = await enrichRecordsWithTicketLlm(
+      enriched,
+      llmSettings,
+      (done) => {
+        onProgress?.(done, total, '客户请求/痛点/优化建议')
+      },
+      { onBatchPersist: options.onTicketLlmBatchPersist },
+    )
   }
 
   const originalById = new Map(records.map((r) => [r.id, r]))
 
   return enriched.map((r, i) => {
-    onProgress?.(i + 1, total)
+    onProgress?.(i + 1, total, '用户情绪')
     const original = originalById.get(r.id) ?? r
     const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r))
     const next = {

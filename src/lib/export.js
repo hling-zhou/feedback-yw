@@ -2,6 +2,7 @@ import Papa from 'papaparse'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
 import {
   getOptimizationSourceLabel,
+  getCustomerRequestSource,
   getPainPointSource,
   getTicketAnalysisSourceLabel,
 } from './ticketAnalysis/ticketAnalysisSources.js'
@@ -37,6 +38,7 @@ export function exportToCsv(records) {
     '优化方案（人工复核）': r.manualReviewSolution || '',
     人工复核举措: r.manualReviewAction || '',
     客户请求: r.customerRequest || '',
+    客户请求来源: getTicketAnalysisSourceLabel(getCustomerRequestSource(r)),
     需求痛点: r.painPoint || r.problemSummary || '',
     优化建议来源: getOptimizationSourceLabel(
       r.manualReviewOptimization?.trim() ? 'manual' : r.optimizationSource === 'llm' ? 'llm' : 'rule',

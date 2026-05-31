@@ -1640,6 +1640,7 @@ export function InsightsProvider({ children }) {
       const total = list.length
       const beforeUnknown = listUnknownJourneyRecords(list).length
       const progress = (text) => reportProgress?.(text)
+      const ticketLlmOnly = scope === 'needs_ticket_llm'
 
       progress('正在加载配置…')
       await reloadAllConfigs()
@@ -1649,27 +1650,63 @@ export function InsightsProvider({ children }) {
         ...(await resolveSettingsForLlm(settings)),
       })
 
-      /** @type {import('../lib/types.js').FeedbackRecord[]} */
-      const retagged = []
-      const batchSize = 50
-      for (let i = 0; i < list.length; i += batchSize) {
-        const chunk = list.slice(i, i + batchSize)
-        for (const fb of chunk) {
-          retagged.push(
-            reprocessFeedbackRecord(fb, llmSettings, {
-              forceOverrideManualTags: options.forceOverrideManualTags === true,
-            }),
-          )
-        }
-        progress(`正在规则初标 (${Math.min(i + batchSize, total)}/${total})…`)
-        await new Promise((resolve) => setTimeout(resolve, 0))
+      /** @param {import('../lib/types.js').FeedbackRecord[]} chunk */
+      const mergePersistedChunk = (chunk) => {
+        const byId = new Map(chunk.map((record) => [record.id, record]))
+        const mergedAll = feedbacksRef.current.map((fb) => byId.get(fb.id) ?? fb)
+        feedbacksRef.current = mergedAll
+        setFeedbacks(mergedAll)
       }
 
-      const updatedSubset = await reprocessAllThemesAndSentiment(retagged, llmSettings, (done, t) => {
-        progress(`正在增强打标 (${done}/${t})…`)
-      }, {
-        forceOverrideManualTags: options.forceOverrideManualTags === true,
-      })
+      /** @param {import('../lib/types.js').FeedbackRecord[]} chunk */
+      const persistChunkIncremental = async (chunk) => {
+        if (!storageReady || !chunk.length) return
+        skipPersistRef.current = true
+        try {
+          await persistRecordUpdates(adapter, chunk)
+          mergePersistedChunk(chunk)
+          if (typeof adapter.getDataRevision === 'function') {
+            const rev = await adapter.getDataRevision()
+            dataRevisionRef.current = rev.revision
+          }
+        } finally {
+          skipPersistRef.current = false
+        }
+      }
+
+      /** @type {import('../lib/types.js').FeedbackRecord[]} */
+      let retagged
+      if (ticketLlmOnly) {
+        retagged = [...list]
+      } else {
+        retagged = []
+        const batchSize = 50
+        for (let i = 0; i < list.length; i += batchSize) {
+          const chunk = list.slice(i, i + batchSize)
+          for (const fb of chunk) {
+            retagged.push(
+              reprocessFeedbackRecord(fb, llmSettings, {
+                forceOverrideManualTags: options.forceOverrideManualTags === true,
+              }),
+            )
+          }
+          progress(`正在规则初标 (${Math.min(i + batchSize, total)}/${total})…`)
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+      }
+
+      const updatedSubset = await reprocessAllThemesAndSentiment(
+        retagged,
+        llmSettings,
+        (done, t, stage) => {
+          progress(`正在${stage || '增强打标'} (${done}/${t})…`)
+        },
+        {
+          forceOverrideManualTags: options.forceOverrideManualTags === true,
+          ticketLlmOnly,
+          onTicketLlmBatchPersist: persistChunkIncremental,
+        },
+      )
 
       const byId = new Map(updatedSubset.map((record) => [record.id, record]))
       const mergedAll = feedbacksRef.current.map((fb) => byId.get(fb.id) ?? fb)

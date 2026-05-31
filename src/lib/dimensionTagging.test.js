@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   matchSharedLabel,
   matchProblemTypesForRecords,
+  matchRequestScenesForRecords,
   resolveProblemTypeFromConfig,
 } from './dimensionTagging.js'
 import { REQUEST_SCENES_BUILTIN, PROBLEM_TYPES_BUILTIN } from './sharedTagDefs.js'
@@ -85,5 +86,44 @@ describe('dimensionTagging', () => {
     )
     expect(results[0].label).toBe('其他')
     expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
+  })
+
+  it('matchRequestScenesForRecords skips LLM for complaint tickets', async () => {
+    const { matchSharedDimensionLlmBatch } = await import('./themeSemantic.js')
+    const records = [
+      {
+        id: '1',
+        dataSourceType: 'complaint_ticket',
+        requestScene: '表格里的初判场景',
+        rawText: '无关键词可匹配的受理说明',
+        handlingText: '无关键词可匹配的处理意见',
+      },
+    ]
+    const results = await matchRequestScenesForRecords(
+      records,
+      ['无关键词可匹配的处理意见'],
+      REQUEST_SCENES_BUILTIN,
+      { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
+    )
+    expect(results[0].label).toBe('未分类')
+    expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
+  })
+
+  it('matchRequestScenesForRecords matches by keywords for complaint tickets', async () => {
+    const records = [
+      {
+        id: '1',
+        dataSourceType: 'complaint_ticket',
+        rawText: '客户报障公网IP无法访问需要排查',
+        handlingText: '客户报障公网IP无法访问需要排查',
+      },
+    ]
+    const results = await matchRequestScenesForRecords(
+      records,
+      ['客户报障公网IP无法访问需要排查'],
+      REQUEST_SCENES_BUILTIN,
+      { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
+    )
+    expect(results[0].label).toBe('报障与恢复')
   })
 })

@@ -1,6 +1,6 @@
 # 工单分析 P0 规则层技术说明
 
-**版本**：2026-06-01  
+**版本**：2026-06-01（2026-06-02 增补 LLM 来源追踪与批量打标持久化）
 **关联业务规范**：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md)（V2）  
 **适用范围**：单条工单分析中，**无大模型 API Key** 时的最终输出，以及 **有 Key 时 LLM 层的候选收集与 fallback**。
 
@@ -175,8 +175,31 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | 无 API Key | 直接写入 record | `customerRequestSource='rule'`，`painPointSource='rule'` |
 | 有 API Key | 候选 + `ruleFallback` 传入 LLM | LLM 成功则 `llm`，失败回退 P0 |
 | 四维打标 | 始终用 **规则版** `customerRequest` | LLM 摘要不改变打标输入 |
+| **请求场景** | 始终本地规则（标签库关键词/说明） | **不走 LLM**；与投诉/咨询工单的问题类型一致 |
+| **问题类型**（投诉/咨询） | 决策树 + 关键词 | **不走 LLM** |
+| **用户旅程** | 本地 + 可选 LLM（`themeMatchMode`） | 设置页「用户旅程匹配方式」 |
 
-流水线顺序（异步）：规则初标 → 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM。
+**导入 / 批量重新打标**（有 API Key）阶段顺序：
+
+1. 规则初标（`analyzeTicket`）— 重置 `*Source` 为 `rule`（「仅未完成 LLM 增强」范围 **跳过** 此步）
+2. 请求场景 / 问题类型（本地）
+3. 用户旅程（可 LLM）
+4. 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM
+5. 写库
+
+**来源字段**（用于反馈库「LLM 打标状态」筛选与导出）：
+
+- `customerRequestSource`、`painPointSource`、`optimizationSource`：`'rule' | 'llm'`
+- 「LLM 已增强」= 上述三项均为 `llm`（优化建议若有人工复核则不计入缺失）
+- 识别辅助：`recordNeedsTicketLlmEnrichment()`（`ticketAnalysisSources.js`）
+
+**批量打标持久化**（2026-06-02）：
+
+- 客户请求/痛点/优化 LLM **每 4 条一批即时 `putRecords`**，额度用尽或页面中断时，已完成批次仍保留
+- 任务结束后再全量 `persistRecordUpdates` 一次（旅程/情绪等最终态）
+- 单条重新打标仍为「每条完成即写库」
+
+单条流水线（异步）：规则初标 → 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM。
 
 ---
 
@@ -188,6 +211,9 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | `customerRequestSource` | `'rule' \| 'llm'` |
 | `painPoint` / `problemSummary` | 需求痛点（规则/LLM，≤80） |
 | `painPointSource` | `'rule' \| 'llm'` |
+| `optimizationSource` | `'rule' \| 'llm'`（有人工复核优化时 UI 显示「人工复核」） |
+
+反馈库可筛 **待 LLM 增强** / **LLM 已增强**；批量重打标可选 **仅未完成 LLM 增强的工单**（只跑步骤 4，不重跑规则初标与旅程 LLM）。
 
 ---
 

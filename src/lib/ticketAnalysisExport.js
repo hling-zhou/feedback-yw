@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
 import {
   getOptimizationSourceLabel,
+  getCustomerRequestSource,
   getPainPointSource,
   getTicketAnalysisSourceLabel,
 } from './ticketAnalysis/ticketAnalysisSources.js'
@@ -41,6 +42,7 @@ function recordToExportRow(r) {
     用户情绪: SENTIMENT_LABELS[sentimentKey] || r.sentiment || '',
     是否加急: getUrgencyLevel(r) === 'high' ? URGENCY_LABELS.high : '',
     客户请求内容: r.customerRequest || '',
+    客户请求来源: getTicketAnalysisSourceLabel(getCustomerRequestSource(r)),
     客户原话: r.customerQuote || '',
     需求痛点: r.painPoint || r.problemSummary || '',
     痛点来源: getTicketAnalysisSourceLabel(getPainPointSource(r)),

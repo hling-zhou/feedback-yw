@@ -5,6 +5,42 @@ export const TICKET_ANALYSIS_SOURCE_LABELS = {
   llm: '大模型',
 }
 
+/** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
+
+const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
+
+/**
+ * 投诉/咨询工单是否仍缺 LLM 增强（任一：客户请求 / 痛点 / 优化建议 非 llm）
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function recordNeedsTicketLlmEnrichment(record) {
+  const ds = record?.dataSourceType || 'complaint_ticket'
+  if (!TICKET_LIKE_SOURCES.includes(ds)) return false
+  if (getCustomerRequestSource(record) !== 'llm') return true
+  if (getPainPointSource(record) !== 'llm') return true
+  if (getOptimizationSource(record) === 'manual') return false
+  if (getOptimizationSource(record) !== 'llm') return true
+  return false
+}
+
+/**
+ * 投诉/咨询工单是否已完成 LLM 三件套增强
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function recordHasFullTicketLlmEnrichment(record) {
+  const ds = record?.dataSourceType || 'complaint_ticket'
+  if (!TICKET_LIKE_SOURCES.includes(ds)) return false
+  return !recordNeedsTicketLlmEnrichment(record)
+}
+
+/**
+ * @param {FeedbackRecord[]} records
+ */
+export function countRecordsNeedingTicketLlmEnrichment(records) {
+  if (!records?.length) return 0
+  return records.filter(recordNeedsTicketLlmEnrichment).length
+}
+
 /**
  * @param {TicketAnalysisFieldSource | string | undefined | null} source
  */

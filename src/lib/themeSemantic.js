@@ -94,7 +94,7 @@ export async function matchSharedDimensionHybridBatch(
     return localFromText[i]
   })
 
-  if (!canUseSemanticMatch(config) || !usesLlmThemeMatch(config)) {
+  if (!canUseSemanticMatch(config) || !usesLlmThemeMatch(config?.themeMatchMode)) {
     return local.map((label) => ({ label, overflowOrigin: null }))
   }
 

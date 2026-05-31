@@ -56,6 +56,27 @@ function resolveLocalProblemTypeLabel(record, text, rules) {
 }
 
 /**
+ * 请求场景仅 config 关键词/说明匹配（与问题类型一致，永不调 LLM）。
+ * @param {FeedbackRecord[]} records
+ * @param {string[]} texts
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ * @param {import('./storage.js').AppSettings} [_settings]
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+export async function matchRequestScenesForRecords(records, texts, rules, _settings, onProgress) {
+  void _settings
+  const themeRules = toThemeRules(rules)
+  onProgress?.(texts.length, texts.length)
+  return texts.map((text, i) => {
+    const existing = records[i]?.requestScene?.trim()
+    if (existing && existing !== UNCLASSIFIED_PROBLEM && isInThemeLibrary(existing, themeRules)) {
+      return { label: existing, overflowOrigin: null }
+    }
+    return { label: matchSharedLabel(text, rules), overflowOrigin: null }
+  })
+}
+
+/**
  * 投诉/咨询工单：问题类型仅 config 关键词匹配（不调 LLM）；其余来源保持混合打标。
  * @param {FeedbackRecord[]} records
  * @param {string[]} texts
@@ -67,7 +88,7 @@ export async function matchProblemTypesForRecords(records, texts, rules, setting
   const local = records.map((r, i) => resolveLocalProblemTypeLabel(r, texts[i], rules))
 
   const themeRules = toThemeRules(rules)
-  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings)) {
+  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings?.themeMatchMode)) {
     return local.map((label) => ({ label, overflowOrigin: null }))
   }
 
@@ -152,7 +173,7 @@ export async function matchSharedLabelsBatch(
   existingLabels = [],
 ) {
   const themeRules = toThemeRules(rules)
-  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings)) {
+  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings?.themeMatchMode)) {
     return texts.map((t, i) => {
       const existing = existingLabels[i]?.trim()
       if (existing && existing !== '未分类') {
@@ -163,6 +184,8 @@ export async function matchSharedLabelsBatch(
   }
   return matchSharedDimensionHybridBatch(texts, themeRules, settings, onProgress, existingLabels)
 }
+
+/** @deprecated 请求场景请使用 {@link matchRequestScenesForRecords} */
 
 export { buildTaggingTextForRecord as taggingTextForRecord } from './taggingText.js'
 
@@ -179,14 +202,14 @@ export async function enrichRecordsWithSharedDimensions(records, settings, onPro
   const texts = records.map(buildTaggingTextForRecord)
   const total = records.length
 
-  const requestResults = await matchSharedLabelsBatch(
+  const requestResults = await matchRequestScenesForRecords(
+    records,
     texts,
     requestRules,
     settings,
     (done, t) => {
       onProgress?.(Math.floor(done / 2), t)
     },
-    records.map((r) => r.requestScene || ''),
   )
   const problemResults = await matchProblemTypesForRecords(
     records,

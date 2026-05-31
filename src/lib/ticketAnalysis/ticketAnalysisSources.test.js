@@ -7,6 +7,8 @@ import {
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
+  recordHasFullTicketLlmEnrichment,
+  recordNeedsTicketLlmEnrichment,
 } from './ticketAnalysisSources.js'
 
 describe('ticketAnalysisSources', () => {
@@ -36,5 +38,43 @@ describe('ticketAnalysisSources', () => {
     expect(getDisplayPainPoint(record)).toBe('安全组未放行端口')
     expect(formatListOptimizationPreview(record)).toMatch(/产品优化A/)
     expect(formatListOptimizationPreview(record)).toMatch(/流程优化B/)
+  })
+
+  it('recordNeedsTicketLlmEnrichment detects partial or missing llm fields', () => {
+    const ticket = { dataSourceType: 'complaint_ticket' }
+    expect(recordNeedsTicketLlmEnrichment(ticket)).toBe(true)
+    expect(
+      recordNeedsTicketLlmEnrichment({
+        ...ticket,
+        customerRequestSource: 'llm',
+        painPointSource: 'llm',
+        optimizationSource: 'llm',
+      }),
+    ).toBe(false)
+    expect(
+      recordNeedsTicketLlmEnrichment({
+        ...ticket,
+        customerRequestSource: 'llm',
+        painPointSource: 'rule',
+        optimizationSource: 'llm',
+      }),
+    ).toBe(true)
+    expect(
+      recordNeedsTicketLlmEnrichment({
+        ...ticket,
+        customerRequestSource: 'llm',
+        painPointSource: 'llm',
+        manualReviewOptimization: '人工',
+      }),
+    ).toBe(false)
+    expect(recordNeedsTicketLlmEnrichment({ dataSourceType: 'user_survey' })).toBe(false)
+    expect(
+      recordHasFullTicketLlmEnrichment({
+        ...ticket,
+        customerRequestSource: 'llm',
+        painPointSource: 'llm',
+        optimizationSource: 'llm',
+      }),
+    ).toBe(true)
   })
 })

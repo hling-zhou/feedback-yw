@@ -28,6 +28,11 @@ import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
+  countRecordsNeedingTicketLlmEnrichment,
+  recordHasFullTicketLlmEnrichment,
+  recordNeedsTicketLlmEnrichment,
+} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import {
   downloadUnknownJourneyCsv,
   summarizeUnknownJourneyRecords,
   UNKNOWN_JOURNEY_REASON_LABELS,
@@ -75,6 +80,7 @@ export default function Feedbacks() {
   const [journeyL1, setJourneyL1] = useState('')
   const [resourcePool, setResourcePool] = useState('')
   const [dataSourceFilter, setDataSourceFilter] = useState('')
+  const [ticketLlmFilter, setTicketLlmFilter] = useState('')
   const [selectedTicketIds, setSelectedTicketIds] = useState(/** @type {string[]} */ ([]))
   const [searchParams, setSearchParams] = useSearchParams()
   const skipTicketIdsUrlSyncRef = useRef(false)
@@ -164,6 +170,10 @@ export default function Feedbacks() {
     [periodFeedbacks],
   )
   const missingTags = unknownJourneySummary.count
+  const needsTicketLlmCount = useMemo(
+    () => countRecordsNeedingTicketLlmEnrichment(periodFeedbacks),
+    [periodFeedbacks],
+  )
 
   const unknownReasonHint = useMemo(() => {
     if (!missingTags) return ''
@@ -222,6 +232,8 @@ export default function Feedbacks() {
       if (journeyL1 && fb.journeyL1 !== journeyL1) return false
       if (resourcePool && (fb.resourcePool || '未标注资源池') !== resourcePool) return false
       if (dataSourceFilter && recordSourceType(fb) !== dataSourceFilter) return false
+      if (ticketLlmFilter === 'needs_llm' && !recordNeedsTicketLlmEnrichment(fb)) return false
+      if (ticketLlmFilter === 'full_llm' && !recordHasFullTicketLlmEnrichment(fb)) return false
       if (q) {
         const hay = [
           fb.customerQuote,
@@ -249,6 +261,7 @@ export default function Feedbacks() {
     journeyL1,
     resourcePool,
     dataSourceFilter,
+    ticketLlmFilter,
     q,
   ])
 
@@ -319,6 +332,32 @@ export default function Feedbacks() {
       )}
 
       <div className="page-section page-stack">
+        {needsTicketLlmCount > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            title={`有 ${needsTicketLlmCount} 条工单的客户请求/痛点/优化建议仍为规则打标`}
+            description="多为导入时未配置 API Key 或 LLM 额度不足。可在下方筛选「待 LLM 增强」，再批量重新打标并选择「仅未完成 LLM 增强的工单」。"
+            action={
+              <PermissionGate permission="retag">
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={bulkRetagBusy}
+                  disabled={bulkRetagDisabled}
+                  title={bulkRetagDisabledTip}
+                  onClick={() => {
+                    setTicketLlmFilter('needs_llm')
+                    openBulkRetagModal()
+                  }}
+                >
+                  补打 LLM
+                </Button>
+              </PermissionGate>
+            }
+          />
+        )}
+
         {missingTags > 0 && (
           <Alert
             type="warning"
@@ -438,6 +477,16 @@ export default function Feedbacks() {
             ...pools.map((p) => ({ label: p.name, value: p.name })),
           ]}
           onChange={setResourcePool}
+        />
+        <Select
+          className="min-w-[150px]"
+          value={ticketLlmFilter}
+          options={[
+            { label: '全部 LLM 状态', value: '' },
+            { label: '待 LLM 增强', value: 'needs_llm' },
+            { label: 'LLM 已增强', value: 'full_llm' },
+          ]}
+          onChange={setTicketLlmFilter}
         />
         <Select
           className="min-w-[130px]"

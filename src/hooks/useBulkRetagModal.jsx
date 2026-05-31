@@ -3,6 +3,7 @@ import { Modal, Radio, Typography, Checkbox, message } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
+import { recordNeedsTicketLlmEnrichment } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import {
   BULK_RETAG_SCOPE_LABELS,
   RETAG_BACKGROUND_RUN_HINT,
@@ -28,6 +29,11 @@ export function useBulkRetagModal({ filteredRecords }) {
     [periodFeedbacks],
   )
 
+  const needsTicketLlmCount = useMemo(
+    () => periodFeedbacks.filter(recordNeedsTicketLlmEnrichment).length,
+    [periodFeedbacks],
+  )
+
   const filteredCount = filteredRecords.length
 
   const resolveBulkRetagRecords = useCallback(
@@ -36,6 +42,8 @@ export function useBulkRetagModal({ filteredRecords }) {
       switch (scope) {
         case 'unknown_journey':
           return periodFeedbacks.filter(recordHasUnknownJourney)
+        case 'needs_ticket_llm':
+          return periodFeedbacks.filter(recordNeedsTicketLlmEnrichment)
         case 'filtered':
           return filteredRecords
         case 'period_all':
@@ -72,7 +80,12 @@ export function useBulkRetagModal({ filteredRecords }) {
       return
     }
 
-    let selectedScope = periodCount > 0 ? 'period_all' : 'filtered'
+    let selectedScope =
+      periodCount > 0 && needsTicketLlmCount > 0
+        ? 'needs_ticket_llm'
+        : periodCount > 0
+          ? 'period_all'
+          : 'filtered'
     const scopeChoice = { value: selectedScope }
     const forceOverrideChoice = { value: false }
 
@@ -96,6 +109,9 @@ export function useBulkRetagModal({ filteredRecords }) {
             </Radio>
             <Radio value="unknown_journey" disabled={unknownJourneyCount === 0}>
               {BULK_RETAG_SCOPE_LABELS.unknown_journey}（{unknownJourneyCount} 条）
+            </Radio>
+            <Radio value="needs_ticket_llm" disabled={needsTicketLlmCount === 0}>
+              {BULK_RETAG_SCOPE_LABELS.needs_ticket_llm}（{needsTicketLlmCount} 条）
             </Radio>
             <Radio value="filtered" disabled={filteredCount === 0}>
               {BULK_RETAG_SCOPE_LABELS.filtered}（{filteredCount} 条）
@@ -144,6 +160,7 @@ export function useBulkRetagModal({ filteredRecords }) {
     resolveBulkRetagRecords,
     startBulkRetag,
     unknownJourneyCount,
+    needsTicketLlmCount,
   ])
 
   return {

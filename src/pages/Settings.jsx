@@ -193,6 +193,7 @@ export default function Settings() {
               旅程环节在{' '}
               <Link to="/tags?tab=journey">标签管理 → 用户旅程</Link>{' '}
               维护。修改后可在 <Link to="/feedbacks">反馈库</Link> 批量重新打标。
+              请求场景、投诉/咨询工单的问题类型始终为本地规则打标，不受此项影响。
             </Typography.Text>
             <Radio.Group
               className="w-full"

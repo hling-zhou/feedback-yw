@@ -44,6 +44,7 @@ describe('retagSession', () => {
 
   it('formats interrupted and finished messages', () => {
     expect(formatBulkRetagScopeLabel('unknown_journey')).toContain('未识别环节')
+    expect(formatBulkRetagScopeLabel('needs_ticket_llm')).toContain('LLM')
     expect(
       formatInterruptedRetagMessage({
         startedAt: new Date().toISOString(),

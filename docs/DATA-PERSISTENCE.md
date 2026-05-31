@@ -13,7 +13,7 @@
 | 登录后首屏加载 | 读库 | `fetchAllRecordPages` → `GET /api/storage/records` → `records` 表 |
 | Excel/JSON 导入 | 写库 | `adapter.putRecords` 增量写入 |
 | 工单详情编辑/打标 | 写库 | `persistRecordUpdate` → `putRecord` |
-| 批量重新打标 | 写库 | `persistRecordUpdates` |
+| 批量重新打标 | 写库 | 客户请求/痛点 LLM **分批即时** `persistRecordUpdates`；任务结束后再全量同步一次 |
 | 他人导入后同步 | 读库 | `dataRevision` 轮询 → `syncSharedDataFromServer` |
 
 **不会**把整份 `feedbacks` 数组 debounce 全量写回共享库（会误删其他月份数据）；这是刻意设计，见 `InsightsContext` 注释。

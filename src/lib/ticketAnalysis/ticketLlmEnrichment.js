@@ -166,8 +166,9 @@ export async function enrichRecordWithTicketLlm(record, settings) {
  * @param {import('../types.js').FeedbackRecord[]} records
  * @param {import('../storage.js').AppSettings} settings
  * @param {(done: number, total: number) => void} [onProgress]
+ * @param {{ onBatchPersist?: (records: import('../types.js').FeedbackRecord[]) => Promise<void> | void }} [options]
  */
-export async function enrichRecordsWithTicketLlm(records, settings, onProgress) {
+export async function enrichRecordsWithTicketLlm(records, settings, onProgress, options = {}) {
   if (!records.length || !canUseSemanticMatch(settings)) {
     onProgress?.(records.length, records.length)
     return records
@@ -191,6 +192,9 @@ export async function enrichRecordsWithTicketLlm(records, settings, onProgress) 
     enriched.forEach((record, j) => {
       out[i + j] = record
     })
+    if (options.onBatchPersist) {
+      await options.onBatchPersist(enriched)
+    }
     onProgress?.(Math.min(i + BATCH, records.length), records.length)
   }
 
