@@ -23,7 +23,7 @@
 ### 2.1 纳入范围
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
-- **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 合并 ticket LLM、旅程门控、流水线重排、optimization 三层保障（TAG-LLM-01~20，实现后纳入）
+- **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；验收见 §5.4.1 TAG-LLM
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -132,6 +132,18 @@
 | TAG-03 | P1 | 候选复核合并 | approve 候选 | 并入 managed snapshot | smoke REV-03 |
 | TAG-04 | P1 | 旅程/VPC 迁移 | 内置旅程键 | 迁移不丢环节 | migrateVpcJourneys 等 |
 | TAG-05 | P2 | LLM 客户端 | mock 请求 | 超时/错误可处理 | llmClient.test |
+
+#### 5.4.1 LLM 打标 P0 验收（TAG-LLM）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-LLM-01~10 | P0 | unified ticket LLM + optimization 三层 | U-01~U-10 | ticketAnalysisUnifiedLLM.test 等 |
+| TAG-LLM-11~15 | P0 | 旅程门控 | G-01~G-05 | journeyMatchConfidence.test |
+| TAG-LLM-16~20 | P0 | 流水线重排 + 补打 | O-01~O-05、R-01~R-03 | applyThemes / importEnrichment.test |
+| TAG-LLM-21 | P0 | U-06 golden 20 条 | request/pain Jaccard ≥0.85 | ticketLlmGolden.test |
+| TAG-LLM-22 | P0 | O-golden optimization 率 | unified ≥ separate×90% | ticketLlmGolden.test |
+| TAG-LLM-23 | P0 | Token 调用降幅 | 500 条 ≥40% | ticketLlmGolden.unit.test + `scripts/benchmark-ticket-llm.mjs` |
+| TAG-LLM-24 | P1 | 洞察聚类稳定性 | 同 pain+journeyL1 簇数变化 <10% | insightClusterStability.test |
 
 ### 5.5 快照与洞察（INS / SNP）
 

@@ -393,6 +393,16 @@ enrichmentStats: {
 | D | P0-4 补打 scope/UI + R-01~R-03 | 1~2d |
 | E | U-06 / O-golden 对比 + 洞察 spot check | 1~2d |
 
+### 8.1 Phase E 交付（已实现）
+
+| 模块 | 内容 |
+|------|------|
+| `ticketLlmGolden.js` + fixtures | 20 条 golden、Jaccard / optimization 率 / 调用估算 |
+| `ticketLlmGolden.test.js` | U-06、O-golden、U-10 |
+| `ticketLlmGolden.unit.test.js` | P0 token 预算 ≥40% |
+| `insightClusterStability.test.js` | 聚类簇数 spot check |
+| `scripts/benchmark-ticket-llm.mjs` | 离线调用次数对比 CLI |
+
 ---
 
 ## 9. 验收标准
