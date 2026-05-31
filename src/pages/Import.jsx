@@ -119,7 +119,7 @@ export default function Import() {
     defaultBatchName('complaint_ticket', currentMonth()),
   )
   const [importResult, setImportResult] = useState(
-    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[] }} */ (
+    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[]; enrichmentStats?: import('../lib/importEnrichmentStats.js').ImportEnrichmentStats }} */ (
       null
     ),
   )
@@ -500,6 +500,8 @@ export default function Import() {
       let run
       /** @type {string[]} */
       let taggingWarnings = []
+      /** @type {import('../lib/importEnrichmentStats.js').ImportEnrichmentStats | undefined} */
+      let enrichmentStats
 
       if (ticketSource) {
         const result = await runPipeline(dataSourceType, inScope, batchMeta)
@@ -531,6 +533,7 @@ export default function Import() {
         )
         records = enriched.records
         taggingWarnings = enriched.warnings
+        enrichmentStats = enriched.enrichmentStats
       } else {
         const result = await runPipeline(dataSourceType, inScope, batchMeta)
         run = result.run
@@ -588,6 +591,7 @@ export default function Import() {
         dataMonth,
         dataSourceType,
         taggingWarnings,
+        enrichmentStats,
         ingest,
       })
       setStep(4)
@@ -1118,6 +1122,18 @@ export default function Import() {
             数据月份 {importResult.dataMonth} · 已写入反馈库并完成打标 · 已刷新该月洞察快照 · Run ID：
             {importResult.run.id}
           </Typography.Text>
+          {importResult.enrichmentStats && (
+            <Typography.Text type="secondary" className="block text-center text-xs">
+              LLM 增强：工单完成 {importResult.enrichmentStats.ticketLlmCompleted} 条
+              {importResult.enrichmentStats.ticketLlmFailed > 0
+                ? `，未完成 ${importResult.enrichmentStats.ticketLlmFailed} 条`
+                : ''}
+              ；旅程 LLM {importResult.enrichmentStats.journeyLlmCompleted} 条
+              {importResult.enrichmentStats.journeySkippedByGating > 0
+                ? `，门控跳过 ${importResult.enrichmentStats.journeySkippedByGating} 条`
+                : ''}
+            </Typography.Text>
+          )}
           {importResult.taggingWarnings?.length > 0 && (
             <Alert
               className="page-section-sm"

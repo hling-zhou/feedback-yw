@@ -29,8 +29,10 @@ import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
   countRecordsNeedingTicketLlmEnrichment,
+  countRecordsNeedingJourneyLlmEnrichment,
   recordHasFullTicketLlmEnrichment,
   recordNeedsTicketLlmEnrichment,
+  recordNeedsJourneyLlmEnrichment,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import {
   downloadUnknownJourneyCsv,
@@ -59,6 +61,7 @@ export default function Feedbacks() {
     periods,
     periodsLoading,
     selectInsightPeriod,
+    settings,
   } = useInsights()
 
   const activePeriod = useMemo(
@@ -174,6 +177,10 @@ export default function Feedbacks() {
     () => countRecordsNeedingTicketLlmEnrichment(periodFeedbacks),
     [periodFeedbacks],
   )
+  const needsJourneyLlmCount = useMemo(
+    () => countRecordsNeedingJourneyLlmEnrichment(periodFeedbacks, settings),
+    [periodFeedbacks, settings],
+  )
 
   const unknownReasonHint = useMemo(() => {
     if (!missingTags) return ''
@@ -233,6 +240,8 @@ export default function Feedbacks() {
       if (resourcePool && (fb.resourcePool || '未标注资源池') !== resourcePool) return false
       if (dataSourceFilter && recordSourceType(fb) !== dataSourceFilter) return false
       if (ticketLlmFilter === 'needs_llm' && !recordNeedsTicketLlmEnrichment(fb)) return false
+      if (ticketLlmFilter === 'needs_journey_llm' && !recordNeedsJourneyLlmEnrichment(fb, settings))
+        return false
       if (ticketLlmFilter === 'full_llm' && !recordHasFullTicketLlmEnrichment(fb)) return false
       if (q) {
         const hay = [
@@ -262,6 +271,7 @@ export default function Feedbacks() {
     resourcePool,
     dataSourceFilter,
     ticketLlmFilter,
+    settings,
     q,
   ])
 
@@ -352,6 +362,32 @@ export default function Feedbacks() {
                   }}
                 >
                   补打 LLM
+                </Button>
+              </PermissionGate>
+            }
+          />
+        )}
+
+        {needsJourneyLlmCount > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            title={`有 ${needsJourneyLlmCount} 条工单的用户旅程仍待 LLM 增强`}
+            description="多为导入中断、额度不足或未识别环节。可在下方筛选「待旅程 LLM」，再批量重新打标并选择「仅未完成旅程 LLM 增强的工单」。"
+            action={
+              <PermissionGate permission="retag">
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={bulkRetagBusy}
+                  disabled={bulkRetagDisabled}
+                  title={bulkRetagDisabledTip}
+                  onClick={() => {
+                    setTicketLlmFilter('needs_journey_llm')
+                    openBulkRetagModal()
+                  }}
+                >
+                  补打旅程 LLM
                 </Button>
               </PermissionGate>
             }
@@ -484,6 +520,7 @@ export default function Feedbacks() {
           options={[
             { label: '全部 LLM 状态', value: '' },
             { label: '待 LLM 增强', value: 'needs_llm' },
+            { label: '待旅程 LLM', value: 'needs_journey_llm' },
             { label: 'LLM 已增强', value: 'full_llm' },
           ]}
           onChange={setTicketLlmFilter}

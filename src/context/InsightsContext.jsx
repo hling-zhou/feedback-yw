@@ -1645,6 +1645,7 @@ export function InsightsProvider({ children }) {
       const beforeUnknown = listUnknownJourneyRecords(list).length
       const progress = (text) => reportProgress?.(text)
       const ticketLlmOnly = scope === 'needs_ticket_llm'
+      const journeyLlmOnly = scope === 'needs_journey_llm'
 
       progress('正在加载配置…')
       await reloadAllConfigs()
@@ -1680,7 +1681,7 @@ export function InsightsProvider({ children }) {
 
       /** @type {import('../lib/types.js').FeedbackRecord[]} */
       let retagged
-      if (ticketLlmOnly) {
+      if (ticketLlmOnly || journeyLlmOnly) {
         retagged = [...list]
       } else {
         retagged = []
@@ -1708,6 +1709,7 @@ export function InsightsProvider({ children }) {
         {
           forceOverrideManualTags: options.forceOverrideManualTags === true,
           ticketLlmOnly,
+          journeyLlmOnly,
           onTicketLlmBatchPersist: persistChunkIncremental,
         },
       )

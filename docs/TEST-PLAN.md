@@ -23,6 +23,7 @@
 ### 2.1 纳入范围
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
+- **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 合并 ticket LLM、旅程门控、流水线重排、optimization 三层保障（TAG-LLM-01~20，实现后纳入）
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建

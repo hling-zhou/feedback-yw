@@ -3,7 +3,10 @@ import { Modal, Radio, Typography, Checkbox, message } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
-import { recordNeedsTicketLlmEnrichment } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import {
+  recordNeedsJourneyLlmEnrichment,
+  recordNeedsTicketLlmEnrichment,
+} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import {
   BULK_RETAG_SCOPE_LABELS,
   RETAG_BACKGROUND_RUN_HINT,
@@ -21,7 +24,7 @@ import {
  * @param {FeedbackRecord[]} options.filteredRecords 当前页筛选结果（洞察分析为 scoped，反馈库为 filtered）
  */
 export function useBulkRetagModal({ filteredRecords }) {
-  const { startBulkRetag, reprocessing, retagSession, importSession } = useInsights()
+  const { startBulkRetag, reprocessing, retagSession, importSession, settings } = useInsights()
   const { periodFeedbacks, periodCount } = usePeriodScope()
 
   const unknownJourneyCount = useMemo(
@@ -34,6 +37,11 @@ export function useBulkRetagModal({ filteredRecords }) {
     [periodFeedbacks],
   )
 
+  const needsJourneyLlmCount = useMemo(
+    () => periodFeedbacks.filter((r) => recordNeedsJourneyLlmEnrichment(r, settings)).length,
+    [periodFeedbacks, settings],
+  )
+
   const filteredCount = filteredRecords.length
 
   const resolveBulkRetagRecords = useCallback(
@@ -44,6 +52,8 @@ export function useBulkRetagModal({ filteredRecords }) {
           return periodFeedbacks.filter(recordHasUnknownJourney)
         case 'needs_ticket_llm':
           return periodFeedbacks.filter(recordNeedsTicketLlmEnrichment)
+        case 'needs_journey_llm':
+          return periodFeedbacks.filter((r) => recordNeedsJourneyLlmEnrichment(r, settings))
         case 'filtered':
           return filteredRecords
         case 'period_all':
@@ -51,7 +61,7 @@ export function useBulkRetagModal({ filteredRecords }) {
           return periodFeedbacks
       }
     },
-    [periodFeedbacks, filteredRecords],
+    [periodFeedbacks, filteredRecords, settings],
   )
 
   const bulkRetagBusy = reprocessing || retagSession.active
@@ -113,6 +123,9 @@ export function useBulkRetagModal({ filteredRecords }) {
             <Radio value="needs_ticket_llm" disabled={needsTicketLlmCount === 0}>
               {BULK_RETAG_SCOPE_LABELS.needs_ticket_llm}（{needsTicketLlmCount} 条）
             </Radio>
+            <Radio value="needs_journey_llm" disabled={needsJourneyLlmCount === 0}>
+              {BULK_RETAG_SCOPE_LABELS.needs_journey_llm}（{needsJourneyLlmCount} 条）
+            </Radio>
             <Radio value="filtered" disabled={filteredCount === 0}>
               {BULK_RETAG_SCOPE_LABELS.filtered}（{filteredCount} 条）
             </Radio>
@@ -161,6 +174,7 @@ export function useBulkRetagModal({ filteredRecords }) {
     startBulkRetag,
     unknownJourneyCount,
     needsTicketLlmCount,
+    needsJourneyLlmCount,
   ])
 
   return {

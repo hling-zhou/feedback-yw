@@ -31,7 +31,7 @@ const EXAMPLE2_TEXT = [
   '反馈&客服组：客户暂未回复，工单保留。',
 ].join('\n')
 
-const LLM_SETTINGS = { llmApiKey: 'sk-test' }
+const LLM_SETTINGS = { llmApiKey: 'sk-test', ticketLlmMode: 'separate' }
 
 describe('analyzeTicket (P0 rules)', () => {
   it('example1: port blocked with urgent customer quote', () => {

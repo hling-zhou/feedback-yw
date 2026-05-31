@@ -184,7 +184,8 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 1. 规则初标（`analyzeTicket`）— 重置 `*Source` 为 `rule`（「仅未完成 LLM 增强」范围 **跳过** 此步）
 2. 请求场景 / 问题类型（本地）
 3. 用户旅程（可 LLM）
-4. 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM
+4. 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM  
+   （`ticketLlmMode=unified` 时合并为 **1 次 LLM** + optimization 按需 compact 补打）
 5. 写库
 
 **来源字段**（用于反馈库「LLM 打标状态」筛选与导出）：
@@ -247,3 +248,4 @@ npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
 
 - [从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) — 业务规范 V2  
 - [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划（LLM 使用 mock / 规则回退）
+- [LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — LLM 打标 P0 优化（合并 ticket LLM、旅程门控、流水线重排、optimization 三层保障）

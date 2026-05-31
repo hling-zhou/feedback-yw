@@ -9,6 +9,10 @@ import {
   getCustomerRequestSource,
   recordHasFullTicketLlmEnrichment,
   recordNeedsTicketLlmEnrichment,
+  recordNeedsJourneyLlmEnrichment,
+  recordHasJourneyLlmEnrichment,
+  countRecordsNeedingJourneyLlmEnrichment,
+  computeJourneyEnrichmentDelta,
 } from './ticketAnalysisSources.js'
 
 describe('ticketAnalysisSources', () => {
@@ -76,5 +80,64 @@ describe('ticketAnalysisSources', () => {
         optimizationSource: 'llm',
       }),
     ).toBe(true)
+  })
+
+  it('R-03: recordNeedsJourneyLlmEnrichment respects journeySource and gating skip', () => {
+    const ticket = { dataSourceType: 'complaint_ticket' }
+    expect(recordNeedsJourneyLlmEnrichment(ticket)).toBe(true)
+    expect(
+      recordNeedsJourneyLlmEnrichment({
+        ...ticket,
+        journeySource: 'llm',
+        journeyL1: '购买',
+        journeyL2: '下单',
+      }),
+    ).toBe(false)
+    expect(
+      recordNeedsJourneyLlmEnrichment({
+        ...ticket,
+        journeySource: 'rule',
+        journeyMatchScore: 3,
+        journeyL1: '购买',
+        journeyL2: '下单',
+      }),
+    ).toBe(false)
+    expect(
+      recordNeedsJourneyLlmEnrichment({
+        ...ticket,
+        journeySource: 'rule',
+        journeyL1: '未识别环节',
+        journeyL2: '未识别子环节',
+      }),
+    ).toBe(true)
+    expect(recordNeedsJourneyLlmEnrichment({ dataSourceType: 'user_survey' })).toBe(false)
+    expect(recordHasJourneyLlmEnrichment({ ...ticket, journeySource: 'llm' })).toBe(true)
+  })
+
+  it('computeJourneyEnrichmentDelta counts llm and gating skip', () => {
+    const before = [
+      { dataSourceType: 'complaint_ticket', journeyL1: '未识别环节', journeyL2: '未识别子环节' },
+      { dataSourceType: 'complaint_ticket', journeyL1: '未识别环节', journeyL2: '未识别子环节' },
+    ]
+    const after = [
+      {
+        dataSourceType: 'complaint_ticket',
+        journeySource: 'llm',
+        journeyL1: '购买',
+        journeyL2: '下单',
+      },
+      {
+        dataSourceType: 'complaint_ticket',
+        journeySource: 'rule',
+        journeyMatchScore: 4,
+        journeyL1: '购买',
+        journeyL2: '下单',
+      },
+    ]
+    expect(computeJourneyEnrichmentDelta(before, after)).toEqual({
+      journeyLlmCompleted: 1,
+      journeySkippedByGating: 1,
+    })
+    expect(countRecordsNeedingJourneyLlmEnrichment(after)).toBe(0)
   })
 })

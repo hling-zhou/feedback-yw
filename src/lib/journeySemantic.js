@@ -11,6 +11,7 @@ import { canUseSemanticMatch, usesLlmThemeMatch } from './themeSemantic.js'
 import { captureJourneyCandidateIfNeeded } from './tagCandidates.js'
 import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
+import { evaluateJourneyGatingBatch } from './journeyMatchConfidence.js'
 
 const DEFAULT_MODEL = 'gpt-4o-mini'
 const UNKNOWN_L1 = '未识别环节'
@@ -144,7 +145,7 @@ ${texts
  * @param {string} l2
  * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
  */
-function isValidJourneyPair(l1, l2, journeys) {
+export function isValidJourneyPair(l1, l2, journeys) {
   const node = journeys.find((j) => j.label === l1)
   if (!node) return false
   if (l2 === UNKNOWN_L2) return true
@@ -206,7 +207,7 @@ export async function matchJourneyForSettings(text, product, settings, productKe
 /**
  * @param {string} taxonomyKey
  */
-function journeysForKey(taxonomyKey) {
+export function journeysForKey(taxonomyKey) {
   const key = (taxonomyKey || 'generic').trim()
   return getProductByKey(key).journeys || []
 }
@@ -273,9 +274,30 @@ export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onP
     const chunkTexts = texts.slice(i, i + BATCH)
     const chunkKeys = taxonomyKeys.slice(i, i + BATCH)
     const localChunk = localResults.slice(i, i + BATCH)
+    const batchRecords = records ? records.slice(i, i + BATCH) : undefined
+    const decisions = evaluateJourneyGatingBatch(
+      chunkTexts,
+      chunkKeys,
+      settings,
+      localChunk,
+      batchRecords,
+    )
+
     /** @type {Map<string, { texts: string[]; locals: { journeyL1: string; journeyL2: string }[]; idx: number[] }>} */
     const groups = new Map()
+
+    const merged = new Array(chunkTexts.length)
     chunkTexts.forEach((text, j) => {
+      const decision = decisions[j]
+      if (decision.skipLlm) {
+        merged[j] = {
+          journeyL1: localChunk[j].journeyL1,
+          journeyL2: localChunk[j].journeyL2,
+          journeySource: /** @type {'rule'} */ ('rule'),
+          journeyMatchScore: decision.score,
+        }
+        return
+      }
       const key = chunkKeys[j] || 'generic'
       if (!groups.has(key)) groups.set(key, { texts: [], locals: [], idx: [] })
       const g = groups.get(key)
@@ -284,7 +306,6 @@ export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onP
       g.idx.push(j)
     })
 
-    const merged = new Array(chunkTexts.length)
     for (const [key, group] of groups) {
       const journeys = journeysForKey(key)
       const taxName = getProductByKey(key)?.name || '通用产品'
@@ -310,12 +331,20 @@ export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onP
             insightPeriodId: rec?.insightPeriodId,
             dataSourceType: rec?.dataSourceType,
           })
-          merged[j] = mergeJourneyResult(group.locals[k], llm, journeys)
+          merged[j] = {
+            ...mergeJourneyResult(group.locals[k], llm, journeys),
+            journeySource: /** @type {'llm'} */ ('llm'),
+            journeyMatchScore: decisions[j].score,
+          }
         })
       } catch (err) {
         console.warn('旅程混合批量 LLM 失败，该批仅用本地:', err)
         group.idx.forEach((j, k) => {
-          merged[j] = group.locals[k]
+          merged[j] = {
+            ...group.locals[k],
+            journeySource: /** @type {'rule'} */ ('rule'),
+            journeyMatchScore: decisions[j].score,
+          }
         })
       }
     }
@@ -363,6 +392,12 @@ export async function enrichRecordsWithJourneys(records, settings, onProgress) {
     productKey: r.productKey || taxonomyKeys[i],
     journeyL1: journeyResults[i]?.journeyL1 || r.journeyL1,
     journeyL2: journeyResults[i]?.journeyL2 || r.journeyL2,
+    ...(journeyResults[i]?.journeySource
+      ? { journeySource: journeyResults[i].journeySource }
+      : {}),
+    ...(journeyResults[i]?.journeyMatchScore != null
+      ? { journeyMatchScore: journeyResults[i].journeyMatchScore }
+      : {}),
   }))
 }
 

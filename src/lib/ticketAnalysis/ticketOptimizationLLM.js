@@ -38,6 +38,7 @@ function joinOptimizations(items, max) {
  * @param {string} [input.requestScene]
  * @param {string} [input.problemType]
  * @param {boolean} [input.fuzzy]
+ * @param {boolean} [input.compact] 为 true 时不附带工单正文（按需 optimization 补打）
  * @param {import('../storage.js').AppSettings} settings
  * @returns {Promise<{ optimizationProduct: string; optimizationService: string; optimizationSuggestion: string }>}
  */
@@ -46,7 +47,7 @@ export async function extractTicketOptimizationsWithLLM(input, settings) {
     return { optimizationProduct: '', optimizationService: '', optimizationSuggestion: '' }
   }
 
-  const text = (input.text || '').slice(0, 4000)
+  const text = input.compact ? '' : (input.text || '').slice(0, 4000)
   const painPoint = (input.painPoint || '').slice(0, 120)
   const rootCause = (input.rootCause || '').slice(0, 200)
   const solutionSummary = (input.solutionSummary || '').slice(0, 300)
@@ -60,16 +61,17 @@ export async function extractTicketOptimizationsWithLLM(input, settings) {
 4. 不要复述工单临时规避操作，要提炼根本改进方向。
 5. 只返回 JSON：{"productOptimizations":["..."],"serviceOptimizations":["..."]}`
 
+  const bodyBlock = text
+    ? `\n\n工单正文：\n${text}`
+    : '\n\n（已提供需求痛点与维度上下文，无需工单全文）'
+
   const userPrompt = `需求痛点：${painPoint || '未提取'}
 问题类型：${input.problemType || '未分类'}
 请求场景：${input.requestScene || '未分类'}
 用户旅程二级：${input.journeyL2 || '未识别'}
 有效根因：${rootCause || '无'}
 处理结论：${solutionSummary || '无'}
-内容是否模糊需路径兜底：${input.fuzzy ? '是' : '否'}
-
-工单正文：
-${text}
+内容是否模糊需路径兜底：${input.fuzzy ? '是' : '否'}${bodyBlock}
 
 请输出单条工单的优化建议。`
 

@@ -18,6 +18,10 @@ import { extractPainPointWithLLM } from './painPointLLM.js'
 import { tagTicketDimensions } from './ticketDimensionTagging.js'
 import { extractTicketOptimizations } from './ticketOptimizationExtract.js'
 import { extractTicketOptimizationsWithLLM } from './ticketOptimizationLLM.js'
+import {
+  extractTicketAnalysisUnifiedWithLLM,
+  resolveTicketLlmMode,
+} from './ticketAnalysisUnifiedLLM.js'
 import { normalizeTicketRecordFields } from './recordNormalize.js'
 import { validateTicketAnalysisPair } from './validateTicketAnalysisPair.js'
 
@@ -122,6 +126,49 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
       customerRequestSource,
       painPointSource,
       optimizationSource,
+    }
+  }
+
+  if (resolveTicketLlmMode(settings) === 'unified') {
+    const unified = await extractTicketAnalysisUnifiedWithLLM(
+      {
+        taggingText: corpus.taggingText,
+        candidates,
+        ruleFallback: {
+          customerRequest: ruleCustomerRequest,
+          painPoint: rulePainPoint,
+          optimizationProduct: optimizations.optimizationProduct,
+          optimizationService: optimizations.optimizationService,
+        },
+        handlingText: input.handlingText,
+        rootCause,
+        solutionSummary,
+        journeyL2: dims.journeyL2,
+        requestScene: dims.requestScene,
+        problemType: dims.problemType,
+        fuzzy: corpus.fuzzy,
+      },
+      settings,
+    )
+    const sentimentResult = analyzeTicketSentiment(
+      buildSentimentAnalysisText({
+        customerRequest: unified.customerRequest,
+        painPoint: unified.painPoint,
+      }),
+    )
+    return {
+      customerRequest: unified.customerRequest,
+      painPoint: unified.painPoint,
+      optimizations: {
+        optimizationProduct: unified.optimizationProduct,
+        optimizationService: unified.optimizationService,
+        optimizationSuggestion: unified.optimizationSuggestion,
+      },
+      sentiment: sentimentResult.sentiment,
+      urgencyLevel: sentimentResult.urgencyLevel,
+      customerRequestSource: unified.customerRequestSource,
+      painPointSource: unified.painPointSource,
+      optimizationSource: unified.optimizationSource,
     }
   }
 

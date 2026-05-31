@@ -11,20 +11,27 @@ const ROOT_CAUSE_KW = [
 const UNKNOWN_L1 = '未识别环节'
 const UNKNOWN_L2 = '未识别子环节'
 
+export { UNKNOWN_L1 as JOURNEY_UNKNOWN_L1, UNKNOWN_L2 as JOURNEY_UNKNOWN_L2 }
+
 /**
- * 仅从工单正文（标题、处理意见、客户问题等）匹配旅程
+ * @typedef {{ journeyL1: string; journeyL2: string; score: number }} JourneyTextMatch
+ */
+
+/**
+ * 仅从工单正文匹配旅程，并返回本地置信分数（关键词 +3）
  * @param {string} text
  * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
  * @param {string} [taxonomyKey]
+ * @returns {JourneyTextMatch}
  */
-function matchJourneyFromText(text, journeys, taxonomyKey) {
+export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey) {
   const lower = text.toLowerCase()
   const title = (text.match(/工单标题[：:]([^\n]+)/) || [])[1] || ''
   const titleLower = title.toLowerCase()
   const corpus = titleLower + lower
 
-  let bestL1 = null
-  let bestL2 = null
+  let bestL1 = UNKNOWN_L1
+  let bestL2 = UNKNOWN_L2
   let bestScore = 0
 
   for (const l1 of journeys) {
@@ -49,14 +56,27 @@ function matchJourneyFromText(text, journeys, taxonomyKey) {
 
   if (taxonomyKey === 'eip' && bestScore === 0) {
     const eipHint = inferEipJourneyFromKeywords(corpus, journeys)
-    if (eipHint) return eipHint
+    if (eipHint) {
+      return { journeyL1: eipHint.journeyL1, journeyL2: eipHint.journeyL2, score: 3 }
+    }
   }
 
   if (bestScore > 0) {
-    return { journeyL1: bestL1, journeyL2: bestL2 }
+    return { journeyL1: bestL1, journeyL2: bestL2, score: bestScore }
   }
 
-  return { journeyL1: UNKNOWN_L1, journeyL2: UNKNOWN_L2 }
+  return { journeyL1: UNKNOWN_L1, journeyL2: UNKNOWN_L2, score: 0 }
+}
+
+/**
+ * 仅从工单正文（标题、处理意见、客户问题等）匹配旅程
+ * @param {string} text
+ * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
+ * @param {string} [taxonomyKey]
+ */
+function matchJourneyFromText(text, journeys, taxonomyKey) {
+  const { journeyL1, journeyL2 } = matchJourneyFromTextWithScore(text, journeys, taxonomyKey)
+  return { journeyL1, journeyL2 }
 }
 
 /**

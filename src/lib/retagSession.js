@@ -1,10 +1,11 @@
-/** @typedef {'period_all' | 'unknown_journey' | 'needs_ticket_llm' | 'filtered'} BulkRetagScope */
+/** @typedef {'period_all' | 'unknown_journey' | 'needs_ticket_llm' | 'needs_journey_llm' | 'filtered'} BulkRetagScope */
 
 /** @type {Record<BulkRetagScope, string>} */
 export const BULK_RETAG_SCOPE_LABELS = {
   period_all: '当前洞察周期内全部工单',
   unknown_journey: '仅用户旅程为「未识别环节」的工单',
   needs_ticket_llm: '仅未完成 LLM 增强的工单（客户请求/痛点/优化建议）',
+  needs_journey_llm: '仅未完成旅程 LLM 增强的工单',
   filtered: '仅当前筛选结果范围内的工单',
 }
 

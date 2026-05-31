@@ -1,22 +1,25 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { enrichTicketRecordsForImport } from './importEnrichment.js'
 
+const enrichRecordsWithSharedDimensions = vi.fn(async (records) =>
+  records.map((r) => ({ ...r, requestScene: '报障与恢复', problemType: '性能问题' })),
+)
 vi.mock('./dimensionTagging.js', () => ({
-  enrichRecordsWithSharedDimensions: vi.fn(async (records) =>
-    records.map((r) => ({ ...r, requestScene: '报障与恢复', problemType: '性能问题' })),
-  ),
+  enrichRecordsWithSharedDimensions: (...args) => enrichRecordsWithSharedDimensions(...args),
 }))
 
+const enrichRecordsWithJourneys = vi.fn(async (records) =>
+  records.map((r) => ({ ...r, journeyL1: '日常运维', journeyL2: '使用运维' })),
+)
 vi.mock('./journeySemantic.js', () => ({
-  enrichRecordsWithJourneys: vi.fn(async (records) =>
-    records.map((r) => ({ ...r, journeyL1: '日常运维', journeyL2: '使用运维' })),
-  ),
+  enrichRecordsWithJourneys: (...args) => enrichRecordsWithJourneys(...args),
 }))
 
+const enrichRecordsWithTicketLlm = vi.fn(async (records) =>
+  records.map((r) => ({ ...r, painPoint: r.painPoint || 'LLM痛点' })),
+)
 vi.mock('./ticketAnalysis/ticketLlmEnrichment.js', () => ({
-  enrichRecordsWithTicketLlm: vi.fn(async (records) =>
-    records.map((r) => ({ ...r, painPoint: r.painPoint || 'LLM痛点' })),
-  ),
+  enrichRecordsWithTicketLlm: (...args) => enrichRecordsWithTicketLlm(...args),
 }))
 
 vi.mock('./applyThemes.js', async (importOriginal) => {
@@ -25,6 +28,12 @@ vi.mock('./applyThemes.js', async (importOriginal) => {
 })
 
 describe('enrichTicketRecordsForImport', () => {
+  beforeEach(() => {
+    enrichRecordsWithSharedDimensions.mockClear()
+    enrichRecordsWithJourneys.mockClear()
+    enrichRecordsWithTicketLlm.mockClear()
+  })
+
   it('returns tagged records even when downstream steps would warn without API key', async () => {
     const records = [
       {
@@ -50,5 +59,67 @@ describe('enrichTicketRecordsForImport', () => {
     expect(out[0].painPoint).toBe('LLM痛点')
     expect(out[0].themes).toEqual(['使用运维'])
     expect(warnings.some((w) => w.includes('LLM'))).toBe(true)
+  })
+
+  it('ticket_first runs ticket LLM before journey on import', async () => {
+    /** @type {string[]} */
+    const order = []
+    enrichRecordsWithTicketLlm.mockImplementation(async (records) => {
+      order.push('ticket')
+      return records.map((r) => ({ ...r, painPoint: 'LLM痛点' }))
+    })
+    enrichRecordsWithJourneys.mockImplementation(async (records) => {
+      order.push('journey')
+      return records.map((r) => ({ ...r, journeyL1: '日常运维', journeyL2: '使用运维' }))
+    })
+
+    const records = [
+      {
+        id: '1',
+        rawText: '无法访问',
+        dataSourceType: 'complaint_ticket',
+        themes: ['未分类'],
+        sentiment: 'neutral',
+      },
+    ]
+
+    await enrichTicketRecordsForImport(
+      records,
+      { llmApiKey: 'sk-test', taggingPipelineOrder: 'ticket_first' },
+      () => {},
+    )
+
+    expect(order).toEqual(['ticket', 'journey'])
+  })
+
+  it('legacy runs journey before ticket LLM on import', async () => {
+    /** @type {string[]} */
+    const order = []
+    enrichRecordsWithTicketLlm.mockImplementation(async (records) => {
+      order.push('ticket')
+      return records.map((r) => ({ ...r, painPoint: 'LLM痛点' }))
+    })
+    enrichRecordsWithJourneys.mockImplementation(async (records) => {
+      order.push('journey')
+      return records.map((r) => ({ ...r, journeyL1: '日常运维', journeyL2: '使用运维' }))
+    })
+
+    const records = [
+      {
+        id: '1',
+        rawText: '无法访问',
+        dataSourceType: 'complaint_ticket',
+        themes: ['未分类'],
+        sentiment: 'neutral',
+      },
+    ]
+
+    await enrichTicketRecordsForImport(
+      records,
+      { llmApiKey: 'sk-test', taggingPipelineOrder: 'legacy' },
+      () => {},
+    )
+
+    expect(order).toEqual(['journey', 'ticket'])
   })
 })

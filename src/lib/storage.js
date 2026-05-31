@@ -20,14 +20,33 @@ function hasLocalStorage() {
  * rules=本地规则+playbook | llm=大模型生成具体举措(需API Key)
  */
 
+/**
+ * @typedef {'unified' | 'split2' | 'separate'} TicketLlmMode
+ * unified=客户请求/痛点/优化合并 1 次 LLM | separate=三次独立调用（回滚）| split2=待实现
+ */
+
+/**
+ * @typedef {'ticket_first' | 'legacy'} TaggingPipelineOrder
+ * ticket_first=工单 LLM 先于旅程 LLM | legacy=旅程先于工单（回滚）
+ */
+
 /** @typedef {import('./quoteExtraction.js').QuoteExtractionConfig} QuoteExtractionConfig */
 
 /** @typedef {import('./quoteNoise.js').QuoteNoiseConfig} QuoteNoiseConfig */
 
-/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; optimizationMode: OptimizationMode; overviewConclusionsLlm: boolean; overviewPolishIncludeRecommendations: boolean; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
+/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; optimizationMode: OptimizationMode; overviewConclusionsLlm: boolean; overviewPolishIncludeRecommendations: boolean; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
 
 /** @type {ThemeMatchMode} */
 export const DEFAULT_THEME_MATCH_MODE = 'hybrid'
+
+/** @type {TicketLlmMode} */
+export const DEFAULT_TICKET_LLM_MODE = 'unified'
+
+/** hybrid 旅程门控：本地 score ≥ 此阈值且库内合法则跳过 LLM */
+export const DEFAULT_JOURNEY_LLM_SKIP_SCORE_THRESHOLD = 3
+
+/** @type {TaggingPipelineOrder} */
+export const DEFAULT_TAGGING_PIPELINE_ORDER = 'ticket_first'
 
 const DEFAULT_SETTINGS = {
   useRegex: true,
@@ -36,6 +55,10 @@ const DEFAULT_SETTINGS = {
   /** 工单「请求节点」字段误差大，默认不用于旅程打标 */
   useRequestNodeForJourney: false,
   themeMatchMode: DEFAULT_THEME_MATCH_MODE,
+  ticketLlmMode: DEFAULT_TICKET_LLM_MODE,
+  journeyLlmGating: true,
+  journeyLlmSkipScoreThreshold: DEFAULT_JOURNEY_LLM_SKIP_SCORE_THRESHOLD,
+  taggingPipelineOrder: DEFAULT_TAGGING_PIPELINE_ORDER,
   optimizationMode: 'llm',
   /** 生成/刷新洞察快照时，对周期洞察概览做 LLM 润色（需 API Key） */
   overviewConclusionsLlm: false,
@@ -149,6 +172,12 @@ export function loadSettings() {
       useRequestNodeForJourney:
         parsed.useRequestNodeForJourney ?? DEFAULT_SETTINGS.useRequestNodeForJourney,
       themeMatchMode: parsed.themeMatchMode || DEFAULT_SETTINGS.themeMatchMode,
+      ticketLlmMode: parsed.ticketLlmMode || DEFAULT_SETTINGS.ticketLlmMode,
+      journeyLlmGating: parsed.journeyLlmGating ?? DEFAULT_SETTINGS.journeyLlmGating,
+      journeyLlmSkipScoreThreshold:
+        parsed.journeyLlmSkipScoreThreshold ?? DEFAULT_SETTINGS.journeyLlmSkipScoreThreshold,
+      taggingPipelineOrder:
+        parsed.taggingPipelineOrder || DEFAULT_SETTINGS.taggingPipelineOrder,
       optimizationMode: parsed.optimizationMode || DEFAULT_SETTINGS.optimizationMode,
       overviewConclusionsLlm:
         parsed.overviewConclusionsLlm ?? DEFAULT_SETTINGS.overviewConclusionsLlm,
