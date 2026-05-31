@@ -23,7 +23,7 @@
 ### 2.1 纳入范围
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
-- **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；验收见 §5.4.1 TAG-LLM
+- **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -198,6 +198,8 @@
 ---
 
 ## 6. 手工测试检查清单（P0）
+
+**LLM 打标 P0 发布/UAT**（导入、补打、门控、回滚）：见专用清单 [LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)。
 
 执行前：复制 `server/data/auth.db` 备份，或使用 `e2e-data/` 独立库。
 

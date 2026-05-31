@@ -3,7 +3,7 @@
 **版本**：2026-06-02  
 **状态**：Phase A~E（P0 全项）已实现 — unified ticket LLM + 旅程门控 + 流水线重排 + 补打 + 离线验收  
 **目标**：全量 ~1400 条场景 token 降 **40~60%**；消除「ticket LLM 失败、旅程 token 白打」  
-**关联**：[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md)、[TEST-PLAN.md](./TEST-PLAN.md)
+**关联**：[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md)、[TEST-PLAN.md](./TEST-PLAN.md)、[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 
 ---
 
@@ -415,24 +415,30 @@ enrichmentStats: {
 
 ---
 
-## 10. 测试计划映射（TEST-PLAN 待增）
+## 10. 测试计划映射
 
 | 新 ID | 覆盖 |
 |-------|------|
 | TAG-LLM-01~10 | §3.5 U-01~U-10 |
 | TAG-LLM-11~15 | §4.3 G-01~G-05 |
 | TAG-LLM-16~20 | §5.3 O-01~O-05、§6.3 R-01~R-03 |
+| TAG-LLM-21~24 | Phase E：golden、token 预算、聚类稳定性 |
 
-**新增测试文件（建议）**：
+**自动化测试文件**：
 
 - `src/lib/ticketAnalysis/ticketAnalysisUnifiedLLM.test.js`
 - `src/lib/ticketAnalysis/validateUnifiedOptimization.test.js`
 - `src/lib/journeyMatchConfidence.test.js`
+- `src/lib/ticketAnalysis/ticketLlmGolden.test.js`
+- `src/snapshots/insightClusterStability.test.js`
+
+**发布 / 手工 UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 
 ---
 
 ## 11. 相关文档
 
 - [TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) — 打标规则与来源字段
+- [LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md) — **发布 / UAT 检查清单**
 - [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划
 - [DATA-PERSISTENCE.md](./DATA-PERSISTENCE.md) — 批量打标分批写库

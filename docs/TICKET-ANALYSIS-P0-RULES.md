@@ -1,8 +1,9 @@
 # 工单分析 P0 规则层技术说明
 
-**版本**：2026-06-01（2026-06-02 增补 LLM 来源追踪与批量打标持久化）
+**版本**：2026-06-02（P0 LLM 打标：unified / 门控 / ticket_first / 补打扩展）  
 **关联业务规范**：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md)（V2）  
-**适用范围**：单条工单分析中，**无大模型 API Key** 时的最终输出，以及 **有 Key 时 LLM 层的候选收集与 fallback**。
+**适用范围**：单条工单分析中，**无大模型 API Key** 时的最终输出，以及 **有 Key 时 LLM 层的候选收集与 fallback**。  
+**UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 
 ---
 
@@ -179,20 +180,24 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | **问题类型**（投诉/咨询） | 决策树 + 关键词 | **不走 LLM** |
 | **用户旅程** | 本地 + 可选 LLM（`themeMatchMode`） | 设置页「用户旅程匹配方式」 |
 
-**导入 / 批量重新打标**（有 API Key）阶段顺序：
+**导入 / 批量重新打标**（有 API Key）阶段顺序（默认 `taggingPipelineOrder=ticket_first`）：
 
-1. 规则初标（`analyzeTicket`）— 重置 `*Source` 为 `rule`（「仅未完成 LLM 增强」范围 **跳过** 此步）
+1. 规则初标（`analyzeTicket`）— 重置 `*Source` 为 `rule`（「仅未完成 LLM 增强 / 旅程 LLM 增强」范围 **跳过** 此步）
 2. 请求场景 / 问题类型（本地）
-3. 用户旅程（可 LLM）
-4. 客户请求 LLM → 痛点 LLM → `validateTicketAnalysisPair` → 重算情绪 → 优化建议 LLM  
-   （`ticketLlmMode=unified` 时合并为 **1 次 LLM** + optimization 按需 compact 补打）
-5. 写库
+3. **客户请求 / 痛点 / 优化**（`ticketLlmMode=unified` 时 **1 次 LLM** + optimization 按需 compact 补打；`separate` 时为三次独立调用）
+4. **用户旅程**（hybrid + `journeyLlmGating=true` 时高置信本地命中可跳过 LLM；记录 `journeySource` / `journeyMatchScore`）
+5. 用户情绪（规则，基于 ticket LLM 后的 request/pain）
+6. 写库（ticket LLM 批量 **每 4 条** 增量 persist）
+
+`taggingPipelineOrder=legacy` 时步骤 3、4 对调（旅程先于 ticket LLM，与改造前一致）。
 
 **来源字段**（用于反馈库「LLM 打标状态」筛选与导出）：
 
 - `customerRequestSource`、`painPointSource`、`optimizationSource`：`'rule' | 'llm'`
+- `journeySource`：`'rule' | 'llm'`（门控跳过时为 `rule`）
+- `journeyMatchScore`：本地匹配置信分（关键词 +3）
 - 「LLM 已增强」= 上述三项均为 `llm`（优化建议若有人工复核则不计入缺失）
-- 识别辅助：`recordNeedsTicketLlmEnrichment()`（`ticketAnalysisSources.js`）
+- 识别辅助：`recordNeedsTicketLlmEnrichment()`、`recordNeedsJourneyLlmEnrichment()`（`ticketAnalysisSources.js`）
 
 **批量打标持久化**（2026-06-02）：
 
@@ -213,8 +218,10 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | `painPoint` / `problemSummary` | 需求痛点（规则/LLM，≤80） |
 | `painPointSource` | `'rule' \| 'llm'` |
 | `optimizationSource` | `'rule' \| 'llm'`（有人工复核优化时 UI 显示「人工复核」） |
+| `journeySource` | `'rule' \| 'llm'` |
+| `journeyMatchScore` | 本地旅程匹配分（门控阈值默认 ≥3） |
 
-反馈库可筛 **待 LLM 增强** / **LLM 已增强**；批量重打标可选 **仅未完成 LLM 增强的工单**（只跑步骤 4，不重跑规则初标与旅程 LLM）。
+反馈库可筛 **待 LLM 增强** / **待旅程 LLM** / **LLM 已增强**；批量重打可选 **仅未完成 LLM 增强** 或 **仅未完成旅程 LLM 增强**（见 [LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md) §4）。
 
 ---
 
@@ -247,5 +254,8 @@ npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
 ## 10. 相关文档
 
 - [从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) — 业务规范 V2  
+- [LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — P0 改造设计  
+- [LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md) — 发布 / UAT 检查清单  
+- [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划
 - [TEST-PLAN.md](./TEST-PLAN.md) — 系统测试计划（LLM 使用 mock / 规则回退）
 - [LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — LLM 打标 P0 优化（合并 ticket LLM、旅程门控、流水线重排、optimization 三层保障）
