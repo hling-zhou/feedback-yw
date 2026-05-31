@@ -89,7 +89,7 @@ const KIND_META = {
   problem_type: {
     title: '问题类型（全产品通用）',
     description:
-      '从请求本身角度归类（可用性、性能与质量、功能需求与规划等）。支持关键词 + 解释 + LLM 混合打标。',
+      '从请求本身角度归类（可用性/连通性故障、性能问题、产品功能需求等 12 类）。支持决策树关键词 + 说明 + LLM 混合打标。',
     addLabel: '问题类型',
   },
   journey: {
@@ -567,7 +567,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
                 >
                   <Input
                     placeholder={
-                      tagKind === 'request_scene' ? '如：报障与恢复' : '如：性能与质量'
+                      tagKind === 'request_scene' ? '如：报障与恢复' : '如：性能问题'
                     }
                     disabled={editing != null}
                   />

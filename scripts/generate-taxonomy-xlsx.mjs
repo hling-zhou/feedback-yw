@@ -1,20 +1,30 @@
 /**
  * 生成打标配置 Excel：public/config/taxonomy/打标配置.xlsx
+ * 产品列表以 index.json 为准（含 vpc / dc / slb 等）
+ * 通用问题类型以 sharedTagDefs.PROBLEM_TYPES_BUILTIN（12 类）为 SSOT
  */
 import { writeFileSync, readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import * as XLSX from 'xlsx'
+import { PROBLEM_TYPES_BUILTIN } from '../src/lib/sharedTagDefs.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
-const outPath = join(root, 'public/config/taxonomy/打标配置.xlsx')
+const taxonomyDir = join(root, 'public/config/taxonomy')
+const outPath = join(taxonomyDir, '打标配置.xlsx')
 
 const EXAMPLE_NODE =
   'undefined--弹性公网IP--产品使用问题--公网IP绑定/解绑失败'
 
 function loadJson(name) {
-  return JSON.parse(readFileSync(join(root, `public/config/taxonomy/${name}.json`), 'utf8'))
+  return JSON.parse(readFileSync(join(taxonomyDir, `${name}.json`), 'utf8'))
+}
+
+function loadAllProducts() {
+  const index = loadJson('index')
+  const keys = index.products || []
+  return keys.map((key) => loadJson(key))
 }
 
 function buildJourneyIndex(journeys) {
@@ -29,10 +39,9 @@ function buildJourneyIndex(journeys) {
   return { l1ById, l2ById }
 }
 
-const eip = loadJson('eip')
-const generic = loadJson('generic')
-const products = [eip, generic]
-const eipJourneyIdx = buildJourneyIndex(eip.journeys)
+const products = loadAllProducts()
+const eip = products.find((p) => p.key === 'eip') || products[0]
+const eipJourneyIdx = buildJourneyIndex(eip?.journeys)
 
 const guideRows = [
   {
@@ -46,20 +55,20 @@ const guideRows = [
     工作表: '产品识别',
     适用产品: '每产品一行',
     用途与填写要点: '产品Key、产品名称、匹配关键词（逗号分隔）',
-    示例: 'eip | 弹性公网 IP | 弹性公网,公网IP,EIP',
+    示例: 'vpc | 虚拟私有云 | 虚拟私有云,VPC,vpc,专有网络',
   },
   {
     工作表: '用户旅程',
     适用产品: '按产品Key 多行',
     用途与填写要点:
       '一级/二级 ID·名称·说明、参考关键词。旅程打标与主题标签均只维护本表（必填）',
-    示例: 'eip | bind | 绑定与网络配置 | … | bind-resource | 绑定/解绑云资源 | …',
+    示例: 'vpc | provision | 资源申请与开通 | … | create-vpc | 创建VPC与子网 | …',
   },
   {
     工作表: '通用问题类型',
     适用产品: '全平台共用',
-    用途与填写要点: '无产品Key。问题类型名称、说明、参考关键词',
-    示例: '可用性/连通性 | 连通、中断类问题 | 不通,无法访问',
+    用途与填写要点: '无产品Key。问题类型名称、说明、参考关键词（12 类，与决策树 classifier 一致）',
+    示例: '可用性/连通性故障 | 业务完全中断、网络不通 | 不通,无法访问,中断',
   },
   {
     工作表: '请求节点-服务类型',
@@ -128,66 +137,69 @@ for (const p of products) {
   }
 }
 
-const problemTypeMap = new Map()
-for (const p of products) {
-  for (const pt of p.problemTypes || []) {
-    if (!problemTypeMap.has(pt.label)) {
-      problemTypeMap.set(pt.label, {
-        问题类型名称: pt.label,
-        问题类型说明: '',
-        参考关键词: (pt.keywords || []).join(','),
-      })
-    }
-  }
-}
-const problemRows = [...problemTypeMap.values()]
+const problemRows = PROBLEM_TYPES_BUILTIN.map((pt) => ({
+  问题类型名称: pt.label,
+  问题类型说明: pt.description || '',
+  参考关键词: (pt.keywords || []).join(','),
+}))
 
+const sharedProblemTypesJson = PROBLEM_TYPES_BUILTIN.map((pt) => ({
+  label: pt.label,
+  description: pt.description || '',
+  keywords: [...(pt.keywords || [])],
+}))
+
+/** @type {Record<string, unknown>[]} */
 const serviceRows = []
+/** @type {Record<string, unknown>[]} */
 const issueRows = []
-const serviceKeys = new Set()
-const issueKeys = new Set()
 
-if (eip.nodeMaps) {
-  for (const [k, l1Id] of Object.entries(eip.nodeMaps.serviceMap || {})) {
-    serviceKeys.add(k)
+for (const p of products) {
+  if (!p.nodeMaps) continue
+  const journeyIdx = buildJourneyIndex(p.journeys)
+  for (const [k, l1Id] of Object.entries(p.nodeMaps.serviceMap || {})) {
     serviceRows.push({
-      产品Key: 'eip',
+      产品Key: p.key,
       请求节点服务类型: k,
       一级ID: l1Id,
-      一级名称: eipJourneyIdx.l1ById.get(l1Id) || '',
+      一级名称: journeyIdx.l1ById.get(l1Id) || '',
     })
   }
-  for (const [k, v] of Object.entries(eip.nodeMaps.issueMap || {})) {
-    issueKeys.add(k)
-    const l2 = eipJourneyIdx.l2ById.get(v.l2)
+  for (const [k, v] of Object.entries(p.nodeMaps.issueMap || {})) {
+    const l2 = journeyIdx.l2ById.get(v.l2)
     issueRows.push({
-      产品Key: 'eip',
+      产品Key: p.key,
       请求节点问题子类: k,
       一级ID: v.l1,
-      一级名称: eipJourneyIdx.l1ById.get(v.l1) || l2?.l1Name || '',
+      一级名称: journeyIdx.l1ById.get(v.l1) || l2?.l1Name || '',
       二级ID: v.l2 || '',
       二级名称: l2?.l2Name || '',
     })
   }
 }
 
-if (!serviceKeys.has('产品使用问题')) {
-  serviceRows.push({
-    产品Key: 'eip',
-    请求节点服务类型: '产品使用问题',
-    一级ID: 'operate',
-    一级名称: eipJourneyIdx.l1ById.get('operate') || '日常运维与访问',
-  })
-}
-if (!issueKeys.has('公网IP绑定/解绑失败')) {
-  issueRows.push({
-    产品Key: 'eip',
-    请求节点问题子类: '公网IP绑定/解绑失败',
-    一级ID: 'bind',
-    一级名称: '绑定与网络配置',
-    二级ID: 'bind-resource',
-    二级名称: '绑定/解绑云资源',
-  })
+// EIP 文档示例行（若 JSON 中未包含则补全）
+if (eip?.nodeMaps && eipJourneyIdx) {
+  const serviceKeys = new Set(serviceRows.filter((r) => r.产品Key === 'eip').map((r) => r.请求节点服务类型))
+  const issueKeys = new Set(issueRows.filter((r) => r.产品Key === 'eip').map((r) => r.请求节点问题子类))
+  if (!serviceKeys.has('产品使用问题')) {
+    serviceRows.push({
+      产品Key: 'eip',
+      请求节点服务类型: '产品使用问题',
+      一级ID: 'operate',
+      一级名称: eipJourneyIdx.l1ById.get('operate') || '日常运维与访问',
+    })
+  }
+  if (!issueKeys.has('公网IP绑定/解绑失败')) {
+    issueRows.push({
+      产品Key: 'eip',
+      请求节点问题子类: '公网IP绑定/解绑失败',
+      一级ID: 'bind',
+      一级名称: '绑定与网络配置',
+      二级ID: 'bind-resource',
+      二级名称: '绑定/解绑云资源',
+    })
+  }
 }
 
 const wb = XLSX.utils.book_new()
@@ -199,4 +211,16 @@ XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(serviceRows), '请求�
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(issueRows), '请求节点-问题子类')
 
 writeFileSync(outPath, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
-console.log('已生成', outPath)
+
+const indexPath = join(taxonomyDir, 'index.json')
+const index = loadJson('index')
+index.version = Math.max(index.version || 3, 4)
+index.sharedProblemTypes = sharedProblemTypesJson
+writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`)
+
+console.log(
+  '已生成',
+  outPath,
+  `（${products.length} 个产品：${products.map((p) => p.key).join(', ')}；通用问题类型 ${problemRows.length} 类）`,
+)
+console.log('已同步', indexPath, 'sharedProblemTypes → 12 类')

@@ -24,7 +24,9 @@ const IMPORT_TEXT_FIELDS = [
   'handlingText',
   'responseText',
   'rootCauseCol',
-  'problemTypeCol',
+  'problemTypeL1FinalCol',
+  'problemTypeL2FinalCol',
+  'problemTypeL3FinalCol',
 ]
 
 /**

@@ -3,6 +3,9 @@ import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWanTouByProducts, formatWanTouRatio } from '../lib/wanTouRatio.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { buildPlanningRecommendations, limitPlanningRecommendations } from '../lib/planningRecommendations.js'
+import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
+import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
+import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
 import { getPlanningConfigVersions } from '../lib/planningConfigLoader.js'
 
@@ -105,6 +108,7 @@ function topEvidenceExcerpts(records, limit = 2) {
  * @param {OrderVolumeRow[]} [params.orderVolumes]
  * @param {OverviewRecommendation[]} [params.previousRecommendations]
  * @param {string} [params.previousPeriodId]
+ * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
  * @returns {OverviewConclusions}
  */
 export function buildOverviewConclusions({
@@ -115,6 +119,7 @@ export function buildOverviewConclusions({
   orderVolumes = [],
   previousRecommendations = [],
   previousPeriodId,
+  settings = null,
 }) {
   const periodLabel = period?.label || '当前周期'
   const periodMonth = periodMonthKey(period)
@@ -357,8 +362,21 @@ export function buildOverviewConclusions({
   }
   highlights.push(...risks)
 
-  const rawRecommendations = limitPlanningRecommendations(
-    buildPlanningRecommendations({
+  const { recommendations: rawClusterRecommendations, pipelineResults } =
+    buildClusterRecommendationsFromPipeline(ticketRecords, { settings })
+  /** @type {OverviewRecommendation[]} */
+  let rawRecommendations = rawClusterRecommendations
+  /** @type {'pain_cluster_v2' | 'legacy_planning'} */
+  let recommendationEngine = 'pain_cluster_v2'
+  let legacyFallback = false
+
+  const exclusionNote = formatClusteringExclusionNote(pipelineResults)
+  if (exclusionNote) dataCoverageNotes.push(exclusionNote)
+
+  if (!rawClusterRecommendations.length) {
+    recommendationEngine = 'legacy_planning'
+    legacyFallback = true
+    rawRecommendations = buildPlanningRecommendations({
       ticketRecords,
       mergedJourney,
       topProblemTypes,
@@ -368,10 +386,15 @@ export function buildOverviewConclusions({
       maxNegativePct,
       trendDeltaPct,
       trendDirection,
-    }),
-  )
+    })
+    dataCoverageNotes.push(
+      '本期未形成 V2 痛点聚类 Top 10（需有效「需求痛点挖掘」且二次聚类非空），已回退至规则引擎生成行动建议。',
+    )
+  }
+
+  const limitedRecommendations = limitPlanningRecommendations(rawRecommendations)
   const { recommendations, removedFromPreviousCount } = attachRecommendationPeriodCompare(
-    rawRecommendations,
+    limitedRecommendations,
     previousRecommendations,
   )
   const configVersions = getPlanningConfigVersions()
@@ -407,9 +430,11 @@ export function buildOverviewConclusions({
     highlights,
     recommendations,
     recommendationsMeta: {
-      ruleVersion: 'planning-rec-v2',
+      ruleVersion: recommendationEngine === 'pain_cluster_v2' ? `pain-cluster-${CLUSTERING_VERSION}` : 'planning-rec-v2',
       playbookVersion: configVersions.playbookVersion,
       signalWeightsVersion: configVersions.signalWeightsVersion,
+      recommendationEngine,
+      legacyFallback,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,
       cappedCount: recommendations.length,

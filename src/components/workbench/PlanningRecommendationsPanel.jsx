@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Card, Collapse, Dropdown, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { Button, Card, Collapse, Dropdown, Segmented, Select, Space, Table, Tag, Tooltip, Typography, Alert } from 'antd'
 import {
   AimOutlined,
   DownloadOutlined,
@@ -38,10 +38,10 @@ import {
 import PlanningRecommendationEditModal from './PlanningRecommendationEditModal.jsx'
 import {
   PLANNING_RECOMMENDATIONS_ANCHOR_ID,
-  PLANNING_RECOMMENDATIONS_PANEL_SUBTITLE,
   PLANNING_RECOMMENDATIONS_PANEL_TITLE,
 } from '../../domain/overviewConclusions.js'
 import PlanningRecommendationsHelpModal from './PlanningRecommendationsHelpModal.jsx'
+import PlanningRecommendationSectionsView from './PlanningRecommendationSectionsView.jsx'
 
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -112,28 +112,13 @@ function countByPriority(recs) {
 }
 
 /**
- * @param {OverviewRecommendation[]} recs
- * @param {number} [max]
- */
-function buildTopSummaries(recs, max = 3) {
-  const priorityScore = { high: 3, medium: 2, low: 1 }
-  return [...recs]
-    .sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority])
-    .slice(0, max)
-    .map((r) => r.summary || r.text)
-    .filter(Boolean)
-}
-
-/**
  * @param {Object} props
  * @param {OverviewConclusions | null | undefined} props.conclusions
  * @param {FeedbackRecord[]} [props.feedbacks]
- * @param {(feedback: FeedbackRecord) => void} [props.onOpenFeedback]
  */
 export default function PlanningRecommendationsPanel({
   conclusions,
   feedbacks = [],
-  onOpenFeedback,
 }) {
   const message = useAppMessage()
   const {
@@ -216,28 +201,11 @@ export default function PlanningRecommendationsPanel({
     }
   }, [productFilter, recommendationProductOptions])
 
-  const resolveFeedback = (rec, ticketId, recordId) => {
-    if (recordId && feedbackByRecordId.has(recordId)) {
-      return feedbackByRecordId.get(recordId)
-    }
-    if (ticketId && feedbackByTicketId.has(ticketId)) {
-      return feedbackByTicketId.get(ticketId)
-    }
-    if (rec.evidenceRecordIds?.length) {
-      for (const id of rec.evidenceRecordIds) {
-        const fb = feedbackByRecordId.get(id)
-        if (fb) return fb
-      }
-    }
-    return null
-  }
-
   if (!allRecommendations.length) {
     return null
   }
 
   const priorityCounts = countByPriority(allRecommendations)
-  const topSummaries = buildTopSummaries(filteredRecommendations)
 
   return (
     <Card
@@ -252,6 +220,9 @@ export default function PlanningRecommendationsPanel({
           <AimOutlined className="text-indigo-600" />
           <span className="text-base font-semibold">{PLANNING_RECOMMENDATIONS_PANEL_TITLE}</span>
           <PlanningRecommendationsHelpModal />
+          {conclusions?.recommendationsMeta?.recommendationEngine === 'pain_cluster_v2' && (
+            <Tag color="blue">V2 痛点聚类</Tag>
+          )}
           {conclusions?.source === 'hybrid' && <Tag color="purple">规则 + LLM</Tag>}
           {conclusions?.recommendationsLlm?.polishedAt && (
             <Tag color="geekblue">行动建议已润色</Tag>
@@ -279,9 +250,24 @@ export default function PlanningRecommendationsPanel({
         </Space>
       }
     >
-      <Typography.Paragraph type="secondary" className="!mb-3 text-sm">
-        {PLANNING_RECOMMENDATIONS_PANEL_SUBTITLE}
-      </Typography.Paragraph>
+      {conclusions?.recommendationsMeta?.rehydratedAt && (
+        <Alert
+          type="info"
+          showIcon
+          className="!mb-3"
+          title="行动建议已实时重算"
+          description="当前快照生成于 V2 痛点聚类上线前，行动建议已基于最新工单临时重算。请重新生成洞察快照以持久化 V2 结果。"
+        />
+      )}
+      {conclusions?.recommendationsMeta?.legacyFallback && (
+        <Alert
+          type="warning"
+          showIcon
+          className="!mb-3"
+          title="行动建议已回退至规则引擎"
+          description="本期 V2 痛点聚类未产生 Top 10 结果（通常因有效「需求痛点挖掘」不足或样本过少）。当前展示为旧版信号引擎建议，请补充打标后重新生成快照。"
+        />
+      )}
 
       {showPeriodCompare && (
         <div className="mb-3 flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
@@ -351,19 +337,6 @@ export default function PlanningRecommendationsPanel({
         </Space>
       </div>
 
-      {topSummaries.length > 0 && !productFilter && (
-        <div className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-          <Typography.Text strong className="text-sm text-indigo-900">
-            本期优先关注：
-          </Typography.Text>
-          <ol className="mb-0 mt-1 list-decimal space-y-0.5 pl-5 text-sm text-indigo-950">
-            {topSummaries.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ol>
-        </div>
-      )}
-
       {filteredRecommendations.length > 0 ? (
         viewMode === 'list' ? (
           <SimpleList
@@ -375,7 +348,6 @@ export default function PlanningRecommendationsPanel({
                 index={idx}
                 periodMonth={conclusions?.periodMonth}
                 insightPeriodId={conclusions?.insightPeriodId}
-                onOpenFeedback={onOpenFeedback}
                 onEdit={() => setEditingRec(rec)}
                 onFeedback={(type) => {
                   void submitRecommendationFeedback({
@@ -383,9 +355,6 @@ export default function PlanningRecommendationsPanel({
                     type,
                   })
                 }}
-                resolveFeedback={(ticketId, recordId) =>
-                  resolveFeedback(rec, ticketId, recordId)
-                }
                 evidenceRecords={resolveEvidenceRecordsForRecommendation(
                   rec,
                   feedbackByRecordId,
@@ -415,7 +384,6 @@ export default function PlanningRecommendationsPanel({
                     index={idx}
                     periodMonth={conclusions?.periodMonth}
                     insightPeriodId={conclusions?.insightPeriodId}
-                    onOpenFeedback={onOpenFeedback}
                     onEdit={() => setEditingRec(rec)}
                     onFeedback={(type) => {
                       void submitRecommendationFeedback({
@@ -423,9 +391,6 @@ export default function PlanningRecommendationsPanel({
                         type,
                       })
                     }}
-                    resolveFeedback={(ticketId, recordId) =>
-                      resolveFeedback(rec, ticketId, recordId)
-                    }
                     evidenceRecords={resolveEvidenceRecordsForRecommendation(
                       rec,
                       feedbackByRecordId,
@@ -484,7 +449,7 @@ export default function PlanningRecommendationsPanel({
       )}
 
       <Typography.Text type="secondary" className="mt-3 block text-xs">
-        点击工单号查看详情，或在反馈库中按范围筛选全部依据工单。
+        可在反馈库中按范围筛选相关工单，或在洞察分析 Tab 中进一步下钻。
       </Typography.Text>
 
       <PlanningRecommendationEditModal
@@ -509,9 +474,6 @@ export default function PlanningRecommendationsPanel({
  * @param {OverviewRecommendation} props.rec
  * @param {number} props.index
  * @param {string} [props.periodMonth]
- * @param {(feedback: FeedbackRecord) => void} [props.onOpenFeedback]
- * @param {(ticketId?: string, recordId?: string) => FeedbackRecord | null | undefined} props.resolveFeedback
- * @param {string} [props.insightPeriodId]
  * @param {FeedbackRecord[]} [props.evidenceRecords]
  * @param {() => void} [props.onEdit]
  * @param {(type: import('../../lib/planningRecommendationFeedback.js').RecommendationFeedbackType) => void} [props.onFeedback]
@@ -521,23 +483,18 @@ function PlanningRecommendationItem({
   index,
   periodMonth,
   insightPeriodId,
-  onOpenFeedback,
   onEdit,
   onFeedback,
-  resolveFeedback,
   evidenceRecords = [],
 }) {
   const details = rec.details || []
-  const summary = rec.summary || rec.text
+  const sections = rec.sections
   const ticketIds = rec.evidenceTicketIds || []
-  const previewIds = ticketIds.slice(0, 5)
-  const hiddenCount = Math.max(0, ticketIds.length - previewIds.length)
   const feedbacksListHref = buildFeedbacksLinkForRecommendation(rec, {
     month: periodMonth,
     evidenceRecords,
   })
   const analysisHref = buildPlanningAnalysisLink(rec)
-  const bundle = rec.evidenceBundle
   const generationTip = rec.generationMeta ? (
     <div className="max-w-sm space-y-1 text-xs">
       <div>
@@ -552,39 +509,6 @@ function PlanningRecommendationItem({
       )}
     </div>
   ) : null
-
-  const ticketRecordId = (tid) => {
-    const idx = ticketIds.indexOf(tid)
-    return idx >= 0 ? rec.evidenceRecordIds?.[idx] : undefined
-  }
-
-  const renderTicketLink = (tid, recordId) => {
-    const fb = resolveFeedback(tid, recordId)
-    if (onOpenFeedback && fb) {
-      return (
-        <Button
-          type="link"
-          size="small"
-          className="!h-auto !p-0 !text-xs"
-          onClick={() => onOpenFeedback(fb)}
-        >
-          {tid}
-        </Button>
-      )
-    }
-    return (
-      <Link
-        to={buildFeedbacksLinkForRecommendation(rec, {
-          month: periodMonth,
-          ticketId: tid,
-          evidenceRecords,
-        })}
-        className="text-xs text-indigo-600 hover:underline"
-      >
-        {tid}
-      </Link>
-    )
-  }
 
   const borderClass = PRIORITY_BORDER_CLASS[rec.priority] || PRIORITY_BORDER_CLASS.low
 
@@ -635,106 +559,37 @@ function PlanningRecommendationItem({
             {rec.userOverride && <Tag bordered>已编辑</Tag>}
           </Space>
 
-          <Typography.Paragraph
-            className={`!mb-2 ${rec.priority === 'high' ? 'text-base font-semibold text-gray-900' : 'text-sm font-medium text-gray-800'}`}
-          >
-            {summary}
-          </Typography.Paragraph>
+          {sections ? (
+            <PlanningRecommendationSectionsView sections={sections} />
+          ) : (
+            <>
+              {details.length === 1 && (
+                <Typography.Text type="secondary" className="mb-2 block text-sm leading-relaxed">
+                  · {details[0]}
+                </Typography.Text>
+              )}
 
-          {details.length === 1 && (
-            <Typography.Text type="secondary" className="mb-2 block text-sm leading-relaxed">
-              · {details[0]}
-            </Typography.Text>
+              {details.length > 1 && (
+                <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                  {details.map((d) => (
+                    <li key={d}>{d}</li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
 
-          {details.length > 1 && (
-            <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-              {details.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
-          )}
-
-          {(bundle || rec.insufficientEvidence || rec.evidenceStrength === 'weak') && (
-            <div
-              className={`mb-2 rounded-md border px-3 py-2 text-xs ${
-                rec.insufficientEvidence || rec.evidenceStrength === 'weak'
-                  ? 'border-amber-200 bg-amber-50/80 text-amber-950'
-                  : 'border-gray-200 bg-gray-50 text-gray-700'
-              }`}
-            >
+          {(rec.insufficientEvidence || rec.evidenceStrength === 'weak') && (
+            <div className="mb-2 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-950">
               {rec.insufficientEvidence && (
-                <Typography.Text className="mb-1 block text-xs text-amber-800">
+                <Typography.Text className="block text-xs text-amber-800">
                   依据工单样本偏少，建议结合洞察分析进一步核实后再纳入规划。
                 </Typography.Text>
               )}
               {rec.evidenceStrength === 'weak' && !rec.insufficientEvidence && (
-                <Typography.Text className="mb-1 block text-xs text-amber-800">
+                <Typography.Text className="block text-xs text-amber-800">
                   当前为推断型建议，工单佐证有限，请优先在洞察分析中交叉验证。
                 </Typography.Text>
-              )}
-              {bundle && (
-                <div className="space-y-1">
-                  <div>
-                    {bundle.ticketCount != null && <span>依据 {bundle.ticketCount} 条工单</span>}
-                    {bundle.negativeCount != null && (
-                      <span>
-                        {bundle.ticketCount != null ? ' · ' : ''}
-                        负面 {bundle.negativeCount} 条
-                      </span>
-                    )}
-                    {bundle.sharePct != null && <span> · 占本期 {bundle.sharePct}%</span>}
-                  </div>
-                  {bundle.manualActions?.length > 0 && (
-                    <div>人工复核动作：{bundle.manualActions.join('；')}</div>
-                  )}
-                  {ticketIds.length > 0 && (
-                    <div>
-                      依据工单：
-                      {ticketIds.map((tid, i) => (
-                        <span key={tid}>
-                          {i > 0 ? '、' : ''}
-                          {renderTicketLink(tid, rec.evidenceRecordIds?.[i])}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {bundle.sampleSummaries?.length > 0 && (
-                    <ul className="mb-0 list-disc pl-4">
-                      {bundle.sampleSummaries.map((s) => (
-                        <li key={s.ticketId}>
-                          {renderTicketLink(s.ticketId, ticketRecordId(s.ticketId))}
-                          {s.problemSummary ? `：${s.problemSummary}` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {!bundle && (rec.evidenceNote || previewIds.length > 0) && (
-            <div className="mb-2 text-xs text-gray-600">
-              {rec.evidenceNote && <span className="mr-2">{rec.evidenceNote}</span>}
-              {previewIds.length > 0 && (
-                <span>
-                  依据工单：
-                  {previewIds.map((tid, i) => (
-                    <span key={tid}>
-                      {i > 0 ? '、' : ''}
-                      {renderTicketLink(tid, rec.evidenceRecordIds?.[i])}
-                    </span>
-                  ))}
-                  {hiddenCount > 0 ? (
-                    <>
-                      {` +${hiddenCount}`}
-                      <Link to={feedbacksListHref} className="ml-1 text-indigo-600 hover:underline">
-                        在反馈库查看
-                      </Link>
-                    </>
-                  ) : null}
-                </span>
               )}
             </div>
           )}

@@ -14,6 +14,10 @@ import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
 import {
+  aggregateComplaintCauseL1Insights,
+  getComplaintCauseL1Display,
+} from '../domain/complaintCause.js'
+import {
   aggregateFieldInsights,
   filterFeedbacks,
   journeyTree,
@@ -38,18 +42,29 @@ import {
 function resolveInitialAnalysisTab(p) {
   if (p.tab) return p.tab
   if (p.journeyL1 || p.journeyL2) return 'journey'
+  if (p.complaintCauseL1) return 'complaint_cause'
   if (p.problemType) return 'problem'
   if (p.requestScene) return 'request'
   return 'request'
 }
 
-const TABS = [
-  { value: 'request', label: '请求场景' },
-  { value: 'problem', label: '问题类型' },
-  { value: 'journey', label: '用户旅程' },
-  { value: 'sentiment', label: '用户情绪' },
-  { value: 'keywords', label: '高频词' },
-]
+/** @param {string} dataSource */
+function buildAnalysisTabs(dataSource) {
+  const tabs = [{ value: 'request', label: '请求场景' }]
+  if (!dataSource || dataSource === 'complaint_ticket') {
+    tabs.push({ value: 'complaint_cause', label: '投诉原因（终判）' })
+  }
+  tabs.push({
+    value: 'problem',
+    label: dataSource === 'complaint_ticket' ? '问题类型（打标）' : '问题类型',
+  })
+  tabs.push(
+    { value: 'journey', label: '用户旅程' },
+    { value: 'sentiment', label: '用户情绪' },
+    { value: 'keywords', label: '高频词' },
+  )
+  return tabs
+}
 
 export default function Themes() {
   const { feedbacks, updateFeedback, retagSession, importSession, settings } = useFeedbacks()
@@ -61,6 +76,7 @@ export default function Themes() {
   const [product, setProduct] = useState(initialParams.product)
   const [resourcePool, setResourcePool] = useState('')
   const [expanded, setExpanded] = useState(() => {
+    if (initialParams.complaintCauseL1) return initialParams.complaintCauseL1
     if (initialParams.problemType) return initialParams.problemType
     if (initialParams.requestScene) return initialParams.requestScene
     return null
@@ -105,6 +121,9 @@ export default function Themes() {
     if (p.journeyL1 || p.journeyL2) {
       setJourneySel({ l1: p.journeyL1 || undefined, l2: p.journeyL2 || undefined })
       setExpanded(null)
+    } else if (p.complaintCauseL1) {
+      setExpanded(p.complaintCauseL1)
+      setJourneySel({ l1: undefined, l2: undefined })
     } else if (p.problemType) {
       setExpanded(p.problemType)
       setJourneySel({ l1: undefined, l2: undefined })
@@ -122,7 +141,9 @@ export default function Themes() {
     }
   }, [products, product, syncAnalysisParams])
 
-  const scoped = useMemo(() => {
+  const analysisTabs = useMemo(() => buildAnalysisTabs(dataSource), [dataSource])
+
+  const analysisScoped = useMemo(() => {
     let items = filterFeedbacks(sourceScopedFeedbacks, {
       product: product || undefined,
       resourcePool: resourcePool || undefined,
@@ -133,25 +154,37 @@ export default function Themes() {
         journeyL2: journeySel.l2,
       })
     }
+    return items
+  }, [sourceScopedFeedbacks, product, resourcePool, journeySel])
+
+  const scoped = useMemo(() => {
+    let items = analysisScoped
     if (tab === 'problem' && expanded) {
       items = items.filter((fb) => (fb.problemType || '未分类') === expanded)
+    }
+    if (tab === 'complaint_cause' && expanded) {
+      items = items.filter((fb) => getComplaintCauseL1Display(fb) === expanded)
     }
     if (tab === 'request' && expanded) {
       items = items.filter((fb) => (fb.requestScene || '未分类') === expanded)
     }
     return items
-  }, [sourceScopedFeedbacks, product, resourcePool, journeySel, tab, expanded])
+  }, [analysisScoped, tab, expanded])
 
   const { openBulkRetagModal, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
     useBulkRetagModal({ filteredRecords: scoped })
 
   const requestAgg = useMemo(
-    () => aggregateFieldInsights(scoped, 'requestScene'),
-    [scoped],
+    () => aggregateFieldInsights(analysisScoped, 'requestScene'),
+    [analysisScoped],
   )
   const problemAgg = useMemo(
-    () => aggregateFieldInsights(scoped, 'problemType'),
-    [scoped],
+    () => aggregateFieldInsights(analysisScoped, 'problemType'),
+    [analysisScoped],
+  )
+  const complaintCauseAgg = useMemo(
+    () => aggregateComplaintCauseL1Insights(analysisScoped),
+    [analysisScoped],
   )
   const journeyTreeData = useMemo(() => journeyTree(scoped), [scoped])
   const [keywords, setKeywords] = useState(/** @type {{ word: string; count: number }[]} */ ([]))
@@ -191,8 +224,9 @@ export default function Themes() {
   const chartData = useMemo(() => {
     if (tab === 'request') return requestAgg
     if (tab === 'problem') return problemAgg
+    if (tab === 'complaint_cause') return complaintCauseAgg
     return []
-  }, [tab, requestAgg, problemAgg])
+  }, [tab, requestAgg, problemAgg, complaintCauseAgg])
 
   const detailItems = useMemo(() => {
     if (tab === 'journey') {
@@ -206,6 +240,9 @@ export default function Themes() {
     }
     if (tab === 'problem' && expanded) {
       return scoped.filter((fb) => (fb.problemType || '未分类') === expanded)
+    }
+    if (tab === 'complaint_cause' && expanded) {
+      return scoped.filter((fb) => getComplaintCauseL1Display(fb) === expanded)
     }
     return []
   }, [tab, scoped, expanded, journeySel])
@@ -225,8 +262,21 @@ export default function Themes() {
   const clearSelection = () => {
     setExpanded(null)
     setJourneySel({ l1: undefined, l2: undefined })
-    syncAnalysisParams({ journeyL1: '', journeyL2: '', problemType: '', requestScene: '' })
+    syncAnalysisParams({
+      journeyL1: '',
+      journeyL2: '',
+      problemType: '',
+      complaintCauseL1: '',
+      requestScene: '',
+    })
   }
+
+  useEffect(() => {
+    if (tab === 'complaint_cause' && dataSource && dataSource !== 'complaint_ticket') {
+      setTab('request')
+      syncAnalysisParams({ tab: 'request' })
+    }
+  }, [dataSource, tab, syncAnalysisParams])
 
   const handleDataSourceChange = (value) => {
     setDataSource(value)
@@ -252,9 +302,32 @@ export default function Themes() {
     setExpanded(label)
     setJourneySel({ l1: undefined, l2: undefined })
     if (tab === 'problem') {
-      syncAnalysisParams({ problemType: label, requestScene: '', journeyL1: '', journeyL2: '', tab: 'problem' })
+      syncAnalysisParams({
+        problemType: label,
+        complaintCauseL1: '',
+        requestScene: '',
+        journeyL1: '',
+        journeyL2: '',
+        tab: 'problem',
+      })
+    } else if (tab === 'complaint_cause') {
+      syncAnalysisParams({
+        complaintCauseL1: label,
+        problemType: '',
+        requestScene: '',
+        journeyL1: '',
+        journeyL2: '',
+        tab: 'complaint_cause',
+      })
     } else {
-      syncAnalysisParams({ requestScene: label, problemType: '', journeyL1: '', journeyL2: '', tab: 'request' })
+      syncAnalysisParams({
+        requestScene: label,
+        problemType: '',
+        complaintCauseL1: '',
+        journeyL1: '',
+        journeyL2: '',
+        tab: 'request',
+      })
     }
   }
 
@@ -265,6 +338,7 @@ export default function Themes() {
       journeyL1: l1 || '',
       journeyL2: l2 || '',
       problemType: '',
+      complaintCauseL1: '',
       requestScene: '',
       tab: 'journey',
     })
@@ -352,7 +426,7 @@ export default function Themes() {
         <WorkbenchTabNav
           className="mb-0 min-w-0 flex-1"
           activeKey={tab}
-          items={TABS.map(({ value, label }) => ({ key: value, label }))}
+          items={analysisTabs.map(({ value, label }) => ({ key: value, label }))}
           onChange={(value) => {
             setTab(value)
             clearSelection()
@@ -392,18 +466,35 @@ export default function Themes() {
         </Space>
       </div>
 
-      {(tab === 'request' || tab === 'problem') && (
+      {(tab === 'request' || tab === 'problem' || tab === 'complaint_cause') && (
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <div className="space-y-4">
-            <Card title={tab === 'request' ? '请求场景分布' : '问题类型分布'}>
+            <Card
+              title={
+                tab === 'request'
+                  ? '请求场景分布'
+                  : tab === 'complaint_cause'
+                    ? '投诉原因（终判）分布'
+                    : '问题类型（打标）分布'
+              }
+            >
               <ThemeBarChart data={chartData} onBarClick={handleBarClick} />
             </Card>
 
             <div className="space-y-2">
               <Typography.Title level={5} className="!mb-0">
-                {tab === 'request' ? '请求场景列表' : '问题类型列表'}
+                {tab === 'request'
+                  ? '请求场景列表'
+                  : tab === 'complaint_cause'
+                    ? '投诉原因（终判）列表'
+                    : '问题类型（打标）列表'}
               </Typography.Title>
-              {(tab === 'request' ? requestAgg : problemAgg).map((t) => (
+              {(tab === 'request'
+                ? requestAgg
+                : tab === 'complaint_cause'
+                  ? complaintCauseAgg
+                  : problemAgg
+              ).map((t) => (
                 <Card
                   key={t.label}
                   hoverable

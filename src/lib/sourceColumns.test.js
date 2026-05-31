@@ -4,6 +4,7 @@ import {
   getSourceColumnValue,
   hasIncompleteSourceColumns,
 } from './sourceColumns.js'
+import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
 
 describe('sourceColumns', () => {
   it('buildSourceColumns from mapped row', () => {
@@ -42,5 +43,11 @@ describe('sourceColumns', () => {
     expect(
       getSourceColumnValue({ handlingText: 'x' }, '处理意见'),
     ).toBe('x')
+    expect(getSourceColumnValue({ customerTier: '金牌' }, CUSTOMER_TIER_SOURCE_COLUMN)).toBe('金牌')
+  })
+
+  it('buildSourceColumns stores 移动云客户服务等级', () => {
+    const cols = buildSourceColumns({ customerTierCol: '银牌' })
+    expect(cols?.[CUSTOMER_TIER_SOURCE_COLUMN]).toBe('银牌')
   })
 })

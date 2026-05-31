@@ -106,8 +106,16 @@ export function createApiStorageAdapter() {
       })
     },
 
-    async clearImportedData() {
-      await storageFetch('/imported-data', { method: 'DELETE' })
+    async clearImportedData(options = {}) {
+      const params = new URLSearchParams()
+      if (options.all) {
+        params.set('scope', 'all')
+      } else {
+        if (options.insightPeriodId) params.set('insightPeriodId', options.insightPeriodId)
+        if (options.dataSourceType) params.set('dataSourceType', options.dataSourceType)
+      }
+      const qs = params.toString()
+      return storageFetch(`/imported-data${qs ? `?${qs}` : ''}`, { method: 'DELETE' })
     },
 
     async getRecord(id) {

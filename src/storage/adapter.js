@@ -58,7 +58,7 @@
  * @property {(candidate: import('../domain/tagCandidate.js').TagCandidate) => Promise<void>} putTagCandidate
  * @property {(candidates: import('../domain/tagCandidate.js').TagCandidate[]) => Promise<void>} putTagCandidates
  * @property {(id: string) => Promise<void>} deleteTagCandidate
- * @property {() => Promise<void>} [clearImportedData]
+ * @property {(options?: import('./clearImportedData.js').ClearImportedDataOptions) => Promise<import('./clearImportedData.js').ClearImportedDataResult>} [clearImportedData]
  * @property {() => Promise<{ revision: number; updatedAt: string | null }>} [getDataRevision]
  */
 

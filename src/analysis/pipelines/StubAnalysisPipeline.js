@@ -3,7 +3,6 @@ import { ArtifactCollector } from '../core/ArtifactCollector.js'
 import { createTicketRecord } from '../../lib/recordFactory.js'
 import { SCHEMA_VERSION } from '../../domain/constants.js'
 import { pickImportRowMeta } from '../../lib/importUtils.js'
-import { extractQuoteFromFields } from '../../lib/quoteExtraction.js'
 
 /**
  * @typedef {import('../core/AnalysisContext.js').AnalysisContext} AnalysisContext
@@ -41,18 +40,6 @@ export class StubAnalysisPipeline extends AnalysisPipeline {
 
       const rowMeta = pickImportRowMeta(row)
       const rawText = String(body || '')
-      const { customerQuote, quoteExtractionVersion } = extractQuoteFromFields(
-        {
-          rawText,
-          commentText: row.commentText,
-          openText: row.openText,
-        },
-        {
-          dataSourceType: ctx.dataSourceType,
-          settings: ctx.settings ?? null,
-          useRegex: ctx.settings?.useRegex ?? true,
-        },
-      )
       const base = {
         id,
         schemaVersion: SCHEMA_VERSION,
@@ -65,8 +52,7 @@ export class StubAnalysisPipeline extends AnalysisPipeline {
         importFileName: rowMeta.importFileName,
         importSheetName: rowMeta.importSheetName,
         rawText,
-        customerQuote,
-        quoteExtractionVersion,
+        customerQuote: '',
         importMonth: rowMeta.importMonth,
         createdAt: row.createdAt,
         product: row.product,

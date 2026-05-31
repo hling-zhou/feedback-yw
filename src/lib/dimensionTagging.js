@@ -1,4 +1,5 @@
 import { getSharedProblemTypes, getSharedRequestScenes } from './taxonomyLoader.js'
+import { classifyProblemType, PROBLEM_TYPE_OTHER } from './problemTypeClassifier.js'
 import {
   matchThemesByDescription,
   matchSharedDimensionHybridBatch,
@@ -18,12 +19,21 @@ const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consulta
 const UNCLASSIFIED_PROBLEM = '未分类'
 
 /**
- * 仅用标签库规则（关键词 + 说明）对打标正文匹配「问题类型」，不读取导入表投诉原因列。
+ * 问题类型：决策树 classifier 优先；未命中时回退旧版关键词/说明打分（matchSharedLabel）
  * @param {string} text
  * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
  */
 export function resolveProblemTypeFromConfig(text, rules) {
-  return matchSharedLabel(text || '', rules)
+  const corpus = (text || '').trim()
+  if (!corpus) return PROBLEM_TYPE_OTHER
+
+  const classified = classifyProblemType(corpus, rules)
+  if (classified !== PROBLEM_TYPE_OTHER) return classified
+
+  const legacy = matchSharedLabel(corpus, rules)
+  if (legacy && legacy !== UNCLASSIFIED_PROBLEM) return legacy
+
+  return PROBLEM_TYPE_OTHER
 }
 
 /**
@@ -34,7 +44,7 @@ export function resolveProblemTypeFromConfig(text, rules) {
 function resolveLocalProblemTypeLabel(record, text, rules) {
   const ds = record.dataSourceType || 'complaint_ticket'
   if (TICKET_LIKE_SOURCES.includes(ds)) {
-    return matchSharedLabel(text, rules)
+    return resolveProblemTypeFromConfig(text, rules)
   }
   const existing = record.problemType?.trim()
   if (existing && isInThemeLibrary(existing, rules)) return existing
@@ -42,7 +52,7 @@ function resolveLocalProblemTypeLabel(record, text, rules) {
     const fromExisting = matchSharedLabel(existing, rules)
     if (fromExisting !== UNCLASSIFIED_PROBLEM) return fromExisting
   }
-  return matchSharedLabel(text, rules)
+  return resolveProblemTypeFromConfig(text, rules)
 }
 
 /**

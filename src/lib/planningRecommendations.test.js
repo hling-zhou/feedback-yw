@@ -69,6 +69,20 @@ describe('planningRecommendations', () => {
     expect(details.some((d) => d.includes('连通性诊断'))).toBe(true)
   })
 
+  it('collectActionItemsFromRecords prefers manualReviewOptimization', () => {
+    const items = collectActionItemsFromRecords(
+      [
+        makeRecord({
+          manualReviewOptimization: '建立端口不通类工单自动化诊断脚本，首响自动输出拦截报告。',
+          optimizationProduct: '旧自动建议不应采纳。',
+        }),
+      ],
+      5,
+    )
+    expect(items.some((i) => i.text.includes('自动化诊断'))).toBe(true)
+    expect(items.some((i) => i.text.includes('旧自动建议'))).toBe(false)
+  })
+
   it('buildPlanningRecommendations includes journey playbook when no ticket suggestions', () => {
     const records = [
       makeRecord({ rootCause: '安全组未放行导致无法访问' }),
@@ -324,11 +338,11 @@ describe('planningRecommendations', () => {
   it('buildGenerationSelectedReason describes scope and signal', () => {
     const reason = buildGenerationSelectedReason({
       signalType: 'problem_type',
-      scope: { product: 'ECS', problemType: '性能类' },
+      scope: { product: 'ECS', problemType: '性能问题' },
       evidenceBundle: { ticketCount: 12 },
     })
     expect(reason).toContain('ECS')
-    expect(reason).toContain('性能类')
+    expect(reason).toContain('性能问题')
     expect(reason).toContain('12')
   })
 
@@ -388,7 +402,7 @@ describe('planningRecommendations', () => {
           children: [{ l2: '订购开通与加急', count: 3 }],
         },
       ],
-      topProblemTypes: [{ name: '功能需求与规划', count: 2 }],
+      topProblemTypes: [{ name: '产品功能需求', count: 2 }],
       sampleSize: 3,
     })
     expect(recs.length).toBeGreaterThan(0)
@@ -504,13 +518,13 @@ describe('planningRecommendations', () => {
       priority: 'high',
       category: 'product',
       text: 's1',
-      summary: '建议「弹性公网IP·权限及配额限制·资源与配额」：建立配额预警与权限自检工具。',
+      summary: '建议「弹性公网IP·权限及配额限制·配额与权限申请」：建立配额预警与权限自检工具。',
       details: ['建立配额预警与权限自检工具', '梳理 IAM 权限矩阵提示缺失项'],
       scope: {
         product: '弹性公网IP',
         journeyL1: '产品订改续',
         journeyL2: '权限及配额限制',
-        problemType: '资源与配额',
+        problemType: '配额与权限申请',
       },
       signalType: 'journey_hotspot',
     }
@@ -533,9 +547,9 @@ describe('planningRecommendations', () => {
       priority: 'medium',
       category: 'product',
       text: 's3',
-      summary: '建议「弹性公网IP·功能需求与规划」：建立需求 intake 与排期可视化机制。',
+      summary: '建议「弹性公网IP·产品功能需求」：建立需求 intake 与排期可视化机制。',
       details: ['建立需求 intake 与排期可视化', '在控制台同步 roadmap 与交付窗口'],
-      scope: { product: '弹性公网IP', problemType: '功能需求与规划' },
+      scope: { product: '弹性公网IP', problemType: '产品功能需求' },
       signalType: 'problem_type',
     }
     expect(recommendationsSimilar(quota, create)).toBe(false)
@@ -563,32 +577,32 @@ describe('planningRecommendations', () => {
     pushMany(720, {
       journeyL1: '产品订改续',
       journeyL2: '权限及配额限制',
-      problemType: '资源与配额',
+      problemType: '配额与权限申请',
     })
     pushMany(120, {
       journeyL1: '产品订改续',
       journeyL2: '创建/申购 EIP',
-      problemType: '资源与配额',
+      problemType: '配额与权限申请',
     })
     pushMany(140, {
       journeyL1: '开通与上架',
       journeyL2: '产品上架与交付',
-      problemType: '功能需求与规划',
+      problemType: '产品功能需求',
     })
     pushMany(80, {
       journeyL1: '业务使用与连通',
       journeyL2: '公网访问不通或不稳定、丢包',
-      problemType: '可用性与连通性',
+      problemType: '可用性/连通性故障',
     })
     pushMany(60, {
       journeyL1: '产品订改续',
       journeyL2: '带宽升降配',
-      problemType: '配置与对接',
+      problemType: '配置与操作',
     })
     pushMany(40, {
       journeyL1: '认知与选型',
       journeyL2: '计费模式咨询',
-      problemType: '计费与商务',
+      problemType: '计费与账单',
     })
 
     const mergedJourney = [
@@ -598,11 +612,11 @@ describe('planningRecommendations', () => {
       { l1: '认知与选型', count: 40, children: [{ l2: '计费模式咨询', count: 40 }] },
     ]
     const topProblemTypes = [
-      { name: '资源与配额', count: 840 },
-      { name: '功能需求与规划', count: 140 },
-      { name: '可用性与连通性', count: 80 },
-      { name: '配置与对接', count: 60 },
-      { name: '计费与商务', count: 40 },
+      { name: '配额与权限申请', count: 840 },
+      { name: '产品功能需求', count: 140 },
+      { name: '可用性/连通性故障', count: 80 },
+      { name: '配置与操作', count: 60 },
+      { name: '计费与账单', count: 40 },
     ]
 
     const recs = buildPlanningRecommendations({
@@ -620,7 +634,7 @@ describe('planningRecommendations', () => {
     expect(new Set(scopes).size).toBe(recs.length)
     expect(new Set(scopes).size).toBeGreaterThanOrEqual(4)
     expect(recs.some((r) => r.scope?.journeyL2 === '创建/申购 EIP')).toBe(true)
-    expect(recs.some((r) => r.scope?.problemType === '功能需求与规划')).toBe(true)
+    expect(recs.some((r) => r.scope?.problemType === '产品功能需求')).toBe(true)
   })
 
   it('selectDiversePlanningRecommendations ensures each product has at least one item', () => {
@@ -631,7 +645,7 @@ describe('planningRecommendations', () => {
           product: '弹性公网IP',
           journeyL1: '产品订改续',
           journeyL2: '权限及配额限制',
-          problemType: '资源与配额',
+          problemType: '配额与权限申请',
         }),
       ),
       ...Array.from({ length: 12 }, (_, i) =>
@@ -640,7 +654,7 @@ describe('planningRecommendations', () => {
           product: '云主机',
           journeyL1: '业务使用与连通',
           journeyL2: '远程连接异常',
-          problemType: '可用性与连通性',
+          problemType: '可用性/连通性故障',
         }),
       ),
     ]
@@ -652,15 +666,15 @@ describe('planningRecommendations', () => {
         priority: 'high',
         summary: '建议「弹性公网IP·权限及配额限制」：建立配额预警与权限自检能力。',
         details: ['建立配额预警', '在创建前拦截不可达订单'],
-        scope: { product: '弹性公网IP', journeyL2: '权限及配额限制', problemType: '资源与配额' },
+        scope: { product: '弹性公网IP', journeyL2: '权限及配额限制', problemType: '配额与权限申请' },
       },
       {
         id: '2',
         signalType: 'problem_type',
         priority: 'high',
-        summary: '建议「弹性公网IP·资源与配额」：建立配额预警、权限自检与申请引导一体化能力。',
+        summary: '建议「弹性公网IP·配额与权限申请」：建立配额预警、权限自检与申请引导一体化能力。',
         details: ['建立配额预警', '权限自检工具'],
-        scope: { product: '弹性公网IP', problemType: '资源与配额' },
+        scope: { product: '弹性公网IP', problemType: '配额与权限申请' },
       },
       {
         id: '3',
@@ -668,7 +682,7 @@ describe('planningRecommendations', () => {
         priority: 'medium',
         summary: '建议「云主机·远程连接异常」：完善远程连接自助排查向导与安全组预检能力。',
         details: ['上线远程连接诊断向导', '明确端口与安全组边界'],
-        scope: { product: '云主机', journeyL2: '远程连接异常', problemType: '可用性与连通性' },
+        scope: { product: '云主机', journeyL2: '远程连接异常', problemType: '可用性/连通性故障' },
       },
     ]
 
@@ -703,7 +717,7 @@ describe('planningRecommendations', () => {
           product: '云专线',
           journeyL1: '开通与交付',
           journeyL2: '订购开通与加急',
-          problemType: '配置与对接',
+          problemType: '配置与操作',
           requestScene: '开通咨询',
         }),
       ),
@@ -713,7 +727,7 @@ describe('planningRecommendations', () => {
           product: '弹性负载均衡',
           journeyL1: '监听与转发配置',
           journeyL2: '监听与端口配置',
-          problemType: '配置与对接',
+          problemType: '配置与操作',
           requestScene: '配置变更',
         }),
       ),
@@ -721,7 +735,7 @@ describe('planningRecommendations', () => {
     const recs = buildPlanningRecommendations({
       ticketRecords,
       mergedJourney: [],
-      topProblemTypes: [{ name: '配置与对接', count: 45 }],
+      topProblemTypes: [{ name: '配置与操作', count: 45 }],
       sampleSize: ticketRecords.length,
     })
     const products = new Set(recs.map((r) => r.scope?.product))
@@ -741,7 +755,7 @@ describe('planningRecommendations', () => {
           product: '弹性公网IP',
           journeyL1: '产品订改续',
           journeyL2: '创建/申购 EIP',
-          problemType: '资源与配额',
+          problemType: '配额与权限申请',
         }),
       ),
       ...Array.from({ length: 15 }, (_, i) =>
@@ -750,7 +764,7 @@ describe('planningRecommendations', () => {
           product: '云专线',
           journeyL1: '开通与上架',
           journeyL2: '订购开通与加急',
-          problemType: '配置与对接',
+          problemType: '配置与操作',
         }),
       ),
     ]
@@ -770,8 +784,8 @@ describe('planningRecommendations', () => {
       ticketRecords,
       mergedJourney,
       topProblemTypes: [
-        { name: '资源与配额', count: 40 },
-        { name: '配置与对接', count: 15 },
+        { name: '配额与权限申请', count: 40 },
+        { name: '配置与操作', count: 15 },
       ],
       sampleSize: ticketRecords.length,
     })

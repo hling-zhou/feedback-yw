@@ -1,4 +1,4 @@
-import { analyzeSentiment } from './sentiment.js'
+import { analyzeTicketSentiment } from './sentiment.js'
 import {
   enrichRecordsWithJourneys,
   recordsNeedJourneyLlmProposal,
@@ -6,8 +6,10 @@ import {
 } from './journeySemantic.js'
 import { resolveSettingsForLlm } from './llmClient.js'
 import { enrichRecordsWithSharedDimensions } from './dimensionTagging.js'
+import { enrichRecordsWithTicketLlm } from './ticketAnalysis/ticketLlmEnrichment.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 import { preserveManualTags } from './manualTagFields.js'
+import { buildSentimentAnalysisText } from './sentimentAnalysisText.js'
 
 /**
  * 旅程标签由用户旅程同步（二级环节名即标签；无二级时取一级）
@@ -44,7 +46,7 @@ export async function enrichRecordsWithThemes(records, _settings, onProgress) {
  * @param {import('./storage.js').AppSettings} settings
  * @param {(done: number, total: number) => void} [onProgress]
  */
-export async function reprocessAllThemesAndSentiment(records, settings, onProgress) {
+export async function reprocessAllThemesAndSentiment(records, settings, onProgress, options = {}) {
   const total = records.length
   const llmSettings = await resolveSettingsForLlm(settings)
   const needsJourneyLlm =
@@ -64,18 +66,28 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
     )
   }
 
+  if (canUseSemanticMatch(llmSettings)) {
+    enriched = await enrichRecordsWithTicketLlm(enriched, llmSettings, (done) => {
+      onProgress?.(Math.floor(total * 0.9 + done * 0.08), total)
+    })
+  }
+
   const originalById = new Map(records.map((r) => [r.id, r]))
 
   return enriched.map((r, i) => {
     onProgress?.(i + 1, total)
     const original = originalById.get(r.id) ?? r
-    const quote = r.customerQuote || r.rawText || ''
+    const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r))
     const next = {
       ...r,
       themes: themesFromJourney(r),
-      sentiment: analyzeSentiment(quote),
+      sentiment,
+      urgencyLevel,
+      customerQuote: r.customerRequest?.trim() || r.customerQuote || '',
     }
-    return preserveManualTags(original, next)
+    return preserveManualTags(original, next, {
+      forceOverride: options.forceOverrideManualTags === true,
+    })
   })
 }
 

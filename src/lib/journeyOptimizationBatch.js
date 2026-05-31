@@ -2,7 +2,7 @@ import { buildJourneyInsights } from './journeyInsights.js'
 import { generateMeasuresForSegment, segmentCacheKey } from './journeyOptimizationLLM.js'
 import {
   buildJourneyMeasuresScopeKey,
-  computeJourneyMeasuresFingerprint,
+  computeJourneyMeasuresFingerprintFromRecords,
   isJourneyMeasuresScopeReady,
   loadJourneyMeasuresBundle,
   saveJourneyMeasuresBundle,
@@ -10,6 +10,9 @@ import {
 import { canUseSemanticMatch } from './themeSemantic.js'
 
 /**
+ * @deprecated Phase 1C 起旅程 Tab 改用 V2 痛点聚类（`painPointClustering/buildJourneyClusterView`）。
+ * 本模块保留供 legacy 路径与稳定观察期回退；预计 1~2 个周期后评估移除。
+ *
  * 为洞察周期 + 产品范围批量生成各旅程环节的 AI 举措（每个周期仅一次，直至工单集合变化）。
  *
  * @param {Object} params
@@ -39,7 +42,7 @@ export async function ensureJourneyMeasuresForScope({
   }
 
   const scopeKey = buildJourneyMeasuresScopeKey(periodId, productName)
-  const fingerprint = computeJourneyMeasuresFingerprint(items.map((f) => f.id))
+  const fingerprint = computeJourneyMeasuresFingerprintFromRecords(items)
 
   if (isJourneyMeasuresScopeReady(scopeKey, fingerprint)) {
     return {

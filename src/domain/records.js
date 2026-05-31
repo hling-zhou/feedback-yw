@@ -46,6 +46,7 @@
  *   version?: string
  *   ticketId?: string
  *   resourcePool?: string
+ *   customerTier?: import('./customerTier.js').CustomerTier
  *   requestScene: string
  *   problemType: string
  *   journeyL1: string
@@ -58,7 +59,11 @@
  *   manualReviewSolution?: string
  *   manualReviewAction?: string
  *   sourceColumns?: Record<string, string>
+ *   complaintCauseL1Final?: string
+ *   complaintCauseL2Final?: string
+ *   complaintCauseL3Final?: string
  *   sentiment: Sentiment
+ *   urgencyLevel?: import('../lib/sentiment.js').UrgencyLevel
  *   themes: string[]
  *   status: FeedbackStatus
  *   note?: string
@@ -114,12 +119,19 @@ export function isTicketRecord(record) {
 
 /**
  * 业务去重键（NFR-R-031）
- * @param {Pick<BaseRecord, 'dataSourceType' | 'importMonth'> & { ticketId?: string; ratingId?: string; respondentId?: string; questionId?: string }} record
+ * @param {Pick<BaseRecord, 'dataSourceType' | 'importMonth' | 'id'> & { ticketId?: string; ratingId?: string; respondentId?: string; questionId?: string }} record
  */
 export function buildDedupeKey(record) {
   const month = record.importMonth || 'unknown'
   if (record.dataSourceType === 'complaint_ticket' || record.dataSourceType === 'consultation_ticket') {
-    return `${record.dataSourceType}::${month}::${record.ticketId || ''}`
+    const ticketId = typeof record.ticketId === 'string' ? record.ticketId.trim() : ''
+    if (ticketId) {
+      return `${record.dataSourceType}::${month}::ticket::${ticketId}`
+    }
+    if (record.id) {
+      return `${record.dataSourceType}::${month}::id::${record.id}`
+    }
+    return ''
   }
   if (record.dataSourceType === 'user_survey') {
     return `${record.dataSourceType}::${month}::${record.respondentId || ''}::${record.questionId || ''}`

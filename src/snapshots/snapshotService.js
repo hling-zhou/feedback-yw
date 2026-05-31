@@ -115,6 +115,7 @@ export async function rebuildOverviewSnapshot({
     status: 'ready',
     previousRecommendations,
     previousPeriodId: previousPeriodId || undefined,
+    settings,
   })
 
   if (existingOverview?.conclusions?.recommendations?.length) {

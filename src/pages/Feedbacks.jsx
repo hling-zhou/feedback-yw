@@ -19,6 +19,11 @@ import SentimentBadge from '../components/SentimentBadge.jsx'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
+import {
+  countComplaintCauseL1,
+  getComplaintCauseL1Display,
+  isComplaintTicket,
+} from '../domain/complaintCause.js'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
@@ -66,6 +71,7 @@ export default function Feedbacks() {
   const [q, setQ] = useState('')
   const [product, setProduct] = useState('')
   const [problemType, setProblemType] = useState('')
+  const [complaintCauseL1, setComplaintCauseL1] = useState('')
   const [journeyL1, setJourneyL1] = useState('')
   const [resourcePool, setResourcePool] = useState('')
   const [dataSourceFilter, setDataSourceFilter] = useState('')
@@ -100,6 +106,7 @@ export default function Feedbacks() {
       setSelectedTicketIds(parseTicketIdsParam(rawTicketIds))
       setProduct('')
       setProblemType('')
+      setComplaintCauseL1('')
       setJourneyL1('')
       setResourcePool('')
       setDataSourceFilter('')
@@ -112,12 +119,14 @@ export default function Feedbacks() {
     const source = searchParams.get('source')
     const urlProduct = searchParams.get('product')
     const urlProblemType = searchParams.get('problemType')
+    const urlComplaintCauseL1 = searchParams.get('complaintCauseL1')
     const urlJourneyL1 = searchParams.get('journeyL1')
 
     if (source && DATA_SOURCE_TYPES.includes(source)) setDataSourceFilter(source)
     else setDataSourceFilter('')
     setProduct(urlProduct || '')
     setProblemType(urlProblemType || '')
+    setComplaintCauseL1(urlComplaintCauseL1 || '')
     setJourneyL1(urlJourneyL1 || '')
     setResourcePool('')
     setQ('')
@@ -146,6 +155,9 @@ export default function Feedbacks() {
     [periodFeedbacks, product],
   )
   const problemTypes = useMemo(() => countByField(periodFeedbacks, 'problemType'), [periodFeedbacks])
+  const complaintCauseOptions = useMemo(() => countComplaintCauseL1(periodFeedbacks), [periodFeedbacks])
+  const showComplaintCauseFilter =
+    !dataSourceFilter || dataSourceFilter === 'complaint_ticket'
   const journeys = useMemo(() => countByField(periodFeedbacks, 'journeyL1'), [periodFeedbacks])
   const unknownJourneySummary = useMemo(
     () => summarizeUnknownJourneyRecords(periodFeedbacks),
@@ -203,6 +215,10 @@ export default function Feedbacks() {
       }
       if (product && (fb.product || '未标注产品') !== product) return false
       if (problemType && fb.problemType !== problemType) return false
+      if (complaintCauseL1) {
+        if (!isComplaintTicket(fb)) return false
+        if (getComplaintCauseL1Display(fb) !== complaintCauseL1) return false
+      }
       if (journeyL1 && fb.journeyL1 !== journeyL1) return false
       if (resourcePool && (fb.resourcePool || '未标注资源池') !== resourcePool) return false
       if (dataSourceFilter && recordSourceType(fb) !== dataSourceFilter) return false
@@ -229,6 +245,7 @@ export default function Feedbacks() {
     selectedTicketIdSet,
     product,
     problemType,
+    complaintCauseL1,
     journeyL1,
     resourcePool,
     dataSourceFilter,
@@ -388,11 +405,22 @@ export default function Feedbacks() {
           className="min-w-[150px]"
           value={problemType}
           options={[
-            { label: '全部问题类型', value: '' },
+            { label: '全部问题类型（打标）', value: '' },
             ...problemTypes.map((t) => ({ label: t.name, value: t.name })),
           ]}
           onChange={setProblemType}
         />
+        {showComplaintCauseFilter && (
+          <Select
+            className="min-w-[180px]"
+            value={complaintCauseL1}
+            options={[
+              { label: '全部投诉原因（终判）', value: '' },
+              ...complaintCauseOptions.map((t) => ({ label: t.name, value: t.name })),
+            ]}
+            onChange={setComplaintCauseL1}
+          />
+        )}
         <Select
           className="min-w-[150px]"
           value={journeyL1}
@@ -418,7 +446,10 @@ export default function Feedbacks() {
             { label: '全部来源', value: '' },
             ...DATA_SOURCE_TYPES.map((t) => ({ label: DATA_SOURCE_LABELS[t], value: t })),
           ]}
-          onChange={setDataSourceFilter}
+          onChange={(value) => {
+            setDataSourceFilter(value)
+            if (value && value !== 'complaint_ticket') setComplaintCauseL1('')
+          }}
         />
         <div className="ml-auto flex flex-wrap gap-2">
           <Button
@@ -498,7 +529,7 @@ function CardGrid({ items, onSelect }) {
           onClick={() => onSelect(fb)}
         >
           <div className="flex flex-wrap gap-1.5">
-            <SentimentBadge sentiment={fb.sentiment} />
+            <SentimentBadge record={fb} />
             <Tag>{DATA_SOURCE_LABELS[recordSourceType(fb)] || recordSourceType(fb)}</Tag>
             <Tag color="blue">{fb.requestScene || '未分类'}</Tag>
             <Tag>{fb.problemType || '未分类'}</Tag>

@@ -8,6 +8,7 @@ import TrendChart from '../components/charts/TrendChart.jsx'
 import JourneyFeedbackSection from '../components/JourneyFeedbackSection.jsx'
 import ProductDrillDown from '../components/ProductDrillDown.jsx'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
+import SentimentExperiencePanel from '../components/SentimentExperiencePanel.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { listProducts, listResourcePools, getTaxonomy } from '../lib/productTaxonomy.js'
 import { countByField, filterFeedbacks } from '../lib/productAnalytics.js'
@@ -170,8 +171,12 @@ export default function Dashboard() {
         <SentimentDistributionPanel
           className="h-full"
           items={scoped}
-          subtitle={`${scoped.length} 条工单 · 基于客户原话/问题摘要`}
+          subtitle={`${scoped.length} 条工单 · 基于客户请求内容与需求痛点`}
         />
+      </div>
+
+      <div className="mt-6">
+        <SentimentExperiencePanel items={scoped} />
       </div>
 
       <div className="mt-6">

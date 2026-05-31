@@ -2,6 +2,11 @@ import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import SimpleList from './ui/SimpleList.jsx'
 import SentimentBadge from './SentimentBadge.jsx'
 import { topSolutionsByJourney } from '../lib/productAnalytics.js'
+import {
+  formatListOptimizationPreview,
+  getDisplayCustomerRequest,
+  getDisplayPainPoint,
+} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 
 /**
  * @param {{
@@ -85,22 +90,28 @@ export default function InsightFeedbackList({
                 }}
               >
                 <div className="flex flex-wrap gap-1.5">
-                  <SentimentBadge sentiment={fb.sentiment} />
+                  <SentimentBadge record={fb} />
                   <Tag color="blue">{fb.requestScene || '未分类'}</Tag>
                   <Tag>{fb.problemType || '未分类'}</Tag>
                   {fb.journeyL1 && <Tag color="blue">{fb.journeyL1}</Tag>}
                   {fb.resourcePool && <Tag>{fb.resourcePool}</Tag>}
                 </div>
                 <Typography.Paragraph className="!mb-0 !mt-2 font-medium line-clamp-2">
-                  {fb.problemSummary || fb.customerQuote || '—'}
+                  {getDisplayCustomerRequest(fb) || getDisplayPainPoint(fb) || '—'}
                 </Typography.Paragraph>
-                {fb.solutionSummary && (
+                {getDisplayPainPoint(fb) && getDisplayCustomerRequest(fb) && (
                   <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 !text-xs line-clamp-2">
-                    <span className="font-medium">方案：</span>
-                    {fb.solutionSummary}
+                    <span className="font-medium">痛点：</span>
+                    {getDisplayPainPoint(fb)}
                   </Typography.Paragraph>
                 )}
-                {fb.optimizationSuggestion && (
+                {(fb.optimizationProduct || fb.optimizationService) && (
+                  <Typography.Paragraph className="!mb-0 !mt-1 !text-xs !text-brand-700 line-clamp-2">
+                    <span className="font-medium text-ink-500">建议：</span>
+                    {formatListOptimizationPreview(fb)}
+                  </Typography.Paragraph>
+                )}
+                {!fb.optimizationProduct && !fb.optimizationService && fb.optimizationSuggestion && (
                   <Typography.Paragraph className="!mb-0 !mt-1 !text-xs !text-brand-700 line-clamp-1">
                     <span className="font-medium text-ink-500">建议：</span>
                     {fb.optimizationSuggestion}

@@ -204,10 +204,14 @@ export function parseLlmMessageContent(content) {
  * @param {object} body OpenAI chat completion body（model 可省略，使用设置或服务端默认）
  */
 export async function llmChatCompletion(settings, body) {
-  const payload = {
-    ...body,
-    baseUrl: normalizeLlmBaseUrl(settings?.llmBaseUrl),
-    model: body.model || settings?.llmModel,
+  const payload = { ...body }
+  const baseUrl = settings?.llmBaseUrl?.trim()
+  if (baseUrl) {
+    payload.baseUrl = normalizeLlmBaseUrl(baseUrl)
+  }
+  const model = (body.model && String(body.model).trim()) || settings?.llmModel?.trim()
+  if (model) {
+    payload.model = model
   }
   const clientKey = settings?.llmApiKey?.trim()
   if (clientKey && getLlmServerConfigured() !== true) {

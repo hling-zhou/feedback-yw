@@ -479,6 +479,8 @@ export const VPC_NODE_SERVICE_MAP = {
   业务方案支撑: 'discover',
   资源申请与开通: 'provision',
   报障与恢复: 'operate',
+  故障报修: 'operate',
+  报障: 'operate',
   费用与账务: 'lifecycle',
   进度查询与协同: 'provision',
   其他: 'operate',
@@ -510,5 +512,17 @@ export const VPC_NODE_ISSUE_MAP = {
   产品咨询: { l1: 'discover', l2: 'discover-intro' },
   产品功能: { l1: 'discover', l2: 'discover-intro' },
   IP无法访问: { l1: 'operate', l2: 'operate-egress' },
+  '可用性/连通性': { l1: 'operate', l2: 'operate-egress' },
   其他: { l1: 'discover', l2: 'discover-intro' },
+}
+
+export const VPC_REQUEST_SCENE_PATH_MAP = {
+  产品使用问题: '产品能力咨询',
+  故障报修: '报障与恢复',
+  报障: '报障与恢复',
+}
+
+export const VPC_PROBLEM_TYPE_PATH_MAP = {
+  '可用性/连通性': '可用性/连通性故障',
+  IP无法访问: '可用性/连通性故障',
 }

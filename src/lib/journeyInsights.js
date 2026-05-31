@@ -4,6 +4,15 @@ import {
   getConfiguredJourneyTips,
   getConfiguredProblemTypeTips,
 } from './planningConfigLoader.js'
+/**
+ * @param {string} problemType
+ * @param {string} [product]
+ */
+function problemTypePlaybookTips(problemType, product) {
+  const configured = getConfiguredProblemTypeTips(problemType, product)
+  if (configured.length) return configured
+  return PROBLEM_TYPE_PLAYBOOK[problemType] || []
+}
 
 /**
  * 用户旅程业务优化知识库（举一反三，非工单回单复述）
@@ -174,11 +183,14 @@ const JOURNEY_BUSINESS_PLAYBOOK = {
 }
 
 const PROBLEM_TYPE_PLAYBOOK = {
-  '资源与配额': [
+  '资源开通与创建': [
+    '建立资源创建前预检与失败自愈指引，对资源不足/开通超时场景给出可执行 remediation 路径。',
+  ],
+  '配额与权限申请': [
     '建立配额预警、权限自检与申请引导一体化能力，创建前拦截不可达订单。',
     '配额不足场景引导至配额申请流程，并展示各资源池剩余配额。',
   ],
-  '功能需求与规划': [
+  '产品功能需求': [
     '建立需求 intake 与排期可视化机制，对客户功能诉求给出明确 roadmap 与交付窗口。',
     '在控制台/工单侧同步需求处理进度，减少「无反馈」类重复咨询。',
   ],
@@ -193,20 +205,33 @@ const PROBLEM_TYPE_PLAYBOOK = {
   '网络质量与丢包': [
     '建立资源池出口质量监控，波动时段主动通知受影响客户。',
   ],
-  '配置与对接': [
+  '配置与操作': [
     '补齐控制台/API 对接配置向导与常见错误码说明，降低配置类重复咨询。',
     '对接失败场景提供依赖检查清单（权限、配额、网络就绪），缩短协查闭环。',
   ],
-  '计费与商务': [
+  '计费与账单': [
     '账单项与控制台用量对齐展示，复杂计费场景提供 FAQ 与典型账单样例。',
     '资费/折扣规则在控制台与帮助中心统一说明，支持改配费用试算。',
   ],
-  '安全与合规': [
-    '梳理安全组/ACL/白名单配置边界，提供合规场景配置模板与自检工具。',
-  ],
-  '可用性与连通性': [
+  '可用性/连通性故障': [
     '完善连通性诊断工具（端到端探测），输出根因分类（客户侧/平台侧/线路侧）。',
     '沉淀 TOP 不通场景 playbook，一线按标准场景引导排查与修复。',
+    '梳理安全组/ACL/白名单配置边界，提供合规场景模板与权限自检工具，减少误配类咨询。',
+  ],
+  '性能问题': [
+    '建立性能基线与链路质量探测，对慢/卡顿/丢包场景提供标准排查路径。',
+  ],
+  '界面与操作易用性': [
+    '优化控制台关键路径交互与提示文案，对高频误操作场景增加引导与前置校验。',
+  ],
+  '退订与释放': [
+    '梳理退订/释放依赖链路与阻塞原因展示，提供自助释放检查与失败 remediation 指引。',
+  ],
+  '产品功能咨询': [
+    '结构化产品能力/规则 FAQ 与工单进度查询入口，减少重复咨询与信息不一致。',
+  ],
+  '人工服务与流程': [
+    '优化工单流转 SLA 可视化与升级/回访机制，降低因响应时效引发的重复投诉。',
   ],
 }
 
@@ -331,10 +356,7 @@ export function synthesizeBusinessMeasures(items, l1, l2) {
 
   const topPt = topValues(items, 'problemType', 1)[0]
   if (topPt?.text) {
-    const ptTips =
-      getConfiguredProblemTypeTips(topPt.text, product).length > 0
-        ? getConfiguredProblemTypeTips(topPt.text, product)
-        : PROBLEM_TYPE_PLAYBOOK[topPt.text] || []
+    const ptTips = problemTypePlaybookTips(topPt.text, product)
     for (const tip of ptTips) {
       add(tip, '类型 playbook', 2)
     }
@@ -394,10 +416,7 @@ export function synthesizePlanningMeasures(items, l1, l2) {
 
   const topPt = topValues(items, 'problemType', 1)[0]
   if (topPt?.text) {
-    const ptTips =
-      getConfiguredProblemTypeTips(topPt.text, product).length > 0
-        ? getConfiguredProblemTypeTips(topPt.text, product)
-        : PROBLEM_TYPE_PLAYBOOK[topPt.text] || []
+    const ptTips = problemTypePlaybookTips(topPt.text, product)
     for (const tip of ptTips) {
       add(tip, '类型 playbook', 3)
     }

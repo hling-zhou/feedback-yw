@@ -100,6 +100,17 @@ export function extractAcceptanceTextFromFields(fields) {
 }
 
 /**
+ * 工单详情「处理意见（工单原文）」：优先「处理意见」列，为空则回落「受理内容」
+ *
+ * @param {{ handlingText?: string; rawText?: string; customerQuote?: string; sourceColumns?: Record<string, string> }} fields
+ */
+export function extractHandlingOriginalTextFromFields(fields) {
+  const handling = extractHandlingTextFromFields(fields)
+  if (handling) return handling
+  return extractAcceptanceTextFromFields(fields)
+}
+
+/**
  * 工单详情展示：读取追加信息（不做与受理内容的去重，避免展示为空）
  *
  * @param {{ handlingText?: string; rawText?: string; sourceColumns?: Record<string, string> }} fields

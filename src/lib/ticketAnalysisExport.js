@@ -1,6 +1,12 @@
 import { Modal, message } from 'antd'
 import * as XLSX from 'xlsx'
-import { normalizeSentiment, SENTIMENT_LABELS } from './sentiment.js'
+import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
+import {
+  getOptimizationSourceLabel,
+  getPainPointSource,
+  getTicketAnalysisSourceLabel,
+} from './ticketAnalysis/ticketAnalysisSources.js'
+import { getComplaintCauseL1Display, isComplaintTicket } from '../domain/complaintCause.js'
 import {
   TICKET_SOURCE_COLUMN_LABELS,
   getSourceColumnValue,
@@ -29,9 +35,20 @@ function recordToExportRow(r) {
     时间: r.createdAt || '',
     请求场景: r.requestScene || '',
     问题类型: r.problemType || '',
+    '投诉原因（终判）': isComplaintTicket(r) ? getComplaintCauseL1Display(r) : '',
     用户旅程一级: r.journeyL1 || '',
     用户旅程二级: r.journeyL2 || '',
     用户情绪: SENTIMENT_LABELS[sentimentKey] || r.sentiment || '',
+    是否加急: getUrgencyLevel(r) === 'high' ? URGENCY_LABELS.high : '',
+    客户请求内容: r.customerRequest || '',
+    客户原话: r.customerQuote || '',
+    需求痛点: r.painPoint || r.problemSummary || '',
+    痛点来源: getTicketAnalysisSourceLabel(getPainPointSource(r)),
+    产品技术优化: r.optimizationProduct || '',
+    服务流程改进: r.optimizationService || '',
+    优化建议来源: getOptimizationSourceLabel(
+      r.manualReviewOptimization?.trim() ? 'manual' : r.optimizationSource === 'llm' ? 'llm' : 'rule',
+    ),
     问题摘要: r.problemSummary || '',
     根因: r.rootCause || '',
     优化建议: r.optimizationSuggestion || '',

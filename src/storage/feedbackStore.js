@@ -10,6 +10,8 @@ import {
 } from '../lib/storage.js'
 import { fetchAllRecordPages, fetchRecordPagesForPeriod } from '../lib/recordLoader.js'
 import { normalizeRecordTaxonomyKeys } from '../lib/taxonomyKeyAliases.js'
+import { migrateSharedTagsOnRecord } from '../lib/tagLibrary/migrateSharedTags.js'
+import { isClearAllImportedData } from './clearImportedData.js'
 
 export const META_KEY_LS_FEEDBACKS_MIGRATED = 'legacy_ls_feedbacks_migrated'
 
@@ -26,6 +28,7 @@ export function normalizeFeedbackRecord(record) {
     recordStatus: base.recordStatus || 'analyzed',
   }
   normalizeRecordTaxonomyKeys(normalized)
+  migrateSharedTagsOnRecord(normalized)
   return normalized
 }
 
@@ -158,22 +161,41 @@ async function clearPendingTagCandidates(adapter) {
  * 清空已导入数据：反馈记录、洞察快照、分析运行与产物，以及待复核标签候选（保留设置、标签库、已采纳/已拒绝候选等 meta）
  * @param {import('./adapter.js').StorageAdapter} adapter
  */
-export async function clearAllImportedData(adapter) {
+/**
+ * @param {import('./adapter.js').StorageAdapter} adapter
+ * @param {import('./clearImportedData.js').ClearImportedDataOptions} [options]
+ * @returns {Promise<import('./clearImportedData.js').ClearImportedDataResult | null>}
+ */
+export async function clearAllImportedData(adapter, options = {}) {
   await adapter.init()
+  /** @type {import('./clearImportedData.js').ClearImportedDataResult | null} */
+  let result = null
   if (typeof adapter.clearImportedData === 'function') {
-    await adapter.clearImportedData()
-  } else {
+    result = await adapter.clearImportedData(options)
+  } else if (isClearAllImportedData(options)) {
     await adapter.replaceAllRecords([])
     await clearPendingTagCandidates(adapter)
+    result = {
+      recordsDeleted: 0,
+      snapshotsDeleted: 0,
+      runsDeleted: 0,
+      artifactsDeleted: 0,
+      pendingTagCandidatesDeleted: 0,
+    }
+  } else {
+    throw new Error('当前存储适配器不支持按条件清空，请升级服务端或使用全部清空')
   }
-  clearLegacyFeedbacks()
-  await adapter.putMeta(META_KEY_LS_FEEDBACKS_MIGRATED, {
-    at: new Date().toISOString(),
-    count: 0,
-  })
+  if (isClearAllImportedData(options)) {
+    clearLegacyFeedbacks()
+    await adapter.putMeta(META_KEY_LS_FEEDBACKS_MIGRATED, {
+      at: new Date().toISOString(),
+      count: 0,
+    })
+  }
+  return result
 }
 
 /** @param {import('./adapter.js').StorageAdapter} adapter */
 export async function clearAllFeedbacks(adapter) {
-  return clearAllImportedData(adapter)
+  return clearAllImportedData(adapter, { all: true })
 }

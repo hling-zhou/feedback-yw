@@ -3,6 +3,7 @@ import {
   extractLlmAssistantText,
   getLlmCompletionText,
   isLlmAvailable,
+  llmChatCompletion,
   normalizeLlmBaseUrl,
   parseLlmMessageContent,
   refreshLlmServerStatus,
@@ -103,5 +104,28 @@ describe('refreshLlmServerStatus', () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error('network'))
     await expect(refreshLlmServerStatus()).resolves.toBe(false)
     expect(isLlmAvailable()).toBe(false)
+  })
+})
+
+describe('llmChatCompletion', () => {
+  it('omits baseUrl and model when settings fields are empty', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    await llmChatCompletion({ llmBaseUrl: '', llmModel: '' }, { messages: [{ role: 'user', content: 'hi' }] })
+    const [, init] = vi.mocked(apiFetch).mock.calls[0]
+    const body = JSON.parse(String(init?.body))
+    expect(body).not.toHaveProperty('baseUrl')
+    expect(body).not.toHaveProperty('model')
+  })
+
+  it('sends normalized baseUrl and model when set in settings', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    await llmChatCompletion(
+      { llmBaseUrl: 'https://api.example.com/v1/', llmModel: 'test-model' },
+      { messages: [{ role: 'user', content: 'hi' }] },
+    )
+    const [, init] = vi.mocked(apiFetch).mock.calls[0]
+    const body = JSON.parse(String(init?.body))
+    expect(body.baseUrl).toBe('https://api.example.com/v1')
+    expect(body.model).toBe('test-model')
   })
 })

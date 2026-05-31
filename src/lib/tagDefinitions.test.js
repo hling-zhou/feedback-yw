@@ -6,7 +6,7 @@ describe('resolveTagDefinition', () => {
     requestScenes: [
       { label: '报障与恢复', description: '现网异常需恢复', keywords: ['故障'] },
     ],
-    problemTypes: [{ label: '性能类', keywords: ['慢', '卡'] }],
+    problemTypes: [{ label: '自定义问题类型', keywords: ['慢', '卡'] }],
     journeys: [
       {
         label: '日常运维',
@@ -29,7 +29,7 @@ describe('resolveTagDefinition', () => {
   it('falls back to keywords when taxonomy has no description', () => {
     const def = resolveTagDefinition({
       dimension: 'problemType',
-      label: '性能类',
+      label: '自定义问题类型',
       taxonomy,
     })
     expect(def.body).toContain('参考关键词')

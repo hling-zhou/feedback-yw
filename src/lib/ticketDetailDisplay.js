@@ -66,7 +66,7 @@ const CUSTOMER_DEMAND_HINT =
   /(?:无法|不能|报错|失败|希望|需要|咨询|申请|加急|投诉|故障|不通|异常|打不开|慢|丢包|绑定|开通|退订|升降配|请问|如何|怎么|为什么|帮忙)/
 
 const PLATFORM_ACTION_HINT =
-  /^(?:已协助|已为您|已处理|已开通|已配置|已调整|已修复|经排查|定位为|建议客户|请您|工程师|后台|平台侧|我侧|处理完成|复测通过|放行|关闭|重启)/
+  /^(?:已协助|已为您|已处理|已开通|已配置|已调整|已修复|已返单|经排查|定位为|建议客户|请您|工程师|后台|平台侧|我侧|处理完成|复测通过|放行|关闭|重启|建群处理|请网络组|请安全组)/
 
 const CUSTOMER_OUTCOME_CONTENT_HINT =
   /(?:客户|用户)(?:确认|反馈|侧|复测|验证|测试|试用)[^\n。]{0,120}?(?:已恢复|已解决|恢复正常|无异常|通过|正常|业务恢复|可以访问|问题消除|无异议|满意)|(?:复测|验证|测试)(?:已)?(?:通过|正常|成功)|客户侧[^\n。]{0,40}?(?:正常|通过|恢复)/g
@@ -129,11 +129,11 @@ function isCustomerOutcomeLabel(label) {
 /**
  * @param {string} text
  */
-function isPlatformActionContent(text) {
+export function isPlatformActionContent(text) {
   const t = (text || '').trim()
   if (!t) return false
   if (PLATFORM_ACTION_HINT.test(t)) return true
-  if (/经排查|定位为|根因[是为]|已协助/.test(t)) return true
+  if (/经排查|定位为|根因[是为]|已协助|已返单|建群|抓包|返单/.test(t)) return true
   if (/(?:^|\n)\s*处理意见\s*[:：]|(?:^|\n)\s*【处理意见】|&处理意见\s*[:：]/.test(t)) {
     return true
   }

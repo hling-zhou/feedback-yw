@@ -26,14 +26,23 @@ describe('dimensionTagging', () => {
 
   it('matches problem type by description tokens', () => {
     const label = matchSharedLabel('希望增加批量导出功能', PROBLEM_TYPES_BUILTIN)
-    expect(label).toBe('功能需求与规划')
+    expect(label).toBe('产品功能需求')
   })
 
-  it('resolveProblemTypeFromConfig matches tagging text only', () => {
+  it('resolveProblemTypeFromConfig uses classifier first', () => {
     expect(resolveProblemTypeFromConfig('希望增加批量导出功能', PROBLEM_TYPES_BUILTIN)).toBe(
-      '功能需求与规划',
+      '产品功能需求',
     )
-    expect(resolveProblemTypeFromConfig('慢', PROBLEM_TYPES_BUILTIN)).toBe('性能与质量')
+    expect(resolveProblemTypeFromConfig('慢', PROBLEM_TYPES_BUILTIN)).toBe('性能问题')
+    expect(resolveProblemTypeFromConfig('专线不通，另外延迟也很高', PROBLEM_TYPES_BUILTIN)).toBe(
+      '可用性/连通性故障',
+    )
+  })
+
+  it('resolveProblemTypeFromConfig falls back to legacy scoring when classifier returns 其他', () => {
+    expect(resolveProblemTypeFromConfig('我不认可上次结论，再不解决就投诉', PROBLEM_TYPES_BUILTIN)).toBe(
+      '其他',
+    )
   })
 
   it('matchProblemTypesForRecords skips LLM when complaint ticket matches config from text', async () => {
@@ -53,7 +62,7 @@ describe('dimensionTagging', () => {
       PROBLEM_TYPES_BUILTIN,
       { themeMatchMode: 'hybrid' },
     )
-    expect(results[0].label).toBe('性能与质量')
+    expect(results[0].label).toBe('性能问题')
     expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
   })
 
@@ -74,7 +83,7 @@ describe('dimensionTagging', () => {
       PROBLEM_TYPES_BUILTIN,
       { themeMatchMode: 'hybrid' },
     )
-    expect(results[0].label).toBe('未分类')
+    expect(results[0].label).toBe('其他')
     expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
   })
 })

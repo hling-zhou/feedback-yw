@@ -32,6 +32,30 @@ function mergeSharedTagList(builtins, existing, labelMap) {
 }
 
 /**
+ * @param {string | undefined | null} label
+ * @returns {string | null} 新标签；无需迁移时返回 null
+ */
+export function migrateProblemTypeLabel(label) {
+  const t = label?.trim()
+  if (!t) return null
+  const mapped = PROBLEM_TYPE_LABEL_MIGRATION[t]
+  if (mapped && mapped !== t) return mapped
+  return null
+}
+
+/**
+ * @param {string | undefined | null} label
+ * @returns {string | null}
+ */
+export function migrateRequestSceneLabel(label) {
+  const t = label?.trim()
+  if (!t) return null
+  const mapped = REQUEST_SCENE_LABEL_MIGRATION[t]
+  if (mapped && mapped !== t) return mapped
+  return null
+}
+
+/**
  * @param {import('./taxonomyManageModel.js').TaxonomyManagedSnapshot} snapshot
  * @returns {boolean}
  */
@@ -67,15 +91,15 @@ export function migrateSharedTagsOnRecord(record) {
   if (!record) return false
   let changed = false
 
-  const rs = record.requestScene?.trim()
-  if (rs && REQUEST_SCENE_LABEL_MIGRATION[rs]) {
-    record.requestScene = REQUEST_SCENE_LABEL_MIGRATION[rs]
+  const nextScene = migrateRequestSceneLabel(record.requestScene)
+  if (nextScene) {
+    record.requestScene = nextScene
     changed = true
   }
 
-  const pt = record.problemType?.trim()
-  if (pt && PROBLEM_TYPE_LABEL_MIGRATION[pt]) {
-    record.problemType = PROBLEM_TYPE_LABEL_MIGRATION[pt]
+  const nextProblem = migrateProblemTypeLabel(record.problemType)
+  if (nextProblem) {
+    record.problemType = nextProblem
     changed = true
   }
 

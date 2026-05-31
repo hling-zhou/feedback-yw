@@ -314,6 +314,8 @@ export const DC_NODE_SERVICE_MAP = {
   业务方案支撑: 'discover',
   资源申请与开通: 'provision',
   报障与恢复: 'incident',
+  故障报修: 'incident',
+  报障: 'incident',
   费用与账务: 'discover',
   进度查询与协同: 'service',
   其他: 'service',
@@ -324,5 +326,16 @@ export const DC_NODE_ISSUE_MAP = {
   产品咨询: { l1: 'discover', l2: 'discover-capability' },
   产品功能: { l1: 'discover', l2: 'discover-capability' },
   IP无法访问: { l1: 'operate', l2: 'operate-connect' },
+  '可用性/连通性': { l1: 'operate', l2: 'operate-connect' },
   其他: { l1: 'operate', l2: 'operate-connect' },
+}
+
+export const DC_REQUEST_SCENE_PATH_MAP = {
+  故障报修: '报障与恢复',
+  报障: '报障与恢复',
+  产品使用问题: '产品能力咨询',
+}
+
+export const DC_PROBLEM_TYPE_PATH_MAP = {
+  '可用性/连通性': '可用性/连通性故障',
 }

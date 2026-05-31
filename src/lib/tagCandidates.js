@@ -2,6 +2,10 @@ import { createTagCandidate, candidateDedupeKey, normalizeProposedLabel } from '
 import { excerptText } from '../analysis/core/ArtifactCollector.js'
 import { enrichTagCandidateForReview } from './tagCandidateReview.js'
 import { emit } from './events.js'
+import {
+  isPendingReviewTag,
+  TAG_PENDING_REVIEW_PREFIX,
+} from './ticketAnalysis/tagLabels.js'
 
 export {
   TAG_TYPE_LABELS,
@@ -30,12 +34,22 @@ const UNCLASSIFIED_PROBLEM = '未分类'
 const UNCLASSIFIED_SCENE = '未分类'
 
 /**
+ * @param {string | undefined | null} label
+ */
+export function extractPendingReviewProposedLabel(label) {
+  const t = label?.trim()
+  if (!t || !isPendingReviewTag(t)) return null
+  return t.slice(TAG_PENDING_REVIEW_PREFIX.length).trim() || null
+}
+
+/**
  * @param {string} label
  * @param {{ label: string; keywords?: string[] }[]} [requestScenes]
  */
 export function isKnownRequestScene(label, requestScenes) {
   const normalized = (label || '').trim()
   if (!normalized || normalized === UNCLASSIFIED_SCENE) return true
+  if (isPendingReviewTag(normalized)) return false
   return (requestScenes || []).some((t) => (t.label || '').trim() === normalized)
 }
 
@@ -46,6 +60,7 @@ export function isKnownRequestScene(label, requestScenes) {
 export function isKnownProblemType(label, problemTypes) {
   const normalized = (label || '').trim()
   if (!normalized || normalized === UNCLASSIFIED_PROBLEM) return true
+  if (isPendingReviewTag(normalized)) return false
   return (problemTypes || []).some((t) => (t.label || '').trim() === normalized)
 }
 
@@ -86,7 +101,8 @@ export function captureProblemTypeCandidateIfNeeded(ctx) {
   } = ctx
 
   const col = problemTypeCol?.trim()
-  const resolved = col || problemType?.trim()
+  const raw = col || problemType?.trim()
+  const resolved = extractPendingReviewProposedLabel(raw) || raw
   if (!resolved || isKnownProblemType(resolved, problemTypes)) return null
 
   const candidate = enrichTagCandidateForReview(
@@ -98,7 +114,7 @@ export function captureProblemTypeCandidateIfNeeded(ctx) {
       evidenceExcerpt: excerptText(sourceText, 200),
       insightPeriodId,
       dataSourceType,
-      origin,
+      origin: isPendingReviewTag(raw || '') ? 'local_overflow' : origin,
     }),
   )
 
@@ -122,18 +138,19 @@ export function captureRequestSceneCandidateIfNeeded(ctx) {
     ctx
 
   const resolved = requestScene?.trim()
-  if (!resolved || isKnownRequestScene(resolved, requestScenes)) return null
+  const proposed = extractPendingReviewProposedLabel(resolved) || resolved
+  if (!proposed || isKnownRequestScene(proposed, requestScenes)) return null
 
   const candidate = enrichTagCandidateForReview(
     createTagCandidate({
       tagType: 'request_scene',
-      proposedLabel: resolved,
+      proposedLabel: proposed,
       taxonomyKey: 'generic',
       recordId,
       evidenceExcerpt: excerptText(sourceText, 200),
       insightPeriodId,
       dataSourceType,
-      origin,
+      origin: isPendingReviewTag(resolved || '') ? 'local_overflow' : origin,
     }),
   )
 

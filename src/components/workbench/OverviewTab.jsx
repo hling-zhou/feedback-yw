@@ -1,5 +1,9 @@
+import { useMemo } from 'react'
 import { Card, Table, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
+import { useInsights } from '../../context/InsightsContext.jsx'
+import { filterRecordsForScope } from '../../snapshots/recordScope.js'
+import { rehydrateOverviewRecommendations } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
@@ -7,6 +11,8 @@ import OverviewConclusionsPanel from './OverviewConclusionsPanel.jsx'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
 import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
 import { PLANNING_RECOMMENDATIONS_ANCHOR_ID } from '../../domain/overviewConclusions.js'
+
+const TICKET_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
 
 /**
  * @param {Object} props
@@ -35,6 +41,16 @@ export default function OverviewTab({
   feedbacks = [],
   onOpenFeedback,
 }) {
+  const { settings } = useInsights()
+
+  const displayConclusions = useMemo(() => {
+    if (!snapshot?.conclusions || !currentPeriod) return snapshot?.conclusions
+    const ticketRecords = TICKET_SOURCES.flatMap((type) =>
+      filterRecordsForScope(feedbacks, currentPeriod, type),
+    )
+    return rehydrateOverviewRecommendations(snapshot.conclusions, ticketRecords, settings)
+  }, [snapshot?.conclusions, currentPeriod, feedbacks, settings])
+
   if (!snapshot) {
     return (
       <Card>
@@ -68,7 +84,7 @@ export default function OverviewTab({
   })
 
   const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
-  const recommendationCount = snapshot.conclusions?.recommendations?.length ?? 0
+  const recommendationCount = displayConclusions?.recommendations?.length ?? 0
   const generatedAtLabel = snapshot.generatedAt?.slice(0, 16).replace('T', ' ')
 
   return (
@@ -85,13 +101,12 @@ export default function OverviewTab({
       </Typography.Text>
 
       <PlanningRecommendationsPanel
-        conclusions={snapshot.conclusions}
+        conclusions={displayConclusions}
         feedbacks={feedbacks}
-        onOpenFeedback={onOpenFeedback}
       />
 
       <OverviewConclusionsPanel
-        conclusions={snapshot.conclusions}
+        conclusions={displayConclusions}
         snapshotStatus={snapshot.status}
         onSourceTab={onSourceTab}
         onRebuild={onRebuildSnapshots}

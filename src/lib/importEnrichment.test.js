@@ -3,13 +3,19 @@ import { enrichTicketRecordsForImport } from './importEnrichment.js'
 
 vi.mock('./dimensionTagging.js', () => ({
   enrichRecordsWithSharedDimensions: vi.fn(async (records) =>
-    records.map((r) => ({ ...r, requestScene: '报障与恢复', problemType: '性能与质量' })),
+    records.map((r) => ({ ...r, requestScene: '报障与恢复', problemType: '性能问题' })),
   ),
 }))
 
 vi.mock('./journeySemantic.js', () => ({
   enrichRecordsWithJourneys: vi.fn(async (records) =>
     records.map((r) => ({ ...r, journeyL1: '日常运维', journeyL2: '使用运维' })),
+  ),
+}))
+
+vi.mock('./ticketAnalysis/ticketLlmEnrichment.js', () => ({
+  enrichRecordsWithTicketLlm: vi.fn(async (records) =>
+    records.map((r) => ({ ...r, painPoint: r.painPoint || 'LLM痛点' })),
   ),
 }))
 
@@ -39,8 +45,9 @@ describe('enrichTicketRecordsForImport', () => {
     const { records: out, warnings } = await enrichTicketRecordsForImport(records, {}, () => {})
 
     expect(out[0].requestScene).toBe('报障与恢复')
-    expect(out[0].problemType).toBe('性能与质量')
+    expect(out[0].problemType).toBe('性能问题')
     expect(out[0].journeyL1).toBe('日常运维')
+    expect(out[0].painPoint).toBe('LLM痛点')
     expect(out[0].themes).toEqual(['使用运维'])
     expect(warnings.some((w) => w.includes('LLM'))).toBe(true)
   })

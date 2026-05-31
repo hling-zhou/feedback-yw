@@ -20,7 +20,7 @@ describe('workbenchAnalysisLink', () => {
       product: 'ECS',
       journeyL1: '开通',
       journeyL2: '绑定',
-      problemType: '性能类',
+      problemType: '性能问题',
       requestScene: '报障',
       tab: 'journey',
     })
@@ -49,6 +49,7 @@ describe('workbenchAnalysisLink', () => {
       journeyL1: 'A',
       journeyL2: 'B',
       problemType: '性能',
+      complaintCauseL1: '',
       requestScene: '报障',
       tab: 'problem',
     })

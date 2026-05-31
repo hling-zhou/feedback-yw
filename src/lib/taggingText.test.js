@@ -4,6 +4,7 @@ import {
   buildTaggingTextFromFields,
   extractAppendTextForDisplay,
   extractAppendTextFromFields,
+  extractHandlingOriginalTextFromFields,
   extractHandlingTextFromFields,
 } from './taggingText.js'
 
@@ -56,6 +57,25 @@ describe('extractTicketTextSections', () => {
         rawText: '【处理意见】\n其它',
       }),
     ).toBe('主处理意见')
+  })
+
+  it('extractHandlingOriginalTextFromFields falls back to acceptance when handling empty', () => {
+    expect(
+      extractHandlingOriginalTextFromFields({
+        handlingText: '主处理意见',
+        rawText: '客户反馈公网 IP 无法访问',
+      }),
+    ).toBe('主处理意见')
+    expect(
+      extractHandlingOriginalTextFromFields({
+        rawText: '【受理内容】\n客户反馈专线不通，请排查。',
+      }),
+    ).toBe('客户反馈专线不通，请排查。')
+    expect(
+      extractHandlingOriginalTextFromFields({
+        rawText: '客户反馈公网 IP 无法访问',
+      }),
+    ).toBe('客户反馈公网 IP 无法访问')
   })
 
   it('extractAppendTextForDisplay reads bracket and sourceColumns', () => {

@@ -12,6 +12,10 @@ import {
 } from './planningRecommendations.js'
 import { buildPlanningRecommendationLlmRules, PLANNING_RECOMMENDATION_LIMITS } from './planningRecommendationTemplate.js'
 import { isGenericRecommendationText } from './journeyOptimizationLLM.js'
+import {
+  mergePolishedPlanningSections,
+  sectionsToLegacyDetails,
+} from './planningRecommendationSections.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -42,6 +46,8 @@ export function buildLlmContextPayload(conclusions) {
       text: r.text,
       summary: r.summary,
       details: r.details,
+      productActions: r.sections?.productActions,
+      serviceActions: r.sections?.serviceActions,
       priority: r.priority,
       category: r.category,
       evidenceNote: r.evidenceNote,
@@ -56,7 +62,7 @@ export function buildLlmContextPayload(conclusions) {
 
 /**
  * @param {OverviewRecommendation} ruleRec
- * @param {{ summary?: string; text?: string; details?: string[] }} llmPatch
+ * @param {{ summary?: string; text?: string; details?: string[]; productActions?: string[]; serviceActions?: string[] }} llmPatch
  * @returns {OverviewRecommendation}
  */
 export function mergePolishedRecommendation(ruleRec, llmPatch) {
@@ -72,8 +78,26 @@ export function mergePolishedRecommendation(ruleRec, llmPatch) {
     summary = llmSummary
   }
 
+  let sections = ruleRec.sections
   let details = ruleRec.details
-  if (Array.isArray(llmPatch.details) && llmPatch.details.length) {
+
+  if (sections) {
+    const patch = {
+      summary,
+      productActions: Array.isArray(llmPatch.productActions)
+        ? llmPatch.productActions
+        : undefined,
+      serviceActions: Array.isArray(llmPatch.serviceActions)
+        ? llmPatch.serviceActions
+        : undefined,
+    }
+    if (!patch.productActions?.length && Array.isArray(llmPatch.details) && llmPatch.details.length) {
+      patch.productActions = llmPatch.details.filter((d) => typeof d === 'string' && d.trim())
+    }
+    sections = mergePolishedPlanningSections(sections, patch)
+    summary = sections.executiveSummary || summary
+    details = sectionsToLegacyDetails(sections)
+  } else if (Array.isArray(llmPatch.details) && llmPatch.details.length) {
     const sanitized = sanitizePlanningRecommendation({
       ...ruleRec,
       summary,
@@ -91,6 +115,7 @@ export function mergePolishedRecommendation(ruleRec, llmPatch) {
     ...ruleRec,
     text: summary,
     summary,
+    sections,
     details: details || [],
     evidenceRecordIds: ruleRec.evidenceRecordIds,
     evidenceTicketIds: ruleRec.evidenceTicketIds,
@@ -153,7 +178,8 @@ export function mergePolishedRecommendations(ruleRecs, llmItems) {
     const polished = mergePolishedRecommendation(ruleRec, patch)
     const changed =
       polished.summary !== (ruleRec.summary || ruleRec.text) ||
-      JSON.stringify(polished.details) !== JSON.stringify(ruleRec.details)
+      JSON.stringify(polished.details) !== JSON.stringify(ruleRec.details) ||
+      JSON.stringify(polished.sections) !== JSON.stringify(ruleRec.sections)
 
     return changed
       ? { ...polished, measureSource: 'AI 润色' }
@@ -266,14 +292,14 @@ export async function polishOverviewConclusionsWithLLM(conclusions, settings, op
 1. 基于输入的规则聚合结论与指标，输出更易读、可决策的中文表述；不得编造输入中不存在的数据、产品名称、工单号或数量。
 2. executiveSummary：2～4 句，概括体量、核心问题、旅程热点、风险与建议方向。
 3. highlights：按 id 逐条润色 body（title 可微调），保持 metrics 含义不变，每条 body 80～160 字。
-4. recommendations：${opts.includeRecommendations === false ? '本次不需要输出 recommendations 字段。' : '必须对输入中的每一条规则建议逐条润色（id 一一对应，不可遗漏）；仅润色 summary 与 details。'}
+4. recommendations：${opts.includeRecommendations === false ? '本次不需要输出 recommendations 字段。' : '必须对输入中的每一条规则建议逐条润色（id 一一对应，不可遗漏）；仅润色 summary、productActions、serviceActions，勿改 clusterRootCause/verification。'}
 ${opts.includeRecommendations === false ? '' : buildPlanningRecommendationLlmRules()}
 5. 禁止空泛套话（如「持续关注」「纳入规划」而无实质内容）。
 6. 只返回 JSON：
 {
   "executiveSummary": "string",
   "highlights": [{"id":"string","title":"string","body":"string"}],
-  ${opts.includeRecommendations === false ? '' : '"recommendations": [{"id":"string","summary":"string","details":["string",...]}, ...]'}
+  ${opts.includeRecommendations === false ? '' : '"recommendations": [{"id":"string","summary":"string","productActions":["string",...],"serviceActions":["string",...]}, ...]'}
 }`
 
   const userPrompt = `洞察周期：${ctx.periodLabel}
@@ -330,10 +356,10 @@ export async function polishPlanningRecommendationsWithLLM(conclusions, settings
   }
 
   const ctx = buildLlmContextPayload(conclusions)
-  const systemPrompt = `你是移动云产品规划顾问，仅润色「行动建议」的概述与详细意见。
+  const systemPrompt = `你是移动云产品规划顾问，仅润色「行动建议」的概述与可执行动作行。
 ${buildPlanningRecommendationLlmRules()}
-禁止修改 id、priority、category、scope、evidence 相关字段；不得编造工单号或数量。
-只返回 JSON：{"recommendations":[{"id":"string","summary":"string","details":["string"]}]}`
+禁止修改 id、priority、category、scope、evidence、clusterRootCause、verification 相关字段；不得编造工单号或数量。
+只返回 JSON：{"recommendations":[{"id":"string","summary":"string","productActions":["string",...],"serviceActions":["string",...]}]}`
 
   const userPrompt = `洞察周期：${ctx.periodLabel}
 工单样本：${ctx.sampleSize} 条

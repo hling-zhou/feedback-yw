@@ -21,13 +21,13 @@ const guideRows = [
   },
   {
     工作表: '目标产品',
-    说明: '每行一个目标产品。产品Key 唯一；旅程模板Key 对应打标配置中的产品Key（如 eip）',
-    示例: 'eip | 弹性公网IP | 是 | eip | 是',
+    说明: '每行一个目标产品。产品Key 唯一；旅程模板Key 对应打标配置中的产品Key（如 vpc）',
+    示例: 'vpc | 虚拟私有云 | 是 | vpc | 是',
   },
   {
     工作表: '产品规格',
     说明: '每行一个规格，用产品Key 关联。匹配别名：逗号分隔，用于匹配工单「具体投诉产品/产品规格」列',
-    示例: 'eip | 弹性公网IP-移动IP | 弹性公网 IP-移动IP',
+    示例: 'vpc | 虚拟私有云 | 虚拟私有云,VPC,vpc,专有网络,私有网络',
   },
 ]
 
@@ -56,5 +56,9 @@ XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productRows), '目标�
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(specRows), '产品规格')
 
 writeFileSync(outPath, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
-console.log('Wrote', outPath)
-console.log(`  目标产品 ${productRows.length} 行，产品规格 ${specRows.length} 行`)
+console.log(
+  'Wrote',
+  outPath,
+  `（${productRows.length} 个产品：${productRows.map((p) => p.产品Key).join(', ')}）`,
+)
+console.log(`  产品规格 ${specRows.length} 行`)

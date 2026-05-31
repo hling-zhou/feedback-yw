@@ -3,7 +3,14 @@ import { DATA_SOURCE_TYPES } from '../domain/enums.js'
 export const WORKBENCH_HOME = '/workbench'
 export const WORKBENCH_ANALYSIS = '/workbench/analysis'
 
-const ANALYSIS_TABS = new Set(['request', 'problem', 'journey', 'sentiment', 'keywords'])
+const ANALYSIS_TABS = new Set([
+  'request',
+  'complaint_cause',
+  'problem',
+  'journey',
+  'sentiment',
+  'keywords',
+])
 
 /**
  * @param {{
@@ -12,6 +19,7 @@ const ANALYSIS_TABS = new Set(['request', 'problem', 'journey', 'sentiment', 'ke
  *   journeyL1?: string
  *   journeyL2?: string
  *   problemType?: string
+ *   complaintCauseL1?: string
  *   requestScene?: string
  *   tab?: string
  * }} [params]
@@ -30,6 +38,8 @@ export function buildWorkbenchAnalysisUrl(params = {}) {
   if (journeyL2) sp.set('journeyL2', journeyL2)
   const problemType = params.problemType?.trim()
   if (problemType) sp.set('problemType', problemType)
+  const complaintCauseL1 = params.complaintCauseL1?.trim()
+  if (complaintCauseL1) sp.set('complaintCauseL1', complaintCauseL1)
   const requestScene = params.requestScene?.trim()
   if (requestScene) sp.set('requestScene', requestScene)
   const tab = params.tab?.trim()
@@ -49,10 +59,11 @@ export function parseAnalysisSearchParams(searchParams) {
   const journeyL1 = searchParams.get('journeyL1')?.trim() || ''
   const journeyL2 = searchParams.get('journeyL2')?.trim() || ''
   const problemType = searchParams.get('problemType')?.trim() || ''
+  const complaintCauseL1 = searchParams.get('complaintCauseL1')?.trim() || ''
   const requestScene = searchParams.get('requestScene')?.trim() || ''
   const rawTab = searchParams.get('tab')?.trim() || ''
   const tab = ANALYSIS_TABS.has(rawTab) ? rawTab : ''
-  return { source, product, journeyL1, journeyL2, problemType, requestScene, tab }
+  return { source, product, journeyL1, journeyL2, problemType, complaintCauseL1, requestScene, tab }
 }
 
 /**
@@ -63,6 +74,7 @@ export function parseAnalysisSearchParams(searchParams) {
  *   journeyL1?: string
  *   journeyL2?: string
  *   problemType?: string
+ *   complaintCauseL1?: string
  *   requestScene?: string
  *   tab?: string
  * }} patch
@@ -75,6 +87,7 @@ export function patchAnalysisSearchParams(base, patch) {
     'journeyL1',
     'journeyL2',
     'problemType',
+    'complaintCauseL1',
     'requestScene',
     'tab',
   ]

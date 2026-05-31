@@ -1,5 +1,6 @@
 import { startOfWeek, parseISO, format, isValid } from 'date-fns'
 import {
+  getUrgencyLevel,
   isNegativeSentiment,
   normalizeSentiment,
   SENTIMENT_LABELS,
@@ -99,14 +100,18 @@ export function sentimentStats(feedbacks) {
   const distribution = sentimentDistribution(feedbacks)
   const total = feedbacks.length
   let negativeCount = 0
+  let urgentCount = 0
   for (const fb of feedbacks) {
     if (isNegativeSentiment(fb.sentiment)) negativeCount += 1
+    if (getUrgencyLevel(fb) === 'high') urgentCount += 1
   }
   const top = [...distribution].sort((a, b) => b.value - a.value)[0]
   return {
     total,
     negativeCount,
     negativePct: total ? Math.round((negativeCount / total) * 100) : 0,
+    urgentCount,
+    urgentPct: total ? Math.round((urgentCount / total) * 100) : 0,
     topLabel: top?.name || '—',
     topCount: top?.value || 0,
     topPct: top?.pct || 0,

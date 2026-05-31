@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { Modal, Radio, Typography, message } from 'antd'
+import { Modal, Radio, Typography, Checkbox, message } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
@@ -74,6 +74,7 @@ export function useBulkRetagModal({ filteredRecords }) {
 
     let selectedScope = periodCount > 0 ? 'period_all' : 'filtered'
     const scopeChoice = { value: selectedScope }
+    const forceOverrideChoice = { value: false }
 
     Modal.confirm({
       title: '批量重新打标',
@@ -81,7 +82,7 @@ export function useBulkRetagModal({ filteredRecords }) {
       content: (
         <div className="pt-1">
           <Typography.Paragraph type="secondary" className="!mb-3">
-            将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。已在工单详情中人工保存过的维度将保留，不会被覆盖。
+            将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。用户情绪以客户请求内容、需求痛点为准。默认保留工单详情中人工保存过的标签维度。
           </Typography.Paragraph>
           <Radio.Group
             defaultValue={selectedScope}
@@ -100,6 +101,17 @@ export function useBulkRetagModal({ filteredRecords }) {
               {BULK_RETAG_SCOPE_LABELS.filtered}（{filteredCount} 条）
             </Radio>
           </Radio.Group>
+          <Checkbox
+            className="!mt-3"
+            onChange={(e) => {
+              forceOverrideChoice.value = e.target.checked
+            }}
+          >
+            强制覆盖全部人工内容
+          </Checkbox>
+          <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+            勾选后将清空各工单的人工标签标记与人工复核文本（根因、优化方案、举措、优化建议），用本次打标结果全量覆盖请求场景、问题类型、用户旅程、用户情绪及自动优化建议。
+          </Typography.Paragraph>
           <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
             {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。
           </Typography.Paragraph>
@@ -114,7 +126,11 @@ export function useBulkRetagModal({ filteredRecords }) {
           return Promise.reject(new Error('empty scope'))
         }
         const scope = scopeChoice.value
-        void startBulkRetag({ scope, records }).catch((e) => {
+        void startBulkRetag({
+          scope,
+          records,
+          forceOverrideManualTags: forceOverrideChoice.value,
+        }).catch((e) => {
           message.error(e?.message || '批量重新打标失败')
         })
       },

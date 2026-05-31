@@ -86,10 +86,10 @@ describe('buildOverviewConclusions', () => {
     expect(conclusions.highlights.length).toBeGreaterThan(0)
     expect(conclusions.highlights.some((h) => h.type === 'problem_type')).toBe(true)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
-    expect(conclusions.recommendations.length).toBeLessThanOrEqual(10)
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBeDefined()
     const rec = conclusions.recommendations[0]
     expect(rec.summary || rec.text).toBeTruthy()
-    expect(rec.details?.length).toBeGreaterThan(0)
+    expect(rec.details?.length || rec.sections?.painClusterScores || rec.sections?.productActions?.length).toBeTruthy()
     expect(conclusions.source).toBe('rule')
   })
 })

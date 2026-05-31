@@ -19,6 +19,13 @@
     --app-sider-width: 224px;
     height: 100vh;
     overflow: hidden;
+    @apply bg-ink-50;
+  }
+
+  /* Ant Design Layout 默认 #f5f5f5，与 Tailwind ink-50 (#F9FAFB) 不一致会导致右侧内容区上下色差 */
+  .app-shell-root.ant-layout,
+  .app-shell-main.ant-layout {
+    background: #f9fafb !important;
   }
 
   .app-shell-sider {
@@ -33,9 +40,16 @@
   .app-shell-main {
     margin-left: var(--app-sider-width);
     height: 100vh;
+    min-height: 100vh;
     overflow-x: hidden;
     overflow-y: auto;
     transition: margin-left 0.2s;
+    @apply bg-ink-50;
+  }
+
+  .app-shell-main > .ant-layout-content {
+    min-height: 100%;
+    background: #f9fafb !important;
   }
 
   .app-shell-session-banner {

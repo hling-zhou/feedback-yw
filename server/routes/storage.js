@@ -152,15 +152,23 @@ export function registerStorageRoutes(app) {
 
   app.delete('/api/storage/imported-data', async (request, reply) => {
     if (!assertWritePermission(request, reply, ['deleteData'])) return
-    const statsBefore = storageRepository.getStats()
-    const pendingBefore = storageRepository.listTagCandidates({ status: 'pending' }).length
-    storageRepository.clearImportedData()
+    const { parseClearImportedDataOptions, validateClearImportedDataOptions } = await import(
+      '../../src/storage/clearImportedData.js'
+    )
+    const options = parseClearImportedDataOptions(/** @type {Record<string, unknown>} */ (request.query))
+    const validationError = validateClearImportedDataOptions(options)
+    if (validationError) {
+      reply.code(400).send({ error: validationError })
+      return
+    }
+    const cleared = storageRepository.clearImportedData(options)
     logAuditFromRequest(request, 'storage.clear_imported_data', {
-      recordsCleared: statsBefore.records,
-      snapshotsCleared: statsBefore.snapshots,
-      pendingTagCandidatesCleared: pendingBefore,
+      scope: options.all ? 'all' : 'filtered',
+      insightPeriodId: options.insightPeriodId || undefined,
+      dataSourceType: options.dataSourceType || undefined,
+      ...cleared,
     })
-    return { ok: true }
+    return { ok: true, ...cleared }
   })
 
   app.get('/api/storage/runs', { preHandler: requirePermission('view') }, async (request) => {

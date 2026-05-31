@@ -1,14 +1,21 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Checkbox, Input, Radio, Space, Typography, Upload } from 'antd'
+import { Alert, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Typography, Upload } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { downloadCsv, downloadJson } from '../lib/export.js'
 import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
-import QuoteExtractionSettings from '../components/QuoteExtractionSettings.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { canUseSemanticMatch } from '../lib/themeSemantic.js'
+import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
+import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import {
+  describeClearImportedScope,
+  describeClearImportedScopeRisk,
+  validateScopedClearOptions,
+} from '../storage/clearImportedData.js'
 
 const JOURNEY_MATCH_OPTIONS = [
   { value: 'keyword', label: '仅关键词', desc: '最快；按「用户旅程」二级环节的参考关键词匹配' },
@@ -48,7 +55,7 @@ function LlmSettingsPanel({ settings, onChange }) {
           type="success"
           showIcon
           title="大模型已由服务端配置（LLM_API_KEY）"
-          description="下方 API 地址与模型仅影响本机发出的请求参数；个人 API Key 不会用于请求。"
+          description="API 地址与模型留空时，使用服务端环境变量 LLM_BASE_URL / LLM_MODEL；填写则仅覆盖本机请求参数。个人 API Key 不会用于请求。"
         />
       )}
       {llmConfigSource(settings) === 'client' && (
@@ -85,17 +92,23 @@ function LlmSettingsPanel({ settings, onChange }) {
           <Typography.Text strong className="mb-1 block text-xs">API 地址</Typography.Text>
           <Input
             placeholder="https://api.siliconflow.cn/v1"
-            value={settings.llmBaseUrl}
+            value={settings.llmBaseUrl || ''}
             onChange={(e) => onChange({ llmBaseUrl: e.target.value })}
           />
+          <Typography.Text type="secondary" className="mt-1 block text-xs">
+            留空则使用服务端 LLM_BASE_URL（若已配置）
+          </Typography.Text>
         </div>
         <div>
           <Typography.Text strong className="mb-1 block text-xs">模型</Typography.Text>
           <Input
             placeholder="deepseek-ai/DeepSeek-V3.2"
-            value={settings.llmModel}
+            value={settings.llmModel || ''}
             onChange={(e) => onChange({ llmModel: e.target.value })}
           />
+          <Typography.Text type="secondary" className="mt-1 block text-xs">
+            留空则使用服务端 LLM_MODEL（若已配置）
+          </Typography.Text>
         </div>
       </div>
     </div>
@@ -110,14 +123,24 @@ export default function Settings() {
     settings,
     setPersonalSettings,
     setTeamSettings,
-    reprocessAllCustomerQuotes,
-    reprocessing,
     clearAll,
+    clearImportedData,
     replaceAll,
     orderVolumes,
     orderVolumesLoading,
     saveOrderVolume,
   } = useInsights()
+
+  const [clearPeriodId, setClearPeriodId] = useState('')
+  /** @type {import('../domain/insightPeriod.js').InsightPeriod | null} */
+  const [clearPeriod, setClearPeriod] = useState(null)
+  const [clearSourceType, setClearSourceType] = useState('')
+  const [clearing, setClearing] = useState(false)
+
+  const buildScopedClearOptions = () => ({
+    ...(clearPeriodId ? { insightPeriodId: clearPeriodId } : {}),
+    ...(clearSourceType ? { dataSourceType: clearSourceType } : {}),
+  })
 
   const importJson = (file) => {
     if (!file) return
@@ -194,6 +217,10 @@ export default function Settings() {
           </Card>
 
           <Card title="业务优化举措生成">
+            <Typography.Text type="secondary" className="mb-3 block text-xs">
+              洞察概览 V2 行动建议的优化举措当前为规则生成；旅程 Tab 已切换为痛点聚类展示，不再调用 LLM
+              旅程举措。此设置影响后续 LLM 举措扩展及工单详情中的优化文案。
+            </Typography.Text>
             <Radio.Group
               className="w-full"
               value={settings.optimizationMode || 'llm'}
@@ -228,41 +255,6 @@ export default function Settings() {
               自动润色时一并润色行动建议
             </Checkbox>
           </Card>
-
-          <PermissionGate permission="manageTeamSettings">
-            <Card title="分析规则 · 客户原话抽取">
-              <QuoteExtractionSettings
-                settings={settings}
-                feedbacks={feedbacks}
-                onTeamChange={setTeamSettings}
-                reprocessing={reprocessing}
-                onMessage={(text) => {
-                  if (text.includes('没有')) message.info(text)
-                  else message.success(text)
-                }}
-                onReprocessAll={async () => {
-                  let hide = () => {}
-                  try {
-                    hide = message.loading('正在重算客户原话…', 0)
-                    const count = await reprocessAllCustomerQuotes((text) => {
-                      hide()
-                      hide = message.loading(text, 0)
-                    })
-                    hide()
-                    hide = () => {}
-                    message.success(
-                      `已重算并保存 ${count ?? 0} 条客户原话；洞察快照将在后台刷新（约数秒）`,
-                      5,
-                    )
-                  } catch (err) {
-                    hide()
-                    message.error(err instanceof Error ? err.message : '重算客户原话失败')
-                    throw err
-                  }
-                }}
-              />
-            </Card>
-          </PermissionGate>
 
           <Card title="导出数据">
             <Typography.Text type="secondary" className="text-xs">
@@ -323,20 +315,120 @@ export default function Settings() {
 
         <PermissionGate permission="deleteData">
           <Card title={<span className="text-red-700">危险操作</span>} className="border-red-200">
-            <Typography.Text type="secondary" className="text-xs">
-              清空已导入的反馈、洞察快照、分析记录与待复核标签
+            <Typography.Text type="secondary" className="block text-xs">
+              清空已导入的反馈、洞察快照、分析记录与待复核标签。清空「二季度投诉」请同时勾选
+              <strong> 指定洞察周期（2026年Q2）+ 数据来源（投诉工单）</strong>
+              ；只选其一可能误删其它月份或其它来源。全部清空请用下方独立按钮。
             </Typography.Text>
-            <div className="mt-4">
-              <Button
-                danger
-                onClick={async () => {
-                  if (!confirm('确定清空全部反馈数据？此操作不可撤销。')) return
-                  await clearAll()
-                  message.success('已清空全部已导入反馈')
-                }}
-              >
-                清空全部数据
-              </Button>
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Typography.Text strong className="mb-2 block text-xs">
+                    洞察周期（可选）
+                  </Typography.Text>
+                  <InsightPeriodPicker
+                    compact
+                    showHint={false}
+                    allowEmpty
+                    value={clearPeriodId || null}
+                    onChange={(id, period) => {
+                      setClearPeriodId(id || '')
+                      setClearPeriod(period)
+                    }}
+                  />
+                </div>
+                <div>
+                  <Typography.Text strong className="mb-1 block text-xs">
+                    数据来源（可选）
+                  </Typography.Text>
+                  <Select
+                    allowClear
+                    className="w-full"
+                    placeholder="不限制来源"
+                    value={clearSourceType || undefined}
+                    options={DATA_SOURCE_TYPES.map((t) => ({
+                      label: DATA_SOURCE_LABELS[t],
+                      value: t,
+                    }))}
+                    onChange={(v) => setClearSourceType(v || '')}
+                  />
+                </div>
+              </div>
+              <Space wrap>
+                <Button
+                  danger
+                  loading={clearing}
+                  disabled={!clearPeriodId || !clearSourceType}
+                  onClick={() => {
+                    const options = buildScopedClearOptions()
+                    const validationError = validateScopedClearOptions(options)
+                    if (validationError) {
+                      message.warning(validationError)
+                      return
+                    }
+                    Modal.confirm({
+                      title: '确定按条件清空数据？',
+                      content: (
+                        <div className="space-y-2">
+                          <p>{describeClearImportedScope(options, clearPeriod)}</p>
+                          <p>{describeClearImportedScopeRisk(options)}</p>
+                          <p className="text-red-600">不可撤销，请确认范围无误。</p>
+                        </div>
+                      ),
+                      okText: '清空',
+                      okType: 'danger',
+                      cancelText: '取消',
+                      onOk: async () => {
+                        setClearing(true)
+                        try {
+                          await clearImportedData(options)
+                          message.success(`已清空：${describeClearImportedScope(options, clearPeriod)}`)
+                          setClearPeriodId('')
+                          setClearPeriod(null)
+                          setClearSourceType('')
+                        } catch (err) {
+                          message.error(err instanceof Error ? err.message : '清空失败')
+                        } finally {
+                          setClearing(false)
+                        }
+                      },
+                    })
+                  }}
+                >
+                  清空选中范围
+                </Button>
+                <Button
+                  danger
+                  type="primary"
+                  loading={clearing}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '确定清空全部数据？',
+                      content:
+                        '将删除全部洞察周期、全部数据来源的反馈、快照、分析记录与待复核标签，不可撤销。',
+                      okText: '全部清空',
+                      okType: 'danger',
+                      cancelText: '取消',
+                      onOk: async () => {
+                        setClearing(true)
+                        try {
+                          await clearAll()
+                          message.success('已清空全部已导入数据')
+                          setClearPeriodId('')
+                          setClearPeriod(null)
+                          setClearSourceType('')
+                        } catch (err) {
+                          message.error(err instanceof Error ? err.message : '清空失败')
+                        } finally {
+                          setClearing(false)
+                        }
+                      },
+                    })
+                  }}
+                >
+                  清空全部数据
+                </Button>
+              </Space>
             </div>
           </Card>
         </PermissionGate>

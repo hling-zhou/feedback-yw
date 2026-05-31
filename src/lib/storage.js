@@ -41,8 +41,23 @@ const DEFAULT_SETTINGS = {
   overviewConclusionsLlm: false,
   /** 周期洞察 LLM 润色时是否一并润色行动建议 */
   overviewPolishIncludeRecommendations: true,
-  llmBaseUrl: 'https://api.openai.com/v1',
-  llmModel: 'gpt-4o-mini',
+  llmBaseUrl: '',
+  llmModel: '',
+}
+
+/** 旧版默认填充（加载时视为未配置，避免误连 OpenAI） */
+const LEGACY_DEFAULT_LLM_BASE_URL = 'https://api.openai.com/v1'
+const LEGACY_DEFAULT_LLM_MODEL = 'gpt-4o-mini'
+
+/**
+ * @param {Record<string, unknown>} parsed
+ */
+function resolveLlmFieldsFromParsed(parsed) {
+  let llmBaseUrl = typeof parsed.llmBaseUrl === 'string' ? parsed.llmBaseUrl.trim() : ''
+  let llmModel = typeof parsed.llmModel === 'string' ? parsed.llmModel.trim() : ''
+  if (llmBaseUrl === LEGACY_DEFAULT_LLM_BASE_URL) llmBaseUrl = ''
+  if (llmModel === LEGACY_DEFAULT_LLM_MODEL) llmModel = ''
+  return { llmBaseUrl, llmModel }
 }
 
 /**
@@ -140,8 +155,7 @@ export function loadSettings() {
       overviewPolishIncludeRecommendations:
         parsed.overviewPolishIncludeRecommendations ??
         DEFAULT_SETTINGS.overviewPolishIncludeRecommendations,
-      llmBaseUrl: parsed.llmBaseUrl || DEFAULT_SETTINGS.llmBaseUrl,
-      llmModel: parsed.llmModel || DEFAULT_SETTINGS.llmModel,
+      ...resolveLlmFieldsFromParsed(parsed),
       llmApiKey: typeof parsed.llmApiKey === 'string' ? parsed.llmApiKey : '',
     }
   } catch {

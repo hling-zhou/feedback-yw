@@ -190,8 +190,11 @@ export function applyColumnMap(rows, columnMap, rawTextMerge = []) {
       .map((col) => `【${col}】\n${row[col]}`)
     mapped.rawText = [primary, ...merged].filter(Boolean).join('\n\n')
 
-    if (!mapped.ticketId && row['工单流水号']) {
-      mapped.ticketId = normalizeTicketId(row['工单流水号']) || row['工单流水号']
+    if (!mapped.ticketId) {
+      const ticketCol = columnMap.ticketId || resolveTicketIdHeader(Object.keys(row))
+      if (ticketCol && row[ticketCol]) {
+        mapped.ticketId = normalizeTicketId(row[ticketCol]) || String(row[ticketCol])
+      }
     }
     if (!mapped.createdAt && row['受理时间']) {
       mapped.createdAt = normalizeCreatedAt(row['受理时间']) || row['受理时间']
@@ -207,6 +210,61 @@ export function applyColumnMap(rows, columnMap, rawTextMerge = []) {
   })
 }
 
+/** 工单类导入：默认工单号列（移动云工单表标准列名） */
+export const PRIMARY_TICKET_ID_HEADERS = ['工单展示流水号', '工单流水号']
+
+/** 无标准列名时的兜底候选 */
+const FALLBACK_TICKET_ID_HEADERS = ['投诉工单流水号', 'OP在线工单号', '流水号', '工单号']
+
+/** 预设未命中表头时的可选列兜底（如客户等级列名变体） */
+const OPTIONAL_COLUMN_CANDIDATES = [
+  { key: 'customerTierCol', candidates: ['移动云客户服务等级', '客户等级', '客户级别', '会员等级'] },
+]
+
+/**
+ * @param {string[]} headers
+ * @param {Record<string, string>} map
+ */
+function fillOptionalColumnCandidates(headers, map) {
+  for (const { key, candidates } of OPTIONAL_COLUMN_CANDIDATES) {
+    if (map[key]) continue
+    const found = candidates.find((c) => headers.includes(c))
+    if (found) map[key] = found
+  }
+  return map
+}
+
+/**
+ * 解析表头中的工单号列名（优先「工单展示流水号」，其次「工单流水号」）
+ * @param {string[]} headers
+ */
+export function resolveTicketIdHeader(headers) {
+  const primary = PRIMARY_TICKET_ID_HEADERS.find((name) => headers.includes(name))
+  if (primary) return primary
+  return FALLBACK_TICKET_ID_HEADERS.find((name) => headers.includes(name)) || null
+}
+
+/**
+ * 投诉/咨询导入：未映射工单号时默认绑定「工单展示流水号」或「工单流水号」列
+ * @param {string[]} headers
+ * @param {Record<string, string>} columnMap
+ * @param {import('../domain/enums.js').DataSourceType} [dataSourceType]
+ */
+export function applyDefaultTicketIdMapping(headers, columnMap, dataSourceType = 'complaint_ticket') {
+  if (dataSourceType !== 'complaint_ticket' && dataSourceType !== 'consultation_ticket') {
+    return columnMap
+  }
+  const current = columnMap.ticketId
+  if (current && headers.includes(current)) {
+    return columnMap
+  }
+  const resolved = resolveTicketIdHeader(headers)
+  if (!resolved) {
+    return columnMap
+  }
+  return { ...columnMap, ticketId: resolved }
+}
+
 /**
  * @param {string[]} headers
  * @param {import('../domain/enums.js').DataSourceType} [dataSourceType]
@@ -214,47 +272,48 @@ export function applyColumnMap(rows, columnMap, rawTextMerge = []) {
  */
 export function guessColumnMap(headers, dataSourceType = 'complaint_ticket') {
   const preset = detectPreset(headers, dataSourceType)
+  /** @type {Record<string, string>} */
+  let map
   if (preset) {
-    const map = { ...preset.columnMap }
+    map = { ...preset.columnMap }
     for (const [key, col] of Object.entries(map)) {
       if (!headers.includes(col)) delete map[key]
     }
-    return map
-  }
+  } else {
+    map = {}
 
-  /** @type {Record<string, string>} */
-  const map = {}
-
-  if (headers.includes('工单流水号')) {
-    map.ticketId = '工单流水号'
-  }
-
-  const rules = [
-    { key: 'ticketId', candidates: ['投诉工单流水号', 'OP在线工单号', '流水号', '工单号'] },
+    const rules = [
+      {
+        key: 'ticketId',
+        candidates: [...PRIMARY_TICKET_ID_HEADERS, ...FALLBACK_TICKET_ID_HEADERS],
+      },
     { key: 'createdAt', candidates: ['受理时间', '创建时间', '归档时间', '日期'] },
     {
       key: 'productSpec',
       candidates: ['产品规格', '具体投诉产品', '产品名称(七级编码3)', '产品', '投诉产品'],
     },
     { key: 'resourcePool', candidates: ['所属资源池', '资源池'] },
+    ...OPTIONAL_COLUMN_CANDIDATES,
     { key: 'handlingText', candidates: ['处理意见'] },
     { key: 'rawText', candidates: ['受理内容', '追加信息', '归档意见', '详细内容'] },
     { key: 'responseText', candidates: ['解决方案（必填）', '解决方案', '归档意见'] },
     { key: 'rootCauseCol', candidates: ['根因（必填）', '移动云投诉根因', '根因'] },
-    { key: 'problemTypeCol', candidates: ['投诉原因 一级（初判）', '投诉原因 一级（终判）'] },
     { key: 'problemTypeL1FinalCol', candidates: ['投诉原因 一级（终判）'] },
     { key: 'problemTypeL2FinalCol', candidates: ['投诉原因 二级（终判）'] },
     { key: 'problemTypeL3FinalCol', candidates: ['投诉原因 三级（终判）'] },
     { key: 'source', candidates: ['受理渠道', '渠道', '来源'] },
   ]
 
-  for (const { key, candidates } of rules) {
-    if (map[key]) continue
-    const found = candidates.find((c) => headers.includes(c))
-    if (found) map[key] = found
+    for (const { key, candidates } of rules) {
+      if (map[key]) continue
+      const found = candidates.find((c) => headers.includes(c))
+      if (found) map[key] = found
+    }
   }
 
-  return map
+  fillOptionalColumnCandidates(headers, map)
+
+  return applyDefaultTicketIdMapping(headers, map, dataSourceType)
 }
 
 /**

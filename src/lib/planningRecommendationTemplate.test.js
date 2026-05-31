@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildEvidenceNoteForSignal,
   buildFallbackPrimaryAction,
+  buildProblemTypePrimaryAction,
   buildPlanningRecommendationLlmRules,
   buildPlanningRecommendationsHelpSections,
   buildPrimaryActionForSignal,
@@ -35,7 +36,7 @@ describe('planningRecommendationTemplate', () => {
   it('buildEvidenceNoteForSignal keeps stats in evidence only', () => {
     const note = buildEvidenceNoteForSignal({
       signalType: 'problem_type',
-      problemType: '功能需求与规划',
+      problemType: '产品功能需求',
       count: 8,
       sharePct: 22,
     })
@@ -69,8 +70,13 @@ describe('planningRecommendationTemplate', () => {
   it('buildPlanningRecommendationLlmRules documents template constraints', () => {
     const rules = buildPlanningRecommendationLlmRules()
     expect(rules).toMatch(/最多 \d+ 条/)
-    expect(rules).toMatch(/业务优化举措/)
+    expect(rules).toMatch(/productActions/)
     expect(rules).toMatch(/journey_hotspot/)
+  })
+
+  it('buildProblemTypePrimaryAction only matches 12-class labels', () => {
+    expect(buildProblemTypePrimaryAction('性能问题')).toMatch(/性能基线/)
+    expect(buildProblemTypePrimaryAction('性能与质量')).toBeNull()
   })
 
   it('buildPlanningRecommendationsHelpSections aligns with quota constants', () => {

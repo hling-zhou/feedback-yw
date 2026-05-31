@@ -1,5 +1,7 @@
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
+import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
+
 /** 导出 Excel 时使用的原始工单列名（与工单模板一致） */
 export const TICKET_SOURCE_COLUMN_LABELS = [
   '处理意见',
@@ -26,14 +28,12 @@ export function buildSourceColumns(row) {
   }
 
   put('处理意见', row.handlingText)
-  put(
-    '投诉原因 一级（终判）',
-    row.problemTypeL1FinalCol || row.problemTypeCol,
-  )
+  put('投诉原因 一级（终判）', row.problemTypeL1FinalCol)
   put('投诉原因 二级（终判）', row.problemTypeL2FinalCol)
   put('投诉原因 三级（终判）', row.problemTypeL3FinalCol)
   put('根因（必填）', row.rootCauseCol)
   put('解决方案（必填）', row.responseText)
+  put(CUSTOMER_TIER_SOURCE_COLUMN, row.customerTierCol || row.customerTier)
 
   return Object.keys(cols).length > 0 ? cols : undefined
 }
@@ -49,6 +49,14 @@ export function getSourceColumnValue(record, label) {
   if (label === '根因（必填）') return record.rootCause || ''
   if (label === '解决方案（必填）') return record.responseText || record.solutionSummary || ''
   if (label === '投诉原因 一级（终判）') return record.problemType || ''
+  if (label === CUSTOMER_TIER_SOURCE_COLUMN || label === '客户等级') {
+    return (
+      record.customerTier ||
+      snap?.[CUSTOMER_TIER_SOURCE_COLUMN] ||
+      snap?.['客户等级'] ||
+      ''
+    )
+  }
   return ''
 }
 

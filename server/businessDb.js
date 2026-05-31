@@ -14,6 +14,7 @@ const META_KEY_SLB_BUILTIN_JOURNEYS = 'migrate_slb_builtin_journeys_v1'
 const META_KEY_BUILTIN_JOURNEYS_V2 = 'migrate_builtin_journeys_v2'
 const META_KEY_PRODUCT_CATALOG_CANONICAL = 'migrate_product_catalog_canonical_keys_v1'
 const META_KEY_SHARED_TAGS_V2 = 'migrate_shared_tags_v2'
+const META_KEY_SHARED_TAGS_V3 = 'migrate_shared_tags_v3_problem_types_12'
 
 const LEGACY_DC_PRODUCT_KEYS = new Set(['ecc', 'yunzx', 'yunzhuanxian'])
 const SHARED_BANDWIDTH_LEGACY_KEY = '共享带宽'
@@ -323,6 +324,46 @@ function migrateSharedTagsV2(db) {
   )
 }
 
+function migrateSharedTagsV3(db) {
+  const done = db.prepare('SELECT value FROM meta WHERE key = ?').get(META_KEY_SHARED_TAGS_V3)
+  if (done) return
+
+  const rows = db.prepare('SELECT id, payload FROM records').all()
+  const update = db.prepare('UPDATE records SET payload = ? WHERE id = ?')
+  let migratedRecords = 0
+  const tx = db.transaction((items) => {
+    for (const row of items) {
+      const record = JSON.parse(row.payload)
+      if (migrateSharedTagsOnRecord(record)) {
+        update.run(JSON.stringify(record), row.id)
+        migratedRecords += 1
+      }
+    }
+  })
+  tx(rows)
+
+  const metaRow = db.prepare('SELECT value FROM meta WHERE key = ?').get('taxonomy_managed')
+  if (metaRow?.value) {
+    try {
+      const snapshot = JSON.parse(metaRow.value)
+      if (migrateSharedTagsInSnapshot(snapshot)) {
+        snapshot.updatedAt = new Date().toISOString()
+        db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
+          'taxonomy_managed',
+          JSON.stringify(snapshot),
+        )
+      }
+    } catch {
+      /* ignore malformed taxonomy_managed */
+    }
+  }
+
+  db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
+    META_KEY_SHARED_TAGS_V3,
+    JSON.stringify({ migratedRecords, at: new Date().toISOString() }),
+  )
+}
+
 function migrateRecordsIndexColumns(db) {
   const cols = db.prepare('PRAGMA table_info(records)').all()
   const names = new Set(cols.map((c) => c.name))
@@ -415,6 +456,7 @@ export function initBusinessSchema() {
   migrateSlbBuiltinJourneysInMeta(db)
   migrateBuiltinJourneysV2InMeta(db)
   migrateSharedTagsV2(db)
+  migrateSharedTagsV3(db)
 }
 
 export { META_KEY_STORAGE_INIT }

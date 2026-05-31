@@ -1,13 +1,16 @@
 import { useMemo } from 'react'
-import { DatePicker, Segmented, Select, Space, Typography } from 'antd'
+import { Checkbox, DatePicker, Segmented, Select, Space, Typography } from 'antd'
 import dayjs from 'dayjs'
 import InsightMonthPicker from './InsightMonthPicker.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { DEFAULT_TENANT_ID, SCHEMA_VERSION } from '../domain/constants.js'
 import { PERIOD_GRANULARITIES, PERIOD_GRANULARITY_LABELS } from '../domain/enums.js'
 import {
   buildPeriodSpec,
   defaultMonthPeriodSpec,
   formatPeriodSubtitle,
+  insightPeriodFromSpec,
+  resolveInsightPeriod,
   selectionFromPeriod,
 } from '../domain/insightPeriod.js'
 
@@ -20,17 +23,36 @@ const QUARTER_OPTIONS = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }))
 
 /**
  * 洞察周期：按月 / 按季度 / 按年直接选择（自动匹配数据时间，无需新建周期）
- * @param {{ showHint?: boolean; compact?: boolean; className?: string }} [props]
+ * @param {{
+ *   showHint?: boolean
+ *   compact?: boolean
+ *   className?: string
+ *   /** 受控模式：不修改全局 currentPeriod；value 为 insightPeriodId，null 表示未选择
+ *   value?: string | null
+ *   onChange?: (insightPeriodId: string | null, period: import('../domain/insightPeriod.js').InsightPeriod | null) => void
+ *   allowEmpty?: boolean
+ * }} [props]
  */
 export default function InsightPeriodPicker({
   showHint = true,
   compact = false,
   className = '',
+  value,
+  onChange,
+  allowEmpty = false,
 }) {
-  const { currentPeriod, periodsLoading, selectInsightPeriod, feedbacks } = useInsights()
+  const controlled = typeof onChange === 'function'
+  const { currentPeriod, periodsLoading, selectInsightPeriod, feedbacks, periods } = useInsights()
+
+  const activePeriod = useMemo(() => {
+    if (!controlled) return currentPeriod
+    if (!value) return null
+    const fromList = periods.find((p) => p.id === value)
+    return resolveInsightPeriod(value, fromList ?? undefined)
+  }, [controlled, value, currentPeriod, periods])
 
   const selection = useMemo(() => {
-    const fromPeriod = selectionFromPeriod(currentPeriod)
+    const fromPeriod = selectionFromPeriod(activePeriod)
     if (fromPeriod) return fromPeriod
     const spec = defaultMonthPeriodSpec(feedbacks)
     return {
@@ -39,7 +61,7 @@ export default function InsightPeriodPicker({
       month: spec.anchorMonth,
       quarter: spec.anchorQuarter,
     }
-  }, [currentPeriod, feedbacks])
+  }, [activePeriod, feedbacks])
 
   const granularity = selection?.granularity ?? 'month'
   const year = selection?.year ?? dayjs().year()
@@ -53,11 +75,38 @@ export default function InsightPeriodPicker({
       month: next.month ?? selection?.month ?? dayjs().month() + 1,
       quarter: next.quarter ?? selection?.quarter ?? Math.ceil((dayjs().month() + 1) / 3),
     })
+    if (controlled) {
+      const period = insightPeriodFromSpec(spec, SCHEMA_VERSION, DEFAULT_TENANT_ID)
+      onChange(period.id, period)
+      return
+    }
     selectInsightPeriod(spec)
   }
 
+  const periodEnabled = !allowEmpty || !!value
+
   return (
     <div className={[compact ? '' : 'space-y-2', className].filter(Boolean).join(' ')}>
+      {allowEmpty && controlled && (
+        <Checkbox
+          checked={periodEnabled}
+          onChange={(e) => {
+            if (!e.target.checked) {
+              onChange(null, null)
+              return
+            }
+            applySelection({
+              granularity: selection?.granularity ?? 'month',
+              year: selection?.year ?? dayjs().year(),
+              month: selection?.month ?? dayjs().month() + 1,
+              quarter: selection?.quarter ?? Math.ceil((dayjs().month() + 1) / 3),
+            })
+          }}
+        >
+          指定洞察周期
+        </Checkbox>
+      )}
+      {periodEnabled && (
       <Space wrap align={compact ? 'center' : 'start'} size="middle">
         <div>
           {!compact && (
@@ -155,10 +204,11 @@ export default function InsightPeriodPicker({
           </div>
         )}
       </Space>
+      )}
 
-      {showHint && currentPeriod && (
+      {showHint && activePeriod && periodEnabled && (
         <Typography.Text type="secondary" className="block text-xs">
-          {formatPeriodSubtitle(currentPeriod)} · 按数据月份筛选
+          {formatPeriodSubtitle(activePeriod)} · 按数据月份筛选
         </Typography.Text>
       )}
     </div>

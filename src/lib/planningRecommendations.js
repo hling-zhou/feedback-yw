@@ -25,6 +25,9 @@ import { isGenericRecommendationText, isTicketDerivedPlanningText, isValidRootCa
 import { formatWanTouRatio } from './wanTouRatio.js'
 import { buildWorkbenchAnalysisUrl } from './workbenchAnalysisLink.js'
 import { getSignalWeight } from './planningConfigLoader.js'
+import { attachPlanningRecommendationSections } from './planningRecommendationSections.js'
+import { getEffectiveOptimization } from './ticketAnalysis/ticketOptimizationExtract.js'
+import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 /** @typedef {import('../domain/overviewConclusions.js').RecommendationCategory} RecommendationCategory */
@@ -63,7 +66,7 @@ export function buildRecommendationEvidenceBundle(pool, periodTicketCount) {
     seen.add(r.ticketId)
     sampleSummaries.push({
       ticketId: r.ticketId,
-      problemSummary: (r.problemSummary || r.handlingText || '').trim().slice(0, 120) || undefined,
+      problemSummary: (r.painPoint || r.problemSummary || r.handlingText || '').trim().slice(0, 120) || undefined,
     })
     if (sampleSummaries.length >= 3) break
   }
@@ -1257,15 +1260,18 @@ function finalizeRecommendation(rec, evidencePool, periodTicketCount = 0) {
       ? buildRecommendationEvidenceBundle(pool, periodTicketCount)
       : rec.evidenceBundle
 
-  return {
-    ...base,
-    evidenceStrength,
-    evidenceBundle,
-    generationMeta: base.generationMeta || {
-      selectedReason: buildGenerationSelectedReason(base, pool),
-      mergedFrom: [],
+  return attachPlanningRecommendationSections(
+    {
+      ...base,
+      evidenceStrength,
+      evidenceBundle,
+      generationMeta: base.generationMeta || {
+        selectedReason: buildGenerationSelectedReason(base, pool),
+        mergedFrom: [],
+      },
     },
-  }
+    pool,
+  )
 }
 
 const TEMPORARY_WORKAROUND_RE = /已协助|请客户观察|临时规避|临时方案|先观察|协助客户/
@@ -1351,12 +1357,30 @@ export function collectActionItemsFromRecords(records, limit = 6) {
   for (const fb of records) {
     add(fb.manualReviewAction, '人工复核举措', 5)
     add(fb.manualReviewSolution, '人工复核方案', 4)
+    add(fb.manualReviewOptimization, '人工复核优化建议', 6)
+  }
+  for (const fb of records) {
+    const eff = getEffectiveOptimization(fb)
+    if (eff.source === 'manual') {
+      add(eff.combined, '人工复核优化建议', 6)
+      continue
+    }
+    if (eff.product) {
+      for (const p of eff.product.split(/\n+/).map((x) => x.trim()).filter(Boolean)) {
+        add(p, '产品技术优化', 4)
+      }
+    }
+    if (eff.service) {
+      for (const p of eff.service.split(/\n+/).map((x) => x.trim()).filter(Boolean)) {
+        add(p, '服务流程优化', 3)
+      }
+    }
   }
   for (const fb of records) {
     const s = fb.optimizationSuggestion?.trim()
     if (!s) continue
     for (const p of s.split(/[。；;]/).map((x) => x.trim()).filter((x) => x.length >= 15)) {
-      add(p, '工单优化建议', 3)
+      add(p, '工单优化建议', 2)
     }
   }
   for (const fb of records) {
@@ -1607,6 +1631,14 @@ export function collectMergedOptimizationDetails(records, journey, limit = 4) {
     const normalized = normalizePlanningDetail(formatActionItemDetail(item))
     if (!normalized) continue
     push(normalized, item.source, (MEASURE_SOURCE_SCORE[item.source] || 10) + item.count)
+  }
+
+  for (const item of collectEffectiveOptimizationsFromRecords(records, 6)) {
+    const normalized = normalizePlanningDetail(item.text)
+    if (!normalized) continue
+    const score =
+      (item.source === '人工复核优化建议' ? 48 : 22) + (item.count || 0)
+    push(normalized, item.source, score)
   }
 
   const journeyCtx = journey?.l1

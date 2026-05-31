@@ -1,24 +1,36 @@
 /**
  * 从 public/config/taxonomy 加载用户旅程与通用问题类型（优先 Excel，其次 JSON，最后内置默认）。
  */
-import { EIP_USER_JOURNEY, EIP_NODE_ISSUE_MAP, EIP_NODE_SERVICE_MAP } from './journeys/eipJourney.js'
+import {
+  EIP_USER_JOURNEY,
+  EIP_NODE_ISSUE_MAP,
+  EIP_NODE_SERVICE_MAP,
+  EIP_REQUEST_SCENE_PATH_MAP,
+  EIP_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/eipJourney.js'
 import {
   DC_USER_JOURNEY,
   DC_NODE_ISSUE_MAP,
   DC_NODE_SERVICE_MAP,
   DC_PRODUCT_MATCH,
+  DC_REQUEST_SCENE_PATH_MAP,
+  DC_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/dcJourney.js'
 import {
   SLB_USER_JOURNEY,
   SLB_NODE_ISSUE_MAP,
   SLB_NODE_SERVICE_MAP,
   SLB_PRODUCT_MATCH,
+  SLB_REQUEST_SCENE_PATH_MAP,
+  SLB_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/slbJourney.js'
 import {
   VPC_USER_JOURNEY,
   VPC_NODE_ISSUE_MAP,
   VPC_NODE_SERVICE_MAP,
   VPC_PRODUCT_MATCH,
+  VPC_REQUEST_SCENE_PATH_MAP,
+  VPC_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/vpcJourney.js'
 import { DEFAULT_THEME_RULES } from './themes.js'
 import { parseTaxonomyWorkbook } from './taxonomyExcel.js'
@@ -57,7 +69,12 @@ const BUILTIN_PRODUCTS = {
     ],
     journeys: EIP_USER_JOURNEY,
     themes: null,
-    nodeMaps: { serviceMap: EIP_NODE_SERVICE_MAP, issueMap: EIP_NODE_ISSUE_MAP },
+    nodeMaps: {
+      serviceMap: EIP_NODE_SERVICE_MAP,
+      issueMap: EIP_NODE_ISSUE_MAP,
+      requestSceneMap: EIP_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: EIP_PROBLEM_TYPE_PATH_MAP,
+    },
   },
   dc: {
     key: 'dc',
@@ -65,7 +82,12 @@ const BUILTIN_PRODUCTS = {
     match: DC_PRODUCT_MATCH,
     journeys: DC_USER_JOURNEY,
     themes: null,
-    nodeMaps: { serviceMap: DC_NODE_SERVICE_MAP, issueMap: DC_NODE_ISSUE_MAP },
+    nodeMaps: {
+      serviceMap: DC_NODE_SERVICE_MAP,
+      issueMap: DC_NODE_ISSUE_MAP,
+      requestSceneMap: DC_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: DC_PROBLEM_TYPE_PATH_MAP,
+    },
   },
   slb: {
     key: 'slb',
@@ -73,7 +95,12 @@ const BUILTIN_PRODUCTS = {
     match: SLB_PRODUCT_MATCH,
     journeys: SLB_USER_JOURNEY,
     themes: null,
-    nodeMaps: { serviceMap: SLB_NODE_SERVICE_MAP, issueMap: SLB_NODE_ISSUE_MAP },
+    nodeMaps: {
+      serviceMap: SLB_NODE_SERVICE_MAP,
+      issueMap: SLB_NODE_ISSUE_MAP,
+      requestSceneMap: SLB_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: SLB_PROBLEM_TYPE_PATH_MAP,
+    },
   },
   vpc: {
     key: 'vpc',
@@ -81,7 +108,12 @@ const BUILTIN_PRODUCTS = {
     match: VPC_PRODUCT_MATCH,
     journeys: VPC_USER_JOURNEY,
     themes: null,
-    nodeMaps: { serviceMap: VPC_NODE_SERVICE_MAP, issueMap: VPC_NODE_ISSUE_MAP },
+    nodeMaps: {
+      serviceMap: VPC_NODE_SERVICE_MAP,
+      issueMap: VPC_NODE_ISSUE_MAP,
+      requestSceneMap: VPC_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
+    },
   },
   generic: {
     key: 'generic',
@@ -163,14 +195,43 @@ function cloneProduct(p) {
 
 function normalizeProduct(raw) {
   if (!raw?.key) return null
+  const builtin = BUILTIN_PRODUCTS[raw.key]
   return {
     key: raw.key,
     name: raw.name || raw.key,
     match: raw.match || [],
     journeys: raw.journeys || [],
     themes: null,
-    nodeMaps: raw.nodeMaps || null,
+    nodeMaps: raw.nodeMaps || builtin?.nodeMaps || null,
   }
+}
+
+/** @type {Record<string, { serviceMap: Record<string, string>; issueMap: Record<string, { l1: string; l2?: string }> }>} */
+const BUILTIN_NODE_MAPS = {
+  eip: {
+    serviceMap: EIP_NODE_SERVICE_MAP,
+    issueMap: EIP_NODE_ISSUE_MAP,
+    requestSceneMap: EIP_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: EIP_PROBLEM_TYPE_PATH_MAP,
+  },
+  dc: {
+    serviceMap: DC_NODE_SERVICE_MAP,
+    issueMap: DC_NODE_ISSUE_MAP,
+    requestSceneMap: DC_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: DC_PROBLEM_TYPE_PATH_MAP,
+  },
+  slb: {
+    serviceMap: SLB_NODE_SERVICE_MAP,
+    issueMap: SLB_NODE_ISSUE_MAP,
+    requestSceneMap: SLB_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: SLB_PROBLEM_TYPE_PATH_MAP,
+  },
+  vpc: {
+    serviceMap: VPC_NODE_SERVICE_MAP,
+    issueMap: VPC_NODE_ISSUE_MAP,
+    requestSceneMap: VPC_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
+  },
 }
 
 async function loadFromExcel() {
@@ -406,11 +467,24 @@ export function getEipNodeMaps(taxonomyKey) {
  */
 export function getNodeMapsForProduct(taxonomyKey) {
   const tax = getProductByKey(taxonomyKey)
-  if (tax.nodeMaps) return tax.nodeMaps
-  if (taxonomyKey === 'eip') {
-    return { serviceMap: EIP_NODE_SERVICE_MAP, issueMap: EIP_NODE_ISSUE_MAP }
+  const builtin = BUILTIN_NODE_MAPS[taxonomyKey] || {
+    serviceMap: {},
+    issueMap: {},
+    requestSceneMap: {},
+    problemTypePathMap: {},
   }
-  return { serviceMap: {}, issueMap: {} }
+  if (tax.nodeMaps) {
+    return {
+      serviceMap: { ...builtin.serviceMap, ...(tax.nodeMaps.serviceMap || {}) },
+      issueMap: { ...builtin.issueMap, ...(tax.nodeMaps.issueMap || {}) },
+      requestSceneMap: { ...builtin.requestSceneMap, ...(tax.nodeMaps.requestSceneMap || {}) },
+      problemTypePathMap: {
+        ...builtin.problemTypePathMap,
+        ...(tax.nodeMaps.problemTypePathMap || {}),
+      },
+    }
+  }
+  return builtin
 }
 
 /** @param {string} taxonomyKey */

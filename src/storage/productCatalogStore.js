@@ -5,6 +5,7 @@ import {
   parseCatalogImportFile,
 } from '../lib/productCatalogManageModel.js'
 import { mergeSharedBandwidthIntoEipCatalog } from '../lib/productCatalog/sharedBandwidthSpec.js'
+import { ensureTargetProductsInCatalog } from '../lib/productCatalog/ensureTargetProducts.js'
 import { migrateProductCatalogKeys } from '../lib/migrateProductCatalogKeys.js'
 import {
   applyCatalogProducts,
@@ -16,8 +17,11 @@ export const META_KEY_PRODUCT_CATALOG_MANAGED = 'product_catalog_managed_v1'
 
 async function normalizeManagedCatalogProducts(products) {
   const { products: migrated, changed: keysChanged } = migrateProductCatalogKeys(products)
-  const { products: merged, changed: bwChanged } = mergeSharedBandwidthIntoEipCatalog(migrated)
-  return { products: merged, changed: keysChanged || bwChanged }
+  const { products: withTargets, changed: targetsChanged } =
+    ensureTargetProductsInCatalog(migrated)
+  const { products: merged, changed: bwChanged } =
+    mergeSharedBandwidthIntoEipCatalog(withTargets)
+  return { products: merged, changed: keysChanged || targetsChanged || bwChanged }
 }
 
 /**

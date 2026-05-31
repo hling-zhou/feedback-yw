@@ -4,9 +4,14 @@ import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import TrendChart from '../charts/TrendChart.jsx'
 import JourneyFeedbackSection from '../JourneyFeedbackSection.jsx'
 import SentimentDistributionPanel from '../SentimentDistributionPanel.jsx'
+import SentimentExperiencePanel from '../SentimentExperiencePanel.jsx'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { getTaxonomy } from '../../lib/productTaxonomy.js'
 import { countByField, filterFeedbacks } from '../../lib/productAnalytics.js'
+import {
+  aggregateComplaintCauseL1Insights,
+  countComplaintCauseL1,
+} from '../../domain/complaintCause.js'
 import { listProducts, listResourcePools } from '../../lib/productTaxonomy.js'
 import { workbenchTicketRecords } from '../../snapshots/recordScope.js'
 import { resolveCatalogKeyFromProductName } from '../../lib/wanTouRatio.js'
@@ -39,7 +44,9 @@ export default function TicketDashboardView({
   const product = productControlled ? productProp ?? '' : internalProduct
   const setProduct = productControlled ? onProductChange : setInternalProduct
   const [resourcePool, setResourcePool] = useState('')
+  const [complaintCauseL1, setComplaintCauseL1] = useState('')
   const [journeySel, setJourneySel] = useState({ l1: undefined, l2: undefined })
+  const isComplaintSource = snapshot.dataSourceType === 'complaint_ticket'
 
   useEffect(() => {
     if (!products.length) {
@@ -65,8 +72,9 @@ export default function TicketDashboardView({
       filterFeedbacks(items, {
         product: taxonomyProduct || undefined,
         resourcePool: resourcePool || undefined,
+        complaintCauseL1: isComplaintSource ? complaintCauseL1 || undefined : undefined,
       }),
-    [items, taxonomyProduct, resourcePool],
+    [items, taxonomyProduct, resourcePool, complaintCauseL1, isComplaintSource],
   )
 
   const taxonomy = getTaxonomy(taxonomyProduct)
@@ -87,6 +95,18 @@ export default function TicketDashboardView({
         negative: 0,
       })),
     [scoped],
+  )
+  const complaintCauseChart = useMemo(() => {
+    if (!isComplaintSource) return []
+    return aggregateComplaintCauseL1Insights(scoped).map((d) => ({
+      label: d.label,
+      count: d.count,
+      negative: d.negative,
+    }))
+  }, [scoped, isComplaintSource])
+  const complaintCauseOptions = useMemo(
+    () => (isComplaintSource ? countComplaintCauseL1(items) : []),
+    [items, isComplaintSource],
   )
   const trendData = snapshot.aggregates?.monthlyTrend || []
   const latestMonth = trendData.at(-1)
@@ -122,10 +142,30 @@ export default function TicketDashboardView({
             onChange={(value) => {
               setProduct(value)
               setResourcePool('')
+              setComplaintCauseL1('')
               setJourneySel({})
             }}
           />
         </Form.Item>
+        {isComplaintSource && (
+          <Form.Item label="投诉原因（终判）" className="!mb-0">
+            <Select
+              className="min-w-[200px]"
+              value={complaintCauseL1}
+              options={[
+                { label: '全部一级（终判）', value: '' },
+                ...complaintCauseOptions.map((t) => ({
+                  label: `${t.name} (${t.count})`,
+                  value: t.name,
+                })),
+              ]}
+              onChange={(value) => {
+                setComplaintCauseL1(value)
+                setJourneySel({})
+              }}
+            />
+          </Form.Item>
+        )}
         <Form.Item label="资源池" className="!mb-0">
           <Select
             className="min-w-[200px]"
@@ -192,9 +232,13 @@ export default function TicketDashboardView({
           <SentimentDistributionPanel
             className="h-full"
             items={scoped}
-            subtitle={`${scoped.length} 条 · ${sourceLabel}`}
+            subtitle={`${scoped.length} 条 · ${sourceLabel} · 客户请求与需求痛点`}
           />
         </div>
+      </div>
+
+      <div className="page-section" data-pdf-chart="source-experience">
+        <SentimentExperiencePanel items={scoped} />
       </div>
 
       <div className="page-section" data-pdf-chart="source-journey">
@@ -202,18 +246,36 @@ export default function TicketDashboardView({
           items={scoped}
           taxonomy={taxonomy}
           productName={taxonomyProduct}
+          dataSourceType={snapshot.dataSourceType}
           journeySel={journeySel}
           onJourneySelect={(l1, l2) => setJourneySel({ l1, l2: l2 || undefined })}
         />
       </div>
 
-      <div className="page-section grid items-stretch gap-4 lg:grid-cols-2">
+      <div
+        className={`page-section grid items-stretch gap-4 ${
+          isComplaintSource ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
+        }`}
+      >
         <Card title={<Typography.Text strong>请求场景分布</Typography.Text>}>
           <div data-pdf-chart="source-request-scenes" className="rounded-lg bg-white p-2">
             <ThemeBarChart data={requestScenes} onBarClick={() => setJourneySel({})} />
           </div>
         </Card>
-        <Card title={<Typography.Text strong>问题类型分布</Typography.Text>}>
+        {isComplaintSource && (
+          <Card title={<Typography.Text strong>投诉原因（终判）分布</Typography.Text>}>
+            <div data-pdf-chart="source-complaint-cause" className="rounded-lg bg-white p-2">
+              <ThemeBarChart
+                data={complaintCauseChart}
+                onBarClick={(label) => {
+                  setComplaintCauseL1(label)
+                  setJourneySel({})
+                }}
+              />
+            </div>
+          </Card>
+        )}
+        <Card title={<Typography.Text strong>问题类型（打标）分布</Typography.Text>}>
           <div data-pdf-chart="source-problems" className="rounded-lg bg-white p-2">
             <ThemeBarChart data={problemTypes} onBarClick={() => setJourneySel({})} />
           </div>

@@ -1,4 +1,5 @@
 import { isNegativeSentiment } from './sentiment.js'
+import { getComplaintCauseL1Display, isComplaintTicket } from '../domain/complaintCause.js'
 
 /**
  * 按字段聚合（支持 themes 等多值字段）
@@ -113,6 +114,7 @@ export function journeyTree(items) {
  *   journeyL2?: string
  *   problemType?: string
  *   requestScene?: string
+ *   complaintCauseL1?: string
  * }} filters
  */
 export function filterFeedbacks(all, filters) {
@@ -123,6 +125,10 @@ export function filterFeedbacks(all, filters) {
     if (filters.journeyL2 && fb.journeyL2 !== filters.journeyL2) return false
     if (filters.problemType && (fb.problemType || '未分类') !== filters.problemType) return false
     if (filters.requestScene && (fb.requestScene || '未分类') !== filters.requestScene) return false
+    if (filters.complaintCauseL1) {
+      if (!isComplaintTicket(fb)) return false
+      if (getComplaintCauseL1Display(fb) !== filters.complaintCauseL1) return false
+    }
     return true
   })
 }

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildQuotePreviewRows, pickRowsForQuotePreview } from './importPreview.js'
+import { buildTaggingPreviewRows, pickRowsForQuotePreview } from './importPreview.js'
 
-describe('buildQuotePreviewRows', () => {
-  it('returns up to 3 quote preview samples', () => {
-    const rows = buildQuotePreviewRows(
+describe('buildTaggingPreviewRows', () => {
+  it('returns up to 3 tagging preview samples', () => {
+    const rows = buildTaggingPreviewRows(
       [
         {
           ticketId: 'T1',
@@ -17,9 +17,8 @@ describe('buildQuotePreviewRows', () => {
       { dataSourceType: 'complaint_ticket', settings: { useRegex: true } },
     )
     expect(rows).toHaveLength(3)
-    expect(rows[0].customerQuote).toContain('无法登录')
-    expect(rows[0].modeLabel).toContain('结构化')
-    expect(rows[0].quoteExtractionVersion).toMatch(/^qe-/)
+    expect(rows[0].taggingText).toContain('已重置')
+    expect(rows[0].ticketId).toBe('T1')
   })
 
   it('pickRowsForQuotePreview skips empty rows', () => {

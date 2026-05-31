@@ -12,6 +12,13 @@ import {
 import { getDb } from './db.js'
 import { META_KEY_STORAGE_INIT } from './businessDb.js'
 import { bumpDataRevision } from './dataRevision.js'
+import {
+  analysisRunMatchesClearFilter,
+  isClearAllImportedData,
+  pendingTagCandidateMatchesClearFilter,
+  recordMatchesClearFilter,
+  snapshotMatchesClearFilter,
+} from '../src/storage/clearImportedData.js'
 
 /**
  * @param {import('../src/storage/adapter.js').RecordQuery} [query]
@@ -185,16 +192,107 @@ export const storageRepository = {
     bumpDataRevision()
   },
 
-  clearImportedData() {
+  /**
+   * @param {import('../src/storage/clearImportedData.js').ClearImportedDataOptions} [options]
+   * @returns {import('../src/storage/clearImportedData.js').ClearImportedDataResult}
+   */
+  clearImportedData(options = {}) {
     const db = getDb()
-    db.exec(`
-      DELETE FROM records;
-      DELETE FROM snapshots;
-      DELETE FROM analysis_runs;
-      DELETE FROM artifacts;
-      DELETE FROM tag_candidates WHERE status = 'pending';
-    `)
-    bumpDataRevision()
+    /** @type {import('../src/storage/clearImportedData.js').ClearImportedDataResult} */
+    const result = {
+      recordsDeleted: 0,
+      snapshotsDeleted: 0,
+      runsDeleted: 0,
+      artifactsDeleted: 0,
+      pendingTagCandidatesDeleted: 0,
+    }
+
+    if (isClearAllImportedData(options)) {
+      result.recordsDeleted = db.prepare('SELECT COUNT(*) AS n FROM records').get().n
+      result.snapshotsDeleted = db.prepare('SELECT COUNT(*) AS n FROM snapshots').get().n
+      result.runsDeleted = db.prepare('SELECT COUNT(*) AS n FROM analysis_runs').get().n
+      result.artifactsDeleted = db.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n
+      result.pendingTagCandidatesDeleted = db
+        .prepare("SELECT COUNT(*) AS n FROM tag_candidates WHERE status = 'pending'")
+        .get().n
+      db.exec(`
+        DELETE FROM records;
+        DELETE FROM snapshots;
+        DELETE FROM analysis_runs;
+        DELETE FROM artifacts;
+        DELETE FROM tag_candidates WHERE status = 'pending';
+      `)
+      bumpDataRevision()
+      return result
+    }
+
+    const period = options.insightPeriodId
+      ? this.getInsightPeriod(options.insightPeriodId)
+      : null
+    const { where, params } = buildRecordsWhereClause(
+      {
+        insightPeriodId: options.insightPeriodId,
+        dataSourceType: options.dataSourceType,
+      },
+      period,
+    )
+    const rows = db.prepare(`SELECT id, payload FROM records WHERE ${where}`).all(...params)
+    const recordIds = rows
+      .map((row) => ({ id: row.id, record: parseJson(row.payload) }))
+      .filter(({ record }) => recordMatchesClearFilter(record, options, period))
+      .map(({ id }) => id)
+
+    if (recordIds.length) {
+      const chunkSize = 500
+      for (let i = 0; i < recordIds.length; i += chunkSize) {
+        const chunk = recordIds.slice(i, i + chunkSize)
+        const placeholders = chunk.map(() => '?').join(',')
+        db.prepare(`DELETE FROM records WHERE id IN (${placeholders})`).run(...chunk)
+      }
+      result.recordsDeleted = recordIds.length
+    }
+
+    const deletedRecordIds = new Set(recordIds)
+    const snapshotRows = db.prepare('SELECT id FROM snapshots').all()
+    for (const row of snapshotRows) {
+      if (!snapshotMatchesClearFilter(row.id, options)) continue
+      db.prepare('DELETE FROM snapshots WHERE id = ?').run(row.id)
+      result.snapshotsDeleted += 1
+    }
+
+    const runRows = db.prepare('SELECT id, payload FROM analysis_runs').all()
+    /** @type {string[]} */
+    const runIdsToDelete = []
+    for (const row of runRows) {
+      const run = parseJson(row.payload)
+      if (!analysisRunMatchesClearFilter(run, options)) continue
+      runIdsToDelete.push(row.id)
+    }
+    for (const runId of runIdsToDelete) {
+      result.artifactsDeleted += db
+        .prepare('SELECT COUNT(*) AS n FROM artifacts WHERE run_id = ?')
+        .get(runId).n
+      db.prepare('DELETE FROM artifacts WHERE run_id = ?').run(runId)
+      db.prepare('DELETE FROM analysis_runs WHERE id = ?').run(runId)
+      result.runsDeleted += 1
+    }
+
+    const pending = this.listTagCandidates({ status: 'pending' })
+    for (const candidate of pending) {
+      if (!pendingTagCandidateMatchesClearFilter(candidate, options, deletedRecordIds)) continue
+      this.deleteTagCandidate(candidate.id)
+      result.pendingTagCandidatesDeleted += 1
+    }
+
+    if (
+      result.recordsDeleted ||
+      result.snapshotsDeleted ||
+      result.runsDeleted ||
+      result.pendingTagCandidatesDeleted
+    ) {
+      bumpDataRevision()
+    }
+    return result
   },
 
   getRecord(id) {

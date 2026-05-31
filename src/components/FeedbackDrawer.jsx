@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  Alert,
   Button,
   Card,
+  Checkbox,
   Descriptions,
   Drawer,
   Form,
@@ -15,19 +15,26 @@ import {
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
-import { normalizeSentiment, SENTIMENT_LABELS } from '../lib/sentiment.js'
+import {
+  getDisplayCustomerRequest,
+  getDisplayPainPoint,
+} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import { getSentimentDisplayLabel } from '../lib/sentiment.js'
+import { TAG_UNRECOGNIZED } from '../lib/ticketAnalysis/tagLabels.js'
+import { normalizeSentiment, normalizeUrgencyLevel, SENTIMENT_LABELS } from '../lib/sentiment.js'
 import { getTaxonomyForRecord } from '../lib/productTaxonomy.js'
 import { mapTaxonomySelectOptions, resolveTagDefinition } from '../lib/tagDefinitions.js'
-import DimensionTag from './tags/DimensionTag.jsx'
-import JourneyTags from './tags/JourneyTags.jsx'
-import SentimentTagWithTooltip from './tags/SentimentTagWithTooltip.jsx'
+import { CustomerRequestSourceTag, PainPointSourceTag, OptimizationSourceTag } from './tags/TicketAnalysisSourceTag.jsx'
 import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
+import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
-  extractAppendTextForDisplay,
-  extractHandlingTextFromFields,
+  extractHandlingOriginalTextFromFields,
 } from '../lib/taggingText.js'
-import { buildTicketDetailDisplay } from '../lib/ticketDetailDisplay.js'
+import {
+  getComplaintCauseL1Display,
+  isComplaintTicket,
+} from '../domain/complaintCause.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function FeedbackDrawer({ feedback: selected, onClose }) {
@@ -42,17 +49,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),
   )
+  const [urgencyLevel, setUrgencyLevel] = useState(
+    () => normalizeUrgencyLevel(feedback?.urgencyLevel, feedback?.sentiment),
+  )
   const [requestScene, setRequestScene] = useState(feedback?.requestScene || '')
   const [problemType, setProblemType] = useState(feedback?.problemType || '')
   const [journeyL1, setJourneyL1] = useState(feedback?.journeyL1 || '')
   const [journeyL2, setJourneyL2] = useState(feedback?.journeyL2 || '')
-  const [manualReviewRootCause, setManualReviewRootCause] = useState(
-    feedback?.manualReviewRootCause || '',
+  const [manualReviewOptimization, setManualReviewOptimization] = useState(
+    feedback?.manualReviewOptimization || '',
   )
-  const [manualReviewSolution, setManualReviewSolution] = useState(
-    feedback?.manualReviewSolution || '',
-  )
-  const [manualReviewAction, setManualReviewAction] = useState(feedback?.manualReviewAction || '')
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -61,30 +67,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     [feedback],
   )
 
-  const ticketSourceTexts = useMemo(() => {
-    if (!feedback) {
-      return {
-        handlingText: '',
-        appendInfo: '',
-        customerRequestText: '',
-        solutionAndResultText: '',
-      }
-    }
-    const fields = {
+  const handlingOriginalText = useMemo(() => {
+    if (!feedback) return ''
+    return extractHandlingOriginalTextFromFields({
       handlingText: feedback.handlingText,
       rawText: feedback.rawText,
-      customerQuote: feedback.customerQuote,
-      responseText: feedback.responseText,
-      solutionSummary: feedback.solutionSummary,
       sourceColumns: feedback.sourceColumns,
-    }
-    const detail = buildTicketDetailDisplay(feedback)
-    return {
-      handlingText: extractHandlingTextFromFields(fields),
-      appendInfo: extractAppendTextForDisplay(fields),
-      customerRequestText: detail.customerRequestText,
-      solutionAndResultText: detail.solutionAndResultText,
-    }
+    })
   }, [feedback])
 
   const l2Options = useMemo(() => {
@@ -106,13 +95,33 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     if (!feedback) return
     setNote(feedback.note || '')
     setSentiment(normalizeSentiment(feedback.sentiment))
+    setUrgencyLevel(normalizeUrgencyLevel(feedback.urgencyLevel, feedback.sentiment))
     setRequestScene(feedback.requestScene || '')
     setProblemType(feedback.problemType || '')
     setJourneyL1(feedback.journeyL1 || '')
     setJourneyL2(feedback.journeyL2 || '')
-    setManualReviewRootCause(feedback.manualReviewRootCause || '')
-    setManualReviewSolution(feedback.manualReviewSolution || '')
-    setManualReviewAction(feedback.manualReviewAction || '')
+    setManualReviewOptimization(feedback.manualReviewOptimization || '')
+  }, [feedback])
+
+  const optimizationServiceText = feedback?.optimizationService?.trim() || ''
+
+  const journeyDisplay = useMemo(() => {
+    const l1 = journeyL1?.trim() || TAG_UNRECOGNIZED
+    const l2 = journeyL2?.trim()
+    return l2 ? `${l1}、${l2}` : l1
+  }, [journeyL1, journeyL2])
+
+  const ticketMetaLine = useMemo(() => {
+    if (!feedback) return '—'
+    const product = feedback.product?.trim()
+    const spec = feedback.productSpec?.trim()
+    let productText = product || spec || ''
+    if (product && spec && spec !== product) {
+      productText = `${product}（${spec}）`
+    }
+    const source =
+      DATA_SOURCE_LABELS[feedback.dataSourceType] || feedback.dataSourceType || ''
+    return [feedback.ticketId?.trim(), productText, source].filter(Boolean).join(' · ') || '—'
   }, [feedback])
 
   if (!feedback) return null
@@ -126,11 +135,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
         note,
         themes: themesFromJourney(journey),
         sentiment,
+        urgencyLevel,
         requestScene,
         problemType,
-        manualReviewRootCause: manualReviewRootCause.trim(),
-        manualReviewSolution: manualReviewSolution.trim(),
-        manualReviewAction: manualReviewAction.trim(),
+        manualReviewOptimization: manualReviewOptimization.trim(),
         ...journey,
       })
       const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
@@ -203,206 +211,250 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <SentimentTagWithTooltip sentiment={feedback.sentiment} />
-          <DimensionTag
-            dimension="requestScene"
-            label={requestScene}
-            displayLabel={requestScene || '未分类'}
-            taxonomy={taxonomy}
-            color="blue"
-          />
-          <DimensionTag
-            dimension="problemType"
-            label={problemType}
-            displayLabel={problemType || '未分类'}
-            taxonomy={taxonomy}
-          />
-          <JourneyTags journeyL1={journeyL1} journeyL2={journeyL2} taxonomy={taxonomy} max={6} />
-        </div>
+        <Typography.Text type="secondary" className="block text-xs leading-snug">
+          {ticketMetaLine}
+        </Typography.Text>
 
-        <Card title="打标维度" size="small">
-          <Form layout="vertical">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Form.Item label="请求场景" className="!mb-3">
+        <Card title="工单分类" size="small">
+          {canEdit ? (
+            <Form layout="vertical">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Form.Item label="请求场景" className="!mb-3">
+                  <Select
+                    value={requestScene}
+                    optionRender={renderDefinitionSelectOption}
+                    options={[
+                      { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                      ...mapTaxonomySelectOptions(taxonomy?.requestScenes, 'requestScene', taxonomy),
+                    ]}
+                    onChange={setRequestScene}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型'}
+                  className="!mb-3"
+                >
+                  <Select
+                    value={problemType}
+                    optionRender={renderDefinitionSelectOption}
+                    options={[
+                      { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                      ...mapTaxonomySelectOptions(taxonomy?.problemTypes, 'problemType', taxonomy),
+                    ]}
+                    onChange={setProblemType}
+                  />
+                </Form.Item>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Form.Item label="用户旅程（一级）" className="!mb-3">
+                  <Select
+                    value={journeyL1}
+                    optionRender={renderDefinitionSelectOption}
+                    options={[
+                      { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                      ...(taxonomy?.journeys || []).map((j) => {
+                        const def = resolveTagDefinition({
+                          dimension: 'journey',
+                          journeyL1: j.label,
+                          taxonomy,
+                        })
+                        return { label: j.label, value: j.label, title: def.body }
+                      }),
+                    ]}
+                    onChange={(value) => {
+                      setJourneyL1(value)
+                      setJourneyL2('')
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="用户旅程（二级）"
+                  className="!mb-3"
+                  extra={
+                    <Typography.Text type="secondary" className="text-xs">
+                      列表与导出中的「旅程标签」与此处二级环节一致；无二级时取一级。
+                    </Typography.Text>
+                  }
+                >
+                  <Select
+                    value={journeyL2}
+                    disabled={!journeyL1}
+                    optionRender={renderDefinitionSelectOption}
+                    options={[
+                      { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                      ...l2Options.map((c) => {
+                        const def = resolveTagDefinition({
+                          dimension: 'journey',
+                          journeyL1,
+                          journeyL2: c.label,
+                          taxonomy,
+                        })
+                        return { label: c.label, value: c.label, title: def.body }
+                      }),
+                    ]}
+                    onChange={setJourneyL2}
+                  />
+                </Form.Item>
+              </div>
+              <Form.Item label="用户情绪" className="!mb-2">
                 <Select
-                  value={requestScene}
+                  value={sentiment}
                   optionRender={renderDefinitionSelectOption}
-                  options={[
-                    { label: '未分类', value: '', title: '清空后保存为未分类' },
-                    ...mapTaxonomySelectOptions(taxonomy?.requestScenes, 'requestScene', taxonomy),
-                  ]}
-                  onChange={setRequestScene}
+                  options={sentimentSelectOptions}
+                  onChange={setSentiment}
                 />
               </Form.Item>
-              <Form.Item label="问题类型" className="!mb-3">
-                <Select
-                  value={problemType}
-                  optionRender={renderDefinitionSelectOption}
-                  options={[
-                    { label: '未分类', value: '', title: '清空后保存为未分类' },
-                    ...mapTaxonomySelectOptions(taxonomy?.problemTypes, 'problemType', taxonomy),
-                  ]}
-                  onChange={setProblemType}
-                />
+              <Form.Item className="!mb-0">
+                <Checkbox
+                  checked={urgencyLevel === 'high'}
+                  onChange={(e) => setUrgencyLevel(e.target.checked ? 'high' : 'none')}
+                >
+                  加急 / 催促
+                </Checkbox>
+                <Typography.Text type="secondary" className="ml-1 text-xs">
+                  与主情绪独立；强调时效、催办或业务影响时可勾选
+                </Typography.Text>
               </Form.Item>
-              <Form.Item label="资源池" className="!mb-3">
-                <Typography.Text>{feedback.resourcePool || '—'}</Typography.Text>
-              </Form.Item>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Form.Item label="用户旅程（一级）" className="!mb-3">
-                <Select
-                  value={journeyL1}
-                  optionRender={renderDefinitionSelectOption}
-                  options={[
-                    { label: '未识别', value: '', title: '清空后保存为未识别' },
-                    ...(taxonomy?.journeys || []).map((j) => {
-                      const def = resolveTagDefinition({
-                        dimension: 'journey',
-                        journeyL1: j.label,
-                        taxonomy,
-                      })
-                      return { label: j.label, value: j.label, title: def.body }
-                    }),
-                  ]}
-                  onChange={(value) => {
-                    setJourneyL1(value)
-                    setJourneyL2('')
-                  }}
-                />
-              </Form.Item>
-              <Form.Item
-                label="用户旅程（二级 · 即旅程标签）"
-                className="!mb-3"
-                extra={
-                  <Typography.Text type="secondary" className="text-xs">
-                    列表与导出中的「旅程标签」与此处二级环节一致；无二级时取一级。
-                  </Typography.Text>
-                }
+            </Form>
+          ) : (
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="请求场景">
+                {requestScene || TAG_UNRECOGNIZED}
+              </Descriptions.Item>
+              <Descriptions.Item
+                label={isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型'}
               >
-                <Select
-                  value={journeyL2}
-                  disabled={!journeyL1}
-                  optionRender={renderDefinitionSelectOption}
-                  options={[
-                    { label: '未识别', value: '', title: '清空后保存为未识别' },
-                    ...l2Options.map((c) => {
-                      const def = resolveTagDefinition({
-                        dimension: 'journey',
-                        journeyL1,
-                        journeyL2: c.label,
-                        taxonomy,
-                      })
-                      return { label: c.label, value: c.label, title: def.body }
-                    }),
-                  ]}
-                  onChange={setJourneyL2}
-                />
-              </Form.Item>
-            </div>
-          </Form>
+                {problemType || TAG_UNRECOGNIZED}
+              </Descriptions.Item>
+              <Descriptions.Item label="用户旅程">{journeyDisplay}</Descriptions.Item>
+              <Descriptions.Item label="用户情绪">
+                {getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel })}
+              </Descriptions.Item>
+            </Descriptions>
+          )}
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            支持人工复核修改
+          </Typography.Text>
+        </Card>
 
+        {isComplaintTicket(feedback) && (
+          <Card title="投诉原因（终判）" size="small" className="!bg-ink-50/50">
+            <Typography.Text type="secondary" className="mb-2 block text-xs">
+              来自工单系统终判字段，不参与上方「问题类型（打标）」自动打标。
+            </Typography.Text>
+            <Descriptions size="small" column={1} bordered>
+              <Descriptions.Item label="一级（终判）">
+                {getComplaintCauseL1Display(feedback)}
+              </Descriptions.Item>
+              <Descriptions.Item label="二级（终判）">
+                {feedback.complaintCauseL2Final?.trim() || '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="三级（终判）">
+                {feedback.complaintCauseL3Final?.trim() || '—'}
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+        )}
+
+        <Card title="处理意见（工单原文）" size="small">
+          <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
+            {handlingOriginalText || '—'}
+          </Typography.Paragraph>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            优先展示「处理意见」列；若为空则展示「受理内容」。
+          </Typography.Text>
+        </Card>
+
+        <Card
+          title={
+            <span className="inline-flex items-center gap-2">
+              客户请求内容
+              <CustomerRequestSourceTag record={feedback} />
+            </span>
+          }
+          size="small"
+        >
+          <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+            {getDisplayCustomerRequest(feedback) || '—'}
+          </Typography.Paragraph>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            全生命周期精炼摘要（≤80 字，最长 120）；用户情绪分析亦以此字段与「需求痛点」为准。
+          </Typography.Text>
+        </Card>
+
+        <Card
+          title={
+            <span className="inline-flex items-center gap-2">
+              需求痛点挖掘
+              <PainPointSourceTag record={feedback} />
+            </span>
+          }
+          size="small"
+        >
+          <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+            {getDisplayPainPoint(feedback) || '—'}
+          </Typography.Paragraph>
+        </Card>
+
+        <Card
+          title={
+            <span className="inline-flex items-center gap-2">
+              优化建议
+              <OptimizationSourceTag record={feedback} />
+            </span>
+          }
+          size="small"
+        >
           <Descriptions
             column={1}
             size="small"
+            bordered
             items={[
-              { key: 'problem', label: '问题摘要', children: feedback.problemSummary || '—' },
-              { key: 'solution', label: '解决方案（平台）', children: feedback.solutionSummary || '—' },
-              { key: 'rootCause', label: '根因（平台）', children: feedback.rootCause || '—' },
               {
-                key: 'llmSuggestion',
-                label: '优化建议（平台）',
-                children: feedback.optimizationSuggestion || '—',
+                key: 'product',
+                label: '产品/技术优化',
+                children: feedback.optimizationProduct?.trim() || '—',
               },
+              ...(optimizationServiceText
+                ? [
+                    {
+                      key: 'service',
+                      label: '服务/流程改进',
+                      children: optimizationServiceText,
+                    },
+                  ]
+                : []),
             ]}
           />
-          <Form layout="vertical" className="mt-3">
-            <Typography.Text strong className="mb-2 block text-xs">
-              人工复核
-            </Typography.Text>
-            <Form.Item label="根因（人工复核）" className="!mb-3">
-              <Input.TextArea
-                rows={2}
-                placeholder="默认为空"
-                value={manualReviewRootCause}
-                onChange={(e) => setManualReviewRootCause(e.target.value)}
-              />
-            </Form.Item>
-            <Form.Item label="优化方案（人工复核）" className="!mb-3">
-              <Input.TextArea
-                rows={2}
-                placeholder="默认为空"
-                value={manualReviewSolution}
-                onChange={(e) => setManualReviewSolution(e.target.value)}
-              />
-            </Form.Item>
-            <Form.Item label="人工复核举措" className="!mb-0">
-              <Input.TextArea
-                rows={2}
-                placeholder="默认为空"
-                value={manualReviewAction}
-                onChange={(e) => setManualReviewAction(e.target.value)}
-              />
-            </Form.Item>
-          </Form>
+          {canEdit && (
+            <Form layout="vertical" className="mt-3">
+              <Typography.Text strong className="mb-2 block text-xs">
+                人工复核后的优化建议
+              </Typography.Text>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                若有人工复核后的优化建议，原优化建议不参与后续的阶段二和三，以人工复核后的优化建议为准。
+              </Typography.Text>
+              <Form.Item className="!mb-0">
+                <Input.TextArea
+                  rows={3}
+                  placeholder="默认为空"
+                  value={manualReviewOptimization}
+                  onChange={(e) => setManualReviewOptimization(e.target.value)}
+                />
+              </Form.Item>
+            </Form>
+          )}
+          {!canEdit && manualReviewOptimization.trim() && (
+            <div className="mt-3">
+              <Typography.Text strong className="mb-2 block text-xs">
+                人工复核后的优化建议
+              </Typography.Text>
+              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                {manualReviewOptimization.trim()}
+              </Typography.Paragraph>
+            </div>
+          )}
         </Card>
-
-        {feedback.ticketId && (
-          <Typography.Text type="secondary" className="text-xs">
-            工单号 {feedback.ticketId} · {feedback.product}
-            {feedback.productSpec && feedback.productSpec !== feedback.product
-              ? ` / ${feedback.productSpec}`
-              : ''}{' '}
-            · {feedback.createdAt}
-          </Typography.Text>
-        )}
-
-        <div>
-          <Typography.Text strong className="text-xs">处理意见（打标依据）</Typography.Text>
-          <Typography.Paragraph className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-ink-50 p-3 !text-xs whitespace-pre-wrap">
-            {ticketSourceTexts.handlingText || '—'}
-          </Typography.Paragraph>
-        </div>
-
-        <div>
-          <Typography.Text strong className="text-xs">追加信息</Typography.Text>
-          <Typography.Paragraph className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-ink-50 p-3 !text-xs whitespace-pre-wrap">
-            {ticketSourceTexts.appendInfo || '—'}
-          </Typography.Paragraph>
-        </div>
-
-        <div>
-          <Typography.Text strong className="text-xs">客户请求</Typography.Text>
-          <Typography.Paragraph className="mt-1 rounded-lg bg-brand-50/50 p-3 !text-sm whitespace-pre-wrap">
-            {ticketSourceTexts.customerRequestText || '—'}
-          </Typography.Paragraph>
-        </div>
-
-        <div>
-          <Typography.Text strong className="text-xs">
-            解决方案&amp;处理结果
-            <Typography.Text type="secondary" className="font-normal">
-              {' '}
-              （来自工单）
-            </Typography.Text>
-          </Typography.Text>
-          <Typography.Paragraph className="mt-1 max-h-48 overflow-y-auto rounded-lg bg-emerald-50/60 p-3 !text-sm whitespace-pre-wrap">
-            {ticketSourceTexts.solutionAndResultText || '—'}
-          </Typography.Paragraph>
-        </div>
-
-        <Form layout="vertical">
-          <Form.Item label="情绪" className="!mb-0">
-            <Select
-              value={sentiment}
-              optionRender={renderDefinitionSelectOption}
-              options={sentimentSelectOptions}
-              onChange={setSentiment}
-            />
-          </Form.Item>
-        </Form>
 
         <div>
           <Typography.Text strong className="text-xs">备注</Typography.Text>

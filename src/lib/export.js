@@ -1,5 +1,11 @@
 import Papa from 'papaparse'
-import { normalizeSentiment, SENTIMENT_LABELS } from './sentiment.js'
+import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
+import {
+  getOptimizationSourceLabel,
+  getPainPointSource,
+  getTicketAnalysisSourceLabel,
+} from './ticketAnalysis/ticketAnalysisSources.js'
+import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
 
 /**
  * @param {import('./types.js').FeedbackRecord[]} records
@@ -11,6 +17,7 @@ export function exportToCsv(records) {
     产品: r.product || '',
     产品规格: r.productSpec || '',
     资源池: r.resourcePool || '',
+    [CUSTOMER_TIER_SOURCE_COLUMN]: r.customerTier || '',
     渠道: r.source || '',
     数据月份: r.importMonth || '',
     导入批次: r.importBatchName || '',
@@ -21,16 +28,24 @@ export function exportToCsv(records) {
     通用问题类型: r.problemType || '',
     旅程一级: r.journeyL1 || '',
     旅程二级: r.journeyL2 || '',
-    遇到的问题: r.problemSummary || '',
+    遇到的问题: r.painPoint || r.problemSummary || '',
+    痛点来源: getTicketAnalysisSourceLabel(getPainPointSource(r)),
     解决方案: r.solutionSummary || '',
     根因: r.rootCause || '',
     优化建议: r.optimizationSuggestion || '',
     '根因（人工复核）': r.manualReviewRootCause || '',
     '优化方案（人工复核）': r.manualReviewSolution || '',
     人工复核举措: r.manualReviewAction || '',
-    客户原话: r.customerQuote,
+    客户请求: r.customerRequest || '',
+    需求痛点: r.painPoint || r.problemSummary || '',
+    优化建议来源: getOptimizationSourceLabel(
+      r.manualReviewOptimization?.trim() ? 'manual' : r.optimizationSource === 'llm' ? 'llm' : 'rule',
+    ),
     处理意见: r.handlingText || '',
     情绪: SENTIMENT_LABELS[normalizeSentiment(r.sentiment)] || r.sentiment,
+    是否加急: getUrgencyLevel(r) === 'high' ? URGENCY_LABELS.high : '',
+    产品技术优化: r.optimizationProduct || '',
+    服务流程改进: r.optimizationService || '',
     旅程标签: (r.themes || []).join('; '),
     备注: r.note || '',
   }))

@@ -338,20 +338,30 @@ export function buildFallbackPrimaryAction(ctx) {
   return `针对该环节高频平台/配置类根因，立项修复并在控制台增加自助诊断与预检能力。`
 }
 
-/** 问题类型 → 概述动作（咨询单分议题规划） */
+/** 问题类型 → 概述动作（咨询单分议题规划，12 类） */
 export const PROBLEM_TYPE_PRIMARY_ACTIONS = {
-  '资源与配额':
+  '资源开通与创建':
+    '建立资源创建前预检与失败自愈指引，对资源不足/开通超时场景给出可执行 remediation 路径。',
+  '配额与权限申请':
     '建立配额预警、权限自检与申请引导一体化能力，在创建前拦截不可达订单并降低配额类重复咨询。',
-  '功能需求与规划':
+  '产品功能需求':
     '建立需求 intake 与排期可视化机制，在控制台/工单侧同步 roadmap 与交付窗口，减少无反馈重复咨询。',
-  '配置与对接':
+  '配置与操作':
     '补齐控制台/API 对接配置向导与常见错误码说明，降低配置类重复咨询与协查成本。',
-  '计费与商务':
+  '计费与账单':
     '统一账单项与控制台用量展示，对复杂计费/折扣场景提供试算与典型样例，减少商务类重复咨询。',
-  '安全与合规':
-    '梳理安全组/ACL/白名单配置边界，提供合规场景模板与权限自检工具，减少误配类咨询。',
-  '可用性与连通性':
+  '可用性/连通性故障':
     '完善连通性诊断工具与 TOP 场景 playbook，区分客户侧/平台侧/线路侧结论，缩短排查闭环。',
+  '性能问题':
+    '建立性能基线与链路质量探测能力，对慢/卡顿/丢包场景提供标准排查路径与主动预警。',
+  '界面与操作易用性':
+    '优化控制台关键路径交互与提示文案，对高频误操作场景增加引导与前置校验。',
+  '退订与释放':
+    '梳理退订/释放依赖链路与阻塞原因展示，提供自助释放检查与失败 remediation 指引。',
+  '产品功能咨询':
+    '结构化产品能力/规则 FAQ 与工单进度查询入口，减少重复咨询与信息不一致。',
+  '人工服务与流程':
+    '优化工单流转 SLA 可视化与升级/回访机制，降低因响应时效与服务流程引发的重复投诉。',
 }
 
 /**
@@ -525,11 +535,14 @@ export function buildPlanningRecommendationsHelpSections() {
  * LLM 润色时注入的行动建议模板规则（与规则生成对齐）
  */
 export function buildPlanningRecommendationLlmRules() {
-  return `【行动建议内容模板】（summary/details 须严格遵循，evidenceNote/metrics/工单号由系统保留勿改）
-- 条数：全模块最多 ${PLANNING_RECOMMENDATION_LIMITS.maxItems} 条；每条 details ${PLANNING_RECOMMENDATION_LIMITS.minDetails}～${PLANNING_RECOMMENDATION_LIMITS.maxDetails} 条。
-- 概述 summary：1～2 句、≤${PLANNING_RECOMMENDATION_LIMITS.maxSummaryLength} 字；优先句式「建议{产品·环节/旅程/问题类型}：{动作}，{预期价值}」；须含动作词（如 ${PLANNING_ACTION_VERBS.slice(0, 8).join('、')}…）。
-- 详细意见 details：与洞察工作台「业务优化举措」同标准——分析归纳后的可落地举措；每条 ≤${PLANNING_RECOMMENDATION_LIMITS.maxDetailLength} 字，句式「{动词}{功能点/流程节点}，{改法}，{可选验收/监控}」；须含功能点、流程节点或监控指标之一。
-- 禁止：单量、占比、万投比、工单原文、根因长引号、IP/协查过程、处理意见复述（这些仅出现在依据说明 evidenceNote）。
+  return `【行动建议内容模板】（Phase 3：仅润色可编辑字段，结构化区块由系统保留）
+- 条数：全模块最多 ${PLANNING_RECOMMENDATION_LIMITS.maxItems} 条。
+- 概述 summary：严格 1 句、≤${PLANNING_RECOMMENDATION_LIMITS.maxSummaryLength} 字；优先句式「建议{产品·环节/旅程/问题类型}：{动作}，{预期价值}」；须含动作词（如 ${PLANNING_ACTION_VERBS.slice(0, 8).join('、')}…）。
+- productActions：2～4 条独立可执行建议；每条 ≤${PLANNING_RECOMMENDATION_LIMITS.maxDetailLength} 字，须含动作词与功能点/流程节点/监控指标之一；禁止单条合并多条动作。
+- serviceActions：0～2 条（按需）；标准同 productActions。
+- 禁止润色或输出 clusterRootCause、verification、opportunities、evidenceNote、metrics、工单号；这些由规则引擎生成。
+- 禁止：单量、占比、万投比、工单原文、根因长引号、IP/协查过程、处理意见复述。
+- 若仍输出 details 字段，系统将忽略并改用 productActions/serviceActions。
 - 信号类型侧重：${Object.entries(SIGNAL_TYPE_TEMPLATE)
     .map(([k, v]) => `${k}→${v.summaryHint}`)
     .join('；')}。`

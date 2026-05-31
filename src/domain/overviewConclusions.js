@@ -19,9 +19,6 @@ export const PLANNING_RECOMMENDATIONS_PANEL_TITLE = '行动建议'
 
 export { MAX_PLANNING_RECOMMENDATIONS, PLANNING_RECOMMENDATION_LIMITS }
 
-export const PLANNING_RECOMMENDATIONS_PANEL_SUBTITLE =
-  '基于工单洞察按产品归纳可落地举措（优先产品功能设计，其次体验与流程）；大单量产品结合旅程/场景/问题类型输出 3～8 条'
-
 /** 行动建议区块锚点 id */
 export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
 
@@ -98,6 +95,60 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  */
 
 /**
+ * @typedef {Object} PlanningPainCluster
+ * @property {string} text
+ * @property {number} count
+ */
+
+/**
+ * @typedef {Object} PlanningRootCauseItem
+ * @property {string} text
+ * @property {number} count
+ */
+
+/**
+ * @typedef {Object} PlanningClusterRootCause
+ * @property {string} [contextNote] - 分析范围/环节说明
+ * @property {string[]} [dataMetrics] - 数据表现
+ * @property {PlanningPainCluster[]} [painClusters] - 痛点聚类
+ * @property {PlanningRootCauseItem[]} [rootCauses] - 根因聚类
+ * @property {string} [businessImpact] - 业务影响
+ */
+
+/**
+ * @typedef {Object} PlanningVerification
+ * @property {string[]} metrics - 指标监控
+ * @property {string} userValidation - 用户验证
+ */
+
+/**
+ * @typedef {Object} PainClusterScoreMeta
+ * @property {number} priorityScore
+ * @property {number} rank
+ * @property {number} totalFinal
+ * @property {number} breadthScore
+ * @property {number} sharePct
+ * @property {number} ticketCount
+ * @property {number} harmScore
+ * @property {number} maxSeverity
+ * @property {number} p90Emotion
+ * @property {string[]} sourceDistributionLines
+ * @property {string} customerTierSummary
+ * @property {Record<string, number>} [customerTierCounts]
+ */
+
+/**
+ * @typedef {Object} PlanningRecommendationSections
+ * @property {string} [executiveSummary] - 执行摘要（核心发现，1 句）
+ * @property {PlanningClusterRootCause | string} [clusterRootCause] - 问题聚类与根因（结构化；旧快照可能为 string）
+ * @property {PainClusterScoreMeta} [painClusterScores] - V2 痛点聚类 §8 评分与分布
+ * @property {string} [opportunities] - 机会点挖掘（暂不在 UI 展示）
+ * @property {string[]} [productActions] - 产品/技术优化（≥2）
+ * @property {string[]} [serviceActions] - 服务/流程改进（按需）
+ * @property {PlanningVerification | string} [verification] - 闭环验证（结构化；旧快照可能为 string）
+ */
+
+/**
  * @typedef {Object} OverviewRecommendation
  * @property {string} id
  * @property {'high' | 'medium' | 'low'} priority
@@ -105,6 +156,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} text 兼容旧版：等同 summary
  * @property {string} summary 概述（1～2 句）
  * @property {string[]} [details] 详细意见（2～4 条）
+ * @property {PlanningRecommendationSections} [sections] 五段式结构（与 details 同步）
  * @property {OverviewConclusionEvidence[]} [metrics]
  * @property {string[]} [evidenceRecordIds]
  * @property {string[]} [evidenceTicketIds]
@@ -127,6 +179,8 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [ruleVersion]
  * @property {string} [playbookVersion]
  * @property {string} [signalWeightsVersion]
+ * @property {'pain_cluster_v2' | 'legacy_planning'} [recommendationEngine]
+ * @property {boolean} [legacyFallback]
  * @property {string} [previousPeriodId]
  * @property {number} [generatedRecommendationCount]
  * @property {number} [cappedCount]

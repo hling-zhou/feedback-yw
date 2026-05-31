@@ -35,7 +35,7 @@ export default function SentimentDistributionPanel({
         <Typography.Text type="secondary">暂无数据</Typography.Text>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-3 gap-3">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg bg-ink-50 px-3 py-2 text-center">
               <Typography.Text type="secondary" className="block text-[10px]">
                 工单总数
@@ -53,6 +53,17 @@ export default function SentimentDistributionPanel({
               </Typography.Text>
               <Typography.Text type="secondary" className="block text-[10px]">
                 {stats.negativeCount} 条
+              </Typography.Text>
+            </div>
+            <div className="rounded-lg bg-rose-50 px-3 py-2 text-center">
+              <Typography.Text type="secondary" className="block text-[10px]">
+                加急占比
+              </Typography.Text>
+              <Typography.Text strong className="text-lg text-rose-600">
+                {stats.urgentPct}%
+              </Typography.Text>
+              <Typography.Text type="secondary" className="block text-[10px]">
+                {stats.urgentCount} 条
               </Typography.Text>
             </div>
             <div className="rounded-lg bg-brand-50 px-3 py-2 text-center">

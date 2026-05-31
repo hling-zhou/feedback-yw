@@ -10,6 +10,8 @@ import {
   aggregateFieldInsights,
 } from '../lib/productAnalytics.js'
 import { listProducts } from '../lib/productTaxonomy.js'
+import { countComplaintCauseL1 } from '../domain/complaintCause.js'
+import { buildSourcePainPointClusterSnapshot } from '../lib/painPointClustering/buildSourceClusterSnapshot.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -55,10 +57,13 @@ export function buildSourceSnapshot({ insightPeriodId, dataSourceType, records, 
       products,
       requestScenes: ticket ? countByField(records, 'requestScene') : [],
       problemTypes: ticket ? countByField(records, 'problemType') : [],
+      complaintCauseL1:
+        dataSourceType === 'complaint_ticket' ? countComplaintCauseL1(records) : [],
       journeyTree: ticket ? journeyTree(records) : [],
       themes: ticket ? aggregateFieldInsights(records, 'themes', { multi: true }) : [],
       monthlyTrend: trend,
       sentiment: sentiment.distribution,
+      painPointClustering: ticket ? buildSourcePainPointClusterSnapshot(records) : undefined,
     },
     recordIds: records.map((r) => r.id),
   }

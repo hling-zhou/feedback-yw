@@ -1,11 +1,7 @@
 /**
  * 导入向导轻量预览（避免在列映射阶段反复跑完整打标流水线）
  */
-import {
-  QUOTE_EXTRACTION_MODE_LABELS,
-  computeQuoteExtractionVersion,
-  extractQuoteWithMeta,
-} from './quoteExtraction.js'
+import { buildTaggingTextFromFields } from './taggingText.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('./storage.js').AppSettings} AppSettings */
@@ -50,16 +46,15 @@ export function pickRowsForQuotePreview(rows, limit = 3, scanLimit = 80) {
 }
 
 /**
- * 客户原话抽取样例（导入预览步骤，默认 3 条）
+ * 打标语料样例（导入预览步骤，默认 3 条）
  * @param {Record<string, string>[]} rows
- * @param {Object} options
- * @param {DataSourceType} options.dataSourceType
+ * @param {Object} [options]
+ * @param {DataSourceType} [options.dataSourceType]
  * @param {AppSettings | null | undefined} [options.settings]
  * @param {number} [options.limit]
  */
-export function buildQuotePreviewRows(rows, options) {
-  const { dataSourceType, settings = null, limit = 3 } = options
-  const version = computeQuoteExtractionVersion(settings)
+export function buildTaggingPreviewRows(rows, options = {}) {
+  const { limit = 3 } = options
   const sample = pickRowsForQuotePreview(rows, limit)
 
   return sample.map((r, i) => {
@@ -74,27 +69,25 @@ export function buildQuotePreviewRows(rows, options) {
       .trim()
       .slice(0, 100)
 
-    const { customerQuote, mode } = extractQuoteWithMeta(
-      {
-        rawText: r.rawText,
-        handlingText: r.handlingText,
-        commentText: r.commentText,
-        openText: r.openText,
-      },
-      {
-        dataSourceType,
-        settings,
-        quoteExtractionVersion: version,
-      },
-    )
+    const taggingText = buildTaggingTextFromFields({
+      handlingText: r.handlingText,
+      rawText: r.rawText,
+    })
 
     return {
-      id: `quote-preview-${i}`,
+      id: `tagging-preview-${i}`,
       ticketId: r.ticketId?.trim() || `样例 ${i + 1}`,
       sourceHint: sourceHint || '—',
-      modeLabel: QUOTE_EXTRACTION_MODE_LABELS[mode] || mode,
-      customerQuote: customerQuote || '—',
-      quoteExtractionVersion: version,
+      taggingText: taggingText?.trim().slice(0, 200) || '—',
     }
   })
+}
+
+/** @deprecated 使用 buildTaggingPreviewRows */
+export function buildQuotePreviewRows(rows, options) {
+  return buildTaggingPreviewRows(rows, options).map((row) => ({
+    ...row,
+    modeLabel: '打标语料',
+    customerQuote: row.taggingText,
+  }))
 }

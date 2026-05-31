@@ -3,6 +3,8 @@ import {
   applyManagedTaxonomySnapshot,
   effectiveJourneysForProduct,
   getProductByKey,
+  getNodeMapsForProduct,
+  hasRequestNodeMaps,
 } from './taxonomyLoader.js'
 import { DC_USER_JOURNEY } from './journeys/dcJourney.js'
 import { SLB_USER_JOURNEY } from './journeys/slbJourney.js'
@@ -82,6 +84,25 @@ describe('effectiveJourneysForProduct', () => {
     const vpc = getProductByKey('vpc')
     expect(vpc.journeys).toHaveLength(VPC_USER_JOURNEY.length)
     expect(vpc.journeys.some((j) => j.id === 'provision')).toBe(true)
+  })
+
+  it('injects vpc request node maps when snapshot omits nodeMaps', () => {
+    applyManagedTaxonomySnapshot({
+      products: {
+        vpc: {
+          key: 'vpc',
+          name: '虚拟私有云',
+          match: ['VPC'],
+          journeys: structuredClone(VPC_USER_JOURNEY),
+          journeyConfigured: true,
+        },
+      },
+      sharedProblemTypes: [],
+    })
+    expect(hasRequestNodeMaps('vpc')).toBe(true)
+    const maps = getNodeMapsForProduct('vpc')
+    expect(maps.serviceMap['产品使用问题']).toBe('operate')
+    expect(maps.issueMap['VPC业务变更']?.l2).toBe('provision-subnet-change')
   })
 
   it('exposes configured slb journeys', () => {

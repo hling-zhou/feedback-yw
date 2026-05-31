@@ -480,5 +480,48 @@
         }
       ]
     }
-  ]
+  ],
+  "nodeMaps": {
+    "serviceMap": {
+      "VPC": "provision",
+      "虚拟私有云": "provision",
+      "全局流转": "discover",
+      "云主机": "operate",
+      "产品咨询": "discover",
+      "产品功能": "discover",
+      "产品使用问题": "operate",
+      "产品使用": "provision",
+      "业务方案支撑": "discover",
+      "资源申请与开通": "provision",
+      "报障与恢复": "operate",
+      "费用与账务": "lifecycle",
+      "进度查询与协同": "provision",
+      "其他": "operate"
+    },
+    "issueMap": {
+      "VPC功能使用咨询": { "l1": "discover", "l2": "discover-intro" },
+      "VPC业务规则咨询": { "l1": "discover", "l2": "discover-rules" },
+      "虚拟私有云业务规则咨询": { "l1": "discover", "l2": "discover-rules" },
+      "全局流转": { "l1": "discover", "l2": "discover-rules" },
+      "业务规则咨询/查询": { "l1": "discover", "l2": "discover-rules" },
+      "VPC业务变更": { "l1": "provision", "l2": "provision-subnet-change" },
+      "虚拟私有云业务变更": { "l1": "provision", "l2": "provision-subnet-change" },
+      "VPCVPC删除修改操作问题": { "l1": "provision", "l2": "provision-subnet-change" },
+      "VPC安装交付": { "l1": "provision", "l2": "provision-delivery" },
+      "虚拟私有云安装交付": { "l1": "provision", "l2": "provision-delivery" },
+      "VPC订购/开通": { "l1": "provision", "l2": "provision-create" },
+      "VPC退订/取消": { "l1": "provision", "l2": "provision-quota" },
+      "VPC安全组配置异常、不生效": { "l1": "security", "l2": "security-group" },
+      "VPCVPC下HAVIP无法使用问题": { "l1": "operate", "l2": "operate-havip" },
+      "云主机更换VPC": { "l1": "operate", "l2": "operate-ecs" },
+      "云主机内网问题-Linux系统主机内网异常": { "l1": "operate", "l2": "operate-internal" },
+      "云主机外网连接-云主机DNS异常": { "l1": "operate", "l2": "operate-ecs" },
+      "云主机外网连接-linux系统主机无法连接外网": { "l1": "operate", "l2": "operate-egress" },
+      "云主机业务变更": { "l1": "operate", "l2": "operate-ecs" },
+      "产品咨询": { "l1": "discover", "l2": "discover-intro" },
+      "产品功能": { "l1": "discover", "l2": "discover-intro" },
+      "IP无法访问": { "l1": "operate", "l2": "operate-egress" },
+      "其他": { "l1": "discover", "l2": "discover-intro" }
+    }
+  }
 }

@@ -24,6 +24,7 @@ import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
  * @param {'ready' | 'stale'} [params.status]
  * @param {import('../domain/overviewConclusions.js').OverviewRecommendation[]} [params.previousRecommendations]
  * @param {string} [params.previousPeriodId]
+ * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
  */
 export function buildOverviewSnapshot({
   insightPeriodId,
@@ -34,6 +35,7 @@ export function buildOverviewSnapshot({
   status = 'ready',
   previousRecommendations = [],
   previousPeriodId: previousPeriodIdParam,
+  settings = null,
 }) {
   const previousPeriodId =
     previousPeriodIdParam ?? (period ? previousPeriodIdFromPeriod(period) : null)
@@ -102,6 +104,7 @@ export function buildOverviewSnapshot({
     orderVolumes,
     previousRecommendations,
     previousPeriodId: previousPeriodId || undefined,
+    settings,
   })
 
   return {

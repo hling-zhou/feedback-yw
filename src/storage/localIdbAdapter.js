@@ -14,6 +14,13 @@ import {
   openDatabase,
 } from './idb.js'
 import { STORES } from './schema.js'
+import {
+  analysisRunMatchesClearFilter,
+  isClearAllImportedData,
+  pendingTagCandidateMatchesClearFilter,
+  recordMatchesClearFilter,
+  snapshotMatchesClearFilter,
+} from './clearImportedData.js'
 
 /** @typedef {import('./adapter.js').StorageAdapter} StorageAdapter */
 /** @typedef {import('./adapter.js').RecordQuery} RecordQuery */
@@ -155,16 +162,80 @@ export function createLocalIdbAdapter() {
       }
     },
 
-    async clearImportedData() {
-      await idbClearStore(STORES.records)
-      await idbClearStore(STORES.snapshots)
-      await idbClearStore(STORES.analysis_runs)
-      await idbClearStore(STORES.artifacts)
-      await idbClearStore(STORES.artifacts_debug)
-      const pending = /** @type {{ id: string }[]} */ (
-        await idbGetAllByIndex(STORES.tag_candidates, 'status', 'pending')
-      )
-      await Promise.all(pending.map((c) => idbDelete(STORES.tag_candidates, c.id)))
+    async clearImportedData(options = {}) {
+      /** @type {import('./clearImportedData.js').ClearImportedDataResult} */
+      const result = {
+        recordsDeleted: 0,
+        snapshotsDeleted: 0,
+        runsDeleted: 0,
+        artifactsDeleted: 0,
+        pendingTagCandidatesDeleted: 0,
+      }
+
+      if (isClearAllImportedData(options)) {
+        const records = await idbGetAll(STORES.records)
+        const snapshots = await idbGetAll(STORES.snapshots)
+        const runs = await idbGetAll(STORES.analysis_runs)
+        const artifacts = await idbGetAll(STORES.artifacts)
+        const pending = /** @type {{ id: string }[]} */ (
+          await idbGetAllByIndex(STORES.tag_candidates, 'status', 'pending')
+        )
+        result.recordsDeleted = records.length
+        result.snapshotsDeleted = snapshots.length
+        result.runsDeleted = runs.length
+        result.artifactsDeleted = artifacts.length
+        result.pendingTagCandidatesDeleted = pending.length
+        await idbClearStore(STORES.records)
+        await idbClearStore(STORES.snapshots)
+        await idbClearStore(STORES.analysis_runs)
+        await idbClearStore(STORES.artifacts)
+        await idbClearStore(STORES.artifacts_debug)
+        await Promise.all(pending.map((c) => idbDelete(STORES.tag_candidates, c.id)))
+        return result
+      }
+
+      const period = options.insightPeriodId
+        ? await this.getInsightPeriod(options.insightPeriodId)
+        : null
+      const records = /** @type {InsightRecord[]} */ (await idbGetAll(STORES.records))
+      /** @type {Set<string>} */
+      const deletedRecordIds = new Set()
+      for (const record of records) {
+        if (!recordMatchesClearFilter(record, options, period)) continue
+        await idbDelete(STORES.records, record.id)
+        deletedRecordIds.add(record.id)
+        result.recordsDeleted += 1
+      }
+
+      const snapshots = /** @type {{ id: string }[]} */ (await idbGetAll(STORES.snapshots))
+      for (const snapshot of snapshots) {
+        if (!snapshotMatchesClearFilter(snapshot.id, options)) continue
+        await idbDelete(STORES.snapshots, snapshot.id)
+        result.snapshotsDeleted += 1
+      }
+
+      const runs = /** @type {AnalysisRun[]} */ (await idbGetAll(STORES.analysis_runs))
+      for (const run of runs) {
+        if (!analysisRunMatchesClearFilter(run, options)) continue
+        const artifacts = await idbGetAllByIndex(STORES.artifacts, 'runId', run.id)
+        const debugArtifacts = await idbGetAllByIndex(STORES.artifacts_debug, 'runId', run.id)
+        result.artifactsDeleted += artifacts.length + debugArtifacts.length
+        await Promise.all([
+          ...artifacts.map((a) => idbDelete(STORES.artifacts, a.id)),
+          ...debugArtifacts.map((a) => idbDelete(STORES.artifacts_debug, a.id)),
+        ])
+        await idbDelete(STORES.analysis_runs, run.id)
+        result.runsDeleted += 1
+      }
+
+      const pending = await this.listTagCandidates({ status: 'pending' })
+      for (const candidate of pending) {
+        if (!pendingTagCandidateMatchesClearFilter(candidate, options, deletedRecordIds)) continue
+        await idbDelete(STORES.tag_candidates, candidate.id)
+        result.pendingTagCandidatesDeleted += 1
+      }
+
+      return result
     },
 
     async getRecord(id) {

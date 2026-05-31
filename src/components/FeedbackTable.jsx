@@ -3,6 +3,11 @@ import { Button, Empty, Table, Tag, Typography } from 'antd'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
 import SentimentBadge from './SentimentBadge.jsx'
+import {
+  formatListOptimizationPreview,
+  getDisplayCustomerRequest,
+  getDisplayPainPoint,
+} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 
 export default function FeedbackTable({ items, onSelect }) {
   if (items.length === 0) {
@@ -52,6 +57,16 @@ export default function FeedbackTable({ items, onSelect }) {
       ),
     },
     {
+      title: '客户请求',
+      dataIndex: 'customerRequest',
+      width: 140,
+      render: (_, fb) => (
+        <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
+          {getDisplayCustomerRequest(fb) || '—'}
+        </Typography.Paragraph>
+      ),
+    },
+    {
       title: '请求场景',
       dataIndex: 'requestScene',
       width: 120,
@@ -63,7 +78,7 @@ export default function FeedbackTable({ items, onSelect }) {
       title: '用户情绪',
       dataIndex: 'sentiment',
       width: 96,
-      render: (_, fb) => <SentimentBadge sentiment={fb.sentiment} />,
+      render: (_, fb) => <SentimentBadge record={fb} />,
     },
     {
       title: '问题类型',
@@ -91,22 +106,22 @@ export default function FeedbackTable({ items, onSelect }) {
       ),
     },
     {
-      title: '问题摘要',
-      dataIndex: 'problemSummary',
+      title: '需求痛点',
+      dataIndex: 'painPoint',
       width: 160,
       render: (_, fb) => (
         <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
-          {fb.problemSummary || fb.customerQuote || '-'}
+          {getDisplayPainPoint(fb) || '—'}
         </Typography.Paragraph>
       ),
     },
     {
-      title: 'LLM优化举措',
-      dataIndex: 'optimizationSuggestion',
-      width: 160,
+      title: '单条优化建议',
+      dataIndex: 'optimizationProduct',
+      width: 180,
       render: (_, fb) => (
         <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs" type="secondary">
-          {fb.optimizationSuggestion || '—'}
+          {formatListOptimizationPreview(fb) || '—'}
         </Typography.Paragraph>
       ),
     },
@@ -137,7 +152,7 @@ export default function FeedbackTable({ items, onSelect }) {
       rowKey="id"
       columns={columns}
       dataSource={items}
-      scroll={{ x: 1400 }}
+      scroll={{ x: 1560 }}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),

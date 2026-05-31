@@ -11,6 +11,10 @@ export { recordDataDate, recordMatchesPeriod } from '../domain/insightPeriod.js'
 export { buildSourceSnapshot } from './buildSourceSnapshot.js'
 export { buildOverviewSnapshot } from './buildOverviewSnapshot.js'
 export {
+  needsOverviewRecommendationsRehydrate,
+  rehydrateOverviewRecommendations,
+} from './rehydrateOverviewRecommendations.js'
+export {
   loadSnapshotsForPeriod,
   rebuildSourceSnapshot,
   rebuildOverviewSnapshot,

@@ -191,13 +191,31 @@ export const EIP_NODE_SERVICE_MAP = {
   产品使用问题: 'operate',
   产品功能: 'discover',
   产品使用: 'operate',
+  故障报修: 'operate',
+  报障: 'operate',
   其他: 'service',
 }
 
 /** 请求节点问题子类 → 旅程二级提示 */
 export const EIP_NODE_ISSUE_MAP = {
   IP无法访问: { l1: 'operate', l2: 'operate-access' },
+  '可用性/连通性': { l1: 'operate', l2: 'operate-access' },
+  '公网IP绑定/解绑失败': { l1: 'bind', l2: 'bind-security' },
   产品功能: { l1: 'discover', l2: 'discover-intro' },
   产品咨询: { l1: 'discover', l2: 'discover-intro' },
   其他: { l1: 'operate', l2: 'operate-quality' },
+}
+
+/** 路径段 3 → 请求场景（精确） */
+export const EIP_REQUEST_SCENE_PATH_MAP = {
+  产品使用问题: '产品能力咨询',
+  故障报修: '报障与恢复',
+  报障: '报障与恢复',
+}
+
+/** 路径段 4 → 问题类型（精确/别名） */
+export const EIP_PROBLEM_TYPE_PATH_MAP = {
+  '公网IP绑定/解绑失败': '配置与操作',
+  '可用性/连通性': '可用性/连通性故障',
+  IP无法访问: '可用性/连通性故障',
 }

@@ -9,7 +9,31 @@ describe('records', () => {
       importMonth: '2025-05',
       ticketId: '123',
     })
-    expect(key).toBe('complaint_ticket::2025-05::123')
+    expect(key).toBe('complaint_ticket::2025-05::ticket::123')
+  })
+
+  it('buildDedupeKey falls back to record id when ticketId missing', () => {
+    const a = buildDedupeKey({
+      dataSourceType: 'complaint_ticket',
+      importMonth: '2026-04',
+      id: 'uuid-a',
+    })
+    const b = buildDedupeKey({
+      dataSourceType: 'complaint_ticket',
+      importMonth: '2026-04',
+      id: 'uuid-b',
+    })
+    expect(a).not.toBe(b)
+    expect(a).toContain('uuid-a')
+  })
+
+  it('buildDedupeKey does not collapse rows with empty ticketId', () => {
+    const key = buildDedupeKey({
+      dataSourceType: 'complaint_ticket',
+      importMonth: '2026-04',
+      ticketId: '',
+    })
+    expect(key).toBe('')
   })
 
   it('recordKind distinguishes ticket sources', () => {

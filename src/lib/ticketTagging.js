@@ -171,7 +171,7 @@ export function matchJourneyByDescription(text, journeys, taxonomyKey, opts = {}
   return applyRequestNodeFallback(textResult, nodeResult)
 }
 
-function extractProblemSummary(text) {
+export function extractProblemSummary(text) {
   const quote = extractCustomerQuote(text)
   if (quote && quote.length > 10) return quote.slice(0, 300)
   const title = text.match(/工单标题[：:]([^\n]+)/)
@@ -183,7 +183,7 @@ function extractProblemSummary(text) {
   return text.slice(0, 200).replace(/\s+/g, ' ')
 }
 
-function extractSolutionSummary(text, fromCol) {
+export function extractSolutionSummary(text, fromCol) {
   if (fromCol?.trim()) return fromCol.trim().slice(0, 400)
   const sol = extractResponseText(text)
   if (sol) return sol.slice(0, 400)
@@ -192,7 +192,7 @@ function extractSolutionSummary(text, fromCol) {
   return ''
 }
 
-function extractRootCause(text, fromCol) {
+export function extractRootCause(text, fromCol) {
   if (fromCol?.trim()) return fromCol.trim().slice(0, 300)
   const rc = text.match(/根因[（(]?必填[）)]?[：:]([^\n]+)/)
   if (rc) return rc[1].trim().slice(0, 300)

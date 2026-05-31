@@ -1,7 +1,16 @@
 import * as XLSX from 'xlsx'
 import { formatRecommendationForExport } from './planningRecommendations.js'
+import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommendationSections.js'
 import { PERIOD_COMPARE_LABELS } from './planningRecommendationCompare.js'
-import { resolveEffectiveRecommendation, WORKFLOW_STATUS_LABELS } from './planningRecommendationDisplay.js'
+import {
+  formatClusterRootCauseForExport,
+  formatVerificationForExport,
+  normalizeClusterRootCause,
+  normalizeVerification,
+  resolveEffectiveRecommendation,
+  resolveRecommendationSummary,
+  WORKFLOW_STATUS_LABELS,
+} from './planningRecommendationDisplay.js'
 
 const CATEGORY_LABELS = {
   product: '产品优化',
@@ -23,6 +32,9 @@ function recommendationToRow(rec, index) {
   const effective = resolveEffectiveRecommendation(rec)
   const exported = formatRecommendationForExport(effective)
   const details = effective.details || rec.details || []
+  const sections = effective.sections || rec.sections
+  const cluster = normalizeClusterRootCause(sections?.clusterRootCause)
+  const verification = normalizeVerification(sections?.verification)
   return {
     序号: index + 1,
     优先级: PRIORITY_LABELS[rec.priority] || rec.priority,
@@ -32,7 +44,23 @@ function recommendationToRow(rec, index) {
     旅程二级: rec.scope?.journeyL2 || '',
     问题类型: rec.scope?.problemType || '',
     请求场景: rec.scope?.requestScene || '',
-    概述: effective.summary || effective.text || '',
+    概述: resolveRecommendationSummary(effective),
+    [PLANNING_SECTION_LABELS.executiveSummary]: resolveRecommendationSummary(effective),
+    [PLANNING_SECTION_LABELS.clusterRootCause]: formatClusterRootCauseForExport(cluster),
+    [CLUSTER_SUB_LABELS.dataMetrics]: (cluster?.dataMetrics || []).join('\n'),
+    [CLUSTER_SUB_LABELS.painClusters]: (cluster?.painClusters || [])
+      .map((p) => `「${p.text}」${p.count} 单`)
+      .join('\n'),
+    [CLUSTER_SUB_LABELS.rootCauses]: (cluster?.rootCauses || [])
+      .map((r) => `「${r.text}」${r.count} 单`)
+      .join('\n'),
+    [CLUSTER_SUB_LABELS.businessImpact]: cluster?.businessImpact || '',
+    [PLANNING_SECTION_LABELS.opportunities]: sections?.opportunities || '',
+    [PLANNING_SECTION_LABELS.productActions]: (sections?.productActions || []).join('\n'),
+    [PLANNING_SECTION_LABELS.serviceActions]: (sections?.serviceActions || []).join('\n'),
+    [PLANNING_SECTION_LABELS.verification]: formatVerificationForExport(verification),
+    指标监控: (verification?.metrics || []).join('、'),
+    用户验证: verification?.userValidation || '',
     详细意见1: (effective.details || details)[0] || '',
     详细意见2: (effective.details || details)[1] || '',
     详细意见3: (effective.details || details)[2] || '',

@@ -1,10 +1,16 @@
 import { canUseSemanticMatch } from './themeSemantic.js'
+import { getEffectiveOptimization } from './ticketAnalysis/ticketOptimizationExtract.js'
+import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 import {
   getLlmCompletionText,
   llmChatCompletion,
   parseLlmMessageContent,
 } from './llmClient.js'
 
+/**
+ * @deprecated Phase 1C 起旅程 Tab 不再调用 LLM 旅程举措；保留供 legacy / 其他模块引用。
+ * 预计 1~2 个稳定周期后评估移除。
+ */
 const DEFAULT_MODEL = 'gpt-4o-mini'
 
 /** 空泛话术，禁止作为业务优化举措输出 */
@@ -61,11 +67,13 @@ const GENERIC_RECOMMENDATION_RE = [
 
 const BASE_SYSTEM_RULES = `要求：
 1. 输出 3～5 条，每条必须具体、可执行，面向产品/平台/流程改进，用于举一反三规避同类问题。
-2. 禁止输出空泛套话，例如：「围绕根因制定方案」「纳入版本规划」「待分析」「复盘处理路径」「建立预防机制」等无实质内容的句子。
-3. 不要复述工单回单里的临时规避操作（如「已协助客户调整」「请客户观察」），要提炼根本改进。
-4. 结合证据中的真实问题、有效根因、资源池差异，给出功能、流程、监控、文档、自助工具等方向的举措。
-5. 每条 30～80 字，用中文，以动词开头（如「上线」「优化」「建立」「完善」）。
-6. 只返回 JSON：{"measures":["举措1","举措2",...]}`
+2. 以「需求痛点 TOP」为主输入进行聚类归纳；可结合单条工单优化建议参考，但须系统化、去重后输出旅程级举措。
+3. 若证据中含「人工复核优化建议」，须优先吸收其方向，且勿再使用对应工单的自动优化建议。
+4. 禁止输出空泛套话，例如：「围绕根因制定方案」「纳入版本规划」「待分析」「复盘处理路径」「建立预防机制」等无实质内容的句子。
+5. 不要复述工单回单里的临时规避操作（如「已协助客户调整」「请客户观察」），要提炼根本改进。
+6. 结合证据中的真实痛点、有效根因、资源池差异，给出功能、流程、监控、文档、自助工具等方向的举措。
+7. 每条 30～80 字，用中文，以动词开头（如「上线」「优化」「建立」「完善」）。
+8. 只返回 JSON：{"measures":["举措1","举措2",...]}`
 
 /**
  * 是否为工单回单/打标模板复述（禁止进入行动建议概述与详细意见）
@@ -127,11 +135,31 @@ export function isValidRootCause(text) {
 function buildEvidencePack(items, limit = 12) {
   return items.slice(0, limit).map((fb, i) => ({
     index: i,
-    problem: (fb.problemSummary || fb.customerQuote || '').slice(0, 200),
+    painPoint: (fb.painPoint || fb.problemSummary || '').slice(0, 120),
+    problem: (fb.painPoint || fb.problemSummary || fb.customerQuote || '').slice(0, 200),
     problemType: fb.problemType || '未分类',
     rootCause: isValidRootCause(fb.rootCause) ? fb.rootCause.slice(0, 150) : '',
     resourcePool: fb.resourcePool || '',
+    optimizationHint: getEffectiveOptimization(fb).combined.slice(0, 160) || undefined,
   }))
+}
+
+/**
+ * @param {import('./types.js').FeedbackRecord[]} items
+ * @param {number} [limit]
+ */
+function aggregatePainPoints(items, limit = 6) {
+  const map = new Map()
+  for (const fb of items) {
+    const pain = (fb.painPoint || fb.problemSummary || '').trim()
+    if (!pain || pain.length < 6) continue
+    const key = pain.slice(0, 80)
+    map.set(key, (map.get(key) || 0) + 1)
+  }
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([text, count]) => ({ text, count }))
 }
 
 /**
@@ -161,6 +189,8 @@ export function buildJourneyOptimizationContext(items, l1, l2, meta = {}) {
   const problemTypes = aggregateCount(items, 'problemType')
   const rootCauses = aggregateCount(items, 'rootCause').filter((r) => isValidRootCause(r.text))
   const pools = aggregateCount(items, 'resourcePool').slice(0, 5)
+  const painPoints = aggregatePainPoints(items)
+  const ticketOptimizations = collectEffectiveOptimizationsFromRecords(items, 8)
   return {
     productName: meta.productName || '云产品',
     journeyL1: l1,
@@ -170,6 +200,8 @@ export function buildJourneyOptimizationContext(items, l1, l2, meta = {}) {
     ticketCount: items.length,
     problemTypes,
     rootCauses,
+    painPoints,
+    ticketOptimizations,
     resourcePools: pools,
     samples: buildEvidencePack(items),
   }
@@ -195,15 +227,30 @@ export function formatMeasureListForPrompt(measures) {
 }
 
 function formatEvidenceBlock(ctx) {
-  return `问题类型分布：${ctx.problemTypes.map((p) => `${p.text}(${p.count})`).join('、') || '无'}
+  const painBlock =
+    ctx.painPoints?.length
+      ? ctx.painPoints.map((p) => `${p.text.slice(0, 60)}(${p.count})`).join('；')
+      : '无明确痛点'
+  const optBlock =
+    ctx.ticketOptimizations?.length
+      ? ctx.ticketOptimizations
+          .map((o, i) => `${i + 1}. [${o.source}] ${o.text.slice(0, 100)}`)
+          .join('\n')
+      : '无单条优化建议'
+
+  return `需求痛点 TOP（聚类主输入）：${painBlock}
+问题类型分布：${ctx.problemTypes.map((p) => `${p.text}(${p.count})`).join('、') || '无'}
 有效根因 TOP：${ctx.rootCauses.map((r) => `${r.text.slice(0, 60)}(${r.count})`).join('；') || '无明确根因'}
 资源池：${ctx.resourcePools.map((p) => p.text).join('、') || '未标注'}
+
+单条工单优化建议参考（可结合归纳，勿照搬；若含「人工复核优化建议」须优先采纳）：
+${optBlock}
 
 典型工单摘要（勿照搬为举措）：
 ${ctx.samples
   .map(
     (s) =>
-      `[${s.index}] 问题：${s.problem}\n    类型：${s.problemType}${s.rootCause ? `\n    根因：${s.rootCause}` : ''}`,
+      `[${s.index}] 痛点：${s.painPoint || s.problem}\n    类型：${s.problemType}${s.rootCause ? `\n    根因：${s.rootCause}` : ''}${s.optimizationHint ? `\n    单条建议：${s.optimizationHint}` : ''}`,
   )
   .join('\n')}`
 }

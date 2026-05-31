@@ -1,5 +1,15 @@
 import { segmentCacheKey } from './journeyOptimizationLLM.js'
+import {
+  computeJourneyMeasuresFingerprint,
+  computeJourneyMeasuresFingerprintFromRecords,
+} from './ticketAnalysis/ticketAnalysisVersion.js'
 
+export { computeJourneyMeasuresFingerprint, computeJourneyMeasuresFingerprintFromRecords }
+
+/**
+ * @deprecated Phase 1C 起旅程 Tab 不再缓存 LLM 旅程举措；保留供 legacy 路径。
+ * 预计 1~2 个稳定周期后评估移除。
+ */
 const BUNDLE_PREFIX = 'feedback-insights:journey-measures:'
 
 /** @typedef {{ text: string; source: string }[]} JourneyMeasureList */
@@ -13,16 +23,6 @@ export function buildJourneyMeasuresScopeKey(periodId, productName) {
   const period = (periodId || '').trim()
   const product = (productName || '').trim() || '_'
   return `${period}::${product}`
-}
-
-/**
- * @param {string[]} itemIds
- */
-export function computeJourneyMeasuresFingerprint(itemIds) {
-  const sorted = [...itemIds].sort()
-  if (!sorted.length) return '0'
-  const head = sorted.slice(0, 40).join('\0')
-  return `${sorted.length}:${head.length}:${head.slice(0, 200)}`
 }
 
 /**

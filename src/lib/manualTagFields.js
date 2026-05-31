@@ -1,10 +1,17 @@
 import { themesFromJourney } from './applyThemes.js'
-import { normalizeSentiment } from './sentiment.js'
+import { normalizeSentiment, normalizeUrgencyLevel } from './sentiment.js'
 
-/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment'} ManualTagDimension */
+/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency'} ManualTagDimension */
 
 /** @type {ManualTagDimension[]} */
-export const MANUAL_TAG_DIMENSIONS = ['requestScene', 'problemType', 'journey', 'sentiment']
+export const MANUAL_TAG_DIMENSIONS = [
+  'requestScene',
+  'problemType',
+  'journey',
+  'sentiment',
+  'urgency',
+  'optimization',
+]
 
 /** @type {Record<ManualTagDimension, string>} */
 export const MANUAL_TAG_DIMENSION_LABELS = {
@@ -12,6 +19,8 @@ export const MANUAL_TAG_DIMENSION_LABELS = {
   problemType: '问题类型',
   journey: '用户旅程',
   sentiment: '用户情绪',
+  urgency: '加急',
+  optimization: '优化建议',
 }
 
 /**
@@ -37,16 +46,36 @@ export function mergeManualTagFieldsOnUserEdit(existing, patch) {
   if ('problemType' in patch) set.add('problemType')
   if ('journeyL1' in patch || 'journeyL2' in patch || 'themes' in patch) set.add('journey')
   if ('sentiment' in patch) set.add('sentiment')
+  if ('urgencyLevel' in patch) set.add('urgency')
+  if ('manualReviewOptimization' in patch) set.add('optimization')
   return [...set]
 }
 
 /**
- * 重新打标后还原人工维护的四维标签（及同步的 themes）。
+ * 批量强制重打标：清空人工标签标记与人工复核文本，便于全量重算。
+ *
+ * @param {import('./types.js').FeedbackRecord} record
+ */
+export function applyForceRetagOverrides(record) {
+  return {
+    ...record,
+    manualTagFields: [],
+    manualReviewRootCause: '',
+    manualReviewSolution: '',
+    manualReviewAction: '',
+    manualReviewOptimization: '',
+  }
+}
+
+/**
  *
  * @param {import('./types.js').FeedbackRecord} original
  * @param {import('./types.js').FeedbackRecord} processed
+ * @param {{ forceOverride?: boolean }} [options]
  */
-export function preserveManualTags(original, processed) {
+export function preserveManualTags(original, processed, options = {}) {
+  if (options.forceOverride) return processed
+
   const manual = getManualTagFields(original)
   if (!manual.length) return processed
 
@@ -70,6 +99,15 @@ export function preserveManualTags(original, processed) {
   }
   if (set.has('sentiment')) {
     out.sentiment = normalizeSentiment(original.sentiment)
+  }
+  if (set.has('urgency')) {
+    out.urgencyLevel = normalizeUrgencyLevel(original.urgencyLevel, original.sentiment)
+  }
+  if (set.has('optimization')) {
+    out.manualReviewOptimization = original.manualReviewOptimization
+    out.optimizationProduct = original.optimizationProduct
+    out.optimizationService = original.optimizationService
+    out.optimizationSuggestion = original.optimizationSuggestion
   }
 
   return out

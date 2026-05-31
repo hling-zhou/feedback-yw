@@ -14,6 +14,7 @@ describe('buildSourceSnapshot', () => {
       rawText: 'test',
       customerQuote: 'quote',
       problemType: '计费与账单',
+      complaintCauseL1Final: '服务不可用',
       journeyL1: '购买',
       journeyL2: '下单',
       problemSummary: '',
@@ -34,6 +35,7 @@ describe('buildSourceSnapshot', () => {
       rawText: 'june',
       customerQuote: 'q',
       problemType: '计费与账单',
+      complaintCauseL1Final: '服务不可用',
       journeyL1: '购买',
       journeyL2: '下单',
       problemSummary: '',
@@ -55,6 +57,64 @@ describe('buildSourceSnapshot', () => {
     })
     expect(snap.summary.recordCount).toBe(1)
     expect(snap.recordIds).toEqual(['1'])
+    expect(snap.aggregates.complaintCauseL1).toEqual([{ name: '服务不可用', count: 1 }])
+    expect(snap.aggregates.problemTypes).toEqual([{ name: '计费与账单', count: 1 }])
+    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.0')
+    expect(snap.aggregates.painPointClustering?.products).toEqual({})
+  })
+
+  it('stores primary pain point clusters for ticket sources', () => {
+    const pain = '账单金额计算错误导致多扣费用无法退订'
+    const clustered = [
+      {
+        id: '1',
+        dataSourceType: 'complaint_ticket',
+        product: '弹性公网 IP',
+        painPoint: pain,
+        importMonth: '2025-05',
+        importedAt: '2025-05-01',
+        rawText: 'test',
+        customerQuote: 'quote',
+        problemType: '计费与账单',
+        journeyL1: '购买',
+        journeyL2: '下单',
+        problemSummary: pain,
+        solutionSummary: '',
+        rootCause: '',
+        optimizationSuggestion: '',
+        sentiment: 'negative',
+        themes: ['下单'],
+        status: 'open',
+      },
+      {
+        id: '2',
+        dataSourceType: 'complaint_ticket',
+        product: '弹性公网 IP',
+        painPoint: pain,
+        importMonth: '2025-05',
+        importedAt: '2025-05-01',
+        rawText: 'test2',
+        customerQuote: 'quote2',
+        problemType: '计费与账单',
+        journeyL1: '购买',
+        journeyL2: '下单',
+        problemSummary: pain,
+        solutionSummary: '',
+        rootCause: '',
+        optimizationSuggestion: '',
+        sentiment: 'negative',
+        themes: ['下单'],
+        status: 'open',
+      },
+    ]
+    const scoped = filterRecordsForScope(clustered, periodMay, 'complaint_ticket')
+    const snap = buildSourceSnapshot({
+      insightPeriodId: 'p-may',
+      dataSourceType: 'complaint_ticket',
+      records: scoped,
+    })
+    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.0')
+    expect(snap.aggregates.painPointClustering?.products['弹性公网 IP']?.primaryClusters.length).toBeGreaterThanOrEqual(1)
   })
 
   it('filterRecordsForScope uses data time not period id', () => {

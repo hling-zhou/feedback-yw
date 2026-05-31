@@ -5,9 +5,11 @@ import {
   parseLlmMessageContent,
 } from './llmClient.js'
 import {
+  getUrgencyLevel,
   isNegativeSentiment,
   normalizeSentiment,
   SENTIMENT_LABELS,
+  URGENCY_LABELS,
 } from './sentiment.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 
@@ -41,8 +43,10 @@ export function buildKeywordSampleLines(feedbacks, max = 8) {
       const text = textForKeywordExtraction(fb)
       if (!text?.trim()) return null
       const mood = SENTIMENT_LABELS[normalizeSentiment(fb.sentiment)] || '未知'
+      const urgent = getUrgencyLevel(fb) === 'high' ? URGENCY_LABELS.high : ''
       const product = fb.product || fb.productSpec || '—'
-      return `[情绪:${mood}][产品:${product}] ${text.slice(0, 380)}`
+      const moodLabel = urgent ? `${mood}+${urgent}` : mood
+      return `[情绪:${moodLabel}][产品:${product}] ${text.slice(0, 380)}`
     })
     .filter(Boolean)
     .slice(0, max)
