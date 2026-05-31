@@ -176,6 +176,20 @@ export default function Settings() {
         </PermissionGate>
 
         <PermissionGate permission="manageTeamSettings">
+          <Card title="维度打标">
+            <Checkbox
+              checked={settings.retagDimensionsAfterTicketLlm !== false}
+              onChange={(e) =>
+                setTeamSettings({ retagDimensionsAfterTicketLlm: e.target.checked })
+              }
+            >
+              工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型
+            </Checkbox>
+            <Typography.Text type="secondary" className="mt-2 block text-xs">
+              默认开启。仅对本次 ticket LLM 成功写入客户请求或痛点的工单生效；尊重工单详情中人工保存的标签维度。
+            </Typography.Text>
+          </Card>
+
           <Card title="旅程打标">
             <Checkbox
               checked={settings.useRequestNodeForJourney === true}

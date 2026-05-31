@@ -4,8 +4,11 @@ import { enrichTicketRecordsForImport } from './importEnrichment.js'
 const enrichRecordsWithSharedDimensions = vi.fn(async (records) =>
   records.map((r) => ({ ...r, requestScene: '报障与排错', problemType: '性能问题' })),
 )
+const retagRecordsSharedDimensionsAfterTicketLlm = vi.fn(async (records) => records)
 vi.mock('./dimensionTagging.js', () => ({
   enrichRecordsWithSharedDimensions: (...args) => enrichRecordsWithSharedDimensions(...args),
+  retagRecordsSharedDimensionsAfterTicketLlm: (...args) =>
+    retagRecordsSharedDimensionsAfterTicketLlm(...args),
 }))
 
 const enrichRecordsWithJourneys = vi.fn(async (records) =>
@@ -32,6 +35,7 @@ describe('enrichTicketRecordsForImport', () => {
     enrichRecordsWithSharedDimensions.mockClear()
     enrichRecordsWithJourneys.mockClear()
     enrichRecordsWithTicketLlm.mockClear()
+    retagRecordsSharedDimensionsAfterTicketLlm.mockClear()
   })
 
   it('returns tagged records even when downstream steps would warn without API key', async () => {
@@ -90,6 +94,7 @@ describe('enrichTicketRecordsForImport', () => {
     )
 
     expect(order).toEqual(['ticket', 'journey'])
+    expect(retagRecordsSharedDimensionsAfterTicketLlm).toHaveBeenCalledTimes(1)
   })
 
   it('legacy runs journey before ticket LLM on import', async () => {

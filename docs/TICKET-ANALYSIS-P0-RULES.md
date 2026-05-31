@@ -190,7 +190,18 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 
 **历史数据**：旧标签名（如 `报障与恢复`）经 `migrateRequestSceneLabel()` 映射；**决策树结果**需反馈库 **批量重新打标** 后才会刷新。
 
-**待 Sprint 2**：ticket LLM 成功后按 LLM 客户请求/痛点重打请求场景与问题类型；问题类型 §3 对端排除全文兜底（方案 A）。
+**Post-LLM 维度重打**（`retagDimensionsAfterTicketLlm`，默认 **开**）：
+
+| 模块 | 职责 |
+|------|------|
+| `dimensionTaggingText.js` | `buildDimensionTaggingTextForRecord({ llmCorpusOnly })`、`buildFullTaggingTextForRecord` |
+| `dimensionTagging.js` | `retagRecordsSharedDimensionsAfterTicketLlm()`、`resolveProblemTypeWithPeerFallback()` |
+| `applyThemes.js` / `importEnrichment.js` | ticket LLM 成功后调用重打（旅程 LLM 之前） |
+
+- **触发**：仅 `customerRequestSource='llm'` 或 `painPointSource='llm'` 的工单（本次 ticket LLM 成功写入）
+- **语料**：主决策 = LLM `customerRequest` + LLM `painPoint`；问题类型 §3 对端排除扫描 **全文**（受理 + 处理意见，方案 A）
+- **尊重** `manualTagFields`；批量重打可勾选「强制覆盖人工内容」
+- **设置**：团队共享 `retagDimensionsAfterTicketLlm`（设置 → 维度打标）；批量重打弹窗可单次覆盖
 
 ---
 
@@ -200,7 +211,7 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 |------|-------------|--------------|
 | 无 API Key | 直接写入 record | `customerRequestSource='rule'`，`painPointSource='rule'` |
 | 有 API Key | 候选 + `ruleFallback` 传入 LLM | LLM 成功则 `llm`，失败回退 P0 |
-| 四维打标 | 始终用 **规则版** `customerRequest` | LLM 摘要不改变打标输入 |
+| 四维打标 | 初标用受理/追加/处理意见；**ticket LLM 后**（默认）用 LLM 客户请求/痛点重打请求场景与问题类型 | 见 §5.5 Post-LLM 维度重打 |
 | **请求场景** | 决策树 + 关键词（`requestSceneClassifier.js`） | **不走 LLM**；与投诉/咨询工单的问题类型一致 |
 | **问题类型**（投诉/咨询） | 决策树 + 关键词 | **不走 LLM** |
 | **用户旅程** | 本地 + 可选 LLM（`themeMatchMode`） | 设置页「用户旅程匹配方式」 |
@@ -208,13 +219,14 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 **导入 / 批量重新打标**（有 API Key）阶段顺序（默认 `taggingPipelineOrder=ticket_first`）：
 
 1. 规则初标（`analyzeTicket`）— 重置 `*Source` 为 `rule`（「仅未完成 LLM 增强 / 旅程 LLM 增强」范围 **跳过** 此步）
-2. 请求场景 / 问题类型（本地）
+2. 请求场景 / 问题类型（本地，受理/追加/处理意见语料）
 3. **客户请求 / 痛点 / 优化**（`ticketLlmMode=unified` 时 **1 次 LLM** + optimization 按需 compact 补打；`separate` 时为三次独立调用）
+3b. **请求场景 / 问题类型（LLM 语料重打）** — 默认开；仅步骤 3 成功写入 LLM 字段的工单
 4. **用户旅程**（hybrid + `journeyLlmGating=true` 时高置信本地命中可跳过 LLM；记录 `journeySource` / `journeyMatchScore`）
 5. 用户情绪（规则，基于 ticket LLM 后的 request/pain）
 6. 写库（ticket LLM 批量 **每 4 条** 增量 persist）
 
-`taggingPipelineOrder=legacy` 时步骤 3、4 对调（旅程先于 ticket LLM，与改造前一致）。
+`taggingPipelineOrder=legacy` 时步骤 3 与 4 对调（旅程先于 ticket LLM）；步骤 3b 仍在 ticket LLM 之后执行。
 
 **来源字段**（用于反馈库「LLM 打标状态」筛选与导出）：
 
@@ -258,7 +270,7 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 | `painPointExtract.test.js` | customerRequest 优先于 rootCause、需求改写、80 字上限 |
 | `ticketAnalysis.test.js` | `analyzeTicket (P0 rules)` 端到端 |
 | `requestSceneClassifier.test.js` | V2.0 §4 golden 10 条 + 默认类 / 互斥边界 |
-| `dimensionTagging.test.js` | 请求场景决策树 + 投诉工单不调 LLM |
+| `dimensionTagging.test.js` | 请求场景决策树 + 投诉工单不调 LLM + Post-LLM 重打 |
 | `validateTicketAnalysisPair.test.js` | 空值 fallback、引导语拒绝、总长压缩 |
 
 ```bash
@@ -267,6 +279,7 @@ npm test -- --run src/lib/ticketAnalysis/painPointExtract.test.js
 npm test -- --run src/lib/ticketAnalysis/ticketAnalysis.test.js
 npm test -- --run src/lib/requestSceneClassifier.test.js
 npm test -- --run src/lib/dimensionTagging.test.js
+npm test -- --run src/lib/ticketAnalysis/dimensionTaggingText.test.js
 ```
 
 ---
@@ -276,7 +289,8 @@ npm test -- --run src/lib/dimensionTagging.test.js
 - 规则层不产出 V2 §1.4 式精炼摘要，需配置 LLM API Key。  
 - V2 全部示例尚未做成独立回归夹具（`fixtures/v2-ticket-examples.json` 待补）。  
 - 「客户提供了 MTR 结果则保留结果描述」暂未单独实现，依赖句内删除 + 候选保留逻辑。  
-- LLM 客户请求与四维打标输入不一致时，**不会**自动重跑打标（见 `ticketAnalysis.js` 设计说明）。
+- **Post-LLM 维度重打**（默认开）：仅当 `customerRequestSource='llm'` 或 `painPointSource='llm'` 时，按 LLM 语料重打请求场景/问题类型；可在设置或批量重打弹窗关闭。单条 `analyzeTicketAsync` 路径仍只做规则初标 + ticket LLM，不自动重打（需批量重打或重新导入增强段）。  
+- 历史 V1 请求场景标签需 **批量重新打标**（建议含 ticket LLM）后才会刷新为 V2 决策树结果。
 
 ---
 

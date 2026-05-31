@@ -1710,6 +1710,7 @@ export function InsightsProvider({ children }) {
           forceOverrideManualTags: options.forceOverrideManualTags === true,
           ticketLlmOnly,
           journeyLlmOnly,
+          retagDimensionsAfterTicketLlm: options.retagDimensionsAfterTicketLlm,
           onTicketLlmBatchPersist: persistChunkIncremental,
         },
       )
@@ -1760,7 +1761,7 @@ export function InsightsProvider({ children }) {
 
   const startBulkRetag = useCallback(
     async (options = {}) => {
-      const { scope = 'period_all', records, forceOverrideManualTags = false } = options
+      const { scope = 'period_all', records, forceOverrideManualTags = false, retagDimensionsAfterTicketLlm } = options
       const list = records?.length ? records : feedbacksRef.current
       if (!list.length) return null
       if (importLockRef.current) {
@@ -1775,6 +1776,7 @@ export function InsightsProvider({ children }) {
         const result = await reprocessAllTagsCore(list, setRetagSessionProgress, {
           scope,
           forceOverrideManualTags,
+          retagDimensionsAfterTicketLlm,
         })
         if (result) notifyRetagFinished(result)
         return result

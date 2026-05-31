@@ -1,8 +1,11 @@
-import { resolveRequestSceneFromConfig } from '../dimensionTagging.js'
-import { classifyProblemType, PROBLEM_TYPE_OTHER } from '../problemTypeClassifier.js'
+import { resolveProblemTypeWithPeerFallback, resolveRequestSceneFromConfig } from '../dimensionTagging.js'
+import { PROBLEM_TYPE_OTHER } from '../problemTypeClassifier.js'
 import { matchJourneyByDescription } from '../ticketTagging.js'
 import { finalizeCorpusFuzzy } from './ticketAnalysisCorpus.js'
-import { buildDimensionTaggingLayers, buildProblemTypeTaggingText } from './dimensionTaggingText.js'
+import {
+  buildDimensionTaggingLayers,
+  buildDimensionTaggingText,
+} from './dimensionTaggingText.js'
 import {
   isUnrecognizedTag,
   normalizeTagLabel,
@@ -30,8 +33,12 @@ function isProblemTypeClassifierMiss(label) {
  * @param {{ label: string }[]} problemTypeRules
  */
 function resolveProblemTypeForTicket(input, text, problemTypeRules) {
-  const corpus = input ? buildProblemTypeTaggingText(input) : text
-  return normalizeTagLabel(classifyProblemType(corpus, problemTypeRules), 'dimension')
+  const corpus = input ? buildDimensionTaggingText(input) : text
+  const fullPeer = input ? buildDimensionTaggingLayers(input).fullText || text : text
+  return normalizeTagLabel(
+    resolveProblemTypeWithPeerFallback(corpus, fullPeer, problemTypeRules),
+    'dimension',
+  )
 }
 
 /**
@@ -91,7 +98,11 @@ export function tagTicketDimensions(opts) {
     }
     if (isProblemTypeClassifierMiss(problemType)) {
       const fromHandling = normalizeTagLabel(
-        classifyProblemType(secondaryText, taxonomy.problemTypes),
+        resolveProblemTypeWithPeerFallback(
+          secondaryText,
+          layers?.fullText || text,
+          taxonomy.problemTypes,
+        ),
         'dimension',
       )
       if (!isProblemTypeClassifierMiss(fromHandling)) {

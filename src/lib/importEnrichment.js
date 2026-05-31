@@ -1,7 +1,7 @@
 import { analyzeTicketSentiment } from './sentiment.js'
 import { buildSentimentAnalysisText } from './sentimentAnalysisText.js'
 import { themesFromJourney } from './applyThemes.js'
-import { enrichRecordsWithSharedDimensions } from './dimensionTagging.js'
+import { enrichRecordsWithSharedDimensions, retagRecordsSharedDimensionsAfterTicketLlm } from './dimensionTagging.js'
 import { enrichRecordsWithJourneys } from './journeySemantic.js'
 import { enrichRecordsWithTicketLlm } from './ticketAnalysis/ticketLlmEnrichment.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
@@ -102,6 +102,18 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
         warnings,
       )
       Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, out))
+      out = await runImportStage(
+        out,
+        settings,
+        onProgress,
+        '请求场景与问题类型（LLM 语料）',
+        () =>
+          retagRecordsSharedDimensionsAfterTicketLlm(out, settings, (done, total) => {
+            onProgress?.('请求场景与问题类型（LLM 语料）', done, total)
+          }),
+        'LLM 语料维度重打',
+        warnings,
+      )
       continue
     }
 

@@ -98,6 +98,7 @@ export function useBulkRetagModal({ filteredRecords }) {
           : 'filtered'
     const scopeChoice = { value: selectedScope }
     const forceOverrideChoice = { value: false }
+    const retagDimensionsChoice = { value: settings.retagDimensionsAfterTicketLlm !== false }
 
     Modal.confirm({
       title: '批量重新打标',
@@ -132,6 +133,18 @@ export function useBulkRetagModal({ filteredRecords }) {
           </Radio.Group>
           <Checkbox
             className="!mt-3"
+            defaultChecked={retagDimensionsChoice.value}
+            onChange={(e) => {
+              retagDimensionsChoice.value = e.target.checked
+            }}
+          >
+            工单 LLM 成功后重打请求场景与问题类型
+          </Checkbox>
+          <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+            默认与团队设置一致。仅对 ticket LLM 成功写入客户请求或痛点的工单生效；不勾选则保留规则初标结果。
+          </Typography.Paragraph>
+          <Checkbox
+            className="!mt-3"
             onChange={(e) => {
               forceOverrideChoice.value = e.target.checked
             }}
@@ -159,6 +172,7 @@ export function useBulkRetagModal({ filteredRecords }) {
           scope,
           records,
           forceOverrideManualTags: forceOverrideChoice.value,
+          retagDimensionsAfterTicketLlm: retagDimensionsChoice.value,
         }).catch((e) => {
           message.error(e?.message || '批量重新打标失败')
         })
@@ -175,6 +189,7 @@ export function useBulkRetagModal({ filteredRecords }) {
     unknownJourneyCount,
     needsTicketLlmCount,
     needsJourneyLlmCount,
+    settings.retagDimensionsAfterTicketLlm,
   ])
 
   return {

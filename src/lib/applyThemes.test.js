@@ -8,9 +8,16 @@ vi.mock('./llmClient.js', () => ({
 const enrichRecordsWithSharedDimensions = vi.fn(async (records) =>
   records.map((r) => ({ ...r, requestScene: 'scene' })),
 )
-vi.mock('./dimensionTagging.js', () => ({
-  enrichRecordsWithSharedDimensions: (...args) => enrichRecordsWithSharedDimensions(...args),
-}))
+const retagRecordsSharedDimensionsAfterTicketLlm = vi.fn(async (records) => records)
+vi.mock('./dimensionTagging.js', async (importOriginal) => {
+  const mod = await importOriginal()
+  return {
+    ...mod,
+    enrichRecordsWithSharedDimensions: (...args) => enrichRecordsWithSharedDimensions(...args),
+    retagRecordsSharedDimensionsAfterTicketLlm: (...args) =>
+      retagRecordsSharedDimensionsAfterTicketLlm(...args),
+  }
+})
 
 const enrichRecordsWithJourneys = vi.fn(async (records) =>
   records.map((r) => ({ ...r, journeyL1: 'J1', journeyL2: 'J2' })),
@@ -47,6 +54,7 @@ describe('reprocessAllThemesAndSentiment pipeline order', () => {
     enrichRecordsWithSharedDimensions.mockClear()
     enrichRecordsWithJourneys.mockClear()
     enrichRecordsWithTicketLlm.mockClear()
+    retagRecordsSharedDimensionsAfterTicketLlm.mockClear()
     enrichRecordsWithTicketLlm.mockImplementation(async (records) =>
       records.map((r) => ({ ...r, painPoint: 'ticket-llm' })),
     )
@@ -69,6 +77,7 @@ describe('reprocessAllThemesAndSentiment pipeline order', () => {
     })
 
     expect(order).toEqual(['ticket', 'journey'])
+    expect(retagRecordsSharedDimensionsAfterTicketLlm).toHaveBeenCalledTimes(1)
   })
 
   it('O-03: legacy invokes journey before ticket LLM', async () => {
@@ -110,6 +119,7 @@ describe('reprocessAllThemesAndSentiment pipeline order', () => {
     expect(enrichRecordsWithSharedDimensions).not.toHaveBeenCalled()
     expect(enrichRecordsWithJourneys).not.toHaveBeenCalled()
     expect(enrichRecordsWithTicketLlm).toHaveBeenCalledTimes(1)
+    expect(retagRecordsSharedDimensionsAfterTicketLlm).toHaveBeenCalledTimes(1)
   })
 
   it('O-05: journeyLlmOnly skips ticket LLM and shared dimensions', async () => {
@@ -120,5 +130,14 @@ describe('reprocessAllThemesAndSentiment pipeline order', () => {
     expect(enrichRecordsWithSharedDimensions).not.toHaveBeenCalled()
     expect(enrichRecordsWithTicketLlm).not.toHaveBeenCalled()
     expect(enrichRecordsWithJourneys).toHaveBeenCalledTimes(1)
+  })
+
+  it('O-06: retag after ticket LLM can be disabled', async () => {
+    await reprocessAllThemesAndSentiment([BASE_RECORD], LLM_SETTINGS, undefined, {
+      pipelineOrder: 'ticket_first',
+      retagDimensionsAfterTicketLlm: false,
+    })
+
+    expect(retagRecordsSharedDimensionsAfterTicketLlm).not.toHaveBeenCalled()
   })
 })

@@ -38,8 +38,7 @@ export function buildDimensionTaggingLayers(input) {
 }
 
 /**
- * 问题类型打标语料：对齐规则文档「工单痛点文本」
- * 优先 customerRequest + painPoint；无则回退受理/追加/处理意见（buildDimensionTaggingLayers）
+ * 维度打标语料：优先 customerRequest + painPoint；无则回退受理/追加/处理意见
  *
  * @param {Object} input
  * @param {string} [input.customerRequest]
@@ -50,7 +49,7 @@ export function buildDimensionTaggingLayers(input) {
  * @param {string} [input.customerQuote]
  * @param {Record<string, string>} [input.sourceColumns]
  */
-export function buildProblemTypeTaggingText(input = {}) {
+export function buildDimensionTaggingText(input = {}) {
   /** @type {string[]} */
   const parts = []
   const request = input.customerRequest?.trim()
@@ -68,4 +67,57 @@ export function buildProblemTypeTaggingText(input = {}) {
     input.customerQuote?.trim() ||
     ''
   )
+}
+
+/** @deprecated 使用 {@link buildDimensionTaggingText} */
+export function buildProblemTypeTaggingText(input = {}) {
+  return buildDimensionTaggingText(input)
+}
+
+/**
+ * @param {import('../types.js').FeedbackRecord} record
+ * @param {{ llmCorpusOnly?: boolean }} [options]
+ */
+export function buildDimensionTaggingTextForRecord(record, options = {}) {
+  const llmCorpusOnly = options.llmCorpusOnly === true
+  const hasLlmCorpus =
+    record.customerRequestSource === 'llm' || record.painPointSource === 'llm'
+
+  if (llmCorpusOnly) {
+    if (!hasLlmCorpus) return ''
+    /** @type {string[]} */
+    const parts = []
+    if (record.customerRequestSource === 'llm' && record.customerRequest?.trim()) {
+      parts.push(record.customerRequest.trim())
+    }
+    const pain = (record.painPoint || record.problemSummary || '').trim()
+    if (record.painPointSource === 'llm' && pain && !parts.includes(pain)) {
+      parts.push(pain)
+    }
+    return parts.join('\n')
+  }
+
+  return buildDimensionTaggingText({
+    customerRequest: record.customerRequest,
+    painPoint: record.painPoint,
+    problemSummary: record.problemSummary,
+    rawText: record.rawText,
+    handlingText: record.handlingText,
+    customerQuote: record.customerQuote,
+    sourceColumns: record.sourceColumns,
+  })
+}
+
+/**
+ * 全文 taggingText（含处理意见），仅用于问题类型 §3 对端排除等兜底
+ *
+ * @param {import('../types.js').FeedbackRecord} record
+ */
+export function buildFullTaggingTextForRecord(record) {
+  return buildDimensionTaggingLayers({
+    rawText: record.rawText,
+    handlingText: record.handlingText,
+    customerQuote: record.customerQuote,
+    sourceColumns: record.sourceColumns,
+  }).fullText || record.rawText?.trim() || record.handlingText?.trim() || ''
 }

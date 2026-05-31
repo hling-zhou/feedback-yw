@@ -1,64 +1,60 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildDimensionTaggingLayers,
-  buildProblemTypeTaggingText,
+  buildDimensionTaggingText,
+  buildDimensionTaggingTextForRecord,
+  buildFullTaggingTextForRecord,
 } from './dimensionTaggingText.js'
 
-describe('buildProblemTypeTaggingText', () => {
-  it('prefers customerRequest and painPoint', () => {
-    const text = buildProblemTypeTaggingText({
-      customerRequest: '端口不通，请排查',
-      painPoint: '安全组未放行特定端口',
-      rawText: '【受理内容】\n公网 IP 无法访问',
-      handlingText: '已协助调整安全组',
-    })
-    expect(text).toBe('端口不通，请排查\n安全组未放行特定端口')
+describe('dimensionTaggingText', () => {
+  it('prefers customerRequest + painPoint', () => {
+    expect(
+      buildDimensionTaggingText({
+        customerRequest: 'IP不通，请排查',
+        painPoint: '端口被安全组拦截',
+        handlingText: '协办：已指导客户修改安全组',
+      }),
+    ).toBe('IP不通，请排查\n端口被安全组拦截')
   })
 
-  it('deduplicates when painPoint equals customerRequest', () => {
-    const text = buildProblemTypeTaggingText({
-      customerRequest: '专线不通',
-      painPoint: '专线不通',
-      handlingText: '已联系客户',
-    })
-    expect(text).toBe('专线不通')
+  it('llmCorpusOnly returns empty when ticket LLM did not run', () => {
+    const record = {
+      customerRequest: '规则版请求',
+      customerRequestSource: 'rule',
+      rawText: '受理：无法访问公网',
+    }
+    expect(buildDimensionTaggingTextForRecord(record, { llmCorpusOnly: true })).toBe('')
   })
 
-  it('falls back to acceptance and handling when no pain fields', () => {
-    const text = buildProblemTypeTaggingText({
-      rawText: '【受理内容】\n公网 IP 无法访问\n\n【处理意见】\n已协助调整安全组',
-      handlingText: '已协助调整安全组',
-    })
-    expect(text).toMatch(/公网 IP 无法访问/)
-    expect(text).toMatch(/已协助调整安全组/)
+  it('llmCorpusOnly uses LLM customerRequest', () => {
+    const record = {
+      customerRequest: 'LLM精炼请求',
+      customerRequestSource: 'llm',
+      painPoint: '规则痛点',
+      painPointSource: 'rule',
+      rawText: 'noise',
+    }
+    expect(buildDimensionTaggingTextForRecord(record, { llmCorpusOnly: true })).toBe('LLM精炼请求')
   })
 
-  it('falls back to append in layered corpus', () => {
-    const text = buildProblemTypeTaggingText({
-      rawText:
-        '【受理内容】\n公网 IP 无法访问\n\n【追加信息】\n客户补充：HTTPS 仍提示证书错误\n\n【处理意见】\n已协助调整',
-      handlingText: '已协助调整',
-    })
-    expect(text).toMatch(/HTTPS|证书/)
+  it('llmCorpusOnly includes LLM painPoint', () => {
+    const record = {
+      customerRequest: 'LLM精炼请求',
+      customerRequestSource: 'llm',
+      painPoint: 'LLM痛点',
+      painPointSource: 'llm',
+      rawText: 'noise',
+    }
+    expect(buildDimensionTaggingTextForRecord(record, { llmCorpusOnly: true })).toBe(
+      'LLM精炼请求\nLLM痛点',
+    )
   })
 
-  it('does not use handling-only noise when pain fields exist', () => {
-    const text = buildProblemTypeTaggingText({
-      customerRequest: '无法退订共享带宽',
-      handlingText: '已返单，请网络组协查',
-    })
-    expect(text).toBe('无法退订共享带宽')
-    expect(text).not.toMatch(/已返单|网络组/)
-  })
-})
-
-describe('buildDimensionTaggingLayers', () => {
-  it('splits acceptance/append primary and handling secondary', () => {
-    const layers = buildDimensionTaggingLayers({
-      rawText: '【受理内容】\n客户反馈专线不通\n\n【处理意见】\n已联系客户',
-      handlingText: '已联系客户',
-    })
-    expect(layers.primaryText).toMatch(/专线不通/)
-    expect(layers.secondaryText).toMatch(/已联系客户/)
+  it('buildFullTaggingTextForRecord includes handling layers', () => {
+    const record = {
+      rawText: '受理：客户反馈不通',
+      handlingText: '协办：ping通，对端reset',
+    }
+    expect(buildFullTaggingTextForRecord(record)).toMatch(/不通/)
+    expect(buildFullTaggingTextForRecord(record)).toMatch(/ping通/)
   })
 })

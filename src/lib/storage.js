@@ -34,7 +34,7 @@ function hasLocalStorage() {
 
 /** @typedef {import('./quoteNoise.js').QuoteNoiseConfig} QuoteNoiseConfig */
 
-/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; optimizationMode: OptimizationMode; overviewConclusionsLlm: boolean; overviewPolishIncludeRecommendations: boolean; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
+/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean; optimizationMode: OptimizationMode; overviewConclusionsLlm: boolean; overviewPolishIncludeRecommendations: boolean; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
 
 /** @type {ThemeMatchMode} */
 export const DEFAULT_THEME_MATCH_MODE = 'hybrid'
@@ -59,6 +59,8 @@ const DEFAULT_SETTINGS = {
   journeyLlmGating: true,
   journeyLlmSkipScoreThreshold: DEFAULT_JOURNEY_LLM_SKIP_SCORE_THRESHOLD,
   taggingPipelineOrder: DEFAULT_TAGGING_PIPELINE_ORDER,
+  /** 工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型 */
+  retagDimensionsAfterTicketLlm: true,
   optimizationMode: 'llm',
   /** 生成/刷新洞察快照时，对周期洞察概览做 LLM 润色（需 API Key） */
   overviewConclusionsLlm: false,
@@ -178,6 +180,8 @@ export function loadSettings() {
         parsed.journeyLlmSkipScoreThreshold ?? DEFAULT_SETTINGS.journeyLlmSkipScoreThreshold,
       taggingPipelineOrder:
         parsed.taggingPipelineOrder || DEFAULT_SETTINGS.taggingPipelineOrder,
+      retagDimensionsAfterTicketLlm:
+        parsed.retagDimensionsAfterTicketLlm ?? DEFAULT_SETTINGS.retagDimensionsAfterTicketLlm,
       optimizationMode: parsed.optimizationMode || DEFAULT_SETTINGS.optimizationMode,
       overviewConclusionsLlm:
         parsed.overviewConclusionsLlm ?? DEFAULT_SETTINGS.overviewConclusionsLlm,

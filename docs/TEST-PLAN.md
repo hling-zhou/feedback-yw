@@ -24,7 +24,7 @@
 
 - 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、标签管理、用户管理
 - **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
-- **请求场景 V2 决策树**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；技术说明 [TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化见 §5.4.2 TAG-RS
+- **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；技术说明 [TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化见 §5.4.2 TAG-RS、§5.4.3 TAG-RT
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -157,6 +157,16 @@
 | TAG-RS-05 | P1 | V1 标签迁移 | `报障与恢复` → `报障与排错` 等 | `migrateSharedTags.test.js` |
 | TAG-RS-06 | P1 | 标签库 9 类 | Excel/index 与 `REQUEST_SCENES_BUILTIN` 一致 | `ensureBuiltinRequestScenes.test.js` + 手工核对 `打标配置.xlsx` |
 | TAG-RS-07 | P1 | 历史工单刷新 | 批量重新打标后请求场景为 V2 标签 | 手工：反馈库 → 批量重新打标 → 抽样 |
+
+#### 5.4.3 Post-LLM 维度重打（TAG-RT）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-RT-01 | P0 | ticket LLM 后默认重打 | `retagRecordsSharedDimensionsAfterTicketLlm` 在 import/reprocess 中调用 | `applyThemes.test.js` O-01/O-04；`importEnrichment.test.js` |
+| TAG-RT-02 | P0 | 仅 LLM 语料参与重打 | `llmCorpusOnly` 跳过 rule-only 记录 | `dimensionTaggingText.test.js`、`dimensionTagging.test.js` |
+| TAG-RT-03 | P0 | §3 对端排除 | 全文含协办诊断 → 问题类型 `产品功能咨询` | `dimensionTagging.test.js` |
+| TAG-RT-04 | P1 | 关闭重打 | `retagDimensionsAfterTicketLlm=false` 跳过重打 | `applyThemes.test.js` O-06 |
+| TAG-RT-05 | P1 | 设置与批量重打 | 团队设置 + 弹窗单次覆盖 | 手工：设置 → 维度打标；反馈库批量重打弹窗 |
 
 ### 5.5 快照与洞察（INS / SNP）
 

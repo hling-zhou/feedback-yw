@@ -39,6 +39,7 @@
 | `taggingPipelineOrder` | `ticket_first` | `legacy` |
 | `journeyLlmGating` | `true` | `false` |
 | `journeyLlmSkipScoreThreshold` | `3` | — |
+| `retagDimensionsAfterTicketLlm` | `true` | `false` |
 | `themeMatchMode` | `hybrid`（保持现网） | — |
 
 回滚组合：`ticketLlmMode=separate` + `taggingPipelineOrder=legacy` + `journeyLlmGating=false` → 行为≈改造前。
@@ -50,12 +51,13 @@
 | # | 场景 | 步骤 | 预期 | 通过 |
 |---|------|------|------|------|
 | 3.1 | 小批量导入 | 导入 10~20 条 EIP 投诉 Excel | 完成页显示 enrichmentStats；无报错 | ☐ |
-| 3.2 | 打标顺序 | 观察导入进度文案 | 默认：**请求场景/类型 → 工单 LLM → 用户旅程 → 情绪**（ticket_first） | ☐ |
-| 3.3 | 来源字段 | 打开 2~3 条详情 | `customerRequestSource` / `painPointSource` / `optimizationSource` 为 `llm`（有 Key 时） | ☐ |
-| 3.4 | 旅程门控 | 找 1 条关键词明显命中旅程的工单 | `journeySource=rule` 且 `journeyMatchScore≥3` 时仍可有正确 journeyL1/L2 | ☐ |
-| 3.5 | 旅程 LLM | 找 1 条「未识别环节」工单 | 导入后 journey 被 LLM 填充或仍为未识别（视正文） | ☐ |
-| 3.6 | 导入 warning | 模拟 Key 无效或中断后完成导入 | 完成页 warning 含「反馈库 → 待 LLM 增强 → 补打」指引 | ☐ |
-| 3.7 | 快照 | 导入完成后 | 该月洞察快照已刷新；工作台可打开 | ☐ |
+| 3.2 | 打标顺序 | 观察导入进度文案 | 默认 ticket_first：**本地场景/类型 → 工单 LLM → LLM 语料重打场景/类型（默认开）→ 用户旅程 → 情绪** | ☐ |
+| 3.3 | LLM 语料重打 | 导入后抽查 2 条 ticket LLM 成功工单 | 请求场景/问题类型与 LLM `customerRequest`/`painPoint` 语义一致；协办对端类处理意见 → 问题类型可为「产品功能咨询」 | ☐ |
+| 3.4 | 来源字段 | 打开 2~3 条详情 | `customerRequestSource` / `painPointSource` / `optimizationSource` 为 `llm`（有 Key 时） | ☐ |
+| 3.5 | 旅程门控 | 找 1 条关键词明显命中旅程的工单 | `journeySource=rule` 且 `journeyMatchScore≥3` 时仍可有正确 journeyL1/L2 | ☐ |
+| 3.6 | 旅程 LLM | 找 1 条「未识别环节」工单 | 导入后 journey 被 LLM 填充或仍为未识别（视正文） | ☐ |
+| 3.7 | 导入 warning | 模拟 Key 无效或中断后完成导入 | 完成页 warning 含「反馈库 → 待 LLM 增强 → 补打」指引 | ☐ |
+| 3.8 | 快照 | 导入完成后 | 该月洞察快照已刷新；工作台可打开 | ☐ |
 
 ---
 
@@ -69,6 +71,8 @@
 | 4.4 | 补打旅程 LLM | 批量重打 →「仅未完成旅程 LLM 增强的工单」 | 仅旅程 + themes + 情绪；不跑 ticket LLM | ☐ |
 | 4.5 | 分批持久化 | 补打 20+ 条，中途关页或断网后重开 | 已完成批次数据仍在；可继续「待 LLM 增强」补打 | ☐ |
 | 4.6 | 提示条 | 周期内有待补打工单 | 反馈库顶部 info 条 +「补打 LLM / 补打旅程 LLM」按钮可用 | ☐ |
+| 4.7 | 维度重打开关 | 设置 → 维度打标；批量重打弹窗 | 默认勾选「工单 LLM 成功后重打…」；关闭后补打/导入不再按 LLM 语料刷新场景/类型 | ☐ |
+| 4.8 | 请求场景 V2 | 对含旧标签（如「报障与恢复」）工单批量重打 | 重打后请求场景为 V2 九类（如「报障与排错」） | ☐ |
 
 ---
 

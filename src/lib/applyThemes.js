@@ -5,7 +5,7 @@ import {
   recordHasUnknownJourney,
 } from './journeySemantic.js'
 import { resolveSettingsForLlm } from './llmClient.js'
-import { enrichRecordsWithSharedDimensions } from './dimensionTagging.js'
+import { enrichRecordsWithSharedDimensions, retagRecordsSharedDimensionsAfterTicketLlm, shouldRetagDimensionsAfterTicketLlm } from './dimensionTagging.js'
 import { enrichRecordsWithTicketLlm } from './ticketAnalysis/ticketLlmEnrichment.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 import { preserveManualTags } from './manualTagFields.js'
@@ -72,7 +72,26 @@ function finalizeThemesAndSentiment(enriched, originalById, total, onProgress, o
  * @param {import('./storage.js').AppSettings} llmSettings
  * @param {number} total
  * @param {(done: number, total: number, stage?: string) => void} [onProgress]
- * @param {{ onTicketLlmBatchPersist?: (records: import('./types.js').FeedbackRecord[]) => Promise<void> | void }} [options]
+ * @param {{ forceOverrideManualTags?: boolean; retagDimensionsAfterTicketLlm?: boolean }} [options]
+ */
+async function runPostTicketLlmDimensionRetag(records, llmSettings, total, onProgress, options = {}) {
+  if (!shouldRetagDimensionsAfterTicketLlm(llmSettings, options)) {
+    return records
+  }
+  return retagRecordsSharedDimensionsAfterTicketLlm(
+    records,
+    llmSettings,
+    (done) => onProgress?.(done, total, '请求场景与问题类型（LLM 语料）'),
+    options,
+  )
+}
+
+/**
+ * @param {import('./types.js').FeedbackRecord[]} records
+ * @param {import('./storage.js').AppSettings} llmSettings
+ * @param {number} total
+ * @param {(done: number, total: number, stage?: string) => void} [onProgress]
+ * @param {{ onTicketLlmBatchPersist?: (records: import('./types.js').FeedbackRecord[]) => Promise<void> | void; forceOverrideManualTags?: boolean; retagDimensionsAfterTicketLlm?: boolean }} [options]
  * @param {import('./storage.js').TaggingPipelineOrder} pipelineOrder
  */
 async function runLlmTaggingStages(records, llmSettings, total, onProgress, options, pipelineOrder) {
@@ -90,6 +109,13 @@ async function runLlmTaggingStages(records, llmSettings, total, onProgress, opti
             onProgress?.(done, total, '客户请求/痛点/优化建议')
           },
           { onBatchPersist: options.onTicketLlmBatchPersist },
+        )
+        enriched = await runPostTicketLlmDimensionRetag(
+          enriched,
+          llmSettings,
+          total,
+          onProgress,
+          options,
         )
       }
       continue
@@ -113,7 +139,7 @@ async function runLlmTaggingStages(records, llmSettings, total, onProgress, opti
  * @param {import('./types.js').FeedbackRecord[]} records
  * @param {import('./storage.js').AppSettings} settings
  * @param {(done: number, total: number, stage?: string) => void} [onProgress]
- * @param {{ forceOverrideManualTags?: boolean; onTicketLlmBatchPersist?: (records: import('./types.js').FeedbackRecord[]) => Promise<void> | void; ticketLlmOnly?: boolean; journeyLlmOnly?: boolean; pipelineOrder?: import('./storage.js').TaggingPipelineOrder }} [options]
+ * @param {{ forceOverrideManualTags?: boolean; onTicketLlmBatchPersist?: (records: import('./types.js').FeedbackRecord[]) => Promise<void> | void; ticketLlmOnly?: boolean; journeyLlmOnly?: boolean; pipelineOrder?: import('./storage.js').TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean }} [options]
  */
 export async function reprocessAllThemesAndSentiment(records, settings, onProgress, options = {}) {
   const total = records.length
@@ -130,6 +156,13 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
           onProgress?.(done, total, '客户请求/痛点/优化建议')
         },
         { onBatchPersist: options.onTicketLlmBatchPersist },
+      )
+      enriched = await runPostTicketLlmDimensionRetag(
+        enriched,
+        llmSettings,
+        total,
+        onProgress,
+        options,
       )
     }
     return finalizeThemesAndSentiment(enriched, originalById, total, onProgress, options)

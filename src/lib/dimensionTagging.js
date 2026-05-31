@@ -1,10 +1,20 @@
 import { getSharedProblemTypes, getSharedRequestScenes } from './taxonomyLoader.js'
-import { classifyProblemType, PROBLEM_TYPE_OTHER } from './problemTypeClassifier.js'
+import {
+  classifyProblemType,
+  isPeerSideExclusion,
+  PROBLEM_TYPE_CONSULT,
+  PROBLEM_TYPE_OTHER,
+} from './problemTypeClassifier.js'
 import {
   classifyRequestScene,
   REQUEST_SCENE_DEFAULT,
 } from './requestSceneClassifier.js'
 import { migrateRequestSceneLabel } from './tagLibrary/migrateSharedTags.js'
+import { getManualTagFields, preserveManualTags } from './manualTagFields.js'
+import {
+  buildDimensionTaggingTextForRecord,
+  buildFullTaggingTextForRecord,
+} from './ticketAnalysis/dimensionTaggingText.js'
 import {
   matchThemesByDescription,
   matchSharedDimensionHybridBatch,
@@ -16,12 +26,113 @@ import {
   isInThemeLibrary,
 } from './themeSemantic.js'
 import { captureProblemTypeCandidateIfNeeded, captureRequestSceneCandidateIfNeeded } from './tagCandidates.js'
-import { buildTaggingTextForRecord } from './taggingText.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
 const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
 const UNCLASSIFIED_PROBLEM = '未分类'
+
+/**
+ * 问题类型：决策树 + §3 对端排除（方案 A：仅全文 taggingText 扫描协办诊断）
+ * @param {string} primaryCorpus LLM/客户请求语料
+ * @param {string} fullPeerCheckText 全文（含处理意见）
+ * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
+ */
+export function resolveProblemTypeWithPeerFallback(primaryCorpus, fullPeerCheckText, rules) {
+  if (isPeerSideExclusion((fullPeerCheckText || '').trim())) {
+    return PROBLEM_TYPE_CONSULT
+  }
+  return resolveProblemTypeFromConfig(primaryCorpus, rules)
+}
+
+/**
+ * ticket LLM 成功写入客户请求或痛点时，可参与 post-LLM 维度重打
+ * @param {FeedbackRecord} record
+ */
+export function recordEligibleForPostLlmDimensionRetag(record) {
+  return record.customerRequestSource === 'llm' || record.painPointSource === 'llm'
+}
+
+/**
+ * @param {import('./storage.js').AppSettings} settings
+ * @param {{ retagDimensionsAfterTicketLlm?: boolean }} [options]
+ */
+export function shouldRetagDimensionsAfterTicketLlm(settings, options = {}) {
+  if (options.retagDimensionsAfterTicketLlm === false) return false
+  if (options.retagDimensionsAfterTicketLlm === true) return true
+  return settings?.retagDimensionsAfterTicketLlm !== false
+}
+
+/**
+ * ticket LLM 之后：按 LLM 语料重打请求场景与问题类型（默认开，尊重 manualTagFields）
+ *
+ * @param {FeedbackRecord[]} records
+ * @param {import('./storage.js').AppSettings} settings
+ * @param {(done: number, total: number) => void} [onProgress]
+ * @param {{ forceOverrideManualTags?: boolean; retagDimensionsAfterTicketLlm?: boolean }} [options]
+ */
+export async function retagRecordsSharedDimensionsAfterTicketLlm(
+  records,
+  settings,
+  onProgress,
+  options = {},
+) {
+  if (!records.length || !shouldRetagDimensionsAfterTicketLlm(settings, options)) {
+    return records
+  }
+
+  const requestRules = getSharedRequestScenes()
+  const problemRules = getSharedProblemTypes()
+  const force = options.forceOverrideManualTags === true
+  const total = records.length
+
+  return records.map((record, i) => {
+    onProgress?.(i + 1, total)
+
+    if (!recordEligibleForPostLlmDimensionRetag(record)) {
+      return record
+    }
+
+    const corpus = buildDimensionTaggingTextForRecord(record, { llmCorpusOnly: true })
+    if (!corpus.trim()) return record
+
+    const fullPeer = buildFullTaggingTextForRecord(record)
+    const manual = force ? [] : getManualTagFields(record)
+
+    let requestScene = record.requestScene
+    let problemType = record.problemType
+
+    if (force || !manual.includes('requestScene')) {
+      requestScene = resolveRequestSceneFromConfig(corpus, requestRules)
+    }
+    if (force || !manual.includes('problemType')) {
+      problemType = resolveProblemTypeWithPeerFallback(corpus, fullPeer, problemRules)
+    }
+
+    const next = { ...record, requestScene, problemType }
+
+    captureRequestSceneCandidateIfNeeded({
+      requestScene,
+      requestScenes: requestRules,
+      recordId: record.id,
+      sourceText: corpus,
+      insightPeriodId: record.insightPeriodId,
+      dataSourceType: record.dataSourceType,
+      origin: 'local_overflow',
+    })
+    captureProblemTypeCandidateIfNeeded({
+      problemType,
+      problemTypes: problemRules,
+      recordId: record.id,
+      sourceText: corpus,
+      insightPeriodId: record.insightPeriodId,
+      dataSourceType: record.dataSourceType,
+      origin: 'local_overflow',
+    })
+
+    return preserveManualTags(record, next, { forceOverride: force })
+  })
+}
 
 /**
  * 问题类型：决策树 classifier 优先；未命中时回退旧版关键词/说明打分（matchSharedLabel）
@@ -49,7 +160,8 @@ export function resolveProblemTypeFromConfig(text, rules) {
 function resolveLocalProblemTypeLabel(record, text, rules) {
   const ds = record.dataSourceType || 'complaint_ticket'
   if (TICKET_LIKE_SOURCES.includes(ds)) {
-    return resolveProblemTypeFromConfig(text, rules)
+    const fullPeer = buildFullTaggingTextForRecord(record)
+    return resolveProblemTypeWithPeerFallback(text, fullPeer, rules)
   }
   const existing = record.problemType?.trim()
   if (existing && isInThemeLibrary(existing, rules)) return existing
@@ -247,7 +359,7 @@ export async function enrichRecordsWithSharedDimensions(records, settings, onPro
 
   const requestRules = getSharedRequestScenes()
   const problemRules = getSharedProblemTypes()
-  const texts = records.map(buildTaggingTextForRecord)
+  const texts = records.map((r) => buildDimensionTaggingTextForRecord(r))
   const total = records.length
 
   const requestResults = await matchRequestScenesForRecords(

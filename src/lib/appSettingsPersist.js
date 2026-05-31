@@ -17,6 +17,7 @@ const TEAM_SHARED_KEYS = [
   'journeyLlmGating',
   'journeyLlmSkipScoreThreshold',
   'taggingPipelineOrder',
+  'retagDimensionsAfterTicketLlm',
   'optimizationMode',
   'overviewConclusionsLlm',
   'overviewPolishIncludeRecommendations',
