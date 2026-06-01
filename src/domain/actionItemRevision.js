@@ -88,3 +88,22 @@ export function formatActionItemUpdatedByLine(item) {
   const at = item.updatedAt.replace('T', ' ').slice(0, 19)
   return who ? `${who} · ${at}` : at
 }
+
+/**
+ * @param {ActionItem | null | undefined} item
+ * @returns {string}
+ */
+export function formatActionItemUpdatedAtDisplay(item) {
+  if (!item?.updatedAt) return '—'
+  const parsed = new Date(item.updatedAt)
+  if (Number.isNaN(parsed.getTime())) return item.updatedAt.replace('T', ' ').slice(0, 19)
+  return parsed.toLocaleString('zh-CN')
+}
+
+/**
+ * @param {ActionItem | null | undefined} item
+ * @returns {string}
+ */
+export function formatActionItemUpdatedByDisplay(item) {
+  return item?.updatedBy?.username?.trim() || '—'
+}

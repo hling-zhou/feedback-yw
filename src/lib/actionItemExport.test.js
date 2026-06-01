@@ -21,8 +21,8 @@ describe('actionItemExport', () => {
       journeyL1Snapshot: '使用',
       linkedTicketIds: ['T-001', 'T-002'],
       linkedDataSources: ['complaint_ticket'],
-      createdAt: '2026-05-01T00:00:00.000Z',
-      updatedAt: '2026-05-01T00:00:00.000Z',
+      updatedAt: '2026-05-01T10:00:00.000Z',
+      updatedBy: { userId: 'u1', username: 'alice' },
     },
     {
       id: 'a2',
@@ -73,6 +73,8 @@ describe('actionItemExport', () => {
     expect(rows[0]['关联工单(本周期)']).toBe('T-001')
     expect(rows[0].来源).toBe('投诉工单')
     expect(rows[0].状态).toBe('进行中')
+    expect(rows[0].最近更新人员).toBe('alice')
+    expect(rows[0].最近更新时间).toMatch(/2026/)
     expect(rows[1]['关联工单(本周期)']).toBe('')
     expect(rows[1].状态).toBe('待评估')
   })

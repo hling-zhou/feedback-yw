@@ -6,6 +6,10 @@ import {
 } from '../domain/actionItem.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
+import {
+  formatActionItemUpdatedAtDisplay,
+  formatActionItemUpdatedByDisplay,
+} from '../domain/actionItemRevision.js'
 import { listActionItems } from './actionItemClient.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
@@ -32,6 +36,8 @@ export const ACTION_ITEM_LIST_HEADERS = [
   '首次提出时间',
   '排期时间',
   '状态',
+  '最近更新时间',
+  '最近更新人员',
 ]
 
 /**
@@ -126,6 +132,8 @@ export function buildActionItemListRows(items, periodTicketIdSet) {
       首次提出时间: item.firstProposedAt || '',
       排期时间: item.scheduleAt?.trim() || '',
       状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
+      最近更新时间: formatActionItemUpdatedAtDisplay(item),
+      最近更新人员: formatActionItemUpdatedByDisplay(item),
     }
   })
 }

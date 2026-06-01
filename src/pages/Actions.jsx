@@ -49,6 +49,8 @@ import ActionItemProductStatusChart from '../components/charts/ActionItemProduct
 import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
 import {
+  formatActionItemUpdatedAtDisplay,
+  formatActionItemUpdatedByDisplay,
   formatActionItemUpdatedByLine,
   getActionItemRevision,
   toActionItemConflictError,
@@ -438,6 +440,7 @@ export default function Actions() {
       title: '产品名称',
       dataIndex: 'productName',
       width: 120,
+      fixed: 'left',
       render: (text, record) => text || record.productKey || '—',
     },
     {
@@ -445,6 +448,7 @@ export default function Actions() {
       dataIndex: 'painPointSnapshot',
       ellipsis: true,
       width: 160,
+      fixed: 'left',
     },
     {
       title: '问题类型',
@@ -539,6 +543,19 @@ export default function Actions() {
       dataIndex: 'status',
       width: 90,
       render: (status) => <ActionItemStatusTag status={status} />,
+    },
+    {
+      title: '最近更新时间',
+      key: 'updatedAt',
+      width: 168,
+      render: (_, record) => formatActionItemUpdatedAtDisplay(record),
+    },
+    {
+      title: '最近更新人员',
+      key: 'updatedBy',
+      width: 100,
+      ellipsis: true,
+      render: (_, record) => formatActionItemUpdatedByDisplay(record),
     },
     {
       title: '操作',
@@ -693,7 +710,7 @@ export default function Actions() {
           loading={loading}
           columns={columns}
           dataSource={items}
-          scroll={{ x: 1300 }}
+          scroll={{ x: 1500 }}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,

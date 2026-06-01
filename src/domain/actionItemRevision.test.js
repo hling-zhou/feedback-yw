@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyActionItemWriteMetadata,
+  formatActionItemUpdatedAtDisplay,
+  formatActionItemUpdatedByDisplay,
   getActionItemRevision,
   toActionItemConflictError,
   ACTION_ITEM_CONFLICT_CODE,
@@ -27,5 +29,20 @@ describe('actionItemRevision', () => {
       data: { code: ACTION_ITEM_CONFLICT_CODE, current: { id: 'a' }, currentRevision: 4 },
     })
     expect(err?.currentRevision).toBe(4)
+  })
+
+  it('formatActionItemUpdatedAtDisplay and formatActionItemUpdatedByDisplay', () => {
+    const item = {
+      id: 'a',
+      content: 'x',
+      status: 'in_progress',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T08:30:00.000Z',
+      updatedBy: { userId: 'u1', username: 'alice' },
+    }
+    expect(formatActionItemUpdatedByDisplay(item)).toBe('alice')
+    expect(formatActionItemUpdatedAtDisplay(item)).toMatch(/2026/)
+    expect(formatActionItemUpdatedByDisplay(null)).toBe('—')
+    expect(formatActionItemUpdatedAtDisplay(null)).toBe('—')
   })
 })
