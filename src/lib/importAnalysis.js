@@ -60,8 +60,57 @@ const SENTIMENT_LABEL_TO_KEY = Object.fromEntries(
 
 const URGENT_IMPORT_TEXT = /^(?:是|加急|高|yes|true|1)$/i
 
-/** 导出 v2 非加急为空单元格，校验时允许空（与排期 R1 不同维度）。 */
-const OPTIONAL_EMPTY_VALUE_FIELD_KEYS = new Set(['actionSchedule', 'urgency'])
+/** 导入时读取表头/单元格但不写入库内（自动优化建议由打标生成）。 */
+export const IMPORT_SKIP_WRITE_FIELD_KEYS = new Set(['optimizationProduct', 'optimizationService'])
+
+/**
+ * 去掉模板必填标记（列名末尾 *）。
+ * @param {string} header
+ */
+export function stripImportHeaderSuffix(header) {
+  return String(header ?? '')
+    .trim()
+    .replace(/\*+$/, '')
+    .trim()
+}
+
+/**
+ * @param {string[]} headers
+ * @returns {Record<string, string>} 原始表头 → Registry displayName
+ */
+export function buildImportHeaderAliasMap(headers) {
+  const knownNames = new Set(getImportColumns().map((f) => f.displayName))
+  /** @type {Record<string, string>} */
+  const aliasToDisplay = {}
+  for (const raw of headers || []) {
+    const trimmed = String(raw ?? '').trim()
+    if (!trimmed) continue
+    const stripped = stripImportHeaderSuffix(trimmed)
+    if (knownNames.has(stripped)) aliasToDisplay[trimmed] = stripped
+    else if (knownNames.has(trimmed)) aliasToDisplay[trimmed] = trimmed
+  }
+  return aliasToDisplay
+}
+
+/**
+ * @param {Record<string, string | undefined>} rawRow
+ * @param {Record<string, string>} aliasMap
+ */
+export function remapImportRowByHeaderAliases(rawRow, aliasMap) {
+  /** @type {Record<string, string | undefined>} */
+  const remapped = {}
+  for (const [key, value] of Object.entries(rawRow || {})) {
+    const trimmedKey = String(key ?? '').trim()
+    const displayName =
+      aliasMap[trimmedKey] ||
+      (() => {
+        const stripped = stripImportHeaderSuffix(trimmedKey)
+        return getImportColumns().some((f) => f.displayName === stripped) ? stripped : ''
+      })()
+    if (displayName) remapped[displayName] = value
+  }
+  return remapped
+}
 
 /**
  * @param {string[]} headers
@@ -70,7 +119,9 @@ const OPTIONAL_EMPTY_VALUE_FIELD_KEYS = new Set(['actionSchedule', 'urgency'])
 export function matchImportAnalysisHeaders(headers) {
   const knownNames = new Set(getImportColumns().map((f) => f.displayName))
   const requiredHeaders = getImportRequiredDisplayNames()
-  const normalized = (headers || []).map((h) => String(h ?? '').trim()).filter(Boolean)
+  const normalized = (headers || [])
+    .map((h) => stripImportHeaderSuffix(h))
+    .filter(Boolean)
 
   /** @type {string[]} */
   const matchedHeaders = []
@@ -123,7 +174,6 @@ export function validateImportUrgencyRaw(raw) {
  * @returns {boolean}
  */
 function isImportCellValueRequired(field) {
-  if (OPTIONAL_EMPTY_VALUE_FIELD_KEYS.has(field.fieldKey)) return false
   return field.importRequired !== false
 }
 
@@ -239,7 +289,11 @@ export function validateImportAnalysisRow(rawRow, rowIndex) {
  * @returns {ImportAnalysisValidationResult}
  */
 export function parseAndValidateImportAnalysisSheet({ headers = [], rows = [] }) {
-  const headerMatch = matchImportAnalysisHeaders(headers)
+  const aliasMap = buildImportHeaderAliasMap(headers)
+  const normalizedHeaders = (headers || [])
+    .map((h) => aliasMap[String(h ?? '').trim()] || stripImportHeaderSuffix(h))
+    .filter(Boolean)
+  const headerMatch = matchImportAnalysisHeaders(normalizedHeaders)
 
   if (!headerMatch.ok) {
     return {
@@ -267,7 +321,8 @@ export function parseAndValidateImportAnalysisSheet({ headers = [], rows = [] })
   const rowErrors = []
 
   rows.forEach((rawRow, index) => {
-    const result = validateImportAnalysisRow(rawRow, index + 1)
+    const remapped = remapImportRowByHeaderAliases(rawRow, aliasMap)
+    const result = validateImportAnalysisRow(remapped, index + 1)
     if (result.valid) validRows.push(result.row)
     else rowErrors.push(...result.errors)
   })

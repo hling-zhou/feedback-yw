@@ -2,15 +2,18 @@ import * as XLSX from 'xlsx'
 import { getImportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 /**
- * v2 导入分析结果表头（与导出 v2 / Field Registry 一致，16 列）。
+ * v2 导入分析结果表头（与导出 v2 列序一致；必填列名带 *）。
  * @returns {string[]}
  */
 export function getImportAnalysisTemplateHeaders() {
-  return getImportColumns().map((field) => field.displayName)
+  const required = new Set(getImportRequiredDisplayNames())
+  return getImportColumns().map((field) =>
+    required.has(field.displayName) ? `${field.displayName}*` : field.displayName,
+  )
 }
 
 /**
- * 导入分析必填列 displayName（不含排期，R1）。
+ * 导入分析必填列 displayName（不含排期，R1；不含 * 后缀）。
  * @returns {string[]}
  */
 export function getImportAnalysisRequiredHeaders() {

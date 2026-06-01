@@ -8,6 +8,7 @@ import {
   getDisplayCustomerRequest,
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 
 export default function FeedbackTable({ items, onSelect }) {
   if (items.length === 0) {
@@ -25,7 +26,7 @@ export default function FeedbackTable({ items, onSelect }) {
 
   const columns = [
     {
-      title: '工单/时间',
+      title: '工单',
       dataIndex: 'ticketId',
       width: 180,
       render: (_, fb) => (
@@ -116,7 +117,7 @@ export default function FeedbackTable({ items, onSelect }) {
       ),
     },
     {
-      title: '单条优化建议',
+      title: '优化建议（自动）',
       dataIndex: 'optimizationProduct',
       width: 180,
       render: (_, fb) => (
@@ -126,12 +127,12 @@ export default function FeedbackTable({ items, onSelect }) {
       ),
     },
     {
-      title: '人工复核举措',
-      dataIndex: 'manualReviewAction',
+      title: '确立举措',
+      dataIndex: 'establishedAction',
       width: 160,
       render: (_, fb) => (
         <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
-          {fb.manualReviewAction || '—'}
+          {getEstablishedActionDisplay(fb) || '—'}
         </Typography.Paragraph>
       ),
     },

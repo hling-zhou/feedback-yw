@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
   Descriptions,
   Drawer,
   Form,
@@ -12,6 +13,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
+import dayjs from 'dayjs'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
@@ -190,6 +192,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   }, [feedback])
 
   if (!feedback) return null
+
+  const libraryLinked = linkedFromLibrary && Boolean(actionId?.trim())
+  const schedulePickerValue = (() => {
+    const normalized = normalizeActionSchedule(actionSchedule)
+    if (!normalized) return null
+    const parsed = dayjs(normalized, 'YYYY-MM-DD', true)
+    return parsed.isValid() ? parsed : null
+  })()
 
   const save = async () => {
     if (saving) return
@@ -519,15 +529,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           )}
         </Card>
 
-        <Card
-          title={
-            <span className="inline-flex items-center gap-2">
-              优化建议
-              <OptimizationSourceTag record={feedback} />
-            </span>
-          }
-          size="small"
-        >
+        <Card title="优化建议" size="small">
+          <Typography.Text strong className="mb-2 block text-xs">
+            {/* 优化建议 · 自动生成 */}
+            自动生成
+          </Typography.Text>
+          <div className="mb-1">
+            <OptimizationSourceTag record={feedback} />
+          </div>
           <Descriptions
             column={1}
             size="small"
@@ -549,164 +558,137 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 : []),
             ]}
           />
+
           {canEdit ? (
-            <Form layout="vertical" className="mt-3">
-              <Typography.Text strong className="mb-2 block text-xs">
-                产品组优化建议
+            <div className="mt-4 space-y-3">
+              <Typography.Text strong className="block text-xs">
+                {/* 优化建议 · 人工复核 */}
+                人工复核
               </Typography.Text>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                产品组视角的补充建议；不参与聚类与行动建议语料收集。
-              </Typography.Text>
-              <Form.Item className="!mb-3">
-                <Input.TextArea
-                  rows={2}
-                  placeholder="默认为空"
-                  maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                  showCount
-                  value={productGroupOptimization}
-                  onChange={(e) => {
-                    setProductGroupOptimization(
-                      e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                    )
-                  }}
-                />
-              </Form.Item>
-              <Typography.Text strong className="mb-2 block text-xs">
-                设计师优化建议
-              </Typography.Text>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                体验/交互设计视角的补充建议；不参与聚类与行动建议语料收集。
-              </Typography.Text>
-              <Form.Item className="!mb-0">
-                <Input.TextArea
-                  rows={2}
-                  placeholder="默认为空"
-                  maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                  showCount
-                  value={designerOptimization}
-                  onChange={(e) => {
-                    setDesignerOptimization(
-                      e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                    )
-                  }}
-                />
-              </Form.Item>
-            </Form>
-          ) : (
-            hasDetailOptimizationContent(feedback) && (
-              <Descriptions
-                className="mt-3"
-                column={1}
-                size="small"
-                bordered
-                items={[
-                  ...(feedback.productGroupOptimization?.trim()
-                    ? [
-                        {
-                          key: 'productGroup',
-                          label: '产品组优化建议',
-                          children: feedback.productGroupOptimization.trim(),
-                        },
-                      ]
-                    : []),
-                  ...(feedback.designerOptimization?.trim()
-                    ? [
-                        {
-                          key: 'designer',
-                          label: '设计师优化建议',
-                          children: feedback.designerOptimization.trim(),
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            )
-          )}
-          {canEdit && (
-            <Form layout="vertical" className="mt-3">
-              <ActionItemSelect
-                value={actionId || undefined}
-                productKey={feedback.productKey || feedback.taxonomyKey}
-                disabled={saving}
-                onSelect={(item) => {
-                  setActionId(item.id)
-                  setEstablishedAction(item.content)
-                  setActionSchedule(item.scheduleAt || '')
-                  setLinkedFromLibrary(true)
-                }}
-                onClear={() => {
-                  setActionId('')
-                  setLinkedFromLibrary(false)
-                }}
-              />
-              <Typography.Text strong className="mb-2 mt-3 block text-xs">
-                确立举措
-              </Typography.Text>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                {linkedFromLibrary
-                  ? '已关联举措库：内容为文本副本，排期只读来自库。'
-                  : '手动输入保存时将自动写入举措库并关联本工单（R4）。'}
-              </Typography.Text>
-              <Form.Item className="!mb-3">
-                <Input.TextArea
-                  rows={3}
-                  placeholder="默认为空"
-                  maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
-                  showCount
-                  readOnly={linkedFromLibrary}
-                  value={establishedAction}
-                  onChange={(e) => {
-                    const next = e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH)
-                    setEstablishedAction(next)
-                    if (linkedFromLibrary) {
-                      setLinkedFromLibrary(false)
+              <Form layout="vertical">
+                <Form.Item label="产品组优化建议" className="!mb-3">
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="默认为空"
+                    maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                    showCount
+                    value={productGroupOptimization}
+                    onChange={(e) => {
+                      setProductGroupOptimization(
+                        e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                      )
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item label="设计师优化建议" className="!mb-3">
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="默认为空"
+                    maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                    showCount
+                    value={designerOptimization}
+                    onChange={(e) => {
+                      setDesignerOptimization(
+                        e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                      )
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item label="从举措库选择" className="!mb-3">
+                  <ActionItemSelect
+                    value={actionId || undefined}
+                    productKey={feedback.productKey || feedback.taxonomyKey}
+                    disabled={saving}
+                    onSelect={(item) => {
+                      setActionId(item.id)
+                      setEstablishedAction(item.content)
+                      setActionSchedule(item.scheduleAt || '')
+                      setLinkedFromLibrary(true)
+                    }}
+                    onClear={() => {
                       setActionId('')
+                      setLinkedFromLibrary(false)
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item label="确立举措" className="!mb-3">
+                  <Input.TextArea
+                    rows={3}
+                    placeholder="默认为空"
+                    maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
+                    showCount
+                    readOnly={libraryLinked}
+                    value={establishedAction}
+                    onChange={(e) => {
+                      setEstablishedAction(
+                        e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
+                      )
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item label="排期" className="!mb-0">
+                  <DatePicker
+                    className="w-full"
+                    format="YYYY-MM-DD"
+                    placeholder="留空 = 待评估"
+                    value={schedulePickerValue}
+                    disabled={libraryLinked || saving}
+                    allowClear={!libraryLinked}
+                    onChange={(date) =>
+                      setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
                     }
-                  }}
-                />
-              </Form.Item>
-              <Form.Item
-                label="排期"
-                className="!mb-0"
-                extra={
-                  <Typography.Text type="secondary" className="text-xs">
-                    {linkedFromLibrary
-                      ? '来自举措库，不可在此编辑。'
-                      : '可留空，表示待评估（R1）；支持日期字符串如 YYYY-MM-DD。'}
-                  </Typography.Text>
-                }
-              >
-                <Input
-                  placeholder="留空 = 待评估"
-                  value={actionSchedule}
-                  readOnly={linkedFromLibrary}
-                  allowClear={!linkedFromLibrary}
-                  onChange={(e) => setActionSchedule(normalizeActionSchedule(e.target.value))}
-                />
-              </Form.Item>
-              {linkedFromLibrary && actionId && (
-                <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  关联举措 ID：{actionId}
-                </Typography.Text>
-              )}
-            </Form>
-          )}
-          {!canEdit
-            && (getEstablishedActionDisplay(feedback) || feedback.actionSchedule?.trim()) && (
-            <div className="mt-3">
-              <Typography.Text strong className="mb-2 block text-xs">
-                确立举措
-              </Typography.Text>
-              <Typography.Paragraph className="!mb-2 whitespace-pre-wrap">
-                {getEstablishedActionDisplay(feedback) || '—'}
-              </Typography.Paragraph>
-              <Typography.Text strong className="mb-1 block text-xs">
-                排期
-              </Typography.Text>
-              <Typography.Text className="block text-sm">
-                {getActionScheduleDisplay(feedback.actionSchedule)}
-              </Typography.Text>
+                  />
+                </Form.Item>
+              </Form>
             </div>
+          ) : (
+            <>
+              {hasDetailOptimizationContent(feedback) && (
+                <Descriptions
+                  className="mt-4"
+                  column={1}
+                  size="small"
+                  bordered
+                  title="人工复核"
+                  items={[
+                    ...(feedback.productGroupOptimization?.trim()
+                      ? [
+                          {
+                            key: 'productGroup',
+                            label: '产品组优化建议',
+                            children: feedback.productGroupOptimization.trim(),
+                          },
+                        ]
+                      : []),
+                    ...(feedback.designerOptimization?.trim()
+                      ? [
+                          {
+                            key: 'designer',
+                            label: '设计师优化建议',
+                            children: feedback.designerOptimization.trim(),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              )}
+              {(getEstablishedActionDisplay(feedback) || feedback.actionSchedule?.trim()) && (
+                <div className="mt-3">
+                  <Typography.Text strong className="mb-2 block text-xs">
+                    确立举措
+                  </Typography.Text>
+                  <Typography.Paragraph className="!mb-2 whitespace-pre-wrap">
+                    {getEstablishedActionDisplay(feedback) || '—'}
+                  </Typography.Paragraph>
+                  <Typography.Text strong className="mb-1 block text-xs">
+                    排期
+                  </Typography.Text>
+                  <Typography.Text className="block text-sm">
+                    {getActionScheduleDisplay(feedback.actionSchedule)}
+                  </Typography.Text>
+                </div>
+              )}
+            </>
           )}
         </Card>
 

@@ -52,6 +52,9 @@ export function getSourceColumnValue(record, label) {
   const snap = record?.sourceColumns
   if (snap?.[label]) return snap[label]
   if (label === '处理意见') return record.handlingText || ''
+  if (label === '受理内容') {
+    return snap?.['受理内容'] || record.rawText || ''
+  }
   if (label === '问题原因' || label === '根因（必填）' || label === '根因') {
     return record.rootCause || snap?.['问题原因'] || snap?.['根因（必填）'] || ''
   }

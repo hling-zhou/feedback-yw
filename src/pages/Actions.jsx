@@ -23,7 +23,9 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
+  deriveActionItemStatusFromSchedule,
 } from '../domain/actionItem.js'
+import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   getActionItemStats,
@@ -125,6 +127,13 @@ export default function Actions() {
   const [editing, setEditing] = useState(/** @type {ActionItem | null} */ (null))
   const [editForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
+  const watchedSchedule = Form.useWatch('scheduleAt', editForm)
+
+  const hasEditSchedule = useMemo(() => {
+    if (!watchedSchedule) return false
+    if (dayjs.isDayjs(watchedSchedule)) return watchedSchedule.isValid()
+    return Boolean(String(watchedSchedule).trim())
+  }, [watchedSchedule])
 
   const productOptions = useMemo(() => {
     return listProducts(feedbacks).map((p) => ({
@@ -171,14 +180,31 @@ export default function Actions() {
     loadItems()
   }, [loadItems])
 
+  const parseScheduleForPicker = (value) => {
+    const normalized = normalizeActionSchedule(value)
+    if (!normalized) return null
+    const parsed = dayjs(normalized, 'YYYY-MM-DD', true)
+    return parsed.isValid() ? parsed : null
+  }
+
   const openEdit = (record) => {
     setEditing(record)
     editForm.setFieldsValue({
       content: record.content,
       status: record.status,
-      scheduleAt: record.scheduleAt || '',
+      scheduleAt: parseScheduleForPicker(record.scheduleAt),
     })
     setEditOpen(true)
+  }
+
+  const handleScheduleChange = (date) => {
+    if (!date) {
+      editForm.setFieldsValue({ status: 'pending_evaluation' })
+      return
+    }
+    if (editForm.getFieldValue('status') === 'pending_evaluation') {
+      editForm.setFieldsValue({ status: 'in_progress' })
+    }
   }
 
   const handleEditSave = async () => {
@@ -186,10 +212,14 @@ export default function Actions() {
     const values = await editForm.validateFields()
     setSaving(true)
     try {
+      const scheduleAt = values.scheduleAt
+        ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
+        : ''
+      const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
       const updated = await updateActionItem(editing.id, {
         content: values.content.trim(),
-        status: values.status,
-        scheduleAt: values.scheduleAt?.trim() || '',
+        status,
+        scheduleAt,
       })
       const synced = await syncLinkedTicketCopies(updated, feedbacks, updateFeedback)
       message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联工单` : '已保存')
@@ -292,7 +322,7 @@ export default function Actions() {
       ),
     },
     {
-      title: '举措状态',
+      title: '状态',
       dataIndex: 'status',
       width: 90,
       render: (status) => (
@@ -358,7 +388,7 @@ export default function Actions() {
           <Select
             mode="multiple"
             allowClear
-            placeholder="举措状态"
+            placeholder="状态"
             style={{ minWidth: 160 }}
             options={STATUS_OPTIONS}
             value={statuses}
@@ -425,11 +455,17 @@ export default function Actions() {
           >
             <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} />
           </Form.Item>
-          <Form.Item name="status" label="举措状态" rules={[{ required: true }]}>
-            <Select options={STATUS_OPTIONS} />
+          <Form.Item name="scheduleAt" label="排期">
+            <DatePicker
+              className="w-full"
+              format="YYYY-MM-DD"
+              placeholder="留空 = 待评估"
+              allowClear
+              onChange={handleScheduleChange}
+            />
           </Form.Item>
-          <Form.Item name="scheduleAt" label="排期时间">
-            <Input placeholder="可空；修改后将标记「变更」" />
+          <Form.Item name="status" label="状态" rules={[{ required: true }]}>
+            <Select options={STATUS_OPTIONS} disabled={!hasEditSchedule} />
           </Form.Item>
         </Form>
       </Modal>

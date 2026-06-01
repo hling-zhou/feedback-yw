@@ -28,6 +28,9 @@ const SENTIMENT_LABEL_TO_KEY = Object.fromEntries(
   Object.entries(SENTIMENT_LABELS).map(([key, label]) => [label, key]),
 )
 
+/** 导入时读取表头/单元格但不写入库内（自动优化建议由打标生成）。 */
+const IMPORT_SKIP_WRITE_FIELD_KEYS = new Set(['optimizationProduct', 'optimizationService'])
+
 const URGENT_IMPORT_TEXT = /^(?:是|加急|高|yes|true|1)$/i
 
 /**
@@ -197,6 +200,7 @@ export function applyImportReplace(existing, importRow) {
   let next = { ...existing }
 
   for (const field of getImportColumns()) {
+    if (IMPORT_SKIP_WRITE_FIELD_KEYS.has(field.fieldKey)) continue
     const raw = importRow[field.displayName]
     const coerced = coerceImportValue(field.fieldKey, raw)
     next = writeImportField(next, field.fieldKey, coerced)

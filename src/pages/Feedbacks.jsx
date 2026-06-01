@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Input, Segmented, Select, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Empty, Input, Modal, Segmented, Select, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import { DownloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
@@ -40,6 +40,8 @@ import {
   summarizeUnknownJourneyRecords,
   UNKNOWN_JOURNEY_REASON_LABELS,
 } from '../lib/journeyRetagSummary.js'
+import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
+import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 
 /**
  * @param {string | null | undefined} raw
@@ -87,6 +89,7 @@ export default function Feedbacks() {
   const [dataSourceFilter, setDataSourceFilter] = useState('')
   const [ticketLlmFilter, setTicketLlmFilter] = useState('')
   const [selectedTicketIds, setSelectedTicketIds] = useState(/** @type {string[]} */ ([]))
+  const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const skipTicketIdsUrlSyncRef = useRef(false)
 
@@ -555,6 +558,11 @@ export default function Feedbacks() {
           }}
         />
         <div className="ml-auto flex flex-wrap gap-2">
+          <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
+            <Button icon={<UploadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
+              导入分析结果
+            </Button>
+          </Tooltip>
           <Tooltip title="导出 v2：16 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md">
             <Button
               icon={<DownloadOutlined />}
@@ -616,6 +624,20 @@ export default function Feedbacks() {
       </div>
 
       <FeedbackDrawer feedback={selected} onClose={() => setSelected(null)} />
+
+      <Modal
+        title="导入分析结果"
+        open={importAnalysisOpen}
+        onCancel={() => setImportAnalysisOpen(false)}
+        footer={null}
+        width={720}
+        destroyOnClose
+      >
+        <ImportAnalysisPanel
+          inModal
+          onImportComplete={() => setImportAnalysisOpen(false)}
+        />
+      </Modal>
     </div>
   )
 }
@@ -658,9 +680,9 @@ function CardGrid({ items, onSelect }) {
               LLM：{fb.optimizationSuggestion}
             </Typography.Paragraph>
           )}
-          {fb.manualReviewAction && (
+          {getEstablishedActionDisplay(fb) && (
             <Typography.Paragraph className="!mb-0 !mt-1 line-clamp-2 !text-xs">
-              复核：{fb.manualReviewAction}
+              确立举措：{getEstablishedActionDisplay(fb)}
             </Typography.Paragraph>
           )}
           <Typography.Text type="secondary" className="mt-3 block text-[10px]">

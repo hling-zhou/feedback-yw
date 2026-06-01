@@ -18,6 +18,7 @@ import {
   matchImportAnalysisHeaders,
   normalizeImportAnalysisRow,
   parseAndValidateImportAnalysisSheet,
+  stripImportHeaderSuffix,
   validateImportAnalysisRow,
   validateImportSentimentRaw,
   validateImportUrgencyRaw,
@@ -37,25 +38,36 @@ function buildValidRow(overrides = {}) {
     用户旅程一级: '使用',
     用户旅程二级: '监控',
     用户情绪: '不满',
-    是否加急: '加急',
+    是否加急: '',
     产品技术优化: '产品优化',
     服务流程改进: '服务优化',
     确立举措: '举措',
     排期: '',
-    受理内容: '受理',
+    受理内容: '',
     处理意见: '处理',
-    根因排查: '根因',
+    根因排查: '',
   }
   return { ...row, ...overrides }
 }
 
 describe('importAnalysis', () => {
-  it('matchImportAnalysisHeaders accepts template headers', () => {
+  it('matchImportAnalysisHeaders accepts template headers with required * suffix', () => {
     const match = matchImportAnalysisHeaders(HEADERS)
     expect(match.ok).toBe(true)
     expect(match.missingHeaders).toEqual([])
     expect(match.matchedHeaders).toHaveLength(HEADERS.length)
     expect(match.extraHeaders).toEqual([])
+  })
+
+  it('stripImportHeaderSuffix removes trailing asterisk', () => {
+    expect(stripImportHeaderSuffix('工单号*')).toBe('工单号')
+    expect(stripImportHeaderSuffix('  排期  ')).toBe('排期')
+  })
+
+  it('matchImportAnalysisHeaders accepts export v2 headers without *', () => {
+    const exportHeaders = HEADERS.map((h) => stripImportHeaderSuffix(h))
+    const match = matchImportAnalysisHeaders(exportHeaders)
+    expect(match.ok).toBe(true)
   })
 
   it('matchImportAnalysisHeaders ignores extra columns', () => {
@@ -65,11 +77,11 @@ describe('importAnalysis', () => {
   })
 
   it('matchImportAnalysisHeaders reports missing required columns', () => {
-    const partial = HEADERS.filter((h) => h !== '工单号' && h !== '根因排查')
+    const partial = HEADERS.filter((h) => h !== '工单号*' && h !== '根因排查')
     const match = matchImportAnalysisHeaders(partial)
     expect(match.ok).toBe(false)
     expect(match.missingHeaders).toContain('工单号')
-    expect(match.missingHeaders).toContain('根因排查')
+    expect(match.missingHeaders).not.toContain('根因排查')
   })
 
   it('validateImportSentimentRaw and urgency enums', () => {
@@ -132,7 +144,7 @@ describe('importAnalysis', () => {
   })
 
   it('coerceImportAnalysisRow parses sentiment and urgency', () => {
-    const byDisplayName = normalizeImportAnalysisRow(buildValidRow())
+    const byDisplayName = normalizeImportAnalysisRow(buildValidRow({ 是否加急: '加急' }))
     const coerced = coerceImportAnalysisRow(byDisplayName)
     expect(coerced.sentiment).toBe('negative')
     expect(coerced.urgency).toBe('high')
@@ -241,8 +253,24 @@ describe('importAnalysis apply (P3-3)', () => {
     expect(updated.establishedAction).toBe('')
     expect(updated.manualReviewOptimization).toBe('')
     expect(updated.actionSchedule).toBe('')
-    expect(updated.optimizationProduct).toBe('')
-    expect(updated.optimizationService).toBe('')
+    expect(updated.optimizationProduct).toBe('旧产品优化')
+    expect(updated.optimizationService).toBe('旧服务优化')
+  })
+
+  it('applyImportAnalysisToRecords does not overwrite auto optimization columns', () => {
+    const validation = parseAndValidateImportAnalysisSheet({
+      headers: HEADERS,
+      rows: [
+        buildValidRow({
+          产品技术优化: '导入不应写入',
+          服务流程改进: '导入不应写入',
+        }),
+      ],
+    })
+    const result = applyImportAnalysisToRecords([existingRecord], validation.validRows)
+    const updated = result.updatedRecords[0]
+    expect(updated.optimizationProduct).toBe('旧产品优化')
+    expect(updated.optimizationService).toBe('旧服务优化')
   })
 
   it('applyImportAnalysisToRecords skips unknown ticketId (R3)', () => {

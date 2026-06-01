@@ -1,53 +1,23 @@
-import { useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Tabs } from 'antd'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
 import Import from './Import.jsx'
-import ImportAnalysis from './ImportAnalysis.jsx'
 
-/** @type {const} */
-const TAB_TICKETS = 'tickets'
-/** @type {const} */
+/** @deprecated 旧 Tab 参数，重定向至反馈库 */
 const TAB_ANALYSIS = 'analysis'
 
 export default function ImportHub() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const activeKey = searchParams.get('tab') === TAB_ANALYSIS ? TAB_ANALYSIS : TAB_TICKETS
-
-  const items = useMemo(
-    () => [
-      {
-        key: TAB_TICKETS,
-        label: '导入工单 Excel',
-        children: <Import embedded />,
-      },
-      {
-        key: TAB_ANALYSIS,
-        label: '导入分析结果',
-        children: <ImportAnalysis />,
-      },
-    ],
-    [],
-  )
+  const [searchParams] = useSearchParams()
+  if (searchParams.get('tab') === TAB_ANALYSIS) {
+    return <Navigate to="/feedbacks" replace />
+  }
 
   return (
     <div>
       <PageHeader
-        title="数据导入"
-        desc="「导入工单 Excel」用于新增工单入库；「导入分析结果」按工单号覆盖已有分析字段，二者互不相同。"
+        title="导入工单"
+        desc="选择数据来源与数据月份，将工单 Excel 入库并自动打标；分析结果回写请使用反馈库「导入分析结果」。"
       />
-      <Tabs
-        className="page-section"
-        activeKey={activeKey}
-        onChange={(key) => {
-          if (key === TAB_TICKETS) {
-            setSearchParams({})
-          } else {
-            setSearchParams({ tab: key })
-          }
-        }}
-        items={items}
-      />
+      <Import embedded />
     </div>
   )
 }

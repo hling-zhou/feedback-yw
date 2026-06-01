@@ -76,8 +76,11 @@ function exportRegistryFieldValue(record, field) {
       return readFieldValue(record, field)
     case 'actionSchedule':
       return record.actionSchedule || ''
-    case 'acceptanceContent':
+    case 'acceptanceContent': {
+      const fromSnapshot = getSourceColumnValue(record, '受理内容')
+      if (fromSnapshot?.trim()) return fromSnapshot
       return extractAcceptanceTextFromFields(taggingFields)
+    }
     case 'handlingOpinion':
       return extractHandlingTextFromFields(taggingFields)
     case 'rootCauseReview':

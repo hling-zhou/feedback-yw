@@ -79,6 +79,15 @@ describe('ticketAnalysisExport v2', () => {
     expect(row).not.toHaveProperty('问题摘要')
   })
 
+  it('acceptanceContent prefers sourceColumns 受理内容 over structured rawText parsing', () => {
+    const row = recordToExportRowV2({
+      ...baseRecord,
+      rawText: '',
+      sourceColumns: { 受理内容: '20260506144725X450975120 受理原文' },
+    })
+    expect(row['受理内容']).toBe('20260506144725X450975120 受理原文')
+  })
+
   it('consultation ticket export has no 终判 column and same v2 shape', () => {
     const row = recordToExportRowV2({
       ...baseRecord,

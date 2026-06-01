@@ -56,6 +56,19 @@ export function deriveActionItemStatusFromSchedule(scheduleAt) {
 }
 
 /**
+ * 排期「变更」标签：仅当原排期非空且与新值不同时为 true（空→有值不算变更）。
+ *
+ * @param {string | undefined | null} previousScheduleAt
+ * @param {string | undefined | null} nextScheduleAt
+ */
+export function computeScheduleChanged(previousScheduleAt, nextScheduleAt) {
+  const previous = String(previousScheduleAt ?? '').trim()
+  const next = String(nextScheduleAt ?? '').trim()
+  if (!previous) return false
+  return previous !== next
+}
+
+/**
  * @param {unknown} value
  * @returns {value is ActionItemStatus}
  */
@@ -156,13 +169,17 @@ export function mergeActionItemPatch(existing, patch) {
   const scheduleChanged =
     patch.scheduleChanged !== undefined
       ? Boolean(patch.scheduleChanged)
-      : patch.scheduleAt !== undefined && scheduleAt !== String(existing.scheduleAt ?? '').trim()
-        ? true
+      : patch.scheduleAt !== undefined
+        ? Boolean(existing.scheduleChanged) ||
+          computeScheduleChanged(existing.scheduleAt, scheduleAt)
         : Boolean(existing.scheduleChanged)
 
   let status = patch.status ?? existing.status
   if (patch.scheduleAt !== undefined && patch.status == null) {
     status = deriveActionItemStatusFromSchedule(scheduleAt)
+  }
+  if (patch.scheduleAt !== undefined && !scheduleAt) {
+    status = 'pending_evaluation'
   }
 
   const linkedTicketIds =

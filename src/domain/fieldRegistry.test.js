@@ -43,11 +43,16 @@ describe('fieldRegistry', () => {
     expect(imp.map((c) => c.fieldKey)).toEqual(exp.map((c) => c.fieldKey))
   })
 
-  it('import required excludes 排期 (R1)', () => {
+  it('import required excludes 排期 (R1) and optional manual/source columns', () => {
     const required = getImportRequiredDisplayNames()
     expect(required).not.toContain('排期')
     expect(required).toContain('确立举措')
-    expect(required).toContain('根因排查')
+    expect(required).toContain('处理意见')
+    expect(required).not.toContain('根因排查')
+    expect(required).not.toContain('受理内容')
+    expect(required).not.toContain('是否加急')
+    expect(required).not.toContain('产品技术优化')
+    expect(required).not.toContain('服务流程改进')
   })
 
   it('getFieldByKey returns definition', () => {
