@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyLlmPolishToConclusions,
   mergePolishedRecommendation,
   mergePolishedRecommendations,
-  mergePolishedHighlights,
 } from './overviewConclusionsLLM.js'
 
 const baseRuleRec = {
@@ -136,54 +134,5 @@ describe('overviewConclusionsLLM merge helpers', () => {
     expect(polished[0].summary).toMatch(/连通性诊断/)
     expect(polished[0].evidenceTicketIds).toEqual(['T-001', 'T-002', 'T-003'])
     expect(polished[0].measureSource).toBe('AI 润色')
-  })
-
-  it('mergePolishedHighlights patches body by id and keeps metrics', () => {
-    const ruleHighlights = [
-      {
-        id: 'h1',
-        type: 'journey',
-        title: '旅程热点',
-        body: '原始正文',
-        metrics: [{ label: '工单数', value: '5' }],
-      },
-    ]
-
-    const merged = mergePolishedHighlights(ruleHighlights, [
-      { id: 'h1', title: '旅程热点（润色）', body: '润色后的旅程热点解读正文。' },
-    ])
-
-    expect(merged[0].body).toMatch(/润色/)
-    expect(merged[0].metrics).toEqual([{ label: '工单数', value: '5' }])
-  })
-
-  it('applyLlmPolishToConclusions sets hybrid source and preserves rule summary fallback', () => {
-    const conclusions = {
-      generatedAt: new Date().toISOString(),
-      source: 'rule',
-      sampleSize: 10,
-      periodLabel: '2025-06',
-      executiveSummary: '规则摘要',
-      highlights: [],
-      recommendations: [baseRuleRec],
-      dataCoverageNotes: [],
-    }
-
-    const result = applyLlmPolishToConclusions(conclusions, {
-      executiveSummary: '润色后的执行摘要。',
-      recommendations: [
-        {
-          id: 'rec-journey-1',
-          summary: '在公网访问环节上线连通性自助诊断，降低协查成本。',
-          details: ['诊断覆盖安全组', '固化 TOP 根因 playbook'],
-        },
-      ],
-    })
-
-    expect(result.source).toBe('hybrid')
-    expect(result.ruleExecutiveSummary).toBe('规则摘要')
-    expect(result.executiveSummary).toBe('润色后的执行摘要。')
-    expect(result.recommendations[0].evidenceTicketIds).toEqual(['T-001', 'T-002', 'T-003'])
-    expect(result.llmPolishedAt).toBeTruthy()
   })
 })

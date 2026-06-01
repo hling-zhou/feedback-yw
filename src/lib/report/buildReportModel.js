@@ -5,12 +5,7 @@ import {
 } from '../../domain/enums.js'
 import { formatPeriodRange } from '../../domain/insightPeriod.js'
 import { formatRecommendationForExport } from '../planningRecommendations.js'
-import {
-  OVERVIEW_EXECUTIVE_SUMMARY_TITLE,
-  OVERVIEW_INSIGHTS_PANEL_TITLE,
-  OVERVIEW_INSIGHTS_REPORT_PREFIX,
-  PLANNING_RECOMMENDATIONS_PANEL_TITLE,
-} from '../../domain/overviewConclusions.js'
+import { PLANNING_RECOMMENDATIONS_PANEL_TITLE } from '../../domain/overviewConclusions.js'
 import { formatWanTouRatio } from '../wanTouRatio.js'
 
 /**
@@ -86,55 +81,13 @@ export function buildReportModel({
     }
 
     const conclusions = overview.conclusions
-    if (conclusions && !conclusions.insufficientData) {
-      const sourceLabel =
-        conclusions.source === 'hybrid' ? '规则聚合 + LLM 润色' : '规则聚合'
-
-      if (conclusions.recommendations?.length) {
-        sections.push({
-          title: PLANNING_RECOMMENDATIONS_PANEL_TITLE,
-          rows: conclusions.recommendations.map((r, i) => ({
-            label: `${i + 1}. [${r.priority}] ${r.summary || r.text}`,
-            value: formatRecommendationForExport(r),
-          })),
-        })
-      }
-
+    if (conclusions?.recommendations?.length) {
       sections.push({
-        title: `${OVERVIEW_INSIGHTS_REPORT_PREFIX} · ${OVERVIEW_EXECUTIVE_SUMMARY_TITLE}`,
-        body: conclusions.executiveSummary,
-        rows: [
-          { label: '结论来源', value: sourceLabel },
-          { label: '工单样本', value: `${conclusions.sampleSize} 条` },
-          ...(conclusions.llmPolishedAt
-            ? [
-                {
-                  label: 'LLM 润色时间',
-                  value: conclusions.llmPolishedAt.slice(0, 19).replace('T', ' '),
-                },
-              ]
-            : []),
-        ],
-      })
-      if (conclusions.dataCoverageNotes?.length) {
-        sections.push({
-          title: '数据覆盖说明',
-          body: conclusions.dataCoverageNotes.join('\n'),
-        })
-      }
-      if (conclusions.highlights?.length) {
-        sections.push({
-          title: '分维度洞察',
-          rows: conclusions.highlights.map((h) => ({
-            label: h.title,
-            value: [h.body, ...(h.metrics || []).map((m) => `${m.label}:${m.value}`)].join(' · '),
-          })),
-        })
-      }
-    } else if (conclusions?.insufficientData) {
-      sections.push({
-        title: OVERVIEW_INSIGHTS_PANEL_TITLE,
-        body: conclusions.executiveSummary,
+        title: PLANNING_RECOMMENDATIONS_PANEL_TITLE,
+        rows: conclusions.recommendations.map((r, i) => ({
+          label: `${i + 1}. [${r.priority}] ${r.summary || r.text}`,
+          value: formatRecommendationForExport(r),
+        })),
       })
     }
 

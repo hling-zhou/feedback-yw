@@ -6,7 +6,6 @@ import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
 import { preserveRecommendationUserOverrides } from '../lib/planningRecommendationDisplay.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
-import { polishOverviewConclusionsWithLLM } from '../lib/overviewConclusionsLLM.js'
 import { yieldToMainThread } from '../lib/yieldToMainThread.js'
 
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
@@ -130,23 +129,6 @@ export async function rebuildOverviewSnapshot({
         ),
         recommendationsLlm: existingOverview.conclusions.recommendationsLlm,
       },
-    }
-  }
-
-  if (
-    settings?.overviewConclusionsLlm &&
-    snapshot.conclusions &&
-    !snapshot.conclusions.insufficientData
-  ) {
-    try {
-      snapshot = {
-        ...snapshot,
-        conclusions: await polishOverviewConclusionsWithLLM(snapshot.conclusions, settings, {
-          includeRecommendations: settings.overviewPolishIncludeRecommendations !== false,
-        }),
-      }
-    } catch (err) {
-      console.warn('概述结论 LLM 润色失败，已保留规则结论:', err)
     }
   }
 

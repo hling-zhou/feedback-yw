@@ -103,10 +103,7 @@ import {
   compactDuplicateTagCandidates,
   upsertPendingTagCandidate,
 } from '../lib/tagCandidates.js'
-import {
-  polishOverviewConclusionsWithLLM,
-  polishPlanningRecommendationsWithLLM,
-} from '../lib/overviewConclusionsLLM.js'
+import { polishPlanningRecommendationsWithLLM } from '../lib/overviewConclusionsLLM.js'
 import { loadPlanningConfig } from '../lib/planningConfigLoader.js'
 import {
   META_KEY_OVERRIDES,
@@ -1084,30 +1081,6 @@ export function InsightsProvider({ children }) {
       setSnapshotStaleReason('data')
     }
   }, [currentPeriod, executeSnapshotRebuild, message])
-
-  const polishOverviewConclusions = useCallback(async () => {
-    if (!currentPeriod || !overviewSnapshot?.conclusions) {
-      throw new Error('请先生成洞察快照')
-    }
-    if (overviewSnapshot.conclusions.insufficientData) {
-      throw new Error('当前周期样本不足，无法润色结论')
-    }
-    const polished = await polishOverviewConclusionsWithLLM(
-      overviewSnapshot.conclusions,
-      settings,
-      {
-        includeRecommendations: settings.overviewPolishIncludeRecommendations !== false,
-      },
-    )
-    const updated = {
-      ...overviewSnapshot,
-      conclusions: polished,
-      generatedAt: new Date().toISOString(),
-    }
-    await adapter.putSnapshot(updated)
-    setOverviewSnapshot(updated)
-    return polished
-  }, [adapter, currentPeriod, overviewSnapshot, settings])
 
   const polishPlanningRecommendations = useCallback(async () => {
     if (!currentPeriod || !overviewSnapshot?.conclusions) {
@@ -2325,7 +2298,6 @@ export function InsightsProvider({ children }) {
       rebuildSourceSnapshot,
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
-      polishOverviewConclusions,
       polishPlanningRecommendations,
       updateRecommendationUserOverride,
       clearRecommendationUserOverride,
@@ -2408,7 +2380,6 @@ export function InsightsProvider({ children }) {
       rebuildSourceSnapshot,
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
-      polishOverviewConclusions,
       polishPlanningRecommendations,
       updateRecommendationUserOverride,
       clearRecommendationUserOverride,

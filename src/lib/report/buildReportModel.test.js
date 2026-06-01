@@ -33,11 +33,9 @@ describe('buildReportModel', () => {
     })
 
     const titles = model.sections.map((s) => s.title)
-    expect(titles).toContain('周期洞察 · 摘要')
-    expect(titles).toContain('分维度洞察')
     expect(titles).toContain('行动建议')
-    const summary = model.sections.find((s) => s.title === '周期洞察 · 摘要')
-    expect(summary?.body).toMatch(/公网访问/)
+    expect(titles).not.toContain('周期洞察 · 摘要')
+    expect(titles).not.toContain('分维度洞察')
   })
 
   it('includes wan tou ratio section when rows provided', () => {

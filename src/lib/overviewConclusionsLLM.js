@@ -19,7 +19,6 @@ import {
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
-/** @typedef {import('../domain/overviewConclusions.js').OverviewConclusionHighlight} OverviewConclusionHighlight */
 
 const DEFAULT_MODEL = 'gpt-4o-mini'
 const MIN_SUMMARY_LENGTH = PLANNING_RECOMMENDATION_LIMITS.minSummaryLength
@@ -32,15 +31,7 @@ export function buildLlmContextPayload(conclusions) {
   return {
     periodLabel: conclusions.periodLabel,
     sampleSize: conclusions.sampleSize,
-    executiveSummary: conclusions.executiveSummary,
     dataCoverageNotes: conclusions.dataCoverageNotes || [],
-    highlights: (conclusions.highlights || []).map((h) => ({
-      id: h.id,
-      type: h.type,
-      title: h.title,
-      body: h.body,
-      metrics: h.metrics,
-    })),
     recommendations: (conclusions.recommendations || []).map((r) => ({
       id: r.id,
       text: r.text,
@@ -187,160 +178,6 @@ export function mergePolishedRecommendations(ruleRecs, llmItems) {
   })
 
   return dedupeRecommendationsSemantically(merged, MAX_RECOMMENDATIONS)
-}
-
-/**
- * @param {OverviewConclusionHighlight[]} ruleHighlights
- * @param {unknown[]} llmHighlights
- * @returns {OverviewConclusionHighlight[]}
- */
-export function mergePolishedHighlights(ruleHighlights, llmHighlights) {
-  if (!Array.isArray(llmHighlights) || !llmHighlights.length) {
-    return ruleHighlights
-  }
-
-  const bodyById = new Map(
-    llmHighlights
-      .filter((h) => h?.id && h?.body)
-      .map((h) => [h.id, { title: h.title, body: h.body }]),
-  )
-
-  return ruleHighlights.map((h) => {
-    const patch = bodyById.get(h.id)
-    if (!patch) return h
-    return {
-      ...h,
-      title: patch.title?.trim() || h.title,
-      body: patch.body.trim(),
-      metrics: h.metrics,
-    }
-  })
-}
-
-/**
- * @param {OverviewConclusions} conclusions
- * @param {Record<string, unknown>} parsed
- * @returns {OverviewConclusions}
- */
-/**
- * @param {OverviewConclusions} conclusions
- * @param {Record<string, unknown>} parsed
- * @param {{ includeRecommendations?: boolean }} [opts]
- */
-export function applyLlmPolishToConclusions(conclusions, parsed, opts = {}) {
-  const includeRecommendations = opts.includeRecommendations !== false
-  const ruleExecutiveSummary = conclusions.executiveSummary
-  const highlights = mergePolishedHighlights(conclusions.highlights || [], parsed.highlights)
-  const recList = parsed.recommendations || parsed.measures || parsed.items
-  const recommendations = includeRecommendations
-    ? limitPlanningRecommendations(
-        Array.isArray(recList)
-          ? mergePolishedRecommendations(conclusions.recommendations || [], recList)
-          : (conclusions.recommendations || []).map((r) => sanitizePlanningRecommendation(r)),
-      )
-    : conclusions.recommendations || []
-
-  const polishedRecIds = includeRecommendations
-    ? recommendations
-        .filter((r) => r.measureSource === 'AI 润色')
-        .map((r) => r.id)
-    : []
-
-  return {
-    ...conclusions,
-    source: 'hybrid',
-    ruleExecutiveSummary,
-    executiveSummary:
-      typeof parsed.executiveSummary === 'string' && parsed.executiveSummary.trim()
-        ? parsed.executiveSummary.trim()
-        : ruleExecutiveSummary,
-    highlights,
-    recommendations,
-    llmPolishedAt: new Date().toISOString(),
-    recommendationsLlm: includeRecommendations
-      ? {
-          polishedAt: new Date().toISOString(),
-          itemIds: polishedRecIds,
-        }
-      : conclusions.recommendationsLlm,
-  }
-}
-
-/**
- * @param {OverviewConclusions} conclusions
- * @param {import('./storage.js').AppSettings} settings
- * @returns {Promise<OverviewConclusions>}
- */
-/**
- * @param {OverviewConclusions} conclusions
- * @param {import('./storage.js').AppSettings} settings
- * @param {{ includeRecommendations?: boolean }} [opts]
- */
-export async function polishOverviewConclusionsWithLLM(conclusions, settings, opts = {}) {
-  if (!canUseSemanticMatch(settings)) {
-    throw new Error('服务端未配置 LLM（LLM_API_KEY），无法润色结论')
-  }
-  if (conclusions.insufficientData) {
-    return conclusions
-  }
-
-  const ctx = buildLlmContextPayload(conclusions)
-
-  const systemPrompt = `你是移动云用户反馈洞察分析师，面向产品规划与体验改进负责人撰写「周期洞察概览」。
-
-要求：
-1. 基于输入的规则聚合结论与指标，输出更易读、可决策的中文表述；不得编造输入中不存在的数据、产品名称、工单号或数量。
-2. executiveSummary：2～4 句，概括体量、核心问题、旅程热点、风险与建议方向。
-3. highlights：按 id 逐条润色 body（title 可微调），保持 metrics 含义不变，每条 body 80～160 字。
-4. recommendations：${opts.includeRecommendations === false ? '本次不需要输出 recommendations 字段。' : '必须对输入中的每一条规则建议逐条润色（id 一一对应，不可遗漏）；仅润色 summary、productActions、serviceActions，勿改 clusterRootCause/verification。'}
-${opts.includeRecommendations === false ? '' : buildPlanningRecommendationLlmRules()}
-5. 禁止空泛套话（如「持续关注」「纳入规划」而无实质内容）。
-6. 只返回 JSON：
-{
-  "executiveSummary": "string",
-  "highlights": [{"id":"string","title":"string","body":"string"}],
-  ${opts.includeRecommendations === false ? '' : '"recommendations": [{"id":"string","summary":"string","productActions":["string",...],"serviceActions":["string",...]}, ...]'}
-}`
-
-  const userPrompt = `洞察周期：${ctx.periodLabel}
-工单样本：${ctx.sampleSize} 条
-数据说明：${ctx.dataCoverageNotes.join('；') || '无'}
-
-【规则摘要】
-${ctx.executiveSummary}
-
-【分维度结论】
-${ctx.highlights.map((h) => `- [${h.id}] ${h.title}：${h.body}`).join('\n')}
-
-${
-  opts.includeRecommendations === false
-    ? ''
-    : `【规则行动建议】（润色时保留 id，勿改 priority/category/工单依据）
-${ctx.recommendations
-  .map(
-    (r, i) =>
-      `${i + 1}. id=${r.id} [${r.priority}/${r.category}] ${r.summary || r.text}${
-        r.details?.length ? `\n   详细：${r.details.join('；')}` : ''
-      }${r.evidenceNote ? `\n   依据说明：${r.evidenceNote}` : ''}${
-        r.evidenceTicketIds?.length ? `\n   工单：${r.evidenceTicketIds.join('、')}` : ''
-      }`,
-  )
-  .join('\n') || '无'}`
-}
-
-请润色并输出 JSON。`
-
-  const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
-    temperature: 0.3,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-  })
-
-  const parsed = parseLlmMessageContent(getLlmCompletionText(data))
-  return applyLlmPolishToConclusions(conclusions, parsed, opts)
 }
 
 /**

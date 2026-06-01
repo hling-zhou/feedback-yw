@@ -38,10 +38,11 @@ describe('buildOverviewConclusions', () => {
     })
     expect(conclusions.insufficientData).toBe(true)
     expect(conclusions.highlights).toHaveLength(0)
-    expect(conclusions.executiveSummary).toMatch(/样本不足/)
+    expect(conclusions.executiveSummary).toBe('')
+    expect(conclusions.recommendations).toHaveLength(0)
   })
 
-  it('builds highlights and recommendations from ticket snapshots', () => {
+  it('builds recommendations without period insight highlights', () => {
     const period = createInsightPeriod({
       label: '2025-06',
       granularity: 'month',
@@ -82,9 +83,8 @@ describe('buildOverviewConclusions', () => {
     })
 
     expect(conclusions.insufficientData).toBe(false)
-    expect(conclusions.executiveSummary).toMatch(/2025-06/)
-    expect(conclusions.highlights.length).toBeGreaterThan(0)
-    expect(conclusions.highlights.some((h) => h.type === 'problem_type')).toBe(true)
+    expect(conclusions.executiveSummary).toBe('')
+    expect(conclusions.highlights).toHaveLength(0)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
     expect(conclusions.recommendationsMeta?.recommendationEngine).toBeDefined()
     const rec = conclusions.recommendations[0]

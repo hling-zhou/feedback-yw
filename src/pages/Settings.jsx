@@ -252,25 +252,6 @@ export default function Settings() {
             </Radio.Group>
           </Card>
 
-          <Card title="综合概述 · 周期洞察概览">
-            <Checkbox
-              checked={settings.overviewConclusionsLlm === true}
-              onChange={(e) => setTeamSettings({ overviewConclusionsLlm: e.target.checked })}
-            >
-              生成/刷新洞察快照时，自动用 LLM 润色周期洞察概览
-            </Checkbox>
-            <Checkbox
-              className="mt-3"
-              checked={settings.overviewPolishIncludeRecommendations !== false}
-              disabled={!settings.overviewConclusionsLlm}
-              onChange={(e) =>
-                setTeamSettings({ overviewPolishIncludeRecommendations: e.target.checked })
-              }
-            >
-              自动润色时一并润色行动建议
-            </Checkbox>
-          </Card>
-
           <Card title="导出数据">
             <Typography.Text type="secondary" className="text-xs">
               当前共 {feedbacks.length} 条反馈

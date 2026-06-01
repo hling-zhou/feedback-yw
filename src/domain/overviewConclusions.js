@@ -5,15 +5,6 @@ import {
 
 /** @typedef {import('./enums.js').DataSourceType} DataSourceType */
 
-/** 综合概述背景解读模块：摘要 + 分维度洞察 */
-export const OVERVIEW_INSIGHTS_PANEL_TITLE = '周期洞察概览'
-
-/** PDF / 报告章节前缀 */
-export const OVERVIEW_INSIGHTS_REPORT_PREFIX = '周期洞察'
-
-/** 周期洞察概览 · 摘要区块标题（UI / 报告） */
-export const OVERVIEW_EXECUTIVE_SUMMARY_TITLE = '摘要'
-
 /** 行动建议独立模块（产品规划主价值区） */
 export const PLANNING_RECOMMENDATIONS_PANEL_TITLE = '行动建议'
 

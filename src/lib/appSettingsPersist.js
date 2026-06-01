@@ -19,8 +19,6 @@ const TEAM_SHARED_KEYS = [
   'taggingPipelineOrder',
   'retagDimensionsAfterTicketLlm',
   'optimizationMode',
-  'overviewConclusionsLlm',
-  'overviewPolishIncludeRecommendations',
 ]
 
 /** 仅本机 localStorage 的大模型连接参数 */

@@ -5,11 +5,8 @@ import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateO
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
-import OverviewConclusionsPanel from './OverviewConclusionsPanel.jsx'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
-import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
-import { PLANNING_RECOMMENDATIONS_ANCHOR_ID } from '../../domain/overviewConclusions.js'
 
 /**
  * @param {Object} props
@@ -76,20 +73,13 @@ export default function OverviewTab({
   })
 
   const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
-  const recommendationCount = displayConclusions?.recommendations?.length ?? 0
   const generatedAtLabel = snapshot.generatedAt?.slice(0, 16).replace('T', ' ')
 
   return (
     <div className="space-y-6">
-      <WorkbenchAnalysisHint
-        className="!rounded-lg"
-        recommendationCount={recommendationCount}
-        planningAnchor={`#${PLANNING_RECOMMENDATIONS_ANCHOR_ID}`}
-      />
-
       <Typography.Text type="secondary" className="block text-xs">
         周期内反馈 {total} 条 · 有数据来源 {activeSourceCount}/{DATA_SOURCE_TYPES.length} · 快照{' '}
-        {generatedAtLabel}
+        {generatedAtLabel}；刷新/生成洞察 可获取最新结果。
       </Typography.Text>
 
       {recommendationsPendingRefresh && (
@@ -117,15 +107,6 @@ export default function OverviewTab({
       <PlanningRecommendationsPanel
         conclusions={displayConclusions}
         feedbacks={feedbacks}
-      />
-
-      <OverviewConclusionsPanel
-        conclusions={displayConclusions}
-        snapshotStatus={snapshot.status}
-        onSourceTab={onSourceTab}
-        onRebuild={onRebuildSnapshots}
-        rebuilding={snapshotRebuilding}
-        rebuildDisabled={rebuildDisabled}
       />
 
       {wanTouRows.length > 0 && (
