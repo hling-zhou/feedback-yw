@@ -15,7 +15,7 @@ import {
 } from 'antd'
 import dayjs from 'dayjs'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
-import { RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
+import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
 import {
   getDisplayCustomerRequest,
@@ -26,7 +26,11 @@ import { TAG_UNRECOGNIZED } from '../lib/ticketAnalysis/tagLabels.js'
 import { normalizeSentiment, normalizeUrgencyLevel, SENTIMENT_LABELS } from '../lib/sentiment.js'
 import { getTaxonomyForRecord } from '../lib/productTaxonomy.js'
 import { mapTaxonomySelectOptions, resolveTagDefinition } from '../lib/tagDefinitions.js'
-import { CustomerRequestSourceTag, PainPointSourceTag, OptimizationSourceTag } from './tags/TicketAnalysisSourceTag.jsx'
+import {
+  AutoOptimizationSourceTag,
+  CustomerRequestSourceTag,
+  PainPointSourceTag,
+} from './tags/TicketAnalysisSourceTag.jsx'
 import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
@@ -71,6 +75,12 @@ import {
   shouldIncludeRootCauseReviewInSave,
 } from '../domain/rootCauseReview.js'
 import { useAuth } from '../context/AuthContext.jsx'
+
+const RETAG_DEFAULT_TIP =
+  '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点，以及优化建议（自动生成）。其他不修改。'
+
+const SAVE_DETAIL_TIP =
+  '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
 export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const { feedbacks, updateFeedback, reprocessOne, retagSession } = useFeedbacks()
@@ -250,6 +260,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
 
   const bulkRetagActive = retagSession.active
   const manualTagHint = formatManualTagFieldsHint(feedback)
+  const retagTooltipTitle = bulkRetagActive
+    ? RETAG_DETAIL_IN_PROGRESS_TIP
+    : manualTagHint
+      ? `${RETAG_DEFAULT_TIP}\n以下维度已人工保存，重新打标时将保留：${manualTagHint}。`
+      : RETAG_DEFAULT_TIP
 
   const handleRetag = async () => {
     if (bulkRetagActive) return
@@ -276,15 +291,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
         (canEdit || canRetag) ? (
           <div className="flex gap-2">
             {canRetag && (
-              <Tooltip
-                title={
-                  bulkRetagActive
-                    ? RETAG_IN_PROGRESS_TIP
-                    : manualTagHint
-                      ? `重新打标将保留人工维护的：${manualTagHint}`
-                      : undefined
-                }
-              >
+              <Tooltip title={retagTooltipTitle}>
                 <span className="flex flex-1">
                   <Button
                     block
@@ -299,9 +306,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               </Tooltip>
             )}
             {canEdit && (
-              <Button type="primary" className="flex-1" loading={saving} onClick={save}>
-                保存
-              </Button>
+              <Tooltip title={SAVE_DETAIL_TIP}>
+                <span className="flex flex-1">
+                  <Button type="primary" className="flex-1" loading={saving} onClick={save}>
+                    保存
+                  </Button>
+                </span>
+              </Tooltip>
             )}
           </div>
         ) : null
@@ -530,12 +541,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
         </Card>
 
         <Card title="优化建议" size="small">
-          <Typography.Text strong className="mb-2 block text-xs">
-            {/* 优化建议 · 自动生成 */}
-            自动生成
-          </Typography.Text>
-          <div className="mb-1">
-            <OptimizationSourceTag record={feedback} />
+          <div className="mb-2 inline-flex flex-wrap items-center gap-2">
+            <Typography.Text strong className="text-xs">
+              {/* 优化建议 · 自动生成 */}
+              自动生成
+            </Typography.Text>
+            <AutoOptimizationSourceTag record={feedback} />
           </div>
           <Descriptions
             column={1}
@@ -544,14 +555,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
             items={[
               {
                 key: 'product',
-                label: '产品/技术优化',
+                label: '产品/技术优化（自动）',
                 children: feedback.optimizationProduct?.trim() || '—',
               },
               ...(optimizationServiceText
                 ? [
                     {
                       key: 'service',
-                      label: '服务/流程改进',
+                      label: '服务/流程改进（自动）',
                       children: optimizationServiceText,
                     },
                   ]
@@ -560,86 +571,104 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           />
 
           {canEdit ? (
-            <div className="mt-4 space-y-3">
-              <Typography.Text strong className="block text-xs">
-                {/* 优化建议 · 人工复核 */}
-                人工复核
-              </Typography.Text>
-              <Form layout="vertical">
-                <Form.Item label="产品组优化建议" className="!mb-3">
-                  <Input.TextArea
-                    rows={2}
-                    placeholder="默认为空"
-                    maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                    showCount
-                    value={productGroupOptimization}
-                    onChange={(e) => {
-                      setProductGroupOptimization(
-                        e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                      )
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item label="设计师优化建议" className="!mb-3">
-                  <Input.TextArea
-                    rows={2}
-                    placeholder="默认为空"
-                    maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                    showCount
-                    value={designerOptimization}
-                    onChange={(e) => {
-                      setDesignerOptimization(
-                        e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                      )
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item label="从举措库选择" className="!mb-3">
-                  <ActionItemSelect
-                    value={actionId || undefined}
-                    productKey={feedback.productKey || feedback.taxonomyKey}
-                    disabled={saving}
-                    onSelect={(item) => {
-                      setActionId(item.id)
-                      setEstablishedAction(item.content)
-                      setActionSchedule(item.scheduleAt || '')
-                      setLinkedFromLibrary(true)
-                    }}
-                    onClear={() => {
-                      setActionId('')
-                      setLinkedFromLibrary(false)
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item label="确立举措" className="!mb-3">
-                  <Input.TextArea
-                    rows={3}
-                    placeholder="默认为空"
-                    maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
-                    showCount
-                    readOnly={libraryLinked}
-                    value={establishedAction}
-                    onChange={(e) => {
-                      setEstablishedAction(
-                        e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
-                      )
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item label="排期" className="!mb-0">
-                  <DatePicker
-                    className="w-full"
-                    format="YYYY-MM-DD"
-                    placeholder="留空 = 待评估"
-                    value={schedulePickerValue}
-                    disabled={libraryLinked || saving}
-                    allowClear={!libraryLinked}
-                    onChange={(date) =>
-                      setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
-                    }
-                  />
-                </Form.Item>
-              </Form>
+            <div className="mt-4 space-y-4">
+              <div className="space-y-3">
+                <Typography.Text strong className="block text-xs">
+                  {/* 优化建议 · 人工复核 */}
+                  人工复核
+                </Typography.Text>
+                <Form layout="vertical">
+                  <Form.Item label="产品组优化建议" className="!mb-3">
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="默认为空"
+                      maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                      showCount
+                      value={productGroupOptimization}
+                      onChange={(e) => {
+                        setProductGroupOptimization(
+                          e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                        )
+                      }}
+                    />
+                  </Form.Item>
+                  <Form.Item label="设计师优化建议" className="!mb-0">
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="默认为空"
+                      maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                      showCount
+                      value={designerOptimization}
+                      onChange={(e) => {
+                        setDesignerOptimization(
+                          e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                        )
+                      }}
+                    />
+                  </Form.Item>
+                </Form>
+              </div>
+
+              <div className="space-y-3">
+                <Typography.Text strong className="block text-xs">
+                  {/* 优化建议 · 确立举措 */}
+                  确立举措
+                </Typography.Text>
+                <Form layout="vertical">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Typography.Text className="shrink-0 text-sm after:content-[':']">
+                      从举措库选择
+                    </Typography.Text>
+                    <div className="min-w-0 flex-1">
+                      <ActionItemSelect
+                        value={actionId || undefined}
+                        productKey={feedback.productKey || feedback.taxonomyKey}
+                        disabled={saving}
+                        onSelect={(item) => {
+                          setActionId(item.id)
+                          setEstablishedAction(item.content)
+                          setActionSchedule(item.scheduleAt || '')
+                          setLinkedFromLibrary(true)
+                        }}
+                        onClear={() => {
+                          setActionId('')
+                          setEstablishedAction('')
+                          setActionSchedule('')
+                          setLinkedFromLibrary(false)
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <Form.Item label="举措内容" className="!mb-3">
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="默认为空"
+                      maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
+                      showCount
+                      disabled={libraryLinked || saving}
+                      value={establishedAction}
+                      onChange={(e) => {
+                        setEstablishedAction(
+                          e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
+                        )
+                      }}
+                    />
+                  </Form.Item>
+                  <Form.Item label="排期" className="!mb-0">
+                    <DatePicker
+                      className="w-full"
+                      format="YYYY-MM-DD"
+                      placeholder="留空 = 待评估"
+                      value={schedulePickerValue}
+                      disabled={libraryLinked || saving}
+                      allowClear={!libraryLinked}
+                      onChange={(date) =>
+                        setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
+                      }
+                    />
+                  </Form.Item>
+                </Form>
+              </div>
             </div>
           ) : (
             <>
@@ -673,19 +702,27 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 />
               )}
               {(getEstablishedActionDisplay(feedback) || feedback.actionSchedule?.trim()) && (
-                <div className="mt-3">
-                  <Typography.Text strong className="mb-2 block text-xs">
+                <div className="mt-4 space-y-2">
+                  <Typography.Text strong className="block text-xs">
                     确立举措
                   </Typography.Text>
-                  <Typography.Paragraph className="!mb-2 whitespace-pre-wrap">
-                    {getEstablishedActionDisplay(feedback) || '—'}
-                  </Typography.Paragraph>
-                  <Typography.Text strong className="mb-1 block text-xs">
-                    排期
-                  </Typography.Text>
-                  <Typography.Text className="block text-sm">
-                    {getActionScheduleDisplay(feedback.actionSchedule)}
-                  </Typography.Text>
+                  <Descriptions
+                    column={1}
+                    size="small"
+                    bordered
+                    items={[
+                      {
+                        key: 'content',
+                        label: '举措内容',
+                        children: getEstablishedActionDisplay(feedback) || '—',
+                      },
+                      {
+                        key: 'schedule',
+                        label: '排期',
+                        children: getActionScheduleDisplay(feedback.actionSchedule),
+                      },
+                    ]}
+                  />
                 </div>
               )}
             </>

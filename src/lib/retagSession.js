@@ -29,6 +29,9 @@ export const RETAG_BLOCKED_BY_IMPORT_TIP =
 
 export const RETAG_IN_PROGRESS_TIP = '打标进行中'
 
+/** 工单详情等入口：批量打标进行中时禁用单条重新打标 */
+export const RETAG_DETAIL_IN_PROGRESS_TIP = '批量重新打标进行中，请待完成后再试。'
+
 /** 批量打标后台执行说明（确认框 / 进度条） */
 export const RETAG_BACKGROUND_RUN_HINT = '任务在后台执行，可切换至其他页面，完成后将通知您'
 

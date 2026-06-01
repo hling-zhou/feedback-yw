@@ -180,6 +180,12 @@ export function writeImportField(record, fieldKey, value) {
     case 'rootCauseReview':
       next.rootCauseReview = String(value ?? '')
       break
+    case 'productGroupOptimization':
+      next.productGroupOptimization = String(value ?? '')
+      break
+    case 'designerOptimization':
+      next.designerOptimization = String(value ?? '')
+      break
     default:
       break
   }

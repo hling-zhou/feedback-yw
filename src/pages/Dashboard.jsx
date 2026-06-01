@@ -67,7 +67,7 @@ export default function Dashboard() {
             description="暂无数据"
           >
             <Link to="/import">
-              <Button type="primary">导入工单</Button>
+              <Button type="primary">数据导入</Button>
             </Link>
           </Empty>
         </Card>

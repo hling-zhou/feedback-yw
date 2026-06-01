@@ -14,8 +14,8 @@ export default function ImportHub() {
   return (
     <div>
       <PageHeader
-        title="导入工单"
-        desc="选择数据来源与数据月份，将工单 Excel 入库并自动打标；分析结果回写请使用反馈库「导入分析结果」。"
+        title="数据导入"
+        desc="选择数据来源与数据月份，将 Excel 入库并自动打标；分析结果回写请使用反馈库「导入分析结果」。"
       />
       <Import embedded />
     </div>

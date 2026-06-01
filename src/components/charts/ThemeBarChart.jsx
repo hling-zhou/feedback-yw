@@ -1,5 +1,14 @@
 import { useMemo } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 import BarCountLabel from './BarCountLabel.jsx'
 import CategoryAxisTick from './CategoryAxisTick.jsx'
 import {
@@ -9,7 +18,7 @@ import {
   horizontalBarChartLayout,
 } from './chartConstants.js'
 
-export default function ThemeBarChart({ data, onBarClick }) {
+export default function ThemeBarChart({ data, onBarClick, activeLabel }) {
   const chartData = useMemo(
     () =>
       (data || []).slice(0, 10).map((t) => ({
@@ -77,6 +86,12 @@ export default function ThemeBarChart({ data, onBarClick }) {
           cursor={onBarClick ? 'pointer' : 'default'}
           onClick={(d) => onBarClick?.(d.fullName)}
         >
+          {axisData.map((entry) => (
+            <Cell
+              key={entry.fullName}
+              fill={activeLabel === entry.fullName ? '#4338CA' : '#6366F1'}
+            />
+          ))}
           <BarCountLabel />
         </Bar>
       </BarChart>

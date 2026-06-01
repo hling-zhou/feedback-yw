@@ -111,6 +111,8 @@ describe('overridePolicy', () => {
       服务流程改进: '服务优化',
       确立举措: '新举措',
       排期: '',
+      产品组优化建议: '新产品组建议',
+      设计师优化建议: '新设计师建议',
       受理内容: '新受理',
       处理意见: '新处理',
       根因排查: '新根因排查',
@@ -125,6 +127,8 @@ describe('overridePolicy', () => {
     expect(out.establishedAction).toBe('新举措')
     expect(out.manualReviewOptimization).toBe('新举措')
     expect(out.actionSchedule).toBe('')
+    expect(out.productGroupOptimization).toBe('新产品组建议')
+    expect(out.designerOptimization).toBe('新设计师建议')
     expect(out.rawText).toBe('新受理')
     expect(out.handlingText).toBe('新处理')
     expect(out.rootCauseReview).toBe('新根因排查')
@@ -152,6 +156,8 @@ describe('overridePolicy', () => {
       服务流程改进: 'h',
       确立举措: 'i',
       排期: '',
+      产品组优化建议: '',
+      设计师优化建议: '',
       受理内容: 'j',
       处理意见: 'k',
       根因排查: 'l',

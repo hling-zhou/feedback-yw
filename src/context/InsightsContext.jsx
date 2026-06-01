@@ -94,7 +94,10 @@ import {
   SNAPSHOT_AUTO_REBUILD_DEBOUNCE_MS,
   snapshotsHavePeriodData,
 } from '../lib/snapshotAutoRebuild.js'
-import { formatInsightRebuildProgress } from '../lib/insightRebuildClient.js'
+import {
+  formatInsightRebuildProgress,
+  formatInsightRebuildSuccessMessage,
+} from '../lib/insightRebuildClient.js'
 import {
   compactDuplicateTagCandidates,
   upsertPendingTagCandidate,
@@ -746,7 +749,13 @@ export function InsightsProvider({ children }) {
   }, [markSnapshotsStale])
 
   const executeSnapshotRebuild = useCallback(
-    async ({ period, recordsForBuild, updateUi = true, preferServerJob = true }) => {
+    async ({
+      period,
+      recordsForBuild,
+      updateUi = true,
+      preferServerJob = true,
+      userInitiated = false,
+    }) => {
       if (!period || !storageReady) return null
 
       const useServerJob =
@@ -755,11 +764,14 @@ export function InsightsProvider({ children }) {
         typeof adapter.waitForInsightRebuild === 'function'
 
       snapshotRebuildInProgressRef.current = true
-      setSnapshotRebuilding('all')
+      setSnapshotRebuilding(useServerJob ? '排队中…' : '准备中…')
       try {
         if (useServerJob) {
-          const { job } = await adapter.startInsightRebuild(period.id)
-          await adapter.waitForInsightRebuild(job.id, (runningJob) => {
+          const { job: initialJob, started } = await adapter.startInsightRebuild(period.id)
+          if (!started) {
+            setSnapshotRebuilding('等待进行中的重建任务…')
+          }
+          const job = await adapter.waitForInsightRebuild(initialJob.id, (runningJob) => {
             setSnapshotRebuilding(formatInsightRebuildProgress(runningJob) || '重建中…')
           })
           if (updateUi && period.id === currentPeriodId) {
@@ -771,7 +783,7 @@ export function InsightsProvider({ children }) {
             setSnapshotStaleReason('data')
           }
           emit('SnapshotBuilt', { periodId: period.id, scope: 'all', serverJob: true })
-          return null
+          return { serverJob: true, job, userInitiated }
         }
 
         const mergedFeedbacks = recordsForBuild ?? feedbacksRef.current
@@ -794,7 +806,7 @@ export function InsightsProvider({ children }) {
           setSnapshotStaleReason('data')
         }
         emit('SnapshotBuilt', { periodId: period.id, scope: 'all' })
-        return result
+        return { serverJob: false, userInitiated }
       } finally {
         snapshotRebuildInProgressRef.current = false
         setSnapshotRebuilding(null)
@@ -1052,12 +1064,25 @@ export function InsightsProvider({ children }) {
     if (!currentPeriod || importLockRef.current) return
     clearTimeout(snapshotRebuildTimerRef.current)
     snapshotRebuildPendingRef.current = null
-    await snapshotRebuildChainRef.current
-    snapshotRebuildChainRef.current = snapshotRebuildChainRef.current.then(() =>
-      executeSnapshotRebuild({ period: currentPeriod, recordsForBuild: feedbacksRef.current }),
-    )
-    await snapshotRebuildChainRef.current
-  }, [currentPeriod, executeSnapshotRebuild])
+    await snapshotRebuildChainRef.current.catch(() => {})
+    const task = executeSnapshotRebuild({
+      period: currentPeriod,
+      recordsForBuild: feedbacksRef.current,
+      userInitiated: true,
+    })
+    snapshotRebuildChainRef.current = snapshotRebuildChainRef.current.then(() => task)
+    try {
+      const result = await task
+      if (result?.userInitiated) {
+        message.success(formatInsightRebuildSuccessMessage(result), 5)
+      }
+    } catch (err) {
+      console.warn('[snapshots] 手动刷新洞察失败:', err)
+      message.error(err instanceof Error ? err.message : '洞察生成失败', 6)
+      setSnapshotsStale(true)
+      setSnapshotStaleReason('data')
+    }
+  }, [currentPeriod, executeSnapshotRebuild, message])
 
   const polishOverviewConclusions = useCallback(async () => {
     if (!currentPeriod || !overviewSnapshot?.conclusions) {

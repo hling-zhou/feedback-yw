@@ -46,10 +46,37 @@ export async function listActionItems(query = {}) {
 }
 
 /**
- * @returns {Promise<{ counts: Record<ActionItemStatus, number> }>}
+ * @typedef {Object} ActionItemProductStatusRow
+ * @property {string} productKey
+ * @property {string} productName
+ * @property {Record<ActionItemStatus, number>} counts
+ * @property {number} total
  */
-export async function getActionItemStats() {
-  return apiFetch('/api/actions/stats')
+
+/**
+ * @typedef {Object} ActionItemProductStatusRow
+ * @property {string} productKey
+ * @property {string} productName
+ * @property {Record<ActionItemStatus, number>} counts
+ * @property {number} total
+ */
+
+/**
+ * @param {ActionItemListQuery} [query]
+ * @returns {Promise<{ counts: Record<ActionItemStatus, number>; byProduct: ActionItemProductStatusRow[] }>}
+ */
+export async function getActionItemStats(query = {}) {
+  const params = new URLSearchParams()
+  if (query.productKey) params.set('productKey', query.productKey)
+  if (query.productKeys) params.set('productKeys', query.productKeys)
+  if (query.status) params.set('status', query.status)
+  if (query.statuses) params.set('statuses', query.statuses)
+  if (query.ticketId) params.set('ticketId', query.ticketId)
+  if (query.firstProposedFrom) params.set('firstProposedFrom', query.firstProposedFrom)
+  if (query.firstProposedTo) params.set('firstProposedTo', query.firstProposedTo)
+  if (query.search) params.set('search', query.search)
+  const qs = params.toString()
+  return apiFetch(`/api/actions/stats${qs ? `?${qs}` : ''}`)
 }
 
 /**

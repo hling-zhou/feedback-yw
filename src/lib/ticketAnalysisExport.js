@@ -245,7 +245,7 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
     runExport()
     message.success(
       useV2
-        ? `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，16 列）${totalHint}`
+        ? `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`
         : `已导出 ${records.length} 条（旧版列）${totalHint}`,
     )
     return

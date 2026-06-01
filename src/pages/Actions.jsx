@@ -9,7 +9,6 @@ import {
   Popover,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Tooltip,
@@ -23,6 +22,7 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
+  aggregateActionItemsByProductStatus,
   deriveActionItemStatusFromSchedule,
 } from '../domain/actionItem.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
@@ -36,18 +36,13 @@ import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
+import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
+import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
 
 const PAGE_SIZE = 20
-
-const STATUS_TAG_COLORS = {
-  pending_evaluation: 'default',
-  in_progress: 'blue',
-  completed: 'green',
-  suspended: '',
-}
 
 const STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((value) => ({
   label: ACTION_ITEM_STATUS_LABELS[value],
@@ -115,6 +110,9 @@ export default function Actions() {
       suspended: 0,
     }),
   )
+  const [statsByProduct, setStatsByProduct] = useState(
+    /** @type {import('../lib/actionItemClient.js').ActionItemProductStatusRow[]} */ ([]),
+  )
 
   const [productKeys, setProductKeys] = useState(/** @type {string[]} */ ([]))
   const [statuses, setStatuses] = useState(/** @type {ActionItemStatus[]} */ ([]))
@@ -142,24 +140,47 @@ export default function Actions() {
     }))
   }, [feedbacks])
 
+  const listQuery = useMemo(
+    () => ({
+      productKeys: productKeys.length ? productKeys.join(',') : undefined,
+      statuses: statuses.length ? statuses.join(',') : undefined,
+      ticketId: ticketId.trim() || undefined,
+      firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
+      firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+    }),
+    [productKeys, statuses, ticketId, dateRange],
+  )
+
   const loadStats = useCallback(async () => {
     try {
-      const data = await getActionItemStats()
-      setStats(data.counts)
-    } catch {
-      /* ignore stats errors */
+      const data = await getActionItemStats(listQuery)
+      const counts = {
+        pending_evaluation: 0,
+        in_progress: 0,
+        completed: 0,
+        suspended: 0,
+        ...(data.counts || {}),
+      }
+      setStats(counts)
+
+      let byProduct = Array.isArray(data.byProduct) ? data.byProduct : []
+      const total = ACTION_ITEM_STATUSES.reduce((sum, status) => sum + (counts[status] ?? 0), 0)
+      if (!byProduct.length && total > 0) {
+        const result = await listActionItems({ ...listQuery, limit: 500, offset: 0 })
+        byProduct = aggregateActionItemsByProductStatus(result.items)
+      }
+      setStatsByProduct(byProduct)
+    } catch (err) {
+      console.warn('[Actions] 加载统计失败:', err)
+      message.warning(err instanceof Error ? err.message : '加载统计失败')
     }
-  }, [])
+  }, [listQuery])
 
   const loadItems = useCallback(async () => {
     setLoading(true)
     try {
       const result = await listActionItems({
-        productKeys: productKeys.length ? productKeys.join(',') : undefined,
-        statuses: statuses.length ? statuses.join(',') : undefined,
-        ticketId: ticketId.trim() || undefined,
-        firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
-        firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+        ...listQuery,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       })
@@ -170,7 +191,7 @@ export default function Actions() {
     } finally {
       setLoading(false)
     }
-  }, [productKeys, statuses, ticketId, dateRange, page])
+  }, [listQuery, page])
 
   useEffect(() => {
     loadStats()
@@ -325,11 +346,7 @@ export default function Actions() {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      render: (status) => (
-        <Tag color={STATUS_TAG_COLORS[status] || 'default'}>
-          {ACTION_ITEM_STATUS_LABELS[status] || status}
-        </Tag>
-      ),
+      render: (status) => <ActionItemStatusTag status={status} />,
     },
     {
       title: '操作',
@@ -356,23 +373,49 @@ export default function Actions() {
     <div className="space-y-4">
       <PageHeader
         title="举措与进展"
-        desc="集中查看确立举措及完成进展，支持筛选、预警与行内编辑。"
+        desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。"
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {ACTION_ITEM_STATUSES.map((status) => (
-          <Card key={status} size="small" className="!border-ink-100">
-            <Statistic
-              title={ACTION_ITEM_STATUS_LABELS[status]}
-              value={stats[status] ?? 0}
-              styles={{ content: { fontSize: 22 } }}
-            />
-          </Card>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-ink-800">首次提出时间</span>
+        <DatePicker.RangePicker
+          size="small"
+          placeholder={['起', '止']}
+          value={dateRange}
+          onChange={(v) => {
+            setDateRange(v)
+            setPage(1)
+          }}
+        />
       </div>
 
+      <Card size="small" className="!border-ink-100" styles={{ body: { overflow: 'visible' } }}>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {ACTION_ITEM_STATUSES.map((status) => (
+              <div
+                key={status}
+                className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1"
+              >
+                <span className="text-xs text-ink-500">{ACTION_ITEM_STATUS_LABELS[status]}</span>
+                <span className="text-base font-semibold tabular-nums text-ink-900">
+                  {stats[status] ?? 0}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <Typography.Text type="secondary" className="mb-2 block text-xs">
+              分产品 · 分状态
+            </Typography.Text>
+            <ActionItemProductStatusChart data={statsByProduct} />
+          </div>
+        </div>
+      </Card>
+
       <Card size="small" className="!border-ink-100">
-        <Space wrap className="w-full">
+        <Space wrap className="mb-3 w-full">
           <Select
             mode="multiple"
             allowClear
@@ -397,14 +440,6 @@ export default function Actions() {
               setPage(1)
             }}
           />
-          <DatePicker.RangePicker
-            placeholder={['首次提出起', '首次提出止']}
-            value={dateRange}
-            onChange={(v) => {
-              setDateRange(v)
-              setPage(1)
-            }}
-          />
           <Input.Search
             allowClear
             placeholder="关联工单号"
@@ -413,11 +448,15 @@ export default function Actions() {
             onChange={(e) => setTicketId(e.target.value)}
             onSearch={() => setPage(1)}
           />
-          <Button onClick={() => loadItems()}>刷新</Button>
+          <Button
+            onClick={() => {
+              loadItems()
+              loadStats()
+            }}
+          >
+            刷新
+          </Button>
         </Space>
-      </Card>
-
-      <Card size="small" className="!border-ink-100">
         <Table
           rowKey="id"
           size="small"

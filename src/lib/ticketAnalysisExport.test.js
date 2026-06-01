@@ -39,7 +39,7 @@ describe('ticketAnalysisExport v2', () => {
     expect(EXPORT_ANALYSIS_VERSION).toBe(2)
   })
 
-  it('getExportV2Headers returns 16 columns in registry order', () => {
+  it('getExportV2Headers returns 18 columns in registry order', () => {
     expect(getExportV2Headers()).toEqual([
       '工单号',
       '客户请求内容',
@@ -54,6 +54,8 @@ describe('ticketAnalysisExport v2', () => {
       '服务流程改进',
       '确立举措',
       '排期',
+      '产品组优化建议',
+      '设计师优化建议',
       '受理内容',
       '处理意见',
       '根因排查',

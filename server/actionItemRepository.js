@@ -74,12 +74,10 @@ function filterActionItemsInMemory(query, items) {
 
 /**
  * @param {ActionItemListQuery} [query]
- * @returns {ActionItemListResult}
+ * @returns {{ uniqueProductKeys: string[]; uniqueStatuses: ActionItemStatus[]; items: ActionItem[] }}
  */
-function listActionItems(query = {}) {
+function getFilteredActionItems(query = {}) {
   const db = getDb()
-  const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 500)
-  const offset = Math.max(Number(query.offset) || 0, 0)
 
   /** @type {string[]} */
   const clauses = []
@@ -129,6 +127,18 @@ function listActionItems(query = {}) {
   if (uniqueStatuses.length > 1) {
     filtered = filtered.filter((item) => uniqueStatuses.includes(item.status))
   }
+
+  return { uniqueProductKeys, uniqueStatuses, items: filtered }
+}
+
+/**
+ * @param {ActionItemListQuery} [query]
+ * @returns {ActionItemListResult}
+ */
+function listActionItems(query = {}) {
+  const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 500)
+  const offset = Math.max(Number(query.offset) || 0, 0)
+  const { items: filtered } = getFilteredActionItems(query)
   const total = filtered.length
   const items = filtered.slice(offset, offset + limit).map((item) => applyActionItemWarningLevel(item))
 
@@ -181,12 +191,11 @@ function deleteActionItem(id) {
 }
 
 /**
+ * @param {ActionItemListQuery} [query]
  * @returns {Record<ActionItemStatus, number>}
  */
-function countActionItemsByStatus() {
-  const rows = getDb()
-    .prepare('SELECT status, COUNT(*) AS n FROM action_items GROUP BY status')
-    .all()
+function countActionItemsByStatus(query = {}) {
+  const { items } = getFilteredActionItems(query)
   /** @type {Record<ActionItemStatus, number>} */
   const counts = {
     pending_evaluation: 0,
@@ -194,10 +203,57 @@ function countActionItemsByStatus() {
     completed: 0,
     suspended: 0,
   }
-  for (const row of rows) {
-    if (isActionItemStatus(row.status)) counts[row.status] = row.n
+  for (const item of items) {
+    if (isActionItemStatus(item.status)) counts[item.status] += 1
   }
   return counts
+}
+
+/**
+ * @typedef {Object} ActionItemProductStatusRow
+ * @property {string} productKey
+ * @property {string} productName
+ * @property {Record<ActionItemStatus, number>} counts
+ * @property {number} total
+ */
+
+/**
+ * @param {ActionItemListQuery} [query]
+ * @returns {ActionItemProductStatusRow[]}
+ */
+function aggregateActionItemsByProductStatus(query = {}) {
+  const { items } = getFilteredActionItems(query)
+  /** @type {Map<string, ActionItemProductStatusRow>} */
+  const map = new Map()
+
+  for (const item of items) {
+    const productKey = item.productKey?.trim() || '_unknown'
+    const productName = item.productName?.trim() || item.productKey?.trim() || '未标注产品'
+    let row = map.get(productKey)
+    if (!row) {
+      row = {
+        productKey,
+        productName,
+        counts: {
+          pending_evaluation: 0,
+          in_progress: 0,
+          completed: 0,
+          suspended: 0,
+        },
+        total: 0,
+      }
+      map.set(productKey, row)
+    }
+    if (isActionItemStatus(item.status)) {
+      row.counts[item.status] += 1
+      row.total += 1
+    }
+  }
+
+  return [...map.values()].sort((a, b) => {
+    if (b.total !== a.total) return b.total - a.total
+    return a.productName.localeCompare(b.productName, 'zh-CN')
+  })
 }
 
 /**
@@ -234,5 +290,6 @@ export const actionItemRepository = {
   putActionItem,
   deleteActionItem,
   countActionItemsByStatus,
+  aggregateActionItemsByProductStatus,
   unlinkTicketsFromActionItems,
 }

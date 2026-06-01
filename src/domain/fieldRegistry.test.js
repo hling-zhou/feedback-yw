@@ -14,9 +14,9 @@ import {
 } from './fieldRegistry.js'
 
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (16 columns)', () => {
+  it('exports v2 column order matches design (18 columns)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(16)
+    expect(cols).toHaveLength(18)
     expect(cols.map((c) => c.displayName)).toEqual([
       '工单号',
       '客户请求内容',
@@ -31,6 +31,8 @@ describe('fieldRegistry', () => {
       '服务流程改进',
       '确立举措',
       '排期',
+      '产品组优化建议',
+      '设计师优化建议',
       '受理内容',
       '处理意见',
       '根因排查',
@@ -46,13 +48,15 @@ describe('fieldRegistry', () => {
   it('import required excludes 排期 (R1) and optional manual/source columns', () => {
     const required = getImportRequiredDisplayNames()
     expect(required).not.toContain('排期')
-    expect(required).toContain('确立举措')
+    expect(required).not.toContain('确立举措')
     expect(required).toContain('处理意见')
     expect(required).not.toContain('根因排查')
     expect(required).not.toContain('受理内容')
     expect(required).not.toContain('是否加急')
     expect(required).not.toContain('产品技术优化')
     expect(required).not.toContain('服务流程改进')
+    expect(required).not.toContain('产品组优化建议')
+    expect(required).not.toContain('设计师优化建议')
   })
 
   it('getFieldByKey returns definition', () => {
@@ -83,7 +87,7 @@ describe('fieldRegistry', () => {
     expect(l1).toBeDefined()
     expect(isFieldApplicable(l1, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
-    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(16)
+    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(18)
   })
 
   it('cluster roles: pain primary and optimization corpus', () => {

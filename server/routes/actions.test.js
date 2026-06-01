@@ -128,6 +128,9 @@ describeActions('actions API (P4-1)', () => {
       headers: authHeader('viewer'),
     })
     expect(JSON.parse(statsRes.body).counts.in_progress).toBe(1)
+    const statsBody = JSON.parse(statsRes.body)
+    expect(statsBody.byProduct?.length).toBeGreaterThan(0)
+    expect(statsBody.byProduct[0].productKey).toBe('vpc')
 
     const patchRes = await app.inject({
       method: 'PATCH',

@@ -243,3 +243,42 @@ export function unlinkTicketFromActionItem(item, ticketId) {
     updatedAt: new Date().toISOString(),
   })
 }
+
+/**
+ * 前端兜底：按产品 × 状态聚合（与 server/actionItemRepository 逻辑一致）。
+ * @param {ActionItem[]} items
+ * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; total: number }[]}
+ */
+export function aggregateActionItemsByProductStatus(items) {
+  /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; total: number }>} */
+  const map = new Map()
+
+  for (const item of items || []) {
+    const productKey = item.productKey?.trim() || '_unknown'
+    const productName = item.productName?.trim() || item.productKey?.trim() || '未标注产品'
+    let row = map.get(productKey)
+    if (!row) {
+      row = {
+        productKey,
+        productName,
+        counts: {
+          pending_evaluation: 0,
+          in_progress: 0,
+          completed: 0,
+          suspended: 0,
+        },
+        total: 0,
+      }
+      map.set(productKey, row)
+    }
+    if (ACTION_ITEM_STATUSES.includes(item.status)) {
+      row.counts[item.status] += 1
+      row.total += 1
+    }
+  }
+
+  return [...map.values()].sort((a, b) => {
+    if (b.total !== a.total) return b.total - a.total
+    return a.productName.localeCompare(b.productName, 'zh-CN')
+  })
+}

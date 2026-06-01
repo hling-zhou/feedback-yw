@@ -159,9 +159,16 @@ app.post('/api/auth/logout', async (request) => {
 app.get(
   '/api/users',
   { preHandler: requirePermission('manageUsers') },
-  async () => ({
-    users: listUsers().map(toPublicUser),
-  }),
+  async (request, reply) => {
+    try {
+      return { users: listUsers().map((row) => toPublicUser(row)) }
+    } catch (err) {
+      request.log.error(err)
+      return reply.code(500).send({
+        error: err instanceof Error ? err.message : '加载用户列表失败',
+      })
+    }
+  },
 )
 
 app.post(

@@ -321,7 +321,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
             {!inModal && (
               <>
                 {' '}
-                与「导入工单 Excel」不同：后者用于首次入库原始工单列。
+                与「数据导入」不同：后者用于首次入库原始数据列。
               </>
             )}
           </>

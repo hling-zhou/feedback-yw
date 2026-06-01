@@ -24,6 +24,11 @@ import {
 } from '../snapshots/recordScope.js'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { ensurePdfFontsReady } from '../lib/report/registerPdfFonts.js'
+import {
+  formatInsightRebuildButtonLabel,
+  formatInsightRebuildSpinDescription,
+} from '../lib/insightRebuildClient.js'
+import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 
 const TAB_OVERVIEW = 'overview'
 
@@ -39,7 +44,9 @@ export default function InsightWorkbench() {
     rebuildAllSnapshots,
     importSession,
     orderVolumes,
+    adapter,
   } = useInsights()
+  const insightRebuildOnServer = isApiStorageAdapter(adapter)
   const { rebuildBlocked, rebuildBlockedTip, localImport, localRetag } = useSharedBackgroundTaskBlock()
 
   const rebuildDisabled = rebuildBlocked
@@ -217,7 +224,7 @@ export default function InsightWorkbench() {
             disabledTip={rebuildDisabledTip}
             onClick={() => rebuildAllSnapshots()}
           >
-            {snapshotRebuilding ? '生成中…' : '生成 / 刷新洞察'}
+            {formatInsightRebuildButtonLabel(snapshotRebuilding)}
           </RebuildInsightsButton>
           <ExportPdfMenu
             activeSource={activeTab === TAB_OVERVIEW ? undefined : activeTab}
@@ -268,7 +275,9 @@ export default function InsightWorkbench() {
       {(hasAnyData || snapshotRebuilding || overviewDisplay) && (
         <Spin
           spinning={Boolean(snapshotRebuilding)}
-          description="正在根据最新数据生成洞察快照，请稍候…"
+          description={formatInsightRebuildSpinDescription(snapshotRebuilding, {
+            serverJob: insightRebuildOnServer,
+          })}
           className="page-section block"
         >
           <WorkbenchAnalysisNav

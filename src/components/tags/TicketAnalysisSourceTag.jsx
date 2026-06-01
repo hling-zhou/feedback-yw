@@ -1,5 +1,6 @@
 import { Tag } from 'antd'
 import {
+  getAutoOptimizationSource,
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
@@ -52,6 +53,20 @@ export function OptimizationSourceTag({ record }) {
     <TicketAnalysisSourceTag
       source={getOptimizationSource(record)}
       title="单条优化建议来源（人工复核优先）"
+    />
+  )
+}
+
+/**
+ * @param {import('../../lib/types.js').FeedbackRecord} record
+ */
+export function AutoOptimizationSourceTag({ record }) {
+  const source = getAutoOptimizationSource(record)
+  if (source === 'manual') return null
+  return (
+    <TicketAnalysisSourceTag
+      source={source}
+      title="自动优化建议来源（规则或大模型）"
     />
   )
 }

@@ -26,7 +26,7 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
-import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
+import { exportTicketAnalysisWithConfirm, getExportV2Headers } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
   countRecordsNeedingTicketLlmEnrichment,
@@ -563,7 +563,7 @@ export default function Feedbacks() {
               导入分析结果
             </Button>
           </Tooltip>
-          <Tooltip title="导出 v2：16 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md">
+          <Tooltip title={`导出 v2：${getExportV2Headers().length} 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md`}>
             <Button
               icon={<DownloadOutlined />}
               disabled={!filtered.length}

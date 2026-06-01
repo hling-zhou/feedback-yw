@@ -1,5 +1,6 @@
 import { isNegativeSentiment } from './sentiment.js'
 import { getComplaintCauseL1Display, isComplaintTicket } from '../domain/complaintCause.js'
+import { getCommonOptimizationText } from './ticketAnalysis/ticketAnalysisSources.js'
 
 /**
  * 按字段聚合（支持 themes 等多值字段）
@@ -134,9 +135,15 @@ export function filterFeedbacks(all, filters) {
 }
 
 /**
+ * 按优化建议文案聚合 Top N（可选按旅程过滤）。
  * @param {import('./types.js').FeedbackRecord[]} items
+ * @param {string} [journeyL1]
+ * @param {string} [journeyL2]
+ * @param {{ limit?: number; keyLength?: number }} [opts]
  */
-export function topSolutionsByJourney(items, journeyL1, journeyL2) {
+export function topCommonOptimizations(items, journeyL1, journeyL2, opts = {}) {
+  const limit = opts.limit ?? 5
+  const keyLength = opts.keyLength ?? 80
   const filtered = items.filter(
     (fb) =>
       (!journeyL1 || fb.journeyL1 === journeyL1) &&
@@ -144,13 +151,18 @@ export function topSolutionsByJourney(items, journeyL1, journeyL2) {
   )
   const map = new Map()
   for (const fb of filtered) {
-    const s = fb.solutionSummary?.trim()
+    const s = getCommonOptimizationText(fb)?.trim()
     if (!s) continue
-    const key = s.slice(0, 80)
+    const key = s.slice(0, keyLength)
     map.set(key, (map.get(key) || 0) + 1)
   }
   return [...map.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, limit)
     .map(([text, count]) => ({ text, count }))
+}
+
+/** @deprecated 使用 topCommonOptimizations */
+export function topSolutionsByJourney(items, journeyL1, journeyL2) {
+  return topCommonOptimizations(items, journeyL1, journeyL2)
 }

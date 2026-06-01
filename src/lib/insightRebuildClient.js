@@ -66,3 +66,39 @@ export function formatInsightRebuildProgress(job) {
   if (job.status === 'succeeded') return null
   return job.errorSummary || job.status
 }
+
+/**
+ * @param {string | null | undefined} progress
+ */
+export function formatInsightRebuildButtonLabel(progress) {
+  if (!progress) return '生成 / 刷新洞察'
+  return progress
+}
+
+/**
+ * @param {string | null | undefined} progress
+ * @param {{ serverJob?: boolean }} [options]
+ */
+export function formatInsightRebuildSpinDescription(progress, options = {}) {
+  const { serverJob = false } = options
+  const detail = progress || '准备中…'
+  if (serverJob) {
+    return `服务端正在生成洞察快照：${detail}。完成后将自动刷新本页数据。`
+  }
+  return `正在根据最新数据生成洞察快照：${detail}，请稍候…`
+}
+
+/**
+ * @param {{ serverJob?: boolean; job?: InsightRebuildJob | null }} [result]
+ */
+export function formatInsightRebuildSuccessMessage(result = {}) {
+  const { serverJob, job } = result
+  if (serverJob) {
+    if (job?.durationMs != null && job.durationMs >= 0) {
+      const sec = (job.durationMs / 1000).toFixed(1)
+      return `洞察快照已在服务端生成完成（耗时 ${sec} 秒）`
+    }
+    return '洞察快照已在服务端生成完成'
+  }
+  return '洞察快照已生成完成'
+}

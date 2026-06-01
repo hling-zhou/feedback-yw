@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import { Button, Card, Empty, Tag, Typography } from 'antd'
 import SimpleList from './ui/SimpleList.jsx'
-import { topSolutionsByJourney } from '../lib/productAnalytics.js'
+import { topCommonOptimizations } from '../lib/productAnalytics.js'
 
 /**
  * @param {{ items: import('../lib/types.js').FeedbackRecord[]; journeyL1?: string; journeyL2?: string; onClose?: () => void }}
  */
 export default function ProductDrillDown({ items, journeyL1, journeyL2, onClose }) {
-  const solutions = topSolutionsByJourney(items, journeyL1, journeyL2)
+  const solutions = topCommonOptimizations(items, journeyL1, journeyL2)
 
   return (
     <Card>
@@ -35,7 +35,7 @@ export default function ProductDrillDown({ items, journeyL1, journeyL2, onClose 
 
       {solutions.length > 0 && (
         <div className="mt-4 rounded-lg bg-ink-50 p-3">
-          <Typography.Text strong className="text-xs">常见解决方案</Typography.Text>
+          <Typography.Text strong className="text-xs">常见优化建议</Typography.Text>
           <ul className="mt-2 space-y-1 text-xs text-ink-600">
             {solutions.map((s) => (
               <li key={s.text}>

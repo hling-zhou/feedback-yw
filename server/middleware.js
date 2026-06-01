@@ -71,8 +71,7 @@ export function requirePermission(permission) {
   return async (request, reply) => {
     const user = request.user
     if (!user) {
-      reply.code(401).send({ error: '未登录' })
-      return
+      return reply.code(401).send({ error: '未登录' })
     }
     if (!hasPermission(user.role, permission)) {
       return reply.code(403).send({ error: '无权限执行此操作' })
@@ -87,8 +86,7 @@ export function requireAdmin() {
   return async (request, reply) => {
     const user = request.user
     if (!user) {
-      reply.code(401).send({ error: '未登录' })
-      return
+      return reply.code(401).send({ error: '未登录' })
     }
     if (user.role !== 'admin') {
       return reply.code(403).send({ error: '仅管理员可执行此操作' })

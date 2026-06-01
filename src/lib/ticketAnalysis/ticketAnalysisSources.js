@@ -188,6 +188,15 @@ export function getOptimizationSource(record) {
 }
 
 /**
+ * 自动生成优化建议来源：仅读 optimizationSource，不含人工复核/确立举措。
+ *
+ * @param {import('../types.js').FeedbackRecord} record
+ */
+export function getAutoOptimizationSource(record) {
+  return normalizeTicketAnalysisFieldSource(record?.optimizationSource)
+}
+
+/**
  * @param {'rule' | 'llm' | 'manual' | 'import'} source
  */
 export function getOptimizationSourceLabel(source) {
@@ -217,4 +226,15 @@ export function formatListOptimizationPreview(record) {
   const service = record?.optimizationService?.trim()
   if (product && service) return `${product}；${service}`
   return product || service || record?.optimizationSuggestion?.trim() || ''
+}
+
+/**
+ * 「常见优化建议」聚合用文案：确立举措优先，否则产品/服务优化建议（自动）。
+ *
+ * @param {import('../types.js').FeedbackRecord | null | undefined} record
+ */
+export function getCommonOptimizationText(record) {
+  const established = getEstablishedActionDisplay(record)
+  if (established) return established
+  return formatListOptimizationPreview(record)
 }

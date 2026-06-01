@@ -68,7 +68,7 @@ function buildAnalysisTabs(dataSource) {
 }
 
 export default function Themes() {
-  const { feedbacks, updateFeedback, retagSession, importSession, settings } = useFeedbacks()
+  const { feedbacks, retagSession, importSession, settings } = useFeedbacks()
   const { rebuildBlocked, rebuildBlockedTip } = useSharedBackgroundTaskBlock()
   const { period: currentPeriod, periodFeedbacks, periodCount } = usePeriodScope()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -249,10 +249,6 @@ export default function Themes() {
     return []
   }, [tab, scoped, expanded, journeySel])
 
-  const markDetailActioned = () => {
-    detailItems.forEach((fb) => updateFeedback(fb.id, { status: 'actioned' }))
-  }
-
   const detailTitle = useMemo(() => {
     if (tab === 'journey' && journeySel.l1) {
       return `「${journeySel.l1}${journeySel.l2 ? ` / ${journeySel.l2}` : ''}」工单`
@@ -261,7 +257,7 @@ export default function Themes() {
     return '工单明细'
   }, [tab, expanded, journeySel])
 
-  const clearSelection = () => {
+  const resetDimensionSelection = useCallback(() => {
     setExpanded(null)
     setJourneySel({ l1: undefined, l2: undefined })
     syncAnalysisParams({
@@ -271,7 +267,53 @@ export default function Themes() {
       complaintCauseL1: '',
       requestScene: '',
     })
-  }
+  }, [syncAnalysisParams])
+
+  const syncBarSelectionToUrl = useCallback(
+    (label) => {
+      if (tab === 'problem') {
+        syncAnalysisParams({
+          problemType: label,
+          complaintCauseL1: '',
+          requestScene: '',
+          journeyL1: '',
+          journeyL2: '',
+          tab: 'problem',
+        })
+      } else if (tab === 'complaint_cause') {
+        syncAnalysisParams({
+          complaintCauseL1: label,
+          problemType: '',
+          requestScene: '',
+          journeyL1: '',
+          journeyL2: '',
+          tab: 'complaint_cause',
+        })
+      } else {
+        syncAnalysisParams({
+          requestScene: label,
+          problemType: '',
+          complaintCauseL1: '',
+          journeyL1: '',
+          journeyL2: '',
+          tab: 'request',
+        })
+      }
+    },
+    [tab, syncAnalysisParams],
+  )
+
+  useEffect(() => {
+    if (tab !== 'request' && tab !== 'problem' && tab !== 'complaint_cause') return
+    if (!chartData.length) {
+      if (expanded) setExpanded(null)
+      return
+    }
+    if (expanded && chartData.some((t) => t.label === expanded)) return
+    const first = chartData[0].label
+    setExpanded(first)
+    syncBarSelectionToUrl(first)
+  }, [tab, chartData, expanded, syncBarSelectionToUrl])
 
   useEffect(() => {
     if (tab === 'complaint_cause' && dataSource && dataSource !== 'complaint_ticket') {
@@ -284,53 +326,26 @@ export default function Themes() {
     setDataSource(value)
     setProduct('')
     setResourcePool('')
-    clearSelection()
+    resetDimensionSelection()
     syncAnalysisParams({ source: value, product: '' })
   }
 
   const handleProductChange = (value) => {
     setProduct(value)
     setResourcePool('')
-    clearSelection()
+    resetDimensionSelection()
     syncAnalysisParams({ product: value })
   }
 
   const handleResourcePoolChange = (value) => {
     setResourcePool(value)
-    clearSelection()
+    resetDimensionSelection()
   }
 
   const handleBarClick = (label) => {
     setExpanded(label)
     setJourneySel({ l1: undefined, l2: undefined })
-    if (tab === 'problem') {
-      syncAnalysisParams({
-        problemType: label,
-        complaintCauseL1: '',
-        requestScene: '',
-        journeyL1: '',
-        journeyL2: '',
-        tab: 'problem',
-      })
-    } else if (tab === 'complaint_cause') {
-      syncAnalysisParams({
-        complaintCauseL1: label,
-        problemType: '',
-        requestScene: '',
-        journeyL1: '',
-        journeyL2: '',
-        tab: 'complaint_cause',
-      })
-    } else {
-      syncAnalysisParams({
-        requestScene: label,
-        problemType: '',
-        complaintCauseL1: '',
-        journeyL1: '',
-        journeyL2: '',
-        tab: 'request',
-      })
-    }
+    syncBarSelectionToUrl(label)
   }
 
   const handleJourneyClick = (l1, l2) => {
@@ -374,7 +389,7 @@ export default function Themes() {
   }
 
   return (
-    <div>
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
       <AnalysisPageHeader
         desc={
           <span data-testid="period-count-themes-desc">
@@ -431,7 +446,7 @@ export default function Themes() {
           items={analysisTabs.map(({ value, label }) => ({ key: value, label }))}
           onChange={(value) => {
             setTab(value)
-            clearSelection()
+            resetDimensionSelection()
             syncAnalysisParams({ tab: value })
           }}
         />
@@ -469,66 +484,33 @@ export default function Themes() {
       </div>
 
       {(tab === 'request' || tab === 'problem' || tab === 'complaint_cause') && (
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <Card
-              title={
-                tab === 'request'
-                  ? '请求场景分布'
-                  : tab === 'complaint_cause'
-                    ? '投诉原因（终判）分布'
-                    : '问题类型（打标）分布'
-              }
-            >
-              <ThemeBarChart data={chartData} onBarClick={handleBarClick} />
-            </Card>
-
-            <div className="space-y-2">
-              <Typography.Title level={5} className="!mb-0">
-                {tab === 'request'
-                  ? '请求场景列表'
-                  : tab === 'complaint_cause'
-                    ? '投诉原因（终判）列表'
-                    : '问题类型（打标）列表'}
-              </Typography.Title>
-              {(tab === 'request'
-                ? requestAgg
+        <div className="mt-6 grid min-h-0 flex-1 gap-6 lg:max-h-[calc(100vh-17rem)] lg:grid-cols-2">
+          <Card
+            className="min-h-0"
+            title={
+              tab === 'request'
+                ? '请求场景分布'
                 : tab === 'complaint_cause'
-                  ? complaintCauseAgg
-                  : problemAgg
-              ).map((t) => (
-                <Card
-                  key={t.label}
-                  hoverable
-                  onClick={() => handleBarClick(t.label)}
-                  className={expanded === t.label ? 'border-brand-400 ring-2 ring-brand-500/20' : ''}
-                  styles={{ body: { padding: 12 } }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <Typography.Text strong>{t.label}</Typography.Text>
-                      <Typography.Text type="secondary" className="mt-1 block text-xs">
-                        {t.count} 条 · 负面 {t.count ? Math.round((t.negative / t.count) * 100) : 0}%
-                        {t.latest && ` · 最近 ${t.latest}`}
-                      </Typography.Text>
-                    </div>
-                    <Tag>{t.count}</Tag>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
+                  ? '投诉原因（终判）分布'
+                  : '问题类型（打标）分布'
+            }
+          >
+            <ThemeBarChart
+              data={chartData}
+              activeLabel={expanded}
+              onBarClick={handleBarClick}
+            />
+          </Card>
 
           <InsightFeedbackList
+            fillHeight
             items={detailItems}
             title={detailTitle}
             subtitle={detailItems.length ? `共 ${detailItems.length} 条 · 点击查看详情` : undefined}
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
             onItemClick={setSelected}
-            onMarkActioned={detailItems.length ? markDetailActioned : undefined}
-            onClear={expanded ? clearSelection : undefined}
-            emptyHint="点击左侧标签或图表条目"
+            emptyHint="暂无工单"
           />
         </div>
       )}
@@ -588,8 +570,6 @@ export default function Themes() {
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
             onItemClick={setSelected}
-            onMarkActioned={detailItems.length ? markDetailActioned : undefined}
-            onClear={journeySel.l1 ? clearSelection : undefined}
             emptyHint="点击左侧旅程环节查看工单"
           />
         </div>

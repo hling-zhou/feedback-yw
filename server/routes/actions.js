@@ -39,8 +39,14 @@ export function registerActionRoutes(app) {
     return actionItemRepository.listActionItems(q)
   })
 
-  app.get('/api/actions/stats', { preHandler: requirePermission('view') }, async () => {
-    return { counts: actionItemRepository.countActionItemsByStatus() }
+  app.get('/api/actions/stats', { preHandler: requirePermission('view') }, async (request) => {
+    const q = /** @type {import('../actionItemRepository.js').ActionItemListQuery} */ (
+      request.query || {}
+    )
+    return {
+      counts: actionItemRepository.countActionItemsByStatus(q),
+      byProduct: actionItemRepository.aggregateActionItemsByProductStatus(q),
+    }
   })
 
   app.get('/api/actions/:id', { preHandler: requirePermission('view') }, async (request, reply) => {

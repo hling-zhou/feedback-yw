@@ -4,6 +4,7 @@ import {
   getDisplayCustomerRequest,
   getDisplayPainPoint,
   getOptimizationSource,
+  getAutoOptimizationSource,
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
@@ -52,6 +53,20 @@ describe('ticketAnalysisSources', () => {
         establishedAction: '增加端口预检',
         optimizationSource: 'llm',
       }))).toBe('人工')
+    })
+
+    it('auto optimization source ignores established action', () => {
+      expect(
+        getAutoOptimizationSource({
+          establishedAction: '增加端口预检',
+          optimizationSource: 'llm',
+        }),
+      ).toBe('llm')
+      expect(
+        getAutoOptimizationSource({
+          optimizationSource: 'import',
+        }),
+      ).toBe('manual')
     })
 
     it('falls back to legacy manualReviewOptimization for optimization source', () => {

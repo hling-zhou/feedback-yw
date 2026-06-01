@@ -1,7 +1,7 @@
-import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Card, Empty, Tag, Typography } from 'antd'
 import SimpleList from './ui/SimpleList.jsx'
 import SentimentBadge from './SentimentBadge.jsx'
-import { topSolutionsByJourney } from '../lib/productAnalytics.js'
+import { topCommonOptimizations } from '../lib/productAnalytics.js'
 import {
   formatListOptimizationPreview,
   getDisplayCustomerRequest,
@@ -16,9 +16,8 @@ import {
  *   journeyL1?: string;
  *   journeyL2?: string;
  *   onItemClick?: (fb: import('../lib/types.js').FeedbackRecord) => void;
- *   onMarkActioned?: () => void;
- *   onClear?: () => void;
  *   emptyHint?: string;
+ *   fillHeight?: boolean;
  * }}
  */
 export default function InsightFeedbackList({
@@ -28,40 +27,28 @@ export default function InsightFeedbackList({
   journeyL1,
   journeyL2,
   onItemClick,
-  onMarkActioned,
-  onClear,
-  emptyHint = '点击左侧条目查看工单明细',
+  emptyHint = '暂无工单',
+  fillHeight = false,
 }) {
-  const solutions = topSolutionsByJourney(items, journeyL1, journeyL2)
+  const solutions = topCommonOptimizations(items, journeyL1, journeyL2)
 
   return (
-    <Card className="flex min-h-[320px] flex-col">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <Typography.Title level={5} className="!mb-0">{title}</Typography.Title>
-          {subtitle && (
-            <Typography.Text type="secondary" className="mt-1 block text-xs">
-              {subtitle}
-            </Typography.Text>
-          )}
-        </div>
-        <Space className="shrink-0">
-          {onMarkActioned && items.length > 0 && (
-            <Button size="small" onClick={onMarkActioned}>
-              全部标为已行动
-            </Button>
-          )}
-          {onClear && (
-            <Button type="link" size="small" onClick={onClear}>
-              清除
-            </Button>
-          )}
-        </Space>
+    <Card
+      className={`flex flex-col ${fillHeight ? 'min-h-0 h-full max-h-full' : 'min-h-[320px]'}`}
+      styles={{ body: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } }}
+    >
+      <div>
+        <Typography.Title level={5} className="!mb-0">{title}</Typography.Title>
+        {subtitle && (
+          <Typography.Text type="secondary" className="mt-1 block text-xs">
+            {subtitle}
+          </Typography.Text>
+        )}
       </div>
 
       {solutions.length > 0 && (
-        <div className="mt-4 rounded-lg bg-ink-50 p-3">
-          <Typography.Text strong className="text-xs">常见解决方案</Typography.Text>
+        <div className="mt-4 shrink-0 rounded-lg bg-ink-50 p-3">
+          <Typography.Text strong className="text-xs">常见优化建议</Typography.Text>
           <ul className="mt-2 space-y-1 text-xs text-ink-600">
             {solutions.map((s) => (
               <li key={s.text}>
@@ -73,7 +60,9 @@ export default function InsightFeedbackList({
         </div>
       )}
 
-      <div className="mt-4 flex-1 space-y-2 overflow-y-auto max-h-[480px]">
+      <div
+        className={`mt-4 flex-1 space-y-2 overflow-y-auto ${fillHeight ? 'min-h-0' : 'max-h-[480px]'}`}
+      >
         {items.length === 0 ? (
           <Empty className="py-8" description={emptyHint} />
         ) : (

@@ -43,6 +43,8 @@ function buildValidRow(overrides = {}) {
     服务流程改进: '服务优化',
     确立举措: '举措',
     排期: '',
+    产品组优化建议: '',
+    设计师优化建议: '',
     受理内容: '',
     处理意见: '处理',
     根因排查: '',
@@ -111,14 +113,30 @@ describe('importAnalysis', () => {
     }
   })
 
-  it('validateImportAnalysisRow rejects missing required fields', () => {
+  it('validateImportAnalysisRow passes when 确立举措 is empty', () => {
     const result = validateImportAnalysisRow(buildValidRow({ 确立举措: '' }), 2)
+    expect(result.valid).toBe(true)
+    if (result.valid) {
+      expect(result.row.byDisplayName['确立举措']).toBe('')
+    }
+  })
+
+  it('validateImportAnalysisRow passes when detail optimization fields are empty', () => {
+    const result = validateImportAnalysisRow(
+      buildValidRow({ 产品组优化建议: '', 设计师优化建议: '' }),
+      2,
+    )
+    expect(result.valid).toBe(true)
+  })
+
+  it('validateImportAnalysisRow rejects missing required fields', () => {
+    const result = validateImportAnalysisRow(buildValidRow({ 处理意见: '' }), 2)
     expect(result.valid).toBe(false)
     if (!result.valid) {
       expect(result.errors).toEqual([
         expect.objectContaining({
           rowIndex: 2,
-          displayName: '确立举措',
+          displayName: '处理意见',
           message: '不能为空',
         }),
       ])
@@ -245,6 +263,8 @@ describe('importAnalysis apply (P3-3)', () => {
     const row = validation.validRows[0]
     row.byDisplayName['确立举措'] = ''
     row.byDisplayName['排期'] = ''
+    row.byDisplayName['产品组优化建议'] = ''
+    row.byDisplayName['设计师优化建议'] = ''
     row.byDisplayName['产品技术优化'] = ''
     row.byDisplayName['服务流程改进'] = ''
 
@@ -253,6 +273,8 @@ describe('importAnalysis apply (P3-3)', () => {
     expect(updated.establishedAction).toBe('')
     expect(updated.manualReviewOptimization).toBe('')
     expect(updated.actionSchedule).toBe('')
+    expect(updated.productGroupOptimization).toBe('')
+    expect(updated.designerOptimization).toBe('')
     expect(updated.optimizationProduct).toBe('旧产品优化')
     expect(updated.optimizationService).toBe('旧服务优化')
   })

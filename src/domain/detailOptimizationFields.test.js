@@ -33,10 +33,10 @@ describe('detailOptimizationFields', () => {
     expect(hasDetailOptimizationContent({})).toBe(false)
   })
 
-  it('registry marks product group and designer as non-corpus fields', () => {
+  it('registry marks product group and designer as non-corpus export fields', () => {
     expect(getFieldByKey('productGroupOptimization')?.clusterRole).toBe('none')
     expect(getFieldByKey('designerOptimization')?.clusterRole).toBe('none')
-    expect(getFieldByKey('productGroupOptimization')?.exportable).toBe(false)
-    expect(getFieldByKey('designerOptimization')?.exportable).toBe(false)
+    expect(getFieldByKey('productGroupOptimization')?.exportable).toBe(true)
+    expect(getFieldByKey('designerOptimization')?.exportable).toBe(true)
   })
 })
