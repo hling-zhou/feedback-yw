@@ -26,6 +26,7 @@ import {
   verifyPassword,
 } from './users.js'
 import { registerStorageRoutes } from './routes/storage.js'
+import { registerActionRoutes } from './routes/actions.js'
 import { registerLlmRoutes } from './routes/llm.js'
 import { registerAuditRoutes } from './routes/audit.js'
 import { buildHealthReport } from './health.js'
@@ -42,6 +43,7 @@ console.info(`[api] CORS allowed origins: ${resolveCorsOrigins().join(', ')}`)
 
 registerAuthHooks(app)
 registerStorageRoutes(app)
+registerActionRoutes(app)
 registerLlmRoutes(app)
 registerAuditRoutes(app)
 

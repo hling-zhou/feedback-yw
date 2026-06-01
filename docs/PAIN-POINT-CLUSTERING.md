@@ -50,6 +50,12 @@
 | `customerTier`（导入列「移动云客户服务等级」） | §8 展示，不参与评分 |
 | `dataSourceType` | 投诉 / 咨询分组 |
 
+## 优化语料（行动建议 / 群组措施，非痛点主文本）
+
+- **确立举措优先**：有 `manualReviewOptimization`（未来将改为「确立举措」）时，该工单不再用 `optimizationProduct` / `optimizationService` 作优化语料（见 `getEffectiveOptimization`）。
+- **不纳入聚类语料**：产品组优化建议、设计师优化建议（需求 @20260601-1 §五；仅展示与导出）。
+- 痛点聚类 **主文本** 仍为 `painPoint`；上项只影响行动建议、措施收集等 **优化附属语料**。
+
 ## 阈值（`constants.js`）
 
 - 一次聚类 Jaccard 阈值：**0.3**

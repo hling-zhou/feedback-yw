@@ -74,6 +74,12 @@ export function extractTicketOptimizations(input) {
 }
 
 /**
+ * 单条工单「有效优化语料」（行动建议、措施收集等；**非**痛点聚类主文本）。
+ *
+ * 规则（需求 @20260601-1 §五）：
+ * - **确立举措优先**：有 manualReviewOptimization 时仅返回该内容，自动产品/服务优化不参与。
+ * - **不纳入**：产品组优化建议、设计师优化建议（上线后亦不得并入本函数）。
+ *
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getEffectiveOptimization(record) {

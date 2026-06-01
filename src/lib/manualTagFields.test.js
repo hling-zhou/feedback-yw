@@ -57,7 +57,13 @@ describe('manualTagFields', () => {
     expect(getManualTagFields(kept)).toEqual(['journey', 'sentiment'])
   })
 
-  it('applyForceRetagOverrides clears manual tags and review text', () => {
+  it('mergeManualTagFieldsOnUserEdit marks optimization when actionSchedule edited', () => {
+    expect(
+      mergeManualTagFieldsOnUserEdit(base, { actionSchedule: '2026-08-01' }),
+    ).toContain('optimization')
+  })
+
+  it('applyForceRetagOverrides clears manual tags, review text, and resets rootCauseReview', () => {
     const cleared = applyForceRetagOverrides({
       ...base,
       manualTagFields: ['journey', 'optimization'],
@@ -65,12 +71,21 @@ describe('manualTagFields', () => {
       manualReviewSolution: '人工方案',
       manualReviewAction: '人工举措',
       manualReviewOptimization: '人工优化',
+      establishedAction: '确立举措',
+      actionId: 'act-1',
+      actionSchedule: '2026-07-01',
+      rootCauseReview: '人工根因排查',
+      sourceColumns: { 问题原因: '列根因' },
     })
     expect(getManualTagFields(cleared)).toEqual([])
     expect(cleared.manualReviewRootCause).toBe('')
     expect(cleared.manualReviewSolution).toBe('')
     expect(cleared.manualReviewAction).toBe('')
     expect(cleared.manualReviewOptimization).toBe('')
+    expect(cleared.establishedAction).toBe('')
+    expect(cleared.actionId).toBe('')
+    expect(cleared.actionSchedule).toBe('')
+    expect(cleared.rootCauseReview).toBe('列根因')
   })
 
   it('preserveManualTags skips restore when forceOverride is true', () => {

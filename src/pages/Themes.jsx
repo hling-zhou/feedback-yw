@@ -29,6 +29,7 @@ import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
 import { RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
+import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import {
@@ -68,6 +69,7 @@ function buildAnalysisTabs(dataSource) {
 
 export default function Themes() {
   const { feedbacks, updateFeedback, retagSession, importSession, settings } = useFeedbacks()
+  const { rebuildBlocked, rebuildBlockedTip } = useSharedBackgroundTaskBlock()
   const { period: currentPeriod, periodFeedbacks, periodCount } = usePeriodScope()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialParams = useMemo(() => parseAnalysisSearchParams(searchParams), [searchParams])
@@ -87,12 +89,12 @@ export default function Themes() {
   }))
   const [selected, setSelected] = useState(null)
 
-  const backgroundTaskActive = retagSession.active || importSession.active
+  const backgroundTaskActive = retagSession.active || importSession.active || rebuildBlocked
   const backgroundTaskTip = retagSession.active
     ? RETAG_IN_PROGRESS_TIP
     : importSession.active
       ? IMPORT_REBUILD_DISABLED_TIP
-      : undefined
+      : rebuildBlockedTip
 
   const syncAnalysisParams = useCallback(
     (patch) => {

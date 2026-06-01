@@ -31,26 +31,32 @@
  * @property {string} problemSummary - 需求痛点挖掘（与 painPoint 同步）
  * @property {string} [painPoint] - 需求痛点挖掘
  * @property {string} [customerRequest] - 用户请求内容（全生命周期精炼摘要，≤80 字，最长 120）
- * @property {'rule' | 'llm'} [customerRequestSource] - 客户请求内容来源
+ * @property {'rule' | 'llm' | 'manual' | 'import'} [customerRequestSource] - 客户请求内容来源
  * @property {string} customerQuote - 客户原话（规则抽取，主要用于情绪/原话分析，≠ customerRequest）
  * @property {string} solutionSummary - 解决方案
  * @property {string} rootCause - 问题根因
  * @property {string} optimizationSuggestion - 优化建议（兼容汇总字段）
  * @property {string} [optimizationProduct] - 产品/技术优化
  * @property {string} [optimizationService] - 服务/流程改进
- * @property {'rule' | 'llm'} [painPointSource] - 需求痛点来源
- * @property {'rule' | 'llm'} [optimizationSource] - 单条优化建议来源（不含人工复核）
- * @property {string} [manualReviewRootCause] - 人工复核根因，默认空
- * @property {string} [manualReviewSolution] - 人工复核优化方案，默认空
- * @property {string} [manualReviewAction] - 人工复核举措，默认空
- * @property {string} [manualReviewOptimization] - 人工复核后的优化建议（优先于自动建议）
+ * @property {'rule' | 'llm' | 'manual' | 'import'} [painPointSource] - 需求痛点来源
+ * @property {'rule' | 'llm' | 'manual' | 'import'} [optimizationSource] - 单条优化建议来源（不含人工复核）
+ * @property {string} [manualReviewRootCause] - @deprecated 人工复核根因，停止写入
+ * @property {string} [manualReviewSolution] - @deprecated 人工复核优化方案，停止写入
+ * @property {string} [manualReviewAction] - @deprecated 人工复核举措，停止写入
+ * @property {string} [manualReviewOptimization] - 人工复核后的优化建议；过渡字段，见 establishedAction
+ * @property {string} [establishedAction] - 确立举措文本副本（展示/导出/聚类）
+ * @property {string} [actionId] - 关联举措库 ID（R4）
+ * @property {string} [actionSchedule] - 排期（可空，空=待评估）
+ * @property {string} [rootCauseReview] - 根因排查（人工复核，默认来自问题原因）
+ * @property {string} [productGroupOptimization] - 产品组优化建议（不参与聚类）
+ * @property {string} [designerOptimization] - 设计师优化建议（不参与聚类）
  * @property {Record<string, string>} [sourceColumns] - 导入时原始工单列快照（中文列名 → 值）
  * @property {Sentiment} sentiment
  * @property {UrgencyLevel} [urgencyLevel] - 加急/催促（与主情绪独立）
  * @property {string[]} themes - 由 journeyL1/journeyL2 同步，与二级环节名一致（无二级时取一级）
  * @property {FeedbackStatus} status
  * @property {string} [note]
- * @property {('requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency')[]} [manualTagFields] - 人工在工单详情中更正过的标签维度；重新打标时不覆盖
+ * @property {('requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview')[]} [manualTagFields] - 人工维护维度；见 fieldRegistry.js
  * @property {string} [importMonth] - 数据月份，格式 YYYY-MM，用于按月导入后的历史趋势分析
  * @property {string} [importBatchId]
  * @property {string} [importBatchName]
@@ -69,9 +75,9 @@ export const STANDARD_FIELDS = [
   { key: 'createdAt', label: '创建时间', required: false },
   {
     key: 'productSpec',
-    label: '产品规格',
+    label: '投诉产品',
     required: false,
-    hint: '映射到原始表中的「对××的反馈」类列，例如「具体投诉产品」「产品名称」「产品规格」等；系统据此匹配「目标产品」。',
+    hint: '映射到工单 Excel 中的投诉产品列，常用列名「具体投诉产品」；系统据此匹配「目标产品」范围与规格。',
   },
   { key: 'resourcePool', label: '所属资源池', required: false },
   {
@@ -80,10 +86,10 @@ export const STANDARD_FIELDS = [
     required: false,
     hint: '映射到「移动云客户服务等级」列（金牌/银牌/铜牌/普通）；用于行动建议高价值客户影响展示，不参与聚类评分。',
   },
-  { key: 'rawText', label: '受理内容 / 主文本', required: false },
-  { key: 'handlingText', label: '处理意见（打标必填）', required: true },
-  { key: 'responseText', label: '解决方案', required: false },
-  { key: 'rootCauseCol', label: '根因列', required: false },
+  { key: 'rawText', label: '受理内容 / 主文本', required: false, hint: '投诉/咨询工单：客户侧问题描述，常用列「受理内容」；可与下方「合并到主文本」列拼接。非工单来源时映射正文列。' },
+  { key: 'handlingText', label: '处理意见（打标必填）', required: true, hint: '客服处理记录，四维打标与客户请求/痛点抽取的主要语料；投诉工单常用列「处理意见」。' },
+  { key: 'responseText', label: '优化举措/建议', required: false, hint: '可选。映射工单表「优化举措/建议」列，写入 solutionSummary，供工单详情展示与规则/LLM 优化建议参考；未映射时尝试从处理意见等文本解析。' },
+  { key: 'rootCauseCol', label: '问题原因', required: false, hint: '可选。映射工单表「问题原因」列，写入 rootCause，用于规则优化建议与 LLM 上下文；≠ 投诉原因（终判）。未映射时尝试从正文解析。' },
   {
     key: 'problemTypeL1FinalCol',
     label: '投诉原因一级（终判）',

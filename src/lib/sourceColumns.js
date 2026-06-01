@@ -1,5 +1,11 @@
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
+import {
+  COMPLAINT_CAUSE_L1_COLUMN,
+  COMPLAINT_CAUSE_L2_COLUMN,
+  COMPLAINT_CAUSE_L3_COLUMN,
+  isComplaintTicket,
+} from '../domain/complaintCause.js'
 import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
 
 /** 导出 Excel 时使用的原始工单列名（与工单模板一致） */
@@ -8,8 +14,8 @@ export const TICKET_SOURCE_COLUMN_LABELS = [
   '投诉原因 一级（终判）',
   '投诉原因 二级（终判）',
   '投诉原因 三级（终判）',
-  '根因（必填）',
-  '解决方案（必填）',
+  '问题原因',
+  '优化举措/建议',
 ]
 
 /**
@@ -31,8 +37,8 @@ export function buildSourceColumns(row) {
   put('投诉原因 一级（终判）', row.problemTypeL1FinalCol)
   put('投诉原因 二级（终判）', row.problemTypeL2FinalCol)
   put('投诉原因 三级（终判）', row.problemTypeL3FinalCol)
-  put('根因（必填）', row.rootCauseCol)
-  put('解决方案（必填）', row.responseText)
+  put('问题原因', row.rootCauseCol)
+  put('优化举措/建议', row.responseText)
   put(CUSTOMER_TIER_SOURCE_COLUMN, row.customerTierCol || row.customerTier)
 
   return Object.keys(cols).length > 0 ? cols : undefined
@@ -46,9 +52,34 @@ export function getSourceColumnValue(record, label) {
   const snap = record?.sourceColumns
   if (snap?.[label]) return snap[label]
   if (label === '处理意见') return record.handlingText || ''
-  if (label === '根因（必填）') return record.rootCause || ''
-  if (label === '解决方案（必填）') return record.responseText || record.solutionSummary || ''
-  if (label === '投诉原因 一级（终判）') return record.problemType || ''
+  if (label === '问题原因' || label === '根因（必填）' || label === '根因') {
+    return record.rootCause || snap?.['问题原因'] || snap?.['根因（必填）'] || ''
+  }
+  if (
+    label === '优化举措/建议' ||
+    label === '解决方案（必填）' ||
+    label === '解决方案'
+  ) {
+    return (
+      record.responseText ||
+      record.solutionSummary ||
+      snap?.['优化举措/建议'] ||
+      snap?.['解决方案（必填）'] ||
+      ''
+    )
+  }
+  if (label === '投诉原因 一级（终判）') {
+    if (!isComplaintTicket(record)) return ''
+    return record.complaintCauseL1Final?.trim() || snap?.[COMPLAINT_CAUSE_L1_COLUMN]?.trim() || ''
+  }
+  if (label === '投诉原因 二级（终判）') {
+    if (!isComplaintTicket(record)) return ''
+    return record.complaintCauseL2Final?.trim() || snap?.[COMPLAINT_CAUSE_L2_COLUMN]?.trim() || ''
+  }
+  if (label === '投诉原因 三级（终判）') {
+    if (!isComplaintTicket(record)) return ''
+    return record.complaintCauseL3Final?.trim() || snap?.[COMPLAINT_CAUSE_L3_COLUMN]?.trim() || ''
+  }
   if (label === CUSTOMER_TIER_SOURCE_COLUMN || label === '客户等级') {
     return (
       record.customerTier ||
@@ -61,19 +92,30 @@ export function getSourceColumnValue(record, label) {
 }
 
 /**
- * @param {FeedbackRecord[]} records
+ * @param {FeedbackRecord} record
+ * @returns {string[]}
  */
-export function recordsMissingSourceColumns(records) {
-  return records.filter(
-    (r) =>
-      !r.sourceColumns ||
-      !TICKET_SOURCE_COLUMN_LABELS.some((label) => r.sourceColumns?.[label]),
-  )
+function requiredSourceColumnLabels(record) {
+  const complaintOnly = [
+    '投诉原因 一级（终判）',
+    '投诉原因 二级（终判）',
+    '投诉原因 三级（终判）',
+  ]
+  if (isComplaintTicket(record)) return TICKET_SOURCE_COLUMN_LABELS
+  return TICKET_SOURCE_COLUMN_LABELS.filter((label) => !complaintOnly.includes(label))
 }
 
 /**
  * @param {FeedbackRecord[]} records
  */
+export function recordsMissingSourceColumns(records) {
+  return records.filter((r) => {
+    if (!r.sourceColumns) return true
+    const required = requiredSourceColumnLabels(r)
+    return !required.some((label) => r.sourceColumns?.[label]?.trim())
+  })
+}
+
 /**
  * 是否存在缺少原始列快照、或快照中缺关键列的记录（需提示重新导入）
  * @param {FeedbackRecord[]} records
@@ -81,6 +123,6 @@ export function recordsMissingSourceColumns(records) {
 export function hasIncompleteSourceColumns(records) {
   return records.some((r) => {
     if (!r.sourceColumns) return true
-    return TICKET_SOURCE_COLUMN_LABELS.some((label) => !r.sourceColumns?.[label]?.trim())
+    return requiredSourceColumnLabels(r).some((label) => !r.sourceColumns?.[label]?.trim())
   })
 }

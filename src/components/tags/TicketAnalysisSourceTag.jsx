@@ -8,12 +8,13 @@ import {
 } from '../../lib/ticketAnalysis/ticketAnalysisSources.js'
 
 /**
- * @param {{ source: 'rule' | 'llm' | 'manual'; title?: string }} props
+ * @param {{ source: 'rule' | 'llm' | 'manual' | 'import'; title?: string }} props
  */
 export default function TicketAnalysisSourceTag({ source, title }) {
-  const color = source === 'llm' ? 'purple' : source === 'manual' ? 'gold' : 'default'
+  const displaySource = source === 'import' ? 'manual' : source
+  const color = displaySource === 'llm' ? 'purple' : displaySource === 'manual' ? 'gold' : 'default'
   const label =
-    source === 'manual'
+    displaySource === 'manual'
       ? getOptimizationSourceLabel('manual')
       : getTicketAnalysisSourceLabel(source)
 

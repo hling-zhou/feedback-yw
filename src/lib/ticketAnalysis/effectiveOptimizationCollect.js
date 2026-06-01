@@ -2,7 +2,7 @@ import { isGenericMeasure, isTicketDerivedPlanningText } from '../journeyOptimiz
 import { getEffectiveOptimization } from './ticketOptimizationExtract.js'
 
 /**
- * 从工单集合收集有效优化建议（人工复核优先，自动建议不参与人工复核工单）
+ * 从工单集合收集有效优化建议（确立举措优先；不含产品组/设计师建议）
  *
  * @param {import('../types.js').FeedbackRecord[]} records
  * @param {number} [limit]

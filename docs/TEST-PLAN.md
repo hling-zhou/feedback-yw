@@ -27,7 +27,16 @@
 - **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化 §5.4.2 TAG-RS、§5.4.3 TAG-RT
 - **客户请求 / 痛点 V2 golden**（2026-06-02）：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) §1.4/§2.4；夹具 `fixtures/v2TicketExamples.js`；自动化 §5.4.4 TAG-CR/TAG-PP
 - **痛点聚类 & 行动建议 Phase 1**（V2.0）：[`docs/PAIN-POINT-CLUSTERING.md`](./PAIN-POINT-CLUSTERING.md)；自动化 §5.4.5 TAG-CL；性能/Job 见 [`PAIN-POINT-CLUSTERING-PERF-PLAN.md`](./PAIN-POINT-CLUSTERING-PERF-PLAN.md)
-- **Insight Rebuild Job**（L2-2）：共享库快照后台重建；`POST/GET /api/storage/insight-rebuild`；导入后自动入队
+- **导出 v2 UAT**：[EXPORT-V2-UAT.md](./EXPORT-V2-UAT.md)；自动化 §5.4.3b TAG-EXP-V2
+- **工单详情 P2-0 布局**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1；自动化 §5.4.3c TAG-UI-P2-0
+- **工单详情 P2-2 根因排查**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 D 区；自动化 §5.4.3d TAG-UI-P2-2
+- **工单详情 P2-1 确立举措**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 C 区；自动化 §5.4.3e TAG-UI-P2-1
+- **工单详情 P2-3 产品组/设计师**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 C 区；自动化 §5.4.3f TAG-UI-P2-3
+- **工单详情 P2-4 排期**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 C 区；自动化 §5.4.3g TAG-UI-P2-4
+- **manualTagFields P2-5**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1；自动化 §5.4.3h TAG-M2-P2-5
+- **来源 Tag P2-6**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 来源 Tag；自动化 §5.4.3i TAG-UI-P2-6
+- **工单详情 P2-7 UAT**：[FEEDBACK-DRAWER-UAT.md](./FEEDBACK-DRAWER-UAT.md)；自动化 §5.4.3j TAG-UI-P2-7
+- **导入分析 P3-1 入口**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.3；自动化 §5.4.3k TAG-IMP-P3-1
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -170,6 +179,119 @@
 | TAG-RT-03 | P0 | §3 对端排除 | 全文含协办诊断 → 问题类型 `产品功能咨询` | `dimensionTagging.test.js` |
 | TAG-RT-04 | P1 | 关闭重打 | `retagDimensionsAfterTicketLlm=false` 跳过重打 | `applyThemes.test.js` O-06 |
 | TAG-RT-05 | P1 | 设置与批量重打 | 团队设置 + 弹窗单次覆盖 | 手工：设置 → 维度打标；反馈库批量重打弹窗 |
+
+#### 5.4.3a 需求@20260601 M0 治理（TAG-M0）
+
+设计：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) · 任务：[TASKS-20260601-1.md](./TASKS-20260601-1.md)
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-M0-01 | P0 | Field Registry v2 列序 | 导出/导入 16 列顺序与设计一致 | `fieldRegistry.test.js` |
+| TAG-M0-02 | P0 | Override Policy | FORCE / IMPORT_REPLACE / RESPECT 三策略 | `overridePolicy.test.js` |
+| TAG-M0-03 | P0 | 强制覆盖全 scope | 全量/补打/补打旅程 + 强制覆盖均清空人工并回退根因 | `manualTagFields.test.js`；手工：三 scope 各 1 条 |
+| TAG-M0-04 | P0 | 根因排查 effective | 优先人工字段，否则问题原因/rootCause | `rootCauseReview.test.js` |
+| TAG-M0-05 | P1 | Legacy 三字段停写 | 新建记录 legacy 复核字段为空 | `recordFactory` + grep |
+| TAG-M0-06 | P0 | 导入来源 UI | import/manual → Tag「人工」 | `ticketAnalysisSources.test.js` |
+| TAG-M0-07 | P0 | 咨询终判完整性 | 咨询单缺终判快照列不触发 incomplete | `sourceColumns.test.js` |
+
+#### 5.4.3b 导出 v2 UAT（TAG-EXP-V2）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-EXP-V2-01 | P0 | 16 列表头 | 与 Registry 一致 | `ticketAnalysisExport.test.js` |
+| TAG-EXP-V2-02 | P0 | 投诉/咨询各 10 条 fixture | 无终判/legacy 列 | `ticketAnalysisExport.uat.test.js` |
+| TAG-EXP-V2-03 | P0 | 空排期 R1 | 排期列为空 | 同上 |
+| TAG-EXP-V2-04 | P0 | 根因排查 effective | 人工>问题原因>rootCause | 同上 |
+| TAG-EXP-V2-05 | P0 | 导出→导入往返 | IMPORT_REPLACE 核心字段一致 | 同上 |
+| TAG-EXP-V2-06 | P1 | 真实库抽样 | 5+5 手工核对 | [EXPORT-V2-UAT.md](./EXPORT-V2-UAT.md) §2.2 |
+
+#### 5.4.3c 工单详情布局（TAG-UI-P2-0）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-0-01 | P0 | 分区顺序 | A→B1→B2→C→D；处理意见在 C 之后 | `FeedbackDrawer.layout.test.js` |
+| TAG-UI-P2-0-02 | P1 | 打开投诉/咨询工单 | B 区仍在 meta 下最上；处理意见在优化建议下 | 手工 UAT（P2-7） |
+
+#### 5.4.3d 根因排查详情（TAG-UI-P2-2）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-2-01 | P0 | 未人工维护 | 详情展示 effective；保存其它字段不误写 rootCauseReview | `rootCauseReview.test.js` |
+| TAG-UI-P2-2-02 | P0 | 编辑保存 | manualTagFields 含 rootCauseReview；导出列一致 | `rootCauseReview.test.js` + 导出 UAT |
+| TAG-UI-P2-2-03 | P0 | 1000 字限制 | normalize 截断 | `rootCauseReview.test.js` |
+| TAG-UI-P2-2-04 | P0 | D 区顺序 | 处理意见 → 根因排查 → 备注 | `FeedbackDrawer.layout.test.js` |
+| TAG-UI-P2-2-05 | P1 | FORCE 重打标后 | 回退 fallback 后可再编辑保存 | 手工 UAT（P2-7） |
+
+#### 5.4.3e 确立举措详情（TAG-UI-P2-1）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-1-01 | P0 | 展示/读取 | establishedAction 优先于 manualReviewOptimization | `establishedAction.test.js` |
+| TAG-UI-P2-1-02 | P0 | 保存双写 | 两字段同值；manualTagFields 含 optimization | `establishedAction.test.js` + export UAT |
+| TAG-UI-P2-1-03 | P0 | 1000 字限制 | normalize 截断 | `establishedAction.test.js` |
+| TAG-UI-P2-1-04 | P1 | 编辑保存后导出 | 「确立举措」列有值 | `ticketAnalysisExport.test.js` |
+
+#### 5.4.3f 产品组/设计师建议（TAG-UI-P2-3）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-3-01 | P0 | Registry | clusterRole=none；暂不参与 v2 导出 | `detailOptimizationFields.test.js` |
+| TAG-UI-P2-3-02 | P0 | 保存 normalize | 1000 字截断 | `detailOptimizationFields.test.js` |
+| TAG-UI-P2-3-03 | P0 | 语料排除 | 不进入 getEffectiveOptimization / collect | `ticketOptimizationExtract.test.js` |
+| TAG-UI-P2-3-04 | P0 | C 区顺序 | 自动优化 → 产品组/设计师 → 确立举措 | `FeedbackDrawer.layout.test.js` |
+| TAG-UI-P2-3-05 | P1 | 详情编辑保存 | 刷新后字段保留 | 手工 UAT（P2-7） |
+
+#### 5.4.3g 排期字段（TAG-UI-P2-4）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-4-01 | P0 | 空排期 R1 | normalize 为空；导出「排期」列为空 | `actionSchedule.test.js` |
+| TAG-UI-P2-4-02 | P0 | 有排期 | 导出列与 actionSchedule 一致 | `actionSchedule.test.js` |
+| TAG-UI-P2-4-03 | P0 | 只读展示 | 空排期显示「待评估」 | `actionSchedule.test.js` |
+| TAG-UI-P2-4-04 | P0 | 保存联动 | actionSchedule 写入 patch；optimization 维度 | `manualTagFields.test.js` |
+| TAG-UI-P2-4-05 | P0 | C 区顺序 | 确立举措 → 排期 | `FeedbackDrawer.layout.test.js` |
+| TAG-UI-P2-4-06 | P1 | 详情编辑 | 留空可保存 | 手工 UAT（P2-7） |
+
+#### 5.4.3h manualTagFields 扩展（TAG-M2-P2-5）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-M2-P2-5-01 | P0 | merge 维度 | customerRequest / painPoint 写入 manualTagFields | `ticketAnalysisManualFields.test.js` |
+| TAG-M2-P2-5-02 | P0 | preserve + 来源 | 重打标保留人工值与 customerRequestSource | 同上 |
+| TAG-M2-P2-5-03 | P0 | pipeline 集成 | reprocessFeedbackRecord 默认保留人工客户请求 | 同上 |
+| TAG-M2-P2-5-04 | P0 | 详情可编辑 | C 区客户请求/痛点 TextArea | `FeedbackDrawer.jsx` |
+| TAG-M2-P2-5-05 | P1 | bulk retag | 改客户请求后批量重打标仍保留 | 手工 UAT（P2-7） |
+
+#### 5.4.3i 来源 Tag 规则（TAG-UI-P2-6）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-6-01 | P0 | 确立举措 | OptimizationSourceTag → 人工 | `ticketAnalysisSources.test.js` |
+| TAG-UI-P2-6-02 | P0 | legacy manualReviewOptimization | 优化来源 → 人工 | 同上 |
+| TAG-UI-P2-6-03 | P0 | import/manual 库内值 | 三项 Tag UI 均显示人工 | 同上 |
+| TAG-UI-P2-6-04 | P0 | manualTagFields 兜底 | 客户请求/痛点人工维护 → 人工 | 同上 |
+| TAG-UI-P2-6-05 | P1 | 详情 Tag 目视 | 规则/大模型/人工三色正确 | 手工 UAT（P2-7） |
+
+#### 5.4.3j 工单详情 UAT 汇总（TAG-UI-P2-7）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-UI-P2-7-01 | P0 | 10 条样例 | 投诉/咨询各 5 | `detailDrawerUatSamples.js` |
+| TAG-UI-P2-7-02 | P0 | 保存→导出 | 10 条核心列一致 | `FeedbackDrawer.uat.test.js` |
+| TAG-UI-P2-7-03 | P0 | B2 终判 | 仅投诉；咨询无 Card | 同上 + layout test |
+| TAG-UI-P2-7-04 | P0 | canEdit 双路径 | 编辑/只读分支存在 | `FeedbackDrawer.uat.test.js` |
+| TAG-UI-P2-7-05 | P1 | 真实库 5+5 | 布局/编辑/重开/只读 | [FEEDBACK-DRAWER-UAT.md](./FEEDBACK-DRAWER-UAT.md) §2.2 |
+| TAG-UI-P2-7-06 | P1 | bulk retag 保留 | 人工客户请求保留 | 手工 UAT §2.2 |
+
+#### 5.4.3k 导入分析入口（TAG-IMP-P3-1）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-IMP-P3-1-01 | P0 | Tab 区分 | 工单 Excel vs 分析结果 | `ImportHub.jsx` + `/import?tab=analysis` |
+| TAG-IMP-P3-1-02 | P0 | R3 文案 | 仅更新已存在工单 | `ImportAnalysis.jsx` |
+| TAG-IMP-P3-1-03 | P0 | 模板表头 | 16 列 = export v2 | `importAnalysisTemplate.test.js` |
+| TAG-IMP-P3-1-04 | P0 | 排期可空 | 必填不含排期 | `importAnalysisTemplate.test.js` |
+| TAG-IMP-P3-1-05 | P1 | 下载模板 | Excel 首行表头正确 | 手工：设置 → 数据导入 → 分析 Tab |
 
 #### 5.4.4 客户请求 / 痛点 V2 golden（TAG-CR / TAG-PP）
 

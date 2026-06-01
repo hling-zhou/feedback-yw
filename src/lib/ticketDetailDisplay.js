@@ -38,6 +38,8 @@ const CUSTOMER_REQUEST_LABELS = new Set([
 /** 语义上属于「平台解决方案 / 处理动作」的标签 */
 const PLATFORM_SOLUTION_LABELS = new Set([
   '处理意见',
+  '问题原因',
+  '优化举措/建议',
   '解决方案',
   '解决方案（必填）',
   '归档意见',
@@ -573,6 +575,7 @@ export function extractSolutionAndResultParts(fields) {
   const cols = fields.sourceColumns || {}
   const responseText =
     fields.responseText?.trim() ||
+    cols['优化举措/建议']?.trim() ||
     cols['解决方案（必填）']?.trim() ||
     cols['解决方案']?.trim() ||
     ''

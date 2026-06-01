@@ -24,7 +24,8 @@ import {
 } from '../storage/clearImportedData.js'
 import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
-import { mergeManualTagFieldsOnUserEdit } from '../lib/manualTagFields.js'
+import { mergeManualTagFieldsOnUserEdit, applyForceRetagOverrides } from '../lib/manualTagFields.js'
+import { unlinkActionItemsForForceRetag } from '../lib/forceRetagActionUnlink.js'
 import { reprocessAllThemesAndSentiment } from '../lib/applyThemes.js'
 import {
   formatBulkRetagResultMessage,
@@ -54,6 +55,9 @@ import {
   clearImportSessionMarker,
   persistImportSessionMarker,
   updateImportSessionMarkerProgress,
+  IMPORT_ALREADY_IN_PROGRESS_TIP,
+  IMPORT_ANALYSIS_SESSION_LABEL,
+  IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP,
 } from '../lib/importSession.js'
 import {
   RETAG_BLOCKED_BY_IMPORT_TIP,
@@ -63,6 +67,12 @@ import {
   persistRetagSessionMarker,
   updateRetagSessionMarkerProgress,
 } from '../lib/retagSession.js'
+import {
+  acquireBackgroundTask,
+  fetchBackgroundTaskLock,
+  releaseBackgroundTask,
+  touchBackgroundTask,
+} from '../lib/backgroundTaskClient.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
 import { buildDedupeKey } from '../domain/records.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
@@ -79,6 +89,7 @@ import {
   overlayStaleStatus,
 } from '../snapshots/index.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
+import { applyImportAnalysisToRecords } from '../lib/importAnalysis.js'
 import {
   SNAPSHOT_AUTO_REBUILD_DEBOUNCE_MS,
   snapshotsHavePeriodData,
@@ -205,6 +216,8 @@ export function InsightsProvider({ children }) {
   const snapshotRebuildPendingRef = useRef(null)
   /** @type {import('react').MutableRefObject<number | null>} */
   const dataRevisionRef = useRef(null)
+  /** 本浏览器是否持有服务端全局后台任务锁 */
+  const ownedBackgroundTaskRef = useRef(false)
   /** @type {import('react').MutableRefObject<import('../lib/types.js').FeedbackRecord[]>} */
   const feedbacksRef = useRef(/** @type {import('../lib/types.js').FeedbackRecord[]} */ ([]))
 
@@ -244,12 +257,13 @@ export function InsightsProvider({ children }) {
     /** @type {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} */ ([]),
   )
   const [orderVolumesLoading, setOrderVolumesLoading] = useState(false)
-  /** @type {[{ active: boolean; progress: string; dataMonth?: string; batchName?: string }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; dataMonth?: string; batchName?: string }>>]} */
+  /** @type {[{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }>>]} */
   const [importSession, setImportSession] = useState(() => ({
     active: false,
     progress: '',
     dataMonth: undefined,
     batchName: undefined,
+    kind: undefined,
   }))
   /** @type {[{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all' }>>]} */
   const [retagSession, setRetagSession] = useState(() => ({
@@ -258,6 +272,10 @@ export function InsightsProvider({ children }) {
     total: 0,
     scope: /** @type {import('../lib/retagSession.js').BulkRetagScope | 'all'} */ ('all'),
   }))
+  /** @type {[import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null, import('react').Dispatch<import('react').SetStateAction<import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null>>]} */
+  const [sharedBackgroundTask, setSharedBackgroundTask] = useState(
+    /** @type {import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null} */ (null),
+  )
   const currentPeriod = useMemo(
     () => periods.find((p) => p.id === currentPeriodId) ?? null,
     [periods, currentPeriodId],
@@ -574,6 +592,61 @@ export function InsightsProvider({ children }) {
     ],
   )
 
+  const refreshSharedBackgroundTask = useCallback(async () => {
+    if (!storageReady || !isApiStorageAdapter(adapter)) {
+      setSharedBackgroundTask(null)
+      return null
+    }
+    try {
+      const lock = await fetchBackgroundTaskLock()
+      setSharedBackgroundTask(lock)
+      return lock
+    } catch (err) {
+      console.warn('[storage] 后台任务锁查询失败', err)
+      return null
+    }
+  }, [adapter, storageReady])
+
+  const releaseSharedBackgroundTask = useCallback(async () => {
+    if (!isApiStorageAdapter(adapter) || !ownedBackgroundTaskRef.current) return
+    ownedBackgroundTaskRef.current = false
+    try {
+      await releaseBackgroundTask()
+    } catch (err) {
+      console.warn('[storage] 释放后台任务锁失败', err)
+    }
+    await refreshSharedBackgroundTask()
+  }, [adapter, refreshSharedBackgroundTask])
+
+  const prepareSharedBackgroundTask = useCallback(
+    /**
+     * @param {import('../domain/backgroundTaskLock.js').BackgroundTaskType} type
+     * @param {{ progress?: string; meta?: Record<string, unknown> }} [payload]
+     */
+    async (type, payload = {}) => {
+      if (!isApiStorageAdapter(adapter)) return null
+      const { lock } = await acquireBackgroundTask(type, payload)
+      ownedBackgroundTaskRef.current = true
+      setSharedBackgroundTask(lock)
+      return lock
+    },
+    [adapter],
+  )
+
+  const touchSharedBackgroundTask = useCallback(
+    /** @param {{ progress?: string; meta?: Record<string, unknown> }} patch */
+    async (patch) => {
+      if (!isApiStorageAdapter(adapter) || !ownedBackgroundTaskRef.current) return
+      try {
+        const lock = await touchBackgroundTask(patch)
+        setSharedBackgroundTask(lock)
+      } catch (err) {
+        console.warn('[storage] 更新后台任务锁失败', err)
+      }
+    },
+    [adapter],
+  )
+
   useEffect(() => {
     if (!storageReady || typeof adapter.getDataRevision !== 'function') return
 
@@ -597,6 +670,7 @@ export function InsightsProvider({ children }) {
           await syncSharedDataFromServer({ notify: true })
         }
         dataRevisionRef.current = revision
+        await refreshSharedBackgroundTask()
       } catch (err) {
         console.warn('[storage] 版本轮询失败', err)
       }
@@ -614,7 +688,13 @@ export function InsightsProvider({ children }) {
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [storageReady, adapter, syncSharedDataFromServer])
+  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask])
+
+  useEffect(() => {
+    if (storageReady && isApiStorageAdapter(adapter)) {
+      void refreshSharedBackgroundTask()
+    }
+  }, [storageReady, adapter, refreshSharedBackgroundTask])
 
   useEffect(() => {
     if (storageReady) {
@@ -1307,10 +1387,13 @@ export function InsightsProvider({ children }) {
   }, [])
 
   const beginImportSession = useCallback(
-    /** @param {{ progress?: string; dataMonth?: string; batchName?: string; dataSourceType?: import('../domain/enums.js').DataSourceType }} [meta] */
+    /** @param {{ progress?: string; dataMonth?: string; batchName?: string; dataSourceType?: import('../domain/enums.js').DataSourceType; kind?: 'tickets' | 'analysis' }} [meta] */
     (meta = {}) => {
       if (reprocessingRef.current) {
         throw new Error(RETAG_IMPORT_BLOCKED_TIP)
+      }
+      if (importLockRef.current) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
       }
       importLockRef.current = true
       const progress = meta.progress || '正在准备…'
@@ -1319,6 +1402,7 @@ export function InsightsProvider({ children }) {
         progress,
         dataMonth: meta.dataMonth,
         batchName: meta.batchName,
+        kind: meta.kind || 'tickets',
       })
       if (meta.dataMonth) {
         persistImportSessionMarker({
@@ -1333,10 +1417,14 @@ export function InsightsProvider({ children }) {
     [],
   )
 
-  const setImportSessionProgress = useCallback((progress) => {
-    setImportSession((prev) => (prev.active ? { ...prev, progress } : prev))
-    updateImportSessionMarkerProgress(progress)
-  }, [])
+  const setImportSessionProgress = useCallback(
+    (progress) => {
+      setImportSession((prev) => (prev.active ? { ...prev, progress } : prev))
+      updateImportSessionMarkerProgress(progress)
+      void touchSharedBackgroundTask({ progress })
+    },
+    [touchSharedBackgroundTask],
+  )
 
   const endImportSession = useCallback(() => {
     importLockRef.current = false
@@ -1346,8 +1434,10 @@ export function InsightsProvider({ children }) {
       progress: '',
       dataMonth: undefined,
       batchName: undefined,
+      kind: undefined,
     })
-  }, [])
+    void releaseSharedBackgroundTask()
+  }, [releaseSharedBackgroundTask])
 
   /**
    * 导入全流程成功结束（可在离开导入页后触发全局 Toast）
@@ -1389,10 +1479,14 @@ export function InsightsProvider({ children }) {
     [],
   )
 
-  const setRetagSessionProgress = useCallback((progress) => {
-    setRetagSession((prev) => (prev.active ? { ...prev, progress } : prev))
-    updateRetagSessionMarkerProgress(progress)
-  }, [])
+  const setRetagSessionProgress = useCallback(
+    (progress) => {
+      setRetagSession((prev) => (prev.active ? { ...prev, progress } : prev))
+      updateRetagSessionMarkerProgress(progress)
+      void touchSharedBackgroundTask({ progress })
+    },
+    [touchSharedBackgroundTask],
+  )
 
   const endRetagSession = useCallback(() => {
     reprocessingRef.current = false
@@ -1404,7 +1498,8 @@ export function InsightsProvider({ children }) {
       total: 0,
       scope: 'all',
     })
-  }, [])
+    void releaseSharedBackgroundTask()
+  }, [releaseSharedBackgroundTask])
 
   /**
    * @param {{
@@ -1500,6 +1595,134 @@ export function InsightsProvider({ children }) {
       return updated
     },
     [adapter, storageReady],
+  )
+
+  const importAnalysisResults = useCallback(
+    /**
+     * @param {import('../lib/importAnalysis.js').ImportAnalysisValidatedRow[]} validRows
+     * @param {(text: string) => void} [reportProgress]
+     */
+    async (validRows, reportProgress) => {
+      if (!validRows.length) {
+        return {
+          appliedRowCount: 0,
+          skippedRowCount: 0,
+          updatedRecordCount: 0,
+          skippedUnknownTicketIds: [],
+        }
+      }
+
+      if (reprocessingRef.current) {
+        throw new Error(IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP)
+      }
+      if (importLockRef.current) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+
+      let sessionStarted = false
+      const progress = (text) => {
+        reportProgress?.(text)
+        if (sessionStarted) setImportSessionProgress(text)
+      }
+
+      try {
+        await prepareSharedBackgroundTask('import', {
+          progress: '正在导入分析结果…',
+          meta: {
+            importKind: 'analysis',
+            rowCount: validRows.length,
+            batchName: IMPORT_ANALYSIS_SESSION_LABEL,
+          },
+        })
+        beginImportSession({
+          kind: 'analysis',
+          batchName: IMPORT_ANALYSIS_SESSION_LABEL,
+          progress: '正在导入分析结果…',
+        })
+        sessionStarted = true
+
+        progress('正在加载库内工单…')
+        await adapter.init()
+        const { records: allRecords } = await fetchAllRecordPages(adapter)
+
+        progress('正在匹配并覆盖分析字段…')
+        const applyResult = applyImportAnalysisToRecords(allRecords, validRows)
+
+        if (!applyResult.updatedRecords.length) {
+          return {
+            appliedRowCount: applyResult.appliedRowCount,
+            skippedRowCount: applyResult.skippedRowCount,
+            updatedRecordCount: 0,
+            skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+          }
+        }
+
+        const mergedVisible = feedbacksRef.current.map((fb) =>
+          applyResult.updatedById.has(fb.id) ? applyResult.updatedById.get(fb.id) : fb,
+        )
+        feedbacksRef.current = mergedVisible
+        setFeedbacks(mergedVisible)
+
+        if (storageReady) {
+          skipPersistRef.current = true
+          try {
+            progress(`正在保存（0/${applyResult.updatedRecords.length}）…`)
+            await persistRecordUpdates(adapter, applyResult.updatedRecords, {
+              onProgress: (uploaded, total) => {
+                progress(`正在保存（${uploaded}/${total}）…`)
+              },
+            })
+            if (typeof adapter.getDataRevision === 'function') {
+              const rev = await adapter.getDataRevision()
+              dataRevisionRef.current = rev.revision
+            } else {
+              const rev = await fetchDataRevision()
+              dataRevisionRef.current = rev.revision
+            }
+          } finally {
+            skipPersistRef.current = false
+          }
+        }
+
+        if (currentPeriod) {
+          progress('正在排队刷新洞察快照…')
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: mergedVisible,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+
+        emit('ImportAnalysisCompleted', {
+          appliedRowCount: applyResult.appliedRowCount,
+          skippedRowCount: applyResult.skippedRowCount,
+          updatedRecordCount: applyResult.updatedRecordCount,
+          skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+        })
+
+        return {
+          appliedRowCount: applyResult.appliedRowCount,
+          skippedRowCount: applyResult.skippedRowCount,
+          updatedRecordCount: applyResult.updatedRecordCount,
+          skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+        }
+      } finally {
+        if (sessionStarted) endImportSession()
+        await releaseSharedBackgroundTask()
+      }
+    },
+    [
+      adapter,
+      beginImportSession,
+      currentPeriod,
+      endImportSession,
+      prepareSharedBackgroundTask,
+      releaseSharedBackgroundTask,
+      scheduleSnapshotRebuild,
+      setImportSessionProgress,
+      storageReady,
+    ],
   )
 
   const replaceAll = useCallback(
@@ -1705,8 +1928,17 @@ export function InsightsProvider({ children }) {
 
       /** @type {import('../lib/types.js').FeedbackRecord[]} */
       let retagged
+      const forceOverride = options.forceOverrideManualTags === true
+      if (forceOverride) {
+        progress('正在解关联举措库…')
+        try {
+          await unlinkActionItemsForForceRetag(list)
+        } catch (err) {
+          console.warn('[retag] 举措库解关联失败:', err)
+        }
+      }
       if (ticketLlmOnly || journeyLlmOnly) {
-        retagged = [...list]
+        retagged = forceOverride ? list.map((fb) => applyForceRetagOverrides(fb)) : [...list]
       } else {
         retagged = []
         const batchSize = 50
@@ -1795,6 +2027,10 @@ export function InsightsProvider({ children }) {
         throw new Error(RETAG_IN_PROGRESS_TIP)
       }
 
+      await prepareSharedBackgroundTask('retag', {
+        progress: '正在准备…',
+        meta: { scope, total: list.length },
+      })
       beginRetagSession({ total: list.length, scope })
       try {
         const result = await reprocessAllTagsCore(list, setRetagSessionProgress, {
@@ -1813,6 +2049,7 @@ export function InsightsProvider({ children }) {
       beginRetagSession,
       endRetagSession,
       notifyRetagFinished,
+      prepareSharedBackgroundTask,
       reprocessAllTagsCore,
       setRetagSessionProgress,
     ],
@@ -1989,12 +2226,15 @@ export function InsightsProvider({ children }) {
       setImportLock,
       importSession,
       beginImportSession,
+      prepareSharedBackgroundTask,
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
       retagSession,
+      sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      importAnalysisResults,
       replaceAll,
       clearAll,
       clearImportedData,
@@ -2075,12 +2315,15 @@ export function InsightsProvider({ children }) {
       setImportLock,
       importSession,
       beginImportSession,
+      prepareSharedBackgroundTask,
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
       retagSession,
+      sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      importAnalysisResults,
       replaceAll,
       clearAll,
       clearImportedData,

@@ -19,7 +19,8 @@ import {
 } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
-import { RETAG_IMPORT_BLOCKED_TIP, RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
+import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
+import { readBackgroundTaskErrorMessage } from '../lib/backgroundTaskClient.js'
 import { ImportProgressAlert } from '../components/TaggingProgressAlert.jsx'
 import InsightMonthPicker from '../components/InsightMonthPicker.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
@@ -56,6 +57,7 @@ import {
   combineImportFileSha256,
   mergeParsedUploadFiles,
 } from '../lib/importBatchFiles.js'
+import { IMPORT_ALREADY_IN_PROGRESS_TIP } from '../lib/importSession.js'
 
 /** @typedef {import('../lib/importBatchFiles.js').ParsedUploadFile} ParsedUploadFile */
 
@@ -74,11 +76,12 @@ function currentMonth() {
   return new Date().toISOString().slice(0, 7)
 }
 
-export default function Import() {
+export default function Import({ embedded = false }) {
   const navigate = useNavigate()
   const {
     addFeedbacks,
     beginImportSession,
+    prepareSharedBackgroundTask,
     setImportSessionProgress,
     endImportSession,
     notifyImportFinished,
@@ -91,9 +94,9 @@ export default function Import() {
     rebuildSnapshotsForImportMonth,
     storageReady,
     periodsLoading,
-    retagSession,
     importSession,
   } = useInsights()
+  const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock()
 
   const [dataSourceType, setDataSourceType] = useState(
     /** @type {import('../domain/enums.js').DataSourceType} */ ('complaint_ticket'),
@@ -415,11 +418,13 @@ export default function Import() {
   const doImport = async (forceDuplicate = false) => {
     setLoading(true)
     setError('')
-    let sessionStarted = false
     let importFinishedNotified = false
     try {
-      if (retagSession.active) {
-        throw new Error(RETAG_IMPORT_BLOCKED_TIP)
+      if (importSession.active) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+      if (importBlocked && !importSession.active) {
+        throw new Error(importBlockedTip || '当前无法导入')
       }
       if (!storageReady) {
         throw new Error(
@@ -460,13 +465,21 @@ export default function Import() {
         throw new Error('请选择有效的数据月份（YYYY-MM）')
       }
 
+      await prepareSharedBackgroundTask('import', {
+        progress: '正在准备分析…',
+        meta: {
+          dataMonth,
+          batchName: batchName?.trim() || defaultBatchName(dataSourceType, dataMonth),
+          dataSourceType,
+        },
+      })
+
       beginImportSession({
         progress: '正在准备分析…',
         dataMonth,
         batchName: batchName?.trim() || defaultBatchName(dataSourceType, dataMonth),
         dataSourceType,
       })
-      sessionStarted = true
       reportProgress('正在准备分析…')
 
       const batchId = `${dataMonth}-${Date.now()}`
@@ -608,10 +621,10 @@ export default function Import() {
         }
         setError('已取消：相同文件近期已完成分析')
       } else {
-        setError(e.message || '导入失败')
+        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
       }
     } finally {
-      if (sessionStarted && !importFinishedNotified) {
+      if (!importFinishedNotified) {
         endImportSession()
       }
       setLoading(false)
@@ -620,14 +633,15 @@ export default function Import() {
   }
 
   const importBusy = loading || importSession.active
-  const importBlockedByRetag = retagSession.active
 
   return (
     <div>
-      <PageHeader
-        title="数据导入"
-        desc="选择数据来源与数据月份即可导入，与工作台当前洞察周期无关；工作台切换周期时按数据月份筛选"
-      />
+      {!embedded && (
+        <PageHeader
+          title="数据导入"
+          desc="选择数据来源与数据月份即可导入，与工作台当前洞察周期无关；工作台切换周期时按数据月份筛选"
+        />
+      )}
 
       <Steps
         className="page-section"
@@ -636,13 +650,13 @@ export default function Import() {
       />
 
       {error && <Alert className="page-section-sm" type="error" showIcon title={error} />}
-      {importBlockedByRetag && (
+      {importBlocked && !importSession.active && (
         <Alert
           className="page-section-sm"
           type="warning"
           showIcon
-          title={RETAG_IN_PROGRESS_TIP}
-          description={RETAG_IMPORT_BLOCKED_TIP}
+          title="暂无法导入"
+          description={importBlockedTip}
         />
       )}
       {importSession.active && (
@@ -1035,7 +1049,7 @@ export default function Import() {
             <Button onClick={() => setStep(2)}>上一步</Button>
             <Button
               type="primary"
-              disabled={!canImport || !storageReady || importBlockedByRetag || importBusy}
+              disabled={!canImport || !storageReady || importBlocked || importBusy}
               loading={importBusy}
               onClick={() => doImport(false)}
             >

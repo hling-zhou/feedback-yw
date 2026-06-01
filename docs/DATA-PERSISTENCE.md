@@ -17,6 +17,7 @@
 | 设置页「清空选中范围」 | 写库 | `clearAllImportedData(adapter, { insightPeriodId, dataSourceType })`；周期 ID 经 `resolveInsightPeriod` 解析（不必先写入 meta） |
 | 设置页「全部清空」 | 写库 | `clearAllImportedData(adapter, { all: true })`；**勿**与条件清空混用同一入口 |
 | 他人导入后同步 | 读库 | `dataRevision` 轮询 → `syncSharedDataFromServer` |
+| 批量导入 / 批量打标互斥 | 写 meta | 服务端全局锁 `background_task_lock`；他人约 5s 内可见并拦截入口 |
 
 **不会**把整份 `feedbacks` 数组 debounce 全量写回共享库（会误删其他月份数据）；这是刻意设计，见 `InsightsContext` 注释。
 

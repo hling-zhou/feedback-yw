@@ -458,6 +458,20 @@ export function initBusinessSchema() {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS action_items (
+      id TEXT PRIMARY KEY,
+      product_key TEXT NOT NULL DEFAULT '',
+      product_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      first_proposed_at TEXT NOT NULL DEFAULT '',
+      schedule_at TEXT NOT NULL DEFAULT '',
+      warning_level TEXT NOT NULL DEFAULT 'none',
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_action_items_product ON action_items(product_key);
+    CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status);
+    CREATE INDEX IF NOT EXISTS idx_action_items_first_proposed ON action_items(first_proposed_at);
   `)
   migrateRecordsIndexColumns(db)
   migrateLegacyDcProductKeys(db)

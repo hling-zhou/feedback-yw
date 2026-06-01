@@ -1,7 +1,8 @@
 import { themesFromJourney } from './applyThemes.js'
 import { normalizeSentiment, normalizeUrgencyLevel } from './sentiment.js'
+import { applyForceAllHumanOverrides } from '../domain/overridePolicy.js'
 
-/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency'} ManualTagDimension */
+/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview'} ManualTagDimension */
 
 /** @type {ManualTagDimension[]} */
 export const MANUAL_TAG_DIMENSIONS = [
@@ -11,6 +12,9 @@ export const MANUAL_TAG_DIMENSIONS = [
   'sentiment',
   'urgency',
   'optimization',
+  'customerRequest',
+  'painPoint',
+  'rootCauseReview',
 ]
 
 /** @type {Record<ManualTagDimension, string>} */
@@ -21,6 +25,9 @@ export const MANUAL_TAG_DIMENSION_LABELS = {
   sentiment: '用户情绪',
   urgency: '加急',
   optimization: '优化建议',
+  customerRequest: '客户请求',
+  painPoint: '需求痛点',
+  rootCauseReview: '根因排查',
 }
 
 /**
@@ -47,24 +54,22 @@ export function mergeManualTagFieldsOnUserEdit(existing, patch) {
   if ('journeyL1' in patch || 'journeyL2' in patch || 'themes' in patch) set.add('journey')
   if ('sentiment' in patch) set.add('sentiment')
   if ('urgencyLevel' in patch) set.add('urgency')
-  if ('manualReviewOptimization' in patch) set.add('optimization')
+  if ('manualReviewOptimization' in patch || 'establishedAction' in patch || 'actionSchedule' in patch) {
+    set.add('optimization')
+  }
+  if ('customerRequest' in patch) set.add('customerRequest')
+  if ('painPoint' in patch || 'problemSummary' in patch) set.add('painPoint')
+  if ('rootCauseReview' in patch) set.add('rootCauseReview')
   return [...set]
 }
 
 /**
- * 批量强制重打标：清空人工标签标记与人工复核文本，便于全量重算。
+ * 批量强制重打标：清空人工标记与人工复核文本，便于全量重算。
  *
  * @param {import('./types.js').FeedbackRecord} record
  */
 export function applyForceRetagOverrides(record) {
-  return {
-    ...record,
-    manualTagFields: [],
-    manualReviewRootCause: '',
-    manualReviewSolution: '',
-    manualReviewAction: '',
-    manualReviewOptimization: '',
-  }
+  return applyForceAllHumanOverrides(record)
 }
 
 /**
@@ -105,9 +110,23 @@ export function preserveManualTags(original, processed, options = {}) {
   }
   if (set.has('optimization')) {
     out.manualReviewOptimization = original.manualReviewOptimization
+    out.establishedAction = original.establishedAction
+    out.actionSchedule = original.actionSchedule
     out.optimizationProduct = original.optimizationProduct
     out.optimizationService = original.optimizationService
     out.optimizationSuggestion = original.optimizationSuggestion
+  }
+  if (set.has('customerRequest')) {
+    out.customerRequest = original.customerRequest
+    out.customerRequestSource = original.customerRequestSource
+  }
+  if (set.has('painPoint')) {
+    out.painPoint = original.painPoint
+    out.problemSummary = original.problemSummary
+    out.painPointSource = original.painPointSource
+  }
+  if (set.has('rootCauseReview')) {
+    out.rootCauseReview = original.rootCauseReview
   }
 
   return out

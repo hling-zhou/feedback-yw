@@ -7,10 +7,11 @@ import InsightWorkbench from './pages/InsightWorkbench.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Feedbacks from './pages/Feedbacks.jsx'
 import Themes from './pages/Themes.jsx'
-import Import from './pages/Import.jsx'
+import ImportHub from './pages/ImportHub.jsx'
 import Settings from './pages/Settings.jsx'
 import TagManagement from './pages/TagManagement.jsx'
 import Users from './pages/Users.jsx'
+import Actions from './pages/Actions.jsx'
 import Login from './pages/Login.jsx'
 
 /** @type {import('react-router-dom').RouteObject[]} */
@@ -32,8 +33,9 @@ const routes = [
           { path: 'workbench/analysis', element: <Themes /> },
           { path: 'dashboard', element: <Dashboard /> },
           { path: 'feedbacks', element: <Feedbacks /> },
+          { path: 'actions', element: <Actions /> },
           { path: 'themes', element: <Navigate to="/workbench/analysis" replace /> },
-          { path: 'import', element: <Import /> },
+          { path: 'import', element: <ImportHub /> },
           { path: 'settings', element: <Settings /> },
           { path: 'tags', element: <TagManagement /> },
           { path: 'users', element: <Users /> },

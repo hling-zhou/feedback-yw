@@ -11,6 +11,7 @@ import WorkbenchSourceEmpty from '../components/workbench/WorkbenchSourceEmpty.j
 import RebuildInsightsButton from '../components/workbench/RebuildInsightsButton.jsx'
 import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
+import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import ExportPdfMenu from '../components/ExportPdfMenu.jsx'
@@ -37,18 +38,16 @@ export default function InsightWorkbench() {
     snapshotRebuilding,
     rebuildAllSnapshots,
     importSession,
-    retagSession,
     orderVolumes,
   } = useInsights()
+  const { rebuildBlocked, rebuildBlockedTip, localImport, localRetag } = useSharedBackgroundTaskBlock()
 
-  const importInProgress = importSession.active
-  const retagInProgress = retagSession.active
-  const rebuildDisabled = importInProgress || retagInProgress
-  const rebuildDisabledTip = retagInProgress
+  const rebuildDisabled = rebuildBlocked
+  const rebuildDisabledTip = localRetag
     ? RETAG_REBUILD_DISABLED_TIP
-    : importInProgress
+    : localImport
       ? IMPORT_REBUILD_DISABLED_TIP
-      : undefined
+      : rebuildBlockedTip
 
   const complaintRecords = useMemo(
     () => resolveSnapshotRecords(feedbacks, sourceSnapshots.complaint_ticket),

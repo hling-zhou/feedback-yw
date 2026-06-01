@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Input, Segmented, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Empty, Input, Segmented, Select, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
-import { RETAG_BLOCKED_BY_IMPORT_TIP, formatBulkRetagScopeLabel } from '../lib/retagSession.js'
+import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
+import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import { TaggingProgressAlert } from '../components/TaggingProgressAlert.jsx'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
@@ -63,6 +64,7 @@ export default function Feedbacks() {
     selectInsightPeriod,
     settings,
   } = useInsights()
+  const { remoteBannerText } = useSharedBackgroundTaskBlock()
 
   const activePeriod = useMemo(
     () =>
@@ -317,9 +319,18 @@ export default function Feedbacks() {
               {importSession.dataMonth ? (
                 <span className="text-ink-500"> · 数据月份 {importSession.dataMonth}</span>
               ) : null}
-              <span className="text-ink-500"> · {RETAG_BLOCKED_BY_IMPORT_TIP}</span>
             </span>
           }
+        />
+      )}
+
+      {remoteBannerText && !importSession.active && !retagSession.active && (
+        <Alert
+          className="page-section-sm"
+          type="info"
+          showIcon
+          title="团队后台任务进行中"
+          description={remoteBannerText}
         />
       )}
 
@@ -544,13 +555,15 @@ export default function Feedbacks() {
           }}
         />
         <div className="ml-auto flex flex-wrap gap-2">
-          <Button
-            icon={<DownloadOutlined />}
-            disabled={!filtered.length}
-            onClick={handleExport}
-          >
-            导出分析结果
-          </Button>
+          <Tooltip title="导出 v2：16 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md">
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!filtered.length}
+              onClick={handleExport}
+            >
+              导出分析结果
+            </Button>
+          </Tooltip>
           <PermissionGate permission="retag">
             <Button
               disabled={bulkRetagDisabled}

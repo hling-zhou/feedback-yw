@@ -459,6 +459,10 @@ export const storageRepository = {
       .run(key, stringifyJson(value))
   },
 
+  deleteMeta(key) {
+    getDb().prepare('DELETE FROM meta WHERE key = ?').run(key)
+  },
+
   listTagCandidates(filters = {}) {
     const db = getDb()
     let sql = 'SELECT payload FROM tag_candidates'

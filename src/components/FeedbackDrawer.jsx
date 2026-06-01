@@ -32,9 +32,42 @@ import {
   extractHandlingOriginalTextFromFields,
 } from '../lib/taggingText.js'
 import {
+  buildCustomerRequestManualSavePatch,
+  buildPainPointManualSavePatch,
+  CUSTOMER_REQUEST_MANUAL_MAX_LENGTH,
+  getCustomerRequestDraftDisplay,
+  getPainPointDraftDisplay,
+  normalizeManualCustomerRequest,
+  normalizeManualPainPoint,
+  PAIN_POINT_MANUAL_MAX_LENGTH,
+} from '../domain/ticketAnalysisManualFields.js'
+import {
+  getActionScheduleDisplay,
+  normalizeActionSchedule,
+} from '../domain/actionSchedule.js'
+import {
+  ESTABLISHED_ACTION_MAX_LENGTH,
+  getEstablishedActionDisplay,
+} from '../domain/establishedAction.js'
+import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord } from '../lib/establishedActionPersist.js'
+import ActionItemSelect from './ActionItemSelect.jsx'
+import { getActionItem } from '../lib/actionItemClient.js'
+import {
+  buildDetailOptimizationSavePatch,
+  DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH,
+  hasDetailOptimizationContent,
+} from '../domain/detailOptimizationFields.js'
+import {
   getComplaintCauseL1Display,
   isComplaintTicket,
 } from '../domain/complaintCause.js'
+import {
+  getRootCauseReviewDraftDisplay,
+  isRootCauseReviewManuallyMaintained,
+  normalizeRootCauseReviewInput,
+  ROOT_CAUSE_REVIEW_MAX_LENGTH,
+  shouldIncludeRootCauseReviewInSave,
+} from '../domain/rootCauseReview.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function FeedbackDrawer({ feedback: selected, onClose }) {
@@ -56,9 +89,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const [problemType, setProblemType] = useState(feedback?.problemType || '')
   const [journeyL1, setJourneyL1] = useState(feedback?.journeyL1 || '')
   const [journeyL2, setJourneyL2] = useState(feedback?.journeyL2 || '')
-  const [manualReviewOptimization, setManualReviewOptimization] = useState(
-    feedback?.manualReviewOptimization || '',
-  )
+  const [establishedAction, setEstablishedAction] = useState('')
+  const [actionId, setActionId] = useState('')
+  const [linkedFromLibrary, setLinkedFromLibrary] = useState(false)
+  const [customerRequest, setCustomerRequest] = useState('')
+  const [painPoint, setPainPoint] = useState('')
+  const [actionSchedule, setActionSchedule] = useState('')
+  const [productGroupOptimization, setProductGroupOptimization] = useState('')
+  const [designerOptimization, setDesignerOptimization] = useState('')
+  const [rootCauseReview, setRootCauseReview] = useState('')
+  const [rootCauseReviewTouched, setRootCauseReviewTouched] = useState(false)
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -100,8 +140,33 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     setProblemType(feedback.problemType || '')
     setJourneyL1(feedback.journeyL1 || '')
     setJourneyL2(feedback.journeyL2 || '')
-    setManualReviewOptimization(feedback.manualReviewOptimization || '')
+    setEstablishedAction(getEstablishedActionDisplay(feedback))
+    setActionId(feedback.actionId?.trim() || '')
+    setLinkedFromLibrary(Boolean(feedback.actionId?.trim()))
+    setCustomerRequest(getCustomerRequestDraftDisplay(feedback))
+    setPainPoint(getPainPointDraftDisplay(feedback))
+    setActionSchedule(feedback.actionSchedule || '')
+    setProductGroupOptimization(feedback.productGroupOptimization || '')
+    setDesignerOptimization(feedback.designerOptimization || '')
+    setRootCauseReview(getRootCauseReviewDraftDisplay(feedback))
+    setRootCauseReviewTouched(false)
   }, [feedback])
+
+  useEffect(() => {
+    if (!feedback?.actionId?.trim()) return
+    let cancelled = false
+    ;(async () => {
+      const item = await getActionItem(feedback.actionId)
+      if (cancelled || !item) return
+      if (linkedFromLibrary) {
+        setEstablishedAction(item.content)
+        setActionSchedule(item.scheduleAt || '')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [feedback?.actionId, feedback?.id, linkedFromLibrary])
 
   const optimizationServiceText = feedback?.optimizationService?.trim() || ''
 
@@ -131,16 +196,38 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     setSaving(true)
     try {
       const journey = { journeyL1, journeyL2 }
-      await updateFeedback(feedback.id, {
+      const patch = {
         note,
         themes: themesFromJourney(journey),
         sentiment,
         urgencyLevel,
         requestScene,
         problemType,
-        manualReviewOptimization: manualReviewOptimization.trim(),
+        ...buildCustomerRequestManualSavePatch(customerRequest),
+        ...buildPainPointManualSavePatch(painPoint),
+        ...buildDetailOptimizationSavePatch({
+          productGroupOptimization,
+          designerOptimization,
+        }),
         ...journey,
-      })
+      }
+      Object.assign(
+        patch,
+        await persistEstablishedActionForTicket(feedback, {
+          content: establishedAction,
+          scheduleAt: actionSchedule,
+          actionId,
+          linkedFromLibrary,
+        }),
+      )
+      if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
+        patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
+      }
+      await updateFeedback(feedback.id, patch)
+      const merged = { ...feedback, ...patch }
+      if (merged.actionId?.trim()) {
+        await syncFirstTicketSnapshotsForRecord(merged)
+      }
       const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
       message.success(`${label} 已保存`)
       onClose()
@@ -211,10 +298,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       }
     >
       <div className="space-y-4">
+        {/* A · 基础信息 */}
         <Typography.Text type="secondary" className="block text-xs leading-snug">
           {ticketMetaLine}
         </Typography.Text>
 
+        {/* B1 · 工单分类 */}
         <Card title="工单分类" size="small">
           {canEdit ? (
             <Form layout="vertical">
@@ -337,6 +426,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           </Typography.Text>
         </Card>
 
+        {/* B2 · 投诉原因（终判） */}
         {isComplaintTicket(feedback) && (
           <Card title="投诉原因（终判）" size="small" className="!bg-ink-50/50">
             <Typography.Text type="secondary" className="mb-2 block text-xs">
@@ -356,15 +446,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           </Card>
         )}
 
-        <Card title="处理意见（工单原文）" size="small">
-          <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
-            {handlingOriginalText || '—'}
-          </Typography.Paragraph>
-          <Typography.Text type="secondary" className="mt-2 block text-xs">
-            优先展示「处理意见」列；若为空则展示「受理内容」。
-          </Typography.Text>
-        </Card>
-
+        {/* C · 分析内容区 */}
         <Card
           title={
             <span className="inline-flex flex-wrap items-center gap-2">
@@ -377,9 +459,29 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           }
           size="small"
         >
-          <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-            {getDisplayCustomerRequest(feedback) || '—'}
-          </Typography.Paragraph>
+          {canEdit ? (
+            <>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                人工编辑并保存后，批量/单条重新打标默认保留此维度。
+              </Typography.Text>
+              <Input.TextArea
+                rows={2}
+                placeholder="默认为空"
+                maxLength={CUSTOMER_REQUEST_MANUAL_MAX_LENGTH}
+                showCount
+                value={customerRequest}
+                onChange={(e) => {
+                  setCustomerRequest(
+                    normalizeManualCustomerRequest(e.target.value),
+                  )
+                }}
+              />
+            </>
+          ) : (
+            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+              {getDisplayCustomerRequest(feedback) || '—'}
+            </Typography.Paragraph>
+          )}
         </Card>
 
         <Card
@@ -394,9 +496,27 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           }
           size="small"
         >
-          <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-            {getDisplayPainPoint(feedback) || '—'}
-          </Typography.Paragraph>
+          {canEdit ? (
+            <>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                人工编辑并保存后，批量/单条重新打标默认保留此维度。
+              </Typography.Text>
+              <Input.TextArea
+                rows={2}
+                placeholder="默认为空"
+                maxLength={PAIN_POINT_MANUAL_MAX_LENGTH}
+                showCount
+                value={painPoint}
+                onChange={(e) => {
+                  setPainPoint(normalizeManualPainPoint(e.target.value))
+                }}
+              />
+            </>
+          ) : (
+            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+              {getDisplayPainPoint(feedback) || '—'}
+            </Typography.Paragraph>
+          )}
         </Card>
 
         <Card
@@ -429,33 +549,203 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 : []),
             ]}
           />
-          {canEdit && (
+          {canEdit ? (
             <Form layout="vertical" className="mt-3">
               <Typography.Text strong className="mb-2 block text-xs">
-                人工复核后的优化建议
+                产品组优化建议
               </Typography.Text>
               <Typography.Text type="secondary" className="mb-2 block text-xs">
-                若有人工复核后的优化建议，原优化建议不参与后续的聚类分析，以人工复核后的优化建议为准。
+                产品组视角的补充建议；不参与聚类与行动建议语料收集。
+              </Typography.Text>
+              <Form.Item className="!mb-3">
+                <Input.TextArea
+                  rows={2}
+                  placeholder="默认为空"
+                  maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                  showCount
+                  value={productGroupOptimization}
+                  onChange={(e) => {
+                    setProductGroupOptimization(
+                      e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                    )
+                  }}
+                />
+              </Form.Item>
+              <Typography.Text strong className="mb-2 block text-xs">
+                设计师优化建议
+              </Typography.Text>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                体验/交互设计视角的补充建议；不参与聚类与行动建议语料收集。
               </Typography.Text>
               <Form.Item className="!mb-0">
                 <Input.TextArea
-                  rows={3}
+                  rows={2}
                   placeholder="默认为空"
-                  value={manualReviewOptimization}
-                  onChange={(e) => setManualReviewOptimization(e.target.value)}
+                  maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                  showCount
+                  value={designerOptimization}
+                  onChange={(e) => {
+                    setDesignerOptimization(
+                      e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                    )
+                  }}
                 />
               </Form.Item>
             </Form>
+          ) : (
+            hasDetailOptimizationContent(feedback) && (
+              <Descriptions
+                className="mt-3"
+                column={1}
+                size="small"
+                bordered
+                items={[
+                  ...(feedback.productGroupOptimization?.trim()
+                    ? [
+                        {
+                          key: 'productGroup',
+                          label: '产品组优化建议',
+                          children: feedback.productGroupOptimization.trim(),
+                        },
+                      ]
+                    : []),
+                  ...(feedback.designerOptimization?.trim()
+                    ? [
+                        {
+                          key: 'designer',
+                          label: '设计师优化建议',
+                          children: feedback.designerOptimization.trim(),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            )
           )}
-          {!canEdit && manualReviewOptimization.trim() && (
+          {canEdit && (
+            <Form layout="vertical" className="mt-3">
+              <ActionItemSelect
+                value={actionId || undefined}
+                productKey={feedback.productKey || feedback.taxonomyKey}
+                disabled={saving}
+                onSelect={(item) => {
+                  setActionId(item.id)
+                  setEstablishedAction(item.content)
+                  setActionSchedule(item.scheduleAt || '')
+                  setLinkedFromLibrary(true)
+                }}
+                onClear={() => {
+                  setActionId('')
+                  setLinkedFromLibrary(false)
+                }}
+              />
+              <Typography.Text strong className="mb-2 mt-3 block text-xs">
+                确立举措
+              </Typography.Text>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                {linkedFromLibrary
+                  ? '已关联举措库：内容为文本副本，排期只读来自库。'
+                  : '手动输入保存时将自动写入举措库并关联本工单（R4）。'}
+              </Typography.Text>
+              <Form.Item className="!mb-3">
+                <Input.TextArea
+                  rows={3}
+                  placeholder="默认为空"
+                  maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
+                  showCount
+                  readOnly={linkedFromLibrary}
+                  value={establishedAction}
+                  onChange={(e) => {
+                    const next = e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH)
+                    setEstablishedAction(next)
+                    if (linkedFromLibrary) {
+                      setLinkedFromLibrary(false)
+                      setActionId('')
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item
+                label="排期"
+                className="!mb-0"
+                extra={
+                  <Typography.Text type="secondary" className="text-xs">
+                    {linkedFromLibrary
+                      ? '来自举措库，不可在此编辑。'
+                      : '可留空，表示待评估（R1）；支持日期字符串如 YYYY-MM-DD。'}
+                  </Typography.Text>
+                }
+              >
+                <Input
+                  placeholder="留空 = 待评估"
+                  value={actionSchedule}
+                  readOnly={linkedFromLibrary}
+                  allowClear={!linkedFromLibrary}
+                  onChange={(e) => setActionSchedule(normalizeActionSchedule(e.target.value))}
+                />
+              </Form.Item>
+              {linkedFromLibrary && actionId && (
+                <Typography.Text type="secondary" className="mt-2 block text-xs">
+                  关联举措 ID：{actionId}
+                </Typography.Text>
+              )}
+            </Form>
+          )}
+          {!canEdit
+            && (getEstablishedActionDisplay(feedback) || feedback.actionSchedule?.trim()) && (
             <div className="mt-3">
               <Typography.Text strong className="mb-2 block text-xs">
-                人工复核后的优化建议
+                确立举措
               </Typography.Text>
-              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                {manualReviewOptimization.trim()}
+              <Typography.Paragraph className="!mb-2 whitespace-pre-wrap">
+                {getEstablishedActionDisplay(feedback) || '—'}
               </Typography.Paragraph>
+              <Typography.Text strong className="mb-1 block text-xs">
+                排期
+              </Typography.Text>
+              <Typography.Text className="block text-sm">
+                {getActionScheduleDisplay(feedback.actionSchedule)}
+              </Typography.Text>
             </div>
+          )}
+        </Card>
+
+        {/* D · 处理与备注 */}
+        <Card title="处理意见（工单原文）" size="small">
+          <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
+            {handlingOriginalText || '—'}
+          </Typography.Paragraph>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            优先展示「处理意见」列；若为空则展示「受理内容」。
+          </Typography.Text>
+        </Card>
+
+        <Card title="根因排查" size="small">
+          {canEdit ? (
+            <>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                {isRootCauseReviewManuallyMaintained(feedback)
+                  ? '已人工复核；重新打标默认保留此维度。'
+                  : '默认展示工单「问题原因」或结构化根因；编辑并保存后将作为人工复核值写入。'}
+              </Typography.Text>
+              <Input.TextArea
+                rows={3}
+                placeholder="默认为空"
+                maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
+                showCount
+                value={rootCauseReview}
+                onChange={(e) => {
+                  setRootCauseReviewTouched(true)
+                  setRootCauseReview(
+                    e.target.value.slice(0, ROOT_CAUSE_REVIEW_MAX_LENGTH),
+                  )
+                }}
+              />
+            </>
+          ) : (
+            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+              {getRootCauseReviewDraftDisplay(feedback) || '—'}
+            </Typography.Paragraph>
           )}
         </Card>
 

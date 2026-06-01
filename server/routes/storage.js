@@ -15,6 +15,12 @@ import {
   getInsightRebuildJob,
   listInsightRebuildJobs as listInsightRebuildJobsForPeriod,
 } from '../insightRebuildJob.js'
+import {
+  acquireBackgroundTaskLock,
+  getBackgroundTaskLock,
+  releaseBackgroundTaskLock,
+  touchBackgroundTaskLock,
+} from '../backgroundTaskLock.js'
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertWritePermission(request, reply, permissions) {
@@ -46,6 +52,101 @@ export function registerStorageRoutes(app) {
 
   app.get('/api/storage/revision', { preHandler: requirePermission('view') }, async () => {
     return getDataRevision()
+  })
+
+  app.get('/api/storage/background-task', { preHandler: requirePermission('view') }, async () => {
+    return { lock: getBackgroundTaskLock() }
+  })
+
+  app.post('/api/storage/background-task/acquire', async (request, reply) => {
+    const body = /** @type {{
+      type?: import('../src/domain/backgroundTaskLock.js').BackgroundTaskType
+      progress?: string
+      meta?: Record<string, unknown>
+    }} */ (request.body || {})
+    const type = body.type
+    if (type !== 'import' && type !== 'retag') {
+      reply.code(400).send({ error: '无效的任务类型' })
+      return
+    }
+    const permissions = type === 'import' ? ['import'] : ['retag']
+    if (!assertWritePermission(request, reply, permissions)) return
+    const user = request.user
+    if (!user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    try {
+      const result = acquireBackgroundTaskLock(type, {
+        id: user.id,
+        username: user.username,
+        progress: body.progress,
+        meta: body.meta,
+      })
+      logAuditFromRequest(request, 'storage.background_task_acquire', {
+        type,
+        lockId: result.lock.id,
+        created: result.created,
+      })
+      return result
+    } catch (err) {
+      const e = /** @type {Error & { code?: string; lock?: unknown }} */ (err)
+      if (e.code === 'BACKGROUND_TASK_CONFLICT') {
+        reply.code(409).send({ error: e.message, lock: e.lock })
+        return
+      }
+      throw err
+    }
+  })
+
+  app.patch('/api/storage/background-task', async (request, reply) => {
+    const body = /** @type {{ progress?: string; meta?: Record<string, unknown> }} */ (
+      request.body || {}
+    )
+    const user = request.user
+    if (!user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    try {
+      const lock = touchBackgroundTaskLock(user.id, body)
+      return { lock }
+    } catch (err) {
+      const e = /** @type {Error & { code?: string }} */ (err)
+      if (e.code === 'BACKGROUND_TASK_FORBIDDEN') {
+        reply.code(403).send({ error: e.message })
+        return
+      }
+      if (e.message === '当前无进行中的后台任务') {
+        reply.code(404).send({ error: e.message })
+        return
+      }
+      throw err
+    }
+  })
+
+  app.delete('/api/storage/background-task', async (request, reply) => {
+    const user = request.user
+    if (!user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    try {
+      const released = releaseBackgroundTaskLock(user.id)
+      if (!released) {
+        reply.code(404).send({ error: '当前无进行中的后台任务' })
+        return
+      }
+      logAuditFromRequest(request, 'storage.background_task_release', {})
+      return { ok: true }
+    } catch (err) {
+      const e = /** @type {Error & { code?: string }} */ (err)
+      if (e.code === 'BACKGROUND_TASK_FORBIDDEN') {
+        reply.code(403).send({ error: e.message })
+        return
+      }
+      throw err
+    }
   })
 
   app.get('/api/storage/periods', { preHandler: requirePermission('view') }, async () => {

@@ -8,6 +8,7 @@ import {
   UnorderedListOutlined,
   TeamOutlined,
   LogoutOutlined,
+  FlagOutlined,
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Statistic, Tag, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -25,6 +26,7 @@ import RetagSessionGuard from './RetagSessionGuard.jsx'
 const ALL_NAV = [
   { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
   { key: '/feedbacks', label: '反馈库', icon: <UnorderedListOutlined /> },
+  { key: '/actions', label: '举措与进展', icon: <FlagOutlined /> },
   { key: '/import', label: '数据导入', icon: <ImportOutlined /> },
   { key: '/tags', label: '标签管理', icon: <TagOutlined /> },
   { key: '/users', label: '用户管理', icon: <TeamOutlined />, adminOnly: true },

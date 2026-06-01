@@ -7,6 +7,8 @@ import {
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
+  getTicketAnalysisSourceLabel,
+  normalizeTicketAnalysisFieldSource,
   recordHasFullTicketLlmEnrichment,
   recordNeedsTicketLlmEnrichment,
   recordNeedsJourneyLlmEnrichment,
@@ -26,8 +28,66 @@ describe('ticketAnalysisSources', () => {
   })
 
   it('labels optimization source for UI', () => {
-    expect(getOptimizationSourceLabel('manual')).toBe('人工复核')
+    expect(getOptimizationSourceLabel('manual')).toBe('人工')
+    expect(getOptimizationSourceLabel('import')).toBe('人工')
     expect(getOptimizationSourceLabel('llm')).toBe('大模型')
+  })
+
+  it('maps import/manual sources to 人工 for request and pain point tags', () => {
+    expect(getCustomerRequestSource({ customerRequestSource: 'import' })).toBe('manual')
+    expect(getPainPointSource({ painPointSource: 'manual' })).toBe('manual')
+    expect(getTicketAnalysisSourceLabel('import')).toBe('人工')
+  })
+
+  describe('P2-6 source tag rules', () => {
+    it('shows 人工 for optimization when establishedAction is set', () => {
+      expect(
+        getOptimizationSource({
+          establishedAction: '增加端口预检',
+          manualReviewOptimization: '',
+          optimizationSource: 'llm',
+        }),
+      ).toBe('manual')
+      expect(getOptimizationSourceLabel(getOptimizationSource({
+        establishedAction: '增加端口预检',
+        optimizationSource: 'llm',
+      }))).toBe('人工')
+    })
+
+    it('falls back to legacy manualReviewOptimization for optimization source', () => {
+      expect(
+        getOptimizationSource({
+          establishedAction: '',
+          manualReviewOptimization: 'legacy 人工举措',
+          optimizationSource: 'rule',
+        }),
+      ).toBe('manual')
+    })
+
+    it('maps optimizationSource import to 人工 without established action text', () => {
+      expect(
+        getOptimizationSource({
+          optimizationSource: 'import',
+          optimizationProduct: '导入的产品优化',
+        }),
+      ).toBe('manual')
+    })
+
+    it('shows manual for customerRequest when manualTagFields marks dimension', () => {
+      expect(
+        getCustomerRequestSource({
+          customerRequest: '人工客户请求',
+          customerRequestSource: 'rule',
+          manualTagFields: ['customerRequest'],
+        }),
+      ).toBe('manual')
+    })
+
+    it('normalizeTicketAnalysisFieldSource maps import to manual', () => {
+      expect(normalizeTicketAnalysisFieldSource('import')).toBe('manual')
+      expect(normalizeTicketAnalysisFieldSource('llm')).toBe('llm')
+      expect(normalizeTicketAnalysisFieldSource(undefined)).toBe('rule')
+    })
   })
 
   it('prefers structured display fields', () => {

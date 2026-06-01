@@ -5,9 +5,16 @@ import {
   getOptimizationSourceLabel,
   getCustomerRequestSource,
   getPainPointSource,
+  getOptimizationSource,
   getTicketAnalysisSourceLabel,
 } from './ticketAnalysis/ticketAnalysisSources.js'
 import { getComplaintCauseL1Display, isComplaintTicket } from '../domain/complaintCause.js'
+import { getExportColumns, readFieldValue } from '../domain/fieldRegistry.js'
+import { getEffectiveRootCauseReview } from '../domain/rootCauseReview.js'
+import {
+  extractAcceptanceTextFromFields,
+  extractHandlingTextFromFields,
+} from './taggingText.js'
 import {
   TICKET_SOURCE_COLUMN_LABELS,
   getSourceColumnValue,
@@ -17,19 +24,90 @@ import {
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
+/** 当前分析结果导出列版本（Field Registry v2） */
+export const EXPORT_ANALYSIS_VERSION = 2
+
 /**
- * @param {string} importMonth YYYY-MM
+ * v2 导出表头（Field Registry 列序）。
+ * @param {{ dataSourceType?: import('../domain/enums.js').DataSourceType }} [options]
+ * @returns {string[]}
  */
-export function formatImportMonthSheetName(importMonth) {
-  const m = String(importMonth || '').match(/^(\d{4})-(\d{2})$/)
-  if (!m) return '未知月份'
-  return `${m[1]}年${Number(m[2])}月`.slice(0, 31)
+export function getExportV2Headers(options = {}) {
+  return getExportColumns(options).map((field) => field.displayName)
 }
 
 /**
+ * @param {FeedbackRecord} record
+ * @param {import('../domain/fieldRegistry.js').FieldDefinition} field
+ */
+function exportRegistryFieldValue(record, field) {
+  const taggingFields = {
+    handlingText: record.handlingText,
+    rawText: record.rawText,
+    sourceColumns: record.sourceColumns,
+  }
+
+  switch (field.fieldKey) {
+    case 'ticketId':
+      return record.ticketId || ''
+    case 'customerRequest':
+      return record.customerRequest || ''
+    case 'painPoint':
+      return readFieldValue(record, field)
+    case 'requestScene':
+      return record.requestScene || ''
+    case 'problemType':
+      return record.problemType || ''
+    case 'journeyL1':
+      return record.journeyL1 || ''
+    case 'journeyL2':
+      return record.journeyL2 || ''
+    case 'sentiment': {
+      const sentimentKey = normalizeSentiment(record.sentiment)
+      return SENTIMENT_LABELS[sentimentKey] || record.sentiment || ''
+    }
+    case 'urgency':
+      return getUrgencyLevel(record) === 'high' ? URGENCY_LABELS.high : ''
+    case 'optimizationProduct':
+      return record.optimizationProduct || ''
+    case 'optimizationService':
+      return record.optimizationService || ''
+    case 'establishedAction':
+      return readFieldValue(record, field)
+    case 'actionSchedule':
+      return record.actionSchedule || ''
+    case 'acceptanceContent':
+      return extractAcceptanceTextFromFields(taggingFields)
+    case 'handlingOpinion':
+      return extractHandlingTextFromFields(taggingFields)
+    case 'rootCauseReview':
+      return getEffectiveRootCauseReview(record)
+    default:
+      return readFieldValue(record, field)
+  }
+}
+
+/**
+ * 分析结果导出 v2：列定义与顺序唯一来自 Field Registry。
+ *
+ * @param {FeedbackRecord} record
+ * @returns {Record<string, string>}
+ */
+export function recordToExportRowV2(record) {
+  /** @type {Record<string, string>} */
+  const row = {}
+  const columns = getExportColumns({ dataSourceType: record.dataSourceType })
+  for (const field of columns) {
+    row[field.displayName] = exportRegistryFieldValue(record, field)
+  }
+  return row
+}
+
+/**
+ * @deprecated 旧版导出列；保留供迁移对照与 `exportAnalysisV2: false`
  * @param {FeedbackRecord} r
  */
-function recordToExportRow(r) {
+export function recordToExportRowLegacy(r) {
   const sentimentKey = normalizeSentiment(r.sentiment)
   return {
     工单号: r.ticketId || '',
@@ -48,9 +126,7 @@ function recordToExportRow(r) {
     痛点来源: getTicketAnalysisSourceLabel(getPainPointSource(r)),
     产品技术优化: r.optimizationProduct || '',
     服务流程改进: r.optimizationService || '',
-    优化建议来源: getOptimizationSourceLabel(
-      r.manualReviewOptimization?.trim() ? 'manual' : r.optimizationSource === 'llm' ? 'llm' : 'rule',
-    ),
+    优化建议来源: getOptimizationSourceLabel(getOptimizationSource(r)),
     问题摘要: r.problemSummary || '',
     根因: r.rootCause || '',
     优化建议: r.optimizationSuggestion || '',
@@ -61,6 +137,15 @@ function recordToExportRow(r) {
       TICKET_SOURCE_COLUMN_LABELS.map((label) => [label, getSourceColumnValue(r, label)]),
     ),
   }
+}
+
+/**
+ * @param {string} importMonth YYYY-MM
+ */
+export function formatImportMonthSheetName(importMonth) {
+  const m = String(importMonth || '').match(/^(\d{4})-(\d{2})$/)
+  if (!m) return '未知月份'
+  return `${m[1]}年${Number(m[2])}月`.slice(0, 31)
 }
 
 /**
@@ -85,8 +170,11 @@ export function groupRecordsByImportMonth(records) {
 /**
  * @param {FeedbackRecord[]} records
  * @param {string} [filename]
+ * @param {{ exportAnalysisV2?: boolean }} [options]
  */
-export function downloadTicketAnalysisExcel(records, filename) {
+export function downloadTicketAnalysisExcel(records, filename, options = {}) {
+  const useV2 = options.exportAnalysisV2 !== false
+  const toRow = useV2 ? recordToExportRowV2 : recordToExportRowLegacy
   const groups = groupRecordsByImportMonth(records)
   const months = [...groups.keys()].sort((a, b) => {
     if (a === 'unknown') return 1
@@ -97,7 +185,7 @@ export function downloadTicketAnalysisExcel(records, filename) {
   const wb = XLSX.utils.book_new()
   for (const month of months) {
     const items = groups.get(month) || []
-    const rows = items.map(recordToExportRow)
+    const rows = items.map(toRow)
     const ws = XLSX.utils.json_to_sheet(
       rows.length ? rows : [{ 提示: '该月无数据' }],
     )
@@ -127,19 +215,22 @@ export function downloadTicketAnalysisExcel(records, filename) {
 /**
  * 导出当前筛选范围工单（含原始列不完整确认）
  * @param {FeedbackRecord[]} records
- * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string }} [options]
+ * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string; exportAnalysisV2?: boolean }} [options]
  */
 export function exportTicketAnalysisWithConfirm(records, options = {}) {
   const filePrefix = options.filePrefix || '洞察分析'
   const periodLabel = options.periodLabel || '周期'
+  const useV2 = options.exportAnalysisV2 !== false
 
   if (records.length === 0) {
     message.warning('当前筛选范围内无数据可导出')
     return
   }
 
-  const filename = `${filePrefix}-${periodLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`
-  const runExport = () => downloadTicketAnalysisExcel(records, filename)
+  const versionSuffix = useV2 ? '' : '-legacy'
+  const filename = `${filePrefix}-${periodLabel}${versionSuffix}-${new Date().toISOString().slice(0, 10)}.xlsx`
+  const runExport = () =>
+    downloadTicketAnalysisExcel(records, filename, { exportAnalysisV2: useV2 })
 
   const scopeLabel = options.totalScopeLabel || '库内'
   const totalHint =
@@ -149,7 +240,11 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
 
   if (!hasIncompleteSourceColumns(records)) {
     runExport()
-    message.success(`已导出 ${records.length} 条${totalHint}`)
+    message.success(
+      useV2
+        ? `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，16 列）${totalHint}`
+        : `已导出 ${records.length} 条（旧版列）${totalHint}`,
+    )
     return
   }
 

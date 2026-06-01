@@ -159,17 +159,14 @@ export function reprocessFeedbackRecord(fb, settings = null, options = {}) {
     settings,
   )
 
+  const force = options.forceOverrideManualTags === true
   const merged = {
     ...source,
     ...processed,
     id: source.id,
     status: source.status ?? 'open',
     note: source.note,
-    manualReviewRootCause: source.manualReviewRootCause ?? '',
-    manualReviewSolution: source.manualReviewSolution ?? '',
-    manualReviewAction: source.manualReviewAction ?? '',
-    manualReviewOptimization: source.manualReviewOptimization ?? '',
-    manualTagFields: options.forceOverrideManualTags ? [] : source.manualTagFields,
+    manualTagFields: force ? [] : source.manualTagFields,
     complaintCauseL1Final: source.complaintCauseL1Final ?? processed.complaintCauseL1Final,
     complaintCauseL2Final: source.complaintCauseL2Final ?? processed.complaintCauseL2Final,
     complaintCauseL3Final: source.complaintCauseL3Final ?? processed.complaintCauseL3Final,
@@ -182,8 +179,25 @@ export function reprocessFeedbackRecord(fb, settings = null, options = {}) {
     importSheetName: source.importSheetName,
     importedAt: source.importedAt,
   }
+  if (force) {
+    merged.manualReviewRootCause = source.manualReviewRootCause ?? ''
+    merged.manualReviewSolution = source.manualReviewSolution ?? ''
+    merged.manualReviewAction = source.manualReviewAction ?? ''
+    merged.manualReviewOptimization = source.manualReviewOptimization ?? ''
+    merged.establishedAction = source.establishedAction ?? ''
+    merged.actionId = source.actionId ?? ''
+    merged.actionSchedule = source.actionSchedule ?? ''
+    merged.productGroupOptimization = source.productGroupOptimization ?? ''
+    merged.designerOptimization = source.designerOptimization ?? ''
+    merged.rootCauseReview = source.rootCauseReview ?? ''
+  } else {
+    merged.manualReviewRootCause = source.manualReviewRootCause ?? ''
+    merged.manualReviewSolution = source.manualReviewSolution ?? ''
+    merged.manualReviewAction = source.manualReviewAction ?? ''
+    merged.manualReviewOptimization = source.manualReviewOptimization ?? ''
+  }
   return preserveManualTags(source, merged, {
-    forceOverride: options.forceOverrideManualTags === true,
+    forceOverride: force,
   })
 }
 

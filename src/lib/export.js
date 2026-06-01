@@ -4,6 +4,7 @@ import {
   getOptimizationSourceLabel,
   getCustomerRequestSource,
   getPainPointSource,
+  getOptimizationSource,
   getTicketAnalysisSourceLabel,
 } from './ticketAnalysis/ticketAnalysisSources.js'
 import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
@@ -40,9 +41,7 @@ export function exportToCsv(records) {
     客户请求: r.customerRequest || '',
     客户请求来源: getTicketAnalysisSourceLabel(getCustomerRequestSource(r)),
     需求痛点: r.painPoint || r.problemSummary || '',
-    优化建议来源: getOptimizationSourceLabel(
-      r.manualReviewOptimization?.trim() ? 'manual' : r.optimizationSource === 'llm' ? 'llm' : 'rule',
-    ),
+    优化建议来源: getOptimizationSourceLabel(getOptimizationSource(r)),
     处理意见: r.handlingText || '',
     情绪: SENTIMENT_LABELS[normalizeSentiment(r.sentiment)] || r.sentiment,
     是否加急: getUrgencyLevel(r) === 'high' ? URGENCY_LABELS.high : '',

@@ -1,11 +1,15 @@
-/** @typedef {'rule' | 'llm'} TicketAnalysisFieldSource */
+/** @typedef {'rule' | 'llm' | 'manual' | 'import'} TicketAnalysisFieldSource */
 
+import { getEstablishedActionDisplay } from '../../domain/establishedAction.js'
+import { getManualTagFields } from '../manualTagFields.js'
 import { recordHasUnknownJourney } from '../journeySemantic.js'
 import { resolveJourneyLlmSkipScoreThreshold } from '../journeyMatchConfidence.js'
 
 export const TICKET_ANALYSIS_SOURCE_LABELS = {
   rule: '规则',
   llm: '大模型',
+  manual: '人工',
+  import: '人工',
 }
 
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
@@ -114,10 +118,42 @@ export function computeJourneyEnrichmentDelta(before, after, settings) {
 }
 
 /**
+ * 库内 manual/import → UI「人工」；其余按 rule/llm 展示。
+ *
+ * @param {TicketAnalysisFieldSource | string | undefined | null} storedSource
+ * @returns {'rule' | 'llm' | 'manual'}
+ */
+export function normalizeTicketAnalysisFieldSource(storedSource) {
+  if (storedSource === 'llm') return 'llm'
+  if (storedSource === 'manual' || storedSource === 'import') return 'manual'
+  return 'rule'
+}
+
+/**
+ * @param {import('../types.js').FeedbackRecord | null | undefined} record
+ * @param {'customerRequest' | 'painPoint'} dimension
+ * @param {() => string} readContent
+ * @returns {'rule' | 'llm' | 'manual'}
+ */
+function getManualDimensionAnalysisSource(record, dimension, readContent) {
+  const normalized = normalizeTicketAnalysisFieldSource(
+    dimension === 'customerRequest'
+      ? record?.customerRequestSource
+      : record?.painPointSource,
+  )
+  if (normalized !== 'rule') return normalized
+  if (getManualTagFields(record).includes(dimension) && readContent().trim()) {
+    return 'manual'
+  }
+  return 'rule'
+}
+
+/**
  * @param {TicketAnalysisFieldSource | string | undefined | null} source
  */
 export function getTicketAnalysisSourceLabel(source) {
   if (!source) return TICKET_ANALYSIS_SOURCE_LABELS.rule
+  if (source === 'manual' || source === 'import') return TICKET_ANALYSIS_SOURCE_LABELS.manual
   return TICKET_ANALYSIS_SOURCE_LABELS[source] || String(source)
 }
 
@@ -125,29 +161,37 @@ export function getTicketAnalysisSourceLabel(source) {
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getPainPointSource(record) {
-  return record?.painPointSource === 'llm' ? 'llm' : 'rule'
+  return getManualDimensionAnalysisSource(record, 'painPoint', () =>
+    getDisplayPainPoint(record),
+  )
 }
 
 /**
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getCustomerRequestSource(record) {
-  return record?.customerRequestSource === 'llm' ? 'llm' : 'rule'
+  return getManualDimensionAnalysisSource(record, 'customerRequest', () =>
+    getDisplayCustomerRequest(record),
+  )
 }
 
 /**
+ * 优化建议来源：确立举措优先 → 人工；否则读 optimizationSource（import/manual → 人工）。
+ *
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getOptimizationSource(record) {
-  if (record?.manualReviewOptimization?.trim()) return 'manual'
-  return record?.optimizationSource === 'llm' ? 'llm' : 'rule'
+  if (getEstablishedActionDisplay(record)) {
+    return 'manual'
+  }
+  return normalizeTicketAnalysisFieldSource(record?.optimizationSource)
 }
 
 /**
- * @param {'rule' | 'llm' | 'manual'} source
+ * @param {'rule' | 'llm' | 'manual' | 'import'} source
  */
 export function getOptimizationSourceLabel(source) {
-  if (source === 'manual') return '人工复核'
+  if (source === 'manual' || source === 'import') return '人工'
   return getTicketAnalysisSourceLabel(source)
 }
 

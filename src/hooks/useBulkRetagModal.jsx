@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { Modal, Radio, Typography, Checkbox, message } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useSharedBackgroundTaskBlock } from './useSharedBackgroundTaskBlock.js'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
 import {
@@ -10,8 +11,6 @@ import {
 import {
   BULK_RETAG_SCOPE_LABELS,
   RETAG_BACKGROUND_RUN_HINT,
-  RETAG_BLOCKED_BY_IMPORT_TIP,
-  RETAG_IN_PROGRESS_TIP,
 } from '../lib/retagSession.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -24,7 +23,8 @@ import {
  * @param {FeedbackRecord[]} options.filteredRecords 当前页筛选结果（洞察分析为 scoped，反馈库为 filtered）
  */
 export function useBulkRetagModal({ filteredRecords }) {
-  const { startBulkRetag, reprocessing, retagSession, importSession, settings } = useInsights()
+  const { startBulkRetag, reprocessing, retagSession, settings } = useInsights()
+  const { retagBlocked, retagBlockedTip } = useSharedBackgroundTaskBlock()
   const { periodFeedbacks, periodCount } = usePeriodScope()
 
   const unknownJourneyCount = useMemo(
@@ -65,13 +65,12 @@ export function useBulkRetagModal({ filteredRecords }) {
   )
 
   const bulkRetagBusy = reprocessing || retagSession.active
-  const bulkRetagBlockedByImport = importSession.active
   const canOpenBulkRetag = periodCount > 0 || filteredCount > 0
-  const bulkRetagDisabled = bulkRetagBusy || bulkRetagBlockedByImport || !canOpenBulkRetag
-  const bulkRetagDisabledTip = bulkRetagBlockedByImport
-    ? RETAG_BLOCKED_BY_IMPORT_TIP
+  const bulkRetagDisabled = bulkRetagBusy || retagBlocked || !canOpenBulkRetag
+  const bulkRetagDisabledTip = retagBlocked
+    ? retagBlockedTip
     : bulkRetagBusy
-      ? RETAG_IN_PROGRESS_TIP
+      ? '打标进行中'
       : !canOpenBulkRetag
         ? '当前洞察周期内暂无反馈数据'
         : undefined
@@ -140,16 +139,16 @@ export function useBulkRetagModal({ filteredRecords }) {
       message.warning('当前洞察周期内暂无反馈数据')
       return false
     }
-    if (bulkRetagBlockedByImport) {
-      message.warning(RETAG_BLOCKED_BY_IMPORT_TIP)
+    if (retagBlocked) {
+      message.warning(retagBlockedTip || '当前无法批量重新打标')
       return false
     }
     if (bulkRetagBusy) {
-      message.warning(RETAG_IN_PROGRESS_TIP)
+      message.warning('打标进行中')
       return false
     }
     return true
-  }, [bulkRetagBlockedByImport, bulkRetagBusy, canOpenBulkRetag])
+  }, [retagBlocked, retagBlockedTip, bulkRetagBusy, canOpenBulkRetag])
 
   /** 跳过确认弹窗，按固定 scope 直接启动（反馈库「补打 / 补打旅程」） */
   const startScopedBulkRetag = useCallback(
@@ -227,7 +226,7 @@ export function useBulkRetagModal({ filteredRecords }) {
               强制覆盖全部人工内容
             </Checkbox>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-              勾选后将清空各工单的人工标签标记与人工复核文本（根因、优化方案、举措、优化建议），用本次打标结果全量覆盖请求场景、问题类型、用户旅程、用户情绪及自动优化建议。
+              勾选后将：清空人工维护标记与本工单的确立举措及排期（不删除举措库中其他工单共用的举措）；根因排查回退为导入「问题原因」，便于再次人工修改；覆盖请求场景、问题类型、用户旅程、用户情绪、加急；若本次含工单 LLM，客户请求、需求痛点、产品/服务优化建议（自动）一并重算。不修改受理/处理原文、备注、跟进状态、投诉原因（终判）等。补打/补打旅程与全量重打规则一致。
             </Typography.Paragraph>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
               {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。

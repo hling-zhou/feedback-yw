@@ -20,6 +20,15 @@ export const IMPORT_BEFOREUNLOAD_MESSAGE =
 export const IMPORT_REBUILD_DISABLED_TIP =
   '数据导入进行中，请待导入完成后再刷新洞察'
 
+/** 工单 Excel / 分析结果导入互斥 */
+export const IMPORT_ALREADY_IN_PROGRESS_TIP =
+  '数据导入进行中，请待当前导入完成后再试'
+
+export const IMPORT_ANALYSIS_SESSION_LABEL = '分析结果导入'
+
+export const IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP =
+  '批量重新打标进行中，请待打标完成后再导入分析结果'
+
 export const IMPORT_SESSION_STORAGE_KEY = 'feedback-insights-import-in-progress'
 
 /** 超过此时间的未完成标记视为过期并自动清除 */
