@@ -1,5 +1,6 @@
 import { hasPermission } from '../src/domain/auth/permissions.js'
-import { findUserById, toPublicUser } from './users.js'
+import { isPasswordExpired, PASSWORD_EXPIRED_CODE, PASSWORD_EXPIRED_MESSAGE } from '../src/domain/passwordExpiry.js'
+import { findUserById, resolveSessionVersion, toPublicUser } from './users.js'
 import { verifyAccessToken } from './auth.js'
 
 /**
@@ -19,7 +20,7 @@ export function registerAuthHooks(app) {
 
   app.addHook('preHandler', async (request, reply) => {
     const path = request.url.split('?')[0]
-    if (path === '/api/auth/login' || path === '/health') return
+    if (path === '/api/auth/login' || path === '/api/auth/change-password' || path === '/health') return
 
     if (!path.startsWith('/api/')) return
 
@@ -38,6 +39,22 @@ export function registerAuthHooks(app) {
     const row = findUserById(claims.id)
     if (!row || row.status !== 'active') {
       reply.code(401).send({ error: '用户不存在或已禁用' })
+      return
+    }
+
+    const passwordChangedAt = row.password_changed_at || row.created_at
+    if (isPasswordExpired(passwordChangedAt)) {
+      reply.code(403).send({
+        code: PASSWORD_EXPIRED_CODE,
+        error: PASSWORD_EXPIRED_MESSAGE,
+        username: row.username,
+        passwordChangedAt,
+      })
+      return
+    }
+
+    if (claims.sessionVersion !== resolveSessionVersion(row)) {
+      reply.code(401).send({ error: '登录已失效，请重新登录' })
       return
     }
 

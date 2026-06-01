@@ -1,3 +1,4 @@
+import { llmChatBodySchema } from '../schemas/llmSchemas.js'
 import { requirePermission } from '../middleware.js'
 import {
   isLlmConfigured,
@@ -22,8 +23,11 @@ export function registerLlmRoutes(app) {
     }
   })
 
-  app.post('/api/llm/chat', { preHandler: requirePermission('view') }, async (request, reply) => {
-    const body = /** @type {Record<string, unknown>} */ (request.body || {})
+  app.post('/api/llm/chat', {
+    preHandler: requirePermission('view'),
+    schema: { body: llmChatBodySchema },
+  }, async (request, reply) => {
+    const body = /** @type {Record<string, unknown>} */ (request.body)
 
     let apiKey
     try {

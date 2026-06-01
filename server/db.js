@@ -30,7 +30,25 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
   `)
   initBusinessSchema()
+  migrateUsersSchema(db)
   return db
+}
+
+/** @param {import('better-sqlite3').Database} database */
+function migrateUsersSchema(database) {
+  const cols = database.prepare('PRAGMA table_info(users)').all()
+  const colNames = new Set(cols.map((c) => c.name))
+
+  if (!colNames.has('password_changed_at')) {
+    database.exec(`ALTER TABLE users ADD COLUMN password_changed_at TEXT`)
+    database
+      .prepare(`UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL`)
+      .run()
+  }
+
+  if (!colNames.has('session_version')) {
+    database.exec(`ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0`)
+  }
 }
 
 export function closeDb() {

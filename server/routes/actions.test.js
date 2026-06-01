@@ -43,13 +43,13 @@ describeActions('actions API (P4-1)', () => {
 
     const viewer = await createUser({
       username: 'actions_viewer',
-      password: 'ViewerPass12345',
+      password: 'ViewerPass12345!',
       team: '测试',
       role: 'viewer',
     })
     const editor = await createUser({
       username: 'actions_editor',
-      password: 'EditorPass12345',
+      password: 'EditorPass12345!',
       team: '测试',
       role: 'editor',
     })

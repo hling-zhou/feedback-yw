@@ -4,6 +4,12 @@ import {
   mergeActionItemPatch,
   validateActionItemCreate,
 } from '../../src/domain/actionItem.js'
+import {
+  createActionBodySchema,
+  patchActionBodySchema,
+  unlinkTicketsBodySchema,
+  actionIdParamsSchema,
+} from '../schemas/actionSchemas.js'
 import { requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { actionItemRepository } from '../actionItemRepository.js'
@@ -47,7 +53,7 @@ export function registerActionRoutes(app) {
     return { item }
   })
 
-  app.post('/api/actions', async (request, reply) => {
+  app.post('/api/actions', { schema: { body: createActionBodySchema } }, async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
 
     const body = /** @type {Partial<import('../../src/domain/actionItem.js').ActionItem>} */ (
@@ -65,7 +71,10 @@ export function registerActionRoutes(app) {
     return { item: actionItemRepository.getActionItem(validated.item.id) }
   })
 
-  app.patch('/api/actions/:id', async (request, reply) => {
+  app.patch(
+    '/api/actions/:id',
+    { schema: { params: actionIdParamsSchema, body: patchActionBodySchema } },
+    async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
 
     const { id } = /** @type {{ id: string }} */ (request.params)
@@ -92,34 +101,26 @@ export function registerActionRoutes(app) {
     actionItemRepository.putActionItem(merged.item)
     logAuditFromRequest(request, 'action.update', { actionId: id, fields: Object.keys(body) })
     return { item: actionItemRepository.getActionItem(id) }
-  })
+    },
+  )
 
-  app.post('/api/actions/unlink-tickets', async (request, reply) => {
+  app.post(
+    '/api/actions/unlink-tickets',
+    { schema: { body: unlinkTicketsBodySchema } },
+    async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
 
-    const body = /** @type {{ links?: { actionId?: string; ticketId?: string }[] }} */ (
-      request.body || {}
-    )
-    const links = Array.isArray(body.links)
-      ? body.links
-          .map((link) => ({
-            actionId: String(link?.actionId ?? '').trim(),
-            ticketId: String(link?.ticketId ?? '').trim(),
-          }))
-          .filter((link) => link.actionId && link.ticketId)
-      : []
-
-    if (!links.length) {
-      reply.code(400).send({ error: '缺少有效的解关联条目' })
-      return
-    }
-
-    const result = actionItemRepository.unlinkTicketsFromActionItems(links)
+    const body = /** @type {{ links: { actionId: string; ticketId: string }[] }} */ (request.body)
+    const result = actionItemRepository.unlinkTicketsFromActionItems(body.links)
     logAuditFromRequest(request, 'action.unlink_tickets', { count: result.updated })
     return result
-  })
+    },
+  )
 
-  app.delete('/api/actions/:id', async (request, reply) => {
+  app.delete(
+    '/api/actions/:id',
+    { schema: { params: actionIdParamsSchema } },
+    async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
 
     const { id } = /** @type {{ id: string }} */ (request.params)

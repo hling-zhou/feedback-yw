@@ -28,6 +28,7 @@
 - [ ] 空库首次：`ADMIN_INITIAL_PASSWORD` **≥12 字符**，且非 `admin123`
 - [ ] 已有用户库：**勿**依赖默认口令；在「用户管理」轮换弱密码
 - [ ] API 前方有 **HTTPS** 反向代理（Nginx / Caddy 等）
+- [ ] 非 POST 读接口已阅 [API-METHOD-EXCEPTIONS.md](./API-METHOD-EXCEPTIONS.md) 并完成安全报备
 - [ ] `server/data/` 目录已纳入 **备份** 计划
 - [ ] 打标配置发布目录有写权限且已纳入备份/版本管理策略
 - [ ] 若需大模型打标/润色/举措：`LLM_API_KEY` 已设置在 API 进程环境（**勿**写入前端或仓库）

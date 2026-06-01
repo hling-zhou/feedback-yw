@@ -43,12 +43,12 @@ export function AuthProvider({ children }) {
     }
   }, [refreshMe])
 
-  const login = useCallback(async (username, password, remember = false) => {
+  const login = useCallback(async (username, password) => {
     const data = await apiFetch('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     })
-    setStoredToken(data.accessToken, { remember })
+    setStoredToken(data.accessToken)
     setUser(data.user)
     return data.user
   }, [])

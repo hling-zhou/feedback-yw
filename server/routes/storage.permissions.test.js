@@ -58,19 +58,19 @@ describeStorage('storage route permissions', () => {
 
     const viewer = await createUser({
       username: 'perm_viewer',
-      password: 'ViewerPass12345',
+      password: 'ViewerPass12345!',
       team: '测试',
       role: 'viewer',
     })
     const editor = await createUser({
       username: 'perm_editor',
-      password: 'EditorPass12345',
+      password: 'EditorPass12345!',
       team: '测试',
       role: 'editor',
     })
     const admin = await createUser({
       username: 'perm_admin',
-      password: 'AdminPass12345',
+      password: 'AdminPass12345!',
       team: '测试',
       role: 'admin',
     })
@@ -106,40 +106,6 @@ describeStorage('storage route permissions', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ ok: true })
-  })
-
-  it('viewer can GET /api/storage/records', async () => {
-    const adminPut = await app.inject({
-      method: 'POST',
-      url: '/api/storage/records/batch',
-      headers: authHeader('admin'),
-      payload: {
-        records: [
-          {
-            id: 'rec-viewer-read-1',
-            schemaVersion: '2.0',
-            tenantId: 'local',
-            dataSourceType: 'complaint_ticket',
-            recordStatus: 'analyzed',
-            importMonth: '2025-01',
-            rawText: '测试',
-            customerQuote: '测试',
-            importedAt: '2025-01-01T00:00:00.000Z',
-          },
-        ],
-      },
-    })
-    expect(adminPut.statusCode).toBe(200)
-
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/storage/records?limit=10&offset=0',
-      headers: authHeader('viewer'),
-    })
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body.total).toBeGreaterThanOrEqual(1)
-    expect(body.records.some((r) => r.id === 'rec-viewer-read-1')).toBe(true)
   })
 
   it('editor can PUT /api/storage/periods', async () => {
@@ -182,6 +148,40 @@ describeStorage('storage route permissions', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().ok).toBe(true)
+  })
+
+  it('viewer can GET /api/storage/records', async () => {
+    const adminPut = await app.inject({
+      method: 'POST',
+      url: '/api/storage/records/batch',
+      headers: authHeader('admin'),
+      payload: {
+        records: [
+          {
+            id: 'rec-viewer-read-1',
+            schemaVersion: '2.0',
+            tenantId: 'local',
+            dataSourceType: 'complaint_ticket',
+            recordStatus: 'analyzed',
+            importMonth: '2025-01',
+            rawText: '测试',
+            customerQuote: '测试',
+            importedAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+    expect(adminPut.statusCode).toBe(200)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/storage/records?limit=10&offset=0',
+      headers: authHeader('viewer'),
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.total).toBeGreaterThanOrEqual(1)
+    expect(body.records.some((r) => r.id === 'rec-viewer-read-1')).toBe(true)
   })
 
   it('viewer cannot PUT team app settings meta', async () => {

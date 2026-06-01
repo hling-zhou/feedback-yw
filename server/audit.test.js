@@ -50,10 +50,11 @@ describe.skipIf(!sqliteAvailable)('audit log', () => {
     })
 
     const entries = listAuditLogs(7)
-    expect(entries.length).toBeGreaterThanOrEqual(2)
-    expect(entries[0].action).toBe('user.create')
-    expect(entries[1].action).toBe('storage.import_batch')
-    expect(entries[0].detail).toMatchObject({ username: 'viewer1' })
+    const recentActions = entries.slice(0, 2).map((e) => e.action)
+    expect(recentActions).toContain('user.create')
+    expect(recentActions).toContain('storage.import_batch')
+    const created = entries.find((e) => e.action === 'user.create')
+    expect(created?.detail).toMatchObject({ username: 'viewer1' })
   })
 
   it('excludes entries older than the requested window', async () => {

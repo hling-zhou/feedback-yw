@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Checkbox, Form, Input, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Input, Tag, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Login() {
@@ -13,11 +13,24 @@ export default function Login() {
   const handleSubmit = async (values) => {
     setLoading(true)
     try {
-      await login(values.username, values.password, values.remember)
+      await login(values.username, values.password)
       message.success('登录成功')
       const from = location.state?.from || '/workbench'
       navigate(from, { replace: true })
     } catch (err) {
+      const data = err && typeof err === 'object' ? /** @type {{ code?: string; passwordChangedAt?: string }} */ (err).data : null
+      const code = data?.code ?? (err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : undefined)
+      if (code === 'PASSWORD_EXPIRED') {
+        message.warning(err instanceof Error ? err.message : '密码已过期，请先修改')
+        navigate('/change-password', {
+          replace: true,
+          state: {
+            username: values.username,
+            passwordChangedAt: data?.passwordChangedAt,
+          },
+        })
+        return
+      }
       message.error(err instanceof Error ? err.message : '登录失败')
     } finally {
       setLoading(false)
@@ -68,7 +81,6 @@ export default function Login() {
                 layout="vertical"
                 onFinish={handleSubmit}
                 requiredMark={false}
-                initialValues={{ remember: false }}
               >
                 <Form.Item
                   label="用户名"
@@ -94,10 +106,6 @@ export default function Login() {
                     placeholder="请输入密码"
                     size="large"
                   />
-                </Form.Item>
-
-                <Form.Item name="remember" valuePropName="checked">
-                  <Checkbox>记住我（7 天内免登录）</Checkbox>
                 </Form.Item>
 
                 <Button

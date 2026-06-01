@@ -14,6 +14,7 @@ import {
 } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
+import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -118,6 +119,19 @@ export default function Users() {
       render: (role) => <Tag>{ROLE_LABELS[role] || role}</Tag>,
     },
     {
+      title: '密码更新',
+      key: 'passwordChangedAt',
+      width: 120,
+      render: (_, record) => {
+        const text = record.passwordChangedAt?.slice(0, 10) || '—'
+        return record.passwordExpired ? (
+          <Tag color="red">{text} · 已过期</Tag>
+        ) : (
+          text
+        )
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 90,
@@ -196,7 +210,12 @@ export default function Users() {
           <Form.Item
             label={editing ? '新密码（留空不改）' : '密码'}
             name="password"
-            rules={editing ? [] : [{ required: true, message: '请输入密码' }]}
+            rules={
+              editing
+                ? [passwordPolicyFormRule()]
+                : [{ required: true, message: '请输入密码' }, passwordPolicyFormRule()]
+            }
+            extra={PASSWORD_POLICY_HINT}
           >
             <Input.Password placeholder={editing ? '留空表示不修改' : '初始密码'} />
           </Form.Item>

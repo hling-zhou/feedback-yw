@@ -1,3 +1,5 @@
+import { validatePasswordPolicy } from '../src/domain/passwordPolicy.js'
+
 /** @type {string | null} */
 let jwtSecretCache = null
 
@@ -70,6 +72,10 @@ export function resolveAdminInitialPassword() {
     throw new Error(
       `[config] ADMIN_INITIAL_PASSWORD 过短（当前 ${raw.length} 字符），至少需要 ${MIN_ADMIN_INITIAL_PASSWORD_LENGTH} 字符。`,
     )
+  }
+  const policy = validatePasswordPolicy(raw)
+  if (!policy.ok) {
+    throw new Error(`[config] ADMIN_INITIAL_PASSWORD ${policy.message}`)
   }
   return raw
 }

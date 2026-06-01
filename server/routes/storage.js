@@ -1,4 +1,22 @@
 import { hasPermission } from '../../src/domain/auth/permissions.js'
+import {
+  artifactPutBodySchema,
+  backgroundTaskAcquireBodySchema,
+  backgroundTaskTouchBodySchema,
+  clearImportedDataQuerySchema,
+  insightRebuildBodySchema,
+  metaKeyParamsSchema,
+  metaPutBodySchema,
+  periodPutBodySchema,
+  recordIdParamsSchema,
+  recordPatchBodySchema,
+  recordsBatchBodySchema,
+  recordsReplaceBodySchema,
+  runPutBodySchema,
+  snapshotPutBodySchema,
+  tagCandidateIdParamsSchema,
+  tagCandidatesPutBodySchema,
+} from '../schemas/storageWriteSchemas.js'
 import { requireAdmin, requirePermission } from '../middleware.js'
 import { bumpDataRevision, getDataRevision } from '../dataRevision.js'
 import { storageRepository } from '../storageRepository.js'
@@ -58,17 +76,16 @@ export function registerStorageRoutes(app) {
     return { lock: getBackgroundTaskLock() }
   })
 
-  app.post('/api/storage/background-task/acquire', async (request, reply) => {
+  app.post(
+    '/api/storage/background-task/acquire',
+    { schema: { body: backgroundTaskAcquireBodySchema } },
+    async (request, reply) => {
     const body = /** @type {{
-      type?: import('../src/domain/backgroundTaskLock.js').BackgroundTaskType
+      type: import('../src/domain/backgroundTaskLock.js').BackgroundTaskType
       progress?: string
       meta?: Record<string, unknown>
-    }} */ (request.body || {})
+    }} */ (request.body)
     const type = body.type
-    if (type !== 'import' && type !== 'retag') {
-      reply.code(400).send({ error: '无效的任务类型' })
-      return
-    }
     const permissions = type === 'import' ? ['import'] : ['retag']
     if (!assertWritePermission(request, reply, permissions)) return
     const user = request.user
@@ -97,11 +114,15 @@ export function registerStorageRoutes(app) {
       }
       throw err
     }
-  })
+    },
+  )
 
-  app.patch('/api/storage/background-task', async (request, reply) => {
+  app.patch(
+    '/api/storage/background-task',
+    { schema: { body: backgroundTaskTouchBodySchema } },
+    async (request, reply) => {
     const body = /** @type {{ progress?: string; meta?: Record<string, unknown> }} */ (
-      request.body || {}
+      request.body
     )
     const user = request.user
     if (!user?.id) {
@@ -123,7 +144,8 @@ export function registerStorageRoutes(app) {
       }
       throw err
     }
-  })
+    },
+  )
 
   app.delete('/api/storage/background-task', async (request, reply) => {
     const user = request.user
@@ -153,9 +175,12 @@ export function registerStorageRoutes(app) {
     return { periods: storageRepository.listInsightPeriods() }
   })
 
-  app.put('/api/storage/periods', { preHandler: requirePermission('view') }, async (request, reply) => {
-    const body = /** @type {{ period?: import('../src/domain/insightPeriod.js').InsightPeriod }} */ (
-      request.body || {}
+  app.put('/api/storage/periods', {
+    preHandler: requirePermission('view'),
+    schema: { body: periodPutBodySchema },
+  }, async (request, reply) => {
+    const body = /** @type {{ period: import('../src/domain/insightPeriod.js').InsightPeriod }} */ (
+      request.body
     )
     if (!body.period?.id) {
       reply.code(400).send({ error: '缺少 period' })
@@ -198,15 +223,13 @@ export function registerStorageRoutes(app) {
     },
   )
 
-  app.put('/api/storage/records', async (request, reply) => {
+  app.put('/api/storage/records', {
+    schema: { body: recordsReplaceBodySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
-    const body = /** @type {{ records?: import('../src/domain/records.js').InsightRecord[] }} */ (
-      request.body || {}
+    const body = /** @type {{ records: import('../src/domain/records.js').InsightRecord[] }} */ (
+      request.body
     )
-    if (!Array.isArray(body.records)) {
-      reply.code(400).send({ error: '缺少 records 数组' })
-      return
-    }
     storageRepository.replaceAllRecords(body.records)
     logAuditFromRequest(request, 'storage.replace_all_records', {
       count: body.records.length,
@@ -214,7 +237,10 @@ export function registerStorageRoutes(app) {
     return { ok: true, count: body.records.length }
   })
 
-  app.patch('/api/storage/records/:id', async (request, reply) => {
+  app.patch(
+    '/api/storage/records/:id',
+    { schema: { params: recordIdParamsSchema, body: recordPatchBodySchema } },
+    async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {{ record?: import('../src/domain/records.js').InsightRecord }} */ (
@@ -228,15 +254,14 @@ export function registerStorageRoutes(app) {
     return { ok: true }
   })
 
-  app.post('/api/storage/records/batch', async (request, reply) => {
+  app.post(
+    '/api/storage/records/batch',
+    { schema: { body: recordsBatchBodySchema } },
+    async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
-    const body = /** @type {{ records?: import('../src/domain/records.js').InsightRecord[] }} */ (
-      request.body || {}
+    const body = /** @type {{ records: import('../src/domain/records.js').InsightRecord[] }} */ (
+      request.body
     )
-    if (!Array.isArray(body.records)) {
-      reply.code(400).send({ error: '缺少 records 数组' })
-      return
-    }
     storageRepository.putRecords(body.records)
     const sample = body.records[0]
     logAuditFromRequest(request, 'storage.import_batch', {
@@ -246,9 +271,12 @@ export function registerStorageRoutes(app) {
       importBatchId: sample?.importBatchId,
     })
     return { ok: true, count: body.records.length }
-  })
+    },
+  )
 
-  app.delete('/api/storage/records/:id', async (request, reply) => {
+  app.delete('/api/storage/records/:id', {
+    schema: { params: recordIdParamsSchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
     const { id } = /** @type {{ id: string }} */ (request.params)
     storageRepository.deleteRecord(id)
@@ -256,7 +284,9 @@ export function registerStorageRoutes(app) {
     return { ok: true }
   })
 
-  app.delete('/api/storage/imported-data', async (request, reply) => {
+  app.delete('/api/storage/imported-data', {
+    schema: { querystring: clearImportedDataQuerySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['deleteData'])) return
     const { parseClearImportedDataOptions, validateClearImportedDataOptions } = await import(
       '../../src/storage/clearImportedData.js'
@@ -313,10 +343,12 @@ export function registerStorageRoutes(app) {
     },
   )
 
-  app.put('/api/storage/runs', async (request, reply) => {
+  app.put('/api/storage/runs', {
+    schema: { body: runPutBodySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import'])) return
-    const body = /** @type {{ run?: import('../src/domain/analysisRun.js').AnalysisRun }} */ (
-      request.body || {}
+    const body = /** @type {{ run: import('../src/domain/analysisRun.js').AnalysisRun }} */ (
+      request.body
     )
     if (!body.run?.id) {
       reply.code(400).send({ error: '缺少 run' })
@@ -334,12 +366,14 @@ export function registerStorageRoutes(app) {
     }
   })
 
-  app.put('/api/storage/artifacts', async (request, reply) => {
+  app.put('/api/storage/artifacts', {
+    schema: { body: artifactPutBodySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import'])) return
     const body = /** @type {{
-      artifact?: import('../src/domain/analysisRun.js').RecordArtifact | import('../src/domain/analysisRun.js').RunArtifact
+      artifact: import('../src/domain/analysisRun.js').RecordArtifact | import('../src/domain/analysisRun.js').RunArtifact
       debug?: boolean
-    }} */ (request.body || {})
+    }} */ (request.body)
     if (!body.artifact?.id) {
       reply.code(400).send({ error: '缺少 artifact' })
       return
@@ -368,11 +402,13 @@ export function registerStorageRoutes(app) {
     },
   )
 
-  app.put('/api/storage/snapshots', async (request, reply) => {
+  app.put('/api/storage/snapshots', {
+    schema: { body: snapshotPutBodySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
     const body = /** @type {{
-      snapshot?: import('../src/domain/snapshot.js').InsightSnapshot | import('../src/domain/snapshot.js').OverviewSnapshot
-    }} */ (request.body || {})
+      snapshot: import('../src/domain/snapshot.js').InsightSnapshot | import('../src/domain/snapshot.js').OverviewSnapshot
+    }} */ (request.body)
     if (!body.snapshot?.id) {
       reply.code(400).send({ error: '缺少 snapshot' })
       return
@@ -381,14 +417,13 @@ export function registerStorageRoutes(app) {
     return { ok: true }
   })
 
-  app.post('/api/storage/insight-rebuild', async (request, reply) => {
+  app.post(
+    '/api/storage/insight-rebuild',
+    { schema: { body: insightRebuildBodySchema } },
+    async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
-    const body = /** @type {{ insightPeriodId?: string }} */ (request.body || {})
-    const insightPeriodId = body.insightPeriodId?.trim()
-    if (!insightPeriodId) {
-      reply.code(400).send({ error: '缺少 insightPeriodId' })
-      return
-    }
+    const body = /** @type {{ insightPeriodId: string }} */ (request.body)
+    const insightPeriodId = body.insightPeriodId.trim()
     try {
       const result = await enqueueInsightRebuild(insightPeriodId, request.user?.username)
       logAuditFromRequest(request, 'storage.insight_rebuild_enqueue', {
@@ -400,7 +435,8 @@ export function registerStorageRoutes(app) {
     } catch (err) {
       reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }
-  })
+    },
+  )
 
   app.get('/api/storage/insight-rebuild', { preHandler: requirePermission('view') }, async (request, reply) => {
     const q = /** @type {{ insightPeriodId?: string; limit?: string }} */ (request.query || {})
@@ -429,7 +465,10 @@ export function registerStorageRoutes(app) {
 
   app.get(
     '/api/storage/meta/:key',
-    { preHandler: requirePermission('view') },
+    {
+      preHandler: requirePermission('view'),
+      schema: { params: metaKeyParamsSchema },
+    },
     async (request) => {
       const { key } = /** @type {{ key: string }} */ (request.params)
       const decodedKey = decodeURIComponent(key)
@@ -440,7 +479,9 @@ export function registerStorageRoutes(app) {
     },
   )
 
-  app.put('/api/storage/meta/:key', async (request, reply) => {
+  app.put('/api/storage/meta/:key', {
+    schema: { params: metaKeyParamsSchema, body: metaPutBodySchema },
+  }, async (request, reply) => {
     const { key } = /** @type {{ key: string }} */ (request.params)
     const decodedKey = decodeURIComponent(key)
     const tagMetaKeys = ['taxonomy_managed', 'taxonomy_overrides', 'tag_library_version', 'product_catalog_managed_v1']
@@ -467,12 +508,14 @@ export function registerStorageRoutes(app) {
     return { candidates: storageRepository.listTagCandidates(q) }
   })
 
-  app.put('/api/storage/tag-candidates', async (request, reply) => {
+  app.put('/api/storage/tag-candidates', {
+    schema: { body: tagCandidatesPutBodySchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['manageTags'])) return
     const body = /** @type {{
       candidate?: import('../src/domain/tagCandidate.js').TagCandidate
       candidates?: import('../src/domain/tagCandidate.js').TagCandidate[]
-    }} */ (request.body || {})
+    }} */ (request.body)
     if (body.candidates?.length) {
       storageRepository.putTagCandidates(body.candidates)
       return { ok: true, count: body.candidates.length }
@@ -484,7 +527,9 @@ export function registerStorageRoutes(app) {
     reply.code(400).send({ error: '缺少 candidate 或 candidates' })
   })
 
-  app.delete('/api/storage/tag-candidates/:id', async (request, reply) => {
+  app.delete('/api/storage/tag-candidates/:id', {
+    schema: { params: tagCandidateIdParamsSchema },
+  }, async (request, reply) => {
     if (!assertWritePermission(request, reply, ['manageTags'])) return
     const { id } = /** @type {{ id: string }} */ (request.params)
     storageRepository.deleteTagCandidate(id)

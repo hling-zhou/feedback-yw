@@ -13,10 +13,12 @@ import TagManagement from './pages/TagManagement.jsx'
 import Users from './pages/Users.jsx'
 import Actions from './pages/Actions.jsx'
 import Login from './pages/Login.jsx'
+import ChangePassword from './pages/ChangePassword.jsx'
 
 /** @type {import('react-router-dom').RouteObject[]} */
 const routes = [
   { path: '/login', element: <Login /> },
+  { path: '/change-password', element: <ChangePassword /> },
   {
     path: '/',
     element: <RequireAuth />,

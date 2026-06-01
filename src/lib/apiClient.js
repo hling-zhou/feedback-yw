@@ -1,19 +1,15 @@
 const TOKEN_KEY = 'fi_access_token'
 
 export function getStoredToken() {
-  return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || ''
+  return sessionStorage.getItem(TOKEN_KEY) || ''
 }
 
-/**
- * @param {string} token
- * @param {{ remember?: boolean }} [opts]
- */
-export function setStoredToken(token, opts = {}) {
+/** @param {string} token */
+export function setStoredToken(token) {
   sessionStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(TOKEN_KEY)
   if (!token) return
-  if (opts.remember) localStorage.setItem(TOKEN_KEY, token)
-  else sessionStorage.setItem(TOKEN_KEY, token)
+  sessionStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearStoredToken() {
@@ -58,6 +54,9 @@ export async function apiFetch(path, init = {}) {
     )
     err.status = res.status
     err.data = data
+    if (data && typeof data === 'object' && data.code) {
+      err.code = data.code
+    }
     throw err
   }
   return data
