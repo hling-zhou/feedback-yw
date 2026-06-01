@@ -164,9 +164,11 @@ export default function JourneyFeedbackSection({
           </Typography.Text>
         </span>
       }
+      styles={{ body: { maxHeight: 'min(70vh, 640px)', overflow: 'hidden' } }}
     >
-      <Row gutter={[24, 24]}>
-        <Col xs={24} lg={10}>
+      <div className="max-h-[min(70vh,608px)] overflow-y-auto pr-1 lg:overflow-hidden">
+        <Row gutter={[24, 24]} className="lg:items-start">
+          <Col xs={24} lg={10} className="lg:max-h-[min(70vh,608px)] lg:overflow-y-auto lg:pr-1">
           <Typography.Text strong className="text-xs text-ink-600">
             旅程环节反馈量
           </Typography.Text>
@@ -199,7 +201,7 @@ export default function JourneyFeedbackSection({
 
         <Col xs={24} lg={14}>
           {currentStage && (
-            <div className="space-y-4">
+            <div className="space-y-4 lg:max-h-[min(70vh,608px)] lg:overflow-y-auto lg:pr-1">
               <div>
                 <Typography.Title level={5} className="!mb-1">
                   {currentStage.l1}
@@ -354,7 +356,8 @@ export default function JourneyFeedbackSection({
             </div>
           )}
         </Col>
-      </Row>
+        </Row>
+      </div>
     </Card>
   )
 }
