@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   DatePicker,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -16,7 +17,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { CopyOutlined, EditOutlined } from '@ant-design/icons'
+import { CopyOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { PageHeader } from './Dashboard.shared.jsx'
 import {
@@ -37,6 +38,7 @@ import {
   listActionItems,
   updateActionItem,
 } from '../lib/actionItemClient.js'
+import { exportActionItemsWithQuery } from '../lib/actionItemExport.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
@@ -113,8 +115,10 @@ export default function Actions() {
   const { feedbacks, updateFeedback, currentPeriod } = useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
+  const [allTotal, setAllTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [stats, setStats] = useState(
     /** @type {Record<ActionItemStatus, number>} */ ({
       pending_evaluation: 0,
@@ -192,6 +196,16 @@ export default function Actions() {
     [productKeys, statuses, ticketId, dateRange, insightPeriodId],
   )
 
+  /** 页头周期/首次提出时间范围，不含表格区筛选 */
+  const baseScopeQuery = useMemo(
+    () => ({
+      firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
+      firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+      insightPeriodId: insightPeriodId || undefined,
+    }),
+    [dateRange, insightPeriodId],
+  )
+
   const loadStats = useCallback(async () => {
     try {
       const data = await getActionItemStats(listQuery)
@@ -241,6 +255,47 @@ export default function Actions() {
   useEffect(() => {
     loadItems()
   }, [loadItems])
+
+  useEffect(() => {
+    let cancelled = false
+    listActionItems({ ...baseScopeQuery, limit: 1, offset: 0 })
+      .then((result) => {
+        if (!cancelled) setAllTotal(result.total)
+      })
+      .catch(() => {
+        if (!cancelled) setAllTotal(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [baseScopeQuery])
+
+  const handleExport = async (scope) => {
+    const filtered = scope === 'filtered'
+    const query = filtered ? listQuery : baseScopeQuery
+    const count = filtered ? total : allTotal
+    if (!count) {
+      message.warning('当前范围无可导出举措')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const statsData = await getActionItemStats(query)
+      const exported = await exportActionItemsWithQuery({
+        query,
+        statsByProduct: statsData.byProduct?.length ? statsData.byProduct : undefined,
+        periodTicketIdSet: periodTicketIdSet,
+        scopeLabel: filtered ? '当前筛选' : '全部',
+        periodLabel: selectedPeriod?.label,
+      })
+      message.success(`已导出 ${exported} 条举措（分产品统计 + 举措清单）`)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const parseScheduleForPicker = (value) => {
     const normalized = normalizeActionSchedule(value)
@@ -511,6 +566,29 @@ export default function Actions() {
       <PageHeader
         title="举措与进展"
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。"
+        action={
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'all',
+                  label: `全部（${allTotal} 条）`,
+                  disabled: allTotal === 0,
+                },
+                {
+                  key: 'filtered',
+                  label: `当前筛选范围（${total} 条）`,
+                  disabled: total === 0,
+                },
+              ],
+              onClick: ({ key }) => handleExport(/** @type {'all' | 'filtered'} */ (key)),
+            }}
+          >
+            <Button loading={exporting} icon={<UploadOutlined />}>
+              导出
+            </Button>
+          </Dropdown>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

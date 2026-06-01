@@ -559,13 +559,13 @@ export default function Feedbacks() {
         />
         <div className="ml-auto flex flex-wrap gap-2">
           <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
-            <Button icon={<UploadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
+            <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
               导入分析结果
             </Button>
           </Tooltip>
           <Tooltip title={`导出 v2：${getExportV2Headers().length} 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md`}>
             <Button
-              icon={<DownloadOutlined />}
+              icon={<UploadOutlined />}
               disabled={!filtered.length}
               onClick={handleExport}
             >

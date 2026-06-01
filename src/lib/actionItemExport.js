@@ -1,0 +1,213 @@
+import * as XLSX from 'xlsx'
+import {
+  ACTION_ITEM_STATUSES,
+  ACTION_ITEM_STATUS_LABELS,
+  aggregateActionItemsByProductStatus,
+} from '../domain/actionItem.js'
+import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
+import { listActionItems } from './actionItemClient.js'
+
+/** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
+/** @typedef {import('./actionItemClient.js').ActionItemListQuery} ActionItemListQuery */
+/** @typedef {import('./actionItemClient.js').ActionItemProductStatusRow} ActionItemProductStatusRow */
+
+export const ACTION_ITEM_STATS_SHEET_NAME = '分产品统计'
+export const ACTION_ITEM_LIST_SHEET_NAME = '举措清单'
+
+export const ACTION_ITEM_STATS_HEADERS = [
+  '产品名称',
+  ...ACTION_ITEM_STATUSES.map((status) => ACTION_ITEM_STATUS_LABELS[status]),
+  '合计',
+]
+
+export const ACTION_ITEM_LIST_HEADERS = [
+  '产品名称',
+  '问题',
+  '问题类型',
+  '用户旅程一级',
+  '来源',
+  '举措',
+  '关联工单(本周期)',
+  '首次提出时间',
+  '排期时间',
+  '状态',
+]
+
+/**
+ * @param {ActionItemListQuery} query
+ * @returns {Promise<{ items: ActionItem[]; total: number }>}
+ */
+export async function fetchAllActionItems(query) {
+  const batchSize = 500
+  /** @type {ActionItem[]} */
+  const items = []
+  let offset = 0
+  let total = 0
+
+  while (true) {
+    const result = await listActionItems({ ...query, limit: batchSize, offset })
+    total = result.total
+    items.push(...result.items)
+    if (items.length >= total || result.items.length === 0) break
+    offset += batchSize
+  }
+
+  return { items, total }
+}
+
+/**
+ * @param {ActionItemProductStatusRow[]} byProduct
+ * @returns {Record<string, string | number>[]}
+ */
+export function buildActionItemStatsRows(byProduct) {
+  const rows = (byProduct || []).map((row) => {
+    /** @type {Record<string, string | number>} */
+    const out = {
+      产品名称: row.productName || row.productKey || '未标注产品',
+    }
+    for (const status of ACTION_ITEM_STATUSES) {
+      out[ACTION_ITEM_STATUS_LABELS[status]] = row.counts?.[status] ?? 0
+    }
+    out.合计 = row.total ?? 0
+    return out
+  })
+
+  if (!rows.length) {
+    return [{ 产品名称: '—', ...Object.fromEntries(ACTION_ITEM_STATUSES.map((s) => [ACTION_ITEM_STATUS_LABELS[s], 0])), 合计: 0 }]
+  }
+
+  /** @type {Record<ActionItemStatus, number>} */
+  const totals = {
+    pending_evaluation: 0,
+    in_progress: 0,
+    completed: 0,
+    suspended: 0,
+  }
+  let grandTotal = 0
+  for (const row of byProduct || []) {
+    for (const status of ACTION_ITEM_STATUSES) {
+      totals[status] += row.counts?.[status] ?? 0
+    }
+    grandTotal += row.total ?? 0
+  }
+
+  /** @type {Record<string, string | number>} */
+  const summary = { 产品名称: '合计' }
+  for (const status of ACTION_ITEM_STATUSES) {
+    summary[ACTION_ITEM_STATUS_LABELS[status]] = totals[status]
+  }
+  summary.合计 = grandTotal
+  rows.push(summary)
+
+  return rows
+}
+
+/**
+ * @param {ActionItem[]} items
+ * @param {Set<string> | null | undefined} periodTicketIdSet
+ * @returns {Record<string, string>[]}
+ */
+export function buildActionItemListRows(items, periodTicketIdSet) {
+  return (items || []).map((item) => {
+    const sources = (item.linkedDataSources || [])
+      .map((s) => DATA_SOURCE_LABELS[s] || s)
+      .join('、')
+    const linkedInPeriod = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet)
+
+    return {
+      产品名称: item.productName || item.productKey || '',
+      问题: item.painPointSnapshot || '',
+      问题类型: item.problemTypeSnapshot || '',
+      用户旅程一级: item.journeyL1Snapshot || '',
+      来源: sources,
+      举措: item.content || '',
+      '关联工单(本周期)': linkedInPeriod.join('\n'),
+      首次提出时间: item.firstProposedAt || '',
+      排期时间: item.scheduleAt?.trim() || '',
+      状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
+    }
+  })
+}
+
+/**
+ * @param {Blob} blob
+ * @param {string} filename
+ */
+function triggerDownload(blob, filename) {
+  const name = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * @param {Object} options
+ * @param {ActionItem[]} options.items
+ * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
+ * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {string} [options.filename]
+ */
+export function downloadActionItemsExcel({
+  items,
+  statsByProduct,
+  periodTicketIdSet,
+  filename,
+}) {
+  const byProduct = statsByProduct?.length
+    ? statsByProduct
+    : aggregateActionItemsByProductStatus(items)
+
+  const statsRows = buildActionItemStatsRows(byProduct)
+  const listRows = buildActionItemListRows(items, periodTicketIdSet)
+
+  const wb = XLSX.utils.book_new()
+  const statsSheet = XLSX.utils.json_to_sheet(statsRows, { header: ACTION_ITEM_STATS_HEADERS })
+  const listSheet = XLSX.utils.json_to_sheet(
+    listRows.length ? listRows : [{ 提示: '无数据' }],
+    { header: ACTION_ITEM_LIST_HEADERS },
+  )
+
+  XLSX.utils.book_append_sheet(wb, statsSheet, ACTION_ITEM_STATS_SHEET_NAME)
+  XLSX.utils.book_append_sheet(wb, listSheet, ACTION_ITEM_LIST_SHEET_NAME)
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  triggerDownload(
+    blob,
+    filename || `举措与进展-${new Date().toISOString().slice(0, 10)}.xlsx`,
+  )
+}
+
+/**
+ * @param {Object} options
+ * @param {ActionItemListQuery} options.query
+ * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
+ * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {string} [options.scopeLabel]
+ * @param {string} [options.periodLabel]
+ */
+export async function exportActionItemsWithQuery({
+  query,
+  statsByProduct,
+  periodTicketIdSet,
+  scopeLabel,
+  periodLabel,
+}) {
+  const { items } = await fetchAllActionItems(query)
+  const datePart = new Date().toISOString().slice(0, 10)
+  const scopePart = scopeLabel ? scopeLabel.replace(/\s+/g, '') : '导出'
+  const periodPart = periodLabel ? `-${periodLabel.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')}` : ''
+  downloadActionItemsExcel({
+    items,
+    statsByProduct,
+    periodTicketIdSet,
+    filename: `举措与进展-${scopePart}${periodPart}-${datePart}.xlsx`,
+  })
+  return items.length
+}
