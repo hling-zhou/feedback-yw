@@ -243,15 +243,47 @@ export function registerStorageRoutes(app) {
     async (request, reply) => {
     if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
     const { id } = /** @type {{ id: string }} */ (request.params)
-    const body = /** @type {{ record?: import('../src/domain/records.js').InsightRecord }} */ (
-      request.body || {}
-    )
+    const body = /** @type {{
+      record?: import('../src/domain/records.js').InsightRecord
+      expectedRevision?: number
+      forceOverwrite?: boolean
+    }} */ (request.body || {})
     if (!body.record?.id || body.record.id !== id) {
       reply.code(400).send({ error: 'record.id 不匹配' })
       return
     }
-    storageRepository.putRecord(body.record)
-    return { ok: true }
+    const user = request.user
+    try {
+      const result = storageRepository.putRecord(body.record, {
+        expectedRevision: body.expectedRevision,
+        actor: user?.id
+          ? { userId: user.id, username: user.username || user.id }
+          : null,
+      })
+      if (body.forceOverwrite === true) {
+        logAuditFromRequest(request, 'storage.record_force_overwrite', {
+          recordId: id,
+          ticketId: body.record.ticketId ?? null,
+          expectedRevision: body.expectedRevision ?? null,
+          recordRevision: result.recordRevision,
+        })
+      }
+      return { ok: true, recordRevision: result.recordRevision }
+    } catch (err) {
+      const e = /** @type {Error & { code?: string; current?: unknown; currentRevision?: number }} */ (
+        err
+      )
+      if (e.code === 'RECORD_CONFLICT') {
+        reply.code(409).send({
+          error: e.message,
+          code: 'RECORD_CONFLICT',
+          current: e.current ?? null,
+          currentRevision: e.currentRevision ?? 0,
+        })
+        return
+      }
+      throw err
+    }
   })
 
   app.post(

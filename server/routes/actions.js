@@ -13,6 +13,18 @@ import {
 import { requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { actionItemRepository } from '../actionItemRepository.js'
+import { ACTION_ITEM_CONFLICT_CODE } from '../../src/domain/actionItemRevision.js'
+
+/**
+ * @param {Record<string, unknown>} body
+ */
+function stripActionPatchBody(body) {
+  const { expectedRevision, ...patch } = body
+  return {
+    expectedRevision: expectedRevision != null ? Number(expectedRevision) : undefined,
+    patch: /** @type {Partial<import('../../src/domain/actionItem.js').ActionItem>} */ (patch),
+  }
+}
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertEditRecordPermission(request, reply) {
@@ -71,7 +83,11 @@ export function registerActionRoutes(app) {
       return
     }
 
-    actionItemRepository.putActionItem(validated.item)
+    actionItemRepository.putActionItem(validated.item, {
+      actor: request.user?.id
+        ? { userId: request.user.id, username: request.user.username || request.user.id }
+        : null,
+    })
     logAuditFromRequest(request, 'action.create', { actionId: validated.item.id })
     reply.code(201)
     return { item: actionItemRepository.getActionItem(validated.item.id) }
@@ -90,22 +106,43 @@ export function registerActionRoutes(app) {
       return
     }
 
-    const body = /** @type {Partial<import('../../src/domain/actionItem.js').ActionItem>} */ (
-      request.body || {}
-    )
-    if (body.status != null && !isActionItemStatus(body.status)) {
+    const body = /** @type {Record<string, unknown>} */ (request.body || {})
+    const { expectedRevision, patch } = stripActionPatchBody(body)
+    if (patch.status != null && !isActionItemStatus(patch.status)) {
       reply.code(400).send({ error: '无效的举措状态' })
       return
     }
 
-    const merged = mergeActionItemPatch(existing, body)
+    const merged = mergeActionItemPatch(existing, patch)
     if (!merged.ok) {
       reply.code(400).send({ error: merged.error })
       return
     }
 
-    actionItemRepository.putActionItem(merged.item)
-    logAuditFromRequest(request, 'action.update', { actionId: id, fields: Object.keys(body) })
+    const user = request.user
+    try {
+      actionItemRepository.putActionItem(merged.item, {
+        expectedRevision,
+        actor: user?.id
+          ? { userId: user.id, username: user.username || user.id }
+          : null,
+      })
+    } catch (err) {
+      const e = /** @type {Error & { code?: string; current?: unknown; currentRevision?: number }} */ (
+        err
+      )
+      if (e.code === ACTION_ITEM_CONFLICT_CODE) {
+        reply.code(409).send({
+          error: e.message,
+          code: ACTION_ITEM_CONFLICT_CODE,
+          current: e.current ?? null,
+          currentRevision: e.currentRevision ?? 0,
+        })
+        return
+      }
+      throw err
+    }
+    logAuditFromRequest(request, 'action.update', { actionId: id, fields: Object.keys(patch) })
     return { item: actionItemRepository.getActionItem(id) }
     },
   )

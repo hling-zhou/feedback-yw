@@ -117,22 +117,22 @@ export default function FeedbackTable({ items, onSelect }) {
       ),
     },
     {
-      title: '优化建议（自动）',
-      dataIndex: 'optimizationProduct',
-      width: 180,
-      render: (_, fb) => (
-        <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs" type="secondary">
-          {formatListOptimizationPreview(fb) || '—'}
-        </Typography.Paragraph>
-      ),
-    },
-    {
       title: '确立举措',
       dataIndex: 'establishedAction',
       width: 160,
       render: (_, fb) => (
         <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
           {getEstablishedActionDisplay(fb) || '—'}
+        </Typography.Paragraph>
+      ),
+    },
+    {
+      title: '优化建议（自动）',
+      dataIndex: 'optimizationProduct',
+      width: 180,
+      render: (_, fb) => (
+        <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs" type="secondary">
+          {formatListOptimizationPreview(fb) || '—'}
         </Typography.Paragraph>
       ),
     },

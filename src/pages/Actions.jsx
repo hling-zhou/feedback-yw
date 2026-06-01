@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -25,6 +26,10 @@ import {
   aggregateActionItemsByProductStatus,
   deriveActionItemStatusFromSchedule,
 } from '../domain/actionItem.js'
+import {
+  buildTicketIdSetFromRecords,
+  linkedTicketIdsInPeriod,
+} from '../domain/actionItemPeriodFilter.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
@@ -34,10 +39,18 @@ import {
 } from '../lib/actionItemClient.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { listProducts } from '../lib/productTaxonomy.js'
+import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { useInsights } from '../context/InsightsContext.jsx'
+import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
 import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
+import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
+import {
+  formatActionItemUpdatedByLine,
+  getActionItemRevision,
+  toActionItemConflictError,
+} from '../domain/actionItemRevision.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -97,7 +110,7 @@ function LinkedTicketsCell({ ticketIds }) {
 }
 
 export default function Actions() {
-  const { feedbacks, updateFeedback } = useInsights()
+  const { feedbacks, updateFeedback, currentPeriod } = useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -114,6 +127,13 @@ export default function Actions() {
     /** @type {import('../lib/actionItemClient.js').ActionItemProductStatusRow[]} */ ([]),
   )
 
+  const [insightPeriodId, setInsightPeriodId] = useState(
+    /** @type {string | null} */ (null),
+  )
+  const [selectedPeriod, setSelectedPeriod] = useState(
+    /** @type {import('../domain/insightPeriod.js').InsightPeriod | null} */ (null),
+  )
+
   const [productKeys, setProductKeys] = useState(/** @type {string[]} */ ([]))
   const [statuses, setStatuses] = useState(/** @type {ActionItemStatus[]} */ ([]))
   const [ticketId, setTicketId] = useState('')
@@ -125,6 +145,15 @@ export default function Actions() {
   const [editing, setEditing] = useState(/** @type {ActionItem | null} */ (null))
   const [editForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
+  const [editStale, setEditStale] = useState(false)
+  const [conflictOpen, setConflictOpen] = useState(false)
+  const [conflictServerItem, setConflictServerItem] = useState(/** @type {ActionItem | null} */ (null))
+  const [conflictRevision, setConflictRevision] = useState(0)
+  const [conflictDraft, setConflictDraft] = useState(
+    /** @type {{ content: string; status: ActionItemStatus; scheduleAt: string } | null} */ (null),
+  )
+  const [forceSaving, setForceSaving] = useState(false)
+  const baseRevisionRef = useRef(0)
   const watchedSchedule = Form.useWatch('scheduleAt', editForm)
 
   const hasEditSchedule = useMemo(() => {
@@ -140,6 +169,17 @@ export default function Actions() {
     }))
   }, [feedbacks])
 
+  useEffect(() => {
+    if (insightPeriodId || !currentPeriod) return
+    setInsightPeriodId(currentPeriod.id)
+    setSelectedPeriod(currentPeriod)
+  }, [currentPeriod, insightPeriodId])
+
+  const periodTicketIdSet = useMemo(() => {
+    if (!selectedPeriod) return null
+    return buildTicketIdSetFromRecords(filterRecordsForScope(feedbacks, selectedPeriod))
+  }, [feedbacks, selectedPeriod])
+
   const listQuery = useMemo(
     () => ({
       productKeys: productKeys.length ? productKeys.join(',') : undefined,
@@ -147,8 +187,9 @@ export default function Actions() {
       ticketId: ticketId.trim() || undefined,
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+      insightPeriodId: insightPeriodId || undefined,
     }),
-    [productKeys, statuses, ticketId, dateRange],
+    [productKeys, statuses, ticketId, dateRange, insightPeriodId],
   )
 
   const loadStats = useCallback(async () => {
@@ -210,6 +251,9 @@ export default function Actions() {
 
   const openEdit = (record) => {
     setEditing(record)
+    baseRevisionRef.current = getActionItemRevision(record)
+    setEditStale(false)
+    setConflictOpen(false)
     editForm.setFieldsValue({
       content: record.content,
       status: record.status,
@@ -217,6 +261,15 @@ export default function Actions() {
     })
     setEditOpen(true)
   }
+
+  useEffect(() => {
+    if (!editOpen || !editing?.id) return
+    const latest = items.find((item) => item.id === editing.id)
+    if (!latest) return
+    if (getActionItemRevision(latest) > baseRevisionRef.current) {
+      setEditStale(true)
+    }
+  }, [editOpen, editing?.id, items])
 
   const handleScheduleChange = (date) => {
     if (!date) {
@@ -228,30 +281,101 @@ export default function Actions() {
     }
   }
 
-  const handleEditSave = async () => {
+  const buildEditPatch = (values) => {
+    const scheduleAt = values.scheduleAt
+      ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
+      : ''
+    const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
+    return {
+      content: values.content.trim(),
+      status,
+      scheduleAt,
+    }
+  }
+
+  const applyEditFormFromItem = (item) => {
+    editForm.setFieldsValue({
+      content: item.content,
+      status: item.status,
+      scheduleAt: parseScheduleForPicker(item.scheduleAt),
+    })
+    baseRevisionRef.current = getActionItemRevision(item)
+    setEditStale(false)
+    setEditing(item)
+  }
+
+  const finalizeEditSave = async (patch, saveOptions = {}) => {
+    if (!editing) return
+    const updated = await updateActionItem(editing.id, patch, {
+      expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
+      skipConflictCheck: saveOptions.skipConflictCheck,
+    })
+    const synced = await syncLinkedTicketCopies(updated, feedbacks, updateFeedback)
+    message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联工单` : '已保存')
+    setEditOpen(false)
+    setConflictOpen(false)
+    loadItems()
+    loadStats()
+  }
+
+  const handleEditSave = async (saveOptions = {}) => {
     if (!editing) return
     const values = await editForm.validateFields()
     setSaving(true)
     try {
-      const scheduleAt = values.scheduleAt
-        ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
-        : ''
-      const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
-      const updated = await updateActionItem(editing.id, {
-        content: values.content.trim(),
-        status,
-        scheduleAt,
-      })
-      const synced = await syncLinkedTicketCopies(updated, feedbacks, updateFeedback)
-      message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联工单` : '已保存')
-      setEditOpen(false)
-      loadItems()
-      loadStats()
+      await finalizeEditSave(buildEditPatch(values), saveOptions)
     } catch (err) {
+      const conflict = toActionItemConflictError(err)
+      if (conflict) {
+        setConflictDraft(buildEditPatch(values))
+        setConflictServerItem(conflict.current)
+        setConflictRevision(conflict.currentRevision)
+        setConflictOpen(true)
+        return
+      }
       message.error(err instanceof Error ? err.message : '保存失败')
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleReloadLatestAfterConflict = () => {
+    const latest =
+      conflictServerItem || items.find((item) => item.id === editing?.id) || null
+    if (!latest) {
+      setConflictOpen(false)
+      return
+    }
+    applyEditFormFromItem(latest)
+    setConflictOpen(false)
+    message.info('已加载服务器最新内容')
+  }
+
+  const handleForceSaveAfterConflict = async () => {
+    if (!editing) return
+    setForceSaving(true)
+    try {
+      const values = await editForm.validateFields()
+      await finalizeEditSave(buildEditPatch(values), { expectedRevision: conflictRevision })
+    } catch (err) {
+      const again = toActionItemConflictError(err)
+      if (again) {
+        setConflictServerItem(again.current)
+        setConflictRevision(again.currentRevision)
+        message.warning('服务器版本再次变化，请重新加载后再试')
+        return
+      }
+      message.error(err instanceof Error ? err.message : '覆盖保存失败')
+    } finally {
+      setForceSaving(false)
+    }
+  }
+
+  const handleReloadStaleEdit = () => {
+    const latest = items.find((item) => item.id === editing?.id)
+    if (!latest) return
+    applyEditFormFromItem(latest)
+    message.info('已同步列表中的最新内容')
   }
 
   const columns = [
@@ -302,10 +426,23 @@ export default function Actions() {
       width: 200,
     },
     {
-      title: '关联工单',
+      title: (
+        <Tooltip title="数量仅统计当前所选周期内的关联工单">
+          <span>
+            关联工单
+            <Typography.Text type="secondary" className="ml-1 text-[10px] font-normal">
+              (本周期)
+            </Typography.Text>
+          </span>
+        </Tooltip>
+      ),
       key: 'linkedTickets',
-      width: 100,
-      render: (_, record) => <LinkedTicketsCell ticketIds={record.linkedTicketIds} />,
+      width: 110,
+      render: (_, record) => (
+        <LinkedTicketsCell
+          ticketIds={linkedTicketIdsInPeriod(record.linkedTicketIds, periodTicketIdSet)}
+        />
+      ),
     },
     {
       title: '首次提出时间',
@@ -376,17 +513,32 @@ export default function Actions() {
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。"
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-ink-800">首次提出时间</span>
-        <DatePicker.RangePicker
-          size="small"
-          placeholder={['起', '止']}
-          value={dateRange}
-          onChange={(v) => {
-            setDateRange(v)
-            setPage(1)
-          }}
-        />
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-800">工单所属周期</span>
+          <InsightPeriodPicker
+            compact
+            showHint={false}
+            value={insightPeriodId}
+            onChange={(id, period) => {
+              setInsightPeriodId(id)
+              setSelectedPeriod(period)
+              setPage(1)
+            }}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-800">首次提出时间</span>
+          <DatePicker.RangePicker
+            size="small"
+            placeholder={['起', '止']}
+            value={dateRange}
+            onChange={(v) => {
+              setDateRange(v)
+              setPage(1)
+            }}
+          />
+        </div>
       </div>
 
       <Card size="small" className="!border-ink-100" styles={{ body: { overflow: 'visible' } }}>
@@ -479,10 +631,32 @@ export default function Actions() {
         title="编辑举措"
         open={editOpen}
         onCancel={() => setEditOpen(false)}
-        onOk={handleEditSave}
+        onOk={() => handleEditSave()}
         confirmLoading={saving}
         destroyOnClose
       >
+        {editStale ? (
+          <Alert
+            type="warning"
+            showIcon
+            className="!mb-3"
+            message="此举措已被他人更新"
+            description={
+              <>
+                {formatActionItemUpdatedByLine(
+                  items.find((item) => item.id === editing?.id) || editing,
+                ) || '列表数据已同步为较新版本。'}
+                {' '}
+                继续编辑可能覆盖他人修改；保存时将再次校验。
+              </>
+            }
+            action={
+              <Button size="small" onClick={handleReloadStaleEdit}>
+                加载最新
+              </Button>
+            }
+          />
+        ) : null}
         <Form form={editForm} layout="vertical" className="mt-2">
           <Form.Item
             name="content"
@@ -508,6 +682,23 @@ export default function Actions() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <ActionItemConflictModal
+        open={conflictOpen}
+        actionLabel={editing?.productName || editing?.content?.slice(0, 20)}
+        serverItem={conflictServerItem}
+        draft={
+          conflictDraft || {
+            content: editing?.content || '',
+            status: editing?.status || 'pending_evaluation',
+            scheduleAt: editing?.scheduleAt || '',
+          }
+        }
+        onReloadLatest={handleReloadLatestAfterConflict}
+        onForceSave={handleForceSaveAfterConflict}
+        onCancel={() => setConflictOpen(false)}
+        forceSaving={forceSaving}
+      />
     </div>
   )
 }

@@ -66,6 +66,8 @@ export const recordPatchBodySchema = {
   required: ['record'],
   properties: {
     record: entityWithIdSchema,
+    expectedRevision: { type: 'integer', minimum: 0 },
+    forceOverwrite: { type: 'boolean' },
   },
 }
 

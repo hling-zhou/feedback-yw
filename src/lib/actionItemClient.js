@@ -1,4 +1,5 @@
 import { apiFetch } from './apiClient.js'
+import { toActionItemConflictError } from '../domain/actionItemRevision.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -12,6 +13,7 @@ import { apiFetch } from './apiClient.js'
  * @property {string} [ticketId]
  * @property {string} [firstProposedFrom]
  * @property {string} [firstProposedTo]
+ * @property {string} [insightPeriodId]
  * @property {string} [search]
  * @property {number} [limit]
  * @property {number} [offset]
@@ -38,6 +40,7 @@ export async function listActionItems(query = {}) {
   if (query.ticketId) params.set('ticketId', query.ticketId)
   if (query.firstProposedFrom) params.set('firstProposedFrom', query.firstProposedFrom)
   if (query.firstProposedTo) params.set('firstProposedTo', query.firstProposedTo)
+  if (query.insightPeriodId) params.set('insightPeriodId', query.insightPeriodId)
   if (query.search) params.set('search', query.search)
   if (query.limit != null) params.set('limit', String(query.limit))
   if (query.offset != null) params.set('offset', String(query.offset))
@@ -74,6 +77,7 @@ export async function getActionItemStats(query = {}) {
   if (query.ticketId) params.set('ticketId', query.ticketId)
   if (query.firstProposedFrom) params.set('firstProposedFrom', query.firstProposedFrom)
   if (query.firstProposedTo) params.set('firstProposedTo', query.firstProposedTo)
+  if (query.insightPeriodId) params.set('insightPeriodId', query.insightPeriodId)
   if (query.search) params.set('search', query.search)
   const qs = params.toString()
   return apiFetch(`/api/actions/stats${qs ? `?${qs}` : ''}`)
@@ -110,14 +114,25 @@ export async function createActionItem(input) {
 /**
  * @param {string} id
  * @param {Partial<ActionItem>} patch
+ * @param {import('../domain/actionItemRevision.js').PutActionItemOptions} [options]
  * @returns {Promise<ActionItem>}
  */
-export async function updateActionItem(id, patch) {
-  const data = await apiFetch(`/api/actions/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(patch),
-  })
-  return data.item
+export async function updateActionItem(id, patch, options = {}) {
+  const body = { ...patch }
+  if (!options.skipConflictCheck && options.expectedRevision != null) {
+    body.expectedRevision = options.expectedRevision
+  }
+  try {
+    const data = await apiFetch(`/api/actions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+    return data.item
+  } catch (err) {
+    const conflict = toActionItemConflictError(err)
+    if (conflict) throw conflict
+    throw err
+  }
 }
 
 /**

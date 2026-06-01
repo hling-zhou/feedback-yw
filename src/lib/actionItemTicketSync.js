@@ -31,7 +31,7 @@ export async function syncLinkedTicketCopies(actionItem, feedbacks, updateFeedba
 
   const patch = buildTicketCopyPatchForActionItem(actionItem)
   for (const fb of linked) {
-    await updateFeedback(fb.id, patch)
+    await updateFeedback(fb.id, patch, { skipConflictCheck: true })
   }
   return linked.length
 }

@@ -144,9 +144,12 @@ export async function persistRecordUpdates(adapter, records, options = {}) {
 /**
  * @param {import('./adapter.js').StorageAdapter} adapter
  * @param {import('../domain/records.js').InsightRecord} record
+ * @param {import('../domain/recordRevision.js').PutRecordOptions} [options]
+ * @returns {Promise<{ recordRevision?: number } | void>}
  */
-export async function persistRecordUpdate(adapter, record) {
-  await adapter.putRecord(normalizeFeedbackRecord(record))
+export async function persistRecordUpdate(adapter, record, options = {}) {
+  const normalized = normalizeFeedbackRecord(record)
+  return adapter.putRecord(normalized, options)
 }
 
 /**

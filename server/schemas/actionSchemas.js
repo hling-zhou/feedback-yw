@@ -57,6 +57,7 @@ export const patchActionBodySchema = {
     },
     scheduleChanged: { type: 'boolean' },
     warningLevel: { type: 'string', enum: ['none', 'orange', 'red'] },
+    expectedRevision: { type: 'integer', minimum: 0 },
   },
 }
 

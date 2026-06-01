@@ -75,6 +75,7 @@ import {
 } from '../lib/backgroundTaskClient.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
 import { buildDedupeKey } from '../domain/records.js'
+import { getRecordRevision } from '../domain/recordRevision.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '../analysis/registry.js'
 import { getComparableMetrics, getMetricsForSource, listMetricDescriptors } from '../metrics/registry.js'
@@ -1606,16 +1607,37 @@ export function InsightsProvider({ children }) {
   )
 
   const updateFeedback = useCallback(
-    async (id, patch) => {
-      const existing = feedbacksRef.current.find((fb) => fb.id === id)
+    /**
+     * @param {string} id
+     * @param {Partial<import('../lib/types.js').FeedbackRecord>} patch
+     * @param {import('../domain/recordRevision.js').PutRecordOptions & { mergeBase?: import('../lib/types.js').FeedbackRecord }} [options]
+     */
+    async (id, patch, options = {}) => {
+      const existing =
+        options.mergeBase ?? feedbacksRef.current.find((fb) => fb.id === id)
       if (!existing) {
         throw new Error('工单不存在或已删除')
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
       const updated = { ...existing, ...patch, manualTagFields }
+      const expectedRevision =
+        options.expectedRevision ??
+        (options.skipConflictCheck ? undefined : getRecordRevision(existing))
+
       setFeedbacks((prev) => prev.map((fb) => (fb.id === id ? updated : fb)))
       if (storageReady) {
-        await persistRecordUpdate(adapter, updated)
+        const result = await persistRecordUpdate(adapter, updated, {
+          expectedRevision,
+          skipConflictCheck: options.skipConflictCheck,
+          forceOverwrite: options.forceOverwrite,
+        })
+        const recordRevision =
+          result?.recordRevision ?? (expectedRevision != null ? expectedRevision + 1 : updated.recordRevision)
+        if (recordRevision != null) {
+          const finalized = { ...updated, recordRevision }
+          setFeedbacks((prev) => prev.map((fb) => (fb.id === id ? finalized : fb)))
+          return finalized
+        }
       }
       return updated
     },

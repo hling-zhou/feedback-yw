@@ -50,10 +50,10 @@ describe('ticketAnalysisExport v2', () => {
       '用户旅程二级',
       '用户情绪',
       '是否加急',
-      '产品技术优化',
-      '服务流程改进',
       '确立举措',
       '排期',
+      '产品技术优化',
+      '服务流程改进',
       '产品组优化建议',
       '设计师优化建议',
       '受理内容',
@@ -72,6 +72,8 @@ describe('ticketAnalysisExport v2', () => {
     expect(row['是否加急']).toBe('加急')
     expect(row['确立举措']).toBe('人工确立举措')
     expect(row['排期']).toBe('2026-08-01')
+    expect(row['产品组优化建议']).toBe('')
+    expect(row['设计师优化建议']).toBe('')
     expect(row['受理内容']).toContain('客户报障')
     expect(row['处理意见']).toBe('已协助排查并放行端口')
     expect(row['根因排查']).toBe('列快照根因')
@@ -110,6 +112,16 @@ describe('ticketAnalysisExport v2', () => {
         manualReviewOptimization: '旧人工',
       })['确立举措'],
     ).toBe('新确立')
+  })
+
+  it('exports product group and designer optimization suggestions', () => {
+    const row = recordToExportRowV2({
+      ...baseRecord,
+      productGroupOptimization: '统一交互规范',
+      designerOptimization: '优化绑定成功页层级',
+    })
+    expect(row['产品组优化建议']).toBe('统一交互规范')
+    expect(row['设计师优化建议']).toBe('优化绑定成功页层级')
   })
 
   it('empty optional fields export as empty strings', () => {

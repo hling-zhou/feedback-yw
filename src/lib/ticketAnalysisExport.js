@@ -72,6 +72,10 @@ function exportRegistryFieldValue(record, field) {
       return record.optimizationProduct || ''
     case 'optimizationService':
       return record.optimizationService || ''
+    case 'productGroupOptimization':
+      return record.productGroupOptimization || ''
+    case 'designerOptimization':
+      return record.designerOptimization || ''
     case 'establishedAction':
       return readFieldValue(record, field)
     case 'actionSchedule':

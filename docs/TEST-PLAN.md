@@ -186,7 +186,7 @@
 
 | ID | 优先级 | 场景 | 预期 | 自动化 |
 |----|--------|------|------|--------|
-| TAG-M0-01 | P0 | Field Registry v2 列序 | 导出/导入 16 列顺序与设计一致 | `fieldRegistry.test.js` |
+| TAG-M0-01 | P0 | Field Registry v2 列序 | 导出/导入 18 列顺序与设计一致 | `fieldRegistry.test.js` |
 | TAG-M0-02 | P0 | Override Policy | FORCE / IMPORT_REPLACE / RESPECT 三策略 | `overridePolicy.test.js` |
 | TAG-M0-03 | P0 | 强制覆盖全 scope | 全量/补打/补打旅程 + 强制覆盖均清空人工并回退根因 | `manualTagFields.test.js`；手工：三 scope 各 1 条 |
 | TAG-M0-04 | P0 | 根因排查 effective | 优先人工字段，否则问题原因/rootCause | `rootCauseReview.test.js` |
@@ -198,7 +198,7 @@
 
 | ID | 优先级 | 场景 | 预期 | 自动化 |
 |----|--------|------|------|--------|
-| TAG-EXP-V2-01 | P0 | 16 列表头 | 与 Registry 一致 | `ticketAnalysisExport.test.js` |
+| TAG-EXP-V2-01 | P0 | 18 列表头 | 与 Registry 一致 | `ticketAnalysisExport.test.js` |
 | TAG-EXP-V2-02 | P0 | 投诉/咨询各 10 条 fixture | 无终判/legacy 列 | `ticketAnalysisExport.uat.test.js` |
 | TAG-EXP-V2-03 | P0 | 空排期 R1 | 排期列为空 | 同上 |
 | TAG-EXP-V2-04 | P0 | 根因排查 effective | 人工>问题原因>rootCause | 同上 |
@@ -289,7 +289,7 @@
 |----|--------|------|------|--------|
 | TAG-IMP-P3-1-01 | P0 | Tab 区分 | 工单 Excel vs 分析结果 | `ImportHub.jsx` + `/import?tab=analysis` |
 | TAG-IMP-P3-1-02 | P0 | R3 文案 | 仅更新已存在工单 | `ImportAnalysis.jsx` |
-| TAG-IMP-P3-1-03 | P0 | 模板表头 | 16 列 = export v2 | `importAnalysisTemplate.test.js` |
+| TAG-IMP-P3-1-03 | P0 | 模板表头 | 18 列 = export v2 | `importAnalysisTemplate.test.js` |
 | TAG-IMP-P3-1-04 | P0 | 排期可空 | 必填不含排期 | `importAnalysisTemplate.test.js` |
 | TAG-IMP-P3-1-05 | P1 | 下载模板 | Excel 首行表头正确 | 手工：设置 → 数据导入 → 分析 Tab |
 

@@ -1,5 +1,5 @@
 import { apiFetch } from '../lib/apiClient.js'
-import { resolveInsightPeriod } from '../domain/insightPeriod.js'
+import { toRecordConflictError } from '../domain/recordRevision.js'
 import { chunkRecordsForUpload } from '../lib/recordUploadChunks.js'
 import {
   fetchInsightRebuildJob,
@@ -78,11 +78,24 @@ export function createApiStorageAdapter() {
       return storageFetch('/stats')
     },
 
-    async putRecord(record) {
-      await storageFetch(`/records/${encodeURIComponent(record.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ record }),
-      })
+    async putRecord(record, options = {}) {
+      const body = { record }
+      if (options.skipConflictCheck !== true && options.expectedRevision != null) {
+        body.expectedRevision = options.expectedRevision
+      }
+      if (options.forceOverwrite === true) {
+        body.forceOverwrite = true
+      }
+      try {
+        return await storageFetch(`/records/${encodeURIComponent(record.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        })
+      } catch (err) {
+        const conflict = toRecordConflictError(err)
+        if (conflict) throw conflict
+        throw err
+      }
     },
 
     /**

@@ -31,7 +31,7 @@ npm test -- src/lib/ticketAnalysisExport.uat.test.js
 
 | # | 检查项 | 结果 |
 |---|--------|------|
-| A1 | 表头 16 列与 Registry 一致 | ✅ `getExportV2Headers` |
+| A1 | 表头 18 列与 Registry 一致 | ✅ `getExportV2Headers` |
 | A2 | 投诉 10 条无「投诉原因（终判）」列 | ✅ |
 | A3 | 咨询 10 条无「投诉原因（终判）」列 | ✅ |
 | A4 | 无来源三列 / legacy 列 | ✅ |
@@ -47,7 +47,7 @@ npm test -- src/lib/ticketAnalysisExport.uat.test.js
 - [ ] 导出 Excel 首行与 [EXPORT-V2-MIGRATION.md §1](./EXPORT-V2-MIGRATION.md) 一致
 - [ ] 投诉工单抽样 5 条：确立举措、根因排查、受理/处理意见合理
 - [ ] 咨询工单抽样 5 条：无终判列；问题类型为打标值
-- [ ] 文件名提示含 `v2` 或成功 toast 含「16 列」
+- [ ] 文件名提示含 `v2` 或成功 toast 含「18 列」
 
 ---
 

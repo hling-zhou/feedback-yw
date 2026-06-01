@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -15,6 +16,7 @@ import {
 } from 'antd'
 import dayjs from 'dayjs'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
+import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
 import {
@@ -75,6 +77,9 @@ import {
   shouldIncludeRootCauseReviewInSave,
 } from '../domain/rootCauseReview.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import RecordConflictModal from './RecordConflictModal.jsx'
+import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
+import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点，以及优化建议（自动生成）。其他不修改。'
@@ -85,6 +90,7 @@ const SAVE_DETAIL_TIP =
 export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const { feedbacks, updateFeedback, reprocessOne, retagSession } = useFeedbacks()
   const { can } = useAuth()
+  const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
   const feedback = selected
@@ -113,6 +119,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const [rootCauseReviewTouched, setRootCauseReviewTouched] = useState(false)
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [remoteStale, setRemoteStale] = useState(false)
+  const [conflictOpen, setConflictOpen] = useState(false)
+  const [conflictServerRecord, setConflictServerRecord] = useState(
+    /** @type {import('../lib/types.js').FeedbackRecord | null} */ (null),
+  )
+  const [conflictRevision, setConflictRevision] = useState(0)
+  const [forceSaving, setForceSaving] = useState(false)
+  const baseRevisionRef = useRef(0)
 
   const taxonomy = useMemo(
     () => (feedback ? getTaxonomyForRecord(feedback) : null),
@@ -143,26 +157,43 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     [],
   )
 
-  useEffect(() => {
-    if (!feedback) return
-    setNote(feedback.note || '')
-    setSentiment(normalizeSentiment(feedback.sentiment))
-    setUrgencyLevel(normalizeUrgencyLevel(feedback.urgencyLevel, feedback.sentiment))
-    setRequestScene(feedback.requestScene || '')
-    setProblemType(feedback.problemType || '')
-    setJourneyL1(feedback.journeyL1 || '')
-    setJourneyL2(feedback.journeyL2 || '')
-    setEstablishedAction(getEstablishedActionDisplay(feedback))
-    setActionId(feedback.actionId?.trim() || '')
-    setLinkedFromLibrary(Boolean(feedback.actionId?.trim()))
-    setCustomerRequest(getCustomerRequestDraftDisplay(feedback))
-    setPainPoint(getPainPointDraftDisplay(feedback))
-    setActionSchedule(feedback.actionSchedule || '')
-    setProductGroupOptimization(feedback.productGroupOptimization || '')
-    setDesignerOptimization(feedback.designerOptimization || '')
-    setRootCauseReview(getRootCauseReviewDraftDisplay(feedback))
+  const applyFeedbackToForm = useCallback((record) => {
+    if (!record) return
+    setNote(record.note || '')
+    setSentiment(normalizeSentiment(record.sentiment))
+    setUrgencyLevel(normalizeUrgencyLevel(record.urgencyLevel, record.sentiment))
+    setRequestScene(record.requestScene || '')
+    setProblemType(record.problemType || '')
+    setJourneyL1(record.journeyL1 || '')
+    setJourneyL2(record.journeyL2 || '')
+    setEstablishedAction(getEstablishedActionDisplay(record))
+    setActionId(record.actionId?.trim() || '')
+    setLinkedFromLibrary(Boolean(record.actionId?.trim()))
+    setCustomerRequest(getCustomerRequestDraftDisplay(record))
+    setPainPoint(getPainPointDraftDisplay(record))
+    setActionSchedule(record.actionSchedule || '')
+    setProductGroupOptimization(record.productGroupOptimization || '')
+    setDesignerOptimization(record.designerOptimization || '')
+    setRootCauseReview(getRootCauseReviewDraftDisplay(record))
     setRootCauseReviewTouched(false)
-  }, [feedback])
+  }, [])
+
+  useEffect(() => {
+    if (!feedback?.id) return
+    baseRevisionRef.current = getRecordRevision(feedback)
+    setRemoteStale(false)
+    applyFeedbackToForm(feedback)
+    // 仅在切换工单时重置表单，避免轮询同步覆盖编辑中内容
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- feedback fields intentionally omitted
+  }, [feedback?.id, applyFeedbackToForm])
+
+  useEffect(() => {
+    if (!feedback?.id) return
+    const latestRevision = getRecordRevision(feedback)
+    if (latestRevision > baseRevisionRef.current) {
+      setRemoteStale(true)
+    }
+  }, [feedback?.id, feedback?.recordRevision])
 
   useEffect(() => {
     if (!feedback?.actionId?.trim()) return
@@ -211,51 +242,134 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     return parsed.isValid() ? parsed : null
   })()
 
-  const save = async () => {
-    if (saving) return
+  const buildSavePatch = () => {
+    const journey = { journeyL1, journeyL2 }
+    return {
+      note,
+      themes: themesFromJourney(journey),
+      sentiment,
+      urgencyLevel,
+      requestScene,
+      problemType,
+      ...buildCustomerRequestManualSavePatch(customerRequest),
+      ...buildPainPointManualSavePatch(painPoint),
+      ...buildDetailOptimizationSavePatch({
+        productGroupOptimization,
+        designerOptimization,
+      }),
+      ...journey,
+    }
+  }
+
+  const buildDraftRecord = () => {
+    const patch = buildSavePatch()
+    let draft = { ...feedback, ...patch }
+    if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
+      draft = {
+        ...draft,
+        rootCauseReview: normalizeRootCauseReviewInput(rootCauseReview),
+      }
+    }
+    return draft
+  }
+
+  const finalizeSave = async (patch, saveOptions = {}) => {
+    Object.assign(
+      patch,
+      await persistEstablishedActionForTicket(feedback, {
+        content: establishedAction,
+        scheduleAt: actionSchedule,
+        actionId,
+        linkedFromLibrary,
+      }),
+    )
+    if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
+      patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
+    }
+    const saved = await updateFeedback(feedback.id, patch, {
+      expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
+      mergeBase: saveOptions.mergeBase,
+      skipConflictCheck: saveOptions.skipConflictCheck,
+      forceOverwrite: saveOptions.forceOverwrite,
+    })
+    const merged = { ...feedback, ...saved }
+    if (merged.actionId?.trim()) {
+      await syncFirstTicketSnapshotsForRecord(merged)
+    }
+    baseRevisionRef.current = getRecordRevision(saved)
+    setRemoteStale(false)
+    const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
+    message.success(`${label} 已保存`)
+    onClose()
+  }
+
+  const save = async (saveOptions = {}) => {
+    if (saving || forceSaving) return
+    if (detailSaveBlocked) {
+      message.warning(detailSaveBlockedTip || '当前无法保存工单')
+      return
+    }
     setSaving(true)
     try {
-      const journey = { journeyL1, journeyL2 }
-      const patch = {
-        note,
-        themes: themesFromJourney(journey),
-        sentiment,
-        urgencyLevel,
-        requestScene,
-        problemType,
-        ...buildCustomerRequestManualSavePatch(customerRequest),
-        ...buildPainPointManualSavePatch(painPoint),
-        ...buildDetailOptimizationSavePatch({
-          productGroupOptimization,
-          designerOptimization,
-        }),
-        ...journey,
-      }
-      Object.assign(
-        patch,
-        await persistEstablishedActionForTicket(feedback, {
-          content: establishedAction,
-          scheduleAt: actionSchedule,
-          actionId,
-          linkedFromLibrary,
-        }),
-      )
-      if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
-        patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
-      }
-      await updateFeedback(feedback.id, patch)
-      const merged = { ...feedback, ...patch }
-      if (merged.actionId?.trim()) {
-        await syncFirstTicketSnapshotsForRecord(merged)
-      }
-      const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
-      message.success(`${label} 已保存`)
-      onClose()
+      const patch = buildSavePatch()
+      await finalizeSave(patch, saveOptions)
     } catch (err) {
+      const conflict = toRecordConflictError(err)
+      if (conflict) {
+        setConflictServerRecord(conflict.current)
+        setConflictRevision(conflict.currentRevision)
+        setConflictOpen(true)
+        return
+      }
       message.error(err instanceof Error ? err.message : '保存失败，请重试')
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleReloadLatestAfterConflict = () => {
+    if (!conflictServerRecord) {
+      setConflictOpen(false)
+      return
+    }
+    applyFeedbackToForm(conflictServerRecord)
+    baseRevisionRef.current = getRecordRevision(conflictServerRecord)
+    setRemoteStale(false)
+    setConflictOpen(false)
+    message.info('已加载服务器最新内容')
+  }
+
+  const handleForceSaveAfterConflict = async () => {
+    if (!conflictServerRecord || !canEdit) return
+    setForceSaving(true)
+    try {
+      const patch = buildSavePatch()
+      await finalizeSave(patch, {
+        expectedRevision: conflictRevision,
+        mergeBase: conflictServerRecord,
+        forceOverwrite: true,
+      })
+      setConflictOpen(false)
+    } catch (err) {
+      const again = toRecordConflictError(err)
+      if (again) {
+        setConflictServerRecord(again.current)
+        setConflictRevision(again.currentRevision)
+        message.warning('服务器版本再次变化，请重新加载后再试')
+        return
+      }
+      message.error(err instanceof Error ? err.message : '覆盖保存失败')
+    } finally {
+      setForceSaving(false)
+    }
+  }
+
+  const handleReloadStaleRemote = () => {
+    if (!feedback) return
+    applyFeedbackToForm(feedback)
+    baseRevisionRef.current = getRecordRevision(feedback)
+    setRemoteStale(false)
+    message.info('已同步列表中的最新内容')
   }
 
   const bulkRetagActive = retagSession.active
@@ -306,9 +420,21 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               </Tooltip>
             )}
             {canEdit && (
-              <Tooltip title={SAVE_DETAIL_TIP}>
+              <Tooltip
+                title={
+                  detailSaveBlocked
+                    ? detailSaveBlockedTip
+                    : SAVE_DETAIL_TIP
+                }
+              >
                 <span className="flex flex-1">
-                  <Button type="primary" className="flex-1" loading={saving} onClick={save}>
+                  <Button
+                    type="primary"
+                    className="flex-1"
+                    loading={saving}
+                    disabled={detailSaveBlocked}
+                    onClick={() => save()}
+                  >
                     保存
                   </Button>
                 </span>
@@ -319,6 +445,25 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       }
     >
       <div className="space-y-4">
+        {remoteStale ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="此工单已被他人更新"
+            description={
+              <>
+                {formatRecordUpdatedByLine(feedback) || '列表数据已同步为较新版本。'}
+                {' '}
+                继续编辑可能覆盖他人修改；保存时将再次校验。
+              </>
+            }
+            action={
+              <Button size="small" onClick={handleReloadStaleRemote}>
+                加载最新
+              </Button>
+            }
+          />
+        ) : null}
         {/* A · 基础信息 */}
         <Typography.Text type="secondary" className="block text-xs leading-snug">
           {ticketMetaLine}
@@ -773,6 +918,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           <Input.TextArea className="mt-1" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
       </div>
+      <RecordConflictModal
+        open={conflictOpen}
+        ticketLabel={feedback.ticketId || feedback.id}
+        serverRecord={conflictServerRecord}
+        draftRecord={buildDraftRecord()}
+        onReloadLatest={handleReloadLatestAfterConflict}
+        onForceSave={handleForceSaveAfterConflict}
+        onCancel={() => setConflictOpen(false)}
+        forceSaving={forceSaving}
+        canForceSave={canEdit}
+      />
     </Drawer>
   )
 }

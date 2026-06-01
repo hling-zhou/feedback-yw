@@ -24,6 +24,10 @@ export const IMPORT_REBUILD_DISABLED_TIP =
 export const IMPORT_ALREADY_IN_PROGRESS_TIP =
   '数据导入进行中，请待当前导入完成后再试'
 
+/** 工单详情保存：导入进行中 */
+export const DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP =
+  '数据导入进行中，请待导入完成后再保存工单'
+
 export const IMPORT_ANALYSIS_SESSION_LABEL = '分析结果导入'
 
 export const IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP =

@@ -57,7 +57,7 @@ export async function persistEstablishedActionForTicket(record, input) {
       await updateActionItem(actionId, {
         linkedTicketIds: linked.linkedTicketIds,
         linkedDataSources: linked.linkedDataSources,
-      })
+      }, { skipConflictCheck: true })
     }
     return buildLinkedEstablishedActionRecordPatch(linked)
   }
@@ -74,7 +74,7 @@ export async function persistEstablishedActionForTicket(record, input) {
   if (existingId) {
     const existing = await getActionItem(existingId)
     if (existing) {
-      item = await updateActionItem(existingId, upsertPayload)
+      item = await updateActionItem(existingId, upsertPayload, { skipConflictCheck: true })
     } else {
       item = await createActionItem({
         ...upsertPayload,
@@ -99,7 +99,7 @@ export async function persistEstablishedActionForTicket(record, input) {
     item = await updateActionItem(item.id, {
       linkedTicketIds: linked.linkedTicketIds,
       linkedDataSources: linked.linkedDataSources,
-    })
+    }, { skipConflictCheck: true })
   }
 
   return {
@@ -130,5 +130,5 @@ export async function syncFirstTicketSnapshotsForRecord(record) {
     patch.journeyL1Snapshot === (item.journeyL1Snapshot || '')
   if (unchanged) return item
 
-  return updateActionItem(actionId, patch)
+  return updateActionItem(actionId, patch, { skipConflictCheck: true })
 }

@@ -5,6 +5,11 @@ import {
 } from '../domain/constants.js'
 import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod, resolveInsightPeriod } from '../domain/insightPeriod.js'
 import {
+  applyRecordWriteMetadata,
+  getRecordRevision,
+  RECORD_CONFLICT_CODE,
+} from '../domain/recordRevision.js'
+import {
   idbClearStore,
   idbDelete,
   idbGet,
@@ -146,13 +151,32 @@ export function createLocalIdbAdapter() {
       }
     },
 
-    async putRecord(record) {
-      await idbPut(STORES.records, record)
+    async putRecord(record, options = {}) {
+      const existing = await idbGet(STORES.records, record.id)
+      const currentRevision = getRecordRevision(existing)
+      if (
+        options.skipConflictCheck !== true &&
+        options.expectedRevision != null &&
+        options.expectedRevision !== currentRevision
+      ) {
+        const err = new Error('记录已被他人更新，请刷新后重试')
+        err.code = RECORD_CONFLICT_CODE
+        err.current = existing ?? null
+        err.currentRevision = currentRevision
+        throw err
+      }
+      const next = applyRecordWriteMetadata(record, { previousRevision: currentRevision })
+      await idbPut(STORES.records, next)
+      return { recordRevision: next.recordRevision }
     },
 
     async putRecords(records) {
       for (const record of records) {
-        await idbPut(STORES.records, record)
+        const existing = await idbGet(STORES.records, record.id)
+        const next = applyRecordWriteMetadata(record, {
+          previousRevision: getRecordRevision(existing),
+        })
+        await idbPut(STORES.records, next)
       }
     },
 

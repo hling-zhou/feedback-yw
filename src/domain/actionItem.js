@@ -22,6 +22,8 @@
  * @property {import('./enums.js').DataSourceType[]} [linkedDataSources]
  * @property {boolean} [scheduleChanged]
  * @property {ActionItemWarningLevel} [warningLevel]
+ * @property {number} [recordRevision] - 乐观锁版本
+ * @property {{ userId: string; username: string }} [updatedBy]
  * @property {string} createdAt
  * @property {string} updatedAt
  */

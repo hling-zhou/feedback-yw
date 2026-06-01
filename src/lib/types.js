@@ -63,6 +63,9 @@
  * @property {string} [importFileName]
  * @property {string} [importSheetName]
  * @property {string} importedAt
+ * @property {number} [recordRevision] - 乐观锁版本，每次业务写入 +1
+ * @property {string} [updatedAt] - 最后一次业务写入时间 ISO 8601
+ * @property {{ userId: string; username: string }} [updatedBy] - 最后一次写入用户
  */
 
 export const STANDARD_FIELDS = [

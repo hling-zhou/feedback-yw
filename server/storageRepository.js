@@ -5,6 +5,11 @@ import {
 } from '../src/domain/constants.js'
 import { createInsightPeriod, normalizeInsightPeriod, recordMatchesPeriod, resolveInsightPeriod } from '../src/domain/insightPeriod.js'
 import {
+  applyRecordWriteMetadata,
+  getRecordRevision,
+  RECORD_CONFLICT_CODE,
+} from '../src/domain/recordRevision.js'
+import {
   buildRecordsWhereClause,
   parseRecordPagination,
   recordIndexFields,
@@ -129,35 +134,60 @@ export const storageRepository = {
     }
   },
 
-  putRecord(record) {
+  putRecord(record, options = {}) {
     const db = getDb()
-    const idx = recordIndexFields(record)
+    const existing = this.getRecord(record.id)
+    const currentRevision = getRecordRevision(existing)
+
+    if (
+      options.expectedRevision != null &&
+      options.expectedRevision !== currentRevision
+    ) {
+      const err = new Error('记录已被他人更新，请刷新后重试')
+      err.code = RECORD_CONFLICT_CODE
+      err.current = existing
+      err.currentRevision = currentRevision
+      throw err
+    }
+
+    const next = applyRecordWriteMetadata(record, {
+      previousRevision: currentRevision,
+      actor: options.actor ?? null,
+    })
+    const idx = recordIndexFields(next)
     db.prepare(
       `INSERT OR REPLACE INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(
-      record.id,
-      stringifyJson(record),
+      next.id,
+      stringifyJson(next),
       idx.importMonth,
       idx.dataSourceType,
       idx.tenantId,
       idx.importBatchId,
     )
     bumpDataRevision()
+    return { record: next, recordRevision: next.recordRevision }
   },
 
   putRecords(records) {
     const db = getDb()
+    const getExisting = db.prepare('SELECT payload FROM records WHERE id = ?')
     const stmt = db.prepare(
       `INSERT OR REPLACE INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
     const tx = db.transaction((items) => {
       for (const record of items) {
-        const idx = recordIndexFields(record)
+        const row = getExisting.get(record.id)
+        const existing = row ? parseJson(row.payload) : null
+        const next = applyRecordWriteMetadata(record, {
+          previousRevision: getRecordRevision(existing),
+        })
+        const idx = recordIndexFields(next)
         stmt.run(
-          record.id,
-          stringifyJson(record),
+          next.id,
+          stringifyJson(next),
           idx.importMonth,
           idx.dataSourceType,
           idx.tenantId,

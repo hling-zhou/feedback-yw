@@ -7,9 +7,10 @@ import {
   isBackgroundTaskLockActive,
   isBackgroundTaskLockHeldByUser,
 } from '../domain/backgroundTaskLock.js'
-import { RETAG_BLOCKED_BY_IMPORT_TIP, RETAG_IMPORT_BLOCKED_TIP, RETAG_IN_PROGRESS_TIP } from '../lib/retagSession.js'
+import { RETAG_BLOCKED_BY_IMPORT_TIP, RETAG_IMPORT_BLOCKED_TIP, RETAG_IN_PROGRESS_TIP, RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import {
   IMPORT_ALREADY_IN_PROGRESS_TIP,
+  DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP,
   IMPORT_REBUILD_DISABLED_TIP,
 } from '../lib/importSession.js'
 
@@ -56,6 +57,13 @@ export function useSharedBackgroundTaskBlock() {
         ? IMPORT_REBUILD_DISABLED_TIP
         : remoteBlockedTip
 
+    const detailSaveBlocked = importBlocked
+    const detailSaveBlockedTip = localImport
+      ? DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP
+      : localRetag
+        ? RETAG_DETAIL_IN_PROGRESS_TIP
+        : remoteBlockedTip
+
     return {
       localImport,
       localRetag,
@@ -64,9 +72,11 @@ export function useSharedBackgroundTaskBlock() {
       importBlocked,
       retagBlocked,
       rebuildBlocked,
+      detailSaveBlocked,
       importBlockedTip,
       retagBlockedTip,
       rebuildBlockedTip,
+      detailSaveBlockedTip,
       remoteBannerText,
     }
   }, [sharedBackgroundTask, importSession.active, retagSession.active, user?.id])

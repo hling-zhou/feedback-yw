@@ -1,7 +1,17 @@
 import { getDb } from './db.js'
 import { bumpDataRevision } from './dataRevision.js'
 import { isActionItemStatus, unlinkTicketFromActionItem } from '../src/domain/actionItem.js'
+import {
+  actionItemHasLinkedTicketInPeriod,
+  buildTicketIdSetFromRecords,
+} from '../src/domain/actionItemPeriodFilter.js'
+import {
+  applyActionItemWriteMetadata,
+  getActionItemRevision,
+  ACTION_ITEM_CONFLICT_CODE,
+} from '../src/domain/actionItemRevision.js'
 import { applyActionItemWarningLevel } from '../src/domain/actionItemWarning.js'
+import { storageRepository } from './storageRepository.js'
 
 /**
  * @typedef {import('../src/domain/actionItem.js').ActionItem} ActionItem
@@ -17,6 +27,7 @@ import { applyActionItemWarningLevel } from '../src/domain/actionItemWarning.js'
  * @property {string} [ticketId] - 关联工单号
  * @property {string} [firstProposedFrom] - YYYY-MM-DD
  * @property {string} [firstProposedTo] - YYYY-MM-DD
+ * @property {string} [insightPeriodId] - 仅保留关联到该周期内工单的举措
  * @property {string} [search] - content 模糊匹配
  * @property {number} [limit]
  * @property {number} [offset]
@@ -56,8 +67,26 @@ function actionItemIndexFields(item) {
  * @param {ActionItemListQuery} query
  * @param {ActionItem[]} items
  */
+/**
+ * @param {string} insightPeriodId
+ * @returns {Set<string>}
+ */
+function getTicketIdsForInsightPeriod(insightPeriodId) {
+  const id = insightPeriodId?.trim()
+  if (!id) return new Set()
+  const { records } = storageRepository.listRecords({ insightPeriodId: id })
+  return buildTicketIdSetFromRecords(records)
+}
+
 function filterActionItemsInMemory(query, items) {
   let filtered = items
+
+  if (query.insightPeriodId?.trim()) {
+    const ticketIdsInPeriod = getTicketIdsForInsightPeriod(query.insightPeriodId)
+    filtered = filtered.filter((item) =>
+      actionItemHasLinkedTicketInPeriod(item, ticketIdsInPeriod),
+    )
+  }
 
   if (query.ticketId?.trim()) {
     const tid = query.ticketId.trim()
@@ -156,18 +185,46 @@ function getActionItem(id) {
 }
 
 /**
- * @param {ActionItem} item
+ * @typedef {Object} PutActionItemOptions
+ * @property {number} [expectedRevision]
+ * @property {{ userId: string; username: string }} [actor]
+ * @property {boolean} [skipConflictCheck]
  */
-function putActionItem(item) {
+
+/**
+ * @param {ActionItem} item
+ * @param {PutActionItemOptions} [options]
+ * @returns {ActionItem}
+ */
+function putActionItem(item, options = {}) {
   const db = getDb()
-  const warned = applyActionItemWarningLevel(item)
+  const existing = getActionItem(item.id)
+  const currentRevision = getActionItemRevision(existing)
+
+  if (
+    options.skipConflictCheck !== true &&
+    options.expectedRevision != null &&
+    options.expectedRevision !== currentRevision
+  ) {
+    const err = new Error('举措已被他人更新，请刷新后重试')
+    err.code = ACTION_ITEM_CONFLICT_CODE
+    err.current = existing
+    err.currentRevision = currentRevision
+    throw err
+  }
+
+  const withMeta = applyActionItemWriteMetadata(item, {
+    previousRevision: currentRevision,
+    actor: options.actor ?? null,
+  })
+  const warned = applyActionItemWarningLevel(withMeta)
   const idx = actionItemIndexFields(warned)
   db.prepare(
     `INSERT OR REPLACE INTO action_items
       (id, product_key, product_name, status, first_proposed_at, schedule_at, warning_level, payload)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    item.id,
+    warned.id,
     idx.productKey,
     idx.productName,
     idx.status,

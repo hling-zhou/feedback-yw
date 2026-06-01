@@ -111,6 +111,7 @@ describeActions('actions API (P4-1)', () => {
     expect(created.content).toBe('增加连通性预检')
     expect(created.status).toBe('in_progress')
     expect(created.linkedTicketIds).toEqual(['C-20260501-001'])
+    expect(created.recordRevision).toBe(1)
 
     const listRes = await app.inject({
       method: 'GET',
@@ -140,7 +141,7 @@ describeActions('actions API (P4-1)', () => {
     })
     expect(patchRes.statusCode).toBe(200)
     const patched = JSON.parse(patchRes.body).item
-    expect(patched.status).toBe('completed')
+    expect(patched.status).toBe('pending_evaluation')
 
     const deleteRes = await app.inject({
       method: 'DELETE',
@@ -196,5 +197,36 @@ describeActions('actions API (P4-1)', () => {
     const item = JSON.parse(getRes.body).item
     expect(item.content).toBe('共享举措')
     expect(item.linkedTicketIds).toEqual(['T-B'])
+  })
+
+  it('returns 409 when expectedRevision is stale on patch', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '冲突测试举措' },
+    })
+    const created = JSON.parse(createRes.body).item
+    expect(created.recordRevision).toBe(1)
+
+    const staleRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '过期版本', expectedRevision: 0 },
+    })
+    expect(staleRes.statusCode).toBe(409)
+    const staleBody = JSON.parse(staleRes.body)
+    expect(staleBody.code).toBe('ACTION_ITEM_CONFLICT')
+    expect(staleBody.currentRevision).toBe(1)
+
+    const okRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '基于最新保存', expectedRevision: 1 },
+    })
+    expect(okRes.statusCode).toBe(200)
+    expect(JSON.parse(okRes.body).item.recordRevision).toBe(2)
   })
 })

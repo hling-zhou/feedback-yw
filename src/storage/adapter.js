@@ -38,7 +38,7 @@
  * @property {(id: string) => Promise<InsightPeriod | null>} getInsightPeriod
  * @property {(query?: RecordQuery) => Promise<RecordListResult>} listRecords
  * @property {() => Promise<{ records: number; snapshots: number; tagCandidates: number }>} [getStorageStats]
- * @property {(record: InsightRecord) => Promise<void>} putRecord
+ * @property {(record: InsightRecord, options?: import('../domain/recordRevision.js').PutRecordOptions) => Promise<{ recordRevision?: number } | void>} putRecord
  * @property {(records: InsightRecord[]) => Promise<void>} putRecords
  * @property {(records: InsightRecord[]) => Promise<void>} replaceAllRecords
  * @property {(id: string) => Promise<InsightRecord | null>} getRecord
