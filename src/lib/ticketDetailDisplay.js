@@ -2,8 +2,10 @@ import {
   extractAcceptanceTextFromFields,
   extractAppendTextForDisplay,
   extractHandlingTextFromFields,
+  isMeaninglessTicketPlaceholderText,
   parseBracketSections,
 } from './taggingText.js'
+import { isPlatformOutcomeContent } from './ticketAnalysis/customerRequestFilters.js'
 
 /**
  * @typedef {Object} TicketDetailSourceFields
@@ -73,20 +75,9 @@ const PLATFORM_ACTION_HINT =
 const CUSTOMER_OUTCOME_CONTENT_HINT =
   /(?:客户|用户)(?:确认|反馈|侧|复测|验证|测试|试用)[^\n。]{0,120}?(?:已恢复|已解决|恢复正常|无异常|通过|正常|业务恢复|可以访问|问题消除|无异议|满意)|(?:复测|验证|测试)(?:已)?(?:通过|正常|成功)|客户侧[^\n。]{0,40}?(?:正常|通过|恢复)/g
 
-/** 工单「追加信息」中的占位/无实质诉求表述，不应作为客户请求展示 */
-const MEANINGLESS_CUSTOMER_TEXT_RE =
-  /^(?:无|不涉及|无\/不涉及|无追加|暂无|无。?|N\/A|NA|—|-|\/|\.{1,3}|null|none|不涉及。?)$/i
-
-/**
- * @param {string} text
- */
+/** @deprecated 使用 taggingText.isMeaninglessTicketPlaceholderText */
 export function isMeaninglessCustomerText(text) {
-  const t = (text || '').trim()
-  if (!t) return true
-  if (MEANINGLESS_CUSTOMER_TEXT_RE.test(t)) return true
-  if (t.length <= 24 && /^(?:无|不涉及)(?:[、,，/／\s]+(?:无|不涉及))*[。.]?$/.test(t)) return true
-  if (/^【[^】]{1,24}】\s*$/.test(t)) return true
-  return false
+  return isMeaninglessTicketPlaceholderText(text)
 }
 
 /**
@@ -223,6 +214,7 @@ function isCustomerDemandContent(text) {
   const t = (text || '').trim()
   if (!t || t.length < 2) return false
   if (isPlatformActionContent(t)) return false
+  if (isPlatformOutcomeContent(t)) return false
   if (CUSTOMER_DEMAND_HINT.test(t)) return true
   if (/客户|用户/.test(t) && !/已协助|已处理|经排查/.test(t)) return true
   return t.length <= 120 && !isPlatformActionContent(t)
@@ -237,6 +229,63 @@ function isCustomerOutcomeContent(text) {
   return CUSTOMER_OUTCOME_CONTENT_HINT.test(t)
 }
 
+const INLINE_PLATFORM_FIELD_LABEL =
+  '(?:解决方案(?:（必填）)?|问题原因|处理意见|目前进展|协助(?:内容|请求)?|预处理|产品UUID|归档意见|回复内容|咨询答复|根因(?:（必填）)?|优化举措)'
+
+/** 行首 / 编号 / 行内嵌套的平台侧字段 */
+const INLINE_PLATFORM_FIELD_START = new RegExp(
+  `(?:^|\\d+[、.．]\\s*)【?${INLINE_PLATFORM_FIELD_LABEL}[^】]*】?\\s*[:：]|【?${INLINE_PLATFORM_FIELD_LABEL}[^】]*】?\\s*[:：]`,
+  'i',
+)
+
+/**
+ * 截断行内嵌套的平台字段后缀，保留客户诉求正文。
+ *
+ * @param {string} text
+ */
+export function trimInlinePlatformFieldSuffix(text) {
+  const t = (text || '').trim()
+  if (!t) return ''
+  const m = t.match(INLINE_PLATFORM_FIELD_START)
+  if (m && m.index != null && m.index > 0) {
+    return t.slice(0, m.index).trim()
+  }
+  return t
+}
+
+/**
+ * @param {{ label: string | null; text: string }} block
+ */
+function finalizeLabelValueBlock(block) {
+  let text = (block.text || '').trim()
+  text = text.replace(/\n【[^】]+】[\s\S]*$/g, '').trim()
+  text = trimInlinePlatformFieldSuffix(text)
+  return { label: block.label, text }
+}
+
+/**
+ * @param {string} trimmed
+ * @returns {{ label: string | null; text: string }[]}
+ */
+function expandLabelValueLine(trimmed) {
+  const m = trimmed.match(/^([^：:\n]{2,64}?)[：:]\s*(.*)$/)
+  if (!m) return [{ label: null, text: trimmed }]
+  const label = m[1].trim()
+  const text = m[2].trim()
+  const glued = label.match(
+    new RegExp(`^(.{2,48}?)(${INLINE_PLATFORM_FIELD_LABEL})$`, 'i'),
+  )
+  if (glued?.[1]?.trim() && glued[2]) {
+    /** @type {{ label: string | null; text: string }[]} */
+    const out = []
+    const customerPart = glued[1].trim()
+    if (customerPart) out.push({ label: null, text: customerPart })
+    out.push({ label: glued[2], text })
+    return out
+  }
+  return [{ label: label, text }]
+}
+
 /**
  * @param {string} text
  * @returns {{ label: string | null; text: string }[]}
@@ -248,20 +297,35 @@ export function parseLabelValueBlocks(text) {
   /** @type {{ label: string | null; text: string } | null} */
   let current = null
 
+  const pushCurrent = () => {
+    if (!current?.text?.trim()) return
+    blocks.push(finalizeLabelValueBlock(current))
+    current = null
+  }
+
   for (const line of text.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    const m = trimmed.match(/^([^：:\n]{2,32}?)[：:]\s*(.*)$/)
-    if (m) {
-      if (current?.text?.trim()) blocks.push(current)
-      current = { label: m[1].trim(), text: m[2].trim() }
+    if (/^【[^】]+】/.test(trimmed)) {
+      pushCurrent()
+      continue
+    }
+    if (/^([^：:\n]{2,64}?)[：:]\s*(.*)$/.test(trimmed)) {
+      pushCurrent()
+      for (const piece of expandLabelValueLine(trimmed)) {
+        if (piece.label) {
+          blocks.push(finalizeLabelValueBlock(piece))
+        } else if (piece.text?.trim()) {
+          blocks.push(finalizeLabelValueBlock(piece))
+        }
+      }
     } else if (current) {
       current.text = `${current.text}\n${trimmed}`
     } else {
-      blocks.push({ label: null, text: trimmed })
+      blocks.push(finalizeLabelValueBlock({ label: null, text: trimmed }))
     }
   }
-  if (current?.text?.trim()) blocks.push(current)
+  pushCurrent()
   return blocks
 }
 
@@ -346,8 +410,11 @@ export function sortCustomerRequestSegments(segments) {
  * @param {TicketDetailSourceFields} fields
  */
 function acceptanceCorpusForInitialRequests(fields) {
+  const refined = extractAcceptanceTextFromFields(fields)
+  if (refined?.trim()) return refined
+
   let text = fields.rawText?.trim() || ''
-  if (!text) return extractAcceptanceTextFromFields(fields)
+  if (!text) return ''
 
   text = text
     .replace(/【追加信息】[\s\S]*?(?=【[^】]+】|$)/g, '')
@@ -361,7 +428,7 @@ function acceptanceCorpusForInitialRequests(fields) {
   if (handlingBody && text.endsWith(handlingBody)) {
     text = text.slice(0, -handlingBody.length).trim()
   }
-  return text || extractAcceptanceTextFromFields(fields)
+  return text
 }
 
 /**

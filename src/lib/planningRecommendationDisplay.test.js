@@ -13,30 +13,24 @@ import {
 describe('planningRecommendationDisplay', () => {
   it('normalizeClusterRootCause parses legacy string segments', () => {
     const cluster = normalizeClusterRootCause(
-      '需求痛点聚集：「端口不通」12 单。根因「安全组未放行」8 单。数据表现：负面占比 42%，占本期 4%',
+      '需求痛点聚集：「端口不通」12 单。业务影响：负面占比高，需优先闭环。',
     )
     expect(cluster?.painClusters).toHaveLength(1)
-    expect(cluster?.rootCauses).toHaveLength(1)
-    expect(cluster?.dataMetrics?.[0]).toMatch(/负面占比/)
+    expect(cluster?.businessImpact).toMatch(/负面占比/)
   })
 
-  it('normalizeClusterRootCause parses new label format', () => {
+  it('normalizeClusterRootCause parses pain label format', () => {
     const cluster = normalizeClusterRootCause(
-      '高频痛点：「端口不通」12 单；「连通异常」5 单。高频根因：「安全组未放行」8 单。数据表现：工单 20 条',
+      '痛点：「端口不通」12 单；「连通异常」5 单。',
     )
     expect(cluster?.painClusters).toHaveLength(2)
-    expect(cluster?.rootCauses).toHaveLength(1)
-    expect(cluster?.dataMetrics?.[0]).toMatch(/工单/)
   })
 
   it('formatClusterRootCauseForExport renders structured cluster', () => {
     const text = formatClusterRootCauseForExport({
       painClusters: [{ text: '端口不通', count: 12 }],
-      rootCauses: [{ text: '安全组未放行', count: 8 }],
-      dataMetrics: ['工单 20 条'],
     })
-    expect(text).toMatch(/高频痛点/)
-    expect(text).toMatch(/高频根因/)
+    expect(text).toMatch(/痛点/)
   })
 
   it('normalizeVerification splits metric and user validation', () => {
@@ -75,7 +69,7 @@ describe('planningRecommendationDisplay', () => {
     )
     expect(text).toMatch(/排名：1\/10/)
     expect(text).toMatch(/来源与一级环节分布/)
-    expect(text).toMatch(/当前痛点：安全组未放行导致端口不通/)
+    expect(text).not.toMatch(/洞察摘要/)
   })
 
   it('buildRecommendationExportFullText includes V2 block before cluster sections', () => {
@@ -131,7 +125,8 @@ describe('planningRecommendationDisplay', () => {
       },
       '端口不通',
     )
-    expect(text).toMatch(/当前痛点：端口不通/)
+    expect(text).toMatch(/【洞察摘要】/)
+    expect(text).toMatch(/端口不通/)
     expect(text).toMatch(/产品\/技术优化/)
   })
 

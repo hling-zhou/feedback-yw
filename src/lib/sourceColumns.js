@@ -34,6 +34,7 @@ export function buildSourceColumns(row) {
   }
 
   put('处理意见', row.handlingText)
+  put('受理内容', row.rawText)
   put('投诉原因 一级（终判）', row.problemTypeL1FinalCol)
   put('投诉原因 二级（终判）', row.problemTypeL2FinalCol)
   put('投诉原因 三级（终判）', row.problemTypeL3FinalCol)

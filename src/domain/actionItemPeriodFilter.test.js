@@ -24,7 +24,7 @@ describe('actionItemPeriodFilter', () => {
     expect(actionItemHasLinkedTicketInPeriod(item, new Set(['C']))).toBe(false)
     expect(
       actionItemHasLinkedTicketInPeriod({ linkedTicketIds: [] }, new Set(['T-1'])),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('linkedTicketIdsInPeriod filters display ids', () => {

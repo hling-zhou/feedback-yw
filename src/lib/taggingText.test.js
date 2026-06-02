@@ -5,7 +5,9 @@ import {
   extractAppendTextForDisplay,
   extractAppendTextFromFields,
   extractHandlingOriginalTextFromFields,
+  extractHandlingOriginalTextForRecord,
   extractHandlingTextFromFields,
+  isMeaninglessTicketPlaceholderText,
 } from './taggingText.js'
 
 describe('buildTaggingTextFromFields', () => {
@@ -76,6 +78,66 @@ describe('extractTicketTextSections', () => {
         rawText: '客户反馈公网 IP 无法访问',
       }),
     ).toBe('客户反馈公网 IP 无法访问')
+  })
+
+  it('treats 无/不涉及 handling as empty and falls back to acceptance for display and tagging', () => {
+    expect(isMeaninglessTicketPlaceholderText('无/不涉及')).toBe(true)
+    expect(
+      extractHandlingTextFromFields({
+        handlingText: '无/不涉及',
+        rawText: '【受理内容】\n公网 IP 无法访问，请协助排查。',
+      }),
+    ).toBe('')
+    expect(
+      extractHandlingOriginalTextFromFields({
+        handlingText: '无/不涉及',
+        rawText: '【受理内容】\n公网 IP 无法访问，请协助排查。',
+      }),
+    ).toBe('公网 IP 无法访问，请协助排查。')
+    const tagging = buildTaggingTextFromFields({
+      handlingText: '无/不涉及',
+      rawText: '【受理内容】\n公网 IP 无法访问，请协助排查。',
+    })
+    expect(tagging).not.toContain('无/不涉及')
+    expect(tagging).toContain('公网 IP 无法访问')
+    expect(tagging).not.toMatch(/【处理意见】/)
+  })
+
+  it('falls back to acceptance prefix before stored 【处理意见】 block (import pipeline shape)', () => {
+    const rawText = '详细内容：客户反馈 EIP 无法绑定，请协助排查。\n\n【处理意见】\n无/不涉及'
+    expect(
+      extractHandlingOriginalTextFromFields({
+        handlingText: '无/不涉及',
+        rawText,
+        sourceColumns: { 处理意见: '无/不涉及' },
+      }),
+    ).toBe('详细内容：客户反馈 EIP 无法绑定，请协助排查。')
+  })
+
+  it('skips meaningless 【受理内容】 bracket and uses text before handling block', () => {
+    expect(
+      extractHandlingOriginalTextFromFields({
+        handlingText: '无/不涉及',
+        rawText: '【受理内容】\n无/不涉及\n\n详细内容：公网不通\n\n【处理意见】\n无/不涉及',
+      }),
+    ).toBe('详细内容：公网不通')
+  })
+
+  it('uses sourceColumns 受理内容 snapshot when present', () => {
+    expect(
+      extractHandlingOriginalTextForRecord({
+        handlingText: '无/不涉及',
+        rawText: '详细内容：ignored in raw\n\n【处理意见】\n无/不涉及',
+        sourceColumns: {
+          处理意见: '无/不涉及',
+          受理内容: '受理快照：专线带宽异常，请排查。',
+        },
+      }),
+    ).toBe('受理快照：专线带宽异常，请排查。')
+  })
+
+  it('recognizes fullwidth slash placeholder variants', () => {
+    expect(isMeaninglessTicketPlaceholderText('无／不涉及')).toBe(true)
   })
 
   it('extractAppendTextForDisplay reads bracket and sourceColumns', () => {

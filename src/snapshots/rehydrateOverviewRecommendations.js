@@ -1,9 +1,14 @@
 import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
+import { CLUSTER_ACTION_SYNTHESIS_VERSION } from '../lib/painPointClustering/clusterActionSynthesis.js'
 import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
 import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
+import { looksLikeBackgroundInsightSummary, looksLikeTicketMetadataSummary } from '../lib/painPointClustering/clusteringCorpus.js'
+import { attachPlanningRecommendationSections } from '../lib/planningRecommendationSections.js'
+import { resolveRecommendationSummary } from '../lib/planningRecommendationDisplay.js'
 import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
+/** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
 
@@ -56,6 +61,44 @@ export function prepareOverviewConclusionsForDisplay(conclusions) {
     },
     recommendationsPendingRefresh: true,
   }
+}
+
+/**
+ * V2 快照若 productActions 仍为单条工单摘录（非群组合成），展示时用当前规则重算 sections
+ * @param {OverviewRecommendation[]} recommendations
+ * @param {FeedbackRecord[]} ticketRecords
+ * @returns {OverviewRecommendation[]}
+ */
+function needsV2RecommendationContentRefresh(rec) {
+  if (rec.signalType !== 'pain_cluster_v2') return false
+  const synthesisVersion = rec.generationMeta?.actionSynthesisVersion ?? 0
+  if (synthesisVersion < CLUSTER_ACTION_SYNTHESIS_VERSION) return true
+  if (rec.productActionsSource !== 'synth') return true
+  const summary = resolveRecommendationSummary(rec)
+  return looksLikeTicketMetadataSummary(summary) || looksLikeBackgroundInsightSummary(summary)
+}
+
+export function refreshStaleV2RecommendationSections(recommendations, ticketRecords) {
+  if (!recommendations?.length || !ticketRecords?.length) return recommendations || []
+
+  const byId = new Map(ticketRecords.map((r) => [r.id, r]))
+  return recommendations.map((rec) => {
+    if (!needsV2RecommendationContentRefresh(rec)) return rec
+
+    const pool = (rec.evidenceRecordIds || [])
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+    if (!pool.length) return rec
+
+    const refreshed = attachPlanningRecommendationSections(rec, pool)
+    return {
+      ...refreshed,
+      generationMeta: {
+        ...refreshed.generationMeta,
+        actionSynthesisVersion: CLUSTER_ACTION_SYNTHESIS_VERSION,
+      },
+    }
+  })
 }
 
 /**
@@ -126,7 +169,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     }
   }
 
-  const limited = limitPlanningRecommendations(raw)
+  const limited = limitPlanningRecommendations(raw, { ticketRecords })
   notes.push('行动建议已基于当前工单实时重算（快照生成于聚类引擎上线前，建议重新生成洞察快照以持久化）。')
 
   return {

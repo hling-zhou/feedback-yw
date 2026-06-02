@@ -25,7 +25,7 @@ export function actionItemHasLinkedTicketInPeriod(item, ticketIdsInPeriod) {
   if (!ticketIdsInPeriod) return true
   if (ticketIdsInPeriod.size === 0) return false
   const linked = item.linkedTicketIds || []
-  if (!linked.length) return true
+  if (!linked.length) return false
   return linked.some((id) => ticketIdsInPeriod.has(id))
 }
 

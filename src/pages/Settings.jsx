@@ -230,10 +230,11 @@ export default function Settings() {
             </Radio.Group>
           </Card>
 
-          <Card title="业务优化举措生成">
+          <Card title="单条工单优化建议（导入/重打标）">
             <Typography.Text type="secondary" className="mb-3 block text-xs">
-              洞察概览 V2 行动建议的优化举措当前为规则生成；旅程 Tab 已切换为痛点聚类展示，不再调用 LLM
-              旅程举措。此设置影响后续 LLM 举措扩展及工单详情中的优化文案。
+              控制导入与批量重打标时，是否为每条工单生成「产品/服务优化建议」（LLM 或规则）。
+              洞察概览 V2 行动建议不走此开关：刷新洞察后由痛点聚类 + 工单优化字段聚合 + Playbook
+              兜底生成；如需改写已有建议结构，请在工作台使用「LLM 润色行动建议」。
             </Typography.Text>
             <Radio.Group
               className="w-full"
@@ -242,10 +243,16 @@ export default function Settings() {
             >
               <Space orientation="vertical" className="w-full" size={12}>
                 <Radio value="llm" className="w-full rounded-lg border border-ink-200 p-3">
-                  <span className="text-sm font-medium text-ink-900">大模型生成具体举措（推荐）</span>
+                  <span className="text-sm font-medium text-ink-900">大模型生成（单条工单）</span>
+                  <Typography.Text type="secondary" className="mt-0.5 block text-xs">
+                    导入/重打标时对每条工单调用 LLM 产出 optimization 字段
+                  </Typography.Text>
                 </Radio>
                 <Radio value="rules" className="w-full rounded-lg border border-ink-200 p-3">
-                  <span className="text-sm font-medium text-ink-900">本地规则 + Playbook</span>
+                  <span className="text-sm font-medium text-ink-900">本地规则 + Playbook（单条工单）</span>
+                  <Typography.Text type="secondary" className="mt-0.5 block text-xs">
+                    不调用 LLM，按旅程/问题类型模板写入 optimization 字段
+                  </Typography.Text>
                 </Radio>
               </Space>
             </Radio.Group>

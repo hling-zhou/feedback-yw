@@ -49,6 +49,8 @@ describe('buildClusterActionRecommendations', () => {
     expect(recs[0].signalType).toBe('pain_cluster_v2')
     expect(recs[0].sections?.painClusterScores?.rank).toBeGreaterThanOrEqual(1)
     expect(recs[0].sections?.painClusterScores?.customerTierSummary).toContain('金牌')
+    expect(recs[0].summary).toMatch(/安全组规则未放行/)
+    expect(recs[0].summary).not.toMatch(/集中反馈|「弹性公网 IP」/)
   })
 
   it('returns empty when no pain points', () => {

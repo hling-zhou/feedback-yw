@@ -4,6 +4,42 @@ const PRIMARY_SECTION = '处理意见'
 const ACCEPTANCE_SECTIONS = ['受理内容', '咨询内容']
 const APPEND_SECTIONS = ['追加信息', '追加内容']
 
+/** 工单字段中的占位/无实质内容（处理意见、追加信息等） */
+const MEANINGLESS_TICKET_PLACEHOLDER_RE =
+  /^(?:无|不涉及|无\/不涉及|无追加|暂无|无。?|N\/A|NA|—|-|\/|\.{1,3}|null|none|不涉及。?)$/i
+
+/**
+ * @param {string | undefined | null} text
+ */
+function normalizePlaceholderCompareText(text) {
+  return String(text ?? '')
+    .replace(/\uFEFF/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u00A0\u200B]/g, ' ')
+    .replace(/／/g, '/')
+    .trim()
+}
+
+/**
+ * 是否为「无/不涉及」等占位文本（应视为空，打标与详情展示回退受理内容）。
+ *
+ * @param {string | undefined | null} text
+ */
+export function isMeaninglessTicketPlaceholderText(text) {
+  const t = normalizePlaceholderCompareText(text)
+  if (!t) return true
+  if (MEANINGLESS_TICKET_PLACEHOLDER_RE.test(t)) return true
+  if (t.length <= 24 && /^(?:无|不涉及)(?:[、,，/／\s]+(?:无|不涉及))*[。.]?$/.test(t)) {
+    return true
+  }
+  return false
+}
+
+/** @deprecated 使用 {@link isMeaninglessTicketPlaceholderText} */
+export function isMeaninglessCustomerText(text) {
+  return isMeaninglessTicketPlaceholderText(text)
+}
+
 /** @type {RegExp} */
 const BRACKET_SECTION_RE = /【([^】]+)】\s*\n?([\s\S]*?)(?=【[^】]+】|$)/g
 
@@ -43,6 +79,56 @@ function isDuplicateContent(a, b) {
 }
 
 /**
+ * @param {string | undefined | null} text
+ */
+function refineAcceptanceSectionContent(text) {
+  const t = text?.trim()
+  if (!t) return ''
+
+  const paragraphs = t.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  if (paragraphs.length > 1) {
+    const meaningfulParagraphs = paragraphs.filter(isMeaningfulTicketText)
+    if (meaningfulParagraphs.length) return meaningfulParagraphs.join('\n\n')
+  }
+
+  if (isMeaningfulTicketText(t)) return t
+
+  const lines = t.split(/\n/).map((line) => line.trim()).filter(isMeaningfulTicketText)
+  return lines.join('\n')
+}
+
+function isMeaningfulTicketText(text) {
+  return !isMeaninglessTicketPlaceholderText(text)
+}
+
+/**
+ * @param {Record<string, string> | undefined} sourceColumns
+ * @param {string} label
+ */
+function acceptanceFromSourceColumns(sourceColumns, label) {
+  const value = sourceColumns?.[label]?.trim()
+  if (!value) return ''
+  return refineAcceptanceSectionContent(value)
+}
+
+/**
+ * @param {string} raw
+ */
+function acceptanceTextBeforeHandlingMarker(raw) {
+  if (!raw?.trim()) return ''
+  const bracketIdx = raw.search(/【处理意见】/)
+  if (bracketIdx > 0) {
+    const prefix = refineAcceptanceSectionContent(raw.slice(0, bracketIdx))
+    if (prefix) return prefix
+  }
+  const inline = raw.match(/^([\s\S]*?)(?:^|\n)\s*处理意见\s*[：:]/m)
+  if (inline?.[1]?.trim() && isMeaningfulTicketText(inline[1])) {
+    return inline[1].trim()
+  }
+  return ''
+}
+
+/**
  * @param {string} raw
  * @param {string} [handling]
  */
@@ -56,7 +142,7 @@ function acceptanceFromUnstructuredRaw(raw, handling) {
     if (rest === h) return ''
     if (rest.endsWith(h)) rest = rest.slice(0, -h.length).trim()
   }
-  return rest
+  return refineAcceptanceSectionContent(rest)
 }
 
 /**
@@ -74,12 +160,12 @@ function firstSectionContent(rawText, label) {
 export function extractHandlingTextFromFields(fields) {
   const raw = fields.rawText?.trim() || ''
   const sections = parseBracketSections(raw)
-  return (
+  const candidate =
     fields.handlingText?.trim() ||
     sections[PRIMARY_SECTION]?.trim() ||
     fields.sourceColumns?.[PRIMARY_SECTION]?.trim() ||
     ''
-  )
+  return isMeaninglessTicketPlaceholderText(candidate) ? '' : candidate
 }
 
 /**
@@ -89,18 +175,46 @@ export function extractAcceptanceTextFromFields(fields) {
   const handlingBody = extractHandlingTextFromFields(fields)
   const raw = fields.rawText?.trim() || ''
   const sections = parseBracketSections(raw)
+  const sourceColumns = fields.sourceColumns
+
+  for (const label of ACCEPTANCE_SECTIONS) {
+    const fromSnapshot = acceptanceFromSourceColumns(sourceColumns, label)
+    if (fromSnapshot) return fromSnapshot
+  }
 
   for (const label of ACCEPTANCE_SECTIONS) {
     const fromSection = sections[label]?.trim()
-    if (fromSection) return fromSection
+    if (!fromSection) continue
+    const refined = refineAcceptanceSectionContent(fromSection)
+    if (refined) return refined
   }
+
+  const beforeHandling = acceptanceTextBeforeHandlingMarker(raw)
+  if (beforeHandling && !isDuplicateContent(beforeHandling, handlingBody)) {
+    return beforeHandling
+  }
+
   const acceptance = acceptanceFromUnstructuredRaw(raw, handlingBody)
   if (acceptance && !isDuplicateContent(acceptance, handlingBody)) return acceptance
   return ''
 }
 
 /**
- * 工单详情「处理意见（工单原文）」：优先「处理意见」列，为空则回落「受理内容」
+ * 工单详情「处理意见（工单原文）」展示文本。
+ *
+ * @param {FeedbackRecord | Partial<FeedbackRecord>} record
+ */
+export function extractHandlingOriginalTextForRecord(record) {
+  return extractHandlingOriginalTextFromFields({
+    handlingText: record?.handlingText,
+    rawText: record?.rawText,
+    customerQuote: record?.customerQuote,
+    sourceColumns: record?.sourceColumns,
+  })
+}
+
+/**
+ * 工单详情「处理意见（工单原文）」：优先「处理意见」列；若为占位（如「无/不涉及」）或无内容则展示「受理内容」
  *
  * @param {{ handlingText?: string; rawText?: string; customerQuote?: string; sourceColumns?: Record<string, string> }} fields
  */
@@ -120,11 +234,11 @@ export function extractAppendTextForDisplay(fields) {
   const sections = parseBracketSections(raw)
   for (const label of APPEND_SECTIONS) {
     const fromSection = sections[label]?.trim() || fields.sourceColumns?.[label]?.trim()
-    if (fromSection) return fromSection
+    if (fromSection && !isMeaninglessTicketPlaceholderText(fromSection)) return fromSection
   }
   for (const label of APPEND_SECTIONS) {
     const fromRaw = firstSectionContent(raw, label)
-    if (fromRaw) return fromRaw
+    if (fromRaw && !isMeaninglessTicketPlaceholderText(fromRaw)) return fromRaw
   }
   return ''
 }
@@ -155,6 +269,7 @@ export function extractAppendTextFromFields(fields) {
       }
     }
   }
+  if (isMeaninglessTicketPlaceholderText(append)) append = ''
   if (append && !isDuplicateContent(append, handlingBody) && !isDuplicateContent(append, acceptance)) {
     return append
   }
@@ -188,12 +303,14 @@ export function buildTaggingTextFromFields(fields) {
 
   if (parts.length) return parts.join('\n\n')
 
+  const rawFallback = fields.rawText?.trim()
+  if (rawFallback && isMeaningfulTicketText(rawFallback)) return rawFallback
+
   return (
     handlingBody ||
     acceptance ||
     append ||
     fields.customerQuote?.trim() ||
-    fields.rawText?.trim() ||
     ''
   )
 }

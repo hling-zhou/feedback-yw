@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { notification } from 'antd'
+import { notification, Button } from 'antd'
 import { useAuth } from './AuthContext.jsx'
 import { refreshLlmServerStatus, resolveSettingsForLlm } from '../lib/llmClient.js'
 import { loadSettings, saveSettings } from '../lib/storage.js'
@@ -27,10 +27,15 @@ import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
 import { mergeManualTagFieldsOnUserEdit, applyForceRetagOverrides } from '../lib/manualTagFields.js'
 import { unlinkActionItemsForForceRetag } from '../lib/forceRetagActionUnlink.js'
+import {
+  mergeEstablishedActionLibraryForRecords,
+  syncLinkedTicketsForActionIds,
+} from '../lib/establishedActionPersist.js'
 import { reprocessAllThemesAndSentiment } from '../lib/applyThemes.js'
 import {
   formatBulkRetagResultMessage,
   listUnknownJourneyRecords,
+  summarizeRetagPainPointChanges,
   summarizeUnknownJourneyRecords,
 } from '../lib/journeyRetagSummary.js'
 import {
@@ -669,6 +674,7 @@ export function InsightsProvider({ children }) {
         clearInProgressRef.current ||
         importLockRef.current ||
         reprocessingRef.current ||
+        retagSession.active ||
         snapshotRebuildInProgressRef.current
       ) {
         return
@@ -698,7 +704,7 @@ export function InsightsProvider({ children }) {
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask])
+  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active])
 
   useEffect(() => {
     if (storageReady && isApiStorageAdapter(adapter)) {
@@ -1464,21 +1470,35 @@ export function InsightsProvider({ children }) {
    *   beforeUnknown: number
    *   afterUnknown: number
    *   summary: ReturnType<typeof summarizeUnknownJourneyRecords>
+   *   painPointDelta?: ReturnType<typeof summarizeRetagPainPointChanges>
    * }} result
    */
   const notifyRetagFinished = useCallback(
     (result) => {
       endRetagSession()
       emit('RetagFinished', result)
+      const shouldRefreshInsights = result.painPointDelta?.shouldPromptInsightRefresh === true
       notification.success({
         message: '批量重新打标完成',
         description: formatBulkRetagResultMessage(result),
         placement: 'topRight',
-        duration: 10,
+        duration: shouldRefreshInsights ? 15 : 10,
         style: { whiteSpace: 'pre-wrap' },
+        btn: shouldRefreshInsights ? (
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              notification.destroy()
+              void rebuildAllSnapshots()
+            }}
+          >
+            刷新洞察
+          </Button>
+        ) : undefined,
       })
     },
-    [endRetagSession],
+    [endRetagSession, rebuildAllSnapshots],
   )
 
   const addFeedbacks = useCallback(
@@ -1550,12 +1570,17 @@ export function InsightsProvider({ children }) {
         throw new Error('工单不存在或已删除')
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
-      const updated = { ...existing, ...patch, manualTagFields }
+      const merged = { ...existing, ...patch, manualTagFields }
       const expectedRevision =
         options.expectedRevision ??
         (options.skipConflictCheck ? undefined : getRecordRevision(existing))
+      const updated = applyRecordWriteMetadata(merged, {
+        previousRevision: expectedRevision ?? getRecordRevision(existing),
+        actor: recordWriteActor,
+      })
 
-      setFeedbacks((prev) => prev.map((fb) => (fb.id === id ? updated : fb)))
+      feedbacksRef.current = feedbacksRef.current.map((fb) => (fb.id === id ? updated : fb))
+      setFeedbacks(feedbacksRef.current)
       if (storageReady) {
         const result = await persistRecordUpdate(adapter, updated, {
           expectedRevision,
@@ -1563,16 +1588,23 @@ export function InsightsProvider({ children }) {
           forceOverwrite: options.forceOverwrite,
         })
         const recordRevision =
-          result?.recordRevision ?? (expectedRevision != null ? expectedRevision + 1 : updated.recordRevision)
-        if (recordRevision != null) {
-          const finalized = { ...updated, recordRevision }
-          setFeedbacks((prev) => prev.map((fb) => (fb.id === id ? finalized : fb)))
-          return finalized
+          result?.recordRevision ?? updated.recordRevision
+        const finalized = { ...updated, recordRevision }
+        feedbacksRef.current = feedbacksRef.current.map((fb) => (fb.id === id ? finalized : fb))
+        setFeedbacks(feedbacksRef.current)
+        if (typeof adapter.getDataRevision === 'function') {
+          try {
+            const rev = await fetchDataRevision()
+            dataRevisionRef.current = rev.revision
+          } catch {
+            /* ignore */
+          }
         }
+        return finalized
       }
       return updated
     },
-    [adapter, storageReady],
+    [adapter, storageReady, recordWriteActor],
   )
 
   const importAnalysisResults = useCallback(
@@ -1635,8 +1667,18 @@ export function InsightsProvider({ children }) {
           }
         }
 
+        progress('正在同步举措库…')
+        const recordsWithActions = await mergeEstablishedActionLibraryForRecords(
+          applyResult.updatedRecords,
+        )
+        /** @type {Map<string, import('../lib/types.js').FeedbackRecord>} */
+        const updatedById = new Map(applyResult.updatedById)
+        for (const record of recordsWithActions) {
+          updatedById.set(record.id, record)
+        }
+
         const mergedVisible = feedbacksRef.current.map((fb) =>
-          applyResult.updatedById.has(fb.id) ? applyResult.updatedById.get(fb.id) : fb,
+          updatedById.has(fb.id) ? updatedById.get(fb.id) : fb,
         )
         feedbacksRef.current = mergedVisible
         setFeedbacks(mergedVisible)
@@ -1644,12 +1686,21 @@ export function InsightsProvider({ children }) {
         if (storageReady) {
           skipPersistRef.current = true
           try {
-            progress(`正在保存（0/${applyResult.updatedRecords.length}）…`)
-            await persistRecordUpdates(adapter, applyResult.updatedRecords, {
+            progress(`正在保存（0/${recordsWithActions.length}）…`)
+            await persistRecordUpdates(adapter, recordsWithActions, {
               onProgress: (uploaded, total) => {
                 progress(`正在保存（${uploaded}/${total}）…`)
               },
             })
+            const actionIds = [
+              ...new Set(
+                recordsWithActions.map((r) => r.actionId?.trim()).filter(Boolean),
+              ),
+            ]
+            if (actionIds.length) {
+              progress('正在同步关联工单举措副本…')
+              await syncLinkedTicketsForActionIds(actionIds, mergedVisible, updateFeedback)
+            }
             if (typeof adapter.getDataRevision === 'function') {
               const rev = await adapter.getDataRevision()
               dataRevisionRef.current = rev.revision
@@ -1700,6 +1751,7 @@ export function InsightsProvider({ children }) {
       scheduleSnapshotRebuild,
       setImportSessionProgress,
       storageReady,
+      updateFeedback,
     ],
   )
 
@@ -1794,24 +1846,52 @@ export function InsightsProvider({ children }) {
   const reprocessOne = useCallback(
     async (id) => {
       if (reprocessingRef.current) return
-      const fb = feedbacks.find((f) => f.id === id)
+      const fb = feedbacksRef.current.find((f) => f.id === id)
       if (!fb) return
-      const llmSettings = attachJourneyRules({
-        ...loadSettings(),
-        ...settings,
-        ...(await resolveSettingsForLlm(settings)),
-      })
-      const retagged = reprocessFeedbackRecord(fb, llmSettings)
-      const [updated] = await reprocessAllThemesAndSentiment([retagged], llmSettings)
-      const merged = { ...updated, id: fb.id }
-      setFeedbacks((prev) =>
-        prev.map((f) => (f.id === id ? merged : f)),
-      )
-      if (storageReady) {
-        await persistRecordUpdate(adapter, merged)
+
+      setReprocessing(true)
+      reprocessingRef.current = true
+      try {
+        const llmSettings = attachJourneyRules({
+          ...loadSettings(),
+          ...settings,
+          ...(await resolveSettingsForLlm(settings)),
+        })
+        const retagged = reprocessFeedbackRecord(fb, llmSettings)
+        const [updated] = await reprocessAllThemesAndSentiment([retagged], llmSettings)
+        const withMeta = applyRecordWriteMetadata(
+          { ...updated, id: fb.id },
+          { previousRevision: getRecordRevision(fb), actor: recordWriteActor },
+        )
+        feedbacksRef.current = feedbacksRef.current.map((f) => (f.id === id ? withMeta : f))
+        setFeedbacks(feedbacksRef.current)
+        if (storageReady) {
+          const result = await persistRecordUpdate(adapter, withMeta)
+          const finalized = {
+            ...withMeta,
+            recordRevision: result?.recordRevision ?? withMeta.recordRevision,
+          }
+          feedbacksRef.current = feedbacksRef.current.map((f) => (f.id === id ? finalized : f))
+          setFeedbacks(feedbacksRef.current)
+          if (typeof adapter.getDataRevision === 'function') {
+            const rev = await fetchDataRevision()
+            dataRevisionRef.current = rev.revision
+          }
+        }
+        if (currentPeriod) {
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: feedbacksRef.current,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+      } finally {
+        reprocessingRef.current = false
+        setReprocessing(false)
       }
     },
-    [adapter, feedbacks, settings, storageReady],
+    [adapter, settings, storageReady, recordWriteActor, currentPeriod, scheduleSnapshotRebuild],
   )
 
   const reprocessAllCustomerQuotes = useCallback(
@@ -1868,6 +1948,9 @@ export function InsightsProvider({ children }) {
       const scope = options.scope || 'period_all'
       const total = list.length
       const beforeUnknown = listUnknownJourneyRecords(list).length
+      const painPointBefore = new Map(
+        list.map((record) => [record.id, (record.painPoint || '').trim()]),
+      )
       const progress = (text) => reportProgress?.(text)
       const ticketLlmOnly = scope === 'needs_ticket_llm'
       const journeyLlmOnly = scope === 'needs_journey_llm'
@@ -1993,12 +2076,20 @@ export function InsightsProvider({ children }) {
         })
       }
       const afterUnknown = listUnknownJourneyRecords(updatedSubset).length
+      const painPointDelta = summarizeRetagPainPointChanges(
+        list.map((record) => ({
+          id: record.id,
+          painPoint: painPointBefore.get(record.id) || '',
+        })),
+        updatedSubset,
+      )
       return {
         total: updatedSubset.length,
         beforeUnknown,
         afterUnknown,
         scope,
         summary: summarizeUnknownJourneyRecords(updatedSubset),
+        painPointDelta,
       }
     },
     [

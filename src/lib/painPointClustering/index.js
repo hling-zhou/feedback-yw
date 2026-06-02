@@ -11,6 +11,10 @@ export {
   pickRepresentativePainPoint,
   buildPrimaryClusterLabel,
 } from './clusterLabel.js'
+export {
+  getClusteringPainText,
+  isUsableClusteringPainText,
+} from './clusteringCorpus.js'
 export { runPrimaryClustering, primaryGroupKey } from './primaryCluster.js'
 export { filterLowValuePrimaryClusters, isLowValuePrimaryCluster } from './filterLowValue.js'
 export { runSecondaryClustering } from './secondaryCluster.js'

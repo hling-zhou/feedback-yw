@@ -1,6 +1,16 @@
 import { getUrgencyLevel, isNegativeSentiment } from './sentiment.js'
 import { topValues } from './journeyInsights.js'
-import { isValidRootCause } from './journeyOptimizationLLM.js'
+import { countCustomerTiers } from '../domain/customerTier.js'
+import {
+  collectPlanningPlaybookActionLines,
+  detectProductActionsSource,
+  inferPlanningJourneyContext,
+  measureSourceLabelForProductActions,
+} from './planningPlaybook.js'
+import {
+  CLUSTER_ACTION_SYNTHESIS_VERSION,
+  synthesizeClusterProductActions,
+} from './painPointClustering/clusterActionSynthesis.js'
 import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 import {
   PLANNING_ACTION_RE,
@@ -8,6 +18,14 @@ import {
   PLANNING_RECOMMENDATION_LIMITS,
 } from './planningRecommendationTemplate.js'
 import { isGenericRecommendationText } from './journeyOptimizationLLM.js'
+import {
+  extractDemandClause,
+  getClusteringPainText,
+  getInsightPainText,
+  looksLikeBackgroundInsightSummary,
+  normalizeClusteringPainText,
+  pickInsightRepresentativePain,
+} from './painPointClustering/clusteringCorpus.js'
 import {
   formatClusterRootCauseForExport,
   formatVerificationForExport,
@@ -30,13 +48,133 @@ export const PLANNING_SECTION_LABELS = {
 }
 
 export const CLUSTER_SUB_LABELS = {
-  dataMetrics: '数据表现',
-  painClusters: '高频痛点',
-  rootCauses: '高频根因',
+  painClusters: '痛点',
   businessImpact: '业务影响',
 }
 
+/** 与代表痛点 Jaccard ≥ 此值则视为重复，不展示其他痛点 */
+export const PAIN_CLUSTER_DEDUPE_THRESHOLD = 0.35
+
 const MIN_PRODUCT_ACTIONS = 2
+/** 举措与痛点摘要 token Jaccard 低于此值视为不对齐（P1-2） */
+export const ACTION_PAIN_ALIGNMENT_THRESHOLD = 0.2
+/** 保留举措的平均对齐分低于此值时标记 weak */
+export const ACTION_PAIN_ALIGNMENT_WEAK_AVG = 0.25
+
+/**
+ * @param {FeedbackRecord[]} records
+ * @returns {{ l1: string; l2: string } | null}
+ */
+function inferJourneyContextFromRecords(records) {
+  return inferPlanningJourneyContext(records)
+}
+
+/**
+ * 群组内工单优化字段不足时，用旅程/问题类型 playbook 补产品举措
+ * @param {FeedbackRecord[]} pool
+ * @param {OverviewRecommendation} rec
+ * @returns {string[]}
+ */
+export function collectPlaybookFallbackProductActions(pool, rec) {
+  if (!pool.length) return []
+
+  const journeyCtx =
+    rec.scope?.journeyL1 && rec.scope?.journeyL2
+      ? { l1: rec.scope.journeyL1, l2: rec.scope.journeyL2 }
+      : inferJourneyContextFromRecords(pool)
+  const problemType =
+    rec.scope?.problemType || topValues(pool, 'problemType', 1)[0]?.text || ''
+  const product = rec.scope?.product || pool[0]?.product?.trim() || ''
+
+  const lines = collectPlanningPlaybookActionLines({
+    records: pool,
+    product,
+    journeyL1: journeyCtx?.l1,
+    journeyL2: journeyCtx?.l2,
+    problemType,
+  })
+
+  return dedupeActionLines(lines, MIN_PRODUCT_ACTIONS, { strict: false })
+}
+
+/**
+ * @param {string} painSummary
+ * @param {string} actionLine
+ */
+function actionPainSimilarity(painSummary, actionLine) {
+  return jaccard(tokenizeZh(painSummary), tokenizeZh(actionLine))
+}
+
+/**
+ * 校验 productActions 与痛点摘要的对齐度；偏低时替换为 playbook 并标记 weak（P1-2）
+ * @param {PlanningRecommendationSections} sections
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} pool
+ */
+export function refineProductActionsForPainAlignment(sections, rec, pool) {
+  const summary = (sections.executiveSummary || rec.summary || rec.text || '').trim()
+  const originalActions = sections.productActions || []
+  if (!summary || !originalActions.length) {
+    return {
+      sections,
+      actionAlignmentWeak: false,
+      actionAlignmentScore: null,
+    }
+  }
+
+  const scored = originalActions.map((line) => ({
+    line,
+    score: actionPainSimilarity(summary, line),
+  }))
+  const aligned = scored
+    .filter((item) => item.score >= ACTION_PAIN_ALIGNMENT_THRESHOLD)
+    .map((item) => item.line)
+  const misalignedCount = scored.length - aligned.length
+
+  /** @type {string[]} */
+  let productActions =
+    aligned.length >= MIN_PRODUCT_ACTIONS ? aligned : [...aligned]
+  let usedPlaybookFallback = false
+
+  if (productActions.length < MIN_PRODUCT_ACTIONS) {
+    const playbookFallback = collectPlaybookFallbackProductActions(pool, rec)
+    productActions = dedupeActionLines(
+      [...aligned, ...playbookFallback],
+      4,
+      { strict: false },
+    )
+    usedPlaybookFallback = misalignedCount > 0 || aligned.length < MIN_PRODUCT_ACTIONS
+  } else if (misalignedCount > 0) {
+    productActions = aligned
+  }
+
+  if ((productActions?.length || 0) < MIN_PRODUCT_ACTIONS) {
+    productActions = originalActions
+  }
+
+  const avgScore = scored.length
+    ? scored.reduce((sum, item) => sum + item.score, 0) / scored.length
+    : 0
+  const alignedAvg = aligned.length
+    ? scored
+        .filter((item) => item.score >= ACTION_PAIN_ALIGNMENT_THRESHOLD)
+        .reduce((sum, item) => sum + item.score, 0) / aligned.length
+    : 0
+
+  const actionAlignmentWeak =
+    misalignedCount > 0 &&
+    (aligned.length < MIN_PRODUCT_ACTIONS ||
+      alignedAvg < ACTION_PAIN_ALIGNMENT_WEAK_AVG ||
+      usedPlaybookFallback)
+
+  return {
+    sections: { ...sections, productActions },
+    actionAlignmentWeak,
+    actionAlignmentScore: Math.round(avgScore * 100) / 100,
+    usedPlaybookFallback,
+    usedAlignmentReplacement: misalignedCount > 0,
+  }
+}
 const MAX_SUMMARY_LEN = PLANNING_RECOMMENDATION_LIMITS.maxSummaryLength
 const MAX_ACTION_LEN = PLANNING_RECOMMENDATION_LIMITS.maxDetailLength
 const MAX_BUSINESS_IMPACT_LEN = 120
@@ -162,6 +300,70 @@ function mergeSimilarAndTop(items, limit = 5, threshold = 0.4) {
 }
 
 /**
+ * 将代表性痛点改写为洞察摘要句式（V2 行动建议标题）
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} pool
+ * @param {string} representativePain
+ */
+export function buildInsightExecutiveSummary(rec, pool, representativePain) {
+  let pain =
+    getInsightPainText({ painPoint: representativePain }) ||
+    refineStoredInsightPain(representativePain) ||
+    getInsightPainText({ painPoint: rec.generationMeta?.representativePain }) ||
+    refineStoredInsightPain(rec.generationMeta?.representativePain) ||
+    refineStoredInsightPain(rec.summary || rec.text || '')
+  if (!pain && pool.length) {
+    pain = pickInsightRepresentativePain(pool)
+  }
+  if (!pain) return ''
+
+  const painBrief = truncateSentence(
+    extractDemandClause(pain) || pain.split(/[。；\n]/)[0]?.trim() || pain,
+    72,
+  )
+  const ticketCount = rec.evidenceBundle?.ticketCount ?? pool.length
+  const sharePct = rec.evidenceBundle?.sharePct
+
+  let line = painBrief
+  if (ticketCount > 0) {
+    line += `（${ticketCount} 条工单`
+    if (sharePct != null && sharePct >= 5) {
+      line += `，占该产品 ${Math.round(sharePct)}%`
+    }
+    line += '）'
+  }
+
+  return truncateSentence(line, MAX_SUMMARY_LEN)
+}
+
+/**
+ * 旧快照里存的 representativePain/summary 可能混有 customerRequest，尝试提炼可展示痛点
+ * @param {string | undefined | null} text
+ */
+function refineStoredInsightPain(text) {
+  const normalized = normalizeClusteringPainText(text)
+  if (normalized) {
+    const fromPain = getInsightPainText({ painPoint: normalized })
+    if (fromPain) return fromPain
+  }
+  return extractDemandClause(text) || ''
+}
+
+/**
+ * @param {{ text: string; count: number }[]} painClusters
+ * @param {string} anchorPain
+ */
+export function filterPainClustersForDisplay(painClusters, anchorPain) {
+  if (!painClusters.length || !anchorPain?.trim()) return painClusters
+  const filtered = painClusters.filter(
+    (item) =>
+      jaccard(tokenizeZh(anchorPain), tokenizeZh(item.text)) < PAIN_CLUSTER_DEDUPE_THRESHOLD,
+  )
+  if (!filtered.length && painClusters.length <= 2) return []
+  return filtered
+}
+
+/**
  * 仅使用工单打标环节的「需求痛点挖掘」结果（painPoint），不 fallback 到工单原文
  * @param {FeedbackRecord[]} pool
  * @param {number} [limit]
@@ -169,7 +371,7 @@ function mergeSimilarAndTop(items, limit = 5, threshold = 0.4) {
 function topPainPoints(pool, limit = 3) {
   const map = new Map()
   for (const fb of pool) {
-    const pain = (fb.painPoint || '').trim()
+    const pain = getClusteringPainText(fb)
     if (!pain) continue
     const key = pain.slice(0, 80)
     map.set(key, (map.get(key) || 0) + 1)
@@ -214,39 +416,6 @@ function collectProductAndServiceActions(pool) {
 
 /**
  * @param {OverviewRecommendation} rec
- */
-function buildContextNote(rec) {
-  const scope = rec.scope
-  if (scope?.journeyL2) {
-    const path = scope.journeyL1 ? `${scope.journeyL1} → ${scope.journeyL2}` : scope.journeyL2
-    return `聚焦用户旅程「${path}」`
-  }
-  if (scope?.problemType) {
-    return `聚焦问题类型「${scope.problemType}」`
-  }
-  if (scope?.product) {
-    return `聚焦产品「${scope.product}」`
-  }
-  const note = rec.evidenceNote?.trim()
-  if (note && !/^依据\s*\d+\s*条/.test(note)) {
-    return truncateSentence(note, 100)
-  }
-  return undefined
-}
-
-/**
- * @param {OverviewRecommendation} rec
- * @param {FeedbackRecord[]} pool
- */
-function buildDataMetrics(rec, pool) {
-  const bundle = rec.evidenceBundle
-  const ticketCount = bundle?.ticketCount ?? pool.length
-  if (!ticketCount) return []
-  return [`工单：${ticketCount} 条`]
-}
-
-/**
- * @param {OverviewRecommendation} rec
  * @param {FeedbackRecord[]} pool
  */
 function buildBusinessImpactText(rec, pool) {
@@ -254,18 +423,38 @@ function buildBusinessImpactText(rec, pool) {
   const parts = []
   const negative = pool.filter((r) => isNegativeSentiment(r.sentiment)).length
   const urgent = pool.filter((r) => getUrgencyLevel(r) === 'high').length
+  const topL2 = topValues(pool, 'journeyL2', 1)[0]
+  const topPt = topValues(pool, 'problemType', 1)[0]
+  const tierCounts = countCustomerTiers(pool)
+  const highValueCount = (tierCounts['金牌'] || 0) + (tierCounts['银牌'] || 0)
 
   if (rec.scope?.journeyL2) {
     parts.push(`「${rec.scope.journeyL2}」环节体验断点`)
+  } else if (topL2?.text) {
+    parts.push(`「${topL2.text}」环节集中反馈`)
   } else if (rec.scope?.problemType) {
     parts.push(`「${rec.scope.problemType}」类问题持续出现`)
+  } else if (topPt?.text) {
+    parts.push(`「${topPt.text}」类问题持续出现`)
   }
 
   if (pool.length && negative / pool.length >= 0.4) {
-    parts.push('负面情绪占比较高')
+    parts.push(`负面情绪占比约 ${Math.round((negative / pool.length) * 100)}%`)
+  } else if (negative >= 2) {
+    parts.push(`${negative} 单含负面情绪`)
   }
   if (urgent >= 2) {
     parts.push(`${urgent} 单含加急诉求`)
+  }
+  if (highValueCount >= 2) {
+    parts.push(`含金牌/银牌客户 ${highValueCount} 单`)
+  } else if ((tierCounts['金牌'] || 0) >= 1) {
+    parts.push('含金牌客户诉求')
+  }
+
+  const sharePct = rec.evidenceBundle?.sharePct
+  if (sharePct != null && sharePct >= 8 && !parts.some((p) => p.includes('占该产品'))) {
+    parts.push(`占该产品工单约 ${Math.round(sharePct)}%`)
   }
 
   if (!parts.length) {
@@ -280,35 +469,65 @@ function buildBusinessImpactText(rec, pool) {
  * @returns {PlanningClusterRootCause | undefined}
  */
 function buildClusterRootCauseStructured(rec, pool) {
-  const painClusters = topPainPoints(pool, 3)
-  const rawRootCauses = topValues(pool, 'rootCause', 8)
-    .filter((r) => isValidRootCause(r.text))
-    .map((r) => ({ text: r.text, count: r.count }))
-  const rootCauses = mergeSimilarAndTop(rawRootCauses, 3, 0.35)
-
-  const dataMetrics = buildDataMetrics(rec, pool)
-  const contextNote = buildContextNote(rec)
+  const anchorPain = (
+    rec.generationMeta?.representativePain ||
+    rec.summary ||
+    rec.text ||
+    ''
+  ).trim()
+  const painClustersRaw = topPainPoints(pool, 3)
+  const painClusters = filterPainClustersForDisplay(painClustersRaw, anchorPain)
   const businessImpact = buildBusinessImpactText(rec, pool)
 
-  if (!contextNote && !painClusters.length && !rootCauses.length && !dataMetrics.length && !businessImpact) {
+  if (!painClusters.length && !businessImpact) {
     return undefined
   }
 
   return {
-    contextNote,
-    dataMetrics: dataMetrics.length ? dataMetrics : undefined,
     painClusters: painClusters.length ? painClusters : undefined,
-    rootCauses: rootCauses.length ? rootCauses : undefined,
     businessImpact,
   }
 }
 
 /**
  * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} pool
  * @returns {PlanningVerification}
  */
-function buildVerificationStructured(rec) {
-  const metrics = (
+function buildVerificationStructured(rec, pool = []) {
+  /** @type {string[]} */
+  const metrics = []
+  const bundle = rec.evidenceBundle
+  const scores = rec.sections?.painClusterScores
+
+  if (scores?.ticketCount) {
+    metrics.push(`群组工单 ${scores.ticketCount} 条`)
+  } else if (bundle?.ticketCount) {
+    metrics.push(`群组工单 ${bundle.ticketCount} 条`)
+  }
+  if (scores?.sharePct != null && scores.sharePct >= 5) {
+    metrics.push(`占产品 ${Math.round(scores.sharePct)}%`)
+  } else if (bundle?.sharePct != null && bundle.sharePct >= 5) {
+    metrics.push(`占产品 ${Math.round(bundle.sharePct)}%`)
+  }
+  if (scores?.priorityScore != null) {
+    metrics.push(`综合优先级 ${scores.priorityScore} 分`)
+  }
+
+  const negative = pool.filter((r) => isNegativeSentiment(r.sentiment)).length
+  if (pool.length && negative / pool.length >= 0.3) {
+    metrics.push('负面情绪占比')
+  }
+
+  const tierCounts = countCustomerTiers(pool)
+  if ((tierCounts['金牌'] || 0) + (tierCounts['银牌'] || 0) >= 2) {
+    metrics.push('高价值客户影响')
+  }
+
+  const topL2 = topValues(pool, 'journeyL2', 1)[0]?.text
+  if (topL2) metrics.push(`${topL2}环节复发率`)
+
+  const fallbackMetrics = (
     rec.trackingMetrics?.length
       ? rec.trackingMetrics
       : trackingMetricsForSignal(
@@ -318,9 +537,19 @@ function buildVerificationStructured(rec) {
         )
   ).slice(0, 4)
 
+  const mergedMetrics = [...new Set([...metrics, ...fallbackMetrics])].slice(0, 4)
+
+  const highValue = (tierCounts['金牌'] || 0) + (tierCounts['银牌'] || 0)
+  const userValidation =
+    highValue >= 2
+      ? '优先回访金牌/银牌客户修复结果，并跟踪同类痛点在本产品 30 天内复现率。'
+      : negative >= Math.max(2, Math.ceil(pool.length * 0.4))
+        ? '抽样回访高负面情绪工单，并跟踪同类问题 30 天内复现率与重复进线。'
+        : '抽样回访已修复工单，并跟踪同类问题 30 天内复现率。'
+
   return {
-    metrics,
-    userValidation: '抽样回访已修复工单，并跟踪同类问题 30 天内复现率。',
+    metrics: mergedMetrics,
+    userValidation,
   }
 }
 
@@ -396,12 +625,35 @@ export function sectionsToLegacyDetails(sections) {
 /**
  * @param {OverviewRecommendation} rec
  * @param {FeedbackRecord[]} evidencePool
- * @returns {PlanningRecommendationSections}
  */
-export function buildPlanningRecommendationSections(rec, evidencePool = []) {
+function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
   const pool = evidencePool || []
-  const summary = enforceExecutiveSummary((rec.summary || rec.text || '').trim())
-  const { productActions, serviceActions } = collectProductAndServiceActions(pool)
+  const isClusterV2 = rec.signalType === 'pain_cluster_v2'
+  const summary = isClusterV2
+    ? buildInsightExecutiveSummary(rec, pool, rec.generationMeta?.representativePain) ||
+      enforceExecutiveSummary((rec.summary || rec.text || '').trim())
+    : enforceExecutiveSummary((rec.summary || rec.text || '').trim())
+
+  const { productActions: ticketProductActions, serviceActions: ticketServiceActions } =
+    collectProductAndServiceActions(pool)
+
+  /** @type {string[]} */
+  let productActions = ticketProductActions
+  let serviceActions = ticketServiceActions
+  let usedClusterSynthesis = false
+  let usedPlaybookFallback = false
+
+  if (isClusterV2) {
+    const synthesized = synthesizeClusterProductActions(
+      rec,
+      pool,
+      rec.generationMeta?.representativePain,
+    )
+    if (synthesized.length >= MIN_PRODUCT_ACTIONS) {
+      productActions = synthesized
+      usedClusterSynthesis = true
+    }
+  }
 
   /** @type {PlanningRecommendationSections} */
   let sections = {
@@ -409,12 +661,18 @@ export function buildPlanningRecommendationSections(rec, evidencePool = []) {
     clusterRootCause: buildClusterRootCauseStructured(rec, pool),
     productActions,
     serviceActions: serviceActions.length ? serviceActions : undefined,
-    verification: buildVerificationStructured(rec),
+    verification: buildVerificationStructured(rec, pool),
   }
 
   sections = ensureMinProductActions(sections, rec.details || [])
 
-  if ((sections.productActions?.length || 0) < MIN_PRODUCT_ACTIONS) {
+  if (!usedClusterSynthesis && (sections.productActions?.length || 0) < MIN_PRODUCT_ACTIONS) {
+    const playbookFallback = collectPlaybookFallbackProductActions(pool, rec)
+    if (playbookFallback.length) usedPlaybookFallback = true
+    sections = ensureMinProductActions(sections, playbookFallback)
+  }
+
+  if (!usedClusterSynthesis && (sections.productActions?.length || 0) < MIN_PRODUCT_ACTIONS) {
     sections.productActions = dedupeActionLines(
       [...(sections.productActions || []), ...(rec.details || [])],
       MIN_PRODUCT_ACTIONS,
@@ -422,7 +680,73 @@ export function buildPlanningRecommendationSections(rec, evidencePool = []) {
     )
   }
 
-  return enforcePlanningSectionRules(sections)
+  const aligned = usedClusterSynthesis
+    ? {
+        sections,
+        actionAlignmentWeak: false,
+        actionAlignmentScore: null,
+        usedPlaybookFallback: false,
+        usedAlignmentReplacement: false,
+      }
+    : refineProductActionsForPainAlignment(sections, rec, pool)
+
+  const productActionsSource = detectProductActionsSource(
+    ticketProductActions,
+    aligned.sections.productActions || [],
+    {
+      usedClusterSynthesis,
+      usedPlaybookFallback: usedPlaybookFallback || aligned.usedPlaybookFallback,
+      usedAlignmentReplacement: aligned.usedAlignmentReplacement,
+    },
+  )
+
+  return {
+    ...aligned,
+    productActionsSource,
+    measureSource: measureSourceLabelForProductActions(productActionsSource),
+    generationMeta: usedClusterSynthesis
+      ? {
+          ...rec.generationMeta,
+          actionSynthesisVersion: CLUSTER_ACTION_SYNTHESIS_VERSION,
+        }
+      : rec.generationMeta,
+  }
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} evidencePool
+ * @returns {PlanningRecommendationSections}
+ */
+export function buildPlanningRecommendationSections(rec, evidencePool = []) {
+  const aligned = buildPlanningRecommendationSectionsCore(rec, evidencePool)
+  return enforcePlanningSectionRules(aligned.sections)
+}
+
+/**
+ * 二次聚类得分写入后刷新验证指标（P1-5）
+ * @param {PlanningRecommendationSections} sections
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} pool
+ */
+export function refreshPlanningVerification(sections, rec, pool) {
+  return {
+    ...sections,
+    verification: buildVerificationStructured(rec, pool),
+  }
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} evidencePool
+ * @returns {ReturnType<typeof refineProductActionsForPainAlignment>}
+ */
+export function buildPlanningRecommendationSectionsWithMeta(rec, evidencePool = []) {
+  const aligned = buildPlanningRecommendationSectionsCore(rec, evidencePool)
+  return {
+    ...aligned,
+    sections: enforcePlanningSectionRules(aligned.sections),
+  }
 }
 
 /**
@@ -431,7 +755,8 @@ export function buildPlanningRecommendationSections(rec, evidencePool = []) {
  * @returns {OverviewRecommendation}
  */
 export function attachPlanningRecommendationSections(rec, evidencePool = []) {
-  const sections = buildPlanningRecommendationSections(rec, evidencePool)
+  const aligned = buildPlanningRecommendationSectionsWithMeta(rec, evidencePool)
+  const sections = aligned.sections
   const legacyDetails = sectionsToLegacyDetails(sections)
   const details =
     legacyDetails.length >= PLANNING_RECOMMENDATION_LIMITS.minDetails
@@ -444,6 +769,11 @@ export function attachPlanningRecommendationSections(rec, evidencePool = []) {
     text: sections.executiveSummary || rec.text,
     sections,
     details: details.slice(0, PLANNING_RECOMMENDATION_LIMITS.maxDetails),
+    actionAlignmentWeak: aligned.actionAlignmentWeak,
+    actionAlignmentScore: aligned.actionAlignmentScore,
+    productActionsSource: aligned.productActionsSource,
+    measureSource: aligned.measureSource || rec.measureSource,
+    generationMeta: aligned.generationMeta || rec.generationMeta,
   }
 }
 

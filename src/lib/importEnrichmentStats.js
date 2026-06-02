@@ -59,7 +59,7 @@ export function buildEnrichmentRetagWarnings(stats, journeyPendingCount = 0) {
   const warnings = []
   if (stats.ticketLlmFailed > 0) {
     warnings.push(
-      `${stats.ticketLlmFailed} 条工单的客户请求/痛点/优化建议 LLM 增强未完成。请前往反馈库点击顶部「补打」。`,
+      `${stats.ticketLlmFailed} 条工单的客户请求/痛点 LLM 增强未完成。请前往反馈库点击顶部「补打」。`,
     )
   }
   if (journeyPendingCount > 0) {

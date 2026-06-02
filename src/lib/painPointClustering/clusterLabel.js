@@ -1,10 +1,11 @@
 import { DATA_SOURCE_SHORT_LABEL } from './constants.js'
+import { getClusteringPainText } from './clusteringCorpus.js'
 
 /**
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getRecordPainPoint(record) {
-  return (record.painPoint || record.problemSummary || '').trim()
+  return getClusteringPainText(record)
 }
 
 /**

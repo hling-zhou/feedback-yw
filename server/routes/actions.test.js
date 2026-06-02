@@ -229,4 +229,47 @@ describeActions('actions API (P4-1)', () => {
     expect(okRes.statusCode).toBe(200)
     expect(JSON.parse(okRes.body).item.recordRevision).toBe(2)
   })
+
+  it('delete clears actionId on records referencing the action', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '待删除举措' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    storageRepository.putRecord({
+      id: 'rec-action-ref',
+      ticketId: 'T-REF-1',
+      actionId: created.id,
+      establishedAction: '待删除举措',
+      actionSchedule: '',
+      dataSourceType: 'complaint_ticket',
+      tenantId: 'default',
+      schemaVersion: 1,
+      recordStatus: 'analyzed',
+    })
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('editor'),
+    })
+    expect(delRes.statusCode).toBe(200)
+
+    const record = storageRepository.getRecord('rec-action-ref')
+    expect(record.actionId).toBe('')
+    expect(record.establishedAction).toBe('待删除举措')
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('viewer'),
+    })
+    expect(getRes.statusCode).toBe(404)
+  })
 })

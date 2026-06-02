@@ -16,8 +16,72 @@ export const TICKET_ANALYSIS_SOURCE_LABELS = {
 
 const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consultation_ticket'])
 
+/** @typedef {'requestScene' | 'problemType' | 'sentiment'} RuleManualDimension */
+
+/** @type {Record<string, string>} */
+export const TICKET_LLM_FILTER_HINTS = {
+  needs_llm:
+    '投诉/咨询工单：客户请求或痛点的展示来源不是「大模型」（含规则、人工、导入）。不含优化建议；旅程单独筛选。',
+  full_llm:
+    '投诉/咨询工单：客户请求与痛点的展示来源均为「大模型」。不含优化建议；旅程单独筛选。',
+  needs_journey_llm:
+    '投诉/咨询工单：用户旅程尚未经 LLM 增强，且未满足「规则高置信 + 非未识别旅程」的门控跳过；详情中人工修改过的旅程视为已完成。',
+}
+
+/** @type {{ label: string; value: string; title?: string }[]} */
+export const TICKET_LLM_FILTER_OPTIONS = [
+  { label: '全部 LLM 状态', value: '' },
+  {
+    label: '待 LLM（请求/痛点）',
+    value: 'needs_llm',
+    title: TICKET_LLM_FILTER_HINTS.needs_llm,
+  },
+  {
+    label: '已 LLM（请求/痛点）',
+    value: 'full_llm',
+    title: TICKET_LLM_FILTER_HINTS.full_llm,
+  },
+  {
+    label: '待 LLM（旅程）',
+    value: 'needs_journey_llm',
+    title: TICKET_LLM_FILTER_HINTS.needs_journey_llm,
+  },
+]
+
 /**
- * 投诉/咨询工单是否仍缺 LLM 增强（任一：客户请求 / 痛点 / 优化建议 非 llm）
+ * 投诉/咨询工单：客户请求、痛点展示来源均为「人工」。
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function recordHasManualTicketAnalysisPair(record) {
+  const ds = record?.dataSourceType || 'complaint_ticket'
+  if (!TICKET_LIKE_SOURCES.includes(ds)) return false
+  return (
+    getCustomerRequestSource(record) === 'manual' &&
+    getPainPointSource(record) === 'manual'
+  )
+}
+
+/** @deprecated 使用 recordHasManualTicketAnalysisPair */
+export function recordHasManualTicketAnalysisTrio(record) {
+  return recordHasManualTicketAnalysisPair(record)
+}
+
+/**
+ * @param {FeedbackRecord[]} records
+ */
+export function countRecordsWithManualTicketAnalysisPair(records) {
+  if (!records?.length) return 0
+  return records.filter(recordHasManualTicketAnalysisPair).length
+}
+
+/** @deprecated 使用 countRecordsWithManualTicketAnalysisPair */
+export function countRecordsWithManualTicketAnalysisTrio(records) {
+  return countRecordsWithManualTicketAnalysisPair(records)
+}
+
+/**
+ * 投诉/咨询工单是否仍缺 LLM 增强（客户请求或痛点展示来源非 llm）。
+ * 优化建议不参与判定；用户旅程见 recordNeedsJourneyLlmEnrichment。
  * @param {FeedbackRecord | null | undefined} record
  */
 export function recordNeedsTicketLlmEnrichment(record) {
@@ -25,13 +89,11 @@ export function recordNeedsTicketLlmEnrichment(record) {
   if (!TICKET_LIKE_SOURCES.includes(ds)) return false
   if (getCustomerRequestSource(record) !== 'llm') return true
   if (getPainPointSource(record) !== 'llm') return true
-  if (getOptimizationSource(record) === 'manual') return false
-  if (getOptimizationSource(record) !== 'llm') return true
   return false
 }
 
 /**
- * 投诉/咨询工单是否已完成 LLM 三件套增强
+ * 投诉/咨询工单是否已完成客户请求 + 痛点 LLM 增强。
  * @param {FeedbackRecord | null | undefined} record
  */
 export function recordHasFullTicketLlmEnrichment(record) {
@@ -56,6 +118,7 @@ export function countRecordsNeedingTicketLlmEnrichment(records) {
 export function recordNeedsJourneyLlmEnrichment(record, settings) {
   const ds = record?.dataSourceType || 'complaint_ticket'
   if (!TICKET_LIKE_SOURCES.includes(ds)) return false
+  if (getManualTagFields(record).includes('journey')) return false
   if (record?.journeySource === 'llm') return false
 
   const threshold = resolveJourneyLlmSkipScoreThreshold(settings)
@@ -149,6 +212,28 @@ function getManualDimensionAnalysisSource(record, dimension, readContent) {
 }
 
 /**
+ * 用户旅程展示来源：人工维护优先，其次 llm / 规则。
+ * @param {FeedbackRecord | null | undefined} record
+ * @returns {'rule' | 'llm' | 'manual'}
+ */
+export function getJourneyDisplaySource(record) {
+  if (getManualTagFields(record).includes('journey')) return 'manual'
+  if (record?.journeySource === 'llm') return 'llm'
+  return 'rule'
+}
+
+/**
+ * 请求场景 / 问题类型 / 用户情绪：仅规则或人工（无 LLM 来源字段）。
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {RuleManualDimension} dimension
+ * @returns {'rule' | 'manual'}
+ */
+export function getRuleManualDimensionSource(record, dimension) {
+  if (getManualTagFields(record).includes(dimension)) return 'manual'
+  return 'rule'
+}
+
+/**
  * @param {TicketAnalysisFieldSource | string | undefined | null} source
  */
 export function getTicketAnalysisSourceLabel(source) {
@@ -176,24 +261,17 @@ export function getCustomerRequestSource(record) {
 }
 
 /**
- * 优化建议来源：确立举措优先 → 人工；否则读 optimizationSource（import/manual → 人工）。
- *
- * @param {import('../types.js').FeedbackRecord} record
- */
-export function getOptimizationSource(record) {
-  if (getEstablishedActionDisplay(record)) {
-    return 'manual'
-  }
-  return normalizeTicketAnalysisFieldSource(record?.optimizationSource)
-}
-
-/**
- * 自动生成优化建议来源：仅读 optimizationSource，不含人工复核/确立举措。
+ * 自动优化建议来源（规则/大模型）；确立举措等人工维护字段不参与 LLM 状态筛选。
  *
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getAutoOptimizationSource(record) {
   return normalizeTicketAnalysisFieldSource(record?.optimizationSource)
+}
+
+/** @deprecated 同 getAutoOptimizationSource；优化建议不参与 LLM 状态筛选 */
+export function getOptimizationSource(record) {
+  return getAutoOptimizationSource(record)
 }
 
 /**

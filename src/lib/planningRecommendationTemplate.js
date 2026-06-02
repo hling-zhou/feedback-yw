@@ -481,7 +481,15 @@ export function buildPlanningRecommendationsHelpSections() {
       paragraphs: [
         '在洞察工作台点击「生成 / 刷新洞察」后，基于当前洞察周期内的投诉单与咨询单工单写入周期快照。',
         '导入数据、修改标签或批量重新打标后，需再次刷新洞察，行动建议才会与最新工单分布一致。',
-        '聚类与行动建议依赖工单的「需求痛点挖掘」（painPoint）字段；未打标或仍为规则占位时，可能无法形成 V2 Top 10。',
+        '聚类语料优先使用「需求痛点挖掘」；为空或过短时会 fallback 到「客户请求内容」。',
+      ],
+    },
+    {
+      title: '优化建议来源（与设置项区分）',
+      items: [
+        '设置 →「单条工单优化建议」：仅影响导入/重打标时写入工单的 optimization 字段（LLM 或规则），不直接驱动概览行动建议生成。',
+        '概览行动建议：从群组内工单 optimization 字段聚合；不足或偏题时自动补 Playbook，并可能标记「依据偏弱」。',
+        '「LLM 润色行动建议」按钮：在已有 V2 结构化结果上改写概述/举措文案，不重新聚类。',
       ],
     },
     {
@@ -491,7 +499,7 @@ export function buildPlanningRecommendationsHelpSections() {
         `一次聚类：按「产品 + 数据来源 + 一级用户旅程」分组，对组内 painPoint 做 Jaccard 层次聚类（阈值 ${PRIMARY_CLUSTER_THRESHOLD}，簇 ≥2 条工单）。`,
         `剔除低价值一次群组：问题类型为「${lowValueTypes}」的群组不参与二次聚类（可在数据覆盖说明中备注剔除数量）。`,
         `二次聚类：跨来源、跨一级环节合并一次群组代表性文本（阈值 ${SECONDARY_CLUSTER_THRESHOLD}），得到产品级最终痛点群组。`,
-        `各产品按综合优先级排序，取 Top ${FINAL_CLUSTER_TOP_N}；全模块展示时再按高/中/低优先级截断，合计不超过 ${maxItems} 条。`,
+        `各产品按综合优先级排序，取 Top ${FINAL_CLUSTER_TOP_N}；展示时按产品配额分配条数（大单量产品 3～8 条，小产品至少 1 条），合计不超过 ${maxItems} 条。`,
         '来源 Tab 旅程区展示一次聚类结果；洞察概览行动建议使用二次聚类（最终群组）结果。',
       ],
     },

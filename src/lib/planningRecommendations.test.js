@@ -19,6 +19,8 @@ import {
   filterRecommendationsByProduct,
   formatRecommendationForExport,
   limitPlanningRecommendations,
+  limitPlanningRecommendationsWithProductQuota,
+  downgradeEvidenceStrength,
   mergeRecommendations,
   pickEvidenceRecords,
   recommendationMatchesProduct,
@@ -488,6 +490,57 @@ describe('planningRecommendations', () => {
     const limited = limitPlanningRecommendations(recs, 10)
     expect(limited).toHaveLength(10)
     expect(limited.filter((r) => r.priority === 'high')).toHaveLength(2)
+  })
+
+  it('limitPlanningRecommendationsWithProductQuota preserves multiple products', () => {
+    const ticketRecords = [
+      ...Array.from({ length: 40 }, (_, i) =>
+        makeRecord({ id: `eip-${i}`, product: '弹性公网 IP' }),
+      ),
+      ...Array.from({ length: 20 }, (_, i) =>
+        makeRecord({ id: `vpc-${i}`, product: '云主机' }),
+      ),
+    ]
+    const recs = [
+      ...Array.from({ length: 15 }, (_, i) => ({
+        id: `eip-rec-${i}`,
+        priority: 'high',
+        category: 'product',
+        text: `EIP 建议 ${i}`,
+        summary: `EIP 痛点群组 ${i}`,
+        scope: { product: '弹性公网 IP' },
+        signalType: 'pain_cluster_v2',
+        generationMeta: { score: 5 - i * 0.1 },
+        sections: { painClusterScores: { rank: i + 1, priorityScore: 5 - i * 0.1 } },
+      })),
+      ...Array.from({ length: 8 }, (_, i) => ({
+        id: `vpc-rec-${i}`,
+        priority: 'high',
+        category: 'product',
+        text: `VPC 建议 ${i}`,
+        summary: `VPC 痛点群组 ${i}`,
+        scope: { product: '云主机' },
+        signalType: 'pain_cluster_v2',
+        generationMeta: { score: 4.8 - i * 0.1 },
+        sections: { painClusterScores: { rank: i + 1, priorityScore: 4.8 - i * 0.1 } },
+      })),
+    ]
+
+    const globalOnly = limitPlanningRecommendations(recs, 10)
+    const productsGlobal = new Set(globalOnly.map((r) => r.scope?.product))
+    expect(productsGlobal.has('云主机')).toBe(false)
+
+    const quotaLimited = limitPlanningRecommendationsWithProductQuota(recs, ticketRecords, 10)
+    const productsQuota = new Set(quotaLimited.map((r) => r.scope?.product))
+    expect(productsQuota.has('弹性公网 IP')).toBe(true)
+    expect(productsQuota.has('云主机')).toBe(true)
+    expect(quotaLimited.length).toBeLessThanOrEqual(10)
+  })
+
+  it('downgradeEvidenceStrength steps down one level', () => {
+    expect(downgradeEvidenceStrength('strong')).toBe('moderate')
+    expect(downgradeEvidenceStrength('moderate')).toBe('weak')
+    expect(downgradeEvidenceStrength('weak')).toBe('weak')
   })
 
   it('collectRecommendationProductOptions and filterRecommendationsByProduct', () => {

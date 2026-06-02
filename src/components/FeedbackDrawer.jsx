@@ -32,17 +32,19 @@ import { mapTaxonomySelectOptions, resolveTagDefinition } from '../lib/tagDefini
 import {
   AutoOptimizationSourceTag,
   CustomerRequestSourceTag,
+  JourneySourceTag,
   PainPointSourceTag,
+  RuleManualDimensionSourceTag,
 } from './tags/TicketAnalysisSourceTag.jsx'
 import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
-  extractHandlingOriginalTextFromFields,
+  extractHandlingOriginalTextForRecord,
 } from '../lib/taggingText.js'
 import {
-  buildCustomerRequestManualSavePatch,
-  buildPainPointManualSavePatch,
+  buildCustomerRequestSavePatch,
+  buildPainPointSavePatch,
   CUSTOMER_REQUEST_MANUAL_MAX_LENGTH,
   getCustomerRequestDraftDisplay,
   getPainPointDraftDisplay,
@@ -58,7 +60,7 @@ import {
   ESTABLISHED_ACTION_MAX_LENGTH,
   getEstablishedActionDisplay,
 } from '../domain/establishedAction.js'
-import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord } from '../lib/establishedActionPersist.js'
+import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
 import ActionItemSelect from './ActionItemSelect.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
 import {
@@ -144,11 +146,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
 
   const handlingOriginalText = useMemo(() => {
     if (!feedback) return ''
-    return extractHandlingOriginalTextFromFields({
-      handlingText: feedback.handlingText,
-      rawText: feedback.rawText,
-      sourceColumns: feedback.sourceColumns,
-    })
+    return extractHandlingOriginalTextForRecord(feedback)
   }, [feedback])
 
   const l2Options = useMemo(() => {
@@ -280,8 +278,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       urgencyLevel,
       requestScene,
       problemType,
-      ...buildCustomerRequestManualSavePatch(customerRequest),
-      ...buildPainPointManualSavePatch(painPoint),
+      ...buildCustomerRequestSavePatch(feedback, customerRequest),
+      ...buildPainPointSavePatch(feedback, painPoint),
       ...buildDetailOptimizationSavePatch({
         productGroupOptimization,
         designerOptimization,
@@ -324,6 +322,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     const merged = { ...feedback, ...saved }
     if (merged.actionId?.trim()) {
       await syncFirstTicketSnapshotsForRecord(merged)
+      if (!linkedFromLibrary) {
+        await syncLinkedTicketsForActionIds([merged.actionId], feedbacks, updateFeedback)
+      }
     }
     baseRevisionRef.current = getRecordRevision(saved)
     setRemoteStale(false)
@@ -503,7 +504,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           {canEdit ? (
             <Form layout="vertical">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Form.Item label="请求场景" className="!mb-3">
+                <Form.Item
+                  label={
+                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                      请求场景
+                      <RuleManualDimensionSourceTag
+                        record={feedback}
+                        dimension="requestScene"
+                        title="请求场景来源（规则或人工）"
+                      />
+                    </span>
+                  }
+                  className="!mb-3"
+                >
                   <Select
                     value={requestScene}
                     optionRender={renderDefinitionSelectOption}
@@ -515,7 +528,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   />
                 </Form.Item>
                 <Form.Item
-                  label={isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型'}
+                  label={
+                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                      {isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型'}
+                      <RuleManualDimensionSourceTag
+                        record={feedback}
+                        dimension="problemType"
+                        title="问题类型来源（规则或人工）"
+                      />
+                    </span>
+                  }
                   className="!mb-3"
                 >
                   <Select
@@ -530,7 +552,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 </Form.Item>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Form.Item label="用户旅程（一级）" className="!mb-3">
+                <Form.Item
+                  label={
+                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                      用户旅程（一级）
+                      <JourneySourceTag record={feedback} />
+                    </span>
+                  }
+                  className="!mb-3"
+                >
                   <Select
                     value={journeyL1}
                     optionRender={renderDefinitionSelectOption}
@@ -580,7 +610,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   />
                 </Form.Item>
               </div>
-              <Form.Item label="用户情绪" className="!mb-2">
+              <Form.Item
+                label={
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    用户情绪
+                    <RuleManualDimensionSourceTag
+                      record={feedback}
+                      dimension="sentiment"
+                      title="用户情绪来源（规则或人工）"
+                    />
+                  </span>
+                }
+                className="!mb-2"
+              >
                 <Select
                   value={sentiment}
                   optionRender={renderDefinitionSelectOption}
@@ -616,9 +658,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               </Descriptions.Item>
             </Descriptions>
           )}
-          <Typography.Text type="secondary" className="mt-2 block text-xs">
-            支持人工复核修改
-          </Typography.Text>
         </Card>
 
         {/* B2 · 投诉原因（终判） */}
@@ -655,23 +694,18 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           size="small"
         >
           {canEdit ? (
-            <>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                人工编辑并保存后，批量/单条重新打标默认保留此维度。
-              </Typography.Text>
-              <Input.TextArea
-                rows={2}
-                placeholder="默认为空"
-                maxLength={CUSTOMER_REQUEST_MANUAL_MAX_LENGTH}
-                showCount
-                value={customerRequest}
-                onChange={(e) => {
-                  setCustomerRequest(
-                    normalizeManualCustomerRequest(e.target.value),
-                  )
-                }}
-              />
-            </>
+            <Input.TextArea
+              rows={2}
+              placeholder="默认为空"
+              maxLength={CUSTOMER_REQUEST_MANUAL_MAX_LENGTH}
+              showCount
+              value={customerRequest}
+              onChange={(e) => {
+                setCustomerRequest(
+                  normalizeManualCustomerRequest(e.target.value),
+                )
+              }}
+            />
           ) : (
             <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
               {getDisplayCustomerRequest(feedback) || '—'}
@@ -692,21 +726,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           size="small"
         >
           {canEdit ? (
-            <>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                人工编辑并保存后，批量/单条重新打标默认保留此维度。
-              </Typography.Text>
-              <Input.TextArea
-                rows={2}
-                placeholder="默认为空"
-                maxLength={PAIN_POINT_MANUAL_MAX_LENGTH}
-                showCount
-                value={painPoint}
-                onChange={(e) => {
-                  setPainPoint(normalizeManualPainPoint(e.target.value))
-                }}
-              />
-            </>
+            <Input.TextArea
+              rows={2}
+              placeholder="默认为空"
+              maxLength={PAIN_POINT_MANUAL_MAX_LENGTH}
+              showCount
+              value={painPoint}
+              onChange={(e) => {
+                setPainPoint(normalizeManualPainPoint(e.target.value))
+              }}
+            />
           ) : (
             <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
               {getDisplayPainPoint(feedback) || '—'}
@@ -909,7 +938,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
             {handlingOriginalText || '—'}
           </Typography.Paragraph>
           <Typography.Text type="secondary" className="mt-2 block text-xs">
-            优先展示「处理意见」列；若为空则展示「受理内容」。
+            优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
           </Typography.Text>
         </Card>
 

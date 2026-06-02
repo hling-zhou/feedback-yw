@@ -15,6 +15,15 @@ describe('parseLabelValueBlocks', () => {
     expect(blocks[0].label).toBe('客户问题')
     expect(blocks[1].label).toBe('处理意见')
   })
+
+  it('does not merge 【处理意见】 block into prior label value', () => {
+    const blocks = parseLabelValueBlocks(
+      '客户问题：云专线，客户变更机房地址解决方案：客户未提供信息离线\n\n【处理意见】\n无/不涉及',
+    )
+    expect(blocks[0].label).toBe('客户问题')
+    expect(blocks[0].text).toBe('云专线，客户变更机房地址')
+    expect(blocks.every((b) => b.label !== '处理意见')).toBe(true)
+  })
 })
 
 describe('ticketDetailDisplay', () => {

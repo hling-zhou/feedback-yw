@@ -6,7 +6,9 @@ import { getActionScheduleDisplay } from '../domain/actionSchedule.js'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
   buildCustomerRequestManualSavePatch,
+  buildCustomerRequestSavePatch,
   buildPainPointManualSavePatch,
+  buildPainPointSavePatch,
   getCustomerRequestDraftDisplay,
   getPainPointDraftDisplay,
 } from '../domain/ticketAnalysisManualFields.js'
@@ -21,8 +23,8 @@ import { buildDetailOptimizationSavePatch } from '../domain/detailOptimizationFi
 import { mergeManualTagFieldsOnUserEdit } from '../lib/manualTagFields.js'
 import { recordToExportRowV2 } from '../lib/ticketAnalysisExport.js'
 import {
+  getAutoOptimizationSource,
   getCustomerRequestSource,
-  getOptimizationSource,
   getOptimizationSourceLabel,
   getPainPointSource,
   getTicketAnalysisSourceLabel,
@@ -51,8 +53,8 @@ function buildDetailSavePatchFromRecord(record) {
     note: record.note || '',
     requestScene: record.requestScene || '',
     problemType: record.problemType || '',
-    ...buildCustomerRequestManualSavePatch(customerRequest),
-    ...buildPainPointManualSavePatch(painPoint),
+    ...buildCustomerRequestSavePatch(record, customerRequest),
+    ...buildPainPointSavePatch(record, painPoint),
     ...buildEstablishedActionSavePatch(establishedAction),
     ...buildActionScheduleSavePatch(record.actionSchedule || ''),
     ...buildDetailOptimizationSavePatch({
@@ -148,11 +150,10 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
       expect(recordToExportRowV2(record)['根因排查']).toBe('磁盘使用率 100%')
     })
 
-    it('uat-c-02: legacy manualReviewOptimization reads as 确立举措', () => {
+    it('uat-c-02: legacy manualReviewOptimization reads as 确立举措 without changing auto optimization source', () => {
       const record = DETAIL_DRAWER_UAT_COMPLAINT_SAMPLES[1]
       expect(getEstablishedActionDisplay(record)).toBe('legacy 人工复核举措文本')
-      expect(getOptimizationSource(record)).toBe('manual')
-      expect(getOptimizationSourceLabel(getOptimizationSource(record))).toBe('人工')
+      expect(getAutoOptimizationSource(record)).toBe('rule')
     })
 
     it('uat-z-05: import sources display as 人工 tags', () => {
@@ -160,7 +161,7 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
       expect(record).toBeTruthy()
       expect(getCustomerRequestSource(record)).toBe('manual')
       expect(getPainPointSource(record)).toBe('manual')
-      expect(getOptimizationSource(record)).toBe('manual')
+      expect(getAutoOptimizationSource(record)).toBe('manual')
       expect(getTicketAnalysisSourceLabel('import')).toBe('人工')
     })
 
@@ -181,9 +182,24 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
       expect(recordToExportRowV2(saved)['客户请求内容']).toBe('人工修改后的客户请求内容')
     })
 
-    it('full detail save marks optimization when 确立举措 present', () => {
+    it('unchanged detail save does not re-mark request/pain as manual', () => {
+      const record = {
+        ...DETAIL_DRAWER_UAT_CONSULTATION_SAMPLES[0],
+        customerRequestSource: 'llm',
+        painPointSource: 'llm',
+      }
+      const patch = buildDetailSavePatchFromRecord(record)
+      const saved = simulateDetailSave(record, patch)
+      expect(saved.customerRequestSource).toBe('llm')
+      expect(saved.painPointSource).toBe('llm')
+      expect(saved.manualTagFields || []).not.toContain('customerRequest')
+      expect(saved.manualTagFields || []).not.toContain('painPoint')
+    })
+
+    it('full detail save marks optimization when human optimization field changes', () => {
       const record = DETAIL_DRAWER_UAT_COMPLAINT_SAMPLES[0]
       const patch = buildDetailSavePatchFromRecord(record)
+      patch.actionSchedule = '2026-12-01'
       const saved = simulateDetailSave(record, patch)
       expect(saved.manualTagFields).toContain('optimization')
       expect(getEstablishedActionDisplay(saved)).toBe('增加 ENI 连通性预检')

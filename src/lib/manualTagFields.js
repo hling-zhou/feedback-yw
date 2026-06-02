@@ -30,6 +30,51 @@ export const MANUAL_TAG_DIMENSION_LABELS = {
   rootCauseReview: '根因排查',
 }
 
+const OPTIMIZATION_HUMAN_PATCH_KEYS = /** @type {const} */ ([
+  'manualReviewOptimization',
+  'establishedAction',
+  'actionSchedule',
+  'actionId',
+  'productGroupOptimization',
+  'designerOptimization',
+])
+
+/**
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+function fieldValueEqual(a, b) {
+  return String(a ?? '').trim() === String(b ?? '').trim()
+}
+
+/**
+ * @param {string | undefined | null} source
+ */
+function storedSourceIsManualOrImport(source) {
+  return source === 'manual' || source === 'import'
+}
+
+/**
+ * ticket LLM 成功写入后，若库内来源本非人工/导入，则不应再因陈旧 manualTagFields 拉回旧内容。
+ *
+ * @param {import('./types.js').FeedbackRecord} original
+ * @param {'customerRequest' | 'painPoint'} dimension
+ * @param {import('./types.js').FeedbackRecord} processed
+ */
+function shouldPreserveManualAnalysisField(original, dimension, processed) {
+  const origSource =
+    dimension === 'customerRequest'
+      ? original.customerRequestSource
+      : original.painPointSource
+  const nextSource =
+    dimension === 'customerRequest'
+      ? processed.customerRequestSource
+      : processed.painPointSource
+  if (storedSourceIsManualOrImport(origSource)) return true
+  if (nextSource === 'llm') return false
+  return true
+}
+
 /**
  * @param {import('./types.js').FeedbackRecord} record
  * @returns {ManualTagDimension[]}
@@ -41,7 +86,7 @@ export function getManualTagFields(record) {
 }
 
 /**
- * 用户在工单详情中保存四维标签时，记录对应维度为人工维护。
+ * 用户在工单详情中保存时，仅当 patch 相对现有记录**实际变更**才累积人工维护维度。
  *
  * @param {import('./types.js').FeedbackRecord | undefined} existing
  * @param {Partial<import('./types.js').FeedbackRecord>} patch
@@ -49,17 +94,47 @@ export function getManualTagFields(record) {
  */
 export function mergeManualTagFieldsOnUserEdit(existing, patch) {
   const set = new Set(getManualTagFields(existing))
-  if ('requestScene' in patch) set.add('requestScene')
-  if ('problemType' in patch) set.add('problemType')
-  if ('journeyL1' in patch || 'journeyL2' in patch || 'themes' in patch) set.add('journey')
-  if ('sentiment' in patch) set.add('sentiment')
-  if ('urgencyLevel' in patch) set.add('urgency')
-  if ('manualReviewOptimization' in patch || 'establishedAction' in patch || 'actionSchedule' in patch) {
-    set.add('optimization')
+
+  if ('requestScene' in patch && !fieldValueEqual(existing?.requestScene, patch.requestScene)) {
+    set.add('requestScene')
   }
-  if ('customerRequest' in patch) set.add('customerRequest')
-  if ('painPoint' in patch || 'problemSummary' in patch) set.add('painPoint')
-  if ('rootCauseReview' in patch) set.add('rootCauseReview')
+  if ('problemType' in patch && !fieldValueEqual(existing?.problemType, patch.problemType)) {
+    set.add('problemType')
+  }
+  if (
+    ('journeyL1' in patch && !fieldValueEqual(existing?.journeyL1, patch.journeyL1)) ||
+    ('journeyL2' in patch && !fieldValueEqual(existing?.journeyL2, patch.journeyL2))
+  ) {
+    set.add('journey')
+  }
+  if ('sentiment' in patch && !fieldValueEqual(existing?.sentiment, patch.sentiment)) {
+    set.add('sentiment')
+  }
+  if ('urgencyLevel' in patch && !fieldValueEqual(existing?.urgencyLevel, patch.urgencyLevel)) {
+    set.add('urgency')
+  }
+
+  for (const key of OPTIMIZATION_HUMAN_PATCH_KEYS) {
+    if (key in patch && !fieldValueEqual(existing?.[key], patch[key])) {
+      set.add('optimization')
+      break
+    }
+  }
+
+  if ('customerRequest' in patch) {
+    const next = String(patch.customerRequest ?? '').trim()
+    const prev = String(existing?.customerRequest ?? '').trim()
+    if (next !== prev) set.add('customerRequest')
+  }
+  if ('painPoint' in patch || 'problemSummary' in patch) {
+    const next = String(patch.painPoint ?? patch.problemSummary ?? '').trim()
+    const prev = String(existing?.painPoint ?? existing?.problemSummary ?? '').trim()
+    if (next !== prev) set.add('painPoint')
+  }
+  if ('rootCauseReview' in patch && !fieldValueEqual(existing?.rootCauseReview, patch.rootCauseReview)) {
+    set.add('rootCauseReview')
+  }
+
   return [...set]
 }
 
@@ -101,6 +176,8 @@ export function preserveManualTags(original, processed, options = {}) {
     out.journeyL2 = original.journeyL2
     out.themes =
       original.themes?.length ? original.themes : themesFromJourney(original)
+    out.journeySource = original.journeySource
+    out.journeyMatchScore = original.journeyMatchScore
   }
   if (set.has('sentiment')) {
     out.sentiment = normalizeSentiment(original.sentiment)
@@ -112,15 +189,15 @@ export function preserveManualTags(original, processed, options = {}) {
     out.manualReviewOptimization = original.manualReviewOptimization
     out.establishedAction = original.establishedAction
     out.actionSchedule = original.actionSchedule
-    out.optimizationProduct = original.optimizationProduct
-    out.optimizationService = original.optimizationService
-    out.optimizationSuggestion = original.optimizationSuggestion
+    out.actionId = original.actionId
+    out.productGroupOptimization = original.productGroupOptimization
+    out.designerOptimization = original.designerOptimization
   }
-  if (set.has('customerRequest')) {
+  if (set.has('customerRequest') && shouldPreserveManualAnalysisField(original, 'customerRequest', processed)) {
     out.customerRequest = original.customerRequest
     out.customerRequestSource = original.customerRequestSource
   }
-  if (set.has('painPoint')) {
+  if (set.has('painPoint') && shouldPreserveManualAnalysisField(original, 'painPoint', processed)) {
     out.painPoint = original.painPoint
     out.problemSummary = original.problemSummary
     out.painPointSource = original.painPointSource

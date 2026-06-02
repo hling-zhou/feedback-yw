@@ -74,12 +74,56 @@ export function summarizeUnknownJourneyRecords(records) {
   }
 }
 
+/** 重打标后若痛点变更达到阈值，提示刷新洞察（P0-3） */
+export const RETAG_PAIN_POINT_REFRESH_MIN_CHANGED = 3
+export const RETAG_PAIN_POINT_REFRESH_MIN_RATE = 0.05
+
+/**
+ * @param {{ id: string; painPoint?: string }[]} beforeRecords
+ * @param {{ id: string; painPoint?: string }[]} afterRecords
+ */
+export function summarizeRetagPainPointChanges(beforeRecords, afterRecords) {
+  const beforeById = new Map(
+    beforeRecords.map((record) => [record.id, (record.painPoint || '').trim()]),
+  )
+  let changed = 0
+  let newlyFilled = 0
+  let cleared = 0
+
+  for (const after of afterRecords) {
+    const before = beforeById.get(after.id)
+    if (before === undefined) continue
+    const afterPain = (after.painPoint || '').trim()
+    if (before === afterPain) continue
+    changed += 1
+    if (!before && afterPain) newlyFilled += 1
+    if (before && !afterPain) cleared += 1
+  }
+
+  const total = afterRecords.length
+  const changeRate = total > 0 ? changed / total : 0
+  const shouldPromptInsightRefresh =
+    changed > 0 &&
+    (changed >= RETAG_PAIN_POINT_REFRESH_MIN_CHANGED ||
+      changeRate >= RETAG_PAIN_POINT_REFRESH_MIN_RATE)
+
+  return {
+    changed,
+    total,
+    changeRate,
+    newlyFilled,
+    cleared,
+    shouldPromptInsightRefresh,
+  }
+}
+
 /**
  * @param {{
  *   total: number
  *   beforeUnknown: number
  *   afterUnknown: number
  *   summary: ReturnType<typeof summarizeUnknownJourneyRecords>
+ *   painPointDelta?: ReturnType<typeof summarizeRetagPainPointChanges>
  * }} result
  */
 export function formatBulkRetagResultMessage(result) {
@@ -100,6 +144,16 @@ export function formatBulkRetagResultMessage(result) {
     for (const [key, count] of Object.entries(summary.reasons)) {
       if (!count) continue
       lines.push(`· ${UNKNOWN_JOURNEY_REASON_LABELS[key]}：${count} 条`)
+    }
+  }
+  const painDelta = result.painPointDelta
+  if (painDelta?.changed > 0) {
+    lines.push('')
+    lines.push(
+      `需求痛点：${painDelta.changed} 条已变更（占 ${Math.round(painDelta.changeRate * 100)}%）。`,
+    )
+    if (painDelta.shouldPromptInsightRefresh) {
+      lines.push('行动建议依赖痛点聚类，请刷新洞察工作台以同步最新结果。')
     }
   }
   return lines.join('\n')

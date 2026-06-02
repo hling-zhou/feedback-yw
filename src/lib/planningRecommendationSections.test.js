@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { randomId } from './randomId.js'
 import {
   attachPlanningRecommendationSections,
+  buildInsightExecutiveSummary,
   buildPlanningRecommendationSections,
+  collectPlaybookFallbackProductActions,
   ensureMinProductActions,
+  filterPainClustersForDisplay,
+  refineProductActionsForPainAlignment,
 } from './planningRecommendationSections.js'
 
 function makeRecord(overrides = {}) {
@@ -85,6 +89,197 @@ describe('planningRecommendationSections', () => {
     expect(sections.productActions?.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('collectPlaybookFallbackProductActions fills sparse cluster actions from journey playbook', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        optimizationProduct: '',
+        optimizationService: '',
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '安全组规则导致端口不通',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        optimizationProduct: '',
+      }),
+    ]
+    const fallback = collectPlaybookFallbackProductActions(pool, {
+      id: 'rec-cluster',
+      scope: { product: '弹性公网 IP' },
+    })
+    expect(fallback.length).toBeGreaterThanOrEqual(2)
+    expect(fallback.join('\n')).toMatch(/排查|playbook|诊断|自助/)
+  })
+
+  it('buildPlanningRecommendationSections uses cluster synthesis for pain_cluster_v2', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '安全组未放行特定端口导致业务访问中断。',
+        journeyL2: '公网访问不通',
+        problemType: '配置与操作',
+        optimizationProduct: '不应直接摘录的单条优化建议内容。',
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '安全组未放行特定端口导致业务访问中断。',
+        journeyL2: '公网访问不通',
+        problemType: '配置与操作',
+      }),
+    ]
+    const sections = buildPlanningRecommendationSections(
+      {
+        id: 'rec-v2-synth',
+        priority: 'high',
+        category: 'product',
+        summary: '安全组未放行特定端口导致业务访问中断。',
+        text: '安全组未放行特定端口导致业务访问中断。',
+        signalType: 'pain_cluster_v2',
+        generationMeta: { representativePain: '安全组未放行特定端口导致业务访问中断。' },
+        scope: { product: '弹性公网 IP', journeyL2: '公网访问不通', problemType: '配置与操作' },
+      },
+      pool,
+    )
+    expect(sections.productActions).toHaveLength(2)
+    const joined = sections.productActions?.join('\n') || ''
+    expect(joined).toMatch(/安全组未放行/)
+    expect(joined).not.toMatch(/不应直接摘录/)
+  })
+
+  it('buildPlanningRecommendationSections uses playbook when optimizations are missing', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        problemType: '可用性/连通性故障',
+        optimizationProduct: '',
+        optimizationService: '',
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '安全组规则导致端口不通',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        problemType: '可用性/连通性故障',
+        optimizationProduct: '',
+      }),
+    ]
+    const sections = buildPlanningRecommendationSections(
+      {
+        id: 'rec-playbook',
+        priority: 'high',
+        category: 'product',
+        summary: '公网端口无法访问业务系统',
+        text: '公网端口无法访问业务系统',
+        signalType: 'pain_cluster_v2',
+        scope: { product: '弹性公网 IP' },
+      },
+      pool,
+    )
+    expect(sections.productActions?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('refineProductActionsForPainAlignment drops misaligned ticket optimizations', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        problemType: '可用性/连通性故障',
+        optimizationProduct: '优化账单展示与折扣说明，减少商务类重复咨询。',
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        optimizationProduct: '优化账单展示与折扣说明，减少商务类重复咨询。',
+      }),
+    ]
+    const refined = refineProductActionsForPainAlignment(
+      {
+        executiveSummary: '公网端口无法访问业务系统',
+        productActions: ['优化账单展示与折扣说明，减少商务类重复咨询。'],
+        verification: { metrics: ['环节投诉占比'], userValidation: '回访' },
+      },
+      {
+        id: 'rec-align',
+        scope: { product: '弹性公网 IP' },
+      },
+      pool,
+    )
+    expect(refined.actionAlignmentWeak).toBe(true)
+    expect(refined.sections.productActions?.join('\n')).not.toMatch(/账单/)
+    expect(refined.sections.productActions?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('attachPlanningRecommendationSections exposes actionAlignmentWeak', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '专线链路中断导致业务无法互通',
+        journeyL1: '开通与交付',
+        journeyL2: '订购开通与加急',
+        optimizationProduct: '建立需求 intake 与排期可视化机制，减少无反馈重复咨询。',
+      }),
+    ]
+    const attached = attachPlanningRecommendationSections(
+      {
+        id: 'rec-weak',
+        priority: 'medium',
+        category: 'product',
+        summary: '专线链路中断导致业务无法互通',
+        text: '专线链路中断导致业务无法互通',
+        signalType: 'journey_hotspot',
+        scope: { product: '云专线' },
+      },
+      pool,
+    )
+    expect(attached.actionAlignmentWeak).toBe(true)
+  })
+
+  it('buildPlanningRecommendationSections uses dynamic verification for cluster recs', () => {
+    const pool = [
+      makeRecord({
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        sentiment: 'negative',
+        customerTier: '金牌',
+        optimizationProduct: '完善连通性诊断工具，区分客户侧/平台侧结论。',
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '公网端口无法访问业务系统',
+        journeyL1: '业务使用与连通',
+        journeyL2: '公网访问不通',
+        sentiment: 'negative',
+        customerTier: '银牌',
+        optimizationProduct: '在控制台增加端口冲突检测。',
+      }),
+    ]
+    const sections = buildPlanningRecommendationSections(
+      {
+        id: 'rec-verify',
+        priority: 'high',
+        category: 'product',
+        summary: '公网端口无法访问业务系统',
+        text: '公网端口无法访问业务系统',
+        signalType: 'pain_cluster_v2',
+        evidenceBundle: { ticketCount: 2, sharePct: 12 },
+        scope: { product: '弹性公网 IP' },
+      },
+      pool,
+    )
+    expect(sections.verification?.metrics?.some((m) => /群组工单|占产品|负面情绪/.test(m))).toBe(
+      true,
+    )
+    expect(sections.verification?.userValidation).toMatch(/金牌|银牌|复现率/)
+    expect(sections.clusterRootCause?.businessImpact).toMatch(/金牌|银牌|负面/)
+  })
+
   it('attachPlanningRecommendationSections syncs legacy details', () => {
     const pool = [
       makeRecord({
@@ -126,5 +321,69 @@ describe('planningRecommendationSections', () => {
       (sections.productActions?.length || 0) + (sections.serviceActions?.length || 0),
     ).toBeGreaterThanOrEqual(1)
     expect(attached.details?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('buildInsightExecutiveSummary rewrites representative pain into insight sentence', () => {
+    const pool = [
+      makeRecord({
+        journeyL2: '公网访问不通',
+        painPoint: '安全组未放行特定端口导致业务访问中断。',
+      }),
+      makeRecord({ id: randomId(), journeyL2: '公网访问不通' }),
+    ]
+    const summary = buildInsightExecutiveSummary(
+      {
+        id: 'rec-insight',
+        scope: { product: '弹性公网 IP' },
+        evidenceBundle: { ticketCount: 8, sharePct: 12 },
+      },
+      pool,
+      '安全组未放行特定端口导致业务访问中断。',
+    )
+    expect(summary).toMatch(/安全组未放行特定端口/)
+    expect(summary).not.toMatch(/集中反馈|「弹性公网 IP」/)
+    expect(summary).toMatch(/8 条工单/)
+    expect(summary).toMatch(/占该产品 12%/)
+  })
+
+  it('buildInsightExecutiveSummary skips single-ticket background narrative', () => {
+    const background =
+      '由于我单位近期承接了大量短视频AI智能剪辑、以及高画质游戏画面的渲染处理业----'
+    const pool = [
+      makeRecord({ painPoint: background, customerRequest: background }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '云主机内存不足导致渲染任务频繁 OOM。',
+        customerRequest: background,
+      }),
+      makeRecord({
+        id: randomId(),
+        painPoint: '云主机内存不足导致渲染任务频繁 OOM。',
+        customerRequest: background,
+      }),
+    ]
+    const summary = buildInsightExecutiveSummary(
+      {
+        id: 'rec-bg',
+        evidenceBundle: { ticketCount: 3 },
+      },
+      pool,
+      background,
+    )
+    expect(summary).toMatch(/内存不足|OOM/)
+    expect(summary).not.toMatch(/由于我单位|智能剪辑|渲染处理业/)
+  })
+
+  it('filterPainClustersForDisplay hides redundant pain clusters', () => {
+    const painClusters = [
+      { text: '安全组未放行导致端口不通', count: 6 },
+      { text: '账单金额计算错误', count: 2 },
+    ]
+    const filtered = filterPainClustersForDisplay(
+      painClusters,
+      '安全组未放行导致端口不通。',
+    )
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].text).toMatch(/账单/)
   })
 })

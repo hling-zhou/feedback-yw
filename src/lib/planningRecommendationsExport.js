@@ -29,12 +29,8 @@ export function planningRecommendationToExportRow(rec, index) {
     产品: rec.scope?.product || '',
     ...painClusterScoresToExportFields(sections?.painClusterScores, summary),
     [PLANNING_SECTION_LABELS.clusterRootCause]: formatClusterRootCauseForExport(cluster),
-    [CLUSTER_SUB_LABELS.dataMetrics]: (cluster?.dataMetrics || []).join('\n'),
     [CLUSTER_SUB_LABELS.painClusters]: (cluster?.painClusters || [])
       .map((p) => `「${p.text}」${p.count} 单`)
-      .join('\n'),
-    [CLUSTER_SUB_LABELS.rootCauses]: (cluster?.rootCauses || [])
-      .map((r) => `「${r.text}」${r.count} 单`)
       .join('\n'),
     [CLUSTER_SUB_LABELS.businessImpact]: cluster?.businessImpact || '',
     [PLANNING_SECTION_LABELS.productActions]: (sections?.productActions || []).join('\n'),

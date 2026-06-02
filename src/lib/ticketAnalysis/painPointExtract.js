@@ -1,3 +1,5 @@
+import { isMeaninglessTicketPlaceholderText } from '../taggingText.js'
+
 export const PAIN_POINT_DEFAULT_MAX = 60
 export const PAIN_POINT_HARD_MAX = 80
 
@@ -62,10 +64,12 @@ export function rewriteDemandPainPoint(text) {
 export function truncatePainPoint(text, hardMax = PAIN_POINT_HARD_MAX) {
   let t = stripLeadingPhrases(text)
   t = t.replace(EMOTION_SNIPPETS, '').replace(/\s+/g, '').trim()
-  if (!t) return ''
+  if (!t || isMeaninglessTicketPlaceholderText(t)) return ''
   if (!/[。！？!?]$/.test(t)) {
-    const cut = t.split(/[，,；;]/)[0] || t
-    t = cut
+    if (t.length > PAIN_POINT_DEFAULT_MAX) {
+      const cut = t.split(/[，,；;]/)[0] || t
+      if (cut.length >= 4) t = cut
+    }
   }
   if (t.length > hardMax) t = t.slice(0, hardMax)
   if (t && !/[。！？!?]$/.test(t)) t = `${t.replace(/[，,；;]$/, '')}。`

@@ -1,14 +1,22 @@
 import {
   extractCustomerRequestSegments,
-  isMeaninglessCustomerText,
   isPlatformActionContent,
+  parseLabelValueBlocks,
   resolveDisplayCustomerQuote,
+  trimInlinePlatformFieldSuffix,
 } from '../ticketDetailDisplay.js'
+import {
+  extractAcceptanceTextFromFields,
+  extractHandlingTextFromFields,
+  isMeaninglessTicketPlaceholderText,
+} from '../taggingText.js'
 import {
   cleanCustomerRequestPhrase,
   isCustomerDemandLike,
   isFormattedTemplateContent,
   isInternalCsBackendText,
+  isPlatformOutcomeContent,
+  isProductOnlyProblemLabel,
 } from './customerRequestFilters.js'
 import { stripInternalWorkflowPrefix } from './workflowTextCleanup.js'
 
@@ -56,6 +64,59 @@ export function truncateCustomerRequest(text, hardMax = CUSTOMER_REQUEST_HARD_MA
   let out = picked.join('')
   if (out.length > hardMax) out = out.slice(0, hardMax)
   return out
+}
+
+/**
+ * 合并「产品名 + 后续诉求句」
+ *
+ * @param {string} product
+ * @param {string} intent
+ */
+export function mergeProductWithIntent(product, intent) {
+  const productClean = product.trim()
+  let intentClean = intent.trim().replace(/^客户/, '').trim()
+  if (!intentClean) return productClean
+  if (intentClean.includes(productClean)) return intentClean
+  if (productClean.includes(intentClean)) return productClean
+  return `${productClean}${intentClean}`
+}
+
+/**
+ * 多条候选合并为一条客户请求（产品名 + 诉求 / 取最优）
+ *
+ * @param {string[]} texts
+ */
+export function consolidateCustomerRequestTexts(texts) {
+  const parts = texts
+    .map((t) => cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(t)))
+    .filter(Boolean)
+    .filter(
+      (t) =>
+        !isMeaninglessTicketPlaceholderText(t) &&
+        !isPlatformOutcomeContent(t) &&
+        !isFormattedTemplateContent(t) &&
+        isCustomerDemandLike(t),
+    )
+  if (!parts.length) return ''
+  if (parts.length === 1) return parts[0]
+  if (isProductOnlyProblemLabel(parts[0])) {
+    return mergeProductWithIntent(parts[0], parts.slice(1).join(''))
+  }
+  const scored = parts.map((text, order) => ({
+    text,
+    score: scoreCustomerRequestCandidate({ text, phase: 1, order }),
+  }))
+  scored.sort((a, b) => b.score - a.score)
+  return scored[0]?.text || parts[0]
+}
+
+/**
+ * @param {string} text
+ */
+export function normalizeCustomerRequestText(text) {
+  const t = cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(text || ''))
+  if (!t || isMeaninglessTicketPlaceholderText(t) || isPlatformOutcomeContent(t)) return ''
+  return t
 }
 
 /**
@@ -114,6 +175,63 @@ const WORKFLOW_INLINE_DETAIL_RE =
 
 const WORKFLOW_NUMBERED_DEMAND_RE =
   /(?:^|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=\d+[、.．]\s*(?:【?(?:问题原因|产品|目前进展|预处理|协助|解决方案|处理人|是否验证|回单)|产品UUID|预处理|协助请求)|$)/i
+
+const WORKFLOW_CUSTOMER_PROBLEM_INLINE_RE =
+  /(?:^|\n|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=(?:^|\n|\d+[、.．]\s*)【?(?:问题原因|解决方案|处理意见|目前进展|协助|预处理|产品UUID)|$)/i
+
+/**
+ * 从受理/咨询正文直接抽取客户问题（segments 为空时的 fallback）
+ *
+ * @param {{ handlingText?: string; rawText?: string; customerQuote?: string; sourceColumns?: Record<string, string> }} fields
+ */
+function extractCustomerRequestFromAcceptance(fields) {
+  const acceptance = extractAcceptanceTextFromFields(fields)
+  if (!acceptance?.trim()) return ''
+
+  for (const block of parseLabelValueBlocks(acceptance)) {
+    if (!block.label) continue
+    const label = block.label.replace(/[（(].*[）)]/g, '').trim()
+    if (!/^(?:客户问题|客户需求|详细内容|问题描述|咨询内容|客户反馈|受理内容|问题现象|故障现象|客户原话|用户问题|工单标题)$/.test(label)) {
+      continue
+    }
+    const body = cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(block.text))
+    if (
+      body &&
+      !isMeaninglessTicketPlaceholderText(body) &&
+      !isFormattedTemplateContent(body) &&
+      isCustomerDemandLike(body)
+    ) {
+      return body
+    }
+  }
+
+  const inline = acceptance.match(WORKFLOW_CUSTOMER_PROBLEM_INLINE_RE)
+  if (inline?.[1]) {
+    const body = cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(inline[1]))
+    if (
+      body &&
+      !isMeaninglessTicketPlaceholderText(body) &&
+      !isFormattedTemplateContent(body) &&
+      isCustomerDemandLike(body)
+    ) {
+      return body
+    }
+  }
+
+  const detail = acceptance.match(WORKFLOW_INLINE_DETAIL_RE)
+  if (detail?.[1]) {
+    const body = cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(detail[1]))
+    if (
+      body &&
+      !isFormattedTemplateContent(body) &&
+      isCustomerDemandLike(body)
+    ) {
+      return body
+    }
+  }
+
+  return ''
+}
 
 const WORKFLOW_CUSTOMER_REACTION_RE =
   /客户反应[，,]\s*([\s\S]{8,400}?)(?=(?:，|,)?(?:36\.\*|uuid\s*[：:]|联系时间|##资源ID|产品名称|受理渠道)|$)/i
@@ -227,9 +345,10 @@ export function extractLifecycleCustomerPhrases(corpus) {
     if (!cleaned || cleaned.length < 2) return
     const key = cleaned.replace(/\s+/g, '')
     if (seen.has(key)) return
-    if (isMeaninglessCustomerText(cleaned)) return
+    if (isMeaninglessTicketPlaceholderText(cleaned)) return
     if (isCustomerRequestPlatformNoise(cleaned)) return
     if (isInternalCsBackendText(cleaned)) return
+    if (isPlatformOutcomeContent(cleaned)) return
     if (isFormattedTemplateContent(cleaned)) return
     if (!isCustomerDemandLike(cleaned)) return
     seen.add(key)
@@ -404,7 +523,8 @@ export function collectCustomerRequestCandidates(input) {
     })
   })
 
-  const corpus = [input.rawText, input.handlingText].filter(Boolean).join('\n')
+  const effectiveHandling = extractHandlingTextFromFields(fields)
+  const corpus = [input.rawText, effectiveHandling].filter(Boolean).join('\n')
   extractLifecycleCustomerPhrases(corpus).forEach((phrase, index) => {
     candidates.push({ text: phrase, phase: 2, order: 100 + index })
   })
@@ -412,9 +532,10 @@ export function collectCustomerRequestCandidates(input) {
   return candidates.filter(
     (c) =>
       c.text &&
-      !isMeaninglessCustomerText(c.text) &&
+      !isMeaninglessTicketPlaceholderText(c.text) &&
       !isCustomerRequestPlatformNoise(c.text) &&
       !isInternalCsBackendText(c.text) &&
+      !isPlatformOutcomeContent(c.text) &&
       !isFormattedTemplateContent(c.text) &&
       isCustomerDemandLike(c.text),
   )
@@ -426,6 +547,7 @@ export function collectCustomerRequestCandidates(input) {
  * @returns {string}
  */
 function extractCustomerRequestFromHandling(handlingText) {
+  if (isMeaninglessTicketPlaceholderText(handlingText)) return ''
   if (!handlingText?.trim()) return ''
   const phrases = extractLifecycleCustomerPhrases(handlingText)
   if (phrases.length) {
@@ -443,8 +565,11 @@ function extractCustomerRequestFromHandling(handlingText) {
  */
 export function extractCustomerRequestRule(input) {
   const candidates = collectCustomerRequestCandidates(input)
+  const consolidated = consolidateCustomerRequestTexts(candidates.map((c) => c.text))
+  if (consolidated) return truncateCustomerRequest(consolidated)
+
   const best = selectBestCustomerRequest(candidates)
-  if (best) return truncateCustomerRequest(best)
+  if (best) return truncateCustomerRequest(normalizeCustomerRequestText(best))
 
   const fields = {
     handlingText: input.handlingText,
@@ -460,8 +585,13 @@ export function extractCustomerRequestRule(input) {
     }
   }
 
-  const fromHandling = extractCustomerRequestFromHandling(input.handlingText)
+  const fromHandling = extractCustomerRequestFromHandling(
+    extractHandlingTextFromFields(fields),
+  )
   if (fromHandling) return truncateCustomerRequest(fromHandling)
+
+  const fromAcceptance = extractCustomerRequestFromAcceptance(fields)
+  if (fromAcceptance) return truncateCustomerRequest(fromAcceptance)
 
   if (quote && !isFormattedTemplateContent(quote)) {
     return truncateCustomerRequest(quote)

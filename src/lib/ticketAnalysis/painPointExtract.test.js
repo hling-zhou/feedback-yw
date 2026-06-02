@@ -30,4 +30,10 @@ describe('painPointExtract V2 rules', () => {
     })
     expect(pain).toMatch(/安全组|8085/)
   })
+
+  it('keeps comma-separated consult pain without truncating to first token', () => {
+    const pain = truncatePainPoint('云专线，客户变更机房地址')
+    expect(pain).toMatch(/变更机房地址/)
+    expect(pain).not.toBe('云专线。')
+  })
 })

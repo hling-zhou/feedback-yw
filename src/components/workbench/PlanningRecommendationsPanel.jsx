@@ -27,6 +27,7 @@ import {
 import {
   groupRecommendationsByProduct,
   recommendationsForMatrixCell,
+  resolveRecommendationSummary,
 } from '../../lib/planningRecommendationDisplay.js'
 import {
   FEEDBACK_TYPE_LABELS,
@@ -39,6 +40,7 @@ import {
   PLANNING_RECOMMENDATIONS_PANEL_TITLE,
 } from '../../domain/overviewConclusions.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
+import { refreshStaleV2RecommendationSections } from '../../snapshots/rehydrateOverviewRecommendations.js'
 
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -158,10 +160,13 @@ export default function PlanningRecommendationsPanel({
     return map
   }, [feedbacks])
 
-  const allRecommendations = useMemo(
-    () => limitPlanningRecommendations(conclusions?.recommendations || []),
-    [conclusions?.recommendations],
-  )
+  const allRecommendations = useMemo(() => {
+    const raw = refreshStaleV2RecommendationSections(
+      conclusions?.recommendations || [],
+      feedbacks,
+    )
+    return limitPlanningRecommendations(raw)
+  }, [conclusions?.recommendations, feedbacks])
 
   const recommendationProductOptions = useMemo(
     () => collectRecommendationProductOptions(allRecommendations, feedbackByRecordId),
@@ -253,6 +258,7 @@ export default function PlanningRecommendationsPanel({
             icon={<ThunderboltOutlined />}
             loading={polishing}
             disabled={!canPolish}
+            title="在已有 V2 结构化行动建议上润色概述与举措文案，不重新聚类；与设置中的「单条工单优化建议」无关"
             onClick={async () => {
               setPolishing(true)
               try {
@@ -482,6 +488,7 @@ function PlanningRecommendationItem({
 }) {
   const details = rec.details || []
   const sections = rec.sections
+  const insightSummary = resolveRecommendationSummary(rec)
   const ticketIds = rec.evidenceTicketIds || []
   const feedbacksListHref = buildFeedbacksLinkForRecommendation(rec, {
     month: periodMonth,
@@ -515,6 +522,12 @@ function PlanningRecommendationItem({
           {index + 1}
         </Typography.Text>
         <div className="min-w-0 flex-1">
+          {insightSummary ? (
+            <Typography.Paragraph className="!mb-2 text-sm leading-relaxed text-gray-800">
+              {insightSummary}
+            </Typography.Paragraph>
+          ) : null}
+
           <Space wrap className="mb-2">
             <Tag color={PRIORITY_COLORS[rec.priority]}>
               {PRIORITY_LABELS[rec.priority]}优先级

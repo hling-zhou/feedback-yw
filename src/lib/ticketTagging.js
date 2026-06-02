@@ -3,6 +3,8 @@ import { getNodeMapsForProduct, hasRequestNodeMaps } from './taxonomyLoader.js'
 import { extractCustomerQuote, extractResponseText } from './extract.js'
 import { isValidRootCause } from './journeyOptimizationLLM.js'
 import { matchSharedLabel, resolveProblemTypeFromConfig } from './dimensionTagging.js'
+import { isMeaninglessTicketPlaceholderText } from './taggingText.js'
+import { trimInlinePlatformFieldSuffix } from './ticketDetailDisplay.js'
 
 const ROOT_CAUSE_KW = [
   '根因', '原因', '由于', '导致', '是因为', '经排查', '定位为', '问题在于',
@@ -193,14 +195,29 @@ export function matchJourneyByDescription(text, journeys, taxonomyKey, opts = {}
 
 export function extractProblemSummary(text) {
   const quote = extractCustomerQuote(text)
-  if (quote && quote.length > 10) return quote.slice(0, 300)
+  if (quote && quote.length > 10 && !isMeaninglessTicketPlaceholderText(quote)) {
+    return trimInlinePlatformFieldSuffix(quote).slice(0, 300)
+  }
+
+  const inlineProblem = text.match(
+    /(?:^|\n|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=(?:^|\n|\d+[、.．]\s*)【?(?:问题原因|解决方案|处理意见|目前进展|协助)|$)/m,
+  )
+  if (inlineProblem?.[1]) {
+    const body = trimInlinePlatformFieldSuffix(inlineProblem[1].trim())
+    if (body && !isMeaninglessTicketPlaceholderText(body)) return body.slice(0, 300)
+  }
+
   const title = text.match(/工单标题[：:]([^\n]+)/)
   if (title) return title[1].trim().slice(0, 300)
   const demand = text.match(/客户需求[：:]([^\n|]+)/)
   if (demand) return demand[1].trim().slice(0, 300)
   const detail = text.match(/详细内容[：:]([^\n|]+)/)
   if (detail) return detail[1].trim().slice(0, 300)
-  return text.slice(0, 200).replace(/\s+/g, ' ')
+
+  const fallback = text.slice(0, 200).replace(/\s+/g, ' ').trim()
+  if (!fallback || isMeaninglessTicketPlaceholderText(fallback)) return ''
+  if (/^【处理意见】/.test(fallback)) return ''
+  return fallback
 }
 
 export function extractSolutionSummary(text, fromCol) {

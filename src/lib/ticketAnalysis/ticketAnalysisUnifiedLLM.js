@@ -101,6 +101,7 @@ const UNIFIED_SYSTEM_PROMPT = `你是云计算客户体验分析师兼产品体�
 步骤 1 — 客户请求内容：
 - 综合受理、协办、反馈、追加等客户诉求；多轮优先级：明确修正 > 严重性最高 > 最新未解决 > 最完整。
 - 删除内部流转话术与情绪词；必须基于工单事实；≤80 字，最长 ${CUSTOMER_REQUEST_HARD_MAX} 字。
+- 只写客户诉求/问题现象，禁止写入「解决方案」「处理意见」字段或平台结论（如「客户未提供信息」「离线处理」）。
 
 步骤 2 — 需求痛点：
 - 以步骤 1 为主输入，聚焦未满足诉求或问题本质；禁止「用户希望/建议/反馈/要求」开头。
@@ -165,7 +166,7 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings) {
       typeof parsed.customerRequest === 'string' ? parsed.customerRequest.trim() : ''
     const rawPain = typeof parsed.painPoint === 'string' ? parsed.painPoint.trim() : ''
 
-    if (isValidLlmCustomerRequest(rawRequest)) {
+    if (isValidLlmCustomerRequest(rawRequest, rule.customerRequest)) {
       customerRequest = truncateCustomerRequest(rawRequest)
       customerRequestSource = 'llm'
     } else if (rawRequest) {

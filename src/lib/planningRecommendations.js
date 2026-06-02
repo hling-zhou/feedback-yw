@@ -21,6 +21,10 @@ import {
 } from './planningRecommendationTemplate.js'
 import { isNegativeSentiment } from './sentiment.js'
 import { synthesizePlanningMeasures, topValues } from './journeyInsights.js'
+import {
+  inferPlanningJourneyContext,
+  PLAYBOOK_MEASURE_SOURCE_SCORE,
+} from './planningPlaybook.js'
 import { isGenericRecommendationText, isTicketDerivedPlanningText, isValidRootCause } from './journeyOptimizationLLM.js'
 import { formatWanTouRatio } from './wanTouRatio.js'
 import { buildWorkbenchAnalysisUrl } from './workbenchAnalysisLink.js'
@@ -142,6 +146,15 @@ export function describeRecommendationAxis(rec) {
 export function compareEvidenceStrength(a, b) {
   const score = { strong: 3, moderate: 2, weak: 1 }
   return (score[b] || 0) - (score[a] || 0)
+}
+
+/**
+ * @param {import('../domain/overviewConclusions.js').EvidenceStrength} [strength]
+ * @returns {import('../domain/overviewConclusions.js').EvidenceStrength}
+ */
+export function downgradeEvidenceStrength(strength) {
+  if (strength === 'strong') return 'moderate'
+  return 'weak'
 }
 
 /**
@@ -937,13 +950,101 @@ function buildProductCoverageRecommendation(product, ticketRecords) {
 /**
  * 按优先级截断行动建议（展示/快照兜底，最多 MAX_PLANNING_RECOMMENDATIONS 条）
  * @param {OverviewRecommendation[]} list
- * @param {number} [max]
+ * @param {number | { max?: number; ticketRecords?: FeedbackRecord[] }} [maxOrOptions]
  */
-export function limitPlanningRecommendations(list, max = MAX_RECOMMENDATIONS) {
+export function limitPlanningRecommendations(list, maxOrOptions = MAX_RECOMMENDATIONS) {
+  const options =
+    typeof maxOrOptions === 'object' && maxOrOptions !== null
+      ? maxOrOptions
+      : { max: maxOrOptions }
+  const ticketRecords = options.ticketRecords
+  const max =
+    options.max ??
+    (ticketRecords?.length
+      ? computeMaxPlanningRecommendations(ticketRecords)
+      : MAX_RECOMMENDATIONS)
+
+  if (ticketRecords?.length) {
+    return limitPlanningRecommendationsWithProductQuota(list, ticketRecords, max)
+  }
+
   const priorityScore = { high: 3, medium: 2, low: 1 }
   return [...(list || [])]
     .sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority])
     .slice(0, max)
+}
+
+/**
+ * @param {OverviewRecommendation[]} list
+ */
+export function sortRecommendationsForSelection(list) {
+  const priorityScore = { high: 3, medium: 2, low: 1 }
+  return [...(list || [])].sort((a, b) => {
+    const er = compareEvidenceStrength(a.evidenceStrength, b.evidenceStrength)
+    if (er !== 0) return er
+    const scoreA =
+      a.generationMeta?.score ?? a.sections?.painClusterScores?.priorityScore ?? 0
+    const scoreB =
+      b.generationMeta?.score ?? b.sections?.painClusterScores?.priorityScore ?? 0
+    if (scoreB !== scoreA) return scoreB - scoreA
+    const rankA = a.sections?.painClusterScores?.rank ?? 999
+    const rankB = b.sections?.painClusterScores?.rank ?? 999
+    if (rankA !== rankB) return rankA - rankB
+    return (priorityScore[b.priority] || 1) - (priorityScore[a.priority] || 1)
+  })
+}
+
+/**
+ * 按产品配额选取行动建议：每产品至少保留 quota 条，再全局填充至 max（P1-1）
+ * @param {OverviewRecommendation[]} list
+ * @param {FeedbackRecord[]} ticketRecords
+ * @param {number} [max]
+ */
+export function limitPlanningRecommendationsWithProductQuota(
+  list,
+  ticketRecords,
+  max = computeMaxPlanningRecommendations(ticketRecords),
+) {
+  if (!list?.length) return []
+  if (!ticketRecords?.length) return limitPlanningRecommendations(list, max)
+
+  const sorted = sortRecommendationsForSelection(list)
+  const products = listProductsForPlanningCoverage(ticketRecords)
+  /** @type {OverviewRecommendation[]} */
+  const selected = []
+  const selectedIds = new Set()
+
+  const addRec = (rec) => {
+    if (!rec?.id || selectedIds.has(rec.id)) return false
+    selectedIds.add(rec.id)
+    selected.push(rec)
+    return true
+  }
+
+  for (const product of products) {
+    const productCount = ticketRecords.filter((r) => r.product === product).length
+    const quota = targetRecommendationCountForProduct(productCount)
+    if (!quota) continue
+
+    const productRecs = sorted.filter((rec) => recommendationProductName(rec) === product)
+    let added = 0
+    for (const rec of productRecs) {
+      if (added >= quota || selected.length >= max) break
+      if (addRec(rec)) added += 1
+    }
+  }
+
+  for (const rec of sorted) {
+    if (selected.length >= max) break
+    const prod = recommendationProductName(rec)
+    if (prod) {
+      const sameProdCount = selected.filter((s) => recommendationProductName(s) === prod).length
+      if (sameProdCount >= LARGE_PRODUCT_REC_MAX) continue
+    }
+    addRec(rec)
+  }
+
+  return sortRecommendationsForSelection(selected).slice(0, max)
 }
 
 /**
@@ -1397,10 +1498,7 @@ export function collectActionItemsFromRecords(records, limit = 6) {
  * @param {FeedbackRecord[]} records
  */
 function inferJourneyContext(records) {
-  const topL2 = topValues(records, 'journeyL2', 1)[0]
-  if (!topL2?.text) return null
-  const l1 = records.find((r) => r.journeyL2 === topL2.text)?.journeyL1 || ''
-  return { l1, l2: topL2.text }
+  return inferPlanningJourneyContext(records)
 }
 
 /**
@@ -1598,15 +1696,7 @@ function formatActionItemDetail(item) {
   return item.text
 }
 
-const MEASURE_SOURCE_SCORE = {
-  人工复核举措: 50,
-  人工复核方案: 45,
-  根因归纳: 32,
-  '环节 playbook': 30,
-  '类型 playbook': 28,
-  '阶段 playbook': 24,
-  类型归纳: 18,
-}
+const MEASURE_SOURCE_SCORE = PLAYBOOK_MEASURE_SOURCE_SCORE
 
 /**
  * 合并工单要点与业务优化举措（环节 playbook / 工单提炼等）
@@ -1776,6 +1866,10 @@ function topJourneyL2Segments(mergedJourney, limit = 3) {
  * @param {number} [params.maxNegativePct]
  * @param {number | null} [params.trendDeltaPct]
  * @param {string} [params.trendDirection]
+ *
+ * Legacy 信号引擎（journey_hotspot / wan_tou / problem_type 等）。
+ * 洞察快照主路径已切换为 V2 痛点聚类；保留供回归测试与应急 fallback。
+ * Playbook 举措 SSOT：`planningPlaybook.js`。
  */
 export function buildPlanningRecommendations({
   ticketRecords,

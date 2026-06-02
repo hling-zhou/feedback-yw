@@ -73,13 +73,7 @@ export default function PlanningRecommendationSectionsView({ sections }) {
   const cluster = normalizeClusterRootCause(normalized.clusterRootCause)
   const verification = normalizeVerification(normalized.verification)
   const painScores = normalized.painClusterScores
-  const hasCluster =
-    cluster &&
-    (cluster.contextNote ||
-      cluster.dataMetrics?.length ||
-      cluster.painClusters?.length ||
-      cluster.rootCauses?.length ||
-      cluster.businessImpact)
+  const hasCluster = cluster && (cluster.painClusters?.length || cluster.businessImpact)
   const hasProduct = (normalized.productActions?.length ?? 0) > 0
   const hasService = (normalized.serviceActions?.length ?? 0) > 0
   const hasActions = hasProduct || hasService
@@ -114,45 +108,18 @@ export default function PlanningRecommendationSectionsView({ sections }) {
               </li>
             ) : null}
             <li>高价值客户影响：{painScores.customerTierSummary}</li>
-            <li>
-              <Typography.Text className="block text-[11px] font-medium text-gray-600">
-                当前痛点
-              </Typography.Text>
-              {normalized.executiveSummary || '—'}
-            </li>
           </ul>
         </SectionBlock>
       )}
 
       {hasCluster && (
         <SectionBlock title={PLANNING_SECTION_LABELS.clusterRootCause}>
-          {cluster.contextNote && (
-            <Typography.Text className="mb-1 block text-sm text-gray-700">
-              {cluster.contextNote}
-            </Typography.Text>
-          )}
-          {cluster.dataMetrics?.length ? (
-            <SubBlock title={CLUSTER_SUB_LABELS.dataMetrics}>
-              <BulletList items={cluster.dataMetrics} />
-            </SubBlock>
-          ) : null}
           {cluster.painClusters?.length ? (
             <SubBlock title={CLUSTER_SUB_LABELS.painClusters}>
               <ul className="mb-0 list-none space-y-1 pl-0 text-sm leading-relaxed text-gray-700">
                 {cluster.painClusters.map((p) => (
                   <li key={p.text}>
                     「{p.text}」<Typography.Text type="secondary"> {p.count} 单</Typography.Text>
-                  </li>
-                ))}
-              </ul>
-            </SubBlock>
-          ) : null}
-          {cluster.rootCauses?.length ? (
-            <SubBlock title={CLUSTER_SUB_LABELS.rootCauses}>
-              <ul className="mb-0 list-none space-y-1 pl-0 text-sm leading-relaxed text-gray-700">
-                {cluster.rootCauses.map((r) => (
-                  <li key={r.text}>
-                    「{r.text}」<Typography.Text type="secondary"> {r.count} 单</Typography.Text>
                   </li>
                 ))}
               </ul>

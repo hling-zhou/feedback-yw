@@ -33,9 +33,6 @@ import {
   countPendingDuplicateCandidates,
 } from '../../lib/tagCandidates.js'
 import { getTagLibraryVersion } from '../../lib/taxonomyLoader.js'
-import {
-  downloadTaxonomyPatchJson,
-} from '../../lib/tagLibrary/exportTaxonomyPatch.js'
 
 const STATUS_LABELS = {
   pending: { color: 'orange', text: '待复核' },
@@ -151,7 +148,6 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
   const [batchApproving, setBatchApproving] = useState(false)
   const [reviewNote, setReviewNote] = useState('')
   const [batchProcessing, setBatchProcessing] = useState(false)
-  const [lastAdoptPatch, setLastAdoptPatch] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [mergingDupes, setMergingDupes] = useState(false)
 
@@ -500,11 +496,12 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
               type="primary"
               onClick={async () => {
                 if (!approving) return
-                const result = await approveTagCandidate(approving.id, reviewNote)
+                await approveTagCandidate(approving.id, reviewNote)
                 setApproving(null)
-                setLastAdoptPatch(result?.patchPackage ?? null)
                 markSnapshotsStale()
-                message.success('已采纳并写入本机标签库')
+                message.success(
+                  '已采纳并写入共享标签库；可在「标签管理」对应 Tab 查看，其他用户约 5 秒内同步',
+                )
               }}
             >
               确认采纳
@@ -548,45 +545,6 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
               />
             </div>
           )}
-        </Modal>
-      )}
-
-      {!readOnly && (
-        <Modal
-          title="导出本条到服务端配置"
-          open={Boolean(lastAdoptPatch)}
-          onCancel={() => setLastAdoptPatch(null)}
-          footer={[
-            <Button key="close" onClick={() => setLastAdoptPatch(null)}>
-              稍后导出
-            </Button>,
-            <Button
-              key="excel"
-              icon={<FileExcelOutlined />}
-              onClick={async () => {
-                await exportTaxonomyPatch('excel')
-                message.success('已下载 Excel 合并行')
-              }}
-            >
-              导出 Excel
-            </Button>,
-            <Button
-              key="json"
-              type="primary"
-              icon={<DownloadOutlined />}
-              onClick={() => {
-                if (lastAdoptPatch) downloadTaxonomyPatchJson(lastAdoptPatch)
-                message.success('已下载 JSON 合并包')
-                setLastAdoptPatch(null)
-              }}
-            >
-              下载 JSON
-            </Button>,
-          ]}
-        >
-          <Typography.Paragraph>
-            已写入共享标签库。可在「标签管理」对应 Tab 查看与调整；保存后其他用户约 5 秒内同步。
-          </Typography.Paragraph>
         </Modal>
       )}
     </div>

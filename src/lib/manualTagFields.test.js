@@ -25,13 +25,19 @@ const base = {
 }
 
 describe('manualTagFields', () => {
-  it('mergeManualTagFieldsOnUserEdit accumulates dimensions from patch keys', () => {
+  it('mergeManualTagFieldsOnUserEdit accumulates dimensions only when values change', () => {
     expect(
       mergeManualTagFieldsOnUserEdit(
         { ...base, manualTagFields: ['requestScene'] },
         { problemType: '计费与账单', journeyL2: '计费模式咨询' },
       ),
     ).toEqual(['requestScene', 'problemType', 'journey'])
+    expect(
+      mergeManualTagFieldsOnUserEdit(base, {
+        requestScene: base.requestScene,
+        problemType: base.problemType,
+      }),
+    ).toEqual([])
   })
 
   it('preserveManualTags keeps manual dimensions after auto retag output', () => {
@@ -86,6 +92,52 @@ describe('manualTagFields', () => {
     expect(cleared.actionId).toBe('')
     expect(cleared.actionSchedule).toBe('')
     expect(cleared.rootCauseReview).toBe('列根因')
+  })
+
+  it('preserveManualTags skips restore when stale manualTagFields but LLM wrote llm source', () => {
+    const original = {
+      ...base,
+      manualTagFields: ['customerRequest'],
+      customerRequest: '旧请求',
+      customerRequestSource: 'rule',
+      painPoint: '旧痛点',
+      painPointSource: 'rule',
+    }
+    const processed = {
+      ...original,
+      customerRequest: 'LLM 请求',
+      customerRequestSource: 'llm',
+      painPoint: 'LLM 痛点',
+      painPointSource: 'llm',
+    }
+    const kept = preserveManualTags(original, processed)
+    expect(kept.customerRequest).toBe('LLM 请求')
+    expect(kept.customerRequestSource).toBe('llm')
+    expect(kept.painPoint).toBe('LLM 痛点')
+    expect(kept.painPointSource).toBe('llm')
+  })
+
+  it('preserveManualTags still restores manual/import analysis fields', () => {
+    const original = {
+      ...base,
+      manualTagFields: ['customerRequest', 'painPoint'],
+      customerRequest: '人工请求',
+      customerRequestSource: 'manual',
+      painPoint: '人工痛点',
+      painPointSource: 'import',
+    }
+    const processed = {
+      ...original,
+      customerRequest: 'LLM 请求',
+      customerRequestSource: 'llm',
+      painPoint: 'LLM 痛点',
+      painPointSource: 'llm',
+    }
+    const kept = preserveManualTags(original, processed)
+    expect(kept.customerRequest).toBe('人工请求')
+    expect(kept.customerRequestSource).toBe('manual')
+    expect(kept.painPoint).toBe('人工痛点')
+    expect(kept.painPointSource).toBe('import')
   })
 
   it('preserveManualTags skips restore when forceOverride is true', () => {

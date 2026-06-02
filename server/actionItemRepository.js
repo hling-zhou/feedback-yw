@@ -242,7 +242,12 @@ function putActionItem(item, options = {}) {
  * @returns {boolean}
  */
 function deleteActionItem(id) {
-  const result = getDb().prepare('DELETE FROM action_items WHERE id = ?').run(id)
+  const trimmed = String(id ?? '').trim()
+  if (!trimmed) return false
+
+  storageRepository.clearRecordActionReferences(trimmed)
+
+  const result = getDb().prepare('DELETE FROM action_items WHERE id = ?').run(trimmed)
   if (result.changes > 0) bumpDataRevision()
   return result.changes > 0
 }

@@ -7,13 +7,22 @@ vi.mock('../lib/actionItemClient.js', () => ({
   unlinkTicketsFromActionLibrary: vi.fn(),
 }))
 
+vi.mock('./actionItemTicketSync.js', () => ({
+  syncLinkedTicketCopies: vi.fn(),
+}))
+
 import {
   createActionItem,
   getActionItem,
   updateActionItem,
   unlinkTicketsFromActionLibrary,
 } from '../lib/actionItemClient.js'
-import { persistEstablishedActionForTicket } from './establishedActionPersist.js'
+import { syncLinkedTicketCopies } from './actionItemTicketSync.js'
+import {
+  mergeEstablishedActionLibraryForRecords,
+  persistEstablishedActionForTicket,
+  syncLinkedTicketsForActionIds,
+} from './establishedActionPersist.js'
 
 describe('establishedActionPersist', () => {
   const record = {
@@ -204,5 +213,50 @@ describe('establishedActionPersist', () => {
     expect(unlinkTicketsFromActionLibrary).toHaveBeenCalledWith([
       { actionId: 'act-old', ticketId: 'T-100' },
     ])
+  })
+
+  it('mergeEstablishedActionLibraryForRecords upserts each import row', async () => {
+    createActionItem.mockResolvedValue({
+      id: 'act-import',
+      content: '导入举措',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+      linkedTicketIds: ['T-100'],
+      linkedDataSources: ['complaint_ticket'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    const merged = await mergeEstablishedActionLibraryForRecords([
+      { ...record, establishedAction: '导入举措', actionSchedule: '' },
+    ])
+
+    expect(merged).toHaveLength(1)
+    expect(merged[0].actionId).toBe('act-import')
+    expect(merged[0].establishedAction).toBe('导入举措')
+    expect(createActionItem).toHaveBeenCalled()
+  })
+
+  it('syncLinkedTicketsForActionIds delegates to syncLinkedTicketCopies', async () => {
+    getActionItem.mockResolvedValue({
+      id: 'act-shared',
+      content: '共享举措',
+      scheduleAt: '2026-09-01',
+    })
+    syncLinkedTicketCopies.mockResolvedValue(2)
+    const updateFeedback = vi.fn()
+
+    const total = await syncLinkedTicketsForActionIds(
+      ['act-shared'],
+      [{ id: 'r1', actionId: 'act-shared' }],
+      updateFeedback,
+    )
+
+    expect(total).toBe(2)
+    expect(syncLinkedTicketCopies).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'act-shared' }),
+      [{ id: 'r1', actionId: 'act-shared' }],
+      updateFeedback,
+    )
   })
 })

@@ -1,10 +1,11 @@
 import { Tag } from 'antd'
 import {
   getAutoOptimizationSource,
+  getJourneyDisplaySource,
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
-  getOptimizationSource,
+  getRuleManualDimensionSource,
   getTicketAnalysisSourceLabel,
 } from '../../lib/ticketAnalysis/ticketAnalysisSources.js'
 
@@ -48,11 +49,22 @@ export function PainPointSourceTag({ record }) {
 /**
  * @param {import('../../lib/types.js').FeedbackRecord} record
  */
-export function OptimizationSourceTag({ record }) {
+export function JourneySourceTag({ record }) {
+  return (
+    <TicketAnalysisSourceTag source={getJourneyDisplaySource(record)} title="用户旅程来源" />
+  )
+}
+
+/**
+ * @param {import('../../lib/types.js').FeedbackRecord} record
+ * @param {'requestScene' | 'problemType' | 'sentiment'} dimension
+ * @param {string} title
+ */
+export function RuleManualDimensionSourceTag({ record, dimension, title }) {
   return (
     <TicketAnalysisSourceTag
-      source={getOptimizationSource(record)}
-      title="单条优化建议来源（人工复核优先）"
+      source={getRuleManualDimensionSource(record, dimension)}
+      title={title}
     />
   )
 }
@@ -66,7 +78,7 @@ export function AutoOptimizationSourceTag({ record }) {
   return (
     <TicketAnalysisSourceTag
       source={source}
-      title="自动优化建议来源（规则或大模型）"
+      title="自动优化建议来源（规则或大模型，不参与 LLM 状态筛选）"
     />
   )
 }

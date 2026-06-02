@@ -3,6 +3,7 @@ import { randomId } from '../lib/randomId.js'
 import {
   needsOverviewRecommendationsRehydrate,
   prepareOverviewConclusionsForDisplay,
+  refreshStaleV2RecommendationSections,
   rehydrateOverviewRecommendations,
   OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE,
   OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE,
@@ -120,6 +121,123 @@ describe('rehydrateOverviewRecommendations', () => {
     expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(false)
     expect(rehydrated.recommendations).toHaveLength(0)
     expect(rehydrated.dataCoverageNotes).toContain(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
+  })
+})
+
+describe('refreshStaleV2RecommendationSections', () => {
+  it('replaces ticket-excerpt productActions with cluster synthesis on display', () => {
+    const r1 = makeRecord({
+      painPoint: '关于广州资源池需要将三个共享带宽的弹性公网IP数量提升至40。',
+      journeyL2: '配额与权限',
+      problemType: '配额与权限申请',
+      optimizationProduct:
+        '围绕「关于广州资源池需要将三个共享带宽的弹性公网IP数量提升至40。」完善控制台报错提示与默认策略说明。',
+    })
+    const r2 = makeRecord({
+      painPoint: '关于广州资源池需要将1个共享带宽的弹性公网IP数量提升至40。',
+      journeyL2: '配额与权限',
+      problemType: '配额与权限申请',
+      optimizationProduct:
+        '围绕「关于广州资源池需要将1个共享带宽的弹性公网IP数量提升至40。」完善控制台报错提示与默认策略说明。',
+    })
+    const staleRec = {
+      id: 'rec-stale',
+      priority: 'medium',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      summary: '关于广州资源池需要将三个共享带宽的弹性公网IP数量提升至40。',
+      text: '关于广州资源池需要将三个共享带宽的弹性公网IP数量提升至40。',
+      evidenceRecordIds: [r1.id, r2.id],
+      generationMeta: { representativePain: '关于广州资源池需要将三个共享带宽的弹性公网IP数量提升至40。' },
+      scope: { product: '弹性公网 IP', problemType: '配额与权限申请' },
+      sections: {
+        productActions: [
+          r1.optimizationProduct,
+          r2.optimizationProduct,
+        ],
+      },
+      productActionsSource: 'ticket',
+    }
+    const [refreshed] = refreshStaleV2RecommendationSections([staleRec], [r1, r2])
+    expect(refreshed.productActionsSource).toBe('synth')
+    expect(refreshed.sections?.productActions).toHaveLength(2)
+    const joined = refreshed.sections?.productActions?.join('\n') || ''
+    expect(joined).not.toMatch(/围绕「关于广州资源池/)
+    expect(joined).toMatch(/配额|控制台|广州资源池/)
+  })
+
+  it('replaces ticket-metadata executiveSummary even when productActions already synth v2', () => {
+    const dirtySummary =
+      '请求节点：全局流转--业务规则咨询/查询-全局流转工单标题：业务规则咨询/查询-全局流转详细内容：本司一共12台云主机实例ID为【618d0314-****-*----'
+    const r1 = makeRecord({
+      customerRequest: dirtySummary,
+      painPoint: '',
+      journeyL2: '业务规则咨询/查询',
+      journeyL1: '全局流转',
+      problemType: '配置与操作',
+    })
+    const r2 = makeRecord({
+      customerRequest: dirtySummary,
+      painPoint: '',
+      journeyL2: '业务规则咨询/查询',
+      journeyL1: '全局流转',
+      problemType: '配置与操作',
+    })
+    const staleRec = {
+      id: 'rec-dirty-summary',
+      priority: 'medium',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      summary: dirtySummary,
+      text: dirtySummary,
+      evidenceRecordIds: [r1.id, r2.id],
+      evidenceBundle: { ticketCount: 2 },
+      generationMeta: {
+        representativePain: dirtySummary,
+        actionSynthesisVersion: 2,
+      },
+      scope: { product: '弹性云主机', journeyL2: '业务规则咨询/查询' },
+      sections: {
+        executiveSummary: dirtySummary,
+        productActions: ['针对该类问题完善控制台说明与默认策略。', '补充配额申请入口与审批进度可见性。'],
+      },
+      productActionsSource: 'synth',
+    }
+    const [refreshed] = refreshStaleV2RecommendationSections([staleRec], [r1, r2])
+    const summary = refreshed.sections?.executiveSummary || refreshed.summary || ''
+    expect(summary).not.toMatch(/请求节点|工单标题|详细内容：/)
+    expect(summary).toMatch(/本司一共12台云主机/)
+    expect(summary).not.toMatch(/集中反馈|请求节点/)
+    expect(refreshed.generationMeta?.actionSynthesisVersion).toBe(5)
+  })
+
+  it('replaces background-narrative executiveSummary on display', () => {
+    const background =
+      '由于我单位近期承接了大量短视频AI智能剪辑、以及高画质游戏画面的渲染处理业----'
+    const r1 = makeRecord({ painPoint: background, customerRequest: background })
+    const r2 = makeRecord({
+      painPoint: '云主机内存不足导致渲染任务频繁 OOM。',
+      customerRequest: background,
+    })
+    const staleRec = {
+      id: 'rec-bg-summary',
+      signalType: 'pain_cluster_v2',
+      summary: background,
+      text: background,
+      evidenceRecordIds: [r1.id, r2.id],
+      evidenceBundle: { ticketCount: 2 },
+      generationMeta: { representativePain: background, actionSynthesisVersion: 4 },
+      scope: { product: '弹性云主机' },
+      sections: {
+        executiveSummary: `${background}（2 条工单）`,
+        productActions: ['完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。', '补充规则 FAQ。'],
+      },
+      productActionsSource: 'synth',
+    }
+    const [refreshed] = refreshStaleV2RecommendationSections([staleRec], [r1, r2])
+    const summary = refreshed.sections?.executiveSummary || refreshed.summary || ''
+    expect(summary).toMatch(/内存不足|OOM/)
+    expect(summary).not.toMatch(/由于我单位|智能剪辑/)
   })
 })
 

@@ -334,6 +334,31 @@ export const storageRepository = {
     return row ? parseJson(row.payload) : null
   },
 
+  /**
+   * 删除举措时清理工单 actionId（保留确立举措文本副本）。
+   *
+   * @param {string} actionId
+   * @returns {number}
+   */
+  clearRecordActionReferences(actionId) {
+    const id = String(actionId ?? '').trim()
+    if (!id) return 0
+
+    const db = getDb()
+    const rows = db
+      .prepare(`SELECT id, payload FROM records WHERE json_extract(payload, '$.actionId') = ?`)
+      .all(id)
+
+    let cleared = 0
+    for (const row of rows) {
+      const record = parseJson(row.payload)
+      if (String(record.actionId ?? '').trim() !== id) continue
+      this.putRecord({ ...record, actionId: '' })
+      cleared += 1
+    }
+    return cleared
+  },
+
   deleteRecord(id) {
     getDb().prepare('DELETE FROM records WHERE id = ?').run(id)
     bumpDataRevision()

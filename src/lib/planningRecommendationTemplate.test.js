@@ -82,10 +82,11 @@ describe('planningRecommendationTemplate', () => {
   it('buildPlanningRecommendationsHelpSections aligns with V2 clustering constants', () => {
     const sections = buildPlanningRecommendationsHelpSections()
     const blob = JSON.stringify(sections)
-    expect(sections).toHaveLength(3)
+    expect(sections).toHaveLength(4)
     expect(blob).toContain('痛点聚类')
     expect(blob).toContain(String(FINAL_CLUSTER_TOP_N))
-    expect(blob).toContain('painPoint')
+    expect(blob).toContain('客户请求内容')
+    expect(blob).toContain('单条工单优化建议')
     expect(blob).toContain('刷新洞察')
   })
 })

@@ -705,10 +705,27 @@ describe('P2: primaryCluster 空值与缺失回退', () => {
     expect(primaryClusters.some((c) => c.journeyL1 === '未识别环节')).toBe(true)
   })
 
-  it('getRecordPainPoint 优先 painPoint, 回退 problemSummary', () => {
-    expect(getRecordPainPoint({ painPoint: '痛点A', problemSummary: '摘要B' })).toBe('痛点A')
-    expect(getRecordPainPoint({ painPoint: '', problemSummary: '摘要B' })).toBe('摘要B')
-    expect(getRecordPainPoint({ painPoint: undefined, problemSummary: '' })).toBe('')
+  it('getRecordPainPoint 优先 painPoint, fallback customerRequest / problemSummary', () => {
+    expect(
+      getRecordPainPoint({
+        painPoint: '安全组未放行导致端口不通',
+        customerRequest: '其他',
+        problemSummary: '摘要B',
+      }),
+    ).toBe('安全组未放行导致端口不通')
+    expect(
+      getRecordPainPoint({
+        painPoint: '',
+        customerRequest: '申请提升带宽配额上限',
+        problemSummary: '摘要B',
+      }),
+    ).toBe('申请提升带宽配额上限')
+    expect(getRecordPainPoint({ painPoint: '', problemSummary: '摘要B内容较长' })).toBe(
+      '摘要B内容较长',
+    )
+    expect(getRecordPainPoint({ painPoint: '无', customerRequest: '', problemSummary: '' })).toBe(
+      '',
+    )
   })
 })
 
@@ -731,13 +748,13 @@ describe('P2: clusterLabel 辅助函数', () => {
 
   it('pickRepresentativePainPoint 最高频; 并列取更长', () => {
     expect(pickRepresentativePainPoint([
-      makeRecord({ painPoint: 'A' }),
-      makeRecord({ painPoint: 'A' }),
-      makeRecord({ painPoint: 'B' }),
-    ])).toBe('A')
+      makeRecord({ painPoint: '端口不通现象' }),
+      makeRecord({ painPoint: '端口不通现象' }),
+      makeRecord({ painPoint: '连接失败' }),
+    ])).toBe('端口不通现象')
 
     expect(pickRepresentativePainPoint([
-      makeRecord({ painPoint: '短' }),
+      makeRecord({ painPoint: '短痛点' }),
       makeRecord({ painPoint: '更长的痛点描述' }),
     ])).toBe('更长的痛点描述')
   })
@@ -968,8 +985,8 @@ describe('L0-1: resolveJourneyClusterViewForDisplay / snapshot', () => {
   it('falls back to frequency when snapshot missing', () => {
     const product = 'EIP'
     const records = [
-      makeRecord({ product, painPoint: '痛点A', journeyL1: 'L1' }),
-      makeRecord({ product, painPoint: '痛点A', journeyL1: 'L1' }),
+      makeRecord({ product, painPoint: '公网端口无法访问', journeyL1: 'L1' }),
+      makeRecord({ product, painPoint: '公网端口无法访问', journeyL1: 'L1' }),
     ]
     const view = resolveJourneyClusterViewForDisplay({
       painPointClustering: null,

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { reprocessFeedbackRecord } from '../lib/pipeline.js'
 import {
   buildCustomerRequestManualSavePatch,
+  buildCustomerRequestSavePatch,
   buildPainPointManualSavePatch,
+  buildPainPointSavePatch,
   CUSTOMER_REQUEST_MANUAL_MAX_LENGTH,
   normalizeManualCustomerRequest,
   normalizeManualPainPoint,
@@ -48,7 +50,31 @@ describe('ticketAnalysisManualFields', () => {
     )
   })
 
-  it('buildCustomerRequestManualSavePatch marks source manual', () => {
+  it('buildCustomerRequestSavePatch marks manual only when content changes', () => {
+    const existing = { customerRequest: '原请求', customerRequestSource: 'llm' }
+    expect(buildCustomerRequestSavePatch(existing, '原请求')).toEqual({
+      customerRequest: '原请求',
+    })
+    expect(buildCustomerRequestSavePatch(existing, '新请求')).toEqual({
+      customerRequest: '新请求',
+      customerRequestSource: 'manual',
+    })
+  })
+
+  it('buildPainPointSavePatch marks manual only when content changes', () => {
+    const existing = { painPoint: '原痛点', painPointSource: 'llm' }
+    expect(buildPainPointSavePatch(existing, '原痛点')).toEqual({
+      painPoint: '原痛点',
+      problemSummary: '原痛点',
+    })
+    expect(buildPainPointSavePatch(existing, '新痛点')).toEqual({
+      painPoint: '新痛点',
+      problemSummary: '新痛点',
+      painPointSource: 'manual',
+    })
+  })
+
+  it('buildCustomerRequestManualSavePatch always marks source manual', () => {
     expect(buildCustomerRequestManualSavePatch('人工客户请求')).toEqual({
       customerRequest: '人工客户请求',
       customerRequestSource: 'manual',

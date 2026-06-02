@@ -146,4 +146,48 @@ describe('customerRequestExtract lifecycle rules', () => {
     expect(result).not.toMatch(/联系时间|36\.\*/)
     expect(result.length).toBeLessThanOrEqual(120)
   })
+
+  it('uses acceptance when handling is 无/不涉及 placeholder', () => {
+    const result = extractCustomerRequest({
+      handlingText: '无/不涉及',
+      rawText: '【受理内容】\n客户反馈 EIP 无法绑定，请协助排查。',
+      customerQuote: '',
+    })
+    expect(result).toMatch(/EIP.*无法绑定|无法绑定/)
+    expect(result).not.toMatch(/无\/不涉及/)
+  })
+
+  it('extracts 客户问题 when rawText embeds 【处理意见】 placeholder block', () => {
+    const result = extractCustomerRequest({
+      handlingText: '无/不涉及',
+      rawText:
+        '客户问题：云专线，客户变更机房地址解决方案：客户未提供信息离线\n\n【处理意见】\n无/不涉及',
+      customerQuote: '',
+    })
+    expect(result).toMatch(/云专线/)
+    expect(result).toMatch(/变更机房地址/)
+    expect(result).not.toMatch(/解决方案|未提供信息|无\/不涉及|【处理意见】/)
+  })
+
+  it('extracts from 受理内容 with placeholder paragraph and inline 详细内容', () => {
+    const result = extractCustomerRequest({
+      handlingText: '无/不涉及',
+      rawText:
+        '【受理内容】\n无/不涉及\n\n详细内容：云专线，客户变更机房地址\n\n【处理意见】\n无/不涉及',
+      customerQuote: '',
+    })
+    expect(result).toMatch(/云专线/)
+    expect(result).not.toMatch(/【受理内容】|无\/不涉及/)
+  })
+
+  it('merges product-only 客户问题 with following intent and drops 解决方案 outcome', () => {
+    const result = extractCustomerRequest({
+      handlingText: '无/不涉及',
+      rawText: '客户问题：云专线\n客户变更机房地址解决方案：客户未提供信息离线',
+      customerQuote: '',
+    })
+    expect(result).toMatch(/云专线/)
+    expect(result).toMatch(/变更机房地址/)
+    expect(result).not.toMatch(/解决方案|未提供信息|离线/)
+  })
 })

@@ -117,7 +117,9 @@ export function buildOverviewConclusions({
     dataCoverageNotes.push(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
   }
 
-  const limitedRecommendations = limitPlanningRecommendations(rawRecommendations)
+  const limitedRecommendations = limitPlanningRecommendations(rawRecommendations, {
+    ticketRecords,
+  })
   const { recommendations, removedFromPreviousCount } = attachRecommendationPeriodCompare(
     limitedRecommendations,
     previousRecommendations,

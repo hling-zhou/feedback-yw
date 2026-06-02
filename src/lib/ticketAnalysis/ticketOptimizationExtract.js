@@ -53,7 +53,10 @@ export function extractTicketOptimizations(input) {
   }
 
   if (product.length === 0 && painPoint) {
-    product.push(`围绕「${painPoint.slice(0, 36)}」完善控制台报错提示与默认策略说明。`)
+    // 勿将 painPoint 原文包进举措：聚类聚合时仅前缀 100 字去重，易产生重复且未整合的多条建议
+    product.push(
+      '完善控制台报错提示、配额/策略说明与可操作 remediation 指引，降低重复咨询与协查成本。',
+    )
   }
 
   if (fuzzy || GENERIC_SERVICE_RE.test(text)) {

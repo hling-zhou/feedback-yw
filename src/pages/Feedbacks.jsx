@@ -34,7 +34,10 @@ import {
   recordHasFullTicketLlmEnrichment,
   recordNeedsTicketLlmEnrichment,
   recordNeedsJourneyLlmEnrichment,
+  TICKET_LLM_FILTER_HINTS,
+  TICKET_LLM_FILTER_OPTIONS,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import { renderDefinitionSelectOption } from '../components/tags/DefinitionSelectOption.jsx'
 import {
   downloadUnknownJourneyCsv,
   summarizeUnknownJourneyRecords,
@@ -361,9 +364,9 @@ export default function Feedbacks() {
             {needsTicketLlmCount > 0 && (
               <span
                 className="inline-flex flex-wrap items-center gap-2"
-                title="客户请求/痛点/优化建议仍为规则打标；多为导入时未配置 API Key 或额度不足"
+                title="客户请求或痛点仍为规则/人工/导入打标；多为导入时未配置 API Key 或额度不足"
               >
-                <span>{needsTicketLlmCount} 条客户请求/痛点/优化建议待 LLM</span>
+                <span>{needsTicketLlmCount} 条客户请求/痛点待 LLM</span>
                 <PermissionGate permission="retag">
                   <Button
                     size="small"
@@ -390,9 +393,9 @@ export default function Feedbacks() {
             {needsJourneyLlmCount > 0 && (
               <span
                 className="inline-flex flex-wrap items-center gap-2"
-                title="用户旅程仍待 LLM 增强；多为导入中断、额度不足或未识别环节"
+                title={TICKET_LLM_FILTER_HINTS.needs_journey_llm}
               >
-                <span>{needsJourneyLlmCount} 条旅程待 LLM</span>
+                <span>{needsJourneyLlmCount} 条待 LLM（旅程）</span>
                 <PermissionGate permission="retag">
                   <Button
                     size="small"
@@ -534,17 +537,18 @@ export default function Feedbacks() {
           ]}
           onChange={setResourcePool}
         />
-        <Select
-          className="min-w-[150px]"
-          value={ticketLlmFilter}
-          options={[
-            { label: '全部 LLM 状态', value: '' },
-            { label: '待 LLM（请求/痛点/优化）', value: 'needs_llm' },
-            { label: '待旅程 LLM', value: 'needs_journey_llm' },
-            { label: 'LLM 已增强', value: 'full_llm' },
-          ]}
-          onChange={setTicketLlmFilter}
-        />
+        <Tooltip
+          title={TICKET_LLM_FILTER_HINTS[ticketLlmFilter] || undefined}
+          placement="bottom"
+        >
+          <Select
+            className="min-w-[200px]"
+            value={ticketLlmFilter}
+            optionRender={renderDefinitionSelectOption}
+            options={TICKET_LLM_FILTER_OPTIONS}
+            onChange={setTicketLlmFilter}
+          />
+        </Tooltip>
         <Select
           className="min-w-[130px]"
           value={dataSourceFilter}

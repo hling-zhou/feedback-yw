@@ -3,14 +3,17 @@ import {
   formatListOptimizationPreview,
   getDisplayCustomerRequest,
   getDisplayPainPoint,
-  getOptimizationSource,
   getAutoOptimizationSource,
+  getOptimizationSource,
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
+  getJourneyDisplaySource,
+  getRuleManualDimensionSource,
   getTicketAnalysisSourceLabel,
   normalizeTicketAnalysisFieldSource,
   recordHasFullTicketLlmEnrichment,
+  recordHasManualTicketAnalysisPair,
   recordNeedsTicketLlmEnrichment,
   recordNeedsJourneyLlmEnrichment,
   recordHasJourneyLlmEnrichment,
@@ -24,8 +27,7 @@ describe('ticketAnalysisSources', () => {
     expect(getPainPointSource({})).toBe('rule')
     expect(getCustomerRequestSource({ customerRequestSource: 'llm' })).toBe('llm')
     expect(getCustomerRequestSource({})).toBe('rule')
-    expect(getOptimizationSource({ optimizationSource: 'llm' })).toBe('llm')
-    expect(getOptimizationSource({ manualReviewOptimization: '人工建议' })).toBe('manual')
+    expect(getAutoOptimizationSource({ optimizationSource: 'llm' })).toBe('llm')
   })
 
   it('labels optimization source for UI', () => {
@@ -40,48 +42,23 @@ describe('ticketAnalysisSources', () => {
     expect(getTicketAnalysisSourceLabel('import')).toBe('人工')
   })
 
-  describe('P2-6 source tag rules', () => {
-    it('shows 人工 for optimization when establishedAction is set', () => {
-      expect(
-        getOptimizationSource({
-          establishedAction: '增加端口预检',
-          manualReviewOptimization: '',
-          optimizationSource: 'llm',
-        }),
-      ).toBe('manual')
-      expect(getOptimizationSourceLabel(getOptimizationSource({
-        establishedAction: '增加端口预检',
-        optimizationSource: 'llm',
-      }))).toBe('人工')
-    })
-
-    it('auto optimization source ignores established action', () => {
+  describe('source tag rules', () => {
+    it('established action does not change auto optimization source tag', () => {
       expect(
         getAutoOptimizationSource({
           establishedAction: '增加端口预检',
           optimizationSource: 'llm',
         }),
       ).toBe('llm')
+      expect(getOptimizationSource({
+        establishedAction: '增加端口预检',
+        optimizationSource: 'llm',
+      })).toBe('llm')
+    })
+
+    it('maps optimizationSource import to 人工 for auto tag', () => {
       expect(
         getAutoOptimizationSource({
-          optimizationSource: 'import',
-        }),
-      ).toBe('manual')
-    })
-
-    it('falls back to legacy manualReviewOptimization for optimization source', () => {
-      expect(
-        getOptimizationSource({
-          establishedAction: '',
-          manualReviewOptimization: 'legacy 人工举措',
-          optimizationSource: 'rule',
-        }),
-      ).toBe('manual')
-    })
-
-    it('maps optimizationSource import to 人工 without established action text', () => {
-      expect(
-        getOptimizationSource({
           optimizationSource: 'import',
           optimizationProduct: '导入的产品优化',
         }),
@@ -95,6 +72,24 @@ describe('ticketAnalysisSources', () => {
           customerRequestSource: 'rule',
           manualTagFields: ['customerRequest'],
         }),
+      ).toBe('manual')
+    })
+
+    it('journey display source prefers manualTagFields over journeySource', () => {
+      expect(
+        getJourneyDisplaySource({
+          journeySource: 'llm',
+          manualTagFields: ['journey'],
+        }),
+      ).toBe('manual')
+      expect(getJourneyDisplaySource({ journeySource: 'llm' })).toBe('llm')
+      expect(getJourneyDisplaySource({})).toBe('rule')
+    })
+
+    it('rule/manual dimensions have no llm state', () => {
+      expect(getRuleManualDimensionSource({}, 'requestScene')).toBe('rule')
+      expect(
+        getRuleManualDimensionSource({ manualTagFields: ['sentiment'] }, 'sentiment'),
       ).toBe('manual')
     })
 
@@ -119,7 +114,7 @@ describe('ticketAnalysisSources', () => {
     expect(formatListOptimizationPreview(record)).toMatch(/流程优化B/)
   })
 
-  it('recordNeedsTicketLlmEnrichment detects partial or missing llm fields', () => {
+  it('recordNeedsTicketLlmEnrichment only checks customerRequest and painPoint', () => {
     const ticket = { dataSourceType: 'complaint_ticket' }
     expect(recordNeedsTicketLlmEnrichment(ticket)).toBe(true)
     expect(
@@ -127,7 +122,6 @@ describe('ticketAnalysisSources', () => {
         ...ticket,
         customerRequestSource: 'llm',
         painPointSource: 'llm',
-        optimizationSource: 'llm',
       }),
     ).toBe(false)
     expect(
@@ -135,7 +129,6 @@ describe('ticketAnalysisSources', () => {
         ...ticket,
         customerRequestSource: 'llm',
         painPointSource: 'rule',
-        optimizationSource: 'llm',
       }),
     ).toBe(true)
     expect(
@@ -144,22 +137,82 @@ describe('ticketAnalysisSources', () => {
         customerRequestSource: 'llm',
         painPointSource: 'llm',
         manualReviewOptimization: '人工',
+        establishedAction: '举措',
       }),
     ).toBe(false)
+    expect(
+      recordNeedsTicketLlmEnrichment({
+        ...ticket,
+        customerRequestSource: 'manual',
+        painPointSource: 'llm',
+      }),
+    ).toBe(true)
     expect(recordNeedsTicketLlmEnrichment({ dataSourceType: 'user_survey' })).toBe(false)
     expect(
       recordHasFullTicketLlmEnrichment({
         ...ticket,
         customerRequestSource: 'llm',
         painPointSource: 'llm',
-        optimizationSource: 'llm',
       }),
     ).toBe(true)
   })
 
-  it('R-03: recordNeedsJourneyLlmEnrichment respects journeySource and gating skip', () => {
+  it('recordHasManualTicketAnalysisPair when request and pain display sources are manual', () => {
+    const ticket = { dataSourceType: 'complaint_ticket' }
+    expect(recordHasManualTicketAnalysisPair(ticket)).toBe(false)
+    expect(
+      recordHasManualTicketAnalysisPair({
+        ...ticket,
+        customerRequestSource: 'import',
+        painPointSource: 'import',
+      }),
+    ).toBe(true)
+    expect(
+      recordHasManualTicketAnalysisPair({
+        ...ticket,
+        customerRequest: '人工请求',
+        customerRequestSource: 'manual',
+        painPoint: '人工痛点',
+        painPointSource: 'manual',
+      }),
+    ).toBe(true)
+    expect(
+      recordHasManualTicketAnalysisPair({
+        ...ticket,
+        customerRequestSource: 'llm',
+        painPointSource: 'import',
+      }),
+    ).toBe(false)
+    expect(recordHasManualTicketAnalysisPair({ dataSourceType: 'user_survey' })).toBe(false)
+  })
+
+  it('manual pair and full llm filters are mutually exclusive', () => {
+    const fullLlm = {
+      dataSourceType: 'complaint_ticket',
+      customerRequestSource: 'llm',
+      painPointSource: 'llm',
+    }
+    const manualPair = {
+      dataSourceType: 'complaint_ticket',
+      customerRequestSource: 'import',
+      painPointSource: 'import',
+    }
+    expect(recordHasFullTicketLlmEnrichment(fullLlm)).toBe(true)
+    expect(recordHasManualTicketAnalysisPair(fullLlm)).toBe(false)
+    expect(recordHasFullTicketLlmEnrichment(manualPair)).toBe(false)
+    expect(recordHasManualTicketAnalysisPair(manualPair)).toBe(true)
+  })
+
+  it('recordNeedsJourneyLlmEnrichment respects journeySource, gating skip, and manual journey', () => {
     const ticket = { dataSourceType: 'complaint_ticket' }
     expect(recordNeedsJourneyLlmEnrichment(ticket)).toBe(true)
+    expect(
+      recordNeedsJourneyLlmEnrichment({
+        ...ticket,
+        manualTagFields: ['journey'],
+        journeySource: 'rule',
+      }),
+    ).toBe(false)
     expect(
       recordNeedsJourneyLlmEnrichment({
         ...ticket,

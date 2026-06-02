@@ -16,7 +16,11 @@ import {
   buildSnapshotPatchOnTicketLink,
   ensureTicketLinkedOnActionItem,
 } from '../domain/establishedActionLibrary.js'
-import { normalizeEstablishedActionInput } from '../domain/establishedAction.js'
+import {
+  getEstablishedActionDisplay,
+  normalizeEstablishedActionInput,
+} from '../domain/establishedAction.js'
+import { syncLinkedTicketCopies } from './actionItemTicketSync.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -162,4 +166,44 @@ export async function syncFirstTicketSnapshotsForRecord(record) {
   if (unchanged) return item
 
   return updateActionItem(actionId, patch, { skipConflictCheck: true })
+}
+
+/**
+ * 导入分析等批量写入：逐条 upsert 举措库并合并 actionId / 文本副本 patch。
+ *
+ * @param {FeedbackRecord[]} records
+ * @returns {Promise<FeedbackRecord[]>}
+ */
+export async function mergeEstablishedActionLibraryForRecords(records) {
+  /** @type {FeedbackRecord[]} */
+  const out = []
+  for (const record of records) {
+    const patch = await persistEstablishedActionForTicket(record, {
+      content: getEstablishedActionDisplay(record),
+      scheduleAt: record.actionSchedule || '',
+      linkedFromLibrary: false,
+    })
+    out.push({ ...record, ...patch })
+  }
+  return out
+}
+
+/**
+ * 将举措库最新 content/排期同步到所有关联工单的文本副本。
+ *
+ * @param {string[]} actionIds
+ * @param {FeedbackRecord[]} feedbacks
+ * @param {(id: string, patch: Partial<FeedbackRecord>, opts?: object) => Promise<FeedbackRecord>} updateFeedback
+ * @returns {Promise<number>}
+ */
+export async function syncLinkedTicketsForActionIds(actionIds, feedbacks, updateFeedback) {
+  let total = 0
+  for (const rawId of actionIds) {
+    const actionId = String(rawId ?? '').trim()
+    if (!actionId) continue
+    const item = await getActionItem(actionId)
+    if (!item) continue
+    total += await syncLinkedTicketCopies(item, feedbacks, updateFeedback)
+  }
+  return total
 }

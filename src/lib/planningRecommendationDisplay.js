@@ -30,7 +30,7 @@ export const PAIN_CLUSTER_EXPORT_LABELS = {
   p90Emotion: 'P90情绪',
   sourceDistribution: '来源与一级环节分布',
   customerTierSummary: '高价值客户影响',
-  currentPain: '当前痛点',
+  currentPain: '洞察摘要',
 }
 
 /** 与概览页「优先级评定」区块标题一致 */
@@ -68,48 +68,42 @@ export function groupRecommendationsByProduct(recs) {
  */
 export function normalizeClusterRootCause(input) {
   if (!input) return undefined
-  if (typeof input === 'object') return input
+  if (typeof input === 'object') {
+    const {
+      rootCauses: _rootCauses,
+      contextNote: _contextNote,
+      dataMetrics: _dataMetrics,
+      ...rest
+    } = input
+    return rest
+  }
 
   /** @type {PlanningClusterRootCause} */
-  const out = { painClusters: [], rootCauses: [], dataMetrics: [] }
+  const out = { painClusters: [] }
   const segments = String(input)
-    .split(/(?=高频痛点：|需求痛点聚集：|根因「|高频根因：|数据表现：|业务影响：)/)
+    .split(/(?=高频痛点：|其他相关痛点：|痛点：|需求痛点聚集：|业务影响：)/)
     .map((s) => s.trim())
     .filter(Boolean)
 
   for (const seg of segments.length ? segments : [String(input)]) {
-    if (seg.startsWith('需求痛点聚集：') || seg.startsWith('高频痛点：')) {
-      const body = seg.replace(/^(?:需求痛点聚集|高频痛点)：/, '')
+    if (
+      seg.startsWith('需求痛点聚集：') ||
+      seg.startsWith('高频痛点：') ||
+      seg.startsWith('其他相关痛点：') ||
+      seg.startsWith('痛点：')
+    ) {
+      const body = seg.replace(/^(?:需求痛点聚集|高频痛点|其他相关痛点|痛点)：/, '')
       for (const part of body.split(/[；;]/)) {
         const m = part.match(/「([^」]+)」\s*(\d+)\s*单/)
         if (m) out.painClusters.push({ text: m[1], count: Number(m[2]) })
       }
-    } else if (seg.startsWith('根因「')) {
-      const m = seg.match(/根因「([^」]+)」\s*(\d+)\s*单/)
-      if (m) out.rootCauses.push({ text: m[1], count: Number(m[2]) })
-    } else if (seg.startsWith('高频根因：')) {
-      const body = seg.replace(/^高频根因：/, '')
-      for (const part of body.split(/[；;]/)) {
-        const m = part.match(/「([^」]+)」\s*(\d+)\s*单/)
-        if (m) out.rootCauses.push({ text: m[1], count: Number(m[2]) })
-      }
-    } else if (seg.startsWith('数据表现：')) {
-      out.dataMetrics.push(seg.replace(/^数据表现：/, '').trim())
     } else if (seg.startsWith('业务影响：')) {
       out.businessImpact = seg.replace(/^业务影响：/, '').trim()
-    } else if (!out.contextNote) {
-      out.contextNote = seg
     }
   }
 
-  if (
-    !out.contextNote &&
-    !out.painClusters.length &&
-    !out.rootCauses.length &&
-    !out.dataMetrics.length &&
-    !out.businessImpact
-  ) {
-    out.contextNote = String(input).trim()
+  if (!out.painClusters.length && !out.businessImpact) {
+    return undefined
   }
   return out
 }
@@ -160,18 +154,11 @@ export function normalizeSectionsForDisplay(sections) {
 export function formatClusterRootCauseForExport(cluster) {
   if (!cluster) return ''
   const parts = []
-  if (cluster.contextNote) parts.push(cluster.contextNote)
-  if (cluster.dataMetrics?.length) parts.push(`数据表现：${cluster.dataMetrics.join('，')}`)
   if (cluster.painClusters?.length) {
     parts.push(
-      `高频痛点：${cluster.painClusters
+      `${CLUSTER_SUB_LABELS.painClusters}：${cluster.painClusters
         .map((p) => `「${p.text}」${p.count} 单`)
         .join('；')}`,
-    )
-  }
-  if (cluster.rootCauses?.length) {
-    parts.push(
-      `高频根因：${cluster.rootCauses.map((r) => `「${r.text}」${r.count} 单`).join('；')}`,
     )
   }
   if (cluster.businessImpact) parts.push(`业务影响：${cluster.businessImpact}`)
@@ -211,7 +198,6 @@ export function formatPainClusterScoresForExport(scores, executiveSummary = '') 
     }
   }
   lines.push(`高价值客户影响：${scores.customerTierSummary}`)
-  lines.push(`当前痛点：${executiveSummary.trim() || '—'}`)
   return lines.join('\n')
 }
 
@@ -261,19 +247,19 @@ export function formatRecommendationSectionsForExport(sections, summary = '') {
   /** @type {string[]} */
   const lines = []
 
+  if (executiveSummary) {
+    lines.push('【洞察摘要】')
+    lines.push(executiveSummary)
+  }
+
   if (normalized.painClusterScores) {
     lines.push(`【${PAIN_CLUSTER_SECTION_TITLE}】`)
-    lines.push(formatPainClusterScoresForExport(normalized.painClusterScores, executiveSummary))
+    lines.push(formatPainClusterScoresForExport(normalized.painClusterScores))
   }
 
   const cluster = normalizeClusterRootCause(normalized.clusterRootCause)
   const hasCluster =
-    cluster &&
-    (cluster.contextNote ||
-      cluster.dataMetrics?.length ||
-      cluster.painClusters?.length ||
-      cluster.rootCauses?.length ||
-      cluster.businessImpact)
+    cluster && (cluster.painClusters?.length || cluster.businessImpact)
   if (hasCluster) {
     lines.push(`【${PLANNING_SECTION_LABELS.clusterRootCause}】`)
     lines.push(formatClusterRootCauseForExport(cluster))

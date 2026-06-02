@@ -8,19 +8,22 @@ import {
   CUSTOMER_REQUEST_HARD_MAX,
   truncateCustomerRequest,
 } from './customerRequestExtract.js'
-import { isFormattedTemplateContent, isInternalCsBackendText } from './customerRequestFilters.js'
+import { isFormattedTemplateContent, isInternalCsBackendText, isPlatformOutcomeContent, llmCustomerRequestAddsPlatformOutcome } from './customerRequestFilters.js'
 
 const DEFAULT_MODEL = 'gpt-4o-mini'
 
 /**
  * @param {string} text
  */
-export function isValidLlmCustomerRequest(text) {
+export function isValidLlmCustomerRequest(text, ruleFallback = '') {
   const t = truncateCustomerRequest(text)
   if (!t || t.length < 4) return false
   if (isFormattedTemplateContent(t)) return false
+  if (isPlatformOutcomeContent(t)) return false
+  if (llmCustomerRequestAddsPlatformOutcome(t, ruleFallback)) return false
   if (isInternalCsBackendText(t) && t.length < 16) return false
   if (/请求节点[：:].*工单标题[：:]/.test(t)) return false
+  if (/解决方案/.test(t) && /未提供|离线|导致/.test(t)) return false
   return t.length <= CUSTOMER_REQUEST_HARD_MAX
 }
 
@@ -51,8 +54,10 @@ export async function extractCustomerRequestWithLLM(input, settings) {
 4. 多个 IP/ID 可概括为「多台云主机」「N 条专线」等，勿丢失关键业务信息。
 5. 咨询类用「咨询…」「申请…」句式；体验类客观描述界面/流程问题。
 6. 必须基于工单事实，严禁臆测。
-7. 输出 ≤80 字，必要时最长 ${CUSTOMER_REQUEST_HARD_MAX} 字。
-8. 只返回 JSON：{"customerRequest":"..."}`
+7. 不得写入「解决方案」「处理意见」「问题原因」等字段内容，不得描述平台处理结论（如「客户未提供信息」「离线处理」「待补充」）。
+8. 只描述客户想做什么、遇到什么问题；平台侧回单/协办/归档口径一律删除。
+9. 输出 ≤80 字，必要时最长 ${CUSTOMER_REQUEST_HARD_MAX} 字。
+10. 只返回 JSON：{"customerRequest":"..."}`
 
   const userPrompt = `规则层候选（按出现顺序）：
 ${candidatesBlock || '（无）'}
@@ -77,6 +82,6 @@ ${taggingText}
   const parsed = parseLlmMessageContent(getLlmCompletionText(data))
   const raw =
     typeof parsed.customerRequest === 'string' ? parsed.customerRequest.trim() : ''
-  if (!isValidLlmCustomerRequest(raw)) return ''
+  if (!isValidLlmCustomerRequest(raw, input.ruleFallback || '')) return ''
   return truncateCustomerRequest(raw)
 }

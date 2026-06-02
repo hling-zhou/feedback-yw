@@ -1,3 +1,8 @@
+import { pickRepresentativePainPoint } from './clusterLabel.js'
+import {
+  normalizeClusteringPainText,
+  pickInsightRepresentativePain,
+} from './clusteringCorpus.js'
 import { DATA_SOURCE_SHORT_LABEL } from './constants.js'
 import { runMultiProductClusteringPipeline } from './runProductClusteringPipeline.js'
 
@@ -5,11 +10,14 @@ import { runMultiProductClusteringPipeline } from './runProductClusteringPipelin
 import { countCustomerTiers } from '../../domain/customerTier.js'
 import {
   attachPlanningRecommendationSections,
+  buildInsightExecutiveSummary,
   ensureMinProductActions,
   enforcePlanningSectionRules,
+  refreshPlanningVerification,
 } from '../planningRecommendationSections.js'
 import {
   computeRecommendationEvidenceStrength,
+  downgradeEvidenceStrength,
   pickEvidenceRecords,
 } from '../planningRecommendations.js'
 
@@ -116,9 +124,36 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
   const records = cluster.recordIds.map((id) => byId.get(id)).filter(Boolean)
   if (!records.length) return null
 
-  const label = cluster.representativePainPoint || cluster.label || '未命名痛点群组'
+  const rawLabel = cluster.representativePainPoint || cluster.label || ''
+  const label =
+    pickInsightRepresentativePain(records) ||
+    normalizeClusteringPainText(rawLabel) ||
+    pickRepresentativePainPoint(records) ||
+    rawLabel.trim() ||
+    '未命名痛点群组'
   const painClusterScores = buildPainClusterScoreMeta(cluster, records)
   const { ticketIds } = pickEvidenceRecords(records, 20)
+  const topL2 = records.reduce(
+    (acc, r) => {
+      const j2 = r.journeyL2?.trim()
+      if (!j2) return acc
+      acc.set(j2, (acc.get(j2) || 0) + 1)
+      return acc
+    },
+    /** @type {Map<string, number>} */ (new Map()),
+  )
+  const dominantJ2 = [...topL2.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  const dominantL1 = records.find((r) => r.journeyL2 === dominantJ2)?.journeyL1?.trim()
+  const problemTypeCounts = records.reduce(
+    (acc, r) => {
+      const pt = r.problemType?.trim()
+      if (!pt) return acc
+      acc.set(pt, (acc.get(pt) || 0) + 1)
+      return acc
+    },
+    /** @type {Map<string, number>} */ (new Map()),
+  )
+  const dominantProblemType = [...problemTypeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
 
   const stub = {
     id: cluster.id,
@@ -127,7 +162,12 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     summary: label,
     text: label,
     signalType: 'pain_cluster_v2',
-    scope: { product: cluster.product },
+    scope: {
+      product: cluster.product,
+      journeyL1: dominantL1,
+      journeyL2: dominantJ2,
+      problemType: dominantProblemType,
+    },
     evidenceRecordIds: cluster.recordIds,
     evidenceTicketIds: ticketIds,
     evidenceNote: `V2 二次聚类 Top ${cluster.rank}/${cluster.totalFinal} · ${cluster.product}`,
@@ -138,31 +178,42 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     generationMeta: {
       selectedReason: `痛点聚类 V2：优先级 ${painClusterScores.priorityScore} 分（排名 ${cluster.rank}/${cluster.totalFinal}），影响广度 ${painClusterScores.breadthScore} 分，业务危害度 ${painClusterScores.harmScore} 分。`,
       score: cluster.priorityScore,
+      representativePain: label,
     },
-    measureSource: settings?.optimizationMode === 'llm' ? 'cluster_rule' : 'cluster_rule',
     insufficientEvidence: cluster.ticketCount < 3,
   }
 
   const attached = attachPlanningRecommendationSections(stub, records)
+  const insightSummary = buildInsightExecutiveSummary(stub, records, label)
+  const fallbackSummary = insightSummary || attached.sections?.executiveSummary || label
   /** @type {PlanningRecommendationSections} */
   let sections = {
     ...attached.sections,
-    executiveSummary: label,
+    executiveSummary: fallbackSummary,
     painClusterScores,
   }
+  sections = refreshPlanningVerification(
+    sections,
+    { ...attached, sections, evidenceBundle: stub.evidenceBundle },
+    records,
+  )
   sections = enforcePlanningSectionRules(ensureMinProductActions(sections, attached.details || []))
 
-  const evidenceStrength = computeRecommendationEvidenceStrength(
+  let evidenceStrength = computeRecommendationEvidenceStrength(
     records,
     stub.insufficientEvidence,
-    stub.measureSource,
+    attached.measureSource || 'cluster_rule',
   )
+  if (attached.actionAlignmentWeak) {
+    evidenceStrength = downgradeEvidenceStrength(evidenceStrength)
+  }
 
   return {
     ...attached,
     sections,
-    summary: label,
-    text: label,
+    summary: fallbackSummary,
+    text: fallbackSummary,
+    measureSource: attached.measureSource || 'cluster_rule',
     evidenceStrength,
   }
 }

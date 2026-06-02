@@ -39,7 +39,59 @@ const CUSTOMER_VOICE_LEAD_RE =
   /^(?:\d+[、.．]\s*)?(?:【)?(?:客户反馈|用户反馈|客户表示|用户表示|客户补充|客户原话|客户咨询|客户问题|客户需求)(?:】)?[：:，,\s]*/
 
 const CUSTOMER_DEMAND_HINT =
-  /(?:无法|不能|报错|失败|希望|需要|咨询|申请|加急|投诉|故障|不通|异常|打不开|慢|丢包|绑定|开通|退订|升降配|请问|如何|怎么|为什么|帮忙|排查|转移|放开|端口)/
+  /(?:无法|不能|报错|失败|希望|需要|咨询|申请|加急|投诉|故障|不通|异常|打不开|慢|丢包|绑定|开通|退订|升降配|请问|如何|怎么|为什么|帮忙|排查|转移|放开|端口|变更|查询|进度|解售罄|配额)/
+
+/** 平台侧处理结论 / 解决方案正文（非客户诉求） */
+const PLATFORM_OUTCOME_RE = [
+  /客户未提供(?:具体)?信息/,
+  /未提供(?:具体)?(?:信息|材料|资料)/,
+  /离线处理/,
+  /导致离线/,
+  /致使.*离线/,
+  /待客户(?:补充|回复|提供)/,
+  /信息不全/,
+  /客户未回复/,
+  /工单保留/,
+  /已联系客户(?:，|,)?(?:客户)?(?:表示)?稍后/,
+  /客户侧?(?:已)?(?:确认|验证|复测).*(?:恢复|正常|通过)/,
+]
+
+/**
+ * 是否为平台处理结论或解决方案字段内容（不应进入客户请求）
+ *
+ * @param {string} text
+ */
+export function isPlatformOutcomeContent(text) {
+  const t = (text || '').trim()
+  if (!t) return false
+  if (PLATFORM_OUTCOME_RE.some((re) => re.test(t))) return true
+  if (/但未提供|未提供.*导致|未提供.*离线/.test(t)) return true
+  return false
+}
+
+/**
+ * LLM 输出是否相对规则结果混入了平台侧处理结论
+ *
+ * @param {string} llmText
+ * @param {string} [ruleText]
+ */
+export function llmCustomerRequestAddsPlatformOutcome(llmText, ruleText = '') {
+  if (!isPlatformOutcomeContent(llmText)) return false
+  return !isPlatformOutcomeContent(ruleText)
+}
+
+/**
+ * 「客户问题」字段是否仅为产品/资源名（需与后续诉求句合并）
+ *
+ * @param {string} text
+ */
+export function isProductOnlyProblemLabel(text) {
+  const t = (text || '').trim()
+  if (!t || t.length > 24) return false
+  if (CUSTOMER_DEMAND_HINT.test(t)) return false
+  if (/^客户/.test(t) && t.length > 6) return false
+  return /^[\u4e00-\u9fa5A-Za-z0-9·\-\s]{2,24}$/.test(t)
+}
 
 /**
  * @param {string} text
@@ -57,6 +109,8 @@ export function isInternalCsBackendText(text) {
 export function isCustomerDemandLike(text) {
   const t = cleanCustomerRequestPhrase(text)
   if (!t || t.length < 2) return false
+  if (isPlatformOutcomeContent(t)) return false
+  if (isProductOnlyProblemLabel(t)) return true
   if (CUSTOMER_DEMAND_HINT.test(t)) return true
   if (/客户|用户/.test(t) && t.length <= 120) return true
   return t.length >= 4 && t.length <= 120
