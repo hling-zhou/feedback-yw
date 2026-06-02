@@ -1,14 +1,6 @@
 import { Modal, message } from 'antd'
 import * as XLSX from 'xlsx'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
-import {
-  getOptimizationSourceLabel,
-  getCustomerRequestSource,
-  getPainPointSource,
-  getOptimizationSource,
-  getTicketAnalysisSourceLabel,
-} from './ticketAnalysis/ticketAnalysisSources.js'
-import { getComplaintCauseL1Display, isComplaintTicket } from '../domain/complaintCause.js'
 import { getExportColumns, readFieldValue } from '../domain/fieldRegistry.js'
 import { getEffectiveRootCauseReview } from '../domain/rootCauseReview.js'
 import {
@@ -16,7 +8,6 @@ import {
   extractHandlingTextFromFields,
 } from './taggingText.js'
 import {
-  TICKET_SOURCE_COLUMN_LABELS,
   getSourceColumnValue,
   hasIncompleteSourceColumns,
   recordsMissingSourceColumns,
@@ -111,42 +102,6 @@ export function recordToExportRowV2(record) {
 }
 
 /**
- * @deprecated 旧版导出列；保留供迁移对照与 `exportAnalysisV2: false`
- * @param {FeedbackRecord} r
- */
-export function recordToExportRowLegacy(r) {
-  const sentimentKey = normalizeSentiment(r.sentiment)
-  return {
-    工单号: r.ticketId || '',
-    时间: r.createdAt || '',
-    请求场景: r.requestScene || '',
-    问题类型: r.problemType || '',
-    '投诉原因（终判）': isComplaintTicket(r) ? getComplaintCauseL1Display(r) : '',
-    用户旅程一级: r.journeyL1 || '',
-    用户旅程二级: r.journeyL2 || '',
-    用户情绪: SENTIMENT_LABELS[sentimentKey] || r.sentiment || '',
-    是否加急: getUrgencyLevel(r) === 'high' ? URGENCY_LABELS.high : '',
-    客户请求内容: r.customerRequest || '',
-    客户请求来源: getTicketAnalysisSourceLabel(getCustomerRequestSource(r)),
-    客户原话: r.customerQuote || '',
-    需求痛点: r.painPoint || r.problemSummary || '',
-    痛点来源: getTicketAnalysisSourceLabel(getPainPointSource(r)),
-    产品技术优化: r.optimizationProduct || '',
-    服务流程改进: r.optimizationService || '',
-    优化建议来源: getOptimizationSourceLabel(getOptimizationSource(r)),
-    问题摘要: r.problemSummary || '',
-    根因: r.rootCause || '',
-    优化建议: r.optimizationSuggestion || '',
-    '根因（人工复核）': r.manualReviewRootCause || '',
-    '优化方案（人工复核）': r.manualReviewSolution || '',
-    人工复核举措: r.manualReviewAction || '',
-    ...Object.fromEntries(
-      TICKET_SOURCE_COLUMN_LABELS.map((label) => [label, getSourceColumnValue(r, label)]),
-    ),
-  }
-}
-
-/**
  * @param {string} importMonth YYYY-MM
  */
 export function formatImportMonthSheetName(importMonth) {
@@ -177,11 +132,8 @@ export function groupRecordsByImportMonth(records) {
 /**
  * @param {FeedbackRecord[]} records
  * @param {string} [filename]
- * @param {{ exportAnalysisV2?: boolean }} [options]
  */
-export function downloadTicketAnalysisExcel(records, filename, options = {}) {
-  const useV2 = options.exportAnalysisV2 !== false
-  const toRow = useV2 ? recordToExportRowV2 : recordToExportRowLegacy
+export function downloadTicketAnalysisExcel(records, filename) {
   const groups = groupRecordsByImportMonth(records)
   const months = [...groups.keys()].sort((a, b) => {
     if (a === 'unknown') return 1
@@ -192,7 +144,7 @@ export function downloadTicketAnalysisExcel(records, filename, options = {}) {
   const wb = XLSX.utils.book_new()
   for (const month of months) {
     const items = groups.get(month) || []
-    const rows = items.map(toRow)
+    const rows = items.map(recordToExportRowV2)
     const ws = XLSX.utils.json_to_sheet(
       rows.length ? rows : [{ 提示: '该月无数据' }],
     )
@@ -222,22 +174,19 @@ export function downloadTicketAnalysisExcel(records, filename, options = {}) {
 /**
  * 导出当前筛选范围工单（含原始列不完整确认）
  * @param {FeedbackRecord[]} records
- * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string; exportAnalysisV2?: boolean }} [options]
+ * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string }} [options]
  */
 export function exportTicketAnalysisWithConfirm(records, options = {}) {
   const filePrefix = options.filePrefix || '洞察分析'
   const periodLabel = options.periodLabel || '周期'
-  const useV2 = options.exportAnalysisV2 !== false
 
   if (records.length === 0) {
     message.warning('当前筛选范围内无数据可导出')
     return
   }
 
-  const versionSuffix = useV2 ? '' : '-legacy'
-  const filename = `${filePrefix}-${periodLabel}${versionSuffix}-${new Date().toISOString().slice(0, 10)}.xlsx`
-  const runExport = () =>
-    downloadTicketAnalysisExcel(records, filename, { exportAnalysisV2: useV2 })
+  const filename = `${filePrefix}-${periodLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`
+  const runExport = () => downloadTicketAnalysisExcel(records, filename)
 
   const scopeLabel = options.totalScopeLabel || '库内'
   const totalHint =
@@ -248,9 +197,7 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
   if (!hasIncompleteSourceColumns(records)) {
     runExport()
     message.success(
-      useV2
-        ? `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`
-        : `已导出 ${records.length} 条（旧版列）${totalHint}`,
+      `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`,
     )
     return
   }

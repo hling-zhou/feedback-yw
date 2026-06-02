@@ -23,6 +23,7 @@ import RebuildInsightsButton from './RebuildInsightsButton.jsx'
  * @param {boolean} [props.rebuildDisabled]
  * @param {import('../../lib/types.js').FeedbackRecord[]} [props.feedbacks]
  * @param {(feedback: import('../../lib/types.js').FeedbackRecord) => void} [props.onOpenFeedback]
+ * @param {boolean} [props.pdfCaptureMode] PDF 离屏截图：跳过行动建议等非图表区块
  */
 export default function OverviewTab({
   snapshot,
@@ -36,6 +37,7 @@ export default function OverviewTab({
   rebuildDisabled,
   feedbacks = [],
   onOpenFeedback,
+  pdfCaptureMode = false,
 }) {
   const { conclusions: displayConclusions, recommendationsPendingRefresh } = useMemo(
     () => prepareOverviewConclusionsForDisplay(snapshot?.conclusions),
@@ -95,7 +97,7 @@ export default function OverviewTab({
         {generatedAtLabel}；刷新/生成洞察 可获取最新结果。
       </Typography.Text>
 
-      {recommendationsPendingRefresh && (
+      {!pdfCaptureMode && recommendationsPendingRefresh && (
         <Alert
           type="warning"
           showIcon
@@ -117,10 +119,12 @@ export default function OverviewTab({
         />
       )}
 
-      <PlanningRecommendationsPanel
-        conclusions={displayConclusions}
-        feedbacks={feedbacks}
-      />
+      {!pdfCaptureMode && (
+        <PlanningRecommendationsPanel
+          conclusions={displayConclusions}
+          feedbacks={feedbacks}
+        />
+      )}
 
       {wanTouRows.length > 0 && (
         <Card

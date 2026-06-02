@@ -86,7 +86,12 @@ export function registerStorageRoutes(app) {
       meta?: Record<string, unknown>
     }} */ (request.body)
     const type = body.type
-    const permissions = type === 'import' ? ['import'] : ['retag']
+    const permissions =
+      type === 'import'
+        ? ['import']
+        : type === 'pdf_export'
+          ? ['export']
+          : ['retag']
     if (!assertWritePermission(request, reply, permissions)) return
     const user = request.user
     if (!user?.id) {

@@ -1,54 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatChildMeasuresForPrompt,
-  formatMeasureListForPrompt,
-  buildJourneyOptimizationContext,
+  isGenericMeasure,
+  isGenericRecommendationText,
+  isTicketDerivedPlanningText,
+  isValidRootCause,
 } from './journeyOptimizationLLM.js'
 
-describe('journeyOptimizationLLM prompts', () => {
-  it('formatChildMeasuresForPrompt lists L2 measures under each label', () => {
-    const text = formatChildMeasuresForPrompt({
-      绑定与网络配置: [{ text: '优化绑定流程', source: 'AI 分析' }],
-      公网访问不通: [
-        { text: '完善连通性诊断', source: 'AI 分析' },
-        { text: '沉淀不通 playbook', source: 'AI 分析' },
-      ],
-    })
-    expect(text).toContain('绑定与网络配置')
-    expect(text).toContain('优化绑定流程')
-    expect(text).toContain('公网访问不通')
-    expect(text).toContain('1. 完善连通性诊断')
+describe('journeyOptimizationLLM text guards', () => {
+  it('isValidRootCause rejects placeholders and generic phrases', () => {
+    expect(isValidRootCause('待分析')).toBe(false)
+    expect(isValidRootCause('安全组未放行导致端口不通')).toBe(true)
   })
 
-  it('formatMeasureListForPrompt numbers parent measures', () => {
-    expect(
-      formatMeasureListForPrompt([{ text: '建立一级总领方向', source: 'AI 分析' }]),
-    ).toBe('1. 建立一级总领方向')
+  it('isGenericMeasure flags empty and ticket-derived templates', () => {
+    expect(isGenericMeasure('')).toBe(true)
+    expect(isGenericMeasure('针对根因「端口不通」建立专项修复与验收标准')).toBe(true)
+    expect(isGenericMeasure('上线端口连通性一键诊断工具，覆盖常见安全组误配场景')).toBe(false)
   })
 
-  it('buildJourneyOptimizationContext aggregates pain points and ticket optimizations', () => {
-    const ctx = buildJourneyOptimizationContext(
-      [
-        {
-          id: '1',
-          painPoint: '安全组未放行特定端口导致业务访问中断。',
-          problemType: '公网访问不通',
-          optimizationProduct: '增加端口连通性一键检测。',
-        },
-        {
-          id: '2',
-          painPoint: '安全组未放行特定端口导致业务访问中断。',
-          problemType: '公网访问不通',
-          manualReviewOptimization: '人工复核：建立端口不通自动化诊断脚本。',
-        },
-      ],
-      '业务使用与连通',
-      '公网访问不通',
-    )
+  it('isTicketDerivedPlanningText detects handling-note patterns', () => {
+    expect(isTicketDerivedPlanningText('目前进展：已协助客户调整安全组')).toBe(true)
+    expect(isTicketDerivedPlanningText('完善控制台端口放通引导与预检提示')).toBe(false)
+  })
 
-    expect(ctx.painPoints[0].text).toMatch(/安全组未放行/)
-    expect(ctx.painPoints[0].count).toBe(2)
-    expect(ctx.ticketOptimizations.some((o) => o.source === '人工复核优化建议')).toBe(true)
-    expect(ctx.samples[0].painPoint).toMatch(/安全组/)
+  it('isGenericRecommendationText applies stricter planning templates', () => {
+    expect(isGenericRecommendationText('结合旅程热点与问题类型，制定分阶段改进计划')).toBe(true)
+    expect(isGenericRecommendationText('优化 EIP 绑定流程中的默认安全组提示文案')).toBe(false)
   })
 })

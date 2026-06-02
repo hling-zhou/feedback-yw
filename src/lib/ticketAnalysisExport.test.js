@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   EXPORT_ANALYSIS_VERSION,
   getExportV2Headers,
-  recordToExportRowLegacy,
   recordToExportRowV2,
 } from './ticketAnalysisExport.js'
 
@@ -153,10 +152,4 @@ describe('ticketAnalysisExport v2', () => {
     ).toBe('人工根因排查')
   })
 
-  it('recordToExportRowLegacy retains removed columns for migration对照', () => {
-    const row = recordToExportRowLegacy(baseRecord)
-    expect(row).toHaveProperty('客户请求来源')
-    expect(row).toHaveProperty('投诉原因（终判）')
-    expect(Object.keys(row).length).toBeGreaterThan(getExportV2Headers().length)
-  })
 })

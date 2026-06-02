@@ -8,9 +8,22 @@ import { ensurePdfFontsReady } from './registerPdfFonts.js'
  * @param {Parameters<typeof buildReportModel>[0] & {
  *   chartImages?: import('./captureChartImages.js').ChartImage[];
  * }} params
- * @param {string} [filename]
  */
-export async function downloadInsightPdf(params, filename) {
+export function buildInsightPdfFilename(params) {
+  const safeName = `insight-report-${params.scope}-${params.period?.label || 'period'}.pdf`.replace(
+    /[^\w\u4e00-\u9fa5.-]+/g,
+    '_',
+  )
+  return safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`
+}
+
+/**
+ * @param {Parameters<typeof buildReportModel>[0] & {
+ *   chartImages?: import('./captureChartImages.js').ChartImage[];
+ * }} params
+ * @returns {Promise<{ blob: Blob; filename: string }>}
+ */
+export async function generateInsightPdfBlob(params) {
   await ensurePdfFontsReady()
 
   const model = buildReportModel(params)
@@ -23,16 +36,19 @@ export async function downloadInsightPdf(params, filename) {
   await yieldUntilIdle(150)
   const blob = await pdf(doc).toBlob()
   await yieldToMain(0)
-  const safeName =
-    filename ||
-    `insight-report-${params.scope}-${params.period?.label || 'period'}.pdf`.replace(
-      /[^\w\u4e00-\u9fa5.-]+/g,
-      '_',
-    )
+
+  return { blob, filename: buildInsightPdfFilename(params) }
+}
+
+/**
+ * @param {Blob} blob
+ * @param {string} filename
+ */
+export function triggerPdfDownload(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }

@@ -15,7 +15,7 @@ import {
 } from '../lib/importSession.js'
 
 /**
- * 合并本机 session 与服务端全局锁，供导入 / 批量打标 / 刷新洞察等入口复用。
+ * 合并本机 session 与服务端全局锁，供导入 / 批量打标 / 刷新洞察 / PDF 导出等入口复用。
  */
 export function useSharedBackgroundTaskBlock() {
   const { user } = useAuth()
@@ -28,9 +28,15 @@ export function useSharedBackgroundTaskBlock() {
       isBackgroundTaskLockActive(sharedBackgroundTask) &&
       !isBackgroundTaskLockHeldByUser(sharedBackgroundTask, user?.id)
 
+    const remotePdfExportActive =
+      isBackgroundTaskLockActive(sharedBackgroundTask) &&
+      sharedBackgroundTask?.type === 'pdf_export' &&
+      !isBackgroundTaskLockHeldByUser(sharedBackgroundTask, user?.id)
+
     const importBlocked = localImport || localRetag || remoteActive
     const retagBlocked = localImport || remoteActive
     const rebuildBlocked = localImport || localRetag || remoteActive
+    const pdfExportBlocked = localImport || localRetag || remoteActive
 
     const remoteBlockedTip = remoteActive
       ? formatBackgroundTaskBlockedTip(sharedBackgroundTask)
@@ -57,6 +63,14 @@ export function useSharedBackgroundTaskBlock() {
         ? IMPORT_REBUILD_DISABLED_TIP
         : remoteBlockedTip
 
+    const pdfExportBlockedTip = localImport
+      ? '数据导入进行中，请待导入完成后再导出 PDF'
+      : localRetag
+        ? '批量重新打标进行中，请待打标完成后再导出 PDF'
+        : remotePdfExportActive
+          ? formatBackgroundTaskBlockedTip(sharedBackgroundTask)
+          : remoteBlockedTip
+
     const detailSaveBlocked = importBlocked
     const detailSaveBlockedTip = localImport
       ? DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP
@@ -68,14 +82,17 @@ export function useSharedBackgroundTaskBlock() {
       localImport,
       localRetag,
       remoteActive,
+      remotePdfExportActive,
       sharedBackgroundTask,
       importBlocked,
       retagBlocked,
       rebuildBlocked,
+      pdfExportBlocked,
       detailSaveBlocked,
       importBlockedTip,
       retagBlockedTip,
       rebuildBlockedTip,
+      pdfExportBlockedTip,
       detailSaveBlockedTip,
       remoteBannerText,
     }

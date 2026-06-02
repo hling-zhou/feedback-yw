@@ -63,19 +63,6 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {number} [signalWeight]
  */
 
-/** @typedef {'accepted' | 'in_progress' | 'done' | 'dismissed'} RecommendationWorkflowStatus */
-
-/**
- * @typedef {Object} RecommendationUserOverride
- * @property {RecommendationWorkflowStatus} [status]
- * @property {string} [summary]
- * @property {string[]} [details]
- * @property {string} [owner]
- * @property {string} [dueDate]
- * @property {string} [note]
- * @property {string} updatedAt
- */
-
 /** @typedef {'new' | 'persist' | 'priority_up' | 'priority_down'} RecommendationPeriodChange */
 
 /**
@@ -133,7 +120,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [executiveSummary] - 执行摘要（核心发现，1 句）
  * @property {PlanningClusterRootCause | string} [clusterRootCause] - 问题聚类与根因（结构化；旧快照可能为 string）
  * @property {PainClusterScoreMeta} [painClusterScores] - V2 痛点聚类 §8 评分与分布
- * @property {string} [opportunities] - 机会点挖掘（暂不在 UI 展示）
+ * @property {string} [opportunities] - 已废弃（旧快照兼容，UI/导出均忽略）
  * @property {string[]} [productActions] - 产品/技术优化（≥2）
  * @property {string[]} [serviceActions] - 服务/流程改进（按需）
  * @property {PlanningVerification | string} [verification] - 闭环验证（结构化；旧快照可能为 string）
@@ -159,7 +146,6 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {EvidenceStrength} [evidenceStrength]
  * @property {RecommendationEvidenceBundle} [evidenceBundle]
  * @property {RecommendationGenerationMeta} [generationMeta]
- * @property {RecommendationUserOverride} [userOverride]
  * @property {RecommendationPeriodCompare} [periodCompare]
  * @property {string} [linkedJourneyL2]
  * @property {string} [measureSource]

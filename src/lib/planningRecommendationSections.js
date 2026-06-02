@@ -13,7 +13,6 @@ import {
   formatVerificationForExport,
   normalizeClusterRootCause,
   normalizeVerification,
-  SHOW_PLANNING_OPPORTUNITIES,
 } from './planningRecommendationDisplay.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -25,7 +24,6 @@ import {
 export const PLANNING_SECTION_LABELS = {
   executiveSummary: '执行摘要',
   clusterRootCause: '问题聚类与根因分析',
-  opportunities: '机会点挖掘',
   productActions: '产品/技术优化',
   serviceActions: '服务/流程改进',
   verification: '闭环验证机制',
@@ -341,17 +339,17 @@ function enforceExecutiveSummary(summary) {
  * @param {PlanningRecommendationSections} sections
  */
 export function enforcePlanningSectionRules(sections) {
-  const cluster = normalizeClusterRootCause(sections.clusterRootCause)
-  const verification = normalizeVerification(sections.verification)
+  const { opportunities: _removed, ...rest } = sections
+  const cluster = normalizeClusterRootCause(rest.clusterRootCause)
+  const verification = normalizeVerification(rest.verification)
 
   return {
-    ...sections,
-    executiveSummary: enforceExecutiveSummary(sections.executiveSummary || ''),
+    ...rest,
+    executiveSummary: enforceExecutiveSummary(rest.executiveSummary || ''),
     clusterRootCause: cluster,
-    opportunities: SHOW_PLANNING_OPPORTUNITIES ? sections.opportunities : undefined,
-    productActions: dedupeActionLines(sections.productActions || [], 4, { strict: false }),
-    serviceActions: sections.serviceActions?.length
-      ? dedupeActionLines(sections.serviceActions, 2, { strict: false })
+    productActions: dedupeActionLines(rest.productActions || [], 4, { strict: false }),
+    serviceActions: rest.serviceActions?.length
+      ? dedupeActionLines(rest.serviceActions, 2, { strict: false })
       : undefined,
     verification,
   }
@@ -384,7 +382,6 @@ export function sectionsToLegacyDetails(sections) {
     normalizeClusterRootCause(sections.clusterRootCause),
   )
   if (clusterText) out.push(clusterText)
-  if (SHOW_PLANNING_OPPORTUNITIES && sections.opportunities) out.push(sections.opportunities)
   for (const line of sections.productActions || []) {
     out.push(`【产品/技术】${line}`)
   }

@@ -3,7 +3,6 @@ import { overviewSnapshotId, sourceSnapshotId } from '../domain/snapshot.js'
 import { buildSourceSnapshot } from './buildSourceSnapshot.js'
 import { buildOverviewSnapshot } from './buildOverviewSnapshot.js'
 import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
-import { preserveRecommendationUserOverrides } from '../lib/planningRecommendationDisplay.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
 import { yieldToMainThread } from '../lib/yieldToMainThread.js'
@@ -118,15 +117,11 @@ export async function rebuildOverviewSnapshot({
     settings,
   })
 
-  if (existingOverview?.conclusions?.recommendations?.length) {
+  if (existingOverview?.conclusions?.recommendationsLlm) {
     snapshot = {
       ...snapshot,
       conclusions: {
         ...snapshot.conclusions,
-        recommendations: preserveRecommendationUserOverrides(
-          snapshot.conclusions?.recommendations || [],
-          existingOverview.conclusions.recommendations,
-        ),
         recommendationsLlm: existingOverview.conclusions.recommendationsLlm,
       },
     }

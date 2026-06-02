@@ -3,18 +3,15 @@ import {
   DATA_SOURCE_LABELS,
   PERIOD_GRANULARITY_LABELS,
 } from '../../domain/enums.js'
-import { formatPeriodRange } from '../../domain/insightPeriod.js'
+import { formatPeriodRange, resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import { PLANNING_RECOMMENDATIONS_PANEL_TITLE } from '../../domain/overviewConclusions.js'
-import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import {
   buildRecommendationExportFullText,
-  resolveEffectiveRecommendation,
   resolveRecommendationSummary,
 } from '../planningRecommendationDisplay.js'
-import {
-  limitPlanningRecommendations,
-} from '../planningRecommendations.js'
+import { computeMaxMomGrowthProductForSource } from '../sourceOverviewMetrics.js'
 import { formatWanTouRatio } from '../wanTouRatio.js'
+import { resolveOverviewRecommendationsForReport } from './resolveOverviewRecommendationsForReport.js'
 
 /**
  * @typedef {Object} ReportSection
@@ -33,6 +30,7 @@ const PRIORITY_LABELS = { high: '高', medium: '中', low: '低' }
  * @param {import('../../domain/snapshot.js').InsightSnapshot | null} [params.sourceSnapshot]
  * @param {string} [params.exportedBy]
  * @param {ReturnType<import('../wanTouRatio.js').buildWanTouByProducts>} [params.wanTouRows]
+ * @param {import('../lib/types.js').FeedbackRecord[]} [params.feedbacks]
  */
 export function buildReportModel({
   scope,
@@ -41,6 +39,7 @@ export function buildReportModel({
   sourceSnapshot,
   exportedBy,
   wanTouRows = [],
+  feedbacks = [],
 }) {
   const periodLabel = period?.label || '—'
   const range = period ? formatPeriodRange(period) : '—'
@@ -48,6 +47,7 @@ export function buildReportModel({
     ? PERIOD_GRANULARITY_LABELS[period.granularity]
     : '—'
   const generatedAt = new Date().toISOString()
+  const previousPeriod = resolvePreviousInsightPeriod(period)
 
   /** @type {ReportSection[]} */
   const sections = [
@@ -78,10 +78,14 @@ export function buildReportModel({
       rows: DATA_SOURCE_TYPES.map((type) => {
         const summary = overview.sourceSummaries?.[type]
         const count = summary?.recordCount ?? 0
+        const maxMomGrowthProduct =
+          summary?.maxMomGrowthProduct ??
+          computeMaxMomGrowthProductForSource(feedbacks, period, previousPeriod, type) ??
+          null
         const parts = [String(count)]
         if (summary?.negativePct != null) parts.push(`负面占比 ${summary.negativePct}%`)
-        if (summary?.maxMomGrowthProduct) {
-          parts.push(`环比最大增幅产品 ${summary.maxMomGrowthProduct}`)
+        if (maxMomGrowthProduct) {
+          parts.push(`环比最大增幅产品 ${maxMomGrowthProduct}`)
         }
         return {
           label: DATA_SOURCE_LABELS[type],
@@ -90,16 +94,12 @@ export function buildReportModel({
       }),
     })
 
-    const { conclusions: displayConclusions } = prepareOverviewConclusionsForDisplay(
-      overview.conclusions,
-    )
-    const recommendations = limitPlanningRecommendations(displayConclusions?.recommendations || [])
+    const recommendations = resolveOverviewRecommendationsForReport(overview.conclusions)
     if (recommendations.length) {
       sections.push({
         title: PLANNING_RECOMMENDATIONS_PANEL_TITLE,
         rows: recommendations.map((rec, i) => {
-          const effective = resolveEffectiveRecommendation(rec)
-          const summary = resolveRecommendationSummary(effective)
+          const summary = resolveRecommendationSummary(rec)
           const priority = PRIORITY_LABELS[rec.priority] || rec.priority
           const product = rec.scope?.product?.trim()
           const labelParts = [`${i + 1}. ${priority}优先级`]
@@ -107,7 +107,7 @@ export function buildReportModel({
           if (summary) labelParts.push(summary)
           return {
             label: labelParts.join(' · '),
-            value: buildRecommendationExportFullText(effective),
+            value: buildRecommendationExportFullText(rec),
           }
         }),
       })
@@ -134,14 +134,93 @@ export function buildReportModel({
 
   if (scope !== 'overview' && sourceSnapshot) {
     const s = sourceSnapshot.summary || {}
+    const maxMomGrowthProduct =
+      s.maxMomGrowthProduct ??
+      computeMaxMomGrowthProductForSource(feedbacks, period, previousPeriod, scope) ??
+      null
     sections.push({
       title: '数据摘要',
       rows: [
         { label: '记录数', value: String(s.recordCount ?? 0) },
         { label: '负面占比', value: s.negativePct != null ? `${s.negativePct}%` : '—' },
-        { label: '环比最大增幅产品', value: s.maxMomGrowthProduct || '—' },
+        { label: '环比最大增幅产品', value: maxMomGrowthProduct || '—' },
       ],
     })
+
+    const agg = sourceSnapshot.aggregates || {}
+    if (Array.isArray(agg.products) && agg.products.length) {
+      sections.push({
+        title: '产品分布（周期内）',
+        rows: agg.products.slice(0, 12).map((p) => ({
+          label: p.name,
+          value: `${p.count} 条`,
+        })),
+      })
+    }
+
+    if (Array.isArray(agg.sentiment) && agg.sentiment.length) {
+      sections.push({
+        title: '客户情绪分布',
+        rows: agg.sentiment.map((item) => ({
+          label: item.name || '—',
+          value: `${item.value} 条${item.pct != null ? `（${item.pct}%）` : ''}`,
+        })),
+      })
+    }
+
+    const trend = Array.isArray(agg.monthlyTrend) ? agg.monthlyTrend : []
+    if (trend.length) {
+      const latest = trend.at(-1)
+      const previous = trend.at(-2)
+      const delta = latest && previous ? latest.count - previous.count : null
+      /** @type {{ label: string; value: string }[]} */
+      const trendRows = []
+      if (latest) {
+        trendRows.push({
+          label: '最近月',
+          value: `${latest.date} · ${latest.count} 条`,
+        })
+      }
+      if (delta != null) {
+        trendRows.push({
+          label: '环比',
+          value: `${delta >= 0 ? '+' : ''}${delta}`,
+        })
+      }
+      if (trendRows.length) {
+        sections.push({ title: '月度趋势摘要', rows: trendRows })
+      }
+    }
+
+    if (Array.isArray(agg.requestScenes) && agg.requestScenes.length) {
+      sections.push({
+        title: '请求场景 Top',
+        rows: agg.requestScenes.slice(0, 8).map((item) => ({
+          label: item.name,
+          value: `${item.count} 条`,
+        })),
+      })
+    }
+
+    if (Array.isArray(agg.problemTypes) && agg.problemTypes.length) {
+      sections.push({
+        title: '问题类型 Top',
+        rows: agg.problemTypes.slice(0, 8).map((item) => ({
+          label: item.name,
+          value: `${item.count} 条`,
+        })),
+      })
+    }
+
+    if (Array.isArray(agg.complaintCauseL1) && agg.complaintCauseL1.length) {
+      sections.push({
+        title: '投诉原因 Top（终判）',
+        rows: agg.complaintCauseL1.slice(0, 8).map((item) => ({
+          label: item.name,
+          value: `${item.count} 条`,
+        })),
+      })
+    }
   }
 
   sections.push({

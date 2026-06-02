@@ -43,6 +43,10 @@ describe('planningRecommendationsExport', () => {
     expect(row).not.toHaveProperty('详细意见1')
     expect(row).not.toHaveProperty('导出全文')
     expect(row).not.toHaveProperty(PAIN_CLUSTER_SECTION_TITLE)
+    expect(row).not.toHaveProperty('跟进状态')
+    expect(row).not.toHaveProperty('负责人')
+    expect(row).not.toHaveProperty('目标日期')
+    expect(row).not.toHaveProperty('备注')
   })
 
   it('does not include legacy-only columns', () => {

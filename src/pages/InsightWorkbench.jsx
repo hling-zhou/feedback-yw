@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -15,6 +15,7 @@ import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBl
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import ExportPdfMenu from '../components/ExportPdfMenu.jsx'
+import { PdfExportProvider } from '../context/PdfExportContext.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import WorkbenchAnalysisNav from '../components/workbench/WorkbenchAnalysisNav.jsx'
 import WorkbenchAnalysisLink from '../components/workbench/WorkbenchAnalysisLink.jsx'
@@ -109,17 +110,6 @@ export default function InsightWorkbench() {
     ensurePdfFontsReady().catch(() => {})
   }, [])
 
-  const preparePdfExport = useCallback(
-    async (scope) => {
-      const tab = scope === 'overview' ? TAB_OVERVIEW : scope
-      if (activeTab !== tab) {
-        setActiveTab(tab)
-        await new Promise((r) => setTimeout(r, 400))
-      }
-    },
-    [activeTab],
-  )
-
   const activeTabContent = useMemo(() => {
     if (activeTab === TAB_OVERVIEW) {
       return (
@@ -209,6 +199,7 @@ export default function InsightWorkbench() {
   )
 
   return (
+    <PdfExportProvider>
     <div id="insight-workbench-root">
       <PageHeader
         title="洞察工作台"
@@ -226,10 +217,7 @@ export default function InsightWorkbench() {
           >
             {formatInsightRebuildButtonLabel(snapshotRebuilding)}
           </RebuildInsightsButton>
-          <ExportPdfMenu
-            activeSource={activeTab === TAB_OVERVIEW ? undefined : activeTab}
-            onPrepareExport={preparePdfExport}
-          />
+          <ExportPdfMenu activeSource={activeTab === TAB_OVERVIEW ? undefined : activeTab} />
           <Link to="/tags?tab=review">
             <Button>标签管理</Button>
           </Link>
@@ -284,11 +272,14 @@ export default function InsightWorkbench() {
             activeSourceTab={activeTab}
             onSourceTabChange={setActiveTab}
           />
-          <div key={activeTab}>{activeTabContent}</div>
+          <div key={activeTab} data-workbench-tab={activeTab}>
+            {activeTabContent}
+          </div>
         </Spin>
       )}
 
       <FeedbackDrawer feedback={selectedFeedback} onClose={() => setSelectedFeedback(null)} />
     </div>
+    </PdfExportProvider>
   )
 }

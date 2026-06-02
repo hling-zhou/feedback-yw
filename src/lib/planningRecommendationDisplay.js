@@ -1,20 +1,21 @@
-import { recommendationCompareKey } from './planningRecommendationCompare.js'
 import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommendationSections.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
-/** @typedef {import('../domain/overviewConclusions.js').RecommendationUserOverride} RecommendationUserOverride */
 /** @typedef {import('../domain/overviewConclusions.js').PlanningClusterRootCause} PlanningClusterRootCause */
 /** @typedef {import('../domain/overviewConclusions.js').PlanningVerification} PlanningVerification */
 /** @typedef {import('../domain/overviewConclusions.js').PlanningRecommendationSections} PlanningRecommendationSections */
 
-/** 洞察概览 · 行动建议：是否展示「机会点挖掘」（暂时关闭） */
-export const SHOW_PLANNING_OPPORTUNITIES = false
-
-export const WORKFLOW_STATUS_LABELS = {
-  accepted: '已采纳',
-  in_progress: '进行中',
-  done: '已完成',
-  dismissed: '不适用',
+/**
+ * 行动建议概述解析（导出等沿用）
+ * @param {OverviewRecommendation} rec
+ */
+export function resolveRecommendationSummary(rec) {
+  return (
+    rec.sections?.executiveSummary?.trim() ||
+    rec.summary?.trim() ||
+    rec.text?.trim() ||
+    ''
+  )
 }
 
 /** 概览行动建议 Excel 导出 · V2 痛点聚类列名 */
@@ -34,69 +35,6 @@ export const PAIN_CLUSTER_EXPORT_LABELS = {
 
 /** 与概览页「优先级评定」区块标题一致 */
 export const PAIN_CLUSTER_SECTION_TITLE = '优先级评定'
-
-/**
- * 行动建议概述解析（导出 / 人工编辑等沿用）
- * @param {OverviewRecommendation} rec
- */
-export function resolveRecommendationSummary(rec) {
-  const overrideSummary = rec.userOverride?.summary?.trim()
-  if (overrideSummary) return overrideSummary
-  return (
-    rec.sections?.executiveSummary?.trim() ||
-    rec.summary?.trim() ||
-    rec.text?.trim() ||
-    ''
-  )
-}
-
-/**
- * @param {OverviewRecommendation} rec
- */
-export function resolveEffectiveRecommendation(rec) {
-  const override = rec.userOverride
-  if (!override) return rec
-  const summary = resolveRecommendationSummary(rec)
-  const sections =
-    rec.sections && override.summary?.trim()
-      ? { ...rec.sections, executiveSummary: summary }
-      : rec.sections
-  return {
-    ...rec,
-    summary,
-    text: summary,
-    sections,
-    details: override.details?.length ? override.details : rec.details,
-    priority: rec.priority,
-    category: rec.category,
-  }
-}
-
-/**
- * @param {OverviewRecommendation[]} recommendations
- */
-export function resolveEffectiveRecommendations(recommendations) {
-  return (recommendations || []).map(resolveEffectiveRecommendation)
-}
-
-/**
- * @param {OverviewRecommendation[]} newRecs
- * @param {OverviewRecommendation[]} [oldRecs]
- */
-export function preserveRecommendationUserOverrides(newRecs, oldRecs = []) {
-  /** @type {Map<string, RecommendationUserOverride>} */
-  const overrideByKey = new Map()
-  for (const rec of oldRecs) {
-    if (rec.userOverride) {
-      overrideByKey.set(recommendationCompareKey(rec), rec.userOverride)
-    }
-  }
-  return newRecs.map((rec) => {
-    const override = overrideByKey.get(recommendationCompareKey(rec))
-    if (!override) return rec
-    return { ...rec, userOverride: override }
-  })
-}
 
 /**
  * @param {OverviewRecommendation[]} recs

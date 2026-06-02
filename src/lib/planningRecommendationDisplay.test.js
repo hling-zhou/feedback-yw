@@ -7,7 +7,6 @@ import {
   formatVerificationForExport,
   normalizeClusterRootCause,
   normalizeVerification,
-  resolveEffectiveRecommendation,
   resolveRecommendationSummary,
 } from './planningRecommendationDisplay.js'
 
@@ -136,7 +135,7 @@ describe('planningRecommendationDisplay', () => {
     expect(text).toMatch(/产品\/技术优化/)
   })
 
-  it('resolveRecommendationSummary prefers sections and user override', () => {
+  it('resolveRecommendationSummary prefers sections executiveSummary', () => {
     const rec = {
       id: 'r1',
       summary: '旧 summary',
@@ -144,13 +143,5 @@ describe('planningRecommendationDisplay', () => {
       sections: { executiveSummary: 'Phase2 执行摘要一句。' },
     }
     expect(resolveRecommendationSummary(rec)).toBe('Phase2 执行摘要一句。')
-
-    const edited = {
-      ...rec,
-      userOverride: { summary: '人工编辑后的摘要。', updatedAt: '2025-06-01' },
-    }
-    expect(resolveRecommendationSummary(edited)).toBe('人工编辑后的摘要。')
-    const effective = resolveEffectiveRecommendation(edited)
-    expect(effective.sections?.executiveSummary).toBe('人工编辑后的摘要。')
   })
 })

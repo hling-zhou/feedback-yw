@@ -19,7 +19,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', marginBottom: 4, fontFamily: PDF_FONT_FAMILY },
   label: { width: 140, color: '#333', fontFamily: PDF_FONT_FAMILY },
-  value: { flex: 1, fontFamily: PDF_FONT_FAMILY },
+  value: { flex: 1, fontFamily: PDF_FONT_FAMILY, lineHeight: 1.45 },
   body: { marginTop: 4, lineHeight: 1.5, color: '#444', fontFamily: PDF_FONT_FAMILY },
   chartBlock: { marginTop: 8, marginBottom: 16 },
   chartImage: { width: '100%', maxHeight: 360, objectFit: 'contain' },
@@ -55,7 +55,7 @@ export function InsightReportDocument({ model }) {
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" style={styles.page} wrap>
         <Text style={styles.title}>{model.title}</Text>
         <Text style={styles.subtitle}>
           洞察周期：{model.periodLabel} · 生成于 {model.generatedAt.slice(0, 16).replace('T', ' ')}

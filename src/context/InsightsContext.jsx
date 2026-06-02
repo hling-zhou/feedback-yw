@@ -1100,57 +1100,6 @@ export function InsightsProvider({ children }) {
     return polished
   }, [adapter, currentPeriod, overviewSnapshot, settings])
 
-  /**
-   * @param {string} recommendationId
-   * @param {import('../domain/overviewConclusions.js').RecommendationUserOverride} patch
-   */
-  const updateRecommendationUserOverride = useCallback(
-    async (recommendationId, patch) => {
-      if (!overviewSnapshot?.conclusions?.recommendations?.length) {
-        throw new Error('当前周期暂无行动建议')
-      }
-      const recommendations = overviewSnapshot.conclusions.recommendations.map((rec) => {
-        if (rec.id !== recommendationId) return rec
-        return {
-          ...rec,
-          userOverride: {
-            ...rec.userOverride,
-            ...patch,
-            updatedAt: new Date().toISOString(),
-          },
-        }
-      })
-      const updated = {
-        ...overviewSnapshot,
-        conclusions: { ...overviewSnapshot.conclusions, recommendations },
-        generatedAt: new Date().toISOString(),
-      }
-      await adapter.putSnapshot(updated)
-      setOverviewSnapshot(updated)
-      return updated
-    },
-    [adapter, overviewSnapshot],
-  )
-
-  const clearRecommendationUserOverride = useCallback(
-    async (recommendationId) => {
-      if (!overviewSnapshot?.conclusions?.recommendations?.length) return
-      const recommendations = overviewSnapshot.conclusions.recommendations.map((rec) => {
-        if (rec.id !== recommendationId) return rec
-        const { userOverride: _removed, ...rest } = rec
-        return rest
-      })
-      const updated = {
-        ...overviewSnapshot,
-        conclusions: { ...overviewSnapshot.conclusions, recommendations },
-        generatedAt: new Date().toISOString(),
-      }
-      await adapter.putSnapshot(updated)
-      setOverviewSnapshot(updated)
-    },
-    [adapter, overviewSnapshot],
-  )
-
   const setCurrentPeriodId = useCallback(
     async (id) => {
       setCurrentPeriodIdState(id)
@@ -2247,6 +2196,8 @@ export function InsightsProvider({ children }) {
       importSession,
       beginImportSession,
       prepareSharedBackgroundTask,
+      touchSharedBackgroundTask,
+      releaseSharedBackgroundTask,
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
@@ -2299,8 +2250,6 @@ export function InsightsProvider({ children }) {
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
       polishPlanningRecommendations,
-      updateRecommendationUserOverride,
-      clearRecommendationUserOverride,
       markSnapshotsStale,
       tagCandidates,
       tagCandidatesLoading,
@@ -2335,6 +2284,8 @@ export function InsightsProvider({ children }) {
       importSession,
       beginImportSession,
       prepareSharedBackgroundTask,
+      touchSharedBackgroundTask,
+      releaseSharedBackgroundTask,
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
@@ -2381,8 +2332,6 @@ export function InsightsProvider({ children }) {
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
       polishPlanningRecommendations,
-      updateRecommendationUserOverride,
-      clearRecommendationUserOverride,
       markSnapshotsStale,
       tagCandidates,
       tagCandidatesLoading,

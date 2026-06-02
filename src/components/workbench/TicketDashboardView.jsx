@@ -24,12 +24,14 @@ import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
  * @param {string} props.sourceLabel
  * @param {string} [props.product]
  * @param {(value: string) => void} [props.onProductChange]
+ * @param {boolean} [props.pdfCaptureMode] PDF 离屏截图：隐藏筛选栏等非图表 UI
  */
 export default function TicketDashboardView({
   snapshot,
   sourceLabel,
   product: productProp,
   onProductChange,
+  pdfCaptureMode = false,
 }) {
   const { feedbacks, currentPeriod, orderVolumes } = useInsights()
   const items = useMemo(
@@ -123,12 +125,15 @@ export default function TicketDashboardView({
 
   return (
     <div>
-      <WorkbenchAnalysisHint
-        className="mb-4 !rounded-lg"
-        sourceLabel={sourceLabel}
-        product={taxonomyProduct || undefined}
-      />
+      {!pdfCaptureMode && (
+        <WorkbenchAnalysisHint
+          className="mb-4 !rounded-lg"
+          sourceLabel={sourceLabel}
+          product={taxonomyProduct || undefined}
+        />
+      )}
 
+      {!pdfCaptureMode && (
       <Form className="flex flex-wrap items-end gap-4" layout="vertical">
         <Form.Item label="产品" className="!mb-0">
           <Select
@@ -190,8 +195,9 @@ export default function TicketDashboardView({
           {resourcePool ? '（已筛资源池）' : ''}
         </Typography.Text>
       </Form>
+      )}
 
-      {snapshot.dataSourceType === 'complaint_ticket' && (
+      {!pdfCaptureMode && snapshot.dataSourceType === 'complaint_ticket' && (
         <div className="page-section-sm">
           <WanTouRatioPanel
             period={currentPeriod}

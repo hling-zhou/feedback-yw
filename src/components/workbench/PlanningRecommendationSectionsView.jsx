@@ -8,7 +8,6 @@ import {
   normalizeSectionsForDisplay,
   normalizeVerification,
   PAIN_CLUSTER_SECTION_TITLE,
-  SHOW_PLANNING_OPPORTUNITIES,
 } from '../../lib/planningRecommendationDisplay.js'
 
 /** @typedef {import('../../domain/overviewConclusions.js').PlanningRecommendationSections} PlanningRecommendationSections */
@@ -166,14 +165,6 @@ export default function PlanningRecommendationSectionsView({ sections }) {
               </Typography.Text>
             </SubBlock>
           ) : null}
-        </SectionBlock>
-      )}
-
-      {SHOW_PLANNING_OPPORTUNITIES && normalized.opportunities && (
-        <SectionBlock title={PLANNING_SECTION_LABELS.opportunities}>
-          <Typography.Text className="text-sm leading-relaxed text-gray-700">
-            {normalized.opportunities}
-          </Typography.Text>
         </SectionBlock>
       )}
 

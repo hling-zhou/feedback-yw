@@ -5,9 +5,7 @@ import {
   normalizeClusterRootCause,
   normalizeVerification,
   painClusterScoresToExportFields,
-  resolveEffectiveRecommendation,
   resolveRecommendationSummary,
-  WORKFLOW_STATUS_LABELS,
 } from './planningRecommendationDisplay.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -20,9 +18,8 @@ const PRIORITY_LABELS = { high: '高', medium: '中', low: '低' }
  * @param {number} index
  */
 export function planningRecommendationToExportRow(rec, index) {
-  const effective = resolveEffectiveRecommendation(rec)
-  const sections = effective.sections || rec.sections
-  const summary = resolveRecommendationSummary(effective)
+  const sections = rec.sections
+  const summary = resolveRecommendationSummary(rec)
   const cluster = normalizeClusterRootCause(sections?.clusterRootCause)
   const verification = normalizeVerification(sections?.verification)
 
@@ -46,12 +43,6 @@ export function planningRecommendationToExportRow(rec, index) {
     用户验证: verification?.userValidation || '',
     依据工单号: (rec.evidenceTicketIds || []).slice(0, 50).join('、'),
     入选原因: rec.generationMeta?.selectedReason || '',
-    跟进状态: rec.userOverride?.status
-      ? WORKFLOW_STATUS_LABELS[rec.userOverride.status]
-      : '',
-    负责人: rec.userOverride?.owner || '',
-    目标日期: rec.userOverride?.dueDate || '',
-    备注: rec.userOverride?.note || '',
   }
 }
 

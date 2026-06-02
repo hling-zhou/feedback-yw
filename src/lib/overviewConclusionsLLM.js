@@ -124,7 +124,6 @@ export function mergePolishedRecommendation(ruleRec, llmPatch) {
     evidenceBundle: ruleRec.evidenceBundle,
     generationMeta: ruleRec.generationMeta,
     periodCompare: ruleRec.periodCompare,
-    userOverride: ruleRec.userOverride,
   })
 
   if ((merged.summary || merged.text || '').length < MIN_SUMMARY_LENGTH

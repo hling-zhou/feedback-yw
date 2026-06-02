@@ -33,7 +33,7 @@ export const actionItemStatusSchema = {
 /** @type {JSONSchema7} */
 export const backgroundTaskTypeSchema = {
   type: 'string',
-  enum: ['import', 'retag'],
+  enum: ['import', 'retag', 'pdf_export'],
 }
 
 /** @type {JSONSchema7} */

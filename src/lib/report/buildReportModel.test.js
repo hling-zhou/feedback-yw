@@ -68,6 +68,47 @@ describe('buildReportModel', () => {
     expect(recSection?.rows?.[0]?.label).toMatch(/弹性公网 IP/)
   })
 
+  it('excludes legacy planning recommendations from overview export', () => {
+    const model = buildReportModel({
+      scope: 'overview',
+      period: { label: '2025-06', granularity: 'month', startDate: '2025-06-01', endDate: '2025-06-30' },
+      overview: {
+        sourceSummaries: {},
+        crossSourceMetrics: { totalRecords: 5 },
+        conclusions: {
+          recommendationsMeta: { recommendationEngine: 'legacy_planning' },
+          recommendations: [{ id: 'old', summary: '旧版建议', signalType: 'journey' }],
+        },
+      },
+    })
+    expect(model.sections.some((s) => s.title === '行动建议')).toBe(false)
+  })
+
+  it('includes source snapshot distribution sections for ticket scope', () => {
+    const model = buildReportModel({
+      scope: 'complaint_ticket',
+      period: { label: '2025-06', granularity: 'month', startDate: '2025-06-01', endDate: '2025-06-30' },
+      sourceSnapshot: {
+        summary: { recordCount: 12, negativePct: 30 },
+        aggregates: {
+          products: [{ name: '云主机', count: 8 }],
+          sentiment: [{ name: '负面', value: 4, pct: 33 }],
+          monthlyTrend: [
+            { date: '2025-05', count: 5 },
+            { date: '2025-06', count: 7 },
+          ],
+          requestScenes: [{ name: '故障', count: 3 }],
+          problemTypes: [{ name: '性能', count: 2 }],
+        },
+      },
+    })
+    const titles = model.sections.map((s) => s.title)
+    expect(titles).toContain('产品分布（周期内）')
+    expect(titles).toContain('客户情绪分布')
+    expect(titles).toContain('月度趋势摘要')
+    expect(titles).toContain('请求场景 Top')
+  })
+
   it('includes wan tou ratio section when rows provided', () => {
     const model = buildReportModel({
       scope: 'overview',

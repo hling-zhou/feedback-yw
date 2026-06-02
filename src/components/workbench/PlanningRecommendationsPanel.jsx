@@ -4,7 +4,6 @@ import { Button, Card, Collapse, Dropdown, Segmented, Select, Space, Table, Tag,
 import {
   AimOutlined,
   DownloadOutlined,
-  EditOutlined,
   InfoCircleOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
@@ -28,20 +27,17 @@ import {
 import {
   groupRecommendationsByProduct,
   recommendationsForMatrixCell,
-  resolveEffectiveRecommendations,
-  WORKFLOW_STATUS_LABELS,
 } from '../../lib/planningRecommendationDisplay.js'
 import {
   FEEDBACK_TYPE_LABELS,
   saveRecommendationFeedback,
 } from '../../lib/planningRecommendationFeedback.js'
-import PlanningRecommendationEditModal from './PlanningRecommendationEditModal.jsx'
+import PlanningRecommendationsHelpModal from './PlanningRecommendationsHelpModal.jsx'
+import PlanningRecommendationSectionsView from './PlanningRecommendationSectionsView.jsx'
 import {
   PLANNING_RECOMMENDATIONS_ANCHOR_ID,
   PLANNING_RECOMMENDATIONS_PANEL_TITLE,
 } from '../../domain/overviewConclusions.js'
-import PlanningRecommendationsHelpModal from './PlanningRecommendationsHelpModal.jsx'
-import PlanningRecommendationSectionsView from './PlanningRecommendationSectionsView.jsx'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
 
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
@@ -126,8 +122,6 @@ export default function PlanningRecommendationsPanel({
     adapter,
     settings,
     polishPlanningRecommendations,
-    updateRecommendationUserOverride,
-    clearRecommendationUserOverride,
   } = useInsights()
 
   const submitRecommendationFeedback = useCallback(
@@ -144,7 +138,6 @@ export default function PlanningRecommendationsPanel({
   const [productFilter, setProductFilter] = useState(/** @type {string | undefined} */ (undefined))
   const [viewMode, setViewMode] = useState(/** @type {'list' | 'product' | 'matrix'} */ ('product'))
   const [polishing, setPolishing] = useState(false)
-  const [editingRec, setEditingRec] = useState(/** @type {OverviewRecommendation | null} */ (null))
   const canPolish = canUseSemanticMatch(settings)
 
   const feedbackByRecordId = useMemo(() => {
@@ -176,12 +169,11 @@ export default function PlanningRecommendationsPanel({
   )
 
   const filteredRecommendations = useMemo(() => {
-    const scoped = filterRecommendationsByProduct(
+    return filterRecommendationsByProduct(
       allRecommendations,
       productFilter,
       feedbackByRecordId,
     )
-    return resolveEffectiveRecommendations(scoped)
   }, [allRecommendations, productFilter, feedbackByRecordId])
 
   const periodCompareSummary = useMemo(
@@ -367,7 +359,6 @@ export default function PlanningRecommendationsPanel({
                 index={idx}
                 periodMonth={conclusions?.periodMonth}
                 insightPeriodId={conclusions?.insightPeriodId}
-                onEdit={() => setEditingRec(rec)}
                 onFeedback={(type) => {
                   void submitRecommendationFeedback({
                     recommendationId: rec.id,
@@ -403,7 +394,6 @@ export default function PlanningRecommendationsPanel({
                     index={idx}
                     periodMonth={conclusions?.periodMonth}
                     insightPeriodId={conclusions?.insightPeriodId}
-                    onEdit={() => setEditingRec(rec)}
                     onFeedback={(type) => {
                       void submitRecommendationFeedback({
                         recommendationId: rec.id,
@@ -470,20 +460,6 @@ export default function PlanningRecommendationsPanel({
       <Typography.Text type="secondary" className="mt-3 block text-xs">
         可在反馈库中按范围筛选相关工单，或在洞察分析 Tab 中进一步下钻。
       </Typography.Text>
-
-      <PlanningRecommendationEditModal
-        rec={editingRec}
-        open={Boolean(editingRec)}
-        onClose={() => setEditingRec(null)}
-        onSave={(patch) =>
-          editingRec ? updateRecommendationUserOverride(editingRec.id, patch) : Promise.resolve()
-        }
-        onReset={
-          editingRec
-            ? () => clearRecommendationUserOverride(editingRec.id)
-            : undefined
-        }
-      />
     </Card>
   )
 }
@@ -494,7 +470,6 @@ export default function PlanningRecommendationsPanel({
  * @param {number} props.index
  * @param {string} [props.periodMonth]
  * @param {FeedbackRecord[]} [props.evidenceRecords]
- * @param {() => void} [props.onEdit]
  * @param {(type: import('../../lib/planningRecommendationFeedback.js').RecommendationFeedbackType) => void} [props.onFeedback]
  */
 function PlanningRecommendationItem({
@@ -502,7 +477,6 @@ function PlanningRecommendationItem({
   index,
   periodMonth,
   insightPeriodId,
-  onEdit,
   onFeedback,
   evidenceRecords = [],
 }) {
@@ -572,10 +546,6 @@ function PlanningRecommendationItem({
                 {PERIOD_COMPARE_LABELS[rec.periodCompare.change]}
               </Tag>
             )}
-            {rec.userOverride?.status && (
-              <Tag color="gold">{WORKFLOW_STATUS_LABELS[rec.userOverride.status]}</Tag>
-            )}
-            {rec.userOverride && <Tag bordered>已编辑</Tag>}
           </Space>
 
           {sections ? (
@@ -637,11 +607,6 @@ function PlanningRecommendationItem({
           )}
 
           <Space wrap className="mt-2">
-            {onEdit && (
-              <Button type="link" size="small" className="!px-0 !text-xs" icon={<EditOutlined />} onClick={onEdit}>
-                编辑
-              </Button>
-            )}
             {onFeedback && insightPeriodId && (
               <Dropdown
                 menu={{
@@ -656,16 +621,6 @@ function PlanningRecommendationItem({
                   反馈
                 </Button>
               </Dropdown>
-            )}
-            {rec.userOverride?.owner && (
-              <Typography.Text type="secondary" className="text-xs">
-                负责人：{rec.userOverride.owner}
-              </Typography.Text>
-            )}
-            {rec.userOverride?.dueDate && (
-              <Typography.Text type="secondary" className="text-xs">
-                目标：{rec.userOverride.dueDate}
-              </Typography.Text>
             )}
           </Space>
 

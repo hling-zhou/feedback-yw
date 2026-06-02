@@ -41,7 +41,16 @@ describe('backgroundTaskLock domain', () => {
   it('formats blocked tip and remote banner', () => {
     expect(formatBackgroundTaskBlockedTip(sampleLock)).toContain('alice')
     expect(formatBackgroundTaskBlockedTip({ ...sampleLock, type: 'import' })).toContain('数据导入')
+    expect(formatBackgroundTaskBlockedTip({ ...sampleLock, type: 'pdf_export' })).toContain('PDF')
     expect(formatBackgroundTaskRemoteBanner(sampleLock)).toContain('批量重新打标')
+    expect(
+      formatBackgroundTaskRemoteBanner({
+        ...sampleLock,
+        type: 'pdf_export',
+        meta: { label: '投诉工单报告' },
+        progress: '正在截取图表',
+      }),
+    ).toContain('PDF')
     expect(isBackgroundTaskLockHeldByUser(sampleLock, 'user-a')).toBe(true)
     expect(isBackgroundTaskLockHeldByUser(sampleLock, 'user-b')).toBe(false)
   })

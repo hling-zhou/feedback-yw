@@ -5,7 +5,8 @@ import { useAppMessage } from '../hooks/useAppMessage.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
-import { downloadCsv, downloadJson } from '../lib/export.js'
+import { downloadFeedbackBackupJson, parseFeedbackBackupJson } from '../lib/feedbackBackup.js'
+import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
 import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { canUseSemanticMatch } from '../lib/themeSemantic.js'
@@ -147,15 +148,13 @@ export default function Settings() {
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const data = JSON.parse(String(reader.result))
-        if (Array.isArray(data)) {
-          replaceAll(data)
-          alert(`已导入 ${data.length} 条反馈`)
-        } else {
-          alert('JSON 格式应为反馈数组')
-        }
-      } catch {
-        alert('JSON 解析失败')
+        const raw = JSON.parse(String(reader.result))
+        const { records, format } = parseFeedbackBackupJson(raw)
+        replaceAll(records)
+        const formatHint = format === 'envelope-v1' ? '（v1 信封）' : '（旧版数组）'
+        message.success(`已导入 ${records.length} 条反馈${formatHint}`)
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : 'JSON 解析失败')
       }
     }
     reader.readAsText(file)
@@ -254,19 +253,20 @@ export default function Settings() {
 
           <Card title="导出数据">
             <Typography.Text type="secondary" className="text-xs">
-              当前共 {feedbacks.length} 条反馈
+              当前共 {feedbacks.length} 条反馈。Excel 为工单分析 v2 列（按导入月份分 Sheet）；JSON
+              备份含 schema 版本与完整记录。
             </Typography.Text>
             <Space wrap className="mt-4">
               <Button
                 type="primary"
                 disabled={!feedbacks.length}
-                onClick={() => downloadCsv(feedbacks)}
+                onClick={() => downloadTicketAnalysisExcel(feedbacks)}
               >
-                导出 CSV
+                导出 Excel
               </Button>
               <Button
                 disabled={!feedbacks.length}
-                onClick={() => downloadJson(feedbacks, 'feedback-insights-backup.json')}
+                onClick={() => downloadFeedbackBackupJson(feedbacks)}
               >
                 导出 JSON 备份
               </Button>
@@ -275,7 +275,7 @@ export default function Settings() {
 
           <Card title="导入备份">
             <Typography.Text type="secondary" className="text-xs">
-              从 JSON 备份恢复（将覆盖当前数据）
+              从 JSON 备份恢复（将覆盖当前数据）。支持 v1 信封或旧版纯数组格式。
             </Typography.Text>
             <div className="mt-4">
               <Upload
