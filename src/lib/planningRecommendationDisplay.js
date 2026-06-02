@@ -141,10 +141,10 @@ export function normalizeVerification(input) {
  */
 export function normalizeSectionsForDisplay(sections) {
   if (!sections) return sections
+  const { verification: _removed, ...rest } = sections
   return {
-    ...sections,
+    ...rest,
     clusterRootCause: normalizeClusterRootCause(sections.clusterRootCause),
-    verification: normalizeVerification(sections.verification),
   }
 }
 
@@ -276,17 +276,6 @@ export function formatRecommendationSectionsForExport(sections, summary = '') {
     if (serviceActions.length) {
       lines.push(`${PLANNING_SECTION_LABELS.serviceActions}：`)
       serviceActions.forEach((action, index) => lines.push(`${index + 1}. ${action}`))
-    }
-  }
-
-  const verification = normalizeVerification(normalized.verification)
-  if (verification && (verification.metrics?.length || verification.userValidation)) {
-    lines.push(`【${PLANNING_SECTION_LABELS.verification}】`)
-    if (verification.metrics?.length) {
-      lines.push(`指标监控：${verification.metrics.join('、')}`)
-    }
-    if (verification.userValidation) {
-      lines.push(`用户验证：${verification.userValidation}`)
     }
   }
 

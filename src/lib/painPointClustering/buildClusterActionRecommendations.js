@@ -13,7 +13,6 @@ import {
   buildInsightExecutiveSummary,
   ensureMinProductActions,
   enforcePlanningSectionRules,
-  refreshPlanningVerification,
 } from '../planningRecommendationSections.js'
 import {
   computeRecommendationEvidenceStrength,
@@ -192,11 +191,6 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     executiveSummary: fallbackSummary,
     painClusterScores,
   }
-  sections = refreshPlanningVerification(
-    sections,
-    { ...attached, sections, evidenceBundle: stub.evidenceBundle },
-    records,
-  )
   sections = enforcePlanningSectionRules(ensureMinProductActions(sections, attached.details || []))
 
   let evidenceStrength = computeRecommendationEvidenceStrength(

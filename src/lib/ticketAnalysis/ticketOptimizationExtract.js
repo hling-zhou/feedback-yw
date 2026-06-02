@@ -1,3 +1,4 @@
+import { getEstablishedActionDisplay } from '../../domain/establishedAction.js'
 import { isValidRootCause } from '../journeyOptimizationLLM.js'
 
 const GENERIC_SERVICE_RE = /工单保留|暂未回复|待客户|信息不全|拓扑|补充材料|空转/
@@ -86,7 +87,7 @@ export function extractTicketOptimizations(input) {
  * @param {import('../types.js').FeedbackRecord} record
  */
 export function getEffectiveOptimization(record) {
-  const manual = record?.manualReviewOptimization?.trim()
+  const manual = getEstablishedActionDisplay(record)
   if (manual) return { product: manual, service: '', combined: manual, source: 'manual' }
 
   const product = record?.optimizationProduct?.trim() || ''

@@ -27,7 +27,7 @@ describe('clusterActionSynthesis', () => {
       makeRecord(),
       makeRecord({ id: randomId() }),
     ]
-    const actions = synthesizeClusterProductActions(
+    const { actions } = synthesizeClusterProductActions(
       {
         id: 'rec-1',
         scope: { product: '弹性公网 IP' },
@@ -37,8 +37,8 @@ describe('clusterActionSynthesis', () => {
       '安全组规则未放行导致公网端口无法访问',
     )
     expect(actions).toHaveLength(CLUSTER_SYNTHESIZED_ACTION_COUNT)
-    expect(actions[0]).toMatch(/安全组规则未放行/)
-    expect(actions[0]).not.toMatch(/针对「|集中反馈|环节关于/)
+    expect(actions[0]).toMatch(/完善产品能力说明|控制台引导/)
+    expect(actions[0]).not.toMatch(/围绕|针对「|集中反馈|环节关于|安全组/)
     expect(actions[1]).toMatch(/配置与操作|控制台|排查|playbook/i)
   })
 
@@ -62,7 +62,7 @@ describe('clusterActionSynthesis', () => {
           '请求节点：计费咨询--计费咨询工单标题：计费咨询详细内容：关于广州资源池需要将1个共享带宽的弹性公网IP数量提升至40。',
       }),
     ]
-    const actions = synthesizeClusterProductActions(
+    const { actions } = synthesizeClusterProductActions(
       {
         id: 'rec-billing',
         scope: { product: '弹性公网 IP', journeyL2: '计费模式咨询' },
@@ -72,13 +72,30 @@ describe('clusterActionSynthesis', () => {
     )
     expect(actions).toHaveLength(2)
     const joined = actions.join('\n')
-    expect(joined).not.toMatch(/请求节点|工单标题|SLA|回访|工单流转|针对「/)
+    expect(joined).not.toMatch(/请求节点|工单标题|SLA|回访|工单流转|针对「|围绕/)
     expect(joined).not.toMatch(/计费模式咨询/)
-    expect(joined).toMatch(/配额|计费|控制台|FAQ|广州资源池/)
+    expect(joined).toMatch(/配额|计费|控制台|FAQ/)
   })
 })
 
 describe('buildClusterActionRecommendations with synthesis', () => {
+  it('uses established action in slot 2 when at least 3 tickets share it', () => {
+    const pain = '安全组规则未放行导致公网端口无法访问'
+    const established = '增加 ENI 连通性预检与一键放行引导，降低重复协查成本。'
+    const records = [
+      makeRecord({ painPoint: pain, establishedAction: established }),
+      makeRecord({ id: randomId(), painPoint: pain, establishedAction: established }),
+      makeRecord({ id: randomId(), painPoint: pain, establishedAction: established }),
+      makeRecord({ id: randomId(), painPoint: pain, optimizationProduct: '不应出现的单条自动建议。' }),
+    ]
+    const recs = buildClusterActionRecommendations(records)
+    const joined = recs[0]?.sections?.productActions?.join('\n') || ''
+    expect(joined).toContain('ENI 连通性预检')
+    expect(joined).not.toMatch(/不应出现|围绕/)
+    expect(recs[0]?.productActionsSource).toBe('synth+manual')
+    expect(recs[0]?.measureSource).toBe('群组规则合成（含确立举措）')
+  })
+
   it('uses cluster synthesis instead of ticket optimization excerpts', () => {
     const pain = '安全组规则未放行导致公网端口无法访问'
     const records = [
@@ -88,8 +105,8 @@ describe('buildClusterActionRecommendations with synthesis', () => {
     const recs = buildClusterActionRecommendations(records)
     expect(recs[0]?.sections?.productActions).toHaveLength(2)
     const joined = recs[0]?.sections?.productActions?.join('\n') || ''
-    expect(joined).toMatch(/安全组规则未放行/)
-    expect(joined).not.toMatch(/不应直接摘录/)
+    expect(joined).toMatch(/安全组规则未放行|控制台|排查|配置/)
+    expect(joined).not.toMatch(/不应直接摘录|围绕/)
     expect(recs[0]?.measureSource).toBe('群组规则合成')
     expect(recs[0]?.productActionsSource).toBe('synth')
   })

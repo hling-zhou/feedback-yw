@@ -14,7 +14,7 @@ import {
 import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 import {
   PLANNING_ACTION_RE,
-  trackingMetricsForSignal,
+  stripProductActionAroundPrefix,
   PLANNING_RECOMMENDATION_LIMITS,
 } from './planningRecommendationTemplate.js'
 import { isGenericRecommendationText } from './journeyOptimizationLLM.js'
@@ -28,9 +28,7 @@ import {
 } from './painPointClustering/clusteringCorpus.js'
 import {
   formatClusterRootCauseForExport,
-  formatVerificationForExport,
   normalizeClusterRootCause,
-  normalizeVerification,
 } from './planningRecommendationDisplay.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -44,7 +42,6 @@ export const PLANNING_SECTION_LABELS = {
   clusterRootCause: '问题聚类与根因分析',
   productActions: '产品/技术优化',
   serviceActions: '服务/流程改进',
-  verification: '闭环验证机制',
 }
 
 export const CLUSTER_SUB_LABELS = {
@@ -212,12 +209,17 @@ function usableActionLine(text, { strict = true } = {}) {
  * @param {string[]} lines
  * @param {number} [limit]
  */
+function normalizeProductActionLine(text) {
+  return stripProductActionAroundPrefix(text?.trim() || '')
+}
+
 function dedupeActionLines(lines, limit = 4, { strict = true } = {}) {
   /** @type {string[]} */
   const out = []
   const seen = new Set()
   for (const raw of lines) {
-    const line = strict ? usableActionLine(raw) : truncateSentence(raw?.trim() || '', MAX_ACTION_LEN)
+    const cleaned = normalizeProductActionLine(raw)
+    const line = strict ? usableActionLine(cleaned) : truncateSentence(cleaned, MAX_ACTION_LEN)
     if (!line || line.length < 12) continue
     const key = line.slice(0, 80)
     if (seen.has(key)) continue
@@ -490,70 +492,6 @@ function buildClusterRootCauseStructured(rec, pool) {
 }
 
 /**
- * @param {OverviewRecommendation} rec
- * @param {FeedbackRecord[]} pool
- * @returns {PlanningVerification}
- */
-function buildVerificationStructured(rec, pool = []) {
-  /** @type {string[]} */
-  const metrics = []
-  const bundle = rec.evidenceBundle
-  const scores = rec.sections?.painClusterScores
-
-  if (scores?.ticketCount) {
-    metrics.push(`群组工单 ${scores.ticketCount} 条`)
-  } else if (bundle?.ticketCount) {
-    metrics.push(`群组工单 ${bundle.ticketCount} 条`)
-  }
-  if (scores?.sharePct != null && scores.sharePct >= 5) {
-    metrics.push(`占产品 ${Math.round(scores.sharePct)}%`)
-  } else if (bundle?.sharePct != null && bundle.sharePct >= 5) {
-    metrics.push(`占产品 ${Math.round(bundle.sharePct)}%`)
-  }
-  if (scores?.priorityScore != null) {
-    metrics.push(`综合优先级 ${scores.priorityScore} 分`)
-  }
-
-  const negative = pool.filter((r) => isNegativeSentiment(r.sentiment)).length
-  if (pool.length && negative / pool.length >= 0.3) {
-    metrics.push('负面情绪占比')
-  }
-
-  const tierCounts = countCustomerTiers(pool)
-  if ((tierCounts['金牌'] || 0) + (tierCounts['银牌'] || 0) >= 2) {
-    metrics.push('高价值客户影响')
-  }
-
-  const topL2 = topValues(pool, 'journeyL2', 1)[0]?.text
-  if (topL2) metrics.push(`${topL2}环节复发率`)
-
-  const fallbackMetrics = (
-    rec.trackingMetrics?.length
-      ? rec.trackingMetrics
-      : trackingMetricsForSignal(
-          /** @type {import('./planningRecommendationTemplate.js').PlanningSignalType} */ (
-            rec.signalType || 'journey_hotspot'
-          ),
-        )
-  ).slice(0, 4)
-
-  const mergedMetrics = [...new Set([...metrics, ...fallbackMetrics])].slice(0, 4)
-
-  const highValue = (tierCounts['金牌'] || 0) + (tierCounts['银牌'] || 0)
-  const userValidation =
-    highValue >= 2
-      ? '优先回访金牌/银牌客户修复结果，并跟踪同类痛点在本产品 30 天内复现率。'
-      : negative >= Math.max(2, Math.ceil(pool.length * 0.4))
-        ? '抽样回访高负面情绪工单，并跟踪同类问题 30 天内复现率与重复进线。'
-        : '抽样回访已修复工单，并跟踪同类问题 30 天内复现率。'
-
-  return {
-    metrics: mergedMetrics,
-    userValidation,
-  }
-}
-
-/**
  * @param {string} summary
  */
 function enforceExecutiveSummary(summary) {
@@ -568,9 +506,8 @@ function enforceExecutiveSummary(summary) {
  * @param {PlanningRecommendationSections} sections
  */
 export function enforcePlanningSectionRules(sections) {
-  const { opportunities: _removed, ...rest } = sections
+  const { opportunities: _removed, verification: _verification, ...rest } = sections
   const cluster = normalizeClusterRootCause(rest.clusterRootCause)
-  const verification = normalizeVerification(rest.verification)
 
   return {
     ...rest,
@@ -580,7 +517,6 @@ export function enforcePlanningSectionRules(sections) {
     serviceActions: rest.serviceActions?.length
       ? dedupeActionLines(rest.serviceActions, 2, { strict: false })
       : undefined,
-    verification,
   }
 }
 
@@ -617,8 +553,6 @@ export function sectionsToLegacyDetails(sections) {
   for (const line of sections.serviceActions || []) {
     out.push(`【服务/流程】${line}`)
   }
-  const verificationText = formatVerificationForExport(normalizeVerification(sections.verification))
-  if (verificationText) out.push(verificationText)
   return out.slice(0, PLANNING_RECOMMENDATION_LIMITS.maxDetails)
 }
 
@@ -641,6 +575,7 @@ function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
   let productActions = ticketProductActions
   let serviceActions = ticketServiceActions
   let usedClusterSynthesis = false
+  let usedEstablishedActionInSynthesis = false
   let usedPlaybookFallback = false
 
   if (isClusterV2) {
@@ -649,9 +584,10 @@ function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
       pool,
       rec.generationMeta?.representativePain,
     )
-    if (synthesized.length >= MIN_PRODUCT_ACTIONS) {
-      productActions = synthesized
+    if (synthesized.actions.length >= MIN_PRODUCT_ACTIONS) {
+      productActions = synthesized.actions
       usedClusterSynthesis = true
+      usedEstablishedActionInSynthesis = synthesized.usedEstablishedAction
     }
   }
 
@@ -661,7 +597,6 @@ function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
     clusterRootCause: buildClusterRootCauseStructured(rec, pool),
     productActions,
     serviceActions: serviceActions.length ? serviceActions : undefined,
-    verification: buildVerificationStructured(rec, pool),
   }
 
   sections = ensureMinProductActions(sections, rec.details || [])
@@ -695,6 +630,7 @@ function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
     aligned.sections.productActions || [],
     {
       usedClusterSynthesis,
+      usedEstablishedActionInSynthesis,
       usedPlaybookFallback: usedPlaybookFallback || aligned.usedPlaybookFallback,
       usedAlignmentReplacement: aligned.usedAlignmentReplacement,
     },
@@ -721,19 +657,6 @@ function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
 export function buildPlanningRecommendationSections(rec, evidencePool = []) {
   const aligned = buildPlanningRecommendationSectionsCore(rec, evidencePool)
   return enforcePlanningSectionRules(aligned.sections)
-}
-
-/**
- * 二次聚类得分写入后刷新验证指标（P1-5）
- * @param {PlanningRecommendationSections} sections
- * @param {OverviewRecommendation} rec
- * @param {FeedbackRecord[]} pool
- */
-export function refreshPlanningVerification(sections, rec, pool) {
-  return {
-    ...sections,
-    verification: buildVerificationStructured(rec, pool),
-  }
 }
 
 /**

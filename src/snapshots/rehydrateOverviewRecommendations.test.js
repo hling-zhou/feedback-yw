@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { randomId } from '../lib/randomId.js'
+import { CLUSTER_ACTION_SYNTHESIS_VERSION } from '../lib/painPointClustering/clusterActionSynthesis.js'
 import {
   needsOverviewRecommendationsRehydrate,
   prepareOverviewConclusionsForDisplay,
@@ -208,7 +209,7 @@ describe('refreshStaleV2RecommendationSections', () => {
     expect(summary).not.toMatch(/请求节点|工单标题|详细内容：/)
     expect(summary).toMatch(/本司一共12台云主机/)
     expect(summary).not.toMatch(/集中反馈|请求节点/)
-    expect(refreshed.generationMeta?.actionSynthesisVersion).toBe(5)
+    expect(refreshed.generationMeta?.actionSynthesisVersion).toBe(CLUSTER_ACTION_SYNTHESIS_VERSION)
   })
 
   it('replaces background-narrative executiveSummary on display', () => {

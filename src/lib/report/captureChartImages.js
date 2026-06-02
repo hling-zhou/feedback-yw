@@ -40,10 +40,11 @@ for (const type of DATA_SOURCE_TYPES) {
 }
 
 /** 截图缩放；过高易触发浏览器「页面无响应」 */
-const CHART_CAPTURE_SCALE = 1.25
+const CHART_CAPTURE_SCALE = 1.5
 const YIELD_BETWEEN_CAPTURES_MS = 80
 const CHART_MIN_HEIGHT_PX = 8
 const CHART_MIN_WIDTH_PX = 40
+const PDF_CAPTURE_ROOT_WIDTH_PX = 1280
 
 /**
  * 触发 Recharts ResponsiveContainer 在离屏容器中重新测量尺寸
@@ -51,6 +52,60 @@ const CHART_MIN_WIDTH_PX = 40
 export function nudgeChartLayout() {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event('resize'))
+}
+
+/**
+ * 离屏 PDF 截图容器必须可绘制：opacity:0 / z-index:-1 会导致 html2canvas 产出黑块
+ * @param {HTMLElement | null | undefined} root
+ */
+export function preparePdfCaptureRoot(root) {
+  if (!(root instanceof HTMLElement)) return
+  Object.assign(root.style, {
+    position: 'fixed',
+    left: '-12000px',
+    top: '0',
+    width: `${PDF_CAPTURE_ROOT_WIDTH_PX}px`,
+    opacity: '1',
+    visibility: 'visible',
+    pointerEvents: 'none',
+    zIndex: '1',
+    overflow: 'visible',
+    background: '#ffffff',
+  })
+  nudgeChartLayout()
+}
+
+/**
+ * @param {HTMLCanvasElement} canvas
+ */
+export function isMostlyBlankCanvas(canvas) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx || canvas.width < 4 || canvas.height < 4) return true
+
+  const points = [
+    [Math.floor(canvas.width * 0.25), Math.floor(canvas.height * 0.25)],
+    [Math.floor(canvas.width * 0.5), Math.floor(canvas.height * 0.5)],
+    [Math.floor(canvas.width * 0.75), Math.floor(canvas.height * 0.75)],
+    [Math.floor(canvas.width * 0.5), Math.floor(canvas.height * 0.2)],
+    [Math.floor(canvas.width * 0.5), Math.floor(canvas.height * 0.8)],
+  ]
+
+  let dark = 0
+  let colored = 0
+  for (const [x, y] of points) {
+    const [r, g, b, a] = ctx.getImageData(x, y, 1, 1).data
+    if (a < 12) continue
+    if (r < 28 && g < 28 && b < 28) {
+      dark += 1
+      continue
+    }
+    if (Math.abs(r - g) > 8 || Math.abs(g - b) > 8 || r < 240 || g < 240 || b < 240) {
+      colored += 1
+    }
+  }
+
+  if (colored >= 1) return false
+  return dark >= 2
 }
 
 /**
@@ -145,6 +200,8 @@ export async function waitForWorkbenchCharts(scope, root = document, options = {
   if (!targets.length) return []
 
   const tabRoot = resolveWorkbenchTabRoot(scope, root)
+  if (root instanceof HTMLElement) preparePdfCaptureRoot(root)
+
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
@@ -167,31 +224,128 @@ export async function waitForWorkbenchCharts(scope, root = document, options = {
 }
 
 /**
- * @param {HTMLElement} el
+ * @param {HTMLElement} root
  */
-async function captureElementToImage(el, selector) {
+function patchClonedChartSubtree(root) {
+  root.style.background = '#ffffff'
+  root.style.opacity = '1'
+  root.style.visibility = 'visible'
+  root.style.color = '#111827'
+
+  root.querySelectorAll('svg.recharts-surface, svg').forEach((svg) => {
+    if (!(svg instanceof SVGElement)) return
+    svg.style.overflow = 'visible'
+    svg.querySelectorAll('*').forEach((node) => {
+      if (!(node instanceof SVGElement)) return
+      if (node.getAttribute('fill') === 'currentColor') {
+        node.setAttribute('fill', '#374151')
+      }
+      if (node.getAttribute('stroke') === 'currentColor') {
+        node.setAttribute('stroke', '#374151')
+      }
+    })
+  })
+}
+
+/**
+ * @param {HTMLElement} el
+ * @returns {Promise<string | null>}
+ */
+async function captureRechartsSvgFallback(el) {
+  const svg = el.querySelector('svg.recharts-surface')
+  if (!(svg instanceof SVGSVGElement)) return null
+
+  const rect = svg.getBoundingClientRect()
+  const width = Math.max(1, Math.round(rect.width))
+  const height = Math.max(1, Math.round(rect.height))
+  const clone = /** @type {SVGSVGElement} */ (svg.cloneNode(true))
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.setAttribute('width', String(width))
+  clone.setAttribute('height', String(height))
+
+  const xml = new XMLSerializer().serializeToString(clone)
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`
+
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('canvas 2d unavailable'))
+        return
+      }
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(image, 0, 0, width, height)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    image.onerror = () => reject(new Error('svg rasterize failed'))
+    image.src = svgUrl
+  })
+}
+
+/**
+ * @param {HTMLElement} el
+ * @param {string} chartKey
+ * @param {HTMLElement | null} captureRoot
+ */
+async function captureElementToImage(el, chartKey, captureRoot) {
   const { default: html2canvas } = await import('html2canvas')
+  if (captureRoot) preparePdfCaptureRoot(captureRoot)
   nudgeChartLayout()
   await yieldToNextFrame()
-  await yieldUntilIdle(120)
+  await yieldUntilIdle(160)
 
-  const canvas = await html2canvas(el, {
+  const rect = el.getBoundingClientRect()
+  const html2canvasOptions = {
     scale: CHART_CAPTURE_SCALE,
     backgroundColor: '#ffffff',
     logging: false,
     useCORS: true,
-    allowTaint: true,
-    foreignObjectRendering: true,
-    onclone: (doc) => {
-      const cloned = doc.querySelector(selector)
-      if (cloned instanceof HTMLElement) {
-        cloned.style.background = '#fff'
-        cloned.style.opacity = '1'
-        cloned.style.visibility = 'visible'
-      }
+    allowTaint: false,
+    foreignObjectRendering: false,
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+    scrollX: 0,
+    scrollY: 0,
+    onclone: (doc, clonedEl) => {
+      const cloned =
+        clonedEl instanceof HTMLElement
+          ? clonedEl
+          : doc.querySelector(`[data-pdf-chart="${chartKey}"]`)
+      if (cloned instanceof HTMLElement) patchClonedChartSubtree(cloned)
     },
-  })
-  return canvas.toDataURL('image/jpeg', 0.88)
+  }
+
+  let canvas = await html2canvas(el, html2canvasOptions)
+  if (isMostlyBlankCanvas(canvas)) {
+    canvas = await html2canvas(el, {
+      ...html2canvasOptions,
+      scale: 1,
+      foreignObjectRendering: false,
+    })
+  }
+
+  if (!isMostlyBlankCanvas(canvas)) {
+    return canvas.toDataURL('image/png')
+  }
+
+  const svgFallback = await captureRechartsSvgFallback(el)
+  if (svgFallback) return svgFallback
+
+  console.warn('[pdf] chart capture produced blank canvas:', chartKey)
+  return canvas.toDataURL('image/png')
+}
+
+/**
+ * @param {string} selector
+ */
+function chartKeyFromSelector(selector) {
+  const matched = selector.match(/data-pdf-chart="([^"]+)"/)
+  return matched?.[1] || selector
 }
 
 /**
@@ -203,6 +357,9 @@ async function captureElementToImage(el, selector) {
 export async function captureChartsForScope(scope, root = document, onProgress) {
   const targets = chartTargetsForScope(scope)
   if (!targets.length) return []
+
+  const captureRoot = root instanceof HTMLElement ? root : null
+  if (captureRoot) preparePdfCaptureRoot(captureRoot)
 
   const tabRoot = resolveWorkbenchTabRoot(scope, root)
   /** @type {ChartImage[]} */
@@ -222,15 +379,17 @@ export async function captureChartsForScope(scope, root = document, onProgress) 
     const el = tabRoot.querySelector(selector)
     if (!(el instanceof HTMLElement)) continue
 
+    const chartKey = chartKeyFromSelector(selector)
+
     try {
-      const src = await captureElementToImage(el, selector)
-      images.push({ title, src })
+      const src = await captureElementToImage(el, chartKey, captureRoot)
+      if (src) images.push({ title, src })
     } catch (err) {
       console.warn('[pdf] chart capture failed:', title, err)
       try {
         await yieldToMain(200)
-        const src = await captureElementToImage(el, selector)
-        images.push({ title, src })
+        const src = await captureElementToImage(el, chartKey, captureRoot)
+        if (src) images.push({ title, src })
       } catch (retryErr) {
         console.warn('[pdf] chart capture retry failed:', title, retryErr)
       }

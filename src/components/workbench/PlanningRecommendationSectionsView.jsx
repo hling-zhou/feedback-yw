@@ -6,7 +6,6 @@ import {
 import {
   normalizeClusterRootCause,
   normalizeSectionsForDisplay,
-  normalizeVerification,
   PAIN_CLUSTER_SECTION_TITLE,
 } from '../../lib/planningRecommendationDisplay.js'
 
@@ -20,9 +19,7 @@ function SectionBlock({ title, children, variant = 'default' }) {
   const bg =
     variant === 'actions'
       ? 'bg-indigo-50/40 border-indigo-100'
-      : variant === 'verify'
-        ? 'bg-emerald-50/40 border-emerald-100'
-        : 'bg-gray-50/80 border-gray-200'
+      : 'bg-gray-50/80 border-gray-200'
 
   return (
     <div className={`rounded-lg border px-3 py-2.5 ${bg}`}>
@@ -71,7 +68,6 @@ function BulletList({ items }) {
 export default function PlanningRecommendationSectionsView({ sections }) {
   const normalized = normalizeSectionsForDisplay(sections) || sections
   const cluster = normalizeClusterRootCause(normalized.clusterRootCause)
-  const verification = normalizeVerification(normalized.verification)
   const painScores = normalized.painClusterScores
   const hasCluster = cluster && (cluster.painClusters?.length || cluster.businessImpact)
   const hasProduct = (normalized.productActions?.length ?? 0) > 0
@@ -155,25 +151,6 @@ export default function PlanningRecommendationSectionsView({ sections }) {
               </div>
             )}
           </div>
-        </SectionBlock>
-      )}
-
-      {verification && (verification.metrics?.length || verification.userValidation) && (
-        <SectionBlock title={PLANNING_SECTION_LABELS.verification} variant="verify">
-          {verification.metrics?.length ? (
-            <SubBlock title="指标监控">
-              <Typography.Text className="text-sm leading-relaxed text-gray-700">
-                {verification.metrics.join('、')}
-              </Typography.Text>
-            </SubBlock>
-          ) : null}
-          {verification.userValidation ? (
-            <SubBlock title="用户验证">
-              <Typography.Text className="text-sm leading-relaxed text-gray-700">
-                {verification.userValidation}
-              </Typography.Text>
-            </SubBlock>
-          ) : null}
         </SectionBlock>
       )}
     </div>

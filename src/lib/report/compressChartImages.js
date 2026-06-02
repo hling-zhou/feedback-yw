@@ -1,7 +1,8 @@
+import { isMostlyBlankCanvas } from './captureChartImages.js'
 import { yieldToMain, yieldToNextFrame } from '../yieldToMain.js'
 
 const PDF_CHART_MAX_WIDTH = 1100
-const PDF_CHART_JPEG_QUALITY = 0.82
+const PDF_CHART_JPEG_QUALITY = 0.86
 
 /**
  * 缩小图表截图，减轻 @react-pdf toBlob 主线程阻塞，降低「页面无响应」概率。
@@ -50,7 +51,13 @@ function compressOneChartImage(dataUrl) {
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, width, height)
       ctx.drawImage(image, 0, 0, width, height)
-      resolve(canvas.toDataURL('image/jpeg', PDF_CHART_JPEG_QUALITY))
+      if (isMostlyBlankCanvas(canvas)) {
+        reject(new Error('compressed chart image is blank'))
+        return
+      }
+      const mime = dataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+      const quality = mime === 'image/png' ? undefined : PDF_CHART_JPEG_QUALITY
+      resolve(canvas.toDataURL(mime, quality))
     }
     image.onerror = () => reject(new Error('chart image decode failed'))
     image.src = dataUrl

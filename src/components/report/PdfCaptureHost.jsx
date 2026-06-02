@@ -15,13 +15,16 @@ export default function PdfCaptureHost({ captureJob, onMounted }) {
     let cancelled = false
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let mountTimer
+
     const frame = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
         mountTimer = setTimeout(() => {
           if (!cancelled) onMounted(captureJob.id)
-        }, 80)
+        }, 240)
       })
     })
+
     return () => {
       cancelled = true
       cancelAnimationFrame(frame)
@@ -40,13 +43,15 @@ export default function PdfCaptureHost({ captureJob, onMounted }) {
       className="bg-white"
       style={{
         position: 'fixed',
-        left: 0,
+        left: '-12000px',
         top: 0,
         width: 1280,
-        opacity: 0,
+        opacity: 1,
+        visibility: 'visible',
         pointerEvents: 'none',
-        zIndex: -1,
+        zIndex: 1,
         overflow: 'visible',
+        background: '#ffffff',
       }}
     >
       <div data-workbench-tab={tabKey} data-pdf-capture-scope={captureJob.scope}>

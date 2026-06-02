@@ -73,7 +73,7 @@ function needsV2RecommendationContentRefresh(rec) {
   if (rec.signalType !== 'pain_cluster_v2') return false
   const synthesisVersion = rec.generationMeta?.actionSynthesisVersion ?? 0
   if (synthesisVersion < CLUSTER_ACTION_SYNTHESIS_VERSION) return true
-  if (rec.productActionsSource !== 'synth') return true
+  if (!['synth', 'synth+manual'].includes(rec.productActionsSource || '')) return true
   const summary = resolveRecommendationSummary(rec)
   return looksLikeTicketMetadataSummary(summary) || looksLikeBackgroundInsightSummary(summary)
 }

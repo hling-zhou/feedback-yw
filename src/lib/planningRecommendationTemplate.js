@@ -241,7 +241,7 @@ export function resolveProductPlanningProfile(productName) {
 export const PRODUCT_PLANNING_PROFILES = {
   dc: {
     default:
-      '围绕专线开通交付与跨省落地，建设订单全流程可视化、VPC/路由配置冲突预检与链路质量主动预警，缩短开通与协查周期。',
+      '建设订单全流程可视化、VPC/路由配置冲突预检与链路质量主动预警，缩短开通与协查周期。',
     journey: {
       '订购开通与加急':
         '打通订单→审批→施工→交付状态机：控制台展示阻塞节点、责任方与预计完成时间，加急场景标准化 SLA 与落地协同接口。',
@@ -257,7 +257,7 @@ export const PRODUCT_PLANNING_PROFILES = {
   },
   slb: {
     default:
-      '围绕监听/后端/健康检查/转发规则配置链路，建设分步配置向导、依赖预检与变更生效说明，降低配置类重复工单。',
+      '建设分步配置向导、依赖预检与变更生效说明，降低配置类重复工单。',
     journey: {
       '监听与端口配置':
         '控制台「创建监听」分步向导：协议/端口/证书校验，失败时给出错误码与依赖项（后端组、证书、配额）及修复路径。',
@@ -277,7 +277,7 @@ export const PRODUCT_PLANNING_PROFILES = {
   },
   eip: {
     default:
-      '围绕 EIP 开通、绑定与公网连通，建设配额/权限预检、网络就绪检测与连通性诊断工具，降低重复协查。',
+      '建设配额/权限预检、网络就绪检测与连通性诊断工具，降低重复协查。',
     journey: {
       '权限及配额限制':
         '建设配额/权限预检与申请引导，在创建、绑定与升降配前拦截不可达操作并输出缺失权限与配额项。',
@@ -339,9 +339,18 @@ export function buildFallbackPrimaryAction(ctx) {
     return `针对「${ctx.problemType}」类问题建设标准化排查工具与控制台能力，纳入产品 backlog 专项跟踪。`
   }
   if (ctx.product) {
-    return `围绕「${ctx.product}」Top 体验短板立项专项改进，以环节投诉率与闭环时长为验收指标。`
+    return `立项 Top 体验短板专项改进，以环节投诉率与闭环时长为验收指标。`
   }
   return `针对该环节高频平台/配置类根因，立项修复并在控制台增加自助诊断与预检能力。`
+}
+
+/** 去掉 productActions 开头的「围绕…，」铺垫句（洞察摘要已在上方展示，动作行不再重复） */
+export function stripProductActionAroundPrefix(text) {
+  const t = (text || '').trim()
+  if (!/^围绕/.test(t)) return t
+  const matched = t.match(/^围绕[^，,\n]{1,120}[，,]\s*(.+)$/)
+  if (matched?.[1]?.trim()) return matched[1].trim()
+  return t
 }
 
 /** 问题类型 → 概述动作（咨询单分议题规划，12 类） */
@@ -387,8 +396,8 @@ export function buildPrimaryActionForSignal(signalType, ctx = {}) {
   switch (signalType) {
     case 'wan_tou':
       return ctx.problemType
-        ? `围绕「${ctx.problemType}」主诉类型推进产品根因治理与体验专项，以万投比与投诉复发率为验收指标。`
-        : `围绕「${ctx.product}」推进万投比治理与体验专项，以投诉复发率为验收指标。`
+        ? `推进产品根因治理与体验专项，以万投比与投诉复发率为验收指标。`
+        : `推进万投比治理与体验专项，以投诉复发率为验收指标。`
     case 'risk_negative':
       return `强化${DATA_SOURCE_LABELS[ctx.dataSourceType] || '投诉'}负面情绪工单的根因闭环与回访机制，优先修复可产品化的体验短板。`
     case 'risk_trend':

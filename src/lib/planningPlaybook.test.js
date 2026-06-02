@@ -60,10 +60,20 @@ describe('planningPlaybook', () => {
   })
 
   it('measureSourceLabelForProductActions maps labels', () => {
+    expect(measureSourceLabelForProductActions('synth+manual')).toBe('群组规则合成（含确立举措）')
     expect(measureSourceLabelForProductActions('synth')).toBe('群组规则合成')
     expect(measureSourceLabelForProductActions('playbook')).toBe('环节 playbook')
     expect(measureSourceLabelForProductActions('mixed')).toBe('cluster_mixed')
     expect(measureSourceLabelForProductActions('ticket')).toBe('cluster_rule')
+  })
+
+  it('detectProductActionsSource returns synth+manual when established action used in synthesis', () => {
+    expect(
+      detectProductActionsSource(['单条优化'], ['主题举措', '确立举措'], {
+        usedClusterSynthesis: true,
+        usedEstablishedActionInSynthesis: true,
+      }),
+    ).toBe('synth+manual')
   })
 
   it('detectProductActionsSource returns synth when cluster synthesis used', () => {

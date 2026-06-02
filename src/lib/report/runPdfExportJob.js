@@ -1,6 +1,7 @@
 import {
   captureChartsForScope,
   nudgeChartLayout,
+  preparePdfCaptureRoot,
   waitForChartsReady,
   waitForWorkbenchCharts,
 } from './captureChartImages.js'
@@ -30,10 +31,11 @@ export async function runPdfExportJob(job, { getCaptureRoot, onProgress }) {
   await yieldForHeavyTask()
 
   const root = await getCaptureRoot()
+  preparePdfCaptureRoot(root)
 
   onProgress({ status: 'capturing', message: '等待图表渲染…' })
   await waitForChartsReady(500)
-  await waitForWorkbenchCharts(job.scope, root, { renderMs: 1000 })
+  await waitForWorkbenchCharts(job.scope, root, { renderMs: 1200 })
   nudgeChartLayout()
   await waitForChartsReady(300)
 

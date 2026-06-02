@@ -10,6 +10,7 @@ import {
   buildScopeLabel,
   formatScopedSummary,
   PLANNING_RECOMMENDATION_LIMITS,
+  stripProductActionAroundPrefix,
   trackingMetricsForSignal,
 } from './planningRecommendationTemplate.js'
 
@@ -88,5 +89,16 @@ describe('planningRecommendationTemplate', () => {
     expect(blob).toContain('客户请求内容')
     expect(blob).toContain('单条工单优化建议')
     expect(blob).toContain('刷新洞察')
+  })
+
+  it('stripProductActionAroundPrefix removes 围绕 lead-in from product actions', () => {
+    expect(
+      stripProductActionAroundPrefix(
+        '围绕临时带宽扩容缺乏自助申请通道，完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。',
+      ),
+    ).toBe('完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。')
+    expect(stripProductActionAroundPrefix('完善控制台报错提示与默认策略说明。')).toBe(
+      '完善控制台报错提示与默认策略说明。',
+    )
   })
 })

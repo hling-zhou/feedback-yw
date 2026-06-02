@@ -54,7 +54,6 @@ describe('planningRecommendationSections', () => {
     expect(sections.executiveSummary).toMatch(/连通性诊断/)
     expect(sections.productActions?.length).toBeGreaterThanOrEqual(2)
     expect(sections.clusterRootCause?.painClusters?.length).toBeGreaterThan(0)
-    expect(sections.verification?.metrics?.length).toBeGreaterThan(0)
   })
 
   it('prefers manualReviewOptimization over auto suggestions', () => {
@@ -144,8 +143,8 @@ describe('planningRecommendationSections', () => {
     )
     expect(sections.productActions).toHaveLength(2)
     const joined = sections.productActions?.join('\n') || ''
-    expect(joined).toMatch(/安全组未放行/)
-    expect(joined).not.toMatch(/不应直接摘录/)
+    expect(joined).toMatch(/完善产品能力说明|连通性诊断/)
+    expect(joined).not.toMatch(/不应直接摘录|围绕|安全组未放行/)
   })
 
   it('buildPlanningRecommendationSections uses playbook when optimizations are missing', () => {
@@ -240,7 +239,7 @@ describe('planningRecommendationSections', () => {
     expect(attached.actionAlignmentWeak).toBe(true)
   })
 
-  it('buildPlanningRecommendationSections uses dynamic verification for cluster recs', () => {
+  it('buildPlanningRecommendationSections keeps cluster business impact without verification block', () => {
     const pool = [
       makeRecord({
         painPoint: '公网端口无法访问业务系统',
@@ -273,10 +272,7 @@ describe('planningRecommendationSections', () => {
       },
       pool,
     )
-    expect(sections.verification?.metrics?.some((m) => /群组工单|占产品|负面情绪/.test(m))).toBe(
-      true,
-    )
-    expect(sections.verification?.userValidation).toMatch(/金牌|银牌|复现率/)
+    expect(sections.verification).toBeUndefined()
     expect(sections.clusterRootCause?.businessImpact).toMatch(/金牌|银牌|负面/)
   })
 

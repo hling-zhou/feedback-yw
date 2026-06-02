@@ -21,8 +21,8 @@ const styles = StyleSheet.create({
   label: { width: 140, color: '#333', fontFamily: PDF_FONT_FAMILY },
   value: { flex: 1, fontFamily: PDF_FONT_FAMILY, lineHeight: 1.45 },
   body: { marginTop: 4, lineHeight: 1.5, color: '#444', fontFamily: PDF_FONT_FAMILY },
-  chartBlock: { marginTop: 8, marginBottom: 16 },
-  chartImage: { width: '100%', maxHeight: 360, objectFit: 'contain' },
+  chartBlock: { marginTop: 8, marginBottom: 16, backgroundColor: '#ffffff' },
+  chartImage: { width: '100%', maxHeight: 360, objectFit: 'contain', backgroundColor: '#ffffff' },
   footer: {
     position: 'absolute',
     bottom: 30,
@@ -80,7 +80,9 @@ export function InsightReportDocument({ model }) {
       {chartImages.map((img, i) => (
         <Page key={`chart-${i}`} size="A4" style={styles.page}>
           <Text style={styles.sectionTitle}>图表 · {img.title}</Text>
-          <Image src={img.src} style={styles.chartImage} />
+          <View style={styles.chartBlock}>
+            <Image src={img.src} style={styles.chartImage} />
+          </View>
           <Text style={styles.chartCaption}>导出时工作台视图截图</Text>
           <Text style={styles.footer}>内部资料，请勿外传 · Feedback Insights</Text>
         </Page>

@@ -3,7 +3,6 @@ import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommend
 import {
   formatClusterRootCauseForExport,
   normalizeClusterRootCause,
-  normalizeVerification,
   painClusterScoresToExportFields,
   resolveRecommendationSummary,
 } from './planningRecommendationDisplay.js'
@@ -21,7 +20,6 @@ export function planningRecommendationToExportRow(rec, index) {
   const sections = rec.sections
   const summary = resolveRecommendationSummary(rec)
   const cluster = normalizeClusterRootCause(sections?.clusterRootCause)
-  const verification = normalizeVerification(sections?.verification)
 
   return {
     序号: index + 1,
@@ -35,8 +33,6 @@ export function planningRecommendationToExportRow(rec, index) {
     [CLUSTER_SUB_LABELS.businessImpact]: cluster?.businessImpact || '',
     [PLANNING_SECTION_LABELS.productActions]: (sections?.productActions || []).join('\n'),
     [PLANNING_SECTION_LABELS.serviceActions]: (sections?.serviceActions || []).join('\n'),
-    指标监控: (verification?.metrics || []).join('、'),
-    用户验证: verification?.userValidation || '',
     依据工单号: (rec.evidenceTicketIds || []).slice(0, 50).join('、'),
     入选原因: rec.generationMeta?.selectedReason || '',
   }

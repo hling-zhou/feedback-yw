@@ -100,8 +100,7 @@ describe('planningRecommendationDisplay', () => {
     })
     expect(text).toMatch(/优先级评定/)
     expect(text).toMatch(/可执行改进建议/)
-    expect(text).toMatch(/闭环验证机制/)
-    expect(text).not.toMatch(/详细意见/)
+    expect(text).not.toMatch(/闭环验证机制|详细意见/)
   })
 
   it('formatRecommendationSectionsForExport mirrors overview section blocks', () => {

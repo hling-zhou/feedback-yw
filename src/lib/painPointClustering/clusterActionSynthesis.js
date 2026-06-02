@@ -3,6 +3,7 @@ import { inferPlanningJourneyContext, collectPlanningPlaybookActionLines } from 
 import {
   buildProblemTypePrimaryAction,
   PLANNING_RECOMMENDATION_LIMITS,
+  stripProductActionAroundPrefix,
 } from '../planningRecommendationTemplate.js'
 import {
   extractClusterPainTheme,
@@ -13,6 +14,9 @@ import {
   pickInsightRepresentativePain,
 } from './clusteringCorpus.js'
 import { pickRepresentativePainPoint } from './clusterLabel.js'
+import {
+  pickClusterEstablishedActionForSynthesis,
+} from './clusterEstablishedActionCorpus.js'
 
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -20,7 +24,7 @@ import { pickRepresentativePainPoint } from './clusterLabel.js'
 export const CLUSTER_SYNTHESIZED_ACTION_COUNT = 2
 
 /** 群组合成规则版本；快照 sections 低于此版本时展示层会重算 productActions */
-export const CLUSTER_ACTION_SYNTHESIS_VERSION = 5
+export const CLUSTER_ACTION_SYNTHESIS_VERSION = 7
 
 const MAX_ACTION_LEN = PLANNING_RECOMMENDATION_LIMITS.maxDetailLength
 
@@ -125,12 +129,7 @@ function resolveClusterPain(rec, pool, representativePain = '') {
  * @param {string} journeyL2
  * @param {string} theme
  */
-function buildThemeJourneyAction(_product, _journeyL2, theme) {
-  if (theme && theme !== '该类体验问题') {
-    return truncateAction(
-      `围绕${theme}，完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。`,
-    )
-  }
+function buildThemeJourneyAction(_product, _journeyL2, _theme) {
   return truncateAction(
     '完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。',
   )
@@ -165,16 +164,18 @@ function buildPlaybookProductAction(pool, rec, problemType) {
 
 /**
  * 群组级轻量合成：代表痛点 + 高频 journey/问题类型 → 2 条 productActions
+ * 槽位 2：群组内 ≥3 单相同确立举措时优先填入；否则问题类型/playbook
+ *
  * @param {OverviewRecommendation} rec
  * @param {FeedbackRecord[]} pool
  * @param {string} [representativePain]
- * @returns {string[]}
+ * @returns {{ actions: string[]; usedEstablishedAction: boolean }}
  */
 export function synthesizeClusterProductActions(rec, pool, representativePain = '') {
-  if (!pool.length) return []
+  if (!pool.length) return { actions: [], usedEstablishedAction: false }
 
   const pain = resolveClusterPain(rec, pool, representativePain)
-  if (!pain) return []
+  if (!pain) return { actions: [], usedEstablishedAction: false }
 
   const theme = extractClusterPainTheme(pain)
   const topL2 = topValues(pool, 'journeyL2', 1)[0]
@@ -192,32 +193,44 @@ export function synthesizeClusterProductActions(rec, pool, representativePain = 
 
   const action1 = buildThemeJourneyAction(product, journeyL2 || journeyPath.split('→').pop() || '', theme)
 
-  let action2 =
-    buildProductTypeAction(problemType, journeyL2 || journeyPath.split('→').pop() || '') ||
-    truncateAction(buildPlaybookProductAction(pool, rec, problemType))
+  const established = pickClusterEstablishedActionForSynthesis(pool)
+  let usedEstablishedAction = false
+  let action2 = ''
+
+  if (established?.text) {
+    action2 = established.text
+    usedEstablishedAction = true
+  } else {
+    action2 =
+      buildProductTypeAction(problemType, journeyL2 || journeyPath.split('→').pop() || '') ||
+      truncateAction(buildPlaybookProductAction(pool, rec, problemType))
+  }
 
   if (!action2 || action2.slice(0, 40) === action1.slice(0, 40)) {
     action2 = buildProductTypeAction(
       problemType === '产品功能咨询' ? '配额与权限申请' : '产品功能咨询',
       journeyL2,
     )
+    usedEstablishedAction = false
   }
   if (!action2 || action2.slice(0, 40) === action1.slice(0, 40)) {
     action2 = truncateAction(
       '补充规则 FAQ、计费/配额说明与典型操作样例，减少重复咨询。',
     )
+    usedEstablishedAction = false
   }
 
   /** @type {string[]} */
   const out = []
   const seen = new Set()
   for (const line of [action1, action2]) {
-    if (!isProductClusterAction(line)) continue
-    const key = line.slice(0, 80)
+    const normalized = stripProductActionAroundPrefix(line)
+    if (!isProductClusterAction(normalized)) continue
+    const key = normalized.slice(0, 80)
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(line)
+    out.push(normalized)
     if (out.length >= CLUSTER_SYNTHESIZED_ACTION_COUNT) break
   }
-  return out
+  return { actions: out, usedEstablishedAction: usedEstablishedAction && out.length >= 2 }
 }

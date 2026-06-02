@@ -10,7 +10,7 @@ import {
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
-/** @typedef {'ticket' | 'playbook' | 'mixed' | 'synth' | 'none'} ProductActionsSource */
+/** @typedef {'ticket' | 'playbook' | 'mixed' | 'synth' | 'synth+manual' | 'none'} ProductActionsSource */
 
 export const PLAYBOOK_MEASURE_SOURCE_SCORE = {
   人工复核举措: 50,
@@ -89,6 +89,7 @@ export function collectPlanningPlaybookActionLines(ctx) {
  * @returns {string}
  */
 export function measureSourceLabelForProductActions(productActionsSource) {
+  if (productActionsSource === 'synth+manual') return '群组规则合成（含确立举措）'
   if (productActionsSource === 'synth') return '群组规则合成'
   if (productActionsSource === 'playbook') return '环节 playbook'
   if (productActionsSource === 'mixed') return 'cluster_mixed'
@@ -99,10 +100,11 @@ export function measureSourceLabelForProductActions(productActionsSource) {
 /**
  * @param {string[]} ticketActions
  * @param {string[]} finalActions
- * @param {{ usedPlaybookFallback?: boolean; usedAlignmentReplacement?: boolean; usedClusterSynthesis?: boolean }} flags
+ * @param {{ usedPlaybookFallback?: boolean; usedAlignmentReplacement?: boolean; usedClusterSynthesis?: boolean; usedEstablishedActionInSynthesis?: boolean }} flags
  * @returns {ProductActionsSource}
  */
 export function detectProductActionsSource(ticketActions, finalActions, flags = {}) {
+  if (flags.usedClusterSynthesis && flags.usedEstablishedActionInSynthesis) return 'synth+manual'
   if (flags.usedClusterSynthesis) return 'synth'
   if (!finalActions.length) return 'none'
   if (!flags.usedPlaybookFallback && !flags.usedAlignmentReplacement) {

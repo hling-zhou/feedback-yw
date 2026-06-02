@@ -15,7 +15,8 @@
     "generate:taxonomy-xlsx": "node scripts/generate-taxonomy-xlsx.mjs",
     "generate:product-catalog-xlsx": "node scripts/generate-product-catalog-xlsx.mjs",
     "benchmark:clustering": "node scripts/benchmark-clustering.mjs",
-    "generate:clustering-golden": "node scripts/generate-clustering-top10-golden.mjs"
+    "generate:clustering-golden": "node scripts/generate-clustering-top10-golden.mjs",
+    "promote:playbook-actions": "node scripts/promote-established-actions-to-playbook.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.3",

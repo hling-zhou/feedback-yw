@@ -3,6 +3,18 @@ import { collectEffectiveOptimizationsFromRecords } from './effectiveOptimizatio
 import { getEffectiveOptimization } from './ticketOptimizationExtract.js'
 
 describe('ticketOptimizationExtract', () => {
+  it('getEffectiveOptimization prefers establishedAction over auto optimization', () => {
+    const record = {
+      establishedAction: '人工确立举措内容足够长用于测试优先规则',
+      manualReviewOptimization: '',
+      optimizationProduct: '自动产品优化建议内容足够长用于测试',
+    }
+    const eff = getEffectiveOptimization(record)
+    expect(eff.source).toBe('manual')
+    expect(eff.combined).toContain('人工确立举措')
+    expect(eff.combined).not.toContain('自动产品优化')
+  })
+
   it('getEffectiveOptimization ignores product group and designer suggestions', () => {
     const record = {
       optimizationProduct: '自动产品优化建议内容足够长用于测试',
