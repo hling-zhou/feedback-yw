@@ -37,7 +37,7 @@
 
 - **新生成快照**：来源快照含 `painPointClustering.clusteringVersion = v2.0`；概览含 `recommendationsMeta.recommendationEngine = pain_cluster_v2`。
 - **旧快照**：概览缺少有效 `recommendationEngine: pain_cluster_v2` 时，**不**在浏览器内 live 重算；`OverviewTab` 调用 `prepareOverviewConclusionsForDisplay` 隐藏行动建议并提示「生成 / 刷新洞察」。重算经 **服务端 Insight Rebuild Job**（`POST /api/storage/insight-rebuild`）在 API 进程后台执行，前端轮询任务状态后读快照。
-- **V2 无 Top 10**：自动回退 `buildPlanningRecommendations`（legacy），UI 显示 `legacyFallback` 警告。
+- **V2 无 Top 10**：不展示行动建议，在数据覆盖说明与概览面板提示「未形成痛点聚类 Top 10」；请补充「需求痛点挖掘」打标后重新生成快照。
 - **生成规则说明**：洞察概览「行动建议」标题旁问号弹窗，文案由 `buildPlanningRecommendationsHelpSections()` 维护（V2 聚类流程与优先级评分）。
 
 ## 关键字段

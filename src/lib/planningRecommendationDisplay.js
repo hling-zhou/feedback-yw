@@ -1,5 +1,5 @@
 import { recommendationCompareKey } from './planningRecommendationCompare.js'
-import { PLANNING_SECTION_LABELS } from './planningRecommendationSections.js'
+import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommendationSections.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 /** @typedef {import('../domain/overviewConclusions.js').RecommendationUserOverride} RecommendationUserOverride */
@@ -16,6 +16,24 @@ export const WORKFLOW_STATUS_LABELS = {
   done: '已完成',
   dismissed: '不适用',
 }
+
+/** 概览行动建议 Excel 导出 · V2 痛点聚类列名 */
+export const PAIN_CLUSTER_EXPORT_LABELS = {
+  priorityScore: '优先级得分',
+  rank: '排名',
+  breadthScore: '影响广度得分',
+  sharePct: '影响广度占比(%)',
+  ticketCount: '工单数',
+  harmScore: '业务危害度得分',
+  maxSeverity: '最高严重度',
+  p90Emotion: 'P90情绪',
+  sourceDistribution: '来源与一级环节分布',
+  customerTierSummary: '高价值客户影响',
+  currentPain: '当前痛点',
+}
+
+/** 与概览页「优先级评定」区块标题一致 */
+export const PAIN_CLUSTER_SECTION_TITLE = '优先级评定'
 
 /**
  * 行动建议概述解析（导出 / 人工编辑等沿用）
@@ -234,4 +252,130 @@ export function formatVerificationForExport(verification) {
     ? `用户验证：${verification.userValidation}`
     : ''
   return [metricPart, userPart].filter(Boolean).join('；')
+}
+
+/**
+ * @param {import('../domain/overviewConclusions.js').PainClusterScoreMeta | undefined} scores
+ * @param {string} [executiveSummary]
+ */
+export function formatPainClusterScoresForExport(scores, executiveSummary = '') {
+  if (!scores) return ''
+  /** @type {string[]} */
+  const lines = [
+    `优先级得分：${scores.priorityScore} 分（排名：${scores.rank}/${scores.totalFinal}）`,
+    `影响广度：${scores.breadthScore} 分（占比${scores.sharePct}%，工单${scores.ticketCount}件）`,
+    `业务危害度：${scores.harmScore} 分（最高严重度 ${scores.maxSeverity}，P90 情绪 ${scores.p90Emotion}）`,
+  ]
+  if (scores.sourceDistributionLines?.length) {
+    lines.push('来源与一级环节分布：')
+    for (const line of scores.sourceDistributionLines) {
+      lines.push(`· ${line}`)
+    }
+  }
+  lines.push(`高价值客户影响：${scores.customerTierSummary}`)
+  lines.push(`当前痛点：${executiveSummary.trim() || '—'}`)
+  return lines.join('\n')
+}
+
+/**
+ * @param {import('../domain/overviewConclusions.js').PainClusterScoreMeta | undefined} scores
+ * @param {string} [executiveSummary]
+ */
+export function painClusterScoresToExportFields(scores, executiveSummary = '') {
+  const empty = {
+    [PAIN_CLUSTER_EXPORT_LABELS.priorityScore]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.rank]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.breadthScore]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.sharePct]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.ticketCount]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.harmScore]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.maxSeverity]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.p90Emotion]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.sourceDistribution]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.customerTierSummary]: '',
+    [PAIN_CLUSTER_EXPORT_LABELS.currentPain]: executiveSummary.trim(),
+  }
+  if (!scores) return empty
+  return {
+    [PAIN_CLUSTER_EXPORT_LABELS.priorityScore]: scores.priorityScore,
+    [PAIN_CLUSTER_EXPORT_LABELS.rank]: `${scores.rank}/${scores.totalFinal}`,
+    [PAIN_CLUSTER_EXPORT_LABELS.breadthScore]: scores.breadthScore,
+    [PAIN_CLUSTER_EXPORT_LABELS.sharePct]: scores.sharePct,
+    [PAIN_CLUSTER_EXPORT_LABELS.ticketCount]: scores.ticketCount,
+    [PAIN_CLUSTER_EXPORT_LABELS.harmScore]: scores.harmScore,
+    [PAIN_CLUSTER_EXPORT_LABELS.maxSeverity]: scores.maxSeverity,
+    [PAIN_CLUSTER_EXPORT_LABELS.p90Emotion]: scores.p90Emotion,
+    [PAIN_CLUSTER_EXPORT_LABELS.sourceDistribution]: (scores.sourceDistributionLines || []).join('\n'),
+    [PAIN_CLUSTER_EXPORT_LABELS.customerTierSummary]: scores.customerTierSummary,
+    [PAIN_CLUSTER_EXPORT_LABELS.currentPain]: executiveSummary.trim(),
+  }
+}
+
+/**
+ * 与 PlanningRecommendationSectionsView 一致的结构化正文（PDF / 全文导出）
+ * @param {PlanningRecommendationSections | undefined} sections
+ * @param {string} [summary]
+ */
+export function formatRecommendationSectionsForExport(sections, summary = '') {
+  if (!sections) return ''
+  const normalized = normalizeSectionsForDisplay(sections) || sections
+  const executiveSummary = summary.trim() || normalized.executiveSummary?.trim() || ''
+  /** @type {string[]} */
+  const lines = []
+
+  if (normalized.painClusterScores) {
+    lines.push(`【${PAIN_CLUSTER_SECTION_TITLE}】`)
+    lines.push(formatPainClusterScoresForExport(normalized.painClusterScores, executiveSummary))
+  }
+
+  const cluster = normalizeClusterRootCause(normalized.clusterRootCause)
+  const hasCluster =
+    cluster &&
+    (cluster.contextNote ||
+      cluster.dataMetrics?.length ||
+      cluster.painClusters?.length ||
+      cluster.rootCauses?.length ||
+      cluster.businessImpact)
+  if (hasCluster) {
+    lines.push(`【${PLANNING_SECTION_LABELS.clusterRootCause}】`)
+    lines.push(formatClusterRootCauseForExport(cluster))
+  }
+
+  const productActions = normalized.productActions || []
+  const serviceActions = normalized.serviceActions || []
+  if (productActions.length || serviceActions.length) {
+    lines.push('【可执行改进建议】')
+    if (productActions.length) {
+      lines.push(`${PLANNING_SECTION_LABELS.productActions}：`)
+      productActions.forEach((action, index) => lines.push(`${index + 1}. ${action}`))
+    }
+    if (serviceActions.length) {
+      lines.push(`${PLANNING_SECTION_LABELS.serviceActions}：`)
+      serviceActions.forEach((action, index) => lines.push(`${index + 1}. ${action}`))
+    }
+  }
+
+  const verification = normalizeVerification(normalized.verification)
+  if (verification && (verification.metrics?.length || verification.userValidation)) {
+    lines.push(`【${PLANNING_SECTION_LABELS.verification}】`)
+    if (verification.metrics?.length) {
+      lines.push(`指标监控：${verification.metrics.join('、')}`)
+    }
+    if (verification.userValidation) {
+      lines.push(`用户验证：${verification.userValidation}`)
+    }
+  }
+
+  return lines.filter(Boolean).join('\n')
+}
+
+/**
+ * 行动建议 PDF 正文（与概览页卡片 sections 一致）
+ * @param {OverviewRecommendation} rec
+ */
+export function buildRecommendationExportFullText(rec) {
+  const summary = resolveRecommendationSummary(rec)
+  const body = formatRecommendationSectionsForExport(rec.sections, summary)
+  if (body) return body
+  return summary
 }

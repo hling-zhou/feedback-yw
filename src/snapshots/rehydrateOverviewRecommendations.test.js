@@ -4,6 +4,7 @@ import {
   prepareOverviewConclusionsForDisplay,
   rehydrateOverviewRecommendations,
   OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE,
+  OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE,
 } from './rehydrateOverviewRecommendations.js'
 
 function makeRecord(overrides = {}) {
@@ -21,7 +22,7 @@ function makeRecord(overrides = {}) {
 }
 
 describe('rehydrateOverviewRecommendations', () => {
-  it('needsOverviewRecommendationsRehydrate when recommendationEngine missing or legacy', () => {
+  it('needsOverviewRecommendationsRehydrate when recommendationEngine missing or non-V2', () => {
     expect(needsOverviewRecommendationsRehydrate(null)).toBe(false)
     expect(needsOverviewRecommendationsRehydrate({ insufficientData: true })).toBe(false)
     expect(
@@ -46,7 +47,7 @@ describe('rehydrateOverviewRecommendations', () => {
     ).toBe(true)
   })
 
-  it('rehydrates old snapshot conclusions with V2 cluster recommendations', () => {
+  it('rehydrates old snapshot conclusions with cluster recommendations', () => {
     const pain = '安全组规则未放行导致公网端口无法访问'
     const records = Array.from({ length: 4 }, () => makeRecord({ painPoint: pain }))
     const oldConclusions = {
@@ -91,19 +92,19 @@ describe('rehydrateOverviewRecommendations', () => {
     expect(rehydrateOverviewRecommendations(conclusions, [makeRecord()], null)).toBe(conclusions)
   })
 
-  it('无工单时标记 legacy 并提示重新生成快照', () => {
+  it('无工单时清空建议并提示重新生成快照', () => {
     const oldConclusions = {
       recommendations: [{ id: 'legacy-1', summary: '旧版建议' }],
       recommendationsMeta: {},
       dataCoverageNotes: [],
     }
     const rehydrated = rehydrateOverviewRecommendations(oldConclusions, [], null)
-    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('legacy_planning')
-    expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(true)
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendations).toHaveLength(0)
     expect(rehydrated.dataCoverageNotes?.some((n) => n.includes('无工单数据'))).toBe(true)
   })
 
-  it('V2 空结果且存在 legacy recs → 保留 legacy 并标注', () => {
+  it('V2 空结果 → 清空建议并写入空结果提示', () => {
     const oldConclusions = {
       recommendations: [{ id: 'legacy-1', summary: '旧版建议', signalType: 'problem_type' }],
       recommendationsMeta: {},
@@ -114,9 +115,10 @@ describe('rehydrateOverviewRecommendations', () => {
       makeRecord({ painPoint: '', problemSummary: '' }),
     ]
     const rehydrated = rehydrateOverviewRecommendations(oldConclusions, records, null)
-    expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(true)
-    expect(rehydrated.recommendations[0].id).toBe('legacy-1')
-    expect(rehydrated.dataCoverageNotes?.some((n) => n.includes('旧版快照'))).toBe(true)
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(false)
+    expect(rehydrated.recommendations).toHaveLength(0)
+    expect(rehydrated.dataCoverageNotes).toContain(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
   })
 })
 
@@ -129,6 +131,17 @@ describe('prepareOverviewConclusionsForDisplay', () => {
     const result = prepareOverviewConclusionsForDisplay(conclusions)
     expect(result.recommendationsPendingRefresh).toBe(false)
     expect(result.conclusions).toBe(conclusions)
+  })
+
+  it('passes through V2 conclusions with empty recommendations', () => {
+    const conclusions = {
+      recommendations: [],
+      recommendationsMeta: { recommendationEngine: 'pain_cluster_v2' },
+      dataCoverageNotes: [OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE],
+    }
+    const result = prepareOverviewConclusionsForDisplay(conclusions)
+    expect(result.recommendationsPendingRefresh).toBe(false)
+    expect(result.conclusions?.recommendations).toHaveLength(0)
   })
 
   it('suppresses recommendations for old snapshot and adds refresh note', () => {

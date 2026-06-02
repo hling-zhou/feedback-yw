@@ -346,24 +346,37 @@ describe('planningRecommendations', () => {
     expect(reason).toContain('12')
   })
 
-  it('formatRecommendationForExport includes structured details and evidence', () => {
+  it('formatRecommendationForExport uses V2 section body when present', () => {
     const text = formatRecommendationForExport({
       id: 'r1',
       priority: 'high',
       category: 'product',
       text: '概述',
       summary: '在公网访问环节补齐诊断工具',
-      details: ['新增连通性诊断', '固化 playbook'],
-      evidenceNote: '本期 32 单公网访问不通',
-      metrics: [{ label: '工单数', value: '32' }],
+      sections: {
+        executiveSummary: '在公网访问环节补齐诊断工具',
+        painClusterScores: {
+          priorityScore: 4,
+          rank: 1,
+          totalFinal: 3,
+          breadthScore: 3,
+          sharePct: 10,
+          ticketCount: 5,
+          harmScore: 3,
+          maxSeverity: 4,
+          p90Emotion: 2,
+          sourceDistributionLines: [],
+          customerTierSummary: '—',
+        },
+        productActions: ['新增连通性诊断'],
+        verification: { metrics: ['复发率'], userValidation: '回访' },
+      },
       evidenceTicketIds: ['T-001', 'T-002'],
-      trackingMetrics: ['环节占比', '复发率'],
     })
-    expect(text).toMatch(/在公网访问环节补齐诊断工具/)
-    expect(text).toMatch(/详细意见/)
-    expect(text).toMatch(/依据说明：本期 32 单/)
-    expect(text).toMatch(/依据工单：T-001、T-002/)
-    expect(text).toMatch(/跟踪指标：环节占比、复发率/)
+    expect(text).toMatch(/优先级评定/)
+    expect(text).toMatch(/新增连通性诊断/)
+    expect(text).not.toMatch(/详细意见/)
+    expect(text).not.toMatch(/依据工单/)
   })
 
   it('buildPlanningRecommendations uses playbook for 云专线 订购开通与加急 without ticket text', () => {

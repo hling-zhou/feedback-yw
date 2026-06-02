@@ -7,6 +7,7 @@ import {
   normalizeClusterRootCause,
   normalizeSectionsForDisplay,
   normalizeVerification,
+  PAIN_CLUSTER_SECTION_TITLE,
   SHOW_PLANNING_OPPORTUNITIES,
 } from '../../lib/planningRecommendationDisplay.js'
 
@@ -87,7 +88,7 @@ export default function PlanningRecommendationSectionsView({ sections }) {
   return (
     <div className="mb-2 space-y-2.5">
       {painScores && (
-        <SectionBlock title="优先级评定（V2 痛点聚类）">
+        <SectionBlock title={PAIN_CLUSTER_SECTION_TITLE}>
           <ul className="mb-0 list-none space-y-1 pl-0 text-sm leading-relaxed text-gray-700">
             <li>
               优先级得分：{painScores.priorityScore} 分（排名：{painScores.rank}/

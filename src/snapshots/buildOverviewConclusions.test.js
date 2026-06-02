@@ -49,16 +49,18 @@ describe('buildOverviewConclusions', () => {
       anchorYear: 2025,
       anchorMonth: 6,
     })
+    const sharedPain = '安全组规则未放行导致公网端口无法访问'
     const records = [
-      makeRecord(),
-      makeRecord({ id: crypto.randomUUID() }),
-      makeRecord({ id: crypto.randomUUID(), problemType: '公网访问不通' }),
+      makeRecord({ painPoint: sharedPain }),
+      makeRecord({ painPoint: sharedPain }),
+      makeRecord({ painPoint: sharedPain }),
       makeRecord({
         id: crypto.randomUUID(),
         dataSourceType: 'consultation_ticket',
         problemType: '计费与账单',
         journeyL1: '认知与选型',
         journeyL2: '产品与规格咨询',
+        painPoint: '账单金额计算错误多扣费用',
       }),
     ]
     const complaintSnap = buildSourceSnapshot({
@@ -86,10 +88,10 @@ describe('buildOverviewConclusions', () => {
     expect(conclusions.executiveSummary).toBe('')
     expect(conclusions.highlights).toHaveLength(0)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBeDefined()
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
     const rec = conclusions.recommendations[0]
     expect(rec.summary || rec.text).toBeTruthy()
-    expect(rec.details?.length || rec.sections?.painClusterScores || rec.sections?.productActions?.length).toBeTruthy()
+    expect(rec.sections?.painClusterScores || rec.sections?.productActions?.length).toBeTruthy()
     expect(conclusions.source).toBe('rule')
   })
 })

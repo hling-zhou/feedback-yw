@@ -456,7 +456,7 @@ export default function Themes() {
             disabled={!scoped.length}
             onClick={handleExportAnalysis}
           >
-            导出
+            导出分析结果
           </Button>
           <PermissionGate permission="retag">
             <Tooltip

@@ -1,51 +1,36 @@
 import * as XLSX from 'xlsx'
-import { formatRecommendationForExport } from './planningRecommendations.js'
 import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommendationSections.js'
-import { PERIOD_COMPARE_LABELS } from './planningRecommendationCompare.js'
 import {
   formatClusterRootCauseForExport,
-  formatVerificationForExport,
   normalizeClusterRootCause,
   normalizeVerification,
+  painClusterScoresToExportFields,
   resolveEffectiveRecommendation,
   resolveRecommendationSummary,
   WORKFLOW_STATUS_LABELS,
 } from './planningRecommendationDisplay.js'
 
-const CATEGORY_LABELS = {
-  product: '产品优化',
-  process: '流程运营',
-  docs: '文档自助',
-  monitoring: '监控预警',
-}
-
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 
 const PRIORITY_LABELS = { high: '高', medium: '中', low: '低' }
-const STRENGTH_LABELS = { strong: '强', moderate: '一般', weak: '弱（推断型）' }
 
 /**
+ * V2 行动建议 Excel 行（列与概览页 PlanningRecommendationSectionsView 一致）
  * @param {OverviewRecommendation} rec
  * @param {number} index
  */
-function recommendationToRow(rec, index) {
+export function planningRecommendationToExportRow(rec, index) {
   const effective = resolveEffectiveRecommendation(rec)
-  const exported = formatRecommendationForExport(effective)
-  const details = effective.details || rec.details || []
   const sections = effective.sections || rec.sections
+  const summary = resolveRecommendationSummary(effective)
   const cluster = normalizeClusterRootCause(sections?.clusterRootCause)
   const verification = normalizeVerification(sections?.verification)
+
   return {
     序号: index + 1,
     优先级: PRIORITY_LABELS[rec.priority] || rec.priority,
-    类别: CATEGORY_LABELS[rec.category] || rec.category,
     产品: rec.scope?.product || '',
-    旅程一级: rec.scope?.journeyL1 || '',
-    旅程二级: rec.scope?.journeyL2 || '',
-    问题类型: rec.scope?.problemType || '',
-    请求场景: rec.scope?.requestScene || '',
-    概述: resolveRecommendationSummary(effective),
-    [PLANNING_SECTION_LABELS.executiveSummary]: resolveRecommendationSummary(effective),
+    ...painClusterScoresToExportFields(sections?.painClusterScores, summary),
     [PLANNING_SECTION_LABELS.clusterRootCause]: formatClusterRootCauseForExport(cluster),
     [CLUSTER_SUB_LABELS.dataMetrics]: (cluster?.dataMetrics || []).join('\n'),
     [CLUSTER_SUB_LABELS.painClusters]: (cluster?.painClusters || [])
@@ -55,34 +40,18 @@ function recommendationToRow(rec, index) {
       .map((r) => `「${r.text}」${r.count} 单`)
       .join('\n'),
     [CLUSTER_SUB_LABELS.businessImpact]: cluster?.businessImpact || '',
-    [PLANNING_SECTION_LABELS.opportunities]: sections?.opportunities || '',
     [PLANNING_SECTION_LABELS.productActions]: (sections?.productActions || []).join('\n'),
     [PLANNING_SECTION_LABELS.serviceActions]: (sections?.serviceActions || []).join('\n'),
-    [PLANNING_SECTION_LABELS.verification]: formatVerificationForExport(verification),
     指标监控: (verification?.metrics || []).join('、'),
     用户验证: verification?.userValidation || '',
-    详细意见1: (effective.details || details)[0] || '',
-    详细意见2: (effective.details || details)[1] || '',
-    详细意见3: (effective.details || details)[2] || '',
-    详细意见4: (effective.details || details)[3] || '',
-    跟踪指标: (rec.trackingMetrics || []).join('；'),
-    依据工单数: rec.evidenceBundle?.ticketCount ?? rec.evidenceTicketIds?.length ?? '',
-    负面工单数: rec.evidenceBundle?.negativeCount ?? '',
-    占周期工单占比: rec.evidenceBundle?.sharePct != null ? `${rec.evidenceBundle.sharePct}%` : '',
-    证据强度: STRENGTH_LABELS[rec.evidenceStrength] || rec.evidenceStrength || '',
+    依据工单号: (rec.evidenceTicketIds || []).slice(0, 50).join('、'),
+    入选原因: rec.generationMeta?.selectedReason || '',
     跟进状态: rec.userOverride?.status
       ? WORKFLOW_STATUS_LABELS[rec.userOverride.status]
       : '',
     负责人: rec.userOverride?.owner || '',
     目标日期: rec.userOverride?.dueDate || '',
     备注: rec.userOverride?.note || '',
-    周期变化: rec.periodCompare?.change
-      ? PERIOD_COMPARE_LABELS[rec.periodCompare.change] || rec.periodCompare.change
-      : '',
-    依据工单号: (rec.evidenceTicketIds || []).slice(0, 20).join('、'),
-    入选原因: rec.generationMeta?.selectedReason || '',
-    已合并同类信号: (rec.generationMeta?.mergedFrom || []).join('；'),
-    导出全文: exported,
   }
 }
 
@@ -91,7 +60,7 @@ function recommendationToRow(rec, index) {
  * @param {string} [filePrefix]
  */
 export function exportPlanningRecommendationsXlsx(recommendations, filePrefix = '行动建议') {
-  const rows = (recommendations || []).map((rec, i) => recommendationToRow(rec, i))
+  const rows = (recommendations || []).map((rec, i) => planningRecommendationToExportRow(rec, i))
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 说明: '暂无行动建议' }])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '行动建议')

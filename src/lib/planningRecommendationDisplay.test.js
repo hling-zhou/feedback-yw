@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildRecommendationExportFullText,
   formatClusterRootCauseForExport,
+  formatPainClusterScoresForExport,
+  formatRecommendationSectionsForExport,
   formatVerificationForExport,
   normalizeClusterRootCause,
   normalizeVerification,
@@ -52,6 +55,85 @@ describe('planningRecommendationDisplay', () => {
     })
     expect(text).toMatch(/指标监控/)
     expect(text).toMatch(/用户验证/)
+  })
+
+  it('formatPainClusterScoresForExport matches overview V2 display fields', () => {
+    const text = formatPainClusterScoresForExport(
+      {
+        priorityScore: 4.2,
+        rank: 1,
+        totalFinal: 10,
+        breadthScore: 3.5,
+        sharePct: 12.5,
+        ticketCount: 8,
+        harmScore: 4.1,
+        maxSeverity: 5,
+        p90Emotion: 3.2,
+        sourceDistributionLines: ['投诉：6件（占比75%），涉及一级环节：开通(4件)'],
+        customerTierSummary: '金牌2，银牌1',
+      },
+      '安全组未放行导致端口不通',
+    )
+    expect(text).toMatch(/排名：1\/10/)
+    expect(text).toMatch(/来源与一级环节分布/)
+    expect(text).toMatch(/当前痛点：安全组未放行导致端口不通/)
+  })
+
+  it('buildRecommendationExportFullText includes V2 block before cluster sections', () => {
+    const text = buildRecommendationExportFullText({
+      id: 'v2',
+      priority: 'high',
+      category: 'product',
+      summary: '代表痛点',
+      text: '代表痛点',
+      sections: {
+        executiveSummary: '代表痛点',
+        painClusterScores: {
+          priorityScore: 4,
+          rank: 1,
+          totalFinal: 5,
+          breadthScore: 3,
+          sharePct: 10,
+          ticketCount: 4,
+          harmScore: 3.5,
+          maxSeverity: 4,
+          p90Emotion: 2,
+          sourceDistributionLines: [],
+          customerTierSummary: '—',
+        },
+        productActions: ['优化控制台引导'],
+        verification: { metrics: ['复发率'], userValidation: '回访' },
+      },
+    })
+    expect(text).toMatch(/优先级评定/)
+    expect(text).toMatch(/可执行改进建议/)
+    expect(text).toMatch(/闭环验证机制/)
+    expect(text).not.toMatch(/详细意见/)
+  })
+
+  it('formatRecommendationSectionsForExport mirrors overview section blocks', () => {
+    const text = formatRecommendationSectionsForExport(
+      {
+        painClusterScores: {
+          priorityScore: 4,
+          rank: 1,
+          totalFinal: 5,
+          breadthScore: 3,
+          sharePct: 10,
+          ticketCount: 4,
+          harmScore: 3.5,
+          maxSeverity: 4,
+          p90Emotion: 2,
+          sourceDistributionLines: ['投诉：4件（占比100%）'],
+          customerTierSummary: '金牌1',
+        },
+        executiveSummary: '端口不通',
+        productActions: ['优化引导'],
+      },
+      '端口不通',
+    )
+    expect(text).toMatch(/当前痛点：端口不通/)
+    expect(text).toMatch(/产品\/技术优化/)
   })
 
   it('resolveRecommendationSummary prefers sections and user override', () => {

@@ -4,8 +4,16 @@ import {
   PERIOD_GRANULARITY_LABELS,
 } from '../../domain/enums.js'
 import { formatPeriodRange } from '../../domain/insightPeriod.js'
-import { formatRecommendationForExport } from '../planningRecommendations.js'
 import { PLANNING_RECOMMENDATIONS_PANEL_TITLE } from '../../domain/overviewConclusions.js'
+import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
+import {
+  buildRecommendationExportFullText,
+  resolveEffectiveRecommendation,
+  resolveRecommendationSummary,
+} from '../planningRecommendationDisplay.js'
+import {
+  limitPlanningRecommendations,
+} from '../planningRecommendations.js'
 import { formatWanTouRatio } from '../wanTouRatio.js'
 
 /**
@@ -14,6 +22,8 @@ import { formatWanTouRatio } from '../wanTouRatio.js'
  * @property {string} [body]
  * @property {{ label: string; value: string }[]} [rows]
  */
+
+const PRIORITY_LABELS = { high: '高', medium: '中', low: '低' }
 
 /**
  * @param {Object} params
@@ -55,39 +65,51 @@ export function buildReportModel({
   ]
 
   if (scope === 'overview' && overview) {
-    sections.push({
-      title: '各来源数据量',
-      rows: DATA_SOURCE_TYPES.map((type) => ({
-        label: DATA_SOURCE_LABELS[type],
-        value: String(overview.sourceSummaries?.[type]?.recordCount ?? 0),
-      })),
-    })
     const total = overview.crossSourceMetrics?.totalRecords
     if (total != null) {
       sections.push({
-        title: '汇总',
-        rows: [{ label: '反馈总量', value: String(total) }],
-      })
-    }
-    const trend = overview.crossSourceMetrics?.monthly_trend
-    if (Array.isArray(trend) && trend.length) {
-      sections.push({
-        title: '跨源月度趋势（条数）',
-        rows: trend.slice(-6).map((t) => ({
-          label: t.date,
-          value: String(t.count),
-        })),
+        title: '周期概览',
+        rows: [{ label: '周期内反馈', value: String(total) }],
       })
     }
 
-    const conclusions = overview.conclusions
-    if (conclusions?.recommendations?.length) {
+    sections.push({
+      title: '各数据来源概览',
+      rows: DATA_SOURCE_TYPES.map((type) => {
+        const summary = overview.sourceSummaries?.[type]
+        const count = summary?.recordCount ?? 0
+        const parts = [String(count)]
+        if (summary?.negativePct != null) parts.push(`负面占比 ${summary.negativePct}%`)
+        if (summary?.maxMomGrowthProduct) {
+          parts.push(`环比最大增幅产品 ${summary.maxMomGrowthProduct}`)
+        }
+        return {
+          label: DATA_SOURCE_LABELS[type],
+          value: parts.join(' · '),
+        }
+      }),
+    })
+
+    const { conclusions: displayConclusions } = prepareOverviewConclusionsForDisplay(
+      overview.conclusions,
+    )
+    const recommendations = limitPlanningRecommendations(displayConclusions?.recommendations || [])
+    if (recommendations.length) {
       sections.push({
         title: PLANNING_RECOMMENDATIONS_PANEL_TITLE,
-        rows: conclusions.recommendations.map((r, i) => ({
-          label: `${i + 1}. [${r.priority}] ${r.summary || r.text}`,
-          value: formatRecommendationForExport(r),
-        })),
+        rows: recommendations.map((rec, i) => {
+          const effective = resolveEffectiveRecommendation(rec)
+          const summary = resolveRecommendationSummary(effective)
+          const priority = PRIORITY_LABELS[rec.priority] || rec.priority
+          const product = rec.scope?.product?.trim()
+          const labelParts = [`${i + 1}. ${priority}优先级`]
+          if (product) labelParts.push(product)
+          if (summary) labelParts.push(summary)
+          return {
+            label: labelParts.join(' · '),
+            value: buildRecommendationExportFullText(effective),
+          }
+        }),
       })
     }
 
@@ -117,35 +139,14 @@ export function buildReportModel({
       rows: [
         { label: '记录数', value: String(s.recordCount ?? 0) },
         { label: '负面占比', value: s.negativePct != null ? `${s.negativePct}%` : '—' },
-        { label: 'Top 产品', value: s.topProduct || '—' },
-        { label: '待处理', value: String(s.openCount ?? '—') },
+        { label: '环比最大增幅产品', value: s.maxMomGrowthProduct || '—' },
       ],
     })
-    const problems = sourceSnapshot.aggregates?.problemTypes
-    if (Array.isArray(problems) && problems.length) {
-      sections.push({
-        title: '问题类型 Top5',
-        rows: problems.slice(0, 5).map((p) => ({
-          label: p.name,
-          value: String(p.count),
-        })),
-      })
-    }
-    const trend = sourceSnapshot.aggregates?.monthlyTrend
-    if (Array.isArray(trend) && trend.length) {
-      sections.push({
-        title: '月度趋势',
-        rows: trend.slice(-6).map((t) => ({
-          label: t.date,
-          value: `${t.count}（负面 ${t.negative ?? 0}）`,
-        })),
-      })
-    }
   }
 
   sections.push({
     title: '说明',
-    body: '本报告由 Feedback Insights 根据洞察快照自动生成。内部资料，请勿外传。',
+    body: '本报告由 Feedback Insights 根据洞察快照与工作台视图自动生成。图表为导出时页面截图。内部资料，请勿外传。',
   })
 
   return {

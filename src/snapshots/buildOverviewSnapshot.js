@@ -5,7 +5,8 @@ import { defaultAnalysisVersions } from '../lib/versioning.js'
 import { getComparableMetrics } from '../metrics/registry.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { buildOverviewConclusions } from './buildOverviewConclusions.js'
-import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
+import { previousPeriodIdFromPeriod, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
+import { computeMaxMomGrowthProductForSource } from '../lib/sourceOverviewMetrics.js'
 
 /** @typedef {import('../storage/orderVolumeStore.js').OrderVolumeRow} OrderVolumeRow */
 
@@ -39,6 +40,7 @@ export function buildOverviewSnapshot({
 }) {
   const previousPeriodId =
     previousPeriodIdParam ?? (period ? previousPeriodIdFromPeriod(period) : null)
+  const previousPeriod = resolvePreviousInsightPeriod(period)
   const versions = defaultAnalysisVersions()
   /** @type {OverviewSnapshot['sourceSummaries']} */
   const sourceSummaries = {}
@@ -46,9 +48,15 @@ export function buildOverviewSnapshot({
   for (const type of DATA_SOURCE_TYPES) {
     const snap = sourceSnapshots[type]
     const scoped = filterRecordsForScope(feedbacks, period, type)
-    sourceSummaries[type] = snap?.summary || {
-      recordCount: scoped.length,
-      label: DATA_SOURCE_LABELS[type],
+    const maxMomGrowthProduct = computeMaxMomGrowthProductForSource(
+      feedbacks,
+      period,
+      previousPeriod,
+      type,
+    )
+    sourceSummaries[type] = {
+      ...(snap?.summary || { recordCount: scoped.length }),
+      maxMomGrowthProduct: maxMomGrowthProduct || undefined,
     }
   }
 

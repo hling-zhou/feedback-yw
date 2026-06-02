@@ -2,30 +2,52 @@ import { describe, it, expect } from 'vitest'
 import { buildReportModel } from './buildReportModel.js'
 
 describe('buildReportModel', () => {
-  it('includes insight conclusions sections for overview scope', () => {
+  it('includes V2 action recommendations and source overview for overview scope', () => {
     const model = buildReportModel({
       scope: 'overview',
       period: { label: '2025-06', granularity: 'month', startDate: '2025-06-01', endDate: '2025-06-30' },
       overview: {
-        sourceSummaries: {},
+        sourceSummaries: {
+          complaint_ticket: {
+            recordCount: 5,
+            negativePct: 40,
+            maxMomGrowthProduct: '云主机',
+          },
+        },
         crossSourceMetrics: { totalRecords: 10 },
         conclusions: {
           generatedAt: new Date().toISOString(),
           source: 'hybrid',
           sampleSize: 8,
           periodLabel: '2025-06',
-          executiveSummary: '本期投诉集中在公网访问。',
-          highlights: [
-            {
-              id: 'h1',
-              type: 'journey',
-              title: '旅程热点',
-              body: '业务使用与连通环节工单最多。',
-              metrics: [{ label: '工单数', value: '5' }],
-            },
-          ],
+          recommendationsMeta: { recommendationEngine: 'pain_cluster_v2' },
           recommendations: [
-            { id: 'r1', priority: 'high', category: 'product', text: '上线连通性自助诊断工具。' },
+            {
+              id: 'r1',
+              priority: 'high',
+              category: 'product',
+              summary: '安全组未放行导致端口不通',
+              text: '安全组未放行导致端口不通',
+              scope: { product: '弹性公网 IP' },
+              sections: {
+                executiveSummary: '安全组未放行导致端口不通',
+                painClusterScores: {
+                  priorityScore: 4.2,
+                  rank: 1,
+                  totalFinal: 5,
+                  breadthScore: 3,
+                  sharePct: 12,
+                  ticketCount: 6,
+                  harmScore: 4,
+                  maxSeverity: 5,
+                  p90Emotion: 3,
+                  sourceDistributionLines: ['投诉：6件（占比100%）'],
+                  customerTierSummary: '金牌1',
+                },
+                productActions: ['控制台增加一键修复引导'],
+                verification: { metrics: ['复发率'], userValidation: '回访' },
+              },
+            },
           ],
           dataCoverageNotes: [],
         },
@@ -34,8 +56,16 @@ describe('buildReportModel', () => {
 
     const titles = model.sections.map((s) => s.title)
     expect(titles).toContain('行动建议')
+    expect(titles).toContain('各数据来源概览')
     expect(titles).not.toContain('周期洞察 · 摘要')
     expect(titles).not.toContain('分维度洞察')
+    expect(titles).not.toContain('跨源月度趋势（条数）')
+
+    const recSection = model.sections.find((s) => s.title === '行动建议')
+    expect(recSection?.rows?.[0]?.value).toMatch(/优先级评定/)
+    expect(recSection?.rows?.[0]?.value).toMatch(/可执行改进建议/)
+    expect(recSection?.rows?.[0]?.label).toMatch(/高优先级/)
+    expect(recSection?.rows?.[0]?.label).toMatch(/弹性公网 IP/)
   })
 
   it('includes wan tou ratio section when rows provided', () => {

@@ -2,12 +2,13 @@ import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWanTouByProducts } from '../lib/wanTouRatio.js'
 import { filterRecordsForScope } from './recordScope.js'
-import { buildPlanningRecommendations, limitPlanningRecommendations } from '../lib/planningRecommendations.js'
+import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
 import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
 import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
 import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
 import { getPlanningConfigVersions } from '../lib/planningConfigLoader.js'
+import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from './rehydrateOverviewRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -26,57 +27,6 @@ function periodMonthKey(period) {
     return `${period.anchorYear}-${String(period.anchorMonth).padStart(2, '0')}`
   }
   return undefined
-}
-
-/**
- * @param {{ name: string; count: number }[][]} groups
- * @param {number} [limit]
- */
-function mergeTopCounts(groups, limit = 5) {
-  /** @type {Map<string, number>} */
-  const map = new Map()
-  for (const arr of groups) {
-    for (const row of arr) {
-      if (!row?.name) continue
-      map.set(row.name, (map.get(row.name) || 0) + (row.count || 0))
-    }
-  }
-  return [...map.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([name, count]) => ({ name, count }))
-}
-
-/**
- * @param {Array<{ l1: string; count: number; children?: { l2: string; count: number }[] }>[]} trees
- */
-function mergeJourneyTrees(trees) {
-  /** @type {Map<string, { l1: string; count: number; children: Map<string, number> }>} */
-  const map = new Map()
-
-  for (const tree of trees) {
-    if (!Array.isArray(tree)) continue
-    for (const node of tree) {
-      if (!map.has(node.l1)) {
-        map.set(node.l1, { l1: node.l1, count: 0, children: new Map() })
-      }
-      const entry = map.get(node.l1)
-      entry.count += node.count || 0
-      for (const child of node.children || []) {
-        entry.children.set(child.l2, (entry.children.get(child.l2) || 0) + (child.count || 0))
-      }
-    }
-  }
-
-  return [...map.values()]
-    .map((n) => ({
-      l1: n.l1,
-      count: n.count,
-      children: [...n.children.entries()]
-        .map(([l2, count]) => ({ l2, count }))
-        .sort((a, b) => b.count - a.count),
-    }))
-    .sort((a, b) => b.count - a.count)
 }
 
 /**
@@ -143,41 +93,6 @@ export function buildOverviewConclusions({
     }
   }
 
-  const problemTypeGroups = TICKET_SOURCES.map(
-    (type) => sourceSnapshots[type]?.aggregates?.problemTypes || [],
-  )
-  const topProblemTypes = mergeTopCounts(problemTypeGroups, 5)
-
-  const journeyTrees = TICKET_SOURCES.map(
-    (type) => sourceSnapshots[type]?.aggregates?.journeyTree || [],
-  )
-  const mergedJourney = mergeJourneyTrees(journeyTrees)
-
-  const trend = Array.isArray(crossSourceMetrics?.monthly_trend)
-    ? crossSourceMetrics.monthly_trend
-    : []
-  let trendDeltaPct = null
-  let trendDirection = 'flat'
-  if (trend.length >= 2) {
-    const last = trend[trend.length - 1]
-    const prev = trend[trend.length - 2]
-    const delta = (last?.count || 0) - (prev?.count || 0)
-    if (prev?.count > 0) {
-      trendDeltaPct = Math.round((delta / prev.count) * 100)
-      trendDirection = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
-    }
-  }
-
-  let maxNegativeSource = null
-  let maxNegativePct = -1
-  for (const type of TICKET_SOURCES) {
-    const pct = sourceSnapshots[type]?.summary?.negativePct
-    if (typeof pct === 'number' && pct > maxNegativePct) {
-      maxNegativePct = pct
-      maxNegativeSource = type
-    }
-  }
-
   const negativeTicketCount = ticketRecords.filter((r) => isNegativeSentiment(r.sentiment)).length
   const negativeTicketPct =
     sampleSize > 0 ? Math.round((negativeTicketCount / sampleSize) * 100) : 0
@@ -188,39 +103,18 @@ export function buildOverviewConclusions({
     orderVolumes,
     productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
   })
-  const topWanTou = wanTouRows.find((r) => r.displayRatio != null)
   if (wanTouRows.length && wanTouRows.some((r) => r.missingOrderMonths?.length)) {
     dataCoverageNotes.push('部分产品月订单数未维护，万投比可能不完整（见设置 → 产品月订单数）')
   }
 
-  const { recommendations: rawClusterRecommendations, pipelineResults } =
+  const { recommendations: rawRecommendations, pipelineResults } =
     buildClusterRecommendationsFromPipeline(ticketRecords, { settings })
-  /** @type {OverviewRecommendation[]} */
-  let rawRecommendations = rawClusterRecommendations
-  /** @type {'pain_cluster_v2' | 'legacy_planning'} */
-  let recommendationEngine = 'pain_cluster_v2'
-  let legacyFallback = false
 
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote) dataCoverageNotes.push(exclusionNote)
 
-  if (!rawClusterRecommendations.length) {
-    recommendationEngine = 'legacy_planning'
-    legacyFallback = true
-    rawRecommendations = buildPlanningRecommendations({
-      ticketRecords,
-      mergedJourney,
-      topProblemTypes,
-      sampleSize,
-      topWanTou,
-      maxNegativeSource,
-      maxNegativePct,
-      trendDeltaPct,
-      trendDirection,
-    })
-    dataCoverageNotes.push(
-      '本期未形成 V2 痛点聚类 Top 10（需有效「需求痛点挖掘」且二次聚类非空），已回退至规则引擎生成行动建议。',
-    )
+  if (!rawRecommendations.length && !dataCoverageNotes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)) {
+    dataCoverageNotes.push(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
   }
 
   const limitedRecommendations = limitPlanningRecommendations(rawRecommendations)
@@ -229,20 +123,6 @@ export function buildOverviewConclusions({
     previousRecommendations,
   )
   const configVersions = getPlanningConfigVersions()
-
-  if (!recommendations.length) {
-    const withRootCause = ticketRecords.filter((r) => r.rootCause?.trim()).length
-    const withSuggestion = ticketRecords.filter((r) => r.optimizationSuggestion?.trim()).length
-    if (withRootCause === 0 && withSuggestion === 0) {
-      dataCoverageNotes.push(
-        '本期工单缺少有效根因或优化建议字段，行动建议需依赖打标/人工复核后重新生成快照。',
-      )
-    } else {
-      dataCoverageNotes.push(
-        '本期数据未形成足够具体的行动建议（需根因聚类或工单优化建议/人工复核内容），建议补充人工复核举措后刷新。',
-      )
-    }
-  }
 
   if (negativeTicketPct >= 30) {
     dataCoverageNotes.push(`工单类负面情绪占比约 ${negativeTicketPct}%（基于情绪标签统计）`)
@@ -261,11 +141,11 @@ export function buildOverviewConclusions({
     highlights: [],
     recommendations,
     recommendationsMeta: {
-      ruleVersion: recommendationEngine === 'pain_cluster_v2' ? `pain-cluster-${CLUSTERING_VERSION}` : 'planning-rec-v2',
+      ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
       playbookVersion: configVersions.playbookVersion,
       signalWeightsVersion: configVersions.signalWeightsVersion,
-      recommendationEngine,
-      legacyFallback,
+      recommendationEngine: 'pain_cluster_v2',
+      legacyFallback: false,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,
       cappedCount: recommendations.length,

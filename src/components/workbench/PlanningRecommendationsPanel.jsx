@@ -42,6 +42,7 @@ import {
 } from '../../domain/overviewConclusions.js'
 import PlanningRecommendationsHelpModal from './PlanningRecommendationsHelpModal.jsx'
 import PlanningRecommendationSectionsView from './PlanningRecommendationSectionsView.jsx'
+import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
 
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -202,7 +203,37 @@ export default function PlanningRecommendationsPanel({
   }, [productFilter, recommendationProductOptions])
 
   if (!allRecommendations.length) {
-    return null
+    if (
+      !conclusions ||
+      conclusions.insufficientData ||
+      conclusions.recommendationsMeta?.displaySuppressed
+    ) {
+      return null
+    }
+
+    const emptyNote =
+      conclusions.dataCoverageNotes?.find((n) => n.includes('未形成痛点聚类')) ||
+      OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE
+
+    return (
+      <Card
+        id={PLANNING_RECOMMENDATIONS_ANCHOR_ID}
+        className="border-indigo-200 shadow-sm"
+        styles={{
+          header: { background: 'linear-gradient(to right, rgb(238 242 255), rgb(255 255 255))' },
+          body: { paddingTop: 16 },
+        }}
+        title={
+          <Space align="center">
+            <AimOutlined className="text-indigo-600" />
+            <span className="text-base font-semibold">{PLANNING_RECOMMENDATIONS_PANEL_TITLE}</span>
+            <PlanningRecommendationsHelpModal />
+          </Space>
+        }
+      >
+        <Alert type="info" showIcon title="暂无行动建议" description={emptyNote} />
+      </Card>
+    )
   }
 
   const priorityCounts = countByPriority(allRecommendations)
@@ -220,9 +251,6 @@ export default function PlanningRecommendationsPanel({
           <AimOutlined className="text-indigo-600" />
           <span className="text-base font-semibold">{PLANNING_RECOMMENDATIONS_PANEL_TITLE}</span>
           <PlanningRecommendationsHelpModal />
-          {conclusions?.recommendationsMeta?.recommendationEngine === 'pain_cluster_v2' && (
-            <Tag color="blue">V2 痛点聚类</Tag>
-          )}
           {conclusions?.source === 'hybrid' && <Tag color="purple">规则 + LLM</Tag>}
           {conclusions?.recommendationsLlm?.polishedAt && (
             <Tag color="geekblue">行动建议已润色</Tag>
@@ -256,16 +284,7 @@ export default function PlanningRecommendationsPanel({
           showIcon
           className="!mb-3"
           title="行动建议已实时重算"
-          description="当前快照生成于 V2 痛点聚类上线前，行动建议已基于最新工单临时重算。请重新生成洞察快照以持久化 V2 结果。"
-        />
-      )}
-      {conclusions?.recommendationsMeta?.legacyFallback && (
-        <Alert
-          type="warning"
-          showIcon
-          className="!mb-3"
-          title="行动建议已回退至规则引擎"
-          description="本期 V2 痛点聚类未产生 Top 10 结果（通常因有效「需求痛点挖掘」不足或样本过少）。当前展示为旧版信号引擎建议，请补充打标后重新生成快照。"
+          description="当前快照生成于聚类引擎上线前，行动建议已基于最新工单临时重算。请重新生成洞察快照以持久化结果。"
         />
       )}
 

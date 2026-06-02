@@ -50,7 +50,6 @@ export function buildSourceSnapshot({ insightPeriodId, dataSourceType, records, 
       negativePct: stats.negativePct,
       openCount: stats.open,
       thisWeek: stats.thisWeek,
-      topProduct: products[0]?.name || '—',
       outOfPeriodWarnings: records.filter((r) => r.outOfPeriodWarning).length,
     },
     aggregates: {

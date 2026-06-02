@@ -84,7 +84,7 @@ describe('pain point clustering integration', () => {
     expect(overview.conclusions?.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
   })
 
-  it('V2 无 Top 10 → 回退 legacy 并标记 legacyFallback', () => {
+  it('V2 无 Top 10 → 不展示行动建议并写入提示', () => {
     const period = createInsightPeriod({
       label: '2025-06',
       granularity: 'month',
@@ -107,9 +107,10 @@ describe('pain point clustering integration', () => {
       sourceSnapshots: { complaint_ticket: complaintSnap },
       crossSourceMetrics: { totalRecords: records.length },
     })
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('legacy_planning')
-    expect(conclusions.recommendationsMeta?.legacyFallback).toBe(true)
-    expect(conclusions.recommendations.length).toBeGreaterThanOrEqual(0)
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(conclusions.recommendationsMeta?.legacyFallback).toBe(false)
+    expect(conclusions.recommendations).toHaveLength(0)
+    expect(conclusions.dataCoverageNotes?.some((n) => n.includes('未形成痛点聚类'))).toBe(true)
   })
 
   it('低价值剔除备注写入 dataCoverageNotes', () => {

@@ -9,11 +9,13 @@ import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
 
 /** 概览展示：旧快照不展示行动建议时的提示文案 */
 export const OVERVIEW_RECOMMENDATIONS_REFRESH_NOTE =
-  '各产品行动建议（V2 痛点聚类 Top 10）需通过「生成 / 刷新洞察」生成。当前快照未包含有效 V2 结果，暂不展示行动建议。'
+  '行动建议需通过「生成 / 刷新洞察」基于痛点聚类生成。当前快照未包含有效结果，暂不展示行动建议。'
+
+/** 痛点聚类无 Top 10 时的提示文案（不展示行动建议列表） */
+export const OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE =
+  '本期未形成痛点聚类 Top 10（需有效「需求痛点挖掘」且二次聚类非空），暂不展示行动建议。'
 
 /**
- * 旧版概览快照（无 recommendationEngine）曾需 live 重算；展示路径应调用
- * {@link prepareOverviewConclusionsForDisplay}，仅在服务端/手动重建时使用 {@link rehydrateOverviewRecommendations}。
  * @param {OverviewConclusions | null | undefined} conclusions
  */
 export function needsOverviewRecommendationsRehydrate(conclusions) {
@@ -21,12 +23,13 @@ export function needsOverviewRecommendationsRehydrate(conclusions) {
   const meta = conclusions.recommendationsMeta
   const engine = meta?.recommendationEngine
   if (!engine) return true
-  if (engine === 'legacy_planning' || meta?.legacyFallback === true) return true
+  if (engine !== 'pain_cluster_v2') return true
+  if (meta?.legacyFallback === true) return true
   return false
 }
 
 /**
- * 概览 Tab 只读展示：旧/legacy 快照不展示行动建议（含旧版 legacy 列表），仅保留其余结论字段。
+ * 概览 Tab 只读展示：旧/legacy 快照不展示行动建议，仅保留其余结论字段。
  *
  * @param {OverviewConclusions | null | undefined} conclusions
  * @returns {{ conclusions: OverviewConclusions | null | undefined; recommendationsPendingRefresh: boolean }}
@@ -78,15 +81,19 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
   if (!ticketRecords.length) {
     return {
       ...conclusions,
+      recommendations: [],
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
-        recommendationEngine: 'legacy_planning',
-        legacyFallback: true,
+        ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
+        recommendationEngine: 'pain_cluster_v2',
+        legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
+        generatedRecommendationCount: 0,
+        cappedCount: 0,
       },
       dataCoverageNotes: [
         ...notes,
-        '当前周期无工单数据，无法重算 V2 行动建议；请重新生成洞察快照。',
+        '当前周期无工单数据，无法生成行动建议；请重新生成洞察快照。',
       ],
     }
   }
@@ -96,44 +103,31 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     { settings },
   )
 
+  const exclusionNote = formatClusteringExclusionNote(pipelineResults)
+  if (exclusionNote && !notes.includes(exclusionNote)) notes.push(exclusionNote)
+
   if (!raw.length) {
-    if (conclusions.recommendations?.length) {
-      return {
-        ...conclusions,
-        recommendationsMeta: {
-          ...conclusions.recommendationsMeta,
-          recommendationEngine: 'legacy_planning',
-          legacyFallback: true,
-          rehydratedAt: new Date().toISOString(),
-        },
-        dataCoverageNotes: [
-          ...notes,
-          '行动建议仍来自旧版快照（V2 聚类暂无结果）；请重新生成洞察快照以完全切换至 V2。',
-        ],
-      }
+    if (!notes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)) {
+      notes.push(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
     }
     return {
       ...conclusions,
       recommendations: [],
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
-        recommendationEngine: 'legacy_planning',
-        legacyFallback: true,
+        ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
+        recommendationEngine: 'pain_cluster_v2',
+        legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
         generatedRecommendationCount: 0,
         cappedCount: 0,
       },
-      dataCoverageNotes: [
-        ...notes,
-        'V2 痛点聚类未形成 Top 10；请确认工单已打标「需求痛点挖掘」后重新生成洞察快照。',
-      ],
+      dataCoverageNotes: notes,
     }
   }
 
   const limited = limitPlanningRecommendations(raw)
-  const exclusionNote = formatClusteringExclusionNote(pipelineResults)
-  if (exclusionNote && !notes.includes(exclusionNote)) notes.push(exclusionNote)
-  notes.push('行动建议已基于当前工单实时重算（快照生成于 V2 聚类上线前，建议重新生成洞察快照以持久化）。')
+  notes.push('行动建议已基于当前工单实时重算（快照生成于聚类引擎上线前，建议重新生成洞察快照以持久化）。')
 
   return {
     ...conclusions,

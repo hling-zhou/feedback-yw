@@ -26,6 +26,7 @@ import { formatWanTouRatio } from './wanTouRatio.js'
 import { buildWorkbenchAnalysisUrl } from './workbenchAnalysisLink.js'
 import { getSignalWeight } from './planningConfigLoader.js'
 import { attachPlanningRecommendationSections } from './planningRecommendationSections.js'
+import { buildRecommendationExportFullText } from './planningRecommendationDisplay.js'
 import { getEffectiveOptimization } from './ticketAnalysis/ticketOptimizationExtract.js'
 import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 
@@ -2068,23 +2069,5 @@ export function buildPlanningRecommendations({
  * @param {OverviewRecommendation} rec
  */
 export function formatRecommendationForExport(rec) {
-  /** @type {string[]} */
-  const lines = [rec.summary || rec.text]
-  if (rec.details?.length) {
-    lines.push(PLANNING_EXPORT_LABELS.details)
-    lines.push(...rec.details.map((d, i) => `${i + 1}. ${d}`))
-  }
-  if (rec.evidenceNote) {
-    lines.push(`${PLANNING_EXPORT_LABELS.evidenceNote}${rec.evidenceNote}`)
-  }
-  if (rec.metrics?.length) {
-    lines.push(rec.metrics.map((m) => `${m.label}：${m.value}`).join(' · '))
-  }
-  if (rec.evidenceTicketIds?.length) {
-    lines.push(`${PLANNING_EXPORT_LABELS.evidenceTickets}${rec.evidenceTicketIds.join('、')}`)
-  }
-  if (rec.trackingMetrics?.length) {
-    lines.push(`${PLANNING_EXPORT_LABELS.trackingMetrics}${rec.trackingMetrics.join('、')}`)
-  }
-  return lines.join('\n')
+  return buildRecommendationExportFullText(rec)
 }

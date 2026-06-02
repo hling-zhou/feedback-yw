@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import { Alert, Card, Table, Tag, Typography } from 'antd'
+import { Alert, Card, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
+import { computeMaxMomGrowthProductForSource } from '../../lib/sourceOverviewMetrics.js'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
@@ -60,17 +62,28 @@ export default function OverviewTab({
     productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
   })
 
-  const sourceRows = DATA_SOURCE_TYPES.map((type) => {
-    const summary = snapshot.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
-    return {
-      key: type,
-      source: DATA_SOURCE_LABELS[type],
-      count: summary?.recordCount ?? 0,
-      negativePct: summary?.negativePct,
-      topProduct: summary?.topProduct,
-      status: sourceSnapshots[type]?.status,
-    }
-  })
+  const previousPeriod = useMemo(
+    () => resolvePreviousInsightPeriod(currentPeriod),
+    [currentPeriod],
+  )
+
+  const sourceRows = useMemo(() => {
+    return DATA_SOURCE_TYPES.map((type) => {
+      const summary = snapshot.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
+      const maxMomGrowthProduct =
+        summary?.maxMomGrowthProduct ??
+        computeMaxMomGrowthProductForSource(feedbacks, currentPeriod, previousPeriod, type) ??
+        null
+      return {
+        key: type,
+        source: DATA_SOURCE_LABELS[type],
+        count: summary?.recordCount ?? 0,
+        negativePct: summary?.negativePct,
+        maxMomGrowthProduct,
+        status: sourceSnapshots[type]?.status,
+      }
+    })
+  }, [snapshot.sourceSummaries, sourceSnapshots, feedbacks, currentPeriod, previousPeriod])
 
   const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
   const generatedAtLabel = snapshot.generatedAt?.slice(0, 16).replace('T', ' ')
@@ -87,7 +100,7 @@ export default function OverviewTab({
           type="warning"
           showIcon
           title="行动建议待刷新"
-          description="当前快照未包含 V2 痛点聚类行动建议。请点击「生成 / 刷新洞察」后查看各产品 Top 10 建议。"
+          description="当前快照未包含行动建议。请点击「生成 / 刷新洞察」后查看各产品 Top 10 建议。"
           action={
             onRebuildSnapshots ? (
               <RebuildInsightsButton
@@ -163,38 +176,73 @@ export default function OverviewTab({
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="各数据来源概览" className="min-w-0">
+        <Card title="各数据来源概览" className="min-w-0 overflow-hidden">
           <Table
             size="small"
+            tableLayout="fixed"
+            className="w-full"
             pagination={false}
             dataSource={sourceRows}
             columns={[
-              { title: '来源', dataIndex: 'source' },
-              { title: '条数', dataIndex: 'count', width: 80 },
+              {
+                title: '来源',
+                dataIndex: 'source',
+                width: '15%',
+                onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+              },
+              {
+                title: '条数',
+                dataIndex: 'count',
+                width: '15%',
+                onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+              },
               {
                 title: '负面占比',
-                width: 100,
+                width: '15%',
+                onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
                 render: (_, r) =>
                   r.negativePct != null ? `${r.negativePct}%` : '—',
               },
-              { title: 'Top 产品', dataIndex: 'topProduct', ellipsis: true },
+              {
+                title: '环比最大增幅产品',
+                dataIndex: 'maxMomGrowthProduct',
+                ellipsis: true,
+                render: (value) => value || '—',
+              },
               {
                 title: '快照',
-                width: 90,
+                width: '10%',
+                onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
                 render: (_, r) => {
                   const st = r.status
-                  if (st === 'stale') return <Tag color="orange">待更新</Tag>
-                  if (st === 'ready') return <Tag color="green">就绪</Tag>
-                  return <Tag>—</Tag>
+                  if (st === 'stale') {
+                    return (
+                      <Typography.Text type="warning" className="text-xs">
+                        待更新
+                      </Typography.Text>
+                    )
+                  }
+                  if (st === 'ready') {
+                    return (
+                      <Typography.Text type="success" className="text-xs">
+                        就绪
+                      </Typography.Text>
+                    )
+                  }
+                  return '—'
                 },
               },
               {
                 title: '',
-                width: 100,
+                width: 44,
+                onCell: () => ({
+                  style: { whiteSpace: 'nowrap', paddingInline: 4 },
+                }),
                 render: (_, r) =>
                   onSourceTab ? (
                     <a
                       href="#"
+                      className="text-xs"
                       onClick={(e) => {
                         e.preventDefault()
                         onSourceTab(r.key)
