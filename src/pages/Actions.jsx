@@ -239,7 +239,7 @@ export default function Actions() {
 
   const loadStats = useCallback(async () => {
     try {
-      const data = await getActionItemStats(listQuery)
+      const data = await getActionItemStats(baseScopeQuery)
       const counts = {
         pending_evaluation: 0,
         in_progress: 0,
@@ -252,7 +252,7 @@ export default function Actions() {
       let byProduct = Array.isArray(data.byProduct) ? data.byProduct : []
       const total = ACTION_ITEM_STATUSES.reduce((sum, status) => sum + (counts[status] ?? 0), 0)
       if (!byProduct.length && total > 0) {
-        const result = await listActionItems({ ...listQuery, limit: 500, offset: 0 })
+        const result = await listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
         byProduct = aggregateActionItemsByProductStatus(result.items)
       }
       setStatsByProduct(byProduct)
@@ -260,7 +260,7 @@ export default function Actions() {
       console.warn('[Actions] 加载统计失败:', err)
       message.warning(err instanceof Error ? err.message : '加载统计失败')
     }
-  }, [listQuery])
+  }, [baseScopeQuery])
 
   const loadItems = useCallback(async () => {
     setLoading(true)
