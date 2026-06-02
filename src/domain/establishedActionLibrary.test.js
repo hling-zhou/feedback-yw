@@ -141,4 +141,17 @@ describe('establishedActionLibrary', () => {
       productName: '虚拟私有云',
     })
   })
+
+  it('buildSnapshotPatchForEmptyFields preserves existing 问题', () => {
+    const item = {
+      id: 'act-4',
+      content: '举措',
+      status: 'pending_evaluation',
+      painPointSnapshot: '已有问题描述',
+      linkedTicketIds: [],
+      createdAt: '',
+      updatedAt: '',
+    }
+    expect(buildSnapshotPatchForEmptyFields(item, record)?.painPointSnapshot).toBeUndefined()
+  })
 })

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Form, Input, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Login() {
@@ -39,27 +39,30 @@ export default function Login() {
 
   return (
     <main className="min-h-screen bg-ink-50 text-ink-800">
-      <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="grid min-h-screen md:grid-cols-[1.05fr_0.95fr]">
+        <section className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white md:flex md:flex-col md:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.42),transparent_34%),radial-gradient(circle_at_78%_12%,rgba(16,185,129,0.28),transparent_30%),linear-gradient(145deg,#0B0F19_0%,#111827_58%,#1F2937_100%)]" />
           <div className="relative">
             <Typography.Text className="text-white/80">Feedback Insights</Typography.Text>
           </div>
           <div className="relative max-w-xl">
-            <Tag className="border-white/10 bg-white/10 text-white/75 backdrop-blur">
-              产品体验洞察工作台
-            </Tag>
-            <h1 className="mt-6 text-4xl font-semibold leading-tight">
-              从工单处理意见中，提炼可执行的产品优化线索。
-            </h1>
+            <h1 className="text-4xl font-semibold leading-tight">用户反馈洞察</h1>
             <p className="mt-4 text-sm text-white/70 leading-relaxed">
-              使用账号密码登录工作台，开始洞察分析。
+              以数为镜，从万千反馈的字里行间，捕捉产品优化的线索
             </p>
           </div>
         </section>
 
         <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8">
           <div className="w-full max-w-md">
+            <div className="mb-6 md:hidden">
+              <Typography.Title level={2} className="!mb-2 !text-ink-900">
+                用户反馈洞察
+              </Typography.Title>
+              <Typography.Paragraph className="!mb-0 !text-sm !text-ink-500">
+                以数为镜，从万千反馈的字里行间，捕捉产品优化的线索
+              </Typography.Paragraph>
+            </div>
             <Card className="shadow-card" styles={{ body: { padding: 32 } }}>
               <Typography.Title level={2} className="!mb-0 !text-2xl">
                 登录工作台

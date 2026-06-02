@@ -5,6 +5,7 @@ import {
   deriveActionItemStatusFromSchedule,
   isActionItemStatus,
   validateActionItemCreate,
+  toActionItemCreateBody,
 } from '../domain/actionItem.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
@@ -23,7 +24,33 @@ const STATUS_BY_LABEL = Object.fromEntries(
   ACTION_ITEM_STATUSES.map((status) => [ACTION_ITEM_STATUS_LABELS[status], status]),
 )
 
-const LINKED_TICKET_HEADERS = ['关联工单', '关联工单(本周期)', '关联工单号']
+const LINKED_TICKET_HEADERS = ['关联工单', '关联工单(本周期)', '关联工单号', '关联工单（可选）']
+
+/**
+ * 将模板表头（含 *（必填）/（可选））规范为导入字段名。
+ *
+ * @param {string} header
+ */
+export function normalizeActionItemImportHeader(header) {
+  return String(header ?? '')
+    .replace(/\*（必填）$/, '')
+    .replace(/（必填）$/, '')
+    .replace(/（可选）$/, '')
+    .trim()
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ * @returns {Record<string, unknown>}
+ */
+export function normalizeActionItemImportRow(row) {
+  /** @type {Record<string, unknown>} */
+  const out = {}
+  for (const [key, value] of Object.entries(row || {})) {
+    out[normalizeActionItemImportHeader(key)] = value
+  }
+  return out
+}
 
 /**
  * @param {string} text
@@ -123,7 +150,7 @@ export function parseActionItemImportRow(row, options = {}) {
   })
 
   if (!validated.ok) return validated
-  return { ok: true, item: validated.item }
+  return { ok: true, item: toActionItemCreateBody(validated.item) }
 }
 
 /**
@@ -149,13 +176,14 @@ export function parseActionItemImportWorkbook(buffer, options = {}) {
 
   rawRows.forEach((row, index) => {
     const excelRow = index + 2
-    const hint = cell(row, '提示')
+    const normalizedRow = normalizeActionItemImportRow(row)
+    const hint = cell(normalizedRow, '提示')
     if (hint === '无数据') return
-    const content = cell(row, '举措')
-    const productName = cell(row, '产品名称')
+    const content = cell(normalizedRow, '举措')
+    const productName = cell(normalizedRow, '产品名称')
     if (!content && !productName) return
 
-    const parsed = parseActionItemImportRow(row, options)
+    const parsed = parseActionItemImportRow(normalizedRow, options)
     if (!parsed.ok) {
       errors.push({ row: excelRow, error: parsed.error })
       return

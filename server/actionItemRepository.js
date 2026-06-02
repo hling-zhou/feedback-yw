@@ -1,6 +1,6 @@
 import { getDb } from './db.js'
 import { bumpDataRevision } from './dataRevision.js'
-import { isActionItemStatus, unlinkTicketFromActionItem } from '../src/domain/actionItem.js'
+import { isActionItemStatus, unlinkTicketFromActionItem, recomputeActionItemLinkedDataSources } from '../src/domain/actionItem.js'
 import {
   actionItemHasLinkedTicketInPeriod,
   buildTicketIdSetFromRecords,
@@ -313,6 +313,18 @@ function aggregateActionItemsByProductStatus(query = {}) {
   })
 }
 
+function getTicketIdToDataSourceMap() {
+  const { records } = storageRepository.listRecords({})
+  /** @type {Map<string, import('../src/domain/enums.js').DataSourceType>} */
+  const map = new Map()
+  for (const record of records) {
+    const ticketId = record.ticketId?.trim()
+    if (!ticketId || !record.dataSourceType || map.has(ticketId)) continue
+    map.set(ticketId, record.dataSourceType)
+  }
+  return map
+}
+
 /**
  * @param {{ actionId: string; ticketId: string }[]} links
  * @returns {{ updated: number; items: ActionItem[] }}
@@ -321,6 +333,7 @@ function unlinkTicketsFromActionItems(links) {
   /** @type {ActionItem[]} */
   const items = []
   let updated = 0
+  const ticketIdToSource = getTicketIdToDataSourceMap()
 
   for (const link of links) {
     const actionId = String(link.actionId ?? '').trim()
@@ -329,13 +342,13 @@ function unlinkTicketsFromActionItems(links) {
 
     const existing = getActionItem(actionId)
     if (!existing) continue
+    if (!(existing.linkedTicketIds || []).includes(ticketId)) continue
 
-    const next = unlinkTicketFromActionItem(existing, ticketId)
-    if ((existing.linkedTicketIds || []).includes(ticketId)) {
-      putActionItem(next)
-      items.push(next)
-      updated += 1
-    }
+    const unlinked = unlinkTicketFromActionItem(existing, ticketId)
+    const next = recomputeActionItemLinkedDataSources(unlinked, ticketIdToSource)
+    putActionItem(next)
+    items.push(next)
+    updated += 1
   }
 
   return { updated, items }

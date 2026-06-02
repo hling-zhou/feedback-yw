@@ -45,6 +45,7 @@ import {
   buildProductNameToKeyMap,
   parseActionItemImportWorkbook,
 } from '../lib/actionItemImport.js'
+import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplate.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
@@ -120,7 +121,7 @@ function LinkedTicketsCell({ ticketIds }) {
 }
 
 export default function Actions() {
-  const { feedbacks, updateFeedback, currentPeriod } = useInsights()
+  const { feedbacks, updateFeedback } = useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
@@ -199,16 +200,20 @@ export default function Actions() {
     }))
   }, [feedbacks])
 
-  useEffect(() => {
-    if (insightPeriodId || !currentPeriod) return
-    setInsightPeriodId(currentPeriod.id)
-    setSelectedPeriod(currentPeriod)
-  }, [currentPeriod, insightPeriodId])
+  const periodFilterActive = Boolean(insightPeriodId)
 
   const periodTicketIdSet = useMemo(() => {
-    if (!selectedPeriod) return null
+    if (!periodFilterActive || !selectedPeriod) return null
     return buildTicketIdSetFromRecords(filterRecordsForScope(feedbacks, selectedPeriod))
-  }, [feedbacks, selectedPeriod])
+  }, [feedbacks, selectedPeriod, periodFilterActive])
+
+  const resolveLinkedTicketIds = useCallback(
+    (/** @type {ActionItem} */ record) => {
+      if (!periodFilterActive) return record.linkedTicketIds || []
+      return linkedTicketIdsInPeriod(record.linkedTicketIds, periodTicketIdSet)
+    },
+    [periodFilterActive, periodTicketIdSet],
+  )
 
   const listQuery = useMemo(
     () => ({
@@ -602,7 +607,7 @@ export default function Actions() {
       width: 200,
     },
     {
-      title: (
+      title: periodFilterActive ? (
         <Tooltip title="数量仅统计当前所选周期内的关联工单">
           <span>
             关联工单
@@ -611,13 +616,13 @@ export default function Actions() {
             </Typography.Text>
           </span>
         </Tooltip>
+      ) : (
+        '关联工单'
       ),
       key: 'linkedTickets',
       width: 110,
       render: (_, record) => (
-        <LinkedTicketsCell
-          ticketIds={linkedTicketIdsInPeriod(record.linkedTicketIds, periodTicketIdSet)}
-        />
+        <LinkedTicketsCell ticketIds={resolveLinkedTicketIds(record)} />
       ),
     },
     {
@@ -709,6 +714,9 @@ export default function Actions() {
               <Button icon={<DownloadOutlined />} onClick={() => importInputRef.current?.click()}>
                 导入
               </Button>
+              <Button type="link" className="!px-1" onClick={downloadActionItemImportTemplate}>
+                下载模板
+              </Button>
               <input
                 ref={importInputRef}
                 type="file"
@@ -744,10 +752,11 @@ export default function Actions() {
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-ink-800">工单所属周期</span>
+          <span className="text-sm text-ink-800">周期筛选</span>
           <InsightPeriodPicker
             compact
-            showHint={false}
+            showHint={periodFilterActive}
+            allowEmpty
             value={insightPeriodId}
             onChange={(id, period) => {
               setInsightPeriodId(id)
@@ -755,6 +764,11 @@ export default function Actions() {
               setPage(1)
             }}
           />
+          {!periodFilterActive ? (
+            <Typography.Text type="secondary" className="text-xs">
+              当前显示全部举措（不限周期）
+            </Typography.Text>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-ink-800">首次提出时间</span>
@@ -865,7 +879,7 @@ export default function Actions() {
         destroyOnClose
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
-          问题类型、用户旅程、来源、关联工单可留空；首次提出时间记为今天。后续在工单中关联时，空字段将从该工单补齐。
+          问题、问题类型、用户旅程、来源、关联工单均可留空；首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」「用户旅程」及来源自动补齐。
         </Typography.Paragraph>
         <Form form={addForm} layout="vertical">
           <Form.Item name="productKey" label="产品">
@@ -926,7 +940,11 @@ export default function Actions() {
         destroyOnClose
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
-          支持「举措清单」工作表或导出模板；仅「举措」必填。问题类型、用户旅程、来源、关联工单可空。首次提出时间统一记为导入当天（忽略文件中的该列）。
+          支持「举措清单」工作表或
+          <Button type="link" className="!h-auto !p-0 !text-xs" onClick={downloadActionItemImportTemplate}>
+            下载模板
+          </Button>
+          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联工单后自动补齐。首次提出时间统一记为导入当天。
         </Typography.Paragraph>
         {importPreview ? (
           <>

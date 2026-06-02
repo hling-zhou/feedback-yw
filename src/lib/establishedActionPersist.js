@@ -6,6 +6,7 @@ import {
   createActionItem,
   getActionItem,
   updateActionItem,
+  unlinkTicketsFromActionLibrary,
 } from '../lib/actionItemClient.js'
 import {
   buildClearEstablishedActionRecordPatch,
@@ -30,6 +31,27 @@ import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 
 /**
  * @param {FeedbackRecord} record
+ */
+async function unlinkTicketFromPriorAction(record) {
+  const actionId = record.actionId?.trim()
+  const ticketId = record.ticketId?.trim()
+  if (!actionId || !ticketId) return
+  await unlinkTicketsFromActionLibrary([{ actionId, ticketId }])
+}
+
+/**
+ * @param {FeedbackRecord} record
+ * @param {string} nextActionId
+ */
+async function unlinkTicketIfLeavingAction(record, nextActionId) {
+  const previousActionId = record.actionId?.trim()
+  const ticketId = record.ticketId?.trim()
+  if (!previousActionId || !ticketId || previousActionId === nextActionId) return
+  await unlinkTicketsFromActionLibrary([{ actionId: previousActionId, ticketId }])
+}
+
+/**
+ * @param {FeedbackRecord} record
  * @param {PersistEstablishedActionInput} input
  * @returns {Promise<Partial<FeedbackRecord>>}
  */
@@ -40,11 +62,13 @@ export async function persistEstablishedActionForTicket(record, input) {
   const dataSourceType = record.dataSourceType
 
   if (!content) {
+    await unlinkTicketFromPriorAction(record)
     return buildClearEstablishedActionRecordPatch()
   }
 
   if (input.linkedFromLibrary && input.actionId?.trim()) {
     const actionId = input.actionId.trim()
+    await unlinkTicketIfLeavingAction(record, actionId)
     const item = await getActionItem(actionId)
     if (!item) {
       throw new Error('关联的举措不存在或已被删除')

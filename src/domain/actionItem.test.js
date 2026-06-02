@@ -5,8 +5,10 @@ import {
   deriveActionItemStatusFromSchedule,
   linkTicketToActionItem,
   mergeActionItemPatch,
+  recomputeActionItemLinkedDataSources,
   unlinkTicketFromActionItem,
   validateActionItemCreate,
+  toActionItemCreateBody,
 } from './actionItem.js'
 
 describe('actionItem', () => {
@@ -30,6 +32,29 @@ describe('actionItem', () => {
       expect(created.item.status).toBe('pending_evaluation')
       expect(created.item.firstProposedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     }
+  })
+
+  it('toActionItemCreateBody strips server-only fields', () => {
+    const created = validateActionItemCreate({ content: '举措A' })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    expect(toActionItemCreateBody(created.item)).toEqual({
+      content: '举措A',
+      productKey: '',
+      productName: '',
+      status: 'pending_evaluation',
+      firstProposedAt: created.item.firstProposedAt,
+      scheduleAt: '',
+      painPointSnapshot: '',
+      problemTypeSnapshot: '',
+      journeyL1Snapshot: '',
+      linkedTicketIds: [],
+      linkedDataSources: [],
+      scheduleChanged: false,
+      warningLevel: 'none',
+    })
+    expect(toActionItemCreateBody(created.item)).not.toHaveProperty('id')
+    expect(toActionItemCreateBody(created.item)).not.toHaveProperty('createdAt')
   })
 
   it('mergeActionItemPatch sets in_progress when schedule added from empty without scheduleChanged', () => {
@@ -96,6 +121,26 @@ describe('actionItem', () => {
 
     const unlinked = unlinkTicketFromActionItem(linked, 'T-100')
     expect(unlinked.linkedTicketIds).toEqual([])
+    expect(unlinked.linkedDataSources).toEqual([])
+    expect(unlinked.painPointSnapshot).toBe('')
+  })
+
+  it('recomputeActionItemLinkedDataSources keeps remaining ticket sources', () => {
+    const created = validateActionItemCreate({
+      content: '举措C',
+      linkedTicketIds: ['T-1', 'T-2'],
+      linkedDataSources: ['complaint_ticket', 'consultation_ticket'],
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const unlinked = unlinkTicketFromActionItem(created.item, 'T-1')
+    const map = new Map([
+      ['T-2', 'consultation_ticket'],
+    ])
+    const next = recomputeActionItemLinkedDataSources(unlinked, map)
+    expect(next.linkedTicketIds).toEqual(['T-2'])
+    expect(next.linkedDataSources).toEqual(['consultation_ticket'])
   })
 
   it('status labels cover all statuses', () => {

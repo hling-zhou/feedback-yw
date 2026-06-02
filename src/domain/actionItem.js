@@ -49,6 +49,41 @@ export const ACTION_ITEM_WARNING_LEVELS = ['none', 'orange', 'red']
 
 export const ACTION_ITEM_CONTENT_MAX_LENGTH = 1000
 
+/** POST /api/actions 请求体允许的字段 */
+export const ACTION_ITEM_CREATE_BODY_KEYS = [
+  'content',
+  'productKey',
+  'productName',
+  'status',
+  'firstProposedAt',
+  'scheduleAt',
+  'painPointSnapshot',
+  'problemTypeSnapshot',
+  'journeyL1Snapshot',
+  'linkedTicketIds',
+  'linkedDataSources',
+  'scheduleChanged',
+  'warningLevel',
+]
+
+/**
+ * 裁剪为 API 创建 schema 允许的字段（去掉 id / createdAt 等）。
+ *
+ * @param {Partial<ActionItem>} input
+ * @returns {Partial<ActionItem>}
+ */
+export function toActionItemCreateBody(input) {
+  /** @type {Partial<ActionItem>} */
+  const out = {}
+  for (const key of ACTION_ITEM_CREATE_BODY_KEYS) {
+    if (input[key] !== undefined) {
+      // @ts-expect-error indexed assign
+      out[key] = input[key]
+    }
+  }
+  return out
+}
+
 /**
  * @param {string | undefined | null} scheduleAt
  * @returns {ActionItemStatus}
@@ -239,11 +274,59 @@ export function linkTicketToActionItem(item, ticketId, dataSourceType) {
 export function unlinkTicketFromActionItem(item, ticketId) {
   const tid = String(ticketId ?? '').trim()
   if (!tid) return item
+  const previous = item.linkedTicketIds || []
+  if (!previous.includes(tid)) return item
+
+  const linkedTicketIds = previous.filter((id) => id !== tid)
+  return applyActionItemTicketLinkState(item, linkedTicketIds, item.linkedDataSources)
+}
+
+/**
+ * 解关联或重算关联工单后，同步 linkedDataSources 与快照字段。
+ *
+ * @param {ActionItem} item
+ * @param {string[]} linkedTicketIds
+ * @param {import('./enums.js').DataSourceType[]} [linkedDataSources]
+ * @returns {ActionItem}
+ */
+export function applyActionItemTicketLinkState(item, linkedTicketIds, linkedDataSources) {
+  const ids = linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
+  if (!ids.length) {
+    return normalizeActionItem({
+      ...item,
+      linkedTicketIds: [],
+      linkedDataSources: [],
+      painPointSnapshot: '',
+      problemTypeSnapshot: '',
+      journeyL1Snapshot: '',
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
   return normalizeActionItem({
     ...item,
-    linkedTicketIds: (item.linkedTicketIds || []).filter((id) => id !== tid),
+    linkedTicketIds: ids,
+    linkedDataSources: linkedDataSources ?? item.linkedDataSources ?? [],
     updatedAt: new Date().toISOString(),
   })
+}
+
+/**
+ * 按仍关联的工单号重算来源列表。
+ *
+ * @param {ActionItem} item
+ * @param {Map<string, import('./enums.js').DataSourceType>} ticketIdToSource
+ * @returns {ActionItem}
+ */
+export function recomputeActionItemLinkedDataSources(item, ticketIdToSource) {
+  const ids = item.linkedTicketIds || []
+  /** @type {import('./enums.js').DataSourceType[]} */
+  const linkedDataSources = []
+  for (const id of ids) {
+    const source = ticketIdToSource.get(id)
+    if (source && !linkedDataSources.includes(source)) linkedDataSources.push(source)
+  }
+  return applyActionItemTicketLinkState(item, ids, linkedDataSources)
 }
 
 /**

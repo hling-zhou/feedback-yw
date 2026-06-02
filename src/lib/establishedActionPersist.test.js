@@ -4,12 +4,14 @@ vi.mock('../lib/actionItemClient.js', () => ({
   createActionItem: vi.fn(),
   getActionItem: vi.fn(),
   updateActionItem: vi.fn(),
+  unlinkTicketsFromActionLibrary: vi.fn(),
 }))
 
 import {
   createActionItem,
   getActionItem,
   updateActionItem,
+  unlinkTicketsFromActionLibrary,
 } from '../lib/actionItemClient.js'
 import { persistEstablishedActionForTicket } from './establishedActionPersist.js'
 
@@ -61,10 +63,14 @@ describe('establishedActionPersist', () => {
     expect(patch.actionId).toBe('act-lib')
     expect(patch.establishedAction).toBe('库内举措文本')
     expect(patch.actionSchedule).toBe('2026-08-15')
-    expect(updateActionItem).toHaveBeenCalledWith('act-lib', {
-      linkedTicketIds: ['T-100'],
-      linkedDataSources: ['complaint_ticket'],
-    })
+    expect(updateActionItem).toHaveBeenCalledWith(
+      'act-lib',
+      expect.objectContaining({
+        linkedTicketIds: ['T-100'],
+        linkedDataSources: ['complaint_ticket'],
+      }),
+      { skipConflictCheck: true },
+    )
   })
 
   it('manual input creates action item with snapshots (P4-3)', async () => {
@@ -137,18 +143,66 @@ describe('establishedActionPersist', () => {
         scheduleAt: '2026-09-01',
         status: 'in_progress',
       }),
+      { skipConflictCheck: true },
     )
     expect(patch.actionId).toBe('act-old')
   })
 
-  it('empty content clears established action fields', async () => {
-    const patch = await persistEstablishedActionForTicket(record, {
-      content: '  ',
-      scheduleAt: '',
-      linkedFromLibrary: false,
-    })
+  it('empty content clears established action fields and unlinks action library', async () => {
+    unlinkTicketsFromActionLibrary.mockResolvedValue({ updated: 1, items: [] })
+
+    const patch = await persistEstablishedActionForTicket(
+      { ...record, actionId: 'act-old' },
+      {
+        content: '  ',
+        scheduleAt: '',
+        linkedFromLibrary: false,
+      },
+    )
+
+    expect(unlinkTicketsFromActionLibrary).toHaveBeenCalledWith([
+      { actionId: 'act-old', ticketId: 'T-100' },
+    ])
     expect(patch.actionId).toBe('')
     expect(patch.establishedAction).toBe('')
     expect(createActionItem).not.toHaveBeenCalled()
+  })
+
+  it('switching library action unlinks ticket from previous action', async () => {
+    getActionItem.mockResolvedValue({
+      id: 'act-new',
+      content: '新库举措',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+      linkedTicketIds: [],
+      linkedDataSources: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    updateActionItem.mockResolvedValue({
+      id: 'act-new',
+      content: '新库举措',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+      linkedTicketIds: ['T-100'],
+      linkedDataSources: ['complaint_ticket'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    })
+    unlinkTicketsFromActionLibrary.mockResolvedValue({ updated: 1, items: [] })
+
+    await persistEstablishedActionForTicket(
+      { ...record, actionId: 'act-old' },
+      {
+        content: '新库举措',
+        scheduleAt: '',
+        actionId: 'act-new',
+        linkedFromLibrary: true,
+      },
+    )
+
+    expect(unlinkTicketsFromActionLibrary).toHaveBeenCalledWith([
+      { actionId: 'act-old', ticketId: 'T-100' },
+    ])
   })
 })

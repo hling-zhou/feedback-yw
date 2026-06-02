@@ -1,4 +1,5 @@
 import { apiFetch } from './apiClient.js'
+import { toActionItemCreateBody } from '../domain/actionItem.js'
 import { toActionItemConflictError } from '../domain/actionItemRevision.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
@@ -106,7 +107,7 @@ export async function getActionItem(id) {
 export async function createActionItem(input) {
   const data = await apiFetch('/api/actions', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify(toActionItemCreateBody(input)),
   })
   return data.item
 }
@@ -118,7 +119,7 @@ export async function createActionItem(input) {
 export async function createActionItemsBatch(items) {
   return apiFetch('/api/actions/batch', {
     method: 'POST',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items: items.map((item) => toActionItemCreateBody(item)) }),
   })
 }
 
