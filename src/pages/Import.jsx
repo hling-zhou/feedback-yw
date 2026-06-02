@@ -47,6 +47,7 @@ import {
   normalizeImportMonth,
 } from '../lib/importUtils.js'
 import { isStubPipeline } from '../analysis/registry.js'
+import { randomId } from '../lib/randomId.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { downloadFailuresCsv } from '../lib/export.js'
 import { buildTaggingPreviewRows, rowHasQuoteSourceText } from '../lib/importPreview.js'
@@ -200,7 +201,7 @@ export default function Import({ embedded = false }) {
       if (!rowCheck.ok) throw new Error(`${file.name}：${rowCheck.message}`)
 
       return /** @type {ParsedUploadFile} */ ({
-        id: crypto.randomUUID(),
+        id: randomId(),
         file,
         sha256,
         sheetNames: names,

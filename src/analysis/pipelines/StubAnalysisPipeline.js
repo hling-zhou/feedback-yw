@@ -3,6 +3,7 @@ import { ArtifactCollector } from '../core/ArtifactCollector.js'
 import { createTicketRecord } from '../../lib/recordFactory.js'
 import { SCHEMA_VERSION } from '../../domain/constants.js'
 import { pickImportRowMeta } from '../../lib/importUtils.js'
+import { randomId } from '../../lib/randomId.js'
 
 /**
  * @typedef {import('../core/AnalysisContext.js').AnalysisContext} AnalysisContext
@@ -21,7 +22,7 @@ export class StubAnalysisPipeline extends AnalysisPipeline {
    * @param {AnalysisContext} ctx
    */
   async analyze(rows, ctx) {
-    const collector = new ArtifactCollector(crypto.randomUUID())
+    const collector = new ArtifactCollector(randomId())
     collector.setRunParams({
       stub: true,
       pipelineStatus: STUB_PIPELINE_STATUS,
@@ -29,7 +30,7 @@ export class StubAnalysisPipeline extends AnalysisPipeline {
     })
 
     const records = rows.map((row, i) => {
-      const id = crypto.randomUUID()
+      const id = randomId()
       const body =
         row.commentText ||
         row.openText ||

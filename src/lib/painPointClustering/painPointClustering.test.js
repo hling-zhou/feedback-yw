@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from '../randomId.js'
 import {
   breadthScoreFromShare,
   buildJourneyClusterView,
@@ -35,7 +36,7 @@ import { buildClusterActionRecommendations } from './buildClusterActionRecommend
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     rawText: 'test',
     createdAt: '2025-06-15T10:00:00Z',

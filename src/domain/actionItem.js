@@ -1,3 +1,4 @@
+import { randomId } from '../lib/randomId.js'
 /**
  * 举措库 ActionItem — 领域模型与状态规则。
  * @see docs/DESIGN-20260601-1.md §3.4
@@ -174,7 +175,7 @@ export function validateActionItemCreate(input) {
   }
   const item = normalizeActionItem({
     ...input,
-    id: input.id || crypto.randomUUID(),
+    id: input.id || randomId(),
     firstProposedAt: input.firstProposedAt || new Date().toISOString().slice(0, 10),
   })
   if (!item.id) return { ok: false, error: '缺少举措 ID' }

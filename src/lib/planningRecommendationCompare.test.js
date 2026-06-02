@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from './randomId.js'
 import {
   attachRecommendationPeriodCompare,
   recommendationCompareKey,
@@ -7,7 +8,7 @@ import {
 
 function rec(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     priority: 'medium',
     category: 'product',
     text: 'x',
@@ -21,7 +22,7 @@ function rec(overrides = {}) {
 describe('planningRecommendationCompare', () => {
   it('recommendationCompareKey is stable for same axis', () => {
     const a = rec()
-    const b = rec({ id: crypto.randomUUID(), summary: 'other' })
+    const b = rec({ id: randomId(), summary: 'other' })
     expect(recommendationCompareKey(a)).toBe(recommendationCompareKey(b))
   })
 

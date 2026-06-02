@@ -170,7 +170,7 @@ export const storageRepository = {
     return { record: next, recordRevision: next.recordRevision }
   },
 
-  putRecords(records) {
+  putRecords(records, options = {}) {
     const db = getDb()
     const getExisting = db.prepare('SELECT payload FROM records WHERE id = ?')
     const stmt = db.prepare(
@@ -183,6 +183,7 @@ export const storageRepository = {
         const existing = row ? parseJson(row.payload) : null
         const next = applyRecordWriteMetadata(record, {
           previousRevision: getRecordRevision(existing),
+          actor: options.actor ?? null,
         })
         const idx = recordIndexFields(next)
         stmt.run(

@@ -15,6 +15,7 @@ import {
   Typography,
 } from 'antd'
 import dayjs from 'dayjs'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
@@ -76,9 +77,9 @@ import {
   ROOT_CAUSE_REVIEW_MAX_LENGTH,
   shouldIncludeRootCauseReviewInSave,
 } from '../domain/rootCauseReview.js'
-import { useAuth } from '../context/AuthContext.jsx'
 import RecordConflictModal from './RecordConflictModal.jsx'
 import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
+import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 
 const RETAG_DEFAULT_TIP =
@@ -88,8 +89,16 @@ const SAVE_DETAIL_TIP =
   '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
 export default function FeedbackDrawer({ feedback: selected, onClose }) {
-  const { feedbacks, updateFeedback, reprocessOne, retagSession } = useFeedbacks()
-  const { can } = useAuth()
+  const {
+    feedbacks,
+    updateFeedback,
+    reprocessOne,
+    retagSession,
+    importSession,
+    sharedBackgroundTask,
+    reprocessing,
+  } = useFeedbacks()
+  const { can, user } = useAuth()
   const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
@@ -190,10 +199,30 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   useEffect(() => {
     if (!feedback?.id) return
     const latestRevision = getRecordRevision(feedback)
-    if (latestRevision > baseRevisionRef.current) {
-      setRemoteStale(true)
+    if (
+      !shouldShowRemoteRecordStale(feedback, baseRevisionRef.current, {
+        userId: user?.id,
+        retagActive: retagSession.active,
+        importActive: importSession.active,
+        reprocessingActive: reprocessing,
+        sharedBackgroundTask,
+      })
+    ) {
+      baseRevisionRef.current = latestRevision
+      setRemoteStale(false)
+      return
     }
-  }, [feedback?.id, feedback?.recordRevision])
+    setRemoteStale(true)
+  }, [
+    feedback?.id,
+    feedback?.recordRevision,
+    feedback?.updatedBy?.userId,
+    importSession.active,
+    retagSession.active,
+    reprocessing,
+    sharedBackgroundTask,
+    user?.id,
+  ])
 
   useEffect(() => {
     if (!feedback?.actionId?.trim()) return

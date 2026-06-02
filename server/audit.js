@@ -1,4 +1,4 @@
-import crypto from 'node:crypto'
+import { randomId } from '../src/lib/randomId.js'
 import { getDb } from './db.js'
 
 /** @typedef {{
@@ -35,7 +35,7 @@ export function logAuditFromRequest(request, action, detail = {}) {
  */
 export function logAudit(entry) {
   const db = getDb()
-  const id = crypto.randomUUID()
+  const id = randomId()
   const createdAt = new Date().toISOString()
   db.prepare(
     `INSERT INTO audit_log (id, user_id, username, action, detail_json, created_at)

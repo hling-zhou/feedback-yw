@@ -1,3 +1,4 @@
+import { randomId } from '../src/lib/randomId.js'
 import bcrypt from 'bcryptjs'
 import { validatePasswordPolicy } from '../src/domain/passwordPolicy.js'
 import { resolveAdminInitialPassword } from './config.js'
@@ -139,7 +140,7 @@ export async function createUser(input) {
   assertPasswordPolicy(input.password)
 
   const now = new Date().toISOString()
-  const id = crypto.randomUUID()
+  const id = randomId()
   const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS)
   const db = getDb()
   db.prepare(

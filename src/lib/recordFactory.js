@@ -1,4 +1,5 @@
 import { DEFAULT_TENANT_ID, SCHEMA_VERSION } from '../domain/constants.js'
+import { randomId } from './randomId.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../domain/enums.js').RecordStatus} RecordStatus */
@@ -23,7 +24,7 @@ export function createTicketRecord(input, opts = {}) {
     insightPeriodId: input.insightPeriodId ?? opts.insightPeriodId,
     dataSourceType,
     recordStatus: opts.recordStatus || input.recordStatus || 'analyzed',
-    id: input.id || crypto.randomUUID(),
+    id: input.id || randomId(),
     importedAt: input.importedAt || now,
     importMonth: input.importMonth,
     importBatchId: input.importBatchId,

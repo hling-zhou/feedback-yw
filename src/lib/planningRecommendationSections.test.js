@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from './randomId.js'
 import {
   attachPlanningRecommendationSections,
   buildPlanningRecommendationSections,
@@ -7,7 +8,7 @@ import {
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: 'T-001',
     source: '工单',
     rawText: 'test',
@@ -27,7 +28,7 @@ describe('planningRecommendationSections', () => {
     const pool = [
       makeRecord(),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         optimizationProduct: '在控制台增加端口占用冲突检测，绑定后自动提示需放行的安全组规则。',
       }),
     ]
@@ -91,7 +92,7 @@ describe('planningRecommendationSections', () => {
         optimizationProduct: '在专线控制台增加链路状态自检与拓扑上传引导页。',
       }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         optimizationProduct: '建立信息不全工单自动催办机制，避免工单空转。',
         optimizationService: '建立信息不全工单自动催办机制，避免工单空转。',
       }),

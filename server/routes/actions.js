@@ -198,7 +198,12 @@ export function registerActionRoutes(app) {
     if (!assertEditRecordPermission(request, reply)) return
 
     const body = /** @type {{ links: { actionId: string; ticketId: string }[] }} */ (request.body)
-    const result = actionItemRepository.unlinkTicketsFromActionItems(body.links)
+    const user = request.user
+    const result = actionItemRepository.unlinkTicketsFromActionItems(body.links, {
+      actor: user?.id
+        ? { userId: user.id, username: user.username || user.id }
+        : null,
+    })
     logAuditFromRequest(request, 'action.unlink_tickets', { count: result.updated })
     return result
     },

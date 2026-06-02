@@ -1,4 +1,5 @@
 import { DATA_SOURCE_LABELS } from './enums.js'
+import { randomId } from '../lib/randomId.js'
 
 /** @typedef {'overview' | import('./enums.js').DataSourceType} PdfExportScope */
 
@@ -46,7 +47,7 @@ export function pdfExportScopeLabel(scope) {
  */
 export function createPdfExportJob(payload) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     scope: payload.scope,
     status: 'queued',
     label: pdfExportScopeLabel(payload.scope),

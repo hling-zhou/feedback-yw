@@ -1,3 +1,4 @@
+import { randomId } from '../lib/randomId.js'
 /** @typedef {import('./enums.js').TagCandidateStatus} TagCandidateStatus */
 /** @typedef {import('./enums.js').TagType} TagType */
 /** @typedef {import('./enums.js').DataSourceType} DataSourceType */
@@ -35,7 +36,7 @@
 export function createTagCandidate(input) {
   const now = new Date().toISOString()
   return {
-    id: input.id || crypto.randomUUID(),
+    id: input.id || randomId(),
     tenantId: input.tenantId || 'local',
     insightPeriodId: input.insightPeriodId,
     dataSourceType: input.dataSourceType,

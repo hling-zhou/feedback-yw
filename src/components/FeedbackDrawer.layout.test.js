@@ -21,9 +21,9 @@ describe('FeedbackDrawer layout (P2-0)', () => {
   it('orders sections A → B1 → B2 → C → D', () => {
     const a = marker('ticketMetaLine')
     const b1 = marker('title="工单分类"')
-    const b2 = marker('投诉原因（终判）')
-    const cRequest = marker('客户请求内容')
-    const cPain = marker('需求痛点挖掘')
+    const b2 = marker('title="投诉原因（终判）"')
+    const cRequest = marker('shrink-0">客户请求内容</span>')
+    const cPain = marker('shrink-0">需求痛点挖掘</span>')
     const cOpt = marker('title="优化建议"')
     const cAuto = marker('优化建议 · 自动生成')
     const cManual = marker('优化建议 · 人工复核')
@@ -56,8 +56,8 @@ describe('FeedbackDrawer layout (P2-0)', () => {
   })
 
   it('places handling opinion after analysis cards (not between B and C)', () => {
-    const b2 = marker('投诉原因（终判）')
-    const cRequest = marker('客户请求内容')
+    const b2 = marker('title="投诉原因（终判）"')
+    const cRequest = marker('shrink-0">客户请求内容</span>')
     const dHandling = marker('处理意见（工单原文）')
 
     expect(cRequest).toBeLessThan(dHandling)

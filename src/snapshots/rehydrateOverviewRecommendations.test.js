@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from '../lib/randomId.js'
 import {
   needsOverviewRecommendationsRehydrate,
   prepareOverviewConclusionsForDisplay,
@@ -9,7 +10,7 @@ import {
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     dataSourceType: 'complaint_ticket',
     product: '弹性公网 IP',

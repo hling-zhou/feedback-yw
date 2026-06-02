@@ -1,3 +1,4 @@
+import { randomId } from '../src/lib/randomId.js'
 import {
   META_KEY_BACKGROUND_TASK_LOCK,
   isBackgroundTaskLockActive,
@@ -71,7 +72,7 @@ export function acquireBackgroundTaskLock(type, owner) {
   }
 
   const lock = {
-    id: crypto.randomUUID(),
+    id: randomId(),
     type,
     userId: owner.id,
     username: owner.username,

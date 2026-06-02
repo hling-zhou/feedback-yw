@@ -4,6 +4,7 @@ import { buildSentimentAnalysisText } from './sentimentAnalysisText.js'
 import { analyzeTicket } from './ticketAnalysis/ticketAnalysis.js'
 import { themesFromJourney } from './applyThemes.js'
 import { getTaxonomy } from './productTaxonomy.js'
+import { randomId } from './randomId.js'
 import {
   captureProblemTypeCandidateIfNeeded,
   captureRequestSceneCandidateIfNeeded,
@@ -56,7 +57,7 @@ export function processRow(row, useRegex = true, settings = null) {
     settings,
   )
 
-  const recordId = crypto.randomUUID()
+  const recordId = randomId()
   const taxonomy = getTaxonomy(resolved.productName, taxonomyKey)
   captureProblemTypeCandidateIfNeeded({
     problemType: tags.problemType,

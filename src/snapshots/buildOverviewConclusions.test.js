@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { buildOverviewConclusions } from './buildOverviewConclusions.js'
 import { buildSourceSnapshot } from './buildSourceSnapshot.js'
 import { createInsightPeriod } from '../domain/insightPeriod.js'
+import { randomId } from '../lib/randomId.js'
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     source: '工单',
     rawText: 'test',
@@ -55,7 +56,7 @@ describe('buildOverviewConclusions', () => {
       makeRecord({ painPoint: sharedPain }),
       makeRecord({ painPoint: sharedPain }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         dataSourceType: 'consultation_ticket',
         problemType: '计费与账单',
         journeyL1: '认知与选型',

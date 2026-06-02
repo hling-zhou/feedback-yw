@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from './randomId.js'
 import {
   computeMaxMomGrowthProduct,
   computeMaxMomGrowthProductForSource,
@@ -7,7 +8,7 @@ import { createInsightPeriod } from '../domain/insightPeriod.js'
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     dataSourceType: 'complaint_ticket',
     product: '云主机',

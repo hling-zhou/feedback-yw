@@ -299,7 +299,11 @@ export function registerStorageRoutes(app) {
     const body = /** @type {{ records: import('../src/domain/records.js').InsightRecord[] }} */ (
       request.body
     )
-    storageRepository.putRecords(body.records)
+    storageRepository.putRecords(body.records, {
+      actor: request.user?.id
+        ? { userId: request.user.id, username: request.user.username || request.user.id }
+        : null,
+    })
     const sample = body.records[0]
     logAuditFromRequest(request, 'storage.import_batch', {
       count: body.records.length,

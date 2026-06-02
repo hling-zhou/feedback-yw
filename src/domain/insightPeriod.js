@@ -1,3 +1,4 @@
+import { randomId } from '../lib/randomId.js'
 /** @typedef {import('./enums.js').InsightPeriodStatus} InsightPeriodStatus */
 /** @typedef {import('./enums.js').PeriodGranularity} PeriodGranularity */
 
@@ -491,7 +492,7 @@ export function isImportMonthInPeriod(importMonth, period) {
 export function createInsightPeriod(input, schemaVersion, tenantId = 'local') {
   const now = new Date().toISOString()
   const base = {
-    id: input.id || crypto.randomUUID(),
+    id: input.id || randomId(),
     label: input.label,
     startDate: input.startDate,
     endDate: input.endDate,

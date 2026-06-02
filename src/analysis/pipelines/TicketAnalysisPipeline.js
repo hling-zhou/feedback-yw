@@ -4,6 +4,7 @@ import { pickImportRowMeta } from '../../lib/importUtils.js'
 import { processRow } from '../../lib/pipeline.js'
 import { createTicketRecord } from '../../lib/recordFactory.js'
 import { recordMatchesPeriod } from '../../domain/insightPeriod.js'
+import { randomId } from '../../lib/randomId.js'
 
 /**
  * @typedef {import('../core/AnalysisContext.js').AnalysisContext} AnalysisContext
@@ -28,7 +29,7 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
    * @param {{ insightPeriod?: import('../../domain/insightPeriod.js').InsightPeriod }} [opts]
    */
   async analyze(rows, ctx, opts = {}) {
-    const collector = new ArtifactCollector(crypto.randomUUID(), false)
+    const collector = new ArtifactCollector(randomId(), false)
     collector.setRunParams({
       dataSourceType: ctx.dataSourceType,
       useRegex: ctx.settings?.useRegex,

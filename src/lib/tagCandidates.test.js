@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { randomId } from './randomId.js'
 import {
   buildTagCandidateMeaning,
   captureJourneyCandidateIfNeeded,
@@ -115,7 +116,7 @@ describe('tagCandidates', () => {
     const list = []
     const a = createTagCandidate({ tagType: 'journey_l2', proposedLabel: 'A > B' })
     mergeTagCandidate(list, a)
-    mergeTagCandidate(list, { ...a, id: crypto.randomUUID() })
+    mergeTagCandidate(list, { ...a, id: randomId() })
     expect(list).toHaveLength(1)
     expect(list[0].occurrenceCount).toBe(2)
   })

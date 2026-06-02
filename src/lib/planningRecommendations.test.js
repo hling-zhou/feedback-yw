@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from './randomId.js'
 import {
   buildFeedbacksLinkForRecommendation,
   buildPlanningAnalysisLink,
@@ -26,7 +27,7 @@ import {
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     source: '工单',
     rawText: 'test',
@@ -58,8 +59,8 @@ describe('planningRecommendations', () => {
   it('collectMergedOptimizationDetails merges playbook and ticket action items', () => {
     const records = [
       makeRecord({ rootCause: '安全组未放行导致无法访问' }),
-      makeRecord({ id: crypto.randomUUID(), rootCause: '安全组未放行导致无法访问' }),
-      makeRecord({ id: crypto.randomUUID(), rootCause: '路由配置错误' }),
+      makeRecord({ id: randomId(), rootCause: '安全组未放行导致无法访问' }),
+      makeRecord({ id: randomId(), rootCause: '路由配置错误' }),
     ]
     const details = collectMergedOptimizationDetails(records, {
       l1: '业务使用与连通',
@@ -86,8 +87,8 @@ describe('planningRecommendations', () => {
   it('buildPlanningRecommendations includes journey playbook when no ticket suggestions', () => {
     const records = [
       makeRecord({ rootCause: '安全组未放行导致无法访问' }),
-      makeRecord({ id: crypto.randomUUID(), rootCause: '安全组未放行导致无法访问' }),
-      makeRecord({ id: crypto.randomUUID(), rootCause: '安全组未放行导致无法访问' }),
+      makeRecord({ id: randomId(), rootCause: '安全组未放行导致无法访问' }),
+      makeRecord({ id: randomId(), rootCause: '安全组未放行导致无法访问' }),
     ]
     const recs = buildPlanningRecommendations({
       ticketRecords: records,
@@ -114,12 +115,12 @@ describe('planningRecommendations', () => {
           '控制台增加连通性一键诊断，依次检查安全组、ACL、路由与白名单并输出平台/客户侧结论。',
       }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         ticketId: 'T-002',
         optimizationSuggestion:
           '控制台增加连通性一键诊断，依次检查安全组、ACL、路由与白名单并输出平台/客户侧结论。',
       }),
-      makeRecord({ id: crypto.randomUUID(), ticketId: 'T-003' }),
+      makeRecord({ id: randomId(), ticketId: 'T-003' }),
     ]
     const mergedJourney = [
       {
@@ -162,7 +163,7 @@ describe('planningRecommendations', () => {
     const recs = buildPlanningRecommendations({
       ticketRecords: [
         makeRecord({ rootCause: '待分析', journeyL2: '未知环节' }),
-        makeRecord({ id: crypto.randomUUID(), rootCause: '待分析', journeyL2: '未知环节' }),
+        makeRecord({ id: randomId(), rootCause: '待分析', journeyL2: '未知环节' }),
       ],
       mergedJourney: [
         {
@@ -266,7 +267,7 @@ describe('planningRecommendations', () => {
           { ...makeRecord({ product: '云专线', dataSourceType: 'consultation_ticket' }), ticketId: '' },
           {
             ...makeRecord({
-              id: crypto.randomUUID(),
+              id: randomId(),
               dataSourceType: 'consultation_ticket',
               product: '云专线',
             }),
@@ -392,7 +393,7 @@ describe('planningRecommendations', () => {
         solutionSummary: '3、【目前进展及协助内容」已协助客户加急处理',
       }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         product: '云专线',
         journeyL1: '开通与交付',
         journeyL2: '订购开通与加急',
@@ -400,7 +401,7 @@ describe('planningRecommendations', () => {
           '针对根因「原因：从36.*.*.227这台云主机telnet 218.*.*.10 8880」在「公网访问不通或不稳定、丢包」建立专项修复与验收标准。',
       }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         product: '云专线',
         journeyL1: '开通与交付',
         journeyL2: '订购开通与加急',
@@ -435,11 +436,11 @@ describe('planningRecommendations', () => {
           '客户反馈公网访问不通，经排查为安全组未放行，已协助客户调整规则。',
       }),
       makeRecord({
-        id: crypto.randomUUID(),
+        id: randomId(),
         optimizationSuggestion:
           '客户反馈公网访问不通，经排查为安全组未放行，已协助客户调整规则。',
       }),
-      makeRecord({ id: crypto.randomUUID() }),
+      makeRecord({ id: randomId() }),
     ]
     const recs = buildPlanningRecommendations({
       ticketRecords,
@@ -577,7 +578,7 @@ describe('planningRecommendations', () => {
       for (let i = 0; i < count; i++) {
         ticketRecords.push(
           makeRecord({
-            id: crypto.randomUUID(),
+            id: randomId(),
             ticketId: `WO-${overrides.journeyL2}-${i}`,
             dataSourceType: 'consultation_ticket',
             importMonth: '2026-04',

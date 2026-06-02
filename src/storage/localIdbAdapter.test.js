@@ -5,6 +5,7 @@ import { createTicketRecord } from '../lib/recordFactory.js'
 import { SCHEMA_VERSION, LEGACY_INSIGHT_PERIOD_ID } from '../domain/constants.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { defaultAnalysisVersions, stampVersion } from '../lib/versioning.js'
+import { randomId } from '../lib/randomId.js'
 
 describe('LocalIdbAdapter', () => {
   beforeEach(async () => {
@@ -54,7 +55,7 @@ describe('LocalIdbAdapter', () => {
 
     const run = stampVersion(
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         tenantId: 'local',
         insightPeriodId: LEGACY_INSIGHT_PERIOD_ID,
         dataSourceType: 'consultation_ticket',
@@ -103,7 +104,7 @@ describe('LocalIdbAdapter', () => {
     const adapter = createLocalIdbAdapter()
     await adapter.init()
 
-    const runId = crypto.randomUUID()
+    const runId = randomId()
     await adapter.putArtifact({
       id: `${runId}:rec-1`,
       runId,

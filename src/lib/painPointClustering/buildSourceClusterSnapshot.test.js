@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildSourcePainPointClusterSnapshot } from './buildSourceClusterSnapshot.js'
+import { randomId } from '../randomId.js'
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     dataSourceType: 'complaint_ticket',
     product: '弹性公网 IP',
     painPoint: '安全组规则未放行导致公网端口无法访问',

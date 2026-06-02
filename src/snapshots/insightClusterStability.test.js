@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createInsightPeriod } from '../domain/insightPeriod.js'
 import { buildSourceSnapshot } from './buildSourceSnapshot.js'
+import { randomId } from '../lib/randomId.js'
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     source: '工单',
     rawText: 'test',

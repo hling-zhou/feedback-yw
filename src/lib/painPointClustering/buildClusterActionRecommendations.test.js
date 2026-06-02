@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { randomId } from '../randomId.js'
 import {
   buildClusterActionRecommendations,
   formatCustomerTierSummary,
@@ -7,7 +8,7 @@ import {
 
 function makeRecord(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     ticketId: `WO-${Math.random().toString(36).slice(2, 8)}`,
     dataSourceType: 'complaint_ticket',
     product: '弹性公网 IP',
@@ -53,7 +54,7 @@ describe('buildClusterActionRecommendations', () => {
   it('returns empty when no pain points', () => {
     const records = [
       makeRecord({ painPoint: '', problemSummary: '' }),
-      makeRecord({ id: crypto.randomUUID(), painPoint: '', problemSummary: '' }),
+      makeRecord({ id: randomId(), painPoint: '', problemSummary: '' }),
     ]
     expect(buildClusterActionRecommendations(records)).toEqual([])
   })

@@ -2,6 +2,7 @@ import { SCHEMA_VERSION } from '../../domain/constants.js'
 import { buildIdempotencyKey } from '../../domain/analysisRun.js'
 import { defaultAnalysisVersions, stampVersion } from '../../lib/versioning.js'
 import { ArtifactCollector } from './ArtifactCollector.js'
+import { randomId } from '../../lib/randomId.js'
 
 /**
  * @typedef {import('./AnalysisContext.js').AnalysisContext} AnalysisContext
@@ -67,7 +68,7 @@ export class AnalysisPipeline {
     /** @type {AnalysisRun} */
     const run = stampVersion(
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         tenantId: ctx.tenantId,
         insightPeriodId: ctx.insightPeriodId,
         dataSourceType: ctx.dataSourceType,

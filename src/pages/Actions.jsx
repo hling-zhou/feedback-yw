@@ -49,7 +49,9 @@ import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplat
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
@@ -121,7 +123,9 @@ function LinkedTicketsCell({ ticketIds }) {
 }
 
 export default function Actions() {
-  const { feedbacks, updateFeedback } = useInsights()
+  const { user } = useAuth()
+  const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTask, reprocessing } =
+    useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
@@ -352,10 +356,30 @@ export default function Actions() {
     if (!editOpen || !editing?.id) return
     const latest = items.find((item) => item.id === editing.id)
     if (!latest) return
-    if (getActionItemRevision(latest) > baseRevisionRef.current) {
-      setEditStale(true)
+    if (
+      !shouldShowRemoteRecordStale(latest, baseRevisionRef.current, {
+        userId: user?.id,
+        retagActive: retagSession.active,
+        importActive: importSession.active,
+        reprocessingActive: reprocessing,
+        sharedBackgroundTask,
+      })
+    ) {
+      baseRevisionRef.current = getActionItemRevision(latest)
+      setEditStale(false)
+      return
     }
-  }, [editOpen, editing?.id, items])
+    setEditStale(true)
+  }, [
+    editOpen,
+    editing?.id,
+    items,
+    user?.id,
+    retagSession.active,
+    importSession.active,
+    reprocessing,
+    sharedBackgroundTask,
+  ])
 
   const handleScheduleChange = (date) => {
     if (!date) {

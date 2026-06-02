@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { notification } from 'antd'
+import { useAuth } from './AuthContext.jsx'
 import { refreshLlmServerStatus, resolveSettingsForLlm } from '../lib/llmClient.js'
 import { loadSettings, saveSettings } from '../lib/storage.js'
 import {
@@ -75,7 +76,7 @@ import {
 } from '../lib/backgroundTaskClient.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
 import { buildDedupeKey } from '../domain/records.js'
-import { getRecordRevision } from '../domain/recordRevision.js'
+import { getRecordRevision, applyRecordWriteMetadata } from '../domain/recordRevision.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '../analysis/registry.js'
 import { getComparableMetrics, getMetricsForSource, listMetricDescriptors } from '../metrics/registry.js'
@@ -195,7 +196,15 @@ function mergeFeedbacksInto(prev, incoming) {
 
 export function InsightsProvider({ children }) {
   const message = useAppMessage()
+  const { user } = useAuth()
   const adapter = useMemo(() => getStorageAdapter(), [])
+  const recordWriteActor = useMemo(
+    () =>
+      user?.id
+        ? { userId: user.id, username: user.username || user.id }
+        : null,
+    [user?.id, user?.username],
+  )
   /** 清空数据期间跳过 debounced persist，避免旧数据写回 IDB */
   const clearInProgressRef = useRef(false)
   /** 从服务端拉取他人写入的数据时跳过回写 */
@@ -1873,7 +1882,16 @@ export function InsightsProvider({ children }) {
 
       /** @param {import('../lib/types.js').FeedbackRecord[]} chunk */
       const mergePersistedChunk = (chunk) => {
-        const byId = new Map(chunk.map((record) => [record.id, record]))
+        const byId = new Map(
+          chunk.map((record) => {
+            const prev = feedbacksRef.current.find((fb) => fb.id === record.id)
+            const next = applyRecordWriteMetadata(record, {
+              previousRevision: getRecordRevision(prev ?? record),
+              actor: recordWriteActor,
+            })
+            return [record.id, next]
+          }),
+        )
         const mergedAll = feedbacksRef.current.map((fb) => byId.get(fb.id) ?? fb)
         feedbacksRef.current = mergedAll
         setFeedbacks(mergedAll)
@@ -1940,7 +1958,16 @@ export function InsightsProvider({ children }) {
         },
       )
 
-      const byId = new Map(updatedSubset.map((record) => [record.id, record]))
+      const byId = new Map(
+        updatedSubset.map((record) => {
+          const prev = feedbacksRef.current.find((fb) => fb.id === record.id)
+          const next = applyRecordWriteMetadata(record, {
+            previousRevision: getRecordRevision(prev ?? record),
+            actor: recordWriteActor,
+          })
+          return [record.id, next]
+        }),
+      )
       const mergedAll = feedbacksRef.current.map((fb) => byId.get(fb.id) ?? fb)
       feedbacksRef.current = mergedAll
       setFeedbacks(mergedAll)
@@ -1981,6 +2008,7 @@ export function InsightsProvider({ children }) {
       currentPeriod,
       scheduleSnapshotRebuild,
       storageReady,
+      recordWriteActor,
     ],
   )
 

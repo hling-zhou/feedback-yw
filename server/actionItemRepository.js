@@ -327,9 +327,10 @@ function getTicketIdToDataSourceMap() {
 
 /**
  * @param {{ actionId: string; ticketId: string }[]} links
+ * @param {{ actor?: import('../src/domain/actionItemRevision.js').ActionItemUpdatedBy | null }} [options]
  * @returns {{ updated: number; items: ActionItem[] }}
  */
-function unlinkTicketsFromActionItems(links) {
+function unlinkTicketsFromActionItems(links, options = {}) {
   /** @type {ActionItem[]} */
   const items = []
   let updated = 0
@@ -346,7 +347,7 @@ function unlinkTicketsFromActionItems(links) {
 
     const unlinked = unlinkTicketFromActionItem(existing, ticketId)
     const next = recomputeActionItemLinkedDataSources(unlinked, ticketIdToSource)
-    putActionItem(next)
+    putActionItem(next, { actor: options.actor ?? null })
     items.push(next)
     updated += 1
   }
