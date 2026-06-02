@@ -6,6 +6,7 @@ import {
 } from '../../src/domain/actionItem.js'
 import {
   createActionBodySchema,
+  batchCreateActionsBodySchema,
   patchActionBodySchema,
   unlinkTicketsBodySchema,
   actionIdParamsSchema,
@@ -92,6 +93,49 @@ export function registerActionRoutes(app) {
     reply.code(201)
     return { item: actionItemRepository.getActionItem(validated.item.id) }
   })
+
+  app.post(
+    '/api/actions/batch',
+    { schema: { body: batchCreateActionsBodySchema } },
+    async (request, reply) => {
+      if (!assertEditRecordPermission(request, reply)) return
+
+      const body = /** @type {{ items: Partial<import('../../src/domain/actionItem.js').ActionItem>[] }} */ (
+        request.body || {}
+      )
+      /** @type {import('../../src/domain/actionItem.js').ActionItem[]} */
+      const created = []
+      /** @type {{ index: number; error: string }[]} */
+      const errors = []
+
+      body.items.forEach((raw, index) => {
+        const validated = validateActionItemCreate(raw)
+        if (!validated.ok) {
+          errors.push({ index, error: validated.error })
+          return
+        }
+        actionItemRepository.putActionItem(validated.item, {
+          actor: request.user?.id
+            ? { userId: request.user.id, username: request.user.username || request.user.id }
+            : null,
+        })
+        const saved = actionItemRepository.getActionItem(validated.item.id)
+        if (saved) created.push(saved)
+      })
+
+      if (!created.length) {
+        reply.code(400).send({ error: errors[0]?.error || '没有可导入的举措', errors })
+        return
+      }
+
+      logAuditFromRequest(request, 'action.batch_create', {
+        count: created.length,
+        failed: errors.length,
+      })
+      reply.code(201)
+      return { items: created, errors }
+    },
+  )
 
   app.patch(
     '/api/actions/:id',

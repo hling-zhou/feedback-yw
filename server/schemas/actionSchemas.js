@@ -31,6 +31,21 @@ export const createActionBodySchema = {
 }
 
 /** @type {import('json-schema').JSONSchema7} */
+export const batchCreateActionsBodySchema = {
+  type: 'object',
+  ...STRICT_OBJECT,
+  required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 500,
+      items: createActionBodySchema,
+    },
+  },
+}
+
+/** @type {import('json-schema').JSONSchema7} */
 export const patchActionBodySchema = {
   type: 'object',
   ...STRICT_OBJECT,

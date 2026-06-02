@@ -12,6 +12,7 @@ import {
   buildFirstTicketSnapshotSyncPatch,
   buildLinkedEstablishedActionRecordPatch,
   buildManualEstablishedActionUpsertPayload,
+  buildSnapshotPatchOnTicketLink,
   ensureTicketLinkedOnActionItem,
 } from '../domain/establishedActionLibrary.js'
 import { normalizeEstablishedActionInput } from '../domain/establishedAction.js'
@@ -49,15 +50,21 @@ export async function persistEstablishedActionForTicket(record, input) {
       throw new Error('关联的举措不存在或已被删除')
     }
     const linked = ensureTicketLinkedOnActionItem(item, ticketId, dataSourceType)
-    if (
+    const snapshotPatch = ticketId ? buildSnapshotPatchOnTicketLink(item, record) : null
+    const linkChanged =
       ticketId &&
       (linked.linkedTicketIds?.length !== item.linkedTicketIds?.length ||
         linked.linkedDataSources?.length !== item.linkedDataSources?.length)
-    ) {
-      await updateActionItem(actionId, {
-        linkedTicketIds: linked.linkedTicketIds,
-        linkedDataSources: linked.linkedDataSources,
-      }, { skipConflictCheck: true })
+    if (linkChanged || snapshotPatch) {
+      await updateActionItem(
+        actionId,
+        {
+          linkedTicketIds: linked.linkedTicketIds,
+          linkedDataSources: linked.linkedDataSources,
+          ...snapshotPatch,
+        },
+        { skipConflictCheck: true },
+      )
     }
     return buildLinkedEstablishedActionRecordPatch(linked)
   }

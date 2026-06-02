@@ -112,6 +112,17 @@ export async function createActionItem(input) {
 }
 
 /**
+ * @param {Partial<ActionItem>[]} items
+ * @returns {Promise<{ items: ActionItem[]; errors: { index: number; error: string }[] }>}
+ */
+export async function createActionItemsBatch(items) {
+  return apiFetch('/api/actions/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
+}
+
+/**
  * @param {string} id
  * @param {Partial<ActionItem>} patch
  * @param {import('../domain/actionItemRevision.js').PutActionItemOptions} [options]

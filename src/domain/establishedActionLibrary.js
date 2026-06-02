@@ -70,6 +70,38 @@ export function buildLinkedEstablishedActionRecordPatch(actionItem) {
 }
 
 /**
+ * 举措库字段为空时，从工单补齐快照 / 产品（不覆盖已有值）。
+ *
+ * @param {ActionItem} item
+ * @param {FeedbackRecord} record
+ * @returns {Partial<ActionItem> | null}
+ */
+export function buildSnapshotPatchForEmptyFields(item, record) {
+  const snapshots = buildActionItemSnapshotsFromRecord(record)
+  const product = buildActionItemProductFields(record)
+  /** @type {Partial<ActionItem>} */
+  const patch = {}
+
+  if (!String(item.painPointSnapshot ?? '').trim() && snapshots.painPointSnapshot) {
+    patch.painPointSnapshot = snapshots.painPointSnapshot
+  }
+  if (!String(item.problemTypeSnapshot ?? '').trim() && snapshots.problemTypeSnapshot) {
+    patch.problemTypeSnapshot = snapshots.problemTypeSnapshot
+  }
+  if (!String(item.journeyL1Snapshot ?? '').trim() && snapshots.journeyL1Snapshot) {
+    patch.journeyL1Snapshot = snapshots.journeyL1Snapshot
+  }
+  if (!String(item.productKey ?? '').trim() && product.productKey) {
+    patch.productKey = product.productKey
+  }
+  if (!String(item.productName ?? '').trim() && product.productName) {
+    patch.productName = product.productName
+  }
+
+  return Object.keys(patch).length ? patch : null
+}
+
+/**
  * 若 record 为举措首单，返回应同步到 ActionItem 的快照 patch。
  *
  * @param {ActionItem} item
@@ -81,6 +113,27 @@ export function buildFirstTicketSnapshotSyncPatch(item, record) {
   const ticketId = record.ticketId?.trim()
   if (!firstId || !ticketId || firstId !== ticketId) return null
   return buildActionItemSnapshotsFromRecord(record)
+}
+
+/**
+ * 首次关联工单时：空字段从该工单补齐；若已是首单则保持全量同步。
+ *
+ * @param {ActionItem} item - 关联前的举措
+ * @param {FeedbackRecord} record
+ * @returns {Partial<ActionItem> | null}
+ */
+export function buildSnapshotPatchOnTicketLink(item, record) {
+  const ticketId = record.ticketId?.trim()
+  if (!ticketId) return null
+
+  const wasFirstLink = !(item.linkedTicketIds || []).length
+  if (wasFirstLink) {
+    return buildSnapshotPatchForEmptyFields(item, record)
+  }
+
+  const linkedIds = [...(item.linkedTicketIds || [])]
+  if (!linkedIds.includes(ticketId)) linkedIds.push(ticketId)
+  return buildFirstTicketSnapshotSyncPatch({ ...item, linkedTicketIds: linkedIds }, record)
 }
 
 /**

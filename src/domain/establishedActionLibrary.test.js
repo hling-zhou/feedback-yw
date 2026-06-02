@@ -5,6 +5,8 @@ import {
   buildFirstTicketSnapshotSyncPatch,
   buildLinkedEstablishedActionRecordPatch,
   buildManualEstablishedActionUpsertPayload,
+  buildSnapshotPatchForEmptyFields,
+  buildSnapshotPatchOnTicketLink,
   formatActionItemOptionLabel,
 } from './establishedActionLibrary.js'
 
@@ -102,5 +104,41 @@ describe('establishedActionLibrary', () => {
     expect(
       buildFirstTicketSnapshotSyncPatch(item, { ...record, ticketId: 'T-200' }),
     ).toBeNull()
+  })
+
+  it('buildSnapshotPatchForEmptyFields only fills missing snapshot fields', () => {
+    const item = {
+      id: 'act-2',
+      content: '举措',
+      status: 'pending_evaluation',
+      problemTypeSnapshot: '已有类型',
+      linkedTicketIds: [],
+      createdAt: '',
+      updatedAt: '',
+    }
+    expect(buildSnapshotPatchForEmptyFields(item, record)).toEqual({
+      painPointSnapshot: '连接失败',
+      journeyL1Snapshot: '使用',
+      productKey: 'vpc',
+      productName: '虚拟私有云',
+    })
+  })
+
+  it('buildSnapshotPatchOnTicketLink fills empty fields on first link', () => {
+    const item = {
+      id: 'act-3',
+      content: '举措',
+      status: 'pending_evaluation',
+      linkedTicketIds: [],
+      createdAt: '',
+      updatedAt: '',
+    }
+    expect(buildSnapshotPatchOnTicketLink(item, record)).toEqual({
+      painPointSnapshot: '连接失败',
+      problemTypeSnapshot: '故障',
+      journeyL1Snapshot: '使用',
+      productKey: 'vpc',
+      productName: '虚拟私有云',
+    })
   })
 })
