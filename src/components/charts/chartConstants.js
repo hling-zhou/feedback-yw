@@ -1,6 +1,18 @@
 /** 横向条形图：单条厚度（与情绪分布图一致） */
 export const HORIZONTAL_BAR_MAX_SIZE = 28
 
+/** Recharts Tooltip 悬停高亮（条形背景；折线图指示线见 index.css） */
+export const CHART_TOOLTIP_CURSOR = {
+  fill: '#E5E7EB',
+}
+
+/** Recharts Tooltip 面板默认样式 */
+export const CHART_TOOLTIP_CONTENT_STYLE = {
+  borderRadius: 8,
+  fontSize: 12,
+  border: '1px solid #E5E7EB',
+}
+
 /** 横向条形图：每条类目占用的行高（px） */
 export const HORIZONTAL_BAR_ROW_HEIGHT = 40
 

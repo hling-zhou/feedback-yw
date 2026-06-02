@@ -6,11 +6,11 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   ResponsiveContainer,
 } from 'recharts'
 import BarCountLabel from './BarCountLabel.jsx'
 import CategoryAxisTick from './CategoryAxisTick.jsx'
+import ChartTooltip from './ChartTooltip.jsx'
 import {
   HORIZONTAL_BAR_MAX_SIZE,
   HORIZONTAL_BAR_MIN_HEIGHT,
@@ -71,8 +71,7 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel }) {
           interval={0}
           tick={<CategoryAxisTick />}
         />
-        <Tooltip
-          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+        <ChartTooltip
           formatter={(value, _name, props) => [
             `${value} 条 (负面 ${props.payload.negativePct}%)`,
             props.payload.fullName,

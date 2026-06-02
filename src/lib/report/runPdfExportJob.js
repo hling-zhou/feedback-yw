@@ -1,5 +1,6 @@
 import {
   captureChartsForScope,
+  nudgeChartLayout,
   waitForChartsReady,
   waitForWorkbenchCharts,
 } from './captureChartImages.js'

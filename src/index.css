@@ -87,4 +87,13 @@
   .page-grid-2 {
     @apply grid gap-3 sm:grid-cols-2;
   }
+
+  /** Recharts 悬停指示：条形背景浅灰、折线指示线浅灰 */
+  .recharts-rectangle.recharts-tooltip-cursor {
+    fill: #e5e7eb;
+    stroke: none;
+  }
+  .recharts-curve.recharts-tooltip-cursor {
+    stroke: #d1d5db;
+  }
 }

@@ -4,10 +4,10 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import ChartTooltip from './ChartTooltip.jsx'
 import { ACTION_ITEM_STATUSES, ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { ACTION_ITEM_STATUS_CHART_COLORS } from '../../domain/actionItemStatusStyle.js'
 
@@ -90,8 +90,7 @@ export default function ActionItemProductStatusChart({ data }) {
             height={chartData.length > 6 ? 56 : 32}
           />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} width={36} />
-          <Tooltip
-            contentStyle={{ borderRadius: 8, fontSize: 12 }}
+          <ChartTooltip
             formatter={(value, name) => [
               `${value ?? 0} 条`,
               ACTION_ITEM_STATUS_LABELS[/** @type {keyof typeof ACTION_ITEM_STATUS_LABELS} */ (name)] ||

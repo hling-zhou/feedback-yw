@@ -1,4 +1,5 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend } from 'recharts'
+import ChartTooltip from './ChartTooltip.jsx'
 
 export default function TrendChart({ data, areas }) {
   if (!data?.length) {
@@ -25,7 +26,7 @@ export default function TrendChart({ data, areas }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
-        <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }} />
+        <ChartTooltip />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {series.map((area) => (
           <Area

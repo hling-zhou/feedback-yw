@@ -4,13 +4,13 @@ import {
   CartesianGrid,
   Cell,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import { SENTIMENT_CHART_COLORS } from '../../lib/sentiment.js'
 import BarCountLabel from './BarCountLabel.jsx'
 import CategoryAxisTick from './CategoryAxisTick.jsx'
+import ChartTooltip from './ChartTooltip.jsx'
 import {
   HORIZONTAL_BAR_MAX_SIZE,
   HORIZONTAL_BAR_MIN_HEIGHT,
@@ -63,8 +63,7 @@ export default function SentimentChart({ data, total }) {
           interval={0}
           tick={<CategoryAxisTick />}
         />
-        <Tooltip
-          contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #E5E7EB' }}
+        <ChartTooltip
           formatter={(value, _name, props) => {
             const pct = sum ? Math.round((Number(value) / sum) * 100) : props.payload.pct
             return [`${value} 条（${pct}%）`, props.payload.name]

@@ -3,10 +3,10 @@ import {
   BarChart,
   CartesianGrid,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import ChartTooltip from './ChartTooltip.jsx'
 import BarCountLabel from './BarCountLabel.jsx'
 import CategoryAxisTick from './CategoryAxisTick.jsx'
 import {
@@ -50,8 +50,7 @@ export default function JourneyFlowChart({ data, selectedL1, onSelect }) {
           interval={0}
           tick={<CategoryAxisTick />}
         />
-        <Tooltip
-          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+        <ChartTooltip
           formatter={(value, _name, props) => [
             `${value} 条 · 负面 ${props.payload.negativePct}%`,
             props.payload.fullName,
