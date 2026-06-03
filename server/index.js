@@ -18,6 +18,7 @@ import {
   createUserBodySchema,
   updateUserBodySchema,
   updateUserParamsSchema,
+  batchCreateUsersBodySchema,
 } from './schemas/userSchemas.js'
 
 assertJwtConfig()
@@ -29,7 +30,8 @@ import {
 } from '../src/domain/passwordExpiry.js'
 import {
   createUser,
-  changeExpiredPassword,
+  changePasswordWithVerification,
+  batchCreateUsers,
   deleteUser,
   listUsers,
   seedAdminUser,
@@ -126,7 +128,7 @@ app.post(
     request.body
   )
   try {
-    const user = await changeExpiredPassword({
+    const { user, wasExpired } = await changePasswordWithVerification({
       username: body.username,
       currentPassword: body.currentPassword,
       newPassword: body.newPassword,
@@ -135,7 +137,7 @@ app.post(
       userId: user.id,
       username: user.username,
       action: 'auth.password_changed',
-      detail: { reason: 'expired_rotation' },
+      detail: { reason: wasExpired ? 'expired_rotation' : 'voluntary' },
     })
     return { ok: true, user }
   } catch (err) {
@@ -182,7 +184,7 @@ app.post(
       username: string
       password: string
       team: string
-      role: 'admin' | 'editor' | 'viewer'
+      role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
     }} */ (request.body)
 
     try {
@@ -205,6 +207,40 @@ app.post(
   },
 )
 
+app.post(
+  '/api/users/batch',
+  {
+    preHandler: requirePermission('manageUsers'),
+    schema: { body: batchCreateUsersBodySchema },
+  },
+  async (request, reply) => {
+    const body = /** @type {{
+      users: {
+        username: string
+        password: string
+        team: string
+        role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
+      }[]
+    }} */ (request.body)
+
+    try {
+      const result = await batchCreateUsers(body.users)
+      for (const user of result.created) {
+        logAuditFromRequest(request, 'user.create', {
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          source: 'batch_import',
+        })
+      }
+      reply.code(result.created.length ? 201 : 400)
+      return result
+    } catch (err) {
+      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  },
+)
+
 app.patch(
   '/api/users/:id',
   {
@@ -215,7 +251,7 @@ app.patch(
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {{
       team?: string
-      role?: 'admin' | 'editor' | 'viewer'
+      role?: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       status?: 'active' | 'disabled'
       password?: string
     }} */ (request.body)

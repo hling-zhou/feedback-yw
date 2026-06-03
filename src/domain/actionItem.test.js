@@ -40,6 +40,7 @@ describe('actionItem', () => {
     if (!created.ok) return
     expect(toActionItemCreateBody(created.item)).toEqual({
       content: '举措A',
+      detail: '',
       productKey: '',
       productName: '',
       status: 'pending_evaluation',
@@ -49,6 +50,7 @@ describe('actionItem', () => {
       problemTypeSnapshot: '',
       journeyL1Snapshot: '',
       linkedTicketIds: [],
+      linkedRequirementTicketIds: [],
       linkedDataSources: [],
       scheduleChanged: false,
       warningLevel: 'none',

@@ -538,11 +538,11 @@ export default function Feedbacks() {
           onChange={setResourcePool}
         />
         <Tooltip
-          title={TICKET_LLM_FILTER_HINTS[ticketLlmFilter] || undefined}
+          title={TICKET_LLM_FILTER_HINTS[ticketLlmFilter] || TICKET_LLM_FILTER_HINTS['']}
           placement="bottom"
         >
           <Select
-            className="min-w-[200px]"
+            className="min-w-[220px]"
             value={ticketLlmFilter}
             optionRender={renderDefinitionSelectOption}
             options={TICKET_LLM_FILTER_OPTIONS}

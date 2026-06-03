@@ -21,7 +21,7 @@ function assertPasswordPolicy(password) {
  * @property {string} username
  * @property {string} password_hash
  * @property {string} team
- * @property {'admin' | 'editor' | 'viewer'} role
+ * @property {'admin' | 'editor' | 'partial_editor' | 'viewer'} role
  * @property {'active' | 'disabled'} status
  * @property {string} created_at
  * @property {string} updated_at
@@ -131,7 +131,7 @@ export function setPasswordChangedAt(id, passwordChangedAt) {
  * @param {string} input.username
  * @param {string} input.password
  * @param {string} input.team
- * @param {'admin' | 'editor' | 'viewer'} input.role
+ * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} input.role
  */
 export async function createUser(input) {
   const username = input.username.trim()
@@ -157,7 +157,7 @@ export async function createUser(input) {
  * @param {string} id
  * @param {Object} patch
  * @param {string} [patch.team]
- * @param {'admin' | 'editor' | 'viewer'} [patch.role]
+ * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} [patch.role]
  * @param {'active' | 'disabled'} [patch.status]
  * @param {string} [patch.password]
  * @param {string} [actorId]
@@ -251,14 +251,15 @@ export async function verifyPassword(username, password) {
 }
 
 /**
- * 密码已过期时，凭当前密码修改为新密码（无需登录态）。
+ * 凭当前密码修改为新密码（无需登录态；过期与主动修改均走此接口）。
  *
  * @param {Object} input
  * @param {string} input.username
  * @param {string} input.currentPassword
  * @param {string} input.newPassword
+ * @returns {Promise<{ user: ReturnType<typeof toPublicUser>; wasExpired: boolean }>}
  */
-export async function changeExpiredPassword(input) {
+export async function changePasswordWithVerification(input) {
   const username = input.username?.trim()
   const currentPassword = input.currentPassword ?? ''
   const newPassword = input.newPassword ?? ''
@@ -274,9 +275,7 @@ export async function changeExpiredPassword(input) {
   if (!verified) throw new Error('用户名或当前密码错误')
 
   const passwordChangedAt = verified.row.password_changed_at || verified.row.created_at
-  if (!isPasswordExpired(passwordChangedAt)) {
-    throw new Error('密码尚未过期，请登录后在用户管理中修改')
-  }
+  const wasExpired = isPasswordExpired(passwordChangedAt)
 
   const now = new Date().toISOString()
   const password_hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
@@ -287,7 +286,50 @@ export async function changeExpiredPassword(input) {
     )
     .run(password_hash, now, now, verified.row.id)
 
-  return toPublicUser(findUserById(verified.row.id))
+  const updated = findUserById(verified.row.id)
+  if (!updated) throw new Error('更新失败')
+  return { user: toPublicUser(updated), wasExpired }
+}
+
+/** @deprecated 使用 changePasswordWithVerification */
+export async function changeExpiredPassword(input) {
+  const { user } = await changePasswordWithVerification(input)
+  return user
+}
+
+/**
+ * @param {Object[]} items
+ * @param {string} items[].username
+ * @param {string} items[].password
+ * @param {string} items[].team
+ * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} items[].role
+ */
+export async function batchCreateUsers(items) {
+  /** @type {ReturnType<typeof toPublicUser>[]} */
+  const created = []
+  /** @type {{ row: number; username: string; message: string }[]} */
+  const errors = []
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    try {
+      const user = await createUser({
+        username: item.username,
+        password: item.password,
+        team: item.team,
+        role: item.role,
+      })
+      created.push(user)
+    } catch (err) {
+      errors.push({
+        row: i + 1,
+        username: String(item.username ?? '').trim(),
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  return { created, errors }
 }
 
 /** 空库时创建首个管理员；须已通过 resolveAdminInitialPassword 校验 */

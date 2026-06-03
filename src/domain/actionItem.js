@@ -13,6 +13,7 @@ import { randomId } from '../lib/randomId.js'
  * @property {string} [productKey]
  * @property {string} [productName]
  * @property {string} content
+ * @property {string} [detail] - 举措详情（可选）
  * @property {ActionItemStatus} status
  * @property {string} [firstProposedAt] - ISO date (YYYY-MM-DD)
  * @property {string} [scheduleAt] - 排期展示文本
@@ -20,6 +21,7 @@ import { randomId } from '../lib/randomId.js'
  * @property {string} [problemTypeSnapshot]
  * @property {string} [journeyL1Snapshot]
  * @property {string[]} [linkedTicketIds]
+ * @property {string[]} [linkedRequirementTicketIds] - 关联需求工单号（可选，可多个）
  * @property {import('./enums.js').DataSourceType[]} [linkedDataSources]
  * @property {boolean} [scheduleChanged]
  * @property {ActionItemWarningLevel} [warningLevel]
@@ -48,11 +50,13 @@ export const ACTION_ITEM_STATUS_LABELS = {
 /** @type {ActionItemWarningLevel[]} */
 export const ACTION_ITEM_WARNING_LEVELS = ['none', 'orange', 'red']
 
-export const ACTION_ITEM_CONTENT_MAX_LENGTH = 1000
+export const ACTION_ITEM_CONTENT_MAX_LENGTH = 500
+export const ACTION_ITEM_DETAIL_MAX_LENGTH = 1000
 
 /** POST /api/actions 请求体允许的字段 */
 export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'content',
+  'detail',
   'productKey',
   'productName',
   'status',
@@ -62,6 +66,7 @@ export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'problemTypeSnapshot',
   'journeyL1Snapshot',
   'linkedTicketIds',
+  'linkedRequirementTicketIds',
   'linkedDataSources',
   'scheduleChanged',
   'warningLevel',
@@ -141,6 +146,7 @@ export function normalizeActionItem(input) {
     productKey: String(input.productKey ?? '').trim(),
     productName: String(input.productName ?? '').trim(),
     content: String(input.content ?? '').trim(),
+    detail: String(input.detail ?? '').trim().slice(0, ACTION_ITEM_DETAIL_MAX_LENGTH),
     status,
     firstProposedAt: String(input.firstProposedAt ?? '').trim(),
     scheduleAt,
@@ -149,6 +155,9 @@ export function normalizeActionItem(input) {
     journeyL1Snapshot: String(input.journeyL1Snapshot ?? '').trim(),
     linkedTicketIds: Array.isArray(input.linkedTicketIds)
       ? input.linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    linkedRequirementTicketIds: Array.isArray(input.linkedRequirementTicketIds)
+      ? input.linkedRequirementTicketIds.map((id) => String(id).trim()).filter(Boolean)
       : [],
     linkedDataSources: Array.isArray(input.linkedDataSources)
       ? input.linkedDataSources.filter(Boolean)
@@ -225,6 +234,11 @@ export function mergeActionItemPatch(existing, patch) {
       ? patch.linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
       : existing.linkedTicketIds
 
+  const linkedRequirementTicketIds =
+    patch.linkedRequirementTicketIds !== undefined
+      ? patch.linkedRequirementTicketIds.map((id) => String(id).trim()).filter(Boolean)
+      : existing.linkedRequirementTicketIds
+
   const item = normalizeActionItem({
     ...existing,
     ...patch,
@@ -234,6 +248,7 @@ export function mergeActionItemPatch(existing, patch) {
     scheduleChanged,
     status,
     linkedTicketIds,
+    linkedRequirementTicketIds,
     updatedAt: new Date().toISOString(),
   })
 

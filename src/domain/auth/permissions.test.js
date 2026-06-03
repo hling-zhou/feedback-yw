@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   canAccessRoute,
+  canBulkRetagScope,
   hasPermission,
   ROLE_PERMISSIONS,
 } from './permissions.js'
@@ -20,6 +21,17 @@ describe('auth permissions', () => {
     expect(hasPermission('editor', 'configureLlmPersonal')).toBe(true)
   })
 
+  it('partial_editor can edit records but not import, retag, tags, users, or delete', () => {
+    expect(hasPermission('partial_editor', 'view')).toBe(true)
+    expect(hasPermission('partial_editor', 'editRecord')).toBe(true)
+    expect(hasPermission('partial_editor', 'export')).toBe(true)
+    expect(hasPermission('partial_editor', 'import')).toBe(false)
+    expect(hasPermission('partial_editor', 'retag')).toBe(false)
+    expect(hasPermission('partial_editor', 'manageTags')).toBe(false)
+    expect(hasPermission('partial_editor', 'manageUsers')).toBe(false)
+    expect(hasPermission('partial_editor', 'deleteData')).toBe(false)
+  })
+
   it('viewer is read-only except export and personal llm', () => {
     expect(hasPermission('viewer', 'export')).toBe(true)
     expect(hasPermission('viewer', 'import')).toBe(false)
@@ -34,12 +46,27 @@ describe('auth permissions', () => {
     expect(hasPermission('viewer', 'import')).toBe(false)
     expect(hasPermission('editor', 'import')).toBe(true)
     expect(hasPermission('admin', 'import')).toBe(true)
+    expect(hasPermission('partial_editor', 'import')).toBe(false)
   })
 
   it('viewer hidden routes', () => {
     expect(canAccessRoute('viewer', '/import')).toBe(false)
     expect(canAccessRoute('viewer', '/users')).toBe(false)
     expect(canAccessRoute('viewer', '/feedbacks')).toBe(true)
+  })
+
+  it('partial_editor hidden routes', () => {
+    expect(canAccessRoute('partial_editor', '/import')).toBe(false)
+    expect(canAccessRoute('partial_editor', '/users')).toBe(false)
+    expect(canAccessRoute('partial_editor', '/feedbacks')).toBe(true)
+    expect(canAccessRoute('partial_editor', '/tags')).toBe(true)
+  })
+
+  it('bulk retag period_all is admin-only', () => {
+    expect(canBulkRetagScope('admin', 'period_all')).toBe(true)
+    expect(canBulkRetagScope('editor', 'period_all')).toBe(false)
+    expect(canBulkRetagScope('editor', 'filtered')).toBe(true)
+    expect(canBulkRetagScope('partial_editor', 'filtered')).toBe(false)
   })
 
   it('role permission lists are defined', () => {

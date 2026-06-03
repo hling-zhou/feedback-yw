@@ -24,7 +24,17 @@ const STATUS_BY_LABEL = Object.fromEntries(
   ACTION_ITEM_STATUSES.map((status) => [ACTION_ITEM_STATUS_LABELS[status], status]),
 )
 
-const LINKED_TICKET_HEADERS = ['关联工单', '关联工单(本周期)', '关联工单号', '关联工单（可选）']
+const LINKED_TICKET_HEADERS = [
+  '关联反馈',
+  '关联反馈(本周期)',
+  '关联反馈号',
+  '关联反馈（可选）',
+  '关联工单',
+  '关联工单(本周期)',
+  '关联工单号',
+  '关联工单（可选）',
+]
+const LINKED_REQUIREMENT_TICKET_HEADERS = ['需求工单', '需求工单（可选）', '关联需求工单']
 
 /**
  * 将模板表头（含 *（必填）/（可选））规范为导入字段名。
@@ -133,18 +143,26 @@ export function parseActionItemImportRow(row, options = {}) {
   }
 
   const linkedTicketIds = parseLinkedTicketIdsCell(cellAny(row, LINKED_TICKET_HEADERS))
+  const linkedRequirementTicketIds = parseLinkedTicketIdsCell(
+    cellAny(row, LINKED_REQUIREMENT_TICKET_HEADERS),
+  )
   const linkedDataSources = parseLinkedDataSourcesCell(cell(row, '来源'))
+
+  const problemTypeSnapshot =
+    cell(row, '问题类型') ||
+    cell(row, '用户旅程一级')
 
   const validated = validateActionItemCreate({
     content,
+    detail: cell(row, '举措详情'),
     productName,
     productKey: productKeyFromMap || '',
     painPointSnapshot: cell(row, '问题'),
-    problemTypeSnapshot: cell(row, '问题类型'),
-    journeyL1Snapshot: cell(row, '用户旅程一级'),
+    problemTypeSnapshot,
     scheduleAt,
     status,
     linkedTicketIds,
+    linkedRequirementTicketIds,
     linkedDataSources,
     firstProposedAt: options.firstProposedAt || new Date().toISOString().slice(0, 10),
   })

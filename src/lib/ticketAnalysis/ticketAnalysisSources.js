@@ -20,29 +20,31 @@ const TICKET_LIKE_SOURCES = /** @type {const} */ (['complaint_ticket', 'consulta
 
 /** @type {Record<string, string>} */
 export const TICKET_LLM_FILTER_HINTS = {
+  '':
+    '不按打标增强进度筛选，显示当前周期内全部工单（含非投诉/咨询来源）。',
   needs_llm:
-    '投诉/咨询工单：客户请求或痛点的展示来源不是「大模型」（含规则、人工、导入）。不含优化建议；旅程单独筛选。',
+    '投诉/咨询工单中，客户请求内容或需求痛点至少有一项的来源不是「大模型」（含规则初标、人工编辑、导入回写）。常见原因：导入时未配置 API Key、LLM 调用失败或尚未补打。不含优化建议；用户旅程请用「待增强 · 用户旅程」筛选。',
   full_llm:
-    '投诉/咨询工单：客户请求与痛点的展示来源均为「大模型」。不含优化建议；旅程单独筛选。',
+    '投诉/咨询工单中，客户请求内容与需求痛点的来源均为「大模型」。不含优化建议与用户旅程；旅程是否完成增强请查看详情来源 Tag 或「待增强 · 用户旅程」筛选。',
   needs_journey_llm:
-    '投诉/咨询工单：用户旅程尚未经 LLM 增强，且未满足「规则高置信 + 非未识别旅程」的门控跳过；详情中人工修改过的旅程视为已完成。',
+    '投诉/咨询工单中，用户旅程尚未经大模型增强，且未满足「规则匹配置信度高且非未识别环节」而自动跳过的条件。详情中人工修改过的用户旅程视为已完成，不会出现在本项。',
 }
 
 /** @type {{ label: string; value: string; title?: string }[]} */
 export const TICKET_LLM_FILTER_OPTIONS = [
-  { label: '全部 LLM 状态', value: '' },
+  { label: '全部LLM增强进度', value: '', title: TICKET_LLM_FILTER_HINTS[''] },
   {
-    label: '待 LLM（请求/痛点）',
+    label: '待增强 · 请求/痛点',
     value: 'needs_llm',
     title: TICKET_LLM_FILTER_HINTS.needs_llm,
   },
   {
-    label: '已 LLM（请求/痛点）',
+    label: '已增强 · 请求/痛点',
     value: 'full_llm',
     title: TICKET_LLM_FILTER_HINTS.full_llm,
   },
   {
-    label: '待 LLM（旅程）',
+    label: '待增强 · 用户旅程',
     value: 'needs_journey_llm',
     title: TICKET_LLM_FILTER_HINTS.needs_journey_llm,
   },

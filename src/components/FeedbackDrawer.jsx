@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Checkbox,
   DatePicker,
   Descriptions,
@@ -14,6 +15,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
+import { QuestionCircleOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
@@ -58,8 +60,11 @@ import {
 } from '../domain/actionSchedule.js'
 import {
   ESTABLISHED_ACTION_MAX_LENGTH,
+  ESTABLISHED_ACTION_DETAIL_MAX_LENGTH,
   getEstablishedActionDisplay,
+  getEstablishedActionDetailDisplay,
 } from '../domain/establishedAction.js'
+import { ESTABLISHED_ACTION_FIELD_TIP } from '../domain/establishedActionHints.js'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
 import ActionItemSelect from './ActionItemSelect.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
@@ -119,6 +124,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const [journeyL1, setJourneyL1] = useState(feedback?.journeyL1 || '')
   const [journeyL2, setJourneyL2] = useState(feedback?.journeyL2 || '')
   const [establishedAction, setEstablishedAction] = useState('')
+  const [establishedActionDetail, setEstablishedActionDetail] = useState('')
   const [actionId, setActionId] = useState('')
   const [linkedFromLibrary, setLinkedFromLibrary] = useState(false)
   const [customerRequest, setCustomerRequest] = useState('')
@@ -174,6 +180,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     setJourneyL1(record.journeyL1 || '')
     setJourneyL2(record.journeyL2 || '')
     setEstablishedAction(getEstablishedActionDisplay(record))
+    setEstablishedActionDetail(getEstablishedActionDetailDisplay(record))
     setActionId(record.actionId?.trim() || '')
     setLinkedFromLibrary(Boolean(record.actionId?.trim()))
     setCustomerRequest(getCustomerRequestDraftDisplay(record))
@@ -230,6 +237,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       if (cancelled || !item) return
       if (linkedFromLibrary) {
         setEstablishedAction(item.content)
+        setEstablishedActionDetail(item.detail || '')
         setActionSchedule(item.scheduleAt || '')
       }
     })()
@@ -305,6 +313,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
       patch,
       await persistEstablishedActionForTicket(feedback, {
         content: establishedAction,
+        detail: establishedActionDetail,
         scheduleAt: actionSchedule,
         actionId,
         linkedFromLibrary,
@@ -813,10 +822,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               </div>
 
               <div className="space-y-3">
-                <Typography.Text strong className="block text-xs">
-                  {/* 优化建议 · 确立举措 */}
-                  确立举措
-                </Typography.Text>
+                <div className="flex items-center gap-1">
+                  <Typography.Text strong className="text-xs">
+                    确立举措
+                  </Typography.Text>
+                  <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP}>
+                    <QuestionCircleOutlined className="cursor-help text-xs text-ink-400" />
+                  </Tooltip>
+                </div>
                 <Form layout="vertical">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Typography.Text className="shrink-0 text-sm after:content-[':']">
@@ -830,12 +843,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                         onSelect={(item) => {
                           setActionId(item.id)
                           setEstablishedAction(item.content)
+                          setEstablishedActionDetail(item.detail || '')
                           setActionSchedule(item.scheduleAt || '')
                           setLinkedFromLibrary(true)
                         }}
                         onClear={() => {
                           setActionId('')
                           setEstablishedAction('')
+                          setEstablishedActionDetail('')
                           setActionSchedule('')
                           setLinkedFromLibrary(false)
                         }}
@@ -857,6 +872,31 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                       }}
                     />
                   </Form.Item>
+                  <Collapse
+                    ghost
+                    className="!mb-3 [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                    items={[
+                      {
+                        key: 'detail',
+                        label: '举措详情（可选）',
+                        children: (
+                          <Input.TextArea
+                            rows={3}
+                            placeholder="默认为空"
+                            maxLength={ESTABLISHED_ACTION_DETAIL_MAX_LENGTH}
+                            showCount
+                            disabled={libraryLinked || saving}
+                            value={establishedActionDetail}
+                            onChange={(e) => {
+                              setEstablishedActionDetail(
+                                e.target.value.slice(0, ESTABLISHED_ACTION_DETAIL_MAX_LENGTH),
+                              )
+                            }}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
                   <Form.Item label="排期" className="!mb-0">
                     <DatePicker
                       className="w-full"
@@ -904,11 +944,18 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   ]}
                 />
               )}
-              {(getEstablishedActionDisplay(feedback) || feedback.actionSchedule?.trim()) && (
+              {(getEstablishedActionDisplay(feedback) ||
+                getEstablishedActionDetailDisplay(feedback) ||
+                feedback.actionSchedule?.trim()) && (
                 <div className="mt-4 space-y-2">
-                  <Typography.Text strong className="block text-xs">
-                    确立举措
-                  </Typography.Text>
+                  <div className="flex items-center gap-1">
+                    <Typography.Text strong className="text-xs">
+                      确立举措
+                    </Typography.Text>
+                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP}>
+                      <QuestionCircleOutlined className="cursor-help text-xs text-ink-400" />
+                    </Tooltip>
+                  </div>
                   <Descriptions
                     column={1}
                     size="small"
@@ -926,6 +973,23 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                       },
                     ]}
                   />
+                  {getEstablishedActionDetailDisplay(feedback) ? (
+                    <Collapse
+                      ghost
+                      className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                      items={[
+                        {
+                          key: 'detail',
+                          label: '举措详情',
+                          children: (
+                            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                              {getEstablishedActionDetailDisplay(feedback)}
+                            </Typography.Paragraph>
+                          ),
+                        },
+                      ]}
+                    />
+                  ) : null}
                 </div>
               )}
             </>

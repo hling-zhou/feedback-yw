@@ -103,10 +103,10 @@ describe('establishedActionPersist', () => {
     expect(createActionItem).toHaveBeenCalledWith(
       expect.objectContaining({
         content: '新举措',
+        detail: '',
         status: 'pending_evaluation',
         painPointSnapshot: '痛点',
         problemTypeSnapshot: '故障',
-        journeyL1Snapshot: '使用',
         linkedTicketIds: ['T-100'],
       }),
     )

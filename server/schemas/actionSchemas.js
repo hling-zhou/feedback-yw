@@ -6,7 +6,8 @@ export const createActionBodySchema = {
   ...STRICT_OBJECT,
   required: ['content'],
   properties: {
-    content: { type: 'string', minLength: 1, maxLength: 1000 },
+    content: { type: 'string', minLength: 1, maxLength: 500 },
+    detail: { type: 'string', maxLength: 1000 },
     productKey: { type: 'string', maxLength: 64 },
     productName: { type: 'string', maxLength: 128 },
     status: actionItemStatusSchema,
@@ -16,6 +17,11 @@ export const createActionBodySchema = {
     problemTypeSnapshot: { type: 'string', maxLength: 256 },
     journeyL1Snapshot: { type: 'string', maxLength: 256 },
     linkedTicketIds: {
+      type: 'array',
+      maxItems: 500,
+      items: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+    linkedRequirementTicketIds: {
       type: 'array',
       maxItems: 500,
       items: { type: 'string', minLength: 1, maxLength: 128 },
@@ -51,7 +57,8 @@ export const patchActionBodySchema = {
   ...STRICT_OBJECT,
   minProperties: 1,
   properties: {
-    content: { type: 'string', minLength: 1, maxLength: 1000 },
+    content: { type: 'string', minLength: 1, maxLength: 500 },
+    detail: { type: 'string', maxLength: 1000 },
     productKey: { type: 'string', maxLength: 64 },
     productName: { type: 'string', maxLength: 128 },
     status: actionItemStatusSchema,
@@ -61,6 +68,11 @@ export const patchActionBodySchema = {
     problemTypeSnapshot: { type: 'string', maxLength: 256 },
     journeyL1Snapshot: { type: 'string', maxLength: 256 },
     linkedTicketIds: {
+      type: 'array',
+      maxItems: 500,
+      items: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+    linkedRequirementTicketIds: {
       type: 'array',
       maxItems: 500,
       items: { type: 'string', minLength: 1, maxLength: 128 },

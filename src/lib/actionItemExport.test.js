@@ -13,6 +13,7 @@ describe('actionItemExport', () => {
       productKey: 'vpc',
       productName: 'VPC',
       content: '优化控制台',
+      detail: '分阶段上线',
       status: 'in_progress',
       firstProposedAt: '2026-05-01',
       scheduleAt: '2026-08-01',
@@ -20,6 +21,7 @@ describe('actionItemExport', () => {
       problemTypeSnapshot: '产品功能',
       journeyL1Snapshot: '使用',
       linkedTicketIds: ['T-001', 'T-002'],
+      linkedRequirementTicketIds: ['REQ-001'],
       linkedDataSources: ['complaint_ticket'],
       updatedAt: '2026-05-01T10:00:00.000Z',
       updatedBy: { userId: 'u1', username: 'alice' },
@@ -70,17 +72,19 @@ describe('actionItemExport', () => {
     const periodSet = new Set(['T-001'])
     const rows = buildActionItemListRows(sampleItems, periodSet)
     expect(Object.keys(rows[0])).toEqual(ACTION_ITEM_LIST_HEADERS)
-    expect(rows[0]['关联工单(本周期)']).toBe('T-001')
+    expect(rows[0]['关联反馈(本周期)']).toBe('T-001')
     expect(rows[0].来源).toBe('投诉工单')
+    expect(rows[0].举措详情).toBe('分阶段上线')
+    expect(rows[0].需求工单).toBe('REQ-001')
     expect(rows[0].状态).toBe('进行中')
     expect(rows[0].最近更新人员).toBe('alice')
     expect(rows[0].最近更新时间).toMatch(/2026/)
-    expect(rows[1]['关联工单(本周期)']).toBe('')
+    expect(rows[1]['关联反馈(本周期)']).toBe('')
     expect(rows[1].状态).toBe('待评估')
   })
 
   it('buildActionItemListRows without period filter exports all linked tickets', () => {
     const rows = buildActionItemListRows(sampleItems, null)
-    expect(rows[0]['关联工单(本周期)']).toBe('T-001\nT-002')
+    expect(rows[0]['关联反馈(本周期)']).toBe('T-001\nT-002')
   })
 })

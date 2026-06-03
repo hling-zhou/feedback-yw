@@ -10,8 +10,9 @@ import {
   normalizeActionItem,
 } from './actionItem.js'
 import {
-  buildEstablishedActionSavePatch,
+  buildEstablishedActionFullSavePatch,
   normalizeEstablishedActionInput,
+  normalizeEstablishedActionDetailInput,
 } from './establishedAction.js'
 import { getDisplayPainPoint } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 
@@ -35,21 +36,22 @@ export function buildActionItemSnapshotsFromRecord(record) {
   return {
     painPointSnapshot: getDisplayPainPoint(record).trim(),
     problemTypeSnapshot: String(record?.problemType ?? '').trim(),
-    journeyL1Snapshot: String(record?.journeyL1 ?? '').trim(),
   }
 }
 
 /**
  * @param {FeedbackRecord} record
- * @param {{ content: string; scheduleAt?: string }} input
+ * @param {{ content: string; detail?: string; scheduleAt?: string }} input
  * @returns {Partial<ActionItem>}
  */
 export function buildManualEstablishedActionUpsertPayload(record, input) {
   const content = normalizeEstablishedActionInput(input.content)
+  const detail = normalizeEstablishedActionDetailInput(input.detail)
   const scheduleAt = normalizeActionSchedule(input.scheduleAt)
   return {
     ...buildActionItemProductFields(record),
     content,
+    detail,
     scheduleAt,
     status: deriveActionItemStatusFromSchedule(scheduleAt),
     ...buildActionItemSnapshotsFromRecord(record),
@@ -63,7 +65,7 @@ export function buildManualEstablishedActionUpsertPayload(record, input) {
  */
 export function buildLinkedEstablishedActionRecordPatch(actionItem) {
   return {
-    ...buildEstablishedActionSavePatch(actionItem.content),
+    ...buildEstablishedActionFullSavePatch(actionItem.content, actionItem.detail),
     actionId: actionItem.id,
     actionSchedule: normalizeActionSchedule(actionItem.scheduleAt),
   }
@@ -87,9 +89,6 @@ export function buildSnapshotPatchForEmptyFields(item, record) {
   }
   if (!String(item.problemTypeSnapshot ?? '').trim() && snapshots.problemTypeSnapshot) {
     patch.problemTypeSnapshot = snapshots.problemTypeSnapshot
-  }
-  if (!String(item.journeyL1Snapshot ?? '').trim() && snapshots.journeyL1Snapshot) {
-    patch.journeyL1Snapshot = snapshots.journeyL1Snapshot
   }
   if (!String(item.productKey ?? '').trim() && product.productKey) {
     patch.productKey = product.productKey
@@ -143,6 +142,7 @@ export function buildClearEstablishedActionRecordPatch() {
   return {
     establishedAction: '',
     manualReviewOptimization: '',
+    establishedActionDetail: '',
     actionId: '',
     actionSchedule: '',
   }

@@ -28,3 +28,18 @@ export const updateUserBodySchema = {
 }
 
 export const updateUserParamsSchema = uuidParamSchema
+
+/** @type {import('json-schema').JSONSchema7} */
+export const batchCreateUsersBodySchema = {
+  type: 'object',
+  ...STRICT_OBJECT,
+  required: ['users'],
+  properties: {
+    users: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 200,
+      items: createUserBodySchema,
+    },
+  },
+}

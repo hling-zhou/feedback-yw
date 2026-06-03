@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildEstablishedActionFullSavePatch,
   buildEstablishedActionSavePatch,
   ESTABLISHED_ACTION_MAX_LENGTH,
+  getEstablishedActionDetailDisplay,
   getEstablishedActionDisplay,
   normalizeEstablishedActionInput,
 } from './establishedAction.js'
@@ -29,6 +31,20 @@ describe('establishedAction', () => {
     expect(buildEstablishedActionSavePatch('  举措  ')).toEqual({
       establishedAction: '举措',
       manualReviewOptimization: '举措',
+    })
+  })
+
+  it('getEstablishedActionDetailDisplay reads establishedActionDetail', () => {
+    expect(getEstablishedActionDetailDisplay({ establishedActionDetail: '详情说明' })).toBe(
+      '详情说明',
+    )
+  })
+
+  it('buildEstablishedActionFullSavePatch includes detail', () => {
+    expect(buildEstablishedActionFullSavePatch('举措', '详情')).toEqual({
+      establishedAction: '举措',
+      manualReviewOptimization: '举措',
+      establishedActionDetail: '详情',
     })
   })
 

@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react'
 import { Modal, Radio, Typography, Checkbox, message } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
+import { canBulkRetagScope } from '../domain/auth/permissions.js'
 import { useSharedBackgroundTaskBlock } from './useSharedBackgroundTaskBlock.js'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
@@ -24,8 +26,10 @@ import {
  */
 export function useBulkRetagModal({ filteredRecords }) {
   const { startBulkRetag, reprocessing, retagSession, settings } = useInsights()
+  const { user } = useAuth()
   const { retagBlocked, retagBlockedTip } = useSharedBackgroundTaskBlock()
   const { periodFeedbacks, periodCount } = usePeriodScope()
+  const canPeriodAll = canBulkRetagScope(user?.role, 'period_all')
 
   const unknownJourneyCount = useMemo(
     () => periodFeedbacks.filter(recordHasUnknownJourney).length,
@@ -88,7 +92,7 @@ export function useBulkRetagModal({ filteredRecords }) {
         case 'filtered':
           return filteredCount > 0
         case 'period_all':
-          return periodCount > 0
+          return periodCount > 0 && canPeriodAll
         default:
           return false
       }
@@ -99,6 +103,7 @@ export function useBulkRetagModal({ filteredRecords }) {
       needsJourneyLlmCount,
       filteredCount,
       periodCount,
+      canPeriodAll,
     ],
   )
 
@@ -106,11 +111,12 @@ export function useBulkRetagModal({ filteredRecords }) {
     /** @param {BulkRetagScope | undefined} preferred */
     (preferred) => {
       if (preferred && isScopeAvailable(preferred)) return preferred
+      if (!canPeriodAll && filteredCount > 0) return 'filtered'
       if (periodCount > 0 && needsTicketLlmCount > 0) return 'needs_ticket_llm'
-      if (periodCount > 0) return 'period_all'
+      if (periodCount > 0 && canPeriodAll) return 'period_all'
       return 'filtered'
     },
-    [isScopeAvailable, periodCount, needsTicketLlmCount],
+    [isScopeAvailable, periodCount, needsTicketLlmCount, canPeriodAll, filteredCount],
   )
 
   const runBulkRetag = useCallback(
@@ -189,7 +195,7 @@ export function useBulkRetagModal({ filteredRecords }) {
                 scopeChoice.value = e.target.value
               }}
             >
-              <Radio value="period_all" disabled={periodCount === 0}>
+              <Radio value="period_all" disabled={periodCount === 0 || !canPeriodAll}>
                 {BULK_RETAG_SCOPE_LABELS.period_all}（{periodCount} 条）
               </Radio>
               <Radio value="unknown_journey" disabled={unknownJourneyCount === 0}>
@@ -261,6 +267,7 @@ export function useBulkRetagModal({ filteredRecords }) {
       needsTicketLlmCount,
       needsJourneyLlmCount,
       settings.retagDimensionsAfterTicketLlm,
+      canPeriodAll,
     ],
   )
 

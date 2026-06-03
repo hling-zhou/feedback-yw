@@ -78,12 +78,12 @@ describeAuth('auth login password expiry', () => {
     })
 
     app.post('/api/auth/change-password', async (request, reply) => {
-      const { changeExpiredPassword } = await import('./users.js')
+      const { changePasswordWithVerification } = await import('./users.js')
       const body = /** @type {{ username?: string; currentPassword?: string; newPassword?: string }} */ (
         request.body || {}
       )
       try {
-        const user = await changeExpiredPassword(body)
+        const { user } = await changePasswordWithVerification(body)
         return { ok: true, user }
       } catch (err) {
         reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
@@ -167,5 +167,50 @@ describeAuth('auth login password expiry', () => {
       payload: { username: 'expiry_user', password: 'WrongPass!' },
     })
     expect(res.statusCode).toBe(401)
+  })
+
+  it('allows voluntary change-password when password is not expired', async () => {
+    const { createUser } = await import('./users.js')
+    await createUser({
+      username: 'active_user',
+      password: 'ActivePass123!',
+      team: '测试',
+      role: 'viewer',
+    })
+
+    const changeRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        username: 'active_user',
+        currentPassword: 'ActivePass123!',
+        newPassword: 'ActivePass456!',
+      },
+    })
+    expect(changeRes.statusCode).toBe(200)
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'content-type': 'application/json' },
+      payload: { username: 'active_user', password: 'ActivePass456!' },
+    })
+    expect(loginRes.statusCode).toBe(200)
+  })
+
+  it('rejects change-password when new password equals current password', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        username: 'expiry_user',
+        currentPassword: 'NewPass456!',
+        newPassword: 'NewPass456!',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/不能与当前密码相同/)
   })
 })

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
@@ -9,10 +9,14 @@ import { PASSWORD_EXPIRED_MESSAGE } from '../domain/passwordExpiry.js'
 export default function ChangePassword() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(false)
-  const state = /** @type {{ username?: string; passwordChangedAt?: string } | null} */ (
+  const state = /** @type {{ username?: string; passwordChangedAt?: string; mode?: 'voluntary' | 'expired' } | null} */ (
     location.state
   )
+
+  const voluntary =
+    searchParams.get('mode') === 'voluntary' || state?.mode === 'voluntary'
 
   const handleSubmit = async (values) => {
     setLoading(true)
@@ -41,18 +45,24 @@ export default function ChangePassword() {
           修改密码
         </Typography.Title>
         <Typography.Paragraph className="!mb-0 !mt-2 !text-sm !text-ink-500">
-          {PASSWORD_EXPIRED_MESSAGE}
+          {voluntary
+            ? '请输入用户名、当前密码并设置新密码。修改成功后需重新登录。'
+            : PASSWORD_EXPIRED_MESSAGE}
         </Typography.Paragraph>
 
         <Alert
           className="mt-4"
           type="warning"
           showIcon
-          message="密码定期变更策略"
-          description={`账号密码使用满 3 个月须修改。新密码须满足：${PASSWORD_POLICY_HINT}。修改成功后请重新登录。`}
+          message={voluntary ? '密码安全要求' : '密码定期变更策略'}
+          description={
+            voluntary
+              ? `新密码须满足：${PASSWORD_POLICY_HINT}。`
+              : `账号密码使用满 3 个月须修改。新密码须满足：${PASSWORD_POLICY_HINT}。修改成功后请重新登录。`
+          }
         />
 
-        {state?.passwordChangedAt && (
+        {state?.passwordChangedAt && !voluntary && (
           <Typography.Text type="secondary" className="mt-3 block text-xs">
             上次修改时间：{state.passwordChangedAt.slice(0, 10)}
           </Typography.Text>
@@ -101,7 +111,7 @@ export default function ChangePassword() {
             />
           </Form.Item>
           <Form.Item
-            label="确认新密码"
+            label="再次输入新密码"
             name="confirmPassword"
             dependencies={['newPassword']}
             rules={[

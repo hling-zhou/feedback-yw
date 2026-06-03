@@ -33,7 +33,7 @@ describe('establishedActionLibrary', () => {
     expect(payload.productKey).toBe('vpc')
     expect(payload.painPointSnapshot).toBe('连接失败')
     expect(payload.problemTypeSnapshot).toBe('故障')
-    expect(payload.journeyL1Snapshot).toBe('使用')
+    expect(payload.detail).toBe('')
   })
 
   it('empty schedule maps to pending_evaluation', () => {
@@ -48,6 +48,7 @@ describe('establishedActionLibrary', () => {
     const patch = buildLinkedEstablishedActionRecordPatch({
       id: 'act-1',
       content: '库内举措',
+      detail: '补充说明',
       status: 'in_progress',
       scheduleAt: '2026-10-01',
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -56,6 +57,7 @@ describe('establishedActionLibrary', () => {
     expect(patch).toEqual({
       establishedAction: '库内举措',
       manualReviewOptimization: '库内举措',
+      establishedActionDetail: '补充说明',
       actionId: 'act-1',
       actionSchedule: '2026-10-01',
     })
@@ -65,6 +67,7 @@ describe('establishedActionLibrary', () => {
     expect(buildClearEstablishedActionRecordPatch()).toEqual({
       establishedAction: '',
       manualReviewOptimization: '',
+      establishedActionDetail: '',
       actionId: '',
       actionSchedule: '',
     })
@@ -99,7 +102,6 @@ describe('establishedActionLibrary', () => {
     expect(buildFirstTicketSnapshotSyncPatch(item, record)).toEqual({
       painPointSnapshot: '连接失败',
       problemTypeSnapshot: '故障',
-      journeyL1Snapshot: '使用',
     })
     expect(
       buildFirstTicketSnapshotSyncPatch(item, { ...record, ticketId: 'T-200' }),
@@ -118,7 +120,6 @@ describe('establishedActionLibrary', () => {
     }
     expect(buildSnapshotPatchForEmptyFields(item, record)).toEqual({
       painPointSnapshot: '连接失败',
-      journeyL1Snapshot: '使用',
       productKey: 'vpc',
       productName: '虚拟私有云',
     })
@@ -136,7 +137,6 @@ describe('establishedActionLibrary', () => {
     expect(buildSnapshotPatchOnTicketLink(item, record)).toEqual({
       painPointSnapshot: '连接失败',
       problemTypeSnapshot: '故障',
-      journeyL1Snapshot: '使用',
       productKey: 'vpc',
       productName: '虚拟私有云',
     })

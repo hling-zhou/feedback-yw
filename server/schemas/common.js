@@ -15,7 +15,7 @@ export const FASTIFY_SCHEMA_OPTIONS = {
 /** @type {JSONSchema7} */
 export const userRoleSchema = {
   type: 'string',
-  enum: ['admin', 'editor', 'viewer'],
+  enum: ['admin', 'editor', 'partial_editor', 'viewer'],
 }
 
 /** @type {JSONSchema7} */

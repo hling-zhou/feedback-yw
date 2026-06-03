@@ -24,9 +24,11 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
+  ACTION_ITEM_DETAIL_MAX_LENGTH,
   aggregateActionItemsByProductStatus,
   deriveActionItemStatusFromSchedule,
 } from '../domain/actionItem.js'
+import { ACTIONS_PAGE_SUBTITLE_HINT } from '../domain/establishedActionHints.js'
 import {
   buildTicketIdSetFromRecords,
   linkedTicketIdsInPeriod,
@@ -44,6 +46,7 @@ import { exportActionItemsWithQuery } from '../lib/actionItemExport.js'
 import {
   buildProductNameToKeyMap,
   parseActionItemImportWorkbook,
+  parseLinkedTicketIdsCell,
 } from '../lib/actionItemImport.js'
 import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplate.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
@@ -85,7 +88,7 @@ function scheduleWarningClass(level) {
   return undefined
 }
 
-function LinkedTicketsCell({ ticketIds }) {
+function LinkedTicketsCell({ ticketIds, title = '关联反馈' }) {
   const ids = ticketIds || []
   if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
 
@@ -114,12 +117,20 @@ function LinkedTicketsCell({ ticketIds }) {
   )
 
   return (
-    <Popover content={content} title="关联工单" trigger="hover">
+    <Popover content={content} title={title} trigger="hover">
       <Button type="link" size="small" className="!px-0">
         {ids.length} 个工单
       </Button>
     </Popover>
   )
+}
+
+function formatTicketIdsForInput(ids) {
+  return (ids || []).filter(Boolean).join('\n')
+}
+
+function parseTicketIdsFromInput(text) {
+  return parseLinkedTicketIdsCell(text)
 }
 
 export default function Actions() {
@@ -167,7 +178,7 @@ export default function Actions() {
   const [conflictServerItem, setConflictServerItem] = useState(/** @type {ActionItem | null} */ (null))
   const [conflictRevision, setConflictRevision] = useState(0)
   const [conflictDraft, setConflictDraft] = useState(
-    /** @type {{ content: string; status: ActionItemStatus; scheduleAt: string } | null} */ (null),
+    /** @type {{ content: string; detail: string; status: ActionItemStatus; scheduleAt: string; linkedRequirementTicketIds: string[] } | null} */ (null),
   )
   const [forceSaving, setForceSaving] = useState(false)
   const baseRevisionRef = useRef(0)
@@ -346,8 +357,10 @@ export default function Actions() {
     setConflictOpen(false)
     editForm.setFieldsValue({
       content: record.content,
+      detail: record.detail || '',
       status: record.status,
       scheduleAt: parseScheduleForPicker(record.scheduleAt),
+      linkedRequirementTicketIds: formatTicketIdsForInput(record.linkedRequirementTicketIds),
     })
     setEditOpen(true)
   }
@@ -398,16 +411,20 @@ export default function Actions() {
     const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
     return {
       content: values.content.trim(),
+      detail: String(values.detail ?? '').trim(),
       status,
       scheduleAt,
+      linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
     }
   }
 
   const applyEditFormFromItem = (item) => {
     editForm.setFieldsValue({
       content: item.content,
+      detail: item.detail || '',
       status: item.status,
       scheduleAt: parseScheduleForPicker(item.scheduleAt),
+      linkedRequirementTicketIds: formatTicketIdsForInput(item.linkedRequirementTicketIds),
     })
     baseRevisionRef.current = getActionItemRevision(item)
     setEditStale(false)
@@ -421,7 +438,7 @@ export default function Actions() {
       skipConflictCheck: saveOptions.skipConflictCheck,
     })
     const synced = await syncLinkedTicketCopies(updated, feedbacks, updateFeedback)
-    message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联工单` : '已保存')
+    message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联反馈` : '已保存')
     setEditOpen(false)
     setConflictOpen(false)
     loadItems()
@@ -506,14 +523,15 @@ export default function Actions() {
     try {
       await createActionItem({
         content: values.content.trim(),
+        detail: values.detail?.trim() || '',
         productKey,
         productName,
         painPointSnapshot: values.painPointSnapshot?.trim() || '',
         problemTypeSnapshot: values.problemTypeSnapshot?.trim() || '',
-        journeyL1Snapshot: values.journeyL1Snapshot?.trim() || '',
         scheduleAt,
         status,
         linkedTicketIds: [],
+        linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
         linkedDataSources: [],
         firstProposedAt: new Date().toISOString().slice(0, 10),
       })
@@ -599,11 +617,6 @@ export default function Actions() {
     {
       title: '问题类型',
       dataIndex: 'problemTypeSnapshot',
-      width: 100,
-    },
-    {
-      title: '用户旅程一级',
-      dataIndex: 'journeyL1Snapshot',
       width: 120,
     },
     {
@@ -628,25 +641,43 @@ export default function Actions() {
       title: '举措',
       dataIndex: 'content',
       ellipsis: true,
-      width: 200,
+      width: 180,
+    },
+    {
+      title: '举措详情',
+      dataIndex: 'detail',
+      ellipsis: true,
+      width: 140,
+      render: (text) => text?.trim() || '—',
     },
     {
       title: periodFilterActive ? (
-        <Tooltip title="数量仅统计当前所选周期内的关联工单">
+        <Tooltip title="数量仅统计当前所选周期内的关联反馈">
           <span>
-            关联工单
+            关联反馈
             <Typography.Text type="secondary" className="ml-1 text-[10px] font-normal">
               (本周期)
             </Typography.Text>
           </span>
         </Tooltip>
       ) : (
-        '关联工单'
+        '关联反馈'
       ),
       key: 'linkedTickets',
       width: 110,
       render: (_, record) => (
         <LinkedTicketsCell ticketIds={resolveLinkedTicketIds(record)} />
+      ),
+    },
+    {
+      title: '需求工单',
+      key: 'linkedRequirementTickets',
+      width: 110,
+      render: (_, record) => (
+        <LinkedTicketsCell
+          ticketIds={record.linkedRequirementTicketIds}
+          title="需求工单"
+        />
       ),
     },
     {
@@ -729,6 +760,7 @@ export default function Actions() {
       <PageHeader
         title="举措与进展"
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。"
+        hint={ACTIONS_PAGE_SUBTITLE_HINT}
         action={
           <Space wrap>
             <PermissionGate permission="editRecord">
@@ -861,7 +893,7 @@ export default function Actions() {
           />
           <Input.Search
             allowClear
-            placeholder="关联工单号"
+            placeholder="关联反馈号"
             style={{ width: 180 }}
             value={ticketId}
             onChange={(e) => setTicketId(e.target.value)}
@@ -882,7 +914,7 @@ export default function Actions() {
           loading={loading}
           columns={columns}
           dataSource={items}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1680 }}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,
@@ -903,7 +935,7 @@ export default function Actions() {
         destroyOnClose
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
-          问题、问题类型、用户旅程、来源、关联工单均可留空；首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」「用户旅程」及来源自动补齐。
+          问题、问题类型、来源、关联反馈、需求工单均可留空；首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」及来源自动补齐。
         </Typography.Paragraph>
         <Form form={addForm} layout="vertical">
           <Form.Item name="productKey" label="产品">
@@ -919,14 +951,21 @@ export default function Actions() {
           >
             <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} />
           </Form.Item>
+          <Form.Item
+            name="detail"
+            label="举措详情（可选）"
+            rules={[{ max: ACTION_ITEM_DETAIL_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_DETAIL_MAX_LENGTH} 字` }]}
+          >
+            <Input.TextArea rows={3} showCount maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH} />
+          </Form.Item>
           <Form.Item name="painPointSnapshot" label="问题（可选）">
             <Input placeholder="需求痛点摘要" />
           </Form.Item>
           <Form.Item name="problemTypeSnapshot" label="问题类型（可选）">
             <Input />
           </Form.Item>
-          <Form.Item name="journeyL1Snapshot" label="用户旅程一级（可选）">
-            <Input />
+          <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
+            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" />
           </Form.Item>
           <Form.Item name="scheduleAt" label="排期">
             <DatePicker
@@ -968,7 +1007,7 @@ export default function Actions() {
           <Button type="link" className="!h-auto !p-0 !text-xs" onClick={downloadActionItemImportTemplate}>
             下载模板
           </Button>
-          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联工单后自动补齐。首次提出时间统一记为导入当天。
+          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联反馈后自动补齐。首次提出时间统一记为导入当天。
         </Typography.Paragraph>
         {importPreview ? (
           <>
@@ -1037,6 +1076,16 @@ export default function Actions() {
           >
             <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} />
           </Form.Item>
+          <Form.Item
+            name="detail"
+            label="举措详情（可选）"
+            rules={[{ max: ACTION_ITEM_DETAIL_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_DETAIL_MAX_LENGTH} 字` }]}
+          >
+            <Input.TextArea rows={3} showCount maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH} />
+          </Form.Item>
+          <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
+            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" />
+          </Form.Item>
           <Form.Item name="scheduleAt" label="排期">
             <DatePicker
               className="w-full"
@@ -1059,8 +1108,10 @@ export default function Actions() {
         draft={
           conflictDraft || {
             content: editing?.content || '',
+            detail: editing?.detail || '',
             status: editing?.status || 'pending_evaluation',
             scheduleAt: editing?.scheduleAt || '',
+            linkedRequirementTicketIds: editing?.linkedRequirementTicketIds || [],
           }
         }
         onReloadLatest={handleReloadLatestAfterConflict}

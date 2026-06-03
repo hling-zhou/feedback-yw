@@ -45,6 +45,7 @@
  * @property {string} [manualReviewAction] - @deprecated 人工复核举措，停止写入
  * @property {string} [manualReviewOptimization] - 人工复核后的优化建议；过渡字段，见 establishedAction
  * @property {string} [establishedAction] - 确立举措文本副本（展示/导出/聚类）
+ * @property {string} [establishedActionDetail] - 确立举措详情副本（可选）
  * @property {string} [actionId] - 关联举措库 ID（R4）
  * @property {string} [actionSchedule] - 排期（可空，空=待评估）
  * @property {string} [rootCauseReview] - 根因排查（人工复核，默认来自问题原因）

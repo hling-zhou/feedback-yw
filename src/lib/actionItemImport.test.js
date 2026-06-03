@@ -31,7 +31,7 @@ describe('actionItemImport', () => {
     if (parsed.ok) {
       expect(parsed.item.content).toBe('补充文档')
       expect(parsed.item.problemTypeSnapshot).toBe('')
-      expect(parsed.item.journeyL1Snapshot).toBe('')
+      expect(parsed.item.linkedRequirementTicketIds).toEqual([])
       expect(parsed.item.linkedTicketIds).toEqual([])
       expect(parsed.item.linkedDataSources).toEqual([])
       expect(parsed.item.firstProposedAt).toBe('2026-05-10')
@@ -47,7 +47,7 @@ describe('actionItemImport', () => {
         问题类型: '',
         用户旅程一级: '',
         来源: '',
-        '关联工单(本周期)': '',
+        '关联反馈(本周期)': '',
       },
     ])
     XLSX.utils.book_append_sheet(wb, sheet, '举措清单')
@@ -73,6 +73,30 @@ describe('actionItemImport', () => {
     if (parsed.ok) {
       expect(parsed.item.content).toBe('补充文档说明')
       expect(parsed.item.painPointSnapshot).toBe('')
+    }
+  })
+
+  it('parseActionItemImportRow maps legacy 用户旅程一级 to problemType when empty', () => {
+    const parsed = parseActionItemImportRow({
+      举措: '补充文档',
+      用户旅程一级: '配置与操作',
+    })
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.item.problemTypeSnapshot).toBe('配置与操作')
+    }
+  })
+
+  it('parseActionItemImportRow reads detail and requirement tickets', () => {
+    const parsed = parseActionItemImportRow({
+      举措: '补充文档',
+      举措详情: '分阶段说明',
+      需求工单: 'REQ-1, REQ-2',
+    })
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.item.detail).toBe('分阶段说明')
+      expect(parsed.item.linkedRequirementTicketIds).toEqual(['REQ-1', 'REQ-2'])
     }
   })
 })

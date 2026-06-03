@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -27,6 +27,7 @@ export default function Login() {
           state: {
             username: values.username,
             passwordChangedAt: data?.passwordChangedAt,
+            mode: 'expired',
           },
         })
         return
@@ -123,7 +124,13 @@ export default function Login() {
                 </Button>
               </Form>
 
-              <p className="mt-6 text-center text-xs text-ink-400">
+              <div className="mt-4 text-center">
+                <Link to="/change-password?mode=voluntary" className="text-sm text-ink-500">
+                  修改密码
+                </Link>
+              </div>
+
+              <p className="mt-4 text-center text-xs text-ink-400">
                 还没有账号？请联系管理员在「用户管理」中开通
               </p>
             </Card>

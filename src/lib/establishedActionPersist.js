@@ -18,6 +18,7 @@ import {
 } from '../domain/establishedActionLibrary.js'
 import {
   getEstablishedActionDisplay,
+  getEstablishedActionDetailDisplay,
   normalizeEstablishedActionInput,
 } from '../domain/establishedAction.js'
 import { syncLinkedTicketCopies } from './actionItemTicketSync.js'
@@ -29,6 +30,7 @@ import { normalizeActionSchedule } from '../domain/actionSchedule.js'
  * @typedef {Object} PersistEstablishedActionInput
  * @property {string} content
  * @property {string} [scheduleAt]
+ * @property {string} [detail]
  * @property {string} [actionId]
  * @property {boolean} [linkedFromLibrary]
  */
@@ -99,6 +101,7 @@ export async function persistEstablishedActionForTicket(record, input) {
 
   const upsertPayload = buildManualEstablishedActionUpsertPayload(record, {
     content,
+    detail: input.detail ?? '',
     scheduleAt,
   })
 
@@ -161,8 +164,7 @@ export async function syncFirstTicketSnapshotsForRecord(record) {
 
   const unchanged =
     patch.painPointSnapshot === (item.painPointSnapshot || '') &&
-    patch.problemTypeSnapshot === (item.problemTypeSnapshot || '') &&
-    patch.journeyL1Snapshot === (item.journeyL1Snapshot || '')
+    patch.problemTypeSnapshot === (item.problemTypeSnapshot || '')
   if (unchanged) return item
 
   return updateActionItem(actionId, patch, { skipConflictCheck: true })
@@ -180,6 +182,7 @@ export async function mergeEstablishedActionLibraryForRecords(records) {
   for (const record of records) {
     const patch = await persistEstablishedActionForTicket(record, {
       content: getEstablishedActionDisplay(record),
+      detail: getEstablishedActionDetailDisplay(record),
       scheduleAt: record.actionSchedule || '',
       linkedFromLibrary: false,
     })
