@@ -1,3 +1,5 @@
+import { formatTicketLlmRemainRuleMessage } from './importEnrichmentStats.js'
+
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 
 /**
@@ -9,6 +11,7 @@
  * @property {number} [failures] 分析失败行数
  * @property {number} [skippedProducts] 产品范围外跳过
  * @property {string} [batchName]
+ * @property {number} [ticketLlmFailed] 客户请求/痛点仍为规则来源的条数
  */
 
 export const IMPORT_LEAVE_CONFIRM_MESSAGE =

@@ -1,4 +1,4 @@
-import { Modal, message } from 'antd'
+import { message } from 'antd'
 import * as XLSX from 'xlsx'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
 import { getExportColumns, readFieldValue } from '../domain/fieldRegistry.js'
@@ -41,6 +41,8 @@ function exportRegistryFieldValue(record, field) {
   switch (field.fieldKey) {
     case 'ticketId':
       return record.ticketId || ''
+    case 'product':
+      return record.product || ''
     case 'customerRequest':
       return record.customerRequest || ''
     case 'painPoint':
@@ -172,7 +174,7 @@ export function downloadTicketAnalysisExcel(records, filename) {
 }
 
 /**
- * 导出当前筛选范围工单（含原始列不完整确认）
+ * 导出当前筛选范围工单的分析结果 v2。
  * @param {FeedbackRecord[]} records
  * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string }} [options]
  */
@@ -186,7 +188,7 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
   }
 
   const filename = `${filePrefix}-${periodLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`
-  const runExport = () => downloadTicketAnalysisExcel(records, filename)
+  downloadTicketAnalysisExcel(records, filename)
 
   const scopeLabel = options.totalScopeLabel || '库内'
   const totalHint =
@@ -194,25 +196,9 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
       ? `（${scopeLabel}共 ${options.totalInDb} 条）`
       : ''
 
-  if (!hasIncompleteSourceColumns(records)) {
-    runExport()
-    message.success(
-      `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`,
-    )
-    return
-  }
-
-  const noSnap = recordsMissingSourceColumns(records).length
-  Modal.confirm({
-    title: '原始工单列不完整',
-    content: `当前范围内有 ${noSnap || records.length} 条工单缺少原始列快照，请重新导入以补全原始列（处理意见、投诉原因终判、根因、解决方案等）。是否仍继续导出？`,
-    okText: '继续导出',
-    cancelText: '取消',
-    onOk: () => {
-      runExport()
-      message.success(`已导出 ${records.length} 条${totalHint}（部分原始列为空）`)
-    },
-  })
+  message.success(
+    `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`,
+  )
 }
 
 export { hasIncompleteSourceColumns, recordsMissingSourceColumns }

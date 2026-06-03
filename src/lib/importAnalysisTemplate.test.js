@@ -10,13 +10,14 @@ describe('importAnalysisTemplate', () => {
   it('template headers match export v2 column order with * on required columns', () => {
     const headers = getImportAnalysisTemplateHeaders()
     const exportHeaders = getExportV2Headers()
-    expect(headers).toHaveLength(18)
-    expect(exportHeaders).toHaveLength(18)
+    expect(headers).toHaveLength(19)
+    expect(exportHeaders).toHaveLength(19)
     const required = new Set(getImportRequiredDisplayNames())
     expect(headers).toEqual(
       exportHeaders.map((name) => (required.has(name) ? `${name}*` : name)),
     )
     expect(headers[0]).toBe('工单号*')
+    expect(headers[1]).toBe('产品名称*')
     expect(headers).toContain('排期')
     expect(headers).not.toContain('排期*')
   })
@@ -25,6 +26,7 @@ describe('importAnalysisTemplate', () => {
     const required = getImportAnalysisRequiredHeaders()
     expect(required).not.toContain('排期')
     expect(required).not.toContain('确立举措')
+    expect(required).toContain('产品名称')
     expect(required).toContain('工单号')
     expect(required).not.toContain('根因排查')
     expect(required).not.toContain('受理内容')

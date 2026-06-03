@@ -38,6 +38,7 @@ import {
   summarizeRetagPainPointChanges,
   summarizeUnknownJourneyRecords,
 } from '../lib/journeyRetagSummary.js'
+import { computeTicketLlmEnrichmentDelta } from '../lib/importEnrichmentStats.js'
 import {
   getThemeRulesForProduct,
   initTaxonomyCacheFromBuiltin,
@@ -1478,11 +1479,16 @@ export function InsightsProvider({ children }) {
       endRetagSession()
       emit('RetagFinished', result)
       const shouldRefreshInsights = result.painPointDelta?.shouldPromptInsightRefresh === true
-      notification.success({
-        message: '批量重新打标完成',
+      const ticketLlmFailed = result.ticketLlmFailed ?? 0
+      const notify = ticketLlmFailed > 0 ? notification.warning : notification.success
+      notify({
+        message:
+          ticketLlmFailed > 0
+            ? '批量重新打标完成（部分 LLM 未生效）'
+            : '批量重新打标完成',
         description: formatBulkRetagResultMessage(result),
         placement: 'topRight',
-        duration: shouldRefreshInsights ? 15 : 10,
+        duration: ticketLlmFailed > 0 ? 15 : shouldRefreshInsights ? 15 : 10,
         style: { whiteSpace: 'pre-wrap' },
         btn: shouldRefreshInsights ? (
           <Button
@@ -2083,6 +2089,9 @@ export function InsightsProvider({ children }) {
         })),
         updatedSubset,
       )
+      const ticketLlmStats = journeyLlmOnly
+        ? null
+        : computeTicketLlmEnrichmentDelta(list, updatedSubset)
       return {
         total: updatedSubset.length,
         beforeUnknown,
@@ -2090,6 +2099,8 @@ export function InsightsProvider({ children }) {
         scope,
         summary: summarizeUnknownJourneyRecords(updatedSubset),
         painPointDelta,
+        ticketLlmCompleted: ticketLlmStats?.ticketLlmCompleted ?? 0,
+        ticketLlmFailed: ticketLlmStats?.ticketLlmFailed ?? 0,
       }
     },
     [

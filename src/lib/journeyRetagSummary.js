@@ -5,6 +5,7 @@ import {
 } from './journeySemantic.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
 import { BULK_RETAG_SCOPE_LABELS } from './retagSession.js'
+import { formatTicketLlmRemainRuleMessage } from './importEnrichmentStats.js'
 import { getProductByKey } from './taxonomyLoader.js'
 import Papa from 'papaparse'
 
@@ -124,6 +125,8 @@ export function summarizeRetagPainPointChanges(beforeRecords, afterRecords) {
  *   afterUnknown: number
  *   summary: ReturnType<typeof summarizeUnknownJourneyRecords>
  *   painPointDelta?: ReturnType<typeof summarizeRetagPainPointChanges>
+ *   ticketLlmCompleted?: number
+ *   ticketLlmFailed?: number
  * }} result
  */
 export function formatBulkRetagResultMessage(result) {
@@ -138,6 +141,11 @@ export function formatBulkRetagResultMessage(result) {
       resolved > 0 ? `（新识别 ${resolved} 条）` : ''
     }。`,
   ]
+  const ticketLlmMsg = formatTicketLlmRemainRuleMessage(result.ticketLlmFailed ?? 0)
+  if (ticketLlmMsg) {
+    lines.push('')
+    lines.push(ticketLlmMsg)
+  }
   if (afterUnknown > 0) {
     lines.push('')
     lines.push('仍未能识别的主要原因：')

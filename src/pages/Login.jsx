@@ -66,7 +66,7 @@ export default function Login() {
             </div>
             <Card className="shadow-card" styles={{ body: { padding: 32 } }}>
               <Typography.Title level={2} className="!mb-0 !text-2xl">
-                登录工作台
+                登录
               </Typography.Title>
               <Typography.Paragraph className="!mb-0 !mt-2 !text-sm !text-ink-500">
                 请输入用户名和密码

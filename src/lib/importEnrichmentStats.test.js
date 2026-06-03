@@ -4,6 +4,7 @@ import {
   computeTicketLlmEnrichmentDelta,
   countOptimizationRetries,
   createEmptyEnrichmentStats,
+  formatTicketLlmRemainRuleMessage,
 } from './importEnrichmentStats.js'
 
 describe('importEnrichmentStats', () => {
@@ -42,8 +43,13 @@ describe('importEnrichmentStats', () => {
   it('buildEnrichmentRetagWarnings guides retag scopes', () => {
     const stats = { ...createEmptyEnrichmentStats(), ticketLlmFailed: 2 }
     const warnings = buildEnrichmentRetagWarnings(stats, 3)
-    expect(warnings[0]).toContain('补打')
+    expect(warnings[0]).toContain('仍为「规则」')
+    expect(warnings[0]).toContain('Network')
     expect(warnings[1]).toContain('补打旅程')
+  })
+
+  it('formatTicketLlmRemainRuleMessage returns empty for zero failures', () => {
+    expect(formatTicketLlmRemainRuleMessage(0)).toBe('')
   })
 
   it('countOptimizationRetries', () => {

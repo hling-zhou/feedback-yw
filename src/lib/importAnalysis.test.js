@@ -31,6 +31,7 @@ function buildValidRow(overrides = {}) {
   /** @type {Record<string, string>} */
   const row = {
     工单号: 'T-100',
+    产品名称: '云主机',
     客户请求内容: '请求内容',
     需求痛点: '痛点',
     请求场景: '投诉',

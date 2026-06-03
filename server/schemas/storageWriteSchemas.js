@@ -165,6 +165,7 @@ export const clearImportedDataQuerySchema = {
     scope: { type: 'string', enum: ['all'] },
     insightPeriodId: { type: 'string', minLength: 1, maxLength: 128 },
     dataSourceType: { type: 'string', enum: [...DATA_SOURCE_TYPES] },
+    product: { type: 'string', minLength: 1, maxLength: 128 },
   },
 }
 

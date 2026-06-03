@@ -14,6 +14,7 @@ import {
   readImportSessionMarker,
   shouldConfirmLeaveImportPage,
 } from '../lib/importSession.js'
+import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
   formatImportProgressDescription,
   isImportTaggingPhase,
@@ -108,6 +109,10 @@ export default function ImportSessionGuard() {
         ),
         duration: 10,
       })
+      const ticketLlmFailed = payload.ticketLlmFailed ?? 0
+      if (ticketLlmFailed > 0) {
+        message.warning(formatTicketLlmRemainRuleMessage(ticketLlmFailed), 15)
+      }
     })
     return unsub
   }, [message, navigate])

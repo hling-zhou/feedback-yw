@@ -130,11 +130,29 @@ export function stripInternalInstructionPhrases(text) {
 }
 
 /**
+ * 剥离单行堆叠的「请求节点/工单标题/…/详细内容：」模板前缀，保留详细内容正文。
+ * @param {string} text
+ */
+export function stripStackedTemplateFieldPrefix(text) {
+  const t = String(text || '').trim()
+  if (!t || !/(?:请求节点|系统路径)/.test(t) || !/详细内容\s*[：:]/.test(t)) {
+    return t
+  }
+  const idx = t.search(/详细内容\s*[：:]/i)
+  if (idx < 0) return t
+  const prefix = t.slice(0, idx)
+  if (!/(?:请求节点|系统路径|工单标题)/.test(prefix)) return t
+  const body = t.slice(idx).replace(/^详细内容\s*[：:]\s*/i, '').trim()
+  return body.length >= 8 ? body : t
+}
+
+/**
  * 清洗单条客户诉求表述：去组前缀、去「客户反馈」引导语、去内部指令
  * @param {string} text
  */
 export function cleanCustomerRequestPhrase(text) {
-  let t = stripInternalWorkflowPrefix(text)
+  let t = stripStackedTemplateFieldPrefix(text)
+  t = stripInternalWorkflowPrefix(t)
   t = stripInternalInstructionPhrases(t)
   t = t.replace(CUSTOMER_VOICE_LEAD_RE, '').trim()
   t = t.replace(/^["「『]|["」』]$/g, '').trim()

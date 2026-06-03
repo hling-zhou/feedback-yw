@@ -25,6 +25,18 @@ vi.mock('./ticketAnalysis/ticketLlmEnrichment.js', () => ({
   enrichRecordsWithTicketLlm: (...args) => enrichRecordsWithTicketLlm(...args),
 }))
 
+const resolveSettingsForLlm = vi.fn(async (settings) => ({
+  ...settings,
+  llmServerConfigured: true,
+}))
+vi.mock('./llmClient.js', async (importOriginal) => {
+  const mod = await importOriginal()
+  return {
+    ...mod,
+    resolveSettingsForLlm: (...args) => resolveSettingsForLlm(...args),
+  }
+})
+
 vi.mock('./applyThemes.js', async (importOriginal) => {
   const mod = await importOriginal()
   return { ...mod }
@@ -36,9 +48,28 @@ describe('enrichTicketRecordsForImport', () => {
     enrichRecordsWithJourneys.mockClear()
     enrichRecordsWithTicketLlm.mockClear()
     retagRecordsSharedDimensionsAfterTicketLlm.mockClear()
+    resolveSettingsForLlm.mockClear()
+  })
+
+  it('resolves server LLM status before running enrichment stages', async () => {
+    const records = [
+      {
+        id: '1',
+        rawText: '无法访问',
+        handlingText: '无法访问公网',
+        dataSourceType: 'complaint_ticket',
+      },
+    ]
+    await enrichTicketRecordsForImport(records, {}, () => {})
+    expect(resolveSettingsForLlm).toHaveBeenCalledWith({})
+    expect(enrichRecordsWithTicketLlm).toHaveBeenCalled()
+    const llmSettings = enrichRecordsWithTicketLlm.mock.calls[0]?.[1]
+    expect(llmSettings?.llmServerConfigured).toBe(true)
   })
 
   it('returns tagged records even when downstream steps would warn without API key', async () => {
+    resolveSettingsForLlm.mockResolvedValueOnce({ llmServerConfigured: false })
+
     const records = [
       {
         id: '1',

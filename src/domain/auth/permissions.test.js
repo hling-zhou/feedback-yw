@@ -12,10 +12,10 @@ describe('auth permissions', () => {
     expect(hasPermission('admin', 'deleteData')).toBe(true)
   })
 
-  it('editor cannot manage users or delete data', () => {
+  it('editor can delete imported data but not manage users', () => {
     expect(hasPermission('editor', 'import')).toBe(true)
     expect(hasPermission('editor', 'manageUsers')).toBe(false)
-    expect(hasPermission('editor', 'deleteData')).toBe(false)
+    expect(hasPermission('editor', 'deleteData')).toBe(true)
     expect(hasPermission('editor', 'manageTeamSettings')).toBe(false)
     expect(hasPermission('editor', 'editOrderVolumes')).toBe(true)
     expect(hasPermission('editor', 'configureLlmPersonal')).toBe(true)

@@ -129,6 +129,9 @@ export function writeImportField(record, fieldKey, value) {
     case 'ticketId':
       next.ticketId = String(value ?? '')
       break
+    case 'product':
+      next.product = String(value ?? '')
+      break
     case 'customerRequest':
       next.customerRequest = String(value ?? '')
       break

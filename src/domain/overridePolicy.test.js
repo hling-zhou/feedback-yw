@@ -99,6 +99,7 @@ describe('overridePolicy', () => {
   it('applyImportReplace overwrites fields including empty cells', () => {
     const out = applyImportReplace(baseRecord, {
       工单号: 'T-100',
+      产品名称: '云主机',
       客户请求内容: '新请求',
       需求痛点: '新痛点',
       请求场景: '投诉',
@@ -119,6 +120,7 @@ describe('overridePolicy', () => {
     })
 
     expect(out.ticketId).toBe('T-100')
+    expect(out.product).toBe('云主机')
     expect(out.customerRequest).toBe('新请求')
     expect(out.painPoint).toBe('新痛点')
     expect(out.problemSummary).toBe('新痛点')
@@ -144,6 +146,7 @@ describe('overridePolicy', () => {
   it('IMPORT_REPLACE empty 排期 clears schedule', () => {
     const out = applyImportReplace(baseRecord, {
       工单号: 'T-1',
+      产品名称: 'VPC',
       客户请求内容: 'a',
       需求痛点: 'b',
       请求场景: 'c',

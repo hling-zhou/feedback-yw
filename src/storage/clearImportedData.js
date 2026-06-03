@@ -16,6 +16,7 @@ import {
  * @property {boolean} [all] 显式全部清空（须为 true；空对象不再视为全部清空）
  * @property {string} [insightPeriodId]
  * @property {DataSourceType} [dataSourceType]
+ * @property {string} [product] 产品名称（与 record.product 精确匹配）
  */
 
 /**
@@ -47,9 +48,11 @@ export function parseClearImportedDataOptions(input) {
   const insightPeriodId =
     typeof input.insightPeriodId === 'string' ? input.insightPeriodId.trim() : ''
   const dataSourceType = isDataSourceType(input.dataSourceType) ? input.dataSourceType : undefined
+  const product = typeof input.product === 'string' ? input.product.trim() : ''
   return {
     ...(insightPeriodId ? { insightPeriodId } : {}),
     ...(dataSourceType ? { dataSourceType } : {}),
+    ...(product ? { product } : {}),
   }
 }
 
@@ -78,8 +81,8 @@ export function validateClearImportedDataOptions(options) {
 export function validateScopedClearOptions(options) {
   const base = validateClearImportedDataOptions(options)
   if (base) return base
-  if (!options.insightPeriodId || !options.dataSourceType) {
-    return '请同时勾选「指定洞察周期」并选择数据来源（如投诉工单）'
+  if (!options.insightPeriodId || !options.dataSourceType || !options.product?.trim()) {
+    return '请同时选择洞察周期、数据来源与产品'
   }
   return null
 }
@@ -104,6 +107,9 @@ export function describeClearImportedScope(options, period = null) {
   } else {
     parts.push('数据来源：不限制')
   }
+  if (options.product?.trim()) {
+    parts.push(`产品：${options.product.trim()}`)
+  }
   return parts.join(' · ')
 }
 
@@ -125,6 +131,9 @@ export function describeClearImportedScopeRisk(options) {
       '仅按周期清空：将删除该周期数据月份范围内的全部来源（投诉、咨询、用后即评等），不限于投诉工单。',
     )
   }
+  if (options.insightPeriodId && options.dataSourceType && options.product?.trim()) {
+    return `将仅删除上述周期、来源与「${options.product.trim()}」的交集工单；其它产品、月份或来源保留。洞察快照不会自动删除，清空后请在工作台刷新洞察。`
+  }
   if (options.insightPeriodId && options.dataSourceType) {
     return '将仅删除上述周期与来源的交集数据，其它月份或其它来源保留。'
   }
@@ -138,6 +147,10 @@ export function describeClearImportedScopeRisk(options) {
  */
 export function recordMatchesClearFilter(record, options, period = null) {
   if (isClearAllImportedData(options)) return true
+  if (options.product?.trim()) {
+    const recordProduct = (record.product || '').trim() || '未标注产品'
+    if (recordProduct !== options.product.trim()) return false
+  }
   if (options.dataSourceType && (record.dataSourceType || 'complaint_ticket') !== options.dataSourceType) {
     return false
   }
@@ -163,6 +176,7 @@ export function recordMatchesClearFilter(record, options, period = null) {
  */
 export function snapshotMatchesClearFilter(snapshotId, options) {
   if (isClearAllImportedData(options)) return true
+  if (options.product?.trim()) return false
   if (options.insightPeriodId && options.dataSourceType) {
     return snapshotId === sourceSnapshotId(options.dataSourceType, options.insightPeriodId)
   }
@@ -184,6 +198,7 @@ export function snapshotMatchesClearFilter(snapshotId, options) {
  */
 export function analysisRunMatchesClearFilter(run, options) {
   if (isClearAllImportedData(options)) return true
+  if (options.product?.trim()) return false
   if (options.insightPeriodId && run.insightPeriodId !== options.insightPeriodId) return false
   if (options.dataSourceType && run.dataSourceType !== options.dataSourceType) return false
   return true

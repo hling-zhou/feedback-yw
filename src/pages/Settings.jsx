@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Typography, Upload } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
@@ -17,6 +17,74 @@ import {
   describeClearImportedScopeRisk,
   validateScopedClearOptions,
 } from '../storage/clearImportedData.js'
+import { listProducts } from '../lib/productTaxonomy.js'
+import { normalizeInsightPeriod, recordMatchesPeriod } from '../domain/insightPeriod.js'
+
+/**
+ * 清空数据二次确认：先展示范围，再强提醒最后确认。
+ * @param {{
+ *   scopeLabel: string
+ *   riskText: string
+ *   finalTitle?: string
+ *   onConfirm: () => void | Promise<void>
+ * }} params
+ */
+function confirmClearDataTwice({ scopeLabel, riskText, finalTitle = '最后确认：清空数据', onConfirm }) {
+  Modal.confirm({
+    title: '确认清空范围',
+    width: 520,
+    content: (
+      <div className="space-y-3">
+        <p className="font-medium text-ink-800">{scopeLabel}</p>
+        <p className="text-sm text-ink-600">{riskText}</p>
+        <Alert type="warning" showIcon message="下一步仍需再次确认，请仔细核对范围。" />
+      </div>
+    ),
+    okText: '下一步',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () =>
+      new Promise((resolve, reject) => {
+        Modal.confirm({
+          title: finalTitle,
+          width: 520,
+          content: (
+            <div className="space-y-3">
+              <Alert
+                type="error"
+                showIcon
+                message="此操作不可撤销"
+                description={
+                  <>
+                    <p className="mb-2">{scopeLabel}</p>
+                    <p className="mb-0">{riskText}</p>
+                    <p className="mb-0 mt-2 font-medium text-red-700">
+                      删除后无法恢复，相关洞察快照可能需手动刷新。
+                    </p>
+                  </>
+                }
+              />
+            </div>
+          ),
+          okText: '确认清空',
+          okType: 'danger',
+          cancelText: '取消',
+          onOk: async () => {
+            try {
+              await onConfirm()
+              resolve(undefined)
+            } catch (err) {
+              reject(err)
+            }
+          },
+          onCancel: () => reject(new Error('cancel')),
+        })
+      }).catch((err) => {
+        if (err instanceof Error && err.message === 'cancel') return
+        throw err
+      }),
+  })
+}
 
 const JOURNEY_MATCH_OPTIONS = [
   { value: 'keyword', label: '仅关键词', desc: '最快；按「用户旅程」二级环节的参考关键词匹配' },
@@ -136,11 +204,33 @@ export default function Settings() {
   /** @type {import('../domain/insightPeriod.js').InsightPeriod | null} */
   const [clearPeriod, setClearPeriod] = useState(null)
   const [clearSourceType, setClearSourceType] = useState('')
+  const [clearProduct, setClearProduct] = useState('')
   const [clearing, setClearing] = useState(false)
+
+  const clearScopeFeedbacks = useMemo(() => {
+    if (!clearPeriod) return feedbacks
+    const normalized = normalizeInsightPeriod(clearPeriod)
+    return feedbacks.filter((fb) => {
+      if (clearSourceType && (fb.dataSourceType || 'complaint_ticket') !== clearSourceType) {
+        return false
+      }
+      return recordMatchesPeriod(fb, normalized)
+    })
+  }, [feedbacks, clearPeriod, clearSourceType])
+
+  const clearProductOptions = useMemo(
+    () =>
+      listProducts(clearScopeFeedbacks).map((p) => ({
+        label: `${p.name}（${p.count} 条）`,
+        value: p.name,
+      })),
+    [clearScopeFeedbacks],
+  )
 
   const buildScopedClearOptions = () => ({
     ...(clearPeriodId ? { insightPeriodId: clearPeriodId } : {}),
     ...(clearSourceType ? { dataSourceType: clearSourceType } : {}),
+    ...(clearProduct ? { product: clearProduct } : {}),
   })
 
   const importJson = (file) => {
@@ -319,15 +409,15 @@ export default function Settings() {
         <PermissionGate permission="deleteData">
           <Card title={<span className="text-red-700">危险操作</span>} className="border-red-200">
             <Typography.Text type="secondary" className="block text-xs">
-              清空已导入的反馈、洞察快照、分析记录与待复核标签。清空「二季度投诉」请同时勾选
-              <strong> 指定洞察周期（2026年Q2）+ 数据来源（投诉工单）</strong>
-              ；只选其一可能误删其它月份或其它来源。全部清空请用下方独立按钮。
+              清空已导入的反馈、洞察快照、分析记录与待复核标签。按条件清空须同时选择
+              <strong> 洞察周期 + 数据来源 + 产品</strong>
+              ，仅删除三者交集内的工单；其它产品或来源保留。全部清空请用下方独立按钮。
             </Typography.Text>
             <div className="mt-4 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Typography.Text strong className="mb-2 block text-xs">
-                    洞察周期（可选）
+                    洞察周期
                   </Typography.Text>
                   <InsightPeriodPicker
                     compact
@@ -337,23 +427,45 @@ export default function Settings() {
                     onChange={(id, period) => {
                       setClearPeriodId(id || '')
                       setClearPeriod(period)
+                      setClearProduct('')
                     }}
                   />
                 </div>
                 <div>
                   <Typography.Text strong className="mb-1 block text-xs">
-                    数据来源（可选）
+                    数据来源
                   </Typography.Text>
                   <Select
                     allowClear
                     className="w-full"
-                    placeholder="不限制来源"
+                    placeholder="请选择数据来源"
                     value={clearSourceType || undefined}
                     options={DATA_SOURCE_TYPES.map((t) => ({
                       label: DATA_SOURCE_LABELS[t],
                       value: t,
                     }))}
-                    onChange={(v) => setClearSourceType(v || '')}
+                    onChange={(v) => {
+                      setClearSourceType(v || '')
+                      setClearProduct('')
+                    }}
+                  />
+                </div>
+                <div>
+                  <Typography.Text strong className="mb-1 block text-xs">
+                    产品
+                  </Typography.Text>
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    className="w-full"
+                    placeholder={
+                      clearPeriodId && clearSourceType ? '请选择产品' : '请先选择周期与来源'
+                    }
+                    disabled={!clearPeriodId || !clearSourceType}
+                    value={clearProduct || undefined}
+                    options={clearProductOptions}
+                    onChange={(v) => setClearProduct(v || '')}
                   />
                 </div>
               </div>
@@ -361,7 +473,7 @@ export default function Settings() {
                 <Button
                   danger
                   loading={clearing}
-                  disabled={!clearPeriodId || !clearSourceType}
+                  disabled={!clearPeriodId || !clearSourceType || !clearProduct}
                   onClick={() => {
                     const options = buildScopedClearOptions()
                     const validationError = validateScopedClearOptions(options)
@@ -369,26 +481,21 @@ export default function Settings() {
                       message.warning(validationError)
                       return
                     }
-                    Modal.confirm({
-                      title: '确定按条件清空数据？',
-                      content: (
-                        <div className="space-y-2">
-                          <p>{describeClearImportedScope(options, clearPeriod)}</p>
-                          <p>{describeClearImportedScopeRisk(options)}</p>
-                          <p className="text-red-600">不可撤销，请确认范围无误。</p>
-                        </div>
-                      ),
-                      okText: '清空',
-                      okType: 'danger',
-                      cancelText: '取消',
-                      onOk: async () => {
+                    const scopeLabel = describeClearImportedScope(options, clearPeriod)
+                    const riskText = describeClearImportedScopeRisk(options)
+                    confirmClearDataTwice({
+                      scopeLabel,
+                      riskText,
+                      finalTitle: '最后确认：按条件清空数据',
+                      onConfirm: async () => {
                         setClearing(true)
                         try {
                           await clearImportedData(options)
-                          message.success(`已清空：${describeClearImportedScope(options, clearPeriod)}`)
+                          message.success(`已清空：${scopeLabel}`)
                           setClearPeriodId('')
                           setClearPeriod(null)
                           setClearSourceType('')
+                          setClearProduct('')
                         } catch (err) {
                           message.error(err instanceof Error ? err.message : '清空失败')
                         } finally {
@@ -405,14 +512,13 @@ export default function Settings() {
                   type="primary"
                   loading={clearing}
                   onClick={() => {
-                    Modal.confirm({
-                      title: '确定清空全部数据？',
-                      content:
-                        '将删除全部洞察周期、全部数据来源的反馈、快照、分析记录与待复核标签，不可撤销。',
-                      okText: '全部清空',
-                      okType: 'danger',
-                      cancelText: '取消',
-                      onOk: async () => {
+                    const scopeLabel = describeClearImportedScope({ all: true })
+                    const riskText = describeClearImportedScopeRisk({ all: true })
+                    confirmClearDataTwice({
+                      scopeLabel,
+                      riskText,
+                      finalTitle: '最后确认：清空全部数据',
+                      onConfirm: async () => {
                         setClearing(true)
                         try {
                           await clearAll()
@@ -420,6 +526,7 @@ export default function Settings() {
                           setClearPeriodId('')
                           setClearPeriod(null)
                           setClearSourceType('')
+                          setClearProduct('')
                         } catch (err) {
                           message.error(err instanceof Error ? err.message : '清空失败')
                         } finally {

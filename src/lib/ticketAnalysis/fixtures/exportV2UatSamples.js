@@ -11,6 +11,7 @@ const baseImported = {
   importedAt: '2026-05-01T00:00:00.000Z',
   importMonth: '2026-05',
   themes: ['未分类'],
+  product: '云主机 ECS',
 }
 
 /** @type {FeedbackRecord[]} */

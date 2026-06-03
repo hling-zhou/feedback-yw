@@ -67,13 +67,20 @@ describe('clearImportedData', () => {
     expect(validateClearImportedDataOptions({ dataSourceType: 'complaint_ticket' })).toBeNull()
   })
 
-  it('validateScopedClearOptions requires period and source', () => {
+  it('validateScopedClearOptions requires period, source and product', () => {
     expect(validateScopedClearOptions({ insightPeriodId: 'p1' })).toMatch(/同时/)
     expect(validateScopedClearOptions({ dataSourceType: 'complaint_ticket' })).toMatch(/同时/)
     expect(
       validateScopedClearOptions({
         insightPeriodId: q2Period.id,
         dataSourceType: 'complaint_ticket',
+      }),
+    ).toMatch(/产品/)
+    expect(
+      validateScopedClearOptions({
+        insightPeriodId: q2Period.id,
+        dataSourceType: 'complaint_ticket',
+        product: '云主机 ECS',
       }),
     ).toBeNull()
   })
@@ -103,6 +110,47 @@ describe('clearImportedData', () => {
     expect(recordMatchesClearFilter(inScope, opts, q2Period)).toBe(true)
     expect(recordMatchesClearFilter(consult, opts, q2Period)).toBe(false)
     expect(recordMatchesClearFilter(oldComplaint, opts, q2Period)).toBe(false)
+  })
+
+  it('recordMatchesClearFilter respects product name', () => {
+    const base = {
+      id: '1',
+      importMonth: '2026-05',
+      dataSourceType: 'complaint_ticket',
+      customerQuote: 'x',
+      requestScene: '',
+      problemType: '',
+      journeyL1: '',
+      journeyL2: '',
+      problemSummary: '',
+      solutionSummary: '',
+      rootCause: '',
+      optimizationSuggestion: '',
+      sentiment: 'neutral',
+      themes: [],
+      status: 'open',
+      importedAt: '2026-05-01T00:00:00.000Z',
+    }
+    const ecs = { ...base, id: '4', product: '云主机 ECS' }
+    const vpc = { ...ecs, id: '5', product: 'VPC' }
+    const opts = {
+      insightPeriodId: q2Period.id,
+      dataSourceType: 'complaint_ticket',
+      product: '云主机 ECS',
+    }
+    expect(recordMatchesClearFilter(ecs, opts, q2Period)).toBe(true)
+    expect(recordMatchesClearFilter(vpc, opts, q2Period)).toBe(false)
+  })
+
+  it('snapshotMatchesClearFilter skips snapshot when product scoped', () => {
+    const id = sourceSnapshotId('complaint_ticket', period.id)
+    expect(
+      snapshotMatchesClearFilter(id, {
+        insightPeriodId: period.id,
+        dataSourceType: 'complaint_ticket',
+        product: '云主机 ECS',
+      }),
+    ).toBe(false)
   })
 
   it('recordMatchesClearFilter by period and source', () => {
@@ -165,6 +213,7 @@ describe('clearImportedData', () => {
       describeClearImportedScopeRisk({
         insightPeriodId: period.id,
         dataSourceType: 'complaint_ticket',
+        product: '云主机 ECS',
       }),
     ).toContain('交集')
   })

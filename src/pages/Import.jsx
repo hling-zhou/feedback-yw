@@ -33,6 +33,7 @@ import {
 } from '../lib/parseFile.js'
 import { getPresetsForSource } from '../lib/columnPresets.js'
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
+import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
   getEnabledProducts,
   partitionRowsByProductCatalog,
@@ -594,6 +595,7 @@ export default function Import({ embedded = false }) {
         failures: failures.length,
         skippedProducts: skipped.length,
         batchName: batchMeta.importBatchName,
+        ticketLlmFailed: enrichmentStats?.ticketLlmFailed ?? 0,
       })
       importFinishedNotified = true
 
@@ -1149,21 +1151,38 @@ export default function Import({ embedded = false }) {
                 : ''}
             </Typography.Text>
           )}
-          {importResult.taggingWarnings?.length > 0 && (
+          {importResult.enrichmentStats?.ticketLlmFailed > 0 && (
             <Alert
               className="page-section-sm"
               type="warning"
               showIcon
-              title="部分打标步骤未完全成功"
-              description={
-                <ul className="mb-0 list-disc pl-5">
-                  {importResult.taggingWarnings.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              }
+              title="部分工单 LLM 增强未生效"
+              description={formatTicketLlmRemainRuleMessage(importResult.enrichmentStats.ticketLlmFailed)}
             />
           )}
+          {(() => {
+            const ticketLlmWarning = formatTicketLlmRemainRuleMessage(
+              importResult.enrichmentStats?.ticketLlmFailed ?? 0,
+            )
+            const otherTaggingWarnings =
+              importResult.taggingWarnings?.filter((w) => w !== ticketLlmWarning) ?? []
+            if (!otherTaggingWarnings.length) return null
+            return (
+              <Alert
+                className="page-section-sm"
+                type="warning"
+                showIcon
+                title="部分打标步骤未完全成功"
+                description={
+                  <ul className="mb-0 list-disc pl-5">
+                    {otherTaggingWarnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )
+          })()}
           {importResult.dataSourceType === 'consultation_ticket' && (
             <Alert
               className="page-section-sm"

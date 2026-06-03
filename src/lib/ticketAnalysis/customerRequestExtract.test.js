@@ -7,6 +7,7 @@ import {
   truncateCustomerRequest,
 } from './customerRequestExtract.js'
 import { isFormattedTemplateContent, isInternalCsBackendText } from './customerRequestFilters.js'
+import { extractPainPoint } from './painPointExtract.js'
 
 describe('customerRequestExtract lifecycle rules', () => {
   it('example2: prefers initial customer feedback over later coordination deferral', () => {
@@ -189,5 +190,26 @@ describe('customerRequestExtract lifecycle rules', () => {
     expect(result).toMatch(/云专线/)
     expect(result).toMatch(/变更机房地址/)
     expect(result).not.toMatch(/解决方案|未提供信息|离线/)
+  })
+
+  it('strips stacked 请求节点/工单标题 prefix and keeps 详细内容 body (HAVIP/Keepalived)', () => {
+    const stacked =
+      '请求节点：云主机--云主机操作系统-重启云主机失败工单标题：云主机操作系统-重启云主机失败详细内容：使用HAVIP + Keepalived 作为MySQL数据库高可用集群方案，keepalived 接收组播包偶发性超时，导致HA脑裂问题'
+    const result = extractCustomerRequest({
+      customerQuote: stacked,
+      rawText: '',
+      handlingText: '',
+    })
+    expect(result).toMatch(/HAVIP|Keepalived|组播|脑裂/)
+    expect(result).not.toMatch(/请求节点|工单标题/)
+    expect(result.length).toBeLessThanOrEqual(120)
+
+    const pain = extractPainPoint({
+      taggingText: stacked,
+      customerRequest: result,
+      handlingText: '',
+    })
+    expect(pain).toMatch(/HAVIP|Keepalived|组播|脑裂/)
+    expect(pain).not.toMatch(/请求节点|工单标题/)
   })
 })

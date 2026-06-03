@@ -78,6 +78,18 @@ describe('journeyRetagSummary', () => {
     expect(material.shouldPromptInsightRefresh).toBe(true)
   })
 
+  it('formatBulkRetagResultMessage includes ticket LLM failure hint', () => {
+    const msg = formatBulkRetagResultMessage({
+      total: 10,
+      beforeUnknown: 0,
+      afterUnknown: 0,
+      summary: summarizeUnknownJourneyRecords([]),
+      ticketLlmFailed: 3,
+    })
+    expect(msg).toContain('仍为「规则」')
+    expect(msg).toContain('Network')
+  })
+
   it('formatBulkRetagResultMessage prompts insight refresh when pain points changed materially', () => {
     const msg = formatBulkRetagResultMessage({
       total: 20,

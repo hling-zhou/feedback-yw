@@ -45,6 +45,7 @@ export const ROLE_PERMISSIONS = {
     'editRecord',
     'export',
     'manageTags',
+    'deleteData',
     'configureLlmPersonal',
     'editOrderVolumes',
   ],

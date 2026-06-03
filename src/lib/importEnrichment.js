@@ -4,6 +4,7 @@ import { themesFromJourney } from './applyThemes.js'
 import { enrichRecordsWithSharedDimensions, retagRecordsSharedDimensionsAfterTicketLlm } from './dimensionTagging.js'
 import { enrichRecordsWithJourneys } from './journeySemantic.js'
 import { enrichRecordsWithTicketLlm } from './ticketAnalysis/ticketLlmEnrichment.js'
+import { resolveSettingsForLlm } from './llmClient.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 import { llmStageOrderAfterShared, resolveTaggingPipelineOrder } from './taggingPipeline.js'
 import {
@@ -66,20 +67,22 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
     return { records, warnings: [], enrichmentStats: createEmptyEnrichmentStats() }
   }
 
+  const llmSettings = await resolveSettingsForLlm(settings)
+
   /** @type {string[]} */
   const warnings = []
   /** @type {ImportEnrichmentStats} */
   const enrichmentStats = createEmptyEnrichmentStats()
   let out = records
-  const pipelineOrder = resolveTaggingPipelineOrder(settings)
+  const pipelineOrder = resolveTaggingPipelineOrder(llmSettings)
 
   out = await runImportStage(
     out,
-    settings,
+    llmSettings,
     onProgress,
     '请求场景与问题类型',
     () =>
-      enrichRecordsWithSharedDimensions(out, settings, (done, total) => {
+      enrichRecordsWithSharedDimensions(out, llmSettings, (done, total) => {
         onProgress?.('请求场景与问题类型', done, total)
       }),
     '请求场景/问题类型打标',
@@ -91,11 +94,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       const beforeTicket = out.map((r) => ({ ...r }))
       out = await runImportStage(
         out,
-        settings,
+        llmSettings,
         onProgress,
         '客户请求、需求痛点与优化建议',
         () =>
-          enrichRecordsWithTicketLlm(out, settings, (done, total) => {
+          enrichRecordsWithTicketLlm(out, llmSettings, (done, total) => {
             onProgress?.('客户请求、需求痛点与优化建议', done, total)
           }),
         '客户请求/痛点/优化建议 LLM 增强',
@@ -104,11 +107,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, out))
       out = await runImportStage(
         out,
-        settings,
+        llmSettings,
         onProgress,
         '请求场景与问题类型（LLM 语料）',
         () =>
-          retagRecordsSharedDimensionsAfterTicketLlm(out, settings, (done, total) => {
+          retagRecordsSharedDimensionsAfterTicketLlm(out, llmSettings, (done, total) => {
             onProgress?.('请求场景与问题类型（LLM 语料）', done, total)
           }),
         'LLM 语料维度重打',
@@ -120,11 +123,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
     const beforeJourney = out.map((r) => ({ ...r }))
     out = await runImportStage(
       out,
-      settings,
+      llmSettings,
       onProgress,
       '用户旅程',
       async () => {
-        const journeyOut = await enrichRecordsWithJourneys(out, settings, (done, total) => {
+        const journeyOut = await enrichRecordsWithJourneys(out, llmSettings, (done, total) => {
           onProgress?.('用户旅程', done, total)
         })
         return journeyOut.map((r) => ({ ...r, themes: themesFromJourney(r) }))
@@ -132,7 +135,7 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       '用户旅程打标',
       warnings,
     )
-    Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, out, settings))
+    Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, out, llmSettings))
   }
 
   try {
@@ -154,12 +157,12 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
 
   enrichmentStats.optimizationRetryCount = countOptimizationRetries(out)
 
-  if (!canUseSemanticMatch(settings)) {
+  if (!canUseSemanticMatch(llmSettings)) {
     warnings.push(
       '未配置大模型 API Key：已完成关键词/解释本地打标；客户请求、需求痛点与优化建议仍为规则初标结果。请在设置填写 Key 或配置服务端 LLM_API_KEY 后重新打标。',
     )
   } else {
-    const journeyPending = countJourneyPendingAfterImport(out, settings)
+    const journeyPending = countJourneyPendingAfterImport(out, llmSettings)
     for (const hint of buildEnrichmentRetagWarnings(enrichmentStats, journeyPending)) {
       if (!warnings.includes(hint)) warnings.push(hint)
     }

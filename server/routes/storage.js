@@ -343,6 +343,7 @@ export function registerStorageRoutes(app) {
       scope: options.all ? 'all' : 'filtered',
       insightPeriodId: options.insightPeriodId || undefined,
       dataSourceType: options.dataSourceType || undefined,
+      product: options.product || undefined,
       ...cleared,
     })
     return { ok: true, ...cleared }

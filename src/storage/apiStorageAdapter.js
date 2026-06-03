@@ -132,6 +132,7 @@ export function createApiStorageAdapter() {
       } else {
         if (options.insightPeriodId) params.set('insightPeriodId', options.insightPeriodId)
         if (options.dataSourceType) params.set('dataSourceType', options.dataSourceType)
+        if (options.product) params.set('product', options.product)
       }
       const qs = params.toString()
       return storageFetch(`/imported-data${qs ? `?${qs}` : ''}`, { method: 'DELETE' })

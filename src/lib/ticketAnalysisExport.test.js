@@ -23,6 +23,7 @@ const baseRecord = {
   status: 'open',
   importedAt: '2026-01-01',
   ticketId: 'T-001',
+  product: '云主机',
   optimizationProduct: '产品优化A',
   optimizationService: '流程优化B',
   manualReviewOptimization: '人工确立举措',
@@ -38,9 +39,10 @@ describe('ticketAnalysisExport v2', () => {
     expect(EXPORT_ANALYSIS_VERSION).toBe(2)
   })
 
-  it('getExportV2Headers returns 18 columns in registry order', () => {
+  it('getExportV2Headers returns 19 columns in registry order', () => {
     expect(getExportV2Headers()).toEqual([
       '工单号',
+      '产品名称',
       '客户请求内容',
       '需求痛点',
       '请求场景',
@@ -49,12 +51,12 @@ describe('ticketAnalysisExport v2', () => {
       '用户旅程二级',
       '用户情绪',
       '是否加急',
-      '确立举措',
-      '排期',
       '产品技术优化',
       '服务流程改进',
       '产品组优化建议',
       '设计师优化建议',
+      '确立举措',
+      '排期',
       '受理内容',
       '处理意见',
       '根因排查',
@@ -65,6 +67,7 @@ describe('ticketAnalysisExport v2', () => {
     const row = recordToExportRowV2(baseRecord)
     expect(Object.keys(row)).toEqual(getExportV2Headers())
     expect(row['工单号']).toBe('T-001')
+    expect(row['产品名称']).toBe('云主机')
     expect(row['客户请求内容']).toBe('希望开通端口访问')
     expect(row['需求痛点']).toBe('端口不通')
     expect(row['用户情绪']).toBe('不满')

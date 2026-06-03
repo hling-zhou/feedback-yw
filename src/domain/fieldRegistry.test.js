@@ -13,30 +13,33 @@ import {
   readFieldValue,
 } from './fieldRegistry.js'
 
+const EXPECTED_V2_HEADERS = [
+  '工单号',
+  '产品名称',
+  '客户请求内容',
+  '需求痛点',
+  '请求场景',
+  '问题类型',
+  '用户旅程一级',
+  '用户旅程二级',
+  '用户情绪',
+  '是否加急',
+  '产品技术优化',
+  '服务流程改进',
+  '产品组优化建议',
+  '设计师优化建议',
+  '确立举措',
+  '排期',
+  '受理内容',
+  '处理意见',
+  '根因排查',
+]
+
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (18 columns)', () => {
+  it('exports v2 column order matches design (19 columns)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(18)
-    expect(cols.map((c) => c.displayName)).toEqual([
-      '工单号',
-      '客户请求内容',
-      '需求痛点',
-      '请求场景',
-      '问题类型',
-      '用户旅程一级',
-      '用户旅程二级',
-      '用户情绪',
-      '是否加急',
-      '确立举措',
-      '排期',
-      '产品技术优化',
-      '服务流程改进',
-      '产品组优化建议',
-      '设计师优化建议',
-      '受理内容',
-      '处理意见',
-      '根因排查',
-    ])
+    expect(cols).toHaveLength(19)
+    expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
   it('import columns match export v2 set', () => {
@@ -47,6 +50,7 @@ describe('fieldRegistry', () => {
 
   it('import required excludes 排期 (R1) and optional manual/source columns', () => {
     const required = getImportRequiredDisplayNames()
+    expect(required).toContain('产品名称')
     expect(required).not.toContain('排期')
     expect(required).not.toContain('确立举措')
     expect(required).toContain('处理意见')
@@ -87,7 +91,7 @@ describe('fieldRegistry', () => {
     expect(l1).toBeDefined()
     expect(isFieldApplicable(l1, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
-    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(18)
+    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(19)
   })
 
   it('cluster roles: pain primary and optimization corpus', () => {
