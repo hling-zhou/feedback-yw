@@ -1,11 +1,30 @@
 import { randomId } from '../lib/randomId.js'
 import { linkedTicketIdsInPeriod } from './actionItemPeriodFilter.js'
+import {
+  ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES,
+  actionItemStatusRequiresEmptySchedule,
+  applyActionItemStatusSideEffects,
+  isActionItemLocked,
+  listSelectableActionItemStatuses,
+  validateActionItemPatchAllowed,
+  validateActionItemStatusTransition,
+} from './actionItemStatusRules.js'
+
+export {
+  ACTION_ITEM_ALLOWED_STATUS_TRANSITIONS,
+  ACTION_ITEM_LOCKED_STATUSES,
+  ACTION_ITEM_NO_SCHEDULE_STATUSES,
+  ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES,
+  actionItemStatusRequiresEmptySchedule,
+  isActionItemLocked,
+  listSelectableActionItemStatuses,
+} from './actionItemStatusRules.js'
 /**
  * 举措库 ActionItem — 领域模型与状态规则。
  * @see docs/DESIGN-20260601-1.md §3.4
  */
 
-/** @typedef {'pending_evaluation' | 'in_progress' | 'completed' | 'suspended'} ActionItemStatus */
+/** @typedef {'pending_evaluation' | 'in_progress' | 'completed' | 'suspended' | 'not_implemented' | 'abnormal_terminated'} ActionItemStatus */
 /** @typedef {'none' | 'orange' | 'red'} ActionItemWarningLevel */
 
 /**
@@ -38,6 +57,8 @@ export const ACTION_ITEM_STATUSES = [
   'in_progress',
   'completed',
   'suspended',
+  'not_implemented',
+  'abnormal_terminated',
 ]
 
 /** @type {Record<ActionItemStatus, string>} */
@@ -46,18 +67,26 @@ export const ACTION_ITEM_STATUS_LABELS = {
   in_progress: '进行中',
   completed: '已完成',
   suspended: '挂起',
+  not_implemented: '不予实施',
+  abnormal_terminated: '异常终止',
+}
+
+/**
+ * @param {ActionItemStatus} current
+ * @returns {{ value: ActionItemStatus; label: string }[]}
+ */
+export function getActionItemStatusSelectOptions(current) {
+  return listSelectableActionItemStatuses(current).map((value) => ({
+    value,
+    label: ACTION_ITEM_STATUS_LABELS[value],
+  }))
 }
 
 /**
  * @returns {Record<ActionItemStatus, number>}
  */
 export function createEmptyActionItemStatusCounts() {
-  return {
-    pending_evaluation: 0,
-    in_progress: 0,
-    completed: 0,
-    suspended: 0,
-  }
+  return Object.fromEntries(ACTION_ITEM_STATUSES.map((status) => [status, 0]))
 }
 
 /** @param {ActionItemStatus} status */
@@ -206,6 +235,12 @@ export function validateActionItemCreate(input) {
     firstProposedAt: input.firstProposedAt || new Date().toISOString().slice(0, 10),
   })
   if (!item.id) return { ok: false, error: '缺少举措 ID' }
+  if (actionItemStatusRequiresEmptySchedule(item.status) && item.scheduleAt) {
+    return {
+      ok: false,
+      error: `「${ACTION_ITEM_STATUS_LABELS[item.status]}」不能填写排期`,
+    }
+  }
   return { ok: true, item }
 }
 
@@ -215,6 +250,9 @@ export function validateActionItemCreate(input) {
  * @returns {{ ok: true; item: ActionItem } | { ok: false; error: string }}
  */
 export function mergeActionItemPatch(existing, patch) {
+  const patchAllowedError = validateActionItemPatchAllowed(existing, patch)
+  if (patchAllowedError) return { ok: false, error: patchAllowedError }
+
   if (patch.content != null) {
     const content = String(patch.content).trim()
     if (!content) return { ok: false, error: '举措内容不能为空' }
@@ -229,44 +267,81 @@ export function mergeActionItemPatch(existing, patch) {
     return { ok: false, error: '无效的预警级别' }
   }
 
+  if (patch.status != null && patch.status !== existing.status) {
+    const transitionError = validateActionItemStatusTransition(existing.status, patch.status)
+    if (transitionError) {
+      const fromLabel = ACTION_ITEM_STATUS_LABELS[existing.status]
+      const toLabel = ACTION_ITEM_STATUS_LABELS[patch.status]
+      return {
+        ok: false,
+        error: `不能从「${fromLabel}」变更为「${toLabel}」`,
+      }
+    }
+  }
+
+  let effectivePatch = { ...patch }
+  if (patch.status != null) {
+    effectivePatch = applyActionItemStatusSideEffects(effectivePatch, patch.status)
+  }
+
   const scheduleAt =
-    patch.scheduleAt !== undefined ? String(patch.scheduleAt ?? '').trim() : existing.scheduleAt
+    effectivePatch.scheduleAt !== undefined
+      ? String(effectivePatch.scheduleAt ?? '').trim()
+      : String(existing.scheduleAt ?? '').trim()
   const scheduleChanged =
-    patch.scheduleChanged !== undefined
-      ? Boolean(patch.scheduleChanged)
-      : patch.scheduleAt !== undefined
+    effectivePatch.scheduleChanged !== undefined
+      ? Boolean(effectivePatch.scheduleChanged)
+      : effectivePatch.scheduleAt !== undefined
         ? Boolean(existing.scheduleChanged) ||
           computeScheduleChanged(existing.scheduleAt, scheduleAt)
         : Boolean(existing.scheduleChanged)
 
-  let status = patch.status ?? existing.status
-  if (patch.scheduleAt !== undefined && patch.status == null) {
-    status = deriveActionItemStatusFromSchedule(scheduleAt)
-  }
-  if (patch.scheduleAt !== undefined && !scheduleAt) {
-    status = 'pending_evaluation'
+  let status = effectivePatch.status ?? existing.status
+  if (
+    effectivePatch.scheduleAt !== undefined &&
+    effectivePatch.status == null &&
+    !isActionItemLocked(existing.status)
+  ) {
+    if (scheduleAt) {
+      status = deriveActionItemStatusFromSchedule(scheduleAt)
+    } else {
+      status = 'pending_evaluation'
+    }
   }
 
+  if (actionItemStatusRequiresEmptySchedule(status) && scheduleAt) {
+    return { ok: false, error: `「${ACTION_ITEM_STATUS_LABELS[status]}」不能填写排期` }
+  }
+
+  if (ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES.includes(status)) {
+    effectivePatch = applyActionItemStatusSideEffects(effectivePatch, status)
+  }
+
+  const finalScheduleAt = actionItemStatusRequiresEmptySchedule(status) ? '' : scheduleAt
+
   const linkedTicketIds =
-    patch.linkedTicketIds !== undefined
-      ? patch.linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
+    effectivePatch.linkedTicketIds !== undefined
+      ? effectivePatch.linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
       : existing.linkedTicketIds
 
   const linkedRequirementTicketIds =
-    patch.linkedRequirementTicketIds !== undefined
-      ? patch.linkedRequirementTicketIds.map((id) => String(id).trim()).filter(Boolean)
+    effectivePatch.linkedRequirementTicketIds !== undefined
+      ? effectivePatch.linkedRequirementTicketIds.map((id) => String(id).trim()).filter(Boolean)
       : existing.linkedRequirementTicketIds
 
   const item = normalizeActionItem({
     ...existing,
-    ...patch,
+    ...effectivePatch,
     id: existing.id,
     createdAt: existing.createdAt,
-    scheduleAt,
+    scheduleAt: finalScheduleAt,
     scheduleChanged,
     status,
     linkedTicketIds,
     linkedRequirementTicketIds,
+    warningLevel: ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES.includes(status)
+      ? 'none'
+      : effectivePatch.warningLevel ?? existing.warningLevel,
     updatedAt: new Date().toISOString(),
   })
 

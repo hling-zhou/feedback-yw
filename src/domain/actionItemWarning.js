@@ -38,7 +38,14 @@ export function daysBetweenDates(a, b) {
  */
 export function computeActionItemWarningLevel(item, today = new Date()) {
   const status = item.status
-  if (status === 'completed' || status === 'suspended') return 'none'
+  if (
+    status === 'completed' ||
+    status === 'suspended' ||
+    status === 'not_implemented' ||
+    status === 'abnormal_terminated'
+  ) {
+    return 'none'
+  }
 
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
 

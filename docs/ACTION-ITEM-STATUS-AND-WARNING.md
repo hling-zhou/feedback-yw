@@ -1,0 +1,191 @@
+# 举措状态与预警机制
+
+> 对应产品需求：[data/需求@20260601-1.md](../data/需求@20260601-1.md) §四（举措与进展）  
+> 设计总览：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.4  
+> 实现代码：`src/domain/actionItemStatusRules.js`、`src/domain/actionItemWarning.js`、`src/domain/actionItem.js`
+
+本文描述 **举措库（ActionItem）** 六种状态之间的关系、排期联动、编辑锁定规则，以及 **超时预警** 的计算与展示。以当前代码为准。
+
+---
+
+## 1. 六种状态
+
+| 中文 | 代码 `status` | 排期 `scheduleAt` | 可编辑（内容 / 排期 / 状态） | 参与预警计算 |
+|------|---------------|-------------------|------------------------------|--------------|
+| 待评估 | `pending_evaluation` | 必须为空 | 是 | 是 |
+| 进行中 | `in_progress` | 通常有值 | 是 | 是 |
+| 挂起 | `suspended` | 可有可无 | 是 | **否** |
+| 已完成 | `completed` | 可有可无 | **否（锁定）** | **否** |
+| 不予实施 | `not_implemented` | 必须为空 | **否（锁定）** | **否** |
+| 异常终止 | `abnormal_terminated` | 必须为空 | **否（锁定）** | **否** |
+
+**锁定**（`ACTION_ITEM_LOCKED_STATUSES`）：已完成、不予实施、异常终止。锁定后列表「编辑」禁用；弹窗只读，仅可关闭。
+
+**工单详情「选择已有举措」**：上述三种锁定状态及已完成均不可选（`isActionItemLocked`）。
+
+---
+
+## 2. 状态流转
+
+### 2.1 允许的显式变更
+
+编辑举措时，状态下拉仅展示 **当前状态 + 允许的下一状态**（`ACTION_ITEM_ALLOWED_STATUS_TRANSITIONS`）。
+
+| 当前状态 | 可变更到 |
+|----------|----------|
+| 待评估 | 进行中、不予实施 |
+| 进行中 | 已完成、挂起、异常终止 |
+| 挂起 | 进行中、已完成、异常终止 |
+| 已完成 | （不可再改） |
+| 不予实施 | （不可再改） |
+| 异常终止 | （不可再改） |
+
+业务含义简述：
+
+- **不予实施**：评估阶段决定不做，仅能从 **待评估** 进入。
+- **异常终止**：执行阶段异常停止，仅能从 **进行中** 或 **挂起** 进入。
+- **已完成**：正常闭环结束。
+
+### 2.2 状态图
+
+```mermaid
+stateDiagram-v2
+  direction LR
+
+  [*] --> 待评估: 新建/导入\n无排期
+
+  待评估 --> 进行中: 填写排期
+  待评估 --> 不予实施: 判定不实施
+
+  进行中 --> 已完成
+  进行中 --> 挂起
+  进行中 --> 异常终止
+
+  挂起 --> 进行中
+  挂起 --> 已完成
+  挂起 --> 异常终止
+
+  已完成 --> [*]
+  不予实施 --> [*]
+  异常终止 --> [*]
+```
+
+### 2.3 与排期的自动联动
+
+未在表单中手改 `status`、仅改排期时（`deriveActionItemStatusFromSchedule`）：
+
+| 操作 | 结果状态 |
+|------|----------|
+| 无排期 | 待评估 |
+| 有排期（`YYYY-MM-DD`） | 进行中 |
+| 清空原排期（原状态为进行中等） | 待评估 |
+
+约束：
+
+- **待评估 / 不予实施 / 异常终止** 不能填写排期（保存时报错）。
+- 变更为 **不予实施** 或 **异常终止** 时：自动 **清空排期**、清除「排期变更」标记、**预警置为 none**。
+
+### 2.4 排期「变更」标签
+
+`scheduleChanged = true` 仅当：**原排期非空** 且与新排期不同。  
+「空 → 首次填排期」不算变更。
+
+---
+
+## 3. 预警机制
+
+### 3.1 预警级别
+
+| `warningLevel` | 含义 | 列表展示 |
+|----------------|------|----------|
+| `none` | 无预警 | 默认文字色 |
+| `orange` | 临期提醒 | 琥珀色加粗 |
+| `red` | 逾期/超期 | 红色加粗 |
+
+### 3.2 不参与预警的状态
+
+以下状态 **恒为 `none`**，不计算橙/红：
+
+- 已完成、挂起、不予实施、异常终止
+
+进入 **不予实施** 或 **异常终止** 时，若历史上曾有预警，保存后会 **清空为 none**。
+
+### 3.3 待评估：按「首次提出时间」
+
+字段：`firstProposedAt`（`YYYY-MM-DD`）。
+
+以 **自然日** 计算自首次提出至今天的天数 `days`：
+
+| 条件 | 预警 |
+|------|------|
+| `days >= 30` | red |
+| `15 <= days < 30` | orange |
+| `days < 15` 或无有效日期 | none |
+
+**界面**：「举措与进展」表格 **首次提出时间** 列；仅 `status === pending_evaluation` 的行按级别上色。
+
+### 3.4 进行中：按「排期时间」
+
+字段：`scheduleAt`（须能解析 `YYYY-MM-DD` 前缀）。
+
+`daysUntil` = 排期日 − 今天（自然日）：
+
+| 条件 | 预警 |
+|------|------|
+| `daysUntil < 0`（已过期） | red |
+| `0 <= daysUntil <= 15` | orange |
+| `daysUntil > 15` | none |
+| 无有效排期日期 | none |
+
+**界面**：**排期时间** 列；仅 `status === in_progress` 的行按级别上色。  
+若排期旁有橙色 **变更** Tag，与预警独立（表示排期被改过）。
+
+### 3.5 计算与持久化时机
+
+```
+读取举措（GET /api/actions…）
+  → applyActionItemWarningLevel(item, today)
+
+保存举措（PATCH /api/actions/:id）
+  → mergeActionItemPatch（含状态/排期副作用）
+  → putActionItem
+  → applyActionItemWarningLevel（再次按当天重算）
+```
+
+预警 **按服务器当天日期** 重算后写入 `warningLevel` 字段并入库；前端列表直接读库中级别展示，不在浏览器单独算一遍。
+
+---
+
+## 4. 界面与 API 行为摘要
+
+| 场景 | 行为 |
+|------|------|
+| 举措与进展 · 编辑 | 状态下拉 = 当前 + 允许下一状态；终态只读 |
+| 排期 DatePicker | 待评估 / 不予实施 / 异常终止时禁用 |
+| 页头统计 / 分产品图表 | 六种状态分别计数 |
+| 导入 Excel | 状态列支持六种中文标签（见 `ACTION_ITEM_STATUS_LABELS`） |
+| Schema | `actionItemStatusSchema` 枚举含六种 `status` |
+
+---
+
+## 5. 实现索引
+
+| 职责 | 文件 |
+|------|------|
+| 状态枚举、标签、合并 patch、排期推导 | `src/domain/actionItem.js` |
+| 流转表、锁定、排期副作用 | `src/domain/actionItemStatusRules.js` |
+| 预警计算 | `src/domain/actionItemWarning.js` |
+| 状态标签/图表颜色 | `src/domain/actionItemStatusStyle.js` |
+| 列表与编辑 UI | `src/pages/Actions.jsx` |
+| 保存时重算预警 | `server/actionItemRepository.js` |
+| API 状态枚举 | `server/schemas/common.js` |
+
+单元测试：`src/domain/actionItemStatusRules.test.js`、`src/domain/actionItemWarning.test.js`、`src/domain/actionItem.test.js`。
+
+---
+
+## 6. 变更记录
+
+| 日期 | 说明 |
+|------|------|
+| 2026-06 | 新增 **不予实施**、**异常终止**；终态锁定；预警对二者恒为 none 并在进入时清空 |

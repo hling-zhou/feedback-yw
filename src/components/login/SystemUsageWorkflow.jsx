@@ -43,7 +43,7 @@ export default function SystemUsageWorkflow({ variant = 'full', className = '' }
 
   return (
     <div className={className}>
-      <Typography.Text className="mb-4 block text-xs font-medium uppercase tracking-wider text-white/50">
+      <Typography.Text className="mb-4 block border-l-2 border-brand-500 pl-3 text-sm font-medium text-brand-100">
         {SYSTEM_USAGE_WORKFLOW_TITLE}
       </Typography.Text>
       <ol className="mb-0 space-y-0 pl-0">
@@ -75,8 +75,8 @@ function WorkflowStep({ item, tone, showConnector = false }) {
         <span
           className={
             isDark
-              ? 'absolute left-[11px] top-7 bottom-0 w-px bg-white/20'
-              : 'absolute left-[11px] top-7 bottom-0 w-px bg-ink-200'
+              ? 'absolute left-[13px] top-8 bottom-0 w-px bg-brand-500/35'
+              : 'absolute left-[13px] top-8 bottom-0 w-px bg-ink-200'
           }
           aria-hidden
         />
@@ -86,8 +86,8 @@ function WorkflowStep({ item, tone, showConnector = false }) {
         <span
           className={
             isDark
-              ? 'relative z-[1] flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-xs font-semibold text-white'
-              : 'relative z-[1] flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-brand-200 bg-brand-50 text-xs font-semibold text-brand-700'
+              ? 'relative z-[1] flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-brand-400/60 bg-brand-600 text-xs font-semibold text-white shadow-soft'
+              : 'relative z-[1] flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-brand-200 bg-brand-50 text-xs font-semibold text-brand-700'
           }
         >
           {item.step}
@@ -135,7 +135,7 @@ function WorkflowModuleTags({ item, tone }) {
         bordered
         className={
           isDark
-            ? '!m-0 !border-dashed !border-white/35 !bg-transparent !text-[11px] !text-white/70'
+            ? '!m-0 !border-dashed !border-brand-400/50 !bg-transparent !text-[11px] !text-brand-200'
             : '!m-0 !border-dashed !border-ink-300 !bg-ink-50 !text-[11px] !text-ink-600'
         }
       >
@@ -154,7 +154,7 @@ function WorkflowModuleTags({ item, tone }) {
           bordered={false}
           className={
             isDark
-              ? '!m-0 !bg-white/10 !text-[11px] !text-white/75'
+              ? '!m-0 !bg-brand-600/30 !text-[11px] !text-brand-100'
               : '!m-0 !bg-ink-100 !text-[11px] !text-ink-600'
           }
         >

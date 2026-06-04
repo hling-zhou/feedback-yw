@@ -27,7 +27,14 @@ export const userStatusSchema = {
 /** @type {JSONSchema7} */
 export const actionItemStatusSchema = {
   type: 'string',
-  enum: ['pending_evaluation', 'in_progress', 'completed', 'suspended'],
+  enum: [
+    'pending_evaluation',
+    'in_progress',
+    'completed',
+    'suspended',
+    'not_implemented',
+    'abnormal_terminated',
+  ],
 }
 
 /** @type {JSONSchema7} */

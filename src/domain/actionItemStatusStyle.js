@@ -34,6 +34,18 @@ export const ACTION_ITEM_STATUS_VISUAL = {
     textClass: 'text-violet-700',
     borderClass: 'border-violet-500/25',
   },
+  not_implemented: {
+    chartColor: '#78716C',
+    bgClass: 'bg-stone-500/15',
+    textClass: 'text-stone-600',
+    borderClass: 'border-stone-500/25',
+  },
+  abnormal_terminated: {
+    chartColor: '#B91C1C',
+    bgClass: 'bg-red-500/15',
+    textClass: 'text-red-700',
+    borderClass: 'border-red-500/25',
+  },
 }
 
 /** @type {Record<ActionItemStatus, string>} */

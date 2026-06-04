@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Select, Spin, Tag } from 'antd'
 import { formatActionItemOptionLabel } from '../domain/establishedActionLibrary.js'
+import { isActionItemLocked } from '../domain/actionItem.js'
 import { listActionItems, getActionItem } from '../lib/actionItemClient.js'
 import ActionItemStatusTag from './tags/ActionItemStatusTag.jsx'
 import { getEnabledProducts } from '../lib/productCatalog.js'
@@ -8,14 +9,11 @@ import { getProductByKey } from '../lib/taxonomyLoader.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 
-/** 举措库下拉不可选「已完成」（需求 0601 §工单详情-7） */
-const EXCLUDED_SELECT_STATUSES = new Set(['completed'])
-
 /**
  * @param {ActionItem[]} items
  */
 function filterSelectableActionItems(items) {
-  return items.filter((item) => !EXCLUDED_SELECT_STATUSES.has(item.status))
+  return items.filter((item) => !isActionItemLocked(item.status))
 }
 
 /**
@@ -121,7 +119,7 @@ export default function ActionItemSelect({ value, productKey, onSelect, onClear,
         setSelectedProductKey(item.productKey.trim())
       }
       setOptions((prev) => {
-        if (EXCLUDED_SELECT_STATUSES.has(item.status)) return prev
+        if (isActionItemLocked(item.status)) return prev
         const merged = prev.some((p) => p.id === item.id) ? prev : [item, ...prev]
         return filterSelectableActionItems(merged)
       })
@@ -194,7 +192,7 @@ export default function ActionItemSelect({ value, productKey, onSelect, onClear,
           if (!item) {
             item = await getActionItem(String(nextValue))
           }
-          if (item && !EXCLUDED_SELECT_STATUSES.has(item.status)) onSelect(item)
+          if (item && !isActionItemLocked(item.status)) onSelect(item)
         }}
         onOpenChange={(open) => {
           if (open && !search) loadOptions('')

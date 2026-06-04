@@ -26,7 +26,11 @@ import {
   ACTION_ITEM_CONTENT_MAX_LENGTH,
   ACTION_ITEM_DETAIL_MAX_LENGTH,
   aggregateActionItemsByProductStatus,
+  createEmptyActionItemStatusCounts,
   deriveActionItemStatusFromSchedule,
+  getActionItemStatusSelectOptions,
+  isActionItemLocked,
+  actionItemStatusRequiresEmptySchedule,
 } from '../domain/actionItem.js'
 import { ACTIONS_PAGE_SUBTITLE_HINT, REQUIREMENT_TICKET_FIELD_TIP } from '../domain/establishedActionHints.js'
 import {
@@ -73,7 +77,7 @@ import {
 
 const PAGE_SIZE = 20
 
-const STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((value) => ({
+const FILTER_STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((value) => ({
   label: ACTION_ITEM_STATUS_LABELS[value],
   value,
 }))
@@ -187,12 +191,7 @@ export default function Actions() {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [stats, setStats] = useState(
-    /** @type {Record<ActionItemStatus, number>} */ ({
-      pending_evaluation: 0,
-      in_progress: 0,
-      completed: 0,
-      suspended: 0,
-    }),
+    /** @type {Record<ActionItemStatus, number>} */ (createEmptyActionItemStatusCounts()),
   )
   const [statsByProduct, setStatsByProduct] = useState(
     /** @type {import('../lib/actionItemClient.js').ActionItemProductStatusRow[]} */ ([]),
@@ -227,6 +226,7 @@ export default function Actions() {
   const baseRevisionRef = useRef(0)
   const importInputRef = useRef(/** @type {HTMLInputElement | null} */ (null))
   const watchedSchedule = Form.useWatch('scheduleAt', editForm)
+  const watchedEditStatus = Form.useWatch('status', editForm)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addForm] = Form.useForm()
@@ -244,6 +244,19 @@ export default function Actions() {
     if (dayjs.isDayjs(watchedSchedule)) return watchedSchedule.isValid()
     return Boolean(String(watchedSchedule).trim())
   }, [watchedSchedule])
+
+  const editLocked = Boolean(editing && isActionItemLocked(editing.status))
+
+  const editStatusOptions = useMemo(() => {
+    if (!editing) return FILTER_STATUS_OPTIONS
+    const base = watchedEditStatus ?? editing.status
+    return getActionItemStatusSelectOptions(base)
+  }, [editing, watchedEditStatus])
+
+  const editScheduleDisabled = useMemo(() => {
+    const status = watchedEditStatus ?? editing?.status
+    return editLocked || actionItemStatusRequiresEmptySchedule(status)
+  }, [editLocked, watchedEditStatus, editing?.status])
 
   const hasAddSchedule = useMemo(() => {
     if (!watchedAddSchedule) return false
@@ -298,13 +311,7 @@ export default function Actions() {
   const loadStats = useCallback(async () => {
     try {
       const data = await getActionItemStats(baseScopeQuery)
-      const counts = {
-        pending_evaluation: 0,
-        in_progress: 0,
-        completed: 0,
-        suspended: 0,
-        ...(data.counts || {}),
-      }
+      const counts = { ...createEmptyActionItemStatusCounts(), ...(data.counts || {}) }
       setStats(counts)
 
       let byProduct = Array.isArray(data.byProduct) ? data.byProduct : []
@@ -455,12 +462,20 @@ export default function Actions() {
   ])
 
   const handleScheduleChange = (date) => {
+    const currentStatus = editForm.getFieldValue('status')
+    if (actionItemStatusRequiresEmptySchedule(currentStatus)) return
     if (!date) {
       editForm.setFieldsValue({ status: 'pending_evaluation' })
       return
     }
-    if (editForm.getFieldValue('status') === 'pending_evaluation') {
+    if (currentStatus === 'pending_evaluation') {
       editForm.setFieldsValue({ status: 'in_progress' })
+    }
+  }
+
+  const handleEditStatusChange = (status) => {
+    if (actionItemStatusRequiresEmptySchedule(status)) {
+      editForm.setFieldsValue({ scheduleAt: null })
     }
   }
 
@@ -468,7 +483,19 @@ export default function Actions() {
     const scheduleAt = values.scheduleAt
       ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
       : ''
-    const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
+    let status = values.status
+    if (actionItemStatusRequiresEmptySchedule(status)) {
+      return {
+        content: values.content.trim(),
+        detail: String(values.detail ?? '').trim(),
+        status,
+        scheduleAt: '',
+        linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
+      }
+    }
+    if (!scheduleAt) {
+      status = deriveActionItemStatusFromSchedule('')
+    }
     return {
       content: values.content.trim(),
       detail: String(values.detail ?? '').trim(),
@@ -799,19 +826,23 @@ export default function Actions() {
       key: 'actions',
       width: 80,
       fixed: 'right',
-      render: (_, record) => (
-        <PermissionGate permission="editRecord">
-          <Tooltip title="修改状态 / 内容 / 排期">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              className="!px-0"
-              onClick={() => openEdit(record)}
-            />
-          </Tooltip>
-        </PermissionGate>
-      ),
+      render: (_, record) => {
+        const locked = isActionItemLocked(record.status)
+        return (
+          <PermissionGate permission="editRecord">
+            <Tooltip title={locked ? '已结束，不可编辑' : '修改状态 / 内容 / 排期'}>
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                className="!px-0"
+                disabled={locked}
+                onClick={() => openEdit(record)}
+              />
+            </Tooltip>
+          </PermissionGate>
+        )
+      },
     },
   ]
 
@@ -944,7 +975,7 @@ export default function Actions() {
             allowClear
             placeholder="状态"
             style={{ minWidth: 160 }}
-            options={STATUS_OPTIONS}
+            options={FILTER_STATUS_OPTIONS}
             value={statuses}
             onChange={(v) => {
               setStatuses(v)
@@ -1045,7 +1076,7 @@ export default function Actions() {
             />
           </Form.Item>
           <Form.Item name="status" label="状态" initialValue="pending_evaluation" rules={[{ required: true }]}>
-            <Select options={STATUS_OPTIONS} disabled={!hasAddSchedule} />
+            <Select options={getActionItemStatusSelectOptions('pending_evaluation')} disabled={!hasAddSchedule} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1099,10 +1130,21 @@ export default function Actions() {
         title="编辑举措"
         open={editOpen}
         onCancel={() => setEditOpen(false)}
-        onOk={() => handleEditSave()}
+        onOk={editLocked ? undefined : () => handleEditSave()}
+        okButtonProps={{ style: editLocked ? { display: 'none' } : undefined }}
+        cancelText={editLocked ? '关闭' : '取消'}
         confirmLoading={saving}
         destroyOnClose
       >
+        {editLocked ? (
+          <Alert
+            type="info"
+            showIcon
+            className="!mb-3"
+            message="该举措已结束"
+            description="已完成、不予实施、异常终止的举措不可再修改内容、排期或状态。"
+          />
+        ) : null}
         {editStale ? (
           <Alert
             type="warning"
@@ -1134,29 +1176,38 @@ export default function Actions() {
               { max: ACTION_ITEM_CONTENT_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_CONTENT_MAX_LENGTH} 字` },
             ]}
           >
-            <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} />
+            <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} disabled={editLocked} />
           </Form.Item>
           <Form.Item
             name="detail"
             label="举措详情（可选）"
             rules={[{ max: ACTION_ITEM_DETAIL_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_DETAIL_MAX_LENGTH} 字` }]}
           >
-            <Input.TextArea rows={3} showCount maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH} />
+            <Input.TextArea rows={3} showCount maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH} disabled={editLocked} />
           </Form.Item>
           <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
-            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" />
+            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" disabled={editLocked} />
           </Form.Item>
           <Form.Item name="scheduleAt" label="排期">
             <DatePicker
               className="w-full"
               format="YYYY-MM-DD"
-              placeholder="留空 = 待评估"
+              placeholder={
+                editScheduleDisabled && !editLocked
+                  ? '当前状态无需排期'
+                  : '留空 = 待评估'
+              }
               allowClear
+              disabled={editScheduleDisabled}
               onChange={handleScheduleChange}
             />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select options={STATUS_OPTIONS} disabled={!hasEditSchedule} />
+            <Select
+              options={editStatusOptions}
+              disabled={editLocked}
+              onChange={handleEditStatusChange}
+            />
           </Form.Item>
         </Form>
       </Modal>

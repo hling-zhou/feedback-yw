@@ -45,6 +45,24 @@ describe('actionItemWarning', () => {
     expect(computeActionItemWarningLevel(far, today)).toBe('none')
   })
 
+  it('not_implemented and abnormal_terminated have no warning', () => {
+    const created = validateActionItemCreate({
+      content: '举措',
+      firstProposedAt: '2026-01-01',
+      scheduleAt: '2026-01-01',
+      status: 'in_progress',
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    expect(
+      computeActionItemWarningLevel({ ...created.item, status: 'not_implemented' }, today),
+    ).toBe('none')
+    expect(
+      computeActionItemWarningLevel({ ...created.item, status: 'abnormal_terminated' }, today),
+    ).toBe('none')
+  })
+
   it('completed and suspended have no warning', () => {
     const created = validateActionItemCreate({
       content: '举措',

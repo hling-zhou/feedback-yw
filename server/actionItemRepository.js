@@ -260,12 +260,7 @@ function deleteActionItem(id) {
 function countActionItemsByStatus(query = {}) {
   const { items } = getFilteredActionItems(query)
   /** @type {Record<ActionItemStatus, number>} */
-  const counts = {
-    pending_evaluation: 0,
-    in_progress: 0,
-    completed: 0,
-    suspended: 0,
-  }
+  const counts = createEmptyActionItemStatusCounts()
   for (const item of items) {
     if (isActionItemStatus(item.status)) counts[item.status] += 1
   }

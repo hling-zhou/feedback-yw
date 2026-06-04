@@ -42,19 +42,35 @@ export default function Login() {
   return (
     <main className="min-h-screen bg-ink-50 text-ink-800">
       <div className="grid min-h-screen md:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden min-h-screen overflow-hidden bg-ink-900 px-12 py-10 text-white md:flex md:flex-col">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.42),transparent_34%),radial-gradient(circle_at_78%_12%,rgba(16,185,129,0.28),transparent_30%),linear-gradient(145deg,#0B0F19_0%,#111827_58%,#1F2937_100%)]" />
-          <div className="relative shrink-0">
-            <Typography.Text className="text-white/80">Feedback Insights</Typography.Text>
+        <section className="relative hidden min-h-screen overflow-hidden bg-ink-900 px-10 py-8 text-white md:flex md:flex-col">
+          <div
+            className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(79,70,229,0.28),transparent_42%),radial-gradient(circle_at_82%_8%,rgba(79,70,229,0.16),transparent_40%),linear-gradient(160deg,#0B0F19_0%,#111827_55%,#1F2937_100%)]"
+            aria-hidden
+          />
+          <div className="relative flex shrink-0 items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-white shadow-soft">
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                <path
+                  d="M4 18V6l8 4 8-4v12l-8 4-8-4Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <Typography.Text className="text-sm font-medium text-white/85">Feedback Insights</Typography.Text>
           </div>
-          <div className="relative mt-10 flex min-h-0 flex-1 flex-col gap-10 overflow-y-auto pb-4">
-            <div className="max-w-xl shrink-0">
-              <h1 className="text-4xl font-semibold leading-tight">用户反馈洞察</h1>
-              <p className="mt-4 text-sm leading-relaxed text-white/70">
+          <div className="relative mt-8 flex min-h-0 flex-1 flex-col gap-6">
+            <div className="max-w-lg shrink-0">
+              <h1 className="text-3xl font-semibold leading-tight tracking-tight">用户反馈洞察</h1>
+              <p className="mt-3 text-sm leading-relaxed text-white/70">
                 以数为镜，从万千反馈的字里行间，捕捉产品优化的线索
               </p>
             </div>
-            <SystemUsageWorkflow variant="full" className="max-w-xl shrink-0" />
+            <SystemUsageWorkflow
+              variant="full"
+              className="min-h-0 max-w-lg flex-1 overflow-y-auto pb-2"
+            />
           </div>
         </section>
 
