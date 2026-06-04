@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Typography, Upload } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
@@ -19,6 +19,7 @@ import {
 } from '../storage/clearImportedData.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { normalizeInsightPeriod, recordMatchesPeriod } from '../domain/insightPeriod.js'
+import { getLlmServerConfigured, refreshLlmServerStatus } from '../lib/llmClient.js'
 
 /**
  * 清空数据二次确认：先展示范围，再强提醒最后确认。
@@ -101,8 +102,8 @@ const JOURNEY_MATCH_OPTIONS = [
   },
 ]
 
-function llmConfigSource(settings) {
-  if (settings.llmServerConfigured) return 'server'
+function llmConfigSource(settings, serverConfiguredHint) {
+  if (settings.llmServerConfigured || serverConfiguredHint) return 'server'
   if (settings.llmApiKey?.trim()) return 'client'
   return 'none'
 }
@@ -113,13 +114,31 @@ function llmConfigSource(settings) {
  * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onChange
  */
 function LlmSettingsPanel({ settings, onChange }) {
+  const [serverConfiguredHint, setServerConfiguredHint] = useState(
+    () => settings.llmServerConfigured === true || getLlmServerConfigured() === true,
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    refreshLlmServerStatus().then((configured) => {
+      if (cancelled) return
+      setServerConfiguredHint(configured)
+      onChange({ llmServerConfigured: configured })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [onChange])
+
+  const configSource = llmConfigSource(settings, serverConfiguredHint)
+
   return (
     <div className="space-y-3">
       <Typography.Text type="secondary" className="block text-xs">
         仅保存在<strong>本浏览器</strong>，不会修改团队共享库，也不会让其他用户使用你的 API Key。
         生产环境若已配置服务端 <code className="text-xs">LLM_API_KEY</code>，所有人优先用服务端密钥。
       </Typography.Text>
-      {llmConfigSource(settings) === 'server' && (
+      {configSource === 'server' && (
         <Alert
           type="success"
           showIcon
@@ -127,7 +146,7 @@ function LlmSettingsPanel({ settings, onChange }) {
           description="API 地址与模型留空时，使用服务端环境变量 LLM_BASE_URL / LLM_MODEL；填写则仅覆盖本机请求参数。个人 API Key 不会用于请求。"
         />
       )}
-      {llmConfigSource(settings) === 'client' && (
+      {configSource === 'client' && (
         <Alert
           type="success"
           showIcon
@@ -135,7 +154,7 @@ function LlmSettingsPanel({ settings, onChange }) {
           description="服务端未配置 LLM_API_KEY 时，仅本浏览器发起的 LLM 请求会使用下方密钥。"
         />
       )}
-      {llmConfigSource(settings) === 'none' && (
+      {configSource === 'none' && (
         <Alert
           type="warning"
           showIcon
@@ -143,7 +162,7 @@ function LlmSettingsPanel({ settings, onChange }) {
           description="请由管理员配置服务端 LLM_API_KEY，或在本机填写 API Key（仅本浏览器有效）。"
         />
       )}
-      {!settings.llmServerConfigured && (
+      {configSource !== 'server' && (
         <div>
           <Typography.Text strong className="mb-1 block text-xs">
             API Key（本机，可选）

@@ -165,9 +165,10 @@ export function loadSettings() {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return { ...DEFAULT_SETTINGS }
     const parsed = sanitizePersistedSettings(JSON.parse(raw))
+    const { llmServerConfigured: _runtime, ...persisted } = parsed
     return {
       ...DEFAULT_SETTINGS,
-      ...parsed,
+      ...persisted,
       quoteExtraction: normalizeQuoteExtractionConfig(
         parsed.quoteExtraction ?? DEFAULT_SETTINGS.quoteExtraction,
       ),
