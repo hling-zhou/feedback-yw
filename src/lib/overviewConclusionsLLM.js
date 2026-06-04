@@ -20,7 +20,6 @@ import {
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
 const MIN_SUMMARY_LENGTH = PLANNING_RECOMMENDATION_LIMITS.minSummaryLength
 const MAX_RECOMMENDATIONS = PLANNING_RECOMMENDATION_LIMITS.maxItems
 
@@ -213,7 +212,6 @@ ${ctx.recommendations
 请逐条润色并输出 JSON。`
 
   const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
     temperature: 0.3,
     max_tokens: 4096,
     messages: [
@@ -237,7 +235,6 @@ ${ctx.recommendations
     recommendations,
     recommendationsLlm: {
       polishedAt: new Date().toISOString(),
-      model: settings.llmModel || DEFAULT_MODEL,
       itemIds: polishedIds,
     },
   }

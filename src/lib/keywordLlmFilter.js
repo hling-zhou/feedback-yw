@@ -13,8 +13,6 @@ import {
 } from './sentiment.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 /**
  * @param {import('./types.js').FeedbackRecord[]} feedbacks
  */
@@ -134,7 +132,6 @@ export async function filterKeywordsWithLlm(candidates, feedbacks, settings, lim
 
   try {
     const data = await llmChatCompletion(settings, {
-      model: settings.llmModel || DEFAULT_MODEL,
       temperature: 0.15,
       messages: [
         { role: 'system', content: systemPrompt },

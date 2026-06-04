@@ -7,6 +7,7 @@ import {
   normalizeLlmBaseUrl,
   parseLlmMessageContent,
   refreshLlmServerStatus,
+  resolvePayloadModel,
 } from './llmClient.js'
 
 vi.mock('./apiClient.js', () => ({
@@ -107,6 +108,17 @@ describe('refreshLlmServerStatus', () => {
   })
 })
 
+describe('resolvePayloadModel', () => {
+  it('uses settings.llmModel when set', () => {
+    expect(resolvePayloadModel({ llmModel: 'Deepseek-V3' })).toBe('Deepseek-V3')
+  })
+
+  it('returns undefined when settings model is empty (server uses LLM_MODEL)', () => {
+    expect(resolvePayloadModel({ llmModel: '' })).toBeUndefined()
+    expect(resolvePayloadModel({})).toBeUndefined()
+  })
+})
+
 describe('llmChatCompletion', () => {
   it('omits baseUrl and model when settings fields are empty', async () => {
     vi.mocked(apiFetch).mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
@@ -114,6 +126,17 @@ describe('llmChatCompletion', () => {
     const [, init] = vi.mocked(apiFetch).mock.calls[0]
     const body = JSON.parse(String(init?.body))
     expect(body).not.toHaveProperty('baseUrl')
+    expect(body).not.toHaveProperty('model')
+  })
+
+  it('ignores legacy gpt-4o-mini in body when settings model is empty', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    await llmChatCompletion(
+      { llmModel: '' },
+      { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'hi' }] },
+    )
+    const [, init] = vi.mocked(apiFetch).mock.calls[0]
+    const body = JSON.parse(String(init?.body))
     expect(body).not.toHaveProperty('model')
   })
 

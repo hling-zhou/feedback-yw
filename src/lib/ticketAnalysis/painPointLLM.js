@@ -6,8 +6,6 @@ import {
 } from '../llmClient.js'
 import { truncatePainPoint, PAIN_POINT_HARD_MAX } from './painPointExtract.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 const LEADING_PHRASE_RE =
   /^(?:用户(?:希望|建议|反馈|要求|反映|咨询)|客户(?:希望|建议|反馈|要求|反映)|请(?:帮忙|协助)|希望|建议)/
 
@@ -64,7 +62,6 @@ ${taggingText}
 请输出需求痛点。`
 
   const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
     temperature: 0.1,
     max_tokens: 256,
     messages: [

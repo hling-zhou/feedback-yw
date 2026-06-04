@@ -10,8 +10,6 @@ import {
 } from './customerRequestExtract.js'
 import { isFormattedTemplateContent, isInternalCsBackendText, isPlatformOutcomeContent, llmCustomerRequestAddsPlatformOutcome } from './customerRequestFilters.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 /**
  * @param {string} text
  */
@@ -70,7 +68,6 @@ ${taggingText}
 请输出客户请求内容精炼摘要。`
 
   const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
     temperature: 0.1,
     max_tokens: 256,
     messages: [

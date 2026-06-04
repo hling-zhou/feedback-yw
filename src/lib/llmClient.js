@@ -200,16 +200,28 @@ export function parseLlmMessageContent(content) {
 }
 
 /**
+ * 请求 model：设置页填写 > 不传（服务端 LLM_MODEL）。不在前端兜底 gpt-4o-mini。
+ * @param {AppSettings | { llmModel?: string; llmServerConfigured?: boolean }} [settings]
+ * @returns {string | undefined}
+ */
+export function resolvePayloadModel(settings) {
+  const fromSettings = settings?.llmModel?.trim()
+  if (fromSettings) return fromSettings
+  return undefined
+}
+
+/**
  * @param {AppSettings} settings
- * @param {object} body OpenAI chat completion body（model 可省略，使用设置或服务端默认）
+ * @param {object} body OpenAI chat completion body（model 可省略，使用设置或服务端 LLM_MODEL）
  */
 export async function llmChatCompletion(settings, body) {
   const payload = { ...body }
+  delete payload.model
   const baseUrl = settings?.llmBaseUrl?.trim()
   if (baseUrl) {
     payload.baseUrl = normalizeLlmBaseUrl(baseUrl)
   }
-  const model = (body.model && String(body.model).trim()) || settings?.llmModel?.trim()
+  const model = resolvePayloadModel(settings)
   if (model) {
     payload.model = model
   }
