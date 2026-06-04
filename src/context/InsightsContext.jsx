@@ -341,7 +341,7 @@ export function InsightsProvider({ children }) {
         const local = loadSettings()
         const merged = attachJourneyRules(mergeTeamAndLocalSettings(teamSettings, local))
         saveSettings(merged)
-        setSettingsState(merged)
+        setSettingsState((prev) => ({ ...merged, llmServerConfigured: prev.llmServerConfigured }))
       }
 
       setFeedbacksLoading(true)
