@@ -8,6 +8,7 @@ import { PageHeader } from './Dashboard.shared.jsx'
 import { downloadFeedbackBackupJson, parseFeedbackBackupJson } from '../lib/feedbackBackup.js'
 import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
 import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
+import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { canUseSemanticMatch } from '../lib/themeSemantic.js'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
@@ -560,6 +561,10 @@ export default function Settings() {
               </Space>
             </div>
           </Card>
+        </PermissionGate>
+
+        <PermissionGate permission="viewAudit">
+          <AuditLogPanel />
         </PermissionGate>
       </div>
     </div>

@@ -1,8 +1,5 @@
-import { Collapse, Tag, Typography } from 'antd'
-import {
-  SYSTEM_USAGE_WORKFLOW,
-  SYSTEM_USAGE_WORKFLOW_TITLE,
-} from '../../domain/systemWorkflow.js'
+import { Tag, Typography } from 'antd'
+import { SYSTEM_USAGE_WORKFLOW } from '../../domain/systemWorkflow.js'
 
 /** @typedef {'full' | 'compact'} SystemUsageWorkflowVariant */
 
@@ -14,38 +11,23 @@ import {
 export default function SystemUsageWorkflow({ variant = 'full', className = '' }) {
   if (variant === 'compact') {
     return (
-      <Collapse
-        className={className}
-        bordered={false}
-        items={[
-          {
-            key: 'workflow',
-            label: (
-              <span className="text-sm font-medium text-ink-800">{SYSTEM_USAGE_WORKFLOW_TITLE}</span>
-            ),
-            children: (
-              <ol className="mb-0 space-y-3 pl-0">
-                {SYSTEM_USAGE_WORKFLOW.map((item, index) => (
-                  <WorkflowStep
-                    key={item.step}
-                    item={item}
-                    tone="light"
-                    showConnector={index < SYSTEM_USAGE_WORKFLOW.length - 1}
-                  />
-                ))}
-              </ol>
-            ),
-          },
-        ]}
-      />
+      <div className={className}>
+        <ol className="mb-0 space-y-3 pl-0">
+          {SYSTEM_USAGE_WORKFLOW.map((item, index) => (
+            <WorkflowStep
+              key={item.step}
+              item={item}
+              tone="light"
+              showConnector={index < SYSTEM_USAGE_WORKFLOW.length - 1}
+            />
+          ))}
+        </ol>
+      </div>
     )
   }
 
   return (
     <div className={className}>
-      <Typography.Text className="mb-4 block border-l-2 border-brand-500 pl-3 text-sm font-medium text-brand-100">
-        {SYSTEM_USAGE_WORKFLOW_TITLE}
-      </Typography.Text>
       <ol className="mb-0 space-y-0 pl-0">
         {SYSTEM_USAGE_WORKFLOW.map((item, index) => (
           <WorkflowStep
@@ -70,7 +52,7 @@ function WorkflowStep({ item, tone, showConnector = false }) {
   const isDark = tone === 'dark'
 
   return (
-    <li className="relative list-none pb-5 last:pb-0">
+    <li className="relative list-none pb-4 last:pb-0 lg:pb-5">
       {showConnector ? (
         <span
           className={

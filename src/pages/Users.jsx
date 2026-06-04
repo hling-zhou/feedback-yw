@@ -13,13 +13,12 @@ import {
   Typography,
   message,
 } from 'antd'
-import { PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { useAuth } from '../context/AuthContext.jsx'
-import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import { parseUserImportFile } from '../lib/userImport.js'
 import { downloadUserImportTemplate } from '../lib/userImportTemplate.js'
 
@@ -268,6 +267,9 @@ export default function Users() {
           onChange={(e) => setUsernameQuery(e.target.value)}
           className="max-w-xs"
         />
+        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadUsers()}>
+          刷新
+        </Button>
         {usernameQuery.trim() ? (
           <Typography.Text type="secondary" className="text-sm">
             共 {filteredUsers.length} / {users.length} 人
@@ -283,7 +285,6 @@ export default function Users() {
         pagination={{ pageSize: 10 }}
       />
 
-      {currentUser?.role === 'admin' && <AuditLogPanel />}
 
       <Modal
         title={editing ? '编辑用户' : '新增用户'}

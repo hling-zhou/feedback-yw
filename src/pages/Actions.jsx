@@ -17,7 +17,15 @@ import {
   Typography,
   message,
 } from 'antd'
-import { CopyOutlined, DownloadOutlined, EditOutlined, PlusOutlined, QuestionCircleOutlined, UploadOutlined } from '@ant-design/icons'
+import {
+  CopyOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+  QuestionCircleOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+} from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { PageHeader } from './Dashboard.shared.jsx'
 import {
@@ -27,10 +35,10 @@ import {
   ACTION_ITEM_DETAIL_MAX_LENGTH,
   aggregateActionItemsByProductStatus,
   createEmptyActionItemStatusCounts,
-  deriveActionItemStatusFromSchedule,
   getActionItemStatusSelectOptions,
   isActionItemLocked,
   actionItemStatusRequiresEmptySchedule,
+  actionItemStatusRequiresSchedule,
 } from '../domain/actionItem.js'
 import { ACTIONS_PAGE_SUBTITLE_HINT, REQUIREMENT_TICKET_FIELD_TIP } from '../domain/establishedActionHints.js'
 import {
@@ -224,6 +232,11 @@ export default function Actions() {
   )
   const [forceSaving, setForceSaving] = useState(false)
   const baseRevisionRef = useRef(0)
+  /** 编辑弹窗打开时的状态，用于状态下拉始终展示全部可选项 */
+  const editStatusBaseRef = useRef(/** @type {ActionItemStatus | null} */ (null))
+  /** 打开弹窗时「进行中」的排期（dayjs），切走再切回进行中时恢复 */
+  const editScheduleAtBaseRef = useRef(/** @type {import('dayjs').Dayjs | null} */ (null))
+  const [listRefreshing, setListRefreshing] = useState(false)
   const importInputRef = useRef(/** @type {HTMLInputElement | null} */ (null))
   const watchedSchedule = Form.useWatch('scheduleAt', editForm)
   const watchedEditStatus = Form.useWatch('status', editForm)
@@ -231,7 +244,7 @@ export default function Actions() {
   const [addOpen, setAddOpen] = useState(false)
   const [addForm] = Form.useForm()
   const [adding, setAdding] = useState(false)
-  const watchedAddSchedule = Form.useWatch('scheduleAt', addForm)
+  const watchedAddStatus = Form.useWatch('status', addForm)
 
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState(
@@ -239,30 +252,33 @@ export default function Actions() {
   )
   const [importing, setImporting] = useState(false)
 
-  const hasEditSchedule = useMemo(() => {
-    if (!watchedSchedule) return false
-    if (dayjs.isDayjs(watchedSchedule)) return watchedSchedule.isValid()
-    return Boolean(String(watchedSchedule).trim())
-  }, [watchedSchedule])
-
   const editLocked = Boolean(editing && isActionItemLocked(editing.status))
 
   const editStatusOptions = useMemo(() => {
     if (!editing) return FILTER_STATUS_OPTIONS
-    const base = watchedEditStatus ?? editing.status
+    const base = editStatusBaseRef.current ?? editing.status
     return getActionItemStatusSelectOptions(base)
-  }, [editing, watchedEditStatus])
+  }, [editing?.id, editing?.status])
 
   const editScheduleDisabled = useMemo(() => {
     const status = watchedEditStatus ?? editing?.status
     return editLocked || actionItemStatusRequiresEmptySchedule(status)
   }, [editLocked, watchedEditStatus, editing?.status])
 
-  const hasAddSchedule = useMemo(() => {
-    if (!watchedAddSchedule) return false
-    if (dayjs.isDayjs(watchedAddSchedule)) return watchedAddSchedule.isValid()
-    return Boolean(String(watchedAddSchedule).trim())
-  }, [watchedAddSchedule])
+  const editScheduleRequired = useMemo(
+    () => actionItemStatusRequiresSchedule(watchedEditStatus ?? editing?.status ?? 'pending_evaluation'),
+    [watchedEditStatus, editing?.status],
+  )
+
+  const addScheduleDisabled = useMemo(
+    () => actionItemStatusRequiresEmptySchedule(watchedAddStatus ?? 'pending_evaluation'),
+    [watchedAddStatus],
+  )
+
+  const addScheduleRequired = useMemo(
+    () => actionItemStatusRequiresSchedule(watchedAddStatus ?? 'pending_evaluation'),
+    [watchedAddStatus],
+  )
 
   const productOptions = useMemo(() => {
     return listProducts(feedbacks).map((p) => ({
@@ -410,6 +426,18 @@ export default function Actions() {
     }
   }
 
+  const handleRefreshList = async () => {
+    setListRefreshing(true)
+    try {
+      await Promise.all([loadItems(), loadStats()])
+      message.success('已刷新')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '加载失败')
+    } finally {
+      setListRefreshing(false)
+    }
+  }
+
   const parseScheduleForPicker = (value) => {
     const normalized = normalizeActionSchedule(value)
     if (!normalized) return null
@@ -417,16 +445,24 @@ export default function Actions() {
     return parsed.isValid() ? parsed : null
   }
 
+  const syncEditModalBaseline = (record) => {
+    editStatusBaseRef.current = record.status
+    const scheduleAt = parseScheduleForPicker(record.scheduleAt)
+    editScheduleAtBaseRef.current = record.status === 'in_progress' ? scheduleAt : null
+    return scheduleAt
+  }
+
   const openEdit = (record) => {
     setEditing(record)
     baseRevisionRef.current = getActionItemRevision(record)
     setEditStale(false)
     setConflictOpen(false)
+    const scheduleAt = syncEditModalBaseline(record)
     editForm.setFieldsValue({
       content: record.content,
       detail: record.detail || '',
       status: record.status,
-      scheduleAt: parseScheduleForPicker(record.scheduleAt),
+      scheduleAt,
       linkedRequirementTicketIds: formatTicketIdsForInput(record.linkedRequirementTicketIds),
     })
     setEditOpen(true)
@@ -461,21 +497,18 @@ export default function Actions() {
     sharedBackgroundTask,
   ])
 
-  const handleScheduleChange = (date) => {
-    const currentStatus = editForm.getFieldValue('status')
-    if (actionItemStatusRequiresEmptySchedule(currentStatus)) return
-    if (!date) {
-      editForm.setFieldsValue({ status: 'pending_evaluation' })
-      return
-    }
-    if (currentStatus === 'pending_evaluation') {
-      editForm.setFieldsValue({ status: 'in_progress' })
-    }
-  }
-
   const handleEditStatusChange = (status) => {
     if (actionItemStatusRequiresEmptySchedule(status)) {
       editForm.setFieldsValue({ scheduleAt: null })
+    }
+    if (actionItemStatusRequiresSchedule(status)) {
+      if (
+        editStatusBaseRef.current === 'in_progress' &&
+        editScheduleAtBaseRef.current != null
+      ) {
+        editForm.setFieldsValue({ scheduleAt: editScheduleAtBaseRef.current })
+      }
+      editForm.validateFields(['scheduleAt']).catch(() => {})
     }
   }
 
@@ -493,9 +526,6 @@ export default function Actions() {
         linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
       }
     }
-    if (!scheduleAt) {
-      status = deriveActionItemStatusFromSchedule('')
-    }
     return {
       content: values.content.trim(),
       detail: String(values.detail ?? '').trim(),
@@ -506,11 +536,12 @@ export default function Actions() {
   }
 
   const applyEditFormFromItem = (item) => {
+    const scheduleAt = syncEditModalBaseline(item)
     editForm.setFieldsValue({
       content: item.content,
       detail: item.detail || '',
       status: item.status,
-      scheduleAt: parseScheduleForPicker(item.scheduleAt),
+      scheduleAt,
       linkedRequirementTicketIds: formatTicketIdsForInput(item.linkedRequirementTicketIds),
     })
     baseRevisionRef.current = getActionItemRevision(item)
@@ -604,7 +635,7 @@ export default function Actions() {
     const productName =
       productOptions.find((option) => option.value === productKey)?.label?.trim() || ''
     const scheduleAt = values.scheduleAt ? dayjs(values.scheduleAt).format('YYYY-MM-DD') : ''
-    const status = scheduleAt ? values.status : deriveActionItemStatusFromSchedule('')
+    const status = values.status ?? 'pending_evaluation'
 
     setAdding(true)
     try {
@@ -768,20 +799,6 @@ export default function Actions() {
       ),
     },
     {
-      title: '首次提出时间',
-      dataIndex: 'firstProposedAt',
-      width: 120,
-      render: (text, record) => (
-        <span
-          className={
-            record.status === 'pending_evaluation' ? scheduleWarningClass(record.warningLevel) : undefined
-          }
-        >
-          {text || '—'}
-        </span>
-      ),
-    },
-    {
       title: '排期时间',
       key: 'scheduleAt',
       width: 120,
@@ -807,6 +824,20 @@ export default function Actions() {
       dataIndex: 'status',
       width: 90,
       render: (status) => <ActionItemStatusTag status={status} />,
+    },
+    {
+      title: '首次提出时间',
+      dataIndex: 'firstProposedAt',
+      width: 120,
+      render: (text, record) => (
+        <span
+          className={
+            record.status === 'pending_evaluation' ? scheduleWarningClass(record.warningLevel) : undefined
+          }
+        >
+          {text || '—'}
+        </span>
+      ),
     },
     {
       title: '最近更新时间',
@@ -991,10 +1022,9 @@ export default function Actions() {
             onSearch={() => setPage(1)}
           />
           <Button
-            onClick={() => {
-              loadItems()
-              loadStats()
-            }}
+            icon={<ReloadOutlined />}
+            loading={listRefreshing}
+            onClick={() => void handleRefreshList()}
           >
             刷新
           </Button>
@@ -1058,25 +1088,42 @@ export default function Actions() {
           <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
             <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" />
           </Form.Item>
-          <Form.Item name="scheduleAt" label="排期">
-            <DatePicker
-              className="w-full"
-              format="YYYY-MM-DD"
-              placeholder="留空 = 待评估"
-              allowClear
-              onChange={(date) => {
-                if (!date) {
-                  addForm.setFieldsValue({ status: 'pending_evaluation' })
-                  return
+          <Form.Item name="status" label="状态" initialValue="pending_evaluation" rules={[{ required: true }]}>
+            <Select
+              options={getActionItemStatusSelectOptions('pending_evaluation')}
+              onChange={(status) => {
+                if (actionItemStatusRequiresEmptySchedule(status)) {
+                  addForm.setFieldsValue({ scheduleAt: null })
                 }
-                if (addForm.getFieldValue('status') === 'pending_evaluation') {
-                  addForm.setFieldsValue({ status: 'in_progress' })
+                if (actionItemStatusRequiresSchedule(status)) {
+                  addForm.validateFields(['scheduleAt']).catch(() => {})
                 }
               }}
             />
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue="pending_evaluation" rules={[{ required: true }]}>
-            <Select options={getActionItemStatusSelectOptions('pending_evaluation')} disabled={!hasAddSchedule} />
+          <Form.Item
+            name="scheduleAt"
+            label="排期时间"
+            dependencies={['status']}
+            rules={
+              addScheduleRequired
+                ? [{ required: true, message: '进行中须填写排期时间' }]
+                : []
+            }
+          >
+            <DatePicker
+              className="w-full"
+              format="YYYY-MM-DD"
+              placeholder={
+                addScheduleDisabled
+                  ? '当前状态无需排期'
+                  : addScheduleRequired
+                    ? '请选择排期（必填）'
+                    : undefined
+              }
+              allowClear
+              disabled={addScheduleDisabled}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -1188,25 +1235,35 @@ export default function Actions() {
           <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
             <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" disabled={editLocked} />
           </Form.Item>
-          <Form.Item name="scheduleAt" label="排期">
+          <Form.Item name="status" label="状态" rules={[{ required: true }]}>
+            <Select
+              options={editStatusOptions}
+              disabled={editLocked}
+              onChange={handleEditStatusChange}
+            />
+          </Form.Item>
+          <Form.Item
+            name="scheduleAt"
+            label="排期时间"
+            dependencies={['status']}
+            rules={
+              editScheduleRequired
+                ? [{ required: true, message: '进行中须填写排期时间' }]
+                : []
+            }
+          >
             <DatePicker
               className="w-full"
               format="YYYY-MM-DD"
               placeholder={
                 editScheduleDisabled && !editLocked
                   ? '当前状态无需排期'
-                  : '留空 = 待评估'
+                  : editScheduleRequired
+                    ? '请选择排期（必填）'
+                    : undefined
               }
               allowClear
               disabled={editScheduleDisabled}
-              onChange={handleScheduleChange}
-            />
-          </Form.Item>
-          <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select
-              options={editStatusOptions}
-              disabled={editLocked}
-              onChange={handleEditStatusChange}
             />
           </Form.Item>
         </Form>

@@ -40,9 +40,9 @@ export const ACTION_ITEM_LIST_HEADERS = [
   '举措详情',
   '关联反馈(本周期)',
   '需求工单',
-  '首次提出时间',
   '排期时间',
   '状态',
+  '首次提出时间',
   '最近更新时间',
   '最近更新人员',
 ]
@@ -156,9 +156,9 @@ export function buildActionItemListRows(items, periodTicketIdSet) {
           举措详情: item.detail || '',
           '关联反馈(本周期)': linkedInPeriod.join('\n'),
           需求工单: (item.linkedRequirementTicketIds || []).join('; '),
-          首次提出时间: item.firstProposedAt || '',
           排期时间: item.scheduleAt?.trim() || '',
           状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
+          首次提出时间: item.firstProposedAt || '',
           最近更新时间: formatActionItemUpdatedAtDisplay(item),
           最近更新人员: formatActionItemUpdatedByDisplay(item),
         }

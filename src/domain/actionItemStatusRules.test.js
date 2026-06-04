@@ -59,6 +59,30 @@ describe('actionItemStatusRules', () => {
     )
   })
 
+  it('rejects in_progress without schedule on create and transition', () => {
+    const created = validateActionItemCreate({
+      content: '举措D',
+      status: 'in_progress',
+      scheduleAt: '',
+    })
+    expect(created.ok).toBe(false)
+    if (created.ok) return
+    expect(created.error).toMatch(/排期/)
+
+    const suspended = validateActionItemCreate({
+      content: '举措E',
+      status: 'suspended',
+      scheduleAt: '',
+    })
+    expect(suspended.ok).toBe(true)
+    if (!suspended.ok) return
+
+    const toInProgress = mergeActionItemPatch(suspended.item, { status: 'in_progress' })
+    expect(toInProgress.ok).toBe(false)
+    if (toInProgress.ok) return
+    expect(toInProgress.error).toMatch(/排期/)
+  })
+
   it('abnormal_terminated from in_progress clears schedule', () => {
     const created = validateActionItemCreate({
       content: '举措C',

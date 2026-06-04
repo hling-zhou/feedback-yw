@@ -1,11 +1,11 @@
-import { requireAdmin } from '../middleware.js'
+import { requirePermission } from '../middleware.js'
 import { listAuditLogs } from '../audit.js'
 
 /**
  * @param {import('fastify').FastifyInstance} app
  */
 export function registerAuditRoutes(app) {
-  app.get('/api/audit', { preHandler: requireAdmin() }, async (request, reply) => {
+  app.get('/api/audit', { preHandler: requirePermission('viewAudit') }, async (request, reply) => {
     const q = /** @type {{ days?: string }} */ (request.query || {})
     const days = q.days != null ? Number(q.days) : 7
     try {

@@ -40,9 +40,9 @@ export default function Login() {
   }
 
   return (
-    <main className="min-h-screen bg-ink-50 text-ink-800">
-      <div className="grid min-h-screen md:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden min-h-screen overflow-hidden bg-ink-900 px-10 py-8 text-white md:flex md:flex-col">
+    <main className="min-h-screen bg-ink-50 text-ink-800 md:h-screen md:overflow-hidden">
+      <div className="grid min-h-screen md:h-full md:max-h-screen md:grid-cols-[1.05fr_0.95fr] md:overflow-hidden">
+        <section className="relative hidden h-full min-h-0 overflow-hidden bg-ink-900 px-8 py-6 text-white md:flex md:flex-col lg:px-10 lg:py-8">
           <div
             className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(79,70,229,0.28),transparent_42%),radial-gradient(circle_at_82%_8%,rgba(79,70,229,0.16),transparent_40%),linear-gradient(160deg,#0B0F19_0%,#111827_55%,#1F2937_100%)]"
             aria-hidden
@@ -60,9 +60,9 @@ export default function Login() {
             </span>
             <Typography.Text className="text-sm font-medium text-white/85">Feedback Insights</Typography.Text>
           </div>
-          <div className="relative mt-8 flex min-h-0 flex-1 flex-col gap-6">
+          <div className="relative mt-6 flex min-h-0 flex-1 flex-col gap-4 lg:mt-8 lg:gap-6">
             <div className="max-w-lg shrink-0">
-              <h1 className="text-3xl font-semibold leading-tight tracking-tight">用户反馈洞察</h1>
+              <h1 className="text-2xl font-semibold leading-tight tracking-tight lg:text-3xl">用户反馈洞察</h1>
               <p className="mt-3 text-sm leading-relaxed text-white/70">
                 以数为镜，从万千反馈的字里行间，捕捉产品优化的线索
               </p>
@@ -74,8 +74,8 @@ export default function Login() {
           </div>
         </section>
 
-        <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8">
-          <div className="w-full max-w-md">
+        <section className="flex min-h-screen items-start justify-center overflow-y-auto px-5 py-8 sm:px-8 md:h-full md:min-h-0 md:items-center md:py-6 lg:py-10">
+          <div className="my-auto w-full max-w-md py-2 md:py-4">
             <div className="mb-4 md:hidden">
               <Typography.Title level={2} className="!mb-2 !text-ink-900">
                 用户反馈洞察

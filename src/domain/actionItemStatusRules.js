@@ -41,6 +41,24 @@ export function actionItemStatusRequiresEmptySchedule(status) {
   return ACTION_ITEM_NO_SCHEDULE_STATUSES.includes(status)
 }
 
+/** @param {ActionItemStatus} status */
+export function actionItemStatusRequiresSchedule(status) {
+  return status === 'in_progress'
+}
+
+/**
+ * @param {ActionItemStatus} status
+ * @param {string | undefined | null} scheduleAt
+ * @returns {string | null}
+ */
+export function validateActionItemScheduleForStatus(status, scheduleAt) {
+  if (!actionItemStatusRequiresSchedule(status)) return null
+  if (!String(scheduleAt ?? '').trim()) {
+    return '「进行中」须填写排期时间'
+  }
+  return null
+}
+
 /**
  * @param {ActionItemStatus} from
  * @param {ActionItemStatus} to

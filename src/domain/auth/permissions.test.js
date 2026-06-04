@@ -72,4 +72,10 @@ describe('auth permissions', () => {
   it('role permission lists are defined', () => {
     expect(ROLE_PERMISSIONS.admin.length).toBeGreaterThan(ROLE_PERMISSIONS.viewer.length)
   })
+
+  it('all roles can view audit log', () => {
+    for (const role of ['admin', 'editor', 'partial_editor', 'viewer']) {
+      expect(hasPermission(role, 'viewAudit')).toBe(true)
+    }
+  })
 })

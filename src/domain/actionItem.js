@@ -7,6 +7,7 @@ import {
   isActionItemLocked,
   listSelectableActionItemStatuses,
   validateActionItemPatchAllowed,
+  validateActionItemScheduleForStatus,
   validateActionItemStatusTransition,
 } from './actionItemStatusRules.js'
 
@@ -16,8 +17,10 @@ export {
   ACTION_ITEM_NO_SCHEDULE_STATUSES,
   ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES,
   actionItemStatusRequiresEmptySchedule,
+  actionItemStatusRequiresSchedule,
   isActionItemLocked,
   listSelectableActionItemStatuses,
+  validateActionItemScheduleForStatus,
 } from './actionItemStatusRules.js'
 /**
  * 举措库 ActionItem — 领域模型与状态规则。
@@ -241,6 +244,8 @@ export function validateActionItemCreate(input) {
       error: `「${ACTION_ITEM_STATUS_LABELS[item.status]}」不能填写排期`,
     }
   }
+  const scheduleRequiredError = validateActionItemScheduleForStatus(item.status, item.scheduleAt)
+  if (scheduleRequiredError) return { ok: false, error: scheduleRequiredError }
   return { ok: true, item }
 }
 
@@ -312,6 +317,9 @@ export function mergeActionItemPatch(existing, patch) {
   if (actionItemStatusRequiresEmptySchedule(status) && scheduleAt) {
     return { ok: false, error: `「${ACTION_ITEM_STATUS_LABELS[status]}」不能填写排期` }
   }
+
+  const scheduleRequiredError = validateActionItemScheduleForStatus(status, scheduleAt)
+  if (scheduleRequiredError) return { ok: false, error: scheduleRequiredError }
 
   if (ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES.includes(status)) {
     effectivePatch = applyActionItemStatusSideEffects(effectivePatch, status)

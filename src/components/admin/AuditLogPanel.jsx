@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Descriptions, Modal, Table, Typography } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
 import { apiFetch } from '../../lib/apiClient.js'
 
 /** @typedef {{ id: string; userId?: string; username?: string; action: string; detail?: Record<string, unknown>; createdAt?: string }} AuditEntry */
@@ -118,9 +119,19 @@ export default function AuditLogPanel() {
 
   return (
     <>
-      <Card className="mt-6" title="操作审计（最近 7 天）">
+      <Card
+        className="mt-6"
+        title={
+          <div className="flex flex-wrap items-center gap-2">
+            <span>操作审计（最近 7 天）</span>
+            <Button icon={<ReloadOutlined />} loading={loading} size="small" onClick={() => void load()}>
+              刷新
+            </Button>
+          </div>
+        }
+      >
         <Typography.Text type="secondary" className="mb-3 block text-xs">
-          记录导入、清空、配置发布与用户变更；仅管理员可查看。
+          记录导入、清空、配置发布与用户变更等系统操作。
         </Typography.Text>
         <Table
           rowKey="id"

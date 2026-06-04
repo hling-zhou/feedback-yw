@@ -12,6 +12,7 @@
  *   | 'configureLlmPersonal'
  *   | 'editOrderVolumes'
  *   | 'manageTeamSettings'
+ *   | 'viewAudit'
  * )} PermissionCode */
 
 export const ROLES = /** @type {const} */ (['admin', 'editor', 'partial_editor', 'viewer'])
@@ -37,9 +38,11 @@ export const ROLE_PERMISSIONS = {
     'configureLlmPersonal',
     'editOrderVolumes',
     'manageTeamSettings',
+    'viewAudit',
   ],
   editor: [
     'view',
+    'viewAudit',
     'import',
     'retag',
     'editRecord',
@@ -48,9 +51,10 @@ export const ROLE_PERMISSIONS = {
     'deleteData',
     'configureLlmPersonal',
     'editOrderVolumes',
+    'viewAudit',
   ],
-  partial_editor: ['view', 'editRecord', 'export', 'configureLlmPersonal'],
-  viewer: ['view', 'export', 'configureLlmPersonal'],
+  partial_editor: ['view', 'viewAudit', 'editRecord', 'export', 'configureLlmPersonal'],
+  viewer: ['view', 'viewAudit', 'export', 'configureLlmPersonal'],
 }
 
 /** @type {Record<UserRole, string[]>} */
