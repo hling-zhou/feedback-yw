@@ -826,8 +826,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   <Typography.Text strong className="text-xs">
                     确立举措
                   </Typography.Text>
-                  <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP}>
-                    <QuestionCircleOutlined className="cursor-help text-xs text-ink-400" />
+                  <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
+                    <span className="inline-flex cursor-help align-middle">
+                      <QuestionCircleOutlined className="text-xs text-ink-400" />
+                    </span>
                   </Tooltip>
                 </div>
                 <Form layout="vertical">
@@ -952,8 +954,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                     <Typography.Text strong className="text-xs">
                       确立举措
                     </Typography.Text>
-                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP}>
-                      <QuestionCircleOutlined className="cursor-help text-xs text-ink-400" />
+                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
+                      <span className="inline-flex cursor-help align-middle">
+                        <QuestionCircleOutlined className="text-xs text-ink-400" />
+                      </span>
                     </Tooltip>
                   </div>
                   <Descriptions

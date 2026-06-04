@@ -148,9 +148,7 @@ export function parseActionItemImportRow(row, options = {}) {
   )
   const linkedDataSources = parseLinkedDataSourcesCell(cell(row, '来源'))
 
-  const problemTypeSnapshot =
-    cell(row, '问题类型') ||
-    cell(row, '用户旅程一级')
+  const problemTypeSnapshot = cell(row, '问题类型')
 
   const validated = validateActionItemCreate({
     content,

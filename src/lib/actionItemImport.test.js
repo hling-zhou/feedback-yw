@@ -45,7 +45,6 @@ describe('actionItemImport', () => {
         产品名称: 'VPC',
         举措: '优化控制台',
         问题类型: '',
-        用户旅程一级: '',
         来源: '',
         '关联反馈(本周期)': '',
       },
@@ -73,17 +72,6 @@ describe('actionItemImport', () => {
     if (parsed.ok) {
       expect(parsed.item.content).toBe('补充文档说明')
       expect(parsed.item.painPointSnapshot).toBe('')
-    }
-  })
-
-  it('parseActionItemImportRow maps legacy 用户旅程一级 to problemType when empty', () => {
-    const parsed = parseActionItemImportRow({
-      举措: '补充文档',
-      用户旅程一级: '配置与操作',
-    })
-    expect(parsed.ok).toBe(true)
-    if (parsed.ok) {
-      expect(parsed.item.problemTypeSnapshot).toBe('配置与操作')
     }
   })
 

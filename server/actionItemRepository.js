@@ -1,9 +1,10 @@
 import { getDb } from './db.js'
 import { bumpDataRevision } from './dataRevision.js'
-import { isActionItemStatus, unlinkTicketFromActionItem, recomputeActionItemLinkedDataSources } from '../src/domain/actionItem.js'
+import { isActionItemStatus, unlinkTicketFromActionItem, recomputeActionItemLinkedDataSources, createEmptyActionItemStatusCounts } from '../src/domain/actionItem.js'
 import {
   actionItemHasLinkedTicketInPeriod,
   buildTicketIdSetFromRecords,
+  linkedTicketIdsInPeriod,
 } from '../src/domain/actionItemPeriodFilter.js'
 import {
   applyActionItemWriteMetadata,
@@ -276,7 +277,9 @@ function countActionItemsByStatus(query = {}) {
  * @property {string} productKey
  * @property {string} productName
  * @property {Record<ActionItemStatus, number>} counts
+ * @property {Record<ActionItemStatus, number>} linkedFeedbackCounts
  * @property {number} total
+ * @property {number} linkedFeedbackTotal
  */
 
 /**
@@ -285,6 +288,9 @@ function countActionItemsByStatus(query = {}) {
  */
 function aggregateActionItemsByProductStatus(query = {}) {
   const { items } = getFilteredActionItems(query)
+  const periodTicketIdSet = query.insightPeriodId?.trim()
+    ? getTicketIdsForInsightPeriod(query.insightPeriodId)
+    : null
   /** @type {Map<string, ActionItemProductStatusRow>} */
   const map = new Map()
 
@@ -296,19 +302,19 @@ function aggregateActionItemsByProductStatus(query = {}) {
       row = {
         productKey,
         productName,
-        counts: {
-          pending_evaluation: 0,
-          in_progress: 0,
-          completed: 0,
-          suspended: 0,
-        },
+        counts: createEmptyActionItemStatusCounts(),
+        linkedFeedbackCounts: createEmptyActionItemStatusCounts(),
         total: 0,
+        linkedFeedbackTotal: 0,
       }
       map.set(productKey, row)
     }
     if (isActionItemStatus(item.status)) {
       row.counts[item.status] += 1
       row.total += 1
+      const feedbackCount = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet).length
+      row.linkedFeedbackCounts[item.status] += feedbackCount
+      row.linkedFeedbackTotal += feedbackCount
     }
   }
 

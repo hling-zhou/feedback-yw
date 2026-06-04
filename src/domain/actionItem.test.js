@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ACTION_ITEM_STATUS_LABELS,
+  aggregateActionItemsByProductStatus,
   computeScheduleChanged,
   deriveActionItemStatusFromSchedule,
   linkTicketToActionItem,
@@ -143,6 +144,39 @@ describe('actionItem', () => {
     const next = recomputeActionItemLinkedDataSources(unlinked, map)
     expect(next.linkedTicketIds).toEqual(['T-2'])
     expect(next.linkedDataSources).toEqual(['consultation_ticket'])
+  })
+
+  it('aggregateActionItemsByProductStatus sums linked feedback by status', () => {
+    const rows = aggregateActionItemsByProductStatus(
+      [
+        {
+          id: 'a1',
+          productKey: 'vpc',
+          productName: 'VPC',
+          content: 'A',
+          status: 'in_progress',
+          linkedTicketIds: ['T-1', 'T-2'],
+          createdAt: '',
+          updatedAt: '',
+        },
+        {
+          id: 'a2',
+          productKey: 'vpc',
+          productName: 'VPC',
+          content: 'B',
+          status: 'pending_evaluation',
+          linkedTicketIds: ['T-3'],
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+      { periodTicketIdSet: new Set(['T-1', 'T-3']) },
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].counts.in_progress).toBe(1)
+    expect(rows[0].linkedFeedbackCounts.in_progress).toBe(1)
+    expect(rows[0].linkedFeedbackCounts.pending_evaluation).toBe(1)
+    expect(rows[0].linkedFeedbackTotal).toBe(2)
   })
 
   it('status labels cover all statuses', () => {

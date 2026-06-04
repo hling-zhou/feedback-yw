@@ -50,13 +50,17 @@ describe('actionItemExport', () => {
         productKey: 'vpc',
         productName: 'VPC',
         counts: { pending_evaluation: 0, in_progress: 1, completed: 0, suspended: 0 },
+        linkedFeedbackCounts: { pending_evaluation: 0, in_progress: 2, completed: 0, suspended: 0 },
         total: 1,
+        linkedFeedbackTotal: 2,
       },
       {
         productKey: 'eip',
         productName: 'EIP',
         counts: { pending_evaluation: 1, in_progress: 0, completed: 0, suspended: 0 },
+        linkedFeedbackCounts: { pending_evaluation: 1, in_progress: 0, completed: 0, suspended: 0 },
         total: 1,
+        linkedFeedbackTotal: 1,
       },
     ])
     expect(Object.keys(rows[0])).toEqual(ACTION_ITEM_STATS_HEADERS)
@@ -64,7 +68,9 @@ describe('actionItemExport', () => {
       产品名称: '合计',
       待评估: 1,
       进行中: 1,
+      '进行中(关联反馈)': 2,
       合计: 2,
+      关联反馈合计: 3,
     })
   })
 

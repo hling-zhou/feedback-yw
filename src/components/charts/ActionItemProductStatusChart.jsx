@@ -22,6 +22,7 @@ function buildChartData(rows) {
     ...ACTION_ITEM_STATUSES.reduce(
       (acc, status) => {
         acc[status] = row.counts?.[status] ?? 0
+        acc[`${status}Feedback`] = row.linkedFeedbackCounts?.[status] ?? 0
         return acc
       },
       /** @type {Record<string, number>} */ ({}),
@@ -91,11 +92,14 @@ export default function ActionItemProductStatusChart({ data }) {
           />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} width={36} />
           <ChartTooltip
-            formatter={(value, name) => [
-              `${value ?? 0} 条`,
-              ACTION_ITEM_STATUS_LABELS[/** @type {keyof typeof ACTION_ITEM_STATUS_LABELS} */ (name)] ||
-                name,
-            ]}
+            formatter={(value, name, item) => {
+              const status = /** @type {keyof typeof ACTION_ITEM_STATUS_LABELS} */ (name)
+              const feedback = item?.payload?.[`${status}Feedback`] ?? 0
+              return [
+                `${value ?? 0} 条举措，关联反馈 ${feedback} 条`,
+                ACTION_ITEM_STATUS_LABELS[status] || name,
+              ]
+            }}
           />
           <Legend
             wrapperStyle={{ fontSize: 12 }}

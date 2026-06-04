@@ -17,7 +17,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { CopyOutlined, DownloadOutlined, EditOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
+import { CopyOutlined, DownloadOutlined, EditOutlined, PlusOutlined, QuestionCircleOutlined, UploadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { PageHeader } from './Dashboard.shared.jsx'
 import {
@@ -28,7 +28,7 @@ import {
   aggregateActionItemsByProductStatus,
   deriveActionItemStatusFromSchedule,
 } from '../domain/actionItem.js'
-import { ACTIONS_PAGE_SUBTITLE_HINT } from '../domain/establishedActionHints.js'
+import { ACTIONS_PAGE_SUBTITLE_HINT, REQUIREMENT_TICKET_FIELD_TIP } from '../domain/establishedActionHints.js'
 import {
   buildTicketIdSetFromRecords,
   linkedTicketIdsInPeriod,
@@ -88,6 +88,30 @@ function scheduleWarningClass(level) {
   return undefined
 }
 
+const LINKED_FEEDBACK_HEADER_HINT =
+  '用户原始反馈（投诉/咨询工单、用后即评等）'
+const REQUIREMENT_TICKET_HEADER_HINT = `需求工单号：${REQUIREMENT_TICKET_FIELD_TIP}`
+
+/**
+ * @param {Object} props
+ * @param {string} props.title
+ * @param {string} props.hint
+ * @param {import('react').ReactNode} [props.extra]
+ */
+function ColumnTitleWithHint({ title, hint, extra }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span>{title}</span>
+      {extra}
+      <Tooltip title={hint} getPopupContainer={() => document.body}>
+        <span className="inline-flex cursor-help align-middle" aria-label={`${title}说明`}>
+          <QuestionCircleOutlined className="text-xs text-ink-400" />
+        </span>
+      </Tooltip>
+    </span>
+  )
+}
+
 function LinkedTicketsCell({ ticketIds, title = '关联反馈' }) {
   const ids = ticketIds || []
   if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
@@ -122,6 +146,25 @@ function LinkedTicketsCell({ ticketIds, title = '关联反馈' }) {
         {ids.length} 个工单
       </Button>
     </Popover>
+  )
+}
+
+function RequirementTicketsCell({ ticketIds }) {
+  const ids = ticketIds || []
+  if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
+
+  const text = ids.join('; ')
+
+  return (
+    <Tooltip title={text}>
+      <Typography.Text
+        className="text-xs"
+        copyable={{ text, tooltips: ['复制', '已复制'] }}
+        ellipsis
+      >
+        {text}
+      </Typography.Text>
+    </Tooltip>
   )
 }
 
@@ -268,7 +311,24 @@ export default function Actions() {
       const total = ACTION_ITEM_STATUSES.reduce((sum, status) => sum + (counts[status] ?? 0), 0)
       if (!byProduct.length && total > 0) {
         const result = await listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
-        byProduct = aggregateActionItemsByProductStatus(result.items)
+        byProduct = aggregateActionItemsByProductStatus(result.items, {
+          periodTicketIdSet: periodTicketIdSet,
+        })
+      } else if (byProduct.some((row) => !row.linkedFeedbackCounts)) {
+        const result = await listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
+        const enriched = aggregateActionItemsByProductStatus(result.items, {
+          periodTicketIdSet: periodTicketIdSet,
+        })
+        const enrichedByKey = new Map(enriched.map((row) => [row.productKey, row]))
+        byProduct = byProduct.map((row) => {
+          const full = enrichedByKey.get(row.productKey)
+          if (!full?.linkedFeedbackCounts) return row
+          return {
+            ...row,
+            linkedFeedbackCounts: full.linkedFeedbackCounts,
+            linkedFeedbackTotal: full.linkedFeedbackTotal,
+          }
+        })
       }
       setStatsByProduct(byProduct)
     } catch (err) {
@@ -651,17 +711,18 @@ export default function Actions() {
       render: (text) => text?.trim() || '—',
     },
     {
-      title: periodFilterActive ? (
-        <Tooltip title="数量仅统计当前所选周期内的关联反馈">
-          <span>
-            关联反馈
-            <Typography.Text type="secondary" className="ml-1 text-[10px] font-normal">
-              (本周期)
-            </Typography.Text>
-          </span>
-        </Tooltip>
-      ) : (
-        '关联反馈'
+      title: (
+        <ColumnTitleWithHint
+          title="关联反馈"
+          hint={LINKED_FEEDBACK_HEADER_HINT}
+          extra={
+            periodFilterActive ? (
+              <Typography.Text type="secondary" className="text-[10px] font-normal">
+                (本周期)
+              </Typography.Text>
+            ) : null
+          }
+        />
       ),
       key: 'linkedTickets',
       width: 110,
@@ -670,14 +731,13 @@ export default function Actions() {
       ),
     },
     {
-      title: '需求工单',
+      title: (
+        <ColumnTitleWithHint title="需求工单" hint={REQUIREMENT_TICKET_HEADER_HINT} />
+      ),
       key: 'linkedRequirementTickets',
-      width: 110,
+      width: 160,
       render: (_, record) => (
-        <LinkedTicketsCell
-          ticketIds={record.linkedRequirementTicketIds}
-          title="需求工单"
-        />
+        <RequirementTicketsCell ticketIds={record.linkedRequirementTicketIds} />
       ),
     },
     {

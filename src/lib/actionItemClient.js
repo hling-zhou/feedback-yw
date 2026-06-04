@@ -54,15 +54,9 @@ export async function listActionItems(query = {}) {
  * @property {string} productKey
  * @property {string} productName
  * @property {Record<ActionItemStatus, number>} counts
+ * @property {Record<ActionItemStatus, number>} [linkedFeedbackCounts]
  * @property {number} total
- */
-
-/**
- * @typedef {Object} ActionItemProductStatusRow
- * @property {string} productKey
- * @property {string} productName
- * @property {Record<ActionItemStatus, number>} counts
- * @property {number} total
+ * @property {number} [linkedFeedbackTotal]
  */
 
 /**

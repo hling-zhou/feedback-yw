@@ -3,6 +3,8 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
   aggregateActionItemsByProductStatus,
+  actionItemStatusLinkedFeedbackLabel,
+  createEmptyActionItemStatusCounts,
 } from '../domain/actionItem.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
@@ -21,8 +23,12 @@ export const ACTION_ITEM_LIST_SHEET_NAME = '举措清单'
 
 export const ACTION_ITEM_STATS_HEADERS = [
   '产品名称',
-  ...ACTION_ITEM_STATUSES.map((status) => ACTION_ITEM_STATUS_LABELS[status]),
+  ...ACTION_ITEM_STATUSES.flatMap((status) => [
+    ACTION_ITEM_STATUS_LABELS[status],
+    actionItemStatusLinkedFeedbackLabel(status),
+  ]),
   '合计',
+  '关联反馈合计',
 ]
 
 export const ACTION_ITEM_LIST_HEADERS = [
@@ -75,36 +81,52 @@ export function buildActionItemStatsRows(byProduct) {
     }
     for (const status of ACTION_ITEM_STATUSES) {
       out[ACTION_ITEM_STATUS_LABELS[status]] = row.counts?.[status] ?? 0
+      out[actionItemStatusLinkedFeedbackLabel(status)] = row.linkedFeedbackCounts?.[status] ?? 0
     }
     out.合计 = row.total ?? 0
+    out.关联反馈合计 = row.linkedFeedbackTotal ?? 0
     return out
   })
 
   if (!rows.length) {
-    return [{ 产品名称: '—', ...Object.fromEntries(ACTION_ITEM_STATUSES.map((s) => [ACTION_ITEM_STATUS_LABELS[s], 0])), 合计: 0 }]
+    return [
+      {
+        产品名称: '—',
+        ...Object.fromEntries(
+          ACTION_ITEM_STATUSES.flatMap((status) => [
+            [ACTION_ITEM_STATUS_LABELS[status], 0],
+            [actionItemStatusLinkedFeedbackLabel(status), 0],
+          ]),
+        ),
+        合计: 0,
+        关联反馈合计: 0,
+      },
+    ]
   }
 
   /** @type {Record<ActionItemStatus, number>} */
-  const totals = {
-    pending_evaluation: 0,
-    in_progress: 0,
-    completed: 0,
-    suspended: 0,
-  }
+  const totals = createEmptyActionItemStatusCounts()
+  /** @type {Record<ActionItemStatus, number>} */
+  const feedbackTotals = createEmptyActionItemStatusCounts()
   let grandTotal = 0
+  let linkedFeedbackGrandTotal = 0
   for (const row of byProduct || []) {
     for (const status of ACTION_ITEM_STATUSES) {
       totals[status] += row.counts?.[status] ?? 0
+      feedbackTotals[status] += row.linkedFeedbackCounts?.[status] ?? 0
     }
     grandTotal += row.total ?? 0
+    linkedFeedbackGrandTotal += row.linkedFeedbackTotal ?? 0
   }
 
   /** @type {Record<string, string | number>} */
   const summary = { 产品名称: '合计' }
   for (const status of ACTION_ITEM_STATUSES) {
     summary[ACTION_ITEM_STATUS_LABELS[status]] = totals[status]
+    summary[actionItemStatusLinkedFeedbackLabel(status)] = feedbackTotals[status]
   }
   summary.合计 = grandTotal
+  summary.关联反馈合计 = linkedFeedbackGrandTotal
   rows.push(summary)
 
   return rows
@@ -122,21 +144,27 @@ export function buildActionItemListRows(items, periodTicketIdSet) {
       .join('、')
     const linkedInPeriod = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet)
 
-    return {
-      产品名称: item.productName || item.productKey || '',
-      问题: item.painPointSnapshot || '',
-      问题类型: item.problemTypeSnapshot || '',
-      来源: sources,
-      举措: item.content || '',
-      举措详情: item.detail || '',
-      '关联反馈(本周期)': linkedInPeriod.join('\n'),
-      需求工单: (item.linkedRequirementTicketIds || []).join('\n'),
-      首次提出时间: item.firstProposedAt || '',
-      排期时间: item.scheduleAt?.trim() || '',
-      状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
-      最近更新时间: formatActionItemUpdatedAtDisplay(item),
-      最近更新人员: formatActionItemUpdatedByDisplay(item),
-    }
+    return Object.fromEntries(
+      ACTION_ITEM_LIST_HEADERS.map((header) => {
+        /** @type {Record<string, string>} */
+        const row = {
+          产品名称: item.productName || item.productKey || '',
+          问题: item.painPointSnapshot || '',
+          问题类型: item.problemTypeSnapshot || '',
+          来源: sources,
+          举措: item.content || '',
+          举措详情: item.detail || '',
+          '关联反馈(本周期)': linkedInPeriod.join('\n'),
+          需求工单: (item.linkedRequirementTicketIds || []).join('; '),
+          首次提出时间: item.firstProposedAt || '',
+          排期时间: item.scheduleAt?.trim() || '',
+          状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
+          最近更新时间: formatActionItemUpdatedAtDisplay(item),
+          最近更新人员: formatActionItemUpdatedByDisplay(item),
+        }
+        return [header, row[header] ?? '']
+      }),
+    )
   })
 }
 
@@ -169,7 +197,7 @@ export function downloadActionItemsExcel({
 }) {
   const byProduct = statsByProduct?.length
     ? statsByProduct
-    : aggregateActionItemsByProductStatus(items)
+    : aggregateActionItemsByProductStatus(items, { periodTicketIdSet })
 
   const statsRows = buildActionItemStatsRows(byProduct)
   const listRows = buildActionItemListRows(items, periodTicketIdSet)

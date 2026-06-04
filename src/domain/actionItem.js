@@ -1,4 +1,5 @@
 import { randomId } from '../lib/randomId.js'
+import { linkedTicketIdsInPeriod } from './actionItemPeriodFilter.js'
 /**
  * 举措库 ActionItem — 领域模型与状态规则。
  * @see docs/DESIGN-20260601-1.md §3.4
@@ -45,6 +46,23 @@ export const ACTION_ITEM_STATUS_LABELS = {
   in_progress: '进行中',
   completed: '已完成',
   suspended: '挂起',
+}
+
+/**
+ * @returns {Record<ActionItemStatus, number>}
+ */
+export function createEmptyActionItemStatusCounts() {
+  return {
+    pending_evaluation: 0,
+    in_progress: 0,
+    completed: 0,
+    suspended: 0,
+  }
+}
+
+/** @param {ActionItemStatus} status */
+export function actionItemStatusLinkedFeedbackLabel(status) {
+  return `${ACTION_ITEM_STATUS_LABELS[status]}(关联反馈)`
 }
 
 /** @type {ActionItemWarningLevel[]} */
@@ -348,10 +366,12 @@ export function recomputeActionItemLinkedDataSources(item, ticketIdToSource) {
 /**
  * 前端兜底：按产品 × 状态聚合（与 server/actionItemRepository 逻辑一致）。
  * @param {ActionItem[]} items
- * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; total: number }[]}
+ * @param {{ periodTicketIdSet?: Set<string> | null }} [options]
+ * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }[]}
  */
-export function aggregateActionItemsByProductStatus(items) {
-  /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; total: number }>} */
+export function aggregateActionItemsByProductStatus(items, options = {}) {
+  const { periodTicketIdSet } = options
+  /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }>} */
   const map = new Map()
 
   for (const item of items || []) {
@@ -362,19 +382,19 @@ export function aggregateActionItemsByProductStatus(items) {
       row = {
         productKey,
         productName,
-        counts: {
-          pending_evaluation: 0,
-          in_progress: 0,
-          completed: 0,
-          suspended: 0,
-        },
+        counts: createEmptyActionItemStatusCounts(),
+        linkedFeedbackCounts: createEmptyActionItemStatusCounts(),
         total: 0,
+        linkedFeedbackTotal: 0,
       }
       map.set(productKey, row)
     }
     if (ACTION_ITEM_STATUSES.includes(item.status)) {
       row.counts[item.status] += 1
       row.total += 1
+      const feedbackCount = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet).length
+      row.linkedFeedbackCounts[item.status] += feedbackCount
+      row.linkedFeedbackTotal += feedbackCount
     }
   }
 
