@@ -12,8 +12,6 @@ import {
  * @typedef {{ llmBaseUrl?: string; llmModel?: string; llmServerConfigured?: boolean }} LlmConfig
  */
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 /**
  * @param {string} label
  * @param {ThemeRule[]} rules
@@ -404,7 +402,6 @@ ${texts
   .join('\n\n')}`
 
   const data = await llmChatCompletion(config, {
-    model: config.llmModel || DEFAULT_MODEL,
     temperature: 0.2,
     messages: [
       { role: 'system', content: systemPrompt },

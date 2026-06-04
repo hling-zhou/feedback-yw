@@ -6,8 +6,6 @@ import {
 } from '../llmClient.js'
 import { isGenericMeasure } from '../journeyOptimizationLLM.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 /**
  * @param {unknown} value
  * @returns {string[]}
@@ -76,7 +74,6 @@ export async function extractTicketOptimizationsWithLLM(input, settings) {
 请输出单条工单的优化建议。`
 
   const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
     temperature: 0.35,
     max_tokens: 768,
     messages: [

@@ -13,7 +13,6 @@ import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
 import { evaluateJourneyGatingBatch } from './journeyMatchConfidence.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
 const UNKNOWN_L1 = '未识别环节'
 const UNKNOWN_L2 = '未识别子环节'
 
@@ -510,7 +509,6 @@ async function callLlmJourneyBatch(texts, journeys, settings, localHints, produc
   })
 
   const data = await llmChatCompletion(settings, {
-    model: settings.llmModel || DEFAULT_MODEL,
     temperature: 0.2,
     messages: [
       { role: 'system', content: systemPrompt },

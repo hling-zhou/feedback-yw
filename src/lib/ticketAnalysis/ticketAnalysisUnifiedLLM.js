@@ -18,8 +18,6 @@ import {
   joinUnifiedOptimizationFields,
 } from './validateUnifiedOptimization.js'
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
-
 /**
  * @typedef {'customerRequest' | 'painPoint' | 'optimization'} TicketAnalysisPartialFailure
  */
@@ -152,7 +150,6 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings) {
 
   try {
     const data = await llmChatCompletion(settings, {
-      model: settings.llmModel || DEFAULT_MODEL,
       temperature: 0.15,
       max_tokens: 1024,
       messages: [
