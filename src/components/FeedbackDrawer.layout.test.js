@@ -3,8 +3,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * P2-0 layout regression: A → B1 → B2 → C → D (DESIGN-20260601-1 §3.1).
- * Source-order check — no DOM render harness required.
+ * P2-0 layout regression: A → B1 → C → D (DESIGN-20260601-1 §3.1).
+ * 投诉原因（终判）并入 A 区基础信息行右侧。
  */
 describe('FeedbackDrawer layout (P2-0)', () => {
   const src = readFileSync(
@@ -18,10 +18,10 @@ describe('FeedbackDrawer layout (P2-0)', () => {
     return index
   }
 
-  it('orders sections A → B1 → B2 → C → D', () => {
+  it('orders sections A → B1 → C → D', () => {
     const a = marker('ticketMetaLine')
+    const aComplaintCause = marker('getComplaintCauseFinalDisplay(feedback)')
     const b1 = marker('title="工单分类"')
-    const b2 = marker('title="投诉原因（终判）"')
     const cRequest = marker('shrink-0">客户请求内容</span>')
     const cPain = marker('shrink-0">需求痛点挖掘</span>')
     const cOpt = marker('title="优化建议"')
@@ -37,9 +37,9 @@ describe('FeedbackDrawer layout (P2-0)', () => {
     const dRootCause = marker('title="根因排查"')
     const dNote = marker('Typography.Text strong className="text-xs">备注')
 
-    expect(a).toBeLessThan(b1)
-    expect(b1).toBeLessThan(b2)
-    expect(b2).toBeLessThan(cRequest)
+    expect(a).toBeLessThan(aComplaintCause)
+    expect(aComplaintCause).toBeLessThan(b1)
+    expect(b1).toBeLessThan(cRequest)
     expect(cRequest).toBeLessThan(cPain)
     expect(cPain).toBeLessThan(cOpt)
     expect(cOpt).toBeLessThan(cAuto)
@@ -56,11 +56,11 @@ describe('FeedbackDrawer layout (P2-0)', () => {
   })
 
   it('places handling opinion after analysis cards (not between B and C)', () => {
-    const b2 = marker('title="投诉原因（终判）"')
+    const b1 = marker('title="工单分类"')
     const cRequest = marker('shrink-0">客户请求内容</span>')
     const dHandling = marker('处理意见（工单原文）')
 
     expect(cRequest).toBeLessThan(dHandling)
-    expect(b2).toBeLessThan(dHandling)
+    expect(b1).toBeLessThan(dHandling)
   })
 })

@@ -101,7 +101,7 @@ describe('ticketAnalysisExport v3', () => {
       },
     })
     expect(row['回访满意度']).toBe('10（已解决）')
-    expect(row['不满意原因']).toBe('无')
+    expect(row['不满意原因']).toBe('')
   })
 
   it('acceptanceContent prefers sourceColumns 受理内容 over structured rawText parsing', () => {

@@ -8,6 +8,7 @@ import {
   SATISFACTION_CALLBACK_REPORT_COLUMNS,
   getFollowUpScore,
   hasFollowUpSatisfaction,
+  isMeaningfulDissatisfiedReasonValue,
   resolveFollowUpTrendMonth,
 } from '../domain/followUpSatisfaction.js'
 
@@ -241,7 +242,7 @@ export function computeDissatisfiedReasonDistribution(records) {
     if (!parts) continue
     for (const dim of DISSATISFIED_REASON_ANALYSIS_DIM_KEYS) {
       const text = String(parts[dim] ?? '').trim()
-      if (!text) continue
+      if (!isMeaningfulDissatisfiedReasonValue(text)) continue
       counts.set(dim, (counts.get(dim) || 0) + 1)
     }
   }

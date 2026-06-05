@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { InboxOutlined } from '@ant-design/icons'
 import {
   Alert,
@@ -8,6 +8,7 @@ import {
   Checkbox,
   Input,
   List,
+  Modal,
   Result,
   Select,
   Space,
@@ -31,7 +32,7 @@ import {
   applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
 } from '../lib/parseFile.js'
-import { getPresetsForSource } from '../lib/columnPresets.js'
+import { getPresetsForImport, SATISFACTION_CALLBACK_PRESET } from '../lib/columnPresets.js'
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
@@ -47,6 +48,21 @@ import {
   preferredSheetName,
   normalizeImportMonth,
 } from '../lib/importUtils.js'
+import {
+  POST_USE_RATING_SUBTYPE_OPTIONS,
+  POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK,
+  isFollowUpSatisfactionImport,
+} from '../domain/postUseRatingImport.js'
+import {
+  FOLLOW_UP_IMPORT_SESSION_LABEL,
+  executeFollowUpImport,
+  runFollowUpImportDryRun,
+} from '../lib/followUpSatisfactionImportSession.js'
+import {
+  FollowUpSatisfactionColumnMapping,
+  FollowUpSatisfactionImportPreview,
+  formatFollowUpImportSummaryDescription,
+} from '../components/import/FollowUpSatisfactionImportPreview.jsx'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
@@ -80,8 +96,12 @@ function currentMonth() {
 
 export default function Import({ embedded = false }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialSource = searchParams.get('source')
+  const initialSubType = searchParams.get('subType')
   const {
     addFeedbacks,
+    adapter,
     beginImportSession,
     prepareSharedBackgroundTask,
     setImportSessionProgress,
@@ -96,13 +116,24 @@ export default function Import({ embedded = false }) {
     rebuildSnapshotsForImportMonth,
     storageReady,
     periodsLoading,
+    periods,
     importSession,
+    syncSharedDataFromServer,
   } = useInsights()
   const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock()
 
-  const [dataSourceType, setDataSourceType] = useState(
-    /** @type {import('../domain/enums.js').DataSourceType} */ ('complaint_ticket'),
-  )
+  const [dataSourceType, setDataSourceType] = useState(() => {
+    if (initialSource && DATA_SOURCE_TYPES.includes(initialSource)) {
+      return /** @type {import('../domain/enums.js').DataSourceType} */ (initialSource)
+    }
+    return 'complaint_ticket'
+  })
+  const [postUseRatingSubType, setPostUseRatingSubType] = useState(() => {
+    if (initialSubType === 'satisfaction_callback' || initialSubType === 'standalone') {
+      return initialSubType
+    }
+    return POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK
+  })
   const [step, setStep] = useState(0)
   const [error, setError] = useState('')
   const [headers, setHeaders] = useState([])
@@ -124,10 +155,16 @@ export default function Import({ embedded = false }) {
     defaultBatchName('complaint_ticket', currentMonth()),
   )
   const [importResult, setImportResult] = useState(
-    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[]; enrichmentStats?: import('../lib/importEnrichmentStats.js').ImportEnrichmentStats }} */ (
+    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[]; enrichmentStats?: import('../lib/importEnrichmentStats.js').ImportEnrichmentStats; ingest?: { added: number; skippedDuplicates: number; totalAfter: number } }} */ (
       null
     ),
   )
+  /** @type {[import('../lib/followUpSatisfactionClient.js').FollowUpSatisfactionImportSummary | null, Function]} */
+  const [followUpPreview, setFollowUpPreview] = useState(null)
+  const [followUpPreviewError, setFollowUpPreviewError] = useState('')
+  const [followUpPreviewLoading, setFollowUpPreviewLoading] = useState(false)
+  /** @type {[null | { summary: import('../lib/followUpSatisfactionClient.js').FollowUpSatisfactionImportSummary; dataMonth: string }, Function]} */
+  const [followUpImportResult, setFollowUpImportResult] = useState(null)
 
   const importMonthDisplay = useMemo(() => {
     const normalized = normalizeImportMonth(importMonth)
@@ -137,8 +174,16 @@ export default function Import({ embedded = false }) {
   }, [importMonth])
 
   const ticketSource = isTicketSource(dataSourceType)
+  const followUpImport = isFollowUpSatisfactionImport(dataSourceType, postUseRatingSubType)
   const isConsultation = dataSourceType === 'consultation_ticket'
-  const sourcePresets = useMemo(() => getPresetsForSource(dataSourceType), [dataSourceType])
+  const sourcePresets = useMemo(
+    () => getPresetsForImport(dataSourceType, postUseRatingSubType),
+    [dataSourceType, postUseRatingSubType],
+  )
+  const mappingOptions = useMemo(
+    () => ({ postUseRatingSubType }),
+    [postUseRatingSubType],
+  )
   const pipelineDesc = useMemo(
     () => listPipelineDescriptors().find((d) => d.dataSourceType === dataSourceType),
     [dataSourceType, listPipelineDescriptors],
@@ -165,6 +210,9 @@ export default function Import({ embedded = false }) {
     setSelectedSheet('')
     setActivePreset(null)
     setImportResult(null)
+    setFollowUpPreview(null)
+    setFollowUpPreviewError('')
+    setFollowUpImportResult(null)
   }, [])
 
   const parseFileToEntry = useCallback(
@@ -274,7 +322,12 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     try {
       const merged = mergeParsedUploadFiles(uploadFiles)
-      const mapping = buildMappingFromHeaders(merged.headers, dataSourceType)
+      const mapping = buildMappingFromHeaders(merged.headers, dataSourceType, mappingOptions)
+      if (followUpImport) {
+        if (!mapping.preset || mapping.preset.id !== SATISFACTION_CALLBACK_PRESET.id) {
+          throw new Error('表头需包含「回访工单编号」与「原工单编号」（满意度回访记录格式）')
+        }
+      }
       setHeaders(merged.headers)
       setRows(merged.rows)
       setRowSources(merged.rowSources)
@@ -290,7 +343,7 @@ export default function Import({ embedded = false }) {
     } finally {
       setLoading(false)
     }
-  }, [uploadFiles, dataSourceType])
+  }, [uploadFiles, dataSourceType, followUpImport, mappingOptions])
 
   const uploadTotalRows = useMemo(
     () => uploadFiles.reduce((n, f) => n + f.rows.length, 0),
@@ -299,6 +352,16 @@ export default function Import({ embedded = false }) {
 
   const onSourceChange = (value) => {
     setDataSourceType(value)
+    if (value === 'post_use_rating') {
+      setPostUseRatingSubType(POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK)
+    }
+    resetFileState()
+    setStep(0)
+    setError('')
+  }
+
+  const onPostUseRatingSubTypeChange = (value) => {
+    setPostUseRatingSubType(value)
     resetFileState()
     setStep(0)
     setError('')
@@ -314,7 +377,7 @@ export default function Import({ embedded = false }) {
       const updated = [{ ...next, id: entry.id }]
       setUploadFiles(updated)
       const merged = mergeParsedUploadFiles(updated)
-      const mapping = buildMappingFromHeaders(merged.headers, dataSourceType)
+      const mapping = buildMappingFromHeaders(merged.headers, dataSourceType, mappingOptions)
       setHeaders(merged.headers)
       setRows(merged.rows)
       setRowSources(merged.rowSources)
@@ -381,7 +444,20 @@ export default function Import({ embedded = false }) {
 
   const canImport = ticketSource
     ? (columnMap.handlingText || columnMap.rawText) && catalogPartition.inScope.length > 0
-    : catalogPartition.inScope.length > 0
+    : followUpImport
+      ? Boolean(
+          followUpPreview &&
+            !followUpPreviewLoading &&
+            !followUpPreviewError &&
+            followUpPreview.appliedRowCount > 0,
+        )
+      : catalogPartition.inScope.length > 0
+
+  const canProceedFromColumnMapping = followUpImport
+    ? activePreset?.id === SATISFACTION_CALLBACK_PRESET.id
+    : ticketSource
+      ? Boolean(columnMap.rawText || columnMap.handlingText)
+      : true
 
   const quotePreviewSourceRows = useMemo(() => {
     if (step < 2) return []
@@ -416,6 +492,124 @@ export default function Import({ embedded = false }) {
     setImportProgress(text)
     setImportSessionProgress(text)
   }, [setImportSessionProgress])
+
+  useEffect(() => {
+    if (step !== 3 || !followUpImport || !rows.length || !storageReady) return
+    let cancelled = false
+    setFollowUpPreviewLoading(true)
+    setFollowUpPreviewError('')
+    setFollowUpPreview(null)
+    void (async () => {
+      try {
+        const preview = await runFollowUpImportDryRun({
+          adapter,
+          rows,
+          importMonth,
+          periods,
+        })
+        if (!cancelled) setFollowUpPreview(preview)
+      } catch (err) {
+        if (!cancelled) {
+          setFollowUpPreviewError(
+            readBackgroundTaskErrorMessage(err) || err.message || '预览失败',
+          )
+        }
+      } finally {
+        if (!cancelled) setFollowUpPreviewLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [step, followUpImport, rows, importMonth, periods, adapter, storageReady])
+
+  const doFollowUpImport = async () => {
+    setLoading(true)
+    setError('')
+    let sessionStarted = false
+    let shouldSyncAfterImport = false
+    try {
+      if (importSession.active) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+      if (importBlocked && !importSession.active) {
+        throw new Error(importBlockedTip || '当前无法导入')
+      }
+      if (!storageReady) {
+        throw new Error(
+          periodsLoading
+            ? '本地数据存储正在初始化，请稍候几秒后重试'
+            : '本地数据存储未就绪，请刷新页面后重试',
+        )
+      }
+      if (!followUpPreview?.appliedRowCount) {
+        throw new Error('没有可导入的匹配行')
+      }
+
+      await prepareSharedBackgroundTask('import', {
+        progress: '正在导入满意度回访…',
+        meta: { importKind: 'followUp', importMonth: normalizeImportMonth(importMonth) },
+      })
+      beginImportSession({
+        batchName: FOLLOW_UP_IMPORT_SESSION_LABEL,
+        progress: '正在导入满意度回访…',
+        dataMonth: normalizeImportMonth(importMonth),
+        kind: 'analysis',
+      })
+      sessionStarted = true
+      reportProgress('正在匹配并写入回访数据…')
+
+      const { summary, dataMonth, shouldSync } = await executeFollowUpImport({
+        adapter,
+        rows,
+        importMonth,
+        periods,
+        onUploadProgress: (uploaded, total) => {
+          reportProgress(`正在保存（${uploaded}/${total}）…`)
+        },
+      })
+      shouldSyncAfterImport = shouldSync
+      if (shouldSyncAfterImport) {
+        reportProgress('正在同步数据…')
+      }
+
+      setFollowUpImportResult({ summary, dataMonth })
+      setStep(4)
+      if (summary.updatedRecordCount === 0) {
+        setError('没有工单被更新，请检查未匹配清单')
+      }
+    } catch (e) {
+      setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+    } finally {
+      if (sessionStarted) endImportSession()
+      if (shouldSyncAfterImport) {
+        await syncSharedDataFromServer({ notify: false })
+      }
+      setLoading(false)
+      setImportProgress('')
+    }
+  }
+
+  const confirmFollowUpImport = () => {
+    if (!followUpPreview?.appliedRowCount && !followUpPreview?.unmatched.length) {
+      setError('没有可导入的数据行')
+      return
+    }
+    Modal.confirm({
+      title: '确认导入满意度回访？',
+      content: (
+        <>
+          将按<strong>原工单号</strong>匹配投诉/咨询工单并写入回访满意度；同回访工单号重复导入将覆盖更新。
+          <br />
+          预计写入 <strong>{followUpPreview?.appliedRowCount ?? 0}</strong> 行，更新工单{' '}
+          <strong>{followUpPreview?.updatedRecordCount ?? 0}</strong> 条。
+        </>
+      ),
+      okText: '确认导入',
+      cancelText: '取消',
+      onOk: () => doFollowUpImport(),
+    })
+  }
 
   const doImport = async (forceDuplicate = false) => {
     setLoading(true)
@@ -642,7 +836,7 @@ export default function Import({ embedded = false }) {
       {!embedded && (
         <PageHeader
           title="数据导入"
-          desc="选择数据来源与数据月份即可导入，与工作台当前洞察周期无关；工作台切换周期时按数据月份筛选"
+          desc="选择数据来源与数据月份；投诉/咨询走打标流水线，用后即评 · 满意度回访按原工单号补全已有工单"
         />
       )}
 
@@ -694,7 +888,25 @@ export default function Import({ embedded = false }) {
                 options={SOURCE_OPTIONS}
                 onChange={onSourceChange}
               />
-              {pipelineDesc && (
+              {dataSourceType === 'post_use_rating' && (
+                <div className="mt-3">
+                  <Typography.Text strong className="mb-1 block text-xs">
+                    二级分类
+                  </Typography.Text>
+                  <Select
+                    className="w-full"
+                    value={postUseRatingSubType}
+                    options={POST_USE_RATING_SUBTYPE_OPTIONS}
+                    onChange={onPostUseRatingSubTypeChange}
+                  />
+                  {followUpImport && (
+                    <Typography.Text type="secondary" className="mt-2 block text-xs">
+                      满意度回访不新增独立记录，按原工单号补全投诉/咨询工单的回访满意度。
+                    </Typography.Text>
+                  )}
+                </div>
+              )}
+              {pipelineDesc && !followUpImport && (
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   流水线：{pipelineDesc.label}（v{pipelineDesc.pipelineVersion}）
                 </Typography.Text>
@@ -717,7 +929,7 @@ export default function Import({ embedded = false }) {
               </Typography.Text>
             </div>
           </div>
-          {isStubPipeline(dataSourceType) && (
+          {isStubPipeline(dataSourceType) && !followUpImport && (
             <Alert
               className="page-section-sm"
               type="warning"
@@ -743,18 +955,35 @@ export default function Import({ embedded = false }) {
             title={
               <>
                 当前来源：<Tag>{DATA_SOURCE_LABELS[dataSourceType]}</Tag>
+                {dataSourceType === 'post_use_rating' && (
+                  <Tag>
+                    {POST_USE_RATING_SUBTYPE_OPTIONS.find((o) => o.value === postUseRatingSubType)?.label}
+                  </Tag>
+                )}
                 数据月份：<Tag color="blue">{importMonthDisplay}</Tag>
               </>
             }
-            description="可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。"
+            description={
+              followUpImport
+                ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。'
+                : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
+            }
           />
           <Upload.Dragger
             accept=".csv,.xlsx,.xls"
-            multiple
-            maxCount={MAX_IMPORT_FILES}
+            multiple={!followUpImport}
+            maxCount={followUpImport ? 1 : MAX_IMPORT_FILES}
             showUploadList={false}
-            disabled={importBusy || uploadFiles.length >= MAX_IMPORT_FILES}
+            disabled={
+              importBusy ||
+              (!followUpImport && uploadFiles.length >= MAX_IMPORT_FILES) ||
+              (followUpImport && uploadFiles.length >= 1)
+            }
             beforeUpload={(file) => {
+              if (followUpImport && uploadFiles.length >= 1) {
+                setError('满意度回访导入仅支持单文件')
+                return Upload.LIST_IGNORE
+              }
               if (uploadFiles.length >= MAX_IMPORT_FILES) {
                 setError(`最多同时上传 ${MAX_IMPORT_FILES} 个文件`)
                 return Upload.LIST_IGNORE
@@ -766,7 +995,9 @@ export default function Import({ embedded = false }) {
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>
-            <p className="ant-upload-text">拖拽或点击选择文件（可多选）</p>
+            <p className="ant-upload-text">
+              {followUpImport ? '拖拽或点击选择满意度回访文件' : '拖拽或点击选择文件（可多选）'}
+            </p>
             <p className="ant-upload-hint">
               已添加 {uploadFiles.length}/{MAX_IMPORT_FILES} 个 · 合计约 {uploadTotalRows} 行
             </p>
@@ -879,10 +1110,17 @@ export default function Import({ embedded = false }) {
       {step === 2 && (
         <div className="page-section space-y-5">
           <Card>
+            <Typography.Title level={5} className="!mb-0">
+              列映射
+            </Typography.Title>
+            {followUpImport ? (
+              <div className="page-section-sm">
+                <FollowUpSatisfactionColumnMapping preset={activePreset} headers={headers} />
+              </div>
+            ) : (
+              <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Typography.Title level={5} className="!mb-0">
-                列映射
-              </Typography.Title>
+              <span />
               <Space wrap>
                 {sourcePresets.map((p) => (
                   <Button key={p.id} size="small" onClick={() => applyPreset(p)}>
@@ -999,12 +1237,14 @@ export default function Import({ embedded = false }) {
                 </Space>
               </div>
             )}
+              </>
+            )}
           </Card>
           <Space>
             <Button onClick={() => setStep(1)}>上一步</Button>
             <Button
               type="primary"
-              disabled={ticketSource ? !columnMap.rawText && !columnMap.handlingText : false}
+              disabled={!canProceedFromColumnMapping}
               onClick={() => setStep(3)}
             >
               下一步：预览
@@ -1019,6 +1259,25 @@ export default function Import({ embedded = false }) {
             <Typography.Title level={5} className="!mb-0">
               预览确认
             </Typography.Title>
+            {followUpImport ? (
+              <>
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  按原工单号匹配投诉/咨询工单并补全回访满意度；不会新建用后即评独立记录，也不会触发打标流水线。
+                </Typography.Text>
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]} ·
+                  二级分类：满意度回访
+                </Typography.Text>
+                <div className="page-section-sm">
+                  <FollowUpSatisfactionImportPreview
+                    preview={followUpPreview}
+                    loading={followUpPreviewLoading}
+                    error={followUpPreviewError}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
             <Typography.Text type="secondary" className="mt-1 block text-xs">
               下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、四维、优化建议），再依次增强：请求场景与问题类型（本地）→ 客户请求/需求痛点/优化建议（配置 API Key 时 LLM）→ 请求场景与问题类型（LLM 语料，默认开）→ 用户旅程 → 用户情绪。
             </Typography.Text>
@@ -1047,23 +1306,88 @@ export default function Import({ embedded = false }) {
               rows={taggingPreviewRows}
               emptyText="无样例行（请检查列映射与产品范围）"
             />
+              </>
+            )}
           </Card>
           <Space>
             <Button onClick={() => setStep(2)}>上一步</Button>
-            <Button
-              type="primary"
-              disabled={!canImport || !storageReady || importBlocked || importBusy}
-              loading={importBusy}
-              onClick={() => doImport(false)}
-            >
-              {importBusy
-                ? importProgress || '导入中…'
-                : !storageReady
-                  ? '存储初始化中…'
-                  : `确认导入并打标 ${catalogPartition.stats.accepted} 条`}
-            </Button>
+            {followUpImport ? (
+              <Button
+                type="primary"
+                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                loading={importBusy || followUpPreviewLoading}
+                onClick={confirmFollowUpImport}
+              >
+                {importBusy
+                  ? importProgress || '导入中…'
+                  : followUpPreviewLoading
+                    ? '预览加载中…'
+                    : `确认导入回访 ${followUpPreview?.appliedRowCount ?? 0} 行`}
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                loading={importBusy}
+                onClick={() => doImport(false)}
+              >
+                {importBusy
+                  ? importProgress || '导入中…'
+                  : !storageReady
+                    ? '存储初始化中…'
+                    : `确认导入并打标 ${catalogPartition.stats.accepted} 条`}
+              </Button>
+            )}
           </Space>
         </div>
+      )}
+
+      {step === 4 && followUpImportResult && (
+        <Card className="page-section">
+          <Result
+            status={followUpImportResult.summary.updatedRecordCount > 0 ? 'success' : 'warning'}
+            title="满意度回访导入完成"
+            subTitle={formatFollowUpImportSummaryDescription(followUpImportResult.summary)}
+            extra={
+              <Space wrap>
+                <Button type="primary" onClick={() => navigate('/workbench?tab=post_use_rating')}>
+                  打开洞察工作台
+                </Button>
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/feedbacks?followUp=has&month=${followUpImportResult.dataMonth || importMonth}`,
+                    )
+                  }
+                >
+                  查看有回访的工单
+                </Button>
+                {followUpImportResult.summary.unmatched.length > 0 && (
+                  <Button
+                    onClick={() =>
+                      downloadUnmatchedFollowUpCsv(followUpImportResult.summary.unmatched)
+                    }
+                  >
+                    下载未匹配 CSV
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    resetFileState()
+                    setFollowUpImportResult(null)
+                    setStep(0)
+                    setError('')
+                  }}
+                >
+                  继续导入
+                </Button>
+              </Space>
+            }
+          />
+          <Typography.Text type="secondary" className="block text-center text-xs">
+            数据月份 {followUpImportResult.dataMonth} · 已补全投诉/咨询工单回访字段
+          </Typography.Text>
+        </Card>
       )}
 
       {step === 4 && importResult && (

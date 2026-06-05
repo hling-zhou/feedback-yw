@@ -22,6 +22,11 @@ export default function WorkbenchAnalysisNav({ activeSourceTab, onSourceTabChang
       const n = sourceSnapshots[type]?.summary?.recordCount
       if (n != null) counts[type] = n
     }
+    const followUpN =
+      sourceSnapshots.post_use_rating?.aggregates?.followUpSatisfactionMetrics?.scoredCount ?? 0
+    if (followUpN > (counts.post_use_rating ?? 0)) {
+      counts.post_use_rating = followUpN
+    }
     return counts
   }, [sourceSnapshots])
 
@@ -29,7 +34,8 @@ export default function WorkbenchAnalysisNav({ activeSourceTab, onSourceTabChang
     { key: TAB_OVERVIEW, label: '综合概述' },
     ...DATA_SOURCE_TYPES.map((type) => {
       const base = DATA_SOURCE_LABELS[type]
-      const preview = isStubPipeline(type) ? '（预览）' : ''
+      const preview =
+        isStubPipeline(type) && type !== 'post_use_rating' ? '（预览）' : ''
       const count = sourceCounts[type]
       const name = `${base}${preview}`
       return {

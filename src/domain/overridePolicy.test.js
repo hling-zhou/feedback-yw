@@ -186,7 +186,7 @@ describe('overridePolicy', () => {
     )
     expect(out.followUpSatisfaction?.score).toBe(10)
     expect(out.followUpSatisfaction?.problemResolved).toBe('resolved')
-    expect(out.followUpSatisfaction?.dissatisfiedReasons).toBe('无')
+    expect(out.followUpSatisfaction?.dissatisfiedReasons).toBeUndefined()
   })
 
   it('IMPORT_REPLACE empty 排期 clears schedule', () => {

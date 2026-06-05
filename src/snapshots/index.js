@@ -2,6 +2,7 @@ export {
   filterRecordsForScope,
   resolveRecordsByIds,
   resolveSnapshotRecords,
+  postUseRatingFollowUpHasContent,
   workbenchSourceHasContent,
   workbenchTicketRecords,
   recordPeriodId,

@@ -1,5 +1,6 @@
 import { LEGACY_INSIGHT_PERIOD_ID } from '../domain/constants.js'
 import { recordMatchesPeriod } from '../domain/insightPeriod.js'
+import { extractFollowUpTicketRecords } from '../lib/followUpSatisfactionAnalytics.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -66,6 +67,23 @@ export function resolveSnapshotRecords(feedbacks, snapshot) {
 }
 
 /**
+ * 用后即评 Tab：除独立评价记录外，周期内工单的回访补全也算有内容。
+ * @param {FeedbackRecord[]} feedbacks
+ * @param {InsightPeriod | null | undefined} period
+ * @param {import('../domain/snapshot.js').InsightSnapshot | null | undefined} snapshot
+ */
+export function postUseRatingFollowUpHasContent(feedbacks, period, snapshot) {
+  if ((snapshot?.aggregates?.followUpSatisfactionMetrics?.scoredCount ?? 0) > 0) {
+    return true
+  }
+  const tickets = [
+    ...filterRecordsForScope(feedbacks, period, 'complaint_ticket'),
+    ...filterRecordsForScope(feedbacks, period, 'consultation_ticket'),
+  ]
+  return extractFollowUpTicketRecords(tickets).length > 0
+}
+
+/**
  * 工作台来源 Tab 是否应展示图表（避免快照 rebuilding 中间态导致 Tab 空/满闪烁）
  * @param {FeedbackRecord[]} feedbacks
  * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
@@ -80,9 +98,17 @@ export function workbenchSourceHasContent(feedbacks, period, snapshot) {
     snapshot.status === 'rebuilding' ||
     !(snapshot.recordIds?.length)
   ) {
-    return filterRecordsForScope(feedbacks, period, snapshot.dataSourceType).length > 0
+    if (filterRecordsForScope(feedbacks, period, snapshot.dataSourceType).length > 0) {
+      return true
+    }
+  } else if ((snapshot.summary?.recordCount ?? 0) > 0) {
+    return true
   }
-  return (snapshot.summary?.recordCount ?? 0) > 0
+
+  if (snapshot.dataSourceType === 'post_use_rating') {
+    return postUseRatingFollowUpHasContent(feedbacks, period, snapshot)
+  }
+  return false
 }
 
 /**

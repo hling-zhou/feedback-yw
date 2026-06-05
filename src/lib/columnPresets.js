@@ -107,8 +107,8 @@ export const GENERIC_PRESET = {
 export const SATISFACTION_CALLBACK_PRESET = {
   id: 'satisfaction-callback',
   name: '满意度回访记录',
-  description: '回访工单与原工单匹配，补全投诉/咨询工单的回访满意度（非独立数据来源导入）',
-  dataSourceTypes: [],
+  description: '回访工单与原工单匹配，补全投诉/咨询工单的回访满意度（不新增独立评价记录）',
+  dataSourceTypes: ['post_use_rating'],
   columnMap: {
     followUpTicketId: '回访工单编号',
     originalTicketId: '原工单编号',
@@ -142,12 +142,27 @@ export const COLUMN_PRESETS = [
 /**
  * @param {string[]} headers
  * @param {import('../domain/enums.js').DataSourceType} [dataSourceType]
+ * @param {{ postUseRatingSubType?: import('../domain/postUseRatingImport.js').PostUseRatingImportSubType }} [options]
  * @returns {ColumnPreset | null}
  */
-export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
+export function detectPreset(headers, dataSourceType = 'complaint_ticket', options = {}) {
+  const { postUseRatingSubType } = options
   const has = (name) => headers.includes(name)
+  const isCallbackHeaders = has('回访工单编号') && has('原工单编号')
 
-  if (has('回访工单编号') && has('原工单编号')) {
+  if (dataSourceType === 'post_use_rating') {
+    if (postUseRatingSubType === 'satisfaction_callback') {
+      return isCallbackHeaders ? SATISFACTION_CALLBACK_PRESET : null
+    }
+    if (postUseRatingSubType === 'standalone' && (has('评价内容') || has('评分'))) {
+      return POST_USE_RATING_PRESET
+    }
+    if (isCallbackHeaders) return SATISFACTION_CALLBACK_PRESET
+    if (has('评价内容') || has('评分')) return POST_USE_RATING_PRESET
+    return null
+  }
+
+  if (isCallbackHeaders) {
     return SATISFACTION_CALLBACK_PRESET
   }
 
@@ -171,10 +186,6 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
     return MOBILE_CLOUD_TICKET_PRESET
   }
 
-  if (dataSourceType === 'post_use_rating' && (has('评价内容') || has('评分'))) {
-    return POST_USE_RATING_PRESET
-  }
-
   if (dataSourceType === 'user_survey' && (has('开放回答') || has('题目'))) {
     return USER_SURVEY_PRESET
   }
@@ -188,6 +199,21 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
   }
 
   return null
+}
+
+/**
+ * @param {import('../domain/enums.js').DataSourceType} dataSourceType
+ * @param {import('../domain/postUseRatingImport.js').PostUseRatingImportSubType} [postUseRatingSubType]
+ * @returns {ColumnPreset[]}
+ */
+export function getPresetsForImport(dataSourceType, postUseRatingSubType) {
+  if (dataSourceType === 'post_use_rating') {
+    if (postUseRatingSubType === 'satisfaction_callback') {
+      return [SATISFACTION_CALLBACK_PRESET]
+    }
+    return [POST_USE_RATING_PRESET]
+  }
+  return getPresetsForSource(dataSourceType)
 }
 
 /**

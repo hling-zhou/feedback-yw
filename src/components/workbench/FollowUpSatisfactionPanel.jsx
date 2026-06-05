@@ -102,7 +102,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
         <Typography.Text type="secondary">
           当前周期内暂无回访满意度数据。请先在
           {' '}
-          <Link to="/import">导入页</Link>
+          <Link to="/import?source=post_use_rating&subType=satisfaction_callback">导入页</Link>
           {' '}
           上传满意度回访记录并完成工单补全。
         </Typography.Text>

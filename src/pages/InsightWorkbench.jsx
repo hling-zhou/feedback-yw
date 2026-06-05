@@ -21,7 +21,9 @@ import WorkbenchAnalysisNav from '../components/workbench/WorkbenchAnalysisNav.j
 import WorkbenchAnalysisLink from '../components/workbench/WorkbenchAnalysisLink.jsx'
 import {
   resolveSnapshotRecords,
+  postUseRatingFollowUpHasContent,
   workbenchSourceHasContent,
+  workbenchTicketRecords,
 } from '../snapshots/recordScope.js'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { ensurePdfFontsReady } from '../lib/report/registerPdfFonts.js'
@@ -157,8 +159,22 @@ export default function InsightWorkbench() {
     }
 
     if (activeTab === 'post_use_rating') {
-      if (snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap)) {
-        return <PostUseRatingDashboardView snapshot={snap} sourceLabel={label} />
+      const hasContent =
+        (snap && workbenchSourceHasContent(feedbacks, currentPeriod, snap)) ||
+        postUseRatingFollowUpHasContent(feedbacks, currentPeriod, snap)
+      if (hasContent) {
+        return (
+          <PostUseRatingDashboardView
+            snapshot={
+              snap ?? {
+                recordIds: [],
+                dataSourceType: 'post_use_rating',
+                summary: { recordCount: 0 },
+              }
+            }
+            sourceLabel={label}
+          />
+        )
       }
       return (
         <WorkbenchSourceEmpty

@@ -94,8 +94,10 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
   })
 
   describe('B2 终判 vs 咨询无终判', () => {
-    it('renders 投诉原因（终判） only when isComplaintTicket', () => {
-      expect(drawerSrc).toMatch(/isComplaintTicket\(feedback\) && \([\s\S]*投诉原因（终判）/)
+    it('shows final complaint cause in meta line only when isComplaintTicket', () => {
+      expect(drawerSrc).toMatch(
+        /isComplaintTicket\(feedback\) \? \([\s\S]*getComplaintCauseFinalDisplay\(feedback\)/,
+      )
     })
   })
 

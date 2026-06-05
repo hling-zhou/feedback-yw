@@ -332,10 +332,11 @@ export function guessRawTextMerge(headers, dataSourceType = 'complaint_ticket') 
 /**
  * @param {string[]} headers
  * @param {import('../domain/enums.js').DataSourceType} [dataSourceType]
+ * @param {{ postUseRatingSubType?: import('../domain/postUseRatingImport.js').PostUseRatingImportSubType }} [options]
  * @returns {{ columnMap: Record<string, string>; rawTextMerge: string[]; preset: ColumnPreset | null }}
  */
-export function buildMappingFromHeaders(headers, dataSourceType = 'complaint_ticket') {
-  const preset = detectPreset(headers, dataSourceType)
+export function buildMappingFromHeaders(headers, dataSourceType = 'complaint_ticket', options = {}) {
+  const preset = detectPreset(headers, dataSourceType, options)
   return {
     columnMap: guessColumnMap(headers, dataSourceType),
     rawTextMerge: guessRawTextMerge(headers, dataSourceType),

@@ -74,7 +74,7 @@ import {
   hasDetailOptimizationContent,
 } from '../domain/detailOptimizationFields.js'
 import {
-  getComplaintCauseL1Display,
+  getComplaintCauseFinalDisplay,
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import { isFollowUpEnrichableRecord } from '../lib/feedbackFilters.js'
@@ -509,9 +509,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           />
         ) : null}
         {/* A · 基础信息 */}
-        <Typography.Text type="secondary" className="block text-xs leading-snug">
-          {ticketMetaLine}
-        </Typography.Text>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <Typography.Text type="secondary" className="min-w-0 text-xs leading-snug">
+            {ticketMetaLine}
+          </Typography.Text>
+          {isComplaintTicket(feedback) ? (
+            <Typography.Text type="secondary" className="shrink-0 text-right text-xs leading-snug">
+              {getComplaintCauseFinalDisplay(feedback)}
+            </Typography.Text>
+          ) : null}
+        </div>
 
         {/* B1 · 工单分类 */}
         <Card title="工单分类" size="small">
@@ -687,31 +694,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
           )}
         </Card>
 
-        {/* B2 · 投诉原因（终判） */}
-        {isComplaintTicket(feedback) && (
-          <Card title="投诉原因（终判）" size="small" className="!bg-ink-50/50">
-            <Typography.Text type="secondary" className="mb-2 block text-xs">
-              来自工单系统终判字段，不参与上方「问题类型（打标）」自动打标。
-            </Typography.Text>
-            <Descriptions size="small" column={1} bordered>
-              <Descriptions.Item label="一级（终判）">
-                {getComplaintCauseL1Display(feedback)}
-              </Descriptions.Item>
-              <Descriptions.Item label="二级（终判）">
-                {feedback.complaintCauseL2Final?.trim() || '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="三级（终判）">
-                {feedback.complaintCauseL3Final?.trim() || '—'}
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-        )}
-
         {isFollowUpEnrichableRecord(feedback) && (
-          <Card title="不满意原因" size="small" className="!bg-ink-50/50">
-            <Typography.Text type="secondary" className="mb-2 block text-xs">
-              来自满意度回访汇总，只读；位于客户请求内容上方。
-            </Typography.Text>
+          <Card
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="shrink-0">不满意原因</span>
+                <Typography.Text type="secondary" className="text-xs font-normal">
+                  来自满意度回访汇总
+                </Typography.Text>
+              </span>
+            }
+            size="small"
+            className="!bg-ink-50/50"
+          >
             <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
               {getFollowUpDissatisfiedReasonsDisplay(feedback)}
             </Typography.Paragraph>

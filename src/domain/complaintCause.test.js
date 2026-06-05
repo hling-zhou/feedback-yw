@@ -4,6 +4,7 @@ import {
   assignComplaintCauseFieldsForImport,
   countComplaintCauseL1,
   getComplaintCauseL1Display,
+  getComplaintCauseFinalDisplay,
 } from './complaintCause.js'
 
 describe('complaintCause', () => {
@@ -24,6 +25,28 @@ describe('complaintCause', () => {
       getComplaintCauseL1Display({
         dataSourceType: 'consultation_ticket',
         sourceColumns: { '投诉原因 一级（终判）': '计费类' },
+      }),
+    ).toBe('未填写')
+  })
+
+  it('joins final complaint cause levels on one line', () => {
+    expect(
+      getComplaintCauseFinalDisplay({
+        dataSourceType: 'complaint_ticket',
+        complaintCauseL1Final: '客户体验类投诉',
+        complaintCauseL2Final: '客户其他问题',
+        complaintCauseL3Final: '客户自身其他问题',
+      }),
+    ).toBe('客户体验类投诉 / 客户其他问题 / 客户自身其他问题')
+    expect(
+      getComplaintCauseFinalDisplay({
+        dataSourceType: 'complaint_ticket',
+        complaintCauseL1Final: '性能类',
+      }),
+    ).toBe('性能类')
+    expect(
+      getComplaintCauseFinalDisplay({
+        dataSourceType: 'complaint_ticket',
       }),
     ).toBe('未填写')
   })

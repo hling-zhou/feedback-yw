@@ -7,6 +7,7 @@ import {
   DISSATISFIED_REASON_PART_KEYS,
   getFollowUpScore,
   hasFollowUpSatisfaction,
+  isMeaningfulDissatisfiedReasonValue,
 } from '../domain/followUpSatisfaction.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -121,7 +122,7 @@ export function matchesFollowUpFilters(record, filters = {}) {
   if (reasonDim) {
     const parts = record.followUpSatisfaction?.dissatisfiedReasonParts
     const text = parts?.[reasonDim]?.trim()
-    if (!text) return false
+    if (!isMeaningfulDissatisfiedReasonValue(text)) return false
   }
 
   return true

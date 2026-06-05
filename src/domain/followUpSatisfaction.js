@@ -96,6 +96,78 @@ const PROBLEM_RESOLVED_LABELS = /** @type {Record<FollowUpProblemResolved, strin
 const DISPLAY_RESOLVED_PATTERN = /^(\d{1,2})\s*[（(]\s*(已解决|未解决)\s*[）)]$/
 
 /**
+ * 回访不满意子维度中视为「无内容」的占位值（不参与展示与统计）。
+ * @param {string | undefined | null} raw
+ */
+export function isMeaningfulDissatisfiedReasonValue(raw) {
+  const s = String(raw ?? '').trim()
+  if (!s) return false
+  if (/^(无|暂无|没有|—|-+|n\/a|null)$/i.test(s)) return false
+  return true
+}
+
+/**
+ * @param {DissatisfiedReasonParts | undefined | null} parts
+ * @returns {DissatisfiedReasonParts}
+ */
+export function sanitizeDissatisfiedReasonParts(parts) {
+  if (!parts) return {}
+  /** @type {DissatisfiedReasonParts} */
+  const out = {}
+  for (const key of DISSATISFIED_REASON_PART_KEYS) {
+    const value = String(parts[key] ?? '').trim()
+    if (isMeaningfulDissatisfiedReasonValue(value)) {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+/**
+ * 从已拼接的汇总文本中剔除「维度：无」类段落（兼容历史入库数据）。
+ * @param {string | undefined | null} text
+ */
+export function sanitizeDissatisfiedReasonsSummary(text) {
+  const s = String(text ?? '').trim()
+  if (!s) return ''
+  if (isMeaningfulDissatisfiedReasonValue(s) && !s.includes('：') && !s.includes(':')) {
+    return s
+  }
+  const separator = s.includes('；') ? '；' : s.includes(';') ? ';' : null
+  if (!separator) {
+    const colonIdx = s.search(/[：:]/)
+    if (colonIdx < 0) {
+      return isMeaningfulDissatisfiedReasonValue(s) ? s : ''
+    }
+    const value = s.slice(colonIdx + 1).trim()
+    return isMeaningfulDissatisfiedReasonValue(value) ? s : ''
+  }
+  return s
+    .split(separator)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => {
+      if (!chunk) return false
+      const colonIdx = chunk.search(/[：:]/)
+      if (colonIdx < 0) return isMeaningfulDissatisfiedReasonValue(chunk)
+      const value = chunk.slice(colonIdx + 1).trim()
+      return isMeaningfulDissatisfiedReasonValue(value)
+    })
+    .join('；')
+}
+
+/**
+ * 展示/导出用不满意原因：优先结构化 parts，回退汇总文本并过滤占位「无」。
+ * @param {FollowUpSatisfaction | null | undefined} fu
+ */
+export function resolveFollowUpDissatisfiedReasons(fu) {
+  if (!fu) return ''
+  const parts = sanitizeDissatisfiedReasonParts(fu.dissatisfiedReasonParts)
+  const fromParts = buildDissatisfiedReasonsSummary(parts)
+  if (fromParts) return fromParts
+  return sanitizeDissatisfiedReasonsSummary(fu.dissatisfiedReasons)
+}
+
+/**
  * @param {string | undefined | null} raw
  */
 export function parseYesNo(raw) {
@@ -145,7 +217,7 @@ export function buildDissatisfiedReasonPartsFromRow(row = {}, columnMap = SATISF
     const header = columnMap[key]
     if (!header) continue
     const value = String(row[header] ?? '').trim()
-    if (value) parts[key] = value
+    if (isMeaningfulDissatisfiedReasonValue(value)) parts[key] = value
   }
   return parts
 }
@@ -161,7 +233,7 @@ export function buildDissatisfiedReasonsSummary(parts, options = {}) {
   const chunks = []
   for (const key of DISSATISFIED_REASON_PART_KEYS) {
     const value = String(parts[key] ?? '').trim()
-    if (!value) continue
+    if (!isMeaningfulDissatisfiedReasonValue(value)) continue
     chunks.push(`${REASON_PART_LABELS[key]}：${value}`)
   }
   return chunks.join(separator)
@@ -182,10 +254,10 @@ export function normalizeFollowUpSatisfaction(input) {
       ? input.problemResolved
       : parseProblemResolved(input.problemResolved)
 
-  const parts = input.dissatisfiedReasonParts || {}
+  const parts = sanitizeDissatisfiedReasonParts(input.dissatisfiedReasonParts)
   const dissatisfiedReasons =
-    String(input.dissatisfiedReasons ?? '').trim() ||
-    buildDissatisfiedReasonsSummary(parts)
+    buildDissatisfiedReasonsSummary(parts) ||
+    sanitizeDissatisfiedReasonsSummary(String(input.dissatisfiedReasons ?? '').trim())
 
   const importMonth = normalizeImportMonth(input.importMonth)
 

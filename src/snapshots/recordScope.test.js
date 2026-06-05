@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { buildSourceSnapshot } from './buildSourceSnapshot.js'
 import {
   resolveSnapshotRecords,
+  postUseRatingFollowUpHasContent,
   workbenchSourceHasContent,
   workbenchTicketRecords,
 } from './recordScope.js'
@@ -46,5 +48,40 @@ describe('resolveSnapshotRecords', () => {
     expect(
       workbenchSourceHasContent(feedbacks, period, snapshot),
     ).toBe(true)
+  })
+
+  it('post_use_rating tab has content when only follow-up ticket enrichments exist', () => {
+    const period = {
+      id: 'period:month:2026-04',
+      granularity: 'month',
+      anchorYear: 2026,
+      anchorMonth: 4,
+      startDate: '2026-04-01',
+      endDate: '2026-04-30',
+      label: '2026-04',
+    }
+    const feedbacks = [
+      {
+        id: 't1',
+        dataSourceType: 'complaint_ticket',
+        importMonth: '2026-04',
+        followUpSatisfaction: {
+          followUpTicketId: 'FH-1',
+          followUpSuccessful: true,
+          score: 9,
+          importMonth: '2026-04',
+        },
+      },
+    ]
+    const snapshot = buildSourceSnapshot({
+      insightPeriodId: period.id,
+      dataSourceType: 'post_use_rating',
+      records: [],
+      ticketRecordsForFollowUp: feedbacks,
+    })
+    expect(snapshot.summary.recordCount).toBe(0)
+    expect(snapshot.aggregates.followUpSatisfactionMetrics?.scoredCount).toBe(1)
+    expect(workbenchSourceHasContent(feedbacks, period, snapshot)).toBe(true)
+    expect(postUseRatingFollowUpHasContent(feedbacks, period, null)).toBe(true)
   })
 })

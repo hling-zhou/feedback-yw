@@ -11,6 +11,7 @@ import {
   parseFollowUpScore,
   parseProblemResolved,
   parseYesNo,
+  resolveFollowUpDissatisfiedReasons,
   resolveFollowUpTrendMonth,
   SATISFACTION_CALLBACK_REPORT_COLUMNS,
 } from './followUpSatisfaction.js'
@@ -43,6 +44,44 @@ describe('followUpSatisfaction', () => {
     })
     expect(summary).toContain('整体服务情况不满意原因：响应慢')
     expect(summary).toContain('服务人员的服务态度不满意原因：态度一般')
+  })
+
+  it('buildDissatisfiedReasonsSummary omits placeholder 无 values', () => {
+    expect(
+      buildDissatisfiedReasonsSummary({
+        handlingDurationScore: '无',
+        handlingDurationReason: '无',
+        staffAttitudeScore: '无',
+        staffAttitudeReason: '无',
+        staffCapabilityScore: '无',
+        staffCapabilityReason: '无',
+        phoneCallbackOpinion: '无',
+      }),
+    ).toBe('')
+    expect(
+      buildDissatisfiedReasonsSummary({
+        overallService: '响应慢',
+        phoneCallbackOpinion: '无',
+      }),
+    ).toBe('整体服务情况不满意原因：响应慢')
+  })
+
+  it('resolveFollowUpDissatisfiedReasons strips legacy summary segments with 无', () => {
+    expect(
+      resolveFollowUpDissatisfiedReasons({
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        dissatisfiedReasons:
+          '请您对问题处理时长进行评价：无；处理时长不满意原因：无；整体服务情况不满意原因：响应慢',
+      }),
+    ).toBe('整体服务情况不满意原因：响应慢')
+    expect(
+      resolveFollowUpDissatisfiedReasons({
+        followUpTicketId: 'FH-2',
+        followUpSuccessful: true,
+        dissatisfiedReasons: '无',
+      }),
+    ).toBe('')
   })
 
   it('normalizeFollowUpSatisfaction builds summary from parts', () => {
@@ -92,6 +131,8 @@ describe('followUpSatisfaction', () => {
     expect(fu?.followUpSuccessful).toBe(true)
     expect(fu?.score).toBe(9)
     expect(fu?.importMonth).toBe('2026-05')
+    expect(fu?.dissatisfiedReasonParts?.overallService).toBeUndefined()
+    expect(fu?.dissatisfiedReasons).toBeUndefined()
   })
 
   it('applyFollowUpSatisfactionPatch merges without dropping ticket fields', () => {

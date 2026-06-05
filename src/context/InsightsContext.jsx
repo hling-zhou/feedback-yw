@@ -2400,6 +2400,7 @@ export function InsightsProvider({ children }) {
       orderVolumesLoading,
       reloadOrderVolumes,
       saveOrderVolume,
+      syncSharedDataFromServer,
     }),
     [
       feedbacks,
@@ -2482,6 +2483,7 @@ export function InsightsProvider({ children }) {
       orderVolumesLoading,
       reloadOrderVolumes,
       saveOrderVolume,
+      syncSharedDataFromServer,
     ],
   )
 

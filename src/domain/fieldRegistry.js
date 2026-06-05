@@ -5,6 +5,7 @@
 
 import {
   formatFollowUpSatisfactionDisplay,
+  resolveFollowUpDissatisfiedReasons,
 } from './followUpSatisfaction.js'
 
 /** @typedef {import('./enums.js').DataSourceType} DataSourceType */
@@ -612,7 +613,7 @@ export function readFieldValue(record, field) {
     return formatFollowUpSatisfactionDisplay(record?.followUpSatisfaction)
   }
   if (field.fieldKey === 'followUpDissatisfiedReasons') {
-    return String(record?.followUpSatisfaction?.dissatisfiedReasons ?? '').trim()
+    return resolveFollowUpDissatisfiedReasons(record?.followUpSatisfaction)
   }
   for (const path of field.recordPaths) {
     const value = record?.[/** @type {keyof typeof record} */ (path)]

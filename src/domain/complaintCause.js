@@ -42,6 +42,20 @@ export function getComplaintCauseL1Display(record) {
 }
 
 /**
+ * 工单详情一行展示：一级 / 二级 / 三级（终判），省略空层级。
+ * @param {FeedbackRecord} record
+ */
+export function getComplaintCauseFinalDisplay(record) {
+  if (!isComplaintTicket(record)) return ''
+  const parts = [
+    getComplaintCauseL1Final(record),
+    record.complaintCauseL2Final?.trim(),
+    record.complaintCauseL3Final?.trim(),
+  ].filter(Boolean)
+  return parts.length ? parts.join(' / ') : EMPTY_COMPLAINT_CAUSE_LABEL
+}
+
+/**
  * @param {FeedbackRecord[]} items
  */
 export function countComplaintCauseL1(items) {
