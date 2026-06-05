@@ -7,6 +7,10 @@ import { themesFromJourney } from '../lib/applyThemes.js'
 import { preserveManualTags } from '../lib/manualTagFields.js'
 import { normalizeSentiment, normalizeUrgencyLevel, SENTIMENT_LABELS } from '../lib/sentiment.js'
 import {
+  applyFollowUpSatisfactionPatch,
+  parseFollowUpSatisfactionDisplay,
+} from './followUpSatisfaction.js'
+import {
   getImportColumns,
   getImportManualDimensions,
 } from './fieldRegistry.js'
@@ -124,7 +128,7 @@ function coerceImportValue(fieldKey, raw) {
  * @returns {FeedbackRecord}
  */
 export function writeImportField(record, fieldKey, value) {
-  const next = { ...record }
+  let next = { ...record }
   switch (fieldKey) {
     case 'ticketId':
       next.ticketId = String(value ?? '')
@@ -189,6 +193,36 @@ export function writeImportField(record, fieldKey, value) {
     case 'designerOptimization':
       next.designerOptimization = String(value ?? '')
       break
+    case 'followUpSatisfaction': {
+      const text = String(value ?? '').trim()
+      if (!text) {
+        delete next.followUpSatisfaction
+        break
+      }
+      const parsed = parseFollowUpSatisfactionDisplay(text)
+      if (parsed?.score == null) break
+      next = applyFollowUpSatisfactionPatch(next, {
+        followUpTicketId:
+          next.followUpSatisfaction?.followUpTicketId ||
+          `import-${String(next.ticketId || next.id || 'unknown').trim()}`,
+        followUpSuccessful: true,
+        score: parsed.score,
+        problemResolved: parsed.problemResolved ?? undefined,
+      })
+      break
+    }
+    case 'followUpDissatisfiedReasons': {
+      const text = String(value ?? '').trim()
+      if (!text && !next.followUpSatisfaction) break
+      next = applyFollowUpSatisfactionPatch(next, {
+        followUpTicketId:
+          next.followUpSatisfaction?.followUpTicketId ||
+          `import-${String(next.ticketId || next.id || 'unknown').trim()}`,
+        followUpSuccessful: next.followUpSatisfaction?.followUpSuccessful ?? Boolean(text),
+        dissatisfiedReasons: text,
+      })
+      break
+    }
     default:
       break
   }

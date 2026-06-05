@@ -4,6 +4,7 @@ import {
   backgroundTaskAcquireBodySchema,
   backgroundTaskTouchBodySchema,
   clearImportedDataQuerySchema,
+  followUpSatisfactionImportBodySchema,
   insightRebuildBodySchema,
   metaKeyParamsSchema,
   metaPutBodySchema,
@@ -290,6 +291,71 @@ export function registerStorageRoutes(app) {
       throw err
     }
   })
+
+  app.post(
+    '/api/storage/follow-up-satisfaction/import',
+    { schema: { body: followUpSatisfactionImportBodySchema } },
+    async (request, reply) => {
+      if (!assertWritePermission(request, reply, ['import'])) return
+      const body = /** @type {{
+        importMonth: string
+        insightPeriodId?: string
+        importBatchId?: string
+        dryRun?: boolean
+        rows: Record<string, string>[]
+      }} */ (request.body)
+
+      const { processFollowUpSatisfactionImportRows, summarizeFollowUpImportResult } =
+        await import('../../src/lib/followUpSatisfactionImport.js')
+
+      const insightPeriodId = body.insightPeriodId?.trim() || undefined
+      const period = insightPeriodId ? storageRepository.getInsightPeriod(insightPeriodId) : null
+      const ticketRecords = storageRepository.listTicketRecordsForFollowUpImport()
+      const result = processFollowUpSatisfactionImportRows(body.rows, ticketRecords, {
+        importMonth: body.importMonth,
+        importBatchId: body.importBatchId || `follow-up-${body.importMonth}-${Date.now()}`,
+        importedAt: new Date().toISOString(),
+        period,
+      })
+      const summary = summarizeFollowUpImportResult(result)
+      const dryRun = body.dryRun === true
+
+      if (!dryRun && result.updatedRecords.length) {
+        storageRepository.putRecords(result.updatedRecords, {
+          actor: request.user?.id
+            ? { userId: request.user.id, username: request.user.username || request.user.id }
+            : null,
+        })
+      }
+
+      if (!dryRun) {
+        logAuditFromRequest(request, 'follow_up_satisfaction.import', {
+          importMonth: body.importMonth,
+          insightPeriodId,
+          appliedRowCount: summary.appliedRowCount,
+          updatedRecordCount: summary.updatedRecordCount,
+          unmatchedCount: summary.unmatched.length,
+          skippedNotSuccessful: summary.skippedNotSuccessful,
+          skippedInvalidScore: summary.skippedInvalidScore,
+          outOfPeriodCount: summary.outOfPeriodCount,
+          overwrittenCount: summary.overwrittenCount,
+          idempotentUpdateCount: summary.idempotentUpdateCount,
+        })
+      }
+
+      if (!dryRun && result.updatedRecords.length && insightPeriodId) {
+        const { markPeriodSnapshotsStale } = await import(
+          '../../src/snapshots/snapshotService.js'
+        )
+        const { createRepositoryStorageAdapter } = await import(
+          '../repositoryStorageAdapter.js'
+        )
+        await markPeriodSnapshotsStale(createRepositoryStorageAdapter(), insightPeriodId)
+      }
+
+      return { ok: true, dryRun, ...summary }
+    },
+  )
 
   app.post(
     '/api/storage/records/batch',

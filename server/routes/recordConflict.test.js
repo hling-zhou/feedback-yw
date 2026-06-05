@@ -136,4 +136,46 @@ describeConflict('record revision conflict (P0)', () => {
     expect(okRes.statusCode).toBe(200)
     expect(JSON.parse(okRes.body).recordRevision).toBe(2)
   })
+
+  it('persists followUpSatisfaction on patch without dropping ticket fields', async () => {
+    const record = {
+      ...sampleRecord,
+      id: 'rec-follow-up-1',
+      ticketId: 'T-FU-1',
+    }
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/storage/records/rec-follow-up-1',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        record: {
+          ...record,
+          followUpSatisfaction: {
+            followUpTicketId: 'FH-100',
+            followUpSuccessful: true,
+            score: 8,
+            problemResolved: 'unresolved',
+            dissatisfiedReasons: '响应慢',
+            importMonth: '2026-05',
+          },
+          outOfPeriodWarning: true,
+        },
+        expectedRevision: 0,
+      },
+    })
+    expect(patchRes.statusCode).toBe(200)
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/storage/records/rec-follow-up-1',
+      headers: authHeader('editor'),
+    })
+    const saved = JSON.parse(getRes.body).record
+    expect(saved.ticketId).toBe('T-FU-1')
+    expect(saved.requestScene).toBe('报障')
+    expect(saved.followUpSatisfaction?.score).toBe(8)
+    expect(saved.followUpSatisfaction?.dissatisfiedReasons).toBe('响应慢')
+    expect(saved.outOfPeriodWarning).toBe(true)
+    expect(saved.recordRevision).toBe(1)
+  })
 })

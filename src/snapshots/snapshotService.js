@@ -72,11 +72,16 @@ export async function rebuildSourceSnapshot({
 }) {
   const insightPeriodId = period.id
   const records = filterRecordsForScope(feedbacks, period, dataSourceType)
+  const ticketRecordsForFollowUp = [
+    ...filterRecordsForScope(feedbacks, period, 'complaint_ticket'),
+    ...filterRecordsForScope(feedbacks, period, 'consultation_ticket'),
+  ]
   const snapshot = buildSourceSnapshot({
     insightPeriodId,
     dataSourceType,
     records,
     status: 'ready',
+    ticketRecordsForFollowUp,
   })
   await adapter.putSnapshot(snapshot)
   return snapshot

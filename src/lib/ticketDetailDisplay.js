@@ -6,6 +6,9 @@ import {
   parseBracketSections,
 } from './taggingText.js'
 import { isPlatformOutcomeContent } from './ticketAnalysis/customerRequestFilters.js'
+import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
+import { readFieldValue, getFieldByKey } from '../domain/fieldRegistry.js'
+import { isFollowUpEnrichableRecord } from './feedbackFilters.js'
 
 /**
  * @typedef {Object} TicketDetailSourceFields
@@ -769,4 +772,23 @@ export function buildTicketDetailDisplay(record) {
     solutionAndResultText: formatSolutionAndResultParts(solutionParts),
     solutionParts,
   }
+}
+
+/**
+ * @param {import('../lib/types.js').FeedbackRecord | null | undefined} record
+ */
+export function getFollowUpSatisfactionDisplay(record) {
+  if (!isFollowUpEnrichableRecord(record)) return null
+  const text = formatFollowUpSatisfactionDisplay(record?.followUpSatisfaction)
+  return text || '—'
+}
+
+/**
+ * @param {import('../lib/types.js').FeedbackRecord | null | undefined} record
+ */
+export function getFollowUpDissatisfiedReasonsDisplay(record) {
+  if (!isFollowUpEnrichableRecord(record)) return null
+  const field = getFieldByKey('followUpDissatisfiedReasons')
+  const text = field ? readFieldValue(record, field) : ''
+  return text || '—'
 }

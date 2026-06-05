@@ -2,9 +2,10 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert, Card, Col, Row, Statistic, Table, Typography } from 'antd'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
+import FollowUpSatisfactionPanel from './FollowUpSatisfactionPanel.jsx'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { isStubPipeline } from '../../analysis/registry.js'
-import { resolveRecordsByIds } from '../../snapshots/recordScope.js'
+import { filterRecordsForScope, resolveRecordsByIds } from '../../snapshots/recordScope.js'
 import { aggregateRatingByProduct, summarizeRatings } from '../../lib/ratingAnalytics.js'
 
 /**
@@ -15,11 +16,18 @@ import { aggregateRatingByProduct, summarizeRatings } from '../../lib/ratingAnal
  * @param {string} props.sourceLabel
  */
 export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
-  const { feedbacks } = useInsights()
+  const { feedbacks, currentPeriod } = useInsights()
   const items = useMemo(
     () => resolveRecordsByIds(feedbacks, snapshot.recordIds),
     [feedbacks, snapshot.recordIds],
   )
+
+  const ticketRecordsForFollowUp = useMemo(() => {
+    if (!currentPeriod) return []
+    const complaint = filterRecordsForScope(feedbacks, currentPeriod, 'complaint_ticket')
+    const consultation = filterRecordsForScope(feedbacks, currentPeriod, 'consultation_ticket')
+    return [...complaint, ...consultation]
+  }, [feedbacks, currentPeriod])
 
   const summary = useMemo(() => summarizeRatings(items), [items])
   const byProduct = useMemo(() => aggregateRatingByProduct(items), [items])
@@ -37,18 +45,11 @@ export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
   )
 
   const stub = isStubPipeline('post_use_rating')
-
-  if (!items.length) {
-    return (
-      <Card>
-        <Typography.Text type="secondary">当前周期内暂无「{sourceLabel}」数据，请先导入。</Typography.Text>
-      </Card>
-    )
-  }
+  const hasRatingItems = items.length > 0
 
   return (
     <div className="space-y-4">
-      {stub && (
+      {stub && hasRatingItems && (
         <Alert
           type="info"
           showIcon
@@ -61,7 +62,17 @@ export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
         本 Tab 为<strong>全部产品</strong>维度展示（18 云网产品一览）；投诉/咨询工单 Tab 为分产品查看旅程与打标。
       </Typography.Text>
 
-      <Row gutter={[16, 16]}>
+      <FollowUpSatisfactionPanel ticketRecords={ticketRecordsForFollowUp} />
+
+      {!hasRatingItems ? (
+        <Card>
+          <Typography.Text type="secondary">
+            当前周期内暂无「{sourceLabel}」评价明细，请先导入独立评价记录。
+          </Typography.Text>
+        </Card>
+      ) : (
+        <>
+          <Row gutter={[16, 16]}>
         <Col xs={12} sm={6}>
           <Card>
             <Statistic title="周期内条数" value={summary.recordCount} />
@@ -123,6 +134,8 @@ export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
           ]}
         />
       </Card>
+        </>
+      )}
     </div>
   )
 }

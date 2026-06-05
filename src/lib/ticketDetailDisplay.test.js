@@ -3,6 +3,8 @@ import {
   buildTicketDetailDisplay,
   extractCustomerRequestSegments,
   extractSolutionAndResultParts,
+  getFollowUpDissatisfiedReasonsDisplay,
+  getFollowUpSatisfactionDisplay,
   parseLabelValueBlocks,
   resolveDisplayCustomerQuote,
   sortCustomerRequestSegments,
@@ -164,5 +166,21 @@ describe('ticketDetailDisplay', () => {
       rawText: '客户问题：无法访问\n处理结果：已协助客户完成配置并复测通过',
     })
     expect(parts.customerOutcome).toHaveLength(0)
+  })
+
+  it('formats follow-up satisfaction display for drawer', () => {
+    const record = {
+      dataSourceType: 'complaint_ticket',
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        score: 10,
+        problemResolved: 'resolved',
+        dissatisfiedReasons: '响应慢',
+      },
+    }
+    expect(getFollowUpSatisfactionDisplay(record)).toBe('10（已解决）')
+    expect(getFollowUpDissatisfiedReasonsDisplay(record)).toBe('响应慢')
+    expect(getFollowUpSatisfactionDisplay({ dataSourceType: 'post_use_rating' })).toBeNull()
   })
 })

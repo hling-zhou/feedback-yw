@@ -15,6 +15,7 @@ import {
 } from '../domain/overridePolicy.js'
 import { normalizeTicketId } from './desensitize.js'
 import { SENTIMENT_LABELS } from './sentiment.js'
+import { parseFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 
@@ -170,6 +171,21 @@ export function validateImportUrgencyRaw(raw) {
 }
 
 /**
+ * @param {string | undefined} raw
+ * @returns {{ ok: true } | { ok: false; message: string }}
+ */
+export function validateImportFollowUpSatisfactionRaw(raw) {
+  const text = String(raw ?? '').trim()
+  if (!text) return { ok: true }
+  const parsed = parseFollowUpSatisfactionDisplay(text)
+  if (parsed?.score != null) return { ok: true }
+  return {
+    ok: false,
+    message: `无法识别回访满意度「${text}」，请使用如 10（已解决）或 9 格式`,
+  }
+}
+
+/**
  * @param {FieldDefinition} field
  * @returns {boolean}
  */
@@ -260,6 +276,18 @@ export function validateImportAnalysisRow(rawRow, rowIndex) {
           fieldKey: field.fieldKey,
           displayName: field.displayName,
           message: urgencyCheck.message,
+        })
+      }
+    }
+
+    if (field.fieldKey === 'followUpSatisfaction' && String(raw ?? '').trim()) {
+      const followUpCheck = validateImportFollowUpSatisfactionRaw(raw)
+      if (!followUpCheck.ok) {
+        errors.push({
+          rowIndex,
+          fieldKey: field.fieldKey,
+          displayName: field.displayName,
+          message: followUpCheck.message,
         })
       }
     }

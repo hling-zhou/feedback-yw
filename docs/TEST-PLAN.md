@@ -1,6 +1,6 @@
 # Feedback Insights 系统测试计划
 
-**版本**：2026-06-03（Insight Rebuild Job、M2-4 Top10 golden）
+**版本**：2026-06-05（用后即评回访满意度 P6 收口）
 **适用分支**：当前 `main` / 工作区  
 **关联**：清空数据加固、投诉终判导入、共享 SQLite 存储
 
@@ -37,6 +37,7 @@
 - **来源 Tag P2-6**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.1 来源 Tag；自动化 §5.4.3i TAG-UI-P2-6
 - **工单详情 P2-7 UAT**：[FEEDBACK-DRAWER-UAT.md](./FEEDBACK-DRAWER-UAT.md)；自动化 §5.4.3j TAG-UI-P2-7
 - **导入分析 P3-1 入口**：[DESIGN-20260601-1.md](./DESIGN-20260601-1.md) §3.3；自动化 §5.4.3k TAG-IMP-P3-1
+- **用后即评 · 回访满意度 P0–P6**：[DESIGN-用后即评-满意度回访.md](./DESIGN-用后即评-满意度回访.md)；自动化 §5.4.3l TAG-FU；**UAT**：[FOLLOW-UP-SATISFACTION-UAT.md](./FOLLOW-UP-SATISFACTION-UAT.md)
 - 存储层：IndexedDB 适配器、API 适配器、SQLite `storageRepository`
 - 服务端：认证、权限、Storage API、健康检查、审计日志
 - 领域逻辑：洞察周期、数据来源、导入解析、打标管道、快照构建
@@ -292,6 +293,32 @@
 | TAG-IMP-P3-1-03 | P0 | 模板表头 | 18 列 = export v2 | `importAnalysisTemplate.test.js` |
 | TAG-IMP-P3-1-04 | P0 | 排期可空 | 必填不含排期 | `importAnalysisTemplate.test.js` |
 | TAG-IMP-P3-1-05 | P1 | 下载模板 | Excel 首行表头正确 | 手工：设置 → 数据导入 → 分析 Tab |
+
+#### 5.4.3l 用后即评 · 回访满意度（TAG-FU）
+
+| ID | 优先级 | 场景 | 预期 | 自动化 |
+|----|--------|------|------|--------|
+| TAG-FU-01 | P0 | 领域模型 | score/解析/展示 `10（已解决）`；趋势月份 fallback | `followUpSatisfaction.test.js` |
+| TAG-FU-02 | P0 | Field Registry | 回访两列位于「是否加急」后；仅投诉/咨询 | `fieldRegistry.test.js` |
+| TAG-FU-03 | P0 | 回访导入匹配 | 原工单号 patch、幂等、跳过非成功 | `followUpSatisfactionImport.test.js` + `server/routes/followUpSatisfactionImport.test.js` |
+| TAG-FU-04 | P1 | 列表列 | 「数据来源」后「回访满意度」 | 手工 UAT U-02 / `FeedbackTable` |
+| TAG-FU-05 | P1 | 详情展示 | 加急后回访满意度；客户请求上不满意原因 | `ticketDetailDisplay.test.js` + UAT U-06 |
+| TAG-FU-06 | P1 | 反馈库筛选 | 有/无回访、10/非10、已/未解决、reasonDim | `feedbackFilters.test.js` |
+| TAG-FU-07 | P1 | URL drill-down | `?followUp=non10&requestScene=` 可复现 | `feedbackFilters.test.js` + UAT U-13 |
+| TAG-FU-08 | P0 | 幂等覆盖 | 同回访工单号更新；不同号覆盖原工单 | `followUpSatisfactionImport.test.js` + 集成测 |
+| TAG-FU-09 | P0 | 10 分率分母 | 仅 `followUpSuccessful && 有效 score` | `followUpSatisfactionAnalytics.test.js` + 集成测 |
+| TAG-FU-10 | P0 | 导出 v3 列 | 21 列含回访/不满意原因 | `ticketAnalysisExport.test.js` |
+| TAG-FU-11 | P0 | Sheet 分组 | 数据来源 + importMonth | `ticketAnalysisExport.test.js` + 集成测 |
+| TAG-FU-12 | P1 | round-trip | 导出→导入仅 patch 回访 | `importAnalysis.test.js` + `overridePolicy.test.js` + 集成测 |
+| TAG-FU-13 | P1 | 快照预聚合 | post_use_rating 快照含 `followUpSatisfactionMetrics` | `buildSourceSnapshot.test.js` + 集成测 |
+| TAG-FU-14 | P1 | 分析聚合 | 非 10 分分布、88% 基线、未解决占比 | `followUpSatisfactionAnalytics.test.js` |
+| TAG-FU-15 | P1 | 下钻 URL 构建 | `buildFollowUpDrillDownUrl` 默认 non10 | `feedbackFilters.test.js` + 集成测 |
+| TAG-FU-16 | P2 | 工作台面板 | 趋势/分布/条形图/产品联动 | `FollowUpSatisfactionPanel.jsx` + UAT U-09～12 |
+| TAG-FU-17 | P2 | PDF 钩子 | `data-pdf-chart=followup-*` 不报错 | `captureChartImages.js` + 报告手工 |
+| TAG-FU-18 | P1 | 周期外补全 | `outOfPeriodWarning` 写入 | `followUpSatisfactionImport.test.js` + 集成测 |
+
+**UAT 清单**：[FOLLOW-UP-SATISFACTION-UAT.md](./FOLLOW-UP-SATISFACTION-UAT.md)  
+**端到端集成**：`src/lib/followUpSatisfaction.integration.test.js`
 
 #### 5.4.4 客户请求 / 痛点 V2 golden（TAG-CR / TAG-PP）
 

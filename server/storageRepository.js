@@ -134,6 +134,16 @@ export const storageRepository = {
     }
   },
 
+  listTicketRecordsForFollowUpImport() {
+    const db = getDb()
+    const rows = db
+      .prepare(
+        `SELECT payload FROM records WHERE data_source_type IN ('complaint_ticket', 'consultation_ticket')`,
+      )
+      .all()
+    return rows.map((r) => parseJson(r.payload))
+  },
+
   putRecord(record, options = {}) {
     const db = getDb()
     const existing = this.getRecord(record.id)

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   EXPORT_ANALYSIS_VERSION,
-  getExportV2Headers,
-  recordToExportRowV2,
+  formatExportSourceMonthSheetName,
+  getExportV3Headers,
+  groupRecordsBySourceAndMonth,
+  recordToExportRowV3,
 } from './ticketAnalysisExport.js'
 
 const baseRecord = {
@@ -34,13 +36,13 @@ const baseRecord = {
   complaintCauseL1Final: '性能类',
 }
 
-describe('ticketAnalysisExport v2', () => {
-  it('EXPORT_ANALYSIS_VERSION is 2', () => {
-    expect(EXPORT_ANALYSIS_VERSION).toBe(2)
+describe('ticketAnalysisExport v3', () => {
+  it('EXPORT_ANALYSIS_VERSION is 3', () => {
+    expect(EXPORT_ANALYSIS_VERSION).toBe(3)
   })
 
-  it('getExportV2Headers returns 19 columns in registry order', () => {
-    expect(getExportV2Headers()).toEqual([
+  it('getExportV3Headers returns 21 columns in registry order', () => {
+    expect(getExportV3Headers()).toEqual([
       '工单号',
       '产品名称',
       '客户请求内容',
@@ -51,6 +53,8 @@ describe('ticketAnalysisExport v2', () => {
       '用户旅程二级',
       '用户情绪',
       '是否加急',
+      '回访满意度',
+      '不满意原因',
       '产品技术优化',
       '服务流程改进',
       '产品组优化建议',
@@ -63,9 +67,9 @@ describe('ticketAnalysisExport v2', () => {
     ])
   })
 
-  it('recordToExportRowV2 maps fields with sentiment/urgency labels and no legacy columns', () => {
-    const row = recordToExportRowV2(baseRecord)
-    expect(Object.keys(row)).toEqual(getExportV2Headers())
+  it('recordToExportRowV3 maps fields with sentiment/urgency labels and no legacy columns', () => {
+    const row = recordToExportRowV3(baseRecord)
+    expect(Object.keys(row)).toEqual(getExportV3Headers())
     expect(row['工单号']).toBe('T-001')
     expect(row['产品名称']).toBe('云主机')
     expect(row['客户请求内容']).toBe('希望开通端口访问')
@@ -85,8 +89,23 @@ describe('ticketAnalysisExport v2', () => {
     expect(row).not.toHaveProperty('问题摘要')
   })
 
+  it('exports follow-up satisfaction columns when present', () => {
+    const row = recordToExportRowV3({
+      ...baseRecord,
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        score: 10,
+        problemResolved: 'resolved',
+        dissatisfiedReasons: '无',
+      },
+    })
+    expect(row['回访满意度']).toBe('10（已解决）')
+    expect(row['不满意原因']).toBe('无')
+  })
+
   it('acceptanceContent prefers sourceColumns 受理内容 over structured rawText parsing', () => {
-    const row = recordToExportRowV2({
+    const row = recordToExportRowV3({
       ...baseRecord,
       rawText: '',
       sourceColumns: { 受理内容: '20260506144725X450975120 受理原文' },
@@ -94,21 +113,21 @@ describe('ticketAnalysisExport v2', () => {
     expect(row['受理内容']).toBe('20260506144725X450975120 受理原文')
   })
 
-  it('consultation ticket export has no 终判 column and same v2 shape', () => {
-    const row = recordToExportRowV2({
+  it('consultation ticket export has no 终判 column and same v3 shape', () => {
+    const row = recordToExportRowV3({
       ...baseRecord,
       dataSourceType: 'consultation_ticket',
       problemType: '计费与账单',
       complaintCauseL1Final: '不应导出',
     })
-    expect(Object.keys(row)).toEqual(getExportV2Headers())
+    expect(Object.keys(row)).toEqual(getExportV3Headers())
     expect(row).not.toHaveProperty('投诉原因（终判）')
     expect(row['问题类型']).toBe('计费与账单')
   })
 
   it('establishedAction prefers establishedAction over manualReviewOptimization', () => {
     expect(
-      recordToExportRowV2({
+      recordToExportRowV3({
         ...baseRecord,
         establishedAction: '新确立',
         manualReviewOptimization: '旧人工',
@@ -117,7 +136,7 @@ describe('ticketAnalysisExport v2', () => {
   })
 
   it('exports product group and designer optimization suggestions', () => {
-    const row = recordToExportRowV2({
+    const row = recordToExportRowV3({
       ...baseRecord,
       productGroupOptimization: '统一交互规范',
       designerOptimization: '优化绑定成功页层级',
@@ -127,7 +146,7 @@ describe('ticketAnalysisExport v2', () => {
   })
 
   it('empty optional fields export as empty strings', () => {
-    const row = recordToExportRowV2({
+    const row = recordToExportRowV3({
       ...baseRecord,
       actionSchedule: '',
       optimizationService: '',
@@ -147,7 +166,7 @@ describe('ticketAnalysisExport v2', () => {
 
   it('rootCauseReview stored value takes precedence over fallback', () => {
     expect(
-      recordToExportRowV2({
+      recordToExportRowV3({
         ...baseRecord,
         rootCauseReview: '人工根因排查',
         sourceColumns: { 问题原因: '列根因' },
@@ -155,4 +174,24 @@ describe('ticketAnalysisExport v2', () => {
     ).toBe('人工根因排查')
   })
 
+  it('groupRecordsBySourceAndMonth splits by data source and importMonth', () => {
+    const groups = groupRecordsBySourceAndMonth([
+      { ...baseRecord, id: '1', importMonth: '2026-05', dataSourceType: 'complaint_ticket' },
+      { ...baseRecord, id: '2', importMonth: '2026-05', dataSourceType: 'consultation_ticket' },
+      { ...baseRecord, id: '3', importMonth: '2026-04', dataSourceType: 'complaint_ticket' },
+      { ...baseRecord, id: '4', dataSourceType: 'complaint_ticket' },
+    ])
+    expect(groups.size).toBe(4)
+    expect(groups.get(`complaint_ticket\0${'2026-05'}`)).toHaveLength(1)
+    expect(groups.get(`consultation_ticket\0${'2026-05'}`)).toHaveLength(1)
+  })
+
+  it('formatExportSourceMonthSheetName matches design labels', () => {
+    expect(formatExportSourceMonthSheetName('complaint_ticket', '2026-05')).toBe(
+      '投诉工单-2026年5月',
+    )
+    expect(formatExportSourceMonthSheetName('consultation_ticket', '')).toBe(
+      '咨询工单-未知月份',
+    )
+  })
 })

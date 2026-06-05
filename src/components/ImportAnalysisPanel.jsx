@@ -210,7 +210,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
         <p className="ant-upload-text">
           {parsing ? '正在解析…' : '点击或拖拽上传分析结果 Excel / CSV'}
         </p>
-        <p className="ant-upload-hint">表头需与导出 v2 一致</p>
+        <p className="ant-upload-hint">表头需与导出 v3 一致</p>
       </Upload.Dragger>
 
       {validation && (
@@ -333,7 +333,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           type="warning"
           showIcon
           title="请勿与工单 Excel 导入混淆"
-          description="工单 Excel 用于首次入库（含受理内容、处理意见等原始列）；分析结果 Excel 列固定为导出 v2 格式，用于往返编辑后回写。"
+          description="工单 Excel 用于首次入库（含受理内容、处理意见等原始列）；分析结果 Excel 列固定为导出 v3 格式，用于往返编辑后回写。"
         />
       )}
 
@@ -373,7 +373,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           <Card title="模板与列说明">
             <Typography.Paragraph className="!mb-3 text-sm text-ink-700">
               表头共 {TEMPLATE_COLUMN_COUNT} 列，与
-              <Typography.Text code>导出分析结果 v2</Typography.Text>
+              <Typography.Text code>导出分析结果 v3</Typography.Text>
               一致；多余列将被忽略。排期可留空（R1，空=待评估）。
             </Typography.Paragraph>
             <Button

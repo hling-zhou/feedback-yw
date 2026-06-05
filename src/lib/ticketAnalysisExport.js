@@ -1,8 +1,10 @@
 import { message } from 'antd'
 import * as XLSX from 'xlsx'
+import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
 import { getExportColumns, readFieldValue } from '../domain/fieldRegistry.js'
 import { getEffectiveRootCauseReview } from '../domain/rootCauseReview.js'
+import { recordSourceType } from '../snapshots/recordScope.js'
 import {
   extractAcceptanceTextFromFields,
   extractHandlingTextFromFields,
@@ -15,17 +17,20 @@ import {
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
-/** 当前分析结果导出列版本（Field Registry v2） */
-export const EXPORT_ANALYSIS_VERSION = 2
+/** 当前分析结果导出列版本（Field Registry v3，含回访满意度） */
+export const EXPORT_ANALYSIS_VERSION = 3
 
 /**
- * v2 导出表头（Field Registry 列序）。
+ * v3 导出表头（Field Registry 列序）。
  * @param {{ dataSourceType?: import('../domain/enums.js').DataSourceType }} [options]
  * @returns {string[]}
  */
-export function getExportV2Headers(options = {}) {
+export function getExportV3Headers(options = {}) {
   return getExportColumns(options).map((field) => field.displayName)
 }
+
+/** @deprecated 使用 getExportV3Headers */
+export const getExportV2Headers = getExportV3Headers
 
 /**
  * @param {FeedbackRecord} record
@@ -88,12 +93,12 @@ function exportRegistryFieldValue(record, field) {
 }
 
 /**
- * 分析结果导出 v2：列定义与顺序唯一来自 Field Registry。
+ * 分析结果导出 v3：列定义与顺序唯一来自 Field Registry。
  *
  * @param {FeedbackRecord} record
  * @returns {Record<string, string>}
  */
-export function recordToExportRowV2(record) {
+export function recordToExportRowV3(record) {
   /** @type {Record<string, string>} */
   const row = {}
   const columns = getExportColumns({ dataSourceType: record.dataSourceType })
@@ -102,6 +107,9 @@ export function recordToExportRowV2(record) {
   }
   return row
 }
+
+/** @deprecated 使用 recordToExportRowV3 */
+export const recordToExportRowV2 = recordToExportRowV3
 
 /**
  * @param {string} importMonth YYYY-MM
@@ -113,17 +121,56 @@ export function formatImportMonthSheetName(importMonth) {
 }
 
 /**
+ * @param {FeedbackRecord} record
+ * @returns {string} YYYY-MM or `unknown`
+ */
+export function normalizeExportGroupMonth(record) {
+  return record.importMonth && /^\d{4}-\d{2}$/.test(record.importMonth)
+    ? record.importMonth
+    : 'unknown'
+}
+
+/**
+ * @param {import('../domain/enums.js').DataSourceType | string} dataSourceType
+ * @param {string} importMonth YYYY-MM or empty
+ */
+export function formatExportSourceMonthSheetName(dataSourceType, importMonth) {
+  const sourceLabel = DATA_SOURCE_LABELS[dataSourceType] || dataSourceType || '未知来源'
+  const monthLabel =
+    importMonth && /^\d{4}-\d{2}$/.test(importMonth)
+      ? formatImportMonthSheetName(importMonth)
+      : '未知月份'
+  return `${sourceLabel}-${monthLabel}`.slice(0, 31)
+}
+
+/**
+ * @param {FeedbackRecord[]} records
+ * @returns {Map<string, FeedbackRecord[]>} key = `${dataSourceType}\0${monthKey}`
+ */
+export function groupRecordsBySourceAndMonth(records) {
+  /** @type {Map<string, FeedbackRecord[]>} */
+  const groups = new Map()
+  for (const record of records) {
+    const source = recordSourceType(record)
+    const month = normalizeExportGroupMonth(record)
+    const key = `${source}\0${month}`
+    const list = groups.get(key) || []
+    list.push(record)
+    groups.set(key, list)
+  }
+  return groups
+}
+
+/**
  * @param {FeedbackRecord[]} records
  * @returns {Map<string, FeedbackRecord[]>}
+ * @deprecated 使用 groupRecordsBySourceAndMonth
  */
 export function groupRecordsByImportMonth(records) {
   /** @type {Map<string, FeedbackRecord[]>} */
   const groups = new Map()
   for (const r of records) {
-    const month =
-      r.importMonth && /^\d{4}-\d{2}$/.test(r.importMonth)
-        ? r.importMonth
-        : 'unknown'
+    const month = normalizeExportGroupMonth(r)
     const list = groups.get(month) || []
     list.push(r)
     groups.set(month, list)
@@ -132,28 +179,57 @@ export function groupRecordsByImportMonth(records) {
 }
 
 /**
+ * @param {string} groupKey
+ */
+function parseSourceMonthGroupKey(groupKey) {
+  const sep = groupKey.indexOf('\0')
+  if (sep === -1) return { source: groupKey, month: 'unknown' }
+  return {
+    source: groupKey.slice(0, sep),
+    month: groupKey.slice(sep + 1) || 'unknown',
+  }
+}
+
+/**
+ * @param {string} a
+ * @param {string} b
+ */
+function compareSourceMonthGroupKeys(a, b) {
+  const ka = parseSourceMonthGroupKey(a)
+  const kb = parseSourceMonthGroupKey(b)
+  const sa = DATA_SOURCE_LABELS[ka.source] || ka.source
+  const sb = DATA_SOURCE_LABELS[kb.source] || kb.source
+  const sourceCmp = sa.localeCompare(sb, 'zh-CN')
+  if (sourceCmp !== 0) return sourceCmp
+  if (ka.month === 'unknown') return 1
+  if (kb.month === 'unknown') return -1
+  return kb.month.localeCompare(ka.month)
+}
+
+/**
  * @param {FeedbackRecord[]} records
  * @param {string} [filename]
  */
 export function downloadTicketAnalysisExcel(records, filename) {
-  const groups = groupRecordsByImportMonth(records)
-  const months = [...groups.keys()].sort((a, b) => {
-    if (a === 'unknown') return 1
-    if (b === 'unknown') return -1
-    return b.localeCompare(a)
-  })
+  const groups = groupRecordsBySourceAndMonth(records)
+  const keys = [...groups.keys()].sort(compareSourceMonthGroupKeys)
 
   const wb = XLSX.utils.book_new()
-  for (const month of months) {
-    const items = groups.get(month) || []
-    const rows = items.map(recordToExportRowV2)
+  for (const key of keys) {
+    const { source, month } = parseSourceMonthGroupKey(key)
+    const items = groups.get(key) || []
+    const rows = items.map(recordToExportRowV3)
     const ws = XLSX.utils.json_to_sheet(
-      rows.length ? rows : [{ 提示: '该月无数据' }],
+      rows.length ? rows : [{ 提示: '该 sheet 无数据' }],
     )
-    XLSX.utils.book_append_sheet(wb, ws, formatImportMonthSheetName(month === 'unknown' ? '' : month))
+    XLSX.utils.book_append_sheet(
+      wb,
+      ws,
+      formatExportSourceMonthSheetName(source, month === 'unknown' ? '' : month),
+    )
   }
 
-  if (months.length === 0) {
+  if (keys.length === 0) {
     const ws = XLSX.utils.json_to_sheet([{ 提示: '无数据' }])
     XLSX.utils.book_append_sheet(wb, ws, '无数据')
   }
@@ -174,7 +250,7 @@ export function downloadTicketAnalysisExcel(records, filename) {
 }
 
 /**
- * 导出当前筛选范围工单的分析结果 v2。
+ * 导出当前筛选范围工单的分析结果 v3。
  * @param {FeedbackRecord[]} records
  * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string }} [options]
  */
@@ -197,7 +273,7 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
       : ''
 
   message.success(
-    `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV2Headers().length} 列）${totalHint}`,
+    `已导出 ${records.length} 条（分析结果 v${EXPORT_ANALYSIS_VERSION}，${getExportV3Headers().length} 列）${totalHint}`,
   )
 }
 

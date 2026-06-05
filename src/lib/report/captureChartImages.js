@@ -14,6 +14,11 @@ const CHART_TARGETS_BY_SCOPE = {
   ],
   post_use_rating: [
     { selector: '[data-pdf-chart="yhjp-product-scores"]', title: '各产品评分（周期内）' },
+    { selector: '[data-pdf-chart="followup-ten-rate-trend"]', title: '10 分满意率月度趋势' },
+    { selector: '[data-pdf-chart="followup-score-distribution"]', title: '非 10 分得分分布' },
+    { selector: '[data-pdf-chart="followup-request-scenes"]', title: '非 10 分请求场景' },
+    { selector: '[data-pdf-chart="followup-problem-types"]', title: '非 10 分问题类型' },
+    { selector: '[data-pdf-chart="followup-dissatisfied-reasons"]', title: '非 10 分不满意原因' },
   ],
 }
 

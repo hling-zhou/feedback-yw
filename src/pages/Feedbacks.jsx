@@ -26,7 +26,7 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
-import { exportTicketAnalysisWithConfirm, getExportV2Headers } from '../lib/ticketAnalysisExport.js'
+import { exportTicketAnalysisWithConfirm, getExportV3Headers } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
   countRecordsNeedingTicketLlmEnrichment,
@@ -45,6 +45,14 @@ import {
 } from '../lib/journeyRetagSummary.js'
 import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
+import {
+  FOLLOW_UP_FILTER_OPTIONS,
+  FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
+  matchesFollowUpFilters,
+  matchesOptionalTextFilter,
+  parseFeedbackFollowUpSearchParams,
+  patchFeedbackFollowUpSearchParams,
+} from '../lib/feedbackFilters.js'
 
 /**
  * @param {string | null | undefined} raw
@@ -91,10 +99,21 @@ export default function Feedbacks() {
   const [resourcePool, setResourcePool] = useState('')
   const [dataSourceFilter, setDataSourceFilter] = useState('')
   const [ticketLlmFilter, setTicketLlmFilter] = useState('')
+  const [followUpFilter, setFollowUpFilter] = useState('')
+  const [followUpResolvedFilter, setFollowUpResolvedFilter] = useState('')
+  const [reasonDimFilter, setReasonDimFilter] = useState('')
+  const [requestScene, setRequestScene] = useState('')
   const [selectedTicketIds, setSelectedTicketIds] = useState(/** @type {string[]} */ ([]))
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const skipTicketIdsUrlSyncRef = useRef(false)
+  const skipFollowUpUrlSyncRef = useRef(false)
+
+  const syncFollowUpFiltersToUrl = (patch) => {
+    skipFollowUpUrlSyncRef.current = true
+    const next = patchFeedbackFollowUpSearchParams(searchParams, patch)
+    setSearchParams(next, { replace: true })
+  }
 
   const syncTicketIdsToUrl = (ids) => {
     const unique = [...new Set(ids.map((t) => t.trim()).filter(Boolean))]
@@ -138,6 +157,7 @@ export default function Feedbacks() {
     const urlProblemType = searchParams.get('problemType')
     const urlComplaintCauseL1 = searchParams.get('complaintCauseL1')
     const urlJourneyL1 = searchParams.get('journeyL1')
+    const urlRequestScene = searchParams.get('requestScene')
 
     if (source && DATA_SOURCE_TYPES.includes(source)) setDataSourceFilter(source)
     else setDataSourceFilter('')
@@ -145,8 +165,18 @@ export default function Feedbacks() {
     setProblemType(urlProblemType || '')
     setComplaintCauseL1(urlComplaintCauseL1 || '')
     setJourneyL1(urlJourneyL1 || '')
+    setRequestScene(urlRequestScene || '')
     setResourcePool('')
     setQ('')
+
+    if (!skipFollowUpUrlSyncRef.current) {
+      const followUpParams = parseFeedbackFollowUpSearchParams(searchParams)
+      setFollowUpFilter(followUpParams.followUp)
+      setFollowUpResolvedFilter(followUpParams.followUpResolved)
+      setReasonDimFilter(followUpParams.reasonDim)
+    } else {
+      skipFollowUpUrlSyncRef.current = false
+    }
     // 仅响应 URL 变化；勿依赖 selectInsightPeriod，否则会反复把周期重置回 ?month=
   }, [searchParams])
 
@@ -239,7 +269,7 @@ export default function Feedbacks() {
         if (!fb.ticketId || !selectedTicketIdSet.has(fb.ticketId)) return false
       }
       if (product && (fb.product || '未标注产品') !== product) return false
-      if (problemType && fb.problemType !== problemType) return false
+      if (!matchesOptionalTextFilter(fb.problemType, problemType)) return false
       if (complaintCauseL1) {
         if (!isComplaintTicket(fb)) return false
         if (getComplaintCauseL1Display(fb) !== complaintCauseL1) return false
@@ -247,6 +277,16 @@ export default function Feedbacks() {
       if (journeyL1 && fb.journeyL1 !== journeyL1) return false
       if (resourcePool && (fb.resourcePool || '未标注资源池') !== resourcePool) return false
       if (dataSourceFilter && recordSourceType(fb) !== dataSourceFilter) return false
+      if (!matchesOptionalTextFilter(fb.requestScene, requestScene)) return false
+      if (
+        !matchesFollowUpFilters(fb, {
+          followUp: followUpFilter,
+          followUpResolved: followUpResolvedFilter,
+          reasonDim: reasonDimFilter,
+        })
+      ) {
+        return false
+      }
       if (ticketLlmFilter === 'needs_llm' && !recordNeedsTicketLlmEnrichment(fb)) return false
       if (ticketLlmFilter === 'needs_journey_llm' && !recordNeedsJourneyLlmEnrichment(fb, settings))
         return false
@@ -278,6 +318,10 @@ export default function Feedbacks() {
     journeyL1,
     resourcePool,
     dataSourceFilter,
+    followUpFilter,
+    followUpResolvedFilter,
+    reasonDimFilter,
+    requestScene,
     ticketLlmFilter,
     settings,
     q,
@@ -561,13 +605,41 @@ export default function Feedbacks() {
             if (value && value !== 'complaint_ticket') setComplaintCauseL1('')
           }}
         />
+        <Select
+          className="min-w-[140px]"
+          value={followUpFilter}
+          options={FOLLOW_UP_FILTER_OPTIONS}
+          onChange={(value) => {
+            setFollowUpFilter(value)
+            const nextResolved =
+              value === 'none' || !value ? '' : followUpResolvedFilter
+            if (nextResolved !== followUpResolvedFilter) setFollowUpResolvedFilter(nextResolved)
+            syncFollowUpFiltersToUrl({
+              followUp: value,
+              followUpResolved: nextResolved,
+            })
+          }}
+        />
+        <Select
+          className="min-w-[140px]"
+          value={followUpResolvedFilter}
+          disabled={!followUpFilter || followUpFilter === 'none'}
+          options={FOLLOW_UP_RESOLVED_FILTER_OPTIONS}
+          onChange={(value) => {
+            setFollowUpResolvedFilter(value)
+            syncFollowUpFiltersToUrl({
+              followUp: followUpFilter,
+              followUpResolved: value,
+            })
+          }}
+        />
         <div className="ml-auto flex flex-wrap gap-2">
           <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
             <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
               导入分析结果
             </Button>
           </Tooltip>
-          <Tooltip title={`导出 v2：${getExportV2Headers().length} 列分析结果（可与导入分析结果往返）。列说明见 docs/EXPORT-V2-MIGRATION.md`}>
+          <Tooltip title={`导出 v3：${getExportV3Headers().length} 列分析结果（可与导入分析结果往返，含回访满意度）。列说明见 docs/EXPORT-V2-MIGRATION.md`}>
             <Button
               icon={<UploadOutlined />}
               disabled={!filtered.length}

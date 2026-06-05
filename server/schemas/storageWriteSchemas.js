@@ -170,6 +170,24 @@ export const clearImportedDataQuerySchema = {
 }
 
 /** @type {import('json-schema').JSONSchema7} */
+export const followUpSatisfactionImportBodySchema = {
+  type: 'object',
+  ...STRICT_OBJECT,
+  required: ['importMonth', 'rows'],
+  properties: {
+    importMonth: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
+    insightPeriodId: { type: 'string', minLength: 1, maxLength: 128 },
+    importBatchId: { type: 'string', minLength: 1, maxLength: 256 },
+    dryRun: { type: 'boolean' },
+    rows: {
+      type: 'array',
+      maxItems: 10000,
+      items: { type: 'object', additionalProperties: true },
+    },
+  },
+}
+
+/** @type {import('json-schema').JSONSchema7} */
 export const tagCandidatesPutBodySchema = {
   type: 'object',
   ...STRICT_OBJECT,

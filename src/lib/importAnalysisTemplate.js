@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx'
 import { getImportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 /**
- * v2 导入分析结果表头（与导出 v2 列序一致；必填列名带 *）。
+ * v3 导入分析结果表头（与导出 v3 列序一致；必填列名带 *）。
  * @returns {string[]}
  */
 export function getImportAnalysisTemplateHeaders() {
@@ -36,7 +36,7 @@ export function downloadImportAnalysisTemplate(filename) {
   })
   const name =
     filename ||
-    `分析结果导入模板-v2-${headers.length}列-${new Date().toISOString().slice(0, 10)}.xlsx`
+    `分析结果导入模板-v3-${headers.length}列-${new Date().toISOString().slice(0, 10)}.xlsx`
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

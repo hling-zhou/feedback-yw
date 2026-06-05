@@ -125,4 +125,45 @@ describe('buildSourceSnapshot', () => {
     expect(may[0].id).toBe('1')
     expect(jun[0].id).toBe('2')
   })
+
+  it('embeds followUpSatisfactionMetrics on post_use_rating snapshot from ticket enrichments', () => {
+    const ticketRecords = [
+      {
+        id: 't-fu-1',
+        dataSourceType: 'complaint_ticket',
+        importMonth: '2025-05',
+        product: '云主机',
+        requestScene: '报障',
+        problemType: '故障',
+        followUpSatisfaction: {
+          followUpTicketId: 'FH-1',
+          followUpSuccessful: true,
+          score: 10,
+          problemResolved: 'resolved',
+          importMonth: '2025-05',
+        },
+      },
+    ]
+    const snap = buildSourceSnapshot({
+      insightPeriodId: 'p-may',
+      dataSourceType: 'post_use_rating',
+      records: [],
+      ticketRecordsForFollowUp: ticketRecords,
+    })
+    expect(snap.aggregates.followUpSatisfactionMetrics?.scoredCount).toBe(1)
+    expect(snap.aggregates.followUpSatisfactionMetrics?.tenPointRateByMonth).toEqual([
+      { month: '2025-05', tenCount: 1, total: 1, rate: 1 },
+    ])
+  })
+
+  it('does not embed followUpSatisfactionMetrics on complaint_ticket snapshot', () => {
+    const scoped = filterRecordsForScope(records, periodMay, 'complaint_ticket')
+    const snap = buildSourceSnapshot({
+      insightPeriodId: 'p-may',
+      dataSourceType: 'complaint_ticket',
+      records: scoped,
+      ticketRecordsForFollowUp: scoped,
+    })
+    expect(snap.aggregates.followUpSatisfactionMetrics).toBeUndefined()
+  })
 })

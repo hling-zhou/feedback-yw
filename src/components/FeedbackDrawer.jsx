@@ -77,6 +77,11 @@ import {
   getComplaintCauseL1Display,
   isComplaintTicket,
 } from '../domain/complaintCause.js'
+import { isFollowUpEnrichableRecord } from '../lib/feedbackFilters.js'
+import {
+  getFollowUpDissatisfiedReasonsDisplay,
+  getFollowUpSatisfactionDisplay,
+} from '../lib/ticketDetailDisplay.js'
 import {
   getRootCauseReviewDraftDisplay,
   isRootCauseReviewManuallyMaintained,
@@ -639,7 +644,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   onChange={setSentiment}
                 />
               </Form.Item>
-              <Form.Item className="!mb-0">
+              <Form.Item className="!mb-2">
                 <Checkbox
                   checked={urgencyLevel === 'high'}
                   onChange={(e) => setUrgencyLevel(e.target.checked ? 'high' : 'none')}
@@ -650,6 +655,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   与主情绪独立；强调时效、催办或业务影响时可勾选
                 </Typography.Text>
               </Form.Item>
+              {isFollowUpEnrichableRecord(feedback) && (
+                <Form.Item label="回访满意度" className="!mb-0">
+                  <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
+                  <Typography.Text type="secondary" className="mt-1 block text-xs">
+                    来自满意度回访导入，只读
+                  </Typography.Text>
+                </Form.Item>
+              )}
             </Form>
           ) : (
             <Descriptions column={1} size="small" bordered>
@@ -665,6 +678,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               <Descriptions.Item label="用户情绪">
                 {getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel })}
               </Descriptions.Item>
+              {isFollowUpEnrichableRecord(feedback) && (
+                <Descriptions.Item label="回访满意度">
+                  {getFollowUpSatisfactionDisplay(feedback)}
+                </Descriptions.Item>
+              )}
             </Descriptions>
           )}
         </Card>
@@ -686,6 +704,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                 {feedback.complaintCauseL3Final?.trim() || '—'}
               </Descriptions.Item>
             </Descriptions>
+          </Card>
+        )}
+
+        {isFollowUpEnrichableRecord(feedback) && (
+          <Card title="不满意原因" size="small" className="!bg-ink-50/50">
+            <Typography.Text type="secondary" className="mb-2 block text-xs">
+              来自满意度回访汇总，只读；位于客户请求内容上方。
+            </Typography.Text>
+            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+              {getFollowUpDissatisfiedReasonsDisplay(feedback)}
+            </Typography.Paragraph>
           </Card>
         )}
 

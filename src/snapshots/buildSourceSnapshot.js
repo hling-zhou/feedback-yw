@@ -12,6 +12,10 @@ import {
 import { listProducts } from '../lib/productTaxonomy.js'
 import { countComplaintCauseL1 } from '../domain/complaintCause.js'
 import { buildSourcePainPointClusterSnapshot } from '../lib/painPointClustering/buildSourceClusterSnapshot.js'
+import {
+  buildFollowUpSatisfactionMetrics,
+  extractFollowUpTicketRecords,
+} from '../lib/followUpSatisfactionAnalytics.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -23,8 +27,15 @@ import { buildSourcePainPointClusterSnapshot } from '../lib/painPointClustering/
  * @param {DataSourceType} params.dataSourceType
  * @param {FeedbackRecord[]} params.records
  * @param {'ready' | 'stale'} [params.status]
+ * @param {FeedbackRecord[]} [params.ticketRecordsForFollowUp] 周期内投诉/咨询工单（回访指标数据源）
  */
-export function buildSourceSnapshot({ insightPeriodId, dataSourceType, records, status = 'ready' }) {
+export function buildSourceSnapshot({
+  insightPeriodId,
+  dataSourceType,
+  records,
+  status = 'ready',
+  ticketRecordsForFollowUp = [],
+}) {
   const versions = defaultAnalysisVersions()
   const desc = getPipelineDescriptor(dataSourceType)
   const ticket = isTicketSource(dataSourceType)
@@ -33,6 +44,12 @@ export function buildSourceSnapshot({ insightPeriodId, dataSourceType, records, 
   const sentiment = ticket ? sentimentStats(records) : { total: records.length, distribution: [] }
   const products = listProducts(records)
   const trend = ticket ? monthlyTrend(records, { basis: 'importMonth', limit: 12 }) : []
+
+  const followUpTickets = extractFollowUpTicketRecords(ticketRecordsForFollowUp)
+  const followUpSatisfactionMetrics =
+    dataSourceType === 'post_use_rating'
+      ? buildFollowUpSatisfactionMetrics(followUpTickets)
+      : undefined
 
   /** @type {InsightSnapshot} */
   const snapshot = {
@@ -63,6 +80,7 @@ export function buildSourceSnapshot({ insightPeriodId, dataSourceType, records, 
       monthlyTrend: trend,
       sentiment: sentiment.distribution,
       painPointClustering: ticket ? buildSourcePainPointClusterSnapshot(records) : undefined,
+      followUpSatisfactionMetrics,
     },
     recordIds: records.map((r) => r.id),
   }

@@ -67,6 +67,7 @@
  *   themes: string[]
  *   status: FeedbackStatus
  *   note?: string
+ *   followUpSatisfaction?: import('./followUpSatisfaction.js').FollowUpSatisfaction
  * }} TicketRecord
  */
 

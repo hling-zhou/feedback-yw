@@ -24,6 +24,8 @@ const EXPECTED_V2_HEADERS = [
   '用户旅程二级',
   '用户情绪',
   '是否加急',
+  '回访满意度',
+  '不满意原因',
   '产品技术优化',
   '服务流程改进',
   '产品组优化建议',
@@ -36,9 +38,9 @@ const EXPECTED_V2_HEADERS = [
 ]
 
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (19 columns)', () => {
+  it('exports v2 column order matches design (21 columns)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(19)
+    expect(cols).toHaveLength(21)
     expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
@@ -91,7 +93,32 @@ describe('fieldRegistry', () => {
     expect(l1).toBeDefined()
     expect(isFieldApplicable(l1, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
-    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(19)
+    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(21)
+  })
+
+  it('follow-up fields apply to complaint and consultation only', () => {
+    const followUp = getFieldByKey('followUpSatisfaction')
+    expect(followUp?.exportOrder).toBe(11)
+    expect(isFieldApplicable(followUp, 'complaint_ticket')).toBe(true)
+    expect(isFieldApplicable(followUp, 'consultation_ticket')).toBe(true)
+    expect(isFieldApplicable(followUp, 'post_use_rating')).toBe(false)
+    expect(getExportColumns({ dataSourceType: 'post_use_rating' })).not.toContainEqual(
+      expect.objectContaining({ fieldKey: 'followUpSatisfaction' }),
+    )
+  })
+
+  it('readFieldValue formats follow-up satisfaction fields', () => {
+    const record = {
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        score: 9,
+        problemResolved: 'unresolved',
+        dissatisfiedReasons: '响应慢',
+      },
+    }
+    expect(readFieldValue(record, getFieldByKey('followUpSatisfaction'))).toBe('9（未解决）')
+    expect(readFieldValue(record, getFieldByKey('followUpDissatisfiedReasons'))).toBe('响应慢')
   })
 
   it('cluster roles: pain primary and optimization corpus', () => {

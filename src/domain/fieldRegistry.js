@@ -3,6 +3,10 @@
  * @see docs/DESIGN-20260601-1.md §2
  */
 
+import {
+  formatFollowUpSatisfactionDisplay,
+} from './followUpSatisfaction.js'
+
 /** @typedef {import('./enums.js').DataSourceType} DataSourceType */
 
 /**
@@ -180,13 +184,41 @@ const FIELD_DEFINITIONS = [
     detailZone: 'B1',
   },
   {
-    fieldKey: 'optimizationProduct',
-    displayName: '产品技术优化',
-    recordPaths: ['optimizationProduct'],
+    fieldKey: 'followUpSatisfaction',
+    displayName: '回访满意度',
+    recordPaths: ['followUpSatisfaction'],
     exportable: true,
     exportOrder: 11,
     importable: true,
     importOrder: 11,
+    importRequired: false,
+    manualDimension: null,
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket', 'consultation_ticket'],
+    detailZone: 'B1',
+  },
+  {
+    fieldKey: 'followUpDissatisfiedReasons',
+    displayName: '不满意原因',
+    recordPaths: ['followUpSatisfaction'],
+    exportable: true,
+    exportOrder: 12,
+    importable: true,
+    importOrder: 12,
+    importRequired: false,
+    manualDimension: null,
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket', 'consultation_ticket'],
+    detailZone: 'A',
+  },
+  {
+    fieldKey: 'optimizationProduct',
+    displayName: '产品技术优化',
+    recordPaths: ['optimizationProduct'],
+    exportable: true,
+    exportOrder: 13,
+    importable: true,
+    importOrder: 13,
     importRequired: false,
     manualDimension: 'optimization',
     clusterRole: 'optimizationCorpus',
@@ -198,9 +230,9 @@ const FIELD_DEFINITIONS = [
     displayName: '服务流程改进',
     recordPaths: ['optimizationService'],
     exportable: true,
-    exportOrder: 12,
+    exportOrder: 14,
     importable: true,
-    importOrder: 12,
+    importOrder: 14,
     importRequired: false,
     manualDimension: 'optimization',
     clusterRole: 'optimizationCorpus',
@@ -212,9 +244,9 @@ const FIELD_DEFINITIONS = [
     displayName: '产品组优化建议',
     recordPaths: ['productGroupOptimization'],
     exportable: true,
-    exportOrder: 13,
+    exportOrder: 15,
     importable: true,
-    importOrder: 13,
+    importOrder: 15,
     importRequired: false,
     manualDimension: null,
     clusterRole: 'none',
@@ -226,9 +258,9 @@ const FIELD_DEFINITIONS = [
     displayName: '设计师优化建议',
     recordPaths: ['designerOptimization'],
     exportable: true,
-    exportOrder: 14,
+    exportOrder: 16,
     importable: true,
-    importOrder: 14,
+    importOrder: 16,
     importRequired: false,
     manualDimension: null,
     clusterRole: 'none',
@@ -240,9 +272,9 @@ const FIELD_DEFINITIONS = [
     displayName: '确立举措',
     recordPaths: ['establishedAction', 'manualReviewOptimization'],
     exportable: true,
-    exportOrder: 15,
+    exportOrder: 17,
     importable: true,
-    importOrder: 15,
+    importOrder: 17,
     importRequired: false,
     manualDimension: 'optimization',
     clusterRole: 'optimizationCorpus',
@@ -254,9 +286,9 @@ const FIELD_DEFINITIONS = [
     displayName: '排期',
     recordPaths: ['actionSchedule'],
     exportable: true,
-    exportOrder: 16,
+    exportOrder: 18,
     importable: true,
-    importOrder: 16,
+    importOrder: 18,
     importRequired: false,
     manualDimension: 'optimization',
     clusterRole: 'none',
@@ -268,9 +300,9 @@ const FIELD_DEFINITIONS = [
     displayName: '受理内容',
     recordPaths: ['rawText'],
     exportable: true,
-    exportOrder: 17,
+    exportOrder: 19,
     importable: true,
-    importOrder: 17,
+    importOrder: 19,
     importRequired: false,
     manualDimension: null,
     clusterRole: 'none',
@@ -282,9 +314,9 @@ const FIELD_DEFINITIONS = [
     displayName: '处理意见',
     recordPaths: ['handlingText'],
     exportable: true,
-    exportOrder: 18,
+    exportOrder: 20,
     importable: true,
-    importOrder: 18,
+    importOrder: 20,
     importRequired: true,
     manualDimension: null,
     clusterRole: 'none',
@@ -296,9 +328,9 @@ const FIELD_DEFINITIONS = [
     displayName: '根因排查',
     recordPaths: ['rootCauseReview'],
     exportable: true,
-    exportOrder: 19,
+    exportOrder: 21,
     importable: true,
-    importOrder: 19,
+    importOrder: 21,
     importRequired: false,
     manualDimension: 'rootCauseReview',
     clusterRole: 'none',
@@ -576,6 +608,12 @@ export function getImportDisplayNameToFieldKey() {
  * @returns {string}
  */
 export function readFieldValue(record, field) {
+  if (field.fieldKey === 'followUpSatisfaction') {
+    return formatFollowUpSatisfactionDisplay(record?.followUpSatisfaction)
+  }
+  if (field.fieldKey === 'followUpDissatisfiedReasons') {
+    return String(record?.followUpSatisfaction?.dissatisfiedReasons ?? '').trim()
+  }
   for (const path of field.recordPaths) {
     const value = record?.[/** @type {keyof typeof record} */ (path)]
     if (value != null && String(value).trim() !== '') {

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button, Empty, Table, Tag, Typography } from 'antd'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
 import SentimentBadge from './SentimentBadge.jsx'
 import {
@@ -56,6 +57,15 @@ export default function FeedbackTable({ items, onSelect }) {
       render: (_, fb) => (
         <Tag>{DATA_SOURCE_LABELS[recordSourceType(fb)] || recordSourceType(fb)}</Tag>
       ),
+    },
+    {
+      title: '回访满意度',
+      dataIndex: 'followUpSatisfaction',
+      width: 108,
+      render: (_, fb) => {
+        const text = formatFollowUpSatisfactionDisplay(fb.followUpSatisfaction)
+        return text || '—'
+      },
     },
     {
       title: '客户请求',

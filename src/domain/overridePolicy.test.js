@@ -73,6 +73,20 @@ describe('overridePolicy', () => {
     expect(out.complaintCauseL1Final).toBe('性能类')
   })
 
+  it('FORCE_ALL_HUMAN preserves followUpSatisfaction enrichment', () => {
+    const out = applyForceAllHumanOverrides({
+      ...baseRecord,
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        score: 9,
+        problemResolved: 'resolved',
+      },
+    })
+    expect(out.followUpSatisfaction?.score).toBe(9)
+    expect(out.followUpSatisfaction?.followUpTicketId).toBe('FH-1')
+  })
+
   it('applyOverridePolicy FORCE delegates to force helper', () => {
     const out = applyOverridePolicy(baseRecord, OVERRIDE_POLICY.FORCE_ALL_HUMAN)
     expect(out.manualTagFields).toEqual([])
@@ -141,6 +155,38 @@ describe('overridePolicy', () => {
     expect(out.manualTagFields).toContain('painPoint')
     expect(out.manualTagFields).toContain('optimization')
     expect(out.note).toBe('备注保留')
+  })
+
+  it('applyImportReplace parses follow-up satisfaction display columns', () => {
+    const out = applyImportReplace(
+      { ...baseRecord, ticketId: 'T-FU', id: 'rec-fu' },
+      {
+        工单号: 'T-FU',
+        产品名称: '云主机',
+        客户请求内容: 'a',
+        需求痛点: 'b',
+        请求场景: 'c',
+        问题类型: 'd',
+        用户旅程一级: 'e',
+        用户旅程二级: 'f',
+        用户情绪: '中性·咨询',
+        是否加急: '',
+        回访满意度: '10（已解决）',
+        不满意原因: '无',
+        产品技术优化: '',
+        服务流程改进: '',
+        确立举措: '',
+        排期: '',
+        产品组优化建议: '',
+        设计师优化建议: '',
+        受理内容: '',
+        处理意见: '',
+        根因排查: '',
+      },
+    )
+    expect(out.followUpSatisfaction?.score).toBe(10)
+    expect(out.followUpSatisfaction?.problemResolved).toBe('resolved')
+    expect(out.followUpSatisfaction?.dissatisfiedReasons).toBe('无')
   })
 
   it('IMPORT_REPLACE empty 排期 clears schedule', () => {

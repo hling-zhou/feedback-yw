@@ -20,6 +20,7 @@ import {
   parseAndValidateImportAnalysisSheet,
   stripImportHeaderSuffix,
   validateImportAnalysisRow,
+  validateImportFollowUpSatisfactionRaw,
   validateImportSentimentRaw,
   validateImportUrgencyRaw,
 } from './importAnalysis.js'
@@ -40,6 +41,8 @@ function buildValidRow(overrides = {}) {
     用户旅程二级: '监控',
     用户情绪: '不满',
     是否加急: '',
+    回访满意度: '',
+    不满意原因: '',
     产品技术优化: '产品优化',
     服务流程改进: '服务优化',
     确立举措: '举措',
@@ -344,6 +347,42 @@ describe('importAnalysis apply (P3-3)', () => {
     expect(getOptimizationSourceLabel(updated.optimizationSource)).toBe('人工')
     expect(getTicketAnalysisSourceLabel('import')).toBe('人工')
   })
+
+  it('validateImportFollowUpSatisfactionRaw accepts display format', () => {
+    expect(validateImportFollowUpSatisfactionRaw('10（已解决）').ok).toBe(true)
+    expect(validateImportFollowUpSatisfactionRaw('9').ok).toBe(true)
+    expect(validateImportFollowUpSatisfactionRaw('').ok).toBe(true)
+    expect(validateImportFollowUpSatisfactionRaw('invalid').ok).toBe(false)
+  })
+
+  it('applyImportAnalysisToRecords patches follow-up columns without changing unrelated fields', () => {
+    const record = {
+      ...existingRecord,
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-OLD',
+        followUpSuccessful: true,
+        score: 8,
+        problemResolved: 'unresolved',
+        dissatisfiedReasons: '旧原因',
+      },
+    }
+    const validation = parseAndValidateImportAnalysisSheet({
+      headers: HEADERS,
+      rows: [
+        buildValidRow({
+          回访满意度: '10（已解决）',
+          不满意原因: '响应慢',
+        }),
+      ],
+    })
+    const result = applyImportAnalysisToRecords([record], validation.validRows)
+    const updated = result.updatedRecords[0]
+    expect(updated.customerRequest).toBe('请求内容')
+    expect(updated.followUpSatisfaction?.score).toBe(10)
+    expect(updated.followUpSatisfaction?.problemResolved).toBe('resolved')
+    expect(updated.followUpSatisfaction?.dissatisfiedReasons).toBe('响应慢')
+    expect(updated.followUpSatisfaction?.followUpTicketId).toBe('FH-OLD')
+  })
 })
 
 /**
@@ -399,6 +438,28 @@ describe('importAnalysis round-trip (P3-6)', () => {
     const imported = roundTripThroughImportAnalysis(record)
     expect(imported.actionSchedule).toBe('')
     expect(recordToExportRowV2(imported)['排期']).toBe('')
+  })
+
+  it('follow-up satisfaction round-trips through export and import', () => {
+    const record = {
+      ...EXPORT_V2_UAT_COMPLAINT_SAMPLES[0],
+      followUpSatisfaction: {
+        followUpTicketId: 'FH-RT-1',
+        followUpSuccessful: true,
+        score: 9,
+        problemResolved: 'unresolved',
+        dissatisfiedReasons: '等待久',
+      },
+    }
+    const imported = roundTripThroughImportAnalysis(record, (row) => ({
+      ...row,
+      回访满意度: '10（已解决）',
+      不满意原因: '已改善',
+    }))
+    expect(imported.followUpSatisfaction?.score).toBe(10)
+    expect(imported.followUpSatisfaction?.problemResolved).toBe('resolved')
+    expect(imported.followUpSatisfaction?.dissatisfiedReasons).toBe('已改善')
+    expect(imported.requestScene).toBe(record.requestScene)
   })
 
   it('unknown ticketId is skipped without mutating library record', () => {

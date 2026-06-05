@@ -103,12 +103,39 @@ export const GENERIC_PRESET = {
   rawTextMerge: [],
 }
 
+/** @type {ColumnPreset} */
+export const SATISFACTION_CALLBACK_PRESET = {
+  id: 'satisfaction-callback',
+  name: '满意度回访记录',
+  description: '回访工单与原工单匹配，补全投诉/咨询工单的回访满意度（非独立数据来源导入）',
+  dataSourceTypes: [],
+  columnMap: {
+    followUpTicketId: '回访工单编号',
+    originalTicketId: '原工单编号',
+    productSpec: '具体投诉产品',
+    followUpSuccessful: '是否回访成功',
+    problemResolved: '之前您反映的问题是否得到解决',
+    score: '请您对本次投诉的整体服务情况进行评价',
+    overallService: '整体服务情况不满意原因',
+    handlingDurationScore: '请您对问题处理时长进行评价',
+    handlingDurationReason: '处理时长不满意原因',
+    staffAttitudeScore: '请您对服务人员的服务态度进行评价',
+    staffAttitudeReason: '服务人员的服务态度不满意原因',
+    staffCapabilityScore: '请您对服务人员的业务能力进行评价',
+    staffCapabilityReason: '服务人员的业务能力不满意原因',
+    phoneCallbackOpinion: '电话回访意见',
+    remark: '备注',
+  },
+  rawTextMerge: [],
+}
+
 /** @type {ColumnPreset[]} */
 export const COLUMN_PRESETS = [
   MOBILE_CLOUD_TICKET_PRESET,
   CONSULTATION_TICKET_PRESET,
   POST_USE_RATING_PRESET,
   USER_SURVEY_PRESET,
+  SATISFACTION_CALLBACK_PRESET,
   GENERIC_PRESET,
 ]
 
@@ -119,6 +146,10 @@ export const COLUMN_PRESETS = [
  */
 export function detectPreset(headers, dataSourceType = 'complaint_ticket') {
   const has = (name) => headers.includes(name)
+
+  if (has('回访工单编号') && has('原工单编号')) {
+    return SATISFACTION_CALLBACK_PRESET
+  }
 
   if (dataSourceType === 'consultation_ticket') {
     if (has('处理意见') || hasPrimaryTicketIdHeader(headers)) {
