@@ -155,7 +155,6 @@ export default function MessageBottlePanel() {
         columns={columns}
         dataSource={items}
         pagination={{ pageSize: 10, showTotal: (count) => `共 ${count} 条` }}
-        scroll={{ x: 960 }}
       />
 
       <Modal

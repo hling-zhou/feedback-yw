@@ -339,7 +339,11 @@ export default function Settings() {
         onChange={handleTabChange}
       />
 
-      <div className={`mt-4 ${activeTab === 'metrics' || activeTab === 'bottles' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+      <div
+        className={`mt-4 ${
+          activeTab === 'bottles' ? '' : activeTab === 'metrics' ? 'max-w-4xl' : 'max-w-2xl'
+        }`}
+      >
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
