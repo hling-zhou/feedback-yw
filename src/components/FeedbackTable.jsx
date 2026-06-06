@@ -31,6 +31,7 @@ export default function FeedbackTable({ items, onSelect }) {
       title: '工单',
       dataIndex: 'ticketId',
       width: 180,
+      fixed: 'left',
       render: (_, fb) => {
         const ticketActualDate = extractTicketActualDate(fb.ticketId)
         return (
