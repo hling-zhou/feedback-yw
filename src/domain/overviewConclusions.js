@@ -76,6 +76,8 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @typedef {Object} PlanningPainCluster
  * @property {string} text
  * @property {number} count
+ * @property {number} [sharePct] - 占簇内工单占比（%）
+ * @property {boolean} [isRepresentative] - 是否与代表痛点一致
  */
 
 /**

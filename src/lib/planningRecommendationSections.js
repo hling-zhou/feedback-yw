@@ -45,9 +45,12 @@ export const PLANNING_SECTION_LABELS = {
 }
 
 export const CLUSTER_SUB_LABELS = {
-  painClusters: '痛点',
+  painClusters: '簇内痛点',
   businessImpact: '业务影响',
 }
+
+/** 簇内痛点展示条数上限 */
+export const CLUSTER_PAIN_DISPLAY_LIMIT = 5
 
 /** 与代表痛点 Jaccard ≥ 此值则视为重复，不展示其他痛点 */
 export const PAIN_CLUSTER_DEDUPE_THRESHOLD = 0.35
@@ -352,8 +355,31 @@ function refineStoredInsightPain(text) {
 }
 
 /**
+ * 簇内 Top N 痛点：保留频次排序结果，标注代表痛点与占比（不再因与标题相似而隐藏）
+ *
  * @param {{ text: string; count: number }[]} painClusters
  * @param {string} anchorPain
+ * @param {number} poolSize
+ * @param {number} [limit]
+ */
+export function buildPainClustersForDisplay(painClusters, anchorPain, poolSize, limit = CLUSTER_PAIN_DISPLAY_LIMIT) {
+  if (!painClusters?.length) return []
+  const total = poolSize > 0 ? poolSize : painClusters.reduce((sum, item) => sum + item.count, 0)
+  const anchor = anchorPain?.trim() || ''
+
+  return painClusters.slice(0, limit).map((item) => ({
+    text: item.text,
+    count: item.count,
+    sharePct: total > 0 ? Math.round((item.count / total) * 100) : 0,
+    isRepresentative:
+      Boolean(anchor) && jaccard(tokenizeZh(anchor), tokenizeZh(item.text)) >= PAIN_CLUSTER_DEDUPE_THRESHOLD,
+  }))
+}
+
+/**
+ * @param {{ text: string; count: number }[]} painClusters
+ * @param {string} anchorPain
+ * @deprecated 请使用 buildPainClustersForDisplay；保留供旧测试兼容
  */
 export function filterPainClustersForDisplay(painClusters, anchorPain) {
   if (!painClusters.length || !anchorPain?.trim()) return painClusters
@@ -370,7 +396,7 @@ export function filterPainClustersForDisplay(painClusters, anchorPain) {
  * @param {FeedbackRecord[]} pool
  * @param {number} [limit]
  */
-function topPainPoints(pool, limit = 3) {
+function topPainPoints(pool, limit = CLUSTER_PAIN_DISPLAY_LIMIT) {
   const map = new Map()
   for (const fb of pool) {
     const pain = getClusteringPainText(fb)
@@ -477,8 +503,13 @@ function buildClusterRootCauseStructured(rec, pool) {
     rec.text ||
     ''
   ).trim()
-  const painClustersRaw = topPainPoints(pool, 3)
-  const painClusters = filterPainClustersForDisplay(painClustersRaw, anchorPain)
+  const painClustersRaw = topPainPoints(pool, CLUSTER_PAIN_DISPLAY_LIMIT)
+  const painClusters = buildPainClustersForDisplay(
+    painClustersRaw,
+    anchorPain,
+    pool.length,
+    CLUSTER_PAIN_DISPLAY_LIMIT,
+  )
   const businessImpact = buildBusinessImpactText(rec, pool)
 
   if (!painClusters.length && !businessImpact) {

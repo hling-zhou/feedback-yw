@@ -37,6 +37,44 @@ export const PAIN_CLUSTER_EXPORT_LABELS = {
 export const PAIN_CLUSTER_SECTION_TITLE = '优先级评定'
 
 /**
+ * @param {OverviewRecommendation} rec
+ */
+export function isPainClusterRecommendation(rec) {
+  return rec?.signalType === 'pain_cluster_v2'
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ * @returns {string | null}
+ */
+export function buildRecommendationClusterHeading(rec) {
+  if (!isPainClusterRecommendation(rec)) return null
+  const scores = rec.sections?.painClusterScores
+  const product = rec.scope?.product?.trim()
+  if (!scores?.rank || !scores?.totalFinal) return null
+  const productLabel = product || '未命名产品'
+  return `痛点群组 ${scores.rank}/${scores.totalFinal} · ${productLabel}`
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ * @param {import('../lib/types.js').FeedbackRecord[]} [evidenceRecords]
+ */
+export function buildRecommendationEvidenceLinkLabel(rec, evidenceRecords = []) {
+  const fromScores = rec.sections?.painClusterScores?.ticketCount
+  const fromBundle = rec.evidenceBundle?.ticketCount
+  const fromTickets = rec.evidenceTicketIds?.length
+  const fromRecords = evidenceRecords.length
+  const count = fromScores ?? fromBundle ?? fromTickets ?? fromRecords
+  if (!count) return '在反馈库查看依据工单'
+
+  if (isPainClusterRecommendation(rec)) {
+    return `查看簇内 ${count} 条工单`
+  }
+  return `在反馈库查看 ${count} 条依据工单`
+}
+
+/**
  * @param {OverviewRecommendation[]} recs
  * @param {'high' | 'medium' | 'low'} priority
  * @param {import('../domain/overviewConclusions.js').RecommendationCategory} category
@@ -157,7 +195,11 @@ export function formatClusterRootCauseForExport(cluster) {
   if (cluster.painClusters?.length) {
     parts.push(
       `${CLUSTER_SUB_LABELS.painClusters}：${cluster.painClusters
-        .map((p) => `「${p.text}」${p.count} 单`)
+        .map((p) => {
+          const pct = p.sharePct != null ? `，${p.sharePct}%` : ''
+          const rep = p.isRepresentative ? '，代表' : ''
+          return `「${p.text}」${p.count} 单${pct}${rep}`
+        })
         .join('；')}`,
     )
   }

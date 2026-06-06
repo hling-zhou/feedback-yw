@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildRecommendationExportFullText,
+  buildRecommendationClusterHeading,
+  buildRecommendationEvidenceLinkLabel,
   formatClusterRootCauseForExport,
   formatPainClusterScoresForExport,
   formatRecommendationSectionsForExport,
@@ -28,9 +30,33 @@ describe('planningRecommendationDisplay', () => {
 
   it('formatClusterRootCauseForExport renders structured cluster', () => {
     const text = formatClusterRootCauseForExport({
-      painClusters: [{ text: '端口不通', count: 12 }],
+      painClusters: [{ text: '端口不通', count: 12, sharePct: 60, isRepresentative: true }],
     })
-    expect(text).toMatch(/痛点/)
+    expect(text).toMatch(/簇内痛点/)
+    expect(text).toMatch(/60%/)
+    expect(text).toMatch(/代表/)
+  })
+
+  it('buildRecommendationClusterHeading formats rank and product', () => {
+    expect(
+      buildRecommendationClusterHeading({
+        signalType: 'pain_cluster_v2',
+        scope: { product: '弹性公网 IP' },
+        sections: { painClusterScores: { rank: 3, totalFinal: 10 } },
+      }),
+    ).toBe('痛点群组 3/10 · 弹性公网 IP')
+  })
+
+  it('buildRecommendationEvidenceLinkLabel prefers cluster wording', () => {
+    expect(
+      buildRecommendationEvidenceLinkLabel(
+        {
+          signalType: 'pain_cluster_v2',
+          sections: { painClusterScores: { ticketCount: 8 } },
+        },
+        [],
+      ),
+    ).toBe('查看簇内 8 条工单')
   })
 
   it('normalizeVerification splits metric and user validation', () => {

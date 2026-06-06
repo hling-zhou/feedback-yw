@@ -11,6 +11,13 @@ import {
 
 /** @typedef {'journey_hotspot' | 'problem_type' | 'wan_tou' | 'root_cause' | 'risk_negative' | 'risk_trend'} PlanningSignalType */
 
+/** 同产品去重：摘要 Jaccard 阈值（与 planningRecommendations SAME_PRODUCT_SUMMARY_THRESHOLD 一致） */
+const SAME_PRODUCT_SUMMARY_THRESHOLD = 0.4
+/** 同产品去重：productActions 全文相似度阈值 */
+const SAME_PRODUCT_ACTION_SIMILARITY_THRESHOLD = 0.72
+/** 同产品去重：productActions 前缀比对长度 */
+const SAME_PRODUCT_ACTION_PREFIX_LEN = 40
+
 /** 行动建议条数上限（实际展示条数按周期内产品体量动态计算，不超过此值） */
 export const MAX_PLANNING_RECOMMENDATIONS = 48
 
@@ -510,6 +517,14 @@ export function buildPlanningRecommendationsHelpSections() {
         `二次聚类：跨来源、跨一级环节合并一次群组代表性文本（阈值 ${SECONDARY_CLUSTER_THRESHOLD}），得到产品级最终痛点群组。`,
         `各产品按综合优先级排序，取 Top ${FINAL_CLUSTER_TOP_N}；展示时按产品配额分配条数（大单量产品 3～8 条，小产品至少 1 条），合计不超过 ${maxItems} 条。`,
         '来源 Tab 旅程区展示一次聚类结果；洞察概览行动建议使用二次聚类（最终群组）结果。',
+      ],
+    },
+    {
+      title: '同产品去重（展示筛选）',
+      items: [
+        `产品配额分配后，同一产品内若两条建议摘要 Jaccard 相似度 ≥ ${SAME_PRODUCT_SUMMARY_THRESHOLD}，视为雷同，只保留排序靠前的一条。`,
+        `若任一对 productActions 前 ${SAME_PRODUCT_ACTION_PREFIX_LEN} 字相同，或举措全文相似度 ≥ ${SAME_PRODUCT_ACTION_SIMILARITY_THRESHOLD}，同样视为重复，丢弃后者。`,
+        '排序依据 sortRecommendationsForSelection：综合优先级分、群组 rank、业务危害度等；保留靠前 ≈ 保留聚类认为更重要的簇（不合并工单与举措）。',
       ],
     },
     {

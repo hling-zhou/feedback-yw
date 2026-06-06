@@ -28,6 +28,9 @@ import {
   groupRecommendationsByProduct,
   recommendationsForMatrixCell,
   resolveRecommendationSummary,
+  buildRecommendationClusterHeading,
+  buildRecommendationEvidenceLinkLabel,
+  isPainClusterRecommendation,
 } from '../../lib/planningRecommendationDisplay.js'
 import {
   FEEDBACK_TYPE_LABELS,
@@ -488,12 +491,14 @@ function PlanningRecommendationItem({
 }) {
   const details = rec.details || []
   const sections = rec.sections
+  const clusterHeading = buildRecommendationClusterHeading(rec)
   const insightSummary = resolveRecommendationSummary(rec)
   const ticketIds = rec.evidenceTicketIds || []
   const feedbacksListHref = buildFeedbacksLinkForRecommendation(rec, {
     month: periodMonth,
     evidenceRecords,
   })
+  const feedbacksLinkLabel = buildRecommendationEvidenceLinkLabel(rec, evidenceRecords)
   const analysisHref = buildPlanningAnalysisLink(rec)
   const generationTip = rec.generationMeta ? (
     <div className="max-w-sm space-y-1 text-xs">
@@ -522,13 +527,27 @@ function PlanningRecommendationItem({
           {index + 1}
         </Typography.Text>
         <div className="min-w-0 flex-1">
-          {insightSummary ? (
+          {clusterHeading ? (
+            <div className="mb-2">
+              <Typography.Text strong className="block text-sm leading-snug text-gray-900">
+                {clusterHeading}
+              </Typography.Text>
+              {insightSummary ? (
+                <Typography.Text type="secondary" className="mt-1 block text-sm leading-relaxed">
+                  {insightSummary}
+                </Typography.Text>
+              ) : null}
+            </div>
+          ) : insightSummary ? (
             <Typography.Paragraph className="!mb-2 text-sm leading-relaxed text-gray-800">
               {insightSummary}
             </Typography.Paragraph>
           ) : null}
 
           <Space wrap className="mb-2">
+            {isPainClusterRecommendation(rec) && (
+              <Tag color="geekblue">痛点聚类 V2</Tag>
+            )}
             <Tag color={PRIORITY_COLORS[rec.priority]}>
               {PRIORITY_LABELS[rec.priority]}优先级
             </Tag>
@@ -608,8 +627,8 @@ function PlanningRecommendationItem({
 
           {(ticketIds.length > 0 || rec.scope) && (
             <div className="mb-1 flex flex-wrap gap-x-3 gap-y-1">
-              <Link to={feedbacksListHref} className="text-xs text-indigo-600 hover:underline">
-                在反馈库查看全部依据工单
+              <Link to={feedbacksListHref} className="text-xs font-medium text-indigo-600 hover:underline">
+                {feedbacksLinkLabel}
               </Link>
               {rec.scope && (
                 <Link to={analysisHref} className="text-xs text-indigo-600 hover:underline">

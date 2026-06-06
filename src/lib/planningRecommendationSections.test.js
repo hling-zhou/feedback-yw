@@ -7,6 +7,7 @@ import {
   collectPlaybookFallbackProductActions,
   ensureMinProductActions,
   filterPainClustersForDisplay,
+  buildPainClustersForDisplay,
   refineProductActionsForPainAlignment,
 } from './planningRecommendationSections.js'
 
@@ -368,6 +369,21 @@ describe('planningRecommendationSections', () => {
     )
     expect(summary).toMatch(/内存不足|OOM/)
     expect(summary).not.toMatch(/由于我单位|智能剪辑|渲染处理业/)
+  })
+
+  it('buildPainClustersForDisplay keeps representative pain and adds sharePct', () => {
+    const items = buildPainClustersForDisplay(
+      [
+        { text: '安全组未放行导致端口不通', count: 6 },
+        { text: '账单金额计算错误', count: 2 },
+      ],
+      '安全组未放行导致端口不通。',
+      8,
+    )
+    expect(items).toHaveLength(2)
+    expect(items[0].sharePct).toBe(75)
+    expect(items[0].isRepresentative).toBe(true)
+    expect(items[1].text).toMatch(/账单/)
   })
 
   it('filterPainClustersForDisplay hides redundant pain clusters', () => {

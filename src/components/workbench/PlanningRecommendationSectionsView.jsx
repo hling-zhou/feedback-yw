@@ -1,4 +1,4 @@
-import { Typography } from 'antd'
+import { Typography, Tag } from 'antd'
 import {
   CLUSTER_SUB_LABELS,
   PLANNING_SECTION_LABELS,
@@ -78,6 +78,9 @@ export default function PlanningRecommendationSectionsView({ sections }) {
     <div className="mb-2 space-y-2.5">
       {painScores && (
         <SectionBlock title={PAIN_CLUSTER_SECTION_TITLE}>
+          <Typography.Text type="secondary" className="mb-2 block text-[11px]">
+            本卡片对应 1 个最终痛点群组（二次聚类结果），下列为群组内优先级评分。
+          </Typography.Text>
           <ul className="mb-0 list-none space-y-1 pl-0 text-sm leading-relaxed text-gray-700">
             <li>
               优先级得分：{painScores.priorityScore} 分（排名：{painScores.rank}/
@@ -111,13 +114,33 @@ export default function PlanningRecommendationSectionsView({ sections }) {
       {hasCluster && (
         <SectionBlock title={PLANNING_SECTION_LABELS.clusterRootCause}>
           {cluster.painClusters?.length ? (
-            <SubBlock title={CLUSTER_SUB_LABELS.painClusters}>
-              <ul className="mb-0 list-none space-y-1 pl-0 text-sm leading-relaxed text-gray-700">
-                {cluster.painClusters.map((p) => (
-                  <li key={p.text}>
-                    「{p.text}」<Typography.Text type="secondary"> {p.count} 单</Typography.Text>
+            <SubBlock title={`${CLUSTER_SUB_LABELS.painClusters} Top ${cluster.painClusters.length}`}>
+              <ul className="mb-0 list-none space-y-1.5 pl-0 text-sm leading-relaxed text-gray-700">
+                {cluster.painClusters.map((p) => {
+                  const sharePct =
+                    p.sharePct != null
+                      ? p.sharePct
+                      : painScores?.ticketCount
+                        ? Math.round((p.count / painScores.ticketCount) * 100)
+                        : null
+                  return (
+                  <li key={p.text} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span>
+                      「{p.text}」
+                      <Typography.Text type="secondary">
+                        {' '}
+                        {p.count} 单
+                        {sharePct != null ? `（${sharePct}%）` : ''}
+                      </Typography.Text>
+                    </span>
+                    {p.isRepresentative ? (
+                      <Tag bordered={false} color="processing" className="!text-[10px]">
+                        代表痛点
+                      </Tag>
+                    ) : null}
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </SubBlock>
           ) : null}

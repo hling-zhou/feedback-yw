@@ -5,8 +5,8 @@ import {
   PLANNING_RECOMMENDATION_LIMITS,
   stripProductActionAroundPrefix,
 } from '../planningRecommendationTemplate.js'
+import { collectEffectiveOptimizationsFromRecords } from '../ticketAnalysis/effectiveOptimizationCollect.js'
 import {
-  extractClusterPainTheme,
   extractDemandClause,
   getClusteringPainText,
   getInsightPainText,
@@ -24,9 +24,13 @@ import {
 export const CLUSTER_SYNTHESIZED_ACTION_COUNT = 2
 
 /** 群组合成规则版本；快照 sections 低于此版本时展示层会重算 productActions */
-export const CLUSTER_ACTION_SYNTHESIS_VERSION = 7
+export const CLUSTER_ACTION_SYNTHESIS_VERSION = 8
 
 const MAX_ACTION_LEN = PLANNING_RECOMMENDATION_LIMITS.maxDetailLength
+
+/** 已废弃的固定通用句，合成时跳过 */
+const DEPRECATED_GENERIC_ACTION_RE =
+  /完善产品能力说明、控制台引导与自助查询|补充规则 FAQ、计费\/配额说明与典型操作样例/
 
 /** 不应写入 productActions 的服务/流程类表述 */
 const SERVICE_ACTION_RE =
@@ -44,20 +48,6 @@ function truncateAction(text, maxLen = MAX_ACTION_LEN) {
   if (!t) return ''
   if (t.length <= maxLen) return t
   return `${t.slice(0, maxLen - 1)}…`
-}
-
-/**
- * @param {string} journeyL1
- * @param {string} journeyL2
- */
-function formatJourneyPath(journeyL1, journeyL2) {
-  if (journeyL2 && !/未知|未识别/.test(journeyL2)) {
-    if (journeyL1 && !/未知|未识别/.test(journeyL1)) {
-      return `${journeyL1}→${journeyL2}`
-    }
-    return journeyL2
-  }
-  return ''
 }
 
 /**
@@ -125,14 +115,75 @@ function resolveClusterPain(rec, pool, representativePain = '') {
 }
 
 /**
- * @param {string} product
- * @param {string} journeyL2
- * @param {string} theme
+ * @param {string} line
  */
-function buildThemeJourneyAction(_product, _journeyL2, _theme) {
-  return truncateAction(
-    '完善产品能力说明、控制台引导与自助查询，降低重复咨询成本。',
-  )
+function isDeprecatedGenericAction(line) {
+  return DEPRECATED_GENERIC_ACTION_RE.test(line || '')
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ * @param {FeedbackRecord[]} pool
+ * @param {string} problemType
+ * @param {string} journeyL1
+ * @param {string} journeyL2
+ * @returns {{ line: string; source: string }[]}
+ */
+function collectClusterProductActionCandidates(rec, pool, problemType, journeyL1, journeyL2) {
+  /** @type {{ line: string; source: string; priority: number }[]} */
+  const raw = []
+
+  const push = (line, source, priority) => {
+    const normalized = stripProductActionAroundPrefix(line)
+    if (!isProductClusterAction(normalized) || isDeprecatedGenericAction(normalized)) return
+    raw.push({ line: normalized, source, priority })
+  }
+
+  const established = pickClusterEstablishedActionForSynthesis(pool)
+  if (established?.text) {
+    push(established.text, 'established', 100)
+  }
+
+  for (const item of collectEffectiveOptimizationsFromRecords(pool, 8)) {
+    if (item.source !== '人工复核优化建议') continue
+    if (SERVICE_ACTION_RE.test(item.text)) continue
+    push(item.text, item.source, 80)
+  }
+
+  const journeyCtx = inferPlanningJourneyContext(pool)
+  for (const line of collectPlanningPlaybookActionLines({
+    records: pool,
+    product: rec.scope?.product || pool[0]?.product?.trim() || '',
+    journeyL1: rec.scope?.journeyL1 || journeyL1 || journeyCtx?.l1,
+    journeyL2: rec.scope?.journeyL2 || journeyL2 || journeyCtx?.l2,
+    problemType,
+  })) {
+    push(line, 'playbook', 50)
+  }
+
+  const typed = buildProductTypeAction(problemType, journeyL2)
+  if (typed) push(typed, 'problemType', 40)
+
+  const altType =
+    problemType === '产品功能咨询'
+      ? '配额与权限申请'
+      : problemType === '配额与权限申请'
+        ? '配置与操作'
+        : '产品功能咨询'
+  const altTyped = buildProductTypeAction(altType, journeyL2)
+  if (altTyped) push(altTyped, 'problemType-alt', 30)
+
+  /** @type {string[]} */
+  const seen = []
+  /** @type {{ line: string; source: string }[]} */
+  const out = []
+  for (const item of raw.sort((a, b) => b.priority - a.priority)) {
+    const key = item.line.slice(0, 40)
+    if (seen.some((prev) => prev === key || item.line.slice(0, 80) === prev.slice(0, 80))) continue
+    seen.push(item.line)
+    out.push({ line: item.line, source: item.source })
+  }
+  return out
 }
 
 /**
@@ -146,25 +197,7 @@ function buildProductTypeAction(problemType, _journeyL2) {
 }
 
 /**
- * @param {FeedbackRecord[]} pool
- * @param {OverviewRecommendation} rec
- * @param {string} problemType
- */
-function buildPlaybookProductAction(pool, rec, problemType) {
-  const journeyCtx = inferPlanningJourneyContext(pool)
-  const lines = collectPlanningPlaybookActionLines({
-    records: pool,
-    product: rec.scope?.product || pool[0]?.product?.trim() || '',
-    journeyL1: rec.scope?.journeyL1 || journeyCtx?.l1,
-    journeyL2: rec.scope?.journeyL2 || journeyCtx?.l2,
-    problemType,
-  })
-  return lines.find((line) => isProductClusterAction(line)) || ''
-}
-
-/**
- * 群组级轻量合成：代表痛点 + 高频 journey/问题类型 → 2 条 productActions
- * 槽位 2：群组内 ≥3 单相同确立举措时优先填入；否则问题类型/playbook
+ * 群组级轻量合成：确立举措 / 工单优化 / playbook / 问题类型模板，取 2 条不重复举措
  *
  * @param {OverviewRecommendation} rec
  * @param {FeedbackRecord[]} pool
@@ -177,7 +210,6 @@ export function synthesizeClusterProductActions(rec, pool, representativePain = 
   const pain = resolveClusterPain(rec, pool, representativePain)
   if (!pain) return { actions: [], usedEstablishedAction: false }
 
-  const theme = extractClusterPainTheme(pain)
   const topL2 = topValues(pool, 'journeyL2', 1)[0]
   const topL1 = topValues(pool, 'journeyL1', 1)[0]
   const journeyL2 = rec.scope?.journeyL2 || topL2?.text || ''
@@ -188,49 +220,16 @@ export function synthesizeClusterProductActions(rec, pool, representativePain = 
     ''
   const declaredProblemType = rec.scope?.problemType || topValues(pool, 'problemType', 1)[0]?.text || ''
   const problemType = inferProblemTypeForCluster(pool, journeyL2, declaredProblemType)
-  const product = rec.scope?.product || pool[0]?.product?.trim() || ''
-  const journeyPath = formatJourneyPath(journeyL1, journeyL2)
 
-  const action1 = buildThemeJourneyAction(product, journeyL2 || journeyPath.split('→').pop() || '', theme)
+  const candidates = collectClusterProductActionCandidates(
+    rec,
+    pool,
+    problemType,
+    journeyL1,
+    journeyL2,
+  )
+  const actions = candidates.slice(0, CLUSTER_SYNTHESIZED_ACTION_COUNT).map((item) => item.line)
+  const usedEstablishedAction = candidates.some((item) => item.source === 'established') && actions.length >= 1
 
-  const established = pickClusterEstablishedActionForSynthesis(pool)
-  let usedEstablishedAction = false
-  let action2 = ''
-
-  if (established?.text) {
-    action2 = established.text
-    usedEstablishedAction = true
-  } else {
-    action2 =
-      buildProductTypeAction(problemType, journeyL2 || journeyPath.split('→').pop() || '') ||
-      truncateAction(buildPlaybookProductAction(pool, rec, problemType))
-  }
-
-  if (!action2 || action2.slice(0, 40) === action1.slice(0, 40)) {
-    action2 = buildProductTypeAction(
-      problemType === '产品功能咨询' ? '配额与权限申请' : '产品功能咨询',
-      journeyL2,
-    )
-    usedEstablishedAction = false
-  }
-  if (!action2 || action2.slice(0, 40) === action1.slice(0, 40)) {
-    action2 = truncateAction(
-      '补充规则 FAQ、计费/配额说明与典型操作样例，减少重复咨询。',
-    )
-    usedEstablishedAction = false
-  }
-
-  /** @type {string[]} */
-  const out = []
-  const seen = new Set()
-  for (const line of [action1, action2]) {
-    const normalized = stripProductActionAroundPrefix(line)
-    if (!isProductClusterAction(normalized)) continue
-    const key = normalized.slice(0, 80)
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(normalized)
-    if (out.length >= CLUSTER_SYNTHESIZED_ACTION_COUNT) break
-  }
-  return { actions: out, usedEstablishedAction: usedEstablishedAction && out.length >= 2 }
+  return { actions, usedEstablishedAction }
 }

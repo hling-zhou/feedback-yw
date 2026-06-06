@@ -46,11 +46,15 @@ const MIN_DETAILS = PLANNING_RECOMMENDATION_LIMITS.minDetails
 const SIGNAL_LABELS = {
   journey_hotspot: '旅程热点',
   problem_type: '问题类型',
+  journey_problem_fallback: '旅程×问题类型（推断）',
   wan_tou: '万投比',
   root_cause: '根因聚集',
   risk_negative: '负面风险',
   risk_trend: '趋势风险',
 }
+
+/** 小产品 journey×problemType 频次兜底：工单数上限（含） */
+export const SMALL_PRODUCT_FALLBACK_MAX_TICKETS = 29
 
 /**
  * @param {FeedbackRecord[]} pool
@@ -184,7 +188,11 @@ const SKIPPED_JOURNEY_RE = /未知|未识别/
 const SEMANTIC_SUMMARY_THRESHOLD = 0.52
 const SEMANTIC_SCOPE_SUMMARY_THRESHOLD = 0.38
 const SEMANTIC_DETAIL_THRESHOLD = 0.62
-const SAME_PRODUCT_SUMMARY_THRESHOLD = 0.4
+export const SAME_PRODUCT_SUMMARY_THRESHOLD = 0.4
+/** 同产品 productActions 全文 Jaccard 相似度 ≥ 此值视为重复 */
+export const SAME_PRODUCT_ACTION_SIMILARITY_THRESHOLD = 0.72
+/** 同产品 productActions 前缀相同字符数 */
+export const SAME_PRODUCT_ACTION_PREFIX_LEN = 40
 const SAME_PRODUCT_PROBLEM_TYPE_THRESHOLD = 0.3
 const MIN_PRODUCT_TICKETS_FOR_COVERAGE = 3
 const SKIPPED_REQUEST_SCENES = new Set(['未分类'])
@@ -502,6 +510,73 @@ export function dedupeRecommendationsSemantically(list, max = MAX_RECOMMENDATION
   }
   const priorityScore = { high: 3, medium: 2, low: 1 }
   return merged.sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority]).slice(0, max)
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ */
+function recommendationSummaryForDedupe(rec) {
+  return (
+    rec.sections?.executiveSummary?.trim() ||
+    rec.summary?.trim() ||
+    rec.text?.trim() ||
+    ''
+  )
+}
+
+/**
+ * @param {OverviewRecommendation} a
+ * @param {OverviewRecommendation} b
+ */
+export function sameProductRecommendationOverlaps(a, b) {
+  const prodA = recommendationProductName(a)
+  const prodB = recommendationProductName(b)
+  if (!prodA || !prodB || prodA !== prodB) return false
+
+  if (recommendationsSimilar(a, b)) return true
+
+  const summarySim = textTokenSimilarity(
+    recommendationSummaryForDedupe(a),
+    recommendationSummaryForDedupe(b),
+  )
+  if (summarySim >= SAME_PRODUCT_SUMMARY_THRESHOLD) return true
+
+  const actionsA = a.sections?.productActions || []
+  const actionsB = b.sections?.productActions || []
+  for (const lineA of actionsA) {
+    for (const lineB of actionsB) {
+      if (lineA.slice(0, SAME_PRODUCT_ACTION_PREFIX_LEN) === lineB.slice(0, SAME_PRODUCT_ACTION_PREFIX_LEN))
+        return true
+      if (textTokenSimilarity(lineA, lineB) >= SAME_PRODUCT_ACTION_SIMILARITY_THRESHOLD) return true
+    }
+  }
+  return false
+}
+
+/**
+ * 同产品行动建议去重：摘要或 productActions 高度重合时，保留排序靠前的一条
+ *
+ * @param {OverviewRecommendation[]} list
+ */
+export function dedupeSameProductPlanningRecommendations(list) {
+  const sorted = sortRecommendationsForSelection(list || [])
+  /** @type {OverviewRecommendation[]} */
+  const kept = []
+
+  for (const rec of sorted) {
+    const product = recommendationProductName(rec)
+    if (!product) {
+      kept.push(rec)
+      continue
+    }
+    const isDuplicate = kept.some(
+      (prev) =>
+        recommendationProductName(prev) === product && sameProductRecommendationOverlaps(prev, rec),
+    )
+    if (!isDuplicate) kept.push(rec)
+  }
+
+  return kept
 }
 
 /**
@@ -948,6 +1023,158 @@ function buildProductCoverageRecommendation(product, ticketRecords) {
 }
 
 /**
+ * @param {FeedbackRecord[]} productRecords
+ * @returns {{ l1: string; l2: string; problemType: string; count: number } | null}
+ */
+function topJourneyProblemTypeCombo(productRecords) {
+  /** @type {Map<string, { l1: string; l2: string; problemType: string; count: number }>} */
+  const map = new Map()
+
+  for (const record of productRecords) {
+    const l1 = record.journeyL1?.trim() || ''
+    const l2 = record.journeyL2?.trim() || ''
+    const problemType = record.problemType?.trim() || ''
+    if (!l2 || SKIPPED_JOURNEY_RE.test(l2)) continue
+    if (!problemType || SKIPPED_PROBLEM_TYPES.has(problemType)) continue
+    const key = `${l1}\0${l2}\0${problemType}`
+    const prev = map.get(key)
+    if (prev) {
+      prev.count += 1
+    } else {
+      map.set(key, { l1, l2, problemType, count: 1 })
+    }
+  }
+
+  const ranked = [...map.values()].sort((a, b) => b.count - a.count)
+  return ranked[0] || null
+}
+
+/**
+ * @param {string} product
+ * @param {{ l1: string; l2: string; problemType: string; count: number }} combo
+ * @param {number} productTotal
+ */
+function buildJourneyProblemFallbackSummary(product, combo, productTotal) {
+  const journeyLabel = combo.l1 ? `${combo.l1}→${combo.l2}` : combo.l2
+  const sharePct = productTotal > 0 ? Math.round((combo.count / productTotal) * 100) : 0
+  return `${product}：「${journeyLabel}」×「${combo.problemType}」${combo.count}/${productTotal} 单（${sharePct}%）；样本较少未形成痛点聚类，依据旅程×问题类型频次推断`
+}
+
+/**
+ * @param {FeedbackRecord[]} ticketRecords
+ */
+export function listSmallProductsForJourneyFallback(ticketRecords) {
+  return listProductsForPlanningCoverage(ticketRecords).filter((name) => {
+    const count = ticketRecords.filter((r) => r.product === name).length
+    return count <= SMALL_PRODUCT_FALLBACK_MAX_TICKETS
+  })
+}
+
+/**
+ * @param {OverviewRecommendation[]} recommendations
+ * @param {string} product
+ */
+export function productHasClusterRecommendation(recommendations, product) {
+  return (recommendations || []).some(
+    (rec) => recommendationProductName(rec) === product && rec.signalType === 'pain_cluster_v2',
+  )
+}
+
+/**
+ * 小产品（3～29 单）无 V2 聚类结果时，按 journey×problemType 频次补 1 条推断型建议
+ *
+ * @param {string} product
+ * @param {FeedbackRecord[]} productRecords
+ */
+export function buildSmallProductJourneyProblemFallbackRecommendation(product, productRecords) {
+  const n = productRecords.length
+  if (n < MIN_PRODUCT_TICKETS_FOR_COVERAGE || n > SMALL_PRODUCT_FALLBACK_MAX_TICKETS) {
+    return null
+  }
+
+  const combo = topJourneyProblemTypeCombo(productRecords)
+  if (!combo) return null
+
+  const journeyCtx = { l1: combo.l1, l2: combo.l2 }
+  let pool = productRecords.filter(
+    (r) =>
+      (r.journeyL1?.trim() || '') === combo.l1 &&
+      r.journeyL2?.trim() === combo.l2 &&
+      r.problemType?.trim() === combo.problemType,
+  )
+  if (!pool.length) pool = productRecords
+
+  const rootCauses = topValues(pool, 'rootCause', 2).filter((rc) => isValidRootCause(rc.text))
+  const actionItems = collectManualReviewActions(pool, 5)
+  const summary = buildJourneyProblemFallbackSummary(product, combo, n)
+  const details = buildPlanningDetails(pool, rootCauses, journeyCtx)
+  if (!summary || details.length < MIN_DETAILS) return null
+
+  const journeyLabel = combo.l1 ? `${combo.l1}→${combo.l2}` : combo.l2
+  const sharePct = Math.round((combo.count / n) * 100)
+
+  const rec = finalizeRecommendation(
+    {
+      id: `rec-jp-fallback-${product}-${combo.l2}-${combo.problemType}`.slice(0, 96),
+      signalType: 'journey_problem_fallback',
+      priority: 'low',
+      category: 'product',
+      summary,
+      text: summary,
+      details,
+      metrics: [
+        { label: '产品', value: product },
+        { label: '旅程×问题类型', value: `${journeyLabel} × ${combo.problemType}` },
+        { label: '工单数', value: `${combo.count}/${n} 单（${sharePct}%）` },
+        { label: '推断依据', value: '旅程×问题类型频次' },
+      ],
+      scope: {
+        product,
+        journeyL1: combo.l1,
+        journeyL2: combo.l2,
+        problemType: combo.problemType,
+      },
+      trackingMetrics: trackingMetricsForSignal('journey_hotspot'),
+      evidenceNote: `小产品频次兜底：${journeyLabel} × ${combo.problemType}，${combo.count}/${n} 单；未形成痛点聚类 Top 10。`,
+      measureSource: 'journey×problemType频次推断',
+      insufficientEvidence: true,
+      generationMeta: {
+        selectedReason: `小产品（${n} 单）未形成痛点聚类，按旅程×问题类型最高频组合推断。`,
+        fallbackType: 'small_product_journey_problem',
+      },
+    },
+    pool,
+    n,
+  )
+
+  return {
+    ...rec,
+    evidenceStrength: /** @type {const} */ ('weak'),
+    insufficientEvidence: true,
+  }
+}
+
+/**
+ * 为无 V2 聚类结果的小产品追加 journey×problemType 频次兜底建议（每产品最多 1 条）
+ *
+ * @param {OverviewRecommendation[]} recommendations
+ * @param {FeedbackRecord[]} ticketRecords
+ */
+export function appendSmallProductJourneyProblemFallbacks(recommendations, ticketRecords) {
+  /** @type {OverviewRecommendation[]} */
+  const out = [...(recommendations || [])]
+
+  for (const product of listSmallProductsForJourneyFallback(ticketRecords)) {
+    if (productHasClusterRecommendation(out, product)) continue
+    const productRecords = ticketRecords.filter((r) => r.product === product)
+    const fallback = buildSmallProductJourneyProblemFallbackRecommendation(product, productRecords)
+    if (fallback) out.push(fallback)
+  }
+
+  return out
+}
+
+/**
  * 按优先级截断行动建议（展示/快照兜底，最多 MAX_PLANNING_RECOMMENDATIONS 条）
  * @param {OverviewRecommendation[]} list
  * @param {number | { max?: number; ticketRecords?: FeedbackRecord[] }} [maxOrOptions]
@@ -1044,7 +1271,9 @@ export function limitPlanningRecommendationsWithProductQuota(
     addRec(rec)
   }
 
-  return sortRecommendationsForSelection(selected).slice(0, max)
+  return dedupeSameProductPlanningRecommendations(
+    sortRecommendationsForSelection(selected).slice(0, max),
+  )
 }
 
 /**

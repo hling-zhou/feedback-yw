@@ -14,6 +14,7 @@ import {
   collectMergedOptimizationDetails,
   collectRecommendationProductOptions,
   dedupeRecommendationsSemantically,
+  dedupeSameProductPlanningRecommendations,
   listProductsForPlanningCoverage,
   selectDiversePlanningRecommendations,
   filterRecommendationsByProduct,
@@ -535,6 +536,61 @@ describe('planningRecommendations', () => {
     expect(productsQuota.has('弹性公网 IP')).toBe(true)
     expect(productsQuota.has('云主机')).toBe(true)
     expect(quotaLimited.length).toBeLessThanOrEqual(10)
+  })
+
+  it('dedupeSameProductPlanningRecommendations drops duplicate productActions within a product', () => {
+    const quotaTemplate =
+      '建立配额预警、权限自检与申请引导一体化能力，在创建前拦截不可达订单并降低配额类重复咨询。'
+    const recs = [
+      {
+        id: 'a',
+        priority: 'high',
+        category: 'product',
+        summary: '配额不足导致无法创建共享带宽资源',
+        scope: { product: '弹性公网 IP', problemType: '配额与权限申请' },
+        signalType: 'pain_cluster_v2',
+        generationMeta: { score: 5 },
+        sections: {
+          executiveSummary: '配额不足导致无法创建共享带宽资源',
+          productActions: [quotaTemplate],
+          painClusterScores: { rank: 1, priorityScore: 5 },
+        },
+      },
+      {
+        id: 'b',
+        priority: 'medium',
+        category: 'product',
+        summary: '共享带宽配额上限不足影响业务扩容',
+        scope: { product: '弹性公网 IP', problemType: '配额与权限申请' },
+        signalType: 'pain_cluster_v2',
+        generationMeta: { score: 4 },
+        sections: {
+          executiveSummary: '共享带宽配额上限不足影响业务扩容',
+          productActions: [quotaTemplate],
+          painClusterScores: { rank: 2, priorityScore: 4 },
+        },
+      },
+      {
+        id: 'c',
+        priority: 'high',
+        category: 'product',
+        summary: '公网访问不通排查困难',
+        scope: { product: '弹性公网 IP', journeyL2: '公网访问不通' },
+        signalType: 'pain_cluster_v2',
+        generationMeta: { score: 4.5 },
+        sections: {
+          executiveSummary: '公网访问不通排查困难',
+          productActions: ['完善安全组/白名单自助排查工具，提供常见「不通」场景 playbook。'],
+          painClusterScores: { rank: 3, priorityScore: 4.5 },
+        },
+      },
+    ]
+
+    const deduped = dedupeSameProductPlanningRecommendations(recs)
+    const eip = deduped.filter((r) => r.scope?.product === '弹性公网 IP')
+    expect(eip).toHaveLength(2)
+    expect(deduped.map((r) => r.id)).toContain('a')
+    expect(deduped.map((r) => r.id)).not.toContain('b')
   })
 
   it('downgradeEvidenceStrength steps down one level', () => {

@@ -37,9 +37,9 @@ describe('clusterActionSynthesis', () => {
       '安全组规则未放行导致公网端口无法访问',
     )
     expect(actions).toHaveLength(CLUSTER_SYNTHESIZED_ACTION_COUNT)
-    expect(actions[0]).toMatch(/完善产品能力说明|控制台引导/)
+    expect(actions.join('\n')).not.toMatch(/完善产品能力说明、控制台引导与自助查询/)
     expect(actions[0]).not.toMatch(/围绕|针对「|集中反馈|环节关于|安全组/)
-    expect(actions[1]).toMatch(/配置与操作|控制台|排查|playbook/i)
+    expect(actions.join('\n')).toMatch(/配置与操作|控制台|排查|playbook|安全组/i)
   })
 
   it('synthesizes billing/quota cluster actions without ticket metadata or SLA service lines', () => {

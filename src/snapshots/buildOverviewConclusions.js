@@ -2,7 +2,7 @@ import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWanTouByProducts } from '../lib/wanTouRatio.js'
 import { filterRecordsForScope } from './recordScope.js'
-import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
+import { limitPlanningRecommendations, appendSmallProductJourneyProblemFallbacks } from '../lib/planningRecommendations.js'
 import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
 import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
 import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
@@ -110,14 +110,24 @@ export function buildOverviewConclusions({
   const { recommendations: rawRecommendations, pipelineResults } =
     buildClusterRecommendationsFromPipeline(ticketRecords, { settings })
 
+  const recommendationsWithFallbacks = appendSmallProductJourneyProblemFallbacks(
+    rawRecommendations,
+    ticketRecords,
+  )
+  const smallProductFallbackCount =
+    recommendationsWithFallbacks.length - rawRecommendations.length
+
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote) dataCoverageNotes.push(exclusionNote)
 
-  if (!rawRecommendations.length && !dataCoverageNotes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)) {
+  if (
+    !recommendationsWithFallbacks.length &&
+    !dataCoverageNotes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
+  ) {
     dataCoverageNotes.push(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
   }
 
-  const limitedRecommendations = limitPlanningRecommendations(rawRecommendations, {
+  const limitedRecommendations = limitPlanningRecommendations(recommendationsWithFallbacks, {
     ticketRecords,
   })
   const { recommendations, removedFromPreviousCount } = attachRecommendationPeriodCompare(
@@ -150,6 +160,7 @@ export function buildOverviewConclusions({
       legacyFallback: false,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,
+      smallProductFallbackCount: smallProductFallbackCount || undefined,
       cappedCount: recommendations.length,
       removedFromPreviousCount,
     },

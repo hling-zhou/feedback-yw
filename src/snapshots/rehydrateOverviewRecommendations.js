@@ -5,7 +5,7 @@ import { formatClusteringExclusionNote } from '../lib/painPointClustering/cluste
 import { looksLikeBackgroundInsightSummary, looksLikeTicketMetadataSummary } from '../lib/painPointClustering/clusteringCorpus.js'
 import { attachPlanningRecommendationSections } from '../lib/planningRecommendationSections.js'
 import { resolveRecommendationSummary } from '../lib/planningRecommendationDisplay.js'
-import { limitPlanningRecommendations } from '../lib/planningRecommendations.js'
+import { limitPlanningRecommendations, appendSmallProductJourneyProblemFallbacks } from '../lib/planningRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -146,10 +146,12 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     { settings },
   )
 
+  const withFallbacks = appendSmallProductJourneyProblemFallbacks(raw, ticketRecords)
+
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote && !notes.includes(exclusionNote)) notes.push(exclusionNote)
 
-  if (!raw.length) {
+  if (!withFallbacks.length) {
     if (!notes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)) {
       notes.push(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
     }
@@ -169,7 +171,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     }
   }
 
-  const limited = limitPlanningRecommendations(raw, { ticketRecords })
+  const limited = limitPlanningRecommendations(withFallbacks, { ticketRecords })
   notes.push('行动建议已基于当前工单实时重算（快照生成于聚类引擎上线前，建议重新生成洞察快照以持久化）。')
 
   return {
