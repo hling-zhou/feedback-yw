@@ -15,6 +15,11 @@ import {
 import { listProducts, listResourcePools } from '../../lib/productTaxonomy.js'
 import { workbenchTicketRecords } from '../../snapshots/recordScope.js'
 import { resolveCatalogKeyFromProductName } from '../../lib/wanTouRatio.js'
+import { suggestImportMonth } from '../../domain/insightPeriod.js'
+import {
+  buildTicketWorkbenchDrillDownUrl,
+  drillDownFieldParam,
+} from '../../lib/feedbackFilters.js'
 import WanTouRatioPanel from './WanTouRatioPanel.jsx'
 import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
 
@@ -40,7 +45,6 @@ export default function TicketDashboardView({
   )
 
   const products = useMemo(() => listProducts(items), [items])
-  /** 工单 Tab 仅分产品呈现：默认选中第一个产品，不提供「全部产品」 */
   const [internalProduct, setInternalProduct] = useState('')
   const productControlled = onProductChange != null
   const product = productControlled ? productProp ?? '' : internalProduct
@@ -55,14 +59,16 @@ export default function TicketDashboardView({
       if (product) setProduct('')
       return
     }
-    const next = products.some((p) => p.name === product) ? product : products[0].name
-    if (next && next !== product) setProduct(next)
+    if (product && !products.some((p) => p.name === product)) {
+      setProduct('')
+    }
   }, [products, product, setProduct])
 
-  const taxonomyProduct = product || products[0]?.name || ''
+  const isAllProducts = !product && !pdfCaptureMode
+  const sectionProduct = product || (pdfCaptureMode ? products[0]?.name : '') || ''
   const activeProductKey = useMemo(
-    () => resolveCatalogKeyFromProductName(taxonomyProduct),
-    [taxonomyProduct],
+    () => resolveCatalogKeyFromProductName(sectionProduct),
+    [sectionProduct],
   )
   const pools = useMemo(
     () => listResourcePools(items, product || undefined),
@@ -72,14 +78,24 @@ export default function TicketDashboardView({
   const scoped = useMemo(
     () =>
       filterFeedbacks(items, {
-        product: taxonomyProduct || undefined,
+        product: isAllProducts ? undefined : sectionProduct || undefined,
         resourcePool: resourcePool || undefined,
         complaintCauseL1: isComplaintSource ? complaintCauseL1 || undefined : undefined,
       }),
-    [items, taxonomyProduct, resourcePool, complaintCauseL1, isComplaintSource],
+    [items, isAllProducts, sectionProduct, resourcePool, complaintCauseL1, isComplaintSource],
   )
 
-  const taxonomy = getTaxonomy(taxonomyProduct)
+  const taxonomy = getTaxonomy(sectionProduct)
+  const drillDownBase = useMemo(
+    () => ({
+      source: snapshot.dataSourceType,
+      month: suggestImportMonth(currentPeriod),
+      product: product || undefined,
+      complaintCauseL1:
+        isComplaintSource && complaintCauseL1 ? complaintCauseL1 : undefined,
+    }),
+    [snapshot.dataSourceType, currentPeriod, product, isComplaintSource, complaintCauseL1],
+  )
   const requestScenes = useMemo(
     () =>
       countByField(scoped, 'requestScene').map((d) => ({
@@ -129,7 +145,7 @@ export default function TicketDashboardView({
         <WorkbenchAnalysisHint
           className="mb-4 !rounded-lg"
           sourceLabel={sourceLabel}
-          product={taxonomyProduct || undefined}
+          product={product || undefined}
         />
       )}
 
@@ -138,12 +154,14 @@ export default function TicketDashboardView({
         <Form.Item label="产品" className="!mb-0">
           <Select
             className="min-w-[220px]"
-            value={product || undefined}
-            placeholder="请选择产品"
-            options={products.map((p) => ({
-              label: `${p.name} (${p.count})`,
-              value: p.name,
-            }))}
+            value={product}
+            options={[
+              { label: `全部产品 (${items.length})`, value: '' },
+              ...products.map((p) => ({
+                label: `${p.name} (${p.count})`,
+                value: p.name,
+              })),
+            ]}
             onChange={(value) => {
               setProduct(value)
               setResourcePool('')
@@ -185,13 +203,14 @@ export default function TicketDashboardView({
             }}
           />
         </Form.Item>
-        {taxonomy.name && (
+        {product && taxonomy.name && (
           <Tag color="blue" className="mb-1">
             {taxonomy.name}
           </Tag>
         )}
         <Typography.Text type="secondary" className="mb-1 text-sm">
-          周期内 {items.length} 条 · 当前产品 {scoped.length} 条
+          周期内 {items.length} 条
+          {isAllProducts ? ` · 全部产品 ${scoped.length} 条` : ` · 当前产品 ${scoped.length} 条`}
           {resourcePool ? '（已筛资源池）' : ''}
         </Typography.Text>
       </Form>
@@ -201,8 +220,9 @@ export default function TicketDashboardView({
         <div className="page-section-sm">
           <WanTouRatioPanel
             period={currentPeriod}
-            productName={taxonomyProduct}
-            productKey={activeProductKey}
+            productName={isAllProducts ? undefined : sectionProduct}
+            productKey={isAllProducts ? undefined : activeProductKey}
+            productList={isAllProducts ? products : undefined}
             records={items}
             allRecords={feedbacks}
             orderVolumes={orderVolumes}
@@ -243,21 +263,25 @@ export default function TicketDashboardView({
         </div>
       </div>
 
-      <div className="page-section" data-pdf-chart="source-experience">
-        <SentimentExperiencePanel items={scoped} />
-      </div>
+      {!isAllProducts && (
+        <div className="page-section" data-pdf-chart="source-experience">
+          <SentimentExperiencePanel items={scoped} />
+        </div>
+      )}
 
-      <div className="page-section" data-pdf-chart="source-journey">
-        <JourneyFeedbackSection
-          items={scoped}
-          taxonomy={taxonomy}
-          productName={taxonomyProduct}
-          dataSourceType={snapshot.dataSourceType}
-          painPointClustering={snapshot.aggregates?.painPointClustering}
-          journeySel={journeySel}
-          onJourneySelect={(l1, l2) => setJourneySel({ l1, l2: l2 || undefined })}
-        />
-      </div>
+      {!isAllProducts && (
+        <div className="page-section" data-pdf-chart="source-journey">
+          <JourneyFeedbackSection
+            items={scoped}
+            taxonomy={taxonomy}
+            productName={sectionProduct}
+            dataSourceType={snapshot.dataSourceType}
+            painPointClustering={snapshot.aggregates?.painPointClustering}
+            journeySel={journeySel}
+            onJourneySelect={(l1, l2) => setJourneySel({ l1, l2: l2 || undefined })}
+          />
+        </div>
+      )}
 
       <div
         className={`page-section grid items-stretch gap-4 ${
@@ -266,7 +290,16 @@ export default function TicketDashboardView({
       >
         <Card title={<Typography.Text strong>请求场景分布</Typography.Text>}>
           <div data-pdf-chart="source-request-scenes" className="rounded-lg bg-white p-2">
-            <ThemeBarChart data={requestScenes} onBarClick={() => setJourneySel({})} />
+            <ThemeBarChart
+              data={requestScenes}
+              onBarClick={() => setJourneySel({})}
+              buildFeedbacksHref={(label) =>
+                buildTicketWorkbenchDrillDownUrl({
+                  ...drillDownBase,
+                  requestScene: drillDownFieldParam(label),
+                })
+              }
+            />
           </div>
         </Card>
         {isComplaintSource && (
@@ -284,7 +317,16 @@ export default function TicketDashboardView({
         )}
         <Card title={<Typography.Text strong>问题类型（打标）分布</Typography.Text>}>
           <div data-pdf-chart="source-problems" className="rounded-lg bg-white p-2">
-            <ThemeBarChart data={problemTypes} onBarClick={() => setJourneySel({})} />
+            <ThemeBarChart
+              data={problemTypes}
+              onBarClick={() => setJourneySel({})}
+              buildFeedbacksHref={(label) =>
+                buildTicketWorkbenchDrillDownUrl({
+                  ...drillDownBase,
+                  problemType: drillDownFieldParam(label),
+                })
+              }
+            />
           </div>
         </Card>
       </div>

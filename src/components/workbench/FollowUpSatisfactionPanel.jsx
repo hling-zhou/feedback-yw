@@ -1,10 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Card, Col, Row, Select, Statistic, Typography } from 'antd'
+import { Button, Card, Col, Row, Select, Statistic, Typography } from 'antd'
+import { DownloadOutlined } from '@ant-design/icons'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import FollowUpTenPointRateChart from '../charts/FollowUpTenPointRateChart.jsx'
 import FollowUpScoreDistributionChart from '../charts/FollowUpScoreDistributionChart.jsx'
+import { useInsights } from '../../context/InsightsContext.jsx'
 import { buildFollowUpDrillDownUrl, drillDownFieldParam } from '../../lib/feedbackFilters.js'
+import {
+  exportScoreDistributionXlsx,
+  exportTenPointRateTrendXlsx,
+} from '../../lib/followUpSatisfactionExport.js'
 import {
   buildFollowUpSatisfactionMetrics,
   buildTenPointRateTrendChart,
@@ -21,6 +27,7 @@ import {
  */
 export default function FollowUpSatisfactionPanel({ ticketRecords }) {
   const navigate = useNavigate()
+  const { currentPeriod } = useInsights()
   const [productKey, setProductKey] = useState('all')
 
   const followUpTickets = useMemo(
@@ -96,6 +103,15 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
     [metrics.products],
   )
 
+  const exportOptions = useMemo(
+    () => ({
+      productKey: productKey === 'all' ? undefined : productKey,
+      productName: selectedProductName || '全部产品',
+      periodLabel: currentPeriod?.label || '当前周期',
+    }),
+    [productKey, selectedProductName, currentPeriod?.label],
+  )
+
   if (!followUpTickets.length) {
     return (
       <Card title="回访满意度">
@@ -139,13 +155,39 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
         </Link>
       </Typography.Text>
 
-      <Card title="10 分满意率 · 月度趋势">
+      <Card
+        title="10 分满意率 · 月度趋势"
+        extra={
+          <Button
+            type="link"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => exportTenPointRateTrendXlsx(ticketRecords, exportOptions)}
+          >
+            导出 Excel
+          </Button>
+        }
+      >
         <div data-pdf-chart="followup-ten-rate-trend" className="rounded-lg bg-white p-2">
           <FollowUpTenPointRateChart data={trend.chartData} lines={trend.lines} />
         </div>
       </Card>
 
-      <Card title="非 10 分 · 得分分布">
+      <Card
+        title="非 10 分 · 得分分布"
+        extra={
+          <Button
+            type="link"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() =>
+              exportScoreDistributionXlsx(metrics.scoreDistributionByProduct, exportOptions)
+            }
+          >
+            导出 Excel
+          </Button>
+        }
+      >
         <div data-pdf-chart="followup-score-distribution" className="rounded-lg bg-white p-2">
           <FollowUpScoreDistributionChart rows={metrics.scoreDistributionByProduct} />
         </div>
@@ -155,17 +197,13 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="未解决回访"
-              value={metrics.unresolved.unresolvedCount}
-              suffix={
-                metrics.unresolved.totalScored
-                  ? `/ ${metrics.unresolved.totalScored}`
-                  : undefined
-              }
+              title="未解决 占比"
+              value={unresolvedRatePct ?? '—'}
+              suffix={unresolvedRatePct != null ? '%' : undefined}
             />
-            {unresolvedRatePct != null ? (
+            {metrics.unresolved.totalScored ? (
               <Typography.Text type="secondary" className="mt-1 block text-xs">
-                占比 {unresolvedRatePct}%
+                {metrics.unresolved.unresolvedCount} / {metrics.unresolved.totalScored} 条
                 {' · '}
                 <Link
                   to={buildFollowUpDrillDownUrl({

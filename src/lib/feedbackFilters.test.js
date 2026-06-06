@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildFeedbacksUrl,
   buildFollowUpDrillDownUrl,
+  buildTicketWorkbenchDrillDownUrl,
   drillDownFieldParam,
   EMPTY_FILTER_TOKEN,
   isFollowUpEnrichableRecord,
@@ -104,6 +105,19 @@ describe('feedbackFilters', () => {
       }),
     ).toBe(
       '/feedbacks?product=%E4%BA%91%E4%B8%BB%E6%9C%BA&problemType=%E6%95%85%E9%9A%9C&followUp=non10&reasonDim=overallService',
+    )
+  })
+
+  it('buildTicketWorkbenchDrillDownUrl encodes ticket tab drill-down params', () => {
+    expect(
+      buildTicketWorkbenchDrillDownUrl({
+        source: 'complaint_ticket',
+        month: '2026-04',
+        product: '云主机',
+        requestScene: '报障',
+      }),
+    ).toBe(
+      '/feedbacks?month=2026-04&product=%E4%BA%91%E4%B8%BB%E6%9C%BA&requestScene=%E6%8A%A5%E9%9A%9C&source=complaint_ticket',
     )
   })
 

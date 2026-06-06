@@ -240,3 +240,26 @@ export function buildFollowUpDrillDownUrl(params = {}) {
     source: params.source,
   })
 }
+
+/**
+ * 洞察工作台 · 投诉/咨询工单 Tab 图表下钻至反馈库。
+ *
+ * @param {{
+ *   source?: string
+ *   month?: string
+ *   product?: string
+ *   requestScene?: string
+ *   problemType?: string
+ *   complaintCauseL1?: string
+ * }} [params]
+ */
+export function buildTicketWorkbenchDrillDownUrl(params = {}) {
+  return buildFeedbacksUrl({
+    source: params.source,
+    month: params.month,
+    product: params.product?.trim(),
+    requestScene: params.requestScene,
+    problemType: params.problemType,
+    complaintCauseL1: params.complaintCauseL1,
+  })
+}
