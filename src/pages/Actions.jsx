@@ -8,7 +8,6 @@ import {
   Form,
   Input,
   Modal,
-  Popover,
   Select,
   Space,
   Table,
@@ -18,7 +17,6 @@ import {
   message,
 } from 'antd'
 import {
-  CopyOutlined,
   DownloadOutlined,
   EditOutlined,
   PlusOutlined,
@@ -55,6 +53,7 @@ import {
   updateActionItem,
 } from '../lib/actionItemClient.js'
 import { exportActionItemsWithQuery } from '../lib/actionItemExport.js'
+import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js'
 import {
   buildProductNameToKeyMap,
   parseActionItemImportWorkbook,
@@ -73,6 +72,7 @@ import ActionItemProductStatusChart from '../components/charts/ActionItemProduct
 import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
 import ActionItemCompositeFilter from '../components/actions/ActionItemCompositeFilter.jsx'
+import LinkedTicketsCell from '../components/actions/LinkedTicketsCell.jsx'
 import {
   actionItemFiltersToListQuery,
   clearAllActionItemFilters,
@@ -127,43 +127,6 @@ function ColumnTitleWithHint({ title, hint, extra }) {
         </span>
       </Tooltip>
     </span>
-  )
-}
-
-function LinkedTicketsCell({ ticketIds, title = '关联反馈' }) {
-  const ids = ticketIds || []
-  if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
-
-  const copyAll = async () => {
-    try {
-      await navigator.clipboard.writeText(ids.join('\n'))
-      message.success('已复制工单号')
-    } catch {
-      message.error('复制失败')
-    }
-  }
-
-  const content = (
-    <div className="max-h-48 overflow-y-auto">
-      <Space direction="vertical" size={4} className="w-full">
-        {ids.map((id) => (
-          <Typography.Text key={id} copyable={{ text: id }} className="text-xs">
-            {id}
-          </Typography.Text>
-        ))}
-        <Button type="link" size="small" icon={<CopyOutlined />} onClick={copyAll} className="!px-0">
-          复制全部
-        </Button>
-      </Space>
-    </div>
-  )
-
-  return (
-    <Popover content={content} title={title} trigger="hover">
-      <Button type="link" size="small" className="!px-0">
-        {ids.length} 个工单
-      </Button>
-    </Popover>
   )
 }
 
@@ -297,6 +260,11 @@ export default function Actions() {
     if (!periodFilterActive || !selectedPeriod) return null
     return buildTicketIdSetFromRecords(filterRecordsForScope(feedbacks, selectedPeriod))
   }, [feedbacks, selectedPeriod, periodFilterActive])
+
+  const feedbackByTicketId = useMemo(
+    () => buildFeedbackIndexByTicketId(feedbacks),
+    [feedbacks],
+  )
 
   const resolveLinkedTicketIds = useCallback(
     (/** @type {ActionItem} */ record) => {
@@ -434,6 +402,7 @@ export default function Actions() {
         query,
         statsByProduct: statsData.byProduct?.length ? statsData.byProduct : undefined,
         periodTicketIdSet: periodTicketIdSet,
+        feedbackByTicketId,
         scopeLabel: filtered ? '当前筛选' : '全部',
         periodLabel: selectedPeriod?.label,
       })
@@ -804,7 +773,10 @@ export default function Actions() {
       key: 'linkedTickets',
       width: 110,
       render: (_, record) => (
-        <LinkedTicketsCell ticketIds={resolveLinkedTicketIds(record)} />
+        <LinkedTicketsCell
+          ticketIds={resolveLinkedTicketIds(record)}
+          feedbackByTicketId={feedbackByTicketId}
+        />
       ),
     },
     {

@@ -4,6 +4,7 @@ import {
   buildDissatisfiedReasonPartsFromRow,
   buildDissatisfiedReasonsSummary,
   buildFollowUpSatisfactionFromReportRow,
+  collectMeaningfulDissatisfiedReasonTexts,
   formatFollowUpSatisfactionDisplay,
   hasFollowUpSatisfaction,
   normalizeFollowUpSatisfaction,
@@ -82,6 +83,28 @@ describe('followUpSatisfaction', () => {
         dissatisfiedReasons: '无',
       }),
     ).toBe('')
+  })
+
+  it('collectMeaningfulDissatisfiedReasonTexts prefers parts and filters placeholders', () => {
+    expect(
+      collectMeaningfulDissatisfiedReasonTexts({
+        followUpTicketId: 'FH-1',
+        followUpSuccessful: true,
+        dissatisfiedReasonParts: {
+          overallService: '响应慢',
+          staffAttitudeReason: '无',
+          phoneCallbackOpinion: '暂无',
+        },
+      }),
+    ).toEqual(['响应慢'])
+
+    expect(
+      collectMeaningfulDissatisfiedReasonTexts({
+        followUpTicketId: 'FH-2',
+        followUpSuccessful: true,
+        dissatisfiedReasons: '整体服务情况不满意原因：响应慢；处理时长不满意原因：无',
+      }),
+    ).toEqual(['响应慢'])
   })
 
   it('normalizeFollowUpSatisfaction builds summary from parts', () => {

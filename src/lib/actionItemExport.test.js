@@ -78,7 +78,7 @@ describe('actionItemExport', () => {
     const periodSet = new Set(['T-001'])
     const rows = buildActionItemListRows(sampleItems, periodSet)
     expect(Object.keys(rows[0])).toEqual(ACTION_ITEM_LIST_HEADERS)
-    expect(rows[0]['关联反馈(本周期)']).toBe('T-001')
+    expect(rows[0]['关联反馈(本周期)']).toBe('未知月份: T-001')
     expect(rows[0].来源).toBe('投诉工单')
     expect(rows[0].举措详情).toBe('分阶段上线')
     expect(rows[0].需求工单).toBe('REQ-001')
@@ -91,6 +91,6 @@ describe('actionItemExport', () => {
 
   it('buildActionItemListRows without period filter exports all linked tickets', () => {
     const rows = buildActionItemListRows(sampleItems, null)
-    expect(rows[0]['关联反馈(本周期)']).toBe('T-001\nT-002')
+    expect(rows[0]['关联反馈(本周期)']).toBe('未知月份: T-001; T-002')
   })
 })

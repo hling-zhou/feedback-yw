@@ -102,8 +102,58 @@ const DISPLAY_RESOLVED_PATTERN = /^(\d{1,2})\s*[（(]\s*(已解决|未解决)\s*
 export function isMeaningfulDissatisfiedReasonValue(raw) {
   const s = String(raw ?? '').trim()
   if (!s) return false
-  if (/^(无|暂无|没有|—|-+|n\/a|null)$/i.test(s)) return false
+  if (
+    /^(无|暂无|没有|无意见|暂无意见|没意见|未填写|不详|未知|其他|—|-+|n\/a|null)$/i.test(
+      s,
+    )
+  ) {
+    return false
+  }
   return true
+}
+
+/**
+ * 从单条回访记录提取可用于词云统计的不满意原因文本（结构化 parts 优先，回退汇总段落）。
+ * @param {FollowUpSatisfaction | null | undefined} fu
+ * @returns {string[]}
+ */
+export function collectMeaningfulDissatisfiedReasonTexts(fu) {
+  if (!fu) return []
+
+  /** @type {string[]} */
+  const values = []
+  const parts = sanitizeDissatisfiedReasonParts(fu.dissatisfiedReasonParts)
+  for (const dim of DISSATISFIED_REASON_ANALYSIS_DIM_KEYS) {
+    const text = parts[dim]
+    if (text) values.push(text)
+  }
+  if (values.length) return values
+
+  const summary = sanitizeDissatisfiedReasonsSummary(fu.dissatisfiedReasons)
+  if (!summary) return []
+
+  if (!summary.includes('：') && !summary.includes(':')) {
+    return isMeaningfulDissatisfiedReasonValue(summary) ? [summary] : []
+  }
+
+  const separator = summary.includes('；') ? '；' : summary.includes(';') ? ';' : null
+  if (!separator) {
+    const colonIdx = summary.search(/[：:]/)
+    if (colonIdx < 0) {
+      return isMeaningfulDissatisfiedReasonValue(summary) ? [summary] : []
+    }
+    const value = summary.slice(colonIdx + 1).trim()
+    return isMeaningfulDissatisfiedReasonValue(value) ? [value] : []
+  }
+
+  for (const chunk of summary.split(separator)) {
+    const trimmed = chunk.trim()
+    if (!trimmed) continue
+    const colonIdx = trimmed.search(/[：:]/)
+    const value = colonIdx >= 0 ? trimmed.slice(colonIdx + 1).trim() : trimmed
+    if (isMeaningfulDissatisfiedReasonValue(value)) values.push(value)
+  }
+  return values
 }
 
 /**

@@ -9,6 +9,10 @@ import {
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
 import {
+  formatLinkedTicketIdsGroupedForExport,
+  groupLinkedTicketIdsByMonth,
+} from './actionItemLinkedFeedback.js'
+import {
   formatActionItemUpdatedAtDisplay,
   formatActionItemUpdatedByDisplay,
 } from '../domain/actionItemRevision.js'
@@ -135,14 +139,18 @@ export function buildActionItemStatsRows(byProduct) {
 /**
  * @param {ActionItem[]} items
  * @param {Set<string> | null | undefined} periodTicketIdSet
+ * @param {Map<string, import('./types.js').FeedbackRecord>} [feedbackByTicketId]
  * @returns {Record<string, string>[]}
  */
-export function buildActionItemListRows(items, periodTicketIdSet) {
+export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId) {
   return (items || []).map((item) => {
     const sources = (item.linkedDataSources || [])
       .map((s) => DATA_SOURCE_LABELS[s] || s)
       .join('、')
     const linkedInPeriod = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet)
+    const linkedGrouped = formatLinkedTicketIdsGroupedForExport(
+      groupLinkedTicketIdsByMonth(linkedInPeriod, feedbackByTicketId),
+    )
 
     return Object.fromEntries(
       ACTION_ITEM_LIST_HEADERS.map((header) => {
@@ -154,7 +162,7 @@ export function buildActionItemListRows(items, periodTicketIdSet) {
           来源: sources,
           举措: item.content || '',
           举措详情: item.detail || '',
-          '关联反馈(本周期)': linkedInPeriod.join('\n'),
+          '关联反馈(本周期)': linkedGrouped,
           需求工单: (item.linkedRequirementTicketIds || []).join('; '),
           排期时间: item.scheduleAt?.trim() || '',
           状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
@@ -187,12 +195,14 @@ function triggerDownload(blob, filename) {
  * @param {ActionItem[]} options.items
  * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
  * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
  * @param {string} [options.filename]
  */
 export function downloadActionItemsExcel({
   items,
   statsByProduct,
   periodTicketIdSet,
+  feedbackByTicketId,
   filename,
 }) {
   const byProduct = statsByProduct?.length
@@ -200,7 +210,7 @@ export function downloadActionItemsExcel({
     : aggregateActionItemsByProductStatus(items, { periodTicketIdSet })
 
   const statsRows = buildActionItemStatsRows(byProduct)
-  const listRows = buildActionItemListRows(items, periodTicketIdSet)
+  const listRows = buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId)
 
   const wb = XLSX.utils.book_new()
   const statsSheet = XLSX.utils.json_to_sheet(statsRows, { header: ACTION_ITEM_STATS_HEADERS })
@@ -227,6 +237,7 @@ export function downloadActionItemsExcel({
  * @param {ActionItemListQuery} options.query
  * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
  * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
  * @param {string} [options.scopeLabel]
  * @param {string} [options.periodLabel]
  */
@@ -234,6 +245,7 @@ export async function exportActionItemsWithQuery({
   query,
   statsByProduct,
   periodTicketIdSet,
+  feedbackByTicketId,
   scopeLabel,
   periodLabel,
 }) {
@@ -245,6 +257,7 @@ export async function exportActionItemsWithQuery({
     items,
     statsByProduct,
     periodTicketIdSet,
+    feedbackByTicketId,
     filename: `举措与进展-${scopePart}${periodPart}-${datePart}.xlsx`,
   })
   return items.length

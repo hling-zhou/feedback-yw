@@ -267,10 +267,11 @@ export default function TicketDashboardView({
         >
           <div data-pdf-chart="source-trend" className="rounded-lg bg-white p-2">
             <TrendChart
+              variant="line"
               data={trendData}
               areas={[
-                { dataKey: 'count', name: '工单总数', stroke: '#4F46E5', fill: 'url(#trendFill)' },
-                { dataKey: 'negative', name: '负面工单', stroke: '#EF4444', fill: 'url(#trendNegativeFill)' },
+                { dataKey: 'count', name: '工单总数', stroke: '#4F46E5' },
+                { dataKey: 'negative', name: '负向工单', stroke: '#EF4444' },
               ]}
             />
           </div>

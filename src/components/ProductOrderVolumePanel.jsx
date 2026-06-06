@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, InputNumber, Select, Space, Table, Typography } from 'antd'
+import { Alert, Button, Card, InputNumber, Select, Table, Typography } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getEnabledProducts } from '../lib/productCatalog.js'
 import { monthsInYear } from '../lib/wanTouRatio.js'
@@ -81,7 +81,7 @@ export default function ProductOrderVolumePanel({ orderVolumes, onSave, loading 
         title="万投比 = 投诉工单数 ÷ 产品订单数 × 10000"
         description="按产品、按自然月维护订单数。工作台选择月/年洞察周期后，在综合概述与各产品投诉 Tab 中展示对应万投比。"
       />
-      <Space wrap className="mb-4">
+      <div className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
         <div>
           <Typography.Text strong className="mb-1 block text-xs">
             产品
@@ -110,15 +110,10 @@ export default function ProductOrderVolumePanel({ orderVolumes, onSave, loading 
             onChange={setYear}
           />
         </div>
-        <Button
-          type="primary"
-          className="self-end"
-          loading={saving || loading}
-          onClick={persistAll}
-        >
+        <Button type="primary" loading={saving || loading} onClick={persistAll}>
           保存本年 12 个月
         </Button>
-      </Space>
+      </div>
       <Table
         size="small"
         pagination={false}

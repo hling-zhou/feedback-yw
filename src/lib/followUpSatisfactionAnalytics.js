@@ -6,6 +6,7 @@
 import {
   DISSATISFIED_REASON_ANALYSIS_DIM_KEYS,
   SATISFACTION_CALLBACK_REPORT_COLUMNS,
+  collectMeaningfulDissatisfiedReasonTexts,
   getFollowUpScore,
   hasFollowUpSatisfaction,
   isMeaningfulDissatisfiedReasonValue,
@@ -86,6 +87,12 @@ const REASON_DIM_LABELS = /** @type {Record<string, string>} */ ({
  */
 
 /**
+ * @typedef {Object} FollowUpReasonWordRow
+ * @property {string} word
+ * @property {number} count
+ */
+
+/**
  * @typedef {Object} FollowUpSatisfactionMetrics
  * @property {number} version
  * @property {number} scoredCount
@@ -94,6 +101,7 @@ const REASON_DIM_LABELS = /** @type {Record<string, string>} */ ({
  * @property {FollowUpNamedCountRow[]} nonTenRequestScenes
  * @property {FollowUpNamedCountRow[]} nonTenProblemTypes
  * @property {FollowUpReasonDimRow[]} dissatisfiedReasons
+ * @property {FollowUpReasonWordRow[]} dissatisfiedReasonWords
  * @property {FollowUpUnresolvedStats} unresolved
  * @property {FollowUpProductOption[]} products
  */
@@ -257,6 +265,29 @@ export function computeDissatisfiedReasonDistribution(records) {
 }
 
 /**
+ * 非 10 分工单的不满意原因文本词频（过滤占位「无」等无意义值）。
+ * @param {FeedbackRecord[]} records
+ * @returns {FollowUpReasonWordRow[]}
+ */
+export function computeDissatisfiedReasonValueWordCloud(records) {
+  /** @type {Map<string, number>} */
+  const counts = new Map()
+
+  for (const record of filterFollowUpScoredRecords(records)) {
+    const score = getFollowUpScore(record)
+    if (score == null || score === 10) continue
+    for (const text of collectMeaningfulDissatisfiedReasonTexts(record.followUpSatisfaction)) {
+      counts.set(text, (counts.get(text) || 0) + 1)
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([word, count]) => ({ word, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+/**
+ * 未解决占比：分母为全部有效回访（含 10 分），非仅非 10 分工单。
  * @param {FeedbackRecord[]} records
  * @returns {FollowUpUnresolvedStats}
  */
@@ -319,6 +350,7 @@ export function buildFollowUpSatisfactionMetrics(records, options = {}) {
     nonTenRequestScenes: computeNonTenRequestSceneDistribution(scoped),
     nonTenProblemTypes: computeNonTenProblemTypeDistribution(scoped),
     dissatisfiedReasons: computeDissatisfiedReasonDistribution(scoped),
+    dissatisfiedReasonWords: computeDissatisfiedReasonValueWordCloud(scoped),
     unresolved: computeUnresolvedStats(scoped),
     products: listFollowUpProductOptions(records),
   }

@@ -158,7 +158,7 @@ export default function AppShell() {
       </Layout.Sider>
 
       <Layout className="app-shell-main min-h-full min-w-0 bg-ink-50">
-        <Layout.Content className="min-h-full min-w-0 bg-ink-50 p-3 sm:p-4 lg:p-5">
+        <Layout.Content className="app-shell-content">
           <ImportSessionGuard />
           <RetagSessionGuard />
           <Outlet />

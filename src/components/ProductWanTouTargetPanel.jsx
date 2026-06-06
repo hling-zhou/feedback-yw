@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, InputNumber, Select, Space, Typography } from 'antd'
+import { Alert, Button, Card, InputNumber, Select, Typography } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getEnabledProducts } from '../lib/productCatalog.js'
 
@@ -58,7 +58,7 @@ export default function ProductWanTouTargetPanel({ wanTouTargets, onSave, loadin
         title="工作台按月对比达标情况"
         description="万投比目标用于全部投诉工单；客户体验类万投比目标仅统计「投诉原因一级（终判）= 客户体验类」的投诉工单。未达标时将计算超量单数。"
       />
-      <Space wrap className="mb-4">
+      <div className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
         <div>
           <Typography.Text strong className="mb-1 block text-xs">
             产品
@@ -113,10 +113,10 @@ export default function ProductWanTouTargetPanel({ wanTouTargets, onSave, loadin
             onChange={setCxWanTouTarget}
           />
         </div>
-        <Button type="primary" className="self-end" loading={saving || loading} onClick={persist}>
+        <Button type="primary" loading={saving || loading} onClick={persist}>
           保存目标值
         </Button>
-      </Space>
+      </div>
     </Card>
   )
 }

@@ -20,28 +20,56 @@ import {
   horizontalBarChartLayout,
 } from './chartConstants.js'
 
+/** @param {unknown} data */
+function resolveBarRow(data) {
+  if (!data || typeof data !== 'object') return null
+  const row = /** @type {{ payload?: { fullName?: string; name?: string }; fullName?: string; name?: string }} */ (
+    data
+  )
+  return row.payload ?? row
+}
+
+/** @param {unknown} data */
+function resolveBarLabel(data) {
+  const row = resolveBarRow(data)
+  const label = row?.fullName ?? row?.name
+  return typeof label === 'string' && label ? label : null
+}
+
 /** @typedef {{ top: number; left: number }} TooltipAnchor */
 
 /**
  * @param {Object} props
- * @param {import('../../lib/productAnalytics.js').CountByFieldRow & { fullName: string; negativePct: number }} props.row
+ * @param {{ fullName: string; count: number; negativePct: number }} props.row
  * @param {TooltipAnchor} props.anchor
  * @param {string} props.href
+ * @param {boolean} [props.showNegativePct]
  * @param {() => void} props.onEnter
  * @param {() => void} props.onLeave
  * @param {(href: string) => void} props.onNavigate
  */
-function BarChartDrillDownOverlay({ row, anchor, href, onEnter, onLeave, onNavigate }) {
+function BarChartDrillDownOverlay({
+  row,
+  anchor,
+  href,
+  showNegativePct = true,
+  onEnter,
+  onLeave,
+  onNavigate,
+}) {
   return (
     <div
-      className="absolute z-30 max-w-xs -translate-y-1/2 rounded-md border border-ink-100 bg-white px-3 py-2 text-xs shadow-md"
+      className="absolute z-30 min-w-[11rem] max-w-[22rem] -translate-y-1/2 rounded-md border border-ink-100 bg-white px-3 py-2 text-xs shadow-md"
       style={{ top: anchor.top, left: anchor.left }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      <div className="font-medium text-ink-800">{row.fullName}</div>
-      <div className="mt-1 text-ink-500">
-        {row.count} 条 (负面 {row.negativePct}%)
+      <div className="font-medium leading-snug text-ink-800 [overflow-wrap:anywhere] [word-break:normal]">
+        {row.fullName}
+      </div>
+      <div className="mt-1 whitespace-nowrap text-ink-500">
+        {row.count} 条
+        {showNegativePct ? ` (负面 ${row.negativePct}%)` : ''}
       </div>
       <button
         type="button"
@@ -58,7 +86,13 @@ function BarChartDrillDownOverlay({ row, anchor, href, onEnter, onLeave, onNavig
   )
 }
 
-export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeedbacksHref }) {
+export default function ThemeBarChart({
+  data,
+  onBarClick,
+  activeLabel,
+  buildFeedbacksHref,
+  showNegativePct = true,
+}) {
   const navigate = useNavigate()
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const hideTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null))
@@ -108,9 +142,12 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
   )
 
   const handleBarMouseEnter = useCallback(
-    (entry, _index, event) => {
+    (data, _index, event) => {
       if (!buildFeedbacksHref) return
-      const href = buildFeedbacksHref(entry.fullName)
+      const row = resolveBarRow(data)
+      const fullName = row?.fullName ?? row?.name
+      if (!fullName) return
+      const href = buildFeedbacksHref(fullName)
       if (!href) return
 
       cancelHide()
@@ -118,7 +155,7 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
       const container = containerRef.current
       if (!(target instanceof Element) || !container) {
         setHoveredBar({
-          row: entry,
+          row: { fullName, count: row?.count ?? 0, negativePct: row?.negativePct ?? 0 },
           anchor: { top: 0, left: 0 },
           href,
         })
@@ -128,7 +165,7 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
       const barRect = target.getBoundingClientRect()
       const containerRect = container.getBoundingClientRect()
       setHoveredBar({
-        row: entry,
+        row: { fullName, count: row?.count ?? 0, negativePct: row?.negativePct ?? 0 },
         anchor: {
           top: barRect.top - containerRect.top + barRect.height / 2,
           left: barRect.right - containerRect.left + 8,
@@ -140,15 +177,23 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
   )
 
   const handleBarClick = useCallback(
-    (entry) => {
-      const href = buildFeedbacksHref?.(entry.fullName)
+    (label) => {
+      const href = buildFeedbacksHref?.(label)
       if (href) {
         navigate(href)
         return
       }
-      onBarClick?.(entry.fullName)
+      onBarClick?.(label)
     },
     [buildFeedbacksHref, navigate, onBarClick],
+  )
+
+  const handleChartClick = useCallback(
+    (state) => {
+      const label = resolveBarLabel(state?.activePayload?.[0]?.payload ?? state?.activePayload?.[0])
+      if (label) handleBarClick(label)
+    },
+    [handleBarClick],
   )
 
   if (!chartData.length) {
@@ -169,6 +214,7 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
           row={hoveredBar.row}
           anchor={hoveredBar.anchor}
           href={hoveredBar.href}
+          showNegativePct={showNegativePct}
           onEnter={cancelHide}
           onLeave={scheduleHide}
           onNavigate={navigate}
@@ -180,6 +226,7 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
           data={axisData}
           layout="vertical"
           margin={layout.margin}
+          onClick={onBarClick || buildFeedbacksHref ? handleChartClick : undefined}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
@@ -195,9 +242,12 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
           ) : (
             <ChartTooltip
               formatter={(value, _name, props) => [
-                `${value} 条 (负面 ${props.payload.negativePct}%)`,
+                showNegativePct
+                  ? `${value} 条 (负面 ${props.payload.negativePct}%)`
+                  : `${value} 条`,
                 props.payload.fullName,
               ]}
+              contentStyle={{ maxWidth: 352, whiteSpace: 'normal', wordBreak: 'normal' }}
             />
           )}
           <Bar
@@ -208,7 +258,6 @@ export default function ThemeBarChart({ data, onBarClick, activeLabel, buildFeed
             cursor={onBarClick || buildFeedbacksHref ? 'pointer' : 'default'}
             onMouseEnter={buildFeedbacksHref ? handleBarMouseEnter : undefined}
             onMouseLeave={buildFeedbacksHref ? scheduleHide : undefined}
-            onClick={(entry) => handleBarClick(entry)}
           >
             {axisData.map((entry) => (
               <Cell

@@ -4,6 +4,7 @@ import {
   buildFollowUpSatisfactionMetrics,
   buildTenPointRateTrendChart,
   computeDissatisfiedReasonDistribution,
+  computeDissatisfiedReasonValueWordCloud,
   computeNonTenProblemTypeDistribution,
   computeScoreDistributionByProduct,
   computeTenPointRateByMonth,
@@ -133,6 +134,43 @@ describe('followUpSatisfactionAnalytics', () => {
       expect.objectContaining({ reasonDim: 'overallService', count: 1 }),
     ])
     expect(rows.find((r) => r.reasonDim === 'staffAttitudeScore')).toBeUndefined()
+  })
+
+  it('computeDissatisfiedReasonValueWordCloud aggregates reason texts and filters placeholders', () => {
+    const rows = computeDissatisfiedReasonValueWordCloud([
+      ...fixtures,
+      ticket({
+        id: 'g',
+        followUpSatisfaction: {
+          followUpTicketId: 'FH-6',
+          followUpSuccessful: true,
+          score: 7,
+          dissatisfiedReasonParts: {
+            overallService: '响应慢',
+            staffAttitudeReason: '态度一般',
+            phoneCallbackOpinion: '无',
+          },
+        },
+      }),
+      ticket({
+        id: 'h',
+        followUpSatisfaction: {
+          followUpTicketId: 'FH-7',
+          followUpSuccessful: true,
+          score: 6,
+          dissatisfiedReasonParts: { overallService: '响应慢' },
+        },
+      }),
+    ])
+    expect(rows).toEqual([
+      { word: '响应慢', count: 3 },
+      { word: '态度一般', count: 1 },
+    ])
+  })
+
+  it('buildFollowUpSatisfactionMetrics includes dissatisfiedReasonWords', () => {
+    const metrics = buildFollowUpSatisfactionMetrics(fixtures)
+    expect(metrics.dissatisfiedReasonWords).toEqual([{ word: '响应慢', count: 1 }])
   })
 
   it('computeUnresolvedStats counts unresolved among scored follow-ups', () => {

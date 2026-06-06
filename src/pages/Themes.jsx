@@ -10,7 +10,9 @@ import WorkbenchScopeCompositeFilter from '../components/workbench/WorkbenchScop
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import ThemeBarChart from '../components/charts/ThemeBarChart.jsx'
 import KeywordWordCloud from '../components/charts/KeywordWordCloud.jsx'
-import InsightFeedbackList from '../components/InsightFeedbackList.jsx'
+import InsightFeedbackList, {
+  INSIGHT_FEEDBACK_PREVIEW_LIMIT,
+} from '../components/InsightFeedbackList.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
@@ -42,6 +44,7 @@ import {
   WORKBENCH_ANALYSIS_SCOPE_KEYS,
   workbenchScopeFiltersFromAnalysisParams,
 } from '../lib/workbenchScopeFilterModel.js'
+import { buildFeedbacksUrl } from '../lib/feedbackFilters.js'
 
 /**
  * @param {ReturnType<typeof parseAnalysisSearchParams>} p
@@ -166,19 +169,14 @@ export default function Themes() {
 
   const analysisTabs = useMemo(() => buildAnalysisTabs(dataSource), [dataSource])
 
-  const analysisScoped = useMemo(() => {
-    let items = filterFeedbacks(sourceScopedFeedbacks, {
-      product: product || undefined,
-      resourcePool: resourcePool || undefined,
-    })
-    if (journeySel.l1) {
-      items = filterFeedbacks(items, {
-        journeyL1: journeySel.l1,
-        journeyL2: journeySel.l2,
-      })
-    }
-    return items
-  }, [sourceScopedFeedbacks, product, resourcePool, journeySel])
+  const analysisScoped = useMemo(
+    () =>
+      filterFeedbacks(sourceScopedFeedbacks, {
+        product: product || undefined,
+        resourcePool: resourcePool || undefined,
+      }),
+    [sourceScopedFeedbacks, product, resourcePool],
+  )
 
   const scoped = useMemo(() => {
     let items = analysisScoped
@@ -209,7 +207,7 @@ export default function Themes() {
     () => aggregateComplaintCauseL1Insights(analysisScoped),
     [analysisScoped],
   )
-  const journeyTreeData = useMemo(() => journeyTree(scoped), [scoped])
+  const journeyTreeData = useMemo(() => journeyTree(analysisScoped), [analysisScoped])
   const [keywords, setKeywords] = useState(/** @type {{ word: string; count: number }[]} */ ([]))
   const [keywordsLoading, setKeywordsLoading] = useState(false)
 
@@ -253,22 +251,25 @@ export default function Themes() {
 
   const detailItems = useMemo(() => {
     if (tab === 'journey') {
-      return filterFeedbacks(scoped, {
+      if (!journeySel.l1) return []
+      return filterFeedbacks(analysisScoped, {
         journeyL1: journeySel.l1,
         journeyL2: journeySel.l2,
       })
     }
     if (tab === 'request' && expanded) {
-      return scoped.filter((fb) => (fb.requestScene || '未分类') === expanded)
+      return analysisScoped.filter((fb) => (fb.requestScene || '未分类') === expanded)
     }
     if (tab === 'problem' && expanded) {
-      return scoped.filter((fb) => (fb.problemType || '未分类') === expanded)
+      return analysisScoped.filter((fb) => (fb.problemType || '未分类') === expanded)
     }
     if (tab === 'complaint_cause' && expanded) {
-      return scoped.filter((fb) => getComplaintCauseL1Display(fb) === expanded)
+      return analysisScoped.filter((fb) => getComplaintCauseL1Display(fb) === expanded)
     }
     return []
-  }, [tab, scoped, expanded, journeySel])
+  }, [tab, analysisScoped, expanded, journeySel])
+
+  const detailListKey = `${tab}-${expanded || ''}-${journeySel.l1 || ''}-${journeySel.l2 || ''}`
 
   const detailTitle = useMemo(() => {
     if (tab === 'journey' && journeySel.l1) {
@@ -277,6 +278,21 @@ export default function Themes() {
     if (expanded) return `「${expanded}」相关工单`
     return '工单明细'
   }, [tab, expanded, journeySel])
+
+  const detailFeedbacksHref = useMemo(() => {
+    /** @type {Record<string, string>} */
+    const params = {}
+    if (dataSource) params.source = dataSource
+    if (product) params.product = product
+    if (tab === 'request' && expanded) params.requestScene = expanded
+    if (tab === 'problem' && expanded) params.problemType = expanded
+    if (tab === 'complaint_cause' && expanded) params.complaintCauseL1 = expanded
+    if (tab === 'journey') {
+      if (journeySel.l1) params.journeyL1 = journeySel.l1
+      if (journeySel.l2) params.journeyL2 = journeySel.l2
+    }
+    return buildFeedbacksUrl(params)
+  }, [tab, expanded, journeySel, dataSource, product])
 
   const resetDimensionSelection = useCallback(() => {
     setExpanded(null)
@@ -415,7 +431,7 @@ export default function Themes() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
+    <div>
       <AnalysisPageHeader
         desc={
           <span data-testid="period-count-themes-desc">
@@ -485,9 +501,8 @@ export default function Themes() {
       </div>
 
       {(tab === 'request' || tab === 'problem' || tab === 'complaint_cause') && (
-        <div className="mt-6 grid min-h-0 flex-1 gap-6 lg:max-h-[calc(100vh-17rem)] lg:grid-cols-2">
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Card
-            className="min-h-0"
             title={
               tab === 'request'
                 ? '请求场景分布'
@@ -504,13 +519,18 @@ export default function Themes() {
           </Card>
 
           <InsightFeedbackList
-            fillHeight
+            key={detailListKey}
             items={detailItems}
             title={detailTitle}
-            subtitle={detailItems.length ? `共 ${detailItems.length} 条 · 点击查看详情` : undefined}
+            subtitle={
+              detailItems.length
+                ? `预览 ${Math.min(detailItems.length, INSIGHT_FEEDBACK_PREVIEW_LIMIT)} 条 · 点击查看详情`
+                : undefined
+            }
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
             onItemClick={setSelected}
+            viewAllHref={detailFeedbacksHref}
             emptyHint="暂无工单"
           />
         </div>
@@ -522,12 +542,12 @@ export default function Themes() {
             <Typography.Text type="secondary" className="text-xs">
               基于用户旅程打标（一级 / 二级环节；列表中的旅程标签即二级环节名）
             </Typography.Text>
-            <div className="mt-4 space-y-3 max-h-[520px] overflow-y-auto">
+            <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto">
               {journeyTreeData.length === 0 ? (
                 <Empty description={<span>暂无旅程数据，请至<Link to="/feedbacks">反馈库</Link>批量重新打标</span>} />
               ) : (
                 journeyTreeData.map((node) => (
-                  <div key={node.l1} className="rounded-lg border border-ink-100 overflow-hidden">
+                  <div key={node.l1} className="overflow-hidden rounded-lg border border-ink-100">
                     <button
                       type="button"
                       className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition ${
@@ -565,12 +585,18 @@ export default function Themes() {
           </Card>
 
           <InsightFeedbackList
+            key={detailListKey}
             items={detailItems}
             title={detailTitle}
-            subtitle={detailItems.length ? `共 ${detailItems.length} 条` : undefined}
+            subtitle={
+              detailItems.length
+                ? `预览 ${Math.min(detailItems.length, INSIGHT_FEEDBACK_PREVIEW_LIMIT)} 条 · 点击查看详情`
+                : undefined
+            }
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
             onItemClick={setSelected}
+            viewAllHref={detailFeedbacksHref}
             emptyHint="点击左侧旅程环节查看工单"
           />
         </div>
@@ -587,12 +613,12 @@ export default function Themes() {
 
       {tab === 'keywords' && (
         <Card className="page-section" title="客户原话高频词">
-          <Typography.Text type="secondary" className="text-xs">
-            从问题摘要与客户原话提取；词越大出现越频繁
-            {canUseSemanticMatch(settings)
-              ? '。已启用 LLM 校验，仅保留对产品规划有决策价值的词'
-              : '（配置 LLM 后可启用词义校验）'}
-          </Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">
+              从问题摘要与客户原话提取；词越大出现越频繁
+              {canUseSemanticMatch(settings)
+                ? '。已启用 LLM 校验，仅保留对产品规划有决策价值的词'
+                : '（配置 LLM 后可启用词义校验）'}
+            </Typography.Text>
           <Spin spinning={keywordsLoading} className="mt-3 block">
             <KeywordWordCloud words={keywords} />
           </Spin>

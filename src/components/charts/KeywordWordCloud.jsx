@@ -27,10 +27,15 @@ function fontSizeForCount(count, minC, maxC) {
 }
 
 /**
- * 客户原话高频词词云（字号按词频缩放，无需额外图表库）
- * @param {{ words: KeywordItem[]; className?: string }} props
+ * 文本词云（字号按词频缩放，无需额外图表库）
+ * @param {{ words: KeywordItem[]; className?: string; ariaLabel?: string; emptyDescription?: string }} props
  */
-export default function KeywordWordCloud({ words, className = '' }) {
+export default function KeywordWordCloud({
+  words,
+  className = '',
+  ariaLabel = '词云',
+  emptyDescription = '暂无足够文本',
+}) {
   const items = useMemo(() => {
     const list = [...(words || [])].filter((w) => w.word?.trim()).sort((a, b) => b.count - a.count)
     if (!list.length) return []
@@ -47,7 +52,7 @@ export default function KeywordWordCloud({ words, className = '' }) {
   if (!items.length) {
     return (
       <div className={`flex min-h-[280px] items-center justify-center ${className}`}>
-        <Empty description="暂无足够文本" />
+        <Empty description={emptyDescription} />
       </div>
     )
   }
@@ -56,7 +61,7 @@ export default function KeywordWordCloud({ words, className = '' }) {
     <div
       className={`flex min-h-[300px] flex-wrap content-center items-center justify-center gap-x-5 gap-y-4 px-4 py-6 ${className}`}
       role="img"
-      aria-label="客户原话高频词词云"
+      aria-label={ariaLabel}
     >
       {items.map((item) => (
         <span

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Button, Card, Col, Row, Select, Statistic, Typography } from 'antd'
+import { Link } from 'react-router-dom'
+import { Button, Card, Select, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
+import KeywordWordCloud from '../charts/KeywordWordCloud.jsx'
 import FollowUpTenPointRateChart from '../charts/FollowUpTenPointRateChart.jsx'
 import FollowUpScoreDistributionChart from '../charts/FollowUpScoreDistributionChart.jsx'
 import { useInsights } from '../../context/InsightsContext.jsx'
@@ -26,7 +27,6 @@ import {
  * @param {import('../../lib/types.js').FeedbackRecord[]} props.ticketRecords 周期内投诉/咨询工单
  */
 export default function FollowUpSatisfactionPanel({ ticketRecords }) {
-  const navigate = useNavigate()
   const { currentPeriod } = useInsights()
   const [productKey, setProductKey] = useState('all')
 
@@ -81,15 +81,9 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
     [metrics.nonTenProblemTypes],
   )
 
-  const reasonChart = useMemo(
-    () =>
-      metrics.dissatisfiedReasons.map((row) => ({
-        label: row.label,
-        count: row.count,
-        negative: row.count,
-        reasonDim: row.reasonDim,
-      })),
-    [metrics.dissatisfiedReasons],
+  const reasonWordCloud = useMemo(
+    () => metrics.dissatisfiedReasonWords || [],
+    [metrics.dissatisfiedReasonWords],
   )
 
   const productOptions = useMemo(
@@ -193,46 +187,61 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
         </div>
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="未解决 占比"
-              value={unresolvedRatePct ?? '—'}
-              suffix={unresolvedRatePct != null ? '%' : undefined}
-            />
-            {metrics.unresolved.totalScored ? (
-              <Typography.Text type="secondary" className="mt-1 block text-xs">
-                {metrics.unresolved.unresolvedCount} / {metrics.unresolved.totalScored} 条
-                {' · '}
-                <Link
-                  to={buildFollowUpDrillDownUrl({
-                    ...drillDownBase,
-                    followUp: 'has',
-                    followUpResolved: 'unresolved',
-                  })}
-                >
-                  查看
-                </Link>
-              </Typography.Text>
-            ) : null}
-          </Card>
-        </Col>
-      </Row>
+      <div
+        data-pdf-chart="followup-unresolved"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-ink-100 bg-white px-4 py-3"
+      >
+        <span className="shrink-0 text-sm font-medium text-ink-800">未解决占比</span>
+        <Typography.Text type="secondary" className="shrink-0 text-xs">
+          全部有效回访
+        </Typography.Text>
+        <div
+          className="relative h-2.5 min-w-[6rem] flex-1 overflow-hidden rounded-full border border-ink-200 bg-white"
+          role="progressbar"
+          aria-valuenow={unresolvedRatePct ?? 0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="未解决占比"
+        >
+          <div
+            className="h-full rounded-full bg-rose-500 transition-[width]"
+            style={{ width: `${unresolvedRatePct ?? 0}%` }}
+          />
+        </div>
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-rose-600">
+          {unresolvedRatePct != null ? `${unresolvedRatePct}%` : '—'}
+        </span>
+        {metrics.unresolved.totalScored ? (
+          <>
+            <Typography.Text type="secondary" className="shrink-0 text-xs tabular-nums">
+              {metrics.unresolved.unresolvedCount} / {metrics.unresolved.totalScored} 条
+            </Typography.Text>
+            <Link
+              className="shrink-0 text-xs font-medium"
+              to={buildFollowUpDrillDownUrl({
+                ...drillDownBase,
+                followUp: 'has',
+                followUpResolved: 'unresolved',
+              })}
+            >
+              查看未解决
+            </Link>
+          </>
+        ) : null}
+      </div>
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-3">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
         <Card title="非 10 分 · 请求场景">
           <div data-pdf-chart="followup-request-scenes" className="rounded-lg bg-white p-2">
             <ThemeBarChart
               data={requestSceneChart}
-              onBarClick={(label) => {
-                navigate(
-                  buildFollowUpDrillDownUrl({
-                    ...drillDownBase,
-                    requestScene: drillDownFieldParam(label),
-                  }),
-                )
-              }}
+              showNegativePct={false}
+              buildFeedbacksHref={(label) =>
+                buildFollowUpDrillDownUrl({
+                  ...drillDownBase,
+                  requestScene: drillDownFieldParam(label),
+                })
+              }
             />
           </div>
         </Card>
@@ -240,35 +249,30 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
           <div data-pdf-chart="followup-problem-types" className="rounded-lg bg-white p-2">
             <ThemeBarChart
               data={problemTypeChart}
-              onBarClick={(label) => {
-                navigate(
-                  buildFollowUpDrillDownUrl({
-                    ...drillDownBase,
-                    problemType: drillDownFieldParam(label),
-                  }),
-                )
-              }}
-            />
-          </div>
-        </Card>
-        <Card title="非 10 分 · 不满意原因">
-          <div data-pdf-chart="followup-dissatisfied-reasons" className="rounded-lg bg-white p-2">
-            <ThemeBarChart
-              data={reasonChart}
-              onBarClick={(label) => {
-                const row = reasonChart.find((r) => r.label === label)
-                if (!row?.reasonDim) return
-                navigate(
-                  buildFollowUpDrillDownUrl({
-                    ...drillDownBase,
-                    reasonDim: row.reasonDim,
-                  }),
-                )
-              }}
+              showNegativePct={false}
+              buildFeedbacksHref={(label) =>
+                buildFollowUpDrillDownUrl({
+                  ...drillDownBase,
+                  problemType: drillDownFieldParam(label),
+                })
+              }
             />
           </div>
         </Card>
       </div>
+
+      <Card title="非 10 分 · 不满意原因">
+        <Typography.Text type="secondary" className="mb-2 block text-xs">
+          汇总非 10 分工单中填写的不满意原因原文；已自动过滤「无」「暂无」等占位值
+        </Typography.Text>
+        <div data-pdf-chart="followup-dissatisfied-reasons" className="rounded-lg bg-white p-2">
+          <KeywordWordCloud
+            words={reasonWordCloud}
+            ariaLabel="不满意原因词云"
+            emptyDescription="暂无不满意原因文本"
+          />
+        </div>
+      </Card>
     </div>
   )
 }
