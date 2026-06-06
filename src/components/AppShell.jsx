@@ -22,6 +22,8 @@ import { usePeriodScope } from '../hooks/usePeriodScope.js'
 import { ROLE_LABELS } from '../domain/auth/permissions.js'
 import ImportSessionGuard from './ImportSessionGuard.jsx'
 import RetagSessionGuard from './RetagSessionGuard.jsx'
+import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
+import MessageBottleFab from './MessageBottleFab.jsx'
 
 const ALL_NAV = [
   { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
@@ -46,6 +48,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const selectedKey = resolveNavKey(location.pathname)
   const [collapsed, setCollapsed] = useState(false)
+  const [bottleOpen, setBottleOpen] = useState(false)
 
   const navItems = ALL_NAV.filter((item) => {
     if (item.adminOnly && user?.role !== 'admin') return false
@@ -161,6 +164,8 @@ export default function AppShell() {
         <Layout.Content className="app-shell-content">
           <ImportSessionGuard />
           <RetagSessionGuard />
+          <MessageBottleFab onClick={() => setBottleOpen(true)} />
+          <MessageBottleSubmitModal open={bottleOpen} onClose={() => setBottleOpen(false)} />
           <Outlet />
         </Layout.Content>
       </Layout>

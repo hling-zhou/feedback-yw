@@ -1,4 +1,4 @@
-/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit'} SettingsTabKey */
+/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles'} SettingsTabKey */
 
 export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'llm',
@@ -6,6 +6,7 @@ export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'metrics',
   'data',
   'audit',
+  'bottles',
 ])
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -15,6 +16,7 @@ export const SETTINGS_TAB_LABELS = {
   metrics: '万投比指标',
   data: '数据管理',
   audit: '审计日志',
+  bottles: '漂流瓶',
 }
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -24,6 +26,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   metrics: '维护万投比分母与达标目标，供工作台投诉 Tab 展示与对比。',
   data: '导出备份、恢复数据或按范围清空已导入工单与洞察快照。',
   audit: '查看导入、清空、配置发布等关键操作记录。',
+  bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
@@ -40,6 +43,7 @@ export function getVisibleSettingsTabs(can) {
   if (can('editOrderVolumes')) tabs.push('metrics')
   if (can('manageTeamSettings') || can('deleteData') || can('export')) tabs.push('data')
   if (can('viewAudit')) tabs.push('audit')
+  if (can('view')) tabs.push('bottles')
   return tabs
 }
 

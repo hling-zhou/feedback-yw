@@ -11,19 +11,22 @@ describe('settingsTabs', () => {
         'deleteData',
         'export',
         'viewAudit',
+        'view',
       ].includes(p),
     )
-    expect(admin).toEqual(['llm', 'analysis', 'metrics', 'data', 'audit'])
+    expect(admin).toEqual(['llm', 'analysis', 'metrics', 'data', 'audit', 'bottles'])
 
     const editor = getVisibleSettingsTabs((p) =>
-      ['configureLlmPersonal', 'editOrderVolumes', 'deleteData', 'export', 'viewAudit'].includes(p),
+      ['configureLlmPersonal', 'editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(
+        p,
+      ),
     )
-    expect(editor).toEqual(['llm', 'metrics', 'data', 'audit'])
+    expect(editor).toEqual(['llm', 'metrics', 'data', 'audit', 'bottles'])
 
     const viewer = getVisibleSettingsTabs((p) =>
-      ['configureLlmPersonal', 'export', 'viewAudit'].includes(p),
+      ['configureLlmPersonal', 'export', 'viewAudit', 'view'].includes(p),
     )
-    expect(viewer).toEqual(['llm', 'data', 'audit'])
+    expect(viewer).toEqual(['llm', 'data', 'audit', 'bottles'])
   })
 
   it('resolveSettingsTab falls back to first visible tab', () => {

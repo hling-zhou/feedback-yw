@@ -13,6 +13,7 @@
  *   | 'editOrderVolumes'
  *   | 'manageTeamSettings'
  *   | 'viewAudit'
+ *   | 'manageMessageBottles'
  * )} PermissionCode */
 
 export const ROLES = /** @type {const} */ (['admin', 'editor', 'partial_editor', 'viewer'])
@@ -39,6 +40,7 @@ export const ROLE_PERMISSIONS = {
     'editOrderVolumes',
     'manageTeamSettings',
     'viewAudit',
+    'manageMessageBottles',
   ],
   editor: [
     'view',

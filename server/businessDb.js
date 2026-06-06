@@ -472,6 +472,18 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_action_items_product ON action_items(product_key);
     CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status);
     CREATE INDEX IF NOT EXISTS idx_action_items_first_proposed ON action_items(first_proposed_at);
+
+    CREATE TABLE IF NOT EXISTS message_bottles (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      content TEXT NOT NULL,
+      attachments_json TEXT NOT NULL DEFAULT '[]',
+      progress TEXT NOT NULL DEFAULT '待处理',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_bottles_created ON message_bottles(created_at DESC);
   `)
   migrateRecordsIndexColumns(db)
   migrateLegacyDcProductKeys(db)

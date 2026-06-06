@@ -28,6 +28,8 @@ export const AUDIT_ACTION_LABELS = {
   'user.create': '创建用户',
   'user.update': '更新用户',
   'user.delete': '删除用户',
+  'message_bottle.create': '提交漂流瓶',
+  'message_bottle.progress_update': '更新漂流瓶处理进展',
 }
 
 /**

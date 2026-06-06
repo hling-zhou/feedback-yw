@@ -10,6 +10,7 @@ import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
 import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
 import ProductWanTouTargetPanel from '../components/ProductWanTouTargetPanel.jsx'
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
+import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -338,7 +339,7 @@ export default function Settings() {
         onChange={handleTabChange}
       />
 
-      <div className={`mt-4 ${activeTab === 'metrics' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+      <div className={`mt-4 ${activeTab === 'metrics' || activeTab === 'bottles' ? 'max-w-4xl' : 'max-w-2xl'}`}>
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
@@ -635,6 +636,8 @@ export default function Settings() {
         )}
 
         {activeTab === 'audit' && can('viewAudit') && <AuditLogPanel />}
+
+        {activeTab === 'bottles' && can('view') && <MessageBottlePanel />}
       </div>
     </div>
   )
