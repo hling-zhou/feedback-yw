@@ -153,6 +153,81 @@ export function monthlyTrend(feedbacks, options = {}) {
     }))
 }
 
+/** @type {string[]} */
+export const TREND_STACK_COLORS = [
+  '#4F46E5',
+  '#0891B2',
+  '#059669',
+  '#D97706',
+  '#DC2626',
+  '#7C3AED',
+  '#DB2777',
+  '#2563EB',
+  '#CA8A04',
+  '#0D9488',
+]
+
+/**
+ * 月度趋势按产品堆叠（每行含各产品条数与 count 合计）。
+ *
+ * @param {import('./types.js').FeedbackRecord[]} feedbacks
+ * @param {{ basis?: 'createdAt' | 'importMonth'; limit?: number }} [options]
+ * @returns {{ data: Record<string, unknown>[]; products: { dataKey: string; name: string }[] }}
+ */
+export function monthlyTrendByProduct(feedbacks, options = {}) {
+  const basis = options.basis || 'importMonth'
+  const limit = options.limit || 12
+  /** @type {Map<string, Map<string, number>>} */
+  const byMonth = new Map()
+  /** @type {Map<string, number>} */
+  const productTotals = new Map()
+
+  for (const fb of feedbacks) {
+    const month = recordMonth(fb, basis)
+    if (!month || month === '未知月份') continue
+    const product = fb.product?.trim() || '未标注产品'
+    if (!byMonth.has(month)) byMonth.set(month, new Map())
+    const monthMap = byMonth.get(month)
+    monthMap.set(product, (monthMap.get(product) || 0) + 1)
+    productTotals.set(product, (productTotals.get(product) || 0) + 1)
+  }
+
+  const products = [...productTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => ({ dataKey: name, name }))
+
+  const data = [...byMonth.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .slice(-limit)
+    .map((date) => {
+      const monthMap = byMonth.get(date) || new Map()
+      /** @type {Record<string, unknown>} */
+      const row = { date }
+      let count = 0
+      for (const product of products) {
+        const value = monthMap.get(product.dataKey) || 0
+        row[product.dataKey] = value
+        count += value
+      }
+      row.count = count
+      return row
+    })
+
+  return { data, products }
+}
+
+/**
+ * @param {{ dataKey: string; name: string }[]} products
+ * @param {string[]} [colors]
+ */
+export function buildStackedTrendAreas(products, colors = TREND_STACK_COLORS) {
+  return products.map((product, index) => ({
+    dataKey: product.dataKey,
+    name: product.name,
+    stroke: colors[index % colors.length],
+  }))
+}
+
 /**
  * @param {import('./types.js').FeedbackRecord[]} feedbacks
  * @param {'createdAt' | 'importMonth'} [basis]

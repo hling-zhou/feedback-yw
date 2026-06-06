@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Card, Form, Select, Tag, Typography } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Card, Tag, Typography } from 'antd'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import TrendChart from '../charts/TrendChart.jsx'
 import JourneyFeedbackSection from '../JourneyFeedbackSection.jsx'
 import SentimentDistributionPanel from '../SentimentDistributionPanel.jsx'
 import SentimentExperiencePanel from '../SentimentExperiencePanel.jsx'
+import WorkbenchScopeCompositeFilter from './WorkbenchScopeCompositeFilter.jsx'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { getTaxonomy } from '../../lib/productTaxonomy.js'
 import { countByField, filterFeedbacks } from '../../lib/productAnalytics.js'
@@ -22,6 +23,11 @@ import {
 } from '../../lib/feedbackFilters.js'
 import WanTouRatioPanel from './WanTouRatioPanel.jsx'
 import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
+import {
+  clearAllWorkbenchScopeFilters,
+  createEmptyWorkbenchScopeFilters,
+  WORKBENCH_TICKET_SCOPE_KEYS,
+} from '../../lib/workbenchScopeFilterModel.js'
 
 /**
  * @param {Object} props
@@ -38,31 +44,48 @@ export default function TicketDashboardView({
   onProductChange,
   pdfCaptureMode = false,
 }) {
-  const { feedbacks, currentPeriod, orderVolumes } = useInsights()
+  const { feedbacks, currentPeriod, orderVolumes, wanTouTargets } = useInsights()
   const items = useMemo(
     () => workbenchTicketRecords(feedbacks, currentPeriod, snapshot),
     [feedbacks, currentPeriod, snapshot],
   )
 
   const products = useMemo(() => listProducts(items), [items])
-  const [internalProduct, setInternalProduct] = useState('')
   const productControlled = onProductChange != null
-  const product = productControlled ? productProp ?? '' : internalProduct
-  const setProduct = productControlled ? onProductChange : setInternalProduct
-  const [resourcePool, setResourcePool] = useState('')
-  const [complaintCauseL1, setComplaintCauseL1] = useState('')
+  const [scopeFilters, setScopeFilters] = useState(() => ({
+    ...createEmptyWorkbenchScopeFilters(),
+    product: productProp ?? '',
+  }))
+  const product = scopeFilters.product
+  const resourcePool = scopeFilters.resourcePool
+  const complaintCauseL1 = scopeFilters.complaintCauseL1
+
+  const applyProductChange = useCallback(
+    (value) => {
+      if (productControlled) {
+        onProductChange?.(value)
+      }
+      setScopeFilters((prev) => ({ ...prev, product: value }))
+    },
+    [productControlled, onProductChange],
+  )
   const [journeySel, setJourneySel] = useState({ l1: undefined, l2: undefined })
   const isComplaintSource = snapshot.dataSourceType === 'complaint_ticket'
 
   useEffect(() => {
+    if (!productControlled) return
+    setScopeFilters((prev) => ({ ...prev, product: productProp ?? '' }))
+  }, [productProp, productControlled])
+
+  useEffect(() => {
     if (!products.length) {
-      if (product) setProduct('')
+      if (product) applyProductChange('')
       return
     }
     if (product && !products.some((p) => p.name === product)) {
-      setProduct('')
+      applyProductChange('')
     }
-  }, [products, product, setProduct])
+  }, [products, product, applyProductChange])
 
   const isAllProducts = !product && !pdfCaptureMode
   const sectionProduct = product || (pdfCaptureMode ? products[0]?.name : '') || ''
@@ -126,6 +149,49 @@ export default function TicketDashboardView({
     () => (isComplaintSource ? countComplaintCauseL1(items) : []),
     [items, isComplaintSource],
   )
+
+  const scopeFilterOptions = useMemo(
+    () => ({
+      productOptions: products.map((p) => ({
+        label: `${p.name} (${p.count})`,
+        value: p.name,
+      })),
+      resourcePoolOptions: pools.map((p) => ({
+        label: `${p.name} (${p.count})`,
+        value: p.name,
+      })),
+      complaintCauseOptions: complaintCauseOptions.map((t) => ({
+        label: `${t.name} (${t.count})`,
+        value: t.name,
+      })),
+    }),
+    [products, pools, complaintCauseOptions],
+  )
+
+  const handleScopeFiltersChange = useCallback(
+    (next, meta) => {
+      setScopeFilters(next)
+      if (meta?.key === 'product' && productControlled) {
+        onProductChange?.(next.product)
+      }
+      setJourneySel({})
+    },
+    [productControlled, onProductChange],
+  )
+
+  const handleClearScopeFilters = useCallback(() => {
+    setScopeFilters(clearAllWorkbenchScopeFilters(WORKBENCH_TICKET_SCOPE_KEYS))
+    applyProductChange('')
+    setJourneySel({})
+  }, [applyProductChange])
+  const scopeFilterHints = useMemo(() => {
+    /** @type {string[]} */
+    const hints = []
+    if (complaintCauseL1) hints.push('已筛投诉原因（终判）')
+    if (resourcePool) hints.push('已筛资源池')
+    return hints
+  }, [complaintCauseL1, resourcePool])
+
   const trendData = snapshot.aggregates?.monthlyTrend || []
   const latestMonth = trendData.at(-1)
   const previousMonth = trendData.at(-2)
@@ -150,70 +216,24 @@ export default function TicketDashboardView({
       )}
 
       {!pdfCaptureMode && (
-      <Form className="flex flex-wrap items-end gap-4" layout="vertical">
-        <Form.Item label="产品" className="!mb-0">
-          <Select
-            className="min-w-[220px]"
-            value={product}
-            options={[
-              { label: `全部产品 (${items.length})`, value: '' },
-              ...products.map((p) => ({
-                label: `${p.name} (${p.count})`,
-                value: p.name,
-              })),
-            ]}
-            onChange={(value) => {
-              setProduct(value)
-              setResourcePool('')
-              setComplaintCauseL1('')
-              setJourneySel({})
-            }}
+        <div className="mb-4 space-y-2">
+          <WorkbenchScopeCompositeFilter
+            preset="ticket"
+            filters={scopeFilters}
+            onFiltersChange={handleScopeFiltersChange}
+            onClearFilters={handleClearScopeFilters}
+            showComplaintCauseFilter={isComplaintSource}
+            options={scopeFilterOptions}
           />
-        </Form.Item>
-        {isComplaintSource && (
-          <Form.Item label="投诉原因（终判）" className="!mb-0">
-            <Select
-              className="min-w-[200px]"
-              value={complaintCauseL1}
-              options={[
-                { label: '全部一级（终判）', value: '' },
-                ...complaintCauseOptions.map((t) => ({
-                  label: `${t.name} (${t.count})`,
-                  value: t.name,
-                })),
-              ]}
-              onChange={(value) => {
-                setComplaintCauseL1(value)
-                setJourneySel({})
-              }}
-            />
-          </Form.Item>
-        )}
-        <Form.Item label="资源池" className="!mb-0">
-          <Select
-            className="min-w-[200px]"
-            value={resourcePool}
-            options={[
-              { label: '全部资源池', value: '' },
-              ...pools.map((p) => ({ label: `${p.name} (${p.count})`, value: p.name })),
-            ]}
-            onChange={(value) => {
-              setResourcePool(value)
-              setJourneySel({})
-            }}
-          />
-        </Form.Item>
-        {product && taxonomy.name && (
-          <Tag color="blue" className="mb-1">
-            {taxonomy.name}
-          </Tag>
-        )}
-        <Typography.Text type="secondary" className="mb-1 text-sm">
-          周期内 {items.length} 条
-          {isAllProducts ? ` · 全部产品 ${scoped.length} 条` : ` · 当前产品 ${scoped.length} 条`}
-          {resourcePool ? '（已筛资源池）' : ''}
-        </Typography.Text>
-      </Form>
+          <div className="flex flex-wrap items-center gap-2">
+            {product && taxonomy.name ? <Tag color="blue">{taxonomy.name}</Tag> : null}
+            <Typography.Text type="secondary" className="text-sm">
+              周期内 {items.length} 条
+              {isAllProducts ? ` · 全部产品 ${scoped.length} 条` : ` · 当前产品 ${scoped.length} 条`}
+              {scopeFilterHints.length ? `（${scopeFilterHints.join(' · ')}）` : ''}
+            </Typography.Text>
+          </div>
+        </div>
       )}
 
       {!pdfCaptureMode && snapshot.dataSourceType === 'complaint_ticket' && (
@@ -226,6 +246,7 @@ export default function TicketDashboardView({
             records={items}
             allRecords={feedbacks}
             orderVolumes={orderVolumes}
+            wanTouTargets={wanTouTargets}
             variant={currentPeriod?.granularity === 'month' ? 'compact' : 'full'}
           />
         </div>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Button, Card, Empty, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
 import AnalysisPageHeader from '../components/workbench/AnalysisPageHeader.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
+import WorkbenchScopeCompositeFilter from '../components/workbench/WorkbenchScopeCompositeFilter.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import ThemeBarChart from '../components/charts/ThemeBarChart.jsx'
 import KeywordWordCloud from '../components/charts/KeywordWordCloud.jsx'
@@ -36,6 +37,11 @@ import {
   parseAnalysisSearchParams,
   patchAnalysisSearchParams,
 } from '../lib/workbenchAnalysisLink.js'
+import {
+  clearAllWorkbenchScopeFilters,
+  WORKBENCH_ANALYSIS_SCOPE_KEYS,
+  workbenchScopeFiltersFromAnalysisParams,
+} from '../lib/workbenchScopeFilterModel.js'
 
 /**
  * @param {ReturnType<typeof parseAnalysisSearchParams>} p
@@ -74,9 +80,12 @@ export default function Themes() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialParams = useMemo(() => parseAnalysisSearchParams(searchParams), [searchParams])
   const [tab, setTab] = useState(() => resolveInitialAnalysisTab(initialParams))
-  const [dataSource, setDataSource] = useState(initialParams.source)
-  const [product, setProduct] = useState(initialParams.product)
-  const [resourcePool, setResourcePool] = useState('')
+  const [scopeFilters, setScopeFilters] = useState(() =>
+    workbenchScopeFiltersFromAnalysisParams(initialParams),
+  )
+  const dataSource = scopeFilters.dataSource
+  const product = scopeFilters.product
+  const resourcePool = scopeFilters.resourcePool
   const [expanded, setExpanded] = useState(() => {
     if (initialParams.complaintCauseL1) return initialParams.complaintCauseL1
     if (initialParams.problemType) return initialParams.problemType
@@ -117,9 +126,7 @@ export default function Themes() {
   useEffect(() => {
     const p = parseAnalysisSearchParams(searchParams)
     setTab(resolveInitialAnalysisTab(p))
-    setDataSource(p.source)
-    setProduct(p.product)
-    setResourcePool('')
+    setScopeFilters(workbenchScopeFiltersFromAnalysisParams(p))
     if (p.journeyL1 || p.journeyL2) {
       setJourneySel({ l1: p.journeyL1 || undefined, l2: p.journeyL2 || undefined })
       setExpanded(null)
@@ -138,10 +145,24 @@ export default function Themes() {
   useEffect(() => {
     if (!product) return
     if (!products.some((p) => p.name === product)) {
-      setProduct('')
+      setScopeFilters((prev) => ({ ...prev, product: '', resourcePool: '' }))
       syncAnalysisParams({ product: '' })
     }
   }, [products, product, syncAnalysisParams])
+
+  const scopeFilterOptions = useMemo(
+    () => ({
+      productOptions: products.map((p) => ({
+        label: `${p.name} (${p.count})`,
+        value: p.name,
+      })),
+      resourcePoolOptions: pools.map((p) => ({
+        label: `${p.name} (${p.count})`,
+        value: p.name,
+      })),
+    }),
+    [products, pools],
+  )
 
   const analysisTabs = useMemo(() => buildAnalysisTabs(dataSource), [dataSource])
 
@@ -322,25 +343,30 @@ export default function Themes() {
     }
   }, [dataSource, tab, syncAnalysisParams])
 
-  const handleDataSourceChange = (value) => {
-    setDataSource(value)
-    setProduct('')
-    setResourcePool('')
-    resetDimensionSelection()
-    syncAnalysisParams({ source: value, product: '' })
-  }
+  const handleScopeFiltersChange = useCallback(
+    (next, meta) => {
+      setScopeFilters(next)
+      resetDimensionSelection()
+      if (meta?.key === 'dataSource') {
+        syncAnalysisParams({ source: next.dataSource, product: next.product })
+        if (tab === 'complaint_cause' && next.dataSource && next.dataSource !== 'complaint_ticket') {
+          setTab('request')
+          syncAnalysisParams({ tab: 'request', source: next.dataSource, product: next.product })
+        }
+        return
+      }
+      if (meta?.key === 'product') {
+        syncAnalysisParams({ product: next.product })
+      }
+    },
+    [resetDimensionSelection, syncAnalysisParams, tab],
+  )
 
-  const handleProductChange = (value) => {
-    setProduct(value)
-    setResourcePool('')
+  const handleClearScopeFilters = useCallback(() => {
+    setScopeFilters(clearAllWorkbenchScopeFilters(WORKBENCH_ANALYSIS_SCOPE_KEYS))
     resetDimensionSelection()
-    syncAnalysisParams({ product: value })
-  }
-
-  const handleResourcePoolChange = (value) => {
-    setResourcePool(value)
-    resetDimensionSelection()
-  }
+    syncAnalysisParams({ source: '', product: '' })
+  }, [resetDimensionSelection, syncAnalysisParams])
 
   const handleBarClick = (label) => {
     setExpanded(label)
@@ -402,40 +428,15 @@ export default function Themes() {
         }
       />
 
-      <div className="page-toolbar page-toolbar-nowrap !items-center gap-2">
+      <div className="page-toolbar flex flex-wrap items-center gap-2">
         <InsightPeriodPicker compact showHint={false} className="shrink-0" />
-        <Select
-          className="min-w-[150px]"
-          placeholder="全部产品"
-          value={product}
-          options={[
-            { label: '全部产品', value: '' },
-            ...products.map((p) => ({ label: `${p.name} (${p.count})`, value: p.name })),
-          ]}
-          onChange={handleProductChange}
-        />
-        <Select
-          className="min-w-[130px]"
-          placeholder="全部来源"
-          value={dataSource}
-          options={[
-            { label: '全部来源', value: '' },
-            ...DATA_SOURCE_TYPES.map((type) => ({
-              label: DATA_SOURCE_LABELS[type],
-              value: type,
-            })),
-          ]}
-          onChange={handleDataSourceChange}
-        />
-        <Select
-          className="min-w-[130px]"
-          placeholder="全部资源池"
-          value={resourcePool}
-          options={[
-            { label: '全部资源池', value: '' },
-            ...pools.map((p) => ({ label: `${p.name} (${p.count})`, value: p.name })),
-          ]}
-          onChange={handleResourcePoolChange}
+        <WorkbenchScopeCompositeFilter
+          preset="analysis"
+          className="min-w-0 flex-1"
+          filters={scopeFilters}
+          onFiltersChange={handleScopeFiltersChange}
+          onClearFilters={handleClearScopeFilters}
+          options={scopeFilterOptions}
         />
       </div>
 

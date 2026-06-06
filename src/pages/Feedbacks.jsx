@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Input, Modal, Segmented, Select, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import { TaggingProgressAlert } from '../components/TaggingProgressAlert.jsx'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { periodSpecFromImportMonth, resolveInsightPeriod } from '../domain/insightPeriod.js'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
 import { SCHEMA_VERSION, DEFAULT_TENANT_ID } from '../domain/constants.js'
@@ -16,8 +16,9 @@ import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import FeedbackTable from '../components/FeedbackTable.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
+import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
-import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
+import { sentimentStats } from '../lib/analytics.js'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
 import {
@@ -35,9 +36,7 @@ import {
   recordNeedsTicketLlmEnrichment,
   recordNeedsJourneyLlmEnrichment,
   TICKET_LLM_FILTER_HINTS,
-  TICKET_LLM_FILTER_OPTIONS,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
-import { renderDefinitionSelectOption } from '../components/tags/DefinitionSelectOption.jsx'
 import {
   downloadUnknownJourneyCsv,
   summarizeUnknownJourneyRecords,
@@ -46,24 +45,24 @@ import {
 import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
-  FOLLOW_UP_FILTER_OPTIONS,
-  FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
-  parseFeedbackFollowUpSearchParams,
-  patchFeedbackFollowUpSearchParams,
+  parseFeedbackSearchParams,
+  patchFeedbackSearchParams,
 } from '../lib/feedbackFilters.js'
-
-/**
- * @param {string | null | undefined} raw
- */
-function parseTicketIdsParam(raw) {
-  if (!raw) return []
-  return raw
-    .split(',')
-    .map((t) => decodeURIComponent(t.trim()))
-    .filter(Boolean)
-}
+import {
+  applyFeedbackFilterPatch,
+  clearAllFeedbackFilters,
+  createEmptyFeedbackFilters,
+  feedbackFiltersFromParsed,
+  feedbackFiltersToUrlPatch,
+} from '../lib/feedbackFilterModel.js'
+import { matchesTicketActualDateRange } from '../domain/ticketActualDate.js'
+import { isTicketSource } from '../lib/importUtils.js'
+import {
+  WORKBENCH_HOME,
+  buildWorkbenchAnalysisUrl,
+} from '../lib/workbenchAnalysisLink.js'
 
 export default function Feedbacks() {
   const {
@@ -76,6 +75,7 @@ export default function Feedbacks() {
     periodsLoading,
     selectInsightPeriod,
     settings,
+    syncSharedDataFromServer,
   } = useInsights()
   const { remoteBannerText } = useSharedBackgroundTaskBlock()
 
@@ -91,93 +91,74 @@ export default function Feedbacks() {
   )
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('table')
-  const [q, setQ] = useState('')
-  const [product, setProduct] = useState('')
-  const [problemType, setProblemType] = useState('')
-  const [complaintCauseL1, setComplaintCauseL1] = useState('')
-  const [journeyL1, setJourneyL1] = useState('')
-  const [resourcePool, setResourcePool] = useState('')
-  const [dataSourceFilter, setDataSourceFilter] = useState('')
-  const [ticketLlmFilter, setTicketLlmFilter] = useState('')
-  const [followUpFilter, setFollowUpFilter] = useState('')
-  const [followUpResolvedFilter, setFollowUpResolvedFilter] = useState('')
-  const [reasonDimFilter, setReasonDimFilter] = useState('')
-  const [requestScene, setRequestScene] = useState('')
-  const [selectedTicketIds, setSelectedTicketIds] = useState(/** @type {string[]} */ ([]))
+  const [filters, setFilters] = useState(createEmptyFeedbackFilters)
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
-  const skipTicketIdsUrlSyncRef = useRef(false)
-  const skipFollowUpUrlSyncRef = useRef(false)
+  const skipUrlSyncRef = useRef(false)
 
-  const syncFollowUpFiltersToUrl = (patch) => {
-    skipFollowUpUrlSyncRef.current = true
-    const next = patchFeedbackFollowUpSearchParams(searchParams, patch)
-    setSearchParams(next, { replace: true })
-  }
+  const syncFiltersToUrl = useCallback(
+    (nextFilters) => {
+      skipUrlSyncRef.current = true
+      setSearchParams(patchFeedbackSearchParams(searchParams, feedbackFiltersToUrlPatch(nextFilters)), {
+        replace: true,
+      })
+    },
+    [searchParams, setSearchParams],
+  )
 
-  const syncTicketIdsToUrl = (ids) => {
-    const unique = [...new Set(ids.map((t) => t.trim()).filter(Boolean))]
-    setSelectedTicketIds(unique)
-    skipTicketIdsUrlSyncRef.current = true
-    const next = new URLSearchParams(searchParams)
-    if (unique.length) next.set('ticketIds', unique.join(','))
-    else next.delete('ticketIds')
-    setSearchParams(next, { replace: true })
-  }
+  const handleFiltersChange = useCallback(
+    (next, meta) => {
+      setFilters(next)
+      if (meta?.syncUrl) syncFiltersToUrl(next)
+    },
+    [syncFiltersToUrl],
+  )
+
+  const handleClearFilters = useCallback(() => {
+    const next = clearAllFeedbackFilters()
+    setFilters(next)
+    syncFiltersToUrl(next)
+  }, [syncFiltersToUrl])
+
+  const handleRefresh = useCallback(async () => {
+    if (importSession?.active) {
+      message.warning('数据导入进行中，请稍后再刷新')
+      return
+    }
+    if (retagSession?.active) {
+      message.warning('批量重新打标进行中，请稍后再刷新')
+      return
+    }
+    setRefreshing(true)
+    try {
+      await syncSharedDataFromServer({ notify: false })
+      message.success('已刷新')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '刷新失败')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [importSession?.active, retagSession?.active, syncSharedDataFromServer])
 
   useEffect(() => {
-    if (skipTicketIdsUrlSyncRef.current) {
-      skipTicketIdsUrlSyncRef.current = false
+    if (skipUrlSyncRef.current) {
+      skipUrlSyncRef.current = false
       return
     }
 
     const month = searchParams.get('month')
-    const rawTicketIds = searchParams.get('ticketIds')
-
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       void selectInsightPeriod(periodSpecFromImportMonth(month))
     }
 
-    if (rawTicketIds !== null) {
-      setSelectedTicketIds(parseTicketIdsParam(rawTicketIds))
-      setProduct('')
-      setProblemType('')
-      setComplaintCauseL1('')
-      setJourneyL1('')
-      setResourcePool('')
-      setDataSourceFilter('')
-      setQ('')
-      return
-    }
-
-    setSelectedTicketIds([])
-
-    const source = searchParams.get('source')
-    const urlProduct = searchParams.get('product')
-    const urlProblemType = searchParams.get('problemType')
-    const urlComplaintCauseL1 = searchParams.get('complaintCauseL1')
-    const urlJourneyL1 = searchParams.get('journeyL1')
-    const urlRequestScene = searchParams.get('requestScene')
-
-    if (source && DATA_SOURCE_TYPES.includes(source)) setDataSourceFilter(source)
-    else setDataSourceFilter('')
-    setProduct(urlProduct || '')
-    setProblemType(urlProblemType || '')
-    setComplaintCauseL1(urlComplaintCauseL1 || '')
-    setJourneyL1(urlJourneyL1 || '')
-    setRequestScene(urlRequestScene || '')
-    setResourcePool('')
-    setQ('')
-
-    if (!skipFollowUpUrlSyncRef.current) {
-      const followUpParams = parseFeedbackFollowUpSearchParams(searchParams)
-      setFollowUpFilter(followUpParams.followUp)
-      setFollowUpResolvedFilter(followUpParams.followUpResolved)
-      setReasonDimFilter(followUpParams.reasonDim)
-    } else {
-      skipFollowUpUrlSyncRef.current = false
-    }
-    // 仅响应 URL 变化；勿依赖 selectInsightPeriod，否则会反复把周期重置回 ?month=
+    const parsed = parseFeedbackSearchParams(searchParams)
+    setFilters(
+      feedbackFiltersFromParsed({
+        ...parsed,
+        ticketIds: parsed.ticketIds,
+      }),
+    )
   }, [searchParams])
 
   useEffect(() => {
@@ -198,14 +179,14 @@ export default function Feedbacks() {
 
   const products = useMemo(() => listProducts(periodFeedbacks), [periodFeedbacks])
   const pools = useMemo(
-    () => listResourcePools(periodFeedbacks, product || undefined),
-    [periodFeedbacks, product],
+    () => listResourcePools(periodFeedbacks, filters.product || undefined),
+    [periodFeedbacks, filters.product],
   )
   const problemTypes = useMemo(() => countByField(periodFeedbacks, 'problemType'), [periodFeedbacks])
   const complaintCauseOptions = useMemo(() => countComplaintCauseL1(periodFeedbacks), [periodFeedbacks])
-  const showComplaintCauseFilter =
-    !dataSourceFilter || dataSourceFilter === 'complaint_ticket'
+  const showComplaintCauseFilter = !filters.dataSource || filters.dataSource === 'complaint_ticket'
   const journeys = useMemo(() => countByField(periodFeedbacks, 'journeyL1'), [periodFeedbacks])
+  const requestScenes = useMemo(() => countByField(periodFeedbacks, 'requestScene'), [periodFeedbacks])
   const unknownJourneySummary = useMemo(
     () => summarizeUnknownJourneyRecords(periodFeedbacks),
     [periodFeedbacks],
@@ -234,14 +215,14 @@ export default function Feedbacks() {
   )
 
   const selectedTicketIdSet = useMemo(
-    () => (selectedTicketIds.length ? new Set(selectedTicketIds) : null),
-    [selectedTicketIds],
+    () => (filters.ticketIds.length ? new Set(filters.ticketIds) : null),
+    [filters.ticketIds],
   )
 
   const ticketIdOptions = useMemo(() => {
     /** @type {Map<string, string>} */
     const map = new Map()
-    for (const tid of selectedTicketIds) {
+    for (const tid of filters.ticketIds) {
       if (tid) map.set(tid, tid)
     }
     for (const fb of periodFeedbacks) {
@@ -251,7 +232,7 @@ export default function Feedbacks() {
     return [...map.values()]
       .sort((a, b) => a.localeCompare(b))
       .map((tid) => ({ label: tid, value: tid }))
-  }, [periodFeedbacks, selectedTicketIds])
+  }, [periodFeedbacks, filters.ticketIds])
 
   const matchedEvidenceCount = useMemo(() => {
     if (!selectedTicketIdSet?.size) return 0
@@ -262,70 +243,73 @@ export default function Feedbacks() {
     return n
   }, [feedbacks, selectedTicketIdSet])
 
+  const ticketDateFilter = useMemo(() => {
+    if (!filters.ticketDateFrom && !filters.ticketDateTo) return null
+    return { from: filters.ticketDateFrom, to: filters.ticketDateTo }
+  }, [filters.ticketDateFrom, filters.ticketDateTo])
+
   const filtered = useMemo(() => {
     const baseList = selectedTicketIdSet?.size ? feedbacks : periodFeedbacks
     return baseList.filter((fb) => {
       if (selectedTicketIdSet?.size) {
         if (!fb.ticketId || !selectedTicketIdSet.has(fb.ticketId)) return false
       }
-      if (product && (fb.product || '未标注产品') !== product) return false
-      if (!matchesOptionalTextFilter(fb.problemType, problemType)) return false
-      if (complaintCauseL1) {
+      if (filters.product && (fb.product || '未标注产品') !== filters.product) return false
+      if (!matchesOptionalTextFilter(fb.problemType, filters.problemType)) return false
+      if (filters.complaintCauseL1) {
         if (!isComplaintTicket(fb)) return false
-        if (getComplaintCauseL1Display(fb) !== complaintCauseL1) return false
+        if (getComplaintCauseL1Display(fb) !== filters.complaintCauseL1) return false
       }
-      if (journeyL1 && fb.journeyL1 !== journeyL1) return false
-      if (resourcePool && (fb.resourcePool || '未标注资源池') !== resourcePool) return false
-      if (dataSourceFilter && recordSourceType(fb) !== dataSourceFilter) return false
-      if (!matchesOptionalTextFilter(fb.requestScene, requestScene)) return false
+      if (filters.journeyL1 && fb.journeyL1 !== filters.journeyL1) return false
+      if (filters.resourcePool && (fb.resourcePool || '未标注资源池') !== filters.resourcePool) return false
+      if (filters.dataSource && recordSourceType(fb) !== filters.dataSource) return false
+      if (ticketDateFilter && !matchesTicketActualDateRange(fb, ticketDateFilter)) return false
+      if (!matchesOptionalTextFilter(fb.requestScene, filters.requestScene)) return false
       if (
         !matchesFollowUpFilters(fb, {
-          followUp: followUpFilter,
-          followUpResolved: followUpResolvedFilter,
-          reasonDim: reasonDimFilter,
+          followUp: filters.followUp,
+          followUpResolved: filters.followUpResolved,
+          reasonDim: filters.reasonDim,
         })
       ) {
         return false
       }
-      if (ticketLlmFilter === 'needs_llm' && !recordNeedsTicketLlmEnrichment(fb)) return false
-      if (ticketLlmFilter === 'needs_journey_llm' && !recordNeedsJourneyLlmEnrichment(fb, settings))
+      if (filters.ticketLlm === 'needs_llm' && !recordNeedsTicketLlmEnrichment(fb)) return false
+      if (filters.ticketLlm === 'needs_journey_llm' && !recordNeedsJourneyLlmEnrichment(fb, settings))
         return false
-      if (ticketLlmFilter === 'full_llm' && !recordHasFullTicketLlmEnrichment(fb)) return false
-      if (q) {
-        const hay = [
-          fb.customerQuote,
-          fb.rawText,
-          fb.handlingText,
-          fb.problemSummary,
-          fb.solutionSummary,
-          fb.ticketId,
-          fb.product,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        if (!hay.includes(q.toLowerCase())) return false
-      }
+      if (filters.ticketLlm === 'full_llm' && !recordHasFullTicketLlmEnrichment(fb)) return false
       return true
     })
   }, [
     feedbacks,
     periodFeedbacks,
     selectedTicketIdSet,
-    product,
-    problemType,
-    complaintCauseL1,
-    journeyL1,
-    resourcePool,
-    dataSourceFilter,
-    followUpFilter,
-    followUpResolvedFilter,
-    reasonDimFilter,
-    requestScene,
-    ticketLlmFilter,
+    filters,
+    ticketDateFilter,
     settings,
-    q,
   ])
+
+  const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
+
+  const sentimentWorkbenchUrl = useMemo(() => {
+    const source = filters.dataSource
+    if (source && isTicketSource(source)) {
+      return `${WORKBENCH_HOME}?tab=${encodeURIComponent(source)}`
+    }
+    return buildWorkbenchAnalysisUrl({
+      source: source || undefined,
+      product: filters.product || undefined,
+      journeyL1: filters.journeyL1 || undefined,
+      tab: 'sentiment',
+    })
+  }, [filters.dataSource, filters.product, filters.journeyL1])
+
+  const sentimentWorkbenchLabel = useMemo(() => {
+    if (filters.dataSource && isTicketSource(filters.dataSource)) {
+      return `工作台 · ${DATA_SOURCE_LABELS[filters.dataSource]}`
+    }
+    return '洞察分析 · 用户情绪'
+  }, [filters.dataSource])
 
   const handleExport = () => {
     exportTicketAnalysisWithConfirm(filtered, {
@@ -346,11 +330,43 @@ export default function Feedbacks() {
   const { openBulkRetagModal, startScopedBulkRetag, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
     useBulkRetagModal({ filteredRecords: filtered })
 
+  const applyTicketLlmFilter = (value) => {
+    handleFiltersChange(applyFeedbackFilterPatch('ticketLlm', { ticketLlm: value }, filters), {
+      key: 'ticketLlm',
+    })
+  }
+
   return (
     <div>
       <PageHeader
         title="反馈库"
-        desc={`库内 ${totalInDb} 条 · 周期内 ${periodCount} 条 · 当前筛选 ${filtered.length} 条${activePeriod ? `（${activePeriod.label}）` : ''}`}
+        desc={
+          <>
+            库内 {totalInDb} 条 · 周期内 {periodCount} 条 · 当前筛选 {filtered.length} 条
+            {activePeriod ? `（${activePeriod.label}）` : ''}
+            {filtered.length > 0 ? (
+              <>
+                {' · '}
+                负面类{' '}
+                <span className="font-semibold tabular-nums text-red-600">
+                  {filteredSentiment.negativeCount}（{filteredSentiment.negativePct}%）
+                </span>
+                {' · '}
+                加急{' '}
+                <span className="font-semibold tabular-nums text-rose-600">
+                  {filteredSentiment.urgentCount}（{filteredSentiment.urgentPct}%）
+                </span>
+                {' · '}
+                <Link
+                  to={sentimentWorkbenchUrl}
+                  className="font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {sentimentWorkbenchLabel} →
+                </Link>
+              </>
+            ) : null}
+          </>
+        }
       />
 
       <div className="page-toolbar">
@@ -420,7 +436,7 @@ export default function Feedbacks() {
                     disabled={bulkRetagDisabled}
                     title={bulkRetagDisabledTip}
                     onClick={() => {
-                      setTicketLlmFilter('needs_llm')
+                      applyTicketLlmFilter('needs_llm')
                       startScopedBulkRetag('needs_ticket_llm')
                     }}
                   >
@@ -449,7 +465,7 @@ export default function Feedbacks() {
                     disabled={bulkRetagDisabled}
                     title={bulkRetagDisabledTip}
                     onClick={() => {
-                      setTicketLlmFilter('needs_journey_llm')
+                      applyTicketLlmFilter('needs_journey_llm')
                       startScopedBulkRetag('needs_journey_llm')
                     }}
                   >
@@ -494,190 +510,80 @@ export default function Feedbacks() {
           />
         )}
 
-        {selectedTicketIds.length > 0 && (
+        {filters.ticketIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
             <Typography.Text className="shrink-0 text-sm text-indigo-900">
-              行动建议依据工单（{selectedTicketIds.length} 个）
-              {matchedEvidenceCount < selectedTicketIds.length ? (
+              行动建议依据工单（{filters.ticketIds.length} 个）
+              {matchedEvidenceCount < filters.ticketIds.length ? (
                 <Typography.Text type="secondary" className="ml-1 text-xs">
                   · 库内匹配 {matchedEvidenceCount} 条
                 </Typography.Text>
               ) : null}
             </Typography.Text>
             <Typography.Text type="secondary" className="text-xs">
-              已按工单号限定范围，可叠加下方类型等条件；取消工单号后恢复常规筛选
+              已按工单号限定范围，可继续添加其他筛选；移除「工单号」Tag 后恢复常规范围
             </Typography.Text>
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            mode="multiple"
-            allowClear
-            showSearch
-            className="min-w-[220px] max-w-md"
-            placeholder="工单号（可多选）"
-            value={selectedTicketIds}
-            options={ticketIdOptions}
-            onChange={syncTicketIdsToUrl}
-            maxTagCount="responsive"
-            optionFilterProp="label"
-            popupMatchSelectWidth={320}
-          />
-        <Input.Search
-          className="max-w-xs"
-          placeholder="搜索工单号、原话、问题/方案摘要…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          allowClear
-        />
-        <Select
-          className="min-w-[150px]"
-          value={product}
-          options={[
-            { label: '全部产品', value: '' },
-            ...products.map((p) => ({ label: p.name, value: p.name })),
-          ]}
-          onChange={(value) => {
-            setProduct(value)
-            setResourcePool('')
+        <FeedbackFilterBar
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onClearFilters={handleClearFilters}
+          showComplaintCauseFilter={showComplaintCauseFilter}
+          options={{
+            ticketIdOptions,
+            products,
+            problemTypes,
+            complaintCauseOptions,
+            journeys,
+            resourcePools: pools,
+            requestScenes,
           }}
+          actions={
+            <>
+              <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
+                <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
+                  导入分析结果
+                </Button>
+              </Tooltip>
+              <Tooltip
+                title={`导出 v3：${getExportV3Headers().length} 列分析结果（可与导入分析结果往返，含回访满意度）。列说明见 docs/EXPORT-V2-MIGRATION.md`}
+              >
+                <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
+                  导出分析结果
+                </Button>
+              </Tooltip>
+              <PermissionGate permission="retag">
+                <Button
+                  disabled={bulkRetagDisabled}
+                  loading={bulkRetagBusy}
+                  title={bulkRetagDisabledTip}
+                  onClick={openBulkRetagModal}
+                >
+                  批量重新打标
+                </Button>
+              </PermissionGate>
+              <Segmented
+                value={view}
+                options={[
+                  { label: '表格', value: 'table' },
+                  { label: '卡片', value: 'cards' },
+                ]}
+                onChange={setView}
+              />
+              <Button
+                className="ml-auto"
+                icon={<ReloadOutlined />}
+                loading={refreshing}
+                onClick={() => void handleRefresh()}
+              >
+                刷新
+              </Button>
+            </>
+          }
         />
-        <Select
-          className="min-w-[150px]"
-          value={problemType}
-          options={[
-            { label: '全部问题类型（打标）', value: '' },
-            ...problemTypes.map((t) => ({ label: t.name, value: t.name })),
-          ]}
-          onChange={setProblemType}
-        />
-        {showComplaintCauseFilter && (
-          <Select
-            className="min-w-[180px]"
-            value={complaintCauseL1}
-            options={[
-              { label: '全部投诉原因（终判）', value: '' },
-              ...complaintCauseOptions.map((t) => ({ label: t.name, value: t.name })),
-            ]}
-            onChange={setComplaintCauseL1}
-          />
-        )}
-        <Select
-          className="min-w-[150px]"
-          value={journeyL1}
-          options={[
-            { label: '全部旅程环节', value: '' },
-            ...journeys.map((j) => ({ label: j.name, value: j.name })),
-          ]}
-          onChange={setJourneyL1}
-        />
-        <Select
-          className="min-w-[150px]"
-          value={resourcePool}
-          options={[
-            { label: '全部资源池', value: '' },
-            ...pools.map((p) => ({ label: p.name, value: p.name })),
-          ]}
-          onChange={setResourcePool}
-        />
-        <Tooltip
-          title={TICKET_LLM_FILTER_HINTS[ticketLlmFilter] || TICKET_LLM_FILTER_HINTS['']}
-          placement="bottom"
-        >
-          <Select
-            className="min-w-[220px]"
-            value={ticketLlmFilter}
-            optionRender={renderDefinitionSelectOption}
-            options={TICKET_LLM_FILTER_OPTIONS}
-            onChange={setTicketLlmFilter}
-          />
-        </Tooltip>
-        <Select
-          className="min-w-[130px]"
-          value={dataSourceFilter}
-          options={[
-            { label: '全部来源', value: '' },
-            ...DATA_SOURCE_TYPES.map((t) => ({ label: DATA_SOURCE_LABELS[t], value: t })),
-          ]}
-          onChange={(value) => {
-            setDataSourceFilter(value)
-            if (value && value !== 'complaint_ticket') setComplaintCauseL1('')
-          }}
-        />
-        <Select
-          className="min-w-[140px]"
-          value={followUpFilter}
-          options={FOLLOW_UP_FILTER_OPTIONS}
-          onChange={(value) => {
-            setFollowUpFilter(value)
-            const nextResolved =
-              value === 'none' || !value ? '' : followUpResolvedFilter
-            if (nextResolved !== followUpResolvedFilter) setFollowUpResolvedFilter(nextResolved)
-            syncFollowUpFiltersToUrl({
-              followUp: value,
-              followUpResolved: nextResolved,
-            })
-          }}
-        />
-        <Select
-          className="min-w-[140px]"
-          value={followUpResolvedFilter}
-          disabled={!followUpFilter || followUpFilter === 'none'}
-          options={FOLLOW_UP_RESOLVED_FILTER_OPTIONS}
-          onChange={(value) => {
-            setFollowUpResolvedFilter(value)
-            syncFollowUpFiltersToUrl({
-              followUp: followUpFilter,
-              followUpResolved: value,
-            })
-          }}
-        />
-        <div className="ml-auto flex flex-wrap gap-2">
-          <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
-            <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
-              导入分析结果
-            </Button>
-          </Tooltip>
-          <Tooltip title={`导出 v3：${getExportV3Headers().length} 列分析结果（可与导入分析结果往返，含回访满意度）。列说明见 docs/EXPORT-V2-MIGRATION.md`}>
-            <Button
-              icon={<UploadOutlined />}
-              disabled={!filtered.length}
-              onClick={handleExport}
-            >
-              导出分析结果
-            </Button>
-          </Tooltip>
-          <PermissionGate permission="retag">
-            <Button
-              disabled={bulkRetagDisabled}
-              loading={bulkRetagBusy}
-              title={bulkRetagDisabledTip}
-              onClick={openBulkRetagModal}
-            >
-              批量重新打标
-            </Button>
-          </PermissionGate>
-          <Segmented
-            value={view}
-            options={[
-              { label: '表格', value: 'table' },
-              { label: '卡片', value: 'cards' },
-            ]}
-            onChange={setView}
-          />
-        </div>
       </div>
-      </div>
-
-      {filtered.length > 0 && (
-        <div className="page-section-sm">
-          <SentimentDistributionPanel
-            items={filtered}
-            subtitle="随上方筛选条件联动"
-          />
-        </div>
-      )}
 
       <div className="page-section-sm">
         {periodsLoading ? (
@@ -709,10 +615,7 @@ export default function Feedbacks() {
         width={720}
         destroyOnClose
       >
-        <ImportAnalysisPanel
-          inModal
-          onImportComplete={() => setImportAnalysisOpen(false)}
-        />
+        <ImportAnalysisPanel inModal onImportComplete={() => setImportAnalysisOpen(false)} />
       </Modal>
     </div>
   )
@@ -736,17 +639,15 @@ function CardGrid({ items, onSelect }) {
             <Tag>{DATA_SOURCE_LABELS[recordSourceType(fb)] || recordSourceType(fb)}</Tag>
             <Tag color="blue">{fb.requestScene || '未分类'}</Tag>
             <Tag>{fb.problemType || '未分类'}</Tag>
-            {fb.journeyL1 && (
-              <Tag color="blue">
-                {fb.journeyL1}
-              </Tag>
-            )}
+            {fb.journeyL1 && <Tag color="blue">{fb.journeyL1}</Tag>}
           </div>
           <Typography.Paragraph className="!mb-0 !mt-2 line-clamp-2 text-sm font-medium">
             {fb.problemSummary || fb.customerQuote || '—'}
           </Typography.Paragraph>
           {fb.journeyL2 && (
-            <Typography.Text type="secondary" className="mt-1 block text-xs">{fb.journeyL2}</Typography.Text>
+            <Typography.Text type="secondary" className="mt-1 block text-xs">
+              {fb.journeyL2}
+            </Typography.Text>
           )}
           <Typography.Paragraph type="secondary" className="!mb-0 !mt-2 line-clamp-2 !text-xs">
             {fb.solutionSummary || '—'}

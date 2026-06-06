@@ -13,6 +13,7 @@ import { randomId } from '../lib/randomId.js'
  * @property {import('./snapshot.js').InsightSnapshot | null} [sourceSnapshot]
  * @property {import('../lib/types.js').FeedbackRecord[]} feedbacks
  * @property {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} [orderVolumes]
+ * @property {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} [wanTouTargets]
  * @property {ReturnType<import('../lib/wanTouRatio.js').buildWanTouByProducts>} [wanTouRows]
  * @property {import('../lib/types.js').FeedbackRecord[]} [complaintRecords]
  * @property {Partial<Record<import('./enums.js').DataSourceType, import('./snapshot.js').InsightSnapshot>>} [sourceSnapshots]

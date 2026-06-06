@@ -96,4 +96,38 @@
   .recharts-curve.recharts-tooltip-cursor {
     stroke: #d1d5db;
   }
+
+  /** 复合筛选 · 属性下拉：分组标题与可选项层级 */
+  .composite-filter-attribute-menu.ant-dropdown-menu {
+    @apply py-1;
+    min-width: 12.5rem;
+  }
+
+  .composite-filter-attribute-menu .ant-dropdown-menu-item-divider {
+    @apply my-1 bg-ink-100;
+  }
+
+  .composite-filter-attribute-menu .ant-dropdown-menu-item-group-title {
+    @apply cursor-default select-none px-3 py-1.5 text-xs font-semibold leading-tight text-ink-400;
+    min-height: auto;
+    margin: 0;
+    background-color: rgb(249 250 251 / 0.95);
+  }
+
+  .composite-filter-attribute-menu .ant-dropdown-menu-item-group-list .ant-dropdown-menu-item {
+    @apply text-sm text-ink-800;
+    padding-left: 1.25rem !important;
+  }
+
+  .composite-filter-attribute-menu
+    .ant-dropdown-menu-item-group-list
+    .ant-dropdown-menu-item.ant-dropdown-menu-item-disabled {
+    @apply text-ink-300;
+  }
+
+  .composite-filter-attribute-menu
+    .ant-dropdown-menu-item-disabled
+    .composite-filter-attribute-item-label {
+    pointer-events: auto;
+  }
 }

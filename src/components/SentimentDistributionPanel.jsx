@@ -1,7 +1,30 @@
 import { useMemo } from 'react'
-import { Card, Tag, Typography } from 'antd'
+import { Card, Typography } from 'antd'
 import SentimentChart from './charts/SentimentChart.jsx'
 import { sentimentStats } from '../lib/analytics.js'
+
+/**
+ * @param {{ label: string; children: import('react').ReactNode; tone?: 'default' | 'negative' | 'urgent' | 'accent' }}
+ */
+function SentimentStatCell({ label, children, tone = 'default' }) {
+  const toneClass =
+    tone === 'negative'
+      ? 'border-red-100 bg-red-50/70'
+      : tone === 'urgent'
+        ? 'border-rose-100 bg-rose-50/70'
+        : tone === 'accent'
+          ? 'border-brand-100 bg-brand-50/70'
+          : 'border-ink-100 bg-ink-50/80'
+
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
+      <div className="text-xs text-ink-500">{label}</div>
+      <div className="mt-0.5 text-base font-semibold tabular-nums leading-snug text-ink-900">
+        {children}
+      </div>
+    </div>
+  )
+}
 
 /**
  * @param {{
@@ -35,59 +58,26 @@ export default function SentimentDistributionPanel({
         <Typography.Text type="secondary">暂无数据</Typography.Text>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-lg bg-ink-50 px-3 py-2 text-center">
-              <Typography.Text type="secondary" className="block text-[10px]">
-                工单总数
-              </Typography.Text>
-              <Typography.Text strong className="text-lg">
-                {stats.total}
-              </Typography.Text>
-            </div>
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-center">
-              <Typography.Text type="secondary" className="block text-[10px]">
-                负面类占比
-              </Typography.Text>
-              <Typography.Text strong className="text-lg text-red-600">
-                {stats.negativePct}%
-              </Typography.Text>
-              <Typography.Text type="secondary" className="block text-[10px]">
-                {stats.negativeCount} 条
-              </Typography.Text>
-            </div>
-            <div className="rounded-lg bg-rose-50 px-3 py-2 text-center">
-              <Typography.Text type="secondary" className="block text-[10px]">
-                加急占比
-              </Typography.Text>
-              <Typography.Text strong className="text-lg text-rose-600">
-                {stats.urgentPct}%
-              </Typography.Text>
-              <Typography.Text type="secondary" className="block text-[10px]">
-                {stats.urgentCount} 条
-              </Typography.Text>
-            </div>
-            <div className="rounded-lg bg-brand-50 px-3 py-2 text-center">
-              <Typography.Text type="secondary" className="block text-[10px]">
-                最多情绪
-              </Typography.Text>
-              <Typography.Text strong className="text-sm">
-                {stats.topLabel}
-              </Typography.Text>
-              <Typography.Text type="secondary" className="block text-[10px]">
-                {stats.topCount} 条 · {stats.topPct}%
-              </Typography.Text>
-            </div>
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <SentimentStatCell label="工单总数">{stats.total}</SentimentStatCell>
+            <SentimentStatCell label="负面类" tone="negative">
+              <span className="text-red-600">
+                {stats.negativeCount}（{stats.negativePct}%）
+              </span>
+            </SentimentStatCell>
+            <SentimentStatCell label="加急" tone="urgent">
+              <span className="text-rose-600">
+                {stats.urgentCount}（{stats.urgentPct}%）
+              </span>
+            </SentimentStatCell>
+            <SentimentStatCell label="最多情绪" tone="accent">
+              <span className="text-brand-700">
+                {stats.topLabel} {stats.topCount}（{stats.topPct}%）
+              </span>
+            </SentimentStatCell>
           </div>
 
           <SentimentChart data={stats.distribution} total={stats.total} />
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {stats.distribution.map((d) => (
-              <Tag key={d.key} className="!text-xs">
-                {d.name} {d.value}（{d.pct}%）
-              </Tag>
-            ))}
-          </div>
         </>
       )}
     </Card>

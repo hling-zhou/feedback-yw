@@ -3,12 +3,17 @@
  * @see docs/DESIGN-用后即评-满意度回访.md §5.1
  */
 
+import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
   DISSATISFIED_REASON_PART_KEYS,
   getFollowUpScore,
   hasFollowUpSatisfaction,
   isMeaningfulDissatisfiedReasonValue,
 } from '../domain/followUpSatisfaction.js'
+import {
+  matchesTicketActualDateRange,
+  parseTicketDateFilterParam,
+} from '../domain/ticketActualDate.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 
@@ -86,6 +91,8 @@ export function parseFeedbackFollowUpSearchParams(searchParams) {
     followUpResolved: parseFollowUpResolvedFilterParam(searchParams.get('followUpResolved')),
     reasonDim: parseReasonDimParam(searchParams.get('reasonDim')),
     requestScene: searchParams.get('requestScene')?.trim() || '',
+    ticketDateFrom: parseTicketDateFilterParam(searchParams.get('ticketDateFrom')),
+    ticketDateTo: parseTicketDateFilterParam(searchParams.get('ticketDateTo')),
   }
 }
 
@@ -154,6 +161,67 @@ export function drillDownFieldParam(label) {
 }
 
 /**
+ * @param {string | null | undefined} raw
+ */
+export function parseTicketIdsParam(raw) {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((t) => decodeURIComponent(t.trim()))
+    .filter(Boolean)
+}
+
+/**
+ * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
+ */
+export function parseFeedbackSearchParams(searchParams) {
+  const followUpParams = parseFeedbackFollowUpSearchParams(searchParams)
+  const source = searchParams.get('source')?.trim() || ''
+  return {
+    ...followUpParams,
+    product: searchParams.get('product')?.trim() || '',
+    problemType: searchParams.get('problemType')?.trim() || '',
+    complaintCauseL1: searchParams.get('complaintCauseL1')?.trim() || '',
+    journeyL1: searchParams.get('journeyL1')?.trim() || '',
+    dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
+    ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
+  }
+}
+
+/**
+ * @param {URLSearchParams} base
+ * @param {Record<string, string | undefined | null>} patch
+ */
+export function patchFeedbackSearchParams(base, patch) {
+  const next = new URLSearchParams(base)
+  const fields = [
+    'product',
+    'problemType',
+    'complaintCauseL1',
+    'journeyL1',
+    'requestScene',
+    'source',
+    'followUp',
+    'followUpResolved',
+    'reasonDim',
+    'ticketDateFrom',
+    'ticketDateTo',
+  ]
+  for (const key of fields) {
+    if (!(key in patch)) continue
+    const value = patch[key]?.trim()
+    if (value) next.set(key, value)
+    else next.delete(key)
+  }
+  if ('ticketIds' in patch) {
+    const value = patch.ticketIds?.trim()
+    if (value) next.set('ticketIds', value)
+    else next.delete('ticketIds')
+  }
+  return next
+}
+
+/**
  * @param {URLSearchParams} base
  * @param {{
  *   followUp?: string
@@ -164,7 +232,14 @@ export function drillDownFieldParam(label) {
  */
 export function patchFeedbackFollowUpSearchParams(base, patch) {
   const next = new URLSearchParams(base)
-  const fields = ['followUp', 'followUpResolved', 'reasonDim', 'requestScene']
+  const fields = [
+    'followUp',
+    'followUpResolved',
+    'reasonDim',
+    'requestScene',
+    'ticketDateFrom',
+    'ticketDateTo',
+  ]
   for (const key of fields) {
     if (!(key in patch)) continue
     const value = patch[key]?.trim()
@@ -187,6 +262,8 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   reasonDim?: string
  *   ticketId?: string
  *   ticketIds?: string
+ *   ticketDateFrom?: string
+ *   ticketDateTo?: string
  *   source?: string
  * }} [params]
  */
@@ -204,6 +281,8 @@ export function buildFeedbacksUrl(params = {}) {
     'reasonDim',
     'ticketId',
     'ticketIds',
+    'ticketDateFrom',
+    'ticketDateTo',
     'source',
   ]
   for (const key of stringFields) {

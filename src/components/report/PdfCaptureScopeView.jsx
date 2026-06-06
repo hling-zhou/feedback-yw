@@ -21,6 +21,7 @@ export default function PdfCaptureScopeView({ scope, payload }) {
     period,
     feedbacks,
     orderVolumes,
+    wanTouTargets,
     complaintRecords,
   } = payload
 
@@ -33,6 +34,7 @@ export default function PdfCaptureScopeView({ scope, payload }) {
         currentPeriod={period}
         complaintRecords={complaintRecords || []}
         orderVolumes={orderVolumes || []}
+        wanTouTargets={wanTouTargets || []}
         feedbacks={feedbacks || []}
       />
     )

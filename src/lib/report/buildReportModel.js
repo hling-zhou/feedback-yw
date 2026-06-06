@@ -10,7 +10,7 @@ import {
   resolveRecommendationSummary,
 } from '../planningRecommendationDisplay.js'
 import { computeMaxMomGrowthProductForSource } from '../sourceOverviewMetrics.js'
-import { formatWanTouRatio } from '../wanTouRatio.js'
+import { formatWanTouRatioWithTarget } from '../wanTouRatio.js'
 import { resolveOverviewRecommendationsForReport } from './resolveOverviewRecommendationsForReport.js'
 
 /**
@@ -119,9 +119,10 @@ export function buildReportModel({
         body: `${periodLabel} · 月粒度=当月投诉÷当月订单×10000；年粒度=12 月月万投比算术平均。分母在设置 → 产品月订单数中维护。`,
         rows: wanTouRows.map((r) => {
           const parts = [
-            `万投比 ${formatWanTouRatio(r.displayRatio)}`,
-            `投诉 ${r.totalComplaints}`,
-            r.granularityLabel,
+            `全部投诉 ${r.totalComplaints}`,
+            `万投比 ${formatWanTouRatioWithTarget(r.displayRatio, r.periodWanTouTargetEval)}`,
+            `客户体验类投诉 ${r.totalCxComplaints ?? 0}`,
+            `客户体验类万投比 ${formatWanTouRatioWithTarget(r.displayCxRatio, r.periodCxWanTouTargetEval)}`,
           ]
           if (r.missingOrderMonths?.length) {
             parts.push(`缺订单数 ${r.missingOrderMonths.length} 月`)

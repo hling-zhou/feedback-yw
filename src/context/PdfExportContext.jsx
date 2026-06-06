@@ -36,6 +36,7 @@ import {
  * @property {Partial<Record<import('../domain/enums.js').DataSourceType, import('../domain/snapshot.js').InsightSnapshot>>} [sourceSnapshots]
  * @property {import('../lib/types.js').FeedbackRecord[]} feedbacks
  * @property {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} [orderVolumes]
+ * @property {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} [wanTouTargets]
  */
 
 const PdfExportContext = createContext(null)
@@ -257,6 +258,7 @@ export function PdfExportProvider({ children }) {
               period: input.period,
               records: complaintRecords,
               orderVolumes: input.orderVolumes || [],
+              wanTouTargets: input.wanTouTargets || [],
               productList: input.sourceSnapshots?.complaint_ticket?.aggregates?.products,
             })
           : []
@@ -271,6 +273,7 @@ export function PdfExportProvider({ children }) {
         sourceSnapshots: input.sourceSnapshots || {},
         feedbacks: input.feedbacks,
         orderVolumes: input.orderVolumes || [],
+        wanTouTargets: input.wanTouTargets || [],
         wanTouRows,
         complaintRecords,
         exportedBy: '本地用户',

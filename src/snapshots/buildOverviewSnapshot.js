@@ -3,6 +3,8 @@ import { DEFAULT_TENANT_ID } from '../domain/constants.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { defaultAnalysisVersions } from '../lib/versioning.js'
 import { getComparableMetrics } from '../metrics/registry.js'
+import { monthlyTrend, monthlyTrendByProduct } from '../lib/analytics.js'
+import { isTicketSource } from '../lib/importUtils.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { buildOverviewConclusions } from './buildOverviewConclusions.js'
 import { previousPeriodIdFromPeriod, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
@@ -60,6 +62,10 @@ export function buildOverviewSnapshot({
     }
   }
 
+  const ticketRecordsForTrend = DATA_SOURCE_TYPES.flatMap((type) =>
+    isTicketSource(type) ? filterRecordsForScope(feedbacks, period, type) : [],
+  )
+
   const comparable = getComparableMetrics()
   /** @type {Record<string, unknown>} */
   const crossSourceMetrics = {}
@@ -77,20 +83,12 @@ export function buildOverviewSnapshot({
         '各来源产品命名可能不一致，请在分源 Tab 查看明细'
     }
     if (metric.id === 'monthly_trend') {
-      const totalByMonth = new Map()
-      for (const type of DATA_SOURCE_TYPES) {
-        const snap = sourceSnapshots[type]
-        const trend = snap?.aggregates?.monthlyTrend
-        if (Array.isArray(trend)) {
-          for (const row of trend) {
-            const key = row.date
-            totalByMonth.set(key, (totalByMonth.get(key) || 0) + row.count)
-          }
-        }
-      }
-      crossSourceMetrics.monthly_trend = [...totalByMonth.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([date, count]) => ({ date, count }))
+      const trend = monthlyTrend(ticketRecordsForTrend, { basis: 'importMonth', limit: 12 })
+      crossSourceMetrics.monthly_trend = trend.map(({ date, count }) => ({ date, count }))
+      crossSourceMetrics.monthly_trend_by_product = monthlyTrendByProduct(ticketRecordsForTrend, {
+        basis: 'importMonth',
+        limit: 12,
+      })
     }
   }
 

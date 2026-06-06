@@ -8,6 +8,7 @@ import { PageHeader } from './Dashboard.shared.jsx'
 import { downloadFeedbackBackupJson, parseFeedbackBackupJson } from '../lib/feedbackBackup.js'
 import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
 import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
+import ProductWanTouTargetPanel from '../components/ProductWanTouTargetPanel.jsx'
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
 import { canUseSemanticMatch } from '../lib/themeSemantic.js'
@@ -218,6 +219,9 @@ export default function Settings() {
     orderVolumes,
     orderVolumesLoading,
     saveOrderVolume,
+    wanTouTargets,
+    wanTouTargetsLoading,
+    saveWanTouTarget,
   } = useInsights()
 
   const [clearPeriodId, setClearPeriodId] = useState('')
@@ -423,6 +427,11 @@ export default function Settings() {
             orderVolumes={orderVolumes}
             onSave={saveOrderVolume}
             loading={orderVolumesLoading}
+          />
+          <ProductWanTouTargetPanel
+            wanTouTargets={wanTouTargets}
+            onSave={saveWanTouTarget}
+            loading={wanTouTargetsLoading}
           />
         </PermissionGate>
 

@@ -72,6 +72,12 @@ import PermissionGate from '../components/auth/PermissionGate.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
 import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
+import ActionItemCompositeFilter from '../components/actions/ActionItemCompositeFilter.jsx'
+import {
+  actionItemFiltersToListQuery,
+  clearAllActionItemFilters,
+  createEmptyActionItemFilters,
+} from '../lib/actionItemFilterModel.js'
 import {
   formatActionItemUpdatedAtDisplay,
   formatActionItemUpdatedByDisplay,
@@ -212,9 +218,7 @@ export default function Actions() {
     /** @type {import('../domain/insightPeriod.js').InsightPeriod | null} */ (null),
   )
 
-  const [productKeys, setProductKeys] = useState(/** @type {string[]} */ ([]))
-  const [statuses, setStatuses] = useState(/** @type {ActionItemStatus[]} */ ([]))
-  const [ticketId, setTicketId] = useState('')
+  const [filters, setFilters] = useState(createEmptyActionItemFilters)
   const [dateRange, setDateRange] = useState(
     /** @type {[dayjs.Dayjs | null, dayjs.Dayjs | null] | null} */ (null),
   )
@@ -302,16 +306,31 @@ export default function Actions() {
     [periodFilterActive, periodTicketIdSet],
   )
 
+  const productNameByKey = useMemo(
+    () => new Map(productOptions.map((item) => [item.value, item.label])),
+    [productOptions],
+  )
+
+  const handleFiltersChange = useCallback((next) => {
+    setFilters(next)
+    setPage(1)
+  }, [])
+
+  const handleClearFilters = useCallback(() => {
+    setFilters(clearAllActionItemFilters())
+    setPage(1)
+  }, [])
+
+  const tableFilters = useMemo(() => actionItemFiltersToListQuery(filters), [filters])
+
   const listQuery = useMemo(
     () => ({
-      productKeys: productKeys.length ? productKeys.join(',') : undefined,
-      statuses: statuses.length ? statuses.join(',') : undefined,
-      ticketId: ticketId.trim() || undefined,
+      ...tableFilters,
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
       insightPeriodId: insightPeriodId || undefined,
     }),
-    [productKeys, statuses, ticketId, dateRange, insightPeriodId],
+    [tableFilters, dateRange, insightPeriodId],
   )
 
   /** 页头周期/首次提出时间范围，不含表格区筛选 */
@@ -988,38 +1007,17 @@ export default function Actions() {
       </Card>
 
       <Card size="small" className="!border-ink-100">
-        <Space wrap className="mb-3 w-full">
-          <Select
-            mode="multiple"
-            allowClear
-            placeholder="产品"
-            style={{ minWidth: 180 }}
-            options={productOptions}
-            value={productKeys}
-            onChange={(v) => {
-              setProductKeys(v)
-              setPage(1)
+        <div className="mb-3 flex w-full flex-wrap items-start gap-2">
+          <ActionItemCompositeFilter
+            className="min-w-0 flex-1"
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            onClearFilters={handleClearFilters}
+            options={{
+              productOptions,
+              statusOptions: FILTER_STATUS_OPTIONS,
+              productNameByKey,
             }}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            placeholder="状态"
-            style={{ minWidth: 160 }}
-            options={FILTER_STATUS_OPTIONS}
-            value={statuses}
-            onChange={(v) => {
-              setStatuses(v)
-              setPage(1)
-            }}
-          />
-          <Input.Search
-            allowClear
-            placeholder="关联反馈号"
-            style={{ width: 180 }}
-            value={ticketId}
-            onChange={(e) => setTicketId(e.target.value)}
-            onSearch={() => setPage(1)}
           />
           <Button
             icon={<ReloadOutlined />}
@@ -1028,7 +1026,7 @@ export default function Actions() {
           >
             刷新
           </Button>
-        </Space>
+        </div>
         <Table
           rowKey="id"
           size="small"

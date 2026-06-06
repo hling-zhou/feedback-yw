@@ -9,7 +9,9 @@ import {
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
   parseFeedbackFollowUpSearchParams,
+  parseFeedbackSearchParams,
   patchFeedbackFollowUpSearchParams,
+  patchFeedbackSearchParams,
 } from './feedbackFilters.js'
 
 const withFollowUp = {
@@ -66,6 +68,30 @@ describe('feedbackFilters', () => {
     expect(matchesFollowUpFilters(withFollowUp, { reasonDim: 'staffAttitudeReason' })).toBe(false)
   })
 
+  it('parseFeedbackSearchParams includes ticket ids and drill-down fields', () => {
+    const parsed = parseFeedbackSearchParams(
+      new URLSearchParams(
+        'product=VPC&source=complaint_ticket&ticketIds=A%2CB&ticketDateFrom=2026-05-01&followUp=non10',
+      ),
+    )
+    expect(parsed.product).toBe('VPC')
+    expect(parsed.dataSource).toBe('complaint_ticket')
+    expect(parsed.ticketIds).toEqual(['A', 'B'])
+    expect(parsed.ticketDateFrom).toBe('2026-05-01')
+    expect(parsed.followUp).toBe('non10')
+  })
+
+  it('patchFeedbackSearchParams round-trip', () => {
+    const next = patchFeedbackSearchParams(new URLSearchParams('product=VPC'), {
+      product: '',
+      journeyL1: '开通',
+      ticketIds: 'T-1,T-2',
+    })
+    expect(next.get('product')).toBeNull()
+    expect(next.get('journeyL1')).toBe('开通')
+    expect(next.get('ticketIds')).toBe('T-1,T-2')
+  })
+
   it('parseFeedbackFollowUpSearchParams and patch round-trip', () => {
     const parsed = parseFeedbackFollowUpSearchParams(
       new URLSearchParams('followUp=non10&followUpResolved=unresolved&reasonDim=overallService&requestScene=报障'),
@@ -75,6 +101,8 @@ describe('feedbackFilters', () => {
       followUpResolved: 'unresolved',
       reasonDim: 'overallService',
       requestScene: '报障',
+      ticketDateFrom: null,
+      ticketDateTo: null,
     })
 
     const next = patchFeedbackFollowUpSearchParams(new URLSearchParams('product=VPC'), {

@@ -7,6 +7,27 @@ export const COMPLAINT_CAUSE_L2_COLUMN = '投诉原因 二级（终判）'
 export const COMPLAINT_CAUSE_L3_COLUMN = '投诉原因 三级（终判）'
 export const EMPTY_COMPLAINT_CAUSE_LABEL = '未填写'
 
+/** 客户体验类万投比分子：投诉原因一级（终判）归属客户体验类 */
+export const CUSTOMER_EXPERIENCE_COMPLAINT_CAUSE_L1 = '客户体验类'
+
+/**
+ * @param {string} [l1]
+ */
+export function isCustomerExperienceComplaintCauseL1(l1) {
+  const text = String(l1 ?? '').trim()
+  if (!text) return false
+  if (text === CUSTOMER_EXPERIENCE_COMPLAINT_CAUSE_L1) return true
+  return text.startsWith(CUSTOMER_EXPERIENCE_COMPLAINT_CAUSE_L1)
+}
+
+/**
+ * @param {FeedbackRecord} record
+ */
+export function isCustomerExperienceComplaint(record) {
+  if (!isComplaintTicket(record)) return false
+  return isCustomerExperienceComplaintCauseL1(getComplaintCauseL1Final(record))
+}
+
 /**
  * @param {FeedbackRecord | { dataSourceType?: string }} record
  */

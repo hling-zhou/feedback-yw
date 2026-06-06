@@ -47,6 +47,7 @@ export default function InsightWorkbench() {
     rebuildAllSnapshots,
     importSession,
     orderVolumes,
+    wanTouTargets,
     adapter,
   } = useInsights()
   const insightRebuildOnServer = isApiStorageAdapter(adapter)
@@ -122,6 +123,7 @@ export default function InsightWorkbench() {
           currentPeriod={currentPeriod}
           complaintRecords={complaintRecords}
           orderVolumes={orderVolumes}
+          wanTouTargets={wanTouTargets}
           onRebuildSnapshots={rebuildAllSnapshots}
           snapshotRebuilding={snapshotRebuilding}
           rebuildDisabled={rebuildDisabled}
@@ -203,6 +205,7 @@ export default function InsightWorkbench() {
     currentPeriod,
     complaintRecords,
     orderVolumes,
+    wanTouTargets,
     feedbacks,
     snapshotRebuilding,
     rebuildAllSnapshots,

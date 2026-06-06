@@ -6,7 +6,7 @@
  * @param {number} props.y
  * @param {{ value?: string }} props.payload
  */
-export default function CategoryAxisTick({ x, y, payload }) {
+export default function CategoryAxisTick({ x, y, payload, fontSize = 11 }) {
   return (
     <text
       x={x}
@@ -14,7 +14,7 @@ export default function CategoryAxisTick({ x, y, payload }) {
       dy={4}
       textAnchor="end"
       fill="#374151"
-      fontSize={11}
+      fontSize={fontSize}
     >
       {payload?.value ?? ''}
     </text>

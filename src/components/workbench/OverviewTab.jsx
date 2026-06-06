@@ -6,7 +6,13 @@ import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../../lib/sourceOverviewMetrics.js'
 import TrendChart from '../charts/TrendChart.jsx'
-import { buildWanTouByProducts, formatWanTouRatio } from '../../lib/wanTouRatio.js'
+import { buildStackedTrendAreas, monthlyTrendByProduct } from '../../lib/analytics.js'
+import { isTicketSource } from '../../lib/importUtils.js'
+import {
+  buildWanTouByProducts,
+} from '../../lib/wanTouRatio.js'
+import { buildWanTouProductTableColumns } from './WanTouRatioCells.jsx'
+import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 
@@ -18,6 +24,7 @@ import RebuildInsightsButton from './RebuildInsightsButton.jsx'
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
  * @param {import('../../lib/types.js').FeedbackRecord[]} [props.complaintRecords]
  * @param {import('../../storage/orderVolumeStore.js').OrderVolumeRow[]} [props.orderVolumes]
+ * @param {import('../../storage/wanTouTargetStore.js').WanTouTargetRow[]} [props.wanTouTargets]
  * @param {() => void} [props.onRebuildSnapshots]
  * @param {boolean} [props.snapshotRebuilding]
  * @param {boolean} [props.rebuildDisabled]
@@ -32,6 +39,7 @@ export default function OverviewTab({
   currentPeriod,
   complaintRecords = [],
   orderVolumes = [],
+  wanTouTargets = [],
   onRebuildSnapshots,
   snapshotRebuilding,
   rebuildDisabled,
@@ -53,14 +61,22 @@ export default function OverviewTab({
   }
 
   const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
-  const trend = Array.isArray(snapshot.crossSourceMetrics?.monthly_trend)
-    ? snapshot.crossSourceMetrics.monthly_trend
-    : []
+
+  const ticketRecordsForTrend = DATA_SOURCE_TYPES.flatMap((type) =>
+    isTicketSource(type) ? filterRecordsForScope(feedbacks, currentPeriod, type) : [],
+  )
+  const trendByProductFromSnapshot = snapshot.crossSourceMetrics?.monthly_trend_by_product
+  const trendByProduct =
+    trendByProductFromSnapshot?.data?.length
+      ? trendByProductFromSnapshot
+      : monthlyTrendByProduct(ticketRecordsForTrend, { basis: 'importMonth', limit: 12 })
+  const trendChartAreas = buildStackedTrendAreas(trendByProduct.products || [])
 
   const wanTouRows = buildWanTouByProducts({
     period: currentPeriod,
     records: complaintRecords,
     orderVolumes,
+    wanTouTargets,
     productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
   })
 
@@ -140,41 +156,19 @@ export default function OverviewTab({
             size="small"
             pagination={false}
             rowKey="productName"
+            scroll={{ x: 760 }}
             dataSource={wanTouRows}
-            columns={[
-              { title: '产品', dataIndex: 'productName', ellipsis: true },
-              {
-                title: '万投比',
-                dataIndex: 'displayRatio',
-                width: 100,
-                render: (v) => formatWanTouRatio(v),
-              },
-              { title: '投诉工单', dataIndex: 'totalComplaints', width: 90 },
-              {
-                title: '粒度',
-                dataIndex: 'granularityLabel',
-                width: 180,
-                ellipsis: true,
-              },
-              {
-                title: '订单维护',
-                width: 100,
-                render: (_, r) =>
-                  r.missingOrderMonths?.length ? (
-                    <Typography.Text type="warning" className="text-xs">
-                      缺 {r.missingOrderMonths.length} 月
-                    </Typography.Text>
-                  ) : (
-                    <Typography.Text type="success" className="text-xs">
-                      已维护
-                    </Typography.Text>
-                  ),
-              },
-            ]}
+            columns={buildWanTouProductTableColumns()}
           />
           </div>
           <Typography.Text type="secondary" className="mt-2 block text-xs">
-            分母请在 <Link to="/settings">设置 → 产品月订单数</Link> 中按产品、月份维护。
+            分母与目标值请在 <Link to="/settings">设置</Link> 中维护产品月订单数、万投比目标值。
+            {wanTouRows.some((row) => row.missingOrderMonths?.length) ? (
+              <>
+                {' '}
+                部分产品缺月订单数，万投比可能无法对比目标。
+              </>
+            ) : null}
           </Typography.Text>
         </Card>
       )}
@@ -260,18 +254,18 @@ export default function OverviewTab({
           />
         </Card>
 
-        {trend.length > 0 ? (
+        {trendByProduct.data?.length > 0 ? (
           <Card title="跨源月度趋势（工单类合计）" className="min-w-0">
             <div data-pdf-chart="overview-trend" className="rounded-lg bg-white p-2">
               <TrendChart
-                data={trend}
-                areas={[
-                  { dataKey: 'count', name: '条数', stroke: '#4F46E5', fill: 'url(#trendFill)' },
-                ]}
+                data={trendByProduct.data}
+                areas={trendChartAreas}
+                stacked
+                height={trendChartAreas.length > 6 ? 260 : 220}
               />
             </div>
             <Typography.Text type="secondary" className="mt-2 block text-xs">
-              仅合并具备月度趋势的数据来源；用后即评/调研等指标请见各分源 Tab。
+              投诉与咨询工单按月合计，按产品堆叠；用后即评/调研等指标请见各分源 Tab。
             </Typography.Text>
           </Card>
         ) : (

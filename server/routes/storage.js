@@ -595,7 +595,9 @@ export function registerStorageRoutes(app) {
     const tagMetaKeys = ['taxonomy_managed', 'taxonomy_overrides', 'tag_library_version', 'product_catalog_managed_v1']
     const perms = []
     if (tagMetaKeys.includes(decodedKey)) perms.push('manageTags')
-    else if (decodedKey === 'product_order_volumes_v1') perms.push('editOrderVolumes')
+    else if (decodedKey === 'product_order_volumes_v1' || decodedKey === 'wan_tou_targets_v1') {
+      perms.push('editOrderVolumes')
+    }
     else if (decodedKey === 'app_settings_shared_v1' || decodedKey === 'recommendation_feedback_v1') {
       perms.push('manageTeamSettings')
     } else perms.push('view')

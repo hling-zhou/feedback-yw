@@ -12,17 +12,73 @@ import {
   formatWanTouRatio,
   wanTouComparisonPeriodLabel,
 } from '../../lib/wanTouRatio.js'
+import {
+  buildWanTouProductTableColumns,
+  WanTouRatioWithTargetCell,
+} from './WanTouRatioCells.jsx'
+
+/**
+ * @param {{ months: import('../../lib/wanTouRatio.js').buildWanTouSummary extends (...args: any) => infer R ? R extends { months: infer M } ? M : never : never }} summary
+ */
+function MonthlyTargetTable({ summary }) {
+  if (!summary.months?.length) return null
+
+  return (
+    <Table
+      className="page-section-sm"
+      size="small"
+      pagination={false}
+      rowKey="month"
+      scroll={{ x: 1200 }}
+      dataSource={summary.months}
+      columns={[
+        { title: '月份', dataIndex: 'month', width: 96, fixed: 'left' },
+        { title: '全部投诉', dataIndex: 'complaints', width: 88, align: 'center' },
+        {
+          title: '万投比',
+          width: 148,
+          align: 'center',
+          render: (_, row) => (
+            <WanTouRatioWithTargetCell ratio={row.ratio} evaluation={row.wanTouTargetEval} />
+          ),
+        },
+        {
+          title: '客户体验类投诉',
+          dataIndex: 'cxComplaints',
+          width: 132,
+          align: 'center',
+        },
+        {
+          title: '客户体验类万投比',
+          width: 168,
+          align: 'center',
+          render: (_, row) => (
+            <WanTouRatioWithTargetCell ratio={row.cxRatio} evaluation={row.cxWanTouTargetEval} />
+          ),
+        },
+        {
+          title: '订单数',
+          dataIndex: 'orders',
+          width: 88,
+          align: 'center',
+          render: (value) => (value != null && value > 0 ? value.toLocaleString() : '—'),
+        },
+      ]}
+    />
+  )
+}
 
 /**
  * @param {Object} props
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} props.period
  * @param {string} [props.productName]
  * @param {string | null} [props.productKey]
- * @param {{ name: string; count?: number }[]} [props.productList] 全部产品时按产品分列展示
- * @param {import('../../lib/types.js').FeedbackRecord[]} props.records 当前周期、当前来源工单
- * @param {import('../../lib/types.js').FeedbackRecord[]} [props.allRecords] 全库工单（用于计算上周期）
+ * @param {{ name: string; count?: number }[]} [props.productList]
+ * @param {import('../../lib/types.js').FeedbackRecord[]} props.records
+ * @param {import('../../lib/types.js').FeedbackRecord[]} [props.allRecords]
  * @param {import('../../storage/orderVolumeStore.js').OrderVolumeRow[]} props.orderVolumes
- * @param {'compact' | 'full'} [props.variant] full 时展示分月明细表
+ * @param {import('../../storage/wanTouTargetStore.js').WanTouTargetRow[]} [props.wanTouTargets]
+ * @param {'compact' | 'full'} [props.variant]
  */
 export default function WanTouRatioPanel({
   period,
@@ -32,6 +88,7 @@ export default function WanTouRatioPanel({
   records,
   allRecords,
   orderVolumes,
+  wanTouTargets = [],
   variant = 'full',
 }) {
   const multiProduct = !productName && Boolean(productList?.length)
@@ -43,9 +100,10 @@ export default function WanTouRatioPanel({
       period,
       records,
       orderVolumes,
+      wanTouTargets,
       productList,
     })
-  }, [multiProduct, period, records, orderVolumes, productList])
+  }, [multiProduct, period, records, orderVolumes, wanTouTargets, productList])
 
   const summary = useMemo(
     () =>
@@ -55,8 +113,9 @@ export default function WanTouRatioPanel({
         productName,
         records,
         orderVolumes,
+        wanTouTargets,
       }),
-    [period, productKey, productName, records, orderVolumes],
+    [period, productKey, productName, records, orderVolumes, wanTouTargets],
   )
 
   const previousPeriod = useMemo(() => resolvePreviousInsightPeriod(period), [period])
@@ -74,8 +133,9 @@ export default function WanTouRatioPanel({
       productName,
       records: prevRecords,
       orderVolumes,
+      wanTouTargets,
     })
-  }, [previousPeriod, productKey, productName, catalogRecords, orderVolumes])
+  }, [previousPeriod, productKey, productName, catalogRecords, orderVolumes, wanTouTargets])
 
   if (multiProduct) {
     return (
@@ -85,7 +145,7 @@ export default function WanTouRatioPanel({
         title={
           <span className="text-sm font-medium text-ink-700">
             万投比
-            <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；年/季粒度为周期内各月月万投比算术平均">
+            <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；体验类万投比仅统计投诉原因一级（终判）= 客户体验类">
               <QuestionCircleOutlined className="ml-1.5 text-ink-400" />
             </Tooltip>
           </span>
@@ -101,45 +161,13 @@ export default function WanTouRatioPanel({
             size="small"
             pagination={false}
             rowKey="productName"
+            scroll={{ x: 760 }}
             dataSource={multiRows}
-            columns={[
-              { title: '产品', dataIndex: 'productName', ellipsis: true },
-              {
-                title: '万投比',
-                dataIndex: 'displayRatio',
-                width: 100,
-                render: (v) => formatWanTouRatio(v),
-              },
-              { title: '投诉工单', dataIndex: 'totalComplaints', width: 90 },
-              {
-                title: '粒度',
-                dataIndex: 'granularityLabel',
-                width: 180,
-                ellipsis: true,
-              },
-              {
-                title: '订单维护',
-                width: 100,
-                render: (_, row) =>
-                  row.missingOrderMonths?.length ? (
-                    <Typography.Text type="warning" className="text-xs">
-                      缺 {row.missingOrderMonths.length} 月
-                    </Typography.Text>
-                  ) : row.inCatalog === false ? (
-                    <Typography.Text type="warning" className="text-xs">
-                      未匹配目录
-                    </Typography.Text>
-                  ) : (
-                    <Typography.Text type="success" className="text-xs">
-                      已维护
-                    </Typography.Text>
-                  ),
-              },
-            ]}
+            columns={buildWanTouProductTableColumns()}
           />
         </div>
         <Typography.Text type="secondary" className="mt-2 block text-xs">
-          分母请在 <Link to="/settings">设置 → 产品月订单数</Link> 中按产品、月份维护。
+          分母与目标值请在 <Link to="/settings">设置</Link> 中维护产品月订单数、万投比目标值。
         </Typography.Text>
       </Card>
     )
@@ -151,7 +179,8 @@ export default function WanTouRatioPanel({
     previousSummary?.displayRatio,
   )
   const periodDeltaText = formatWanTouPeriodDelta(periodDelta)
-  const ordersSum = summary.months.reduce((n, m) => n + (m.orders || 0), 0)
+  const ordersSum = summary.months.reduce((n, month) => n + (month.orders || 0), 0)
+  const primaryMonth = summary.months[0]
 
   const deltaTone =
     periodDelta == null
@@ -169,7 +198,7 @@ export default function WanTouRatioPanel({
       title={
         <span className="text-sm font-medium text-ink-700">
           万投比
-          <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；年/季粒度为周期内各月月万投比算术平均">
+          <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；体验类万投比仅统计投诉原因一级（终判）= 客户体验类">
             <QuestionCircleOutlined className="ml-1.5 text-ink-400" />
           </Tooltip>
         </span>
@@ -177,6 +206,7 @@ export default function WanTouRatioPanel({
       extra={
         <Typography.Text type="secondary" className="text-xs">
           {summary.granularityLabel}
+          {summary.annualTargets?.year ? ` · ${summary.annualTargets.year} 年目标` : ''}
         </Typography.Text>
       }
     >
@@ -228,6 +258,7 @@ export default function WanTouRatioPanel({
 
         <Typography.Text type="secondary" className="text-xs">
           投诉 {summary.totalComplaints} 单
+          {summary.totalCxComplaints > 0 ? ` · 体验类 ${summary.totalCxComplaints} 单` : ''}
           {ordersSum > 0 ? ` · 订单 ${ordersSum.toLocaleString()}` : ''}
           {summary.missingOrderMonths.length > 0 ? (
             <>
@@ -244,30 +275,37 @@ export default function WanTouRatioPanel({
         </Typography.Text>
       </div>
 
-      {variant === 'full' && summary.months.length > 1 && (
-        <Table
-          className="page-section-sm"
-          size="small"
-          pagination={false}
-          rowKey="month"
-          dataSource={summary.months}
-          columns={[
-            { title: '月份', dataIndex: 'month', width: 100 },
-            { title: '投诉工单', dataIndex: 'complaints', width: 90 },
-            {
-              title: '订单数',
-              dataIndex: 'orders',
-              width: 100,
-              render: (v) => (v != null && v > 0 ? v.toLocaleString() : '—'),
-            },
-            {
-              title: '月万投比',
-              dataIndex: 'ratio',
-              render: (v) => formatWanTouRatio(v),
-            },
-          ]}
-        />
-      )}
+      {primaryMonth ? (
+        <div className="page-section-sm grid gap-2 lg:grid-cols-2">
+          <Typography.Text className="text-xs">
+            万投比{' '}
+            <WanTouRatioWithTargetCell
+              ratio={primaryMonth.ratio}
+              evaluation={primaryMonth.wanTouTargetEval}
+            />
+          </Typography.Text>
+          <Typography.Text className="text-xs">
+            客户体验类万投比{' '}
+            <WanTouRatioWithTargetCell
+              ratio={primaryMonth.cxRatio}
+              evaluation={primaryMonth.cxWanTouTargetEval}
+            />
+          </Typography.Text>
+        </div>
+      ) : null}
+
+      {(variant === 'full' || summary.months.length === 1) && summary.months.length >= 1 ? (
+        <MonthlyTargetTable summary={summary} />
+      ) : null}
+
+      {!summary.annualTargets?.wanTouTarget && !summary.annualTargets?.cxWanTouTarget ? (
+        <Typography.Text type="secondary" className="mt-2 block text-xs">
+          尚未配置本年度万投比目标值。
+          <Link to="/settings" className="ml-1">
+            去设置
+          </Link>
+        </Typography.Text>
+      ) : null}
     </Card>
   )
 }

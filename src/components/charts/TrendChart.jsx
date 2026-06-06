@@ -1,9 +1,9 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend } from 'recharts'
 import ChartTooltip from './ChartTooltip.jsx'
 
-export default function TrendChart({ data, areas }) {
+export default function TrendChart({ data, areas, stacked = false, height = 220 }) {
   if (!data?.length) {
-    return <EmptyChart message="暂无趋势数据" />
+    return <EmptyChart message="暂无趋势数据" height={height} />
   }
 
   const series = areas?.length
@@ -11,8 +11,8 @@ export default function TrendChart({ data, areas }) {
     : [{ dataKey: 'count', name: '反馈数', stroke: '#4F46E5', fill: 'url(#trendFill)' }]
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: stacked ? 4 : 0 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
@@ -27,7 +27,7 @@ export default function TrendChart({ data, areas }) {
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
         <ChartTooltip />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
         {series.map((area) => (
           <Area
             key={area.dataKey}
@@ -35,8 +35,10 @@ export default function TrendChart({ data, areas }) {
             dataKey={area.dataKey}
             name={area.name}
             stroke={area.stroke}
-            fill={area.fill}
-            strokeWidth={2}
+            fill={stacked ? area.stroke : area.fill || area.stroke}
+            fillOpacity={stacked ? 0.72 : 1}
+            stackId={stacked ? 'stack' : undefined}
+            strokeWidth={stacked ? 1 : 2}
           />
         ))}
       </AreaChart>
@@ -44,8 +46,13 @@ export default function TrendChart({ data, areas }) {
   )
 }
 
-function EmptyChart({ message }) {
+function EmptyChart({ message, height = 220 }) {
   return (
-    <div className="flex h-[220px] items-center justify-center text-sm text-ink-400">{message}</div>
+    <div
+      className="flex items-center justify-center text-sm text-ink-400"
+      style={{ height }}
+    >
+      {message}
+    </div>
   )
 }

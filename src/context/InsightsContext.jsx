@@ -129,6 +129,7 @@ import {
 import { syncCatalogProductsToTaxonomy } from '../lib/productCenterSync.js'
 import { downloadManagedTaxonomyExcel } from '../lib/tagLibrary/taxonomyManageModel.js'
 import { listOrderVolumes, upsertOrderVolume } from '../storage/orderVolumeStore.js'
+import { listWanTouTargets, upsertWanTouTarget } from '../storage/wanTouTargetStore.js'
 import {
   getOrInitManagedProductCatalogSnapshot,
   importManagedProductCatalog,
@@ -273,6 +274,10 @@ export function InsightsProvider({ children }) {
     /** @type {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} */ ([]),
   )
   const [orderVolumesLoading, setOrderVolumesLoading] = useState(false)
+  const [wanTouTargets, setWanTouTargets] = useState(
+    /** @type {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} */ ([]),
+  )
+  const [wanTouTargetsLoading, setWanTouTargetsLoading] = useState(false)
   /** @type {[{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }>>]} */
   const [importSession, setImportSession] = useState(() => ({
     active: false,
@@ -536,6 +541,27 @@ export function InsightsProvider({ children }) {
     [adapter, reloadOrderVolumes],
   )
 
+  const reloadWanTouTargets = useCallback(async () => {
+    if (!storageReady) return []
+    setWanTouTargetsLoading(true)
+    try {
+      const list = await listWanTouTargets(adapter)
+      setWanTouTargets(list)
+      return list
+    } finally {
+      setWanTouTargetsLoading(false)
+    }
+  }, [adapter, storageReady])
+
+  const saveWanTouTarget = useCallback(
+    async (row) => {
+      const saved = await upsertWanTouTarget(adapter, row)
+      await reloadWanTouTargets()
+      return saved
+    },
+    [adapter, reloadWanTouTargets],
+  )
+
   const applyTaxonomyOverridesFromStorage = useCallback(async () => {
     const managedState = await loadManagedTaxonomy(adapter)
     if (managedState) {
@@ -718,9 +744,10 @@ export function InsightsProvider({ children }) {
       reloadSnapshots(currentPeriodId)
       reloadTagCandidates()
       reloadOrderVolumes()
+      reloadWanTouTargets()
       applyTaxonomyOverridesFromStorage()
     }
-  }, [storageReady, currentPeriodId, reloadSnapshots, reloadTagCandidates, reloadOrderVolumes, applyTaxonomyOverridesFromStorage])
+  }, [storageReady, currentPeriodId, reloadSnapshots, reloadTagCandidates, reloadOrderVolumes, reloadWanTouTargets, applyTaxonomyOverridesFromStorage])
 
   useEffect(() => {
     const unsub = subscribe('TagCandidateDiscovered', (ev) => {
@@ -2400,6 +2427,10 @@ export function InsightsProvider({ children }) {
       orderVolumesLoading,
       reloadOrderVolumes,
       saveOrderVolume,
+      wanTouTargets,
+      wanTouTargetsLoading,
+      reloadWanTouTargets,
+      saveWanTouTarget,
       syncSharedDataFromServer,
     }),
     [
@@ -2483,6 +2514,10 @@ export function InsightsProvider({ children }) {
       orderVolumesLoading,
       reloadOrderVolumes,
       saveOrderVolume,
+      wanTouTargets,
+      wanTouTargetsLoading,
+      reloadWanTouTargets,
+      saveWanTouTarget,
       syncSharedDataFromServer,
     ],
   )

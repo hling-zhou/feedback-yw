@@ -10,6 +10,7 @@ import {
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
+import { extractTicketActualDate } from '../domain/ticketActualDate.js'
 
 export default function FeedbackTable({ items, onSelect }) {
   if (items.length === 0) {
@@ -30,9 +31,16 @@ export default function FeedbackTable({ items, onSelect }) {
       title: '工单',
       dataIndex: 'ticketId',
       width: 180,
-      render: (_, fb) => (
+      render: (_, fb) => {
+        const ticketActualDate = extractTicketActualDate(fb.ticketId)
+        return (
         <div>
           <Typography.Text strong>{fb.ticketId || '-'}</Typography.Text>
+          {ticketActualDate ? (
+            <Typography.Text type="secondary" className="block text-xs">
+              工单日期：{ticketActualDate}
+            </Typography.Text>
+          ) : null}
           <Typography.Text type="secondary" className="block text-xs">
             {fb.createdAt || '-'}
           </Typography.Text>
@@ -48,7 +56,8 @@ export default function FeedbackTable({ items, onSelect }) {
             数据月份：{fb.importMonth || '未知月份'}
           </Typography.Text>
         </div>
-      ),
+        )
+      },
     },
     {
       title: '数据来源',

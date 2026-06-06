@@ -19,6 +19,7 @@ export default function ExportPdfMenu({ activeSource }) {
     overviewSnapshot,
     sourceSnapshots,
     orderVolumes,
+    wanTouTargets,
     snapshotRebuilding,
   } = useInsights()
 
@@ -44,6 +45,7 @@ export default function ExportPdfMenu({ activeSource }) {
       sourceSnapshots,
       feedbacks,
       orderVolumes,
+      wanTouTargets,
     })
   }
 

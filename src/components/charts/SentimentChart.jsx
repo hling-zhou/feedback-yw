@@ -18,6 +18,9 @@ import {
   horizontalBarChartLayout,
 } from './chartConstants.js'
 
+/** 条末「数量（占比%）」比纯数字需要更多右侧留白 */
+const PCT_LABEL_MARGIN_EXTRA = 40
+
 /**
  * @param {{ data: { name: string; value: number; key: string; pct?: number }[]; total?: number }}
  */
@@ -41,7 +44,11 @@ export default function SentimentChart({ data, total }) {
   }
 
   const sum = total ?? chartData.reduce((s, d) => s + d.count, 0)
-  const layout = horizontalBarChartLayout(chartData)
+  const layout = horizontalBarChartLayout(chartData, { fontSize: 11 })
+  const margin = {
+    ...layout.margin,
+    right: layout.margin.right + PCT_LABEL_MARGIN_EXTRA,
+  }
   const axisData = chartData.map((row) => ({
     ...row,
     name: layout.formatLabel(row.name),
@@ -49,11 +56,7 @@ export default function SentimentChart({ data, total }) {
 
   return (
     <ResponsiveContainer width="100%" height={horizontalBarChartHeight(chartData.length)}>
-      <BarChart
-        data={axisData}
-        layout="vertical"
-        margin={layout.margin}
-      >
+      <BarChart data={axisData} layout="vertical" margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
         <YAxis
@@ -61,7 +64,7 @@ export default function SentimentChart({ data, total }) {
           dataKey="name"
           width={layout.yAxisWidth}
           interval={0}
-          tick={<CategoryAxisTick />}
+          tick={<CategoryAxisTick fontSize={11} />}
         />
         <ChartTooltip
           formatter={(value, _name, props) => {
@@ -71,12 +74,16 @@ export default function SentimentChart({ data, total }) {
         />
         <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={HORIZONTAL_BAR_MAX_SIZE}>
           {chartData.map((entry) => (
-            <Cell
-              key={entry.key}
-              fill={SENTIMENT_CHART_COLORS[entry.key] || '#9CA3AF'}
-            />
+            <Cell key={entry.key} fill={SENTIMENT_CHART_COLORS[entry.key] || '#9CA3AF'} />
           ))}
-          <BarCountLabel />
+          <BarCountLabel
+            formatLabel={(num, entry) => {
+              const pct =
+                entry?.payload?.pct ??
+                (sum ? Math.round((Number(num) / sum) * 100) : 0)
+              return `${num}（${pct}%）`
+            }}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

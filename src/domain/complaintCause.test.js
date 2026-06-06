@@ -5,6 +5,8 @@ import {
   countComplaintCauseL1,
   getComplaintCauseL1Display,
   getComplaintCauseFinalDisplay,
+  isCustomerExperienceComplaint,
+  isCustomerExperienceComplaintCauseL1,
 } from './complaintCause.js'
 
 describe('complaintCause', () => {
@@ -77,5 +79,23 @@ describe('complaintCause', () => {
     ])
     const agg = aggregateComplaintCauseL1Insights(items)
     expect(agg[0]).toMatchObject({ label: 'A', count: 2, negative: 1 })
+  })
+
+  it('detects customer experience complaint cause L1', () => {
+    expect(isCustomerExperienceComplaintCauseL1('客户体验类')).toBe(true)
+    expect(isCustomerExperienceComplaintCauseL1('客户体验类投诉')).toBe(true)
+    expect(isCustomerExperienceComplaintCauseL1('性能类')).toBe(false)
+    expect(
+      isCustomerExperienceComplaint({
+        dataSourceType: 'complaint_ticket',
+        complaintCauseL1Final: '客户体验类',
+      }),
+    ).toBe(true)
+    expect(
+      isCustomerExperienceComplaint({
+        dataSourceType: 'consultation_ticket',
+        complaintCauseL1Final: '客户体验类',
+      }),
+    ).toBe(false)
   })
 })
