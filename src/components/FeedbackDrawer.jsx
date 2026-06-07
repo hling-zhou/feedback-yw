@@ -150,6 +150,37 @@ function TicketDetailSectionNav() {
   )
 }
 
+/** @param {{ metaLine: string }} props */
+function TicketDetailDrawerTitle({ metaLine }) {
+  const showMetaTooltip = Boolean(metaLine?.trim() && metaLine !== '—')
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-1">
+      <div className="relative min-h-[1.25rem] w-full">
+        <span className="relative z-[1] shrink-0 text-base font-semibold leading-none">
+          工单详情
+        </span>
+        <div className="pointer-events-none absolute inset-y-0 left-20 right-0 flex items-center justify-center">
+          <div className="pointer-events-auto">
+            <TicketDetailSectionNav />
+          </div>
+        </div>
+      </div>
+      <Tooltip
+        title={showMetaTooltip ? metaLine : undefined}
+        getPopupContainer={() => document.body}
+      >
+        <Typography.Text
+          type="secondary"
+          className="block min-w-0 text-xs leading-snug"
+          ellipsis={{ tooltip: false }}
+        >
+          {metaLine}
+        </Typography.Text>
+      </Tooltip>
+    </div>
+  )
+}
+
 export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyChange }) {
   const {
     feedbacks,
@@ -576,18 +607,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
 
   return (
     <Drawer
-      title={
-        <div className="relative w-full">
-          <span className="relative z-[1] shrink-0 text-base font-semibold leading-none">
-            工单详情
-          </span>
-          <div className="pointer-events-none absolute inset-y-0 left-20 right-12 flex items-center justify-center">
-            <div className="pointer-events-auto">
-              <TicketDetailSectionNav />
-            </div>
-          </div>
-        </div>
-      }
+      title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} />}
       size={640}
       open={Boolean(feedback)}
       onClose={handleRequestClose}
@@ -657,9 +677,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
             }
           />
         ) : null}
-        <Typography.Text type="secondary" className="block text-xs leading-snug">
-          {ticketMetaLine}
-        </Typography.Text>
 
         {/* 1 · 工单内容 */}
         <div id="ticket-detail-content" className="scroll-mt-2 space-y-3">

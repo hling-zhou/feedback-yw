@@ -19,8 +19,8 @@ describe('FeedbackDrawer layout', () => {
 
   it('places anchor nav in drawer title and orders content sections', () => {
     const nav = marker('aria-label="工单详情分区导航"')
-    marker('relative z-[1] shrink-0 text-base font-semibold leading-none')
-    const meta = marker('{ticketMetaLine}')
+    marker('TicketDetailDrawerTitle')
+    const meta = marker('metaLine={ticketMetaLine}')
     const content = marker('id="ticket-detail-content"')
     const handling = marker('处理意见（工单原文）')
     const rootCause = marker('title="根因排查"')
@@ -35,7 +35,7 @@ describe('FeedbackDrawer layout', () => {
     const causeFinal = marker('投诉原因（终判）')
     const causeReview = marker('二级（人工复核）')
 
-    expect(src).toMatch(/title=\{[\s\S]*TicketDetailSectionNav/)
+    expect(src).toMatch(/title=\{[\s\S]*TicketDetailDrawerTitle/)
     expect(src).toContain('justify-center')
     expect(nav).toBeLessThan(meta)
     expect(meta).toBeLessThan(content)
