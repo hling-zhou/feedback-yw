@@ -94,30 +94,38 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
   })
 
   describe('B2 终判 vs 咨询无终判', () => {
-    it('shows final complaint cause in meta line only when isComplaintTicket', () => {
-      expect(drawerSrc).toMatch(
-        /isComplaintTicket\(feedback\) \? \([\s\S]*getComplaintCauseFinalDisplay\(feedback\)/,
-      )
+    it('shows final complaint cause in classification section only when isComplaintTicket', () => {
+      expect(drawerSrc).toMatch(/isComplaintTicket\(feedback\) \? \([\s\S]*投诉原因（终判）/)
+      expect(drawerSrc).toMatch(/一级（终判）/)
+      expect(drawerSrc).not.toMatch(/getComplaintCauseFinalDisplay\(feedback\)/)
     })
   })
 
   describe('canEdit vs read-only paths', () => {
     it('editable fields use TextArea/Input under canEdit', () => {
-      expect(drawerSrc).toMatch(/canEdit \? \([\s\S]*客户请求/)
-      expect(drawerSrc).toMatch(/canEdit \? \([\s\S]*需求痛点/)
+      expect(drawerSrc).toMatch(
+        /shrink-0">客户请求内容<[\s\S]*?\{canEdit \? \([\s\S]*?Input\.TextArea/,
+      )
+      expect(drawerSrc).toMatch(
+        /shrink-0">需求痛点挖掘<[\s\S]*?\{canEdit \? \([\s\S]*?Input\.TextArea/,
+      )
       expect(drawerSrc).toMatch(/canEdit \? \([\s\S]*确立举措/)
-      expect(drawerSrc).toMatch(/canEdit \? \([\s\S]*根因排查/)
+      expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*自动生成/)
+      expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*getAutoRootCauseDisplay\(feedback\)/)
+      expect(drawerSrc).toMatch(
+        /title="根因排查"[\s\S]*?\{canEdit \? \([\s\S]*rootCauseReview/,
+      )
     })
 
     it('read-only path uses display helpers in canEdit else branches', () => {
       expect(drawerSrc).toMatch(
-        /canEdit \? \([\s\S]*?客户请求[\s\S]*?\) : \([\s\S]*getDisplayCustomerRequest\(feedback\)/,
+        /shrink-0">客户请求内容<[\s\S]*?\{canEdit \? \([\s\S]*?\) : \([\s\S]*getDisplayCustomerRequest\(feedback\)/,
       )
       expect(drawerSrc).toMatch(
-        /canEdit \? \([\s\S]*?需求痛点[\s\S]*?\) : \([\s\S]*getDisplayPainPoint\(feedback\)/,
+        /shrink-0">需求痛点挖掘<[\s\S]*?\{canEdit \? \([\s\S]*?\) : \([\s\S]*getDisplayPainPoint\(feedback\)/,
       )
       expect(drawerSrc).toMatch(
-        /canEdit \? \([\s\S]*?根因排查[\s\S]*?\) : \([\s\S]*getRootCauseReviewDraftDisplay\(feedback\)/,
+        /title="根因排查"[\s\S]*getRootCauseReviewDraftDisplay\(feedback\)/,
       )
     })
   })

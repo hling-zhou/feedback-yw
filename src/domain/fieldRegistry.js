@@ -12,7 +12,7 @@ import {
 
 /**
  * manualTagFields 维度（含 P2-5 将落地的扩展维度）。
- * @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview'} RegistryManualDimension
+ * @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview' | 'complaintCauseReview'} RegistryManualDimension
  */
 
 /** @typedef {'none' | 'painPrimary' | 'optimizationCorpus'} ClusterRole */
@@ -384,6 +384,39 @@ const FIELD_DEFINITIONS = [
     clusterRole: 'none',
     applicableSources: ['complaint_ticket'],
     detailZone: 'B2',
+  },
+  {
+    fieldKey: 'complaintCauseL1Review',
+    displayName: '投诉原因 一级（终判）人工复核',
+    recordPaths: ['complaintCauseL1Review'],
+    exportable: false,
+    importable: false,
+    manualDimension: 'complaintCauseReview',
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket'],
+    detailZone: 'B3',
+  },
+  {
+    fieldKey: 'complaintCauseL2Review',
+    displayName: '投诉原因 二级（终判）人工复核',
+    recordPaths: ['complaintCauseL2Review'],
+    exportable: false,
+    importable: false,
+    manualDimension: 'complaintCauseReview',
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket'],
+    detailZone: 'B3',
+  },
+  {
+    fieldKey: 'complaintCauseL3Review',
+    displayName: '投诉原因 三级（终判）人工复核',
+    recordPaths: ['complaintCauseL3Review'],
+    exportable: false,
+    importable: false,
+    manualDimension: 'complaintCauseReview',
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket'],
+    detailZone: 'B3',
   },
 
   // —— 来源（库内；不导出 §一.3）——

@@ -2,7 +2,7 @@ import { themesFromJourney } from './applyThemes.js'
 import { normalizeSentiment, normalizeUrgencyLevel } from './sentiment.js'
 import { applyForceAllHumanOverrides } from '../domain/overridePolicy.js'
 
-/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview'} ManualTagDimension */
+/** @typedef {'requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview' | 'complaintCauseReview'} ManualTagDimension */
 
 /** @type {ManualTagDimension[]} */
 export const MANUAL_TAG_DIMENSIONS = [
@@ -15,6 +15,7 @@ export const MANUAL_TAG_DIMENSIONS = [
   'customerRequest',
   'painPoint',
   'rootCauseReview',
+  'complaintCauseReview',
 ]
 
 /** @type {Record<ManualTagDimension, string>} */
@@ -28,6 +29,7 @@ export const MANUAL_TAG_DIMENSION_LABELS = {
   customerRequest: '客户请求',
   painPoint: '需求痛点',
   rootCauseReview: '根因排查',
+  complaintCauseReview: '投诉原因（终判）复核',
 }
 
 const OPTIMIZATION_HUMAN_PATCH_KEYS = /** @type {const} */ ([
@@ -134,6 +136,14 @@ export function mergeManualTagFieldsOnUserEdit(existing, patch) {
   if ('rootCauseReview' in patch && !fieldValueEqual(existing?.rootCauseReview, patch.rootCauseReview)) {
     set.add('rootCauseReview')
   }
+  if (
+    ('complaintCauseL2Review' in patch
+      && !fieldValueEqual(existing?.complaintCauseL2Review, patch.complaintCauseL2Review))
+    || ('complaintCauseL3Review' in patch
+      && !fieldValueEqual(existing?.complaintCauseL3Review, patch.complaintCauseL3Review))
+  ) {
+    set.add('complaintCauseReview')
+  }
 
   return [...set]
 }
@@ -204,6 +214,11 @@ export function preserveManualTags(original, processed, options = {}) {
   }
   if (set.has('rootCauseReview')) {
     out.rootCauseReview = original.rootCauseReview
+  }
+  if (set.has('complaintCauseReview')) {
+    out.complaintCauseL1Review = original.complaintCauseL1Review
+    out.complaintCauseL2Review = original.complaintCauseL2Review
+    out.complaintCauseL3Review = original.complaintCauseL3Review
   }
 
   return out

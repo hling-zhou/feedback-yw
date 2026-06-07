@@ -137,13 +137,26 @@ function RequirementTicketsCell({ ticketIds }) {
   const text = ids.join('; ')
 
   return (
-    <Tooltip title={text}>
+    <Tooltip title={text} getPopupContainer={() => document.body}>
       <Typography.Text
         className="text-xs"
         copyable={{ text, tooltips: ['复制', '已复制'] }}
         ellipsis
       >
         {text}
+      </Typography.Text>
+    </Tooltip>
+  )
+}
+
+/** @param {{ text?: string | null; className?: string }} props */
+function TableEllipsisCell({ text, className }) {
+  const value = text?.trim() || ''
+  if (!value) return <Typography.Text type="secondary">—</Typography.Text>
+  return (
+    <Tooltip title={value} getPopupContainer={() => document.body}>
+      <Typography.Text className={className} ellipsis>
+        {value}
       </Typography.Text>
     </Tooltip>
   )
@@ -719,6 +732,7 @@ export default function Actions() {
       ellipsis: true,
       width: 160,
       fixed: 'left',
+      render: (text) => <TableEllipsisCell text={text} />,
     },
     {
       title: '问题类型',
@@ -754,7 +768,7 @@ export default function Actions() {
       dataIndex: 'detail',
       ellipsis: true,
       width: 140,
-      render: (text) => text?.trim() || '—',
+      render: (text) => <TableEllipsisCell text={text} />,
     },
     {
       title: (

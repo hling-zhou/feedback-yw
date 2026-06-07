@@ -232,7 +232,7 @@ export function useBulkRetagModal({ filteredRecords }) {
               强制覆盖全部人工内容
             </Checkbox>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-              勾选后将：清空人工维护标记与本工单的确立举措、排期、产品组/设计师优化建议（不删除举措库中其他工单共用的举措）；根因排查回退为导入「问题原因」；覆盖请求场景、问题类型、用户旅程、用户情绪、加急；若本次含工单 LLM，客户请求与需求痛点一并重算；自动优化建议（规则/大模型）可随 LLM 重算。不修改受理/处理原文、备注、跟进状态、投诉原因（终判）等。补打/补打旅程与全量重打规则一致。
+              勾选后将：清空人工维护标记与本工单的确立举措、排期、产品组/设计师优化建议（不删除举措库中其他工单共用的举措）；根因排查回退为导入「问题原因」；覆盖请求场景、问题类型、用户旅程、用户情绪、加急；若本次含工单 LLM，客户请求与需求痛点一并重算；自动优化建议（规则/大模型）可随 LLM 重算。不修改受理/处理原文、备注、跟进状态、投诉原因（终判）及终判人工复核等。补打/补打旅程与全量重打规则一致。
             </Typography.Paragraph>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
               {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。

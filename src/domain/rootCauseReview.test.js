@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getAutoRootCauseDisplay,
   getEffectiveRootCauseReview,
   getRootCauseReviewDraftDisplay,
   hasManualRootCauseReview,
@@ -10,6 +11,12 @@ import {
 } from './rootCauseReview.js'
 
 describe('rootCauseReview', () => {
+  it('getAutoRootCauseDisplay reads rootCause field', () => {
+    expect(getAutoRootCauseDisplay({ rootCause: '磁盘满' })).toBe('磁盘满')
+    expect(getAutoRootCauseDisplay({ rootCause: '  ' })).toBe('')
+    expect(getAutoRootCauseDisplay({})).toBe('')
+  })
+
   it('getEffectiveRootCauseReview prefers stored value', () => {
     expect(
       getEffectiveRootCauseReview({
@@ -20,14 +27,15 @@ describe('rootCauseReview', () => {
     ).toBe('人工排查')
   })
 
-  it('getEffectiveRootCauseReview falls back to 问题原因 then rootCause', () => {
+  it('getEffectiveRootCauseReview falls back to 问题原因 column only', () => {
     expect(
       getEffectiveRootCauseReview({
         sourceColumns: { 问题原因: '列根因' },
         rootCause: '结构化',
       }),
     ).toBe('列根因')
-    expect(getEffectiveRootCauseReview({ rootCause: '结构化' })).toBe('结构化')
+    expect(getEffectiveRootCauseReview({ rootCause: '结构化' })).toBe('')
+    expect(getEffectiveRootCauseReview({ sourceColumns: {} })).toBe('')
   })
 
   it('hasManualRootCauseReview detects saved review text', () => {

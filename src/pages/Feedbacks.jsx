@@ -16,6 +16,7 @@ import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import FeedbackTable from '../components/FeedbackTable.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
+import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
@@ -27,7 +28,7 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
-import { exportTicketAnalysisWithConfirm, getExportV3Headers } from '../lib/ticketAnalysisExport.js'
+import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
   countRecordsNeedingTicketLlmEnrichment,
@@ -89,7 +90,13 @@ export default function Feedbacks() {
       ),
     [currentPeriodId, currentPeriod, periods],
   )
-  const [selected, setSelected] = useState(null)
+  const {
+    selected,
+    selectFeedback,
+    setSelectedDirect,
+    requestCloseDrawer,
+    onDrawerDirtyChange,
+  } = useFeedbackDrawerSelection()
   const [view, setView] = useState('table')
   const [filters, setFilters] = useState(createEmptyFeedbackFilters)
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
@@ -165,11 +172,11 @@ export default function Feedbacks() {
     const ticketId = searchParams.get('ticketId')
     if (!ticketId || !feedbacks.length) return
     const match = feedbacks.find((fb) => fb.ticketId === ticketId || fb.id === ticketId)
-    if (match) setSelected(match)
+    if (match) setSelectedDirect(match)
   }, [searchParams, feedbacks, currentPeriodId])
 
   useEffect(() => {
-    setSelected(null)
+    setSelectedDirect(null)
   }, [currentPeriodId])
 
   const { periodFeedbacks, periodCount, totalInDb } = usePeriodScope({
@@ -547,13 +554,9 @@ export default function Feedbacks() {
                   导入分析结果
                 </Button>
               </Tooltip>
-              <Tooltip
-                title={`导出 v3：${getExportV3Headers().length} 列分析结果（可与导入分析结果往返，含回访满意度）。列说明见 docs/EXPORT-V2-MIGRATION.md`}
-              >
-                <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
-                  导出分析结果
-                </Button>
-              </Tooltip>
+              <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
+                导出分析结果
+              </Button>
               <PermissionGate permission="retag">
                 <Button
                   disabled={bulkRetagDisabled}
@@ -594,18 +597,22 @@ export default function Feedbacks() {
           <FeedbackTable
             key={currentPeriodId || 'no-period'}
             items={filtered}
-            onSelect={setSelected}
+            onSelect={selectFeedback}
           />
         ) : (
           <CardGrid
             key={currentPeriodId || 'no-period'}
             items={filtered}
-            onSelect={setSelected}
+            onSelect={selectFeedback}
           />
         )}
       </div>
 
-      <FeedbackDrawer feedback={selected} onClose={() => setSelected(null)} />
+      <FeedbackDrawer
+        feedback={selected}
+        onClose={requestCloseDrawer}
+        onDirtyChange={onDrawerDirtyChange}
+      />
 
       <Modal
         title="导入分析结果"

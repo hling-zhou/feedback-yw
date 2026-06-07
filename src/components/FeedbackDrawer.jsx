@@ -7,6 +7,7 @@ import {
   Checkbox,
   DatePicker,
   Descriptions,
+  Divider,
   Drawer,
   Form,
   Input,
@@ -33,6 +34,7 @@ import { getTaxonomyForRecord } from '../lib/productTaxonomy.js'
 import { mapTaxonomySelectOptions, resolveTagDefinition } from '../lib/tagDefinitions.js'
 import {
   AutoOptimizationSourceTag,
+  AutoRootCauseTag,
   CustomerRequestSourceTag,
   JourneySourceTag,
   PainPointSourceTag,
@@ -74,15 +76,24 @@ import {
   hasDetailOptimizationContent,
 } from '../domain/detailOptimizationFields.js'
 import {
-  getComplaintCauseFinalDisplay,
+  EMPTY_COMPLAINT_CAUSE_LABEL,
+  getComplaintCauseL1Final,
   isComplaintTicket,
 } from '../domain/complaintCause.js'
+import {
+  COMPLAINT_CAUSE_REVIEW_MAX_LENGTH,
+  getComplaintCauseReviewDraftDisplay,
+  isComplaintCauseReviewManuallyMaintained,
+  normalizeComplaintCauseReviewInput,
+  shouldIncludeComplaintCauseReviewInSave,
+} from '../domain/complaintCauseReview.js'
 import { isFollowUpEnrichableRecord } from '../lib/feedbackFilters.js'
 import {
   getFollowUpDissatisfiedReasonsDisplay,
   getFollowUpSatisfactionDisplay,
 } from '../lib/ticketDetailDisplay.js'
 import {
+  getAutoRootCauseDisplay,
   getRootCauseReviewDraftDisplay,
   isRootCauseReviewManuallyMaintained,
   normalizeRootCauseReviewInput,
@@ -93,14 +104,53 @@ import RecordConflictModal from './RecordConflictModal.jsx'
 import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
+import { isFeedbackDrawerFormDirty } from '../domain/feedbackDrawerDirty.js'
+import { confirmDiscardFeedbackDrawerEdits } from '../lib/feedbackDrawerLeaveConfirm.js'
 
 const RETAG_DEFAULT_TIP =
-  '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点，以及优化建议（自动生成）。其他不修改。'
+  '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
 
 const SAVE_DETAIL_TIP =
   '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
-export default function FeedbackDrawer({ feedback: selected, onClose }) {
+const TICKET_DETAIL_SECTIONS = [
+  { id: 'ticket-detail-content', label: '工单内容' },
+  { id: 'ticket-detail-analysis', label: '工单分析' },
+  { id: 'ticket-detail-classification', label: '工单分类' },
+]
+
+function scrollToTicketDetailSection(sectionId) {
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function TicketDetailSectionNav() {
+  return (
+    <nav
+      aria-label="工单详情分区导航"
+      className="flex min-w-0 flex-wrap items-center justify-center gap-x-1"
+    >
+      {TICKET_DETAIL_SECTIONS.map((section, index) => (
+        <span key={section.id} className="inline-flex items-center">
+          {index > 0 ? (
+            <Typography.Text type="secondary" className="mx-1 text-xs">
+              |
+            </Typography.Text>
+          ) : null}
+          <Button
+            type="link"
+            size="small"
+            className="!h-auto !px-0 !py-0 text-sm font-normal"
+            onClick={() => scrollToTicketDetailSection(section.id)}
+          >
+            {section.label}
+          </Button>
+        </span>
+      ))}
+    </nav>
+  )
+}
+
+export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyChange }) {
   const {
     feedbacks,
     updateFeedback,
@@ -139,6 +189,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
   const [designerOptimization, setDesignerOptimization] = useState('')
   const [rootCauseReview, setRootCauseReview] = useState('')
   const [rootCauseReviewTouched, setRootCauseReviewTouched] = useState(false)
+  const [complaintCauseL2Review, setComplaintCauseL2Review] = useState('')
+  const [complaintCauseL3Review, setComplaintCauseL3Review] = useState('')
+  const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
   const [remoteStale, setRemoteStale] = useState(false)
@@ -195,6 +248,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     setDesignerOptimization(record.designerOptimization || '')
     setRootCauseReview(getRootCauseReviewDraftDisplay(record))
     setRootCauseReviewTouched(false)
+    const causeReview = getComplaintCauseReviewDraftDisplay(record)
+    setComplaintCauseL2Review(causeReview.l2)
+    setComplaintCauseL3Review(causeReview.l3)
+    setComplaintCauseReviewTouched(false)
   }, [])
 
   useEffect(() => {
@@ -272,6 +329,67 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     return [feedback.ticketId?.trim(), productText, source].filter(Boolean).join(' · ') || '—'
   }, [feedback])
 
+  const drawerFormSnapshot = useMemo(
+    () => ({
+      note,
+      sentiment,
+      urgencyLevel,
+      requestScene,
+      problemType,
+      journeyL1,
+      journeyL2,
+      customerRequest,
+      painPoint,
+      productGroupOptimization,
+      designerOptimization,
+      establishedAction,
+      establishedActionDetail,
+      actionSchedule,
+      actionId,
+      rootCauseReview,
+      complaintCauseL2Review,
+      complaintCauseL3Review,
+    }),
+    [
+      note,
+      sentiment,
+      urgencyLevel,
+      requestScene,
+      problemType,
+      journeyL1,
+      journeyL2,
+      customerRequest,
+      painPoint,
+      productGroupOptimization,
+      designerOptimization,
+      establishedAction,
+      establishedActionDetail,
+      actionSchedule,
+      actionId,
+      rootCauseReview,
+      complaintCauseL2Review,
+      complaintCauseL3Review,
+    ],
+  )
+
+  const isDrawerDirty = useMemo(
+    () => canEdit && feedback && isFeedbackDrawerFormDirty(feedback, drawerFormSnapshot),
+    [canEdit, feedback, drawerFormSnapshot],
+  )
+
+  const handleRequestClose = useCallback(() => {
+    if (!isDrawerDirty) {
+      onClose()
+      return
+    }
+    confirmDiscardFeedbackDrawerEdits(onClose)
+  }, [isDrawerDirty, onClose])
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(isDrawerDirty))
+    return () => onDirtyChange?.(false)
+  }, [isDrawerDirty, onDirtyChange])
+
   if (!feedback) return null
 
   const libraryLinked = linkedFromLibrary && Boolean(actionId?.trim())
@@ -310,6 +428,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
         rootCauseReview: normalizeRootCauseReviewInput(rootCauseReview),
       }
     }
+    if (shouldIncludeComplaintCauseReviewInSave(feedback, complaintCauseReviewTouched)) {
+      draft = {
+        ...draft,
+        ...normalizeComplaintCauseReviewInput({
+          l2: complaintCauseL2Review,
+          l3: complaintCauseL3Review,
+        }),
+      }
+    }
     return draft
   }
 
@@ -326,6 +453,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
     )
     if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
       patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
+    }
+    if (shouldIncludeComplaintCauseReviewInSave(feedback, complaintCauseReviewTouched)) {
+      Object.assign(
+        patch,
+        normalizeComplaintCauseReviewInput({
+          l2: complaintCauseL2Review,
+          l3: complaintCauseL3Review,
+        }),
+      )
     }
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
@@ -440,11 +576,24 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
 
   return (
     <Drawer
-      title="工单详情"
+      title={
+        <div className="relative w-full">
+          <span className="relative z-[1] shrink-0 text-base font-semibold leading-none">
+            工单详情
+          </span>
+          <div className="pointer-events-none absolute inset-y-0 left-20 right-12 flex items-center justify-center">
+            <div className="pointer-events-auto">
+              <TicketDetailSectionNav />
+            </div>
+          </div>
+        </div>
+      }
       size={640}
       open={Boolean(feedback)}
-      onClose={onClose}
+      onClose={handleRequestClose}
+      closable={{ placement: 'end' }}
       destroyOnClose
+      styles={{ body: { overflowX: 'hidden' } }}
       footer={
         (canEdit || canRetag) ? (
           <div className="flex gap-2">
@@ -488,7 +637,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
         ) : null
       }
     >
-      <div className="space-y-4">
+      <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
         {remoteStale ? (
           <Alert
             type="warning"
@@ -508,20 +657,447 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
             }
           />
         ) : null}
-        {/* A · 基础信息 */}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <Typography.Text type="secondary" className="min-w-0 text-xs leading-snug">
-            {ticketMetaLine}
-          </Typography.Text>
-          {isComplaintTicket(feedback) ? (
-            <Typography.Text type="secondary" className="shrink-0 text-right text-xs leading-snug">
-              {getComplaintCauseFinalDisplay(feedback)}
+        <Typography.Text type="secondary" className="block text-xs leading-snug">
+          {ticketMetaLine}
+        </Typography.Text>
+
+        {/* 1 · 工单内容 */}
+        <div id="ticket-detail-content" className="scroll-mt-2 space-y-3">
+          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+            工单内容
+          </Typography.Title>
+
+          <Card title="处理意见（工单原文）" size="small">
+            <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
+              {handlingOriginalText || '—'}
+            </Typography.Paragraph>
+            <Typography.Text type="secondary" className="mt-2 block text-xs">
+              优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
             </Typography.Text>
+          </Card>
+
+          {isFollowUpEnrichableRecord(feedback) ? (
+            <>
+              <Card title="回访满意度" size="small">
+                <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  来自满意度回访导入，只读
+                </Typography.Text>
+              </Card>
+              <Card
+                title={
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    <span className="shrink-0">不满意原因</span>
+                    <Typography.Text type="secondary" className="text-xs font-normal">
+                      来自满意度回访汇总
+                    </Typography.Text>
+                  </span>
+                }
+                size="small"
+                className="!bg-ink-50/50"
+              >
+                <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                  {getFollowUpDissatisfiedReasonsDisplay(feedback)}
+                </Typography.Paragraph>
+              </Card>
+            </>
           ) : null}
         </div>
 
-        {/* B1 · 工单分类 */}
-        <Card title="工单分类" size="small">
+        {/* 2 · 工单分析 */}
+        <div id="ticket-detail-analysis" className="scroll-mt-2 space-y-3">
+          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+            工单分析
+          </Typography.Title>
+
+          <Card
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="shrink-0">客户请求内容</span>
+                <Typography.Text type="secondary" className="text-xs font-normal">
+                  工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
+                </Typography.Text>
+                <CustomerRequestSourceTag record={feedback} />
+              </span>
+            }
+            size="small"
+          >
+            {canEdit ? (
+              <Input.TextArea
+                rows={2}
+                placeholder="默认为空"
+                maxLength={CUSTOMER_REQUEST_MANUAL_MAX_LENGTH}
+                showCount
+                value={customerRequest}
+                onChange={(e) => {
+                  setCustomerRequest(
+                    normalizeManualCustomerRequest(e.target.value),
+                  )
+                }}
+              />
+            ) : (
+              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                {getDisplayCustomerRequest(feedback) || '—'}
+              </Typography.Paragraph>
+            )}
+          </Card>
+
+          <Card
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="shrink-0">需求痛点挖掘</span>
+                <Typography.Text type="secondary" className="text-xs font-normal">
+                  从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
+                </Typography.Text>
+                <PainPointSourceTag record={feedback} />
+              </span>
+            }
+            size="small"
+          >
+            {canEdit ? (
+              <Input.TextArea
+                rows={2}
+                placeholder="默认为空"
+                maxLength={PAIN_POINT_MANUAL_MAX_LENGTH}
+                showCount
+                value={painPoint}
+                onChange={(e) => {
+                  setPainPoint(normalizeManualPainPoint(e.target.value))
+                }}
+              />
+            ) : (
+              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                {getDisplayPainPoint(feedback) || '—'}
+              </Typography.Paragraph>
+            )}
+          </Card>
+
+          <Card title="根因排查" size="small">
+            <div className="mb-2 inline-flex flex-wrap items-center gap-2">
+              <Typography.Text strong className="text-xs">
+                自动生成
+              </Typography.Text>
+              <AutoRootCauseTag />
+            </div>
+            <Descriptions
+              column={1}
+              size="small"
+              bordered
+              items={[
+                {
+                  key: 'auto',
+                  label: '根因（自动）',
+                  children: getAutoRootCauseDisplay(feedback) || '—',
+                },
+              ]}
+            />
+
+            {canEdit ? (
+              <div className="mt-4 space-y-3">
+                <Typography.Text strong className="block text-xs">
+                  人工复核
+                </Typography.Text>
+                <Typography.Text type="secondary" className="block text-xs">
+                  {isRootCauseReviewManuallyMaintained(feedback)
+                    ? '已人工复核；重新打标默认保留此维度。'
+                    : '默认展示导入列「问题原因」；编辑并保存后将作为人工复核值写入。'}
+                </Typography.Text>
+                <Input.TextArea
+                  rows={3}
+                  placeholder="默认为空"
+                  maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
+                  showCount
+                  value={rootCauseReview}
+                  onChange={(e) => {
+                    setRootCauseReviewTouched(true)
+                    setRootCauseReview(
+                      e.target.value.slice(0, ROOT_CAUSE_REVIEW_MAX_LENGTH),
+                    )
+                  }}
+                />
+              </div>
+            ) : (
+              <Descriptions
+                className="mt-4"
+                column={1}
+                size="small"
+                bordered
+                title="人工复核"
+                items={[
+                  {
+                    key: 'manual',
+                    label: '根因排查',
+                    children: getRootCauseReviewDraftDisplay(feedback) || '—',
+                  },
+                ]}
+              />
+            )}
+          </Card>
+
+          <Card title="优化建议" size="small">
+            <div className="mb-2 inline-flex flex-wrap items-center gap-2">
+              <Typography.Text strong className="text-xs">
+                自动生成
+              </Typography.Text>
+              <AutoOptimizationSourceTag record={feedback} />
+            </div>
+            <Descriptions
+              column={1}
+              size="small"
+              bordered
+              items={[
+                {
+                  key: 'product',
+                  label: '产品/技术优化（自动）',
+                  children: feedback.optimizationProduct?.trim() || '—',
+                },
+                ...(optimizationServiceText
+                  ? [
+                      {
+                        key: 'service',
+                        label: '服务/流程改进（自动）',
+                        children: optimizationServiceText,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+
+            {canEdit ? (
+              <div className="mt-4 space-y-4">
+                <div className="space-y-3">
+                  <Typography.Text strong className="block text-xs">
+                    人工复核
+                  </Typography.Text>
+                  <Form layout="vertical">
+                    <Form.Item label="产品组优化建议" className="!mb-3">
+                      <Input.TextArea
+                        rows={2}
+                        placeholder="默认为空"
+                        maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                        showCount
+                        value={productGroupOptimization}
+                        onChange={(e) => {
+                          setProductGroupOptimization(
+                            e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                          )
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="设计师优化建议" className="!mb-0">
+                      <Input.TextArea
+                        rows={2}
+                        placeholder="默认为空"
+                        maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                        showCount
+                        value={designerOptimization}
+                        onChange={(e) => {
+                          setDesignerOptimization(
+                            e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                          )
+                        }}
+                      />
+                    </Form.Item>
+                  </Form>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1">
+                    <Typography.Text strong className="text-xs">
+                      确立举措
+                    </Typography.Text>
+                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
+                      <span className="inline-flex cursor-help align-middle">
+                        <QuestionCircleOutlined className="text-xs text-ink-400" />
+                      </span>
+                    </Tooltip>
+                  </div>
+                  <Form layout="vertical">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <Typography.Text className="shrink-0 text-sm after:content-[':']">
+                        从举措库选择
+                      </Typography.Text>
+                      <div className="min-w-0 flex-1">
+                        <ActionItemSelect
+                          value={actionId || undefined}
+                          productKey={feedback.productKey || feedback.taxonomyKey}
+                          disabled={saving}
+                          onSelect={(item) => {
+                            setActionId(item.id)
+                            setEstablishedAction(item.content)
+                            setEstablishedActionDetail(item.detail || '')
+                            setActionSchedule(item.scheduleAt || '')
+                            setLinkedFromLibrary(true)
+                          }}
+                          onClear={() => {
+                            setActionId('')
+                            setEstablishedAction('')
+                            setEstablishedActionDetail('')
+                            setActionSchedule('')
+                            setLinkedFromLibrary(false)
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <Form.Item label="举措内容" className="!mb-3">
+                      <Input.TextArea
+                        rows={3}
+                        placeholder="默认为空"
+                        maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
+                        showCount
+                        disabled={libraryLinked || saving}
+                        value={establishedAction}
+                        onChange={(e) => {
+                          setEstablishedAction(
+                            e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
+                          )
+                        }}
+                      />
+                    </Form.Item>
+                    <Collapse
+                      ghost
+                      className="!mb-3 [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                      items={[
+                        {
+                          key: 'detail',
+                          label: '举措详情（可选）',
+                          children: (
+                            <Input.TextArea
+                              rows={3}
+                              placeholder="默认为空"
+                              maxLength={ESTABLISHED_ACTION_DETAIL_MAX_LENGTH}
+                              showCount
+                              disabled={libraryLinked || saving}
+                              value={establishedActionDetail}
+                              onChange={(e) => {
+                                setEstablishedActionDetail(
+                                  e.target.value.slice(0, ESTABLISHED_ACTION_DETAIL_MAX_LENGTH),
+                                )
+                              }}
+                            />
+                          ),
+                        },
+                      ]}
+                    />
+                    <Form.Item label="排期" className="!mb-0">
+                      <DatePicker
+                        className="w-full"
+                        format="YYYY-MM-DD"
+                        placeholder="留空 = 待评估"
+                        value={schedulePickerValue}
+                        disabled={libraryLinked || saving}
+                        allowClear={!libraryLinked}
+                        onChange={(date) =>
+                          setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
+                        }
+                      />
+                    </Form.Item>
+                  </Form>
+                </div>
+              </div>
+            ) : (
+              <>
+                {hasDetailOptimizationContent(feedback) && (
+                  <Descriptions
+                    className="mt-4"
+                    column={1}
+                    size="small"
+                    bordered
+                    title="人工复核"
+                    items={[
+                      ...(feedback.productGroupOptimization?.trim()
+                        ? [
+                            {
+                              key: 'productGroup',
+                              label: '产品组优化建议',
+                              children: feedback.productGroupOptimization.trim(),
+                            },
+                          ]
+                        : []),
+                      ...(feedback.designerOptimization?.trim()
+                        ? [
+                            {
+                              key: 'designer',
+                              label: '设计师优化建议',
+                              children: feedback.designerOptimization.trim(),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                )}
+                {(getEstablishedActionDisplay(feedback) ||
+                  getEstablishedActionDetailDisplay(feedback) ||
+                  feedback.actionSchedule?.trim()) && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center gap-1">
+                      <Typography.Text strong className="text-xs">
+                        确立举措
+                      </Typography.Text>
+                      <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
+                        <span className="inline-flex cursor-help align-middle">
+                          <QuestionCircleOutlined className="text-xs text-ink-400" />
+                        </span>
+                      </Tooltip>
+                    </div>
+                    <Descriptions
+                      column={1}
+                      size="small"
+                      bordered
+                      items={[
+                        {
+                          key: 'content',
+                          label: '举措内容',
+                          children: getEstablishedActionDisplay(feedback) || '—',
+                        },
+                        {
+                          key: 'schedule',
+                          label: '排期',
+                          children: getActionScheduleDisplay(feedback.actionSchedule),
+                        },
+                      ]}
+                    />
+                    {getEstablishedActionDetailDisplay(feedback) ? (
+                      <Collapse
+                        ghost
+                        className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                        items={[
+                          {
+                            key: 'detail',
+                            label: '举措详情',
+                            children: (
+                              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                                {getEstablishedActionDetailDisplay(feedback)}
+                              </Typography.Paragraph>
+                            ),
+                          },
+                        ]}
+                      />
+                    ) : null}
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+
+          <Card title="备注" size="small">
+            {canEdit ? (
+              <Input.TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+            ) : (
+              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                {note?.trim() || '—'}
+              </Typography.Paragraph>
+            )}
+          </Card>
+        </div>
+
+        {/* 3 · 工单分类 */}
+        <div id="ticket-detail-classification" className="scroll-mt-2 space-y-3">
+          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+            工单分类
+          </Typography.Title>
+
+          <Card size="small">
           {canEdit ? (
             <Form layout="vertical">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -651,7 +1227,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   onChange={setSentiment}
                 />
               </Form.Item>
-              <Form.Item className="!mb-2">
+              <Form.Item className="!mb-0">
                 <Checkbox
                   checked={urgencyLevel === 'high'}
                   onChange={(e) => setUrgencyLevel(e.target.checked ? 'high' : 'none')}
@@ -662,14 +1238,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
                   与主情绪独立；强调时效、催办或业务影响时可勾选
                 </Typography.Text>
               </Form.Item>
-              {isFollowUpEnrichableRecord(feedback) && (
-                <Form.Item label="回访满意度" className="!mb-0">
-                  <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
-                  <Typography.Text type="secondary" className="mt-1 block text-xs">
-                    来自满意度回访导入，只读
-                  </Typography.Text>
-                </Form.Item>
-              )}
             </Form>
           ) : (
             <Descriptions column={1} size="small" bordered>
@@ -685,387 +1253,78 @@ export default function FeedbackDrawer({ feedback: selected, onClose }) {
               <Descriptions.Item label="用户情绪">
                 {getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel })}
               </Descriptions.Item>
-              {isFollowUpEnrichableRecord(feedback) && (
-                <Descriptions.Item label="回访满意度">
-                  {getFollowUpSatisfactionDisplay(feedback)}
-                </Descriptions.Item>
-              )}
             </Descriptions>
           )}
-        </Card>
 
-        {isFollowUpEnrichableRecord(feedback) && (
-          <Card
-            title={
-              <span className="inline-flex flex-wrap items-center gap-2">
-                <span className="shrink-0">不满意原因</span>
-                <Typography.Text type="secondary" className="text-xs font-normal">
-                  来自满意度回访汇总
-                </Typography.Text>
-              </span>
-            }
-            size="small"
-            className="!bg-ink-50/50"
-          >
-            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-              {getFollowUpDissatisfiedReasonsDisplay(feedback)}
-            </Typography.Paragraph>
-          </Card>
-        )}
-
-        {/* C · 分析内容区 */}
-        <Card
-          title={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span className="shrink-0">客户请求内容</span>
-              <Typography.Text type="secondary" className="text-xs font-normal">
-                工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
+          {isComplaintTicket(feedback) ? (
+            <>
+              <Divider className="!my-4" />
+              <Typography.Text strong className="mb-2 block text-sm">
+                投诉原因（终判）
               </Typography.Text>
-              <CustomerRequestSourceTag record={feedback} />
-            </span>
-          }
-          size="small"
-        >
-          {canEdit ? (
-            <Input.TextArea
-              rows={2}
-              placeholder="默认为空"
-              maxLength={CUSTOMER_REQUEST_MANUAL_MAX_LENGTH}
-              showCount
-              value={customerRequest}
-              onChange={(e) => {
-                setCustomerRequest(
-                  normalizeManualCustomerRequest(e.target.value),
-                )
-              }}
-            />
-          ) : (
-            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-              {getDisplayCustomerRequest(feedback) || '—'}
-            </Typography.Paragraph>
-          )}
-        </Card>
-
-        <Card
-          title={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span className="shrink-0">需求痛点挖掘</span>
-              <Typography.Text type="secondary" className="text-xs font-normal">
-                从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
+              <Descriptions column={1} size="small" bordered className="!mb-3">
+                <Descriptions.Item label="一级（终判）">
+                  {getComplaintCauseL1Final(feedback) || EMPTY_COMPLAINT_CAUSE_LABEL}
+                </Descriptions.Item>
+                <Descriptions.Item label="二级（终判）">
+                  {feedback.complaintCauseL2Final?.trim() || EMPTY_COMPLAINT_CAUSE_LABEL}
+                </Descriptions.Item>
+                <Descriptions.Item label="三级（终判）">
+                  {feedback.complaintCauseL3Final?.trim() || EMPTY_COMPLAINT_CAUSE_LABEL}
+                </Descriptions.Item>
+              </Descriptions>
+              <Typography.Text type="secondary" className="mb-2 block text-xs">
+                只读展示工单导入的终判字段；下方人工复核（二级/三级）为可选，保存后重新打标不会覆盖。
               </Typography.Text>
-              <PainPointSourceTag record={feedback} />
-            </span>
-          }
-          size="small"
-        >
-          {canEdit ? (
-            <Input.TextArea
-              rows={2}
-              placeholder="默认为空"
-              maxLength={PAIN_POINT_MANUAL_MAX_LENGTH}
-              showCount
-              value={painPoint}
-              onChange={(e) => {
-                setPainPoint(normalizeManualPainPoint(e.target.value))
-              }}
-            />
-          ) : (
-            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-              {getDisplayPainPoint(feedback) || '—'}
-            </Typography.Paragraph>
-          )}
-        </Card>
-
-        <Card title="优化建议" size="small">
-          <div className="mb-2 inline-flex flex-wrap items-center gap-2">
-            <Typography.Text strong className="text-xs">
-              {/* 优化建议 · 自动生成 */}
-              自动生成
-            </Typography.Text>
-            <AutoOptimizationSourceTag record={feedback} />
-          </div>
-          <Descriptions
-            column={1}
-            size="small"
-            bordered
-            items={[
-              {
-                key: 'product',
-                label: '产品/技术优化（自动）',
-                children: feedback.optimizationProduct?.trim() || '—',
-              },
-              ...(optimizationServiceText
-                ? [
-                    {
-                      key: 'service',
-                      label: '服务/流程改进（自动）',
-                      children: optimizationServiceText,
-                    },
-                  ]
-                : []),
-            ]}
-          />
-
-          {canEdit ? (
-            <div className="mt-4 space-y-4">
-              <div className="space-y-3">
-                <Typography.Text strong className="block text-xs">
-                  {/* 优化建议 · 人工复核 */}
-                  人工复核
-                </Typography.Text>
+              {canEdit ? (
                 <Form layout="vertical">
-                  <Form.Item label="产品组优化建议" className="!mb-3">
-                    <Input.TextArea
-                      rows={2}
-                      placeholder="默认为空"
-                      maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                      showCount
-                      value={productGroupOptimization}
-                      onChange={(e) => {
-                        setProductGroupOptimization(
-                          e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                        )
-                      }}
-                    />
-                  </Form.Item>
-                  <Form.Item label="设计师优化建议" className="!mb-0">
-                    <Input.TextArea
-                      rows={2}
-                      placeholder="默认为空"
-                      maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                      showCount
-                      value={designerOptimization}
-                      onChange={(e) => {
-                        setDesignerOptimization(
-                          e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                        )
-                      }}
-                    />
-                  </Form.Item>
-                </Form>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-1">
-                  <Typography.Text strong className="text-xs">
-                    确立举措
-                  </Typography.Text>
-                  <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
-                    <span className="inline-flex cursor-help align-middle">
-                      <QuestionCircleOutlined className="text-xs text-ink-400" />
-                    </span>
-                  </Tooltip>
-                </div>
-                <Form layout="vertical">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <Typography.Text className="shrink-0 text-sm after:content-[':']">
-                      从举措库选择
-                    </Typography.Text>
-                    <div className="min-w-0 flex-1">
-                      <ActionItemSelect
-                        value={actionId || undefined}
-                        productKey={feedback.productKey || feedback.taxonomyKey}
-                        disabled={saving}
-                        onSelect={(item) => {
-                          setActionId(item.id)
-                          setEstablishedAction(item.content)
-                          setEstablishedActionDetail(item.detail || '')
-                          setActionSchedule(item.scheduleAt || '')
-                          setLinkedFromLibrary(true)
-                        }}
-                        onClear={() => {
-                          setActionId('')
-                          setEstablishedAction('')
-                          setEstablishedActionDetail('')
-                          setActionSchedule('')
-                          setLinkedFromLibrary(false)
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Form.Item label="二级（人工复核）" className="!mb-0">
+                      <Input
+                        placeholder="默认为空"
+                        maxLength={COMPLAINT_CAUSE_REVIEW_MAX_LENGTH}
+                        value={complaintCauseL2Review}
+                        onChange={(e) => {
+                          setComplaintCauseReviewTouched(true)
+                          setComplaintCauseL2Review(
+                            e.target.value.slice(0, COMPLAINT_CAUSE_REVIEW_MAX_LENGTH),
+                          )
                         }}
                       />
-                    </div>
+                    </Form.Item>
+                    <Form.Item label="三级（人工复核）" className="!mb-0">
+                      <Input
+                        placeholder="默认为空"
+                        maxLength={COMPLAINT_CAUSE_REVIEW_MAX_LENGTH}
+                        value={complaintCauseL3Review}
+                        onChange={(e) => {
+                          setComplaintCauseReviewTouched(true)
+                          setComplaintCauseL3Review(
+                            e.target.value.slice(0, COMPLAINT_CAUSE_REVIEW_MAX_LENGTH),
+                          )
+                        }}
+                      />
+                    </Form.Item>
                   </div>
-                  <Form.Item label="举措内容" className="!mb-3">
-                    <Input.TextArea
-                      rows={3}
-                      placeholder="默认为空"
-                      maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
-                      showCount
-                      disabled={libraryLinked || saving}
-                      value={establishedAction}
-                      onChange={(e) => {
-                        setEstablishedAction(
-                          e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
-                        )
-                      }}
-                    />
-                  </Form.Item>
-                  <Collapse
-                    ghost
-                    className="!mb-3 [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
-                    items={[
-                      {
-                        key: 'detail',
-                        label: '举措详情（可选）',
-                        children: (
-                          <Input.TextArea
-                            rows={3}
-                            placeholder="默认为空"
-                            maxLength={ESTABLISHED_ACTION_DETAIL_MAX_LENGTH}
-                            showCount
-                            disabled={libraryLinked || saving}
-                            value={establishedActionDetail}
-                            onChange={(e) => {
-                              setEstablishedActionDetail(
-                                e.target.value.slice(0, ESTABLISHED_ACTION_DETAIL_MAX_LENGTH),
-                              )
-                            }}
-                          />
-                        ),
-                      },
-                    ]}
-                  />
-                  <Form.Item label="排期" className="!mb-0">
-                    <DatePicker
-                      className="w-full"
-                      format="YYYY-MM-DD"
-                      placeholder="留空 = 待评估"
-                      value={schedulePickerValue}
-                      disabled={libraryLinked || saving}
-                      allowClear={!libraryLinked}
-                      onChange={(date) =>
-                        setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
-                      }
-                    />
-                  </Form.Item>
-                </Form>
-              </div>
-            </div>
-          ) : (
-            <>
-              {hasDetailOptimizationContent(feedback) && (
-                <Descriptions
-                  className="mt-4"
-                  column={1}
-                  size="small"
-                  bordered
-                  title="人工复核"
-                  items={[
-                    ...(feedback.productGroupOptimization?.trim()
-                      ? [
-                          {
-                            key: 'productGroup',
-                            label: '产品组优化建议',
-                            children: feedback.productGroupOptimization.trim(),
-                          },
-                        ]
-                      : []),
-                    ...(feedback.designerOptimization?.trim()
-                      ? [
-                          {
-                            key: 'designer',
-                            label: '设计师优化建议',
-                            children: feedback.designerOptimization.trim(),
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
-              )}
-              {(getEstablishedActionDisplay(feedback) ||
-                getEstablishedActionDetailDisplay(feedback) ||
-                feedback.actionSchedule?.trim()) && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center gap-1">
-                    <Typography.Text strong className="text-xs">
-                      确立举措
+                  {isComplaintCauseReviewManuallyMaintained(feedback) ? (
+                    <Typography.Text type="secondary" className="mt-2 block text-xs">
+                      已人工复核；重新打标默认保留此维度。
                     </Typography.Text>
-                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
-                      <span className="inline-flex cursor-help align-middle">
-                        <QuestionCircleOutlined className="text-xs text-ink-400" />
-                      </span>
-                    </Tooltip>
-                  </div>
-                  <Descriptions
-                    column={1}
-                    size="small"
-                    bordered
-                    items={[
-                      {
-                        key: 'content',
-                        label: '举措内容',
-                        children: getEstablishedActionDisplay(feedback) || '—',
-                      },
-                      {
-                        key: 'schedule',
-                        label: '排期',
-                        children: getActionScheduleDisplay(feedback.actionSchedule),
-                      },
-                    ]}
-                  />
-                  {getEstablishedActionDetailDisplay(feedback) ? (
-                    <Collapse
-                      ghost
-                      className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
-                      items={[
-                        {
-                          key: 'detail',
-                          label: '举措详情',
-                          children: (
-                            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                              {getEstablishedActionDetailDisplay(feedback)}
-                            </Typography.Paragraph>
-                          ),
-                        },
-                      ]}
-                    />
                   ) : null}
-                </div>
+                </Form>
+              ) : (
+                <Descriptions column={2} size="small" bordered className="max-w-full">
+                  <Descriptions.Item label="二级（人工复核）">
+                    {complaintCauseL2Review || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="三级（人工复核）">
+                    {complaintCauseL3Review || '—'}
+                  </Descriptions.Item>
+                </Descriptions>
               )}
             </>
-          )}
-        </Card>
-
-        {/* D · 处理与备注 */}
-        <Card title="处理意见（工单原文）" size="small">
-          <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
-            {handlingOriginalText || '—'}
-          </Typography.Paragraph>
-          <Typography.Text type="secondary" className="mt-2 block text-xs">
-            优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
-          </Typography.Text>
-        </Card>
-
-        <Card title="根因排查" size="small">
-          {canEdit ? (
-            <>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                {isRootCauseReviewManuallyMaintained(feedback)
-                  ? '已人工复核；重新打标默认保留此维度。'
-                  : '默认展示工单「问题原因」或结构化根因；编辑并保存后将作为人工复核值写入。'}
-              </Typography.Text>
-              <Input.TextArea
-                rows={3}
-                placeholder="默认为空"
-                maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
-                showCount
-                value={rootCauseReview}
-                onChange={(e) => {
-                  setRootCauseReviewTouched(true)
-                  setRootCauseReview(
-                    e.target.value.slice(0, ROOT_CAUSE_REVIEW_MAX_LENGTH),
-                  )
-                }}
-              />
-            </>
-          ) : (
-            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-              {getRootCauseReviewDraftDisplay(feedback) || '—'}
-            </Typography.Paragraph>
-          )}
-        </Card>
-
-        <div>
-          <Typography.Text strong className="text-xs">备注</Typography.Text>
-          <Input.TextArea className="mt-1" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+          ) : null}
+          </Card>
         </div>
       </div>
       <RecordConflictModal

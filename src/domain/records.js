@@ -62,6 +62,9 @@
  *   complaintCauseL1Final?: string
  *   complaintCauseL2Final?: string
  *   complaintCauseL3Final?: string
+ *   complaintCauseL1Review?: string
+ *   complaintCauseL2Review?: string
+ *   complaintCauseL3Review?: string
  *   sentiment: Sentiment
  *   urgencyLevel?: import('../lib/sentiment.js').UrgencyLevel
  *   themes: string[]

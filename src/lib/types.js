@@ -26,6 +26,9 @@
  * @property {string} [complaintCauseL1Final] - 投诉原因一级（终判），仅 complaint_ticket
  * @property {string} [complaintCauseL2Final] - 投诉原因二级（终判）
  * @property {string} [complaintCauseL3Final] - 投诉原因三级（终判）
+ * @property {string} [complaintCauseL1Review] - 投诉原因一级（终判）人工复核，重新打标不覆盖
+ * @property {string} [complaintCauseL2Review] - 投诉原因二级（终判）人工复核
+ * @property {string} [complaintCauseL3Review] - 投诉原因三级（终判）人工复核
  * @property {string} journeyL1 - 用户旅程一级
  * @property {string} journeyL2 - 用户旅程二级（即旅程标签，无二级时标签取一级）
  * @property {string} problemSummary - 需求痛点挖掘（与 painPoint 同步）
@@ -48,7 +51,7 @@
  * @property {string} [establishedActionDetail] - 确立举措详情副本（可选）
  * @property {string} [actionId] - 关联举措库 ID（R4）
  * @property {string} [actionSchedule] - 排期（可空，空=待评估）
- * @property {string} [rootCauseReview] - 根因排查（人工复核，默认来自问题原因）
+ * @property {string} [rootCauseReview] - 根因排查（人工复核，默认来自导入列「问题原因」）
  * @property {string} [productGroupOptimization] - 产品组优化建议（不参与聚类）
  * @property {string} [designerOptimization] - 设计师优化建议（不参与聚类）
  * @property {Record<string, string>} [sourceColumns] - 导入时原始工单列快照（中文列名 → 值）

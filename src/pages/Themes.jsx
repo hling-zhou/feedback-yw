@@ -14,6 +14,7 @@ import InsightFeedbackList, {
   INSIGHT_FEEDBACK_PREVIEW_LIMIT,
 } from '../components/InsightFeedbackList.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
+import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
 import {
@@ -99,7 +100,12 @@ export default function Themes() {
     l1: initialParams.journeyL1 || undefined,
     l2: initialParams.journeyL2 || undefined,
   }))
-  const [selected, setSelected] = useState(null)
+  const {
+    selected,
+    selectFeedback,
+    requestCloseDrawer,
+    onDrawerDirtyChange,
+  } = useFeedbackDrawerSelection()
 
   const backgroundTaskActive = retagSession.active || importSession.active || rebuildBlocked
   const backgroundTaskTip = retagSession.active
@@ -529,7 +535,7 @@ export default function Themes() {
             }
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
-            onItemClick={setSelected}
+            onItemClick={selectFeedback}
             viewAllHref={detailFeedbacksHref}
             emptyHint="暂无工单"
           />
@@ -595,7 +601,7 @@ export default function Themes() {
             }
             journeyL1={journeySel.l1}
             journeyL2={journeySel.l2}
-            onItemClick={setSelected}
+            onItemClick={selectFeedback}
             viewAllHref={detailFeedbacksHref}
             emptyHint="点击左侧旅程环节查看工单"
           />
@@ -625,7 +631,11 @@ export default function Themes() {
         </Card>
       )}
 
-      <FeedbackDrawer feedback={selected} onClose={() => setSelected(null)} />
+      <FeedbackDrawer
+        feedback={selected}
+        onClose={requestCloseDrawer}
+        onDirtyChange={onDrawerDirtyChange}
+      />
     </div>
   )
 }

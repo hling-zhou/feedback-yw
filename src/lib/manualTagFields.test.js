@@ -69,6 +69,32 @@ describe('manualTagFields', () => {
     ).toContain('optimization')
   })
 
+  it('mergeManualTagFieldsOnUserEdit marks complaintCauseReview when review fields change', () => {
+    expect(
+      mergeManualTagFieldsOnUserEdit(base, { complaintCauseL2Review: '复核二级' }),
+    ).toContain('complaintCauseReview')
+  })
+
+  it('preserveManualTags keeps complaint cause review fields', () => {
+    const original = {
+      ...base,
+      manualTagFields: ['complaintCauseReview'],
+      complaintCauseL1Review: '复核一级',
+      complaintCauseL2Review: '复核二级',
+      complaintCauseL3Review: '复核三级',
+    }
+    const processed = {
+      ...original,
+      complaintCauseL1Review: '',
+      complaintCauseL2Review: '',
+      complaintCauseL3Review: '',
+    }
+    const kept = preserveManualTags(original, processed)
+    expect(kept.complaintCauseL1Review).toBe('复核一级')
+    expect(kept.complaintCauseL2Review).toBe('复核二级')
+    expect(kept.complaintCauseL3Review).toBe('复核三级')
+  })
+
   it('applyForceRetagOverrides clears manual tags, review text, and resets rootCauseReview', () => {
     const cleared = applyForceRetagOverrides({
       ...base,

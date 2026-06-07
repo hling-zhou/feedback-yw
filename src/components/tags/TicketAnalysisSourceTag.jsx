@@ -82,3 +82,13 @@ export function AutoOptimizationSourceTag({ record }) {
     />
   )
 }
+
+/** 根因排查 · 自动生成（rootCause，重新打标时更新） */
+export function AutoRootCauseTag() {
+  return (
+    <TicketAnalysisSourceTag
+      source="rule"
+      title="根因（自动）来自打标规则 extractRootCause；重新打标时会更新"
+    />
+  )
+}

@@ -26,6 +26,7 @@ import {
   workbenchTicketRecords,
 } from '../snapshots/recordScope.js'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
+import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import { ensurePdfFontsReady } from '../lib/report/registerPdfFonts.js'
 import {
   formatInsightRebuildButtonLabel,
@@ -72,9 +73,12 @@ export default function InsightWorkbench() {
     return TAB_OVERVIEW
   })
   const [ticketProduct, setTicketProduct] = useState('')
-  const [selectedFeedback, setSelectedFeedback] = useState(
-    /** @type {import('../lib/types.js').FeedbackRecord | null} */ (null),
-  )
+  const {
+    selected: selectedFeedback,
+    selectFeedback,
+    requestCloseDrawer,
+    onDrawerDirtyChange,
+  } = useFeedbackDrawerSelection()
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -128,7 +132,7 @@ export default function InsightWorkbench() {
           snapshotRebuilding={snapshotRebuilding}
           rebuildDisabled={rebuildDisabled}
           feedbacks={feedbacks}
-          onOpenFeedback={setSelectedFeedback}
+          onOpenFeedback={selectFeedback}
         />
       )
     }
@@ -297,7 +301,11 @@ export default function InsightWorkbench() {
         </Spin>
       )}
 
-      <FeedbackDrawer feedback={selectedFeedback} onClose={() => setSelectedFeedback(null)} />
+      <FeedbackDrawer
+        feedback={selectedFeedback}
+        onClose={requestCloseDrawer}
+        onDirtyChange={onDrawerDirtyChange}
+      />
     </div>
     </PdfExportProvider>
   )

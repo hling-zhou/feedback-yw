@@ -42,9 +42,7 @@ const URGENT_IMPORT_TEXT = /^(?:是|加急|高|yes|true|1)$/i
  * @returns {string}
  */
 export function resolveRootCauseReviewFallback(record) {
-  const fromColumn = record.sourceColumns?.['问题原因']?.trim()
-  if (fromColumn) return fromColumn
-  return record.rootCause?.trim() || ''
+  return record.sourceColumns?.['问题原因']?.trim() || ''
 }
 
 /**

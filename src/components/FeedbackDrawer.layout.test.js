@@ -3,10 +3,9 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * P2-0 layout regression: A → B1 → C → D (DESIGN-20260601-1 §3.1).
- * 投诉原因（终判）并入 A 区基础信息行右侧。
+ * 工单详情抽屉三区布局：工单内容 → 工单分析 → 工单分类（锚点导航在标题行）。
  */
-describe('FeedbackDrawer layout (P2-0)', () => {
+describe('FeedbackDrawer layout', () => {
   const src = readFileSync(
     resolve(import.meta.dirname, 'FeedbackDrawer.jsx'),
     'utf8',
@@ -18,49 +17,53 @@ describe('FeedbackDrawer layout (P2-0)', () => {
     return index
   }
 
-  it('orders sections A → B1 → C → D', () => {
-    const a = marker('ticketMetaLine')
-    const aComplaintCause = marker('getComplaintCauseFinalDisplay(feedback)')
-    const b1 = marker('title="工单分类"')
-    const cRequest = marker('shrink-0">客户请求内容</span>')
-    const cPain = marker('shrink-0">需求痛点挖掘</span>')
-    const cOpt = marker('title="优化建议"')
-    const cAuto = marker('优化建议 · 自动生成')
-    const cManual = marker('优化建议 · 人工复核')
-    const cProductGroup = marker('label="产品组优化建议"')
-    const cLibrarySelect = marker('从举措库选择')
-    const cEstablishedSection = marker('label="举措内容"')
-    const cEstablishedDetail = marker('label: \'举措详情（可选）\'')
-    const cSchedule = marker('label="排期"')
-    const dSection = marker('{/* D · 处理与备注 */}')
-    const dHandling = marker('处理意见（工单原文）')
-    const dRootCause = marker('title="根因排查"')
-    const dNote = marker('Typography.Text strong className="text-xs">备注')
+  it('places anchor nav in drawer title and orders content sections', () => {
+    const nav = marker('aria-label="工单详情分区导航"')
+    marker('relative z-[1] shrink-0 text-base font-semibold leading-none')
+    const meta = marker('{ticketMetaLine}')
+    const content = marker('id="ticket-detail-content"')
+    const handling = marker('处理意见（工单原文）')
+    const rootCause = marker('title="根因排查"')
+    const followUp = marker('title="回访满意度"')
+    const analysis = marker('id="ticket-detail-analysis"')
+    const request = marker('shrink-0">客户请求内容</span>')
+    const pain = marker('shrink-0">需求痛点挖掘</span>')
+    const opt = marker('title="优化建议"')
+    const note = marker('title="备注"')
+    const classification = marker('id="ticket-detail-classification"')
+    const tags = marker('dimension="requestScene"')
+    const causeFinal = marker('投诉原因（终判）')
+    const causeReview = marker('二级（人工复核）')
 
-    expect(a).toBeLessThan(aComplaintCause)
-    expect(aComplaintCause).toBeLessThan(b1)
-    expect(b1).toBeLessThan(cRequest)
-    expect(cRequest).toBeLessThan(cPain)
-    expect(cPain).toBeLessThan(cOpt)
-    expect(cOpt).toBeLessThan(cAuto)
-    expect(cAuto).toBeLessThan(cManual)
-    expect(cManual).toBeLessThan(cProductGroup)
-    expect(cProductGroup).toBeLessThan(cLibrarySelect)
-    expect(cLibrarySelect).toBeLessThan(cEstablishedSection)
-    expect(cEstablishedSection).toBeLessThan(cEstablishedDetail)
-    expect(cEstablishedDetail).toBeLessThan(cSchedule)
-    expect(cSchedule).toBeLessThan(dSection)
-    expect(dSection).toBeLessThan(dHandling)
-    expect(dHandling).toBeLessThan(dRootCause)
-    expect(dRootCause).toBeLessThan(dNote)
+    expect(src).toMatch(/title=\{[\s\S]*TicketDetailSectionNav/)
+    expect(src).toContain('justify-center')
+    expect(nav).toBeLessThan(meta)
+    expect(meta).toBeLessThan(content)
+    expect(content).toBeLessThan(handling)
+    expect(handling).toBeLessThan(followUp)
+    expect(followUp).toBeLessThan(analysis)
+    expect(analysis).toBeLessThan(request)
+    expect(request).toBeLessThan(pain)
+    expect(pain).toBeLessThan(rootCause)
+    expect(rootCause).toBeLessThan(opt)
+    expect(opt).toBeLessThan(note)
+    expect(note).toBeLessThan(classification)
+    expect(classification).toBeLessThan(tags)
+    expect(tags).toBeLessThan(causeFinal)
+    expect(causeFinal).toBeLessThan(causeReview)
+    expect(src).toContain('closable={{ placement: \'end\' }}')
   })
 
-  it('places handling opinion after analysis cards (not between B and C)', () => {
-    const b1 = marker('title="工单分类"')
-    const cRequest = marker('shrink-0">客户请求内容</span>')
-    const dHandling = marker('处理意见（工单原文）')
+  it('exposes scroll helper and hides horizontal overflow in drawer body', () => {
+    expect(src).toContain('scrollToTicketDetailSection')
+    expect(src).toContain('scrollIntoView')
+    expect(src).toContain('overflowX: \'hidden\'')
+  })
 
-    expect(cRequest).toBeLessThan(dHandling)
-    expect(b1).toBeLessThan(dHandling)
+  it('confirms before close when drawer has unsaved edits', () => {
+    expect(src).toContain('handleRequestClose')
+    expect(src).toContain('isFeedbackDrawerFormDirty')
+    expect(src).toContain('confirmDiscardFeedbackDrawerEdits')
+    expect(src).toContain('onDirtyChange')
   })
 })

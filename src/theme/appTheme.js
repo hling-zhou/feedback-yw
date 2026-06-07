@@ -1,10 +1,19 @@
+/** 品牌 indigo，与 tailwind.config.js brand-600 一致 */
+const BRAND_PRIMARY = '#4F46E5'
+/** link 按钮 hover/active 与 primary 按钮色阶对齐（Ant Design 默认 link 走 colorInfo #1677ff） */
+const BRAND_PRIMARY_HOVER = '#7d72f2'
+const BRAND_PRIMARY_ACTIVE = '#3432bf'
+
 /**
  * 方案 A：轻度紧凑 — 全局 Ant Design token，与 Tailwind 语义间距类配合使用。
  * @type {import('antd').ThemeConfig}
  */
 export const appTheme = {
   token: {
-    colorPrimary: '#4F46E5',
+    colorPrimary: BRAND_PRIMARY,
+    colorLink: BRAND_PRIMARY,
+    colorLinkHover: BRAND_PRIMARY_HOVER,
+    colorLinkActive: BRAND_PRIMARY_ACTIVE,
     borderRadius: 8,
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
     fontSize: 13,

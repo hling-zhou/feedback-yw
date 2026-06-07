@@ -70,12 +70,12 @@ describe('export v2 UAT fixtures (P1-4 / P1-5)', () => {
       }
     })
 
-    it('rootCauseReview falls back to 问题原因 then rootCause', () => {
+    it('rootCauseReview falls back to 问题原因 column only', () => {
       const c03 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-03')
       expect(recordToExportRowV2(c03)['根因排查']).toBe('磁盘使用率 100%')
 
       const c04 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-04')
-      expect(recordToExportRowV2(c04)['根因排查']).toBe('AccessKey 轮换未同步')
+      expect(recordToExportRowV2(c04)['根因排查']).toBe('')
 
       const c08 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-08')
       expect(recordToExportRowV2(c08)['根因排查']).toBe('')

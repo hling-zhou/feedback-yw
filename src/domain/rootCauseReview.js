@@ -7,7 +7,17 @@ import { resolveRootCauseReviewFallback } from './overridePolicy.js'
 export const ROOT_CAUSE_REVIEW_MAX_LENGTH = 1000
 
 /**
- * 工单详情/导出可读的有效根因排查：优先人工字段，否则回退问题原因。
+ * 根因排查 · 自动生成：打标流水线写入的 rootCause（重新打标可更新）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ * @returns {string}
+ */
+export function getAutoRootCauseDisplay(record) {
+  return record?.rootCause?.trim() || ''
+}
+
+/**
+ * 工单详情/导出可读的有效根因排查（人工复核）：优先已存值，否则回退导入列「问题原因」。
  *
  * @param {FeedbackRecord | null | undefined} record
  * @returns {string}
@@ -42,7 +52,7 @@ export function isRootCauseReviewManuallyMaintained(record) {
 }
 
 /**
- * 详情打开时 TextArea 展示值：未人工维护时显示 effective 默认，否则显示已存值。
+ * 人工复核打开时 TextArea 展示值：未人工维护时默认导入列「问题原因」，否则显示已存值。
  *
  * @param {FeedbackRecord | null | undefined} record
  * @returns {string}

@@ -47,14 +47,14 @@ const baseRecord = {
 }
 
 describe('overridePolicy', () => {
-  it('resolveRootCauseReviewFallback prefers 问题原因 column', () => {
+  it('resolveRootCauseReviewFallback uses 问题原因 column only', () => {
     expect(resolveRootCauseReviewFallback(baseRecord)).toBe('列快照根因')
     expect(
       resolveRootCauseReviewFallback({
         ...baseRecord,
         sourceColumns: {},
       }),
-    ).toBe('结构化根因')
+    ).toBe('')
   })
 
   it('FORCE_ALL_HUMAN clears human fields and resets rootCauseReview', () => {
