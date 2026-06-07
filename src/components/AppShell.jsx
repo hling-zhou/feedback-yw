@@ -8,9 +8,10 @@ import {
   UnorderedListOutlined,
   TeamOutlined,
   LogoutOutlined,
+  LockOutlined,
   FlagOutlined,
 } from '@ant-design/icons'
-import { Button, Layout, Menu, Space, Statistic, Tag, Typography } from 'antd'
+import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import {
   APP_SIDER_BREAKPOINT,
@@ -54,6 +55,17 @@ export default function AppShell() {
     if (item.adminOnly && user?.role !== 'admin') return false
     return canRoute(item.key)
   }).map(({ key, label, icon }) => ({ key, label, icon }))
+
+  const goChangePassword = () => {
+    navigate('/change-password?mode=voluntary', {
+      state: user ? { username: user.username, mode: 'voluntary' } : { mode: 'voluntary' },
+    })
+  }
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
 
   return (
     <Layout
@@ -109,6 +121,29 @@ export default function AppShell() {
             onClick={({ key }) => navigate(key)}
           />
 
+          {collapsed && user ? (
+            <div className="flex shrink-0 flex-col items-center gap-1 border-t border-ink-100 p-2">
+              <Tooltip title="修改密码" placement="right">
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label="修改密码"
+                  icon={<LockOutlined />}
+                  onClick={goChangePassword}
+                />
+              </Tooltip>
+              <Tooltip title="退出登录" placement="right">
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label="退出登录"
+                  icon={<LogoutOutlined />}
+                  onClick={handleLogout}
+                />
+              </Tooltip>
+            </div>
+          ) : null}
+
           {!collapsed && (
             <div className="shrink-0 border-t border-ink-100 p-4">
               {user && (
@@ -122,18 +157,29 @@ export default function AppShell() {
                       {user.team}
                     </Typography.Text>
                   </Space>
-                  <Button
-                    type="link"
-                    size="small"
-                    className="!mt-1 !h-auto !p-0 !text-xs"
-                    icon={<LogoutOutlined />}
-                    onClick={async () => {
-                      await logout()
-                      navigate('/login')
-                    }}
-                  >
-                    退出登录
-                  </Button>
+                  <Space size={4} wrap className="mt-1">
+                    <Button
+                      type="link"
+                      size="small"
+                      className="!h-auto !p-0 !text-xs"
+                      icon={<LockOutlined />}
+                      onClick={goChangePassword}
+                    >
+                      修改密码
+                    </Button>
+                    <Typography.Text type="secondary" className="text-xs">
+                      ·
+                    </Typography.Text>
+                    <Button
+                      type="link"
+                      size="small"
+                      className="!h-auto !p-0 !text-xs"
+                      icon={<LogoutOutlined />}
+                      onClick={handleLogout}
+                    >
+                      退出登录
+                    </Button>
+                  </Space>
                 </div>
               )}
               {period && (

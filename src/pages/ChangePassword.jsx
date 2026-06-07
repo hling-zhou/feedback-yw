@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { useAuth } from '../context/AuthContext.jsx'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { PASSWORD_EXPIRED_MESSAGE } from '../domain/passwordExpiry.js'
@@ -10,6 +11,7 @@ export default function ChangePassword() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
+  const { user, logout, isAuthenticated } = useAuth()
   const [loading, setLoading] = useState(false)
   const state = /** @type {{ username?: string; passwordChangedAt?: string; mode?: 'voluntary' | 'expired' } | null} */ (
     location.state
@@ -17,6 +19,8 @@ export default function ChangePassword() {
 
   const voluntary =
     searchParams.get('mode') === 'voluntary' || state?.mode === 'voluntary'
+  const fromApp = voluntary && isAuthenticated
+  const lockedUsername = user?.username || state?.username || ''
 
   const handleSubmit = async (values) => {
     setLoading(true)
@@ -29,6 +33,9 @@ export default function ChangePassword() {
           newPassword: values.newPassword,
         }),
       })
+      if (isAuthenticated) {
+        await logout()
+      }
       message.success('密码已更新，请使用新密码登录')
       navigate('/login', { replace: true })
     } catch (err) {
@@ -46,7 +53,9 @@ export default function ChangePassword() {
         </Typography.Title>
         <Typography.Paragraph className="!mb-0 !mt-2 !text-sm !text-ink-500">
           {voluntary
-            ? '请输入用户名、当前密码并设置新密码。修改成功后需重新登录。'
+            ? fromApp
+              ? '请输入当前密码并设置新密码。修改成功后需重新登录。'
+              : '请输入用户名、当前密码并设置新密码。修改成功后需重新登录。'
             : PASSWORD_EXPIRED_MESSAGE}
         </Typography.Paragraph>
 
@@ -72,14 +81,19 @@ export default function ChangePassword() {
           className="mt-6"
           layout="vertical"
           onFinish={handleSubmit}
-          initialValues={{ username: state?.username || '' }}
+          initialValues={{ username: lockedUsername }}
         >
           <Form.Item
             label="用户名"
             name="username"
             rules={[{ required: true, message: '请输入用户名' }]}
           >
-            <Input prefix={<UserOutlined className="text-ink-400" />} autoComplete="username" />
+            <Input
+              prefix={<UserOutlined className="text-ink-400" />}
+              autoComplete="username"
+              readOnly={fromApp}
+              disabled={fromApp}
+            />
           </Form.Item>
           <Form.Item
             label="当前密码"
@@ -127,14 +141,20 @@ export default function ChangePassword() {
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Button type="primary" htmlType="submit" block size="large" loading={loading}>
-            保存并返回登录
+            {fromApp ? '保存并重新登录' : '保存并返回登录'}
           </Button>
         </Form>
 
         <div className="mt-4 text-center">
-          <Link to="/login" className="text-sm text-ink-500">
-            返回登录
-          </Link>
+          {fromApp ? (
+            <Link to="/workbench" className="text-sm text-ink-500">
+              返回工作台
+            </Link>
+          ) : (
+            <Link to="/login" className="text-sm text-ink-500">
+              返回登录
+            </Link>
+          )}
         </div>
       </Card>
     </main>
