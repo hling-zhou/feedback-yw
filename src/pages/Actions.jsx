@@ -38,7 +38,11 @@ import {
   actionItemStatusRequiresEmptySchedule,
   actionItemStatusRequiresSchedule,
 } from '../domain/actionItem.js'
-import { ACTIONS_PAGE_SUBTITLE_HINT, REQUIREMENT_TICKET_FIELD_TIP } from '../domain/establishedActionHints.js'
+import {
+  ACTIONS_PAGE_SUBTITLE_HINT,
+  REQUIREMENT_TICKET_FIELD_TIP,
+  SCHEDULE_AT_HEADER_HINT,
+} from '../domain/establishedActionHints.js'
 import {
   buildTicketIdSetFromRecords,
   linkedTicketIdsInPeriod,
@@ -850,7 +854,7 @@ export default function Actions() {
       ),
     },
     {
-      title: '排期时间',
+      title: <ColumnTitleWithHint title="排期时间" hint={SCHEDULE_AT_HEADER_HINT} />,
       key: 'scheduleAt',
       width: 120,
       render: (_, record) => {
