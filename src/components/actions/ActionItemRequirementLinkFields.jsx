@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Form, Input, Radio, Table, Tag, Typography } from 'antd'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import ActionItemStatusTag from '../tags/ActionItemStatusTag.jsx'
-import { normalizeRequirementTicketId } from '../../domain/requirementTicketProgress.js'
+import {
+  normalizeRequirementTicketId,
+  REQUIREMENT_PROGRESS_FIELD_LABELS,
+} from '../../domain/requirementTicketProgress.js'
 import { lookupRequirementTickets } from '../../lib/requirementTicketProgressClient.js'
 
 /** @typedef {import('../../domain/requirementTicketProgress.js').RequirementTicketDetail} RequirementTicketDetail */
@@ -99,7 +102,16 @@ export default function ActionItemRequirementLinkFields({
       ),
     },
     {
-      title: '排期时间',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.product,
+      dataIndex: 'product',
+      width: 96,
+      render: (value, record) => {
+        if (record.syncState === 'missing') return <Typography.Text type="secondary">—</Typography.Text>
+        return value || '—'
+      },
+    },
+    {
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt,
       dataIndex: 'scheduleAt',
       width: 120,
       render: (value, record) => {
@@ -108,12 +120,23 @@ export default function ActionItemRequirementLinkFields({
       },
     },
     {
-      title: '状态',
-      key: 'status',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus,
+      dataIndex: 'workflowStatus',
+      width: 100,
+      render: (value, record) => {
+        if (record.syncState === 'missing') {
+          return <Tag color="warning">未同步</Tag>
+        }
+        return value || '—'
+      },
+    },
+    {
+      title: '映射状态',
+      key: 'mappedStatus',
       width: 100,
       render: (_, record) => {
         if (record.syncState === 'missing') {
-          return <Tag color="warning">未同步</Tag>
+          return <Typography.Text type="secondary">—</Typography.Text>
         }
         if (!record.mappedStatus) {
           return <Tag color="orange">未映射</Tag>

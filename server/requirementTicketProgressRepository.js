@@ -1,7 +1,11 @@
 import { getDb } from './db.js'
 import { bumpDataRevision } from './dataRevision.js'
 import { isActionItemStatus } from '../src/domain/actionItem.js'
-import { normalizeRequirementScheduleAt, normalizeRequirementTicketId } from '../src/domain/requirementTicketProgress.js'
+import {
+  REQUIREMENT_PROGRESS_FIELD_LABELS,
+  normalizeRequirementScheduleAt,
+  normalizeRequirementTicketId,
+} from '../src/domain/requirementTicketProgress.js'
 
 /**
  * @typedef {import('../src/domain/requirementTicketProgress.js').RequirementTicketProgressRow} RequirementTicketProgressRow
@@ -162,12 +166,15 @@ function importProgressRows(rows) {
     inputRows.forEach((row, index) => {
       const ticketId = normalizeRequirementTicketId(row.ticketId)
       if (!ticketId) {
-        errors.push({ row: index + 1, message: '需求工单号不能为空' })
+        errors.push({ row: index + 1, message: `${REQUIREMENT_PROGRESS_FIELD_LABELS.ticketId}不能为空` })
         return
       }
       const scheduleAt = normalizeRequirementScheduleAt(row.scheduleAt)
       if (String(row.scheduleAt ?? '').trim() && !scheduleAt) {
-        errors.push({ row: index + 1, message: `工单 ${ticketId} 排期时间无法解析` })
+        errors.push({
+          row: index + 1,
+          message: `工单 ${ticketId} ${REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt}无法解析`,
+        })
         return
       }
       const existing = getProgressRow(db, ticketId)
@@ -233,11 +240,11 @@ function replaceStatusMappings(items) {
     const workflowStatus = String(item.workflowStatus ?? '').trim()
     const mapsToActionStatus = item.mapsToActionStatus
     if (!workflowStatus) {
-      errors.push({ row: index + 1, message: '外部操作状态不能为空' })
+      errors.push({ row: index + 1, message: `${REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus}不能为空` })
       return null
     }
     if (!isActionItemStatus(mapsToActionStatus)) {
-      errors.push({ row: index + 1, message: `外部状态 ${workflowStatus} 的映射目标无效` })
+      errors.push({ row: index + 1, message: `操作状态 ${workflowStatus} 的映射目标无效` })
       return null
     }
     return {

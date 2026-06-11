@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Button, Popover, Table, Tag, Typography } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
+import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
 
 /** @typedef {import('../../domain/requirementTicketProgress.js').RequirementTicketDetail} RequirementTicketDetail */
 
@@ -43,7 +44,7 @@ export default function RequirementTicketsCell({ ticketIds, requirementTickets }
 
   const columns = [
     {
-      title: '工单号',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.ticketId,
       dataIndex: 'ticketId',
       width: 110,
       render: (value) => (
@@ -53,19 +54,19 @@ export default function RequirementTicketsCell({ ticketIds, requirementTickets }
       ),
     },
     {
-      title: '产品',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.product,
       dataIndex: 'product',
       width: 72,
       render: (value) => value || '—',
     },
     {
-      title: '排期',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt,
       dataIndex: 'scheduleAt',
       width: 96,
       render: (value) => value || '—',
     },
     {
-      title: '外部状态',
+      title: REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus,
       dataIndex: 'workflowStatus',
       width: 88,
       render: (value, record) => {

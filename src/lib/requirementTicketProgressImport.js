@@ -1,10 +1,18 @@
 import * as XLSX from 'xlsx'
 import {
+  REQUIREMENT_PROGRESS_FIELD_LABELS,
   REQUIREMENT_PROGRESS_IMPORT_HEADERS,
   REQUIREMENT_PROGRESS_SHEET_NAME,
   normalizeRequirementScheduleAt,
   normalizeRequirementTicketId,
 } from '../domain/requirementTicketProgress.js'
+
+const IMPORT_COLUMN_KEYS = {
+  ticketId: REQUIREMENT_PROGRESS_IMPORT_HEADERS[0],
+  product: REQUIREMENT_PROGRESS_IMPORT_HEADERS[1],
+  scheduleAt: REQUIREMENT_PROGRESS_IMPORT_HEADERS[2],
+  workflowStatus: REQUIREMENT_PROGRESS_IMPORT_HEADERS[3],
+}
 
 /**
  * @typedef {import('../domain/requirementTicketProgress.js').RequirementTicketProgressRow} RequirementTicketProgressRow
@@ -64,23 +72,28 @@ export function parseRequirementProgressWorkbook(buffer) {
 
   rawRows.forEach((raw, index) => {
     const row = normalizeRequirementProgressRow(/** @type {Record<string, unknown>} */ (raw))
-    const ticketId = normalizeRequirementTicketId(cellToText(row['需求工单号']))
+    const ticketId = normalizeRequirementTicketId(cellToText(row[IMPORT_COLUMN_KEYS.ticketId]))
     if (!ticketId) {
       const hasOther = REQUIREMENT_PROGRESS_IMPORT_HEADERS.some((key) => cellToText(row[key]))
-      if (hasOther) errors.push({ row: index + 2, message: '需求工单号不能为空' })
+      if (hasOther) {
+        errors.push({ row: index + 2, message: `${REQUIREMENT_PROGRESS_FIELD_LABELS.ticketId}不能为空` })
+      }
       return
     }
-    const scheduleRaw = cellToText(row['排期时间'])
+    const scheduleRaw = cellToText(row[IMPORT_COLUMN_KEYS.scheduleAt])
     const scheduleAt = normalizeRequirementScheduleAt(scheduleRaw)
     if (scheduleRaw && !scheduleAt) {
-      errors.push({ row: index + 2, message: `工单 ${ticketId} 排期时间无法解析` })
+      errors.push({
+        row: index + 2,
+        message: `工单 ${ticketId} ${REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt}无法解析`,
+      })
       return
     }
     rows.push({
       ticketId,
-      product: cellToText(row['产品']),
+      product: cellToText(row[IMPORT_COLUMN_KEYS.product]),
       scheduleAt,
-      workflowStatus: cellToText(row['状态']),
+      workflowStatus: cellToText(row[IMPORT_COLUMN_KEYS.workflowStatus]),
     })
   })
 

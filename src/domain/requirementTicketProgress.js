@@ -56,12 +56,22 @@ export const REQUIREMENT_STATUS_SEVERITY = {
 }
 
 export const REQUIREMENT_PROGRESS_SHEET_NAME = '需求工单进展'
+
+/** 举措与排期 · Excel 导入表头（Sheet 名仍为「需求工单进展」） */
 export const REQUIREMENT_PROGRESS_IMPORT_HEADERS = [
-  '需求工单号',
-  '产品',
-  '排期时间',
-  '状态',
+  '工单号',
+  '涉及产品',
+  '计划完成时间',
+  '操作状态',
 ]
+
+/** 同步库字段 · 界面展示列名 */
+export const REQUIREMENT_PROGRESS_FIELD_LABELS = {
+  ticketId: '工单号',
+  product: '涉及产品',
+  scheduleAt: '计划完成时间',
+  workflowStatus: '操作状态',
+}
 
 /**
  * @param {string | undefined | null} id

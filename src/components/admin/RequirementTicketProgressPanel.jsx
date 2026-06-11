@@ -22,6 +22,7 @@ import {
   listRequirementTicketProgress,
   saveRequirementStatusMappings,
 } from '../../lib/requirementTicketProgressClient.js'
+import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
 import {
   buildRequirementProgressTemplateBuffer,
   parseRequirementProgressWorkbook,
@@ -127,7 +128,7 @@ export default function RequirementTicketProgressPanel() {
   const mappingColumns = useMemo(
     () => [
       {
-        title: '外部操作状态',
+        title: REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus,
         dataIndex: 'workflowStatus',
         render: (value, record) => (
           <Input
@@ -181,10 +182,10 @@ export default function RequirementTicketProgressPanel() {
   )
 
   const progressColumns = [
-    { title: '需求工单号', dataIndex: 'ticketId', width: 140 },
-    { title: '产品', dataIndex: 'product', width: 100 },
-    { title: '排期时间', dataIndex: 'scheduleAt', width: 120 },
-    { title: '状态', dataIndex: 'workflowStatus', width: 120 },
+    { title: REQUIREMENT_PROGRESS_FIELD_LABELS.ticketId, dataIndex: 'ticketId', width: 140 },
+    { title: REQUIREMENT_PROGRESS_FIELD_LABELS.product, dataIndex: 'product', width: 100 },
+    { title: REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt, dataIndex: 'scheduleAt', width: 120 },
+    { title: REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus, dataIndex: 'workflowStatus', width: 120 },
     {
       title: '最近更新',
       dataIndex: 'updatedAt',
@@ -262,7 +263,7 @@ export default function RequirementTicketProgressPanel() {
       <Alert
         type="info"
         showIcon
-        message="举措关联需求工单后，列表排期与状态由此模块同步展示；不在本次导入清单中的历史工单不会被删除。"
+        message="举措关联需求工单后，列表排期与状态由此模块同步展示（举措与排期表：工单号、涉及产品、计划完成时间、操作状态）；不在本次导入清单中的历史工单不会被删除。额外列将忽略。"
       />
 
       <Card
@@ -284,7 +285,7 @@ export default function RequirementTicketProgressPanel() {
         }
       >
         <Typography.Text type="secondary" className="mb-3 block text-xs">
-          多个外部操作状态可映射到同一举措状态；未配置映射的状态在举措列表显示为「未映射」。
+          多个操作状态可映射到同一举措状态；未配置映射的操作状态在举措列表显示为「未映射」。
         </Typography.Text>
         <Table
           size="small"
@@ -309,7 +310,7 @@ export default function RequirementTicketProgressPanel() {
             />
             <Input
               allowClear
-              placeholder="产品"
+              placeholder={REQUIREMENT_PROGRESS_FIELD_LABELS.product}
               value={productFilter}
               onChange={(e) => setProductFilter(e.target.value)}
               onPressEnter={() => handleProgressSearch()}
@@ -317,7 +318,7 @@ export default function RequirementTicketProgressPanel() {
             />
             <Input
               allowClear
-              placeholder="外部状态"
+              placeholder={REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               onPressEnter={() => handleProgressSearch()}
