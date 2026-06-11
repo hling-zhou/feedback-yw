@@ -1,3 +1,6 @@
+/** 工单详情抽屉宽度（px），与 FeedbackDrawer Drawer size 保持一致 */
+export const TICKET_DETAIL_DRAWER_WIDTH = 720
+
 /** 侧栏展开宽度（px），与 AppShell Layout.Sider width 保持一致 */
 export const APP_SIDER_WIDTH = 224
 

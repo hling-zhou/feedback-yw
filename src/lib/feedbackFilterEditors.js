@@ -4,6 +4,7 @@ import {
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
 } from './feedbackFilters.js'
+import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
 
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterKey} FeedbackFilterKey */
@@ -26,6 +27,8 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   ticketLlm: 'enum',
   followUp: 'enum',
   followUpResolved: 'enum',
+  reasonDim: 'enum',
+  myReview: 'enum',
 }
 
 /**
@@ -140,6 +143,13 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       return filters.followUp && filters.followUp !== 'none'
         ? FOLLOW_UP_RESOLVED_FILTER_OPTIONS.filter((item) => item.value)
         : []
+    case 'reasonDim':
+      return options.reasonDimOptions || []
+    case 'myReview':
+      return MY_REVIEW_FILTER_OPTIONS.filter((item) => item.value).map((item) => ({
+        label: item.label,
+        value: item.value,
+      }))
     default:
       return []
   }

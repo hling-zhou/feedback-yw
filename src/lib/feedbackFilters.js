@@ -4,6 +4,7 @@
  */
 
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { parseMyReviewFilterParam } from '../domain/userTicketReview.js'
 import {
   DISSATISFIED_REASON_PART_KEYS,
   getFollowUpScore,
@@ -185,6 +186,7 @@ export function parseFeedbackSearchParams(searchParams) {
     journeyL1: searchParams.get('journeyL1')?.trim() || '',
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
+    myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
   }
 }
 
@@ -206,6 +208,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'reasonDim',
     'ticketDateFrom',
     'ticketDateTo',
+    'myReview',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue

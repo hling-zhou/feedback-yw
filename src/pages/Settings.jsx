@@ -7,8 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { downloadFeedbackBackupJson, parseFeedbackBackupJson } from '../lib/feedbackBackup.js'
 import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
-import ProductOrderVolumePanel from '../components/ProductOrderVolumePanel.jsx'
-import ProductWanTouTargetPanel from '../components/ProductWanTouTargetPanel.jsx'
+import ProductWanTouMetricsPanel from '../components/ProductWanTouMetricsPanel.jsx'
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
@@ -214,9 +213,11 @@ function LlmSettingsPanel({ settings, onChange }) {
 /** @param {{ tab: import('../lib/settingsTabs.js').SettingsTabKey | null }} props */
 function SettingsTabIntro({ tab }) {
   if (!tab) return null
+  const description = SETTINGS_TAB_DESCRIPTIONS[tab]
+  if (!description) return null
   return (
     <Typography.Text type="secondary" className="mb-4 block text-sm">
-      {SETTINGS_TAB_DESCRIPTIONS[tab]}
+      {description}
       {tab === 'analysis' ? (
         <>
           {' '}
@@ -440,18 +441,13 @@ export default function Settings() {
         )}
 
         {activeTab === 'metrics' && can('editOrderVolumes') && (
-          <div className="space-y-6">
-            <ProductOrderVolumePanel
-              orderVolumes={orderVolumes}
-              onSave={saveOrderVolume}
-              loading={orderVolumesLoading}
-            />
-            <ProductWanTouTargetPanel
-              wanTouTargets={wanTouTargets}
-              onSave={saveWanTouTarget}
-              loading={wanTouTargetsLoading}
-            />
-          </div>
+          <ProductWanTouMetricsPanel
+            orderVolumes={orderVolumes}
+            wanTouTargets={wanTouTargets}
+            onSaveOrderVolume={saveOrderVolume}
+            onSaveWanTouTarget={saveWanTouTarget}
+            loading={orderVolumesLoading || wanTouTargetsLoading}
+          />
         )}
 
         {activeTab === 'data' && (

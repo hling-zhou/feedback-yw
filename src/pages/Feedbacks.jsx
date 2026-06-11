@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
+import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
@@ -78,6 +80,7 @@ export default function Feedbacks() {
     settings,
     syncSharedDataFromServer,
   } = useInsights()
+  const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
   const { remoteBannerText } = useSharedBackgroundTaskBlock()
 
   const activePeriod = useMemo(
@@ -95,6 +98,7 @@ export default function Feedbacks() {
     selectFeedback,
     setSelectedDirect,
     requestCloseDrawer,
+    closeDrawer,
     onDrawerDirtyChange,
   } = useFeedbackDrawerSelection()
   const [view, setView] = useState('table')
@@ -285,6 +289,13 @@ export default function Feedbacks() {
       if (filters.ticketLlm === 'needs_journey_llm' && !recordNeedsJourneyLlmEnrichment(fb, settings))
         return false
       if (filters.ticketLlm === 'full_llm' && !recordHasFullTicketLlmEnrichment(fb)) return false
+      if (
+        reviewEnabled &&
+        filters.myReview &&
+        !matchesMyReviewFilter(filters.myReview, fb.id, doneRecordIds)
+      ) {
+        return false
+      }
       return true
     })
   }, [
@@ -294,6 +305,8 @@ export default function Feedbacks() {
     filters,
     ticketDateFilter,
     settings,
+    reviewEnabled,
+    doneRecordIds,
   ])
 
   const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
@@ -538,6 +551,7 @@ export default function Feedbacks() {
           onFiltersChange={handleFiltersChange}
           onClearFilters={handleClearFilters}
           showComplaintCauseFilter={showComplaintCauseFilter}
+          showMyReviewFilter={reviewEnabled}
           options={{
             ticketIdOptions,
             products,
@@ -598,6 +612,8 @@ export default function Feedbacks() {
             key={currentPeriodId || 'no-period'}
             items={filtered}
             onSelect={selectFeedback}
+            reviewEnabled={reviewEnabled}
+            doneRecordIds={doneRecordIds}
           />
         ) : (
           <CardGrid
@@ -611,6 +627,7 @@ export default function Feedbacks() {
       <FeedbackDrawer
         feedback={selected}
         onClose={requestCloseDrawer}
+        onSavedClose={closeDrawer}
         onDirtyChange={onDrawerDirtyChange}
       />
 

@@ -22,7 +22,7 @@ describe('FeedbackDrawer layout', () => {
     marker('TicketDetailDrawerTitle')
     const meta = marker('metaLine={ticketMetaLine}')
     const content = marker('id="ticket-detail-content"')
-    const handling = marker('处理意见（工单原文）')
+    const handling = marker('title="处理意见（工单原文）"')
     const rootCause = marker('title="根因排查"')
     const followUp = marker('title="回访满意度"')
     const analysis = marker('id="ticket-detail-analysis"')
@@ -52,6 +52,9 @@ describe('FeedbackDrawer layout', () => {
     expect(tags).toBeLessThan(causeFinal)
     expect(causeFinal).toBeLessThan(causeReview)
     expect(src).toContain('closable={{ placement: \'end\' }}')
+    expect(src).toContain('TICKET_DETAIL_DRAWER_WIDTH')
+    expect(src).toContain('HandlingOriginalTextModal')
+    expect(src).toContain('放大查看')
   })
 
   it('exposes scroll helper and hides horizontal overflow in drawer body', () => {
@@ -65,5 +68,8 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain('isFeedbackDrawerFormDirty')
     expect(src).toContain('confirmDiscardFeedbackDrawerEdits')
     expect(src).toContain('onDirtyChange')
+    expect(src).toContain('onSavedClose')
+    expect(src).toContain('applyFeedbackToForm(merged)')
+    expect(src).toContain('onDirtyChange?.(false)')
   })
 })

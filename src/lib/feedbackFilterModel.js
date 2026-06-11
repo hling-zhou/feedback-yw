@@ -8,6 +8,7 @@ import {
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
 } from './feedbackFilters.js'
+import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
 
 /** @typedef {import('./feedbackFilters.js').FollowUpFilterValue} FollowUpFilterValue */
@@ -29,6 +30,7 @@ import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSource
  * @property {FollowUpFilterValue | ''} followUp
  * @property {FollowUpResolvedFilterValue | ''} followUpResolved
  * @property {string} reasonDim
+ * @property {import('../domain/userTicketReview.js').MyReviewFilterValue} myReview
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
@@ -48,6 +50,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'followUp',
   'followUpResolved',
   'reasonDim',
+  'myReview',
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
@@ -68,6 +71,10 @@ export const FEEDBACK_FILTER_GROUPS = [
     label: '回访满意度',
     keys: ['followUp', 'followUpResolved'],
   },
+  {
+    label: '我的复核',
+    keys: ['myReview'],
+  },
 ]
 
 /** @type {Record<FeedbackFilterKey, string>} */
@@ -86,6 +93,7 @@ export const FEEDBACK_FILTER_LABELS = {
   followUp: '回访',
   followUpResolved: '解决状态',
   reasonDim: '不满意原因',
+  myReview: '我的处理状态',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -105,6 +113,7 @@ export function createEmptyFeedbackFilters() {
     followUp: '',
     followUpResolved: '',
     reasonDim: '',
+    myReview: '',
   }
 }
 
@@ -130,6 +139,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'resourcePool':
     case 'requestScene':
     case 'ticketLlm':
+    case 'myReview':
       return Boolean(String(values[key] ?? '').trim())
     default:
       return false
@@ -154,6 +164,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (values.ticketLlm) keys.push('ticketLlm')
   if (values.followUp) keys.push('followUp')
   if (values.followUpResolved) keys.push('followUpResolved')
+  if (values.myReview) keys.push('myReview')
   return keys
 }
 
@@ -196,6 +207,8 @@ export function formatFeedbackFilterChipLabel(key, values) {
       )
     case 'reasonDim':
       return REASON_DIM_OPTIONS.find((item) => item.value === values.reasonDim)?.label || values.reasonDim
+    case 'myReview':
+      return MY_REVIEW_FILTER_OPTIONS.find((item) => item.value === values.myReview)?.label || values.myReview
     default:
       return String(values[key] ?? '')
   }
@@ -316,6 +329,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     ticketDateFrom: filters.ticketDateFrom || '',
     ticketDateTo: filters.ticketDateTo || '',
     ticketIds: filters.ticketIds.length ? filters.ticketIds.join(',') : '',
+    myReview: filters.myReview,
   }
 }
 

@@ -77,6 +77,7 @@ export default function InsightWorkbench() {
     selected: selectedFeedback,
     selectFeedback,
     requestCloseDrawer,
+    closeDrawer,
     onDrawerDirtyChange,
   } = useFeedbackDrawerSelection()
 
@@ -304,6 +305,7 @@ export default function InsightWorkbench() {
       <FeedbackDrawer
         feedback={selectedFeedback}
         onClose={requestCloseDrawer}
+        onSavedClose={closeDrawer}
         onDirtyChange={onDrawerDirtyChange}
       />
     </div>

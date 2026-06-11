@@ -17,4 +17,9 @@ describe('useFeedbackDrawerSelection', () => {
   it('does not open confirm inside setState updater (StrictMode-safe)', () => {
     expect(src).not.toMatch(/setSelected\s*\(\s*\([^)]*\)\s*=>\s*\{[\s\S]*confirmDiscardFeedbackDrawerEdits/)
   })
+
+  it('exposes closeDrawer for save-success close without dirty confirm', () => {
+    expect(src).toContain('closeDrawer')
+    expect(src).toMatch(/return\s*\{[\s\S]*closeDrawer/)
+  })
 })

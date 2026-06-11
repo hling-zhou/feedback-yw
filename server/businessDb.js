@@ -483,6 +483,16 @@ export function initBusinessSchema() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS user_ticket_review (
+      user_id TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('manual', 'save')),
+      marked_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, record_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_ticket_review_user
+      ON user_ticket_review (user_id, marked_at DESC);
     CREATE INDEX IF NOT EXISTS idx_message_bottles_created ON message_bottles(created_at DESC);
   `)
   migrateRecordsIndexColumns(db)

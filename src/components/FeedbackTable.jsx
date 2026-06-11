@@ -12,7 +12,12 @@ import {
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { extractTicketActualDate } from '../domain/ticketActualDate.js'
 
-export default function FeedbackTable({ items, onSelect }) {
+export default function FeedbackTable({
+  items,
+  onSelect,
+  reviewEnabled = false,
+  doneRecordIds = /** @type {ReadonlySet<string>} */ (new Set()),
+}) {
   if (items.length === 0) {
     return (
       <Empty
@@ -68,6 +73,21 @@ export default function FeedbackTable({ items, onSelect }) {
         <Tag>{DATA_SOURCE_LABELS[recordSourceType(fb)] || recordSourceType(fb)}</Tag>
       ),
     },
+    ...(reviewEnabled
+      ? [
+          {
+            title: '我的状态',
+            dataIndex: 'myReview',
+            width: 88,
+            render: (_, fb) =>
+              doneRecordIds.has(fb.id) ? (
+                <Tag color="success">已处理</Tag>
+              ) : (
+                <Tag>未处理</Tag>
+              ),
+          },
+        ]
+      : []),
     {
       title: '回访满意度',
       dataIndex: 'followUpSatisfaction',
@@ -173,7 +193,7 @@ export default function FeedbackTable({ items, onSelect }) {
       rowKey="id"
       columns={columns}
       dataSource={items}
-      scroll={{ x: 1560 }}
+      scroll={{ x: reviewEnabled ? 1648 : 1560 }}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),

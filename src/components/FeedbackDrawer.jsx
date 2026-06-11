@@ -11,15 +11,18 @@ import {
   Drawer,
   Form,
   Input,
+  Modal,
   message,
   Select,
   Tooltip,
   Typography,
 } from 'antd'
-import { QuestionCircleOutlined } from '@ant-design/icons'
+import { ExpandOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { TICKET_DETAIL_DRAWER_WIDTH } from '../constants/appLayout.js'
 import dayjs from 'dayjs'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
+import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
@@ -113,6 +116,9 @@ const RETAG_DEFAULT_TIP =
 const SAVE_DETAIL_TIP =
   '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
+const HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH = 960
+const HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX = 1100
+
 const TICKET_DETAIL_SECTIONS = [
   { id: 'ticket-detail-content', label: '工单内容' },
   { id: 'ticket-detail-analysis', label: '工单分析' },
@@ -150,6 +156,53 @@ function TicketDetailSectionNav() {
   )
 }
 
+/**
+ * @param {{
+ *   open: boolean
+ *   onClose: () => void
+ *   ticketId: string
+ *   text: string
+ * }} props
+ */
+function HandlingOriginalTextModal({ open, onClose, ticketId, text }) {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      message.success('已复制全文')
+    } catch {
+      message.error('复制失败，请手动选择复制')
+    }
+  }
+
+  return (
+    <Modal
+      title={`处理意见（工单原文）${ticketId ? ` · ${ticketId}` : ''}`}
+      open={open}
+      onCancel={onClose}
+      centered
+      width={`min(90vw, ${HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH}px)`}
+      zIndex={HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX}
+      destroyOnClose
+      footer={[
+        <Button key="copy" onClick={handleCopy}>
+          复制全文
+        </Button>,
+        <Button key="close" type="primary" onClick={onClose}>
+          关闭
+        </Button>,
+      ]}
+      styles={{
+        body: {
+          maxHeight: '70vh',
+          overflowY: 'auto',
+        },
+      }}
+    >
+      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">{text}</Typography.Paragraph>
+    </Modal>
+  )
+}
+
 /** @param {{ metaLine: string }} props */
 function TicketDetailDrawerTitle({ metaLine }) {
   const showMetaTooltip = Boolean(metaLine?.trim() && metaLine !== '—')
@@ -181,7 +234,15 @@ function TicketDetailDrawerTitle({ metaLine }) {
   )
 }
 
-export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyChange }) {
+/**
+ * @param {{
+ *   feedback: import('../lib/types.js').FeedbackRecord | null
+ *   onClose: () => void
+ *   onSavedClose?: () => void
+ *   onDirtyChange?: (dirty: boolean) => void
+ * }} props
+ */
+export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClose, onDirtyChange }) {
   const {
     feedbacks,
     updateFeedback,
@@ -192,6 +253,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
     reprocessing,
   } = useFeedbacks()
   const { can, user } = useAuth()
+  const {
+    enabled: reviewEnabled,
+    isReviewDone,
+    markReviewDone,
+    clearReview,
+  } = useUserTicketReviews()
   const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
@@ -225,6 +292,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
   const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [reviewToggling, setReviewToggling] = useState(false)
   const [remoteStale, setRemoteStale] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictServerRecord, setConflictServerRecord] = useState(
@@ -233,6 +301,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
   const [conflictRevision, setConflictRevision] = useState(0)
   const [forceSaving, setForceSaving] = useState(false)
   const baseRevisionRef = useRef(0)
+  const [handlingExpandOpen, setHandlingExpandOpen] = useState(false)
 
   const taxonomy = useMemo(
     () => (feedback ? getTaxonomyForRecord(feedback) : null),
@@ -243,6 +312,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
     if (!feedback) return ''
     return extractHandlingOriginalTextForRecord(feedback)
   }, [feedback])
+
+  useEffect(() => {
+    setHandlingExpandOpen(false)
+  }, [feedback?.id])
 
   const l2Options = useMemo(() => {
     if (!taxonomy) return []
@@ -471,6 +544,23 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
     return draft
   }
 
+  const handleReviewToggle = async (event) => {
+    const checked = event.target.checked
+    if (!feedback?.id || reviewToggling) return
+    setReviewToggling(true)
+    try {
+      if (checked) {
+        await markReviewDone(feedback.id, 'manual')
+      } else {
+        await clearReview(feedback.id)
+      }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '更新处理状态失败')
+    } finally {
+      setReviewToggling(false)
+    }
+  }
+
   const finalizeSave = async (patch, saveOptions = {}) => {
     Object.assign(
       patch,
@@ -509,9 +599,18 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
     }
     baseRevisionRef.current = getRecordRevision(saved)
     setRemoteStale(false)
+    applyFeedbackToForm(merged)
+    onDirtyChange?.(false)
+    if (reviewEnabled) {
+      try {
+        await markReviewDone(merged.id, 'save')
+      } catch {
+        message.warning('工单已保存，但「已处理」标记同步失败')
+      }
+    }
     const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
     message.success(`${label} 已保存`)
-    onClose()
+    ;(onSavedClose ?? onClose)()
   }
 
   const save = async (saveOptions = {}) => {
@@ -608,15 +707,25 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
   return (
     <Drawer
       title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} />}
-      size={640}
+      size={TICKET_DETAIL_DRAWER_WIDTH}
       open={Boolean(feedback)}
       onClose={handleRequestClose}
       closable={{ placement: 'end' }}
       destroyOnClose
       styles={{ body: { overflowX: 'hidden' } }}
       footer={
-        (canEdit || canRetag) ? (
-          <div className="flex gap-2">
+        reviewEnabled || canEdit || canRetag ? (
+          <div className="flex items-center gap-3">
+            {reviewEnabled ? (
+              <Checkbox
+                checked={Boolean(feedback?.id && isReviewDone(feedback.id))}
+                disabled={!feedback?.id || reviewToggling}
+                onChange={(event) => void handleReviewToggle(event)}
+              >
+                已处理
+              </Checkbox>
+            ) : null}
+            <div className="flex flex-1 gap-2">
             {canRetag && (
               <Tooltip title={retagTooltipTitle}>
                 <span className="flex flex-1">
@@ -653,6 +762,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
                 </span>
               </Tooltip>
             )}
+            </div>
           </div>
         ) : null
       }
@@ -684,7 +794,23 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
             工单内容
           </Typography.Title>
 
-          <Card title="处理意见（工单原文）" size="small">
+          <Card
+            title="处理意见（工单原文）"
+            size="small"
+            extra={
+              handlingOriginalText ? (
+                <Button
+                  type="link"
+                  size="small"
+                  className="!h-auto !px-0 !py-0 text-xs"
+                  icon={<ExpandOutlined />}
+                  onClick={() => setHandlingExpandOpen(true)}
+                >
+                  放大查看
+                </Button>
+              ) : null
+            }
+          >
             <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
               {handlingOriginalText || '—'}
             </Typography.Paragraph>
@@ -1354,6 +1480,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onDirtyCha
         onCancel={() => setConflictOpen(false)}
         forceSaving={forceSaving}
         canForceSave={canEdit}
+      />
+      <HandlingOriginalTextModal
+        open={handlingExpandOpen}
+        onClose={() => setHandlingExpandOpen(false)}
+        ticketId={feedback.ticketId || ''}
+        text={handlingOriginalText}
       />
     </Drawer>
   )

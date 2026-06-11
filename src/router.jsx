@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import RequireAuth from './components/auth/RequireAuth.jsx'
 import AppShell from './components/AppShell.jsx'
 import { InsightsProvider } from './context/InsightsContext.jsx'
+import { UserTicketReviewProvider } from './context/UserTicketReviewContext.jsx'
 import InsightWorkbench from './pages/InsightWorkbench.jsx'
 import Feedbacks from './pages/Feedbacks.jsx'
 import Themes from './pages/Themes.jsx'
@@ -25,7 +26,9 @@ const routes = [
       {
         element: (
           <InsightsProvider>
-            <AppShell />
+            <UserTicketReviewProvider>
+              <AppShell />
+            </UserTicketReviewProvider>
           </InsightsProvider>
         ),
         children: [

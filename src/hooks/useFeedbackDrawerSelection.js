@@ -71,6 +71,8 @@ export function useFeedbackDrawerSelection(initialSelected = null) {
     selectFeedback,
     setSelectedDirect,
     requestCloseDrawer,
+    /** 保存成功等场景：跳过未保存确认直接关闭 */
+    closeDrawer,
     onDrawerDirtyChange,
   }
 }

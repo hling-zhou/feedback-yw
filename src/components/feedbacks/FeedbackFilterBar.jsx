@@ -10,6 +10,7 @@ import { isFeedbackFilterActive } from '../../lib/feedbackFilterModel.js'
  * @param {(next: FeedbackFilterValues, meta?: { key?: FeedbackFilterKey; syncUrl?: boolean }) => void} props.onFiltersChange
  * @param {() => void} props.onClearFilters
  * @param {boolean} [props.showComplaintCauseFilter]
+ * @param {boolean} [props.showMyReviewFilter]
  * @param {{
  *   ticketIdOptions?: { label: string; value: string }[]
  *   products?: { name: string }[]
@@ -26,6 +27,7 @@ export default function FeedbackFilterBar({
   onFiltersChange,
   onClearFilters,
   showComplaintCauseFilter = true,
+  showMyReviewFilter = false,
   options = {},
   actions,
 }) {
@@ -36,6 +38,7 @@ export default function FeedbackFilterBar({
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
         showComplaintCauseFilter={showComplaintCauseFilter}
+        showMyReviewFilter={showMyReviewFilter}
         options={options}
       />
 

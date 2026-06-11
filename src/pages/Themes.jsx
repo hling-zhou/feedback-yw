@@ -104,6 +104,7 @@ export default function Themes() {
     selected,
     selectFeedback,
     requestCloseDrawer,
+    closeDrawer,
     onDrawerDirtyChange,
   } = useFeedbackDrawerSelection()
 
@@ -634,6 +635,7 @@ export default function Themes() {
       <FeedbackDrawer
         feedback={selected}
         onClose={requestCloseDrawer}
+        onSavedClose={closeDrawer}
         onDirtyChange={onDrawerDirtyChange}
       />
     </div>

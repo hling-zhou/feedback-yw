@@ -23,7 +23,7 @@ export const SETTINGS_TAB_LABELS = {
 export const SETTINGS_TAB_DESCRIPTIONS = {
   llm: '本机大模型连接，用于导入、打标与洞察中的 LLM 能力；仅保存在当前浏览器。',
   analysis: '团队共享的自动打标与分析规则，保存后约 5 秒内同步给其他用户。',
-  metrics: '维护万投比分母与达标目标，供工作台投诉 Tab 展示与对比。',
+  metrics: '',
   data: '导出备份、恢复数据或按范围清空已导入工单与洞察快照。',
   audit: '查看导入、清空、配置发布等关键操作记录。',
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',

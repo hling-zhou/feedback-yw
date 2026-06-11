@@ -29,6 +29,7 @@ import {
  * @param {(next: FeedbackFilterValues, meta?: { key?: FeedbackFilterKey; syncUrl?: boolean }) => void} props.onFiltersChange
  * @param {() => void} props.onClearFilters
  * @param {boolean} [props.showComplaintCauseFilter]
+ * @param {boolean} [props.showMyReviewFilter]
  * @param {Object} [props.options]
  */
 export default function FeedbackCompositeFilter({
@@ -36,6 +37,7 @@ export default function FeedbackCompositeFilter({
   onFiltersChange,
   onClearFilters,
   showComplaintCauseFilter = true,
+  showMyReviewFilter = false,
   options = {},
 }) {
   const disableCtx = useMemo(
@@ -46,9 +48,17 @@ export default function FeedbackCompositeFilter({
     [showComplaintCauseFilter, filters.followUp],
   )
 
+  const filterGroups = useMemo(
+    () =>
+      showMyReviewFilter
+        ? FEEDBACK_FILTER_GROUPS
+        : FEEDBACK_FILTER_GROUPS.filter((group) => !group.keys.includes('myReview')),
+    [showMyReviewFilter],
+  )
+
   const config = useMemo(
     () => ({
-      groups: FEEDBACK_FILTER_GROUPS,
+      groups: filterGroups,
       labels: FEEDBACK_FILTER_LABELS,
       getEditorKind: getFeedbackFilterEditorKind,
       listActiveChipKeys: listActiveFeedbackFilterChipKeys,
@@ -64,9 +74,10 @@ export default function FeedbackCompositeFilter({
       clearKey: clearFeedbackFilterKey,
       listEnumOptions: (key, values, editorOptions) =>
         listEnumOptionsForFilterKey(key, values, editorOptions, showComplaintCauseFilter),
-      filterMenuKeys: (keys) => keys.filter((key) => key !== 'ticketDateTo'),
+      filterMenuKeys: (keys) =>
+        keys.filter((key) => key !== 'ticketDateTo' && (showMyReviewFilter || key !== 'myReview')),
     }),
-    [showComplaintCauseFilter],
+    [showComplaintCauseFilter, filterGroups, showMyReviewFilter],
   )
 
   return (
