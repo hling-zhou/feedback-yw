@@ -12,6 +12,11 @@ import {
   ACTION_ITEM_CONFLICT_CODE,
 } from '../src/domain/actionItemRevision.js'
 import { applyActionItemWarningLevel } from '../src/domain/actionItemWarning.js'
+import {
+  enrichActionItemWithRequirementProgress,
+  hasRequirementTicketLinks,
+} from '../src/domain/requirementTicketProgress.js'
+import { requirementTicketProgressRepository } from './requirementTicketProgressRepository.js'
 import { storageRepository } from './storageRepository.js'
 
 /**
@@ -162,6 +167,31 @@ function getFilteredActionItems(query = {}) {
 }
 
 /**
+ * @param {ActionItem[]} items
+ * @returns {ActionItem[]}
+ */
+function prepareActionItemsResponse(items) {
+  const ticketIds = items.flatMap((item) => item.linkedRequirementTicketIds || [])
+  const progressById = requirementTicketProgressRepository.getProgressByTicketIds(ticketIds)
+  const mappingByWorkflowStatus = requirementTicketProgressRepository.getStatusMappingMap()
+
+  return items.map((item) => {
+    const warned = applyActionItemWarningLevel(item)
+    if (!hasRequirementTicketLinks(warned)) return warned
+    return enrichActionItemWithRequirementProgress(warned, progressById, mappingByWorkflowStatus)
+  })
+}
+
+/**
+ * @param {ActionItem} item
+ * @returns {ActionItem}
+ */
+function prepareActionItemResponse(item) {
+  const [enriched] = prepareActionItemsResponse([item])
+  return enriched
+}
+
+/**
  * @param {ActionItemListQuery} [query]
  * @returns {ActionItemListResult}
  */
@@ -170,7 +200,7 @@ function listActionItems(query = {}) {
   const offset = Math.max(Number(query.offset) || 0, 0)
   const { items: filtered } = getFilteredActionItems(query)
   const total = filtered.length
-  const items = filtered.slice(offset, offset + limit).map((item) => applyActionItemWarningLevel(item))
+  const items = prepareActionItemsResponse(filtered.slice(offset, offset + limit))
 
   return { items, total, limit, offset }
 }
@@ -182,7 +212,7 @@ function listActionItems(query = {}) {
 function getActionItem(id) {
   const row = getDb().prepare('SELECT payload FROM action_items WHERE id = ?').get(id)
   if (!row) return null
-  return applyActionItemWarningLevel(/** @type {ActionItem} */ (parseJson(row.payload)))
+  return prepareActionItemResponse(/** @type {ActionItem} */ (parseJson(row.payload)))
 }
 
 /**
@@ -235,7 +265,7 @@ function putActionItem(item, options = {}) {
     stringifyJson(warned),
   )
   bumpDataRevision()
-  return warned
+  return prepareActionItemResponse(warned)
 }
 
 /**

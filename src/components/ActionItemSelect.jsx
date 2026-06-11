@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Select, Spin, Tag } from 'antd'
 import { formatActionItemOptionLabel } from '../domain/establishedActionLibrary.js'
 import { isActionItemLocked } from '../domain/actionItem.js'
+import {
+  formatDerivedRequirementStatusLabel,
+  getActionItemDisplayScheduleAt,
+  getActionItemDisplayStatus,
+} from '../domain/requirementTicketProgress.js'
 import { listActionItems, getActionItem } from '../lib/actionItemClient.js'
 import ActionItemStatusTag from './tags/ActionItemStatusTag.jsx'
 import { getEnabledProducts } from '../lib/productCatalog.js'
@@ -41,13 +46,21 @@ function buildProductSelectOptions(currentProductKey) {
  * @param {ActionItem} item
  */
 function renderActionItemOption(item) {
+  const displayStatus = getActionItemDisplayStatus(item)
+  const displaySchedule = getActionItemDisplayScheduleAt(item)
   return (
     <div className="py-0.5">
       <div className="text-sm leading-snug">{item.content}</div>
       <div className="mt-1 flex flex-wrap gap-1">
-        <ActionItemStatusTag status={item.status} className="!mr-0" />
-        {item.scheduleAt?.trim() ? (
-          <Tag className="!mr-0">排期 {item.scheduleAt.trim()}</Tag>
+        {displayStatus ? (
+          <ActionItemStatusTag status={displayStatus} className="!mr-0" />
+        ) : (
+          <Tag color="warning" className="!mr-0">
+            {formatDerivedRequirementStatusLabel(displayStatus)}
+          </Tag>
+        )}
+        {displaySchedule ? (
+          <Tag className="!mr-0">排期 {displaySchedule}</Tag>
         ) : (
           <Tag className="!mr-0">待评估</Tag>
         )}

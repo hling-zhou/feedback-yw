@@ -85,6 +85,44 @@ describe('actionItemImport', () => {
     if (parsed.ok) {
       expect(parsed.item.detail).toBe('分阶段说明')
       expect(parsed.item.linkedRequirementTicketIds).toEqual(['REQ-1', 'REQ-2'])
+      expect(parsed.item.status).toBe('pending_evaluation')
+      expect(parsed.item.scheduleAt).toBe('')
     }
+  })
+
+  it('parseActionItemImportRow ignores schedule and status when requirement tickets are present', () => {
+    const parsed = parseActionItemImportRow({
+      举措: '关联需求',
+      需求工单: 'REQ-9',
+      排期时间: '2026-08-01',
+      状态: '进行中',
+    })
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.item.status).toBe('pending_evaluation')
+    expect(parsed.item.scheduleAt).toBe('')
+    expect(parsed.warnings).toEqual([
+      '已填需求工单，排期时间列已忽略',
+      '已填需求工单，状态列已忽略',
+    ])
+  })
+
+  it('parseActionItemImportWorkbook collects requirement-link warnings', () => {
+    const wb = XLSX.utils.book_new()
+    const sheet = XLSX.utils.json_to_sheet([
+      {
+        举措: '优化项',
+        需求工单: 'REQ-1',
+        排期时间: '2026-09-01',
+        状态: '进行中',
+      },
+    ])
+    XLSX.utils.book_append_sheet(wb, sheet, '举措清单')
+    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const result = parseActionItemImportWorkbook(buffer, { firstProposedAt: '2026-06-01' })
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0].linkedRequirementTicketIds).toEqual(['REQ-1'])
+    expect(result.warnings).toHaveLength(2)
+    expect(result.warnings[0].row).toBe(2)
   })
 })

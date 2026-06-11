@@ -2,8 +2,9 @@
  * 举措库变更后同步已关联工单的文本副本（R4）。
  */
 
-import { buildEstablishedActionFullSavePatch } from '../domain/establishedAction.js'
+import { buildEstablishedActionDetailSavePatch, buildEstablishedActionFullSavePatch } from '../domain/establishedAction.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
+import { hasRequirementTicketLinks } from '../domain/requirementTicketProgress.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
@@ -13,6 +14,9 @@ import { normalizeActionSchedule } from '../domain/actionSchedule.js'
  * @returns {Partial<FeedbackRecord>}
  */
 export function buildTicketCopyPatchForActionItem(actionItem) {
+  if (hasRequirementTicketLinks(actionItem)) {
+    return buildEstablishedActionDetailSavePatch(actionItem.detail)
+  }
   return {
     ...buildEstablishedActionFullSavePatch(actionItem.content, actionItem.detail),
     actionSchedule: normalizeActionSchedule(actionItem.scheduleAt),

@@ -63,10 +63,10 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain('overflowX: \'hidden\'')
   })
 
-  it('confirms before close when drawer has unsaved edits', () => {
+  it('delegates close to parent and tracks dirty state for leave confirm', () => {
     expect(src).toContain('handleRequestClose')
     expect(src).toContain('isFeedbackDrawerFormDirty')
-    expect(src).toContain('confirmDiscardFeedbackDrawerEdits')
+    expect(src).not.toContain('confirmDiscardFeedbackDrawerEdits')
     expect(src).toContain('onDirtyChange')
     expect(src).toContain('onSavedClose')
     expect(src).toContain('applyFeedbackToForm(merged)')

@@ -11,6 +11,9 @@ import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_LIST_SHEET_NAME } from './actionItemExport.js'
 
+export const REQUIREMENT_LINKED_IMPORT_IGNORED_FIELDS_HINT =
+  '已填需求工单时，排期时间与状态列将被忽略；列表展示以「需求工单进展同步」为准。'
+
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 
@@ -132,20 +135,34 @@ export function parseActionItemImportRow(row, options = {}) {
   const productName = cell(row, '产品名称')
   const productKeyFromMap = productName ? options.productNameToKey?.get(productName) : undefined
 
-  const scheduleAt = normalizeActionSchedule(cell(row, '排期时间'))
-  const statusLabel = cell(row, '状态')
-  let status = STATUS_BY_LABEL[statusLabel]
-  if (statusLabel && !status && isActionItemStatus(statusLabel)) {
-    status = statusLabel
-  }
-  if (!status) {
-    status = deriveActionItemStatusFromSchedule(scheduleAt)
-  }
-
   const linkedTicketIds = parseLinkedTicketIdsCell(cellAny(row, LINKED_TICKET_HEADERS))
   const linkedRequirementTicketIds = parseLinkedTicketIdsCell(
     cellAny(row, LINKED_REQUIREMENT_TICKET_HEADERS),
   )
+  const requirementLinked = linkedRequirementTicketIds.length > 0
+
+  const scheduleRaw = cell(row, '排期时间')
+  const statusLabel = cell(row, '状态')
+  /** @type {string[]} */
+  const warnings = []
+
+  let scheduleAt = normalizeActionSchedule(scheduleRaw)
+  /** @type {import('../domain/actionItem.js').ActionItemStatus | undefined} */
+  let status
+  if (requirementLinked) {
+    if (scheduleRaw) warnings.push('已填需求工单，排期时间列已忽略')
+    if (statusLabel) warnings.push('已填需求工单，状态列已忽略')
+    scheduleAt = ''
+    status = 'pending_evaluation'
+  } else {
+    status = STATUS_BY_LABEL[statusLabel]
+    if (statusLabel && !status && isActionItemStatus(statusLabel)) {
+      status = statusLabel
+    }
+    if (!status) {
+      status = deriveActionItemStatusFromSchedule(scheduleAt)
+    }
+  }
   const linkedDataSources = parseLinkedDataSourcesCell(cell(row, '来源'))
 
   const problemTypeSnapshot = cell(row, '问题类型')
@@ -166,7 +183,7 @@ export function parseActionItemImportRow(row, options = {}) {
   })
 
   if (!validated.ok) return validated
-  return { ok: true, item: toActionItemCreateBody(validated.item) }
+  return { ok: true, item: toActionItemCreateBody(validated.item), warnings }
 }
 
 /**
@@ -189,6 +206,8 @@ export function parseActionItemImportWorkbook(buffer, options = {}) {
   const rows = []
   /** @type {{ row: number; error: string }[]} */
   const errors = []
+  /** @type {{ row: number; message: string }[]} */
+  const warnings = []
 
   rawRows.forEach((row, index) => {
     const excelRow = index + 2
@@ -204,10 +223,13 @@ export function parseActionItemImportWorkbook(buffer, options = {}) {
       errors.push({ row: excelRow, error: parsed.error })
       return
     }
+    for (const message of parsed.warnings || []) {
+      warnings.push({ row: excelRow, message })
+    }
     rows.push(parsed.item)
   })
 
-  return { rows, errors }
+  return { rows, errors, warnings }
 }
 
 /**

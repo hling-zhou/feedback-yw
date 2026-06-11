@@ -1,5 +1,6 @@
 import { randomId } from '../lib/randomId.js'
 import { linkedTicketIdsInPeriod } from './actionItemPeriodFilter.js'
+import { hasRequirementTicketLinks } from './requirementTicketProgress.js'
 import {
   ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES,
   actionItemStatusRequiresEmptySchedule,
@@ -21,6 +22,8 @@ export {
   isActionItemLocked,
   listSelectableActionItemStatuses,
   validateActionItemScheduleForStatus,
+  validateActionItemRequirementLinkPatchAllowed,
+  willHaveRequirementTicketLinks,
 } from './actionItemStatusRules.js'
 /**
  * 举措库 ActionItem — 领域模型与状态规则。
@@ -305,7 +308,8 @@ export function mergeActionItemPatch(existing, patch) {
   if (
     effectivePatch.scheduleAt !== undefined &&
     effectivePatch.status == null &&
-    !isActionItemLocked(existing.status)
+    !isActionItemLocked(existing.status) &&
+    !hasRequirementTicketLinks(existing)
   ) {
     if (scheduleAt) {
       status = deriveActionItemStatusFromSchedule(scheduleAt)

@@ -4,6 +4,7 @@ import {
   isAllowedActionItemStatusTransition,
   isActionItemLocked,
   validateActionItemPatchAllowed,
+  validateActionItemRequirementLinkPatchAllowed,
 } from './actionItemStatusRules.js'
 
 describe('actionItemStatusRules', () => {
@@ -81,6 +82,79 @@ describe('actionItemStatusRules', () => {
     expect(toInProgress.ok).toBe(false)
     if (toInProgress.ok) return
     expect(toInProgress.error).toMatch(/排期/)
+  })
+
+  it('blocks content, status, and schedule edits while requirement tickets are linked', () => {
+    const created = validateActionItemCreate({
+      content: '举措F',
+      status: 'in_progress',
+      scheduleAt: '2026-06-01',
+      linkedRequirementTicketIds: ['REQ-1'],
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    expect(validateActionItemRequirementLinkPatchAllowed(created.item, { content: '新内容' })).toMatch(
+      /不能修改举措内容/,
+    )
+    expect(validateActionItemRequirementLinkPatchAllowed(created.item, { status: 'completed' })).toMatch(
+      /不能修改状态/,
+    )
+    expect(
+      validateActionItemRequirementLinkPatchAllowed(created.item, { scheduleAt: '2026-07-01' }),
+    ).toMatch(/不能修改排期/)
+
+    const detailOnly = mergeActionItemPatch(created.item, {
+      detail: '更新详情',
+      linkedRequirementTicketIds: ['REQ-1', 'REQ-2'],
+    })
+    expect(detailOnly.ok).toBe(true)
+    if (!detailOnly.ok) return
+    expect(detailOnly.item.detail).toBe('更新详情')
+    expect(detailOnly.item.content).toBe('举措F')
+    expect(detailOnly.item.scheduleAt).toBe('2026-06-01')
+    expect(detailOnly.item.status).toBe('in_progress')
+  })
+
+  it('allows unlinking requirement tickets while preserving frozen snapshot fields', () => {
+    const created = validateActionItemCreate({
+      content: '举措H',
+      status: 'in_progress',
+      scheduleAt: '2026-06-01',
+      linkedRequirementTicketIds: ['REQ-1'],
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const unlinked = mergeActionItemPatch(created.item, {
+      linkedRequirementTicketIds: [],
+      detail: '保留详情',
+    })
+    expect(unlinked.ok).toBe(true)
+    if (!unlinked.ok) return
+    expect(unlinked.item.linkedRequirementTicketIds).toEqual([])
+    expect(unlinked.item.content).toBe('举措H')
+    expect(unlinked.item.status).toBe('in_progress')
+    expect(unlinked.item.scheduleAt).toBe('2026-06-01')
+    expect(unlinked.item.detail).toBe('保留详情')
+  })
+
+  it('rejects linking requirement tickets together with content changes', () => {
+    const created = validateActionItemCreate({
+      content: '举措G',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const merged = mergeActionItemPatch(created.item, {
+      linkedRequirementTicketIds: ['REQ-9'],
+      content: '改动内容',
+    })
+    expect(merged.ok).toBe(false)
+    if (merged.ok) return
+    expect(merged.error).toMatch(/不能同时修改/)
   })
 
   it('abnormal_terminated from in_progress clears schedule', () => {

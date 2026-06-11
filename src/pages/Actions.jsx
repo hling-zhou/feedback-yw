@@ -61,6 +61,7 @@ import {
 } from '../lib/actionItemImport.js'
 import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplate.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
+import { hasRequirementTicketLinks } from '../domain/requirementTicketProgress.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -73,6 +74,11 @@ import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
 import ActionItemCompositeFilter from '../components/actions/ActionItemCompositeFilter.jsx'
 import LinkedTicketsCell from '../components/actions/LinkedTicketsCell.jsx'
+import RequirementTicketsCell from '../components/actions/RequirementTicketsCell.jsx'
+import ActionItemRequirementLinkFields, {
+  normalizeRequirementTicketIdsFromForm,
+  toRequirementTicketFormList,
+} from '../components/actions/ActionItemRequirementLinkFields.jsx'
 import {
   actionItemFiltersToListQuery,
   clearAllActionItemFilters,
@@ -127,25 +133,6 @@ function ColumnTitleWithHint({ title, hint, extra }) {
         </span>
       </Tooltip>
     </span>
-  )
-}
-
-function RequirementTicketsCell({ ticketIds }) {
-  const ids = ticketIds || []
-  if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
-
-  const text = ids.join('; ')
-
-  return (
-    <Tooltip title={text} getPopupContainer={() => document.body}>
-      <Typography.Text
-        className="text-xs"
-        copyable={{ text, tooltips: ['复制', '已复制'] }}
-        ellipsis
-      >
-        {text}
-      </Typography.Text>
-    </Tooltip>
   )
 }
 
@@ -220,19 +207,23 @@ export default function Actions() {
   const importInputRef = useRef(/** @type {HTMLInputElement | null} */ (null))
   const watchedSchedule = Form.useWatch('scheduleAt', editForm)
   const watchedEditStatus = Form.useWatch('status', editForm)
+  const watchedRequirementLinkEnabled = Form.useWatch('requirementLinkEnabled', editForm)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addForm] = Form.useForm()
   const [adding, setAdding] = useState(false)
   const watchedAddStatus = Form.useWatch('status', addForm)
+  const watchedAddRequirementLinkEnabled = Form.useWatch('requirementLinkEnabled', addForm)
 
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState(
-    /** @type {{ rows: Partial<ActionItem>[]; errors: { row: number; error: string }[] } | null} */ (null),
+    /** @type {{ rows: Partial<ActionItem>[]; errors: { row: number; error: string }[]; warnings: { row: number; message: string }[] } | null} */ (null),
   )
   const [importing, setImporting] = useState(false)
 
   const editLocked = Boolean(editing && isActionItemLocked(editing.status))
+  const editRequirementLinked = Boolean(watchedRequirementLinkEnabled)
+  const editCoreFieldsLocked = editLocked || editRequirementLinked
 
   const editStatusOptions = useMemo(() => {
     if (!editing) return FILTER_STATUS_OPTIONS
@@ -242,8 +233,8 @@ export default function Actions() {
 
   const editScheduleDisabled = useMemo(() => {
     const status = watchedEditStatus ?? editing?.status
-    return editLocked || actionItemStatusRequiresEmptySchedule(status)
-  }, [editLocked, watchedEditStatus, editing?.status])
+    return editCoreFieldsLocked || actionItemStatusRequiresEmptySchedule(status)
+  }, [editCoreFieldsLocked, watchedEditStatus, editing?.status])
 
   const editScheduleRequired = useMemo(
     () => actionItemStatusRequiresSchedule(watchedEditStatus ?? editing?.status ?? 'pending_evaluation'),
@@ -251,13 +242,17 @@ export default function Actions() {
   )
 
   const addScheduleDisabled = useMemo(
-    () => actionItemStatusRequiresEmptySchedule(watchedAddStatus ?? 'pending_evaluation'),
-    [watchedAddStatus],
+    () =>
+      watchedAddRequirementLinkEnabled ||
+      actionItemStatusRequiresEmptySchedule(watchedAddStatus ?? 'pending_evaluation'),
+    [watchedAddRequirementLinkEnabled, watchedAddStatus],
   )
 
   const addScheduleRequired = useMemo(
-    () => actionItemStatusRequiresSchedule(watchedAddStatus ?? 'pending_evaluation'),
-    [watchedAddStatus],
+    () =>
+      !watchedAddRequirementLinkEnabled &&
+      actionItemStatusRequiresSchedule(watchedAddStatus ?? 'pending_evaluation'),
+    [watchedAddRequirementLinkEnabled, watchedAddStatus],
   )
 
   const productOptions = useMemo(() => {
@@ -458,15 +453,25 @@ export default function Actions() {
     baseRevisionRef.current = getActionItemRevision(record)
     setEditStale(false)
     setConflictOpen(false)
+    const requirementLinked = record.requirementLinkMode || hasRequirementTicketLinks(record)
     const scheduleAt = syncEditModalBaseline(record)
     editForm.setFieldsValue({
       content: record.content,
       detail: record.detail || '',
       status: record.status,
       scheduleAt,
-      linkedRequirementTicketIds: formatTicketIdsForInput(record.linkedRequirementTicketIds),
+      requirementLinkEnabled: requirementLinked,
+      requirementTicketIds: toRequirementTicketFormList(record.linkedRequirementTicketIds),
     })
     setEditOpen(true)
+  }
+
+  const handleEditRequirementLinkModeChange = (enabled) => {
+    if (enabled || !editing) return
+    editForm.setFieldsValue({
+      status: editing.status,
+      scheduleAt: syncEditModalBaseline(editing),
+    })
   }
 
   useEffect(() => {
@@ -514,36 +519,50 @@ export default function Actions() {
   }
 
   const buildEditPatch = (values) => {
+    const detail = String(values.detail ?? '').trim()
+    const requirementLinkEnabled = Boolean(values.requirementLinkEnabled)
+    const linkedRequirementTicketIds = requirementLinkEnabled
+      ? normalizeRequirementTicketIdsFromForm(values.requirementTicketIds)
+      : []
+
+    if (requirementLinkEnabled) {
+      return {
+        detail,
+        linkedRequirementTicketIds,
+      }
+    }
+
     const scheduleAt = values.scheduleAt
       ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
       : ''
-    let status = values.status
+    const status = values.status
     if (actionItemStatusRequiresEmptySchedule(status)) {
       return {
         content: values.content.trim(),
-        detail: String(values.detail ?? '').trim(),
+        detail,
         status,
         scheduleAt: '',
-        linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
+        linkedRequirementTicketIds,
       }
     }
     return {
       content: values.content.trim(),
-      detail: String(values.detail ?? '').trim(),
+      detail,
       status,
       scheduleAt,
-      linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
+      linkedRequirementTicketIds,
     }
   }
 
   const applyEditFormFromItem = (item) => {
-    const scheduleAt = syncEditModalBaseline(item)
+    const requirementLinked = item.requirementLinkMode || hasRequirementTicketLinks(item)
     editForm.setFieldsValue({
       content: item.content,
       detail: item.detail || '',
       status: item.status,
-      scheduleAt,
-      linkedRequirementTicketIds: formatTicketIdsForInput(item.linkedRequirementTicketIds),
+      scheduleAt: syncEditModalBaseline(item),
+      requirementLinkEnabled: requirementLinked,
+      requirementTicketIds: toRequirementTicketFormList(item.linkedRequirementTicketIds),
     })
     baseRevisionRef.current = getActionItemRevision(item)
     setEditStale(false)
@@ -567,6 +586,13 @@ export default function Actions() {
   const handleEditSave = async (saveOptions = {}) => {
     if (!editing) return
     const values = await editForm.validateFields()
+    if (values.requirementLinkEnabled) {
+      const ticketIds = normalizeRequirementTicketIdsFromForm(values.requirementTicketIds)
+      if (!ticketIds.length) {
+        message.warning('关联需求工单时请填写至少一个工单号')
+        return
+      }
+    }
     setSaving(true)
     try {
       await finalizeEditSave(buildEditPatch(values), saveOptions)
@@ -626,7 +652,11 @@ export default function Actions() {
 
   const openAdd = () => {
     addForm.resetFields()
-    addForm.setFieldsValue({ status: 'pending_evaluation' })
+    addForm.setFieldsValue({
+      status: 'pending_evaluation',
+      requirementLinkEnabled: false,
+      requirementTicketIds: [''],
+    })
     setAddOpen(true)
   }
 
@@ -635,8 +665,21 @@ export default function Actions() {
     const productKey = values.productKey?.trim() || ''
     const productName =
       productOptions.find((option) => option.value === productKey)?.label?.trim() || ''
-    const scheduleAt = values.scheduleAt ? dayjs(values.scheduleAt).format('YYYY-MM-DD') : ''
-    const status = values.status ?? 'pending_evaluation'
+    const requirementLinkEnabled = Boolean(values.requirementLinkEnabled)
+    const linkedRequirementTicketIds = requirementLinkEnabled
+      ? normalizeRequirementTicketIdsFromForm(values.requirementTicketIds)
+      : []
+    if (requirementLinkEnabled && !linkedRequirementTicketIds.length) {
+      message.warning('关联需求工单时请填写至少一个工单号')
+      return
+    }
+    const scheduleAt =
+      requirementLinkEnabled || !values.scheduleAt
+        ? ''
+        : dayjs(values.scheduleAt).format('YYYY-MM-DD')
+    const status = requirementLinkEnabled
+      ? 'pending_evaluation'
+      : values.status ?? 'pending_evaluation'
 
     setAdding(true)
     try {
@@ -650,7 +693,7 @@ export default function Actions() {
         scheduleAt,
         status,
         linkedTicketIds: [],
-        linkedRequirementTicketIds: parseTicketIdsFromInput(values.linkedRequirementTicketIds),
+        linkedRequirementTicketIds,
         linkedDataSources: [],
         firstProposedAt: new Date().toISOString().slice(0, 10),
       })
@@ -800,35 +843,56 @@ export default function Actions() {
       key: 'linkedRequirementTickets',
       width: 160,
       render: (_, record) => (
-        <RequirementTicketsCell ticketIds={record.linkedRequirementTicketIds} />
+        <RequirementTicketsCell
+          ticketIds={record.linkedRequirementTicketIds}
+          requirementTickets={record.requirementTickets}
+        />
       ),
     },
     {
       title: '排期时间',
       key: 'scheduleAt',
       width: 120,
-      render: (_, record) => (
-        <Space size={4}>
-          <span
-            className={
-              record.status === 'in_progress' ? scheduleWarningClass(record.warningLevel) : undefined
-            }
-          >
-            {record.scheduleAt?.trim() || '—'}
-          </span>
-          {record.scheduleChanged ? (
-            <Tag color="orange" className="!m-0 !text-[10px]">
-              变更
-            </Tag>
-          ) : null}
-        </Space>
-      ),
+      render: (_, record) => {
+        const linked = Boolean(record.requirementLinkMode)
+        const scheduleText = linked
+          ? record.derivedScheduleAt?.trim() || '—'
+          : record.scheduleAt?.trim() || '—'
+        const warningActive = linked
+          ? Boolean(record.derivedScheduleAt)
+          : record.status === 'in_progress'
+        const warningLevel = linked ? record.derivedWarningLevel : record.warningLevel
+        return (
+          <Space size={4}>
+            <span className={warningActive ? scheduleWarningClass(warningLevel) : undefined}>
+              {scheduleText}
+            </span>
+            {!linked && record.scheduleChanged ? (
+              <Tag color="orange" className="!m-0 !text-[10px]">
+                变更
+              </Tag>
+            ) : null}
+          </Space>
+        )
+      },
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      render: (status) => <ActionItemStatusTag status={status} />,
+      render: (status, record) => {
+        if (record.requirementLinkMode) {
+          if (!record.derivedStatus) {
+            return (
+              <Tag color="warning" className="!m-0">
+                待同步
+              </Tag>
+            )
+          }
+          return <ActionItemStatusTag status={record.derivedStatus} />
+        }
+        return <ActionItemStatusTag status={status} />
+      },
     },
     {
       title: '首次提出时间',
@@ -1069,46 +1133,48 @@ export default function Actions() {
           <Form.Item name="problemTypeSnapshot" label="问题类型（可选）">
             <Input />
           </Form.Item>
-          <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
-            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" />
-          </Form.Item>
-          <Form.Item name="status" label="状态" initialValue="pending_evaluation" rules={[{ required: true }]}>
-            <Select
-              options={getActionItemStatusSelectOptions('pending_evaluation')}
-              onChange={(status) => {
-                if (actionItemStatusRequiresEmptySchedule(status)) {
-                  addForm.setFieldsValue({ scheduleAt: null })
+          <ActionItemRequirementLinkFields form={addForm} />
+          {!watchedAddRequirementLinkEnabled ? (
+            <>
+              <Form.Item name="status" label="状态" initialValue="pending_evaluation" rules={[{ required: true }]}>
+                <Select
+                  options={getActionItemStatusSelectOptions('pending_evaluation')}
+                  onChange={(status) => {
+                    if (actionItemStatusRequiresEmptySchedule(status)) {
+                      addForm.setFieldsValue({ scheduleAt: null })
+                    }
+                    if (actionItemStatusRequiresSchedule(status)) {
+                      addForm.validateFields(['scheduleAt']).catch(() => {})
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item
+                name="scheduleAt"
+                label="排期时间"
+                dependencies={['status']}
+                rules={
+                  addScheduleRequired
+                    ? [{ required: true, message: '进行中须填写排期时间' }]
+                    : []
                 }
-                if (actionItemStatusRequiresSchedule(status)) {
-                  addForm.validateFields(['scheduleAt']).catch(() => {})
-                }
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            name="scheduleAt"
-            label="排期时间"
-            dependencies={['status']}
-            rules={
-              addScheduleRequired
-                ? [{ required: true, message: '进行中须填写排期时间' }]
-                : []
-            }
-          >
-            <DatePicker
-              className="w-full"
-              format="YYYY-MM-DD"
-              placeholder={
-                addScheduleDisabled
-                  ? '当前状态无需排期'
-                  : addScheduleRequired
-                    ? '请选择排期（必填）'
-                    : undefined
-              }
-              allowClear
-              disabled={addScheduleDisabled}
-            />
-          </Form.Item>
+              >
+                <DatePicker
+                  className="w-full"
+                  format="YYYY-MM-DD"
+                  placeholder={
+                    addScheduleDisabled
+                      ? '当前状态无需排期'
+                      : addScheduleRequired
+                        ? '请选择排期（必填）'
+                        : undefined
+                  }
+                  allowClear
+                  disabled={addScheduleDisabled}
+                />
+              </Form.Item>
+            </>
+          ) : null}
         </Form>
       </Modal>
 
@@ -1129,7 +1195,7 @@ export default function Actions() {
           <Button type="link" className="!h-auto !p-0 !text-xs" onClick={downloadActionItemImportTemplate}>
             下载模板
           </Button>
-          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联反馈后自动补齐。首次提出时间统一记为导入当天。
+          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联反馈后自动补齐。填写需求工单时排期/状态列将被忽略。首次提出时间统一记为导入当天。
         </Typography.Paragraph>
         {importPreview ? (
           <>
@@ -1139,8 +1205,20 @@ export default function Actions() {
               className="!mb-3"
               message={`解析到 ${importPreview.rows.length} 条可导入举措${
                 importPreview.errors.length ? `，${importPreview.errors.length} 行有误将跳过` : ''
-              }`}
+              }${importPreview.warnings?.length ? `，${importPreview.warnings.length} 条提示` : ''}`}
             />
+            {importPreview.warnings?.length > 0 ? (
+              <ul className="mb-3 max-h-32 overflow-y-auto pl-5 text-xs text-amber-700">
+                {importPreview.warnings.slice(0, 8).map((warn) => (
+                  <li key={`${warn.row}-${warn.message}`}>
+                    第 {warn.row} 行：{warn.message}
+                  </li>
+                ))}
+                {importPreview.warnings.length > 8 ? (
+                  <li>另有 {importPreview.warnings.length - 8} 条提示未展示</li>
+                ) : null}
+              </ul>
+            ) : null}
             {importPreview.errors.length > 0 ? (
               <ul className="mb-0 max-h-32 overflow-y-auto pl-5 text-xs text-ink-600">
                 {importPreview.errors.slice(0, 8).map((err) => (
@@ -1176,6 +1254,15 @@ export default function Actions() {
             description="已完成、不予实施、异常终止的举措不可再修改内容、排期或状态。"
           />
         ) : null}
+        {editRequirementLinked && !editLocked ? (
+          <Alert
+            type="info"
+            showIcon
+            className="!mb-3"
+            message="已选择关联需求工单"
+            description="各需求工单的排期与状态将自动从「需求工单进展同步」读取并展示，不可修改。切换为「不关联」后可自行填写举措排期与状态。"
+          />
+        ) : null}
         {editStale ? (
           <Alert
             type="warning"
@@ -1207,49 +1294,66 @@ export default function Actions() {
               { max: ACTION_ITEM_CONTENT_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_CONTENT_MAX_LENGTH} 字` },
             ]}
           >
-            <Input.TextArea rows={4} showCount maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH} disabled={editLocked} />
+            <Input.TextArea
+              rows={4}
+              showCount
+              maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH}
+              disabled={editCoreFieldsLocked}
+            />
           </Form.Item>
           <Form.Item
             name="detail"
             label="举措详情（可选）"
             rules={[{ max: ACTION_ITEM_DETAIL_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_DETAIL_MAX_LENGTH} 字` }]}
           >
-            <Input.TextArea rows={3} showCount maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH} disabled={editLocked} />
-          </Form.Item>
-          <Form.Item name="linkedRequirementTicketIds" label="需求工单（可选）">
-            <Input.TextArea rows={2} placeholder="多个单号用逗号或换行分隔" disabled={editLocked} />
-          </Form.Item>
-          <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select
-              options={editStatusOptions}
+            <Input.TextArea
+              rows={3}
+              showCount
+              maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH}
               disabled={editLocked}
-              onChange={handleEditStatusChange}
             />
           </Form.Item>
-          <Form.Item
-            name="scheduleAt"
-            label="排期时间"
-            dependencies={['status']}
-            rules={
-              editScheduleRequired
-                ? [{ required: true, message: '进行中须填写排期时间' }]
-                : []
-            }
-          >
-            <DatePicker
-              className="w-full"
-              format="YYYY-MM-DD"
-              placeholder={
-                editScheduleDisabled && !editLocked
-                  ? '当前状态无需排期'
-                  : editScheduleRequired
-                    ? '请选择排期（必填）'
-                    : undefined
-              }
-              allowClear
-              disabled={editScheduleDisabled}
-            />
-          </Form.Item>
+          <ActionItemRequirementLinkFields
+            form={editForm}
+            disabled={editLocked}
+            initialTicketDetails={editing?.requirementTickets}
+            onLinkModeChange={handleEditRequirementLinkModeChange}
+          />
+          {!editRequirementLinked ? (
+            <>
+              <Form.Item name="status" label="状态" rules={[{ required: true }]}>
+                <Select
+                  options={editStatusOptions}
+                  disabled={editCoreFieldsLocked}
+                  onChange={handleEditStatusChange}
+                />
+              </Form.Item>
+              <Form.Item
+                name="scheduleAt"
+                label="排期时间"
+                dependencies={['status']}
+                rules={
+                  editScheduleRequired
+                    ? [{ required: true, message: '进行中须填写排期时间' }]
+                    : []
+                }
+              >
+                <DatePicker
+                  className="w-full"
+                  format="YYYY-MM-DD"
+                  placeholder={
+                    editScheduleDisabled && !editLocked
+                      ? '当前状态无需排期'
+                      : editScheduleRequired
+                        ? '请选择排期（必填）'
+                        : undefined
+                  }
+                  allowClear
+                  disabled={editScheduleDisabled}
+                />
+              </Form.Item>
+            </>
+          ) : null}
         </Form>
       </Modal>
 

@@ -60,6 +60,24 @@ describe('actionItem', () => {
     expect(toActionItemCreateBody(created.item)).not.toHaveProperty('createdAt')
   })
 
+  it('does not derive status from schedule when requirement tickets are linked', () => {
+    const base = validateActionItemCreate({
+      id: 'act-req',
+      content: '举措关联',
+      status: 'in_progress',
+      scheduleAt: '2026-06-01',
+      linkedRequirementTicketIds: ['REQ-1'],
+    })
+    expect(base.ok).toBe(true)
+    if (!base.ok) return
+
+    const merged = mergeActionItemPatch(base.item, { detail: '仅改详情' })
+    expect(merged.ok).toBe(true)
+    if (!merged.ok) return
+    expect(merged.item.status).toBe('in_progress')
+    expect(merged.item.scheduleAt).toBe('2026-06-01')
+  })
+
   it('mergeActionItemPatch sets in_progress when schedule added from empty without scheduleChanged', () => {
     const base = validateActionItemCreate({
       id: 'act-1',

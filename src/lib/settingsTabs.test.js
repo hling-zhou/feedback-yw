@@ -12,9 +12,10 @@ describe('settingsTabs', () => {
         'export',
         'viewAudit',
         'view',
+        'manageRequirementSync',
       ].includes(p),
     )
-    expect(admin).toEqual(['llm', 'analysis', 'metrics', 'data', 'audit', 'bottles'])
+    expect(admin).toEqual(['llm', 'analysis', 'metrics', 'data', 'audit', 'bottles', 'requirement_sync'])
 
     const editor = getVisibleSettingsTabs((p) =>
       ['configureLlmPersonal', 'editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(

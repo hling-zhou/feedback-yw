@@ -17,7 +17,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { ExpandOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { ExpandOutlined } from '@ant-design/icons'
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../constants/appLayout.js'
 import dayjs from 'dayjs'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -69,10 +69,10 @@ import {
   getEstablishedActionDisplay,
   getEstablishedActionDetailDisplay,
 } from '../domain/establishedAction.js'
-import { ESTABLISHED_ACTION_FIELD_TIP } from '../domain/establishedActionHints.js'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
 import ActionItemSelect from './ActionItemSelect.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
+import { getActionItemDisplayScheduleAt } from '../domain/requirementTicketProgress.js'
 import {
   buildDetailOptimizationSavePatch,
   DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH,
@@ -108,7 +108,6 @@ import { getRecordRevision, toRecordConflictError } from '../domain/recordRevisi
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { isFeedbackDrawerFormDirty } from '../domain/feedbackDrawerDirty.js'
-import { confirmDiscardFeedbackDrawerEdits } from '../lib/feedbackDrawerLeaveConfirm.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
@@ -404,7 +403,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       if (linkedFromLibrary) {
         setEstablishedAction(item.content)
         setEstablishedActionDetail(item.detail || '')
-        setActionSchedule(item.scheduleAt || '')
+        setActionSchedule(getActionItemDisplayScheduleAt(item))
       }
     })()
     return () => {
@@ -482,12 +481,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   )
 
   const handleRequestClose = useCallback(() => {
-    if (!isDrawerDirty) {
-      onClose()
-      return
-    }
-    confirmDiscardFeedbackDrawerEdits(onClose)
-  }, [isDrawerDirty, onClose])
+    onClose()
+  }, [onClose])
 
   useEffect(() => {
     onDirtyChange?.(Boolean(isDrawerDirty))
@@ -1045,16 +1040,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center gap-1">
-                    <Typography.Text strong className="text-xs">
-                      确立举措
-                    </Typography.Text>
-                    <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
-                      <span className="inline-flex cursor-help align-middle">
-                        <QuestionCircleOutlined className="text-xs text-ink-400" />
-                      </span>
-                    </Tooltip>
-                  </div>
+                  <Typography.Text strong className="text-xs">
+                    确立举措
+                  </Typography.Text>
                   <Form layout="vertical">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <Typography.Text className="shrink-0 text-sm after:content-[':']">
@@ -1069,7 +1057,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                             setActionId(item.id)
                             setEstablishedAction(item.content)
                             setEstablishedActionDetail(item.detail || '')
-                            setActionSchedule(item.scheduleAt || '')
+                            setActionSchedule(getActionItemDisplayScheduleAt(item))
                             setLinkedFromLibrary(true)
                           }}
                           onClear={() => {
@@ -1173,16 +1161,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   getEstablishedActionDetailDisplay(feedback) ||
                   feedback.actionSchedule?.trim()) && (
                   <div className="mt-4 space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Typography.Text strong className="text-xs">
-                        确立举措
-                      </Typography.Text>
-                      <Tooltip title={ESTABLISHED_ACTION_FIELD_TIP} getPopupContainer={() => document.body}>
-                        <span className="inline-flex cursor-help align-middle">
-                          <QuestionCircleOutlined className="text-xs text-ink-400" />
-                        </span>
-                      </Tooltip>
-                    </div>
+                    <Typography.Text strong className="text-xs">
+                      确立举措
+                    </Typography.Text>
                     <Descriptions
                       column={1}
                       size="small"

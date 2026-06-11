@@ -494,6 +494,25 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_user_ticket_review_user
       ON user_ticket_review (user_id, marked_at DESC);
     CREATE INDEX IF NOT EXISTS idx_message_bottles_created ON message_bottles(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS requirement_ticket_progress (
+      ticket_id TEXT PRIMARY KEY,
+      product TEXT NOT NULL DEFAULT '',
+      schedule_at TEXT NOT NULL DEFAULT '',
+      workflow_status TEXT NOT NULL DEFAULT '',
+      imported_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_requirement_ticket_progress_product
+      ON requirement_ticket_progress (product);
+    CREATE INDEX IF NOT EXISTS idx_requirement_ticket_progress_workflow_status
+      ON requirement_ticket_progress (workflow_status);
+
+    CREATE TABLE IF NOT EXISTS requirement_status_mapping (
+      workflow_status TEXT PRIMARY KEY,
+      maps_to_action_status TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
   `)
   migrateRecordsIndexColumns(db)
   migrateLegacyDcProductKeys(db)

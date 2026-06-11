@@ -22,6 +22,9 @@ describe('actionItemExport', () => {
       journeyL1Snapshot: '使用',
       linkedTicketIds: ['T-001', 'T-002'],
       linkedRequirementTicketIds: ['REQ-001'],
+      requirementLinkMode: true,
+      derivedScheduleAt: '2026-08-01',
+      derivedStatus: 'in_progress',
       linkedDataSources: ['complaint_ticket'],
       updatedAt: '2026-05-01T10:00:00.000Z',
       updatedBy: { userId: 'u1', username: 'alice' },
@@ -92,5 +95,39 @@ describe('actionItemExport', () => {
   it('buildActionItemListRows without period filter exports all linked tickets', () => {
     const rows = buildActionItemListRows(sampleItems, null)
     expect(rows[0]['关联反馈(本周期)']).toBe('未知月份: T-001; T-002')
+  })
+
+  it('buildActionItemListRows exports derived schedule and status for requirement-linked items', () => {
+    const rows = buildActionItemListRows(
+      [
+        {
+          ...sampleItems[0],
+          requirementLinkMode: true,
+          derivedScheduleAt: '2026-09-15',
+          derivedStatus: 'in_progress',
+          scheduleAt: '2026-08-01',
+          status: 'pending_evaluation',
+        },
+      ],
+      null,
+    )
+    expect(rows[0].排期时间).toBe('2026-09-15')
+    expect(rows[0].状态).toBe('进行中')
+    expect(rows[0].举措).toBe('优化控制台')
+  })
+
+  it('buildActionItemListRows exports 待同步 when requirement-linked without derived status', () => {
+    const rows = buildActionItemListRows(
+      [
+        {
+          ...sampleItems[0],
+          requirementLinkMode: true,
+          linkedRequirementTicketIds: ['REQ-001'],
+          derivedStatus: undefined,
+        },
+      ],
+      null,
+    )
+    expect(rows[0].状态).toBe('待同步')
   })
 })

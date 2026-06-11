@@ -17,6 +17,11 @@ import {
   formatActionItemUpdatedByDisplay,
 } from '../domain/actionItemRevision.js'
 import { listActionItems } from './actionItemClient.js'
+import {
+  formatDerivedRequirementStatusLabel,
+  getActionItemDisplayScheduleAt,
+  isActionItemInRequirementLinkMode,
+} from '../domain/requirementTicketProgress.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('./actionItemClient.js').ActionItemListQuery} ActionItemListQuery */
@@ -152,6 +157,12 @@ export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTick
       groupLinkedTicketIdsByMonth(linkedInPeriod, feedbackByTicketId),
     )
 
+    const requirementLinked = isActionItemInRequirementLinkMode(item)
+    const scheduleAt = getActionItemDisplayScheduleAt(item)
+    const statusLabel = requirementLinked
+      ? formatDerivedRequirementStatusLabel(item.derivedStatus)
+      : ACTION_ITEM_STATUS_LABELS[item.status] || item.status || ''
+
     return Object.fromEntries(
       ACTION_ITEM_LIST_HEADERS.map((header) => {
         /** @type {Record<string, string>} */
@@ -164,8 +175,8 @@ export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTick
           举措详情: item.detail || '',
           '关联反馈(本周期)': linkedGrouped,
           需求工单: (item.linkedRequirementTicketIds || []).join('; '),
-          排期时间: item.scheduleAt?.trim() || '',
-          状态: ACTION_ITEM_STATUS_LABELS[item.status] || item.status || '',
+          排期时间: scheduleAt,
+          状态: statusLabel,
           首次提出时间: item.firstProposedAt || '',
           最近更新时间: formatActionItemUpdatedAtDisplay(item),
           最近更新人员: formatActionItemUpdatedByDisplay(item),

@@ -10,6 +10,7 @@ import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
 import ProductWanTouMetricsPanel from '../components/ProductWanTouMetricsPanel.jsx'
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
+import RequirementTicketProgressPanel from '../components/admin/RequirementTicketProgressPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -342,7 +343,11 @@ export default function Settings() {
 
       <div
         className={`mt-4 ${
-          activeTab === 'bottles' ? '' : activeTab === 'metrics' ? 'max-w-4xl' : 'max-w-2xl'
+          activeTab === 'bottles' || activeTab === 'requirement_sync'
+            ? ''
+            : activeTab === 'metrics'
+              ? 'max-w-4xl'
+              : 'max-w-2xl'
         }`}
       >
         <SettingsTabIntro tab={activeTab} />
@@ -638,6 +643,10 @@ export default function Settings() {
         {activeTab === 'audit' && can('viewAudit') && <AuditLogPanel />}
 
         {activeTab === 'bottles' && can('view') && <MessageBottlePanel />}
+
+        {activeTab === 'requirement_sync' && can('manageRequirementSync') && (
+          <RequirementTicketProgressPanel />
+        )}
       </div>
     </div>
   )

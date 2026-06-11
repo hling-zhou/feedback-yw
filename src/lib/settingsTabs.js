@@ -1,4 +1,4 @@
-/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles'} SettingsTabKey */
+/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles' | 'requirement_sync'} SettingsTabKey */
 
 export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'llm',
@@ -7,6 +7,7 @@ export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'data',
   'audit',
   'bottles',
+  'requirement_sync',
 ])
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -17,6 +18,7 @@ export const SETTINGS_TAB_LABELS = {
   data: '数据管理',
   audit: '审计日志',
   bottles: '漂流瓶',
+  requirement_sync: '需求工单进展同步',
 }
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -27,6 +29,8 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   data: '导出备份、恢复数据或按范围清空已导入工单与洞察快照。',
   audit: '查看导入、清空、配置发布等关键操作记录。',
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
+  requirement_sync:
+    '维护外部需求工单进展与状态映射；举措关联需求工单后，排期与状态由此同步展示。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
@@ -44,6 +48,7 @@ export function getVisibleSettingsTabs(can) {
   if (can('manageTeamSettings') || can('deleteData') || can('export')) tabs.push('data')
   if (can('viewAudit')) tabs.push('audit')
   if (can('view')) tabs.push('bottles')
+  if (can('manageRequirementSync')) tabs.push('requirement_sync')
   return tabs
 }
 

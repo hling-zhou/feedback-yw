@@ -63,6 +63,42 @@ describe('establishedActionLibrary', () => {
     })
   })
 
+  it('buildLinkedEstablishedActionRecordPatch uses derived schedule for requirement-linked actions', () => {
+    const patch = buildLinkedEstablishedActionRecordPatch({
+      id: 'act-req',
+      content: '测试-云专线',
+      detail: '',
+      status: 'suspended',
+      scheduleAt: '2026-06-01',
+      linkedRequirementTicketIds: ['REQ-002', 'REQ-001'],
+      requirementLinkMode: true,
+      derivedStatus: 'in_progress',
+      derivedScheduleAt: '2026-05-14',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(patch.actionSchedule).toBe('2026-05-14')
+  })
+
+  it('formatActionItemOptionLabel shows derived status and schedule for requirement-linked actions', () => {
+    const label = formatActionItemOptionLabel({
+      id: 'act-req',
+      content: '测试-云专线',
+      status: 'suspended',
+      scheduleAt: '2026-06-01',
+      linkedRequirementTicketIds: ['REQ-002'],
+      requirementLinkMode: true,
+      derivedStatus: 'in_progress',
+      derivedScheduleAt: '2026-05-14',
+      createdAt: '',
+      updatedAt: '',
+    })
+    expect(label).toContain('进行中')
+    expect(label).toContain('2026-05-14')
+    expect(label).not.toContain('2026-06-01')
+    expect(label).not.toContain('挂起')
+  })
+
   it('buildClearEstablishedActionRecordPatch clears link fields', () => {
     expect(buildClearEstablishedActionRecordPatch()).toEqual({
       establishedAction: '',

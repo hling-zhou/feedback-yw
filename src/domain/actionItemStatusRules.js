@@ -1,3 +1,8 @@
+import {
+  hasRequirementTicketLinks,
+  normalizeRequirementTicketId,
+} from './requirementTicketProgress.js'
+
 /** @typedef {import('./actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('./actionItem.js').ActionItemStatus} ActionItemStatus */
 
@@ -83,9 +88,65 @@ export function listSelectableActionItemStatuses(current) {
 /**
  * @param {ActionItem} existing
  * @param {Partial<ActionItem>} patch
+ * @returns {string[]}
+ */
+export function resolvePatchedLinkedRequirementTicketIds(existing, patch) {
+  if (patch.linkedRequirementTicketIds !== undefined) {
+    return patch.linkedRequirementTicketIds
+      .map((id) => normalizeRequirementTicketId(id))
+      .filter(Boolean)
+  }
+  return (existing.linkedRequirementTicketIds || [])
+    .map((id) => normalizeRequirementTicketId(id))
+    .filter(Boolean)
+}
+
+/**
+ * @param {ActionItem} existing
+ * @param {Partial<ActionItem>} patch
+ * @returns {boolean}
+ */
+export function willHaveRequirementTicketLinks(existing, patch) {
+  return resolvePatchedLinkedRequirementTicketIds(existing, patch).length > 0
+}
+
+/**
+ * @param {ActionItem} existing
+ * @param {Partial<ActionItem>} patch
+ * @returns {string | null}
+ */
+export function validateActionItemRequirementLinkPatchAllowed(existing, patch) {
+  const wasLinked = hasRequirementTicketLinks(existing)
+  const willBeLinked = willHaveRequirementTicketLinks(existing, patch)
+  if (!wasLinked && !willBeLinked) return null
+
+  const contentChanged =
+    patch.content != null && String(patch.content).trim() !== String(existing.content ?? '').trim()
+  const statusChanged = patch.status != null && patch.status !== existing.status
+  const scheduleChanged =
+    patch.scheduleAt !== undefined &&
+    String(patch.scheduleAt ?? '').trim() !== String(existing.scheduleAt ?? '').trim()
+
+  if (!contentChanged && !statusChanged && !scheduleChanged) return null
+
+  if (wasLinked) {
+    if (contentChanged) return '已关联需求工单，不能修改举措内容'
+    if (statusChanged) return '已关联需求工单，不能修改状态（由进展同步维护）'
+    if (scheduleChanged) return '已关联需求工单，不能修改排期（由进展同步维护）'
+  }
+
+  return '关联需求工单时不能同时修改举措内容、排期或状态'
+}
+
+/**
+ * @param {ActionItem} existing
+ * @param {Partial<ActionItem>} patch
  * @returns {string | null}
  */
 export function validateActionItemPatchAllowed(existing, patch) {
+  const requirementLinkError = validateActionItemRequirementLinkPatchAllowed(existing, patch)
+  if (requirementLinkError) return requirementLinkError
+
   if (!isActionItemLocked(existing.status)) return null
 
   if (patch.content != null && String(patch.content).trim() !== existing.content) {

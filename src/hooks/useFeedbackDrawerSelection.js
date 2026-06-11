@@ -14,6 +14,8 @@ export function useFeedbackDrawerSelection(initialSelected = null) {
   selectedRef.current = selected
 
   const drawerDirtyRef = useRef(false)
+  /** 切换工单确认后，忽略紧随其后的抽屉 onClose（避免二次确认或误关闭） */
+  const suppressCloseUntilRef = useRef(0)
 
   const onDrawerDirtyChange = useCallback((dirty) => {
     drawerDirtyRef.current = dirty
@@ -21,15 +23,20 @@ export function useFeedbackDrawerSelection(initialSelected = null) {
 
   const closeDrawer = useCallback(() => {
     drawerDirtyRef.current = false
+    suppressCloseUntilRef.current = 0
     setSelected(null)
   }, [])
 
   const requestCloseDrawer = useCallback(() => {
+    if (Date.now() < suppressCloseUntilRef.current) return
     if (!drawerDirtyRef.current) {
       closeDrawer()
       return
     }
-    confirmDiscardFeedbackDrawerEdits(closeDrawer)
+    confirmDiscardFeedbackDrawerEdits(() => {
+      drawerDirtyRef.current = false
+      closeDrawer()
+    })
   }, [closeDrawer])
 
   const selectFeedback = useCallback((next) => {
@@ -52,6 +59,7 @@ export function useFeedbackDrawerSelection(initialSelected = null) {
     if (drawerDirtyRef.current) {
       confirmDiscardFeedbackDrawerEdits(() => {
         drawerDirtyRef.current = false
+        suppressCloseUntilRef.current = Date.now() + 400
         setSelected(next)
       })
       return

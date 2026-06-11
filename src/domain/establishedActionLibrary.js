@@ -10,6 +10,11 @@ import {
   normalizeActionItem,
 } from './actionItem.js'
 import {
+  formatDerivedRequirementStatusLabel,
+  getActionItemDisplayScheduleAt,
+  isActionItemInRequirementLinkMode,
+} from './requirementTicketProgress.js'
+import {
   buildEstablishedActionFullSavePatch,
   normalizeEstablishedActionInput,
   normalizeEstablishedActionDetailInput,
@@ -67,7 +72,7 @@ export function buildLinkedEstablishedActionRecordPatch(actionItem) {
   return {
     ...buildEstablishedActionFullSavePatch(actionItem.content, actionItem.detail),
     actionId: actionItem.id,
-    actionSchedule: normalizeActionSchedule(actionItem.scheduleAt),
+    actionSchedule: normalizeActionSchedule(getActionItemDisplayScheduleAt(actionItem)),
   }
 }
 
@@ -163,8 +168,11 @@ export function ensureTicketLinkedOnActionItem(item, ticketId, dataSourceType) {
  * @returns {string}
  */
 export function formatActionItemOptionLabel(item) {
-  const statusLabel = ACTION_ITEM_STATUS_LABELS[item.status] || item.status
-  const scheduleHint = item.scheduleAt?.trim() ? `排期 ${item.scheduleAt.trim()}` : '待评估'
+  const statusLabel = isActionItemInRequirementLinkMode(item)
+    ? formatDerivedRequirementStatusLabel(item.derivedStatus)
+    : ACTION_ITEM_STATUS_LABELS[item.status] || item.status
+  const displaySchedule = getActionItemDisplayScheduleAt(item)
+  const scheduleHint = displaySchedule ? `排期 ${displaySchedule}` : '待评估'
   const preview = item.content.length > 56 ? `${item.content.slice(0, 56)}…` : item.content
   return `${preview}（${statusLabel} · ${scheduleHint}）`
 }

@@ -53,6 +53,7 @@ import { registerLlmRoutes } from './routes/llm.js'
 import { registerAuditRoutes } from './routes/audit.js'
 import { registerMessageBottleRoutes } from './routes/messageBottles.js'
 import { registerTicketReviewRoutes } from './routes/ticketReviews.js'
+import { registerRequirementTicketProgressRoutes } from './routes/requirementTicketProgress.js'
 import { buildHealthReport } from './health.js'
 import { logAuditFromRequest, logAudit } from './audit.js'
 
@@ -79,6 +80,7 @@ registerLlmRoutes(app)
 registerAuditRoutes(app)
 registerMessageBottleRoutes(app)
 registerTicketReviewRoutes(app)
+registerRequirementTicketProgressRoutes(app)
 
 app.get('/health', async (_request, reply) => {
   const report = buildHealthReport()
