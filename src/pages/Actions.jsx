@@ -101,9 +101,13 @@ import {
 
 const PAGE_SIZE = 20
 
-/** 举措表单弹窗：限制整体高度，内容区滚动，标题栏与底部按钮固定 */
+/** 举措表单弹窗：限制整体高度，内容区滚动，标题栏与底部按钮固定（antd 6：container/wrapper） */
+const ACTION_FORM_MODAL_CLASS_NAMES = {
+  wrapper: 'action-form-modal-wrap',
+}
+
 const ACTION_FORM_MODAL_STYLES = {
-  content: {
+  container: {
     display: 'flex',
     flexDirection: 'column',
     maxHeight: 'calc(100vh - 48px)',
@@ -1117,10 +1121,12 @@ export default function Actions() {
       <Modal
         title="添加举措"
         open={addOpen}
+        centered
         onCancel={() => setAddOpen(false)}
         onOk={handleAddSave}
         confirmLoading={adding}
         destroyOnClose
+        classNames={ACTION_FORM_MODAL_CLASS_NAMES}
         styles={ACTION_FORM_MODAL_STYLES}
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
@@ -1258,12 +1264,14 @@ export default function Actions() {
       <Modal
         title="编辑举措"
         open={editOpen}
+        centered
         onCancel={() => setEditOpen(false)}
         onOk={editLocked ? undefined : () => handleEditSave()}
         okButtonProps={{ style: editLocked ? { display: 'none' } : undefined }}
         cancelText={editLocked ? '关闭' : '取消'}
         confirmLoading={saving}
         destroyOnClose
+        classNames={ACTION_FORM_MODAL_CLASS_NAMES}
         styles={ACTION_FORM_MODAL_STYLES}
       >
         {editLocked ? (
