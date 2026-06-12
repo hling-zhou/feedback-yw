@@ -204,6 +204,16 @@ export default function RequirementTicketProgressPanel() {
           sortOrder: index,
         }))
         .filter((row) => row.workflowStatus)
+      const seen = new Map()
+      for (let index = 0; index < items.length; index += 1) {
+        const workflowStatus = items[index].workflowStatus
+        const duplicateRow = seen.get(workflowStatus)
+        if (duplicateRow != null) {
+          message.error(`操作状态「${workflowStatus}」重复（与第 ${duplicateRow} 行相同）`)
+          return
+        }
+        seen.set(workflowStatus, index + 1)
+      }
       const result = await saveRequirementStatusMappings(items)
       setMappingRows(
         (result.items || []).map((item, index) => ({
@@ -213,7 +223,12 @@ export default function RequirementTicketProgressPanel() {
       )
       message.success('状态映射已保存')
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '保存状态映射失败')
+      const apiErrors = err?.data?.errors
+      if (Array.isArray(apiErrors) && apiErrors.length) {
+        message.error(apiErrors.map((item) => item.message).join('；'))
+      } else {
+        message.error(err instanceof Error ? err.message : '保存状态映射失败')
+      }
     } finally {
       setMappingSaving(false)
     }
@@ -285,7 +300,8 @@ export default function RequirementTicketProgressPanel() {
         }
       >
         <Typography.Text type="secondary" className="mb-3 block text-xs">
-          多个操作状态可映射到同一举措状态；未配置映射的操作状态在举措列表显示为「未映射」。
+          多个不同的操作状态可以映射到同一举措状态（例如「开发中」「联调中」「测试中」均映射为「进行中」）。
+          同一操作状态名称不能重复配置；未配置映射的操作状态在举措列表显示为「未映射」。
         </Typography.Text>
         <Table
           size="small"

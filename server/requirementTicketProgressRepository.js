@@ -236,6 +236,9 @@ function replaceStatusMappings(items) {
   /** @type {{ row: number; message: string }[]} */
   const errors = []
 
+  /** @type {Map<string, number>} */
+  const seenWorkflowStatuses = new Map()
+
   const normalized = items.map((item, index) => {
     const workflowStatus = String(item.workflowStatus ?? '').trim()
     const mapsToActionStatus = item.mapsToActionStatus
@@ -243,6 +246,15 @@ function replaceStatusMappings(items) {
       errors.push({ row: index + 1, message: `${REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus}不能为空` })
       return null
     }
+    const duplicateRow = seenWorkflowStatuses.get(workflowStatus)
+    if (duplicateRow != null) {
+      errors.push({
+        row: index + 1,
+        message: `操作状态「${workflowStatus}」重复（与第 ${duplicateRow} 行相同）`,
+      })
+      return null
+    }
+    seenWorkflowStatuses.set(workflowStatus, index + 1)
     if (!isActionItemStatus(mapsToActionStatus)) {
       errors.push({ row: index + 1, message: `操作状态 ${workflowStatus} 的映射目标无效` })
       return null

@@ -1,5 +1,7 @@
 import { hasPermission } from '../src/domain/auth/permissions.js'
+import { isApiKeyFormat } from '../src/domain/apiKey.js'
 import { isPasswordExpired, PASSWORD_EXPIRED_CODE, PASSWORD_EXPIRED_MESSAGE } from '../src/domain/passwordExpiry.js'
+import { apiKeyHasScope, verifyApiKey } from './apiKeyRepository.js'
 import { findUserById, resolveSessionVersion, toPublicUser } from './users.js'
 import { verifyAccessToken } from './auth.js'
 
@@ -13,16 +15,45 @@ export function extractBearerToken(request) {
 }
 
 /**
+ * @param {import('fastify').FastifyRequest} request
+ */
+export function extractApiKeyToken(request) {
+  const bearer = extractBearerToken(request)
+  if (isApiKeyFormat(bearer)) return bearer
+
+  const header = request.headers['x-api-key']
+  if (typeof header === 'string' && isApiKeyFormat(header.trim())) {
+    return header.trim()
+  }
+  return ''
+}
+
+/**
  * @param {import('fastify').FastifyInstance} app
  */
 export function registerAuthHooks(app) {
   app.decorateRequest('user', null)
+  app.decorateRequest('apiKey', null)
 
   app.addHook('preHandler', async (request, reply) => {
     const path = request.url.split('?')[0]
     if (path === '/api/auth/login' || path === '/api/auth/change-password' || path === '/health') return
 
     if (!path.startsWith('/api/')) return
+
+    request.user = null
+    request.apiKey = null
+
+    const apiKeyToken = extractApiKeyToken(request)
+    if (apiKeyToken) {
+      const apiKey = verifyApiKey(apiKeyToken)
+      if (!apiKey) {
+        reply.code(401).send({ error: 'API Key 无效、已吊销或已过期' })
+        return
+      }
+      request.apiKey = apiKey
+      return
+    }
 
     const token = extractBearerToken(request)
     if (!token) {
@@ -69,6 +100,9 @@ export function requirePermission(permission) {
   /** @param {import('fastify').FastifyRequest} request */
   /** @param {import('fastify').FastifyReply} reply */
   return async (request, reply) => {
+    if (request.apiKey) {
+      return reply.code(403).send({ error: 'API Key 无权访问此接口' })
+    }
     const user = request.user
     if (!user) {
       return reply.code(401).send({ error: '未登录' })
@@ -84,6 +118,47 @@ export function requireAdmin() {
   /** @param {import('fastify').FastifyRequest} request */
   /** @param {import('fastify').FastifyReply} reply */
   return async (request, reply) => {
+    if (request.apiKey) {
+      return reply.code(403).send({ error: 'API Key 无权访问此接口' })
+    }
+    const user = request.user
+    if (!user) {
+      return reply.code(401).send({ error: '未登录' })
+    }
+    if (user.role !== 'admin') {
+      return reply.code(403).send({ error: '仅管理员可执行此操作' })
+    }
+  }
+}
+
+/**
+ * @param {import('../src/domain/apiKey.js').ApiKeyScope} scope
+ */
+export function requireApiKeyScope(scope) {
+  /** @param {import('fastify').FastifyRequest} request */
+  /** @param {import('fastify').FastifyReply} reply */
+  return async (request, reply) => {
+    if (!request.apiKey) {
+      return reply.code(401).send({ error: '需要有效的 API Key' })
+    }
+    if (!apiKeyHasScope(request.apiKey, scope)) {
+      return reply.code(403).send({ error: 'API Key 权限不足' })
+    }
+  }
+}
+
+/**
+ * 允许管理员 JWT，或具备指定 scope 的 API Key。
+ *
+ * @param {import('../src/domain/apiKey.js').ApiKeyScope} scope
+ */
+export function requireAdminOrApiKeyScope(scope) {
+  /** @param {import('fastify').FastifyRequest} request */
+  /** @param {import('fastify').FastifyReply} reply */
+  return async (request, reply) => {
+    if (request.apiKey) {
+      return requireApiKeyScope(scope)(request, reply)
+    }
     const user = request.user
     if (!user) {
       return reply.code(401).send({ error: '未登录' })

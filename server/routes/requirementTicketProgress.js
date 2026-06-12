@@ -1,4 +1,4 @@
-import { requireAdmin, requirePermission } from '../middleware.js'
+import { requireAdmin, requireAdminOrApiKeyScope, requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { requirementTicketProgressRepository } from '../requirementTicketProgressRepository.js'
 import { resolveRequirementTicketDetails } from '../../src/domain/requirementTicketProgress.js'
@@ -46,7 +46,7 @@ export function registerRequirementTicketProgressRoutes(app) {
   app.post(
     '/api/requirement-ticket-progress/import',
     {
-      preHandler: [requirePermission('view'), requireAdmin()],
+      preHandler: [requireAdminOrApiKeyScope('requirement_ticket_progress:import')],
       schema: { body: requirementTicketProgressImportBodySchema },
     },
     async (request) => {

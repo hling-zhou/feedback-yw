@@ -513,6 +513,23 @@ export function initBusinessSchema() {
       maps_to_action_status TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      scopes_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'revoked')),
+      created_by_user_id TEXT,
+      created_by_username TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_used_at TEXT,
+      expires_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
+    CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
   `)
   migrateRecordsIndexColumns(db)
   migrateLegacyDcProductKeys(db)

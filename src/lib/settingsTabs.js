@@ -30,7 +30,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   audit: '查看导入、清空、配置发布等关键操作记录。',
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
   requirement_sync:
-    '维护外部需求工单进展与状态映射；举措关联需求工单后，排期与状态由此同步展示。',
+    '维护外部需求工单进展与状态映射，管理外部系统 API Key；举措关联需求工单后，排期与状态由此同步展示。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)

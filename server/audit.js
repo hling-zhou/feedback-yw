@@ -17,11 +17,14 @@ import { getDb } from './db.js'
  */
 export function logAuditFromRequest(request, action, detail = {}) {
   const user = request?.user
+  const apiKey = request?.apiKey
   logAudit({
-    userId: user?.id ?? null,
-    username: user?.username ?? 'system',
+    userId: user?.id ?? apiKey?.createdByUserId ?? null,
+    username: user?.username ?? (apiKey ? `apikey:${apiKey.name}` : 'system'),
     action,
-    detail,
+    detail: apiKey
+      ? { ...detail, apiKeyId: apiKey.id, apiKeyName: apiKey.name }
+      : detail,
   })
 }
 

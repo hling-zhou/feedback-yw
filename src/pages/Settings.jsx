@@ -11,6 +11,7 @@ import ProductWanTouMetricsPanel from '../components/ProductWanTouMetricsPanel.j
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import RequirementTicketProgressPanel from '../components/admin/RequirementTicketProgressPanel.jsx'
+import ApiKeyPanel from '../components/admin/ApiKeyPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -645,7 +646,10 @@ export default function Settings() {
         {activeTab === 'bottles' && can('view') && <MessageBottlePanel />}
 
         {activeTab === 'requirement_sync' && can('manageRequirementSync') && (
-          <RequirementTicketProgressPanel />
+          <div className="space-y-6">
+            <ApiKeyPanel />
+            <RequirementTicketProgressPanel />
+          </div>
         )}
       </div>
     </div>

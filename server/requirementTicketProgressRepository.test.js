@@ -77,4 +77,41 @@ describe.skipIf(!sqliteAvailable)('requirementTicketProgressRepository', () => {
     expect(map.get('开发中')?.mapsToActionStatus).toBe('in_progress')
     expect(map.get('已上线')?.mapsToActionStatus).toBe('completed')
   })
+
+  it('allows multiple external workflow statuses to map to the same action status', async () => {
+    const { requirementTicketProgressRepository } = await import('./requirementTicketProgressRepository.js')
+
+    const saved = requirementTicketProgressRepository.replaceStatusMappings([
+      { workflowStatus: '开发中', mapsToActionStatus: 'in_progress', sortOrder: 0 },
+      { workflowStatus: '联调中', mapsToActionStatus: 'in_progress', sortOrder: 1 },
+      { workflowStatus: '测试中', mapsToActionStatus: 'in_progress', sortOrder: 2 },
+      { workflowStatus: '已上线', mapsToActionStatus: 'completed', sortOrder: 3 },
+    ])
+    expect(saved.ok).toBe(true)
+    expect(saved.items).toHaveLength(4)
+
+    const map = requirementTicketProgressRepository.getStatusMappingMap()
+    expect(map.get('开发中')?.mapsToActionStatus).toBe('in_progress')
+    expect(map.get('联调中')?.mapsToActionStatus).toBe('in_progress')
+    expect(map.get('测试中')?.mapsToActionStatus).toBe('in_progress')
+    expect(map.get('已上线')?.mapsToActionStatus).toBe('completed')
+  })
+
+  it('rejects duplicate workflow statuses when saving mappings', async () => {
+    const { requirementTicketProgressRepository } = await import('./requirementTicketProgressRepository.js')
+
+    requirementTicketProgressRepository.replaceStatusMappings([
+      { workflowStatus: '开发中', mapsToActionStatus: 'in_progress', sortOrder: 0 },
+    ])
+
+    const saved = requirementTicketProgressRepository.replaceStatusMappings([
+      { workflowStatus: '开发中', mapsToActionStatus: 'in_progress', sortOrder: 0 },
+      { workflowStatus: '开发中', mapsToActionStatus: 'completed', sortOrder: 1 },
+    ])
+    expect(saved.ok).toBe(false)
+    expect(saved.errors[0]?.message).toContain('重复')
+
+    const map = requirementTicketProgressRepository.getStatusMappingMap()
+    expect(map.get('开发中')?.mapsToActionStatus).toBe('in_progress')
+  })
 })
