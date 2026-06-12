@@ -101,6 +101,21 @@ import {
 
 const PAGE_SIZE = 20
 
+/** 举措表单弹窗：限制整体高度，内容区滚动，标题栏与底部按钮固定 */
+const ACTION_FORM_MODAL_STYLES = {
+  content: {
+    display: 'flex',
+    flexDirection: 'column',
+    maxHeight: 'calc(100vh - 48px)',
+    overflow: 'hidden',
+  },
+  body: {
+    flex: '1 1 auto',
+    overflowY: 'auto',
+    minHeight: 0,
+  },
+}
+
 const FILTER_STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((value) => ({
   label: ACTION_ITEM_STATUS_LABELS[value],
   value,
@@ -1106,6 +1121,7 @@ export default function Actions() {
         onOk={handleAddSave}
         confirmLoading={adding}
         destroyOnClose
+        styles={ACTION_FORM_MODAL_STYLES}
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
           问题、问题类型、来源、关联反馈、需求工单均可留空；首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」及来源自动补齐。
@@ -1248,6 +1264,7 @@ export default function Actions() {
         cancelText={editLocked ? '关闭' : '取消'}
         confirmLoading={saving}
         destroyOnClose
+        styles={ACTION_FORM_MODAL_STYLES}
       >
         {editLocked ? (
           <Alert
