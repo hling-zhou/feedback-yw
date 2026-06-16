@@ -6,7 +6,11 @@
     "generic",
     "dc",
     "slb",
-    "vpc"
+    "vpc",
+    "monitor",
+    "cc",
+    "nat",
+    "vpn"
   ],
   "sharedRequestScenes": [
     {

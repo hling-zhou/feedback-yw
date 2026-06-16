@@ -32,6 +32,38 @@ import {
   VPC_REQUEST_SCENE_PATH_MAP,
   VPC_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/vpcJourney.js'
+import {
+  MONITOR_USER_JOURNEY,
+  MONITOR_NODE_ISSUE_MAP,
+  MONITOR_NODE_SERVICE_MAP,
+  MONITOR_PRODUCT_MATCH,
+  MONITOR_REQUEST_SCENE_PATH_MAP,
+  MONITOR_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/monitorJourney.js'
+import {
+  CC_USER_JOURNEY,
+  CC_NODE_ISSUE_MAP,
+  CC_NODE_SERVICE_MAP,
+  CC_PRODUCT_MATCH,
+  CC_REQUEST_SCENE_PATH_MAP,
+  CC_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/ccJourney.js'
+import {
+  NAT_USER_JOURNEY,
+  NAT_NODE_ISSUE_MAP,
+  NAT_NODE_SERVICE_MAP,
+  NAT_PRODUCT_MATCH,
+  NAT_REQUEST_SCENE_PATH_MAP,
+  NAT_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/natJourney.js'
+import {
+  VPN_USER_JOURNEY,
+  VPN_NODE_ISSUE_MAP,
+  VPN_NODE_SERVICE_MAP,
+  VPN_PRODUCT_MATCH,
+  VPN_REQUEST_SCENE_PATH_MAP,
+  VPN_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/vpnJourney.js'
 import { DEFAULT_THEME_RULES } from './themes.js'
 import { parseTaxonomyWorkbook } from './taxonomyExcel.js'
 import {
@@ -113,6 +145,58 @@ const BUILTIN_PRODUCTS = {
       issueMap: VPC_NODE_ISSUE_MAP,
       requestSceneMap: VPC_REQUEST_SCENE_PATH_MAP,
       problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  monitor: {
+    key: 'monitor',
+    name: '云监控',
+    match: MONITOR_PRODUCT_MATCH,
+    journeys: MONITOR_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: MONITOR_NODE_SERVICE_MAP,
+      issueMap: MONITOR_NODE_ISSUE_MAP,
+      requestSceneMap: MONITOR_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: MONITOR_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  cc: {
+    key: 'cc',
+    name: '云组网',
+    match: CC_PRODUCT_MATCH,
+    journeys: CC_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: CC_NODE_SERVICE_MAP,
+      issueMap: CC_NODE_ISSUE_MAP,
+      requestSceneMap: CC_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: CC_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  nat: {
+    key: 'nat',
+    name: 'NAT网关',
+    match: NAT_PRODUCT_MATCH,
+    journeys: NAT_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: NAT_NODE_SERVICE_MAP,
+      issueMap: NAT_NODE_ISSUE_MAP,
+      requestSceneMap: NAT_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: NAT_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  vpn: {
+    key: 'vpn',
+    name: '融合VPN',
+    match: VPN_PRODUCT_MATCH,
+    journeys: VPN_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: VPN_NODE_SERVICE_MAP,
+      issueMap: VPN_NODE_ISSUE_MAP,
+      requestSceneMap: VPN_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: VPN_PROBLEM_TYPE_PATH_MAP,
     },
   },
   generic: {
@@ -231,6 +315,30 @@ const BUILTIN_NODE_MAPS = {
     issueMap: VPC_NODE_ISSUE_MAP,
     requestSceneMap: VPC_REQUEST_SCENE_PATH_MAP,
     problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
+  },
+  monitor: {
+    serviceMap: MONITOR_NODE_SERVICE_MAP,
+    issueMap: MONITOR_NODE_ISSUE_MAP,
+    requestSceneMap: MONITOR_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: MONITOR_PROBLEM_TYPE_PATH_MAP,
+  },
+  cc: {
+    serviceMap: CC_NODE_SERVICE_MAP,
+    issueMap: CC_NODE_ISSUE_MAP,
+    requestSceneMap: CC_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: CC_PROBLEM_TYPE_PATH_MAP,
+  },
+  nat: {
+    serviceMap: NAT_NODE_SERVICE_MAP,
+    issueMap: NAT_NODE_ISSUE_MAP,
+    requestSceneMap: NAT_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: NAT_PROBLEM_TYPE_PATH_MAP,
+  },
+  vpn: {
+    serviceMap: VPN_NODE_SERVICE_MAP,
+    issueMap: VPN_NODE_ISSUE_MAP,
+    requestSceneMap: VPN_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: VPN_PROBLEM_TYPE_PATH_MAP,
   },
 }
 
