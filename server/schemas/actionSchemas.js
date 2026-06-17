@@ -16,6 +16,7 @@ export const createActionBodySchema = {
     painPointSnapshot: { type: 'string', maxLength: 2000 },
     problemTypeSnapshot: { type: 'string', maxLength: 256 },
     journeyL1Snapshot: { type: 'string', maxLength: 256 },
+    journeyL2Snapshot: { type: 'string', maxLength: 256 },
     linkedTicketIds: {
       type: 'array',
       maxItems: 500,
@@ -67,6 +68,7 @@ export const patchActionBodySchema = {
     painPointSnapshot: { type: 'string', maxLength: 2000 },
     problemTypeSnapshot: { type: 'string', maxLength: 256 },
     journeyL1Snapshot: { type: 'string', maxLength: 256 },
+    journeyL2Snapshot: { type: 'string', maxLength: 256 },
     linkedTicketIds: {
       type: 'array',
       maxItems: 500,

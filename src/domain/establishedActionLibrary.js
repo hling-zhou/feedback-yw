@@ -41,6 +41,8 @@ export function buildActionItemSnapshotsFromRecord(record) {
   return {
     painPointSnapshot: getDisplayPainPoint(record).trim(),
     problemTypeSnapshot: String(record?.problemType ?? '').trim(),
+    journeyL1Snapshot: String(record?.journeyL1 ?? '').trim(),
+    journeyL2Snapshot: String(record?.journeyL2 ?? '').trim(),
   }
 }
 
@@ -94,6 +96,12 @@ export function buildSnapshotPatchForEmptyFields(item, record) {
   }
   if (!String(item.problemTypeSnapshot ?? '').trim() && snapshots.problemTypeSnapshot) {
     patch.problemTypeSnapshot = snapshots.problemTypeSnapshot
+  }
+  if (!String(item.journeyL1Snapshot ?? '').trim() && snapshots.journeyL1Snapshot) {
+    patch.journeyL1Snapshot = snapshots.journeyL1Snapshot
+  }
+  if (!String(item.journeyL2Snapshot ?? '').trim() && snapshots.journeyL2Snapshot) {
+    patch.journeyL2Snapshot = snapshots.journeyL2Snapshot
   }
   if (!String(item.productKey ?? '').trim() && product.productKey) {
     patch.productKey = product.productKey

@@ -51,6 +51,7 @@ describe('actionItem', () => {
       painPointSnapshot: '',
       problemTypeSnapshot: '',
       journeyL1Snapshot: '',
+      journeyL2Snapshot: '',
       linkedTicketIds: [],
       linkedRequirementTicketIds: [],
       linkedDataSources: [],

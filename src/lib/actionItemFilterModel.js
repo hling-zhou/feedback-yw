@@ -10,6 +10,8 @@ import {
  * @property {string[]} productKeys
  * @property {ActionItemStatus[]} statuses
  * @property {string} ticketId
+ * @property {string} problemType
+ * @property {string} journeyL1
  */
 
 /** @typedef {keyof ActionItemFilterValues} ActionItemFilterKey */
@@ -18,6 +20,7 @@ import {
 export const ACTION_ITEM_FILTER_GROUPS = [
   { label: '关联', keys: ['ticketId'] },
   { label: '举措', keys: ['productKeys', 'statuses'] },
+  { label: '问题维度', keys: ['problemType', 'journeyL1'] },
 ]
 
 /** @type {Record<ActionItemFilterKey, string>} */
@@ -25,6 +28,8 @@ export const ACTION_ITEM_FILTER_LABELS = {
   productKeys: '产品',
   statuses: '状态',
   ticketId: '关联反馈号',
+  problemType: '问题类型',
+  journeyL1: '用户旅程',
 }
 
 /** @returns {ActionItemFilterValues} */
@@ -33,6 +38,8 @@ export function createEmptyActionItemFilters() {
     productKeys: [],
     statuses: [],
     ticketId: '',
+    problemType: '',
+    journeyL1: '',
   }
 }
 
@@ -48,6 +55,10 @@ export function isActionItemFilterActive(values, key) {
       return values.statuses.length > 0
     case 'ticketId':
       return Boolean(values.ticketId.trim())
+    case 'problemType':
+      return Boolean(values.problemType.trim())
+    case 'journeyL1':
+      return Boolean(values.journeyL1.trim())
     default:
       return false
   }
@@ -63,6 +74,8 @@ export function listActiveActionItemFilterChipKeys(values) {
   if (isActionItemFilterActive(values, 'ticketId')) keys.push('ticketId')
   if (isActionItemFilterActive(values, 'productKeys')) keys.push('productKeys')
   if (isActionItemFilterActive(values, 'statuses')) keys.push('statuses')
+  if (isActionItemFilterActive(values, 'problemType')) keys.push('problemType')
+  if (isActionItemFilterActive(values, 'journeyL1')) keys.push('journeyL1')
   return keys
 }
 
@@ -96,6 +109,10 @@ export function formatActionItemFilterChipLabel(key, values, ctx = {}) {
     }
     case 'ticketId':
       return values.ticketId.trim()
+    case 'problemType':
+      return values.problemType.trim()
+    case 'journeyL1':
+      return values.journeyL1.trim()
     default:
       return ''
   }
@@ -154,6 +171,12 @@ export function clearActionItemFilterKey(key, current) {
     case 'ticketId':
       patch.ticketId = ''
       break
+    case 'problemType':
+      patch.problemType = ''
+      break
+    case 'journeyL1':
+      patch.journeyL1 = ''
+      break
     default:
       break
   }
@@ -167,12 +190,20 @@ export function clearAllActionItemFilters() {
 
 /**
  * @param {ActionItemFilterValues} filters
- * @returns {{ productKeys?: string; statuses?: string; ticketId?: string }}
+ * @returns {{
+ *   productKeys?: string
+ *   statuses?: string
+ *   ticketId?: string
+ *   problemType?: string
+ *   journeyL1?: string
+ * }}
  */
 export function actionItemFiltersToListQuery(filters) {
   return {
     productKeys: filters.productKeys.length ? filters.productKeys.join(',') : undefined,
     statuses: filters.statuses.length ? filters.statuses.join(',') : undefined,
     ticketId: filters.ticketId.trim() || undefined,
+    problemType: filters.problemType.trim() || undefined,
+    journeyL1: filters.journeyL1.trim() || undefined,
   }
 }

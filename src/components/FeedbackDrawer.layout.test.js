@@ -65,7 +65,7 @@ describe('FeedbackDrawer layout', () => {
 
   it('delegates close to parent and tracks dirty state for leave confirm', () => {
     expect(src).toContain('handleRequestClose')
-    expect(src).toContain('isFeedbackDrawerFormDirty')
+    expect(src).toContain('areFeedbackDrawerFormSnapshotsEqual')
     expect(src).not.toContain('confirmDiscardFeedbackDrawerEdits')
     expect(src).toContain('onDirtyChange')
     expect(src).toContain('onSavedClose')

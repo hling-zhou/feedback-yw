@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button, Popover, Space, Typography, message } from 'antd'
 import { CopyOutlined } from '@ant-design/icons'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
+import { copyTextToClipboard } from '../../lib/clipboard.js'
 import {
   groupLinkedTicketIdsByMonth,
   UNKNOWN_LINKED_FEEDBACK_MONTH,
@@ -13,11 +14,13 @@ import {
  * @param {string[]} props.ticketIds
  * @param {Map<string, import('../../lib/types.js').FeedbackRecord>} [props.feedbackByTicketId]
  * @param {string} [props.title]
+ * @param {(ticketId: string) => void} [props.onOpenTicket]
  */
 export default function LinkedTicketsCell({
   ticketIds,
   feedbackByTicketId,
   title = '关联反馈',
+  onOpenTicket,
 }) {
   const ids = ticketIds || []
   const groups = useMemo(
@@ -27,22 +30,37 @@ export default function LinkedTicketsCell({
 
   if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
 
-  const copyAll = async () => {
-    try {
-      await navigator.clipboard.writeText(ids.join('\n'))
-      message.success('已复制工单号')
-    } catch {
-      message.error('复制失败')
-    }
+  const copyLines = async (lines, successMessage) => {
+    const ok = await copyTextToClipboard(lines.join('\n'))
+    if (ok) message.success(successMessage)
+    else message.error('复制失败')
   }
 
-  const copyGroup = async (groupTicketIds) => {
-    try {
-      await navigator.clipboard.writeText(groupTicketIds.join('\n'))
-      message.success('已复制该月工单号')
-    } catch {
-      message.error('复制失败')
+  const copyAll = () => void copyLines(ids, '已复制工单号')
+  const copyGroup = (groupTicketIds) =>
+    void copyLines(groupTicketIds, '已复制该月工单号')
+
+  const renderTicketId = (ticketId) => {
+    if (onOpenTicket) {
+      return (
+        <Button
+          type="link"
+          size="small"
+          className="!h-auto !px-0 !text-xs !text-ink-800 hover:!text-brand-600"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpenTicket(ticketId)
+          }}
+        >
+          {ticketId}
+        </Button>
+      )
     }
+    return (
+      <Typography.Text className="text-xs text-ink-800">
+        {ticketId}
+      </Typography.Text>
+    )
   }
 
   const content = (
@@ -70,21 +88,14 @@ export default function LinkedTicketsCell({
                 type="link"
                 size="small"
                 className="!h-auto !px-0 !text-[10px]"
-                onClick={() => void copyGroup(group.ticketIds)}
+                onClick={() => copyGroup(group.ticketIds)}
               >
                 复制
               </Button>
             </div>
             <Space direction="vertical" size={2} className="w-full">
               {group.ticketIds.map((ticketId) => (
-                <Typography.Text key={ticketId} className="text-xs">
-                  <Link
-                    to={buildFeedbacksUrl({ ticketId })}
-                    className="text-ink-800 hover:text-brand-600"
-                  >
-                    {ticketId}
-                  </Link>
-                </Typography.Text>
+                <div key={ticketId}>{renderTicketId(ticketId)}</div>
               ))}
             </Space>
           </div>

@@ -18,6 +18,10 @@ import {
 } from '../src/domain/requirementTicketProgress.js'
 import { requirementTicketProgressRepository } from './requirementTicketProgressRepository.js'
 import { storageRepository } from './storageRepository.js'
+import {
+  actionItemMatchesJourneyL1Filter,
+  actionItemMatchesProblemTypeFilter,
+} from '../src/domain/actionItemDisplay.js'
 
 /**
  * @typedef {import('../src/domain/actionItem.js').ActionItem} ActionItem
@@ -31,6 +35,8 @@ import { storageRepository } from './storageRepository.js'
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses] - 逗号分隔多选
  * @property {string} [ticketId] - 关联工单号
+ * @property {string} [problemType] - 问题类型（快照/首单回退）
+ * @property {string} [journeyL1] - 用户旅程一级（快照/首单回退）
  * @property {string} [firstProposedFrom] - YYYY-MM-DD
  * @property {string} [firstProposedTo] - YYYY-MM-DD
  * @property {string} [insightPeriodId] - 仅保留关联到该周期内工单的举措
@@ -84,6 +90,34 @@ function getTicketIdsForInsightPeriod(insightPeriodId) {
   return buildTicketIdSetFromRecords(records)
 }
 
+/**
+ * @param {ActionItem[]} items
+ * @returns {Map<string, import('../src/domain/actionItemDisplay.js').ActionItemFeedbackLookup>}
+ */
+function buildFeedbackLookupForActionItems(items) {
+  /** @type {Set<string>} */
+  const neededIds = new Set()
+  for (const item of items) {
+    const firstId = item.linkedTicketIds?.[0]?.trim()
+    if (firstId) neededIds.add(firstId)
+  }
+  if (!neededIds.size) return new Map()
+
+  const { records } = storageRepository.listRecords({})
+  /** @type {Map<string, import('../src/domain/actionItemDisplay.js').ActionItemFeedbackLookup>} */
+  const map = new Map()
+  for (const record of records) {
+    const ticketId = record.ticketId?.trim()
+    if (!ticketId || !neededIds.has(ticketId) || map.has(ticketId)) continue
+    map.set(ticketId, {
+      problemType: record.problemType,
+      journeyL1: record.journeyL1,
+      journeyL2: record.journeyL2,
+    })
+  }
+  return map
+}
+
 function filterActionItemsInMemory(query, items) {
   let filtered = items
 
@@ -102,6 +136,25 @@ function filterActionItemsInMemory(query, items) {
   if (query.search?.trim()) {
     const needle = query.search.trim().toLowerCase()
     filtered = filtered.filter((item) => item.content.toLowerCase().includes(needle))
+  }
+
+  const needFeedbackLookup = Boolean(query.problemType?.trim() || query.journeyL1?.trim())
+  const feedbackByTicketId = needFeedbackLookup
+    ? buildFeedbackLookupForActionItems(filtered)
+    : undefined
+
+  if (query.problemType?.trim()) {
+    const problemType = query.problemType.trim()
+    filtered = filtered.filter((item) =>
+      actionItemMatchesProblemTypeFilter(item, problemType, feedbackByTicketId),
+    )
+  }
+
+  if (query.journeyL1?.trim()) {
+    const journeyL1 = query.journeyL1.trim()
+    filtered = filtered.filter((item) =>
+      actionItemMatchesJourneyL1Filter(item, journeyL1, feedbackByTicketId),
+    )
   }
 
   return filtered

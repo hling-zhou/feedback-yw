@@ -84,6 +84,9 @@ import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
 import ActionItemCompositeFilter from '../components/actions/ActionItemCompositeFilter.jsx'
 import LinkedTicketsCell from '../components/actions/LinkedTicketsCell.jsx'
 import RequirementTicketsCell from '../components/actions/RequirementTicketsCell.jsx'
+import CopyableEllipsisCell from '../components/actions/CopyableEllipsisCell.jsx'
+import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
+import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import ActionItemRequirementLinkFields, {
   normalizeRequirementTicketIdsFromForm,
   toRequirementTicketFormList,
@@ -100,6 +103,11 @@ import {
   getActionItemRevision,
   toActionItemConflictError,
 } from '../domain/actionItemRevision.js'
+import {
+  buildActionItemJourneyL1FilterOptions,
+  buildActionItemProblemTypeFilterOptions,
+  resolveJourneyDisplay,
+} from '../domain/actionItemDisplay.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -161,19 +169,6 @@ function ColumnTitleWithHint({ title, hint, extra }) {
         </span>
       </Tooltip>
     </span>
-  )
-}
-
-/** @param {{ text?: string | null; className?: string }} props */
-function TableEllipsisCell({ text, className }) {
-  const value = text?.trim() || ''
-  if (!value) return <Typography.Text type="secondary">—</Typography.Text>
-  return (
-    <Tooltip title={value} getPopupContainer={() => document.body}>
-      <Typography.Text className={className} ellipsis>
-        {value}
-      </Typography.Text>
-    </Tooltip>
   )
 }
 
@@ -250,6 +245,7 @@ export default function Actions() {
     /** @type {{ rows: Partial<ActionItem>[]; errors: { row: number; error: string }[]; warnings: { row: number; message: string }[] } | null} */ (null),
   )
   const [importing, setImporting] = useState(false)
+  const [scopeItemsForFilters, setScopeItemsForFilters] = useState(/** @type {ActionItem[]} */ ([]))
 
   const editLocked = Boolean(editing && isActionItemLocked(editing.status))
   const editRequirementLinked = Boolean(watchedRequirementLinkEnabled)
@@ -304,6 +300,26 @@ export default function Actions() {
     [feedbacks],
   )
 
+  const {
+    selected: selectedFeedback,
+    setSelectedDirect,
+    requestCloseDrawer,
+    closeDrawer,
+    onDrawerDirtyChange,
+  } = useFeedbackDrawerSelection()
+
+  const openFeedbackByTicketId = useCallback(
+    (ticketId) => {
+      const record = feedbackByTicketId.get(ticketId)
+      if (!record) {
+        message.warning('未在库中找到该工单，请稍后刷新或确认工单号')
+        return
+      }
+      setSelectedDirect(record)
+    },
+    [feedbackByTicketId, setSelectedDirect],
+  )
+
   const resolveLinkedTicketIds = useCallback(
     (/** @type {ActionItem} */ record) => {
       if (!periodFilterActive) return record.linkedTicketIds || []
@@ -347,6 +363,30 @@ export default function Actions() {
       insightPeriodId: insightPeriodId || undefined,
     }),
     [dateRange, insightPeriodId],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
+      .then((result) => {
+        if (!cancelled) setScopeItemsForFilters(result.items)
+      })
+      .catch(() => {
+        if (!cancelled) setScopeItemsForFilters([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [baseScopeQuery])
+
+  const problemTypeOptions = useMemo(
+    () => buildActionItemProblemTypeFilterOptions(scopeItemsForFilters, feedbackByTicketId),
+    [scopeItemsForFilters, feedbackByTicketId],
+  )
+
+  const journeyL1Options = useMemo(
+    () => buildActionItemJourneyL1FilterOptions(scopeItemsForFilters, feedbackByTicketId),
+    [scopeItemsForFilters, feedbackByTicketId],
   )
 
   const loadStats = useCallback(async () => {
@@ -826,12 +866,35 @@ export default function Actions() {
       ellipsis: true,
       width: 160,
       fixed: 'left',
-      render: (text) => <TableEllipsisCell text={text} />,
+      render: (text) => <CopyableEllipsisCell text={text} />,
     },
     {
       title: '问题类型',
       dataIndex: 'problemTypeSnapshot',
       width: 120,
+    },
+    {
+      title: '用户旅程',
+      key: 'journey',
+      width: 160,
+      render: (_, record) => {
+        const { journeyL1, journeyL2 } = resolveJourneyDisplay(record, feedbackByTicketId)
+        if (!journeyL1 && !journeyL2) {
+          return <Typography.Text type="secondary">—</Typography.Text>
+        }
+        return (
+          <div>
+            <Typography.Text
+              type={!journeyL1 || journeyL1 === '未识别环节' ? 'warning' : undefined}
+            >
+              {journeyL1 || '待打标'}
+            </Typography.Text>
+            <Typography.Text type="secondary" className="block text-xs">
+              {journeyL2 || '-'}
+            </Typography.Text>
+          </div>
+        )
+      },
     },
     {
       title: '来源',
@@ -856,13 +919,14 @@ export default function Actions() {
       dataIndex: 'content',
       ellipsis: true,
       width: 180,
+      render: (text) => <CopyableEllipsisCell text={text} />,
     },
     {
       title: '举措详情',
       dataIndex: 'detail',
       ellipsis: true,
       width: 140,
-      render: (text) => <TableEllipsisCell text={text} />,
+      render: (text) => <CopyableEllipsisCell text={text} />,
     },
     {
       title: (
@@ -884,6 +948,7 @@ export default function Actions() {
         <LinkedTicketsCell
           ticketIds={resolveLinkedTicketIds(record)}
           feedbackByTicketId={feedbackByTicketId}
+          onOpenTicket={openFeedbackByTicketId}
         />
       ),
     },
@@ -1155,6 +1220,8 @@ export default function Actions() {
             options={{
               productOptions,
               statusOptions: FILTER_STATUS_OPTIONS,
+              problemTypeOptions,
+              journeyL1Options,
               productNameByKey,
             }}
           />
@@ -1469,6 +1536,13 @@ export default function Actions() {
         onForceSave={handleForceSaveAfterConflict}
         onCancel={() => setConflictOpen(false)}
         forceSaving={forceSaving}
+      />
+
+      <FeedbackDrawer
+        feedback={selectedFeedback}
+        onClose={requestCloseDrawer}
+        onSavedClose={closeDrawer}
+        onDirtyChange={onDrawerDirtyChange}
       />
     </div>
   )

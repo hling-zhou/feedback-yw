@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { isFeedbackDrawerFormDirty } from './feedbackDrawerDirty.js'
+import {
+  areFeedbackDrawerFormSnapshotsEqual,
+  isFeedbackDrawerFormDirty,
+} from './feedbackDrawerDirty.js'
 
 const baseRecord = {
   id: '1',
@@ -54,5 +57,12 @@ describe('isFeedbackDrawerFormDirty', () => {
     expect(
       isFeedbackDrawerFormDirty(baseRecord, { ...baseForm, complaintCauseL2Review: '复核二级' }),
     ).toBe(true)
+  })
+
+  it('areFeedbackDrawerFormSnapshotsEqual matches identical snapshots', () => {
+    expect(areFeedbackDrawerFormSnapshotsEqual(baseForm, { ...baseForm })).toBe(true)
+    expect(
+      areFeedbackDrawerFormSnapshotsEqual(baseForm, { ...baseForm, note: 'changed' }),
+    ).toBe(false)
   })
 })

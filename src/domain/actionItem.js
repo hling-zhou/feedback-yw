@@ -46,6 +46,7 @@ export {
  * @property {string} [painPointSnapshot]
  * @property {string} [problemTypeSnapshot]
  * @property {string} [journeyL1Snapshot]
+ * @property {string} [journeyL2Snapshot]
  * @property {string[]} [linkedTicketIds]
  * @property {string[]} [linkedRequirementTicketIds] - 关联需求工单号（可选，可多个）
  * @property {import('./enums.js').DataSourceType[]} [linkedDataSources]
@@ -118,6 +119,7 @@ export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'painPointSnapshot',
   'problemTypeSnapshot',
   'journeyL1Snapshot',
+  'journeyL2Snapshot',
   'linkedTicketIds',
   'linkedRequirementTicketIds',
   'linkedDataSources',
@@ -206,6 +208,7 @@ export function normalizeActionItem(input) {
     painPointSnapshot: String(input.painPointSnapshot ?? '').trim(),
     problemTypeSnapshot: String(input.problemTypeSnapshot ?? '').trim(),
     journeyL1Snapshot: String(input.journeyL1Snapshot ?? '').trim(),
+    journeyL2Snapshot: String(input.journeyL2Snapshot ?? '').trim(),
     linkedTicketIds: Array.isArray(input.linkedTicketIds)
       ? input.linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)
       : [],
@@ -420,6 +423,7 @@ export function applyActionItemTicketLinkState(item, linkedTicketIds, linkedData
       painPointSnapshot: '',
       problemTypeSnapshot: '',
       journeyL1Snapshot: '',
+      journeyL2Snapshot: '',
       updatedAt: new Date().toISOString(),
     })
   }

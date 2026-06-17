@@ -341,4 +341,97 @@ describeActions('actions API (P4-1)', () => {
     })
     expect(delRes.statusCode).toBe(200)
   })
+
+  it('filters action items by problemType and journeyL1 with snapshot and ticket fallback', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+
+    storageRepository.putRecord({
+      id: 'rec-filter-a',
+      ticketId: 'T-FILTER-A',
+      problemType: '故障',
+      journeyL1: '使用',
+      journeyL2: '监控',
+      dataSourceType: 'complaint_ticket',
+      tenantId: 'default',
+      schemaVersion: 1,
+      recordStatus: 'analyzed',
+    })
+    storageRepository.putRecord({
+      id: 'rec-filter-b',
+      ticketId: 'T-FILTER-B',
+      problemType: '文档自助',
+      journeyL1: '了解',
+      journeyL2: '产品文档',
+      dataSourceType: 'complaint_ticket',
+      tenantId: 'default',
+      schemaVersion: 1,
+      recordStatus: 'analyzed',
+    })
+
+    const snapshotRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '快照举措',
+        problemTypeSnapshot: '计费与账单',
+        journeyL1Snapshot: '开通',
+        linkedTicketIds: ['T-FILTER-A'],
+      },
+    })
+    expect(snapshotRes.statusCode).toBe(201)
+    const snapshotItem = JSON.parse(snapshotRes.body).item
+
+    const fallbackRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '回退举措',
+        linkedTicketIds: ['T-FILTER-B'],
+      },
+    })
+    expect(fallbackRes.statusCode).toBe(201)
+    const fallbackItem = JSON.parse(fallbackRes.body).item
+
+    const byProblemSnapshot = await app.inject({
+      method: 'GET',
+      url: '/api/actions?problemType=%E8%AE%A1%E8%B4%B9%E4%B8%8E%E8%B4%A6%E5%8D%95',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(byProblemSnapshot.body).total).toBe(1)
+    expect(JSON.parse(byProblemSnapshot.body).items[0].id).toBe(snapshotItem.id)
+
+    const byProblemFallback = await app.inject({
+      method: 'GET',
+      url: '/api/actions?problemType=%E6%96%87%E6%A1%A3%E8%87%AA%E5%8A%A9',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(byProblemFallback.body).total).toBe(1)
+    expect(JSON.parse(byProblemFallback.body).items[0].id).toBe(fallbackItem.id)
+
+    const byJourneySnapshot = await app.inject({
+      method: 'GET',
+      url: '/api/actions?journeyL1=%E5%BC%80%E9%80%9A',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(byJourneySnapshot.body).total).toBe(1)
+    expect(JSON.parse(byJourneySnapshot.body).items[0].id).toBe(snapshotItem.id)
+
+    const byJourneyFallback = await app.inject({
+      method: 'GET',
+      url: '/api/actions?journeyL1=%E4%BA%86%E8%A7%A3',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(byJourneyFallback.body).total).toBe(1)
+    expect(JSON.parse(byJourneyFallback.body).items[0].id).toBe(fallbackItem.id)
+
+    const combined = await app.inject({
+      method: 'GET',
+      url: '/api/actions?problemType=%E6%96%87%E6%A1%A3%E8%87%AA%E5%8A%A9&journeyL1=%E4%BA%86%E8%A7%A3',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(combined.body).total).toBe(1)
+    expect(JSON.parse(combined.body).items[0].id).toBe(fallbackItem.id)
+  })
 })

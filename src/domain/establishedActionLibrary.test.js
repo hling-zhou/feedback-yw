@@ -33,6 +33,8 @@ describe('establishedActionLibrary', () => {
     expect(payload.productKey).toBe('vpc')
     expect(payload.painPointSnapshot).toBe('连接失败')
     expect(payload.problemTypeSnapshot).toBe('故障')
+    expect(payload.journeyL1Snapshot).toBe('使用')
+    expect(payload.journeyL2Snapshot).toBe('')
     expect(payload.detail).toBe('')
   })
 
@@ -138,6 +140,8 @@ describe('establishedActionLibrary', () => {
     expect(buildFirstTicketSnapshotSyncPatch(item, record)).toEqual({
       painPointSnapshot: '连接失败',
       problemTypeSnapshot: '故障',
+      journeyL1Snapshot: '使用',
+      journeyL2Snapshot: '',
     })
     expect(
       buildFirstTicketSnapshotSyncPatch(item, { ...record, ticketId: 'T-200' }),
@@ -156,6 +160,7 @@ describe('establishedActionLibrary', () => {
     }
     expect(buildSnapshotPatchForEmptyFields(item, record)).toEqual({
       painPointSnapshot: '连接失败',
+      journeyL1Snapshot: '使用',
       productKey: 'vpc',
       productName: '虚拟私有云',
     })
@@ -173,6 +178,7 @@ describe('establishedActionLibrary', () => {
     expect(buildSnapshotPatchOnTicketLink(item, record)).toEqual({
       painPointSnapshot: '连接失败',
       problemTypeSnapshot: '故障',
+      journeyL1Snapshot: '使用',
       productKey: 'vpc',
       productName: '虚拟私有云',
     })

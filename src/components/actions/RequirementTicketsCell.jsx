@@ -1,10 +1,37 @@
 import { useMemo } from 'react'
-import { Button, Popover, Table, Tag, Typography } from 'antd'
-import { DownOutlined } from '@ant-design/icons'
+import { Button, Popover, Table, Tag, Typography, message } from 'antd'
+import { CopyOutlined, DownOutlined } from '@ant-design/icons'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
+import { copyTextToClipboard } from '../../lib/clipboard.js'
 
 /** @typedef {import('../../domain/requirementTicketProgress.js').RequirementTicketDetail} RequirementTicketDetail */
+
+/**
+ * @param {{ value: string }} props
+ */
+function CopyableTicketId({ value }) {
+  const handleCopy = async (event) => {
+    event.stopPropagation()
+    const ok = await copyTextToClipboard(value)
+    if (ok) message.success('已复制工单号')
+    else message.error('复制失败')
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Typography.Text className="text-xs">{value}</Typography.Text>
+      <Button
+        type="link"
+        size="small"
+        className="!h-auto !px-0 !text-[10px]"
+        onClick={(event) => void handleCopy(event)}
+      >
+        复制
+      </Button>
+    </span>
+  )
+}
 
 /**
  * @param {Object} props
@@ -42,16 +69,18 @@ export default function RequirementTicketsCell({ ticketIds, requirementTickets }
 
   if (!ids.length) return <Typography.Text type="secondary">—</Typography.Text>
 
+  const copyAll = async () => {
+    const ok = await copyTextToClipboard(ids.join('\n'))
+    if (ok) message.success('已复制工单号')
+    else message.error('复制失败')
+  }
+
   const columns = [
     {
       title: REQUIREMENT_PROGRESS_FIELD_LABELS.ticketId,
       dataIndex: 'ticketId',
       width: 110,
-      render: (value) => (
-        <Typography.Text className="text-xs" copyable={{ text: value }}>
-          {value}
-        </Typography.Text>
-      ),
+      render: (value) => <CopyableTicketId value={value} />,
     },
     {
       title: REQUIREMENT_PROGRESS_FIELD_LABELS.product,
@@ -105,6 +134,15 @@ export default function RequirementTicketsCell({ ticketIds, requirementTickets }
         dataSource={ids.map((ticketId) => detailById.get(ticketId) || { ticketId, syncState: 'missing', mappedStatus: null })}
         scroll={{ y: 220 }}
       />
+      <Button
+        type="link"
+        size="small"
+        icon={<CopyOutlined />}
+        onClick={() => void copyAll()}
+        className="!mt-2 !px-0"
+      >
+        复制全部
+      </Button>
     </div>
   )
 

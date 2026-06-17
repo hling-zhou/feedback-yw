@@ -121,3 +121,68 @@ export function isFeedbackDrawerFormDirty(record, form) {
 
   return false
 }
+
+/**
+ * 抽屉表单快照是否一致（用于打开/保存后的 baseline，避免异步灌表误判 dirty）。
+ *
+ * @param {FeedbackDrawerFormSnapshot} a
+ * @param {FeedbackDrawerFormSnapshot} b
+ */
+export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
+  if (norm(a.note) !== norm(b.note)) return false
+  if (normalizeSentiment(a.sentiment) !== normalizeSentiment(b.sentiment)) return false
+  if (
+    normalizeUrgencyLevel(a.urgencyLevel, a.sentiment)
+    !== normalizeUrgencyLevel(b.urgencyLevel, b.sentiment)
+  ) {
+    return false
+  }
+  if (norm(a.requestScene) !== norm(b.requestScene)) return false
+  if (norm(a.problemType) !== norm(b.problemType)) return false
+  if (norm(a.journeyL1) !== norm(b.journeyL1)) return false
+  if (norm(a.journeyL2) !== norm(b.journeyL2)) return false
+  if (
+    normalizeManualCustomerRequest(a.customerRequest)
+    !== normalizeManualCustomerRequest(b.customerRequest)
+  ) {
+    return false
+  }
+  if (normalizeManualPainPoint(a.painPoint) !== normalizeManualPainPoint(b.painPoint)) {
+    return false
+  }
+  if (norm(a.productGroupOptimization) !== norm(b.productGroupOptimization)) return false
+  if (norm(a.designerOptimization) !== norm(b.designerOptimization)) return false
+  if (
+    normalizeEstablishedActionInput(a.establishedAction)
+    !== normalizeEstablishedActionInput(b.establishedAction)
+  ) {
+    return false
+  }
+  if (
+    normalizeEstablishedActionDetailInput(a.establishedActionDetail)
+    !== normalizeEstablishedActionDetailInput(b.establishedActionDetail)
+  ) {
+    return false
+  }
+  if (normalizeActionSchedule(a.actionSchedule) !== normalizeActionSchedule(b.actionSchedule)) {
+    return false
+  }
+  if (norm(a.actionId) !== norm(b.actionId)) return false
+  if (
+    normalizeRootCauseReviewInput(a.rootCauseReview)
+    !== normalizeRootCauseReviewInput(b.rootCauseReview)
+  ) {
+    return false
+  }
+  const causeA = normalizeComplaintCauseReviewInput({
+    l2: a.complaintCauseL2Review,
+    l3: a.complaintCauseL3Review,
+  })
+  const causeB = normalizeComplaintCauseReviewInput({
+    l2: b.complaintCauseL2Review,
+    l3: b.complaintCauseL3Review,
+  })
+  if (causeA.complaintCauseL2Review !== causeB.complaintCauseL2Review) return false
+  if (causeA.complaintCauseL3Review !== causeB.complaintCauseL3Review) return false
+  return true
+}

@@ -13,6 +13,8 @@ export const ACTION_ITEM_FILTER_EDITOR_KIND = {
   productKeys: 'multiEnum',
   statuses: 'multiEnum',
   ticketId: 'text',
+  problemType: 'enum',
+  journeyL1: 'enum',
 }
 
 /**
@@ -35,6 +37,10 @@ export function readActionItemFilterDraftValue(filterKey, filters) {
       return [...filters.statuses]
     case 'ticketId':
       return filters.ticketId
+    case 'problemType':
+      return filters.problemType
+    case 'journeyL1':
+      return filters.journeyL1
     default:
       return filters[filterKey]
   }
@@ -63,6 +69,10 @@ export function buildActionItemFilterPatchFromDraft(filterKey, draft) {
       }
     case 'ticketId':
       return { ticketId: String(draft ?? '').trim() }
+    case 'problemType':
+      return { problemType: String(draft ?? '').trim() }
+    case 'journeyL1':
+      return { journeyL1: String(draft ?? '').trim() }
     default:
       return { [filterKey]: draft ?? '' }
   }
@@ -78,6 +88,8 @@ export function isActionItemFilterDraftValid(filterKey, draft) {
     case 'statuses':
       return Array.isArray(draft) && draft.length > 0
     case 'ticketId':
+    case 'problemType':
+    case 'journeyL1':
       return Boolean(String(draft ?? '').trim())
     default:
       return Boolean(String(draft ?? '').trim())
@@ -87,7 +99,12 @@ export function isActionItemFilterDraftValid(filterKey, draft) {
 /**
  * @param {ActionItemFilterKey} filterKey
  * @param {ActionItemFilterValues} _filters
- * @param {{ productOptions?: { label: string; value: string }[]; statusOptions?: { label: string; value: string }[] }} options
+ * @param {{
+ *   productOptions?: { label: string; value: string }[]
+ *   statusOptions?: { label: string; value: string }[]
+ *   problemTypeOptions?: { label: string; value: string }[]
+ *   journeyL1Options?: { label: string; value: string }[]
+ * }} options
  */
 export function listActionItemEnumOptionsForFilterKey(filterKey, _filters, options = {}) {
   switch (filterKey) {
@@ -101,6 +118,10 @@ export function listActionItemEnumOptionsForFilterKey(filterKey, _filters, optio
           value,
         }))
       )
+    case 'problemType':
+      return options.problemTypeOptions || []
+    case 'journeyL1':
+      return options.journeyL1Options || []
     default:
       return []
   }

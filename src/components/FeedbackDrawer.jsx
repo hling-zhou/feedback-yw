@@ -107,7 +107,7 @@ import RecordConflictModal from './RecordConflictModal.jsx'
 import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
-import { isFeedbackDrawerFormDirty } from '../domain/feedbackDrawerDirty.js'
+import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
@@ -300,6 +300,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [conflictRevision, setConflictRevision] = useState(0)
   const [forceSaving, setForceSaving] = useState(false)
   const baseRevisionRef = useRef(0)
+  const baselineFormRef = useRef(/** @type {import('../domain/feedbackDrawerDirty.js').FeedbackDrawerFormSnapshot | null} */ (null))
+  const pendingBaselineCaptureRef = useRef(false)
+  const [drawerFormReady, setDrawerFormReady] = useState(false)
   const [handlingExpandOpen, setHandlingExpandOpen] = useState(false)
 
   const taxonomy = useMemo(
@@ -358,10 +361,44 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }, [])
 
   useEffect(() => {
-    if (!feedback?.id) return
+    if (!feedback?.id) {
+      setDrawerFormReady(false)
+      baselineFormRef.current = null
+      pendingBaselineCaptureRef.current = false
+      return
+    }
+
+    let cancelled = false
+    setDrawerFormReady(false)
+    baselineFormRef.current = null
+    pendingBaselineCaptureRef.current = false
     baseRevisionRef.current = getRecordRevision(feedback)
     setRemoteStale(false)
     applyFeedbackToForm(feedback)
+
+    ;(async () => {
+      const actionId = feedback.actionId?.trim()
+      if (actionId) {
+        try {
+          const item = await getActionItem(actionId)
+          if (!cancelled && item) {
+            setEstablishedAction(item.content)
+            setEstablishedActionDetail(item.detail || '')
+            setActionSchedule(getActionItemDisplayScheduleAt(item))
+          }
+        } catch {
+          /* 保留工单副本 */
+        }
+      }
+      if (!cancelled) {
+        pendingBaselineCaptureRef.current = true
+        setDrawerFormReady(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
     // 仅在切换工单时重置表单，避免轮询同步覆盖编辑中内容
     // eslint-disable-next-line react-hooks/exhaustive-deps -- feedback fields intentionally omitted
   }, [feedback?.id, applyFeedbackToForm])
@@ -393,23 +430,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     sharedBackgroundTask,
     user?.id,
   ])
-
-  useEffect(() => {
-    if (!feedback?.actionId?.trim()) return
-    let cancelled = false
-    ;(async () => {
-      const item = await getActionItem(feedback.actionId)
-      if (cancelled || !item) return
-      if (linkedFromLibrary) {
-        setEstablishedAction(item.content)
-        setEstablishedActionDetail(item.detail || '')
-        setActionSchedule(getActionItemDisplayScheduleAt(item))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [feedback?.actionId, feedback?.id, linkedFromLibrary])
 
   const optimizationServiceText = feedback?.optimizationService?.trim() || ''
 
@@ -475,19 +495,31 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     ],
   )
 
-  const isDrawerDirty = useMemo(
-    () => canEdit && feedback && isFeedbackDrawerFormDirty(feedback, drawerFormSnapshot),
-    [canEdit, feedback, drawerFormSnapshot],
-  )
+  useEffect(() => {
+    if (!pendingBaselineCaptureRef.current) return
+    baselineFormRef.current = drawerFormSnapshot
+    pendingBaselineCaptureRef.current = false
+  }, [drawerFormSnapshot])
+
+  const isDrawerDirty = useMemo(() => {
+    if (!canEdit || !feedback || !drawerFormReady) return false
+    const baseline = baselineFormRef.current
+    if (!baseline) return false
+    return !areFeedbackDrawerFormSnapshotsEqual(baseline, drawerFormSnapshot)
+  }, [canEdit, feedback, drawerFormReady, drawerFormSnapshot])
 
   const handleRequestClose = useCallback(() => {
     onClose()
   }, [onClose])
 
   useEffect(() => {
+    if (!feedback) {
+      onDirtyChange?.(false)
+      return
+    }
     onDirtyChange?.(Boolean(isDrawerDirty))
     return () => onDirtyChange?.(false)
-  }, [isDrawerDirty, onDirtyChange])
+  }, [feedback, isDrawerDirty, onDirtyChange])
 
   if (!feedback) return null
 
@@ -595,6 +627,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     baseRevisionRef.current = getRecordRevision(saved)
     setRemoteStale(false)
     applyFeedbackToForm(merged)
+    pendingBaselineCaptureRef.current = true
     onDirtyChange?.(false)
     if (reviewEnabled) {
       try {
