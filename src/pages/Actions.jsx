@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -18,6 +19,7 @@ import {
 } from 'antd'
 import {
   DownloadOutlined,
+  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   QuestionCircleOutlined,
@@ -31,7 +33,9 @@ import {
   ACTION_ITEM_STATUS_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
   ACTION_ITEM_DETAIL_MAX_LENGTH,
+  ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
   aggregateActionItemsByProductStatus,
+  canDeleteActionItem,
   createEmptyActionItemStatusCounts,
   getActionItemStatusSelectOptions,
   isActionItemLocked,
@@ -55,6 +59,7 @@ import {
   createActionItem,
   createActionItemsBatch,
   updateActionItem,
+  deleteActionItem,
 } from '../lib/actionItemClient.js'
 import { exportActionItemsWithQuery } from '../lib/actionItemExport.js'
 import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js'
@@ -182,6 +187,7 @@ function parseTicketIdsFromInput(text) {
 
 export default function Actions() {
   const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTask, reprocessing } =
     useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
@@ -213,6 +219,7 @@ export default function Actions() {
   const [editing, setEditing] = useState(/** @type {ActionItem | null} */ (null))
   const [editForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(/** @type {string | null} */ (null))
   const [editStale, setEditStale] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictServerItem, setConflictServerItem] = useState(/** @type {ActionItem | null} */ (null))
@@ -784,6 +791,27 @@ export default function Actions() {
     }
   }
 
+  const handleDelete = async (record) => {
+    setDeletingId(record.id)
+    try {
+      await deleteActionItem(record.id)
+      message.success('已删除举措')
+      loadItems()
+      loadStats()
+    } catch (err) {
+      const e = /** @type {Error & { status?: number; code?: string }} */ (err)
+      if (e.status === 409) {
+        message.warning(e.message || ACTION_ITEM_DELETE_BLOCKED_MESSAGE)
+      } else if (e.status === 403) {
+        message.error('仅管理员可删除举措')
+      } else {
+        message.error(e instanceof Error ? e.message : '删除失败')
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const columns = [
     {
       title: '产品名称',
@@ -947,23 +975,61 @@ export default function Actions() {
     {
       title: '操作',
       key: 'actions',
-      width: 80,
+      width: 112,
       fixed: 'right',
       render: (_, record) => {
         const locked = isActionItemLocked(record.status)
+        const deleteCheck = canDeleteActionItem(record)
+        const deleteBlocked = !deleteCheck.ok
         return (
-          <PermissionGate permission="editRecord">
-            <Tooltip title={locked ? '已结束，不可编辑' : '修改状态 / 内容 / 排期'}>
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined />}
-                className="!px-0"
-                disabled={locked}
-                onClick={() => openEdit(record)}
-              />
-            </Tooltip>
-          </PermissionGate>
+          <Space size={4}>
+            <PermissionGate permission="editRecord">
+              <Tooltip title={locked ? '已结束，不可编辑' : '修改状态 / 内容 / 排期'}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined />}
+                  className="!px-0"
+                  disabled={locked}
+                  onClick={() => openEdit(record)}
+                />
+              </Tooltip>
+            </PermissionGate>
+            {isAdmin ? (
+              deleteBlocked ? (
+                <Tooltip title={ACTION_ITEM_DELETE_BLOCKED_MESSAGE}>
+                  <Button
+                    type="link"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    className="!px-0"
+                    disabled
+                  />
+                </Tooltip>
+              ) : (
+                <Popconfirm
+                  title="确定删除该举措？"
+                  description="删除后无法恢复。"
+                  okText="删除"
+                  okButtonProps={{ danger: true }}
+                  cancelText="取消"
+                  onConfirm={() => handleDelete(record)}
+                >
+                  <Tooltip title="删除举措">
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      className="!px-0"
+                      loading={deletingId === record.id}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+              )
+            ) : null}
+          </Space>
         )
       },
     },

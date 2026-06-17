@@ -53,10 +53,17 @@ describeActions('actions API (P4-1)', () => {
       team: '测试',
       role: 'editor',
     })
+    const admin = await createUser({
+      username: 'actions_admin',
+      password: 'AdminPass12345!',
+      team: '测试',
+      role: 'admin',
+    })
 
     tokens = {
       viewer: signAccessToken(viewer),
       editor: signAccessToken(editor),
+      admin: signAccessToken(admin),
     }
 
     const { registerAuthHooks } = await import('../middleware.js')
@@ -93,7 +100,7 @@ describeActions('actions API (P4-1)', () => {
     expect(createRes.statusCode).toBe(403)
   })
 
-  it('editor can create, list, patch, and delete action item', async () => {
+  it('editor can create, list, and patch action item', async () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/actions',
@@ -141,21 +148,14 @@ describeActions('actions API (P4-1)', () => {
     })
     expect(patchRes.statusCode).toBe(200)
     const patched = JSON.parse(patchRes.body).item
-    expect(patched.status).toBe('pending_evaluation')
+    expect(patched.status).toBe('completed')
 
     const deleteRes = await app.inject({
       method: 'DELETE',
       url: `/api/actions/${encodeURIComponent(created.id)}`,
       headers: authHeader('editor'),
     })
-    expect(deleteRes.statusCode).toBe(200)
-
-    const afterList = await app.inject({
-      method: 'GET',
-      url: '/api/actions',
-      headers: authHeader('viewer'),
-    })
-    expect(JSON.parse(afterList.body).total).toBe(0)
+    expect(deleteRes.statusCode).toBe(403)
   })
 
   it('rejects empty content on create', async () => {
@@ -257,7 +257,7 @@ describeActions('actions API (P4-1)', () => {
     const delRes = await app.inject({
       method: 'DELETE',
       url: `/api/actions/${encodeURIComponent(created.id)}`,
-      headers: authHeader('editor'),
+      headers: authHeader('admin'),
     })
     expect(delRes.statusCode).toBe(200)
 
@@ -271,5 +271,74 @@ describeActions('actions API (P4-1)', () => {
       headers: authHeader('viewer'),
     })
     expect(getRes.statusCode).toBe(404)
+  })
+
+  it('editor cannot delete action items', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '编辑者不可删' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('editor'),
+    })
+    expect(delRes.statusCode).toBe(403)
+  })
+
+  it('admin cannot delete action linked to feedback tickets', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '已关联反馈',
+        linkedTicketIds: ['T-LINK-1'],
+        linkedDataSources: ['post_use_rating'],
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('admin'),
+    })
+    expect(delRes.statusCode).toBe(409)
+    expect(JSON.parse(delRes.body).code).toBe('ACTION_ITEM_DELETE_BLOCKED')
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('viewer'),
+    })
+    expect(getRes.statusCode).toBe(200)
+  })
+
+  it('admin can delete action with only requirement ticket links', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '仅需求工单',
+        linkedRequirementTicketIds: ['REQ-001'],
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('admin'),
+    })
+    expect(delRes.statusCode).toBe(200)
   })
 })

@@ -490,3 +490,34 @@ export function aggregateActionItemsByProductStatus(items, options = {}) {
     return a.productName.localeCompare(b.productName, 'zh-CN')
   })
 }
+
+export const ACTION_ITEM_DELETE_BLOCKED_CODE = 'ACTION_ITEM_DELETE_BLOCKED'
+
+export const ACTION_ITEM_DELETE_BLOCKED_MESSAGE = '该举措已关联反馈工单，无法删除'
+
+/**
+ * 管理员删除举措：仅当无反馈工单关联时可删。
+ * @param {ActionItem | null | undefined} item
+ * @returns {{ ok: true } | { ok: false; error: string; code: string }}
+ */
+export function canDeleteActionItem(item) {
+  if (!item) {
+    return { ok: false, error: '举措不存在', code: ACTION_ITEM_DELETE_BLOCKED_CODE }
+  }
+  const ids = (item.linkedTicketIds || []).map((id) => String(id).trim()).filter(Boolean)
+  if (ids.length > 0) {
+    return {
+      ok: false,
+      error: ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
+      code: ACTION_ITEM_DELETE_BLOCKED_CODE,
+    }
+  }
+  if ((item.linkedDataSources || []).length > 0) {
+    return {
+      ok: false,
+      error: ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
+      code: ACTION_ITEM_DELETE_BLOCKED_CODE,
+    }
+  }
+  return { ok: true }
+}

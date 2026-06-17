@@ -1,8 +1,10 @@
 import { hasPermission } from '../../src/domain/auth/permissions.js'
 import {
+  canDeleteActionItem,
   isActionItemStatus,
   mergeActionItemPatch,
   validateActionItemCreate,
+  ACTION_ITEM_DELETE_BLOCKED_CODE,
 } from '../../src/domain/actionItem.js'
 import {
   createActionBodySchema,
@@ -11,7 +13,7 @@ import {
   unlinkTicketsBodySchema,
   actionIdParamsSchema,
 } from '../schemas/actionSchemas.js'
-import { requirePermission } from '../middleware.js'
+import { requireAdmin, requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { actionItemRepository } from '../actionItemRepository.js'
 import { ACTION_ITEM_CONFLICT_CODE } from '../../src/domain/actionItemRevision.js'
@@ -211,11 +213,24 @@ export function registerActionRoutes(app) {
 
   app.delete(
     '/api/actions/:id',
-    { schema: { params: actionIdParamsSchema } },
+    { schema: { params: actionIdParamsSchema }, preHandler: requireAdmin() },
     async (request, reply) => {
-    if (!assertEditRecordPermission(request, reply)) return
-
     const { id } = /** @type {{ id: string }} */ (request.params)
+    const existing = actionItemRepository.getActionItem(id)
+    if (!existing) {
+      reply.code(404).send({ error: '举措不存在' })
+      return
+    }
+
+    const deleteCheck = canDeleteActionItem(existing)
+    if (!deleteCheck.ok) {
+      reply.code(409).send({
+        error: deleteCheck.error,
+        code: deleteCheck.code || ACTION_ITEM_DELETE_BLOCKED_CODE,
+      })
+      return
+    }
+
     const deleted = actionItemRepository.deleteActionItem(id)
     if (!deleted) {
       reply.code(404).send({ error: '举措不存在' })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ACTION_ITEM_STATUS_LABELS,
   aggregateActionItemsByProductStatus,
+  canDeleteActionItem,
   computeScheduleChanged,
   deriveActionItemStatusFromSchedule,
   linkTicketToActionItem,
@@ -144,6 +145,30 @@ describe('actionItem', () => {
     expect(unlinked.linkedTicketIds).toEqual([])
     expect(unlinked.linkedDataSources).toEqual([])
     expect(unlinked.painPointSnapshot).toBe('')
+  })
+
+  it('canDeleteActionItem blocks when feedback tickets linked', () => {
+    const created = validateActionItemCreate({
+      content: '不可删',
+      linkedTicketIds: ['T-1'],
+      linkedDataSources: ['complaint_ticket'],
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    expect(canDeleteActionItem(created.item).ok).toBe(false)
+
+    const empty = validateActionItemCreate({ content: '可删' })
+    expect(empty.ok).toBe(true)
+    if (!empty.ok) return
+    expect(canDeleteActionItem(empty.item).ok).toBe(true)
+
+    const reqOnly = validateActionItemCreate({
+      content: '仅需求',
+      linkedRequirementTicketIds: ['REQ-1'],
+    })
+    expect(reqOnly.ok).toBe(true)
+    if (!reqOnly.ok) return
+    expect(canDeleteActionItem(reqOnly.item).ok).toBe(true)
   })
 
   it('recomputeActionItemLinkedDataSources keeps remaining ticket sources', () => {
