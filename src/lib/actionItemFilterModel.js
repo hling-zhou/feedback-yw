@@ -2,6 +2,7 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
 } from '../domain/actionItem.js'
+import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
 
@@ -10,6 +11,7 @@ import {
  * @property {string[]} productKeys
  * @property {ActionItemStatus[]} statuses
  * @property {string} ticketId
+ * @property {string[]} linkedDataSources
  * @property {string} problemType
  * @property {string} journeyL1
  */
@@ -18,7 +20,7 @@ import {
 
 /** @type {{ label: string; keys: ActionItemFilterKey[] }[]} */
 export const ACTION_ITEM_FILTER_GROUPS = [
-  { label: '关联', keys: ['ticketId'] },
+  { label: '关联', keys: ['ticketId', 'linkedDataSources'] },
   { label: '举措', keys: ['productKeys', 'statuses'] },
   { label: '问题维度', keys: ['problemType', 'journeyL1'] },
 ]
@@ -28,6 +30,7 @@ export const ACTION_ITEM_FILTER_LABELS = {
   productKeys: '产品',
   statuses: '状态',
   ticketId: '关联反馈号',
+  linkedDataSources: '数据来源',
   problemType: '问题类型',
   journeyL1: '用户旅程',
 }
@@ -38,6 +41,7 @@ export function createEmptyActionItemFilters() {
     productKeys: [],
     statuses: [],
     ticketId: '',
+    linkedDataSources: [],
     problemType: '',
     journeyL1: '',
   }
@@ -55,6 +59,8 @@ export function isActionItemFilterActive(values, key) {
       return values.statuses.length > 0
     case 'ticketId':
       return Boolean(values.ticketId.trim())
+    case 'linkedDataSources':
+      return values.linkedDataSources.length > 0
     case 'problemType':
       return Boolean(values.problemType.trim())
     case 'journeyL1':
@@ -72,6 +78,7 @@ export function listActiveActionItemFilterChipKeys(values) {
   /** @type {ActionItemFilterKey[]} */
   const keys = []
   if (isActionItemFilterActive(values, 'ticketId')) keys.push('ticketId')
+  if (isActionItemFilterActive(values, 'linkedDataSources')) keys.push('linkedDataSources')
   if (isActionItemFilterActive(values, 'productKeys')) keys.push('productKeys')
   if (isActionItemFilterActive(values, 'statuses')) keys.push('statuses')
   if (isActionItemFilterActive(values, 'problemType')) keys.push('problemType')
@@ -109,6 +116,13 @@ export function formatActionItemFilterChipLabel(key, values, ctx = {}) {
     }
     case 'ticketId':
       return values.ticketId.trim()
+    case 'linkedDataSources': {
+      if (values.linkedDataSources.length === 1) {
+        const source = values.linkedDataSources[0]
+        return DATA_SOURCE_LABELS[source] || source
+      }
+      return `${values.linkedDataSources.length} 个`
+    }
     case 'problemType':
       return values.problemType.trim()
     case 'journeyL1':
@@ -171,6 +185,9 @@ export function clearActionItemFilterKey(key, current) {
     case 'ticketId':
       patch.ticketId = ''
       break
+    case 'linkedDataSources':
+      patch.linkedDataSources = []
+      break
     case 'problemType':
       patch.problemType = ''
       break
@@ -194,6 +211,7 @@ export function clearAllActionItemFilters() {
  *   productKeys?: string
  *   statuses?: string
  *   ticketId?: string
+ *   linkedDataSources?: string
  *   problemType?: string
  *   journeyL1?: string
  * }}
@@ -203,6 +221,9 @@ export function actionItemFiltersToListQuery(filters) {
     productKeys: filters.productKeys.length ? filters.productKeys.join(',') : undefined,
     statuses: filters.statuses.length ? filters.statuses.join(',') : undefined,
     ticketId: filters.ticketId.trim() || undefined,
+    linkedDataSources: filters.linkedDataSources.length
+      ? filters.linkedDataSources.join(',')
+      : undefined,
     problemType: filters.problemType.trim() || undefined,
     journeyL1: filters.journeyL1.trim() || undefined,
   }

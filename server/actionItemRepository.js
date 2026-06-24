@@ -35,6 +35,7 @@ import {
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses] - 逗号分隔多选
  * @property {string} [ticketId] - 关联工单号
+ * @property {string} [linkedDataSources] - 逗号分隔多选
  * @property {string} [problemType] - 问题类型（快照/首单回退）
  * @property {string} [journeyL1] - 用户旅程一级（快照/首单回退）
  * @property {string} [firstProposedFrom] - YYYY-MM-DD
@@ -131,6 +132,16 @@ function filterActionItemsInMemory(query, items) {
   if (query.ticketId?.trim()) {
     const tid = query.ticketId.trim()
     filtered = filtered.filter((item) => (item.linkedTicketIds || []).includes(tid))
+  }
+
+  const selectedSources = (query.linkedDataSources?.split(',') ?? [])
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (selectedSources.length) {
+    const sourceSet = new Set(selectedSources)
+    filtered = filtered.filter((item) =>
+      (item.linkedDataSources || []).some((s) => sourceSet.has(s)),
+    )
   }
 
   if (query.search?.trim()) {

@@ -12,6 +12,9 @@ import { toActionItemConflictError } from '../domain/actionItemRevision.js'
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses]
  * @property {string} [ticketId]
+ * @property {string} [linkedDataSources]
+ * @property {string} [problemType]
+ * @property {string} [journeyL1]
  * @property {string} [firstProposedFrom]
  * @property {string} [firstProposedTo]
  * @property {string} [insightPeriodId]
@@ -39,6 +42,9 @@ export async function listActionItems(query = {}) {
   if (query.status) params.set('status', query.status)
   if (query.statuses) params.set('statuses', query.statuses)
   if (query.ticketId) params.set('ticketId', query.ticketId)
+  if (query.linkedDataSources) params.set('linkedDataSources', query.linkedDataSources)
+  if (query.problemType) params.set('problemType', query.problemType)
+  if (query.journeyL1) params.set('journeyL1', query.journeyL1)
   if (query.firstProposedFrom) params.set('firstProposedFrom', query.firstProposedFrom)
   if (query.firstProposedTo) params.set('firstProposedTo', query.firstProposedTo)
   if (query.insightPeriodId) params.set('insightPeriodId', query.insightPeriodId)
@@ -70,6 +76,9 @@ export async function getActionItemStats(query = {}) {
   if (query.status) params.set('status', query.status)
   if (query.statuses) params.set('statuses', query.statuses)
   if (query.ticketId) params.set('ticketId', query.ticketId)
+  if (query.linkedDataSources) params.set('linkedDataSources', query.linkedDataSources)
+  if (query.problemType) params.set('problemType', query.problemType)
+  if (query.journeyL1) params.set('journeyL1', query.journeyL1)
   if (query.firstProposedFrom) params.set('firstProposedFrom', query.firstProposedFrom)
   if (query.firstProposedTo) params.set('firstProposedTo', query.firstProposedTo)
   if (query.insightPeriodId) params.set('insightPeriodId', query.insightPeriodId)

@@ -2,6 +2,7 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
 } from '../domain/actionItem.js'
+import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
 
 /** @typedef {import('./actionItemFilterModel.js').ActionItemFilterKey} ActionItemFilterKey */
 /** @typedef {import('./actionItemFilterModel.js').ActionItemFilterValues} ActionItemFilterValues */
@@ -13,6 +14,7 @@ export const ACTION_ITEM_FILTER_EDITOR_KIND = {
   productKeys: 'multiEnum',
   statuses: 'multiEnum',
   ticketId: 'text',
+  linkedDataSources: 'multiEnum',
   problemType: 'enum',
   journeyL1: 'enum',
 }
@@ -35,6 +37,8 @@ export function readActionItemFilterDraftValue(filterKey, filters) {
       return [...filters.productKeys]
     case 'statuses':
       return [...filters.statuses]
+    case 'linkedDataSources':
+      return [...filters.linkedDataSources]
     case 'ticketId':
       return filters.ticketId
     case 'problemType':
@@ -67,6 +71,14 @@ export function buildActionItemFilterPatchFromDraft(filterKey, draft) {
             )
           : [],
       }
+    case 'linkedDataSources':
+      return {
+        linkedDataSources: Array.isArray(draft)
+          ? /** @type {import('../domain/enums.js').DataSourceType[]} */ (
+              [...new Set(draft.filter((item) => DATA_SOURCE_TYPES.includes(item)))]
+            )
+          : [],
+      }
     case 'ticketId':
       return { ticketId: String(draft ?? '').trim() }
     case 'problemType':
@@ -86,6 +98,7 @@ export function isActionItemFilterDraftValid(filterKey, draft) {
   switch (filterKey) {
     case 'productKeys':
     case 'statuses':
+    case 'linkedDataSources':
       return Array.isArray(draft) && draft.length > 0
     case 'ticketId':
     case 'problemType':
@@ -118,6 +131,11 @@ export function listActionItemEnumOptionsForFilterKey(filterKey, _filters, optio
           value,
         }))
       )
+    case 'linkedDataSources':
+      return DATA_SOURCE_TYPES.map((type) => ({
+        label: DATA_SOURCE_LABELS[type],
+        value: type,
+      }))
     case 'problemType':
       return options.problemTypeOptions || []
     case 'journeyL1':

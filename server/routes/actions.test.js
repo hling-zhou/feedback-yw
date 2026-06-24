@@ -434,4 +434,72 @@ describeActions('actions API (P4-1)', () => {
     expect(JSON.parse(combined.body).total).toBe(1)
     expect(JSON.parse(combined.body).items[0].id).toBe(fallbackItem.id)
   })
+
+  it('filters action items by linkedDataSources with OR semantics', async () => {
+    const complaintRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '投诉来源举措',
+        linkedDataSources: ['complaint_ticket'],
+      },
+    })
+    expect(complaintRes.statusCode).toBe(201)
+    const complaintItem = JSON.parse(complaintRes.body).item
+
+    const consultationRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '咨询来源举措',
+        linkedDataSources: ['consultation_ticket'],
+      },
+    })
+    expect(consultationRes.statusCode).toBe(201)
+    const consultationItem = JSON.parse(consultationRes.body).item
+
+    const multiSourceRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '多来源举措',
+        linkedDataSources: ['complaint_ticket', 'post_use_rating'],
+      },
+    })
+    expect(multiSourceRes.statusCode).toBe(201)
+    const multiSourceItem = JSON.parse(multiSourceRes.body).item
+
+    const byComplaint = await app.inject({
+      method: 'GET',
+      url: '/api/actions?linkedDataSources=complaint_ticket',
+      headers: authHeader('viewer'),
+    })
+    const complaintIds = JSON.parse(byComplaint.body).items.map((item) => item.id)
+    expect(complaintIds).toContain(complaintItem.id)
+    expect(complaintIds).toContain(multiSourceItem.id)
+    expect(complaintIds).not.toContain(consultationItem.id)
+
+    const byConsultation = await app.inject({
+      method: 'GET',
+      url: '/api/actions?linkedDataSources=consultation_ticket',
+      headers: authHeader('viewer'),
+    })
+    const consultationIds = JSON.parse(byConsultation.body).items.map((item) => item.id)
+    expect(consultationIds).toContain(consultationItem.id)
+    expect(consultationIds).not.toContain(complaintItem.id)
+    expect(consultationIds).not.toContain(multiSourceItem.id)
+
+    const byMulti = await app.inject({
+      method: 'GET',
+      url: '/api/actions?linkedDataSources=consultation_ticket,post_use_rating',
+      headers: authHeader('viewer'),
+    })
+    const multiIds = JSON.parse(byMulti.body).items.map((item) => item.id)
+    expect(multiIds).toContain(consultationItem.id)
+    expect(multiIds).toContain(multiSourceItem.id)
+    expect(multiIds).not.toContain(complaintItem.id)
+  })
 })
