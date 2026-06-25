@@ -39,6 +39,7 @@ import {
   createEmptyActionItemStatusCounts,
   getActionItemStatusSelectOptions,
   isActionItemLocked,
+  resolveActionItemProductDisplayName,
   actionItemStatusRequiresEmptySchedule,
   actionItemStatusRequiresSchedule,
 } from '../domain/actionItem.js'
@@ -72,6 +73,7 @@ import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplat
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { hasRequirementTicketLinks } from '../domain/requirementTicketProgress.js'
 import { listProducts } from '../lib/productTaxonomy.js'
+import { buildProductNameByKeyMap } from '../lib/productCatalog.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -328,10 +330,13 @@ export default function Actions() {
     [periodFilterActive, periodTicketIdSet],
   )
 
-  const productNameByKey = useMemo(
-    () => new Map(productOptions.map((item) => [item.value, item.label])),
-    [productOptions],
-  )
+  const productNameByKey = useMemo(() => {
+    const map = buildProductNameByKeyMap()
+    for (const option of productOptions) {
+      if (option.value && option.label) map.set(option.value, option.label)
+    }
+    return map
+  }, [productOptions])
 
   const handleFiltersChange = useCallback((next) => {
     setFilters(next)
@@ -401,11 +406,13 @@ export default function Actions() {
         const result = await listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
         byProduct = aggregateActionItemsByProductStatus(result.items, {
           periodTicketIdSet: periodTicketIdSet,
+          productNameByKey,
         })
       } else if (byProduct.some((row) => !row.linkedFeedbackCounts)) {
         const result = await listActionItems({ ...baseScopeQuery, limit: 500, offset: 0 })
         const enriched = aggregateActionItemsByProductStatus(result.items, {
           periodTicketIdSet: periodTicketIdSet,
+          productNameByKey,
         })
         const enrichedByKey = new Map(enriched.map((row) => [row.productKey, row]))
         byProduct = byProduct.map((row) => {
@@ -423,7 +430,7 @@ export default function Actions() {
       console.warn('[Actions] 加载统计失败:', err)
       message.warning(err instanceof Error ? err.message : '加载统计失败')
     }
-  }, [baseScopeQuery])
+  }, [baseScopeQuery, periodTicketIdSet, productNameByKey])
 
   const loadItems = useCallback(async () => {
     setLoading(true)
@@ -481,6 +488,7 @@ export default function Actions() {
         statsByProduct: statsData.byProduct?.length ? statsData.byProduct : undefined,
         periodTicketIdSet: periodTicketIdSet,
         feedbackByTicketId,
+        productNameByKey,
         scopeLabel: filtered ? '当前筛选' : '全部',
         periodLabel: selectedPeriod?.label,
       })
@@ -858,7 +866,7 @@ export default function Actions() {
       dataIndex: 'productName',
       width: 120,
       fixed: 'left',
-      render: (text, record) => text || record.productKey || '—',
+      render: (_, record) => resolveActionItemProductDisplayName(record, productNameByKey) || '—',
     },
     {
       title: '问题',

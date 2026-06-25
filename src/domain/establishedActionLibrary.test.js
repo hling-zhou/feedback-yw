@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildActionItemSnapshotsFromRecord,
+  buildActionItemProductFields,
   buildClearEstablishedActionRecordPatch,
   buildFirstTicketSnapshotSyncPatch,
   buildLinkedEstablishedActionRecordPatch,
@@ -126,6 +127,32 @@ describe('establishedActionLibrary', () => {
 
   it('buildActionItemSnapshotsFromRecord reads pain point display path', () => {
     expect(buildActionItemSnapshotsFromRecord(record).painPointSnapshot).toBe('连接失败')
+  })
+
+  it('buildActionItemProductFields prefers target product over spec name', () => {
+    expect(
+      buildActionItemProductFields({
+        productKey: 'eip',
+        product: '弹性公网IP',
+        productSpec: '弹性公网IP-移动IP',
+      }),
+    ).toEqual({
+      productKey: 'eip',
+      productName: '弹性公网IP',
+    })
+  })
+
+  it('buildManualEstablishedActionUpsertPayload uses target product name for EIP', () => {
+    const payload = buildManualEstablishedActionUpsertPayload(
+      {
+        ...record,
+        productKey: 'eip',
+        product: '弹性公网IP',
+        productSpec: '弹性公网IP-移动IP',
+      },
+      { content: '优化绑定流程', scheduleAt: '' },
+    )
+    expect(payload.productName).toBe('弹性公网IP')
   })
 
   it('buildFirstTicketSnapshotSyncPatch only for first linked ticket', () => {

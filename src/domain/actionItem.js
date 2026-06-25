@@ -455,19 +455,37 @@ export function recomputeActionItemLinkedDataSources(item, ticketIdToSource) {
 }
 
 /**
+ * 举措展示用产品名：优先产品配置（productKey），回退存库 productName。
+ *
+ * @param {{ productKey?: string; productName?: string }} item
+ * @param {Map<string, string> | undefined} [productNameByKey]
+ */
+export function resolveActionItemProductDisplayName(item, productNameByKey) {
+  const productKey = item.productKey?.trim()
+  if (productKey && productNameByKey?.size) {
+    const fromCatalog = productNameByKey.get(productKey)?.trim()
+    if (fromCatalog) return fromCatalog
+  }
+  return item.productName?.trim() || productKey || '未标注产品'
+}
+
+/**
  * 前端兜底：按产品 × 状态聚合（与 server/actionItemRepository 逻辑一致）。
  * @param {ActionItem[]} items
- * @param {{ periodTicketIdSet?: Set<string> | null }} [options]
+ * @param {{ periodTicketIdSet?: Set<string> | null; productNameByKey?: Map<string, string> }} [options]
  * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }[]}
  */
 export function aggregateActionItemsByProductStatus(items, options = {}) {
-  const { periodTicketIdSet } = options
+  const { periodTicketIdSet, productNameByKey } = options
   /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }>} */
   const map = new Map()
 
   for (const item of items || []) {
     const productKey = item.productKey?.trim() || '_unknown'
-    const productName = item.productName?.trim() || item.productKey?.trim() || '未标注产品'
+    const productName = resolveActionItemProductDisplayName(
+      { productKey, productName: item.productName },
+      productNameByKey,
+    )
     let row = map.get(productKey)
     if (!row) {
       row = {

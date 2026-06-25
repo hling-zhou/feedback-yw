@@ -77,6 +77,22 @@ describe('actionItemExport', () => {
     })
   })
 
+  it('buildActionItemListRows resolves product name from catalog map', () => {
+    const productNameByKey = new Map([['eip', '弹性公网IP']])
+    const rows = buildActionItemListRows(
+      [
+        {
+          ...sampleItems[1],
+          productName: '弹性公网IP-移动IP',
+        },
+      ],
+      null,
+      undefined,
+      productNameByKey,
+    )
+    expect(rows[0].产品名称).toBe('弹性公网IP')
+  })
+
   it('buildActionItemListRows maps table columns and filters linked tickets by period', () => {
     const periodSet = new Set(['T-001'])
     const rows = buildActionItemListRows(sampleItems, periodSet)

@@ -502,4 +502,29 @@ describeActions('actions API (P4-1)', () => {
     expect(multiIds).toContain(multiSourceItem.id)
     expect(multiIds).not.toContain(complaintItem.id)
   })
+
+  it('stats byProduct uses catalog product name instead of stored spec name', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: 'EIP 绑定优化',
+        productKey: 'eip',
+        productName: '弹性公网IP-移动IP',
+        status: 'pending_evaluation',
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+
+    const statsRes = await app.inject({
+      method: 'GET',
+      url: '/api/actions/stats?productKey=eip',
+      headers: authHeader('viewer'),
+    })
+    expect(statsRes.statusCode).toBe(200)
+    const statsBody = JSON.parse(statsRes.body)
+    const eipRow = statsBody.byProduct?.find((row) => row.productKey === 'eip')
+    expect(eipRow?.productName).toBe('弹性公网IP')
+  })
 })

@@ -8,6 +8,7 @@ import {
   linkTicketToActionItem,
   mergeActionItemPatch,
   recomputeActionItemLinkedDataSources,
+  resolveActionItemProductDisplayName,
   unlinkTicketFromActionItem,
   validateActionItemCreate,
   toActionItemCreateBody,
@@ -221,6 +222,37 @@ describe('actionItem', () => {
     expect(rows[0].linkedFeedbackCounts.in_progress).toBe(1)
     expect(rows[0].linkedFeedbackCounts.pending_evaluation).toBe(1)
     expect(rows[0].linkedFeedbackTotal).toBe(2)
+  })
+
+  it('resolveActionItemProductDisplayName prefers catalog name over stored spec name', () => {
+    const productNameByKey = new Map([['eip', '弹性公网IP']])
+    expect(
+      resolveActionItemProductDisplayName(
+        { productKey: 'eip', productName: '弹性公网IP-移动IP' },
+        productNameByKey,
+      ),
+    ).toBe('弹性公网IP')
+  })
+
+  it('aggregateActionItemsByProductStatus uses catalog product name for chart labels', () => {
+    const productNameByKey = new Map([['eip', '弹性公网IP']])
+    const rows = aggregateActionItemsByProductStatus(
+      [
+        {
+          id: 'a1',
+          productKey: 'eip',
+          productName: '弹性公网IP-移动IP',
+          content: 'A',
+          status: 'in_progress',
+          linkedTicketIds: [],
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+      { productNameByKey },
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].productName).toBe('弹性公网IP')
   })
 
   it('status labels cover all statuses', () => {

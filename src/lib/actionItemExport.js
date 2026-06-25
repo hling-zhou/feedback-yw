@@ -5,6 +5,7 @@ import {
   aggregateActionItemsByProductStatus,
   actionItemStatusLinkedFeedbackLabel,
   createEmptyActionItemStatusCounts,
+  resolveActionItemProductDisplayName,
 } from '../domain/actionItem.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
@@ -145,9 +146,10 @@ export function buildActionItemStatsRows(byProduct) {
  * @param {ActionItem[]} items
  * @param {Set<string> | null | undefined} periodTicketIdSet
  * @param {Map<string, import('./types.js').FeedbackRecord>} [feedbackByTicketId]
+ * @param {Map<string, string>} [productNameByKey]
  * @returns {Record<string, string>[]}
  */
-export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId) {
+export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId, productNameByKey) {
   return (items || []).map((item) => {
     const sources = (item.linkedDataSources || [])
       .map((s) => DATA_SOURCE_LABELS[s] || s)
@@ -167,7 +169,7 @@ export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTick
       ACTION_ITEM_LIST_HEADERS.map((header) => {
         /** @type {Record<string, string>} */
         const row = {
-          产品名称: item.productName || item.productKey || '',
+          产品名称: resolveActionItemProductDisplayName(item, productNameByKey),
           问题: item.painPointSnapshot || '',
           问题类型: item.problemTypeSnapshot || '',
           来源: sources,
@@ -207,6 +209,7 @@ function triggerDownload(blob, filename) {
  * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
  * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
  * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
+ * @param {Map<string, string>} [options.productNameByKey]
  * @param {string} [options.filename]
  */
 export function downloadActionItemsExcel({
@@ -214,14 +217,20 @@ export function downloadActionItemsExcel({
   statsByProduct,
   periodTicketIdSet,
   feedbackByTicketId,
+  productNameByKey,
   filename,
 }) {
   const byProduct = statsByProduct?.length
     ? statsByProduct
-    : aggregateActionItemsByProductStatus(items, { periodTicketIdSet })
+    : aggregateActionItemsByProductStatus(items, { periodTicketIdSet, productNameByKey })
 
   const statsRows = buildActionItemStatsRows(byProduct)
-  const listRows = buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId)
+  const listRows = buildActionItemListRows(
+    items,
+    periodTicketIdSet,
+    feedbackByTicketId,
+    productNameByKey,
+  )
 
   const wb = XLSX.utils.book_new()
   const statsSheet = XLSX.utils.json_to_sheet(statsRows, { header: ACTION_ITEM_STATS_HEADERS })
@@ -249,6 +258,7 @@ export function downloadActionItemsExcel({
  * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
  * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
  * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
+ * @param {Map<string, string>} [options.productNameByKey]
  * @param {string} [options.scopeLabel]
  * @param {string} [options.periodLabel]
  */
@@ -257,6 +267,7 @@ export async function exportActionItemsWithQuery({
   statsByProduct,
   periodTicketIdSet,
   feedbackByTicketId,
+  productNameByKey,
   scopeLabel,
   periodLabel,
 }) {
@@ -269,6 +280,7 @@ export async function exportActionItemsWithQuery({
     statsByProduct,
     periodTicketIdSet,
     feedbackByTicketId,
+    productNameByKey,
     filename: `举措与进展-${scopePart}${periodPart}-${datePart}.xlsx`,
   })
   return items.length

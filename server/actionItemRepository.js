@@ -1,10 +1,16 @@
 import { getDb } from './db.js'
 import { bumpDataRevision } from './dataRevision.js'
-import { isActionItemStatus, unlinkTicketFromActionItem, recomputeActionItemLinkedDataSources, createEmptyActionItemStatusCounts } from '../src/domain/actionItem.js'
+import {
+  aggregateActionItemsByProductStatus as aggregateActionItemsByProductStatusDomain,
+  isActionItemStatus,
+  unlinkTicketFromActionItem,
+  recomputeActionItemLinkedDataSources,
+  createEmptyActionItemStatusCounts,
+} from '../src/domain/actionItem.js'
+import { buildProductNameByKeyMap } from '../src/lib/productCatalog.js'
 import {
   actionItemHasLinkedTicketInPeriod,
   buildTicketIdSetFromRecords,
-  linkedTicketIdsInPeriod,
 } from '../src/domain/actionItemPeriodFilter.js'
 import {
   applyActionItemWriteMetadata,
@@ -380,36 +386,9 @@ function aggregateActionItemsByProductStatus(query = {}) {
   const periodTicketIdSet = query.insightPeriodId?.trim()
     ? getTicketIdsForInsightPeriod(query.insightPeriodId)
     : null
-  /** @type {Map<string, ActionItemProductStatusRow>} */
-  const map = new Map()
-
-  for (const item of items) {
-    const productKey = item.productKey?.trim() || '_unknown'
-    const productName = item.productName?.trim() || item.productKey?.trim() || '未标注产品'
-    let row = map.get(productKey)
-    if (!row) {
-      row = {
-        productKey,
-        productName,
-        counts: createEmptyActionItemStatusCounts(),
-        linkedFeedbackCounts: createEmptyActionItemStatusCounts(),
-        total: 0,
-        linkedFeedbackTotal: 0,
-      }
-      map.set(productKey, row)
-    }
-    if (isActionItemStatus(item.status)) {
-      row.counts[item.status] += 1
-      row.total += 1
-      const feedbackCount = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet).length
-      row.linkedFeedbackCounts[item.status] += feedbackCount
-      row.linkedFeedbackTotal += feedbackCount
-    }
-  }
-
-  return [...map.values()].sort((a, b) => {
-    if (b.total !== a.total) return b.total - a.total
-    return a.productName.localeCompare(b.productName, 'zh-CN')
+  return aggregateActionItemsByProductStatusDomain(items, {
+    periodTicketIdSet,
+    productNameByKey: buildProductNameByKeyMap(),
   })
 }
 

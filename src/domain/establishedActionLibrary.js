@@ -30,7 +30,7 @@ import { getDisplayPainPoint } from '../lib/ticketAnalysis/ticketAnalysisSources
 export function buildActionItemProductFields(record) {
   return {
     productKey: String(record?.productKey || record?.taxonomyKey || '').trim(),
-    productName: String(record?.productSpec || record?.product || '').trim(),
+    productName: String(record?.product || record?.productSpec || '').trim(),
   }
 }
 

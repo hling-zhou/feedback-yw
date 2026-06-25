@@ -158,3 +158,8 @@ export function getProductCatalogTable() {
     taxonomyKey: p.taxonomyKey,
   }))
 }
+
+/** @returns {Map<string, string>} productKey → 目标产品名称 */
+export function buildProductNameByKeyMap() {
+  return new Map(getCatalogProducts().map((p) => [p.key, p.name]))
+}
