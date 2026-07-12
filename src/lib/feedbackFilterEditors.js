@@ -6,6 +6,7 @@ import {
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
+import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterKey} FeedbackFilterKey */
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterValues} FeedbackFilterValues */
@@ -29,6 +30,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   followUpResolved: 'enum',
   reasonDim: 'enum',
   myReview: 'enum',
+  todoStatus: 'enum',
 }
 
 /**
@@ -150,6 +152,8 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
         label: item.label,
         value: item.value,
       }))
+    case 'todoStatus':
+      return TODO_STATUS_FILTER_OPTIONS.filter((item) => item.value)
     default:
       return []
   }

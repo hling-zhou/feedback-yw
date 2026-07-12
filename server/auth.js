@@ -1,8 +1,11 @@
 import jwt from 'jsonwebtoken'
 import { resolveJwtSecret } from './config.js'
 
-const JWT_SECRET = resolveJwtSecret()
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d'
+
+function getJwtSecret() {
+  return resolveJwtSecret()
+}
 
 /**
  * @param {import('./users.js').ReturnType<typeof import('./users.js').toPublicUser>} user
@@ -17,7 +20,7 @@ export function signAccessToken(user, sessionVersion = 0) {
       team: user.team,
       sv: sessionVersion,
     },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: JWT_EXPIRES_IN },
   )
 }
@@ -27,7 +30,7 @@ export function signAccessToken(user, sessionVersion = 0) {
  */
 export function verifyAccessToken(token) {
   try {
-    const payload = jwt.verify(token, JWT_SECRET)
+    const payload = jwt.verify(token, getJwtSecret())
     if (typeof payload !== 'object' || !payload || !payload.sub) return null
     const sv = Number(payload.sv)
     return {

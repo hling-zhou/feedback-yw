@@ -17,7 +17,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { ExpandOutlined } from '@ant-design/icons'
+import { ExpandOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../constants/appLayout.js'
 import dayjs from 'dayjs'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -108,6 +108,15 @@ import { getRecordRevision, toRecordConflictError } from '../domain/recordRevisi
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
+import {
+  buildTicketTodoSavePatch,
+  createEmptyTicketTodoItem,
+  formatTicketTodoAssigneeLabel,
+  formatTicketTodoItemUpdatedLine,
+  getTicketTodoDraftItems,
+  TICKET_TODO_TEXT_MAX_LENGTH,
+} from '../domain/ticketTodo.js'
+import { apiFetch } from '../lib/apiClient.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
@@ -289,6 +298,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [complaintCauseL2Review, setComplaintCauseL2Review] = useState('')
   const [complaintCauseL3Review, setComplaintCauseL3Review] = useState('')
   const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
+  const [ticketTodoItems, setTicketTodoItems] = useState(/** @type {import('../domain/ticketTodo.js').TicketTodoItem[]} */ ([]))
+  const [todoAssigneeOptions, setTodoAssigneeOptions] = useState(
+    /** @type {{ value: string; label: string; team?: string }[]} */ ([]),
+  )
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
   const [reviewToggling, setReviewToggling] = useState(false)
@@ -318,6 +331,35 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   useEffect(() => {
     setHandlingExpandOpen(false)
   }, [feedback?.id])
+
+  useEffect(() => {
+    if (!canEdit) {
+      setTodoAssigneeOptions([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiFetch('/api/users/assignees')
+        if (cancelled) return
+        const options = (data.users || []).map(
+          (/** @type {{ id: string; username: string; team?: string }} */ u) => ({
+            value: u.id,
+            label: u.username,
+            team: u.team,
+          }),
+        )
+        setTodoAssigneeOptions(options)
+      } catch {
+        if (!cancelled && user?.id) {
+          setTodoAssigneeOptions([{ value: user.id, label: user.username, team: user.team }])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [canEdit, user?.id, user?.username, user?.team])
 
   const l2Options = useMemo(() => {
     if (!taxonomy) return []
@@ -358,6 +400,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     setComplaintCauseL2Review(causeReview.l2)
     setComplaintCauseL3Review(causeReview.l3)
     setComplaintCauseReviewTouched(false)
+    setTicketTodoItems(getTicketTodoDraftItems(record))
   }, [])
 
   useEffect(() => {
@@ -472,6 +515,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       rootCauseReview,
       complaintCauseL2Review,
       complaintCauseL3Review,
+      ticketTodoItems,
     }),
     [
       note,
@@ -492,6 +536,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       rootCauseReview,
       complaintCauseL2Review,
       complaintCauseL3Review,
+      ticketTodoItems,
     ],
   )
 
@@ -611,6 +656,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         }),
       )
     }
+    Object.assign(patch, buildTicketTodoSavePatch(feedback, ticketTodoItems, user))
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase: saveOptions.mergeBase,
@@ -1234,6 +1280,120 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   </div>
                 )}
               </>
+            )}
+          </Card>
+
+          <Card
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="shrink-0">会议待办</span>
+                <Typography.Text type="secondary" className="text-xs font-normal">
+                  客诉复盘后的跟进事项，与「确立举措」分开维护
+                </Typography.Text>
+              </span>
+            }
+            size="small"
+          >
+            {canEdit ? (
+              <div className="space-y-3">
+                {ticketTodoItems.map((item, index) => (
+                  <div key={item.id} className="rounded-md border border-ink-100 p-2">
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        className="mt-1"
+                        checked={item.done}
+                        disabled={saving}
+                        onChange={(event) => {
+                          const next = [...ticketTodoItems]
+                          next[index] = { ...item, done: event.target.checked }
+                          setTicketTodoItems(next)
+                        }}
+                      />
+                      <Input
+                        className="min-w-0 flex-1"
+                        placeholder="输入待办内容"
+                        maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
+                        value={item.text}
+                        disabled={saving}
+                        onChange={(event) => {
+                          const next = [...ticketTodoItems]
+                          next[index] = {
+                            ...item,
+                            text: event.target.value.slice(0, TICKET_TODO_TEXT_MAX_LENGTH),
+                          }
+                          setTicketTodoItems(next)
+                        }}
+                      />
+                      <Select
+                        className="w-[132px] shrink-0"
+                        placeholder="负责人"
+                        disabled={saving || !todoAssigneeOptions.length}
+                        value={item.assigneeUserId || undefined}
+                        options={todoAssigneeOptions.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        }))}
+                        onChange={(assigneeUserId) => {
+                          const option = todoAssigneeOptions.find((o) => o.value === assigneeUserId)
+                          const next = [...ticketTodoItems]
+                          next[index] = {
+                            ...item,
+                            assigneeUserId: assigneeUserId || '',
+                            assigneeUsername: option?.label || '',
+                          }
+                          setTicketTodoItems(next)
+                        }}
+                      />
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        disabled={saving}
+                        onClick={() => {
+                          setTicketTodoItems(ticketTodoItems.filter((_, i) => i !== index))
+                        }}
+                      />
+                    </div>
+                    {formatTicketTodoItemUpdatedLine(item) ? (
+                      <Typography.Text type="secondary" className="mt-1 block pl-6 text-xs">
+                        最近编辑：{formatTicketTodoItemUpdatedLine(item)}
+                      </Typography.Text>
+                    ) : null}
+                  </div>
+                ))}
+                <Button
+                  type="dashed"
+                  block
+                  icon={<PlusOutlined />}
+                  disabled={saving}
+                  onClick={() =>
+                    setTicketTodoItems([...ticketTodoItems, createEmptyTicketTodoItem()])
+                  }
+                >
+                  添加待办
+                </Button>
+              </div>
+            ) : ticketTodoItems.length ? (
+              <ul className="mb-0 list-none space-y-2 pl-0">
+                {ticketTodoItems.map((item) => (
+                  <li key={item.id} className="rounded-md border border-ink-100 p-2 text-sm">
+                    <div className="flex items-start gap-2">
+                      <Checkbox checked={item.done} disabled className="mt-0.5" />
+                      <span className={item.done ? 'text-ink-400 line-through' : undefined}>
+                        {item.text}
+                      </span>
+                    </div>
+                    <Typography.Text type="secondary" className="mt-1 block pl-6 text-xs">
+                      负责人：{formatTicketTodoAssigneeLabel(item)}
+                      {formatTicketTodoItemUpdatedLine(item)
+                        ? ` · 最近编辑：${formatTicketTodoItemUpdatedLine(item)}`
+                        : ''}
+                    </Typography.Text>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Typography.Text type="secondary">—</Typography.Text>
             )}
           </Card>
 

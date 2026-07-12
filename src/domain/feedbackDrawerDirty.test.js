@@ -45,6 +45,7 @@ const baseForm = {
   rootCauseReview: '',
   complaintCauseL2Review: '',
   complaintCauseL3Review: '',
+  ticketTodoItems: [],
 }
 
 describe('isFeedbackDrawerFormDirty', () => {
@@ -56,6 +57,12 @@ describe('isFeedbackDrawerFormDirty', () => {
     expect(isFeedbackDrawerFormDirty(baseRecord, { ...baseForm, note: '新备注' })).toBe(true)
     expect(
       isFeedbackDrawerFormDirty(baseRecord, { ...baseForm, complaintCauseL2Review: '复核二级' }),
+    ).toBe(true)
+    expect(
+      isFeedbackDrawerFormDirty(baseRecord, {
+        ...baseForm,
+        ticketTodoItems: [{ id: 't1', text: '跟进', done: false }],
+      }),
     ).toBe(true)
   })
 

@@ -158,6 +158,22 @@ app.get('/api/auth/me', async (request) => {
   return { user: request.user }
 })
 
+app.get('/api/users/assignees', async (request, reply) => {
+  if (!request.user?.id) {
+    reply.code(401).send({ error: '未登录' })
+    return
+  }
+  return {
+    users: listUsers()
+      .filter((row) => row.status === 'active')
+      .map((row) => ({
+        id: row.id,
+        username: row.username,
+        team: row.team,
+      })),
+  }
+})
+
 app.post('/api/auth/logout', async (request) => {
   if (request.user?.id) {
     invalidateUserSessions(request.user.id)

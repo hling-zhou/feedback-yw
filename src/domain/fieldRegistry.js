@@ -3,10 +3,10 @@
  * @see docs/DESIGN-20260601-1.md §2
  */
 
-import {
-  formatFollowUpSatisfactionDisplay,
+import { formatFollowUpSatisfactionDisplay,
   resolveFollowUpDissatisfiedReasons,
 } from './followUpSatisfaction.js'
+import { getOpenTicketTodoSummary } from './ticketTodo.js'
 
 /** @typedef {import('./enums.js').DataSourceType} DataSourceType */
 
@@ -297,11 +297,23 @@ const FIELD_DEFINITIONS = [
     detailZone: 'C',
   },
   {
+    fieldKey: 'ticketTodoOpenSummary',
+    displayName: '未完成待办',
+    recordPaths: ['ticketTodo'],
+    exportable: true,
+    exportOrder: 19,
+    importable: false,
+    manualDimension: null,
+    clusterRole: 'none',
+    applicableSources: '*',
+    detailZone: 'C',
+  },
+  {
     fieldKey: 'acceptanceContent',
     displayName: '受理内容',
     recordPaths: ['rawText'],
     exportable: true,
-    exportOrder: 19,
+    exportOrder: 20,
     importable: true,
     importOrder: 19,
     importRequired: false,
@@ -315,7 +327,7 @@ const FIELD_DEFINITIONS = [
     displayName: '处理意见',
     recordPaths: ['handlingText'],
     exportable: true,
-    exportOrder: 20,
+    exportOrder: 21,
     importable: true,
     importOrder: 20,
     importRequired: true,
@@ -329,7 +341,7 @@ const FIELD_DEFINITIONS = [
     displayName: '根因排查',
     recordPaths: ['rootCauseReview'],
     exportable: true,
-    exportOrder: 21,
+    exportOrder: 22,
     importable: true,
     importOrder: 21,
     importRequired: false,
@@ -647,6 +659,9 @@ export function readFieldValue(record, field) {
   }
   if (field.fieldKey === 'followUpDissatisfiedReasons') {
     return resolveFollowUpDissatisfiedReasons(record?.followUpSatisfaction)
+  }
+  if (field.fieldKey === 'ticketTodoOpenSummary') {
+    return getOpenTicketTodoSummary(record)
   }
   for (const path of field.recordPaths) {
     const value = record?.[/** @type {keyof typeof record} */ (path)]

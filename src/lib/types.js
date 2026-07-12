@@ -72,6 +72,7 @@
  * @property {number} [recordRevision] - 乐观锁版本，每次业务写入 +1
  * @property {string} [updatedAt] - 最后一次业务写入时间 ISO 8601
  * @property {{ userId: string; username: string }} [updatedBy] - 最后一次写入用户
+ * @property {{ items: { id: string; text: string; done: boolean; assigneeUserId?: string; assigneeUsername?: string; updatedAt?: string; updatedBy?: { userId: string; username: string } }[]; updatedAt?: string; updatedBy?: { userId: string; username: string } }} [ticketTodo] - 会议待办（与确立举措分离）
  */
 
 export const STANDARD_FIELDS = [

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
@@ -24,6 +25,10 @@ import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
+import {
+  cascadeClearProductDependentFilters,
+  scopeFeedbacksByProduct,
+} from '../lib/feedbackFilterScope.js'
 import {
   countComplaintCauseL1,
   getComplaintCauseL1Display,
@@ -50,9 +55,11 @@ import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
+  matchesTodoStatusFilter,
   parseFeedbackSearchParams,
   patchFeedbackSearchParams,
 } from '../lib/feedbackFilters.js'
+import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import {
   applyFeedbackFilterPatch,
   clearAllFeedbackFilters,
@@ -80,6 +87,7 @@ export default function Feedbacks() {
     settings,
     syncSharedDataFromServer,
   } = useInsights()
+  const { user } = useAuth()
   const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
   const { remoteBannerText } = useSharedBackgroundTaskBlock()
 
@@ -188,16 +196,37 @@ export default function Feedbacks() {
     period: activePeriod,
   })
 
-  const products = useMemo(() => listProducts(periodFeedbacks), [periodFeedbacks])
-  const pools = useMemo(
-    () => listResourcePools(periodFeedbacks, filters.product || undefined),
+  const handleProductChange = useCallback(
+    (product) => {
+      const scoped = scopeFeedbacksByProduct(periodFeedbacks, product || '')
+      const next = cascadeClearProductDependentFilters(
+        applyFeedbackFilterPatch('product', { product: product || '' }, filters),
+        scoped,
+      )
+      setFilters(next)
+      syncFiltersToUrl(next)
+    },
+    [filters, periodFeedbacks, syncFiltersToUrl],
+  )
+
+  const scopedFeedbacks = useMemo(
+    () => scopeFeedbacksByProduct(periodFeedbacks, filters.product || undefined),
     [periodFeedbacks, filters.product],
   )
-  const problemTypes = useMemo(() => countByField(periodFeedbacks, 'problemType'), [periodFeedbacks])
-  const complaintCauseOptions = useMemo(() => countComplaintCauseL1(periodFeedbacks), [periodFeedbacks])
+
+  const products = useMemo(() => listProducts(periodFeedbacks), [periodFeedbacks])
+  const pools = useMemo(
+    () => listResourcePools(scopedFeedbacks, filters.product || undefined),
+    [scopedFeedbacks, filters.product],
+  )
+  const problemTypes = useMemo(() => countByField(scopedFeedbacks, 'problemType'), [scopedFeedbacks])
+  const complaintCauseOptions = useMemo(
+    () => countComplaintCauseL1(scopedFeedbacks),
+    [scopedFeedbacks],
+  )
   const showComplaintCauseFilter = !filters.dataSource || filters.dataSource === 'complaint_ticket'
-  const journeys = useMemo(() => countByField(periodFeedbacks, 'journeyL1'), [periodFeedbacks])
-  const requestScenes = useMemo(() => countByField(periodFeedbacks, 'requestScene'), [periodFeedbacks])
+  const journeys = useMemo(() => countByField(scopedFeedbacks, 'journeyL1'), [scopedFeedbacks])
+  const requestScenes = useMemo(() => countByField(scopedFeedbacks, 'requestScene'), [scopedFeedbacks])
   const unknownJourneySummary = useMemo(
     () => summarizeUnknownJourneyRecords(periodFeedbacks),
     [periodFeedbacks],
@@ -296,6 +325,7 @@ export default function Feedbacks() {
       ) {
         return false
       }
+      if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
       return true
     })
   }, [
@@ -307,6 +337,7 @@ export default function Feedbacks() {
     settings,
     reviewEnabled,
     doneRecordIds,
+    user?.id,
   ])
 
   const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
@@ -549,6 +580,7 @@ export default function Feedbacks() {
         <FeedbackFilterBar
           filters={filters}
           onFiltersChange={handleFiltersChange}
+          onProductChange={handleProductChange}
           onClearFilters={handleClearFilters}
           showComplaintCauseFilter={showComplaintCauseFilter}
           showMyReviewFilter={reviewEnabled}
@@ -664,6 +696,7 @@ function CardGrid({ items, onSelect }) {
             <Tag color="blue">{fb.requestScene || '未分类'}</Tag>
             <Tag>{fb.problemType || '未分类'}</Tag>
             {fb.journeyL1 && <Tag color="blue">{fb.journeyL1}</Tag>}
+            {hasOpenTicketTodos(fb) ? <Tag color="orange">有待办</Tag> : null}
           </div>
           <Typography.Paragraph className="!mb-0 !mt-2 line-clamp-2 text-sm font-medium">
             {fb.problemSummary || fb.customerQuote || '—'}

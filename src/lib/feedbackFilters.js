@@ -15,11 +15,13 @@ import {
   matchesTicketActualDateRange,
   parseTicketDateFilterParam,
 } from '../domain/ticketActualDate.js'
+import { hasOpenTicketTodos, hasOpenTicketTodosAssignedTo } from '../domain/ticketTodo.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 
 /** @typedef {'has' | 'none' | '10' | 'non10'} FollowUpFilterValue */
 /** @typedef {'resolved' | 'unresolved'} FollowUpResolvedFilterValue */
+/** @typedef {'has_open' | 'no_open' | 'my_open'} TodoStatusFilterValue */
 
 /** URL 参数：匹配字段为空（图表「未分类」下钻） */
 export const EMPTY_FILTER_TOKEN = '__empty__'
@@ -40,8 +42,16 @@ export const FOLLOW_UP_RESOLVED_FILTER_OPTIONS = [
   { label: '未解决', value: 'unresolved' },
 ]
 
+export const TODO_STATUS_FILTER_OPTIONS = [
+  { label: '全部待办状态', value: '' },
+  { label: '有待办', value: 'has_open' },
+  { label: '无待办', value: 'no_open' },
+  { label: '我的待办（未完成）', value: 'my_open' },
+]
+
 const FOLLOW_UP_FILTER_VALUES = new Set(['has', 'none', '10', 'non10'])
 const FOLLOW_UP_RESOLVED_VALUES = new Set(['resolved', 'unresolved'])
+const TODO_STATUS_FILTER_VALUES = new Set(['has_open', 'no_open', 'my_open'])
 const REASON_DIM_VALUES = new Set(DISSATISFIED_REASON_PART_KEYS)
 
 /**
@@ -81,6 +91,32 @@ export function parseReasonDimParam(raw) {
   const value = raw?.trim()
   if (!value || !REASON_DIM_VALUES.has(value)) return ''
   return value
+}
+
+/**
+ * @param {string | null | undefined} raw
+ * @returns {TodoStatusFilterValue | ''}
+ */
+export function parseTodoStatusFilterParam(raw) {
+  const value = raw?.trim()
+  if (!value) return ''
+  return TODO_STATUS_FILTER_VALUES.has(value) ? /** @type {TodoStatusFilterValue} */ (value) : ''
+}
+
+/**
+ * @param {FeedbackRecord} record
+ * @param {TodoStatusFilterValue | ''} todoStatus
+ * @param {{ userId?: string }} [ctx]
+ */
+export function matchesTodoStatusFilter(record, todoStatus = '', ctx = {}) {
+  if (!todoStatus) return true
+  const hasOpen = hasOpenTicketTodos(record)
+  if (todoStatus === 'has_open') return hasOpen
+  if (todoStatus === 'no_open') return !hasOpen
+  if (todoStatus === 'my_open') {
+    return hasOpenTicketTodosAssignedTo(record, ctx.userId || '')
+  }
+  return true
 }
 
 /**
@@ -187,6 +223,7 @@ export function parseFeedbackSearchParams(searchParams) {
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
+    todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
   }
 }
 
@@ -209,6 +246,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'ticketDateFrom',
     'ticketDateTo',
     'myReview',
+    'todoStatus',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue
@@ -268,6 +306,7 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   ticketDateFrom?: string
  *   ticketDateTo?: string
  *   source?: string
+ *   todoStatus?: string
  * }} [params]
  */
 export function buildFeedbacksUrl(params = {}) {
@@ -287,6 +326,7 @@ export function buildFeedbacksUrl(params = {}) {
     'ticketDateFrom',
     'ticketDateTo',
     'source',
+    'todoStatus',
   ]
   for (const key of stringFields) {
     const value = params[key]?.trim()

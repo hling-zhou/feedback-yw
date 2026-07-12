@@ -10,6 +10,7 @@ import {
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
+import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import { extractTicketActualDate } from '../domain/ticketActualDate.js'
 
 export default function FeedbackTable({
@@ -128,6 +129,7 @@ export default function FeedbackTable({
       render: (_, fb) => (
         <div className="flex flex-col items-start gap-1">
           <Tag>{fb.problemType || '-'}</Tag>
+          {hasOpenTicketTodos(fb) ? <Tag color="orange">有待办</Tag> : null}
         </div>
       ),
     },

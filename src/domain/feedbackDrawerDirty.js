@@ -16,6 +16,7 @@ import {
   normalizeManualPainPoint,
 } from './ticketAnalysisManualFields.js'
 import { normalizeSentiment, normalizeUrgencyLevel } from '../lib/sentiment.js'
+import { normalizeTicketTodoInput, ticketTodoItemsEqual } from './ticketTodo.js'
 
 /**
  * @param {unknown} value
@@ -44,6 +45,7 @@ function norm(value) {
  * @property {string} [rootCauseReview]
  * @property {string} [complaintCauseL2Review]
  * @property {string} [complaintCauseL3Review]
+ * @property {import('./ticketTodo.js').TicketTodoItem[]} [ticketTodoItems]
  */
 
 /**
@@ -119,6 +121,15 @@ export function isFeedbackDrawerFormDirty(record, form) {
   if (causeNorm.complaintCauseL2Review !== causeBaseline.l2) return true
   if (causeNorm.complaintCauseL3Review !== causeBaseline.l3) return true
 
+  if (
+    !ticketTodoItemsEqual(
+      normalizeTicketTodoInput(form.ticketTodoItems),
+      normalizeTicketTodoInput(record.ticketTodo?.items),
+    )
+  ) {
+    return true
+  }
+
   return false
 }
 
@@ -184,5 +195,13 @@ export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
   })
   if (causeA.complaintCauseL2Review !== causeB.complaintCauseL2Review) return false
   if (causeA.complaintCauseL3Review !== causeB.complaintCauseL3Review) return false
+  if (
+    !ticketTodoItemsEqual(
+      normalizeTicketTodoInput(a.ticketTodoItems),
+      normalizeTicketTodoInput(b.ticketTodoItems),
+    )
+  ) {
+    return false
+  }
   return true
 }

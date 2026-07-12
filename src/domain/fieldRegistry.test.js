@@ -32,21 +32,22 @@ const EXPECTED_V2_HEADERS = [
   '设计师优化建议',
   '确立举措',
   '排期',
+  '未完成待办',
   '受理内容',
   '处理意见',
   '根因排查',
 ]
 
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (21 columns)', () => {
+  it('exports v2 column order matches design (22 columns)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(21)
+    expect(cols).toHaveLength(22)
     expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
-  it('import columns match export v2 set', () => {
+  it('import columns match exportable importable v2 set', () => {
     const imp = getImportColumns()
-    const exp = getExportColumns()
+    const exp = getExportColumns().filter((c) => c.importable)
     expect(imp.map((c) => c.fieldKey)).toEqual(exp.map((c) => c.fieldKey))
   })
 
@@ -93,7 +94,7 @@ describe('fieldRegistry', () => {
     expect(l1).toBeDefined()
     expect(isFieldApplicable(l1, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
-    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(21)
+    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(22)
   })
 
   it('follow-up fields apply to complaint and consultation only', () => {

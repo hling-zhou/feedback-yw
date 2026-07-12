@@ -23,11 +23,10 @@ describe('feedbackFilterModel', () => {
     expect(listActiveFeedbackFilterChipKeys(values)).toEqual([
       'ticketIds',
       'ticketDateFrom',
-      'product',
       'problemType',
       'followUp',
     ])
-    expect(countActiveFeedbackFilters(values)).toBe(5)
+    expect(countActiveFeedbackFilters(values)).toBe(4)
     expect(formatFeedbackFilterChipLabel('ticketIds', values)).toBe('2 个')
     expect(formatFeedbackFilterChipLabel('ticketDateFrom', values)).toBe('2026-05-01 ~ 2026-05-31')
     expect(formatFeedbackFilterChipLabel('problemType', values)).toBe('未分类')

@@ -10,6 +10,7 @@ import {
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
+import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 
 /** @typedef {import('./feedbackFilters.js').FollowUpFilterValue} FollowUpFilterValue */
 /** @typedef {import('./feedbackFilters.js').FollowUpResolvedFilterValue} FollowUpResolvedFilterValue */
@@ -31,6 +32,7 @@ import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSource
  * @property {FollowUpResolvedFilterValue | ''} followUpResolved
  * @property {string} reasonDim
  * @property {import('../domain/userTicketReview.js').MyReviewFilterValue} myReview
+ * @property {import('./feedbackFilters.js').TodoStatusFilterValue | ''} todoStatus
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
@@ -51,6 +53,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'followUpResolved',
   'reasonDim',
   'myReview',
+  'todoStatus',
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
@@ -61,7 +64,11 @@ export const FEEDBACK_FILTER_GROUPS = [
   },
   {
     label: '打标维度',
-    keys: ['product', 'problemType', 'complaintCauseL1', 'journeyL1', 'resourcePool', 'requestScene'],
+    keys: ['problemType', 'complaintCauseL1', 'journeyL1', 'resourcePool', 'requestScene'],
+  },
+  {
+    label: '会议跟进',
+    keys: ['todoStatus'],
   },
   {
     label: '分析增强',
@@ -94,6 +101,7 @@ export const FEEDBACK_FILTER_LABELS = {
   followUpResolved: '解决状态',
   reasonDim: '不满意原因',
   myReview: '我的处理状态',
+  todoStatus: '会议待办',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -114,6 +122,7 @@ export function createEmptyFeedbackFilters() {
     followUpResolved: '',
     reasonDim: '',
     myReview: '',
+    todoStatus: '',
   }
 }
 
@@ -140,6 +149,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'requestScene':
     case 'ticketLlm':
     case 'myReview':
+    case 'todoStatus':
       return Boolean(String(values[key] ?? '').trim())
     default:
       return false
@@ -155,7 +165,6 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (isFeedbackFilterActive(values, 'ticketIds')) keys.push('ticketIds')
   if (isFeedbackFilterActive(values, 'ticketDateFrom')) keys.push('ticketDateFrom')
   if (values.dataSource) keys.push('dataSource')
-  if (values.product) keys.push('product')
   if (values.problemType) keys.push('problemType')
   if (values.complaintCauseL1) keys.push('complaintCauseL1')
   if (values.journeyL1) keys.push('journeyL1')
@@ -165,6 +174,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (values.followUp) keys.push('followUp')
   if (values.followUpResolved) keys.push('followUpResolved')
   if (values.myReview) keys.push('myReview')
+  if (values.todoStatus) keys.push('todoStatus')
   return keys
 }
 
@@ -209,6 +219,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return REASON_DIM_OPTIONS.find((item) => item.value === values.reasonDim)?.label || values.reasonDim
     case 'myReview':
       return MY_REVIEW_FILTER_OPTIONS.find((item) => item.value === values.myReview)?.label || values.myReview
+    case 'todoStatus':
+      return (
+        TODO_STATUS_FILTER_OPTIONS.find((item) => item.value === values.todoStatus)?.label ||
+        values.todoStatus
+      )
     default:
       return String(values[key] ?? '')
   }
@@ -272,6 +287,7 @@ export function applyFeedbackFilterPatch(key, patch, current) {
   }
   if (key === 'product' && 'product' in patch) {
     next.resourcePool = ''
+    next.journeyL1 = ''
   }
   if (key === 'followUp' && patch.followUp && (patch.followUp === 'none' || !patch.followUp)) {
     next.followUpResolved = ''
@@ -330,6 +346,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     ticketDateTo: filters.ticketDateTo || '',
     ticketIds: filters.ticketIds.length ? filters.ticketIds.join(',') : '',
     myReview: filters.myReview,
+    todoStatus: filters.todoStatus,
   }
 }
 
