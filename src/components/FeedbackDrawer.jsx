@@ -656,7 +656,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         }),
       )
     }
-    Object.assign(patch, buildTicketTodoSavePatch(feedback, ticketTodoItems, user))
+    Object.assign(
+      patch,
+      buildTicketTodoSavePatch(
+        feedback,
+        ticketTodoItems,
+        user?.id ? { userId: user.id, username: user.username || user.id } : null,
+      ),
+    )
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase: saveOptions.mergeBase,
