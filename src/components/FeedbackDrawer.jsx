@@ -117,6 +117,7 @@ import {
   TICKET_TODO_TEXT_MAX_LENGTH,
 } from '../domain/ticketTodo.js'
 import { apiFetch } from '../lib/apiClient.js'
+import { copyTextToClipboard } from '../lib/clipboard.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
@@ -174,12 +175,9 @@ function TicketDetailSectionNav() {
  */
 function HandlingOriginalTextModal({ open, onClose, ticketId, text }) {
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      message.success('已复制全文')
-    } catch {
-      message.error('复制失败，请手动选择复制')
-    }
+    const ok = await copyTextToClipboard(text)
+    if (ok) message.success('已复制全文')
+    else message.error('复制失败，请手动选择复制')
   }
 
   return (
@@ -315,6 +313,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const baseRevisionRef = useRef(0)
   const baselineFormRef = useRef(/** @type {import('../domain/feedbackDrawerDirty.js').FeedbackDrawerFormSnapshot | null} */ (null))
   const pendingBaselineCaptureRef = useRef(false)
+  const saveInFlightRef = useRef(false)
   const [drawerFormReady, setDrawerFormReady] = useState(false)
   const [handlingExpandOpen, setHandlingExpandOpen] = useState(false)
 
@@ -634,16 +633,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }
 
   const finalizeSave = async (patch, saveOptions = {}) => {
-    Object.assign(
-      patch,
-      await persistEstablishedActionForTicket(feedback, {
-        content: establishedAction,
-        detail: establishedActionDetail,
-        scheduleAt: actionSchedule,
-        actionId,
-        linkedFromLibrary,
-      }),
-    )
+    // Validate local patches before creating/updating library items, so a later
+    // failure cannot leave orphan action items after the user retries save.
     if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
       patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
     }
@@ -664,6 +655,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         user?.id ? { userId: user.id, username: user.username || user.id } : null,
       ),
     )
+    const actionPatch = await persistEstablishedActionForTicket(feedback, {
+      content: establishedAction,
+      detail: establishedActionDetail,
+      scheduleAt: actionSchedule,
+      actionId,
+      linkedFromLibrary,
+    })
+    Object.assign(patch, actionPatch)
+    if ('actionId' in actionPatch) {
+      setActionId(String(actionPatch.actionId ?? '').trim())
+    }
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase: saveOptions.mergeBase,
@@ -695,11 +697,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }
 
   const save = async (saveOptions = {}) => {
-    if (saving || forceSaving) return
+    if (saveInFlightRef.current || saving || forceSaving) return
     if (detailSaveBlocked) {
       message.warning(detailSaveBlockedTip || '当前无法保存工单')
       return
     }
+    saveInFlightRef.current = true
     setSaving(true)
     try {
       const patch = buildSavePatch()
@@ -714,6 +717,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       }
       message.error(err instanceof Error ? err.message : '保存失败，请重试')
     } finally {
+      saveInFlightRef.current = false
       setSaving(false)
     }
   }
@@ -732,6 +736,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
   const handleForceSaveAfterConflict = async () => {
     if (!conflictServerRecord || !canEdit) return
+    if (saveInFlightRef.current || forceSaving) return
+    saveInFlightRef.current = true
     setForceSaving(true)
     try {
       const patch = buildSavePatch()
@@ -751,6 +757,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       }
       message.error(err instanceof Error ? err.message : '覆盖保存失败')
     } finally {
+      saveInFlightRef.current = false
       setForceSaving(false)
     }
   }

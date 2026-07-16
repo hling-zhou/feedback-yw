@@ -157,6 +157,44 @@ describe('establishedActionPersist', () => {
     expect(patch.actionId).toBe('act-old')
   })
 
+  it('manual retry uses form actionId when record.actionId is still empty', async () => {
+    getActionItem.mockResolvedValue({
+      id: 'act-partial',
+      content: '已创建未回写',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+      linkedTicketIds: ['T-100'],
+      linkedDataSources: ['complaint_ticket'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    updateActionItem.mockResolvedValue({
+      id: 'act-partial',
+      content: '重试更新',
+      status: 'pending_evaluation',
+      scheduleAt: '',
+      linkedTicketIds: ['T-100'],
+      linkedDataSources: ['complaint_ticket'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    })
+
+    const patch = await persistEstablishedActionForTicket(record, {
+      content: '重试更新',
+      scheduleAt: '',
+      actionId: 'act-partial',
+      linkedFromLibrary: false,
+    })
+
+    expect(createActionItem).not.toHaveBeenCalled()
+    expect(updateActionItem).toHaveBeenCalledWith(
+      'act-partial',
+      expect.objectContaining({ content: '重试更新' }),
+      { skipConflictCheck: true },
+    )
+    expect(patch.actionId).toBe('act-partial')
+  })
+
   it('empty content clears established action fields and unlinks action library', async () => {
     unlinkTicketsFromActionLibrary.mockResolvedValue({ updated: 1, items: [] })
 

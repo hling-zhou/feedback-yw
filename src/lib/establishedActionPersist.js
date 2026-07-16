@@ -105,7 +105,8 @@ export async function persistEstablishedActionForTicket(record, input) {
     scheduleAt,
   })
 
-  const existingId = record.actionId?.trim()
+  // Prefer local/form actionId so a retry after partial failure updates instead of creating again.
+  const existingId = input.actionId?.trim() || record.actionId?.trim()
   /** @type {import('../domain/actionItem.js').ActionItem} */
   let item
 
