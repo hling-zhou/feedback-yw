@@ -2,7 +2,6 @@ import { useEffect, useMemo } from 'react'
 import { Alert, Badge, Tabs } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
-import ConfigPublishStatusBar from '../components/tagManagement/ConfigPublishStatusBar.jsx'
 import CustomTagsPanel from '../components/tagManagement/CustomTagsPanel.jsx'
 import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx'
 import ProductConfigurationCenter from '../components/tagManagement/ProductConfigurationCenter.jsx'
@@ -98,7 +97,6 @@ export default function TagManagement() {
           description="查看者角色可浏览标签配置，但不能新增、修改或导入标签。"
         />
       )}
-      {!readOnly && <ConfigPublishStatusBar />}
       <Tabs
         className="mt-4"
         activeKey={tab}
@@ -106,6 +104,7 @@ export default function TagManagement() {
           const next = new URLSearchParams(searchParams)
           next.set('tab', key)
           if (key !== TAB_KEYS.journey) next.delete('journeyProduct')
+          if (key !== TAB_KEYS.products) next.delete('productView')
           setSearchParams(next)
         }}
         items={items}

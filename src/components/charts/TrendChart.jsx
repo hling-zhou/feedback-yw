@@ -5,6 +5,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -18,6 +19,8 @@ import ChartTooltip from './ChartTooltip.jsx'
  * @param {'area' | 'line'} [props.variant]
  * @param {boolean} [props.stacked] 仅 area 模式有效
  * @param {number} [props.height]
+ * @param {boolean} [props.allowDecimals]
+ * @param {{ y: number; label?: string; stroke?: string; strokeDasharray?: string } | null} [props.referenceLine]
  */
 export default function TrendChart({
   data,
@@ -25,6 +28,8 @@ export default function TrendChart({
   variant = 'area',
   stacked = false,
   height = 220,
+  allowDecimals = false,
+  referenceLine = null,
 }) {
   if (!data?.length) {
     return <EmptyChart message="暂无趋势数据" height={height} />
@@ -34,15 +39,31 @@ export default function TrendChart({
     ? areas
     : [{ dataKey: 'count', name: '反馈数', stroke: '#4F46E5', fill: 'url(#trendFill)' }]
 
+  const ref =
+    referenceLine && Number.isFinite(referenceLine.y) ? (
+      <ReferenceLine
+        y={referenceLine.y}
+        stroke={referenceLine.stroke || '#F59E0B'}
+        strokeDasharray={referenceLine.strokeDasharray || '6 4'}
+        label={{
+          value: referenceLine.label || `基准 ${referenceLine.y}`,
+          position: 'insideTopRight',
+          fill: '#B45309',
+          fontSize: 11,
+        }}
+      />
+    ) : null
+
   if (variant === 'line') {
     return (
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
           <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
+          <YAxis allowDecimals={allowDecimals} tick={{ fontSize: 11, fill: '#6B7280' }} />
           <ChartTooltip />
           <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
+          {ref}
           {series.map((line) => (
             <Line
               key={line.dataKey}
@@ -75,9 +96,10 @@ export default function TrendChart({
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
+        <YAxis allowDecimals={allowDecimals} tick={{ fontSize: 11, fill: '#6B7280' }} />
         <ChartTooltip />
         <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
+        {ref}
         {series.map((area) => (
           <Area
             key={area.dataKey}

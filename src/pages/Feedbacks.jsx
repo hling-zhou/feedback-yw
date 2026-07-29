@@ -54,6 +54,7 @@ import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
   matchesFollowUpFilters,
+  matchesHandlingKeywordFilter,
   matchesOptionalTextFilter,
   matchesTodoStatusFilter,
   parseFeedbackSearchParams,
@@ -326,6 +327,7 @@ export default function Feedbacks() {
         return false
       }
       if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
+      if (!matchesHandlingKeywordFilter(fb, filters.handlingKeyword)) return false
       return true
     })
   }, [
@@ -469,115 +471,130 @@ export default function Feedbacks() {
         />
       )}
 
-      <div className="page-section page-stack">
-        {(needsTicketLlmCount > 0 || needsJourneyLlmCount > 0) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-1.5 text-sm text-sky-900">
-            {needsTicketLlmCount > 0 && (
-              <span
-                className="inline-flex flex-wrap items-center gap-2"
-                title="客户请求或痛点仍为规则/人工/导入打标；多为导入时未配置 API Key 或额度不足"
-              >
-                <span>{needsTicketLlmCount} 条客户请求/痛点待 LLM</span>
-                <PermissionGate permission="retag">
-                  <Button
-                    size="small"
-                    type="link"
-                    className="!px-0 !h-auto"
-                    loading={bulkRetagBusy}
-                    disabled={bulkRetagDisabled}
-                    title={bulkRetagDisabledTip}
-                    onClick={() => {
-                      applyTicketLlmFilter('needs_llm')
-                      startScopedBulkRetag('needs_ticket_llm')
-                    }}
-                  >
-                    补打
-                  </Button>
-                </PermissionGate>
-              </span>
-            )}
-            {needsTicketLlmCount > 0 && needsJourneyLlmCount > 0 && (
-              <span className="text-sky-300" aria-hidden>
-                |
-              </span>
-            )}
-            {needsJourneyLlmCount > 0 && (
-              <span
-                className="inline-flex flex-wrap items-center gap-2"
-                title={TICKET_LLM_FILTER_HINTS.needs_journey_llm}
-              >
-                <span>{needsJourneyLlmCount} 条待 LLM（旅程）</span>
-                <PermissionGate permission="retag">
-                  <Button
-                    size="small"
-                    type="link"
-                    className="!px-0 !h-auto"
-                    loading={bulkRetagBusy}
-                    disabled={bulkRetagDisabled}
-                    title={bulkRetagDisabledTip}
-                    onClick={() => {
-                      applyTicketLlmFilter('needs_journey_llm')
-                      startScopedBulkRetag('needs_journey_llm')
-                    }}
-                  >
-                    补打旅程
-                  </Button>
-                </PermissionGate>
-              </span>
-            )}
-          </div>
-        )}
+      {(needsTicketLlmCount > 0 ||
+        needsJourneyLlmCount > 0 ||
+        missingTags > 0 ||
+        filters.ticketIds.length > 0) && (
+        <div className="page-section page-stack">
+          {(needsTicketLlmCount > 0 || needsJourneyLlmCount > 0) && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-1.5 text-sm text-sky-900">
+              {needsTicketLlmCount > 0 && (
+                <span
+                  className="inline-flex flex-wrap items-center gap-2"
+                  title="客户请求或痛点仍为规则/人工/导入打标；多为导入时未配置 API Key 或额度不足"
+                >
+                  <span>{needsTicketLlmCount} 条客户请求/痛点待 LLM</span>
+                  <PermissionGate permission="retag">
+                    <Button
+                      size="small"
+                      type="link"
+                      className="!px-0 !h-auto"
+                      loading={bulkRetagBusy}
+                      disabled={bulkRetagDisabled}
+                      title={bulkRetagDisabledTip}
+                      onClick={() => {
+                        applyTicketLlmFilter('needs_llm')
+                        startScopedBulkRetag('needs_ticket_llm')
+                      }}
+                    >
+                      补打
+                    </Button>
+                  </PermissionGate>
+                </span>
+              )}
+              {needsTicketLlmCount > 0 && needsJourneyLlmCount > 0 && (
+                <span className="text-sky-300" aria-hidden>
+                  |
+                </span>
+              )}
+              {needsJourneyLlmCount > 0 && (
+                <span
+                  className="inline-flex flex-wrap items-center gap-2"
+                  title={TICKET_LLM_FILTER_HINTS.needs_journey_llm}
+                >
+                  <span>{needsJourneyLlmCount} 条待 LLM（旅程）</span>
+                  <PermissionGate permission="retag">
+                    <Button
+                      size="small"
+                      type="link"
+                      className="!px-0 !h-auto"
+                      loading={bulkRetagBusy}
+                      disabled={bulkRetagDisabled}
+                      title={bulkRetagDisabledTip}
+                      onClick={() => {
+                        applyTicketLlmFilter('needs_journey_llm')
+                        startScopedBulkRetag('needs_journey_llm')
+                      }}
+                    >
+                      补打旅程
+                    </Button>
+                  </PermissionGate>
+                </span>
+              )}
+            </div>
+          )}
 
-        {missingTags > 0 && (
-          <Alert
-            type="warning"
-            showIcon
-            title={`有 ${missingTags} 条工单的用户旅程仍为「未识别环节」`}
-            description={
-              <>
-                {unknownReasonHint ? `主要原因：${unknownReasonHint}。` : null}
-                可批量重新打标，或导出样本排查产品与旅程模板配置。
-              </>
-            }
-            action={
-              <Space wrap>
-                <Button size="small" onClick={handleExportUnknownJourney}>
-                  导出未识别样本
-                </Button>
-                <PermissionGate permission="retag">
-                  <Button
-                    size="small"
-                    type="primary"
-                    loading={bulkRetagBusy}
-                    disabled={bulkRetagDisabled}
-                    title={bulkRetagDisabledTip}
-                    onClick={openBulkRetagModal}
-                  >
-                    批量重新打标
+          {missingTags > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              title={`有 ${missingTags} 条工单的用户旅程仍为「未识别环节」`}
+              description={
+                <>
+                  {unknownReasonHint ? `主要原因：${unknownReasonHint}。` : null}
+                  可批量重新打标，或导出样本排查产品与旅程模板配置。
+                </>
+              }
+              action={
+                <Space wrap>
+                  <Button size="small" onClick={handleExportUnknownJourney}>
+                    导出未识别样本
                   </Button>
-                </PermissionGate>
-              </Space>
-            }
-          />
-        )}
+                  <PermissionGate permission="retag">
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={bulkRetagBusy}
+                      disabled={bulkRetagDisabled}
+                      title={bulkRetagDisabledTip}
+                      onClick={openBulkRetagModal}
+                    >
+                      批量重新打标
+                    </Button>
+                  </PermissionGate>
+                </Space>
+              }
+            />
+          )}
 
-        {filters.ticketIds.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
-            <Typography.Text className="shrink-0 text-sm text-indigo-900">
-              行动建议依据工单（{filters.ticketIds.length} 个）
-              {matchedEvidenceCount < filters.ticketIds.length ? (
-                <Typography.Text type="secondary" className="ml-1 text-xs">
-                  · 库内匹配 {matchedEvidenceCount} 条
-                </Typography.Text>
-              ) : null}
-            </Typography.Text>
-            <Typography.Text type="secondary" className="text-xs">
-              已按工单号限定范围，可继续添加其他筛选；移除「工单号」Tag 后恢复常规范围
-            </Typography.Text>
-          </div>
-        )}
+          {filters.ticketIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+              <Typography.Text className="shrink-0 text-sm text-indigo-900">
+                行动建议依据工单（{filters.ticketIds.length} 个）
+                {matchedEvidenceCount < filters.ticketIds.length ? (
+                  <Typography.Text type="secondary" className="ml-1 text-xs">
+                    · 库内匹配 {matchedEvidenceCount} 条
+                  </Typography.Text>
+                ) : null}
+              </Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">
+                已按工单号限定范围，可继续添加其他筛选；移除「工单号」Tag 后恢复常规范围
+              </Typography.Text>
+            </div>
+          )}
+        </div>
+      )}
 
-        <FeedbackFilterBar
+      <div
+        className={`page-sticky-chrome ${
+          needsTicketLlmCount > 0 ||
+          needsJourneyLlmCount > 0 ||
+          missingTags > 0 ||
+          filters.ticketIds.length > 0
+            ? 'page-section-sm'
+            : 'page-section'
+        }`}
+      >        <FeedbackFilterBar
           filters={filters}
           onFiltersChange={handleFiltersChange}
           onProductChange={handleProductChange}

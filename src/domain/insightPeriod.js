@@ -8,10 +8,12 @@ import { randomId } from '../lib/randomId.js'
  * @property {string} label
  * @property {string} startDate
  * @property {string} endDate
- * @property {PeriodGranularity} [granularity] month | quarter | year
+ * @property {PeriodGranularity} [granularity] month | quarter | year | custom
  * @property {number} [anchorYear]
  * @property {number} [anchorMonth] 1–12，仅 month
  * @property {number} [anchorQuarter] 1–4，仅 quarter
+ * @property {string} [customFromMonth] YYYY-MM，仅 custom
+ * @property {string} [customToMonth] YYYY-MM，仅 custom
  * @property {InsightPeriodStatus} status
  * @property {string} tenantId
  * @property {string} schemaVersion
@@ -67,13 +69,106 @@ function yearRange(year) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {string | null} YYYY-MM
+ */
+export function normalizeYearMonth(value) {
+  if (value == null) return null
+  const s = String(value).trim()
+  const m = /^(\d{4})-(\d{2})$/.exec(s)
+  if (!m) return null
+  const year = Number(m[1])
+  const month = Number(m[2])
+  if (!Number.isFinite(year) || year < 1970 || year > 2100) return null
+  if (!Number.isFinite(month) || month < 1 || month > 12) return null
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
+/**
+ * @param {string} fromYm YYYY-MM
+ * @param {string} toYm YYYY-MM
+ */
+export function listMonthsInclusive(fromYm, toYm) {
+  const from = normalizeYearMonth(fromYm)
+  const to = normalizeYearMonth(toYm)
+  if (!from || !to || from > to) return []
+  /** @type {string[]} */
+  const out = []
+  let [y, m] = from.split('-').map(Number)
+  const [ty, tm] = to.split('-').map(Number)
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m += 1
+    if (m > 12) {
+      m = 1
+      y += 1
+    }
+  }
+  return out
+}
+
+/**
+ * @param {string} ym YYYY-MM
+ * @param {number} delta
+ */
+export function shiftYearMonth(ym, delta) {
+  const normalized = normalizeYearMonth(ym)
+  if (!normalized) return null
+  let [y, m] = normalized.split('-').map(Number)
+  const idx = y * 12 + (m - 1) + delta
+  const ny = Math.floor(idx / 12)
+  const nm = (idx % 12) + 1
+  return `${ny}-${String(nm).padStart(2, '0')}`
+}
+
+/**
+ * @param {string} fromYm
+ * @param {string} toYm
+ */
+function formatCustomPeriodLabel(fromYm, toYm) {
+  const [fy, fm] = fromYm.split('-').map(Number)
+  const [ty, tm] = toYm.split('-').map(Number)
+  if (fy === ty) {
+    if (fm === tm) return `${fy}年${fm}月`
+    return `${fy}年${fm}月–${tm}月`
+  }
+  return `${fy}年${fm}月–${ty}年${tm}月`
+}
+
+/**
  * @param {Object} spec
  * @param {PeriodGranularity} spec.granularity
- * @param {number} spec.year
+ * @param {number} [spec.year]
  * @param {number} [spec.month]
  * @param {number} [spec.quarter]
+ * @param {string} [spec.fromMonth] YYYY-MM，custom
+ * @param {string} [spec.toMonth] YYYY-MM，custom
  */
-export function buildPeriodSpec({ granularity, year, month, quarter }) {
+export function buildPeriodSpec({ granularity, year, month, quarter, fromMonth, toMonth }) {
+  if (granularity === 'custom') {
+    const from = normalizeYearMonth(fromMonth)
+    const to = normalizeYearMonth(toMonth)
+    if (!from || !to) {
+      throw new Error('请选择起止月份')
+    }
+    if (from > to) {
+      throw new Error('结束月份不能早于开始月份')
+    }
+    const [fy, fm] = from.split('-').map(Number)
+    const [ty, tm] = to.split('-').map(Number)
+    const start = monthRange(fy, fm)
+    const end = monthRange(ty, tm)
+    return {
+      label: formatCustomPeriodLabel(from, to),
+      startDate: start.startDate,
+      endDate: end.endDate,
+      granularity: /** @type {const} */ ('custom'),
+      customFromMonth: from,
+      customToMonth: to,
+      anchorYear: ty,
+    }
+  }
+
   const y = Number(year)
   if (!Number.isFinite(y) || y < 1970 || y > 2100) {
     throw new Error('请选择有效年份')
@@ -119,14 +214,23 @@ export function buildPeriodSpec({ granularity, year, month, quarter }) {
 }
 
 /**
- * 由月/季/年规格生成稳定周期 ID（无需用户手工配置）
- * @param {ReturnType<typeof buildPeriodSpec>} spec
- */
-/**
  * @param {ReturnType<typeof buildPeriodSpec>} spec
  * @returns {ReturnType<typeof buildPeriodSpec> | null}
  */
 export function previousPeriodSpecFromSpec(spec) {
+  if (spec.granularity === 'custom' && spec.customFromMonth && spec.customToMonth) {
+    const months = listMonthsInclusive(spec.customFromMonth, spec.customToMonth)
+    if (!months.length) return null
+    const len = months.length
+    const prevTo = shiftYearMonth(spec.customFromMonth, -1)
+    const prevFrom = shiftYearMonth(spec.customFromMonth, -len)
+    if (!prevFrom || !prevTo) return null
+    return buildPeriodSpec({
+      granularity: 'custom',
+      fromMonth: prevFrom,
+      toMonth: prevTo,
+    })
+  }
   if (spec.granularity === 'month' && spec.anchorYear != null && spec.anchorMonth != null) {
     let year = spec.anchorYear
     let month = spec.anchorMonth - 1
@@ -153,37 +257,48 @@ export function previousPeriodSpecFromSpec(spec) {
 
 /**
  * @param {InsightPeriod | null | undefined} period
+ * @returns {ReturnType<typeof buildPeriodSpec> | null}
+ */
+function periodToBuildSpec(period) {
+  if (!period?.granularity) return null
+  if (period.granularity === 'custom') {
+    const from = period.customFromMonth || period.startDate?.slice(0, 7)
+    const to = period.customToMonth || period.endDate?.slice(0, 7)
+    if (!from || !to) return null
+    return buildPeriodSpec({ granularity: 'custom', fromMonth: from, toMonth: to })
+  }
+  if (period.anchorYear == null) return null
+  return buildPeriodSpec({
+    granularity: period.granularity,
+    year: period.anchorYear,
+    month: period.anchorMonth,
+    quarter: period.anchorQuarter,
+  })
+}
+
+/**
+ * @param {InsightPeriod | null | undefined} period
  * @returns {string | null}
  */
 export function previousPeriodIdFromPeriod(period) {
   if (!period) return null
   const normalized = normalizeInsightPeriod(period)
-  if (!normalized.granularity || normalized.anchorYear == null) return null
-  const spec = buildPeriodSpec({
-    granularity: normalized.granularity,
-    year: normalized.anchorYear,
-    month: normalized.anchorMonth,
-    quarter: normalized.anchorQuarter,
-  })
+  const spec = periodToBuildSpec(normalized)
+  if (!spec) return null
   const prev = previousPeriodSpecFromSpec(spec)
   return prev ? periodIdFromSpec(prev) : null
 }
 
 /**
- * 上一洞察周期对象（月 → 上月，季 → 上季，年 → 上年）
+ * 上一洞察周期对象（月 → 上月，季 → 上季，年 → 上年，自定义 → 等长前一窗）
  * @param {InsightPeriod | null | undefined} period
  * @returns {InsightPeriod | null}
  */
 export function resolvePreviousInsightPeriod(period) {
   if (!period) return null
   const normalized = normalizeInsightPeriod(period)
-  if (!normalized.granularity || normalized.anchorYear == null) return null
-  const spec = buildPeriodSpec({
-    granularity: normalized.granularity,
-    year: normalized.anchorYear,
-    month: normalized.anchorMonth,
-    quarter: normalized.anchorQuarter,
-  })
+  const spec = periodToBuildSpec(normalized)
+  if (!spec) return null
   const prevSpec = previousPeriodSpecFromSpec(spec)
   if (!prevSpec) return null
   return insightPeriodFromSpec(
@@ -200,6 +315,9 @@ export function periodIdFromSpec(spec) {
   if (spec.granularity === 'quarter') {
     return `period:quarter:${spec.anchorYear}-Q${spec.anchorQuarter}`
   }
+  if (spec.granularity === 'custom') {
+    return `period:custom:${spec.customFromMonth}_${spec.customToMonth}`
+  }
   return `period:year:${spec.anchorYear}`
 }
 
@@ -210,6 +328,14 @@ export function periodIdFromSpec(spec) {
  */
 export function periodSpecFromId(periodId) {
   if (!periodId || periodId === 'legacy-default') return null
+  const customMatch = /^period:custom:(\d{4}-\d{2})_(\d{4}-\d{2})$/.exec(periodId)
+  if (customMatch) {
+    return buildPeriodSpec({
+      granularity: 'custom',
+      fromMonth: customMatch[1],
+      toMonth: customMatch[2],
+    })
+  }
   const monthMatch = /^period:month:(\d{4})-(\d{2})$/.exec(periodId)
   if (monthMatch) {
     return buildPeriodSpec({
@@ -252,10 +378,29 @@ export function resolveInsightPeriod(periodId, fromList, schemaVersion = '2.0', 
 
 /**
  * @param {InsightPeriod | null | undefined} period
- * @returns {{ granularity: PeriodGranularity; year: number; month?: number; quarter?: number } | null}
+ * @returns {{
+ *   granularity: PeriodGranularity
+ *   year?: number
+ *   month?: number
+ *   quarter?: number
+ *   fromMonth?: string
+ *   toMonth?: string
+ * } | null}
  */
 export function selectionFromPeriod(period) {
-  if (!period?.granularity || period.anchorYear == null) return null
+  if (!period?.granularity) return null
+  if (period.granularity === 'custom') {
+    const from = period.customFromMonth || period.startDate?.slice(0, 7)
+    const to = period.customToMonth || period.endDate?.slice(0, 7)
+    if (!from || !to) return null
+    return {
+      granularity: 'custom',
+      year: Number(to.slice(0, 4)) || period.anchorYear,
+      fromMonth: from,
+      toMonth: to,
+    }
+  }
+  if (period.anchorYear == null) return null
   return {
     granularity: period.granularity,
     year: period.anchorYear,
@@ -281,6 +426,8 @@ export function insightPeriodFromSpec(spec, schemaVersion, tenantId = 'local') {
       anchorYear: spec.anchorYear,
       anchorMonth: spec.anchorMonth,
       anchorQuarter: spec.anchorQuarter,
+      customFromMonth: spec.customFromMonth,
+      customToMonth: spec.customToMonth,
       status: 'active',
     },
     schemaVersion,
@@ -297,6 +444,11 @@ export function currentPeriodSpec(granularity) {
   const year = now.getFullYear()
   const month = now.getMonth() + 1
   const quarter = Math.ceil(month / 3)
+  if (granularity === 'custom') {
+    const to = `${year}-${String(month).padStart(2, '0')}`
+    const from = shiftYearMonth(to, -2) || to
+    return buildPeriodSpec({ granularity: 'custom', fromMonth: from, toMonth: to })
+  }
   return buildPeriodSpec({ granularity, year, month, quarter })
 }
 
@@ -325,6 +477,35 @@ export function defaultMonthPeriodSpec(records = []) {
  * @param {InsightPeriod} period
  */
 export function normalizeInsightPeriod(period) {
+  if (period.granularity === 'custom') {
+    const from = period.customFromMonth || period.startDate?.slice(0, 7)
+    const to = period.customToMonth || period.endDate?.slice(0, 7)
+    if (from && to) {
+      try {
+        const spec = buildPeriodSpec({
+          granularity: 'custom',
+          fromMonth: from,
+          toMonth: to,
+        })
+        return {
+          ...period,
+          label: period.label || spec.label,
+          startDate: spec.startDate,
+          endDate: spec.endDate,
+          granularity: 'custom',
+          customFromMonth: spec.customFromMonth,
+          customToMonth: spec.customToMonth,
+          anchorYear: spec.anchorYear,
+          anchorMonth: undefined,
+          anchorQuarter: undefined,
+        }
+      } catch {
+        return period
+      }
+    }
+    return period
+  }
+
   if (period.granularity && period.anchorYear) {
     try {
       const spec = buildPeriodSpec({
@@ -409,13 +590,12 @@ export function formatPeriodSubtitle(period) {
         ? '按季度'
         : p.granularity === 'year'
           ? '按年'
-          : ''
+          : p.granularity === 'custom'
+            ? '自定义'
+            : ''
   return type ? `${type} · ${formatPeriodRange(p)}` : formatPeriodRange(p)
 }
 
-/**
- * @param {InsightPeriod} period
- */
 /**
  * @param {string} importMonth YYYY-MM
  */
@@ -431,6 +611,10 @@ export function suggestImportMonth(period) {
   if (p.granularity === 'month' && p.anchorYear && p.anchorMonth) {
     return `${p.anchorYear}-${String(p.anchorMonth).padStart(2, '0')}`
   }
+  if (p.granularity === 'custom' && p.customToMonth) {
+    return p.customToMonth
+  }
+  if (p.endDate) return p.endDate.slice(0, 7)
   return new Date().toISOString().slice(0, 7)
 }
 
@@ -500,6 +684,8 @@ export function createInsightPeriod(input, schemaVersion, tenantId = 'local') {
     anchorYear: input.anchorYear,
     anchorMonth: input.anchorMonth,
     anchorQuarter: input.anchorQuarter,
+    customFromMonth: input.customFromMonth,
+    customToMonth: input.customToMonth,
     status: input.status || 'active',
     tenantId: input.tenantId || tenantId,
     schemaVersion,
@@ -527,6 +713,9 @@ export function isSamePeriodAnchor(a, b) {
   const x = normalizeInsightPeriod(a)
   const y = normalizeInsightPeriod(b)
   if (!x.granularity || x.granularity !== y.granularity) return false
+  if (x.granularity === 'custom') {
+    return x.customFromMonth === y.customFromMonth && x.customToMonth === y.customToMonth
+  }
   if (x.anchorYear !== y.anchorYear) return false
   if (x.granularity === 'month') return x.anchorMonth === y.anchorMonth
   if (x.granularity === 'quarter') return x.anchorQuarter === y.anchorQuarter

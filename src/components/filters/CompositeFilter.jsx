@@ -402,6 +402,18 @@ function SpecialFilterPopover({
           )}
           onChange={(range) => setDraft(range ?? [null, null])}
         />
+      ) : editorKind === 'text' ? (
+        <Input
+          allowClear
+          autoFocus
+          className="w-full"
+          placeholder="输入关键字"
+          value={/** @type {string} */ (draft ?? '')}
+          onChange={(event) => setDraft(event.target.value)}
+          onPressEnter={() => {
+            if (isDraftValid(filterKey, draft)) onConfirm()
+          }}
+        />
       ) : (
         <Input
           allowClear

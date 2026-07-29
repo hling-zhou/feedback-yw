@@ -370,13 +370,27 @@ export function InsightsProvider({ children }) {
 
       const savedSelection = await adapter.getMeta(META_PERIOD_SELECTION)
       let spec = defaultMonthPeriodSpec(loadedRecords)
-      if (savedSelection?.granularity && savedSelection.year != null) {
+      if (savedSelection?.granularity === 'custom' && savedSelection.fromMonth && savedSelection.toMonth) {
+        spec = buildPeriodSpec({
+          granularity: 'custom',
+          fromMonth: savedSelection.fromMonth,
+          toMonth: savedSelection.toMonth,
+        })
+      } else if (savedSelection?.granularity && savedSelection.year != null) {
         spec = buildPeriodSpec(savedSelection)
       } else {
         const savedId = await adapter.getMeta(META_CURRENT_PERIOD)
         const existing = list.find((p) => p.id === savedId)
         const sel = selectionFromPeriod(existing)
-        if (sel) spec = buildPeriodSpec(sel)
+        if (sel?.granularity === 'custom' && sel.fromMonth && sel.toMonth) {
+          spec = buildPeriodSpec({
+            granularity: 'custom',
+            fromMonth: sel.fromMonth,
+            toMonth: sel.toMonth,
+          })
+        } else if (sel) {
+          spec = buildPeriodSpec(sel)
+        }
       }
 
       const period = insightPeriodFromSpec(spec, SCHEMA_VERSION, DEFAULT_TENANT_ID)
@@ -403,6 +417,8 @@ export function InsightsProvider({ children }) {
           year: spec.anchorYear,
           month: spec.anchorMonth,
           quarter: spec.anchorQuarter,
+          fromMonth: spec.customFromMonth,
+          toMonth: spec.customToMonth,
         })
         await adapter.putMeta(META_CURRENT_PERIOD, period.id)
         list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
@@ -1186,6 +1202,8 @@ export function InsightsProvider({ children }) {
           year: spec.anchorYear,
           month: spec.anchorMonth,
           quarter: spec.anchorQuarter,
+          fromMonth: spec.customFromMonth,
+          toMonth: spec.customToMonth,
         })
         await adapter.putMeta(META_CURRENT_PERIOD, period.id)
         await loadRecordsForPeriodId(period.id)

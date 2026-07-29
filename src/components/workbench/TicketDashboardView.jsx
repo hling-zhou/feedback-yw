@@ -1,33 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Segmented, Select, Space, Tag, Typography } from 'antd'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import TrendChart from '../charts/TrendChart.jsx'
-import JourneyFeedbackSection from '../JourneyFeedbackSection.jsx'
 import SentimentDistributionPanel from '../SentimentDistributionPanel.jsx'
-import SentimentExperiencePanel from '../SentimentExperiencePanel.jsx'
-import WorkbenchScopeCompositeFilter from './WorkbenchScopeCompositeFilter.jsx'
+import CxWanTouTrendChart from './CxWanTouTrendChart.jsx'
+import DimensionQuantityTrendPanel from './DimensionQuantityTrendPanel.jsx'
+import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
+import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
 import { useInsights } from '../../context/InsightsContext.jsx'
-import { getTaxonomy } from '../../lib/productTaxonomy.js'
+import { getTaxonomy, listProducts } from '../../lib/productTaxonomy.js'
 import { countByField, filterFeedbacks } from '../../lib/productAnalytics.js'
-import {
-  aggregateComplaintCauseL1Insights,
-  countComplaintCauseL1,
-} from '../../domain/complaintCause.js'
-import { listProducts, listResourcePools } from '../../lib/productTaxonomy.js'
 import { workbenchTicketRecords } from '../../snapshots/recordScope.js'
 import { resolveCatalogKeyFromProductName } from '../../lib/wanTouRatio.js'
 import { suggestImportMonth } from '../../domain/insightPeriod.js'
+import { monthlyTrend } from '../../lib/analytics.js'
+import {
+  filterRecordsByImportMonths,
+  resolveTrendMonthWindow,
+} from '../../lib/workbenchTrendWindow.js'
 import {
   buildTicketWorkbenchDrillDownUrl,
   drillDownFieldParam,
 } from '../../lib/feedbackFilters.js'
-import WanTouRatioPanel from './WanTouRatioPanel.jsx'
-import WorkbenchAnalysisHint from './WorkbenchAnalysisHint.jsx'
-import {
-  clearAllWorkbenchScopeFilters,
-  createEmptyWorkbenchScopeFilters,
-  WORKBENCH_TICKET_SCOPE_KEYS,
-} from '../../lib/workbenchScopeFilterModel.js'
+import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
+import { WORKBENCH_TICKET_TABS_WHATS_NEW_DESCRIPTION } from '../../lib/whatsNew.js'
+
+const PROBLEM_DIM_OPTIONS = [
+  { value: 'requestScene', label: '请求场景' },
+  { value: 'problemType', label: '问题类型' },
+  { value: 'journeyL1', label: '一级旅程' },
+]
 
 /**
  * @param {Object} props
@@ -36,6 +38,8 @@ import {
  * @param {string} [props.product]
  * @param {(value: string) => void} [props.onProductChange]
  * @param {boolean} [props.pdfCaptureMode] PDF 离屏截图：隐藏筛选栏等非图表 UI
+ * @param {boolean} [props.showWhatsNew]
+ * @param {() => void} [props.onDismissWhatsNew]
  */
 export default function TicketDashboardView({
   snapshot,
@@ -43,8 +47,16 @@ export default function TicketDashboardView({
   product: productProp,
   onProductChange,
   pdfCaptureMode = false,
+  showWhatsNew = false,
+  onDismissWhatsNew,
 }) {
-  const { feedbacks, currentPeriod, orderVolumes, wanTouTargets } = useInsights()
+  const {
+    feedbacks,
+    currentPeriod,
+    orderVolumes,
+    wanTouTargets,
+    overviewSnapshot,
+  } = useInsights()
   const items = useMemo(
     () => workbenchTicketRecords(feedbacks, currentPeriod, snapshot),
     [feedbacks, currentPeriod, snapshot],
@@ -52,29 +64,28 @@ export default function TicketDashboardView({
 
   const products = useMemo(() => listProducts(items), [items])
   const productControlled = onProductChange != null
-  const [scopeFilters, setScopeFilters] = useState(() => ({
-    ...createEmptyWorkbenchScopeFilters(),
-    product: productProp ?? '',
-  }))
-  const product = scopeFilters.product
-  const resourcePool = scopeFilters.resourcePool
-  const complaintCauseL1 = scopeFilters.complaintCauseL1
+  const [productLocal, setProductLocal] = useState(productProp ?? '')
+  const product = productControlled ? productProp ?? '' : productLocal
+  const [problemDim, setProblemDim] = useState(
+    /** @type {'requestScene' | 'problemType' | 'journeyL1'} */ ('requestScene'),
+  )
 
   const applyProductChange = useCallback(
     (value) => {
+      const next = value || ''
       if (productControlled) {
-        onProductChange?.(value)
+        onProductChange?.(next)
+      } else {
+        setProductLocal(next)
       }
-      setScopeFilters((prev) => ({ ...prev, product: value }))
     },
     [productControlled, onProductChange],
   )
-  const [journeySel, setJourneySel] = useState({ l1: undefined, l2: undefined })
   const isComplaintSource = snapshot.dataSourceType === 'complaint_ticket'
 
   useEffect(() => {
     if (!productControlled) return
-    setScopeFilters((prev) => ({ ...prev, product: productProp ?? '' }))
+    setProductLocal(productProp ?? '')
   }, [productProp, productControlled])
 
   useEffect(() => {
@@ -93,20 +104,52 @@ export default function TicketDashboardView({
     () => resolveCatalogKeyFromProductName(sectionProduct),
     [sectionProduct],
   )
-  const pools = useMemo(
-    () => listResourcePools(items, product || undefined),
-    [items, product],
+
+  const productOptions = useMemo(
+    () => [
+      { value: '', label: `全部产品 (${items.length})` },
+      ...products.map((p) => ({
+        value: p.name,
+        label: `${p.name} (${p.count})`,
+      })),
+    ],
+    [products, items.length],
   )
 
   const scoped = useMemo(
     () =>
       filterFeedbacks(items, {
         product: isAllProducts ? undefined : sectionProduct || undefined,
-        resourcePool: resourcePool || undefined,
-        complaintCauseL1: isComplaintSource ? complaintCauseL1 || undefined : undefined,
       }),
-    [items, isAllProducts, sectionProduct, resourcePool, complaintCauseL1, isComplaintSource],
+    [items, isAllProducts, sectionProduct],
   )
+
+  const trendWindow = useMemo(() => resolveTrendMonthWindow(currentPeriod), [currentPeriod])
+
+  const sourceAllRecords = useMemo(() => {
+    const type = snapshot.dataSourceType
+    return (feedbacks || []).filter((r) => (r.dataSourceType || 'complaint_ticket') === type)
+  }, [feedbacks, snapshot.dataSourceType])
+
+  const trendBaseRecords = useMemo(() => {
+    const inWindow = filterRecordsByImportMonths(sourceAllRecords, trendWindow.months)
+    return filterFeedbacks(inWindow, {
+      product: isAllProducts ? undefined : sectionProduct || undefined,
+    })
+  }, [sourceAllRecords, trendWindow.months, isAllProducts, sectionProduct])
+
+  const volumeTrendData = useMemo(() => {
+    const trend = monthlyTrend(trendBaseRecords, { basis: 'importMonth', limit: 120 })
+    const byDate = new Map(trend.map((row) => [row.date, row]))
+    return trendWindow.months.map((month) => {
+      const row = byDate.get(month)
+      return {
+        date: month,
+        count: row?.count ?? 0,
+        negative: row?.negative ?? 0,
+      }
+    })
+  }, [trendBaseRecords, trendWindow.months])
 
   const taxonomy = getTaxonomy(sectionProduct)
   const drillDownBase = useMemo(
@@ -114,99 +157,75 @@ export default function TicketDashboardView({
       source: snapshot.dataSourceType,
       month: suggestImportMonth(currentPeriod),
       product: product || undefined,
-      complaintCauseL1:
-        isComplaintSource && complaintCauseL1 ? complaintCauseL1 : undefined,
     }),
-    [snapshot.dataSourceType, currentPeriod, product, isComplaintSource, complaintCauseL1],
+    [snapshot.dataSourceType, currentPeriod, product],
   )
-  const requestScenes = useMemo(
-    () =>
-      countByField(scoped, 'requestScene').map((d) => ({
+
+  const problemDistData = useMemo(() => {
+    if (problemDim === 'journeyL1') {
+      return countByField(scoped, 'journeyL1').map((d) => ({
         label: d.name,
         count: d.count,
         negative: 0,
-      })),
-    [scoped],
-  )
-  const problemTypes = useMemo(
-    () =>
-      countByField(scoped, 'problemType').map((d) => ({
+      }))
+    }
+    if (problemDim === 'problemType') {
+      return countByField(scoped, 'problemType').map((d) => ({
         label: d.name,
         count: d.count,
         negative: 0,
-      })),
-    [scoped],
-  )
-  const complaintCauseChart = useMemo(() => {
-    if (!isComplaintSource) return []
-    return aggregateComplaintCauseL1Insights(scoped).map((d) => ({
-      label: d.label,
+      }))
+    }
+    return countByField(scoped, 'requestScene').map((d) => ({
+      label: d.name,
       count: d.count,
-      negative: d.negative,
+      negative: 0,
     }))
-  }, [scoped, isComplaintSource])
-  const complaintCauseOptions = useMemo(
-    () => (isComplaintSource ? countComplaintCauseL1(items) : []),
-    [items, isComplaintSource],
+  }, [scoped, problemDim])
+
+  const { conclusions: displayConclusions } = useMemo(
+    () => prepareOverviewConclusionsForDisplay(overviewSnapshot?.conclusions),
+    [overviewSnapshot?.conclusions],
   )
 
-  const scopeFilterOptions = useMemo(
-    () => ({
-      productOptions: products.map((p) => ({
-        label: `${p.name} (${p.count})`,
-        value: p.name,
-      })),
-      resourcePoolOptions: pools.map((p) => ({
-        label: `${p.name} (${p.count})`,
-        value: p.name,
-      })),
-      complaintCauseOptions: complaintCauseOptions.map((t) => ({
-        label: `${t.name} (${t.count})`,
-        value: t.name,
-      })),
-    }),
-    [products, pools, complaintCauseOptions],
-  )
-
-  const handleScopeFiltersChange = useCallback(
-    (next, meta) => {
-      setScopeFilters(next)
-      if (meta?.key === 'product' && productControlled) {
-        onProductChange?.(next.product)
-      }
-      setJourneySel({})
-    },
-    [productControlled, onProductChange],
-  )
-
-  const handleClearScopeFilters = useCallback(() => {
-    setScopeFilters(clearAllWorkbenchScopeFilters(WORKBENCH_TICKET_SCOPE_KEYS))
-    applyProductChange('')
-    setJourneySel({})
-  }, [applyProductChange])
-  const scopeFilterHints = useMemo(() => {
-    /** @type {string[]} */
-    const hints = []
-    if (complaintCauseL1) hints.push('已筛投诉原因（终判）')
-    if (resourcePool) hints.push('已筛资源池')
-    return hints
-  }, [complaintCauseL1, resourcePool])
-
-  const trendData = snapshot.aggregates?.monthlyTrend || []
-  const latestMonth = trendData.at(-1)
-  const previousMonth = trendData.at(-2)
-  const monthDelta = latestMonth && previousMonth ? latestMonth.count - previousMonth.count : null
+  const latestMonth = [...volumeTrendData].reverse().find((r) => r.count > 0) || volumeTrendData.at(-1)
+  let monthDelta = null
+  if (latestMonth) {
+    const prev = [...volumeTrendData]
+      .reverse()
+      .find((r) => r.date < latestMonth.date)
+    if (prev) monthDelta = latestMonth.count - prev.count
+  }
 
   if (!items.length) {
     return (
       <Card>
-        <Typography.Text type="secondary">当前周期内暂无「{sourceLabel}」数据，请先导入。</Typography.Text>
+        <Typography.Text type="secondary">
+          当前周期内暂无「{sourceLabel}」数据，请先导入。
+        </Typography.Text>
       </Card>
     )
   }
 
   return (
     <div>
+      {!pdfCaptureMode && showWhatsNew ? (
+        <Alert
+          className="mb-4 !rounded-lg"
+          type="info"
+          showIcon
+          closable
+          message="功能上新"
+          description={WORKBENCH_TICKET_TABS_WHATS_NEW_DESCRIPTION}
+          onClose={() => onDismissWhatsNew?.()}
+          action={
+            <Button size="small" type="link" onClick={() => onDismissWhatsNew?.()}>
+              不再显示
+            </Button>
+          }
+        />
+      ) : null}
+
       {!pdfCaptureMode && (
         <WorkbenchAnalysisHint
           className="mb-4 !rounded-lg"
@@ -217,37 +236,38 @@ export default function TicketDashboardView({
 
       {!pdfCaptureMode && (
         <div className="mb-4 space-y-2">
-          <WorkbenchScopeCompositeFilter
-            preset="ticket"
-            filters={scopeFilters}
-            onFiltersChange={handleScopeFiltersChange}
-            onClearFilters={handleClearScopeFilters}
-            showComplaintCauseFilter={isComplaintSource}
-            options={scopeFilterOptions}
-          />
-          <div className="flex flex-wrap items-center gap-2">
+          <Space wrap align="center" size="middle">
+            <Typography.Text strong className="text-sm">
+              产品
+            </Typography.Text>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              className="min-w-[220px]"
+              value={product || ''}
+              options={productOptions}
+              onChange={(value) => applyProductChange(value)}
+            />
             {product && taxonomy.name ? <Tag color="blue">{taxonomy.name}</Tag> : null}
             <Typography.Text type="secondary" className="text-sm">
               周期内 {items.length} 条
-              {isAllProducts ? ` · 全部产品 ${scoped.length} 条` : ` · 当前产品 ${scoped.length} 条`}
-              {scopeFilterHints.length ? `（${scopeFilterHints.join(' · ')}）` : ''}
+              {isAllProducts
+                ? ` · 全部产品 ${scoped.length} 条`
+                : ` · 当前产品 ${scoped.length} 条`}
             </Typography.Text>
-          </div>
+          </Space>
         </div>
       )}
 
-      {!pdfCaptureMode && snapshot.dataSourceType === 'complaint_ticket' && (
+      {isComplaintSource && (
         <div className="page-section-sm">
-          <WanTouRatioPanel
+          <CxWanTouTrendChart
             period={currentPeriod}
             productName={isAllProducts ? undefined : sectionProduct}
             productKey={isAllProducts ? undefined : activeProductKey}
-            productList={isAllProducts ? products : undefined}
-            records={items}
-            allRecords={feedbacks}
+            records={filterRecordsByImportMonths(sourceAllRecords, trendWindow.months)}
             orderVolumes={orderVolumes}
             wanTouTargets={wanTouTargets}
-            variant={currentPeriod?.granularity === 'month' ? 'compact' : 'full'}
           />
         </div>
       )}
@@ -255,20 +275,20 @@ export default function TicketDashboardView({
       <div className="page-section grid items-stretch gap-4 lg:grid-cols-2">
         <Card
           className="h-full"
-          title={<Typography.Text strong>月度趋势</Typography.Text>}
+          title={<Typography.Text strong>工单量趋势</Typography.Text>}
           extra={
-            latestMonth ? (
-              <Typography.Text type="secondary" className="text-xs">
-                {latestMonth.date}
-                {monthDelta != null ? ` · 环比${monthDelta >= 0 ? '+' : ''}${monthDelta}` : ''}
-              </Typography.Text>
-            ) : null
+            <Typography.Text type="secondary" className="text-xs">
+              {trendWindow.startMonth}～{trendWindow.endMonth}
+              {latestMonth && monthDelta != null
+                ? ` · ${latestMonth.date} 环比${monthDelta >= 0 ? '+' : ''}${monthDelta}`
+                : ''}
+            </Typography.Text>
           }
         >
           <div data-pdf-chart="source-trend" className="rounded-lg bg-white p-2">
             <TrendChart
               variant="line"
-              data={trendData}
+              data={volumeTrendData}
               areas={[
                 { dataKey: 'count', name: '工单总数', stroke: '#4F46E5' },
                 { dataKey: 'negative', name: '负向工单', stroke: '#EF4444' },
@@ -285,73 +305,59 @@ export default function TicketDashboardView({
         </div>
       </div>
 
-      {!isAllProducts && (
-        <div className="page-section" data-pdf-chart="source-experience">
-          <SentimentExperiencePanel items={scoped} />
+      <Card
+        className="page-section"
+        title={
+          <div className="flex flex-wrap items-center gap-3">
+            <Typography.Text strong>问题分布</Typography.Text>
+            <Segmented
+              size="small"
+              value={problemDim}
+              options={PROBLEM_DIM_OPTIONS}
+              onChange={(v) => setProblemDim(v)}
+            />
+          </div>
+        }
+      >
+        <div data-pdf-chart="source-problem-dist" className="rounded-lg bg-white p-2">
+          <ThemeBarChart
+            data={problemDistData}
+            buildFeedbacksHref={(label) =>
+              buildTicketWorkbenchDrillDownUrl({
+                ...drillDownBase,
+                ...(problemDim === 'requestScene'
+                  ? { requestScene: drillDownFieldParam(label) }
+                  : {}),
+                ...(problemDim === 'problemType'
+                  ? { problemType: drillDownFieldParam(label) }
+                  : {}),
+                ...(problemDim === 'journeyL1'
+                  ? { journeyL1: drillDownFieldParam(label) }
+                  : {}),
+              })
+            }
+          />
         </div>
+      </Card>
+
+      {!pdfCaptureMode && (
+        <DimensionQuantityTrendPanel
+          period={currentPeriod}
+          trendRecords={trendBaseRecords}
+          periodRecords={scoped}
+        />
       )}
 
-      {!isAllProducts && (
-        <div className="page-section" data-pdf-chart="source-journey">
-          <JourneyFeedbackSection
-            items={scoped}
-            taxonomy={taxonomy}
-            productName={sectionProduct}
-            dataSourceType={snapshot.dataSourceType}
-            painPointClustering={snapshot.aggregates?.painPointClustering}
-            journeySel={journeySel}
-            onJourneySelect={(l1, l2) => setJourneySel({ l1, l2: l2 || undefined })}
+      {!pdfCaptureMode && (
+        <div className="page-section">
+          <PlanningRecommendationsPanel
+            title="典型问题"
+            conclusions={displayConclusions}
+            feedbacks={feedbacks}
+            syncedProduct={product || undefined}
           />
         </div>
       )}
-
-      <div
-        className={`page-section grid items-stretch gap-4 ${
-          isComplaintSource ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
-        }`}
-      >
-        <Card title={<Typography.Text strong>请求场景分布</Typography.Text>}>
-          <div data-pdf-chart="source-request-scenes" className="rounded-lg bg-white p-2">
-            <ThemeBarChart
-              data={requestScenes}
-              onBarClick={() => setJourneySel({})}
-              buildFeedbacksHref={(label) =>
-                buildTicketWorkbenchDrillDownUrl({
-                  ...drillDownBase,
-                  requestScene: drillDownFieldParam(label),
-                })
-              }
-            />
-          </div>
-        </Card>
-        {isComplaintSource && (
-          <Card title={<Typography.Text strong>投诉原因（终判）分布</Typography.Text>}>
-            <div data-pdf-chart="source-complaint-cause" className="rounded-lg bg-white p-2">
-              <ThemeBarChart
-                data={complaintCauseChart}
-                onBarClick={(label) => {
-                  setComplaintCauseL1(label)
-                  setJourneySel({})
-                }}
-              />
-            </div>
-          </Card>
-        )}
-        <Card title={<Typography.Text strong>问题类型（打标）分布</Typography.Text>}>
-          <div data-pdf-chart="source-problems" className="rounded-lg bg-white p-2">
-            <ThemeBarChart
-              data={problemTypes}
-              onBarClick={() => setJourneySel({})}
-              buildFeedbacksHref={(label) =>
-                buildTicketWorkbenchDrillDownUrl({
-                  ...drillDownBase,
-                  problemType: drillDownFieldParam(label),
-                })
-              }
-            />
-          </div>
-        </Card>
-      </div>
     </div>
   )
 }

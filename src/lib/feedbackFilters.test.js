@@ -12,6 +12,7 @@ import {
   parseFeedbackSearchParams,
   patchFeedbackFollowUpSearchParams,
   patchFeedbackSearchParams,
+  matchesHandlingKeywordFilter,
 } from './feedbackFilters.js'
 
 const withFollowUp = {
@@ -71,7 +72,7 @@ describe('feedbackFilters', () => {
   it('parseFeedbackSearchParams includes ticket ids and drill-down fields', () => {
     const parsed = parseFeedbackSearchParams(
       new URLSearchParams(
-        'product=VPC&source=complaint_ticket&ticketIds=A%2CB&ticketDateFrom=2026-05-01&followUp=non10',
+        'product=VPC&source=complaint_ticket&ticketIds=A%2CB&ticketDateFrom=2026-05-01&followUp=non10&handlingKeyword=%E5%B8%A6%E5%AE%BD',
       ),
     )
     expect(parsed.product).toBe('VPC')
@@ -79,6 +80,7 @@ describe('feedbackFilters', () => {
     expect(parsed.ticketIds).toEqual(['A', 'B'])
     expect(parsed.ticketDateFrom).toBe('2026-05-01')
     expect(parsed.followUp).toBe('non10')
+    expect(parsed.handlingKeyword).toBe('带宽')
   })
 
   it('patchFeedbackSearchParams round-trip', () => {
@@ -86,10 +88,21 @@ describe('feedbackFilters', () => {
       product: '',
       journeyL1: '开通',
       ticketIds: 'T-1,T-2',
+      handlingKeyword: '安全组',
     })
     expect(next.get('product')).toBeNull()
     expect(next.get('journeyL1')).toBe('开通')
     expect(next.get('ticketIds')).toBe('T-1,T-2')
+    expect(next.get('handlingKeyword')).toBe('安全组')
+  })
+
+  it('matchesHandlingKeywordFilter does case-insensitive substring match on handlingText', () => {
+    const record = { handlingText: '已协助客户调整 SecurityGroup 并复测通过' }
+    expect(matchesHandlingKeywordFilter(record, '')).toBe(true)
+    expect(matchesHandlingKeywordFilter(record, 'securitygroup')).toBe(true)
+    expect(matchesHandlingKeywordFilter(record, '调整')).toBe(true)
+    expect(matchesHandlingKeywordFilter(record, '带宽')).toBe(false)
+    expect(matchesHandlingKeywordFilter({ handlingText: '' }, '调整')).toBe(false)
   })
 
   it('parseFeedbackFollowUpSearchParams and patch round-trip', () => {

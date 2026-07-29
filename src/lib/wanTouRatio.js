@@ -1,7 +1,7 @@
 /**
  * 万投比：投诉工单数 / 产品订单数 × 10000
  */
-import { normalizeInsightPeriod } from '../domain/insightPeriod.js'
+import { normalizeInsightPeriod, listMonthsInclusive } from '../domain/insightPeriod.js'
 import { isCustomerExperienceComplaint } from '../domain/complaintCause.js'
 import { getWanTouTargetForYear } from '../storage/wanTouTargetStore.js'
 import { getEnabledProducts, normalizeProductText } from './productCatalog.js'
@@ -133,6 +133,14 @@ export function monthsInQuarter(year, quarter) {
 export function listMonthsForPeriod(period) {
   if (!period) return [new Date().toISOString().slice(0, 7)]
   const p = normalizeInsightPeriod(period)
+  if (p.granularity === 'custom') {
+    const from = p.customFromMonth || p.startDate?.slice(0, 7)
+    const to = p.customToMonth || p.endDate?.slice(0, 7)
+    if (from && to) {
+      const months = listMonthsInclusive(from, to)
+      if (months.length) return months
+    }
+  }
   const y = p.anchorYear || new Date().getFullYear()
   if (p.granularity === 'month' && p.anchorMonth) {
     return [`${y}-${String(p.anchorMonth).padStart(2, '0')}`]

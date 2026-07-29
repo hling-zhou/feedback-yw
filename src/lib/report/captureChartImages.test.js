@@ -12,6 +12,8 @@ describe('captureChartImages', () => {
 
   it('chartTargetsForScope includes complaint-only charts', () => {
     const targets = chartTargetsForScope('complaint_ticket')
-    expect(targets.some((t) => t.title === '投诉原因（终判）分布')).toBe(true)
+    expect(targets.some((t) => t.title === '客户体验类万投比趋势')).toBe(true)
+    expect(targets.some((t) => t.title === '工单量趋势')).toBe(true)
+    expect(targets.some((t) => t.title === '问题分布')).toBe(true)
   })
 })

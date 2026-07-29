@@ -25,13 +25,14 @@ export const RECORD_STATUSES = /** @type {const} */ (['raw', 'analyzed', 'publis
 export const INSIGHT_PERIOD_STATUSES = /** @type {const} */ (['draft', 'active', 'archived'])
 
 /** @typedef {typeof PERIOD_GRANULARITIES[number]} PeriodGranularity */
-export const PERIOD_GRANULARITIES = /** @type {const} */ (['month', 'quarter', 'year'])
+export const PERIOD_GRANULARITIES = /** @type {const} */ (['month', 'quarter', 'year', 'custom'])
 
 /** @type {Record<PeriodGranularity, string>} */
 export const PERIOD_GRANULARITY_LABELS = {
   month: '按月',
   quarter: '按季度',
   year: '按年',
+  custom: '自定义',
 }
 
 /** @typedef {typeof ANALYSIS_RUN_STATUSES[number]} AnalysisRunStatus */

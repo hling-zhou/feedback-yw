@@ -149,6 +149,9 @@ sqlite3 server/data/auth.db ".backup 'backup/auth-$(date +%F).db'"
 
 - `public/config/taxonomy/`（打标配置发布物）
 - `public/config/product-catalog/`（产品规格发布物）
+- `public/config/whats-new.json`（更新动态；由 `npm run generate:whats-new` / `prebuild` 从 Git 生成）
+
+更新动态基线见 `scripts/whats-new.since`（仅收录该 SHA **之后** 的 `feat`/`fix` 提交）。
 
 ### 5.2 恢复
 
@@ -166,7 +169,7 @@ sqlite3 server/data/auth.db ".backup 'backup/auth-$(date +%F).db'"
    - 生产默认开启：`AUTO_PUBLISH_CONFIG` 未设置且 `NODE_ENV=production` 时为 true。  
    - 开发默认关闭：避免本机 Excel 被占用导致写盘失败；可 `AUTO_PUBLISH_CONFIG=true` 开启。  
 3. **前端运行时**不再从磁盘 Excel 读取；各客户端通过 `dataRevision` 轮询同步共享库。  
-4. 写盘失败时，标签管理页顶显示「重试写盘备份」；亦可 `POST /api/storage/taxonomy/publish` 手动触发。
+4. 写盘失败时可 `POST /api/storage/taxonomy/publish`（或产品目录对应 publish 接口）手动触发。
 
 **多实例注意**：自动写盘须所有 API 节点挂载**同一** `public/config` 共享卷。
 
@@ -178,7 +181,8 @@ sqlite3 server/data/auth.db ".backup 'backup/auth-$(date +%F).db'"
 
 1. `npm ci`  
 2. `npm test`  
-3. `npm run build`  
+3. `npm run generate:whats-new`（`checkout` 需足够 Git 历史以解析 `scripts/whats-new.since`）  
+4. `npm run build`（本地 `prebuild` 也会生成更新动态）  
 
 本地提交前可执行：
 

@@ -11,11 +11,12 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterKey} FeedbackFilterKey */
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterValues} FeedbackFilterValues */
 
-/** @typedef {'enum' | 'dateRange' | 'multiSearch'} FeedbackFilterEditorKind */
+/** @typedef {'enum' | 'dateRange' | 'multiSearch' | 'text'} FeedbackFilterEditorKind */
 
 /** @type {Record<FeedbackFilterKey, FeedbackFilterEditorKind>} */
 export const FEEDBACK_FILTER_EDITOR_KIND = {
   ticketIds: 'multiSearch',
+  handlingKeyword: 'text',
   ticketDateFrom: 'dateRange',
   ticketDateTo: 'dateRange',
   dataSource: 'enum',
@@ -72,6 +73,8 @@ export function buildFilterPatchFromDraft(filterKey, draft) {
           ? [...new Set(draft.map((item) => String(item).trim()).filter(Boolean))]
           : [],
       }
+    case 'handlingKeyword':
+      return { handlingKeyword: String(draft ?? '').trim() }
     case 'ticketDateFrom': {
       const range = /** @type {[import('dayjs').Dayjs | null, import('dayjs').Dayjs | null] | null} */ (
         draft

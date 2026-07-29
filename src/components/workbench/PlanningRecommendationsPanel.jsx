@@ -117,10 +117,14 @@ function countByPriority(recs) {
  * @param {Object} props
  * @param {OverviewConclusions | null | undefined} props.conclusions
  * @param {FeedbackRecord[]} [props.feedbacks]
+ * @param {string} [props.title] 面板标题，默认「行动建议」
+ * @param {string} [props.syncedProduct] 外部产品筛选（如工单 Tab 当前产品）
  */
 export default function PlanningRecommendationsPanel({
   conclusions,
   feedbacks = [],
+  title,
+  syncedProduct,
 }) {
   const message = useAppMessage()
   const {
@@ -141,6 +145,12 @@ export default function PlanningRecommendationsPanel({
     [adapter, conclusions?.insightPeriodId, message],
   )
   const [productFilter, setProductFilter] = useState(/** @type {string | undefined} */ (undefined))
+  const panelTitle = title || PLANNING_RECOMMENDATIONS_PANEL_TITLE
+
+  useEffect(() => {
+    if (syncedProduct === undefined) return
+    setProductFilter(syncedProduct || undefined)
+  }, [syncedProduct])
   const [viewMode, setViewMode] = useState(/** @type {'list' | 'product' | 'matrix'} */ ('product'))
   const [polishing, setPolishing] = useState(false)
   const canPolish = canUseSemanticMatch(settings)
@@ -226,7 +236,7 @@ export default function PlanningRecommendationsPanel({
         title={
           <Space align="center">
             <AimOutlined className="text-indigo-600" />
-            <span className="text-base font-semibold">{PLANNING_RECOMMENDATIONS_PANEL_TITLE}</span>
+            <span className="text-base font-semibold">{panelTitle}</span>
             <PlanningRecommendationsHelpModal />
           </Space>
         }
@@ -249,7 +259,7 @@ export default function PlanningRecommendationsPanel({
       title={
         <Space align="center">
           <AimOutlined className="text-indigo-600" />
-          <span className="text-base font-semibold">{PLANNING_RECOMMENDATIONS_PANEL_TITLE}</span>
+          <span className="text-base font-semibold">{panelTitle}</span>
           <PlanningRecommendationsHelpModal />
           {conclusions?.source === 'hybrid' && <Tag color="purple">规则 + LLM</Tag>}
           {conclusions?.recommendationsLlm?.polishedAt && (

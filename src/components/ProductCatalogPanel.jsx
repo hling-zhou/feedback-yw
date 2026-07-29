@@ -322,7 +322,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
         description={
           <span>
             配置保存在服务端共享数据库（auth.db，其他用户约 5 秒自动同步）。保存后会自动生成磁盘 Excel/JSON
-            备份。保存产品时会自动创建同名旅程模板；可在「旅程模板」子 Tab 配置环节。批量维护请使用「导入
+            备份。保存产品时会自动创建同名旅程模板；可在上方切换到「旅程模板」查看同步结果。批量维护请使用「导入
             Excel」。
             {isManaged ? (
               <> 当前使用<strong>共享库配置</strong>。</>

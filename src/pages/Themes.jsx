@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
@@ -107,6 +107,24 @@ export default function Themes() {
     closeDrawer,
     onDrawerDirtyChange,
   } = useFeedbackDrawerSelection()
+
+  const pageRootRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const hasFeedbackData = feedbacks.length > 0
+
+  useEffect(() => {
+    if (!hasFeedbackData) return undefined
+    const chrome = stickyChromeRef.current
+    const root = pageRootRef.current
+    if (!chrome || !root) return undefined
+    const syncOffset = () => {
+      root.style.setProperty('--page-sticky-chrome-height', `${chrome.offsetHeight}px`)
+    }
+    syncOffset()
+    const observer = new ResizeObserver(syncOffset)
+    observer.observe(chrome)
+    return () => observer.disconnect()
+  }, [hasFeedbackData])
 
   const backgroundTaskActive = retagSession.active || importSession.active || rebuildBlocked
   const backgroundTaskTip = retagSession.active
@@ -438,7 +456,7 @@ export default function Themes() {
   }
 
   return (
-    <div>
+    <div ref={pageRootRef}>
       <AnalysisPageHeader
         desc={
           <span data-testid="period-count-themes-desc">
@@ -463,7 +481,10 @@ export default function Themes() {
         />
       </div>
 
-      <div className="page-section-sm flex flex-wrap items-end justify-between gap-3">
+      <div
+        ref={stickyChromeRef}
+        className="page-section-sm page-sticky-chrome flex flex-wrap items-end justify-between gap-3"
+      >
         <WorkbenchTabNav
           className="mb-0 min-w-0 flex-1"
           activeKey={tab}
@@ -510,6 +531,7 @@ export default function Themes() {
       {(tab === 'request' || tab === 'problem' || tab === 'complaint_cause') && (
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Card
+            className="page-sticky-aside"
             title={
               tab === 'request'
                 ? '请求场景分布'

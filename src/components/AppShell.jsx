@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   TagOutlined,
@@ -21,10 +21,14 @@ import {
 } from '../constants/appLayout.js'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
 import { ROLE_LABELS } from '../domain/auth/permissions.js'
+import { hasUnreadWhatsNewFeed } from '../domain/whatsNewFeed.js'
+import { fetchWhatsNewFeed } from '../lib/whatsNewFeedClient.js'
 import ImportSessionGuard from './ImportSessionGuard.jsx'
 import RetagSessionGuard from './RetagSessionGuard.jsx'
 import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
 import MessageBottleFab from './MessageBottleFab.jsx'
+import WhatsNewFab from './WhatsNewFab.jsx'
+import WhatsNewDrawer from './WhatsNewDrawer.jsx'
 
 const ALL_NAV = [
   { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
@@ -50,6 +54,26 @@ export default function AppShell() {
   const selectedKey = resolveNavKey(location.pathname)
   const [collapsed, setCollapsed] = useState(false)
   const [bottleOpen, setBottleOpen] = useState(false)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [whatsNewUnread, setWhatsNewUnread] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchWhatsNewFeed()
+      .then((feed) => {
+        if (!cancelled) setWhatsNewUnread(hasUnreadWhatsNewFeed(feed))
+      })
+      .catch(() => {
+        if (!cancelled) setWhatsNewUnread(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleWhatsNewMarkedSeen = useCallback(() => {
+    setWhatsNewUnread(false)
+  }, [])
 
   const navItems = ALL_NAV.filter((item) => {
     if (item.adminOnly && user?.role !== 'admin') return false
@@ -210,7 +234,18 @@ export default function AppShell() {
         <Layout.Content className="app-shell-content">
           <ImportSessionGuard />
           <RetagSessionGuard />
-          <MessageBottleFab onClick={() => setBottleOpen(true)} />
+          <div className="app-float-actions">
+            <WhatsNewFab
+              hasUnread={whatsNewUnread}
+              onClick={() => setWhatsNewOpen(true)}
+            />
+            <MessageBottleFab onClick={() => setBottleOpen(true)} />
+          </div>
+          <WhatsNewDrawer
+            open={whatsNewOpen}
+            onClose={() => setWhatsNewOpen(false)}
+            onMarkedSeen={handleWhatsNewMarkedSeen}
+          />
           <MessageBottleSubmitModal open={bottleOpen} onClose={() => setBottleOpen(false)} />
           <Outlet />
         </Layout.Content>

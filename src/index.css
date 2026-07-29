@@ -75,12 +75,25 @@
     transition: left 0.2s;
   }
 
-  .message-bottle-fab {
-    @apply fixed z-50 grid place-items-center rounded-full bg-green-500 text-white shadow-md transition;
-    width: 2.1rem;
-    height: 2.1rem;
+  .app-float-actions {
+    @apply fixed z-50 flex flex-col items-center gap-3;
     right: calc(1.25rem / 3);
     bottom: 2.75rem;
+  }
+
+  .message-bottle-fab,
+  .whats-new-fab {
+    @apply grid place-items-center rounded-full text-white shadow-md transition;
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .message-bottle-fab {
+    @apply bg-green-500;
+  }
+
+  .whats-new-fab {
+    @apply bg-sky-600;
   }
 
   .message-bottle-fab__icon {
@@ -88,19 +101,50 @@
     height: 72%;
   }
 
+  .whats-new-fab__icon {
+    font-size: 0.95rem;
+  }
+
   .message-bottle-fab:hover {
     @apply bg-green-600 shadow-lg;
+  }
+
+  .whats-new-fab:hover {
+    @apply bg-sky-700 shadow-lg;
   }
 
   .message-bottle-fab:focus-visible {
     @apply outline outline-2 outline-offset-1 outline-green-600;
   }
 
+  .whats-new-fab:focus-visible {
+    @apply outline outline-2 outline-offset-1 outline-sky-700;
+  }
+
   @media (max-width: 640px) {
-    .message-bottle-fab {
+    .app-float-actions {
       right: calc(1rem / 3);
       bottom: 2.5rem;
     }
+  }
+
+  /**
+   * 主内容区滚动吸顶（相对 .app-shell-main）。
+   * 负边距抵消 .app-shell-content 水平 padding，避免吸顶后两侧露底。
+   */
+  .page-sticky-chrome {
+    @apply sticky top-0 z-20 -mx-3 bg-ink-50 px-3 py-2 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5;
+  }
+
+  /**
+   * 双栏布局左侧吸顶（位于 .page-sticky-chrome 下方）。
+   * --page-sticky-chrome-height 由页面测量 sticky chrome 后写入。
+   * self-start：避免 grid stretch 把左侧拉满行高导致 sticky 失效。
+   */
+  .page-sticky-aside {
+    @apply lg:sticky lg:z-10 lg:self-start lg:overflow-y-auto;
+    top: var(--page-sticky-chrome-height, 3.5rem);
+    max-height: calc(100vh - var(--page-sticky-chrome-height, 3.5rem) - 0.5rem);
   }
 
   /** 页面区块间距（替代 mt-6 / 24px） */

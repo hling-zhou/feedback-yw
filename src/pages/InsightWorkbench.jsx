@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -33,6 +33,10 @@ import {
   formatInsightRebuildSpinDescription,
 } from '../lib/insightRebuildClient.js'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
+import {
+  hasSeenWorkbenchTicketTabsWhatsNew,
+  markWorkbenchTicketTabsWhatsNewSeen,
+} from '../lib/whatsNew.js'
 
 const TAB_OVERVIEW = 'overview'
 
@@ -73,6 +77,13 @@ export default function InsightWorkbench() {
     return TAB_OVERVIEW
   })
   const [ticketProduct, setTicketProduct] = useState('')
+  const [showTicketTabsWhatsNew, setShowTicketTabsWhatsNew] = useState(
+    () => !hasSeenWorkbenchTicketTabsWhatsNew(),
+  )
+  const dismissTicketTabsWhatsNew = useCallback(() => {
+    markWorkbenchTicketTabsWhatsNewSeen()
+    setShowTicketTabsWhatsNew(false)
+  }, [])
   const {
     selected: selectedFeedback,
     selectFeedback,
@@ -149,6 +160,8 @@ export default function InsightWorkbench() {
             sourceLabel={label}
             product={ticketProduct}
             onProductChange={setTicketProduct}
+            showWhatsNew={showTicketTabsWhatsNew}
+            onDismissWhatsNew={dismissTicketTabsWhatsNew}
           />
         )
       }
@@ -216,6 +229,9 @@ export default function InsightWorkbench() {
     rebuildAllSnapshots,
     rebuildDisabled,
     ticketProduct,
+    showTicketTabsWhatsNew,
+    dismissTicketTabsWhatsNew,
+    selectFeedback,
   ])
 
   const hasAnyData = Object.values(sourceSnapshots).some(
@@ -285,21 +301,24 @@ export default function InsightWorkbench() {
       )}
 
       {(hasAnyData || snapshotRebuilding || overviewDisplay) && (
-        <Spin
-          spinning={Boolean(snapshotRebuilding)}
-          description={formatInsightRebuildSpinDescription(snapshotRebuilding, {
-            serverJob: insightRebuildOnServer,
-          })}
-          className="page-section block"
-        >
+        <div className="page-section">
           <WorkbenchAnalysisNav
             activeSourceTab={activeTab}
             onSourceTabChange={setActiveTab}
+            showTicketTabsWhatsNew={showTicketTabsWhatsNew}
           />
-          <div key={activeTab} data-workbench-tab={activeTab}>
-            {activeTabContent}
-          </div>
-        </Spin>
+          <Spin
+            spinning={Boolean(snapshotRebuilding)}
+            description={formatInsightRebuildSpinDescription(snapshotRebuilding, {
+              serverJob: insightRebuildOnServer,
+            })}
+            className="block"
+          >
+            <div key={activeTab} data-workbench-tab={activeTab}>
+              {activeTabContent}
+            </div>
+          </Spin>
+        </div>
       )}
 
       <FeedbackDrawer

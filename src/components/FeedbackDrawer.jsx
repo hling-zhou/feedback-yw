@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Collapse,
@@ -118,6 +120,21 @@ import {
 } from '../domain/ticketTodo.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
+import {
+  countHandlingKeywordHitsInGroup,
+  defaultExpandedPhaseIds,
+  groupHandlingOriginalByPhase,
+  mergeHighlightRanges,
+  phaseIdsMatchingKeyword,
+  segmentHandlingOriginalText,
+  shouldUseStructuredHandlingDisplay,
+  splitTextWithManualHighlights,
+} from '../lib/handlingOriginalDisplay.js'
+import {
+  hasSeenHandlingExpandWhatsNew,
+  markHandlingExpandWhatsNewSeen,
+} from '../lib/whatsNew.js'
+import { randomId } from '../lib/randomId.js'
 
 const RETAG_DEFAULT_TIP =
   '按当前规则与大模型重新分析本工单，将覆盖：四维标签、客户请求内容、需求痛点、根因排查（自动生成）与优化建议（自动生成）。其他不修改。'
@@ -125,8 +142,178 @@ const RETAG_DEFAULT_TIP =
 const SAVE_DETAIL_TIP =
   '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
-const HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH = 960
+const HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH = 1280
 const HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX = 1100
+const HANDLING_ORIGINAL_TEXT_MODAL_BODY_MAX_HEIGHT = '78vh'
+const HANDLING_PLAIN_GROUP_ID = 'plain'
+
+/**
+ * @typedef {{ id: string; groupId: string; itemIndex: number; start: number; end: number }} ManualHighlightRange
+ * @typedef {{ groupId: string; itemIndex: number; start: number; end: number; text: string } | null} HandlingTextSelection
+ */
+
+/**
+ * @param {string} text
+ * @param {string} keyword
+ * @param {string} [keyPrefix]
+ * @returns {import('react').ReactNode}
+ */
+function highlightHandlingKeyword(text, keyword, keyPrefix = 'k') {
+  const value = String(text ?? '')
+  const needle = String(keyword ?? '').trim()
+  if (!value || !needle) return value
+  const lower = value.toLowerCase()
+  const needleLower = needle.toLowerCase()
+  /** @type {import('react').ReactNode[]} */
+  const parts = []
+  let start = 0
+  let index = lower.indexOf(needleLower)
+  let key = 0
+  while (index !== -1) {
+    if (index > start) parts.push(value.slice(start, index))
+    parts.push(
+      <mark key={`${keyPrefix}-${key}`} className="rounded-sm bg-amber-200 px-0.5 text-ink-900">
+        {value.slice(index, index + needle.length)}
+      </mark>,
+    )
+    key += 1
+    start = index + needle.length
+    index = lower.indexOf(needleLower, start)
+  }
+  if (start < value.length) parts.push(value.slice(start))
+  return parts.length ? parts : value
+}
+
+/**
+ * @param {string} text
+ * @param {string} keyword
+ * @param {{ start: number; end: number }[]} manualRanges
+ * @returns {import('react').ReactNode}
+ */
+function renderHandlingTextWithHighlights(text, keyword, manualRanges) {
+  const slices = splitTextWithManualHighlights(text, manualRanges)
+  if (slices.length === 1 && !slices[0].manual) {
+    return highlightHandlingKeyword(slices[0].text, keyword)
+  }
+  return slices.map((slice, index) => {
+    const inner = highlightHandlingKeyword(slice.text, keyword, `s${index}`)
+    if (!slice.manual) return <span key={`slice-${index}`}>{inner}</span>
+    return (
+      <mark key={`slice-${index}`} className="rounded-sm bg-yellow-200 px-0.5 text-ink-900">
+        {inner}
+      </mark>
+    )
+  })
+}
+
+/**
+ * @param {Node | null | undefined} node
+ * @param {Element} root
+ */
+function offsetWithinElement(root, node, offset) {
+  if (!node || !root.contains(node)) return null
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let total = 0
+  /** @type {Node | null} */
+  let current = walker.nextNode()
+  while (current) {
+    if (current === node) return total + offset
+    total += current.textContent?.length || 0
+    current = walker.nextNode()
+  }
+  return null
+}
+
+/**
+ * @param {ParentNode | null | undefined} scope
+ * @returns {HandlingTextSelection}
+ */
+function readHandlingTextSelection(scope) {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
+  const selectedText = selection.toString()
+  if (!selectedText.trim()) return null
+  const range = selection.getRangeAt(0)
+  if (scope && (!scope.contains(range.startContainer) || !scope.contains(range.endContainer))) {
+    return null
+  }
+
+  const startEl =
+    range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? /** @type {Element} */ (range.startContainer)
+      : range.startContainer.parentElement
+  const endEl =
+    range.endContainer.nodeType === Node.ELEMENT_NODE
+      ? /** @type {Element} */ (range.endContainer)
+      : range.endContainer.parentElement
+  const startHost = startEl?.closest('[data-handling-group-id][data-handling-item-index]')
+  const endHost = endEl?.closest('[data-handling-group-id][data-handling-item-index]')
+  if (!startHost || startHost !== endHost) {
+    return {
+      groupId: '',
+      itemIndex: -1,
+      start: -1,
+      end: -1,
+      text: selectedText,
+    }
+  }
+
+  const start = offsetWithinElement(startHost, range.startContainer, range.startOffset)
+  const end = offsetWithinElement(startHost, range.endContainer, range.endOffset)
+  if (start == null || end == null || end <= start) {
+    return {
+      groupId: '',
+      itemIndex: -1,
+      start: -1,
+      end: -1,
+      text: selectedText,
+    }
+  }
+
+  return {
+    groupId: String(startHost.getAttribute('data-handling-group-id') || ''),
+    itemIndex: Number(startHost.getAttribute('data-handling-item-index')),
+    start,
+    end,
+    text: selectedText,
+  }
+}
+
+/**
+ * @param {{
+ *   item: import('../lib/handlingOriginalDisplay.js').HandlingOriginalSegment
+ *   keyword: string
+ *   index: number
+ *   groupId: string
+ *   manualRanges: { start: number; end: number }[]
+ * }} props
+ */
+function HandlingOriginalSegmentBlock({ item, keyword, index, groupId, manualRanges }) {
+  const bodyProps = {
+    'data-handling-group-id': groupId,
+    'data-handling-item-index': String(index),
+  }
+  if (item.kind === 'field') {
+    return (
+      <div className="space-y-1">
+        <Typography.Text type="secondary" className="block text-xs">
+          {highlightHandlingKeyword(item.label || '', keyword)}
+        </Typography.Text>
+        <Typography.Paragraph
+          className="!mb-0 whitespace-pre-wrap"
+          {...bodyProps}
+        >
+          {renderHandlingTextWithHighlights(item.text, keyword, manualRanges)}
+        </Typography.Paragraph>
+      </div>
+    )
+  }
+  return (
+    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap" {...bodyProps}>
+      {renderHandlingTextWithHighlights(item.text, keyword, manualRanges)}
+    </Typography.Paragraph>
+  )
+}
 
 const TICKET_DETAIL_SECTIONS = [
   { id: 'ticket-detail-content', label: '工单内容' },
@@ -171,14 +358,390 @@ function TicketDetailSectionNav() {
  *   onClose: () => void
  *   ticketId: string
  *   text: string
+ *   showWhatsNew?: boolean
+ *   onDismissWhatsNew?: () => void
  * }} props
  */
-function HandlingOriginalTextModal({ open, onClose, ticketId, text }) {
+function HandlingOriginalTextModal({
+  open,
+  onClose,
+  ticketId,
+  text,
+  showWhatsNew = false,
+  onDismissWhatsNew,
+}) {
+  const bodyScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const leftPaneRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const [locateKeyword, setLocateKeyword] = useState('')
+  const [expandedIds, setExpandedIds] = useState(/** @type {string[]} */ ([]))
+  const [locateHint, setLocateHint] = useState(/** @type {string | null} */ (null))
+  const [highlights, setHighlights] = useState(/** @type {ManualHighlightRange[]} */ ([]))
+  const [excerpt, setExcerpt] = useState('')
+  const [activeSelection, setActiveSelection] = useState(/** @type {HandlingTextSelection} */ (null))
+  const [selectionBubble, setSelectionBubble] = useState(
+    /** @type {{ top: number; left: number } | null} */ (null),
+  )
+
   const handleCopy = async () => {
     const ok = await copyTextToClipboard(text)
     if (ok) message.success('已复制全文')
     else message.error('复制失败，请手动选择复制')
   }
+
+  const segments = useMemo(() => segmentHandlingOriginalText(text), [text])
+  const structured = shouldUseStructuredHandlingDisplay(segments)
+  const groups = useMemo(
+    () => (structured ? groupHandlingOriginalByPhase(segments) : []),
+    [structured, segments],
+  )
+
+  useEffect(() => {
+    if (!open) return
+    setLocateKeyword('')
+    setLocateHint(null)
+    setHighlights([])
+    setExcerpt('')
+    setActiveSelection(null)
+    setSelectionBubble(null)
+    setExpandedIds(defaultExpandedPhaseIds(groups))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- groups derived from text
+  }, [open, text])
+
+  useEffect(() => {
+    if (!open) return
+    const scroller = bodyScrollRef.current
+    const hideBubble = () => setSelectionBubble(null)
+    scroller?.addEventListener('scroll', hideBubble, { passive: true })
+    window.addEventListener('scroll', hideBubble, true)
+    return () => {
+      scroller?.removeEventListener('scroll', hideBubble)
+      window.removeEventListener('scroll', hideBubble, true)
+    }
+  }, [open])
+
+  const hitCountById = useMemo(() => {
+    /** @type {Record<string, number>} */
+    const map = {}
+    const needle = locateKeyword.trim()
+    if (!needle) return map
+    for (const group of groups) {
+      map[group.id] = countHandlingKeywordHitsInGroup(group, needle)
+    }
+    return map
+  }, [groups, locateKeyword])
+
+  const rangesByItemKey = useMemo(() => {
+    /** @type {Record<string, { start: number; end: number }[]>} */
+    const map = {}
+    for (const item of highlights) {
+      const key = `${item.groupId}:${item.itemIndex}`
+      if (!map[key]) map[key] = []
+      map[key].push({ start: item.start, end: item.end })
+    }
+    for (const key of Object.keys(map)) {
+      map[key] = mergeHighlightRanges(map[key])
+    }
+    return map
+  }, [highlights])
+
+  const canHighlight = Boolean(
+    activeSelection &&
+      activeSelection.groupId &&
+      activeSelection.itemIndex >= 0 &&
+      activeSelection.end > activeSelection.start,
+  )
+  const canAddExcerpt = Boolean(activeSelection?.text?.trim())
+
+  const clearSelectionUi = useCallback(() => {
+    setActiveSelection(null)
+    setSelectionBubble(null)
+    window.getSelection()?.removeAllRanges()
+  }, [])
+
+  const captureSelection = useCallback(() => {
+    const selection = readHandlingTextSelection(leftPaneRef.current)
+    setActiveSelection(selection)
+    if (!selection?.text?.trim()) {
+      setSelectionBubble(null)
+      return
+    }
+    const range = window.getSelection()?.rangeCount
+      ? window.getSelection()?.getRangeAt(0)
+      : null
+    const rect = range?.getBoundingClientRect()
+    if (!rect || (rect.width === 0 && rect.height === 0)) {
+      setSelectionBubble(null)
+      return
+    }
+    const bubbleWidth = 280
+    const left = Math.min(
+      Math.max(8, rect.left + rect.width / 2 - bubbleWidth / 2),
+      window.innerWidth - bubbleWidth - 8,
+    )
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 48)
+    setSelectionBubble({ top, left })
+  }, [])
+
+  const jumpToPhase = useCallback((phaseId) => {
+    setExpandedIds((prev) => (prev.includes(phaseId) ? prev : [...prev, phaseId]))
+    window.requestAnimationFrame(() => {
+      bodyScrollRef.current
+        ?.querySelector(`[data-handling-phase-id="${phaseId}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
+  const applyLocate = useCallback(() => {
+    const needle = locateKeyword.trim()
+    if (!needle) {
+      setLocateHint(null)
+      setExpandedIds(defaultExpandedPhaseIds(groups))
+      return
+    }
+    const matched = phaseIdsMatchingKeyword(groups, needle)
+    if (!matched.length) {
+      setLocateHint('无匹配')
+      return
+    }
+    setLocateHint(null)
+    setExpandedIds((prev) => [...new Set([...prev, ...matched])])
+    window.requestAnimationFrame(() => {
+      bodyScrollRef.current
+        ?.querySelector(`[data-handling-phase-id="${matched[0]}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [groups, locateKeyword])
+
+  const handleAddHighlight = useCallback(() => {
+    const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
+    if (
+      !selection?.groupId ||
+      selection.itemIndex < 0 ||
+      selection.end <= selection.start
+    ) {
+      message.warning('请先在左侧同一段落内框选文本')
+      return
+    }
+    setHighlights((prev) => [
+      ...prev,
+      {
+        id: randomId(),
+        groupId: selection.groupId,
+        itemIndex: selection.itemIndex,
+        start: selection.start,
+        end: selection.end,
+      },
+    ])
+    clearSelectionUi()
+  }, [activeSelection, clearSelectionUi])
+
+  const handleAddExcerpt = useCallback(() => {
+    const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
+    const snippet = selection?.text?.trim()
+    if (!snippet) {
+      message.warning('请先框选要摘录的文本')
+      return
+    }
+    setExcerpt((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet}` : snippet))
+    clearSelectionUi()
+    message.success('已加入摘录')
+  }, [activeSelection, clearSelectionUi])
+
+  const handleHighlightAndExcerpt = useCallback(() => {
+    const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
+    const snippet = selection?.text?.trim()
+    if (!snippet) {
+      message.warning('请先框选文本')
+      return
+    }
+    const canMark =
+      Boolean(selection?.groupId) &&
+      (selection?.itemIndex ?? -1) >= 0 &&
+      (selection?.end ?? 0) > (selection?.start ?? 0)
+    if (canMark && selection) {
+      setHighlights((prev) => [
+        ...prev,
+        {
+          id: randomId(),
+          groupId: selection.groupId,
+          itemIndex: selection.itemIndex,
+          start: selection.start,
+          end: selection.end,
+        },
+      ])
+    } else {
+      message.warning('跨段落选区仅加入摘录，未高亮；请在同一段落内框选以同时高亮')
+    }
+    setExcerpt((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet}` : snippet))
+    clearSelectionUi()
+    message.success(canMark ? '已高亮并加入摘录' : '已加入摘录')
+  }, [activeSelection, clearSelectionUi])
+
+  const handleCopyExcerpt = async () => {
+    const ok = await copyTextToClipboard(excerpt)
+    if (ok) message.success('已复制摘录')
+    else message.error('复制失败，请手动选择复制')
+  }
+
+  const collapseItems = useMemo(
+    () =>
+      groups.map((group) => {
+        const fieldCount = group.items.filter((item) => item.kind === 'field' || item.text?.trim()).length
+        const hits = hitCountById[group.id] || 0
+        return {
+          key: group.id,
+          forceRender: true,
+          label: (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{group.label}</span>
+              <Typography.Text type="secondary" className="text-xs font-normal">
+                {fieldCount} 段
+              </Typography.Text>
+              {hits > 0 ? (
+                <Typography.Text type="warning" className="text-xs font-normal">
+                  {hits} 处命中
+                </Typography.Text>
+              ) : null}
+            </span>
+          ),
+          children: (
+            <div className="space-y-3 scroll-mt-2" data-handling-phase-id={group.id}>
+              {group.items.length ? (
+                group.items.map((item, index) => (
+                  <HandlingOriginalSegmentBlock
+                    key={`${group.id}-${index}`}
+                    item={item}
+                    keyword={locateKeyword}
+                    index={index}
+                    groupId={group.id}
+                    manualRanges={rangesByItemKey[`${group.id}:${index}`] || []}
+                  />
+                ))
+              ) : (
+                <Typography.Text type="secondary">（无正文）</Typography.Text>
+              )}
+            </div>
+          ),
+        }
+      }),
+    [groups, hitCountById, locateKeyword, rangesByItemKey],
+  )
+
+  const toolbar = (
+    <div className="mb-3 space-y-2 border-b border-ink-100 pb-3">
+      {showWhatsNew ? (
+        <Alert
+          type="info"
+          showIcon
+          closable
+          className="!mb-0"
+          message="功能上新"
+          description="框选原文可高亮、加入右侧摘录；也可一键「高亮并加入摘录」。内容仅本次有效，关闭弹窗后清空，不会保存到工单。"
+          onClose={() => onDismissWhatsNew?.()}
+          action={
+            <Button size="small" type="link" onClick={() => onDismissWhatsNew?.()}>
+              不再显示
+            </Button>
+          }
+        />
+      ) : null}
+      {structured && groups.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {groups.map((group) => {
+            const hits = hitCountById[group.id] || 0
+            return (
+              <Button
+                key={group.id}
+                size="small"
+                type={expandedIds.includes(group.id) ? 'primary' : 'default'}
+                ghost={expandedIds.includes(group.id)}
+                onClick={() => jumpToPhase(group.id)}
+              >
+                {group.label}
+                {hits > 0 ? ` · ${hits}` : ''}
+              </Button>
+            )
+          })}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {structured && groups.length ? (
+          <>
+            <Input
+              allowClear
+              size="small"
+              className="max-w-xs"
+              placeholder="定位关键字"
+              value={locateKeyword}
+              onChange={(event) => {
+                setLocateKeyword(event.target.value)
+                setLocateHint(null)
+              }}
+              onPressEnter={applyLocate}
+            />
+            <Button size="small" onClick={applyLocate}>
+              定位
+            </Button>
+            {locateHint ? (
+              <Typography.Text type="secondary" className="text-xs">
+                {locateHint}
+              </Typography.Text>
+            ) : null}
+          </>
+        ) : null}
+        {highlights.length ? (
+          <Button size="small" type="link" className="!px-0" onClick={() => setHighlights([])}>
+            清除全部高亮
+          </Button>
+        ) : null}
+      </div>
+      <Typography.Text type="secondary" className="block text-xs">
+        框选左侧原文后，可在选区旁点「高亮 / 加入摘录 / 高亮并加入摘录」；关闭弹窗后清空，不会保存。
+      </Typography.Text>
+    </div>
+  )
+
+  const leftContent =
+    structured && groups.length ? (
+      <Collapse
+        activeKey={expandedIds}
+        onChange={(keys) => {
+          setExpandedIds(Array.isArray(keys) ? keys.map(String) : [String(keys)])
+        }}
+        items={collapseItems}
+      />
+    ) : (
+      <Typography.Paragraph
+        className="!mb-0 whitespace-pre-wrap"
+        data-handling-group-id={HANDLING_PLAIN_GROUP_ID}
+        data-handling-item-index="0"
+      >
+        {renderHandlingTextWithHighlights(
+          text,
+          locateKeyword,
+          rangesByItemKey[`${HANDLING_PLAIN_GROUP_ID}:0`] || [],
+        )}
+      </Typography.Paragraph>
+    )
+
+  const selectionBubbleNode =
+    selectionBubble && canAddExcerpt ? (
+      <div
+        className="fixed z-[1200] flex gap-1 rounded-md border border-ink-200 bg-white p-1 shadow-lg"
+        style={{ top: selectionBubble.top, left: selectionBubble.left }}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <Button size="small" type="primary" disabled={!canHighlight} onClick={handleAddHighlight}>
+          高亮
+        </Button>
+        <Button size="small" onClick={handleAddExcerpt}>
+          加入摘录
+        </Button>
+        <Button size="small" type="primary" ghost disabled={!canAddExcerpt} onClick={handleHighlightAndExcerpt}>
+          高亮并加入摘录
+        </Button>
+      </div>
+    ) : null
 
   return (
     <Modal
@@ -186,7 +749,7 @@ function HandlingOriginalTextModal({ open, onClose, ticketId, text }) {
       open={open}
       onCancel={onClose}
       centered
-      width={`min(90vw, ${HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH}px)`}
+      width={`min(96vw, ${HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH}px)`}
       zIndex={HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX}
       destroyOnClose
       footer={[
@@ -199,12 +762,51 @@ function HandlingOriginalTextModal({ open, onClose, ticketId, text }) {
       ]}
       styles={{
         body: {
-          maxHeight: '70vh',
-          overflowY: 'auto',
+          maxHeight: HANDLING_ORIGINAL_TEXT_MODAL_BODY_MAX_HEIGHT,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          paddingTop: 12,
         },
       }}
     >
-      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">{text}</Typography.Paragraph>
+      {toolbar}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div
+          ref={leftPaneRef}
+          className="flex min-h-0 min-w-0 flex-[2] flex-col"
+          onMouseUp={captureSelection}
+        >
+          <div ref={bodyScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {leftContent}
+          </div>
+        </div>
+        <div className="flex min-h-[180px] min-w-0 flex-1 flex-col border-t border-ink-100 pt-3 lg:border-l lg:border-t-0 lg:pl-3 lg:pt-0">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <Typography.Text strong className="text-sm">
+              摘录
+            </Typography.Text>
+            <div className="flex flex-wrap gap-1">
+              <Button size="small" disabled={!excerpt.trim()} onClick={handleCopyExcerpt}>
+                复制摘录
+              </Button>
+              <Button size="small" disabled={!excerpt} onClick={() => setExcerpt('')}>
+                清空
+              </Button>
+            </div>
+          </div>
+          <Input.TextArea
+            className="min-h-0 flex-1"
+            style={{ height: '100%', resize: 'none' }}
+            placeholder="框选左侧后点「加入摘录」，或在此直接粘贴编辑"
+            value={excerpt}
+            onChange={(event) => setExcerpt(event.target.value)}
+          />
+        </div>
+      </div>
+      {selectionBubbleNode
+        ? createPortal(selectionBubbleNode, document.body)
+        : null}
     </Modal>
   )
 }
@@ -316,6 +918,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const saveInFlightRef = useRef(false)
   const [drawerFormReady, setDrawerFormReady] = useState(false)
   const [handlingExpandOpen, setHandlingExpandOpen] = useState(false)
+  const [showHandlingWhatsNew, setShowHandlingWhatsNew] = useState(
+    () => !hasSeenHandlingExpandWhatsNew(),
+  )
 
   const taxonomy = useMemo(
     () => (feedback ? getTaxonomyForRecord(feedback) : null),
@@ -887,23 +1492,30 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             size="small"
             extra={
               handlingOriginalText ? (
-                <Button
-                  type="link"
+                <Badge
+                  count={showHandlingWhatsNew ? '新' : 0}
                   size="small"
-                  className="!h-auto !px-0 !py-0 text-xs"
-                  icon={<ExpandOutlined />}
-                  onClick={() => setHandlingExpandOpen(true)}
+                  offset={[4, -2]}
+                  styles={{ indicator: { fontSize: 10, lineHeight: '14px', height: 14, minWidth: 16, padding: '0 3px' } }}
                 >
-                  放大查看
-                </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!h-auto !px-0 !py-0 text-xs"
+                    icon={<ExpandOutlined />}
+                    onClick={() => setHandlingExpandOpen(true)}
+                  >
+                    放大查看
+                  </Button>
+                </Badge>
               ) : null
             }
           >
-            <Typography.Paragraph className="!mb-0 max-h-60 overflow-y-auto whitespace-pre-wrap">
+            <Typography.Paragraph className="!mb-0 line-clamp-3 overflow-hidden whitespace-pre-wrap">
               {handlingOriginalText || '—'}
             </Typography.Paragraph>
             <Typography.Text type="secondary" className="mt-2 block text-xs">
-              优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
+              默认预览约 3 行，完整内容请点右上角「放大查看」。优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
             </Typography.Text>
           </Card>
 
@@ -1674,6 +2286,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         onClose={() => setHandlingExpandOpen(false)}
         ticketId={feedback.ticketId || ''}
         text={handlingOriginalText}
+        showWhatsNew={showHandlingWhatsNew}
+        onDismissWhatsNew={() => {
+          markHandlingExpandWhatsNewSeen()
+          setShowHandlingWhatsNew(false)
+        }}
       />
     </Drawer>
   )

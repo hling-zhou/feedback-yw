@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,6 +37,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Generate whats-new feed
+        run: npm run generate:whats-new
+
       - name: Build frontend
         run: npm run build
 
@@ -46,6 +51,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

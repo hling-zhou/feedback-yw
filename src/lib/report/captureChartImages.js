@@ -23,23 +23,21 @@ const CHART_TARGETS_BY_SCOPE = {
 }
 
 const TICKET_CHART_TARGETS = [
-  { selector: '[data-pdf-chart="source-trend"]', title: '月度趋势' },
+  { selector: '[data-pdf-chart="source-trend"]', title: '工单量趋势' },
   { selector: '[data-pdf-chart="source-sentiment"]', title: '客户情绪分布' },
-  { selector: '[data-pdf-chart="source-experience"]', title: '体验断点分析' },
-  { selector: '[data-pdf-chart="source-journey"]', title: '按旅程环节聚合反馈' },
-  { selector: '[data-pdf-chart="source-request-scenes"]', title: '请求场景分布' },
-  { selector: '[data-pdf-chart="source-problems"]', title: '问题类型（打标）分布' },
+  { selector: '[data-pdf-chart="source-problem-dist"]', title: '问题分布' },
+  { selector: '[data-pdf-chart="dimension-quantity-trend"]', title: '按特性类型看数量趋势' },
 ]
 
 const COMPLAINT_ONLY_CHART_TARGETS = [
-  { selector: '[data-pdf-chart="source-complaint-cause"]', title: '投诉原因（终判）分布' },
+  { selector: '[data-pdf-chart="cx-wantou-trend"]', title: '客户体验类万投比趋势' },
 ]
 
 for (const type of DATA_SOURCE_TYPES) {
   if (isTicketSource(type)) {
     CHART_TARGETS_BY_SCOPE[type] =
       type === 'complaint_ticket'
-        ? [...TICKET_CHART_TARGETS, ...COMPLAINT_ONLY_CHART_TARGETS]
+        ? [...COMPLAINT_ONLY_CHART_TARGETS, ...TICKET_CHART_TARGETS]
         : [...TICKET_CHART_TARGETS]
   }
 }

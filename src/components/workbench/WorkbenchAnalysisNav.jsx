@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Badge } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { isStubPipeline } from '../../analysis/registry.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
@@ -13,8 +14,13 @@ const TAB_OVERVIEW = 'overview'
  * @param {Object} props
  * @param {string} props.activeSourceTab
  * @param {(key: string) => void} props.onSourceTabChange
+ * @param {boolean} [props.showTicketTabsWhatsNew]
  */
-export default function WorkbenchAnalysisNav({ activeSourceTab, onSourceTabChange }) {
+export default function WorkbenchAnalysisNav({
+  activeSourceTab,
+  onSourceTabChange,
+  showTicketTabsWhatsNew = false,
+}) {
   const { sourceSnapshots } = useInsights()
   const sourceCounts = useMemo(() => {
     const counts = {}
@@ -38,16 +44,38 @@ export default function WorkbenchAnalysisNav({ activeSourceTab, onSourceTabChang
         isStubPipeline(type) && type !== 'post_use_rating' ? '（预览）' : ''
       const count = sourceCounts[type]
       const name = `${base}${preview}`
+      const text = count != null ? `${name} (${count})` : name
+      const isTicketTab = type === 'complaint_ticket' || type === 'consultation_ticket'
       return {
         key: type,
-        label: count != null ? `${name} (${count})` : name,
+        label:
+          showTicketTabsWhatsNew && isTicketTab ? (
+            <span className="inline-flex items-center gap-1">
+              <span>{text}</span>
+              <Badge
+                count="新"
+                size="small"
+                styles={{
+                  indicator: {
+                    fontSize: 10,
+                    lineHeight: '14px',
+                    height: 14,
+                    minWidth: 16,
+                    padding: '0 3px',
+                  },
+                }}
+              />
+            </span>
+          ) : (
+            text
+          ),
       }
     }),
   ]
 
   return (
     <WorkbenchTabNav
-      className="mb-4"
+      className="page-sticky-chrome mb-4"
       activeKey={activeSourceTab}
       onChange={onSourceTabChange}
       items={sourceItems}

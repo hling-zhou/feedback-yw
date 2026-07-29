@@ -7,11 +7,13 @@ import { DEFAULT_TENANT_ID, SCHEMA_VERSION } from '../domain/constants.js'
 import { PERIOD_GRANULARITIES, PERIOD_GRANULARITY_LABELS } from '../domain/enums.js'
 import {
   buildPeriodSpec,
+  currentPeriodSpec,
   defaultMonthPeriodSpec,
   formatPeriodSubtitle,
   insightPeriodFromSpec,
   resolveInsightPeriod,
   selectionFromPeriod,
+  shiftYearMonth,
 } from '../domain/insightPeriod.js'
 
 const GRANULARITY_OPTIONS = PERIOD_GRANULARITIES.map((g) => ({
@@ -21,13 +23,17 @@ const GRANULARITY_OPTIONS = PERIOD_GRANULARITIES.map((g) => ({
 
 const QUARTER_OPTIONS = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }))
 
+function defaultCustomRange() {
+  const spec = currentPeriodSpec('custom')
+  return { fromMonth: spec.customFromMonth, toMonth: spec.customToMonth }
+}
+
 /**
- * 洞察周期：按月 / 按季度 / 按年直接选择（自动匹配数据时间，无需新建周期）
+ * 洞察周期：按月 / 按季度 / 按年 / 自定义起止月（自动匹配数据时间）
  * @param {{
  *   showHint?: boolean
  *   compact?: boolean
  *   className?: string
- *   /** 受控模式：不修改全局 currentPeriod；value 为 insightPeriodId，null 表示未选择
  *   value?: string | null
  *   onChange?: (insightPeriodId: string | null, period: import('../domain/insightPeriod.js').InsightPeriod | null) => void
  *   allowEmpty?: boolean
@@ -60,14 +66,41 @@ export default function InsightPeriodPicker({
       year: spec.anchorYear,
       month: spec.anchorMonth,
       quarter: spec.anchorQuarter,
+      fromMonth: spec.customFromMonth,
+      toMonth: spec.customToMonth,
     }
   }, [activePeriod, feedbacks])
 
   const granularity = selection?.granularity ?? 'month'
   const year = selection?.year ?? dayjs().year()
+  const customDefaults = defaultCustomRange()
+  const fromMonth = selection?.fromMonth ?? customDefaults.fromMonth
+  const toMonth = selection?.toMonth ?? customDefaults.toMonth
 
   const applySelection = (next) => {
     const g = next.granularity ?? granularity
+    if (g === 'custom') {
+      const from = next.fromMonth ?? fromMonth
+      const to = next.toMonth ?? toMonth
+      let spec
+      try {
+        spec = buildPeriodSpec({
+          granularity: 'custom',
+          fromMonth: from,
+          toMonth: to,
+        })
+      } catch {
+        return
+      }
+      if (controlled) {
+        const period = insightPeriodFromSpec(spec, SCHEMA_VERSION, DEFAULT_TENANT_ID)
+        onChange(period.id, period)
+        return
+      }
+      selectInsightPeriod(spec)
+      return
+    }
+
     const y = next.year ?? year
     const spec = buildPeriodSpec({
       granularity: g,
@@ -119,6 +152,15 @@ export default function InsightPeriodPicker({
             value={granularity}
             options={GRANULARITY_OPTIONS}
             onChange={(g) => {
+              if (g === 'custom') {
+                const defaults = defaultCustomRange()
+                applySelection({
+                  granularity: 'custom',
+                  fromMonth: selection?.fromMonth ?? defaults.fromMonth,
+                  toMonth: selection?.toMonth ?? defaults.toMonth,
+                })
+                return
+              }
               applySelection({
                 granularity: g,
                 year: selection?.year ?? dayjs().year(),
@@ -201,6 +243,44 @@ export default function InsightPeriodPicker({
                 applySelection({ granularity: 'year', year: d.year() })
               }}
             />
+          </div>
+        )}
+
+        {granularity === 'custom' && (
+          <div>
+            {!compact && (
+              <Typography.Text strong className="mb-1 block text-xs">
+                起止月份
+              </Typography.Text>
+            )}
+            <Space wrap size="small">
+              <InsightMonthPicker
+                disabled={periodsLoading}
+                value={fromMonth}
+                onChange={(monthValue) => {
+                  const nextTo = toMonth && monthValue > toMonth ? monthValue : toMonth
+                  applySelection({
+                    granularity: 'custom',
+                    fromMonth: monthValue,
+                    toMonth: nextTo || monthValue,
+                  })
+                }}
+              />
+              <Typography.Text type="secondary">至</Typography.Text>
+              <InsightMonthPicker
+                disabled={periodsLoading}
+                value={toMonth}
+                onChange={(monthValue) => {
+                  const nextFrom =
+                    fromMonth && monthValue < fromMonth ? monthValue : fromMonth
+                  applySelection({
+                    granularity: 'custom',
+                    fromMonth: nextFrom || shiftYearMonth(monthValue, -2) || monthValue,
+                    toMonth: monthValue,
+                  })
+                }}
+              />
+            </Space>
           </div>
         )}
       </Space>

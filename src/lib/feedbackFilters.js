@@ -120,6 +120,19 @@ export function matchesTodoStatusFilter(record, todoStatus = '', ctx = {}) {
 }
 
 /**
+ * 按处理意见字段做关键字模糊匹配（大小写不敏感子串）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {string} [keyword]
+ */
+export function matchesHandlingKeywordFilter(record, keyword = '') {
+  const needle = String(keyword ?? '').trim().toLowerCase()
+  if (!needle) return true
+  const haystack = String(record?.handlingText ?? '').toLowerCase()
+  return haystack.includes(needle)
+}
+
+/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackFollowUpSearchParams(searchParams) {
@@ -224,6 +237,7 @@ export function parseFeedbackSearchParams(searchParams) {
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
+    handlingKeyword: searchParams.get('handlingKeyword')?.trim() || '',
   }
 }
 
@@ -247,6 +261,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'ticketDateTo',
     'myReview',
     'todoStatus',
+    'handlingKeyword',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue
@@ -307,6 +322,7 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   ticketDateTo?: string
  *   source?: string
  *   todoStatus?: string
+ *   handlingKeyword?: string
  * }} [params]
  */
 export function buildFeedbacksUrl(params = {}) {
@@ -327,6 +343,7 @@ export function buildFeedbacksUrl(params = {}) {
     'ticketDateTo',
     'source',
     'todoStatus',
+    'handlingKeyword',
   ]
   for (const key of stringFields) {
     const value = params[key]?.trim()

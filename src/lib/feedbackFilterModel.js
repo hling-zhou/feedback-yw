@@ -33,12 +33,14 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
  * @property {string} reasonDim
  * @property {import('../domain/userTicketReview.js').MyReviewFilterValue} myReview
  * @property {import('./feedbackFilters.js').TodoStatusFilterValue | ''} todoStatus
+ * @property {string} handlingKeyword
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
 
 export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'ticketIds',
+  'handlingKeyword',
   'ticketDateFrom',
   'ticketDateTo',
   'dataSource',
@@ -60,7 +62,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
 export const FEEDBACK_FILTER_GROUPS = [
   {
     label: '工单',
-    keys: ['ticketIds', 'ticketDateFrom', 'dataSource'],
+    keys: ['ticketIds', 'handlingKeyword', 'ticketDateFrom', 'dataSource'],
   },
   {
     label: '打标维度',
@@ -87,6 +89,7 @@ export const FEEDBACK_FILTER_GROUPS = [
 /** @type {Record<FeedbackFilterKey, string>} */
 export const FEEDBACK_FILTER_LABELS = {
   ticketIds: '工单号',
+  handlingKeyword: '工单内容',
   ticketDateFrom: '工单日期',
   ticketDateTo: '工单日期',
   dataSource: '数据来源',
@@ -123,6 +126,7 @@ export function createEmptyFeedbackFilters() {
     reasonDim: '',
     myReview: '',
     todoStatus: '',
+    handlingKeyword: '',
   }
 }
 
@@ -150,6 +154,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'ticketLlm':
     case 'myReview':
     case 'todoStatus':
+    case 'handlingKeyword':
       return Boolean(String(values[key] ?? '').trim())
     default:
       return false
@@ -163,6 +168,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   /** @type {FeedbackFilterKey[]} */
   const keys = []
   if (isFeedbackFilterActive(values, 'ticketIds')) keys.push('ticketIds')
+  if (isFeedbackFilterActive(values, 'handlingKeyword')) keys.push('handlingKeyword')
   if (isFeedbackFilterActive(values, 'ticketDateFrom')) keys.push('ticketDateFrom')
   if (values.dataSource) keys.push('dataSource')
   if (values.problemType) keys.push('problemType')
@@ -195,6 +201,10 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return values.ticketIds.length === 1
         ? values.ticketIds[0]
         : `${values.ticketIds.length} 个`
+    case 'handlingKeyword': {
+      const keyword = String(values.handlingKeyword ?? '').trim()
+      return keyword.length > 24 ? `${keyword.slice(0, 24)}…` : keyword
+    }
     case 'ticketDateFrom': {
       const from = values.ticketDateFrom || '…'
       const to = values.ticketDateTo || '…'
@@ -345,6 +355,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     ticketDateFrom: filters.ticketDateFrom || '',
     ticketDateTo: filters.ticketDateTo || '',
     ticketIds: filters.ticketIds.length ? filters.ticketIds.join(',') : '',
+    handlingKeyword: filters.handlingKeyword,
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
   }
