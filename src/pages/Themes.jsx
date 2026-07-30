@@ -78,7 +78,7 @@ function buildAnalysisTabs(dataSource) {
 }
 
 export default function Themes() {
-  const { feedbacks, retagSession, importSession, settings } = useFeedbacks()
+  const { feedbacks, totalRecordCount, retagSession, importSession, settings } = useFeedbacks()
   const { rebuildBlocked, rebuildBlockedTip } = useSharedBackgroundTaskBlock()
   const { period: currentPeriod, periodFeedbacks, periodCount } = usePeriodScope()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -110,7 +110,8 @@ export default function Themes() {
 
   const pageRootRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
-  const hasFeedbackData = feedbacks.length > 0
+  // "库内是否有数据"语义：totalRecordCount 为全库口径（feedbacks 缓存可能仅含已加载周期）
+  const hasFeedbackData = totalRecordCount > 0 || feedbacks.length > 0
 
   useEffect(() => {
     if (!hasFeedbackData) return undefined
@@ -437,7 +438,7 @@ export default function Themes() {
     })
   }
 
-  if (feedbacks.length === 0) {
+  if (!hasFeedbackData) {
     return (
       <div>
         <AnalysisPageHeader desc="按请求场景、问题类型、用户旅程、情绪与高频词聚合；周期与工作台保持一致" />

@@ -57,6 +57,55 @@ function stringifyJson(value) {
   return JSON.stringify(value)
 }
 
+export const TICKET_ID_CONFLICT_CODE = 'TICKET_ID_CONFLICT'
+
+const RECORDS_UPSERT_SQL = `
+  INSERT INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id, ticket_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    payload = excluded.payload,
+    import_month = excluded.import_month,
+    data_source_type = excluded.data_source_type,
+    tenant_id = excluded.tenant_id,
+    import_batch_id = excluded.import_batch_id,
+    ticket_id = excluded.ticket_id`
+
+/**
+ * ticket_id 唯一索引冲突（better-sqlite3 扩展错误码）
+ * @param {unknown} err
+ */
+function isTicketUniqueViolation(err) {
+  return /** @type {{ code?: string }} */ (err)?.code === 'SQLITE_CONSTRAINT_UNIQUE'
+}
+
+/**
+ * @param {{ ticketId?: string }} record
+ */
+function toTicketIdConflictError(record) {
+  const err = new Error(
+    `工单号 ${record?.ticketId || ''} 在系统中已存在，无法重复写入`,
+  )
+  err.code = TICKET_ID_CONFLICT_CODE
+  return err
+}
+
+/**
+ * 更新已有记录且工单号未变更时保留原 ticket_id 列值：
+ * 历史重复组中被迁移置 NULL 的行可正常编辑其他字段，不会误触唯一索引。
+ * @param {string | null} computedTicketId recordIndexFields 计算值
+ * @param {{ ticketId?: string } | null} existing 已有记录 payload
+ * @param {string | null | undefined} existingColumn 已有行 ticket_id 列值
+ */
+function resolveTicketIdColumn(computedTicketId, existing, existingColumn) {
+  if (!existing) return computedTicketId
+  const existingTicketId =
+    typeof existing.ticketId === 'string' ? existing.ticketId.trim() : ''
+  if (existingTicketId === (computedTicketId || '')) {
+    return existingColumn ?? null
+  }
+  return computedTicketId
+}
+
 const META_KEY_PERIODS = 'insight_periods'
 
 export const storageRepository = {
@@ -144,9 +193,64 @@ export const storageRepository = {
     return rows.map((r) => parseJson(r.payload))
   },
 
+  /**
+   * 指定数据源类型下全部非空工单号（用于导入前置全局去重）
+   * @param {string} dataSourceType
+   * @returns {string[]}
+   */
+  listTicketIdsBySourceType(dataSourceType) {
+    const db = getDb()
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT ticket_id FROM records
+         WHERE data_source_type = ? AND ticket_id IS NOT NULL`,
+      )
+      .all(dataSourceType)
+    return rows.map((r) => r.ticket_id).filter(Boolean)
+  },
+
+  /**
+   * 按导入月份×数据源聚合记录数（首屏默认周期推断与空状态跨月提示用，避免全表下载）
+   * @param {{ tenantId?: string }} [options]
+   * @returns {{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number }}
+   */
+  listImportMonthSummary(options = {}) {
+    const db = getDb()
+    const tenantId = options.tenantId?.trim()
+    const rows = db
+      .prepare(
+        `SELECT import_month AS importMonth, data_source_type AS dataSourceType, COUNT(*) AS count
+         FROM records
+         WHERE import_month IS NOT NULL${tenantId ? ' AND tenant_id = ?' : ''}
+         GROUP BY import_month, data_source_type`,
+      )
+      .all(...(tenantId ? [tenantId] : []))
+    /** @type {Array<{ dataSourceType: string; importMonth: string; count: number }>} */
+    const bySource = []
+    /** @type {Map<string, number>} */
+    const monthTotals = new Map()
+    let total = 0
+    for (const r of rows) {
+      const importMonth = String(r.importMonth || '').slice(0, 7)
+      if (!/^\d{4}-\d{2}$/.test(importMonth)) continue
+      const dataSourceType = r.dataSourceType || 'complaint_ticket'
+      const count = Number(r.count) || 0
+      bySource.push({ dataSourceType, importMonth, count })
+      monthTotals.set(importMonth, (monthTotals.get(importMonth) ?? 0) + count)
+      total += count
+    }
+    const months = [...monthTotals.entries()]
+      .map(([importMonth, count]) => ({ importMonth, count }))
+      .sort((a, b) => (a.importMonth < b.importMonth ? -1 : 1))
+    return { months, bySource, total }
+  },
+
   putRecord(record, options = {}) {
     const db = getDb()
-    const existing = this.getRecord(record.id)
+    const existingRow = db
+      .prepare('SELECT payload, ticket_id FROM records WHERE id = ?')
+      .get(record.id)
+    const existing = existingRow ? parseJson(existingRow.payload) : null
     const currentRevision = getRecordRevision(existing)
 
     if (
@@ -165,28 +269,30 @@ export const storageRepository = {
       actor: options.actor ?? null,
     })
     const idx = recordIndexFields(next)
-    db.prepare(
-      `INSERT OR REPLACE INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(
-      next.id,
-      stringifyJson(next),
-      idx.importMonth,
-      idx.dataSourceType,
-      idx.tenantId,
-      idx.importBatchId,
-    )
+    try {
+      db.prepare(RECORDS_UPSERT_SQL).run(
+        next.id,
+        stringifyJson(next),
+        idx.importMonth,
+        idx.dataSourceType,
+        idx.tenantId,
+        idx.importBatchId,
+        resolveTicketIdColumn(idx.ticketId, existing, existingRow?.ticket_id),
+      )
+    } catch (err) {
+      if (isTicketUniqueViolation(err)) throw toTicketIdConflictError(next)
+      throw err
+    }
     bumpDataRevision()
     return { record: next, recordRevision: next.recordRevision }
   },
 
   putRecords(records, options = {}) {
     const db = getDb()
-    const getExisting = db.prepare('SELECT payload FROM records WHERE id = ?')
-    const stmt = db.prepare(
-      `INSERT OR REPLACE INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
+    const getExisting = db.prepare('SELECT payload, ticket_id FROM records WHERE id = ?')
+    const stmt = db.prepare(RECORDS_UPSERT_SQL)
+    let written = 0
+    let skippedTicketConflicts = 0
     const tx = db.transaction((items) => {
       for (const record of items) {
         const row = getExisting.get(record.id)
@@ -196,30 +302,57 @@ export const storageRepository = {
           actor: options.actor ?? null,
         })
         const idx = recordIndexFields(next)
-        stmt.run(
-          next.id,
-          stringifyJson(next),
-          idx.importMonth,
-          idx.dataSourceType,
-          idx.tenantId,
-          idx.importBatchId,
-        )
+        try {
+          stmt.run(
+            next.id,
+            stringifyJson(next),
+            idx.importMonth,
+            idx.dataSourceType,
+            idx.tenantId,
+            idx.importBatchId,
+            resolveTicketIdColumn(idx.ticketId, existing, row?.ticket_id),
+          )
+          written += 1
+        } catch (err) {
+          if (isTicketUniqueViolation(err)) {
+            skippedTicketConflicts += 1
+            console.warn(
+              `[storage] 工单号唯一约束跳过写入: ticketId=${next.ticketId || ''} id=${next.id}`,
+            )
+            continue
+          }
+          throw err
+        }
       }
     })
     tx(records)
-    if (records.length) bumpDataRevision()
+    if (written) bumpDataRevision()
+    return { written, skippedTicketConflicts }
   },
 
   replaceAllRecords(records) {
     const db = getDb()
+    let nulledTicketConflicts = 0
     const tx = db.transaction((items) => {
       db.prepare('DELETE FROM records').run()
       const stmt = db.prepare(
-        `INSERT INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id, ticket_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
+      /** 输入内若含重复工单号：首条占索引，后续行 ticket_id 置 NULL（payload 保留） */
+      const seenTicketKeys = new Set()
       for (const record of items) {
         const idx = recordIndexFields(record)
+        let ticketIdColumn = idx.ticketId
+        if (ticketIdColumn) {
+          const ticketKey = `${idx.tenantId}::${idx.dataSourceType}::${ticketIdColumn}`
+          if (seenTicketKeys.has(ticketKey)) {
+            ticketIdColumn = null
+            nulledTicketConflicts += 1
+          } else {
+            seenTicketKeys.add(ticketKey)
+          }
+        }
         stmt.run(
           record.id,
           stringifyJson(record),
@@ -227,10 +360,16 @@ export const storageRepository = {
           idx.dataSourceType,
           idx.tenantId,
           idx.importBatchId,
+          ticketIdColumn,
         )
       }
     })
     tx(records)
+    if (nulledTicketConflicts) {
+      console.warn(
+        `[storage] replaceAllRecords 内含重复工单号，已置 NULL 保留 payload: ${nulledTicketConflicts} 条`,
+      )
+    }
     bumpDataRevision()
   },
 

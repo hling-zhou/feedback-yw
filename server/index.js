@@ -8,6 +8,7 @@ import {
 } from './config.js'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import compress from '@fastify/compress'
 import { hasPermission, ROLE_PERMISSIONS } from '../src/domain/auth/permissions.js'
 import { getDb, closeDb } from './db.js'
 import { registerAuthHooks, requirePermission } from './middleware.js'
@@ -73,6 +74,9 @@ registerLoginRateLimitCleanup(app)
 
 await app.register(cors, getCorsRegisterOptions())
 console.info(`[api] CORS allowed origins: ${resolveCorsOrigins().join(', ')}`)
+
+// 记录 payload 为大文本 JSON，br/gzip 可压缩 5-10 倍，显著降低首屏传输量
+await app.register(compress)
 
 registerAuthHooks(app)
 registerStorageRoutes(app)

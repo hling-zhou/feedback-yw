@@ -151,6 +151,44 @@ export function createLocalIdbAdapter() {
       }
     },
 
+    async listExistingTicketIds(dataSourceType) {
+      const records = /** @type {InsightRecord[]} */ (await idbGetAll(STORES.records))
+      /** @type {Set<string>} */
+      const ids = new Set()
+      for (const r of records) {
+        const type = r.dataSourceType || 'complaint_ticket'
+        if (dataSourceType && type !== dataSourceType) continue
+        const ticketId = typeof r.ticketId === 'string' ? r.ticketId.trim() : ''
+        if (ticketId) ids.add(ticketId)
+      }
+      return [...ids]
+    },
+
+    async listImportMonthSummary() {
+      const records = /** @type {InsightRecord[]} */ (await idbGetAll(STORES.records))
+      /** @type {Map<string, number>} */
+      const byMonth = new Map()
+      /** @type {Array<{ dataSourceType: string; importMonth: string; count: number }>} */
+      const bySource = []
+      /** @type {Map<string, number>} */
+      const sourceMonthCounts = new Map()
+      for (const r of records) {
+        const month = typeof r.importMonth === 'string' ? r.importMonth.slice(0, 7) : ''
+        if (!/^\d{4}-\d{2}$/.test(month)) continue
+        byMonth.set(month, (byMonth.get(month) ?? 0) + 1)
+        const sourceKey = `${r.dataSourceType || 'complaint_ticket'}::${month}`
+        sourceMonthCounts.set(sourceKey, (sourceMonthCounts.get(sourceKey) ?? 0) + 1)
+      }
+      for (const [key, count] of sourceMonthCounts) {
+        const sep = key.indexOf('::')
+        bySource.push({ dataSourceType: key.slice(0, sep), importMonth: key.slice(sep + 2), count })
+      }
+      const months = [...byMonth.entries()]
+        .map(([importMonth, count]) => ({ importMonth, count }))
+        .sort((a, b) => (a.importMonth < b.importMonth ? -1 : 1))
+      return { months, bySource, total: months.reduce((sum, m) => sum + m.count, 0) }
+    },
+
     async putRecord(record, options = {}) {
       const existing = await idbGet(STORES.records, record.id)
       const currentRevision = getRecordRevision(existing)

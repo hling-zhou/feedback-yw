@@ -474,6 +474,27 @@ export function defaultMonthPeriodSpec(records = []) {
 }
 
 /**
+ * defaultMonthPeriodSpec 的月份聚合版：入参为 month-summary 的 months，
+ * 语义等价（recordDataDate 优先 importMonth），避免为推断默认周期全表下载。
+ * @param {Array<{ importMonth: string; count: number }>} [months]
+ */
+export function defaultMonthPeriodSpecFromMonths(months = []) {
+  const year = new Date().getFullYear()
+  let latestMonth = 0
+  for (const row of months) {
+    const monthKey = typeof row?.importMonth === 'string' ? row.importMonth.slice(0, 7) : ''
+    if (!/^\d{4}-\d{2}$/.test(monthKey) || !(row.count > 0)) continue
+    const [y, m] = monthKey.split('-').map(Number)
+    if (y !== year || !m) continue
+    if (m > latestMonth) latestMonth = m
+  }
+  if (latestMonth > 0) {
+    return buildPeriodSpec({ granularity: 'month', year, month: latestMonth })
+  }
+  return currentPeriodSpec('month')
+}
+
+/**
  * @param {InsightPeriod} period
  */
 export function normalizeInsightPeriod(period) {

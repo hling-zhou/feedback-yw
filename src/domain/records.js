@@ -145,3 +145,16 @@ export function buildDedupeKey(record) {
   }
   return `${record.dataSourceType}::${month}::${record.id || ''}`
 }
+
+/**
+ * 工单全局去重键：仅"数据源类型+工单号"，不限导入月份。
+ * 仅工单类数据源返回非空；空工单号或其他数据源返回 ''。
+ * @param {{ dataSourceType?: string; ticketId?: string }} record
+ */
+export function buildGlobalTicketDedupeKey({ dataSourceType, ticketId }) {
+  const type = dataSourceType || 'complaint_ticket'
+  if (type !== 'complaint_ticket' && type !== 'consultation_ticket') return ''
+  const id = typeof ticketId === 'string' ? ticketId.trim() : ''
+  if (!id) return ''
+  return `${type}::ticket::${id}`
+}

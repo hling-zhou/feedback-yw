@@ -8,11 +8,14 @@ export function recordIndexFields(record) {
     record?.importMonth && /^\d{4}-\d{2}/.test(String(record.importMonth))
       ? String(record.importMonth).slice(0, 7)
       : record?.createdAt?.slice(0, 7) || ''
+  const ticketId = typeof record?.ticketId === 'string' ? record.ticketId.trim() : ''
   return {
     importMonth,
     dataSourceType: record?.dataSourceType || 'complaint_ticket',
     tenantId: record?.tenantId || 'local',
     importBatchId: record?.importBatchId || '',
+    /** 空工单号存 NULL：唯一索引下多行 NULL 互不冲突 */
+    ticketId: ticketId || null,
   }
 }
 

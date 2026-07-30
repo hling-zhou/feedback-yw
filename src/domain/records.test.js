@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildDedupeKey, isTicketRecord, recordKind } from './records.js'
+import {
+  buildDedupeKey,
+  buildGlobalTicketDedupeKey,
+  isTicketRecord,
+  recordKind,
+} from './records.js'
 import { createTicketRecord } from '../lib/recordFactory.js'
 
 describe('records', () => {
@@ -34,6 +39,36 @@ describe('records', () => {
       ticketId: '',
     })
     expect(key).toBe('')
+  })
+
+  it('buildGlobalTicketDedupeKey ignores importMonth', () => {
+    const key = buildGlobalTicketDedupeKey({
+      dataSourceType: 'complaint_ticket',
+      ticketId: 'T-1',
+    })
+    expect(key).toBe('complaint_ticket::ticket::T-1')
+  })
+
+  it('buildGlobalTicketDedupeKey defaults dataSourceType and trims ticketId', () => {
+    expect(buildGlobalTicketDedupeKey({ ticketId: ' T-2 ' })).toBe(
+      'complaint_ticket::ticket::T-2',
+    )
+    expect(
+      buildGlobalTicketDedupeKey({
+        dataSourceType: 'consultation_ticket',
+        ticketId: 'T-2',
+      }),
+    ).toBe('consultation_ticket::ticket::T-2')
+  })
+
+  it('buildGlobalTicketDedupeKey returns empty for empty ticketId or non-ticket sources', () => {
+    expect(
+      buildGlobalTicketDedupeKey({ dataSourceType: 'complaint_ticket', ticketId: ' ' }),
+    ).toBe('')
+    expect(buildGlobalTicketDedupeKey({ dataSourceType: 'complaint_ticket' })).toBe('')
+    expect(
+      buildGlobalTicketDedupeKey({ dataSourceType: 'user_survey', ticketId: 'T-1' }),
+    ).toBe('')
   })
 
   it('recordKind distinguishes ticket sources', () => {

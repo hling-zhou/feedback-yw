@@ -20,7 +20,7 @@ import {
 } from '../schemas/storageWriteSchemas.js'
 import { requireAdmin, requirePermission } from '../middleware.js'
 import { bumpDataRevision, getDataRevision } from '../dataRevision.js'
-import { storageRepository } from '../storageRepository.js'
+import { storageRepository, TICKET_ID_CONFLICT_CODE } from '../storageRepository.js'
 import {
   getProductCatalogPublishStatus,
   publishProductCatalogToFiles,
@@ -216,6 +216,25 @@ export function registerStorageRoutes(app) {
   })
 
   app.get(
+    '/api/storage/records/ticket-ids',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      const q = /** @type {{ dataSourceType?: string } } */ (request.query || {})
+      const dataSourceType = q.dataSourceType?.trim() || 'complaint_ticket'
+      return { ticketIds: storageRepository.listTicketIdsBySourceType(dataSourceType) }
+    },
+  )
+
+  app.get(
+    '/api/storage/records/month-summary',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      const q = /** @type {{ tenantId?: string } } */ (request.query || {})
+      return storageRepository.listImportMonthSummary({ tenantId: q.tenantId })
+    },
+  )
+
+  app.get(
     '/api/storage/records/:id',
     { preHandler: requirePermission('view') },
     async (request, reply) => {
@@ -236,13 +255,21 @@ export function registerStorageRoutes(app) {
     const body = /** @type {{ records: import('../src/domain/records.js').InsightRecord[] }} */ (
       request.body
     )
-    storageRepository.replaceAllRecords(body.records)
+    try {
+      storageRepository.replaceAllRecords(body.records)
+    } catch (err) {
+      const e = /** @type {Error & { code?: string }} */ (err)
+      if (e.code === TICKET_ID_CONFLICT_CODE) {
+        reply.code(409).send({ error: e.message, code: TICKET_ID_CONFLICT_CODE })
+        return
+      }
+      throw err
+    }
     logAuditFromRequest(request, 'storage.replace_all_records', {
       count: body.records.length,
     })
     return { ok: true, count: body.records.length }
   })
-
   app.patch(
     '/api/storage/records/:id',
     { schema: { params: recordIdParamsSchema, body: recordPatchBodySchema } },
@@ -286,6 +313,10 @@ export function registerStorageRoutes(app) {
           current: e.current ?? null,
           currentRevision: e.currentRevision ?? 0,
         })
+        return
+      }
+      if (e.code === TICKET_ID_CONFLICT_CODE) {
+        reply.code(409).send({ error: e.message, code: TICKET_ID_CONFLICT_CODE })
         return
       }
       throw err
@@ -365,19 +396,24 @@ export function registerStorageRoutes(app) {
     const body = /** @type {{ records: import('../src/domain/records.js').InsightRecord[] }} */ (
       request.body
     )
-    storageRepository.putRecords(body.records, {
+    const writeResult = storageRepository.putRecords(body.records, {
       actor: request.user?.id
         ? { userId: request.user.id, username: request.user.username || request.user.id }
         : null,
     })
     const sample = body.records[0]
     logAuditFromRequest(request, 'storage.import_batch', {
-      count: body.records.length,
+      count: writeResult?.written ?? body.records.length,
+      skippedTicketConflicts: writeResult?.skippedTicketConflicts ?? 0,
       dataSourceType: sample?.dataSourceType,
       importMonth: sample?.importMonth,
       importBatchId: sample?.importBatchId,
     })
-    return { ok: true, count: body.records.length }
+    return {
+      ok: true,
+      count: writeResult?.written ?? body.records.length,
+      skippedTicketConflicts: writeResult?.skippedTicketConflicts ?? 0,
+    }
     },
   )
 

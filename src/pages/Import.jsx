@@ -36,6 +36,10 @@ import { getPresetsForImport, SATISFACTION_CALLBACK_PRESET } from '../lib/column
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
+  buildExistingTicketKeySet,
+  filterDuplicateImportRows,
+} from '../lib/importDedupe.js'
+import {
   getEnabledProducts,
   partitionRowsByProductCatalog,
 } from '../lib/productCatalog.js'
@@ -702,7 +706,25 @@ export default function Import({ embedded = false }) {
         row.importedAt = importedAt
       })
 
-      reportProgress(`正在规则初标 (0/${inScope.length})…`)
+      let rowsToAnalyze = inScope
+      let dedupeSkippedCount = 0
+      if (ticketSource && typeof adapter.listExistingTicketIds === 'function') {
+        reportProgress('正在检查重复工单…')
+        const existingTicketIds = await adapter.listExistingTicketIds(dataSourceType)
+        const deduped = filterDuplicateImportRows(inScope, {
+          dataSourceType,
+          existingKeys: buildExistingTicketKeySet(existingTicketIds, dataSourceType),
+        })
+        rowsToAnalyze = deduped.uniqueRows
+        dedupeSkippedCount = deduped.skippedCount
+        if (!rowsToAnalyze.length) {
+          throw new Error(
+            `全部 ${dedupeSkippedCount} 行工单的工单号在系统中已存在，无需导入`,
+          )
+        }
+      }
+
+      reportProgress(`正在规则初标 (0/${rowsToAnalyze.length})…`)
 
       let records
       let failures
@@ -713,7 +735,7 @@ export default function Import({ embedded = false }) {
       let enrichmentStats
 
       if (ticketSource) {
-        const result = await runPipeline(dataSourceType, inScope, batchMeta)
+        const result = await runPipeline(dataSourceType, rowsToAnalyze, batchMeta)
         run = result.run
         failures = result.failures
         records = result.records
@@ -744,7 +766,7 @@ export default function Import({ embedded = false }) {
         taggingWarnings = enriched.warnings
         enrichmentStats = enriched.enrichmentStats
       } else {
-        const result = await runPipeline(dataSourceType, inScope, batchMeta)
+        const result = await runPipeline(dataSourceType, rowsToAnalyze, batchMeta)
         run = result.run
         failures = result.failures
         records = result.records.map((r) => ({
@@ -781,11 +803,14 @@ export default function Import({ embedded = false }) {
         console.warn('[import] snapshot rebuild after import:', snapErr)
       }
 
+      const totalSkippedDuplicates =
+        dedupeSkippedCount + (ingest.skippedDuplicates || 0)
+
       notifyImportFinished({
         dataMonth,
         dataSourceType,
         added: ingest.added,
-        skippedDuplicates: ingest.skippedDuplicates,
+        skippedDuplicates: totalSkippedDuplicates,
         failures: failures.length,
         skippedProducts: skipped.length,
         batchName: batchMeta.importBatchName,
@@ -802,7 +827,7 @@ export default function Import({ embedded = false }) {
         dataSourceType,
         taggingWarnings,
         enrichmentStats,
-        ingest,
+        ingest: { ...ingest, skippedDuplicates: totalSkippedDuplicates },
       })
       setStep(4)
     } catch (e) {

@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { downloadFeedbackBackupJson, parseFeedbackBackupJson } from '../lib/feedbackBackup.js'
 import { downloadTicketAnalysisExcel } from '../lib/ticketAnalysisExport.js'
+import { fetchAllRecordPages } from '../lib/recordLoader.js'
+import { listAllFeedbacks } from '../storage/feedbackStore.js'
 import ProductWanTouMetricsPanel from '../components/ProductWanTouMetricsPanel.jsx'
 import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
@@ -236,6 +238,8 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     feedbacks,
+    totalRecordCount,
+    adapter,
     settings,
     setPersonalSettings,
     setTeamSettings,
@@ -256,6 +260,9 @@ export default function Settings() {
   const [clearSourceType, setClearSourceType] = useState('')
   const [clearProduct, setClearProduct] = useState('')
   const [clearing, setClearing] = useState(false)
+  /** @type {[import('../lib/types.js').FeedbackRecord[] | null, import('react').Dispatch<any>]} */
+  const [clearScopeRecords, setClearScopeRecords] = useState(null)
+  const [exporting, setExporting] = useState(false)
 
   const visibleTabs = useMemo(() => getVisibleSettingsTabs(can), [can])
   const activeTab = useMemo(
@@ -269,16 +276,54 @@ export default function Settings() {
     setSearchParams({ tab: activeTab }, { replace: true })
   }, [activeTab, searchParams, setSearchParams])
 
+  // 清除面板预览：按所选周期/来源按需拉取全量范围（缓存可能仅含已加载周期）
+  useEffect(() => {
+    if (activeTab !== 'data') return
+    let cancelled = false
+    /** @type {import('../storage/adapter.js').RecordQuery} */
+    const query = {}
+    if (clearPeriodId) query.insightPeriodId = clearPeriodId
+    if (clearSourceType) query.dataSourceType = clearSourceType
+    fetchAllRecordPages(adapter, query)
+      .then(({ records }) => {
+        if (!cancelled) setClearScopeRecords(records)
+      })
+      .catch((err) => console.warn('[settings] 清除范围预览加载失败', err))
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, clearPeriodId, clearSourceType, adapter])
+
+  /** 导出为全库语义：点击时按需拉取全部记录 */
+  const handleExportAll = async (kind) => {
+    setExporting(true)
+    try {
+      const records = await listAllFeedbacks(adapter)
+      if (!records.length) {
+        message.info('暂无数据可导出')
+        return
+      }
+      if (kind === 'excel') downloadTicketAnalysisExcel(records)
+      else downloadFeedbackBackupJson(records)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const clearScopeFeedbacks = useMemo(() => {
-    if (!clearPeriod) return feedbacks
+    // API 模式下 feedbacks 缓存可能仅含已加载周期；清除预览按需从存储拉取全量范围
+    const base = clearScopeRecords ?? feedbacks
+    if (!clearPeriod) return base
     const normalized = normalizeInsightPeriod(clearPeriod)
-    return feedbacks.filter((fb) => {
+    return base.filter((fb) => {
       if (clearSourceType && (fb.dataSourceType || 'complaint_ticket') !== clearSourceType) {
         return false
       }
       return recordMatchesPeriod(fb, normalized)
     })
-  }, [feedbacks, clearPeriod, clearSourceType])
+  }, [clearScopeRecords, feedbacks, clearPeriod, clearSourceType])
 
   const clearProductOptions = useMemo(
     () =>
@@ -461,20 +506,22 @@ export default function Settings() {
             {canExportData && (
               <Card title="导出数据">
                 <Typography.Text type="secondary" className="text-xs">
-                  当前共 {feedbacks.length} 条反馈。Excel 为工单分析 v2 列（按导入月份分 Sheet）；JSON
+                  当前共 {totalRecordCount || feedbacks.length} 条反馈。Excel 为工单分析 v2 列（按导入月份分 Sheet）；JSON
                   备份含 schema 版本与完整记录。
                 </Typography.Text>
                 <Space wrap className="mt-4">
                   <Button
                     type="primary"
-                    disabled={!feedbacks.length}
-                    onClick={() => downloadTicketAnalysisExcel(feedbacks)}
+                    loading={exporting}
+                    disabled={!totalRecordCount && !feedbacks.length}
+                    onClick={() => handleExportAll('excel')}
                   >
                     导出 Excel
                   </Button>
                   <Button
-                    disabled={!feedbacks.length}
-                    onClick={() => downloadFeedbackBackupJson(feedbacks)}
+                    loading={exporting}
+                    disabled={!totalRecordCount && !feedbacks.length}
+                    onClick={() => handleExportAll('json')}
                   >
                     导出 JSON 备份
                   </Button>

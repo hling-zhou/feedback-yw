@@ -1,9 +1,20 @@
 {
-  "generatedAt": "2026-07-30T01:54:40.086Z",
+  "generatedAt": "2026-07-30T10:40:44.392Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "83cb896347e3df15c4d06466338c7829e718d118",
+  "repoCommit": "539cf1322ad33a4f3b4f17ac888296288af00fcb",
   "items": [
+    {
+      "id": "539cf1322ad33a4f3b4f17ac888296288af00fcb",
+      "title": "工单号全局去重与首屏聚合减负",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-07-30",
+      "appVersion": null,
+      "summary": "- records 增加 ticket_id 提取列与 (tenant_id, data_source_type, ticket_id) 唯一索引，迁移时历史重复组仅保留首条占位\n- 导入前按数据源拉取已有工单号做前置去重，写入冲突返回 409 或跳过计数\n- 新增 /records/ticket-ids 与 /records/month-summary 接口；首屏以月份聚合推断默认周期，避免全表下载\n- recordLoader 分页改为并发拉取，API 启用 @fastify/compress 压缩大 payload\n- Settings/Themes/Workbench 空状态改用全库口径，按需拉取清除/导出范围",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "a21832851abf60110da66b8f83b094e38df13e4a",
       "title": "投诉/咨询典型问题按本源写入快照",

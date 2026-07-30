@@ -193,7 +193,6 @@ export default function Feedbacks() {
   }, [currentPeriodId])
 
   const { periodFeedbacks, periodCount, totalInDb } = usePeriodScope({
-    feedbacks,
     period: activePeriod,
   })
 

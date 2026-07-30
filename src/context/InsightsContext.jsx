@@ -11,6 +11,7 @@ import {
 import { hydrateRecommendationFeedbackFromServer } from '../lib/planningRecommendationFeedback.js'
 import {
   loadFeedbacksForPeriod,
+  listAllFeedbacks,
   getTotalRecordCount,
   persistFeedbacks,
   persistRecordUpdate,
@@ -51,6 +52,7 @@ import {
   buildPeriodSpec,
   createInsightPeriod,
   defaultMonthPeriodSpec,
+  defaultMonthPeriodSpecFromMonths,
   insightPeriodFromSpec,
   normalizeInsightPeriod,
   periodSpecFromImportMonth,
@@ -81,7 +83,7 @@ import {
   touchBackgroundTask,
 } from '../lib/backgroundTaskClient.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
-import { buildDedupeKey } from '../domain/records.js'
+import { buildDedupeKey, buildGlobalTicketDedupeKey } from '../domain/records.js'
 import { getRecordRevision, applyRecordWriteMetadata } from '../domain/recordRevision.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '../analysis/registry.js'
@@ -156,6 +158,11 @@ const InsightsContext = createContext(null)
  */
 function duplicateKey(record) {
   const dataSourceType = record.dataSourceType || 'complaint_ticket'
+  const globalTicketKey = buildGlobalTicketDedupeKey({
+    dataSourceType,
+    ticketId: record.ticketId,
+  })
+  if (globalTicketKey) return globalTicketKey
   return buildDedupeKey({
     dataSourceType,
     importMonth:
@@ -241,6 +248,8 @@ export function InsightsProvider({ children }) {
   /** 工单列表：内存缓存；生产环境 SSOT 为 SQLite records（见 docs/DATA-PERSISTENCE.md） */
   const [feedbacks, setFeedbacks] = useState(/** @type {import('../lib/types.js').FeedbackRecord[]} */ ([]))
   const [totalRecordCount, setTotalRecordCount] = useState(0)
+  /** @type {[{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number } | null, import('react').Dispatch<any>]} */
+  const [importMonthSummary, setImportMonthSummary] = useState(null)
   const [feedbacksHydrated, setFeedbacksHydrated] = useState(false)
   const [feedbacksLoading, setFeedbacksLoading] = useState(true)
   const [settings, setSettingsState] = useState(() => attachJourneyRules(loadSettings()))
@@ -341,7 +350,18 @@ export function InsightsProvider({ children }) {
       }
       await adapter.init()
 
-      const teamSettings = await loadTeamAppSettings(adapter)
+      // 共享 API 模式：月份聚合替代全表下载；本机 IDB 全量加载无网络开销，保持原语义
+      const apiMode =
+        isApiStorageAdapter(adapter) && typeof adapter.listImportMonthSummary === 'function'
+
+      const [teamSettings, rawPeriodList, savedSelection, savedCurrentPeriodId, monthSummary] =
+        await Promise.all([
+          loadTeamAppSettings(adapter),
+          adapter.listInsightPeriods(),
+          adapter.getMeta(META_PERIOD_SELECTION),
+          adapter.getMeta(META_CURRENT_PERIOD),
+          apiMode ? adapter.listImportMonthSummary() : Promise.resolve(null),
+        ])
       if (Object.keys(teamSettings).length) {
         const local = loadSettings()
         const merged = attachJourneyRules(mergeTeamAndLocalSettings(teamSettings, local))
@@ -349,27 +369,33 @@ export function InsightsProvider({ children }) {
         setSettingsState((prev) => ({ ...merged, llmServerConfigured: prev.llmServerConfigured }))
       }
 
+      let list = rawPeriodList.map(normalizeInsightPeriod)
+      if (monthSummary) setImportMonthSummary(monthSummary)
+
       setFeedbacksLoading(true)
       loadedPeriodIdsRef.current = new Set()
       /** @type {import('../lib/types.js').FeedbackRecord[]} */
       let loadedRecords = []
-      let loadedTotal = 0
-      try {
-        const page = await fetchAllRecordPages(adapter)
-        loadedRecords = page.records
-        loadedTotal = page.total
-        setFeedbacks(loadedRecords)
-        feedbacksRef.current = loadedRecords
-        setTotalRecordCount(loadedTotal)
-        setFeedbacksHydrated(true)
-      } finally {
-        setFeedbacksLoading(false)
+      if (!apiMode) {
+        try {
+          const page = await fetchAllRecordPages(adapter)
+          loadedRecords = page.records
+          setFeedbacks(page.records)
+          feedbacksRef.current = page.records
+          setTotalRecordCount(page.total)
+          setFeedbacksHydrated(true)
+        } finally {
+          setFeedbacksLoading(false)
+        }
+      } else {
+        setFeedbacks([])
+        feedbacksRef.current = []
+        setTotalRecordCount(monthSummary?.total ?? 0)
       }
 
-      let list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
-
-      const savedSelection = await adapter.getMeta(META_PERIOD_SELECTION)
-      let spec = defaultMonthPeriodSpec(loadedRecords)
+      let spec = apiMode
+        ? defaultMonthPeriodSpecFromMonths(monthSummary?.months ?? [])
+        : defaultMonthPeriodSpec(loadedRecords)
       if (savedSelection?.granularity === 'custom' && savedSelection.fromMonth && savedSelection.toMonth) {
         spec = buildPeriodSpec({
           granularity: 'custom',
@@ -379,8 +405,7 @@ export function InsightsProvider({ children }) {
       } else if (savedSelection?.granularity && savedSelection.year != null) {
         spec = buildPeriodSpec(savedSelection)
       } else {
-        const savedId = await adapter.getMeta(META_CURRENT_PERIOD)
-        const existing = list.find((p) => p.id === savedId)
+        const existing = list.find((p) => p.id === savedCurrentPeriodId)
         const sel = selectionFromPeriod(existing)
         if (sel?.granularity === 'custom' && sel.fromMonth && sel.toMonth) {
           spec = buildPeriodSpec({
@@ -406,29 +431,50 @@ export function InsightsProvider({ children }) {
       setCurrentPeriodIdState(period.id)
       setStorageReady(true)
 
-      try {
-        await adapter.putInsightPeriod(period)
-      } catch (err) {
-        console.warn('[storage] 同步洞察周期到共享库失败（查看者无 import 权限时可忽略）', err)
+      // 条件写入：周期已存在且选择未变化时跳过（避免每次打开都产生写 RTT 与查看者 403 噪音）
+      const selectionPayload = {
+        granularity: spec.granularity,
+        year: spec.anchorYear ?? null,
+        month: spec.anchorMonth ?? null,
+        quarter: spec.anchorQuarter ?? null,
+        fromMonth: spec.customFromMonth ?? null,
+        toMonth: spec.customToMonth ?? null,
       }
+      const periodExists = list.some((p) => p.id === period.id)
+      const selectionChanged =
+        !savedSelection ||
+        ['granularity', 'year', 'month', 'quarter', 'fromMonth', 'toMonth'].some(
+          (key) => (savedSelection[key] ?? null) !== selectionPayload[key],
+        )
+      const currentChanged = savedCurrentPeriodId !== period.id
       try {
-        await adapter.putMeta(META_PERIOD_SELECTION, {
-          granularity: spec.granularity,
-          year: spec.anchorYear,
-          month: spec.anchorMonth,
-          quarter: spec.anchorQuarter,
-          fromMonth: spec.customFromMonth,
-          toMonth: spec.customToMonth,
-        })
-        await adapter.putMeta(META_CURRENT_PERIOD, period.id)
-        list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
-        setPeriods(list)
+        /** @type {Promise<unknown>[]} */
+        const writes = []
+        if (!periodExists) writes.push(adapter.putInsightPeriod(period))
+        if (selectionChanged) writes.push(adapter.putMeta(META_PERIOD_SELECTION, selectionPayload))
+        if (currentChanged) writes.push(adapter.putMeta(META_CURRENT_PERIOD, period.id))
+        await Promise.all(writes)
+        if (!periodExists) {
+          list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
+          setPeriods(list)
+        }
       } catch (err) {
-        console.warn('[storage] 保存周期选择失败', err)
+        console.warn('[storage] 保存周期选择失败（查看者无 import 权限时可忽略）', err)
       }
 
-      await hydrateRecommendationFeedbackFromServer(adapter)
-      await loadRecordsForPeriodId(period.id)
+      await Promise.all([
+        hydrateRecommendationFeedbackFromServer(adapter),
+        (async () => {
+          try {
+            await loadRecordsForPeriodId(period.id)
+          } finally {
+            if (apiMode) {
+              setFeedbacksHydrated(true)
+              setFeedbacksLoading(false)
+            }
+          }
+        })(),
+      ])
       if (typeof adapter.getDataRevision === 'function') {
         try {
           const rev = await adapter.getDataRevision()
@@ -593,6 +639,16 @@ export function InsightsProvider({ children }) {
     return null
   }, [adapter])
 
+  /** 刷新导入月份聚合（首屏默认周期推断与工作台空状态跨月提示的数据源） */
+  const refreshImportMonthSummary = useCallback(async () => {
+    if (typeof adapter.listImportMonthSummary !== 'function') return
+    try {
+      setImportMonthSummary(await adapter.listImportMonthSummary())
+    } catch {
+      /* 汇总刷新非关键路径 */
+    }
+  }, [adapter])
+
   /** 其他用户写入共享库后，拉取最新反馈、快照与标签候选 */
   const syncSharedDataFromServer = useCallback(
     async (opts = {}) => {
@@ -609,7 +665,10 @@ export function InsightsProvider({ children }) {
       skipPersistRef.current = true
       setFeedbacksLoading(true)
       try {
-        const { records, total } = await fetchAllRecordPages(adapter)
+        const [{ records, total }] = await Promise.all([
+          fetchAllRecordPages(adapter),
+          refreshImportMonthSummary(),
+        ])
         loadedPeriodIdsRef.current = new Set(currentPeriodId ? [currentPeriodId] : [])
         setFeedbacks(records)
         feedbacksRef.current = records
@@ -646,6 +705,7 @@ export function InsightsProvider({ children }) {
       reloadSnapshots,
       reloadTagCandidates,
       applyTaxonomyOverridesFromStorage,
+      refreshImportMonthSummary,
       message,
     ],
   )
@@ -1594,6 +1654,7 @@ export function InsightsProvider({ children }) {
             const rev = await fetchDataRevision()
             dataRevisionRef.current = rev.revision
           }
+          void refreshImportMonthSummary()
         } finally {
           skipPersistRef.current = false
         }
@@ -1606,7 +1667,7 @@ export function InsightsProvider({ children }) {
         analyzed: records.length,
       }
     },
-    [adapter, currentPeriodId, storageReady],
+    [adapter, currentPeriodId, storageReady, refreshImportMonthSummary],
   )
 
   const updateFeedback = useCallback(
@@ -1856,6 +1917,7 @@ export function InsightsProvider({ children }) {
           feedbacksRef.current = []
           setFeedbacks([])
           setTotalRecordCount(0)
+          setImportMonthSummary({ months: [], bySource: [], total: 0 })
           loadedPeriodIdsRef.current = new Set()
           setSourceSnapshots({})
           setOverviewSnapshot(null)
@@ -1883,6 +1945,7 @@ export function InsightsProvider({ children }) {
           } else {
             setTotalRecordCount(await getTotalRecordCount(adapter))
           }
+          void refreshImportMonthSummary()
           await reloadSnapshots(currentPeriodId)
           await reloadTagCandidates()
         }
@@ -1890,7 +1953,7 @@ export function InsightsProvider({ children }) {
         clearInProgressRef.current = false
       }
     },
-    [adapter, storageReady, currentPeriodId, periods, reloadSnapshots, reloadTagCandidates],
+    [adapter, storageReady, currentPeriodId, periods, reloadSnapshots, reloadTagCandidates, refreshImportMonthSummary],
   )
 
   const clearAll = useCallback(async () => clearImportedData({ all: true }), [clearImportedData])
@@ -1948,15 +2011,20 @@ export function InsightsProvider({ children }) {
 
   const reprocessAllCustomerQuotes = useCallback(
     async (reportProgress) => {
-      if (!feedbacks.length) return 0
       const progress = (text) => reportProgress?.(text)
       setReprocessing(true)
       reprocessingRef.current = true
       try {
-        progress(`正在重算客户原话（共 ${feedbacks.length} 条）…`)
-        const updated = feedbacks.map((fb) => reprocessCustomerQuoteForRecord(fb, settings))
-        feedbacksRef.current = updated
-        setFeedbacks(updated)
+        // 全库重算：可见缓存可能仅含已加载周期，须从存储拉全量
+        progress('正在加载全部记录…')
+        const allRecords = await listAllFeedbacks(adapter)
+        if (!allRecords.length) return 0
+        progress(`正在重算客户原话（共 ${allRecords.length} 条）…`)
+        const updated = allRecords.map((fb) => reprocessCustomerQuoteForRecord(fb, settings))
+        const updatedById = new Map(updated.map((fb) => [fb.id, fb]))
+        const mergedVisible = feedbacksRef.current.map((fb) => updatedById.get(fb.id) ?? fb)
+        feedbacksRef.current = mergedVisible
+        setFeedbacks(mergedVisible)
         if (storageReady) {
           skipPersistRef.current = true
           try {
@@ -1989,7 +2057,7 @@ export function InsightsProvider({ children }) {
         setReprocessing(false)
       }
     },
-    [adapter, feedbacks, settings, currentPeriod, scheduleSnapshotRebuild, storageReady],
+    [adapter, settings, currentPeriod, scheduleSnapshotRebuild, storageReady],
   )
 
   const reprocessAllTagsCore = useCallback(
@@ -2362,6 +2430,7 @@ export function InsightsProvider({ children }) {
     () => ({
       feedbacks,
       totalRecordCount,
+      importMonthSummary,
       feedbacksLoading,
       settings,
       setSettings,
@@ -2455,6 +2524,7 @@ export function InsightsProvider({ children }) {
     [
       feedbacks,
       totalRecordCount,
+      importMonthSummary,
       feedbacksLoading,
       settings,
       setSettings,

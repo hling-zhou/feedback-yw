@@ -78,6 +78,23 @@ export function createApiStorageAdapter() {
       return storageFetch('/stats')
     },
 
+    async listExistingTicketIds(dataSourceType) {
+      const params = new URLSearchParams()
+      if (dataSourceType) params.set('dataSourceType', dataSourceType)
+      const qs = params.toString()
+      const data = await storageFetch(`/records/ticket-ids${qs ? `?${qs}` : ''}`)
+      return data.ticketIds || []
+    },
+
+    async listImportMonthSummary() {
+      const data = await storageFetch('/records/month-summary')
+      return {
+        months: Array.isArray(data.months) ? data.months : [],
+        bySource: Array.isArray(data.bySource) ? data.bySource : [],
+        total: data.total ?? 0,
+      }
+    },
+
     async putRecord(record, options = {}) {
       const body = { record }
       if (options.skipConflictCheck !== true && options.expectedRevision != null) {

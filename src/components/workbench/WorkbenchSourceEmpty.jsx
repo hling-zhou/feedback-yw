@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Space, Typography } from 'antd'
 import { countBySourceInScope } from '../../hooks/usePeriodScope.js'
 import { recordSourceType } from '../../snapshots/recordScope.js'
+import { useInsights } from '../../context/InsightsContext.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 
 /**
@@ -23,15 +24,21 @@ export default function WorkbenchSourceEmpty({
   rebuilding,
   rebuildDisabled,
 }) {
-  const { totalInDb, inPeriod } = countBySourceInScope(feedbacks, currentPeriod, sourceType)
-  const months = [
-    ...new Set(
-      feedbacks
-        .filter((fb) => recordSourceType(fb) === sourceType)
-        .map((fb) => fb.importMonth)
-        .filter(Boolean),
-    ),
-  ].sort()
+  const { importMonthSummary } = useInsights()
+  const { totalInDb: totalInCache, inPeriod } = countBySourceInScope(feedbacks, currentPeriod, sourceType)
+  // 跨月提示需全库口径：优先用月份聚合（缓存可能仅含已加载周期），无聚合时回退缓存扫描
+  const sourceRows = importMonthSummary?.bySource?.filter((r) => r.dataSourceType === sourceType) ?? null
+  const totalInDb = sourceRows ? sourceRows.reduce((sum, r) => sum + r.count, 0) : totalInCache
+  const months = sourceRows
+    ? [...new Set(sourceRows.map((r) => r.importMonth).filter(Boolean))].sort()
+    : [
+        ...new Set(
+          feedbacks
+            .filter((fb) => recordSourceType(fb) === sourceType)
+            .map((fb) => fb.importMonth)
+            .filter(Boolean),
+        ),
+      ].sort()
 
   return (
     <Card>

@@ -394,6 +394,36 @@ function migrateRecordsIndexColumns(db) {
   }
 }
 
+/**
+ * records.ticket_id 提取列 + (tenant_id, data_source_type, ticket_id) 唯一索引。
+ * 历史重复组：每组仅保留一条带 ticket_id（id 最小者），其余置 NULL——payload 不动，
+ * 保证建索引不丢数据；空工单号一律 NULL（唯一索引下多行 NULL 互不冲突）。
+ */
+function migrateRecordsTicketIdColumn(db) {
+  const cols = db.prepare('PRAGMA table_info(records)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('ticket_id')) {
+    const tx = db.transaction(() => {
+      db.exec(`ALTER TABLE records ADD COLUMN ticket_id TEXT`)
+      db.prepare(
+        `UPDATE records SET ticket_id = NULLIF(trim(json_extract(payload, '$.ticketId')), '')`,
+      ).run()
+      db.prepare(
+        `UPDATE records SET ticket_id = NULL
+         WHERE ticket_id IS NOT NULL AND id NOT IN (
+           SELECT MIN(id) FROM records WHERE ticket_id IS NOT NULL
+           GROUP BY tenant_id, data_source_type, ticket_id
+         )`,
+      ).run()
+    })
+    tx()
+  }
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_records_ticket_unique
+     ON records(tenant_id, data_source_type, ticket_id)`,
+  )
+}
+
 export function initBusinessSchema() {
   const db = getDb()
   db.exec(`
@@ -532,6 +562,7 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
   `)
   migrateRecordsIndexColumns(db)
+  migrateRecordsTicketIdColumn(db)
   migrateLegacyDcProductKeys(db)
   migrateProductCatalogCanonicalKeys(db)
   migrateSharedBandwidthToEipSpec(db)
