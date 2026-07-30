@@ -6,6 +6,7 @@ import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
 import { yieldToMainThread } from '../lib/yieldToMainThread.js'
+import { isTicketSource } from '../lib/importUtils.js'
 
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
 
@@ -69,6 +70,7 @@ export async function rebuildSourceSnapshot({
   period,
   dataSourceType,
   feedbacks,
+  settings = null,
 }) {
   const insightPeriodId = period.id
   const records = filterRecordsForScope(feedbacks, period, dataSourceType)
@@ -76,12 +78,28 @@ export async function rebuildSourceSnapshot({
     ...filterRecordsForScope(feedbacks, period, 'complaint_ticket'),
     ...filterRecordsForScope(feedbacks, period, 'consultation_ticket'),
   ]
+
+  const previousPeriodId = previousPeriodIdFromPeriod(period)
+  /** @type {import('../domain/overviewConclusions.js').OverviewRecommendation[]} */
+  let previousRecommendations = []
+  if (previousPeriodId && isTicketSource(dataSourceType)) {
+    const prevSnap = await adapter.getSnapshot(sourceSnapshotId(dataSourceType, previousPeriodId))
+    previousRecommendations =
+      /** @type {{ planningConclusions?: { recommendations?: unknown[] } }} */ (
+        prevSnap?.aggregates
+      )?.planningConclusions?.recommendations || []
+  }
+
   const snapshot = buildSourceSnapshot({
     insightPeriodId,
     dataSourceType,
     records,
     status: 'ready',
     ticketRecordsForFollowUp,
+    period,
+    settings,
+    previousRecommendations,
+    previousPeriodId: previousPeriodId || undefined,
   })
   await adapter.putSnapshot(snapshot)
   return snapshot
@@ -217,6 +235,7 @@ export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress
       period,
       dataSourceType: type,
       feedbacks,
+      settings,
     })
     sourceSnapshots[type] = snap
     done += 1

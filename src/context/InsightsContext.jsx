@@ -917,6 +917,7 @@ export function InsightsProvider({ children }) {
           period: currentPeriod,
           dataSourceType,
           feedbacks,
+          settings,
         })
         setSourceSnapshots((prev) => ({ ...prev, [dataSourceType]: snap }))
         setSnapshotsStale(true)
@@ -925,7 +926,7 @@ export function InsightsProvider({ children }) {
         setSnapshotRebuilding(null)
       }
     },
-    [adapter, currentPeriod, feedbacks, currentPeriodId],
+    [adapter, currentPeriod, feedbacks, currentPeriodId, settings],
   )
 
   const approveTagCandidate = useCallback(

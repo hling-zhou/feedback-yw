@@ -164,6 +164,9 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {number} [generatedRecommendationCount]
  * @property {number} [cappedCount]
  * @property {number} [removedFromPreviousCount]
+ * @property {boolean} [displaySuppressed]
+ * @property {number} [smallProductFallbackCount]
+ * @property {import('./enums.js').DataSourceType} [dataSourceType] 本源典型问题结论标记
  */
 
 /**

@@ -55,7 +55,6 @@ export default function TicketDashboardView({
     currentPeriod,
     orderVolumes,
     wanTouTargets,
-    overviewSnapshot,
   } = useInsights()
   const items = useMemo(
     () => workbenchTicketRecords(feedbacks, currentPeriod, snapshot),
@@ -183,10 +182,15 @@ export default function TicketDashboardView({
     }))
   }, [scoped, problemDim])
 
-  const { conclusions: displayConclusions } = useMemo(
-    () => prepareOverviewConclusionsForDisplay(overviewSnapshot?.conclusions),
-    [overviewSnapshot?.conclusions],
-  )
+  const { conclusions: displayConclusions } = useMemo(() => {
+    const raw = snapshot?.aggregates?.planningConclusions
+    return prepareOverviewConclusionsForDisplay(raw)
+  }, [snapshot?.aggregates?.planningConclusions])
+
+  const sourceFeedbacks = useMemo(() => {
+    const type = snapshot.dataSourceType
+    return (feedbacks || []).filter((r) => (r.dataSourceType || 'complaint_ticket') === type)
+  }, [feedbacks, snapshot.dataSourceType])
 
   const latestMonth = [...volumeTrendData].reverse().find((r) => r.count > 0) || volumeTrendData.at(-1)
   let monthDelta = null
@@ -353,7 +357,7 @@ export default function TicketDashboardView({
           <PlanningRecommendationsPanel
             title="典型问题"
             conclusions={displayConclusions}
-            feedbacks={feedbacks}
+            feedbacks={sourceFeedbacks}
             syncedProduct={product || undefined}
           />
         </div>

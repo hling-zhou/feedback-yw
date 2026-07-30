@@ -16,10 +16,13 @@ import {
   buildFollowUpSatisfactionMetrics,
   extractFollowUpTicketRecords,
 } from '../lib/followUpSatisfactionAnalytics.js'
+import { buildSourcePlanningConclusions } from './buildSourcePlanningConclusions.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 /** @typedef {import('../domain/snapshot.js').InsightSnapshot} InsightSnapshot */
+/** @typedef {import('../domain/insightPeriod.js').InsightPeriod} InsightPeriod */
+/** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 
 /**
  * @param {Object} params
@@ -28,6 +31,10 @@ import {
  * @param {FeedbackRecord[]} params.records
  * @param {'ready' | 'stale'} [params.status]
  * @param {FeedbackRecord[]} [params.ticketRecordsForFollowUp] 周期内投诉/咨询工单（回访指标数据源）
+ * @param {InsightPeriod | null} [params.period] 用于本源典型问题结论
+ * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
+ * @param {OverviewRecommendation[]} [params.previousRecommendations]
+ * @param {string} [params.previousPeriodId]
  */
 export function buildSourceSnapshot({
   insightPeriodId,
@@ -35,6 +42,10 @@ export function buildSourceSnapshot({
   records,
   status = 'ready',
   ticketRecordsForFollowUp = [],
+  period = null,
+  settings = null,
+  previousRecommendations = [],
+  previousPeriodId,
 }) {
   const versions = defaultAnalysisVersions()
   const desc = getPipelineDescriptor(dataSourceType)
@@ -50,6 +61,27 @@ export function buildSourceSnapshot({
     dataSourceType === 'post_use_rating'
       ? buildFollowUpSatisfactionMetrics(followUpTickets)
       : undefined
+
+  const planningConclusions = ticket
+    ? buildSourcePlanningConclusions({
+        period: period || {
+          id: insightPeriodId,
+          label: insightPeriodId,
+          startDate: '2000-01-01',
+          endDate: '2099-12-31',
+          status: 'active',
+          tenantId: DEFAULT_TENANT_ID,
+          schemaVersion: versions.schemaVersion,
+          createdAt: '',
+          updatedAt: '',
+        },
+        dataSourceType,
+        records,
+        previousRecommendations,
+        previousPeriodId,
+        settings,
+      })
+    : undefined
 
   /** @type {InsightSnapshot} */
   const snapshot = {
@@ -81,6 +113,7 @@ export function buildSourceSnapshot({
       sentiment: sentiment.distribution,
       painPointClustering: ticket ? buildSourcePainPointClusterSnapshot(records) : undefined,
       followUpSatisfactionMetrics,
+      planningConclusions,
     },
     recordIds: records.map((r) => r.id),
   }
