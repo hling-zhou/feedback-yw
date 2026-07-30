@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   commitToWhatsNewItem,
+  formatCommitBodyAsSummary,
   groupWhatsNewItemsByMonth,
   hasUnreadWhatsNewFeed,
   latestWhatsNewSignal,
   modulesFromScope,
   normalizeWhatsNewFeed,
+  parseChangelogVisibility,
   parseConventionalSubject,
   truncateWhatsNewItems,
 } from './whatsNewFeed.js'
@@ -37,13 +39,19 @@ describe('whatsNewFeed parse', () => {
     expect(modulesFromScope('unknown-scope')).toEqual(['other'])
   })
 
-  it('converts commits and filters types', () => {
+  it('keeps full body and strips git trailers from summary', () => {
+    expect(
+      formatCommitBodyAsSummary(
+        '第一段说明。\n\n第二段细节。\n\nCo-authored-by: Cursor <cursoragent@cursor.com>\nSigned-off-by: Dev <dev@example.com>\n',
+      ),
+    ).toBe('第一段说明。\n\n第二段细节。')
+
     expect(
       commitToWhatsNewItem({
         hash: 'abc1234',
         subject: 'feat(feedbacks): 会议待办',
         date: '2026-07-28',
-        body: '详情一行\n\nSigned-off',
+        body: '详情一行\n\n更多说明\n\nSigned-off-by: Dev <dev@example.com>',
       }),
     ).toMatchObject({
       id: 'abc1234',
@@ -51,7 +59,7 @@ describe('whatsNewFeed parse', () => {
       modules: ['feedbacks'],
       title: '会议待办',
       publishedAt: '2026-07-28',
-      summary: '详情一行',
+      summary: '详情一行\n\n更多说明',
     })
     expect(
       commitToWhatsNewItem({
@@ -60,6 +68,36 @@ describe('whatsNewFeed parse', () => {
         date: '2026-07-28',
       }),
     ).toBeNull()
+  })
+
+  it('honors Changelog skip/show trailers', () => {
+    expect(parseChangelogVisibility('说明\n\nChangelog: skip\n')).toBe('skip')
+    expect(parseChangelogVisibility('说明\n\nChangelog: show\n')).toBe('show')
+    expect(parseChangelogVisibility('说明\n\nChangelog: hide\n')).toBe('skip')
+
+    expect(
+      commitToWhatsNewItem({
+        hash: 'skip1',
+        subject: 'feat(workbench): 不该出现',
+        date: '2026-07-28',
+        body: '内部调整\n\nChangelog: skip',
+      }),
+    ).toBeNull()
+
+    expect(
+      commitToWhatsNewItem({
+        hash: 'show1',
+        subject: 'chore(settings): 强制展示',
+        date: '2026-07-28',
+        body: '需要告知用户\n\nChangelog: show',
+      }),
+    ).toMatchObject({
+      id: 'show1',
+      title: '强制展示',
+      category: 'improvement',
+      summary: '需要告知用户',
+      modules: ['settings'],
+    })
   })
 
   it('groups by month and truncates', () => {

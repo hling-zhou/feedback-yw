@@ -81,6 +81,75 @@ export const SCOPE_TO_MODULE = {
 const SUBJECT_RE =
   /^(?<type>feat|fix|perf|refactor|chore|docs|test|ci|build|style|revert)(\((?<scope>[^)]+)\))?!?:\s*(?<title>.+)$/i
 
+/** Git commit message trailer 行（位于 body 末尾） */
+const COMMIT_TRAILER_RE =
+  /^(?:[A-Za-z0-9][\w-]*|[A-Z][a-z]+(?:-[A-Z][a-z]+)+):\s+\S|^Signed-off-by:\s+/i
+
+/**
+ * @param {string} line
+ */
+export function isGitCommitTrailerLine(line) {
+  const t = String(line ?? '').trim()
+  if (!t) return false
+  return COMMIT_TRAILER_RE.test(t)
+}
+
+/**
+ * 保留完整 commit body，去掉末尾 Co-authored-by / Signed-off-by 等 trailer 块。
+ * @param {string} [body]
+ * @returns {string}
+ */
+export function formatCommitBodyAsSummary(body) {
+  const raw = String(body ?? '').replace(/\r\n/g, '\n')
+  if (!raw.trim()) return ''
+
+  const lines = raw.split('\n')
+  let end = lines.length - 1
+  while (end >= 0 && lines[end].trim() === '') end -= 1
+  if (end < 0) return ''
+
+  let trailerStart = end + 1
+  let i = end
+  while (i >= 0 && isGitCommitTrailerLine(lines[i])) {
+    trailerStart = i
+    i -= 1
+  }
+  if (trailerStart <= end) {
+    while (i >= 0 && lines[i].trim() === '') i -= 1
+    end = i
+  }
+
+  if (end < 0) return ''
+  return lines
+    .slice(0, end + 1)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * 解析更新动态可见性 trailer。
+ * - `Changelog: skip`：不进入更新动态（即使 feat/fix）
+ * - `Changelog: show`：强制进入（chore 等也会收录，类别缺省为体验优化）
+ * @param {string} [body]
+ * @returns {'skip' | 'show' | null}
+ */
+export function parseChangelogVisibility(body) {
+  const raw = String(body ?? '').replace(/\r\n/g, '\n')
+  if (!raw.trim()) return null
+  const lines = raw.split('\n')
+  /** @type {'skip' | 'show' | null} */
+  let last = null
+  for (const line of lines) {
+    const m = /^\s*Changelog:\s*(skip|show|hide|include)\s*$/i.exec(line)
+    if (!m) continue
+    const v = m[1].toLowerCase()
+    if (v === 'skip' || v === 'hide') last = 'skip'
+    else if (v === 'show' || v === 'include') last = 'show'
+  }
+  return last
+}
+
 /**
  * @param {string} subject
  * @returns {{ type: string; scope: string; title: string } | null}
@@ -123,19 +192,28 @@ export function modulesFromScope(scope) {
 export function commitToWhatsNewItem(commit, options = {}) {
   const parsed = parseConventionalSubject(commit.subject)
   if (!parsed) return null
+
+  const visibility = parseChangelogVisibility(commit.body)
+  if (visibility === 'skip') return null
+
   const includeImprovement = Boolean(options.includeImprovementTypes)
   const allowed = includeImprovement
     ? new Set([...WHATS_NEW_INCLUDED_TYPES, 'perf', 'refactor'])
     : WHATS_NEW_INCLUDED_TYPES
-  if (!allowed.has(parsed.type)) return null
-  const category = CONVENTIONAL_TYPE_TO_CATEGORY[parsed.type]
-  if (!category) return null
+
+  const forceShow = visibility === 'show'
+  if (!forceShow && !allowed.has(parsed.type)) return null
+
+  /** @type {WhatsNewCategory | undefined} */
+  let category = CONVENTIONAL_TYPE_TO_CATEGORY[parsed.type]
+  if (!category) {
+    if (!forceShow) return null
+    category = 'improvement'
+  }
+
   const publishedAt = String(commit.date || '').slice(0, 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt)) return null
-  const summary = String(commit.body || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || ''
+  const summary = formatCommitBodyAsSummary(commit.body)
   return {
     id: String(commit.hash || '').trim().slice(0, 40),
     title: parsed.title,

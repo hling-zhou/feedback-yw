@@ -1,7 +1,32 @@
 {
-  "generatedAt": "2026-07-29T16:47:13.685Z",
+  "generatedAt": "2026-07-30T01:54:40.086Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "items": []
+  "repoCommit": "83cb896347e3df15c4d06466338c7829e718d118",
+  "items": [
+    {
+      "id": "a21832851abf60110da66b8f83b094e38df13e4a",
+      "title": "投诉/咨询典型问题按本源写入快照",
+      "category": "feature",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-07-30",
+      "appVersion": null,
+      "summary": "刷新洞察时为各工单来源生成 planningConclusions，Tab 不再复用跨源概览行动建议。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "0e2d2e1df8e83baebe94d90f27535d0007c592df",
+      "title": "使用体验优化",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-07-30",
+      "appVersion": null,
+      "summary": "- 时间范围支持自定义起止月\n- 投诉/咨询工单统计维度优化：客户体验类万投比/工单量/情绪/问题分布/特性数量趋势与典型问题\n- 工单详情-处理意见：分阶段结构化阅读，支持关键字与划选高亮\n- 反馈库支持按「工单内容」关键字搜索\n- 增加更新动态模块",
+      "commitUrl": null,
+      "source": "git"
+    }
+  ]
 }

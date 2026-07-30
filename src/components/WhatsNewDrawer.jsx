@@ -158,7 +158,10 @@ function WhatsNewTimelineItem({ item }) {
       </div>
       <Typography.Text className="block text-sm leading-snug">{item.title}</Typography.Text>
       {item.summary ? (
-        <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+        <Typography.Paragraph
+          type="secondary"
+          className="!mb-0 !mt-1 whitespace-pre-wrap text-xs leading-relaxed"
+        >
           {item.summary}
         </Typography.Paragraph>
       ) : null}

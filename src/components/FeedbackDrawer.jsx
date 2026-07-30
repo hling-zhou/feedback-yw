@@ -149,7 +149,8 @@ const HANDLING_PLAIN_GROUP_ID = 'plain'
 
 /**
  * @typedef {{ id: string; groupId: string; itemIndex: number; start: number; end: number }} ManualHighlightRange
- * @typedef {{ groupId: string; itemIndex: number; start: number; end: number; text: string } | null} HandlingTextSelection
+ * @typedef {{ groupId: string; itemIndex: number; start: number; end: number }} HandlingHighlightSpan
+ * @typedef {{ spans: HandlingHighlightSpan[]; text: string } | null} HandlingTextSelection
  */
 
 /**
@@ -211,20 +212,78 @@ function renderHandlingTextWithHighlights(text, keyword, manualRanges) {
  * @param {Element} root
  */
 function offsetWithinElement(root, node, offset) {
-  if (!node || !root.contains(node)) return null
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let total = 0
-  /** @type {Node | null} */
-  let current = walker.nextNode()
-  while (current) {
-    if (current === node) return total + offset
-    total += current.textContent?.length || 0
-    current = walker.nextNode()
+  if (!node || !(root === node || root.contains(node))) return null
+  try {
+    const probe = document.createRange()
+    probe.selectNodeContents(root)
+    probe.setEnd(node, offset)
+    return probe.toString().length
+  } catch {
+    return null
   }
-  return null
 }
 
 /**
+ * @param {Element} host
+ * @returns {HandlingHighlightSpan | null}
+ */
+function highlightSpanFromHost(host, start, end) {
+  if (start == null || end == null || end <= start) return null
+  const groupId = String(host.getAttribute('data-handling-group-id') || '')
+  const itemIndex = Number(host.getAttribute('data-handling-item-index'))
+  if (!groupId || Number.isNaN(itemIndex) || itemIndex < 0) return null
+  return { groupId, itemIndex, start, end }
+}
+
+/**
+ * @param {Element} root
+ * @param {Range} range
+ * @returns {Element[]}
+ */
+function handlingHostsIntersectingRange(root, range) {
+  return [...root.querySelectorAll('[data-handling-group-id][data-handling-item-index]')].filter(
+    (host) => {
+      try {
+        return range.intersectsNode(host)
+      } catch {
+        return false
+      }
+    },
+  )
+}
+
+/**
+ * @param {Element} host
+ * @param {Range} range
+ * @param {boolean} isFirst
+ * @param {boolean} isLast
+ * @returns {{ start: number; end: number } | null}
+ */
+function selectionOffsetsInHost(host, range, isFirst, isLast) {
+  const fullEnd = host.textContent?.length || 0
+  if (!fullEnd) return null
+
+  let start = 0
+  let end = fullEnd
+
+  if (isFirst && (host === range.startContainer || host.contains(range.startContainer))) {
+    const offset = offsetWithinElement(host, range.startContainer, range.startOffset)
+    if (offset == null) return null
+    start = offset
+  }
+  if (isLast && (host === range.endContainer || host.contains(range.endContainer))) {
+    const offset = offsetWithinElement(host, range.endContainer, range.endOffset)
+    if (offset == null) return null
+    end = offset
+  }
+
+  if (end <= start) return null
+  return { start, end }
+}
+
+/**
+ * 读取左侧原文选区；同一段落或多段/跨行选中均可得到可高亮的 spans。
+ *
  * @param {ParentNode | null | undefined} scope
  * @returns {HandlingTextSelection}
  */
@@ -238,45 +297,25 @@ function readHandlingTextSelection(scope) {
     return null
   }
 
-  const startEl =
-    range.startContainer.nodeType === Node.ELEMENT_NODE
-      ? /** @type {Element} */ (range.startContainer)
-      : range.startContainer.parentElement
-  const endEl =
-    range.endContainer.nodeType === Node.ELEMENT_NODE
-      ? /** @type {Element} */ (range.endContainer)
-      : range.endContainer.parentElement
-  const startHost = startEl?.closest('[data-handling-group-id][data-handling-item-index]')
-  const endHost = endEl?.closest('[data-handling-group-id][data-handling-item-index]')
-  if (!startHost || startHost !== endHost) {
-    return {
-      groupId: '',
-      itemIndex: -1,
-      start: -1,
-      end: -1,
-      text: selectedText,
-    }
-  }
+  const root =
+    scope instanceof Element
+      ? scope
+      : range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? /** @type {Element} */ (range.commonAncestorContainer)
+        : range.commonAncestorContainer.parentElement
+  if (!root) return { spans: [], text: selectedText }
 
-  const start = offsetWithinElement(startHost, range.startContainer, range.startOffset)
-  const end = offsetWithinElement(startHost, range.endContainer, range.endOffset)
-  if (start == null || end == null || end <= start) {
-    return {
-      groupId: '',
-      itemIndex: -1,
-      start: -1,
-      end: -1,
-      text: selectedText,
-    }
-  }
+  const hosts = handlingHostsIntersectingRange(root, range)
+  /** @type {HandlingHighlightSpan[]} */
+  const spans = []
+  hosts.forEach((host, index) => {
+    const offsets = selectionOffsetsInHost(host, range, index === 0, index === hosts.length - 1)
+    if (!offsets) return
+    const span = highlightSpanFromHost(host, offsets.start, offsets.end)
+    if (span) spans.push(span)
+  })
 
-  return {
-    groupId: String(startHost.getAttribute('data-handling-group-id') || ''),
-    itemIndex: Number(startHost.getAttribute('data-handling-item-index')),
-    start,
-    end,
-    text: selectedText,
-  }
+  return { spans, text: selectedText }
 }
 
 /**
@@ -444,12 +483,7 @@ function HandlingOriginalTextModal({
     return map
   }, [highlights])
 
-  const canHighlight = Boolean(
-    activeSelection &&
-      activeSelection.groupId &&
-      activeSelection.itemIndex >= 0 &&
-      activeSelection.end > activeSelection.start,
-  )
+  const canHighlight = Boolean(activeSelection?.spans?.length)
   const canAddExcerpt = Boolean(activeSelection?.text?.trim())
 
   const clearSelectionUi = useCallback(() => {
@@ -512,34 +546,35 @@ function HandlingOriginalTextModal({
     })
   }, [groups, locateKeyword])
 
-  const handleAddHighlight = useCallback(() => {
-    const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
-    if (
-      !selection?.groupId ||
-      selection.itemIndex < 0 ||
-      selection.end <= selection.start
-    ) {
-      message.warning('请先在左侧同一段落内框选文本')
-      return
-    }
+  const appendHighlightSpans = useCallback((spans) => {
+    if (!spans?.length) return
     setHighlights((prev) => [
       ...prev,
-      {
+      ...spans.map((span) => ({
         id: randomId(),
-        groupId: selection.groupId,
-        itemIndex: selection.itemIndex,
-        start: selection.start,
-        end: selection.end,
-      },
+        groupId: span.groupId,
+        itemIndex: span.itemIndex,
+        start: span.start,
+        end: span.end,
+      })),
     ])
+  }, [])
+
+  const handleAddHighlight = useCallback(() => {
+    const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
+    if (!selection?.spans?.length) {
+      message.warning('请先在左侧选中文本')
+      return
+    }
+    appendHighlightSpans(selection.spans)
     clearSelectionUi()
-  }, [activeSelection, clearSelectionUi])
+  }, [activeSelection, appendHighlightSpans, clearSelectionUi])
 
   const handleAddExcerpt = useCallback(() => {
     const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
     const snippet = selection?.text?.trim()
     if (!snippet) {
-      message.warning('请先框选要摘录的文本')
+      message.warning('请先选中要摘录的文本')
       return
     }
     setExcerpt((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet}` : snippet))
@@ -551,31 +586,17 @@ function HandlingOriginalTextModal({
     const selection = readHandlingTextSelection(leftPaneRef.current) || activeSelection
     const snippet = selection?.text?.trim()
     if (!snippet) {
-      message.warning('请先框选文本')
+      message.warning('请先选中文本')
       return
     }
-    const canMark =
-      Boolean(selection?.groupId) &&
-      (selection?.itemIndex ?? -1) >= 0 &&
-      (selection?.end ?? 0) > (selection?.start ?? 0)
+    const canMark = Boolean(selection?.spans?.length)
     if (canMark && selection) {
-      setHighlights((prev) => [
-        ...prev,
-        {
-          id: randomId(),
-          groupId: selection.groupId,
-          itemIndex: selection.itemIndex,
-          start: selection.start,
-          end: selection.end,
-        },
-      ])
-    } else {
-      message.warning('跨段落选区仅加入摘录，未高亮；请在同一段落内框选以同时高亮')
+      appendHighlightSpans(selection.spans)
     }
     setExcerpt((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet}` : snippet))
     clearSelectionUi()
     message.success(canMark ? '已高亮并加入摘录' : '已加入摘录')
-  }, [activeSelection, clearSelectionUi])
+  }, [activeSelection, appendHighlightSpans, clearSelectionUi])
 
   const handleCopyExcerpt = async () => {
     const ok = await copyTextToClipboard(excerpt)
@@ -636,7 +657,7 @@ function HandlingOriginalTextModal({
           closable
           className="!mb-0"
           message="功能上新"
-          description="框选原文可高亮、加入右侧摘录；也可一键「高亮并加入摘录」。内容仅本次有效，关闭弹窗后清空，不会保存到工单。"
+          description="选中原文可高亮、加入右侧摘录；也可一键「高亮并加入摘录」。内容仅本次有效，关闭弹窗后清空，不会保存到工单。"
           onClose={() => onDismissWhatsNew?.()}
           action={
             <Button size="small" type="link" onClick={() => onDismissWhatsNew?.()}>
@@ -696,7 +717,7 @@ function HandlingOriginalTextModal({
         ) : null}
       </div>
       <Typography.Text type="secondary" className="block text-xs">
-        框选左侧原文后，可在选区旁点「高亮 / 加入摘录 / 高亮并加入摘录」；关闭弹窗后清空，不会保存。
+        选中左侧原文后，可在选区旁点「高亮 / 加入摘录 / 高亮并加入摘录」；关闭弹窗后清空，不会保存。
       </Typography.Text>
     </div>
   )
@@ -798,7 +819,7 @@ function HandlingOriginalTextModal({
           <Input.TextArea
             className="min-h-0 flex-1"
             style={{ height: '100%', resize: 'none' }}
-            placeholder="框选左侧后点「加入摘录」，或在此直接粘贴编辑"
+            placeholder="选中左侧后点「加入摘录」，或在此直接粘贴编辑"
             value={excerpt}
             onChange={(event) => setExcerpt(event.target.value)}
           />

@@ -1,6 +1,10 @@
 /**
  * 从 Git 生成更新动态 JSON：public/config/whats-new.json
  * 范围：scripts/whats-new.since .. HEAD（不含 since）
+ *
+ * 可见性 trailer（写在 commit body 末尾）：
+ * - Changelog: skip  — 不进入更新动态（即使 feat/fix）
+ * - Changelog: show  — 强制进入（如 chore；无类别时归为体验优化）
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
