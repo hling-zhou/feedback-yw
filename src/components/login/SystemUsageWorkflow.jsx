@@ -6,9 +6,12 @@ import { SYSTEM_USAGE_WORKFLOW } from '../../domain/systemWorkflow.js'
 /**
  * @param {Object} props
  * @param {SystemUsageWorkflowVariant} [props.variant]
+ * @param {'dark' | 'light'} [props.tone]
  * @param {string} [props.className]
  */
-export default function SystemUsageWorkflow({ variant = 'full', className = '' }) {
+export default function SystemUsageWorkflow({ variant = 'full', tone, className = '' }) {
+  const resolvedTone = tone ?? (variant === 'compact' ? 'light' : 'dark')
+
   if (variant === 'compact') {
     return (
       <div className={className}>
@@ -17,7 +20,7 @@ export default function SystemUsageWorkflow({ variant = 'full', className = '' }
             <WorkflowStep
               key={item.step}
               item={item}
-              tone="light"
+              tone={resolvedTone}
               showConnector={index < SYSTEM_USAGE_WORKFLOW.length - 1}
             />
           ))}
@@ -33,7 +36,7 @@ export default function SystemUsageWorkflow({ variant = 'full', className = '' }
           <WorkflowStep
             key={item.step}
             item={item}
-            tone="dark"
+            tone={resolvedTone}
             showConnector={index < SYSTEM_USAGE_WORKFLOW.length - 1}
           />
         ))}
@@ -117,8 +120,8 @@ function WorkflowModuleTags({ item, tone }) {
         bordered
         className={
           isDark
-            ? '!m-0 !border-dashed !border-brand-400/50 !bg-transparent !text-[11px] !text-brand-200'
-            : '!m-0 !border-dashed !border-ink-300 !bg-ink-50 !text-[11px] !text-ink-600'
+            ? '!m-0 !border-dashed !border-brand-400/50 !bg-brand-600/15 !text-[11px] !font-medium !text-brand-100 !shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
+            : '!m-0 !border-dashed !border-brand-300 !bg-brand-50 !text-[11px] !font-medium !text-brand-700 !shadow-[0_1px_2px_rgba(79,70,229,0.08)]'
         }
       >
         自动
@@ -133,11 +136,11 @@ function WorkflowModuleTags({ item, tone }) {
       {item.modules.map((mod) => (
         <Tag
           key={mod.label}
-          bordered={false}
+          bordered
           className={
             isDark
-              ? '!m-0 !bg-brand-600/30 !text-[11px] !text-brand-100'
-              : '!m-0 !bg-ink-100 !text-[11px] !text-ink-600'
+              ? '!m-0 !border !border-brand-400/40 !bg-brand-600/25 !text-[11px] !font-medium !text-brand-100 !shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
+              : '!m-0 !border !border-brand-200 !bg-brand-50 !text-[11px] !font-medium !text-brand-700 !shadow-[0_1px_2px_rgba(79,70,229,0.08)]'
           }
         >
           {mod.label}

@@ -874,6 +874,7 @@ function TicketDetailDrawerTitle({ metaLine }) {
 export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClose, onDirtyChange }) {
   const {
     feedbacks,
+    adapter,
     updateFeedback,
     reprocessOne,
     retagSession,
@@ -891,9 +892,33 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
-  const feedback = selected
+  const cachedFeedback = selected
     ? feedbacks.find((f) => f.id === selected.id) ?? selected
     : null
+  // list 投影裁剪了大文本字段；抽屉需要全量，缺 rawText 键时按需拉单条
+  const needsHydration = cachedFeedback != null && !('rawText' in cachedFeedback)
+  const [fullFeedback, setFullFeedback] = useState(
+    /** @type {import('../lib/types.js').FeedbackRecord | null} */ (null),
+  )
+  useEffect(() => {
+    if (!selected?.id || !needsHydration) {
+      setFullFeedback(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const full = await adapter.getRecord(selected.id)
+        if (!cancelled && full) setFullFeedback(full)
+      } catch (err) {
+        if (!cancelled) console.warn('[drawer] 拉取全量记录失败', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selected?.id, needsHydration, adapter])
+  const feedback = fullFeedback ?? cachedFeedback
   const [note, setNote] = useState(feedback?.note || '')
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),

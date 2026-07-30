@@ -20,6 +20,7 @@
  * @property {string} [importBatchId]
  * @property {number} [limit] 分页大小；不传则返回全部（慎用）
  * @property {number} [offset] 分页偏移，默认 0
+ * @property {'list' | 'full'} [fields] payload 投影：list 剔除大文本字段，full/默认原样
  */
 
 /**

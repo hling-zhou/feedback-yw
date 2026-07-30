@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
+import { Button, Card, Form, Input, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import SystemUsageWorkflow from '../components/login/SystemUsageWorkflow.jsx'
 
@@ -42,9 +42,9 @@ export default function Login() {
   return (
     <main className="min-h-screen bg-ink-50 text-ink-800 md:h-screen md:overflow-hidden">
       <div className="grid min-h-screen md:h-full md:max-h-screen md:grid-cols-[1.05fr_0.95fr] md:overflow-hidden">
-        <section className="relative hidden h-full min-h-0 overflow-hidden bg-ink-900 px-8 py-6 text-white md:flex md:flex-col lg:px-10 lg:py-8">
+        <section className="relative hidden h-full min-h-0 overflow-hidden bg-white px-8 py-6 text-ink-900 md:flex md:flex-col lg:px-10 lg:py-8">
           <div
-            className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(79,70,229,0.28),transparent_42%),radial-gradient(circle_at_82%_8%,rgba(79,70,229,0.16),transparent_40%),linear-gradient(160deg,#0B0F19_0%,#111827_55%,#1F2937_100%)]"
+            className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(79,70,229,0.10),transparent_42%),radial-gradient(circle_at_82%_8%,rgba(79,70,229,0.06),transparent_40%),linear-gradient(160deg,#FFFFFF_0%,#F5F7FB_55%,#EEF2F8_100%)]"
             aria-hidden
           />
           <div className="relative flex shrink-0 items-center gap-2.5">
@@ -58,17 +58,18 @@ export default function Login() {
                 />
               </svg>
             </span>
-            <Typography.Text className="text-sm font-medium text-white/85">Feedback Insights</Typography.Text>
+            <Typography.Text className="text-sm font-medium text-ink-800">Feedback Insights</Typography.Text>
           </div>
           <div className="relative mt-6 flex min-h-0 flex-1 flex-col gap-4 lg:mt-8 lg:gap-6">
             <div className="max-w-lg shrink-0">
-              <h1 className="text-2xl font-semibold leading-tight tracking-tight lg:text-3xl">用户反馈洞察</h1>
-              <p className="mt-3 text-sm leading-relaxed text-white/70">
+              <h1 className="text-2xl font-semibold leading-tight tracking-tight text-ink-900 lg:text-3xl">用户反馈洞察</h1>
+              <p className="mt-3 text-sm leading-relaxed text-ink-500">
                 以数为镜，从万千反馈的字里行间，捕捉产品优化的线索
               </p>
             </div>
             <SystemUsageWorkflow
               variant="full"
+              tone="light"
               className="min-h-0 max-w-lg flex-1 overflow-y-auto pb-2"
             />
           </div>
@@ -92,14 +93,6 @@ export default function Login() {
               <Typography.Paragraph className="!mb-0 !mt-2 !text-sm !text-ink-500">
                 请输入用户名和密码
               </Typography.Paragraph>
-
-              <Alert
-                className="mt-4"
-                type="info"
-                showIcon
-                message="首次部署须由运维设置环境变量 ADMIN_INITIAL_PASSWORD（≥12 字符）以创建管理员账号"
-                description="默认用户名为 admin。系统不再提供 admin123 等内置弱口令；空库未配置密码时 API 无法创建可登录账号。详见 README「环境变量」。"
-              />
 
               <Form
                 className="mt-6"

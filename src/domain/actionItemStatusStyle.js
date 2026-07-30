@@ -4,47 +4,35 @@ import { ACTION_ITEM_STATUSES } from './actionItem.js'
 
 /**
  * 举措状态视觉规范（需求 §四.3：待评估灰 / 进行中蓝 / 已完成绿 / 挂起紫）
- * - 标签：半透明底色 + 强调色文字
- * - 图表：与文字强调色一致的实心柱色
+ * - 标签：与柱状图同色的实心底色 + 反色文字（灰/暖灰底用深色文字保证对比度）
+ * - 图表：实心柱色
  *
- * @type {Record<ActionItemStatus, { chartColor: string; bgClass: string; textClass: string; borderClass: string }>}
+ * @type {Record<ActionItemStatus, { chartColor: string; tagTextClass: string }>}
  */
 export const ACTION_ITEM_STATUS_VISUAL = {
   pending_evaluation: {
-    chartColor: '#475569',
-    bgClass: 'bg-slate-500/15',
-    textClass: 'text-slate-600',
-    borderClass: 'border-slate-500/25',
+    chartColor: '#94A3B8',
+    tagTextClass: 'text-slate-800',
   },
   in_progress: {
-    chartColor: '#1D4ED8',
-    bgClass: 'bg-blue-500/15',
-    textClass: 'text-blue-700',
-    borderClass: 'border-blue-500/25',
+    chartColor: '#3B82F6',
+    tagTextClass: 'text-white',
   },
   completed: {
-    chartColor: '#15803D',
-    bgClass: 'bg-green-500/15',
-    textClass: 'text-green-700',
-    borderClass: 'border-green-500/25',
+    chartColor: '#22C55E',
+    tagTextClass: 'text-white',
   },
   suspended: {
-    chartColor: '#6D28D9',
-    bgClass: 'bg-violet-500/15',
-    textClass: 'text-violet-700',
-    borderClass: 'border-violet-500/25',
+    chartColor: '#8B5CF6',
+    tagTextClass: 'text-white',
   },
   not_implemented: {
-    chartColor: '#78716C',
-    bgClass: 'bg-stone-500/15',
-    textClass: 'text-stone-600',
-    borderClass: 'border-stone-500/25',
+    chartColor: '#A8A29E',
+    tagTextClass: 'text-stone-800',
   },
   abnormal_terminated: {
-    chartColor: '#B91C1C',
-    bgClass: 'bg-red-500/15',
-    textClass: 'text-red-700',
-    borderClass: 'border-red-500/25',
+    chartColor: '#EF4444',
+    tagTextClass: 'text-white',
   },
 }
 

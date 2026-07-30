@@ -232,6 +232,18 @@ export default function Actions() {
   const editScheduleAtBaseRef = useRef(/** @type {import('dayjs').Dayjs | null} */ (null))
   const [listRefreshing, setListRefreshing] = useState(false)
   const importInputRef = useRef(/** @type {HTMLInputElement | null} */ (null))
+  const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
+
+  useEffect(() => {
+    const chrome = stickyChromeRef.current
+    if (!chrome) return undefined
+    const syncOffset = () => setStickyChromeHeight(chrome.offsetHeight)
+    syncOffset()
+    const observer = new ResizeObserver(syncOffset)
+    observer.observe(chrome)
+    return () => observer.disconnect()
+  }, [])
   const watchedSchedule = Form.useWatch('scheduleAt', editForm)
   const watchedEditStatus = Form.useWatch('status', editForm)
   const watchedRequirementLinkEnabled = Form.useWatch('requirementLinkEnabled', editForm)
@@ -1218,36 +1230,40 @@ export default function Actions() {
         </div>
       </Card>
 
-      <Card size="small" className="!border-ink-100">
-        <div className="mb-3 flex w-full flex-wrap items-start gap-2">
-          <ActionItemCompositeFilter
-            className="min-w-0 flex-1"
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onClearFilters={handleClearFilters}
-            options={{
-              productOptions,
-              statusOptions: FILTER_STATUS_OPTIONS,
-              problemTypeOptions,
-              journeyL1Options,
-              productNameByKey,
-            }}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            loading={listRefreshing}
-            onClick={() => void handleRefreshList()}
-          >
-            刷新
-          </Button>
-        </div>
+      <div
+        ref={stickyChromeRef}
+        className="page-section-sm page-sticky-chrome flex w-full flex-wrap items-start gap-2"
+      >
+        <ActionItemCompositeFilter
+          className="min-w-0 flex-1"
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onClearFilters={handleClearFilters}
+          options={{
+            productOptions,
+            statusOptions: FILTER_STATUS_OPTIONS,
+            problemTypeOptions,
+            journeyL1Options,
+            productNameByKey,
+          }}
+        />
+        <Button
+          icon={<ReloadOutlined />}
+          loading={listRefreshing}
+          onClick={() => void handleRefreshList()}
+        >
+          刷新
+        </Button>
+      </div>
+      <Card size="small" className="page-section-sm !border-ink-100">
         <Table
           rowKey="id"
           size="small"
           loading={loading}
           columns={columns}
           dataSource={items}
-          scroll={{ x: 1680 }}
+          sticky={{ offsetHeader: stickyChromeHeight }}
+          scroll={{ x: 1960 }}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,

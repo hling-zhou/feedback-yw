@@ -64,6 +64,7 @@ export function createApiStorageAdapter() {
       if (query.importBatchId) params.set('importBatchId', query.importBatchId)
       if (query.limit != null) params.set('limit', String(query.limit))
       if (query.offset != null) params.set('offset', String(query.offset))
+      if (query.fields) params.set('fields', query.fields)
       const qs = params.toString()
       const data = await storageFetch(`/records${qs ? `?${qs}` : ''}`)
       return {

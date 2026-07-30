@@ -99,10 +99,11 @@ export async function loadFeedbacksFromAdapter(adapter, query = {}) {
  * 按洞察周期分页拉取（用于首屏与切换周期）
  * @param {import('./adapter.js').StorageAdapter} adapter
  * @param {string} insightPeriodId
+ * @param {{ fields?: 'list' | 'full' }} [options] payload 投影；首屏默认 list 裁剪大文本
  */
-export async function loadFeedbacksForPeriod(adapter, insightPeriodId) {
+export async function loadFeedbacksForPeriod(adapter, insightPeriodId, options = {}) {
   await migrateLegacyFeedbacksIfNeeded(adapter)
-  const { records } = await fetchRecordPagesForPeriod(adapter, insightPeriodId)
+  const { records } = await fetchRecordPagesForPeriod(adapter, insightPeriodId, options)
   return records.map((r) => normalizeFeedbackRecord(r))
 }
 

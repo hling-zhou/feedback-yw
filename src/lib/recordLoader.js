@@ -55,7 +55,11 @@ export async function fetchAllRecordPages(adapter, query = {}) {
 /**
  * @param {StorageAdapter} adapter
  * @param {string} insightPeriodId
+ * @param {{ fields?: 'list' | 'full' }} [options]
  */
-export async function fetchRecordPagesForPeriod(adapter, insightPeriodId) {
-  return fetchAllRecordPages(adapter, { insightPeriodId })
+export async function fetchRecordPagesForPeriod(adapter, insightPeriodId, options = {}) {
+  return fetchAllRecordPages(adapter, {
+    insightPeriodId,
+    ...(options.fields ? { fields: options.fields } : {}),
+  })
 }

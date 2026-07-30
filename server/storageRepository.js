@@ -53,6 +53,33 @@ function parseJson(text) {
   return JSON.parse(text)
 }
 
+/** fields=list 时剔除的大文本字段黑名单（仅在抽屉/retag/update 按需拉全量） */
+const LIST_PROJECTION_OMITTED_FIELDS = [
+  'rawText',
+  'handlingText',
+  'customerQuote',
+  'responseText',
+  'sourceColumns',
+]
+
+/**
+ * 按 fields 投影记录 payload：list 黑名单裁剪大文本字段，full/默认原样返回。
+ * @template {{ [k: string]: unknown }} T
+ * @param {T} record
+ * @param {'list' | 'full' | undefined} [fields]
+ * @returns {T}
+ */
+function projectRecordPayload(record, fields) {
+  if (fields !== 'list' || !record || typeof record !== 'object') return record
+  /** @type {Record<string, unknown>} */
+  const next = {}
+  for (const key of Object.keys(record)) {
+    if (LIST_PROJECTION_OMITTED_FIELDS.includes(key)) continue
+    next[key] = record[key]
+  }
+  return /** @type {T} */ (next)
+}
+
 function stringifyJson(value) {
   return JSON.stringify(value)
 }
@@ -148,7 +175,7 @@ export const storageRepository = {
   },
 
   /**
-   * @param {import('../src/storage/adapter.js').RecordQuery} [query]
+   * @param {import('../src/storage/adapter.js').RecordQuery & { fields?: 'list' | 'full' }} [query]
    * @returns {{ records: import('../src/domain/records.js').InsightRecord[]; total: number; limit: number | null; offset: number }}
    */
   listRecords(query = {}) {
@@ -167,7 +194,7 @@ export const storageRepository = {
     }
 
     const rows = db.prepare(sql).all(...listParams)
-    let records = rows.map((r) => parseJson(r.payload))
+    let records = rows.map((r) => projectRecordPayload(parseJson(r.payload), query.fields))
 
     if (period && query.insightPeriodId) {
       records = filterRecords(records, query, period)

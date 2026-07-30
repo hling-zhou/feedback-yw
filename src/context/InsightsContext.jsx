@@ -327,7 +327,10 @@ export function InsightsProvider({ children }) {
   const loadRecordsForPeriodId = useCallback(
     async (periodId) => {
       if (!periodId || !storageReady || loadedPeriodIdsRef.current.has(periodId)) return
-      const records = await loadFeedbacksForPeriod(adapter, periodId)
+      // 首屏/周期切换用 list 投影裁剪大文本字段；抽屉/retag/update 按需拉全量单条
+      const records = await loadFeedbacksForPeriod(adapter, periodId, {
+        fields: isApiStorageAdapter(adapter) ? 'list' : 'full',
+      })
       loadedPeriodIdsRef.current.add(periodId)
       mergeRecordsIntoCache(records)
       feedbacksRef.current = [
@@ -348,7 +351,7 @@ export function InsightsProvider({ children }) {
           `[storage] 已将本机数据迁移至共享库：${migration.records} 条反馈`,
         )
       }
-      await adapter.init()
+      // migrateLocalToApiIfNeeded 内部已调用 adapter.init()，无需重复 init
 
       // 共享 API 模式：月份聚合替代全表下载；本机 IDB 全量加载无网络开销，保持原语义
       const apiMode =
@@ -430,6 +433,9 @@ export function InsightsProvider({ children }) {
       })
       setCurrentPeriodIdState(period.id)
       setStorageReady(true)
+      // 周期已确定：提前结束 periodsLoading，让周期选择器与反馈库表格先渲染骨架/空态；
+      // 记录加载由 feedbacksLoading 独立 gate，在后台流式完成。
+      setPeriodsLoading(false)
 
       // 条件写入：周期已存在且选择未变化时跳过（避免每次打开都产生写 RTT 与查看者 403 噪音）
       const selectionPayload = {
@@ -462,6 +468,7 @@ export function InsightsProvider({ children }) {
         console.warn('[storage] 保存周期选择失败（查看者无 import 权限时可忽略）', err)
       }
 
+      // 记录加载与推荐反馈补水并行，不阻塞 periodsLoading（已提前结束）
       await Promise.all([
         hydrateRecommendationFeedbackFromServer(adapter),
         (async () => {
@@ -486,7 +493,6 @@ export function InsightsProvider({ children }) {
       return period
     } catch (err) {
       console.error('[storage] 加载共享数据失败', err)
-    } finally {
       setPeriodsLoading(false)
     }
   }, [adapter, loadRecordsForPeriodId])
@@ -1677,10 +1683,19 @@ export function InsightsProvider({ children }) {
      * @param {import('../domain/recordRevision.js').PutRecordOptions & { mergeBase?: import('../lib/types.js').FeedbackRecord }} [options]
      */
     async (id, patch, options = {}) => {
-      const existing =
+      let existing =
         options.mergeBase ?? feedbacksRef.current.find((fb) => fb.id === id)
       if (!existing) {
         throw new Error('工单不存在或已删除')
+      }
+      // list 投影裁剪了大文本字段；编辑需全量作为 merge base，缺 rawText 时拉单条
+      if (!('rawText' in existing) && typeof adapter.getRecord === 'function') {
+        try {
+          const full = await adapter.getRecord(id)
+          if (full) existing = full
+        } catch (err) {
+          console.warn('[update] 拉取全量记录失败，使用缓存作为 merge base', err)
+        }
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
       const merged = { ...existing, ...patch, manualTagFields }
@@ -2062,8 +2077,25 @@ export function InsightsProvider({ children }) {
 
   const reprocessAllTagsCore = useCallback(
     async (targetRecords, reportProgress, options = {}) => {
-      const list = targetRecords?.length ? targetRecords : feedbacksRef.current
+      let list = targetRecords?.length ? targetRecords : feedbacksRef.current
       if (!list.length) return null
+
+      // list 投影裁剪了大文本字段；retag 需要全量语料，缺 rawText 时按周期拉全量再按 id 还原
+      if (list.some((r) => !('rawText' in r))) {
+        progress('正在加载全量记录…')
+        try {
+          const full = await fetchAllRecordPages(adapter, {
+            insightPeriodId: currentPeriodId,
+            fields: 'full',
+          })
+          const byId = new Map(full.records.map((r) => [r.id, r]))
+          list = list
+            .map((r) => byId.get(r.id) ?? r)
+            .filter((r) => 'rawText' in r || (r.handlingText || r.rawText))
+        } catch (err) {
+          console.warn('[retag] 全量记录加载失败，回退使用缓存', err)
+        }
+      }
 
       const scope = options.scope || 'period_all'
       const total = list.length
@@ -2222,6 +2254,7 @@ export function InsightsProvider({ children }) {
       settings,
       reloadAllConfigs,
       currentPeriod,
+      currentPeriodId,
       scheduleSnapshotRebuild,
       storageReady,
       recordWriteActor,

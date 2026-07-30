@@ -10,7 +10,8 @@ export default function ActionItemStatusTag({ status, className = '' }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium leading-none ${visual.bgClass} ${visual.textClass} ${visual.borderClass} ${className}`}
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium leading-none ${visual.tagTextClass} ${className}`}
+      style={{ backgroundColor: visual.chartColor }}
     >
       {label}
     </span>

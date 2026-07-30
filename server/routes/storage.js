@@ -211,8 +211,9 @@ export function registerStorageRoutes(app) {
   )
 
   app.get('/api/storage/records', { preHandler: requirePermission('view') }, async (request) => {
-    const q = /** @type {import('../src/storage/adapter.js').RecordQuery} */ (request.query || {})
-    return storageRepository.listRecords(q)
+    const q = /** @type {import('../src/storage/adapter.js').RecordQuery & { fields?: string }} */ (request.query || {})
+    const fields = q.fields === 'list' ? 'list' : 'full'
+    return storageRepository.listRecords({ ...q, fields })
   })
 
   app.get(
