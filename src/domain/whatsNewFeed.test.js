@@ -6,6 +6,7 @@ import {
   hasUnreadWhatsNewFeed,
   latestWhatsNewSignal,
   modulesFromScope,
+  normalizeCommitBody,
   normalizeWhatsNewFeed,
   parseChangelogVisibility,
   parseConventionalSubject,
@@ -70,10 +71,20 @@ describe('whatsNewFeed parse', () => {
     ).toBeNull()
   })
 
+  it('normalizes escaped newlines in commit body', () => {
+    expect(normalizeCommitBody('第一行\\n\\n第二行\\nChangelog: skip')).toBe(
+      '第一行\n\n第二行\nChangelog: skip',
+    )
+    expect(formatCommitBodyAsSummary('第一行\\n\\n第二行\\n\\nSigned-off-by: Dev <dev@example.com>')).toBe(
+      '第一行\n\n第二行',
+    )
+  })
+
   it('honors Changelog skip/show trailers', () => {
     expect(parseChangelogVisibility('说明\n\nChangelog: skip\n')).toBe('skip')
     expect(parseChangelogVisibility('说明\n\nChangelog: show\n')).toBe('show')
     expect(parseChangelogVisibility('说明\n\nChangelog: hide\n')).toBe('skip')
+    expect(parseChangelogVisibility('说明\\n\\nChangelog: skip')).toBe('skip')
 
     expect(
       commitToWhatsNewItem({
@@ -98,6 +109,15 @@ describe('whatsNewFeed parse', () => {
       summary: '需要告知用户',
       modules: ['settings'],
     })
+
+    expect(
+      commitToWhatsNewItem({
+        hash: 'skip2',
+        subject: 'fix(tags): 也不该出现',
+        date: '2026-07-28',
+        body: '修复说明\\n\\nChangelog: skip',
+      }),
+    ).toBeNull()
   })
 
   it('groups by month and truncates', () => {

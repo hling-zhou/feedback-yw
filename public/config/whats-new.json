@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-08-01T11:39:59.582Z",
+  "generatedAt": "2026-08-01T12:07:41.908Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "b7d5874cc7c43179165ad882b7f3c4dde8b401d4",
+  "repoCommit": "3722adfa90f21b070e32dcc6827a4d26ba2088c2",
   "items": [
     {
       "id": "b7d5874cc7c43179165ad882b7f3c4dde8b401d4",
@@ -11,7 +11,7 @@
       "modules": [],
       "publishedAt": "2026-08-01",
       "appVersion": null,
-      "summary": "",
+      "summary": "- 升级洞察工作台的故事化展示结构，补齐典型问题、主题证据与行动恢复等关键视图\n- 新增用后即评月报预览、渠道包导入与 Word 月报相关流程\n- 调整分析维度、产品配置与相关说明文档，串起工作台与用后即评分析链路",
       "commitUrl": null,
       "source": "git"
     },

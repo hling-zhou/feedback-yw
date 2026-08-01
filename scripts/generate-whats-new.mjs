@@ -18,6 +18,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 const sincePath = join(__dirname, 'whats-new.since')
+const overridesPath = join(__dirname, 'whats-new.overrides.json')
 const outPath = join(root, 'public/config/whats-new.json')
 const MAX_ITEMS = 200
 
@@ -44,6 +45,24 @@ function readSince() {
     .map((l) => l.trim())
     .find(Boolean)
   return line || null
+}
+
+/**
+ * @returns {Record<string, Partial<import('../src/domain/whatsNewFeed.js').WhatsNewItem>>}
+ */
+function readOverrides() {
+  if (!existsSync(overridesPath)) return {}
+  try {
+    const parsed = JSON.parse(readFileSync(overridesPath, 'utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return /** @type {Record<string, Partial<import('../src/domain/whatsNewFeed.js').WhatsNewItem>>} */ (parsed)
+  } catch (err) {
+    console.warn(
+      '[generate:whats-new] invalid overrides file:',
+      err instanceof Error ? err.message : err,
+    )
+    return {}
+  }
 }
 
 /**
@@ -80,19 +99,30 @@ export function listCommitsSince(since) {
  *   commits: { hash: string; date: string; subject: string; body: string }[]
  *   repoCommit: string | null
  *   repoUrl?: string | null
+ *   overrides?: Record<string, Partial<import('../src/domain/whatsNewFeed.js').WhatsNewItem>>
  *   now?: string
  * }} input
  */
 export function buildWhatsNewFeed(input) {
   const repoUrl = String(input.repoUrl || '').replace(/\/$/, '')
+  const overrides = input.overrides || {}
   const items = truncateWhatsNewItems(
     input.commits
-      .map((commit) =>
-        commitToWhatsNewItem({
+      .map((commit) => {
+        const item = commitToWhatsNewItem({
           ...commit,
           commitUrl: repoUrl ? `${repoUrl}/commit/${commit.hash}` : null,
-        }),
-      )
+        })
+        if (!item) return null
+        const override = overrides[item.id]
+        if (!override) return item
+        return {
+          ...item,
+          ...override,
+          id: item.id,
+          source: item.source,
+        }
+      })
       .filter(Boolean),
     MAX_ITEMS,
   )
@@ -136,6 +166,7 @@ function main() {
     commits,
     repoCommit,
     repoUrl: process.env.WHATS_NEW_REPO_URL || '',
+    overrides: readOverrides(),
   })
 
   mkdirSync(dirname(outPath), { recursive: true })

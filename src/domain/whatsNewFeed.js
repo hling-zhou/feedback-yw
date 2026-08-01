@@ -86,6 +86,19 @@ const COMMIT_TRAILER_RE =
   /^(?:[A-Za-z0-9][\w-]*|[A-Z][a-z]+(?:-[A-Z][a-z]+)+):\s+\S|^Signed-off-by:\s+/i
 
 /**
+ * 某些提交工具会把多行 body 错误写成字面量 `\n`。
+ * 更新动态解析时将其视为真实换行，避免 summary / Changelog trailer 失真。
+ * @param {string} [body]
+ * @returns {string}
+ */
+export function normalizeCommitBody(body) {
+  return String(body ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+}
+
+/**
  * @param {string} line
  */
 export function isGitCommitTrailerLine(line) {
@@ -100,7 +113,7 @@ export function isGitCommitTrailerLine(line) {
  * @returns {string}
  */
 export function formatCommitBodyAsSummary(body) {
-  const raw = String(body ?? '').replace(/\r\n/g, '\n')
+  const raw = normalizeCommitBody(body)
   if (!raw.trim()) return ''
 
   const lines = raw.split('\n')
@@ -135,7 +148,7 @@ export function formatCommitBodyAsSummary(body) {
  * @returns {'skip' | 'show' | null}
  */
 export function parseChangelogVisibility(body) {
-  const raw = String(body ?? '').replace(/\r\n/g, '\n')
+  const raw = normalizeCommitBody(body)
   if (!raw.trim()) return null
   const lines = raw.split('\n')
   /** @type {'skip' | 'show' | null} */

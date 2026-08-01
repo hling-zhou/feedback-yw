@@ -8,6 +8,11 @@ describe('buildWhatsNewFeed', () => {
       repoCommit: 'bbb',
       now: '2026-07-29T12:00:00.000Z',
       repoUrl: 'https://github.com/acme/app',
+      overrides: {
+        '111aaaa': {
+          summary: '- 覆盖摘要',
+        },
+      },
       commits: [
         {
           hash: '111aaaa',
@@ -32,6 +37,7 @@ describe('buildWhatsNewFeed', () => {
     expect(feed.since).toBe('aaa')
     expect(feed.items).toHaveLength(2)
     expect(feed.items[0].commitUrl).toBe('https://github.com/acme/app/commit/111aaaa')
+    expect(feed.items[0].summary).toBe('- 覆盖摘要')
     expect(feed.items.map((i) => i.category)).toEqual(['feature', 'fix'])
   })
 })
