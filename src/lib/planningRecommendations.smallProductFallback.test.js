@@ -58,6 +58,8 @@ describe('small product journey×problemType fallback', () => {
     expect(rec?.summary).toMatch(/5\/8 单/)
     expect(rec?.evidenceNote).toMatch(/未形成痛点聚类/)
     expect(rec?.generationMeta?.fallbackType).toBe('small_product_journey_problem')
+    expect(rec?.stableKey).toMatch(/^pfr-/)
+    expect(rec?.generationMeta?.fingerprintVersion).toBe('fallback-stable-key-v1')
   })
 
   it('appendSmallProductJourneyProblemFallbacks adds fallback when cluster missing', () => {

@@ -188,7 +188,7 @@ function buildWorkbook(managedSheets, excelPath) {
         工作表: '（说明）',
         适用产品: '—',
         用途与填写要点:
-          '本文件由「标签管理 → 发布到服务端配置」从共享库生成。请求场景/问题类型/用户旅程以在线编辑为准；请求节点表若存在则保留原表未覆盖。',
+          '本文件由「分析维度 → 发布到服务端配置」从共享库生成。请求场景/问题类型/用户旅程以在线编辑为准；请求节点表若存在则保留原表未覆盖。',
         示例: new Date().toISOString(),
       },
     ]
@@ -291,7 +291,7 @@ export function publishTaxonomyToFiles(options = {}) {
 
   const rawSnapshot = storageRepository.getMeta(META_KEY_TAXONOMY_MANAGED)
   if (!rawSnapshot?.products) {
-    throw new Error('共享库中尚无标签配置，请先在标签管理中添加并保存')
+    throw new Error('共享库中尚无标签配置，请先在分析维度中添加并保存')
   }
 
   fs.mkdirSync(TAXONOMY_DIR, { recursive: true })

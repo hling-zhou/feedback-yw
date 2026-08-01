@@ -84,4 +84,28 @@ describe('resolveSnapshotRecords', () => {
     expect(workbenchSourceHasContent(feedbacks, period, snapshot)).toBe(true)
     expect(postUseRatingFollowUpHasContent(feedbacks, period, null)).toBe(true)
   })
+
+  it('does not reuse records or aggregate counts from another period snapshot', () => {
+    const period = {
+      id: 'period:month:2026-05',
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+    }
+    const feedbacks = [
+      { id: 'apr', dataSourceType: 'post_use_rating', importMonth: '2026-04' },
+      { id: 'may', dataSourceType: 'post_use_rating', importMonth: '2026-05' },
+    ]
+    const oldSnapshot = {
+      insightPeriodId: 'period:month:2026-04',
+      dataSourceType: 'post_use_rating',
+      status: 'ready',
+      recordIds: ['apr'],
+      summary: { recordCount: 1 },
+      aggregates: { followUpSatisfactionMetrics: { scoredCount: 9 } },
+    }
+
+    expect(workbenchSourceHasContent(feedbacks, period, oldSnapshot)).toBe(true)
+    expect(workbenchSourceHasContent([], period, oldSnapshot)).toBe(false)
+    expect(postUseRatingFollowUpHasContent([], period, oldSnapshot)).toBe(false)
+  })
 })

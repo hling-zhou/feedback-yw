@@ -56,7 +56,7 @@ describe('pain point clustering integration', () => {
       records: records.filter((r) => r.dataSourceType === 'consultation_ticket'),
     })
 
-    expect(complaintSnap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.0')
+    expect(complaintSnap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.3')
 
     const sourceSnapshots = {
       complaint_ticket: complaintSnap,
@@ -70,10 +70,12 @@ describe('pain point clustering integration', () => {
       crossSourceMetrics: { totalRecords: records.length },
     })
 
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(conclusions.recommendationsMeta?.legacyFallback).not.toBe(true)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
-    expect(conclusions.recommendations[0].signalType).toBe('pain_cluster_v2')
+    expect(['pain_cluster_v2', 'overview_fused_cluster', 'high_risk_singleton']).toContain(
+      conclusions.recommendations[0].signalType,
+    )
     expect(conclusions.recommendations[0].sections?.painClusterScores).toBeTruthy()
 
     const overview = buildOverviewSnapshot({
@@ -82,7 +84,7 @@ describe('pain point clustering integration', () => {
       feedbacks: records,
       sourceSnapshots,
     })
-    expect(overview.conclusions?.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(overview.conclusions?.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
   })
 
   it('V2 无 Top 10 → 不展示行动建议并写入提示', () => {
@@ -108,10 +110,14 @@ describe('pain point clustering integration', () => {
       sourceSnapshots: { complaint_ticket: complaintSnap },
       crossSourceMetrics: { totalRecords: records.length },
     })
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(conclusions.recommendationsMeta?.legacyFallback).toBe(false)
-    expect(conclusions.recommendations).toHaveLength(0)
-    expect(conclusions.dataCoverageNotes?.some((n) => n.includes('未形成痛点聚类'))).toBe(true)
+    expect(conclusions.recommendationsMeta?.formalClusterCount || 0).toBe(0)
+    expect(conclusions.recommendations.every((rec) => rec.signalType !== 'pain_cluster_v2')).toBe(true)
+    expect(
+      (conclusions.recommendationsMeta?.fallbackReferenceCount || 0)
+        + (conclusions.recommendationsMeta?.singletonCount || 0),
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('低价值剔除备注写入 dataCoverageNotes', () => {

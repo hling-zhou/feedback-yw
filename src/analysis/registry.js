@@ -44,11 +44,12 @@ const DESCRIPTORS = [
     id: 'pipeline-post-use-rating',
     dataSourceType: 'post_use_rating',
     label: DATA_SOURCE_LABELS.post_use_rating,
-    pipelineVersion: 'post-use-stub-0.1.0',
+    pipelineVersion: 'post-use-channel-1.0.0',
     importPresetIds: ['post-use-rating'],
     snapshotMetrics: getMetricsForSource('post_use_rating').map((m) => m.id),
+    // 双文件渠道导入 + 工作台指标已落地；独立行仍走 Stub 记录工厂
     PipelineClass: StubAnalysisPipeline,
-    implementationStatus: 'stub',
+    implementationStatus: 'production',
   },
   {
     id: 'pipeline-user-survey',

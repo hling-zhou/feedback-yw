@@ -593,7 +593,7 @@ export function sectionsToLegacyDetails(sections) {
  */
 function buildPlanningRecommendationSectionsCore(rec, evidencePool = []) {
   const pool = evidencePool || []
-  const isClusterV2 = rec.signalType === 'pain_cluster_v2'
+  const isClusterV2 = ['pain_cluster_v2', 'high_risk_singleton', 'overview_fused_cluster'].includes(rec.signalType)
   const summary = isClusterV2
     ? buildInsightExecutiveSummary(rec, pool, rec.generationMeta?.representativePain) ||
       enforceExecutiveSummary((rec.summary || rec.text || '').trim())

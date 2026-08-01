@@ -93,6 +93,8 @@ import ActionItemRequirementLinkFields, {
   normalizeRequirementTicketIdsFromForm,
   toRequirementTicketFormList,
 } from '../components/actions/ActionItemRequirementLinkFields.jsx'
+import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
+import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
   clearAllActionItemFilters,
@@ -101,7 +103,6 @@ import {
 import {
   formatActionItemUpdatedAtDisplay,
   formatActionItemUpdatedByDisplay,
-  formatActionItemUpdatedByLine,
   getActionItemRevision,
   toActionItemConflictError,
 } from '../domain/actionItemRevision.js'
@@ -183,7 +184,8 @@ function parseTicketIdsFromInput(text) {
 }
 
 export default function Actions() {
-  const { user } = useAuth()
+  const { user, can } = useAuth()
+  const canEditAction = can('editRecord')
   const isAdmin = user?.role === 'admin'
   const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTask, reprocessing } =
     useInsights()
@@ -539,6 +541,15 @@ export default function Actions() {
   }
 
   const openEdit = (record) => {
+    if (editOpen && editing?.id === record.id) return
+    if (editOpen && isEditFormDirty()) {
+      confirmDiscardActionItemDrawerEdits(() => openEditDirect(record))
+      return
+    }
+    openEditDirect(record)
+  }
+
+  const openEditDirect = (record) => {
     setEditing(record)
     baseRevisionRef.current = getActionItemRevision(record)
     setEditStale(false)
@@ -554,6 +565,45 @@ export default function Actions() {
       requirementTicketIds: toRequirementTicketFormList(record.linkedRequirementTicketIds),
     })
     setEditOpen(true)
+  }
+
+  const closeEditDrawer = () => {
+    setEditOpen(false)
+    setEditing(null)
+    setEditStale(false)
+    setConflictOpen(false)
+  }
+
+  const isEditFormDirty = () => {
+    if (!editing || !canEditAction || isActionItemLocked(editing.status)) return false
+    const values = editForm.getFieldsValue(true)
+    const requirementLinked = Boolean(values.requirementLinkEnabled)
+    const baselineLinked =
+      editing.requirementLinkMode || hasRequirementTicketLinks(editing)
+    if (requirementLinked !== baselineLinked) return true
+    const detail = String(values.detail ?? '').trim()
+    if (detail !== String(editing.detail || '').trim()) return true
+    const baselineIds = (editing.linkedRequirementTicketIds || []).join('\n')
+    const currentIds = normalizeRequirementTicketIdsFromForm(values.requirementTicketIds).join(
+      '\n',
+    )
+    if (currentIds !== baselineIds) return true
+    if (requirementLinked) return false
+    if (String(values.content ?? '').trim() !== String(editing.content || '').trim()) return true
+    if ((values.status || '') !== (editing.status || '')) return true
+    const scheduleText = values.scheduleAt
+      ? dayjs(values.scheduleAt).format('YYYY-MM-DD')
+      : ''
+    if (scheduleText !== String(editing.scheduleAt || '').trim()) return true
+    return false
+  }
+
+  const requestCloseEditDrawer = () => {
+    if (!isEditFormDirty()) {
+      closeEditDrawer()
+      return
+    }
+    confirmDiscardActionItemDrawerEdits(closeEditDrawer)
   }
 
   const handleEditRequirementLinkModeChange = (enabled) => {
@@ -667,8 +717,7 @@ export default function Actions() {
     })
     const synced = await syncLinkedTicketCopies(updated, feedbacks, updateFeedback)
     message.success(synced > 0 ? `已保存，并同步 ${synced} 条关联反馈` : '已保存')
-    setEditOpen(false)
-    setConflictOpen(false)
+    closeEditDrawer()
     loadItems()
     loadStats()
   }
@@ -965,11 +1014,13 @@ export default function Actions() {
       key: 'linkedTickets',
       width: 110,
       render: (_, record) => (
-        <LinkedTicketsCell
-          ticketIds={resolveLinkedTicketIds(record)}
-          feedbackByTicketId={feedbackByTicketId}
-          onOpenTicket={openFeedbackByTicketId}
-        />
+        <div onClick={(event) => event.stopPropagation()}>
+          <LinkedTicketsCell
+            ticketIds={resolveLinkedTicketIds(record)}
+            feedbackByTicketId={feedbackByTicketId}
+            onOpenTicket={openFeedbackByTicketId}
+          />
+        </div>
       ),
     },
     {
@@ -979,10 +1030,12 @@ export default function Actions() {
       key: 'linkedRequirementTickets',
       width: 160,
       render: (_, record) => (
-        <RequirementTicketsCell
-          ticketIds={record.linkedRequirementTicketIds}
-          requirementTickets={record.requirementTickets}
-        />
+        <div onClick={(event) => event.stopPropagation()}>
+          <RequirementTicketsCell
+            ticketIds={record.linkedRequirementTicketIds}
+            requirementTickets={record.requirementTickets}
+          />
+        </div>
       ),
     },
     {
@@ -1067,19 +1120,16 @@ export default function Actions() {
         const deleteCheck = canDeleteActionItem(record)
         const deleteBlocked = !deleteCheck.ok
         return (
-          <Space size={4}>
-            <PermissionGate permission="editRecord">
-              <Tooltip title={locked ? '已结束，不可编辑' : '修改状态 / 内容 / 排期'}>
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EditOutlined />}
-                  className="!px-0"
-                  disabled={locked}
-                  onClick={() => openEdit(record)}
-                />
-              </Tooltip>
-            </PermissionGate>
+          <Space size={4} onClick={(event) => event.stopPropagation()}>
+            <Tooltip title={locked ? '查看详情（已结束，不可编辑）' : '查看 / 编辑举措'}>
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                className="!px-0"
+                onClick={() => openEdit(record)}
+              />
+            </Tooltip>
             {isAdmin ? (
               deleteBlocked ? (
                 <Tooltip title={ACTION_ITEM_DELETE_BLOCKED_MESSAGE}>
@@ -1124,7 +1174,7 @@ export default function Actions() {
     <div className="space-y-4">
       <PageHeader
         title="举措与进展"
-        desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。"
+        desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。点击行可打开举措详情。"
         hint={ACTIONS_PAGE_SUBTITLE_HINT}
         action={
           <Space wrap>
@@ -1264,6 +1314,10 @@ export default function Actions() {
           dataSource={items}
           sticky={{ offsetHeader: stickyChromeHeight }}
           scroll={{ x: 1960 }}
+          onRow={(record) => ({
+            onClick: () => openEdit(record),
+            className: 'cursor-pointer',
+          })}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,
@@ -1418,130 +1472,33 @@ export default function Actions() {
         ) : null}
       </Modal>
 
-      <Modal
-        title="编辑举措"
+      <ActionItemDrawer
+        item={
+          editing
+            ? items.find((item) => item.id === editing.id) || editing
+            : null
+        }
         open={editOpen}
-        centered
-        onCancel={() => setEditOpen(false)}
-        onOk={editLocked ? undefined : () => handleEditSave()}
-        okButtonProps={{ style: editLocked ? { display: 'none' } : undefined }}
-        cancelText={editLocked ? '关闭' : '取消'}
-        confirmLoading={saving}
-        destroyOnClose
-        classNames={ACTION_FORM_MODAL_CLASS_NAMES}
-        styles={ACTION_FORM_MODAL_STYLES}
-      >
-        {editLocked ? (
-          <Alert
-            type="info"
-            showIcon
-            className="!mb-3"
-            message="该举措已结束"
-            description="已完成、不予实施、异常终止的举措不可再修改内容、排期或状态。"
-          />
-        ) : null}
-        {editRequirementLinked && !editLocked ? (
-          <Alert
-            type="info"
-            showIcon
-            className="!mb-3"
-            message="已选择关联需求工单"
-            description="各需求工单的排期与状态将自动从「需求工单进展同步」读取并展示，不可修改。切换为「不关联」后可自行填写举措排期与状态。"
-          />
-        ) : null}
-        {editStale ? (
-          <Alert
-            type="warning"
-            showIcon
-            className="!mb-3"
-            message="此举措已被他人更新"
-            description={
-              <>
-                {formatActionItemUpdatedByLine(
-                  items.find((item) => item.id === editing?.id) || editing,
-                ) || '列表数据已同步为较新版本。'}
-                {' '}
-                继续编辑可能覆盖他人修改；保存时将再次校验。
-              </>
-            }
-            action={
-              <Button size="small" onClick={handleReloadStaleEdit}>
-                加载最新
-              </Button>
-            }
-          />
-        ) : null}
-        <Form form={editForm} layout="vertical" className="mt-2">
-          <Form.Item
-            name="content"
-            label="举措内容"
-            rules={[
-              { required: true, message: '请输入举措内容' },
-              { max: ACTION_ITEM_CONTENT_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_CONTENT_MAX_LENGTH} 字` },
-            ]}
-          >
-            <Input.TextArea
-              rows={4}
-              showCount
-              maxLength={ACTION_ITEM_CONTENT_MAX_LENGTH}
-              disabled={editCoreFieldsLocked}
-            />
-          </Form.Item>
-          <Form.Item
-            name="detail"
-            label="举措详情（可选）"
-            rules={[{ max: ACTION_ITEM_DETAIL_MAX_LENGTH, message: `不超过 ${ACTION_ITEM_DETAIL_MAX_LENGTH} 字` }]}
-          >
-            <Input.TextArea
-              rows={3}
-              showCount
-              maxLength={ACTION_ITEM_DETAIL_MAX_LENGTH}
-              disabled={editLocked}
-            />
-          </Form.Item>
-          <ActionItemRequirementLinkFields
-            form={editForm}
-            disabled={editLocked}
-            initialTicketDetails={editing?.requirementTickets}
-            onLinkModeChange={handleEditRequirementLinkModeChange}
-          />
-          {!editRequirementLinked ? (
-            <>
-              <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-                <Select
-                  options={editStatusOptions}
-                  disabled={editCoreFieldsLocked}
-                  onChange={handleEditStatusChange}
-                />
-              </Form.Item>
-              <Form.Item
-                name="scheduleAt"
-                label="排期时间"
-                dependencies={['status']}
-                rules={
-                  editScheduleRequired
-                    ? [{ required: true, message: '进行中须填写排期时间' }]
-                    : []
-                }
-              >
-                <DatePicker
-                  className="w-full"
-                  format="YYYY-MM-DD"
-                  placeholder={
-                    editScheduleDisabled && !editLocked
-                      ? '当前状态无需排期'
-                      : editScheduleRequired
-                        ? '请选择排期（必填）'
-                        : undefined
-                  }
-                  allowClear
-                  disabled={editScheduleDisabled}
-                />
-              </Form.Item>
-            </>
-          ) : null}
-        </Form>
-      </Modal>
+        onClose={requestCloseEditDrawer}
+        form={editForm}
+        canEdit={canEditAction}
+        locked={editLocked}
+        requirementLinked={editRequirementLinked}
+        coreFieldsLocked={editCoreFieldsLocked || !canEditAction}
+        scheduleDisabled={editScheduleDisabled || !canEditAction}
+        scheduleRequired={editScheduleRequired}
+        statusOptions={editStatusOptions}
+        stale={editStale}
+        onReloadStale={handleReloadStaleEdit}
+        saving={saving}
+        onSave={() => void handleEditSave()}
+        onRequirementLinkModeChange={handleEditRequirementLinkModeChange}
+        onStatusChange={handleEditStatusChange}
+        feedbackByTicketId={feedbackByTicketId}
+        onOpenTicket={openFeedbackByTicketId}
+        productNameByKey={productNameByKey}
+        linkedTicketIds={editing ? resolveLinkedTicketIds(editing) : []}
+      />
 
       <ActionItemConflictModal
         open={conflictOpen}

@@ -1,0 +1,275 @@
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
+import TicketStoryView from './TicketStoryView.jsx'
+
+vi.mock('../charts/TrendChart.jsx', () => ({
+  default: ({ data = [] }) => <div data-testid="trend-chart">trend:{data.length}</div>,
+}))
+
+vi.mock('../charts/ThemeBarChart.jsx', () => ({
+  default: ({ data = [] }) => <div data-testid="theme-bar-chart">bars:{data.length}</div>,
+}))
+
+function buildModel() {
+  return {
+    scope: {
+      sourceType: 'complaint_ticket',
+      sourceLabel: '投诉工单',
+      periodLabel: '2026年6月',
+      selectedProduct: '全部产品',
+      total: 2,
+      productCount: 1,
+      qualityStatus: '数据质量正常',
+      qualityWarningCount: 0,
+      pipelineVersion: 'ticket-v1',
+      clusteringVersion: 'v2.0',
+    },
+    conclusions: [
+      { key: 'overall', label: '整体状态', value: '负向反馈需重点关注', detail: '工单 2 条', target: '#ticket-status' },
+    ],
+    overview: {
+      metrics: {
+        total: 2,
+        negativeCount: 2,
+        negativePct: 100,
+        urgentCount: 0,
+        followUpCount: 1,
+        followUpTenPointRate: 0,
+        unresolvedCount: 1,
+        customerExperienceComplaintCount: 2,
+        highFrequencyTopicCount: 0,
+        repeatConsultationPct: 0,
+        selfServicePct: 0,
+      },
+      productOverview: [
+        {
+          product: '弹性公网IP',
+          count: 2,
+          sharePct: 100,
+          delta: 1,
+          negativeCount: 2,
+          negativePct: 100,
+          primaryProblem: '公网IP无法访问',
+          primaryJourney: '使用',
+          followUpEvidence: 1,
+          actionStatus: '待创建',
+          wanTouRatio: null,
+          wanTouTargetMet: null,
+          smallSample: true,
+        },
+      ],
+      wanTou: { productKey: null, trend: [], latest: null, evaluation: { target: null } },
+    },
+    trendsAndChanges: {
+      volumeTrend: [{ date: '2026-06', count: 2, negative: 2, negativePct: 100 }],
+      changes: [],
+      currentMonth: '',
+      previousMonth: '',
+    },
+    drivers: {
+      requestScenes: [],
+      journeyTree: [],
+      problemTypes: [],
+      locationRows: [],
+      complaintCauses: [{ name: '产品能力', count: 2 }],
+      emptyState: null,
+      clusters: [
+        {
+          id: 'cluster-1',
+          priority: 'high',
+          product: '弹性公网IP',
+          pain: '公网IP无法访问',
+          customerRequest: '客户反馈公网不通',
+          rootCause: '安全组未放行',
+          ticketCount: 2,
+          sharePct: 100,
+          breadthScore: 5,
+          severity: 5,
+          emotion: 4,
+          priorityScore: 4.5,
+          basis: '痛点聚类 V2：优先级 4.5 分',
+        },
+      ],
+      fallbackReferences: [
+        {
+          id: 'fallback-1',
+          priority: 'low',
+          product: '弹性公网IP',
+          pain: '控制台配置路径不清晰',
+          customerRequest: '客户找不到配置入口',
+          rootCause: '缺少路径提示',
+          ticketCount: 1,
+          sharePct: 50,
+          basis: '小产品（1 单）按旅程×问题类型频次推断',
+        },
+      ],
+      opportunities: [],
+    },
+    impactAndEvidence: {
+      highValueCount: 1,
+      strongNegativeCount: 0,
+      urgentCount: 0,
+      unresolvedCount: 1,
+      summary: {
+        status: 'linked',
+        executiveSummary: '当前最需要重点关注的是「公网IP无法访问」，该主题已同时出现高价值客户、回访未解决。',
+        focusItems: [
+          {
+            themeId: 'pcl-1',
+            themeLabel: '公网IP无法访问',
+            riskLevel: 'high',
+            riskSignals: ['高价值客户', '回访未解决'],
+            summary: '公网IP无法访问已影响高价值客户，并出现回访未解决。',
+            evidenceRecordIds: ['record-1'],
+            evidenceTicketIds: ['20260416174551X751972102'],
+            inferred: false,
+          },
+        ],
+      },
+      themeLinks: [
+        {
+          themeId: 'pcl-1',
+          themeLabel: '公网IP无法访问',
+          riskLevel: 'high',
+          impactSignals: { highValueCount: 1, negativeCount: 0, urgentCount: 0, unresolvedCount: 1 },
+          inferred: false,
+          records: [
+            {
+              id: 'record-1',
+              ticketId: '20260416174551X751972102',
+              product: '弹性公网IP',
+              customerTier: '战略',
+              customerRequest: '客户反馈公网不通，需要尽快排查',
+              painPoint: '公网 IP 无法访问',
+              rootCause: '安全组未放行',
+              solutionSummary: '协助核查放通规则',
+              followUpSatisfaction: { score: 6, problemResolved: 'unresolved' },
+            },
+          ],
+        },
+      ],
+      records: [
+        {
+          id: 'record-1',
+          ticketId: '20260416174551X751972102',
+          product: '弹性公网IP',
+          customerTier: '战略',
+          customerRequest: '客户反馈公网不通，需要尽快排查',
+          painPoint: '公网 IP 无法访问',
+          rootCause: '安全组未放行',
+          solutionSummary: '协助核查放通规则',
+          followUpSatisfaction: { score: 6, problemResolved: 'unresolved' },
+        },
+      ],
+    },
+    actionsAndRecovery: {
+      rows: [],
+      recoveryRows: [],
+      pendingActions: 1,
+      notImproved: 0,
+    },
+    quality: {
+      pipelineVersion: 'ticket-v1',
+      clusteringVersion: 'v2.0',
+      tagLibraryVersion: 'tag-v1',
+      counts: {
+        missingRequestScene: 0,
+        missingProblemType: 0,
+        missingJourney: 0,
+        missingPain: 0,
+      },
+      anomalies: [],
+    },
+  }
+}
+
+describe('TicketStoryView render', () => {
+  it('renders formal cluster and fallback reference sections with distinct columns', () => {
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={buildModel()} creatingInsightId="" />,
+    )
+    expect(html).toContain('正式痛点聚类（V2）')
+    expect(html).toContain('小样本参考项')
+    expect(html).toContain('广度分')
+    expect(html).toContain('P90情绪')
+    expect(html).toContain('推断型')
+    expect(html).toContain('参考主题')
+  })
+
+  it('prevents long fixed-left ticket ids from overflowing adjacent evidence columns', () => {
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={buildModel()} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('ticket-evidence-table')
+    expect(html).toContain('ticket-evidence-table__ticket-link')
+    expect(html).toContain('table-layout:fixed')
+  })
+
+  it('renders linked impact focus summary and grouped theme evidence', () => {
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={buildModel()} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('重点关注')
+    expect(html).toContain('查看该主题证据')
+    expect(html).toContain('主题证据')
+    expect(html).toContain('高风险')
+  })
+
+  it('renders refresh-empty state when V2 recommendations are pending refresh', () => {
+    const model = buildModel()
+    model.drivers.clusters = []
+    model.drivers.fallbackReferences = []
+    model.drivers.emptyState = {
+      kind: 'pending_refresh',
+      alertType: 'warning',
+      title: '当前快照待刷新',
+      description: '当前快照未包含可展示的 V2 痛点聚类结果，请先点击「生成 / 刷新洞察」后再查看。',
+    }
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('当前快照待刷新')
+    expect(html).toContain('暂无正式痛点聚类结果')
+  })
+
+  it('renders product-empty state when current product has no matching recommendations', () => {
+    const model = buildModel()
+    model.drivers.clusters = []
+    model.drivers.fallbackReferences = []
+    model.drivers.emptyState = {
+      kind: 'product_empty',
+      alertType: 'info',
+      title: '当前产品暂无结果',
+      description: '已切换到「专有网络 VPC」，但该产品在当前周期未形成正式痛点聚类或小样本参考项，可切回“全部产品”查看整体结果。',
+    }
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('当前产品暂无结果')
+    expect(html).toContain('专有网络 VPC')
+  })
+
+  it('falls back to ungrouped evidence when no theme is available', () => {
+    const model = buildModel()
+    model.impactAndEvidence.summary = {
+      status: 'evidence_only',
+      executiveSummary: '当前未形成稳定主题，以下为高风险信号证据。',
+      focusItems: [],
+    }
+    model.impactAndEvidence.themeLinks = []
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('当前未形成稳定主题')
+    expect(html).toContain('高风险信号证据')
+  })
+})

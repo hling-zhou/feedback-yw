@@ -511,7 +511,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
               showIcon
               className="!mb-3"
               title="虚拟私有云旅程尚未写入共享库"
-              description="共享库中该产品模板可能仍为空。点击下方「修复内置旅程」将 7 个一级、24 个二级环节写入团队标签库（需标签管理权限）。"
+              description="共享库中该产品模板可能仍为空。点击下方「修复内置旅程」将 7 个一级、24 个二级环节写入团队标签库（需分析维度权限）。"
               action={
                 !readOnly ? (
                   <Button size="small" loading={repairing} onClick={handleRepairBuiltinJourneys}>

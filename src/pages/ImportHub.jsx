@@ -13,7 +13,7 @@ export default function ImportHub() {
   if (searchParams.get('tab') === TAB_FOLLOW_UP) {
     return (
       <Navigate
-        to="/import?source=post_use_rating&subType=satisfaction_callback"
+        to="/import?source=post_use_rating&subType=channel_bundle"
         replace
       />
     )

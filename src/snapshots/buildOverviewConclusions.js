@@ -3,9 +3,20 @@ import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWanTouByProducts } from '../lib/wanTouRatio.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { limitPlanningRecommendations, appendSmallProductJourneyProblemFallbacks } from '../lib/planningRecommendations.js'
+import {
+  CLUSTER_FAMILY_STABLE_KEY_VERSION,
+  CLUSTER_STABLE_KEY_VERSION,
+  FALLBACK_STABLE_KEY_VERSION,
+  isFallbackReferenceRecommendation,
+  isFormalPainClusterRecommendation,
+  isHighRiskSingletonRecommendation,
+  isOverviewFusedClusterRecommendation,
+} from '../lib/planningRecommendations.js'
 import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
 import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
 import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
+import { buildOverviewFusedRecommendations } from '../lib/painPointClustering/overviewClusterFusion.js'
+import { resolveClusterProfile } from '../lib/painPointClustering/resolveClusterProfile.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
 import { getPlanningConfigVersions } from '../lib/planningConfigLoader.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from './rehydrateOverviewRecommendations.js'
@@ -59,7 +70,11 @@ export function buildOverviewConclusions({
     filterRecordsForScope(feedbacks, period, type),
   )
   const complaintRecords = filterRecordsForScope(feedbacks, period, 'complaint_ticket')
+  const consultationRecords = filterRecordsForScope(feedbacks, period, 'consultation_ticket')
   const sampleSize = ticketRecords.length
+  const complaintProfile = resolveClusterProfile({ sourceType: 'complaint_ticket' })
+  const consultationProfile = resolveClusterProfile({ sourceType: 'consultation_ticket' })
+  const overviewProfile = resolveClusterProfile({ scenario: 'overview' })
 
   /** @type {string[]} */
   const dataCoverageNotes = []
@@ -107,15 +122,46 @@ export function buildOverviewConclusions({
     dataCoverageNotes.push('部分产品月订单数未维护，万投比可能不完整（见设置 → 产品月订单数）')
   }
 
-  const { recommendations: rawRecommendations, pipelineResults } =
-    buildClusterRecommendationsFromPipeline(ticketRecords, { settings })
-
-  const recommendationsWithFallbacks = appendSmallProductJourneyProblemFallbacks(
-    rawRecommendations,
-    ticketRecords,
+  const complaintResult = buildClusterRecommendationsFromPipeline(complaintRecords, {
+    settings,
+    profile: complaintProfile,
+  })
+  const consultationResult = buildClusterRecommendationsFromPipeline(consultationRecords, {
+    settings,
+    profile: consultationProfile,
+  })
+  const complaintRecommendations = appendSmallProductJourneyProblemFallbacks(
+    complaintResult.recommendations,
+    complaintRecords,
   )
+  const consultationRecommendations = appendSmallProductJourneyProblemFallbacks(
+    consultationResult.recommendations,
+    consultationRecords,
+  )
+  const { fusedRecommendations, fallbackRecommendations } = buildOverviewFusedRecommendations(
+    complaintRecommendations,
+    consultationRecommendations,
+  )
+  const rawRecommendations = [...fusedRecommendations, ...fallbackRecommendations]
+  const recommendationsWithFallbacks = rawRecommendations
+  const pipelineResults = [...complaintResult.pipelineResults, ...consultationResult.pipelineResults]
   const smallProductFallbackCount =
-    recommendationsWithFallbacks.length - rawRecommendations.length
+    complaintRecommendations.length
+    - complaintResult.recommendations.length
+    + consultationRecommendations.length
+    - consultationResult.recommendations.length
+  const formalClusterCount = recommendationsWithFallbacks.filter((rec) =>
+    isFormalPainClusterRecommendation(rec),
+  ).length
+  const fallbackReferenceCount = recommendationsWithFallbacks.filter((rec) =>
+    isFallbackReferenceRecommendation(rec),
+  ).length
+  const singletonCount = recommendationsWithFallbacks.filter((rec) =>
+    isHighRiskSingletonRecommendation(rec),
+  ).length
+  const overviewFusedCount = recommendationsWithFallbacks.filter((rec) =>
+    isOverviewFusedClusterRecommendation(rec),
+  ).length
 
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote) dataCoverageNotes.push(exclusionNote)
@@ -156,11 +202,19 @@ export function buildOverviewConclusions({
       ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
       playbookVersion: configVersions.playbookVersion,
       signalWeightsVersion: configVersions.signalWeightsVersion,
-      recommendationEngine: 'pain_cluster_v2',
+      recommendationEngine: 'pain_cluster_v2_3',
       legacyFallback: false,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,
       smallProductFallbackCount: smallProductFallbackCount || undefined,
+      formalClusterCount,
+      fallbackReferenceCount: fallbackReferenceCount || undefined,
+      singletonCount: singletonCount || undefined,
+      overviewFusedCount: overviewFusedCount || undefined,
+      stableKeyVersion: `${CLUSTER_STABLE_KEY_VERSION}|${FALLBACK_STABLE_KEY_VERSION}|${CLUSTER_FAMILY_STABLE_KEY_VERSION}`,
+      profileId: overviewProfile.profileId,
+      scoreModelVersion: overviewProfile.scoreModelVersion,
+      fingerprintVersion: overviewProfile.fingerprintVersion,
       cappedCount: recommendations.length,
       removedFromPreviousCount,
     },

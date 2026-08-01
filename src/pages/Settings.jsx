@@ -120,28 +120,74 @@ function llmConfigSource(settings, serverConfiguredHint) {
 }
 
 /**
+ * @param {import('../lib/storage.js').AppSettings} settings
+ */
+function pickLlmDraft(settings) {
+  return {
+    llmApiKey: settings.llmApiKey || '',
+    llmBaseUrl: settings.llmBaseUrl || '',
+    llmModel: settings.llmModel || '',
+  }
+}
+
+/**
+ * @param {import('../lib/storage.js').AppSettings} settings
+ */
+function pickAnalysisDraft(settings) {
+  return {
+    retagDimensionsAfterTicketLlm: settings.retagDimensionsAfterTicketLlm !== false,
+    useRequestNodeForJourney: settings.useRequestNodeForJourney === true,
+    themeMatchMode: settings.themeMatchMode,
+    optimizationMode: settings.optimizationMode || 'llm',
+  }
+}
+
+/**
  * @param {Object} props
  * @param {import('../lib/storage.js').AppSettings} props.settings
- * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onChange
+ * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onSave
+ * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onServerStatusChange
  */
-function LlmSettingsPanel({ settings, onChange }) {
+function LlmSettingsPanel({ settings, onSave, onServerStatusChange }) {
+  const message = useAppMessage()
+  const [draft, setDraft] = useState(() => pickLlmDraft(settings))
+  const [saving, setSaving] = useState(false)
   const [serverConfiguredHint, setServerConfiguredHint] = useState(
     () => settings.llmServerConfigured === true || getLlmServerConfigured() === true,
   )
+
+  useEffect(() => {
+    setDraft(pickLlmDraft(settings))
+  }, [settings.llmApiKey, settings.llmBaseUrl, settings.llmModel])
 
   useEffect(() => {
     let cancelled = false
     refreshLlmServerStatus().then((configured) => {
       if (cancelled) return
       setServerConfiguredHint(configured)
-      onChange({ llmServerConfigured: configured })
+      onServerStatusChange({ llmServerConfigured: configured })
     })
     return () => {
       cancelled = true
     }
-  }, [onChange])
+  }, [onServerStatusChange])
 
-  const configSource = llmConfigSource(settings, serverConfiguredHint)
+  const configSource = llmConfigSource(
+    { ...settings, llmApiKey: draft.llmApiKey },
+    serverConfiguredHint,
+  )
+
+  const handleSave = () => {
+    setSaving(true)
+    try {
+      onSave(draft)
+      message.success('已保存大模型配置')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -180,8 +226,8 @@ function LlmSettingsPanel({ settings, onChange }) {
           </Typography.Text>
           <Input.Password
             placeholder="sk-…"
-            value={settings.llmApiKey || ''}
-            onChange={(e) => onChange({ llmApiKey: e.target.value })}
+            value={draft.llmApiKey}
+            onChange={(e) => setDraft((prev) => ({ ...prev, llmApiKey: e.target.value }))}
             autoComplete="off"
           />
         </div>
@@ -191,8 +237,8 @@ function LlmSettingsPanel({ settings, onChange }) {
           <Typography.Text strong className="mb-1 block text-xs">API 地址</Typography.Text>
           <Input
             placeholder="https://api.siliconflow.cn/v1"
-            value={settings.llmBaseUrl || ''}
-            onChange={(e) => onChange({ llmBaseUrl: e.target.value })}
+            value={draft.llmBaseUrl}
+            onChange={(e) => setDraft((prev) => ({ ...prev, llmBaseUrl: e.target.value }))}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             留空则使用服务端 LLM_BASE_URL（若已配置）
@@ -202,15 +248,178 @@ function LlmSettingsPanel({ settings, onChange }) {
           <Typography.Text strong className="mb-1 block text-xs">模型</Typography.Text>
           <Input
             placeholder="deepseek-ai/DeepSeek-V3.2"
-            value={settings.llmModel || ''}
-            onChange={(e) => onChange({ llmModel: e.target.value })}
+            value={draft.llmModel}
+            onChange={(e) => setDraft((prev) => ({ ...prev, llmModel: e.target.value }))}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             留空则使用服务端 LLM_MODEL（若已配置）
           </Typography.Text>
         </div>
       </div>
+      <Button type="primary" loading={saving} onClick={handleSave}>
+        保存大模型配置
+      </Button>
     </div>
+  )
+}
+
+/**
+ * @param {ReturnType<typeof pickAnalysisDraft>} draft
+ * @param {import('../lib/storage.js').AppSettings} settings
+ */
+function isAnalysisDraftDirty(draft, settings) {
+  const saved = pickAnalysisDraft(settings)
+  return (
+    draft.retagDimensionsAfterTicketLlm !== saved.retagDimensionsAfterTicketLlm ||
+    draft.useRequestNodeForJourney !== saved.useRequestNodeForJourney ||
+    draft.themeMatchMode !== saved.themeMatchMode ||
+    draft.optimizationMode !== saved.optimizationMode
+  )
+}
+
+/**
+ * @param {Object} props
+ * @param {import('../lib/storage.js').AppSettings} props.settings
+ * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onSave
+ */
+function AnalysisSettingsPanel({ settings, onSave }) {
+  const message = useAppMessage()
+  const [draft, setDraft] = useState(() => pickAnalysisDraft(settings))
+  const [saving, setSaving] = useState(false)
+  const dirty = isAnalysisDraftDirty(draft, settings)
+
+  useEffect(() => {
+    setDraft(pickAnalysisDraft(settings))
+  }, [
+    settings.retagDimensionsAfterTicketLlm,
+    settings.useRequestNodeForJourney,
+    settings.themeMatchMode,
+    settings.optimizationMode,
+  ])
+
+  const handleSave = () => {
+    setSaving(true)
+    try {
+      onSave(draft)
+      message.success('已保存分析与打标设置')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDiscard = () => {
+    setDraft(pickAnalysisDraft(settings))
+  }
+
+  return (
+    <>
+      <div className={`space-y-6 ${dirty ? 'pb-20' : ''}`}>
+        <Card title="维度打标">
+          <Checkbox
+            checked={draft.retagDimensionsAfterTicketLlm}
+            onChange={(e) =>
+              setDraft((prev) => ({ ...prev, retagDimensionsAfterTicketLlm: e.target.checked }))
+            }
+          >
+            工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型
+          </Checkbox>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            默认开启。仅对本次 ticket LLM 成功写入客户请求或痛点的工单生效；尊重工单详情中人工保存的标签维度。
+          </Typography.Text>
+        </Card>
+
+        <Card title="旅程打标">
+          <Checkbox
+            checked={draft.useRequestNodeForJourney}
+            onChange={(e) =>
+              setDraft((prev) => ({ ...prev, useRequestNodeForJourney: e.target.checked }))
+            }
+          >
+            正文无法识别时，用「请求节点」作兜底
+          </Checkbox>
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            团队共享设置，保存后其他用户约 5 秒内同步。
+          </Typography.Text>
+        </Card>
+
+        <Card title="用户旅程匹配方式">
+          <Typography.Text type="secondary" className="mb-3 block text-xs">
+            旅程环节在{' '}
+            <Link to="/tags?tab=journey">分析维度 → 用户旅程</Link>{' '}
+            维护。修改后可在 <Link to="/feedbacks">反馈库</Link> 批量重新打标。
+            请求场景、投诉/咨询工单的问题类型始终为本地规则打标，不受此项影响。
+          </Typography.Text>
+          <Radio.Group
+            className="w-full"
+            value={draft.themeMatchMode}
+            onChange={(e) => setDraft((prev) => ({ ...prev, themeMatchMode: e.target.value }))}
+          >
+            <Space orientation="vertical" className="w-full" size={12}>
+              {JOURNEY_MATCH_OPTIONS.map((opt) => (
+                <Radio
+                  key={opt.value}
+                  value={opt.value}
+                  className="w-full rounded-lg border border-ink-200 p-3"
+                >
+                  <span className="text-sm font-medium text-ink-900">{opt.label}</span>
+                  <Typography.Text type="secondary" className="mt-0.5 block text-xs">
+                    {opt.desc}
+                  </Typography.Text>
+                </Radio>
+              ))}
+            </Space>
+          </Radio.Group>
+        </Card>
+
+        <Card title="单条工单优化建议（导入/重打标）">
+          <Typography.Text type="secondary" className="mb-3 block text-xs">
+            控制导入与批量重打标时，是否为每条工单生成「产品/服务优化建议」（LLM 或规则）。
+            洞察概览 V2 行动建议不走此开关：刷新洞察后由痛点聚类 + 工单优化字段聚合 + Playbook
+            兜底生成；如需改写已有建议结构，请在工作台使用「LLM 润色行动建议」。
+          </Typography.Text>
+          <Radio.Group
+            className="w-full"
+            value={draft.optimizationMode}
+            onChange={(e) => setDraft((prev) => ({ ...prev, optimizationMode: e.target.value }))}
+          >
+            <Space orientation="vertical" className="w-full" size={12}>
+              <Radio value="llm" className="w-full rounded-lg border border-ink-200 p-3">
+                <span className="text-sm font-medium text-ink-900">大模型生成（单条工单）</span>
+                <Typography.Text type="secondary" className="mt-0.5 block text-xs">
+                  导入/重打标时对每条工单调用 LLM 产出 optimization 字段
+                </Typography.Text>
+              </Radio>
+              <Radio value="rules" className="w-full rounded-lg border border-ink-200 p-3">
+                <span className="text-sm font-medium text-ink-900">本地规则 + Playbook（单条工单）</span>
+                <Typography.Text type="secondary" className="mt-0.5 block text-xs">
+                  不调用 LLM，按旅程/问题类型模板写入 optimization 字段
+                </Typography.Text>
+              </Radio>
+            </Space>
+          </Radio.Group>
+        </Card>
+      </div>
+
+      {dirty ? (
+        <div className="page-sticky-footer">
+          <div className="flex max-w-2xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4 lg:px-5">
+            <Typography.Text type="secondary" className="text-sm">
+              有未保存的修改
+            </Typography.Text>
+            <Space wrap>
+              <Button disabled={saving} onClick={handleDiscard}>
+                放弃更改
+              </Button>
+              <Button type="primary" loading={saving} onClick={handleSave}>
+                保存分析与打标设置
+              </Button>
+            </Space>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -225,7 +434,7 @@ function SettingsTabIntro({ tab }) {
       {tab === 'analysis' ? (
         <>
           {' '}
-          标签词表请在 <Link to="/tags">标签管理</Link> 维护；洞察周期请在工作台或反馈库顶栏切换。
+          标签词表请在 <Link to="/tags">分析维度</Link> 维护；洞察周期请在工作台或反馈库顶栏切换。
         </>
       ) : null}
     </Typography.Text>
@@ -377,7 +586,7 @@ export default function Settings() {
     <div>
       <PageHeader
         title="设置"
-        desc="按用途分组：大模型、分析规则、万投比指标、数据管理与审计。标签库请在「标签管理」维护。"
+        desc="按用途分组：大模型、分析规则、万投比指标、数据管理与审计。标签库请在「分析维度」维护。"
       />
 
       <WorkbenchTabNav
@@ -400,95 +609,16 @@ export default function Settings() {
 
         {activeTab === 'llm' && (
           <Card title="大模型配置（本机）">
-            <LlmSettingsPanel settings={settings} onChange={setPersonalSettings} />
+            <LlmSettingsPanel
+              settings={settings}
+              onSave={setPersonalSettings}
+              onServerStatusChange={setPersonalSettings}
+            />
           </Card>
         )}
 
         {activeTab === 'analysis' && canManageTeamSettings && (
-          <div className="space-y-6">
-            <Card title="维度打标">
-              <Checkbox
-                checked={settings.retagDimensionsAfterTicketLlm !== false}
-                onChange={(e) =>
-                  setTeamSettings({ retagDimensionsAfterTicketLlm: e.target.checked })
-                }
-              >
-                工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型
-              </Checkbox>
-              <Typography.Text type="secondary" className="mt-2 block text-xs">
-                默认开启。仅对本次 ticket LLM 成功写入客户请求或痛点的工单生效；尊重工单详情中人工保存的标签维度。
-              </Typography.Text>
-            </Card>
-
-            <Card title="旅程打标">
-              <Checkbox
-                checked={settings.useRequestNodeForJourney === true}
-                onChange={(e) => setTeamSettings({ useRequestNodeForJourney: e.target.checked })}
-              >
-                正文无法识别时，用「请求节点」作兜底
-              </Checkbox>
-              <Typography.Text type="secondary" className="mt-2 block text-xs">
-                团队共享设置，保存后其他用户约 5 秒内同步。
-              </Typography.Text>
-            </Card>
-
-            <Card title="用户旅程匹配方式">
-              <Typography.Text type="secondary" className="mb-3 block text-xs">
-                旅程环节在{' '}
-                <Link to="/tags?tab=journey">标签管理 → 用户旅程</Link>{' '}
-                维护。修改后可在 <Link to="/feedbacks">反馈库</Link> 批量重新打标。
-                请求场景、投诉/咨询工单的问题类型始终为本地规则打标，不受此项影响。
-              </Typography.Text>
-              <Radio.Group
-                className="w-full"
-                value={settings.themeMatchMode}
-                onChange={(e) => setTeamSettings({ themeMatchMode: e.target.value })}
-              >
-                <Space orientation="vertical" className="w-full" size={12}>
-                  {JOURNEY_MATCH_OPTIONS.map((opt) => (
-                    <Radio
-                      key={opt.value}
-                      value={opt.value}
-                      className="w-full rounded-lg border border-ink-200 p-3"
-                    >
-                      <span className="text-sm font-medium text-ink-900">{opt.label}</span>
-                      <Typography.Text type="secondary" className="mt-0.5 block text-xs">
-                        {opt.desc}
-                      </Typography.Text>
-                    </Radio>
-                  ))}
-                </Space>
-              </Radio.Group>
-            </Card>
-
-            <Card title="单条工单优化建议（导入/重打标）">
-              <Typography.Text type="secondary" className="mb-3 block text-xs">
-                控制导入与批量重打标时，是否为每条工单生成「产品/服务优化建议」（LLM 或规则）。
-                洞察概览 V2 行动建议不走此开关：刷新洞察后由痛点聚类 + 工单优化字段聚合 + Playbook
-                兜底生成；如需改写已有建议结构，请在工作台使用「LLM 润色行动建议」。
-              </Typography.Text>
-              <Radio.Group
-                className="w-full"
-                value={settings.optimizationMode || 'llm'}
-                onChange={(e) => setTeamSettings({ optimizationMode: e.target.value })}
-              >
-                <Space orientation="vertical" className="w-full" size={12}>
-                  <Radio value="llm" className="w-full rounded-lg border border-ink-200 p-3">
-                    <span className="text-sm font-medium text-ink-900">大模型生成（单条工单）</span>
-                    <Typography.Text type="secondary" className="mt-0.5 block text-xs">
-                      导入/重打标时对每条工单调用 LLM 产出 optimization 字段
-                    </Typography.Text>
-                  </Radio>
-                  <Radio value="rules" className="w-full rounded-lg border border-ink-200 p-3">
-                    <span className="text-sm font-medium text-ink-900">本地规则 + Playbook（单条工单）</span>
-                    <Typography.Text type="secondary" className="mt-0.5 block text-xs">
-                      不调用 LLM，按旅程/问题类型模板写入 optimization 字段
-                    </Typography.Text>
-                  </Radio>
-                </Space>
-              </Radio.Group>
-            </Card>
-          </div>
+          <AnalysisSettingsPanel settings={settings} onSave={setTeamSettings} />
         )}
 
         {activeTab === 'metrics' && can('editOrderVolumes') && (

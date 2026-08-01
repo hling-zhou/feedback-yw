@@ -4,6 +4,9 @@ import { useInsights } from '../../context/InsightsContext.jsx'
 import { isStubPipeline } from '../../analysis/registry.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import WorkbenchTabNav from './WorkbenchTabNav.jsx'
+import { filterRecordsForScope } from '../../snapshots/recordScope.js'
+import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
+import { scopePostUseRatingRecords } from '../../lib/productCatalog/postUseRatingProducts.js'
 
 export { WORKBENCH_HOME } from '../../lib/workbenchAnalysisLink.js'
 
@@ -21,20 +24,17 @@ export default function WorkbenchAnalysisNav({
   onSourceTabChange,
   showTicketTabsWhatsNew = false,
 }) {
-  const { sourceSnapshots } = useInsights()
+  const { sourceSnapshots, feedbacks, currentPeriod } = useInsights()
   const sourceCounts = useMemo(() => {
     const counts = {}
     for (const type of DATA_SOURCE_TYPES) {
       const n = sourceSnapshots[type]?.summary?.recordCount
       if (n != null) counts[type] = n
     }
-    const followUpN =
-      sourceSnapshots.post_use_rating?.aggregates?.followUpSatisfactionMetrics?.scoredCount ?? 0
-    if (followUpN > (counts.post_use_rating ?? 0)) {
-      counts.post_use_rating = followUpN
-    }
+    const records = filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating')
+    counts.post_use_rating = scopePostUseRatingRecords(records, getCatalogProducts()).length
     return counts
-  }, [sourceSnapshots])
+  }, [sourceSnapshots, feedbacks, currentPeriod])
 
   const sourceItems = [
     { key: TAB_OVERVIEW, label: '综合概述' },

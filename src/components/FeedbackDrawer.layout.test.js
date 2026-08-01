@@ -18,19 +18,19 @@ describe('FeedbackDrawer layout', () => {
   }
 
   it('places anchor nav in drawer title and orders content sections', () => {
-    const nav = marker('aria-label="工单详情分区导航"')
+    const nav = marker("aria-label={postUse ? '评价详情分区导航' : '工单详情分区导航'}")
     marker('TicketDetailDrawerTitle')
     const meta = marker('metaLine={ticketMetaLine}')
     const content = marker('id="ticket-detail-content"')
     const handling = marker('title="处理意见（工单原文）"')
     const rootCause = marker('title="根因排查"')
     const followUp = marker('title="回访满意度"')
-    const analysis = marker('id="ticket-detail-analysis"')
+    const analysis = marker("id={isPostUseLibrary ? 'rating-detail-analysis' : 'ticket-detail-analysis'}")
     const request = marker('shrink-0">客户请求内容</span>')
     const pain = marker('shrink-0">需求痛点挖掘</span>')
     const opt = marker('title="优化建议"')
     const note = marker('title="备注"')
-    const classification = marker('id="ticket-detail-classification"')
+    const classification = marker("id={isPostUseLibrary ? 'rating-detail-classification' : 'ticket-detail-classification'}")
     const tags = marker('dimension="requestScene"')
     const causeFinal = marker('投诉原因（终判）')
     const causeReview = marker('二级（人工复核）')
@@ -55,6 +55,15 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain('TICKET_DETAIL_DRAWER_WIDTH')
     expect(src).toContain('HandlingOriginalTextModal')
     expect(src).toContain('放大查看')
+  })
+
+  it('uses rating-specific title, anchors, and journey-only classification', () => {
+    expect(src).toContain("{ id: 'rating-detail-content', label: '评价内容' }")
+    expect(src).toContain("{ id: 'rating-detail-analysis', label: '评价分析' }")
+    expect(src).toContain("{ id: 'rating-detail-classification', label: '评价分类' }")
+    expect(src).toContain("{postUse ? '评价详情' : '工单详情'}")
+    expect(src).toContain('isPostUseLibrary ? (\n            canEdit ? (')
+    expect(src).toContain('!isPostUseLibrary && hasDetailOptimizationContent(feedback)')
   })
 
   it('exposes scroll helper and hides horizontal overflow in drawer body', () => {

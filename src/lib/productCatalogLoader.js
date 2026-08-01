@@ -19,7 +19,9 @@ const JSON_CONFIG_FILE = 'product-catalog.json'
  * @typedef {Object} CatalogProduct
  * @property {string} key
  * @property {string} name
- * @property {boolean} enabled
+ * @property {boolean} enabled - 参与投诉/咨询工单导入分析
+ * @property {boolean} [analysisPostUseRating] - 参与用后即评分析（云网范围）
+ * @property {boolean} [focusTracked] - 用后即评重点跟踪（趋势图）
  * @property {string} taxonomyKey
  * @property {boolean} [acceptParentName]
  * @property {ProductSpecDef[]} specs
@@ -102,6 +104,8 @@ function normalizeCatalogJson(raw) {
       key: p.key,
       name: p.name || p.key,
       enabled: Boolean(p.enabled),
+      analysisPostUseRating: Boolean(p.analysisPostUseRating),
+      focusTracked: Boolean(p.focusTracked),
       taxonomyKey: canonicalTaxonomyKey((p.taxonomyKey || p.key || '').trim() || p.key),
       acceptParentName: p.acceptParentName !== false,
       specs: (p.specs || []).map((s) => ({

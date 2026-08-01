@@ -129,6 +129,27 @@ export const SATISFACTION_CALLBACK_PRESET = {
   rawTextMerge: [],
 }
 
+/** @type {ColumnPreset} */
+export const POST_USE_CUSTOMER_VISIT_PRESET = {
+  id: 'post-use-customer-visit',
+  name: '客服回访导入',
+  description: '客服部回访信息导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细',
+  dataSourceTypes: ['post_use_rating'],
+  columnMap: {
+    visitMonth: '月份',
+    productName: '产品名称',
+    feedbackSummary: '用户反馈原文',
+    userFeedbackText: '用户反馈原文',
+    userInfo: '用户信息',
+    userInfoDetail: '用户信息',
+    visitResult: '回访结果',
+    internalConclusion: '内部评估',
+    visitFeedbackDetail: '回访结果',
+    internalEvaluationDetail: '内部评估',
+  },
+  rawTextMerge: [],
+}
+
 /** @type {ColumnPreset[]} */
 export const COLUMN_PRESETS = [
   MOBILE_CLOUD_TICKET_PRESET,
@@ -136,6 +157,7 @@ export const COLUMN_PRESETS = [
   POST_USE_RATING_PRESET,
   USER_SURVEY_PRESET,
   SATISFACTION_CALLBACK_PRESET,
+  POST_USE_CUSTOMER_VISIT_PRESET,
   GENERIC_PRESET,
 ]
 
@@ -149,14 +171,24 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket', optio
   const { postUseRatingSubType } = options
   const has = (name) => headers.includes(name)
   const isCallbackHeaders = has('回访工单编号') && has('原工单编号')
+  const isCustomerVisitHeaders =
+    has('月份') &&
+    has('产品名称') &&
+    has('用户反馈原文') &&
+    has('用户信息') &&
+    has('回访结果') &&
+    has('内部评估')
 
   if (dataSourceType === 'post_use_rating') {
+    if (postUseRatingSubType === 'customer_visit') {
+      return isCustomerVisitHeaders || has('月份') || has('产品名称')
+        ? POST_USE_CUSTOMER_VISIT_PRESET
+        : null
+    }
     if (postUseRatingSubType === 'satisfaction_callback') {
       return isCallbackHeaders ? SATISFACTION_CALLBACK_PRESET : null
     }
-    if (postUseRatingSubType === 'standalone' && (has('评价内容') || has('评分'))) {
-      return POST_USE_RATING_PRESET
-    }
+    if (isCustomerVisitHeaders) return POST_USE_CUSTOMER_VISIT_PRESET
     if (isCallbackHeaders) return SATISFACTION_CALLBACK_PRESET
     if (has('评价内容') || has('评分')) return POST_USE_RATING_PRESET
     return null
@@ -210,6 +242,9 @@ export function getPresetsForImport(dataSourceType, postUseRatingSubType) {
   if (dataSourceType === 'post_use_rating') {
     if (postUseRatingSubType === 'satisfaction_callback') {
       return [SATISFACTION_CALLBACK_PRESET]
+    }
+    if (postUseRatingSubType === 'customer_visit') {
+      return [POST_USE_CUSTOMER_VISIT_PRESET]
     }
     return [POST_USE_RATING_PRESET]
   }

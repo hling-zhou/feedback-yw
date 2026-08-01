@@ -156,7 +156,7 @@ export default function WanTouRatioPanel({
           </Typography.Text>
         }
       >
-        <div data-pdf-chart="source-wan-tou">
+        <div>
           <Table
             size="small"
             pagination={false}

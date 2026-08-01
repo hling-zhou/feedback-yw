@@ -137,6 +137,24 @@
   }
 
   /**
+   * 主内容区底部固定操作条（相对视口，左侧避开侧栏）。
+   * 用于设置页等长表单的 dirty 保存条。
+   */
+  .page-sticky-footer {
+    position: fixed;
+    left: var(--app-sider-width);
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    transition: left 0.2s;
+    border-top: 1px solid rgb(229 231 235);
+    background: rgb(249 250 251 / 0.96);
+    backdrop-filter: blur(8px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -4px 12px rgb(15 23 42 / 0.06);
+  }
+
+  /**
    * 双栏布局左侧吸顶（位于 .page-sticky-chrome 下方）。
    * --page-sticky-chrome-height 由页面测量 sticky chrome 后写入。
    * self-start：避免 grid stretch 把左侧拉满行高导致 sticky 失效。
@@ -165,6 +183,48 @@
   /** 工具栏：周期选择 + 操作按钮行 */
   .page-toolbar {
     @apply mt-5 flex flex-wrap items-end gap-3;
+  }
+
+  .feedback-lane-tabs .ant-tabs-nav {
+    margin-bottom: 0 !important;
+  }
+
+  .feedback-lane-tabs .ant-tabs-content-holder {
+    padding-top: 0 !important;
+  }
+
+  .post-use-report-tabs.ant-segmented {
+    display: inline-flex;
+    padding: 0.125rem;
+    border-radius: 0.7rem;
+    background: rgb(241 245 249 / 0.9);
+    border: 1px solid rgb(226 232 240 / 0.9);
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .post-use-report-tabs .ant-segmented-group {
+    gap: 0.125rem;
+  }
+
+  .post-use-report-tabs .ant-segmented-item {
+    min-height: 2rem;
+    border-radius: 0.55rem;
+    transition: all 0.18s ease;
+  }
+
+  .post-use-report-tabs .ant-segmented-item-label {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .post-use-report-tabs .ant-segmented-thumb {
+    box-shadow: 0 1px 3px rgb(15 23 42 / 0.06);
+  }
+
+  .post-use-report-tabs .ant-segmented-item-selected {
+    box-shadow: 0 2px 8px rgb(15 23 42 / 0.06);
   }
 
   @media (min-width: 1024px) {
@@ -237,5 +297,21 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  /** 工单叙事页：固定列中的长工单号需要裁切，避免文本穿透到相邻列 */
+  .ticket-evidence-table .ant-table-cell-fix-left,
+  .ticket-evidence-table .ant-table-cell-fix-left-last {
+    background: #fff;
+  }
+
+  .ticket-evidence-table__ticket-link.ant-btn-link {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    padding-inline: 0 !important;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

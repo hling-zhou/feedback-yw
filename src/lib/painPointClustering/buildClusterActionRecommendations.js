@@ -1,9 +1,11 @@
 import { pickRepresentativePainPoint } from './clusterLabel.js'
+import { buildClusterFingerprintV2, CLUSTER_FINGERPRINT_V2 } from './clusterFingerprintV2.js'
 import {
   normalizeClusteringPainText,
   pickInsightRepresentativePain,
 } from './clusteringCorpus.js'
 import { DATA_SOURCE_SHORT_LABEL } from './constants.js'
+import { resolveClusterProfile } from './resolveClusterProfile.js'
 import { runMultiProductClusteringPipeline } from './runProductClusteringPipeline.js'
 
 /** @typedef {import('./runProductClusteringPipeline.js').ProductClusteringResult} ProductClusteringResult */
@@ -15,8 +17,10 @@ import {
   enforcePlanningSectionRules,
 } from '../planningRecommendationSections.js'
 import {
+  buildPainClusterStableKey,
   computeRecommendationEvidenceStrength,
   downgradeEvidenceStrength,
+  isHighRiskSingletonRecommendation,
   pickEvidenceRecords,
 } from '../planningRecommendations.js'
 
@@ -98,7 +102,14 @@ export function buildPainClusterScoreMeta(cluster, records) {
     ticketCount: cluster.ticketCount,
     harmScore: round1(cluster.harmScore),
     maxSeverity: cluster.maxSeverity,
+    p90Severity: round1(cluster.p90Severity ?? cluster.maxSeverity),
     p90Emotion: round1(cluster.p90Emotion),
+    urgentRate: round1((cluster.urgentRate || 0) * 100) / 100,
+    unresolvedRate: round1((cluster.unresolvedRate || 0) * 100) / 100,
+    highValueRate: round1((cluster.highValueRate || 0) * 100) / 100,
+    repeatRate: round1((cluster.repeatRate || 0) * 100) / 100,
+    selfServiceRate: round1((cluster.selfServiceRate || 0) * 100) / 100,
+    scoreBreakdown: cluster.scoreBreakdown || undefined,
     sourceDistributionLines: buildClusterSourceDistributionLines(cluster, records),
     customerTierSummary: formatCustomerTierSummary(tierCounts),
     customerTierCounts: tierCounts,
@@ -118,7 +129,8 @@ function round1(n) {
  * @param {AppSettings | null | undefined} [settings]
  * @returns {OverviewRecommendation | null}
  */
-export function scoredFinalClusterToRecommendation(cluster, allRecords, settings = null) {
+export function scoredFinalClusterToRecommendation(cluster, allRecords, settings = null, profileInput = null) {
+  const profile = profileInput || resolveClusterProfile()
   const byId = new Map(allRecords.map((r) => [r.id, r]))
   const records = cluster.recordIds.map((id) => byId.get(id)).filter(Boolean)
   if (!records.length) return null
@@ -153,9 +165,21 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     /** @type {Map<string, number>} */ (new Map()),
   )
   const dominantProblemType = [...problemTypeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  const stableKey = buildPainClusterStableKey({
+    product: cluster.product,
+    representativePain: label,
+    problemType: dominantProblemType,
+  })
+  const fingerprintV2 = buildClusterFingerprintV2({
+    product: cluster.product,
+    theme: label,
+    problemType: dominantProblemType,
+    journeyL1: dominantL1,
+  })
 
   const stub = {
     id: cluster.id,
+    stableKey,
     priority: mapClusterPriorityScore(cluster.priorityScore),
     category: /** @type {const} */ ('product'),
     summary: label,
@@ -163,6 +187,7 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     signalType: 'pain_cluster_v2',
     scope: {
       product: cluster.product,
+      dataSourceType: records[0]?.dataSourceType,
       journeyL1: dominantL1,
       journeyL2: dominantJ2,
       problemType: dominantProblemType,
@@ -178,6 +203,9 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
       selectedReason: `痛点聚类 V2：优先级 ${painClusterScores.priorityScore} 分（排名 ${cluster.rank}/${cluster.totalFinal}），影响广度 ${painClusterScores.breadthScore} 分，业务危害度 ${painClusterScores.harmScore} 分。`,
       score: cluster.priorityScore,
       representativePain: label,
+      fingerprintVersion: CLUSTER_FINGERPRINT_V2,
+      fingerprintV2,
+      scoreModelVersion: profile.scoreModelVersion,
     },
     insufficientEvidence: cluster.ticketCount < 3,
   }
@@ -213,6 +241,93 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
 }
 
 /**
+ * @param {{ record: FeedbackRecord; riskScore: number }} singleton
+ * @param {FeedbackRecord[]} allRecords
+ * @param {ReturnType<typeof resolveClusterProfile>} [profileInput]
+ * @returns {OverviewRecommendation | null}
+ */
+export function highRiskSingletonToRecommendation(singleton, allRecords, profileInput = null) {
+  const profile = profileInput || resolveClusterProfile()
+  const record = singleton?.record
+  if (!record?.id) return null
+  const label =
+    pickInsightRepresentativePain([record]) ||
+    normalizeClusteringPainText(record.painPoint || record.problemSummary || '') ||
+    pickRepresentativePainPoint([record]) ||
+    '高风险单例问题'
+  const stableKey = buildPainClusterStableKey({
+    product: record.product,
+    representativePain: label,
+    problemType: record.problemType,
+  })
+  const fingerprintV2 = buildClusterFingerprintV2({
+    product: record.product,
+    theme: label,
+    problemType: record.problemType,
+    journeyL1: record.journeyL1,
+  })
+  const painClusterScores = {
+    priorityScore: round1(Math.min(5, singleton.riskScore)),
+    rank: 1,
+    totalFinal: 1,
+    breadthScore: 1,
+    sharePct: 0,
+    ticketCount: 1,
+    harmScore: round1(Math.min(5, singleton.riskScore)),
+    maxSeverity: 0,
+    p90Severity: 0,
+    p90Emotion: 0,
+    sourceDistributionLines: [],
+    customerTierSummary: formatCustomerTierSummary(countCustomerTiers([record])),
+    customerTierCounts: countCustomerTiers([record]),
+  }
+  const attached = attachPlanningRecommendationSections({
+    id: `singleton-${record.id}`,
+    stableKey,
+    priority: singleton.riskScore >= 5.2 ? 'high' : 'medium',
+    category: /** @type {const} */ ('product'),
+    summary: label,
+    text: label,
+    signalType: 'high_risk_singleton',
+    scope: {
+      product: record.product,
+      dataSourceType: record.dataSourceType,
+      journeyL1: record.journeyL1,
+      journeyL2: record.journeyL2,
+      problemType: record.problemType,
+    },
+    evidenceRecordIds: [record.id],
+    evidenceTicketIds: record.ticketId ? [record.ticketId] : [],
+    evidenceNote: `高危单例 · ${record.product || '未标注产品'}`,
+    evidenceBundle: {
+      ticketCount: 1,
+      sharePct: 0,
+    },
+    generationMeta: {
+      selectedReason: `高危 singleton：单条工单未形成稳定簇，但风险分 ${round1(singleton.riskScore)}，建议纳入重点跟踪。`,
+      score: singleton.riskScore,
+      representativePain: label,
+      fingerprintVersion: CLUSTER_FINGERPRINT_V2,
+      fingerprintV2,
+      scoreModelVersion: profile.scoreModelVersion,
+    },
+    insufficientEvidence: true,
+  }, [record])
+
+  return {
+    ...attached,
+    summary: attached.sections?.executiveSummary || label,
+    text: attached.sections?.executiveSummary || label,
+    sections: {
+      ...attached.sections,
+      painClusterScores,
+    },
+    evidenceStrength: 'weak',
+    measureSource: 'singleton_rule',
+  }
+}
+
+/**
  * @param {FeedbackRecord[]} ticketRecords
  * @param {{ settings?: AppSettings | null; pipelineResults?: ProductClusteringResult[] }} [options]
  */
@@ -221,8 +336,11 @@ export function buildClusterRecommendationsFromPipeline(ticketRecords, options =
     return { recommendations: [], pipelineResults: [] }
   }
 
+  const profile = options.profile || resolveClusterProfile()
   const pipelineResults =
-    options.pipelineResults ?? runMultiProductClusteringPipeline(ticketRecords)
+    options.pipelineResults ?? runMultiProductClusteringPipeline(ticketRecords, undefined, {
+      profile,
+    })
 
   /** @type {OverviewRecommendation[]} */
   const recommendations = []
@@ -233,12 +351,23 @@ export function buildClusterRecommendationsFromPipeline(ticketRecords, options =
         cluster,
         ticketRecords,
         options.settings,
+        profile,
       )
+      if (rec) recommendations.push(rec)
+    }
+    for (const singleton of productResult.highRiskSingletons || []) {
+      const rec = highRiskSingletonToRecommendation(singleton, ticketRecords, profile)
       if (rec) recommendations.push(rec)
     }
   }
 
   recommendations.sort((a, b) => {
+    const rankOf = (rec) => {
+      if (isHighRiskSingletonRecommendation(rec)) return 2
+      return 1
+    }
+    const typeRankDiff = rankOf(a) - rankOf(b)
+    if (typeRankDiff) return typeRankDiff
     const scoreA = a.generationMeta?.score ?? 0
     const scoreB = b.generationMeta?.score ?? 0
     if (scoreB !== scoreA) return scoreB - scoreA

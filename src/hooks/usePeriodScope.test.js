@@ -24,4 +24,28 @@ describe('usePeriodScope / filterRecordsForScope', () => {
     const scoped = filterRecordsForScope(records, may, 'complaint_ticket')
     expect(scoped.map((r) => r.id)).toEqual(['1'])
   })
+
+  it('libraryOnly excludes post_use callback rows', () => {
+    const withPostUse = [
+      ...records,
+      {
+        id: '4',
+        importMonth: '2025-05',
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+      },
+      {
+        id: '5',
+        importMonth: '2025-05',
+        dataSourceType: 'post_use_rating',
+        channel: 'callback',
+      },
+    ]
+    const all = filterRecordsForScope(withPostUse, may, 'post_use_rating')
+    expect(all.map((r) => r.id).sort()).toEqual(['4', '5'])
+    const library = filterRecordsForScope(withPostUse, may, 'post_use_rating', {
+      libraryOnly: true,
+    })
+    expect(library.map((r) => r.id)).toEqual(['4'])
+  })
 })

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { InboxOutlined } from '@ant-design/icons'
 import {
@@ -32,7 +32,11 @@ import {
   applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
 } from '../lib/parseFile.js'
-import { getPresetsForImport, SATISFACTION_CALLBACK_PRESET } from '../lib/columnPresets.js'
+import {
+  getPresetsForImport,
+  SATISFACTION_CALLBACK_PRESET,
+  POST_USE_CUSTOMER_VISIT_PRESET,
+} from '../lib/columnPresets.js'
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
@@ -54,8 +58,11 @@ import {
 } from '../lib/importUtils.js'
 import {
   POST_USE_RATING_SUBTYPE_OPTIONS,
-  POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK,
+  POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE,
   isFollowUpSatisfactionImport,
+  isPostUseChannelBundleImport,
+  isCustomerVisitImport,
+  isPostUseRatingLibraryRecord,
 } from '../domain/postUseRatingImport.js'
 import {
   FOLLOW_UP_IMPORT_SESSION_LABEL,
@@ -67,6 +74,20 @@ import {
   FollowUpSatisfactionImportPreview,
   formatFollowUpImportSummaryDescription,
 } from '../components/import/FollowUpSatisfactionImportPreview.jsx'
+import PostUseChannelBundleImport from '../components/import/PostUseChannelBundleImport.jsx'
+import {
+  executePostUseChannelImport,
+  formatPostUseChannelImportProgress,
+  previewPostUseChannelImport,
+  POST_USE_CHANNEL_IMPORT_SESSION_LABEL,
+} from '../lib/postUseRating/importSession.js'
+import {
+  executeCustomerVisitImport,
+  runCustomerVisitImportDryRun,
+} from '../lib/postUseRating/customerVisitImport.js'
+
+const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服回访导入'
+import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
@@ -84,6 +105,8 @@ import { IMPORT_ALREADY_IN_PROGRESS_TIP } from '../lib/importSession.js'
 /** @typedef {import('../lib/importBatchFiles.js').ParsedUploadFile} ParsedUploadFile */
 
 const STEPS = ['来源与月份', '上传文件', '列映射', '预览确认', '导入完成']
+/** 用后即评双文件：无列映射，预览确认独立成步 */
+const STEPS_POST_USE = ['来源与月份', '上传双文件', '预览确认', '导入完成']
 
 const MERGE_OPTIONS = ['处理意见', '追加信息', '归档意见']
 
@@ -123,6 +146,8 @@ export default function Import({ embedded = false }) {
     periods,
     importSession,
     syncSharedDataFromServer,
+    updateFeedback,
+    feedbacks,
   } = useInsights()
   const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock()
 
@@ -133,12 +158,18 @@ export default function Import({ embedded = false }) {
     return 'complaint_ticket'
   })
   const [postUseRatingSubType, setPostUseRatingSubType] = useState(() => {
-    if (initialSubType === 'satisfaction_callback' || initialSubType === 'standalone') {
-      return initialSubType
-    }
-    return POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK
+    const fromUrl = POST_USE_RATING_SUBTYPE_OPTIONS.find((o) => o.value === initialSubType)
+    return fromUrl ? fromUrl.value : POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE
   })
   const [step, setStep] = useState(0)
+  /** @type {[null | { recordCount: number; counts?: object; deletedPrior?: number; importBatchId?: string }, Function]} */
+  const [channelBundleResult, setChannelBundleResult] = useState(null)
+  /** @type {[File | null, Function]} */
+  const [channelSmsFile, setChannelSmsFile] = useState(null)
+  /** @type {[File | null, Function]} */
+  const [channelWebFile, setChannelWebFile] = useState(null)
+  const [channelPreview, setChannelPreview] = useState(null)
+  const [channelPreviewBusy, setChannelPreviewBusy] = useState(false)
   const [error, setError] = useState('')
   const [headers, setHeaders] = useState([])
   const [rows, setRows] = useState([])
@@ -169,6 +200,12 @@ export default function Import({ embedded = false }) {
   const [followUpPreviewLoading, setFollowUpPreviewLoading] = useState(false)
   /** @type {[null | { summary: import('../lib/followUpSatisfactionClient.js').FollowUpSatisfactionImportSummary; dataMonth: string }, Function]} */
   const [followUpImportResult, setFollowUpImportResult] = useState(null)
+  /** @type {[ReturnType<typeof runCustomerVisitImportDryRun> | null, Function]} */
+  const [customerVisitPreview, setCustomerVisitPreview] = useState(null)
+  const [customerVisitPreviewError, setCustomerVisitPreviewError] = useState('')
+  const [customerVisitPreviewLoading, setCustomerVisitPreviewLoading] = useState(false)
+  /** @type {[null | { dry: ReturnType<typeof runCustomerVisitImportDryRun>; dataMonth: string }, Function]} */
+  const [customerVisitImportResult, setCustomerVisitImportResult] = useState(null)
 
   const importMonthDisplay = useMemo(() => {
     const normalized = normalizeImportMonth(importMonth)
@@ -179,6 +216,29 @@ export default function Import({ embedded = false }) {
 
   const ticketSource = isTicketSource(dataSourceType)
   const followUpImport = isFollowUpSatisfactionImport(dataSourceType, postUseRatingSubType)
+  const customerVisitImport = isCustomerVisitImport(dataSourceType, postUseRatingSubType)
+  const channelBundleImport = isPostUseChannelBundleImport(dataSourceType, postUseRatingSubType)
+  const singleFileEnrichImport = followUpImport
+  const customerVisitFieldKeys = [
+    'visitMonth',
+    'productName',
+    'userFeedbackText',
+    'userInfo',
+    'visitResult',
+    'internalConclusion',
+  ]
+  const stepItems = useMemo(() => {
+    if (channelBundleImport) return STEPS_POST_USE.map((title) => ({ title }))
+    return STEPS.map((title) => ({ title }))
+  }, [channelBundleImport])
+  const stepsCurrent = useMemo(() => {
+    if (!channelBundleImport) return step
+    // 0 来源 → 1 上传 → 2 预览确认 → 完成（内部仍用 step===4，映射到 UI 第 4 步）
+    if (step >= 4) return 3
+    if (step <= 0) return 0
+    if (step === 1) return 1
+    return 2
+  }, [channelBundleImport, step])
   const isConsultation = dataSourceType === 'consultation_ticket'
   const sourcePresets = useMemo(
     () => getPresetsForImport(dataSourceType, postUseRatingSubType),
@@ -217,6 +277,14 @@ export default function Import({ embedded = false }) {
     setFollowUpPreview(null)
     setFollowUpPreviewError('')
     setFollowUpImportResult(null)
+    setCustomerVisitPreview(null)
+    setCustomerVisitPreviewError('')
+    setCustomerVisitImportResult(null)
+    setChannelBundleResult(null)
+    setChannelSmsFile(null)
+    setChannelWebFile(null)
+    setChannelPreview(null)
+    setChannelPreviewBusy(false)
   }, [])
 
   const parseFileToEntry = useCallback(
@@ -332,6 +400,13 @@ export default function Import({ embedded = false }) {
           throw new Error('表头需包含「回访工单编号」与「原工单编号」（满意度回访记录格式）')
         }
       }
+      if (customerVisitImport) {
+        if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
+          throw new Error(
+            '表头需包含客服回访模板列：月份、产品名称、用户反馈原文、用户信息、回访结果、内部评估',
+          )
+        }
+      }
       setHeaders(merged.headers)
       setRows(merged.rows)
       setRowSources(merged.rowSources)
@@ -347,7 +422,7 @@ export default function Import({ embedded = false }) {
     } finally {
       setLoading(false)
     }
-  }, [uploadFiles, dataSourceType, followUpImport, mappingOptions])
+  }, [uploadFiles, dataSourceType, followUpImport, customerVisitImport, mappingOptions])
 
   const uploadTotalRows = useMemo(
     () => uploadFiles.reduce((n, f) => n + f.rows.length, 0),
@@ -357,7 +432,7 @@ export default function Import({ embedded = false }) {
   const onSourceChange = (value) => {
     setDataSourceType(value)
     if (value === 'post_use_rating') {
-      setPostUseRatingSubType(POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK)
+      setPostUseRatingSubType(POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE)
     }
     resetFileState()
     setStep(0)
@@ -455,13 +530,23 @@ export default function Import({ embedded = false }) {
             !followUpPreviewError &&
             followUpPreview.appliedRowCount > 0,
         )
-      : catalogPartition.inScope.length > 0
+      : customerVisitImport
+        ? Boolean(
+            customerVisitPreview &&
+              !customerVisitPreviewLoading &&
+              !customerVisitPreviewError &&
+              (customerVisitPreview.visitMetaCount > 0 ||
+                customerVisitPreview.matchedCount > 0),
+          )
+        : catalogPartition.inScope.length > 0
 
   const canProceedFromColumnMapping = followUpImport
     ? activePreset?.id === SATISFACTION_CALLBACK_PRESET.id
-    : ticketSource
-      ? Boolean(columnMap.rawText || columnMap.handlingText)
-      : true
+    : customerVisitImport
+      ? activePreset?.id === POST_USE_CUSTOMER_VISIT_PRESET.id
+      : ticketSource
+        ? Boolean(columnMap.rawText || columnMap.handlingText)
+        : true
 
   const quotePreviewSourceRows = useMemo(() => {
     if (step < 2) return []
@@ -497,6 +582,153 @@ export default function Import({ embedded = false }) {
     setImportSessionProgress(text)
   }, [setImportSessionProgress])
 
+  /** 导入页挂载标记：离开 /import 后勿再 setStep / setChannelBundleResult */
+  const importPageMountedRef = useRef(true)
+  useEffect(() => {
+    importPageMountedRef.current = true
+    return () => {
+      importPageMountedRef.current = false
+    }
+  }, [])
+
+  /**
+   * 用后即评：解析预览后进入「预览确认」步。
+   */
+  const goChannelBundlePreview = async () => {
+    if (!channelSmsFile || !channelWebFile) {
+      setError('请同时选择短信渠道与官网渠道文件')
+      return
+    }
+    const dataMonth = normalizeImportMonth(importMonth)
+    if (!dataMonth) {
+      setError('请先选择有效的数据月份')
+      return
+    }
+    setChannelPreviewBusy(true)
+    setError('')
+    try {
+      const [smsBuf, webBuf] = await Promise.all([
+        channelSmsFile.arrayBuffer(),
+        channelWebFile.arrayBuffer(),
+      ])
+      const preview = previewPostUseChannelImport(smsBuf, webBuf, { importMonth: dataMonth })
+      setChannelPreview(preview)
+      setStep(2)
+    } catch (e) {
+      setChannelPreview(null)
+      setError(e.message || '预览失败')
+    } finally {
+      setChannelPreviewBusy(false)
+    }
+  }
+
+  /**
+   * 用后即评双文件确认导入：与 doImport 同级编排后台会话，卸载组件后仍可收尾。
+   * @param {{ smsFile: File; webFile: File; importMonth: string }} [payload]
+   */
+  const doChannelBundleImport = async (payload) => {
+    const smsFile = payload?.smsFile || channelSmsFile
+    const webFile = payload?.webFile || channelWebFile
+    setLoading(true)
+    setError('')
+    let importFinishedNotified = false
+    try {
+      if (importSession.active) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+      if (importBlocked && !importSession.active) {
+        throw new Error(importBlockedTip || '当前无法导入')
+      }
+      if (!storageReady) {
+        throw new Error(
+          periodsLoading
+            ? '本地数据存储正在初始化，请稍候几秒后重试'
+            : '本地数据存储未就绪，请刷新页面后重试',
+        )
+      }
+      if (!smsFile || !webFile) {
+        throw new Error('请同时选择短信渠道与官网渠道文件')
+      }
+      if (!channelPreview) {
+        throw new Error('请先完成解析预览')
+      }
+      const dataMonth = normalizeImportMonth(payload?.importMonth || importMonth)
+      if (!dataMonth) {
+        throw new Error('请选择有效的数据月份（YYYY-MM）')
+      }
+
+      const progress0 = '正在解析双文件…'
+      await prepareSharedBackgroundTask('import', {
+        progress: progress0,
+        meta: {
+          importKind: 'postUseChannel',
+          importMonth: dataMonth,
+          dataSourceType: 'post_use_rating',
+        },
+      })
+      beginImportSession({
+        batchName: POST_USE_CHANNEL_IMPORT_SESSION_LABEL,
+        dataMonth,
+        dataSourceType: 'post_use_rating',
+        kind: 'analysis',
+        progress: progress0,
+      })
+      reportProgress(progress0)
+
+      const [smsBuffer, officialBuffer] = await Promise.all([
+        smsFile.arrayBuffer(),
+        webFile.arrayBuffer(),
+      ])
+
+      const res = await executePostUseChannelImport({
+        adapter,
+        smsBuffer,
+        officialBuffer,
+        importMonth: dataMonth,
+        smsFileName: smsFile.name,
+        officialFileName: webFile.name,
+        onProgress: (p) => {
+          reportProgress(formatPostUseChannelImportProgress(p))
+        },
+      })
+
+      if (isApiStorageAdapter(adapter)) {
+        reportProgress(formatPostUseChannelImportProgress({ phase: 'sync' }))
+        await syncSharedDataFromServer({ notify: false })
+      }
+
+      try {
+        reportProgress(formatPostUseChannelImportProgress({ phase: 'snapshot' }))
+        await rebuildSnapshotsForImportMonth(dataMonth)
+      } catch (snapErr) {
+        console.warn('[import] post-use channel snapshot rebuild:', snapErr)
+      }
+
+      notifyImportFinished({
+        dataMonth,
+        dataSourceType: 'post_use_rating',
+        added: res.recordCount,
+        batchName: POST_USE_CHANNEL_IMPORT_SESSION_LABEL,
+      })
+      importFinishedNotified = true
+
+      if (importPageMountedRef.current) {
+        setChannelBundleResult(res)
+        setStep(4)
+      }
+    } catch (e) {
+      if (importPageMountedRef.current) {
+        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+      }
+    } finally {
+      if (!importFinishedNotified) {
+        endImportSession()
+      }
+      setLoading(false)
+      setImportProgress('')
+    }
+  }
+
   useEffect(() => {
     if (step !== 3 || !followUpImport || !rows.length || !storageReady) return
     let cancelled = false
@@ -526,6 +758,42 @@ export default function Import({ embedded = false }) {
       cancelled = true
     }
   }, [step, followUpImport, rows, importMonth, periods, adapter, storageReady])
+
+  useEffect(() => {
+    if (step !== 3 || !customerVisitImport || !mappedAll.length || !storageReady) return
+    let cancelled = false
+    setCustomerVisitPreviewLoading(true)
+    setCustomerVisitPreviewError('')
+    setCustomerVisitPreview(null)
+    void (async () => {
+      try {
+        let libraryRecords = []
+        if (typeof adapter?.listRecords === 'function') {
+          const listed = await adapter.listRecords({})
+          libraryRecords = (listed?.records || []).filter(isPostUseRatingLibraryRecord)
+        } else {
+          libraryRecords = (feedbacks || []).filter(isPostUseRatingLibraryRecord)
+        }
+        const dry = runCustomerVisitImportDryRun({
+          rows: mappedAll,
+          libraryRecords,
+          importMonth: normalizeImportMonth(importMonth),
+        })
+        if (!cancelled) setCustomerVisitPreview(dry)
+      } catch (err) {
+        if (!cancelled) {
+          setCustomerVisitPreviewError(
+            readBackgroundTaskErrorMessage(err) || err.message || '预览失败',
+          )
+        }
+      } finally {
+        if (!cancelled) setCustomerVisitPreviewLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [step, customerVisitImport, mappedAll, adapter, feedbacks, storageReady, importMonth])
 
   const doFollowUpImport = async () => {
     setLoading(true)
@@ -612,6 +880,129 @@ export default function Import({ embedded = false }) {
       okText: '确认导入',
       cancelText: '取消',
       onOk: () => doFollowUpImport(),
+    })
+  }
+
+  const loadPostUseLibraryRecords = async () => {
+    if (typeof adapter?.listRecords === 'function') {
+      const listed = await adapter.listRecords({})
+      return (listed?.records || []).filter(isPostUseRatingLibraryRecord)
+    }
+    return (feedbacks || []).filter(isPostUseRatingLibraryRecord)
+  }
+
+  const doCustomerVisitImport = async () => {
+    setLoading(true)
+    setError('')
+    let importFinishedNotified = false
+    try {
+      if (importSession.active) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+      if (importBlocked && !importSession.active) {
+        throw new Error(importBlockedTip || '当前无法导入')
+      }
+      if (!storageReady) {
+        throw new Error(
+          periodsLoading
+            ? '本地数据存储正在初始化，请稍候几秒后重试'
+            : '本地数据存储未就绪，请刷新页面后重试',
+        )
+      }
+      if (!customerVisitPreview?.visitMetaCount && !customerVisitPreview?.matchedCount) {
+        throw new Error('没有可导入的回访行')
+      }
+
+      const dataMonth = normalizeImportMonth(importMonth)
+      if (!dataMonth) {
+        throw new Error('请选择有效的数据月份（YYYY-MM）')
+      }
+
+      const progress0 = '正在导入客服回访…'
+      await prepareSharedBackgroundTask('import', {
+        progress: progress0,
+        meta: {
+          importKind: 'customerVisit',
+          importMonth: dataMonth,
+          dataSourceType: 'post_use_rating',
+        },
+      })
+      beginImportSession({
+        batchName: CUSTOMER_VISIT_IMPORT_SESSION_LABEL,
+        dataMonth,
+        dataSourceType: 'post_use_rating',
+        kind: 'analysis',
+        progress: progress0,
+      })
+      reportProgress(progress0)
+
+      const importBatchId = `visit-${dataMonth}-${Date.now()}`
+      const libraryRecords = await loadPostUseLibraryRecords()
+      reportProgress('正在匹配用后即评明细并写入回访…')
+
+      const dry = await executeCustomerVisitImport({
+        adapter,
+        rows: mappedAll,
+        libraryRecords,
+        importBatchId,
+        importMonth: dataMonth,
+        updateRecords: (recs) =>
+          Promise.all(
+            recs.map((record) =>
+              updateFeedback(record.id, { customerVisit: record.customerVisit }),
+            ),
+          ),
+      })
+
+      if (isApiStorageAdapter(adapter)) {
+        reportProgress('正在同步数据…')
+        await syncSharedDataFromServer({ notify: false })
+      }
+
+      notifyImportFinished({
+        dataMonth,
+        dataSourceType: 'post_use_rating',
+        added: dry.matchedCount,
+        batchName: CUSTOMER_VISIT_IMPORT_SESSION_LABEL,
+      })
+      importFinishedNotified = true
+
+      if (importPageMountedRef.current) {
+        setCustomerVisitImportResult({ dry, dataMonth })
+        setStep(4)
+      }
+    } catch (e) {
+      if (importPageMountedRef.current) {
+        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+      }
+    } finally {
+      if (!importFinishedNotified) {
+        endImportSession()
+      }
+      setLoading(false)
+      setImportProgress('')
+    }
+  }
+
+  const confirmCustomerVisitImport = () => {
+    if (!customerVisitPreview?.visitMetaCount && !customerVisitPreview?.unmatched?.length) {
+      setError('没有可导入的数据行')
+      return
+    }
+    Modal.confirm({
+      title: '确认导入客服回访？',
+      content: (
+        <>
+          将写入回访元数据，并软匹配挂到短信/控制台用后即评明细的 <code>customerVisit</code> 字段。
+          <br />
+          回访元数据 <strong>{customerVisitPreview?.visitMetaCount ?? 0}</strong> 条 · 匹配挂接{' '}
+          <strong>{customerVisitPreview?.matchedCount ?? 0}</strong> 条 · 未匹配{' '}
+          <strong>{customerVisitPreview?.unmatched?.length ?? 0}</strong> 行。
+        </>
+      ),
+      okText: '确认导入',
+      cancelText: '取消',
+      onOk: () => doCustomerVisitImport(),
     })
   }
 
@@ -861,15 +1252,11 @@ export default function Import({ embedded = false }) {
       {!embedded && (
         <PageHeader
           title="数据导入"
-          desc="选择数据来源与数据月份；投诉/咨询走打标流水线，用后即评 · 满意度回访按原工单号补全已有工单"
+          desc="选择数据来源与数据月份；投诉/咨询走打标流水线，用后即评默认导入短信+官网双文件"
         />
       )}
 
-      <Steps
-        className="page-section"
-        current={step}
-        items={STEPS.map((title) => ({ title }))}
-      />
+      <Steps className="page-section" current={stepsCurrent} items={stepItems} />
 
       {error && <Alert className="page-section-sm" type="error" showIcon title={error} />}
       {importBlocked && !importSession.active && (
@@ -913,25 +1300,17 @@ export default function Import({ embedded = false }) {
                 options={SOURCE_OPTIONS}
                 onChange={onSourceChange}
               />
-              {dataSourceType === 'post_use_rating' && (
-                <div className="mt-3">
-                  <Typography.Text strong className="mb-1 block text-xs">
-                    二级分类
-                  </Typography.Text>
-                  <Select
-                    className="w-full"
-                    value={postUseRatingSubType}
-                    options={POST_USE_RATING_SUBTYPE_OPTIONS}
-                    onChange={onPostUseRatingSubTypeChange}
-                  />
-                  {followUpImport && (
-                    <Typography.Text type="secondary" className="mt-2 block text-xs">
-                      满意度回访不新增独立记录，按原工单号补全投诉/咨询工单的回访满意度。
-                    </Typography.Text>
-                  )}
-                </div>
+              {channelBundleImport && (
+                <Typography.Text type="secondary" className="mt-2 block text-xs">
+                  默认双文件导入：短信渠道.xls + 官网渠道.xls（含评分类 / 选项类 / 投诉处理-电话回访）。投诉回访同时写入明细并补全已有工单。
+                </Typography.Text>
               )}
-              {pipelineDesc && !followUpImport && (
+              {customerVisitImport && (
+                <Typography.Text type="secondary" className="mt-2 block text-xs">
+                  客服回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
+                </Typography.Text>
+              )}
+              {pipelineDesc && !channelBundleImport && !followUpImport && !customerVisitImport && (
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   流水线：{pipelineDesc.label}（v{pipelineDesc.pipelineVersion}）
                 </Typography.Text>
@@ -954,7 +1333,23 @@ export default function Import({ embedded = false }) {
               </Typography.Text>
             </div>
           </div>
-          {isStubPipeline(dataSourceType) && !followUpImport && (
+          {dataSourceType === 'post_use_rating' && (
+            <div className="page-section-sm">
+              <Typography.Text strong className="mb-1 block text-xs">
+                用后即评导入方式
+              </Typography.Text>
+              <Select
+                className="w-full max-w-lg"
+                value={postUseRatingSubType}
+                options={POST_USE_RATING_SUBTYPE_OPTIONS}
+                onChange={onPostUseRatingSubTypeChange}
+              />
+            </div>
+          )}
+          {isStubPipeline(dataSourceType) &&
+            !channelBundleImport &&
+            !followUpImport &&
+            !customerVisitImport && (
             <Alert
               className="page-section-sm"
               type="warning"
@@ -965,13 +1360,81 @@ export default function Import({ embedded = false }) {
           )}
           <div className="page-section">
             <Button type="primary" onClick={() => setStep(1)}>
-              下一步：上传文件
+              {channelBundleImport ? '下一步：上传双文件' : '下一步：上传文件'}
             </Button>
           </div>
         </Card>
       )}
 
-      {step === 1 && (
+      {step === 1 && channelBundleImport && (
+        <Card className="page-section">
+          <PostUseChannelBundleImport
+            phase="upload"
+            importBusy={importBusy || channelPreviewBusy}
+            smsFile={channelSmsFile}
+            webFile={channelWebFile}
+            preview={channelPreview}
+            onSmsFileChange={(file) => {
+              setChannelSmsFile(file)
+              setChannelPreview(null)
+            }}
+            onWebFileChange={(file) => {
+              setChannelWebFile(file)
+              setChannelPreview(null)
+            }}
+          />
+          <div className="page-section">
+            <Space>
+              <Button onClick={() => setStep(0)} disabled={importBusy || channelPreviewBusy}>
+                上一步
+              </Button>
+              <Button
+                type="primary"
+                loading={channelPreviewBusy}
+                disabled={!channelSmsFile || !channelWebFile || importBusy}
+                onClick={() => void goChannelBundlePreview()}
+              >
+                下一步：解析预览
+              </Button>
+            </Space>
+          </div>
+        </Card>
+      )}
+
+      {step === 2 && channelBundleImport && (
+        <Card className="page-section">
+          <PostUseChannelBundleImport
+            phase="preview"
+            importBusy={importBusy}
+            smsFile={channelSmsFile}
+            webFile={channelWebFile}
+            preview={channelPreview}
+          />
+          <div className="page-section">
+            <Space>
+              <Button onClick={() => setStep(1)} disabled={importBusy}>
+                上一步
+              </Button>
+              <Button
+                type="primary"
+                loading={importBusy}
+                disabled={!channelPreview || !storageReady || importBlocked}
+                onClick={() =>
+                  void doChannelBundleImport({
+                    smsFile: channelSmsFile,
+                    webFile: channelWebFile,
+                    importMonth: normalizeImportMonth(importMonth),
+                  })
+                }
+              >
+                {importBusy ? importProgress || '导入中…' : '确认导入'}
+              </Button>
+            </Space>
+          </div>
+        </Card>
+      )}
+
+      {step === 1 && !channelBundleImport && (
         <Card className="page-section">
           <Alert
             className="mb-4"
@@ -990,23 +1453,29 @@ export default function Import({ embedded = false }) {
             }
             description={
               followUpImport
-                ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。'
-                : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
+                ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
+                : customerVisitImport
+                  ? `客服回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含月份、产品名称、用户反馈原文、用户信息、回访结果、内部评估。`
+                  : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
             }
           />
           <Upload.Dragger
             accept=".csv,.xlsx,.xls"
-            multiple={!followUpImport}
-            maxCount={followUpImport ? 1 : MAX_IMPORT_FILES}
+            multiple={!singleFileEnrichImport}
+            maxCount={singleFileEnrichImport ? 1 : MAX_IMPORT_FILES}
             showUploadList={false}
             disabled={
               importBusy ||
-              (!followUpImport && uploadFiles.length >= MAX_IMPORT_FILES) ||
-              (followUpImport && uploadFiles.length >= 1)
+              (!singleFileEnrichImport && uploadFiles.length >= MAX_IMPORT_FILES) ||
+              (singleFileEnrichImport && uploadFiles.length >= 1)
             }
             beforeUpload={(file) => {
-              if (followUpImport && uploadFiles.length >= 1) {
-                setError('满意度回访导入仅支持单文件')
+              if (singleFileEnrichImport && uploadFiles.length >= 1) {
+                setError(
+                  customerVisitImport
+                    ? `客服回访导入最多支持 ${MAX_IMPORT_FILES} 个文件`
+                    : '满意度回访导入仅支持单文件',
+                )
                 return Upload.LIST_IGNORE
               }
               if (uploadFiles.length >= MAX_IMPORT_FILES) {
@@ -1021,7 +1490,11 @@ export default function Import({ embedded = false }) {
               <InboxOutlined />
             </p>
             <p className="ant-upload-text">
-              {followUpImport ? '拖拽或点击选择满意度回访文件' : '拖拽或点击选择文件（可多选）'}
+              {followUpImport
+                ? '拖拽或点击选择满意度回访文件'
+                : customerVisitImport
+                  ? '拖拽或点击选择客服回访文件（可多选）'
+                  : '拖拽或点击选择文件（可多选）'}
             </p>
             <p className="ant-upload-hint">
               已添加 {uploadFiles.length}/{MAX_IMPORT_FILES} 个 · 合计约 {uploadTotalRows} 行
@@ -1132,7 +1605,7 @@ export default function Import({ embedded = false }) {
         </div>
       )}
 
-      {step === 2 && (
+      {step === 2 && !channelBundleImport && (
         <div className="page-section space-y-5">
           <Card>
             <Typography.Title level={5} className="!mb-0">
@@ -1141,6 +1614,46 @@ export default function Import({ embedded = false }) {
             {followUpImport ? (
               <div className="page-section-sm">
                 <FollowUpSatisfactionColumnMapping preset={activePreset} headers={headers} />
+              </div>
+            ) : customerVisitImport ? (
+              <div className="page-section-sm space-y-3">
+                {!activePreset || activePreset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title="未识别客服回访表头"
+                    description="需包含月份、产品名称、用户反馈原文、用户信息、回访结果、内部评估。"
+                  />
+                ) : (
+                  <>
+                    <Alert
+                      type="info"
+                      showIcon
+                      title={`已识别为「${activePreset.name}」格式`}
+                      description="写入 visit_records，并软匹配挂到短信/控制台用后即评明细；列映射由模板锁定。"
+                    />
+                    <Table
+                      size="small"
+                      pagination={false}
+                      dataSource={Object.entries(activePreset.columnMap).map(([key, header]) => ({
+                        key,
+                        field: key,
+                        header,
+                        present: headers.includes(header),
+                      }))}
+                      columns={[
+                        { title: '系统字段', dataIndex: 'field', width: 180 },
+                        { title: 'Excel 列名', dataIndex: 'header' },
+                        {
+                          title: '状态',
+                          dataIndex: 'present',
+                          width: 88,
+                          render: (present) => (present ? '已识别' : '缺失'),
+                        },
+                      ]}
+                    />
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -1186,7 +1699,11 @@ export default function Import({ embedded = false }) {
             )}
             <div className="page-section-sm page-grid-2">
               {STANDARD_FIELDS.filter((f) =>
-                ticketSource ? true : ['createdAt', 'productSpec', 'rawText', 'handlingText', 'ticketId', 'source'].includes(f.key),
+                ticketSource
+                  ? true
+                  : customerVisitImport
+                    ? customerVisitFieldKeys.includes(f.key)
+                    : ['createdAt', 'productSpec', 'rawText', 'handlingText', 'ticketId', 'source'].includes(f.key),
               ).map(({ key, label, required, hint }) => (
                 <div key={key}>
                   <Typography.Text strong className="mb-1 block text-xs">
@@ -1211,7 +1728,7 @@ export default function Import({ embedded = false }) {
                   />
                 </div>
               ))}
-              {!ticketSource && (
+              {!ticketSource && !customerVisitImport && (
                 <>
                   <div>
                     <Typography.Text strong className="mb-1 block text-xs">
@@ -1278,7 +1795,7 @@ export default function Import({ embedded = false }) {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 3 && !channelBundleImport && (
         <div className="page-section space-y-5">
           <Card>
             <Typography.Title level={5} className="!mb-0">
@@ -1299,6 +1816,101 @@ export default function Import({ embedded = false }) {
                     loading={followUpPreviewLoading}
                     error={followUpPreviewError}
                   />
+                </div>
+              </>
+            ) : customerVisitImport ? (
+              <>
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  写入客服回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
+                </Typography.Text>
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]} ·
+                  二级分类：客服回访导入
+                </Typography.Text>
+                <div className="page-section-sm space-y-3">
+                  {customerVisitPreviewLoading ? (
+                    <Typography.Text type="secondary" className="block text-xs">
+                      正在匹配用后即评明细并生成预览…
+                    </Typography.Text>
+                  ) : customerVisitPreviewError ? (
+                    <Alert
+                      type="error"
+                      showIcon
+                      title="预览失败"
+                      description={customerVisitPreviewError}
+                    />
+                  ) : customerVisitPreview ? (
+                    <>
+                      <Alert
+                        type={
+                          customerVisitPreview.matchedCount > 0 ||
+                          customerVisitPreview.visitMetaCount > 0
+                            ? 'success'
+                            : 'warning'
+                        }
+                        showIcon
+                        title={
+                          <>
+                            回访元数据 <strong>{customerVisitPreview.visitMetaCount}</strong> 条 ·
+                            匹配挂接 <strong>{customerVisitPreview.matchedCount}</strong> 条 ·
+                            仅元数据（含投诉回访）{' '}
+                            <strong>{customerVisitPreview.metaOnlyCount}</strong> 条 · 未匹配{' '}
+                            <strong>{customerVisitPreview.unmatched.length}</strong> 行
+                          </>
+                        }
+                      />
+                      {customerVisitPreview.detailedFieldMissingCount > 0 ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={`有 ${customerVisitPreview.detailedFieldMissingCount} 条回访缺少模板必填内容，Word 的“上期回访结果”会展示不完整`}
+                          description="请检查这 6 列是否都有值：月份、产品名称、用户反馈原文、用户信息、回访结果、内部评估。"
+                        />
+                      ) : (
+                        <Alert
+                          type="success"
+                          showIcon
+                          message={`月报明细字段完整 ${customerVisitPreview.detailedFieldCompleteCount} 条，可直接用于 Word 的“上期回访结果”`}
+                        />
+                      )}
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey={(r) => `p-${r.id}`}
+                        dataSource={customerVisitPreview.visitRecords.slice(0, 5)}
+                        columns={[
+                          { title: '产品', dataIndex: 'productName', width: 120 },
+                          { title: '用户反馈原文', dataIndex: 'userFeedbackText', ellipsis: true, render: (value) => value || '—' },
+                          { title: '用户信息', dataIndex: 'userInfoDetail', width: 180, ellipsis: true, render: (value, row) => value || row.userInfo || '—' },
+                          { title: '回访反馈信息', dataIndex: 'visitFeedbackDetail', ellipsis: true, render: (value, row) => value || row.visitResult || '—' },
+                          { title: '内部评估', dataIndex: 'internalEvaluationDetail', ellipsis: true, render: (value, row) => value || row.internalConclusion || '—' },
+                        ]}
+                        locale={{ emptyText: '暂无可展示的回访预览' }}
+                      />
+                      {customerVisitPreview.unmatched.length > 0 && (
+                        <Table
+                          size="small"
+                          pagination={{ pageSize: 5 }}
+                          rowKey={(r) => `u-${r.rowIndex}`}
+                          dataSource={customerVisitPreview.unmatched}
+                          columns={[
+                            { title: '行号', dataIndex: 'rowIndex', width: 72 },
+                            { title: '原因', dataIndex: 'reason' },
+                            {
+                              title: '产品',
+                              width: 120,
+                              render: (_, r) => r.visit?.productName || '—',
+                            },
+                            {
+                              title: '用户',
+                              ellipsis: true,
+                              render: (_, r) => r.visit?.userInfo || '—',
+                            },
+                          ]}
+                        />
+                      )}
+                    </>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -1349,6 +1961,19 @@ export default function Import({ embedded = false }) {
                     ? '预览加载中…'
                     : `确认导入回访 ${followUpPreview?.appliedRowCount ?? 0} 行`}
               </Button>
+            ) : customerVisitImport ? (
+              <Button
+                type="primary"
+                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                loading={importBusy || customerVisitPreviewLoading}
+                onClick={confirmCustomerVisitImport}
+              >
+                {importBusy
+                  ? importProgress || '导入中…'
+                  : customerVisitPreviewLoading
+                    ? '预览加载中…'
+                    : `确认导入回访 ${customerVisitPreview?.visitMetaCount ?? 0} 条`}
+              </Button>
             ) : (
               <Button
                 type="primary"
@@ -1365,6 +1990,58 @@ export default function Import({ embedded = false }) {
             )}
           </Space>
         </div>
+      )}
+
+      {step === 4 && channelBundleResult && (
+        <Card className="page-section">
+          <Result
+            status="success"
+            title="用后即评双文件导入完成"
+            subTitle={
+              <>
+                已写入明细 {channelBundleResult.recordCount} 条
+                {channelBundleResult.counts != null && (
+                  <>
+                    （短信 {channelBundleResult.counts.sms} · 控制台{' '}
+                    {channelBundleResult.counts.console} · 投诉回访{' '}
+                    {channelBundleResult.counts.callback} · 去重后{' '}
+                    {channelBundleResult.counts.scoredMerged}）
+                  </>
+                )}
+                {channelBundleResult.deletedPrior > 0 &&
+                  ` · 覆盖同月旧批次 ${channelBundleResult.deletedPrior} 条`}
+              </>
+            }
+            extra={
+              <Space wrap>
+                <Button type="primary" onClick={() => navigate('/workbench?tab=post_use_rating')}>
+                  打开洞察工作台 · 用后即评
+                </Button>
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/feedbacks?source=post_use_rating&month=${normalizeImportMonth(importMonth)}`,
+                    )
+                  }
+                >
+                  查看反馈库
+                </Button>
+                <Button
+                  onClick={() => {
+                    resetFileState()
+                    setStep(0)
+                    setError('')
+                  }}
+                >
+                  继续导入
+                </Button>
+              </Space>
+            }
+          />
+          <Typography.Text type="secondary" className="block text-center text-xs">
+            数据月份 {normalizeImportMonth(importMonth)} · 对内体验分与投诉回访满意度已可在工作台查看
+          </Typography.Text>
+        </Card>
       )}
 
       {step === 4 && followUpImportResult && (
@@ -1411,6 +2088,92 @@ export default function Import({ embedded = false }) {
           />
           <Typography.Text type="secondary" className="block text-center text-xs">
             数据月份 {followUpImportResult.dataMonth} · 已补全投诉/咨询工单回访字段
+          </Typography.Text>
+        </Card>
+      )}
+
+      {step === 4 && customerVisitImportResult && (
+        <Card className="page-section">
+          <Result
+            status={
+              customerVisitImportResult.dry.visitMetaCount > 0 ||
+              customerVisitImportResult.dry.matchedCount > 0
+                ? 'success'
+                : 'warning'
+            }
+            title="客服回访导入完成"
+            subTitle={
+              <>
+                回访元数据 <strong>{customerVisitImportResult.dry.visitMetaCount}</strong> 条 ·
+                匹配挂接 <strong>{customerVisitImportResult.dry.matchedCount}</strong> 条 · 未匹配{' '}
+                <strong>{customerVisitImportResult.dry.unmatched.length}</strong> 行 · 月报明细完整{' '}
+                <strong>{customerVisitImportResult.dry.detailedFieldCompleteCount}</strong> 条
+              </>
+            }
+            extra={
+              <Space wrap>
+                <Button type="primary" onClick={() => navigate('/workbench?tab=post_use_rating')}>
+                  打开洞察工作台 · 用后即评
+                </Button>
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/feedbacks?lane=post_use&source=post_use_rating&month=${customerVisitImportResult.dataMonth}`,
+                    )
+                  }
+                >
+                  查看用后即评明细
+                </Button>
+                <Button
+                  onClick={() => {
+                    resetFileState()
+                    setCustomerVisitImportResult(null)
+                    setStep(0)
+                    setError('')
+                  }}
+                >
+                  继续导入
+                </Button>
+              </Space>
+            }
+          />
+          {customerVisitImportResult.dry.detailedFieldMissingCount > 0 ? (
+            <Alert
+              className="mt-4"
+              type="warning"
+              showIcon
+              message={`仍有 ${customerVisitImportResult.dry.detailedFieldMissingCount} 条回访缺少月报明细字段`}
+              description="这些记录仍会导入，但 Word 的“上期回访结果”会展示为空列或不完整。"
+            />
+          ) : null}
+          {customerVisitImportResult.dry.unmatched.length > 0 && (
+            <Table
+              className="mt-4"
+              size="small"
+              pagination={{ pageSize: 8 }}
+              rowKey={(r) => `ru-${r.rowIndex}`}
+              dataSource={customerVisitImportResult.dry.unmatched}
+              columns={[
+                { title: '行号', dataIndex: 'rowIndex', width: 72 },
+                { title: '未匹配原因', dataIndex: 'reason' },
+                {
+                  title: '产品',
+                  width: 140,
+                  render: (_, r) => r.visit?.productName || '—',
+                },
+                {
+                  title: '用户信息',
+                  ellipsis: true,
+                  render: (_, r) => r.visit?.userInfo || '—',
+                },
+              ]}
+            />
+          )}
+          <Typography.Text type="secondary" className="mt-3 block text-center text-xs">
+            数据月份 {customerVisitImportResult.dataMonth} · 回访已写入 visit_records
+            {customerVisitImportResult.dry.matchedCount > 0
+              ? '，并已挂接到匹配的评价明细'
+              : ''}
           </Typography.Text>
         </Card>
       )}

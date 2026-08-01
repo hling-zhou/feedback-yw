@@ -20,6 +20,8 @@ import FeedbackCompositeFilter from './FeedbackCompositeFilter.jsx'
  *   journeys?: { name: string }[]
  *   resourcePools?: { name: string }[]
  *   requestScenes?: { name: string }[]
+ *   dataSourceTypes?: string[]
+ *   filterKeys?: string[]
  * }} [props.options]
  * @param {import('react').ReactNode} [props.actions]
  */
@@ -55,6 +57,11 @@ export default function FeedbackFilterBar({
             下方复合筛选选项已按所选产品收窄
           </Typography.Text>
         ) : null}
+        {actions ? (
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+            {actions}
+          </div>
+        ) : null}
       </div>
 
       <FeedbackCompositeFilter
@@ -65,8 +72,6 @@ export default function FeedbackFilterBar({
         showMyReviewFilter={showMyReviewFilter}
         options={options}
       />
-
-      {actions ? <div className="flex w-full flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   )
 }

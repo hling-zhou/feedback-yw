@@ -96,9 +96,6 @@ function formatAcquireConflictMessage(lock) {
   if (lock.type === 'retag') {
     return `${who} 正在进行批量重新打标，请待完成后再试`
   }
-  if (lock.type === 'pdf_export') {
-    return `${who} 正在导出 PDF，请待完成后再试`
-  }
   return `${who} 正在执行后台任务，请稍后再试`
 }
 

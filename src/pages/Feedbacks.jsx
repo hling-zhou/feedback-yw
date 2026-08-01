@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Switch, Tabs, Tag, Tooltip, Typography, message } from 'antd'
+import { CommentOutlined, DownloadOutlined, ReloadOutlined, StarOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -74,6 +74,23 @@ import {
   WORKBENCH_HOME,
   buildWorkbenchAnalysisUrl,
 } from '../lib/workbenchAnalysisLink.js'
+import {
+  FEEDBACK_LANE_POST_USE,
+  FEEDBACK_LANE_TICKETS,
+  FEEDBACK_LANE_DATA_SOURCES,
+  countFeedbackRecordsByLane,
+  filterFeedbackRecordsForLane,
+  isPostUseRatingLibraryRecord,
+  isPostUseNon10LibraryRecord,
+  normalizeFeedbackLaneDataSource,
+  resolveFeedbackLane,
+} from '../domain/postUseRatingImport.js'
+import {
+  needsPostUseJourney,
+  enrichPostUseJourneyBatch,
+} from '../lib/postUseRating/enrichPostUseJourney.js'
+import { getCatalogProducts } from '../lib/productCatalogLoader.js'
+import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
 
 export default function Feedbacks() {
   const {
@@ -86,11 +103,44 @@ export default function Feedbacks() {
     periodsLoading,
     selectInsightPeriod,
     settings,
+    productCatalogMeta,
     syncSharedDataFromServer,
+    updateFeedback,
   } = useInsights()
   const { user } = useAuth()
   const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
   const { remoteBannerText } = useSharedBackgroundTaskBlock()
+  const [journeyBusy, setJourneyBusy] = useState(false)
+  const [postUseOnlyNon10, setPostUseOnlyNon10] = useState(false)
+  const [view, setView] = useState('table')
+  const [filters, setFilters] = useState(createEmptyFeedbackFilters)
+  const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const skipUrlSyncRef = useRef(false)
+
+  const feedbackLane = useMemo(() => resolveFeedbackLane(searchParams), [searchParams])
+  const isPostUseLane = feedbackLane === FEEDBACK_LANE_POST_USE
+
+  const switchFeedbackLane = useCallback(
+    (lane) => {
+      const next = new URLSearchParams()
+      const month = searchParams.get('month')
+      if (month) next.set('month', month)
+      next.set('lane', lane)
+      const source =
+        lane === FEEDBACK_LANE_POST_USE
+          ? ''
+          : normalizeFeedbackLaneDataSource(lane, searchParams.get('source'))
+      if (source) {
+        next.set('source', source)
+      } else {
+        next.delete('source')
+      }
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const activePeriod = useMemo(
     () =>
@@ -110,12 +160,6 @@ export default function Feedbacks() {
     closeDrawer,
     onDrawerDirtyChange,
   } = useFeedbackDrawerSelection()
-  const [view, setView] = useState('table')
-  const [filters, setFilters] = useState(createEmptyFeedbackFilters)
-  const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [searchParams, setSearchParams] = useSearchParams()
-  const skipUrlSyncRef = useRef(false)
 
   const syncFiltersToUrl = useCallback(
     (nextFilters) => {
@@ -173,6 +217,19 @@ export default function Feedbacks() {
     }
 
     const parsed = parseFeedbackSearchParams(searchParams)
+    const lane = resolveFeedbackLane(searchParams)
+    const normalizedSource =
+      lane === FEEDBACK_LANE_POST_USE
+        ? ''
+        : normalizeFeedbackLaneDataSource(lane, parsed.dataSource)
+    if (normalizedSource !== parsed.dataSource) {
+      const next = new URLSearchParams(searchParams)
+      if (normalizedSource) next.set('source', normalizedSource)
+      else next.delete('source')
+      setSearchParams(next, { replace: true })
+      return
+    }
+    parsed.dataSource = normalizedSource
     setFilters(
       feedbackFiltersFromParsed({
         ...parsed,
@@ -196,9 +253,67 @@ export default function Feedbacks() {
     period: activePeriod,
   })
 
+  const postUseCatalog = useMemo(
+    () => getCatalogProducts(),
+    [feedbacks, productCatalogMeta?.loadedAt],
+  )
+  const scopedPostUsePeriodFeedbacks = useMemo(
+    () =>
+      scopePostUseRatingRecords(
+        filterFeedbackRecordsForLane(periodFeedbacks, FEEDBACK_LANE_POST_USE),
+        postUseCatalog,
+      ),
+    [periodFeedbacks, postUseCatalog],
+  )
+  const laneCounts = useMemo(() => {
+    const counts = countFeedbackRecordsByLane(periodFeedbacks)
+    return { ...counts, postUse: scopedPostUsePeriodFeedbacks.length }
+  }, [periodFeedbacks, scopedPostUsePeriodFeedbacks])
+
+  /** 当前大类周期记录；用后即评不含 callback 独立行。 */
+  const lanePeriodFeedbacks = useMemo(
+    () =>
+      feedbackLane === FEEDBACK_LANE_POST_USE
+        ? scopedPostUsePeriodFeedbacks
+        : filterFeedbackRecordsForLane(periodFeedbacks, feedbackLane),
+    [feedbackLane, periodFeedbacks, scopedPostUsePeriodFeedbacks],
+  )
+  const laneVisiblePeriodCount = lanePeriodFeedbacks.length
+
+  const postUseNon10NeedingJourney = useMemo(() => {
+    if (!isPostUseLane) return []
+    return lanePeriodFeedbacks.filter(
+      (fb) => isPostUseNon10LibraryRecord(fb) && needsPostUseJourney(fb),
+    )
+  }, [lanePeriodFeedbacks, isPostUseLane])
+
+  const runPostUseJourneyEnrichment = useCallback(async () => {
+    const targets = postUseNon10NeedingJourney
+    if (!targets.length) {
+      message.info('当前没有待补全旅程的非 10 分评价')
+      return
+    }
+    setJourneyBusy(true)
+    try {
+      const patches = enrichPostUseJourneyBatch(targets)
+      let n = 0
+      for (const { id, patch } of patches) {
+        const rec = targets.find((r) => r.id === id)
+        if (!rec) continue
+        await updateFeedback(id, patch)
+        n += 1
+      }
+      message.success(`已为 ${n} 条非 10 分评价补全用户旅程`)
+    } catch (e) {
+      message.error(e?.message || '旅程补全失败')
+    } finally {
+      setJourneyBusy(false)
+    }
+  }, [postUseNon10NeedingJourney, updateFeedback])
+
   const handleProductChange = useCallback(
     (product) => {
-      const scoped = scopeFeedbacksByProduct(periodFeedbacks, product || '')
+      const scoped = scopeFeedbacksByProduct(lanePeriodFeedbacks, product || '')
       const next = cascadeClearProductDependentFilters(
         applyFeedbackFilterPatch('product', { product: product || '' }, filters),
         scoped,
@@ -206,15 +321,15 @@ export default function Feedbacks() {
       setFilters(next)
       syncFiltersToUrl(next)
     },
-    [filters, periodFeedbacks, syncFiltersToUrl],
+    [filters, lanePeriodFeedbacks, syncFiltersToUrl],
   )
 
   const scopedFeedbacks = useMemo(
-    () => scopeFeedbacksByProduct(periodFeedbacks, filters.product || undefined),
-    [periodFeedbacks, filters.product],
+    () => scopeFeedbacksByProduct(lanePeriodFeedbacks, filters.product || undefined),
+    [lanePeriodFeedbacks, filters.product],
   )
 
-  const products = useMemo(() => listProducts(periodFeedbacks), [periodFeedbacks])
+  const products = useMemo(() => listProducts(lanePeriodFeedbacks), [lanePeriodFeedbacks])
   const pools = useMemo(
     () => listResourcePools(scopedFeedbacks, filters.product || undefined),
     [scopedFeedbacks, filters.product],
@@ -227,18 +342,22 @@ export default function Feedbacks() {
   const showComplaintCauseFilter = !filters.dataSource || filters.dataSource === 'complaint_ticket'
   const journeys = useMemo(() => countByField(scopedFeedbacks, 'journeyL1'), [scopedFeedbacks])
   const requestScenes = useMemo(() => countByField(scopedFeedbacks, 'requestScene'), [scopedFeedbacks])
+  const ticketQualityRecords = useMemo(
+    () => (isPostUseLane ? [] : lanePeriodFeedbacks),
+    [isPostUseLane, lanePeriodFeedbacks],
+  )
   const unknownJourneySummary = useMemo(
-    () => summarizeUnknownJourneyRecords(periodFeedbacks),
-    [periodFeedbacks],
+    () => summarizeUnknownJourneyRecords(ticketQualityRecords),
+    [ticketQualityRecords],
   )
   const missingTags = unknownJourneySummary.count
   const needsTicketLlmCount = useMemo(
-    () => countRecordsNeedingTicketLlmEnrichment(periodFeedbacks),
-    [periodFeedbacks],
+    () => countRecordsNeedingTicketLlmEnrichment(ticketQualityRecords),
+    [ticketQualityRecords],
   )
   const needsJourneyLlmCount = useMemo(
-    () => countRecordsNeedingJourneyLlmEnrichment(periodFeedbacks, settings),
-    [periodFeedbacks, settings],
+    () => countRecordsNeedingJourneyLlmEnrichment(ticketQualityRecords, settings),
+    [ticketQualityRecords, settings],
   )
 
   const unknownReasonHint = useMemo(() => {
@@ -265,14 +384,14 @@ export default function Feedbacks() {
     for (const tid of filters.ticketIds) {
       if (tid) map.set(tid, tid)
     }
-    for (const fb of periodFeedbacks) {
+    for (const fb of lanePeriodFeedbacks) {
       const tid = fb.ticketId?.trim()
       if (tid) map.set(tid, tid)
     }
     return [...map.values()]
       .sort((a, b) => a.localeCompare(b))
       .map((tid) => ({ label: tid, value: tid }))
-  }, [periodFeedbacks, filters.ticketIds])
+  }, [lanePeriodFeedbacks, filters.ticketIds])
 
   const matchedEvidenceCount = useMemo(() => {
     if (!selectedTicketIdSet?.size) return 0
@@ -289,12 +408,21 @@ export default function Feedbacks() {
   }, [filters.ticketDateFrom, filters.ticketDateTo])
 
   const filtered = useMemo(() => {
-    const baseList = selectedTicketIdSet?.size ? feedbacks : periodFeedbacks
+    const baseList = selectedTicketIdSet?.size ? feedbacks : lanePeriodFeedbacks
     return baseList.filter((fb) => {
       if (selectedTicketIdSet?.size) {
         if (!fb.ticketId || !selectedTicketIdSet.has(fb.ticketId)) return false
       }
-      if (filters.product && (fb.product || '未标注产品') !== filters.product) return false
+      // 两大类分流
+      if (isPostUseLane) {
+        if (!isPostUseRatingLibraryRecord(fb)) return false
+      } else {
+        const t = recordSourceType(fb)
+        if (t !== 'complaint_ticket' && t !== 'consultation_ticket') return false
+        // 工单侧也不展示用后即评 callback 独立行
+        if (isPostUseRatingLibraryRecord(fb) || fb.dataSourceType === 'post_use_rating') return false
+      }
+      if (filters.product && (fb.product || fb.productName || '未标注产品') !== filters.product) return false
       if (!matchesOptionalTextFilter(fb.problemType, filters.problemType)) return false
       if (filters.complaintCauseL1) {
         if (!isComplaintTicket(fb)) return false
@@ -303,6 +431,7 @@ export default function Feedbacks() {
       if (filters.journeyL1 && fb.journeyL1 !== filters.journeyL1) return false
       if (filters.resourcePool && (fb.resourcePool || '未标注资源池') !== filters.resourcePool) return false
       if (filters.dataSource && recordSourceType(fb) !== filters.dataSource) return false
+      if (isPostUseLane && postUseOnlyNon10 && !isPostUseNon10LibraryRecord(fb)) return false
       if (ticketDateFilter && !matchesTicketActualDateRange(fb, ticketDateFilter)) return false
       if (!matchesOptionalTextFilter(fb.requestScene, filters.requestScene)) return false
       if (
@@ -331,7 +460,7 @@ export default function Feedbacks() {
     })
   }, [
     feedbacks,
-    periodFeedbacks,
+    lanePeriodFeedbacks,
     selectedTicketIdSet,
     filters,
     ticketDateFilter,
@@ -339,6 +468,8 @@ export default function Feedbacks() {
     reviewEnabled,
     doneRecordIds,
     user?.id,
+    isPostUseLane,
+    postUseOnlyNon10,
   ])
 
   const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
@@ -367,13 +498,13 @@ export default function Feedbacks() {
     exportTicketAnalysisWithConfirm(filtered, {
       filePrefix: '反馈库',
       periodLabel: activePeriod?.label || '周期',
-      totalInDb: periodCount,
-      totalScopeLabel: '周期内',
+      totalInDb: laneVisiblePeriodCount,
+      totalScopeLabel: '本大类周期内',
     })
   }
 
   const handleExportUnknownJourney = () => {
-    const ok = downloadUnknownJourneyCsv(periodFeedbacks, '未识别旅程样本.csv')
+    const ok = downloadUnknownJourneyCsv(ticketQualityRecords, '未识别旅程样本.csv')
     if (!ok) {
       message.info('当前没有未识别用户旅程的记录')
     }
@@ -394,9 +525,13 @@ export default function Feedbacks() {
         title="反馈库"
         desc={
           <>
-            库内 {totalInDb} 条 · 周期内 {periodCount} 条 · 当前筛选 {filtered.length} 条
+            库内 {totalInDb} 条 · 本大类周期内 {laneVisiblePeriodCount} 条 · 当前筛选 {filtered.length}{' '}
+            条
             {activePeriod ? `（${activePeriod.label}）` : ''}
-            {filtered.length > 0 ? (
+            {periodCount !== laneVisiblePeriodCount ? (
+              <span className="text-ink-400"> · 周期全量 {periodCount}</span>
+            ) : null}
+            {filtered.length > 0 && !isPostUseLane ? (
               <>
                 {' · '}
                 负面类{' '}
@@ -423,6 +558,44 @@ export default function Feedbacks() {
 
       <div className="page-toolbar">
         <InsightPeriodPicker />
+      </div>
+
+      <div className="page-section">
+        <Tabs
+          className="feedback-lane-tabs"
+          activeKey={feedbackLane}
+          onChange={switchFeedbackLane}
+          items={[
+            {
+              key: FEEDBACK_LANE_TICKETS,
+              label: (
+                <span className="flex min-w-[220px] items-center gap-3 py-1 text-left">
+                  <CommentOutlined className="text-lg" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">投诉咨询工单</span>
+                    <span className="block text-xs text-ink-500">
+                      投诉工单 · 咨询工单 · {laneCounts.tickets} 条
+                    </span>
+                  </span>
+                </span>
+              ),
+            },
+            {
+              key: FEEDBACK_LANE_POST_USE,
+              label: (
+                <span className="flex min-w-[220px] items-center gap-3 py-1 text-left">
+                  <StarOutlined className="text-lg" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">用后即评满意度</span>
+                    <span className="block text-xs text-ink-500">
+                      短信 · 控制台 · {laneCounts.postUse} 条
+                    </span>
+                  </span>
+                </span>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {importSession.active && (
@@ -470,10 +643,26 @@ export default function Feedbacks() {
         />
       )}
 
-      {(needsTicketLlmCount > 0 ||
-        needsJourneyLlmCount > 0 ||
-        missingTags > 0 ||
-        filters.ticketIds.length > 0) && (
+      {isPostUseLane && postUseNon10NeedingJourney.length > 0 && (
+        <Alert
+          className="page-section-sm"
+          type="warning"
+          showIcon
+          title={`有 ${postUseNon10NeedingJourney.length} 条非 10 分评价待补全用户旅程`}
+          description="仅补用户旅程字段，不走投诉/咨询统一批量打标。"
+          action={
+            <Button type="primary" size="small" loading={journeyBusy} onClick={() => void runPostUseJourneyEnrichment()}>
+              补全用户旅程
+            </Button>
+          }
+        />
+      )}
+
+      {!isPostUseLane &&
+        (needsTicketLlmCount > 0 ||
+          needsJourneyLlmCount > 0 ||
+          missingTags > 0 ||
+          filters.ticketIds.length > 0) && (
         <div className="page-section page-stack">
           {(needsTicketLlmCount > 0 || needsJourneyLlmCount > 0) && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-1.5 text-sm text-sky-900">
@@ -537,7 +726,7 @@ export default function Feedbacks() {
             <Alert
               type="warning"
               showIcon
-              title={`有 ${missingTags} 条工单的用户旅程仍为「未识别环节」`}
+              title={`本周期投诉/咨询工单中，有 ${missingTags} 条用户旅程仍为「未识别环节」`}
               description={
                 <>
                   {unknownReasonHint ? `主要原因：${unknownReasonHint}。` : null}
@@ -567,33 +756,22 @@ export default function Feedbacks() {
           )}
 
           {filters.ticketIds.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
-              <Typography.Text className="shrink-0 text-sm text-indigo-900">
-                行动建议依据工单（{filters.ticketIds.length} 个）
-                {matchedEvidenceCount < filters.ticketIds.length ? (
-                  <Typography.Text type="secondary" className="ml-1 text-xs">
-                    · 库内匹配 {matchedEvidenceCount} 条
-                  </Typography.Text>
-                ) : null}
-              </Typography.Text>
-              <Typography.Text type="secondary" className="text-xs">
-                已按工单号限定范围，可继续添加其他筛选；移除「工单号」Tag 后恢复常规范围
-              </Typography.Text>
-            </div>
+            <Alert
+              type="info"
+              showIcon
+              title={`已按工单号筛选 ${filters.ticketIds.length} 个`}
+              description={
+                matchedEvidenceCount > 0
+                  ? `库内匹配证据 ${matchedEvidenceCount} 条（含跨周期）。`
+                  : '当前筛选工单号在库内暂无匹配记录。'
+              }
+            />
           )}
         </div>
       )}
 
-      <div
-        className={`page-sticky-chrome ${
-          needsTicketLlmCount > 0 ||
-          needsJourneyLlmCount > 0 ||
-          missingTags > 0 ||
-          filters.ticketIds.length > 0
-            ? 'page-section-sm'
-            : 'page-section'
-        }`}
-      >        <FeedbackFilterBar
+      <div className="page-sticky-chrome mt-2">
+        <FeedbackFilterBar
           filters={filters}
           onFiltersChange={handleFiltersChange}
           onProductChange={handleProductChange}
@@ -601,6 +779,8 @@ export default function Feedbacks() {
           showComplaintCauseFilter={showComplaintCauseFilter}
           showMyReviewFilter={reviewEnabled}
           options={{
+            dataSourceTypes: FEEDBACK_LANE_DATA_SOURCES[feedbackLane],
+            filterKeys: isPostUseLane ? ['journeyL1'] : undefined,
             ticketIdOptions,
             products,
             problemTypes,
@@ -611,24 +791,50 @@ export default function Feedbacks() {
           }}
           actions={
             <>
-              <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
-                <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
-                  导入分析结果
-                </Button>
-              </Tooltip>
-              <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
-                导出分析结果
-              </Button>
-              <PermissionGate permission="retag">
-                <Button
-                  disabled={bulkRetagDisabled}
-                  loading={bulkRetagBusy}
-                  title={bulkRetagDisabledTip}
-                  onClick={openBulkRetagModal}
-                >
-                  批量重新打标
-                </Button>
-              </PermissionGate>
+              {!isPostUseLane && (
+                <>
+                  <Tooltip title="按工单号全库匹配并覆盖分析字段，不受当前产品筛选限制；列含义与必填项见下载模板表头（带 * 为必填）">
+                    <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
+                      导入
+                    </Button>
+                  </Tooltip>
+                  <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
+                    导出
+                  </Button>
+                  <PermissionGate permission="retag">
+                    <Button
+                      disabled={bulkRetagDisabled}
+                      loading={bulkRetagBusy}
+                      title={bulkRetagDisabledTip}
+                      onClick={openBulkRetagModal}
+                    >
+                      批量重新打标
+                    </Button>
+                  </PermissionGate>
+                </>
+              )}
+              {isPostUseLane && (
+                <>
+                  <span className="inline-flex h-8 items-center gap-2 px-1">
+                    <Switch
+                      size="small"
+                      checked={postUseOnlyNon10}
+                      onChange={setPostUseOnlyNon10}
+                    />
+                    <Typography.Text className="text-sm">仅展示非10分</Typography.Text>
+                  </span>
+                  <Button
+                    loading={journeyBusy}
+                    disabled={!postUseNon10NeedingJourney.length}
+                    onClick={() => void runPostUseJourneyEnrichment()}
+                  >
+                    补全非10分旅程
+                    {postUseNon10NeedingJourney.length
+                      ? `（${postUseNon10NeedingJourney.length}）`
+                      : ''}
+                  </Button>
+                </>
+              )}
               <Segmented
                 value={view}
                 options={[
@@ -638,7 +844,6 @@ export default function Feedbacks() {
                 onChange={setView}
               />
               <Button
-                className="ml-auto"
                 icon={<ReloadOutlined />}
                 loading={refreshing}
                 onClick={() => void handleRefresh()}
@@ -662,12 +867,14 @@ export default function Feedbacks() {
             onSelect={selectFeedback}
             reviewEnabled={reviewEnabled}
             doneRecordIds={doneRecordIds}
+            dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
           />
         ) : (
           <CardGrid
             key={currentPeriodId || 'no-period'}
             items={filtered}
             onSelect={selectFeedback}
+            postUseMode={isPostUseLane}
           />
         )}
       </div>
@@ -693,13 +900,56 @@ export default function Feedbacks() {
   )
 }
 
-function CardGrid({ items, onSelect }) {
+function CardGrid({ items, onSelect, postUseMode = false }) {
   if (!items.length) {
     return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配反馈" />
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((fb) => (
+      {items.map((fb) => {
+        const isPostUse =
+          postUseMode ||
+          fb.dataSourceType === 'post_use_rating' ||
+          recordSourceType(fb) === 'post_use_rating'
+        if (isPostUse) {
+          const channel =
+            fb.channel === 'sms'
+              ? '短信'
+              : fb.channel === 'console'
+                ? '控制台'
+                : fb.channel || fb.sourceSubType || '用后即评'
+          const score =
+            fb.ratingScore != null && Number.isFinite(Number(fb.ratingScore))
+              ? Number(fb.ratingScore)
+              : null
+          const product = fb.productName || fb.product || '—'
+          const snippet = fb.rawText || fb.commentText || fb.lowScoreReason || '—'
+          return (
+            <Card
+              key={fb.id}
+              hoverable
+              className="cursor-pointer"
+              onClick={() => onSelect(fb)}
+            >
+              <div className="flex flex-wrap gap-1.5">
+                <Tag color="blue">{channel}</Tag>
+                {score != null ? <Tag color="gold">{score} 分</Tag> : null}
+                <Tag>{DATA_SOURCE_LABELS.post_use_rating || '用后即评'}</Tag>
+                {fb.journeyL1 ? <Tag color="blue">{fb.journeyL1}</Tag> : null}
+              </div>
+              <Typography.Paragraph className="!mb-0 !mt-2 line-clamp-2 text-sm font-medium">
+                {product}
+              </Typography.Paragraph>
+              <Typography.Paragraph type="secondary" className="!mb-0 !mt-2 line-clamp-3 !text-xs">
+                {snippet}
+              </Typography.Paragraph>
+              <Typography.Text type="secondary" className="mt-3 block text-[10px]">
+                {fb.importMonth || '未知月份'} · {fb.customerName || fb.customerCode || '—'}
+              </Typography.Text>
+            </Card>
+          )
+        }
+        return (
         <Card
           key={fb.id}
           hoverable
@@ -741,7 +991,8 @@ function CardGrid({ items, onSelect }) {
             {fb.resourcePool || '—'}
           </Typography.Text>
         </Card>
-      ))}
+        )
+      })}
     </div>
   )
 }

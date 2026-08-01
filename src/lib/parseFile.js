@@ -36,13 +36,17 @@ function cellValueToString(cell) {
 
 /**
  * @param {import('xlsx').WorkSheet} sheet
+ * @param {{ headerRowIndex?: number }} [options] 0-based row index of header (default: first used row)
  */
-function sheetToRows(sheet) {
+function sheetToRows(sheet, options = {}) {
   const ref = sheet['!ref']
   if (!ref) return { headers: [], rows: [] }
 
   const range = XLSX.utils.decode_range(ref)
-  const headerRow = range.s.r
+  const headerRow =
+    typeof options.headerRowIndex === 'number' && Number.isFinite(options.headerRowIndex)
+      ? Math.max(range.s.r, Math.min(range.e.r, Math.trunc(options.headerRowIndex)))
+      : range.s.r
   /** @type {string[]} */
   const headers = []
 
@@ -79,16 +83,19 @@ function sheetToRows(sheet) {
 
 /**
  * @param {ArrayBuffer} buffer
+ * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number }} [options]
  * @returns {{ sheetNames: string[]; sheets: Record<string, { headers: string[]; rows: Record<string, string>[] }> }}
  */
-export function parseExcelBuffer(buffer) {
+export function parseExcelBuffer(buffer, options = {}) {
   const wb = XLSX.read(buffer, { type: 'array', cellText: true, cellDates: true })
-  /** @type {Record<string, { headers: string[]; rows: Record<string, string>[] }>} */
+  /** @type {Record<string, { headers: string[]; rows: Record<string, string>[] }> } */
   const sheets = {}
 
   for (const name of wb.SheetNames) {
     if (name === 'WpsReserved_CellImgList') continue
-    const { headers, rows } = sheetToRows(wb.Sheets[name])
+    const headerRowIndex =
+      options.headerRowIndexBySheet?.[name] ?? options.defaultHeaderRowIndex
+    const { headers, rows } = sheetToRows(wb.Sheets[name], { headerRowIndex })
     if (headers.length > 0) sheets[name] = { headers, rows }
   }
 

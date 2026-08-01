@@ -49,11 +49,17 @@ export default function FeedbackCompositeFilter({
   )
 
   const filterGroups = useMemo(
-    () =>
-      showMyReviewFilter
-        ? FEEDBACK_FILTER_GROUPS
-        : FEEDBACK_FILTER_GROUPS.filter((group) => !group.keys.includes('myReview')),
-    [showMyReviewFilter],
+    () => {
+      const allowedKeys = options.filterKeys ? new Set(options.filterKeys) : null
+      return FEEDBACK_FILTER_GROUPS.map((group) => ({
+        ...group,
+        keys: group.keys.filter(
+          (key) =>
+            (showMyReviewFilter || key !== 'myReview') && (!allowedKeys || allowedKeys.has(key)),
+        ),
+      })).filter((group) => group.keys.length > 0)
+    },
+    [options.filterKeys, showMyReviewFilter],
   )
 
   const config = useMemo(
@@ -75,9 +81,14 @@ export default function FeedbackCompositeFilter({
       listEnumOptions: (key, values, editorOptions) =>
         listEnumOptionsForFilterKey(key, values, editorOptions, showComplaintCauseFilter),
       filterMenuKeys: (keys) =>
-        keys.filter((key) => key !== 'ticketDateTo' && (showMyReviewFilter || key !== 'myReview')),
+        keys.filter(
+          (key) =>
+            key !== 'ticketDateTo' &&
+            (showMyReviewFilter || key !== 'myReview') &&
+            (!options.filterKeys || options.filterKeys.includes(key)),
+        ),
     }),
-    [showComplaintCauseFilter, filterGroups, showMyReviewFilter],
+    [showComplaintCauseFilter, filterGroups, options.filterKeys, showMyReviewFilter],
   )
 
   return (

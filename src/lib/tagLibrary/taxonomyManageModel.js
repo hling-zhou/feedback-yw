@@ -1,5 +1,5 @@
 /**
- * 标签管理：扁平行模型、校验、按 Key 合并导入、导出
+ * 分析维度：扁平行模型、校验、按 Key 合并导入、导出
  */
 import * as XLSX from 'xlsx'
 import { parseTaxonomyWorkbook } from '../taxonomyExcel.js'

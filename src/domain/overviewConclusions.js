@@ -41,6 +41,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [journeyL2]
  * @property {string} [problemType]
  * @property {string} [requestScene]
+ * @property {DataSourceType} [dataSourceType]
  */
 
 /** @typedef {'strong' | 'moderate' | 'weak'} EvidenceStrength */
@@ -61,15 +62,22 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string[]} [mergedFrom]
  * @property {number} [score]
  * @property {number} [signalWeight]
+ * @property {string} [fingerprintVersion]
+ * @property {string} [fingerprintV2]
+ * @property {string} [scoreModelVersion]
  */
 
 /** @typedef {'new' | 'persist' | 'priority_up' | 'priority_down'} RecommendationPeriodChange */
+/** @typedef {'new' | 'growing' | 'persistent' | 'easing' | 'resolved' | 'disappeared'} RecommendationLifecycle */
 
 /**
  * @typedef {Object} RecommendationPeriodCompare
  * @property {RecommendationPeriodChange} change
  * @property {string} [previousId]
  * @property {'high' | 'medium' | 'low'} [previousPriority]
+ * @property {RecommendationLifecycle} [lifecycle]
+ * @property {number} [deltaCount]
+ * @property {number} [deltaSharePct]
  */
 
 /**
@@ -111,7 +119,14 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {number} ticketCount
  * @property {number} harmScore
  * @property {number} maxSeverity
+ * @property {number} [p90Severity]
  * @property {number} p90Emotion
+ * @property {number} [urgentRate]
+ * @property {number} [unresolvedRate]
+ * @property {number} [highValueRate]
+ * @property {number} [repeatRate]
+ * @property {number} [selfServiceRate]
+ * @property {Record<string, number>} [scoreBreakdown]
  * @property {string[]} sourceDistributionLines
  * @property {string} customerTierSummary
  * @property {Record<string, number>} [customerTierCounts]
@@ -131,6 +146,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
 /**
  * @typedef {Object} OverviewRecommendation
  * @property {string} id
+ * @property {string} [stableKey] 跨周期稳定键；优先用于 period compare / 举措关联
  * @property {'high' | 'medium' | 'low'} priority
  * @property {RecommendationCategory} category
  * @property {string} text 兼容旧版：等同 summary
@@ -143,6 +159,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [evidenceNote]
  * @property {OverviewRecommendationScope} [scope]
  * @property {string} [signalType]
+ * @property {'cross_source' | 'complaint_only' | 'consultation_only'} [sourceGroup]
  * @property {string[]} [trackingMetrics]
  * @property {boolean} [insufficientEvidence]
  * @property {EvidenceStrength} [evidenceStrength]
@@ -158,7 +175,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [ruleVersion]
  * @property {string} [playbookVersion]
  * @property {string} [signalWeightsVersion]
- * @property {'pain_cluster_v2' | 'legacy_planning'} [recommendationEngine]
+ * @property {'pain_cluster_v2' | 'pain_cluster_v2_1' | 'pain_cluster_v2_2' | 'pain_cluster_v2_3' | 'legacy_planning'} [recommendationEngine]
  * @property {boolean} [legacyFallback]
  * @property {string} [previousPeriodId]
  * @property {number} [generatedRecommendationCount]
@@ -166,6 +183,14 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {number} [removedFromPreviousCount]
  * @property {boolean} [displaySuppressed]
  * @property {number} [smallProductFallbackCount]
+ * @property {number} [formalClusterCount]
+ * @property {number} [fallbackReferenceCount]
+ * @property {number} [singletonCount]
+ * @property {number} [overviewFusedCount]
+ * @property {string} [stableKeyVersion]
+ * @property {string} [profileId]
+ * @property {string} [scoreModelVersion]
+ * @property {string} [fingerprintVersion]
  * @property {import('./enums.js').DataSourceType} [dataSourceType] 本源典型问题结论标记
  */
 

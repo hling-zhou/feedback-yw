@@ -312,6 +312,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           <>
             本入口<strong>不会新增工单</strong>，仅按<strong> 工单号 </strong>
             匹配库内已有记录并覆盖分析字段；未匹配的工单号将跳过。空单元格也会覆盖线上值。
+            当前页面选择的产品/筛选条件<strong>不会限制导入范围</strong>，只要工单号能在库内匹配到，就会被更新。
             {inModal && (
               <>
                 {' '}

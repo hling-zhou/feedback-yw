@@ -40,6 +40,11 @@ describe('rehydrateOverviewRecommendations', () => {
     ).toBe(false)
     expect(
       needsOverviewRecommendationsRehydrate({
+        recommendationsMeta: { recommendationEngine: 'pain_cluster_v2_3' },
+      }),
+    ).toBe(false)
+    expect(
+      needsOverviewRecommendationsRehydrate({
         recommendationsMeta: { recommendationEngine: 'legacy_planning' },
       }),
     ).toBe(true)
@@ -60,7 +65,7 @@ describe('rehydrateOverviewRecommendations', () => {
       dataCoverageNotes: [],
     }
     const rehydrated = rehydrateOverviewRecommendations(oldConclusions, records, null)
-    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(rehydrated.recommendationsMeta?.rehydratedAt).toBeTruthy()
     expect(rehydrated.recommendations.length).toBeGreaterThan(0)
     expect(rehydrated.recommendations[0].signalType).toBe('pain_cluster_v2')
@@ -81,7 +86,7 @@ describe('rehydrateOverviewRecommendations', () => {
       dataCoverageNotes: [],
     }
     const rehydrated = rehydrateOverviewRecommendations(legacyConclusions, records, null)
-    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(false)
     expect(rehydrated.recommendations[0].signalType).toBe('pain_cluster_v2')
     expect(rehydrated.recommendations[0].id).not.toBe('legacy-1')
@@ -89,7 +94,7 @@ describe('rehydrateOverviewRecommendations', () => {
 
   it('returns unchanged when already V2', () => {
     const conclusions = {
-      recommendationsMeta: { recommendationEngine: 'pain_cluster_v2' },
+      recommendationsMeta: { recommendationEngine: 'pain_cluster_v2_3' },
       recommendations: [],
     }
     expect(rehydrateOverviewRecommendations(conclusions, [makeRecord()], null)).toBe(conclusions)
@@ -102,7 +107,7 @@ describe('rehydrateOverviewRecommendations', () => {
       dataCoverageNotes: [],
     }
     const rehydrated = rehydrateOverviewRecommendations(oldConclusions, [], null)
-    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(rehydrated.recommendations).toHaveLength(0)
     expect(rehydrated.dataCoverageNotes?.some((n) => n.includes('无工单数据'))).toBe(true)
   })
@@ -118,7 +123,7 @@ describe('rehydrateOverviewRecommendations', () => {
       makeRecord({ painPoint: '', problemSummary: '' }),
     ]
     const rehydrated = rehydrateOverviewRecommendations(oldConclusions, records, null)
-    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(rehydrated.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
     expect(rehydrated.recommendationsMeta?.legacyFallback).toBe(false)
     expect(rehydrated.recommendations).toHaveLength(0)
     expect(rehydrated.dataCoverageNotes).toContain(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)

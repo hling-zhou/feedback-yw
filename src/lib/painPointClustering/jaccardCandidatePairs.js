@@ -80,14 +80,20 @@ export function buildNeighborLists(n, candidatePairKeys) {
 /**
  * @param {Set<string>[]} tokenSets
  * @param {Set<string>} candidatePairKeys
+ * @param {(aIndex: number, bIndex: number) => number} [getPairSimilarity]
  * @returns {Map<string, number>}
  */
-export function buildSparseLeafSimilarities(tokenSets, candidatePairKeys) {
+export function buildSparseLeafSimilarities(tokenSets, candidatePairKeys, getPairSimilarity) {
   /** @type {Map<string, number>} */
   const sims = new Map()
   for (const key of candidatePairKeys) {
     const [a, b] = key.split(':').map(Number)
-    sims.set(key, jaccardSimilarity(tokenSets[a], tokenSets[b]))
+    sims.set(
+      key,
+      getPairSimilarity
+        ? getPairSimilarity(a, b)
+        : jaccardSimilarity(tokenSets[a], tokenSets[b]),
+    )
   }
   return sims
 }

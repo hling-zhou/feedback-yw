@@ -2,10 +2,17 @@ import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   limitPlanningRecommendations,
   appendSmallProductJourneyProblemFallbacks,
+  CLUSTER_FAMILY_STABLE_KEY_VERSION,
+  CLUSTER_STABLE_KEY_VERSION,
+  FALLBACK_STABLE_KEY_VERSION,
+  isFallbackReferenceRecommendation,
+  isFormalPainClusterRecommendation,
+  isHighRiskSingletonRecommendation,
 } from '../lib/planningRecommendations.js'
 import { buildClusterRecommendationsFromPipeline } from '../lib/painPointClustering/buildClusterActionRecommendations.js'
 import { formatClusteringExclusionNote } from '../lib/painPointClustering/clusteringSnapshot.js'
 import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
+import { resolveClusterProfile } from '../lib/painPointClustering/resolveClusterProfile.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
 import { getPlanningConfigVersions } from '../lib/planningConfigLoader.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from './rehydrateOverviewRecommendations.js'
@@ -49,6 +56,7 @@ export function buildSourcePlanningConclusions({
   previousPeriodId,
   settings = null,
 }) {
+  const profile = resolveClusterProfile({ sourceType: dataSourceType })
   const periodLabel = period?.label || '当前周期'
   const periodMonth = periodMonthKey(period)
   const sampleSize = records.length
@@ -76,7 +84,7 @@ export function buildSourcePlanningConclusions({
   }
 
   const { recommendations: rawRecommendations, pipelineResults } =
-    buildClusterRecommendationsFromPipeline(records, { settings })
+    buildClusterRecommendationsFromPipeline(records, { settings, profile })
 
   const recommendationsWithFallbacks = appendSmallProductJourneyProblemFallbacks(
     rawRecommendations,
@@ -84,6 +92,15 @@ export function buildSourcePlanningConclusions({
   )
   const smallProductFallbackCount =
     recommendationsWithFallbacks.length - rawRecommendations.length
+  const formalClusterCount = recommendationsWithFallbacks.filter((rec) =>
+    isFormalPainClusterRecommendation(rec),
+  ).length
+  const fallbackReferenceCount = recommendationsWithFallbacks.filter((rec) =>
+    isFallbackReferenceRecommendation(rec),
+  ).length
+  const singletonCount = recommendationsWithFallbacks.filter((rec) =>
+    isHighRiskSingletonRecommendation(rec),
+  ).length
 
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote) dataCoverageNotes.push(exclusionNote)
@@ -120,11 +137,18 @@ export function buildSourcePlanningConclusions({
       ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
       playbookVersion: configVersions.playbookVersion,
       signalWeightsVersion: configVersions.signalWeightsVersion,
-      recommendationEngine: 'pain_cluster_v2',
+      recommendationEngine: 'pain_cluster_v2_3',
       legacyFallback: false,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,
       smallProductFallbackCount: smallProductFallbackCount || undefined,
+      formalClusterCount,
+      fallbackReferenceCount: fallbackReferenceCount || undefined,
+      singletonCount: singletonCount || undefined,
+      stableKeyVersion: `${CLUSTER_STABLE_KEY_VERSION}|${FALLBACK_STABLE_KEY_VERSION}|${CLUSTER_FAMILY_STABLE_KEY_VERSION}`,
+      profileId: profile.profileId,
+      scoreModelVersion: profile.scoreModelVersion,
+      fingerprintVersion: profile.fingerprintVersion,
       cappedCount: recommendations.length,
       removedFromPreviousCount,
       dataSourceType,

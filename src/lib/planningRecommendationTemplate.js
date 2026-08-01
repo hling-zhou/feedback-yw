@@ -90,7 +90,7 @@ export const PLANNING_ACTION_VERBS = [
 export const PLANNING_ACTION_RE =
   /建立|完善|优化|上线|补齐|跟踪|推动|梳理|制定|治理|优先|诊断|playbook|看板|监控|自助|排查|闭环|立项|改造|固化|沉淀|纳入|降低|提升|减少|缩短|增强|预检|向导|工具|能力|流程|验收|预警|回归|专项|打通|建设|提供|支持|实现|展示|修复|绑定|发布/
 
-/** 导出/PDF 字段标签 */
+/** 导出字段标签 */
 export const PLANNING_EXPORT_LABELS = {
   details: '详细意见：',
   evidenceNote: '依据说明：',

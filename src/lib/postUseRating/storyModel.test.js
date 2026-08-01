@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest'
+import { buildPostUseStoryModel } from './storyModel.js'
+
+const records = Array.from({ length: 10 }, (_, index) => ({
+  id: `r${index}`,
+  dataSourceType: 'post_use_rating',
+  productName: '弹性公网IP',
+  ratingScore: index < 4 ? 8 : 10,
+  channel: 'sms',
+  importMonth: '2026-06',
+  rawText: index < 4 ? '功能有缺失' : '',
+  customerName: `客户${index}`,
+}))
+
+describe('post-use story model', () => {
+  it('builds the fixed narrative hierarchy from one model', () => {
+    const model = buildPostUseStoryModel({
+      records,
+      allRecords: records,
+      visits: [{ id: 'v1', importMonth: '2026-06', productName: '弹性公网IP', userInfo: '客户0', feedbackSummary: '功能有缺失', internalConclusion: '需求接纳' }],
+      productNames: ['弹性公网IP'],
+      focusNames: ['弹性公网IP'],
+      actions: [],
+      period: { id: 'period:month:2026-06', label: '2026年6月', endDate: '2026-06-30', granularity: 'month', anchorYear: 2026 },
+    })
+
+    expect(Object.keys(model)).toEqual([
+      'scope', 'conclusions', 'metrics', 'productOverview', 'trendsAndChanges',
+      'drivers', 'actionsAndRecovery', 'quality', 'scoredRows', 'insightBundle',
+    ])
+    expect(model.conclusions.map((item) => item.key)).toEqual(['overall', 'risk', 'change', 'action'])
+    expect(model.productOverview[0]).toMatchObject({
+      productName: '弹性公网IP',
+      sampleSize: 10,
+      avgScore: 9.2,
+      nonTenCount: 4,
+      visitEvidenceCount: 1,
+      state: '重点改善',
+    })
+    expect(model.metrics.external.yunwang.avgScore).toBe(9.2)
+    expect(model.metrics.monthlyScoreTable[0]).toMatchObject({
+      productName: '弹性公网IP',
+      sampleSize: 10,
+      avgScore: 9.2,
+    })
+    expect(model.metrics.nonTenDistributionProducts).toEqual(['弹性公网IP'])
+    expect(model.metrics.scoreDistribution['弹性公网IP'].sampleSize).toBe(10)
+    expect(model.drivers.needs[0].visitEvidenceCount).toBe(1)
+  })
+
+  it('keeps visit evidence out of score and priority calculations', () => {
+    const withoutVisits = buildPostUseStoryModel({ records, allRecords: records, productNames: ['弹性公网IP'] })
+    const withVisits = buildPostUseStoryModel({
+      records,
+      allRecords: records,
+      productNames: ['弹性公网IP'],
+      visits: [{ id: 'v1', productName: '弹性公网IP', feedbackSummary: '功能有缺失' }],
+    })
+    expect(withVisits.metrics.internalExperience).toEqual(withoutVisits.metrics.internalExperience)
+    expect(withVisits.drivers.needs[0].priorityScore).toBe(withoutVisits.drivers.needs[0].priorityScore)
+    expect(withVisits.drivers.needs[0].visitEvidenceCount).toBe(1)
+  })
+
+  it('reports unclassified needs as quality evidence without creating insights or actions', () => {
+    const unclassifiedRecords = records.map((record, index) => index === 0
+      ? { ...record, rawText: '希望可以一键完成整个配置流程' }
+      : record)
+    const model = buildPostUseStoryModel({
+      records: unclassifiedRecords,
+      allRecords: unclassifiedRecords,
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.drivers.unclassifiedNeeds).toHaveLength(1)
+    expect(model.drivers.needs.some((need) => need.need === '待归类需求')).toBe(false)
+    expect(model.trendsAndChanges.changes.some((change) => change.issue === '待归类需求')).toBe(false)
+    expect(model.actionsAndRecovery.rows.some((action) => action.title.includes('待归类需求'))).toBe(false)
+    expect(model.quality.counts.unclassifiedNeed).toBe(1)
+    expect(model.quality.anomalies).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'unclassified_need', productName: '弹性公网IP' }),
+    ]))
+  })
+})

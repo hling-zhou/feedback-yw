@@ -115,7 +115,7 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
     case 'ticketIds':
       return options.ticketIdOptions || []
     case 'dataSource':
-      return DATA_SOURCE_TYPES.map((type) => ({
+      return (options.dataSourceTypes || DATA_SOURCE_TYPES).map((type) => ({
         label: DATA_SOURCE_LABELS[type],
         value: type,
       }))

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "目标产品与产品规格关系表。导入时仅分析 enabled=true 的产品及其规格。",
+  "description": "目标产品与产品规格。enabled=投诉/咨询工单分析；analysisPostUseRating=用后即评分析。缺省云网产品由 ensureTargetProductsInCatalog 自动补齐。",
   "products": [
     {
       "key": "eip",
@@ -37,7 +37,9 @@
             "弹性公网IP共享带宽"
           ]
         }
-      ]
+      ],
+      "analysisPostUseRating": true,
+      "focusTracked": true
     },
     {
       "key": "dc",
@@ -45,7 +47,9 @@
       "enabled": true,
       "taxonomyKey": "dc",
       "acceptParentName": true,
-      "specs": []
+      "specs": [],
+      "analysisPostUseRating": true,
+      "focusTracked": true
     },
     {
       "key": "slb",
@@ -53,7 +57,9 @@
       "enabled": true,
       "taxonomyKey": "slb",
       "acceptParentName": true,
-      "specs": []
+      "specs": [],
+      "analysisPostUseRating": true,
+      "focusTracked": true
     },
     {
       "key": "vpc",
@@ -72,8 +78,10 @@
             "私有网络"
           ]
         }
-      ]
+      ],
+      "analysisPostUseRating": true,
+      "focusTracked": true
     }
   ],
-  "updatedAt": "2026-05-23T16:31:18.380Z"
+  "updatedAt": "2026-08-01T00:00:00.000Z"
 }

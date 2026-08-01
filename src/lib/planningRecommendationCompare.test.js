@@ -57,4 +57,31 @@ describe('planningRecommendationCompare', () => {
     expect(summary.new).toBe(1)
     expect(summary.priority_up).toBe(1)
   })
+
+  it('prefers stableKey when present', () => {
+    const previous = [
+      rec({
+        id: 'old-1',
+        stableKey: 'pcl-aaaa',
+        priority: 'low',
+        scope: { product: 'ECS', journeyL2: '公网访问不通' },
+      }),
+    ]
+    const current = [
+      rec({
+        id: 'new-2',
+        stableKey: 'pcl-aaaa',
+        priority: 'medium',
+        summary: '完全改写后的摘要',
+        scope: { product: 'ECS', journeyL2: '另一个旅程轴' },
+      }),
+    ]
+    const { recommendations, removedFromPreviousCount } = attachRecommendationPeriodCompare(
+      current,
+      previous,
+    )
+    expect(recommendations[0].periodCompare?.change).toBe('priority_up')
+    expect(recommendations[0].periodCompare?.previousId).toBe('old-1')
+    expect(removedFromPreviousCount).toBe(0)
+  })
 })

@@ -4,6 +4,7 @@ import {
   normalizeCatalogProducts,
   validateCatalogProducts,
   formatMergeCatalogResultMessage,
+  catalogToTableRows,
 } from './productCatalogManageModel.js'
 
 describe('productCatalogManageModel', () => {
@@ -14,6 +15,30 @@ describe('productCatalogManageModel', () => {
     ])
     expect(list).toHaveLength(1)
     expect(list[0].key).toBe('eip')
+  })
+
+  it('keeps post-use flags in table rows and enforces the focus dependency', () => {
+    const normalized = normalizeCatalogProducts([
+      {
+        key: 'off',
+        name: '未开启分析',
+        analysisPostUseRating: false,
+        focusTracked: true,
+        specs: [],
+      },
+      {
+        key: 'on',
+        name: '重点产品',
+        analysisPostUseRating: true,
+        focusTracked: true,
+        specs: [],
+      },
+    ])
+    expect(normalized[0].focusTracked).toBe(false)
+    expect(catalogToTableRows(normalized)).toMatchObject([
+      { analysisPostUseRating: false, focusTracked: false },
+      { analysisPostUseRating: true, focusTracked: true },
+    ])
   })
 
   it('validateCatalogProducts rejects duplicate keys', () => {

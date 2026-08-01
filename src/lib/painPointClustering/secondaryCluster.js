@@ -1,5 +1,9 @@
 import { SECONDARY_CLUSTER_THRESHOLD } from './constants.js'
+import { computeClusterSimilarity } from './clusterSimilarity.js'
 import { clusterByJaccard } from './jaccardHierarchical.js'
+import { buildNormalizedPainText } from './normalizeSemanticTokens.js'
+import { resolveClusterProfile } from './resolveClusterProfile.js'
+import { resolveClusterThresholds } from './thresholdStrategy.js'
 import { buildFinalClusterLabel } from './clusterLabel.js'
 
 /**
@@ -23,16 +27,49 @@ import { buildFinalClusterLabel } from './clusterLabel.js'
  * @param {import('./primaryCluster.js').ClusteringPipelineOptions} [pipelineOptions]
  */
 export function runSecondaryClustering(retainedPrimary, product, pipelineOptions = {}) {
+  const profile = pipelineOptions.profile || resolveClusterProfile()
   if (!retainedPrimary.length) {
     return /** @type {FinalPainCluster[]} */ ([])
   }
 
+  const enrichedPrimary = retainedPrimary.map((cluster) => ({
+    ...cluster,
+    normalizedPainText: buildNormalizedPainText(cluster.representativePainPoint || cluster.label),
+  }))
+  const thresholds = resolveClusterThresholds({
+    profile,
+    records: enrichedPrimary,
+    product,
+    stage: 'secondary',
+  })
   const { clusters } = clusterByJaccard(
-    retainedPrimary,
+    enrichedPrimary,
     (c) => c.representativePainPoint || c.label,
-    SECONDARY_CLUSTER_THRESHOLD,
+    thresholds.threshold || SECONDARY_CLUSTER_THRESHOLD,
     1,
-    pipelineOptions,
+    {
+      ...pipelineOptions,
+      minSharedTokens: pipelineOptions.minSharedTokens ?? thresholds.minSharedTokens,
+      buildNormalizedText: (text, item) => item.normalizedPainText || buildNormalizedPainText(text),
+      getTokenSet: (text, item, normalizedPainText) =>
+        normalizedPainText.semanticTokens || buildNormalizedPainText(text).semanticTokens,
+      getPairSimilarity: (left, right) =>
+        computeClusterSimilarity(left.normalizedPainText, right.normalizedPainText, {
+          left: {
+            product,
+            journeyL1: left.item?.journeyL1,
+            dataSourceType: left.item?.dataSourceType,
+            problemType: left.item?.problemType,
+          },
+          right: {
+            product,
+            journeyL1: right.item?.journeyL1,
+            dataSourceType: right.item?.dataSourceType,
+            problemType: right.item?.problemType,
+          },
+          profile,
+        }),
+    },
   )
 
   /** @type {FinalPainCluster[]} */
@@ -50,7 +87,7 @@ export function runSecondaryClustering(retainedPrimary, product, pipelineOptions
       product,
       label: buildFinalClusterLabel(representativePainPoint, []),
       representativePainPoint,
-      primaryGroups: primaryGroup,
+      primaryGroups: primaryGroup.map(({ normalizedPainText: _normalizedPainText, ...group }) => group),
       recordIds,
       ticketCount: recordIds.length,
     })

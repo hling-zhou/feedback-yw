@@ -49,6 +49,11 @@ import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
+  isPostUseRatingLibraryRecord,
+  isPostUseNon10LibraryRecord,
+} from '../domain/postUseRatingImport.js'
+import { enrichPostUseJourneyRecord } from '../lib/postUseRating/enrichPostUseJourney.js'
+import {
   extractHandlingOriginalTextForRecord,
 } from '../lib/taggingText.js'
 import {
@@ -360,17 +365,24 @@ const TICKET_DETAIL_SECTIONS = [
   { id: 'ticket-detail-classification', label: '工单分类' },
 ]
 
+const RATING_DETAIL_SECTIONS = [
+  { id: 'rating-detail-content', label: '评价内容' },
+  { id: 'rating-detail-analysis', label: '评价分析' },
+  { id: 'rating-detail-classification', label: '评价分类' },
+]
+
 function scrollToTicketDetailSection(sectionId) {
   document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function TicketDetailSectionNav() {
+function TicketDetailSectionNav({ postUse = false }) {
+  const sections = postUse ? RATING_DETAIL_SECTIONS : TICKET_DETAIL_SECTIONS
   return (
     <nav
-      aria-label="工单详情分区导航"
+      aria-label={postUse ? '评价详情分区导航' : '工单详情分区导航'}
       className="flex min-w-0 flex-wrap items-center justify-center gap-x-1"
     >
-      {TICKET_DETAIL_SECTIONS.map((section, index) => (
+      {sections.map((section, index) => (
         <span key={section.id} className="inline-flex items-center">
           {index > 0 ? (
             <Typography.Text type="secondary" className="mx-1 text-xs">
@@ -832,18 +844,18 @@ function HandlingOriginalTextModal({
   )
 }
 
-/** @param {{ metaLine: string }} props */
-function TicketDetailDrawerTitle({ metaLine }) {
+/** @param {{ metaLine: string; postUse?: boolean }} props */
+function TicketDetailDrawerTitle({ metaLine, postUse = false }) {
   const showMetaTooltip = Boolean(metaLine?.trim() && metaLine !== '—')
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
       <div className="relative min-h-[1.25rem] w-full">
         <span className="relative z-[1] shrink-0 text-base font-semibold leading-none">
-          工单详情
+          {postUse ? '评价详情' : '工单详情'}
         </span>
         <div className="pointer-events-none absolute inset-y-0 left-20 right-0 flex items-center justify-center">
           <div className="pointer-events-auto">
-            <TicketDetailSectionNav />
+            <TicketDetailSectionNav postUse={postUse} />
           </div>
         </div>
       </div>
@@ -919,6 +931,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     }
   }, [selected?.id, needsHydration, adapter])
   const feedback = fullFeedback ?? cachedFeedback
+  const isPostUseLibrary = isPostUseRatingLibraryRecord(feedback)
+  const isPostUseNon10 = isPostUseNon10LibraryRecord(feedback)
+  const [journeyEnriching, setJourneyEnriching] = useState(false)
   const [note, setNote] = useState(feedback?.note || '')
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),
@@ -1134,6 +1149,22 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
   const ticketMetaLine = useMemo(() => {
     if (!feedback) return '—'
+    if (isPostUseRatingLibraryRecord(feedback)) {
+      const product = feedback.productName || feedback.product || ''
+      const channel =
+        feedback.channel === 'sms'
+          ? '短信'
+          : feedback.channel === 'console'
+            ? '控制台'
+            : feedback.channel || ''
+      const score =
+        feedback.ratingScore != null && Number.isFinite(Number(feedback.ratingScore))
+          ? `${Number(feedback.ratingScore)} 分`
+          : ''
+      return [channel, score, product, DATA_SOURCE_LABELS.post_use_rating || '用后即评']
+        .filter(Boolean)
+        .join(' · ') || '—'
+    }
     const product = feedback.product?.trim()
     const spec = feedback.productSpec?.trim()
     let productText = product || spec || ''
@@ -1144,6 +1175,28 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       DATA_SOURCE_LABELS[feedback.dataSourceType] || feedback.dataSourceType || ''
     return [feedback.ticketId?.trim(), productText, source].filter(Boolean).join(' · ') || '—'
   }, [feedback])
+
+  const handleEnrichPostUseJourney = async () => {
+    if (!feedback?.id || !isPostUseNon10) return
+    setJourneyEnriching(true)
+    try {
+      const patch = enrichPostUseJourneyRecord(feedback)
+      const saved = await updateFeedback(feedback.id, patch, {
+        expectedRevision: baseRevisionRef.current,
+        mergeBase: feedback,
+      })
+      setJourneyL1(patch.journeyL1)
+      setJourneyL2(patch.journeyL2)
+      if (saved) {
+        baseRevisionRef.current = getRecordRevision(saved)
+      }
+      message.success('已补全用户旅程')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '旅程补全失败')
+    } finally {
+      setJourneyEnriching(false)
+    }
+  }
 
   const drawerFormSnapshot = useMemo(
     () => ({
@@ -1445,7 +1498,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
   return (
     <Drawer
-      title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} />}
+      title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} postUse={isPostUseLibrary} />}
       size={TICKET_DETAIL_DRAWER_WIDTH}
       open={Boolean(feedback)}
       onClose={handleRequestClose}
@@ -1453,7 +1506,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       destroyOnClose
       styles={{ body: { overflowX: 'hidden' } }}
       footer={
-        reviewEnabled || canEdit || canRetag ? (
+        reviewEnabled || canEdit || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
           <div className="flex items-center gap-3">
             {reviewEnabled ? (
               <Checkbox
@@ -1465,7 +1518,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Checkbox>
             ) : null}
             <div className="flex flex-1 gap-2">
-            {canRetag && (
+            {isPostUseNon10 && (
+              <Button
+                block
+                className="flex-1"
+                loading={journeyEnriching}
+                onClick={() => void handleEnrichPostUseJourney()}
+              >
+                补全旅程
+              </Button>
+            )}
+            {canRetag && !isPostUseLibrary && (
               <Tooltip title={retagTooltipTitle}>
                 <span className="flex flex-1">
                   <Button
@@ -1527,7 +1590,86 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           />
         ) : null}
 
+        {isPostUseLibrary ? (
+          <div id="rating-detail-content" className="scroll-mt-2 space-y-3">
+            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+              用后即评
+            </Typography.Title>
+            <Card size="small" title="评价摘要">
+              <Descriptions size="small" column={1} bordered>
+                <Descriptions.Item label="渠道">
+                  {feedback.channel === 'sms'
+                    ? '短信'
+                    : feedback.channel === 'console'
+                      ? '控制台'
+                      : feedback.channel || feedback.sourceSubType || '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="评分">
+                  {feedback.ratingScore != null && Number.isFinite(Number(feedback.ratingScore))
+                    ? Number(feedback.ratingScore)
+                    : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="产品">
+                  {feedback.productName || feedback.product || '—'}
+                  {feedback.productSpec &&
+                  feedback.productSpec !== (feedback.productName || feedback.product)
+                    ? ` / ${feedback.productSpec}`
+                    : ''}
+                </Descriptions.Item>
+                <Descriptions.Item label="原文">
+                  <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                    {feedback.rawText || feedback.commentText || feedback.lowScoreReason || '—'}
+                  </Typography.Paragraph>
+                </Descriptions.Item>
+                <Descriptions.Item label="用户旅程">
+                  {[journeyL1 || feedback.journeyL1, journeyL2 || feedback.journeyL2]
+                    .filter(Boolean)
+                    .join(' / ') || '待补全'}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+            {feedback.customerVisit ? (
+              <Card size="small" title="客服回访">
+                <Descriptions size="small" column={1} bordered>
+                  <Descriptions.Item label="用户反馈原文">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                      {feedback.customerVisit.userFeedbackText || '—'}
+                    </Typography.Paragraph>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="用户信息">
+                    {feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="回访反馈信息">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                      {feedback.customerVisit.visitFeedbackDetail || feedback.customerVisit.visitResult || '—'}
+                    </Typography.Paragraph>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="回访反馈信息-内部评估">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                      {feedback.customerVisit.internalEvaluationDetail || feedback.customerVisit.internalConclusion || '—'}
+                    </Typography.Paragraph>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="内部结论">
+                    {feedback.customerVisit.internalConclusion || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="反馈摘要">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                      {feedback.customerVisit.feedbackSummary || '—'}
+                    </Typography.Paragraph>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="回访结果">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                      {feedback.customerVisit.visitResult || '—'}
+                    </Typography.Paragraph>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* 1 · 工单内容 */}
+        {!isPostUseLibrary ? (
         <div id="ticket-detail-content" className="scroll-mt-2 space-y-3">
           <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
             工单内容
@@ -1592,11 +1734,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             </>
           ) : null}
         </div>
+        ) : null}
 
         {/* 2 · 工单分析 */}
-        <div id="ticket-detail-analysis" className="scroll-mt-2 space-y-3">
+        <div
+          id={isPostUseLibrary ? 'rating-detail-analysis' : 'ticket-detail-analysis'}
+          className="scroll-mt-2 space-y-3"
+        >
           <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-            工单分析
+            {isPostUseLibrary ? '评价分析' : '工单分析'}
           </Typography.Title>
 
           <Card
@@ -1754,7 +1900,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
             {canEdit ? (
               <div className="mt-4 space-y-4">
-                <div className="space-y-3">
+                {!isPostUseLibrary ? <div className="space-y-3">
                   <Typography.Text strong className="block text-xs">
                     人工复核
                   </Typography.Text>
@@ -1788,7 +1934,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                       />
                     </Form.Item>
                   </Form>
-                </div>
+                </div> : null}
 
                 <div className="space-y-3">
                   <Typography.Text strong className="text-xs">
@@ -1879,7 +2025,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </div>
             ) : (
               <>
-                {hasDetailOptimizationContent(feedback) && (
+                {!isPostUseLibrary && hasDetailOptimizationContent(feedback) && (
                   <Descriptions
                     className="mt-4"
                     column={1}
@@ -2081,13 +2227,84 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         </div>
 
         {/* 3 · 工单分类 */}
-        <div id="ticket-detail-classification" className="scroll-mt-2 space-y-3">
+        <div
+          id={isPostUseLibrary ? 'rating-detail-classification' : 'ticket-detail-classification'}
+          className="scroll-mt-2 space-y-3"
+        >
           <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-            工单分类
+            {isPostUseLibrary ? '评价分类' : '工单分类'}
           </Typography.Title>
 
           <Card size="small">
-          {canEdit ? (
+          {isPostUseLibrary ? (
+            canEdit ? (
+              <Form layout="vertical">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Form.Item
+                    label={
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        用户旅程（一级）
+                        <JourneySourceTag record={feedback} />
+                      </span>
+                    }
+                    className="!mb-0"
+                  >
+                    <Select
+                      value={journeyL1}
+                      optionRender={renderDefinitionSelectOption}
+                      options={[
+                        { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                        ...(taxonomy?.journeys || []).map((journey) => {
+                          const definition = resolveTagDefinition({
+                            dimension: 'journey',
+                            journeyL1: journey.label,
+                            taxonomy,
+                          })
+                          return {
+                            label: journey.label,
+                            value: journey.label,
+                            title: definition.body,
+                          }
+                        }),
+                      ]}
+                      onChange={(value) => {
+                        setJourneyL1(value)
+                        setJourneyL2('')
+                      }}
+                    />
+                  </Form.Item>
+                  <Form.Item label="用户旅程（二级）" className="!mb-0">
+                    <Select
+                      value={journeyL2}
+                      disabled={!journeyL1}
+                      optionRender={renderDefinitionSelectOption}
+                      options={[
+                        { label: TAG_UNRECOGNIZED, value: '', title: '清空后保存为无法识别' },
+                        ...l2Options.map((child) => {
+                          const definition = resolveTagDefinition({
+                            dimension: 'journey',
+                            journeyL1,
+                            journeyL2: child.label,
+                            taxonomy,
+                          })
+                          return {
+                            label: child.label,
+                            value: child.label,
+                            title: definition.body,
+                          }
+                        }),
+                      ]}
+                      onChange={setJourneyL2}
+                    />
+                  </Form.Item>
+                </div>
+              </Form>
+            ) : (
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label="用户旅程">{journeyDisplay}</Descriptions.Item>
+              </Descriptions>
+            )
+          ) : canEdit ? (
             <Form layout="vertical">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Form.Item

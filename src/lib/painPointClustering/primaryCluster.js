@@ -1,6 +1,10 @@
 import { PRIMARY_CLUSTER_THRESHOLD, PRIMARY_MIN_CLUSTER_SIZE, PRIMARY_CLUSTER_MAX_ITEMS } from './constants.js'
+import { computeClusterSimilarity } from './clusterSimilarity.js'
 import { clusterByJaccard } from './jaccardHierarchical.js'
+import { buildNormalizedPainText } from './normalizeSemanticTokens.js'
 import { normalizePainPointKey } from './normalizePainPoint.js'
+import { resolveClusterProfile } from './resolveClusterProfile.js'
+import { resolveClusterThresholds } from './thresholdStrategy.js'
 import {
   buildPrimaryClusterLabel,
   getRecordDataSourceType,
@@ -32,7 +36,11 @@ export function primaryGroupKey(product, dataSourceType, journeyL1) {
 }
 
 /**
- * @typedef {{ useNaiveHierarchical?: boolean; minSharedTokens?: number }} ClusteringPipelineOptions
+ * @typedef {{
+ *   useNaiveHierarchical?: boolean
+ *   minSharedTokens?: number
+ *   profile?: ReturnType<typeof resolveClusterProfile>
+ * }} ClusteringPipelineOptions
  */
 
 /**
@@ -41,6 +49,7 @@ export function primaryGroupKey(product, dataSourceType, journeyL1) {
  * @param {ClusteringPipelineOptions} [pipelineOptions]
  */
 export function runPrimaryClustering(records, product, pipelineOptions = {}) {
+  const profile = pipelineOptions.profile || resolveClusterProfile()
   /** @type {PrimaryPainCluster[]} */
   const primaryClusters = []
   /** @type {import('../types.js').FeedbackRecord[]} */
@@ -57,7 +66,10 @@ export function runPrimaryClustering(records, product, pipelineOptions = {}) {
     const l1 = r.journeyL1?.trim() || '未识别环节'
     const key = primaryGroupKey(product, ds, l1)
     if (!groups.has(key)) groups.set(key, [])
-    groups.get(key).push(r)
+    groups.get(key).push({
+      ...r,
+      normalizedPainText: buildNormalizedPainText(pain),
+    })
   }
 
   let clusterSeq = 0
@@ -72,12 +84,40 @@ export function runPrimaryClustering(records, product, pipelineOptions = {}) {
       )
     }
 
+    const thresholds = resolveClusterThresholds({
+      profile,
+      records: groupRecords,
+      product,
+      stage: 'primary',
+    })
     const { clusters, isolated } = clusterByJaccard(
       groupRecords,
       getRecordPainPoint,
-      PRIMARY_CLUSTER_THRESHOLD,
+      thresholds.threshold || PRIMARY_CLUSTER_THRESHOLD,
       PRIMARY_MIN_CLUSTER_SIZE,
-      pipelineOptions,
+      {
+        ...pipelineOptions,
+        minSharedTokens: pipelineOptions.minSharedTokens ?? thresholds.minSharedTokens,
+        buildNormalizedText: (text, item) => item.normalizedPainText || buildNormalizedPainText(text),
+        getTokenSet: (text, item, normalizedPainText) =>
+          normalizedPainText.semanticTokens || buildNormalizedPainText(text).semanticTokens,
+        getPairSimilarity: (left, right) =>
+          computeClusterSimilarity(left.normalizedPainText, right.normalizedPainText, {
+            left: {
+              product,
+              journeyL1,
+              dataSourceType,
+              problemType: majorityProblemType(left.members),
+            },
+            right: {
+              product,
+              journeyL1,
+              dataSourceType,
+              problemType: majorityProblemType(right.members),
+            },
+            profile,
+          }),
+      },
     )
     isolatedRecords.push(...isolated)
 

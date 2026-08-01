@@ -24,8 +24,10 @@ export const SETTINGS_TAB_LABELS = {
 /** @type {Record<SettingsTabKey, string>} */
 export const SETTINGS_TAB_DESCRIPTIONS = {
   llm: '本机大模型连接，用于导入、打标与洞察中的 LLM 能力；仅保存在当前浏览器。',
-  analysis: '团队共享的自动打标与分析规则，保存后约 5 秒内同步给其他用户。',
-  metrics: '',
+  analysis:
+    '团队共享的自动打标与分析规则；修改后底部会出现保存条，保存后约 5 秒内同步给其他用户。',
+  metrics:
+    '按产品维护万投比目标与月订单数；修改后底部会出现保存条，每个产品独立保存。',
   data: '导出备份、恢复数据或按范围清空已导入工单与洞察快照。',
   audit: '查看导入、清空、配置发布等关键操作记录。',
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',

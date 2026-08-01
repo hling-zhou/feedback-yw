@@ -31,16 +31,18 @@ export function normalizeCatalogProducts(raw) {
         key,
         name: String(p.name || p.key).trim(),
         enabled: Boolean(p.enabled),
+        analysisPostUseRating: Boolean(p.analysisPostUseRating),
+        focusTracked: Boolean(p.analysisPostUseRating && p.focusTracked),
         taxonomyKey: canonicalTaxonomyKey(String(p.taxonomyKey || p.key || '').trim()),
         acceptParentName: p.acceptParentName !== false,
-      specs: (p.specs || [])
-        .filter((s) => s?.name)
-        .map((s) => ({
-          name: String(s.name).trim(),
-          match: Array.isArray(s.match)
-            ? s.match.map((m) => String(m).trim()).filter(Boolean)
-            : undefined,
-        })),
+        specs: (p.specs || [])
+          .filter((s) => s?.name)
+          .map((s) => ({
+            name: String(s.name).trim(),
+            match: Array.isArray(s.match)
+              ? s.match.map((m) => String(m).trim()).filter(Boolean)
+              : undefined,
+          })),
       }
     })
 }
@@ -125,6 +127,8 @@ export function mergeCatalogByKey(current, incoming, opts = {}) {
     const cur = byKey.get(inc.key)
     cur.name = inc.name || cur.name
     cur.enabled = inc.enabled
+    cur.analysisPostUseRating = Boolean(inc.analysisPostUseRating)
+    cur.focusTracked = Boolean(inc.focusTracked)
     cur.taxonomyKey = inc.taxonomyKey || cur.taxonomyKey
     cur.acceptParentName = inc.acceptParentName
     updatedProducts += 1
@@ -197,6 +201,8 @@ export function downloadProductCatalogExcel(products, filename = '产品规格�
     产品Key: p.key,
     产品名称: p.name,
     是否启用: p.enabled ? '是' : '否',
+    用后即评分析: p.analysisPostUseRating ? '是' : '否',
+    重点跟踪: p.focusTracked ? '是' : '否',
     旅程模板Key: p.taxonomyKey || p.key,
     接受产品名匹配: p.acceptParentName !== false ? '是' : '否',
   }))
@@ -257,6 +263,8 @@ export function catalogToTableRows(products) {
     key: p.key,
     name: p.name,
     enabled: p.enabled,
+    analysisPostUseRating: Boolean(p.analysisPostUseRating),
+    focusTracked: Boolean(p.analysisPostUseRating && p.focusTracked),
     taxonomyKey: p.taxonomyKey,
     acceptParentName: p.acceptParentName !== false,
     specs: p.specs || [],

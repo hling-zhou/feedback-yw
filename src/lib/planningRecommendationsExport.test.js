@@ -5,7 +5,10 @@ import {
   PAIN_CLUSTER_EXPORT_LABELS,
   PAIN_CLUSTER_SECTION_TITLE,
 } from './planningRecommendationDisplay.js'
-import { planningRecommendationToExportRow } from './planningRecommendationsExport.js'
+import {
+  fallbackRecommendationToExportRow,
+  planningRecommendationToExportRow,
+} from './planningRecommendationsExport.js'
 import { PLANNING_SECTION_LABELS } from './planningRecommendationSections.js'
 
 function makeRecord(overrides = {}) {
@@ -66,5 +69,34 @@ describe('planningRecommendationsExport', () => {
     expect(row[PAIN_CLUSTER_EXPORT_LABELS.currentPain]).toBe('在公网访问环节补齐诊断工具')
     expect(row).not.toHaveProperty('概述')
     expect(row).not.toHaveProperty('已合并同类信号')
+  })
+
+  it('exports fallback recommendations without V2 score fields', () => {
+    const row = fallbackRecommendationToExportRow(
+      {
+        id: 'fallback-1',
+        stableKey: 'pfr-1',
+        signalType: 'journey_problem_fallback',
+        priority: 'low',
+        category: 'product',
+        summary: '控制台配置路径不清晰',
+        text: '控制台配置路径不清晰',
+        scope: {
+          product: '云专线',
+          journeyL1: '订购开通',
+          journeyL2: '加急开通',
+          problemType: '配置与操作',
+        },
+        evidenceBundle: { ticketCount: 3 },
+        evidenceStrength: 'weak',
+        evidenceNote: '小产品频次兜底：订购开通→加急开通 × 配置与操作',
+        generationMeta: { selectedReason: '按旅程×问题类型频次推断' },
+      },
+      0,
+    )
+    expect(row['类型']).toBe('小样本参考项')
+    expect(row['工单数']).toBe(3)
+    expect(row).not.toHaveProperty(PAIN_CLUSTER_EXPORT_LABELS.priorityScore)
+    expect(row['依据说明']).toContain('频次兜底')
   })
 })

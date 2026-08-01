@@ -5,7 +5,15 @@ import { formatClusteringExclusionNote } from '../lib/painPointClustering/cluste
 import { looksLikeBackgroundInsightSummary, looksLikeTicketMetadataSummary } from '../lib/painPointClustering/clusteringCorpus.js'
 import { attachPlanningRecommendationSections } from '../lib/planningRecommendationSections.js'
 import { resolveRecommendationSummary } from '../lib/planningRecommendationDisplay.js'
-import { limitPlanningRecommendations, appendSmallProductJourneyProblemFallbacks } from '../lib/planningRecommendations.js'
+import {
+  appendSmallProductJourneyProblemFallbacks,
+  CLUSTER_FAMILY_STABLE_KEY_VERSION,
+  CLUSTER_STABLE_KEY_VERSION,
+  FALLBACK_STABLE_KEY_VERSION,
+  isFallbackReferenceRecommendation,
+  isFormalPainClusterRecommendation,
+  limitPlanningRecommendations,
+} from '../lib/planningRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -28,7 +36,7 @@ export function needsOverviewRecommendationsRehydrate(conclusions) {
   const meta = conclusions.recommendationsMeta
   const engine = meta?.recommendationEngine
   if (!engine) return true
-  if (engine !== 'pain_cluster_v2') return true
+  if (!String(engine).startsWith('pain_cluster_v2')) return true
   if (meta?.legacyFallback === true) return true
   return false
 }
@@ -70,7 +78,7 @@ export function prepareOverviewConclusionsForDisplay(conclusions) {
  * @returns {OverviewRecommendation[]}
  */
 function needsV2RecommendationContentRefresh(rec) {
-  if (rec.signalType !== 'pain_cluster_v2') return false
+  if (rec.signalType !== 'pain_cluster_v2' && rec.signalType !== 'overview_fused_cluster') return false
   const synthesisVersion = rec.generationMeta?.actionSynthesisVersion ?? 0
   if (synthesisVersion < CLUSTER_ACTION_SYNTHESIS_VERSION) return true
   if (!['synth', 'synth+manual'].includes(rec.productActionsSource || '')) return true
@@ -110,7 +118,7 @@ export function refreshStaleV2RecommendationSections(recommendations, ticketReco
 export function rehydrateOverviewRecommendations(conclusions, ticketRecords, settings) {
   const meta = conclusions.recommendationsMeta
   if (
-    meta?.recommendationEngine === 'pain_cluster_v2' &&
+    String(meta?.recommendationEngine || '').startsWith('pain_cluster_v2') &&
     meta?.legacyFallback !== true &&
     !meta?.rehydratedAt
   ) {
@@ -128,7 +136,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
         ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-        recommendationEngine: 'pain_cluster_v2',
+        recommendationEngine: 'pain_cluster_v2_3',
         legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
         generatedRecommendationCount: 0,
@@ -147,6 +155,12 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
   )
 
   const withFallbacks = appendSmallProductJourneyProblemFallbacks(raw, ticketRecords)
+  const formalClusterCount = withFallbacks.filter((rec) =>
+    isFormalPainClusterRecommendation(rec),
+  ).length
+  const fallbackReferenceCount = withFallbacks.filter((rec) =>
+    isFallbackReferenceRecommendation(rec),
+  ).length
 
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote && !notes.includes(exclusionNote)) notes.push(exclusionNote)
@@ -161,11 +175,13 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
         ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-        recommendationEngine: 'pain_cluster_v2',
+        recommendationEngine: 'pain_cluster_v2_3',
         legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
         generatedRecommendationCount: 0,
+        formalClusterCount: 0,
         cappedCount: 0,
+        stableKeyVersion: `${CLUSTER_STABLE_KEY_VERSION}|${FALLBACK_STABLE_KEY_VERSION}|${CLUSTER_FAMILY_STABLE_KEY_VERSION}`,
       },
       dataCoverageNotes: notes,
     }
@@ -180,10 +196,13 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     recommendationsMeta: {
       ...conclusions.recommendationsMeta,
       ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-      recommendationEngine: 'pain_cluster_v2',
+      recommendationEngine: 'pain_cluster_v2_3',
       legacyFallback: false,
       rehydratedAt: new Date().toISOString(),
       generatedRecommendationCount: raw.length,
+      formalClusterCount,
+      fallbackReferenceCount: fallbackReferenceCount || undefined,
+      stableKeyVersion: `${CLUSTER_STABLE_KEY_VERSION}|${FALLBACK_STABLE_KEY_VERSION}|${CLUSTER_FAMILY_STABLE_KEY_VERSION}`,
       cappedCount: limited.length,
     },
     dataCoverageNotes: notes,

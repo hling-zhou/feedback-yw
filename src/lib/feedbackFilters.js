@@ -227,6 +227,7 @@ export function parseTicketIdsParam(raw) {
 export function parseFeedbackSearchParams(searchParams) {
   const followUpParams = parseFeedbackFollowUpSearchParams(searchParams)
   const source = searchParams.get('source')?.trim() || ''
+  const lane = searchParams.get('lane')?.trim() || ''
   return {
     ...followUpParams,
     product: searchParams.get('product')?.trim() || '',
@@ -234,6 +235,7 @@ export function parseFeedbackSearchParams(searchParams) {
     complaintCauseL1: searchParams.get('complaintCauseL1')?.trim() || '',
     journeyL1: searchParams.get('journeyL1')?.trim() || '',
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
+    lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
@@ -254,6 +256,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'journeyL1',
     'requestScene',
     'source',
+    'lane',
     'followUp',
     'followUpResolved',
     'reasonDim',

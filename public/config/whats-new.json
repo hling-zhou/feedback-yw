@@ -1,11 +1,22 @@
 {
-  "generatedAt": "2026-07-30T10:40:44.392Z",
+  "generatedAt": "2026-08-01T10:24:47.526Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "539cf1322ad33a4f3b4f17ac888296288af00fcb",
+  "repoCommit": "61a1239dd01da51d8e1dcce435329a24f7341393",
   "items": [
     {
-      "id": "539cf1322ad33a4f3b4f17ac888296288af00fcb",
+      "id": "61a1239dd01da51d8e1dcce435329a24f7341393",
+      "title": "列表投影裁剪大文本减负与状态标签视觉统一",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-07-30",
+      "appVersion": null,
+      "summary": "- 存储 API 增加 fields=list|full 投影，list 剔除 rawText/handlingText/customerQuote/responseText/sourceColumns 等大文本字段\n- 首屏与周期切换走 list 投影；抽屉、update、retag 按需拉单条/全量补水\n- periodsLoading 在周期确定后提前结束，让表格先渲染骨架\n- 举措状态标签改为与柱状图同色的实心底色 + 反色文字，去掉半透明底+边框\n- Actions 筛选/刷新条抽出为粘性工具条，表头按高度偏移吸顶\n- 登录页左侧改为浅色主题，SystemUsageWorkflow 支持 tone 参数；移除管理员密码 Alert\n- 新增 recordProjection 测试覆盖 list/full/默认/单条行为",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e87135b2efb66ec550d5692b9c42849b3ec2e4c0",
       "title": "工单号全局去重与首屏聚合减负",
       "category": "feature",
       "modules": [],

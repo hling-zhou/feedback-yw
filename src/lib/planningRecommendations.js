@@ -55,6 +55,158 @@ const SIGNAL_LABELS = {
 
 /** 小产品 journey×problemType 频次兜底：工单数上限（含） */
 export const SMALL_PRODUCT_FALLBACK_MAX_TICKETS = 29
+export const CLUSTER_STABLE_KEY_VERSION = 'cluster-stable-key-v1'
+export const FALLBACK_STABLE_KEY_VERSION = 'fallback-stable-key-v1'
+export const CLUSTER_FAMILY_STABLE_KEY_VERSION = 'cluster-family-stable-key-v2'
+
+/**
+ * @param {string} signalType
+ * @returns {boolean}
+ */
+export function isFormalPainClusterSignal(signalType) {
+  return String(signalType || '').trim() === 'pain_cluster_v2'
+}
+
+/**
+ * @param {string} signalType
+ * @returns {boolean}
+ */
+export function isHighRiskSingletonSignal(signalType) {
+  return String(signalType || '').trim() === 'high_risk_singleton'
+}
+
+/**
+ * @param {string} signalType
+ * @returns {boolean}
+ */
+export function isOverviewFusedClusterSignal(signalType) {
+  return String(signalType || '').trim() === 'overview_fused_cluster'
+}
+
+/**
+ * @param {string} signalType
+ * @returns {boolean}
+ */
+export function isFallbackReferenceSignal(signalType) {
+  return String(signalType || '').trim() === 'journey_problem_fallback'
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isFormalPainClusterRecommendation(rec) {
+  return isFormalPainClusterSignal(rec?.signalType)
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isHighRiskSingletonRecommendation(rec) {
+  return isHighRiskSingletonSignal(rec?.signalType)
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isOverviewFusedClusterRecommendation(rec) {
+  return isOverviewFusedClusterSignal(rec?.signalType)
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isClusterFamilyRecommendation(rec) {
+  return (
+    isFormalPainClusterRecommendation(rec)
+    || isHighRiskSingletonRecommendation(rec)
+    || isOverviewFusedClusterRecommendation(rec)
+  )
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isFallbackReferenceRecommendation(rec) {
+  return isFallbackReferenceSignal(rec?.signalType)
+}
+
+/**
+ * ASCII-safe stable hash key using FNV-1a.
+ * @param {string} prefix
+ * @param {Array<string | number | null | undefined>} parts
+ */
+export function buildStableHashKey(prefix, parts) {
+  const key = parts.map((x) => String(x ?? '').trim()).join('\0')
+  let h = 2166136261
+  for (let i = 0; i < key.length; i += 1) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return `${prefix}-${(h >>> 0).toString(16)}`
+}
+
+/**
+ * @param {{
+ *   product?: string
+ *   representativePain?: string
+ *   problemType?: string
+ * }} input
+ */
+export function buildPainClusterStableKey(input) {
+  return buildStableHashKey('pcl', [
+    'pain_cluster_v2',
+    input.product,
+    input.representativePain,
+    input.problemType,
+  ])
+}
+
+/**
+ * @param {{
+ *   product?: string
+ *   journeyL1?: string
+ *   journeyL2?: string
+ *   problemType?: string
+ * }} input
+ */
+export function buildFallbackReferenceStableKey(input) {
+  return buildStableHashKey('pfr', [
+    'journey_problem_fallback',
+    input.product,
+    input.journeyL1,
+    input.journeyL2,
+    input.problemType,
+  ])
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ */
+export function recommendationStableCompareKey(rec) {
+  if (!rec) return ''
+  return (
+    rec.generationMeta?.fingerprintV2?.trim()
+    || rec.stableKey?.trim()
+    || `${rec.signalType || ''}:${recommendationAxisKey(rec)}`
+  )
+}
+
+/**
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @param {import('../domain/enums.js').DataSourceType} sourceType
+ */
+export function buildRecommendationInsightIds(rec, sourceType) {
+  if (!rec || !sourceType) return []
+  const ids = []
+  if (rec.stableKey?.trim()) ids.push(`ticket:${sourceType}:${rec.stableKey.trim()}`)
+  if (rec.id?.trim()) ids.push(`ticket:${sourceType}:${rec.id.trim()}`)
+  return [...new Set(ids)]
+}
 
 /**
  * @param {FeedbackRecord[]} pool
@@ -1076,7 +1228,7 @@ export function listSmallProductsForJourneyFallback(ticketRecords) {
  */
 export function productHasClusterRecommendation(recommendations, product) {
   return (recommendations || []).some(
-    (rec) => recommendationProductName(rec) === product && rec.signalType === 'pain_cluster_v2',
+    (rec) => recommendationProductName(rec) === product && isFormalPainClusterRecommendation(rec),
   )
 }
 
@@ -1141,6 +1293,7 @@ export function buildSmallProductJourneyProblemFallbackRecommendation(product, p
       generationMeta: {
         selectedReason: `小产品（${n} 单）未形成痛点聚类，按旅程×问题类型最高频组合推断。`,
         fallbackType: 'small_product_journey_problem',
+        fingerprintVersion: FALLBACK_STABLE_KEY_VERSION,
       },
     },
     pool,
@@ -1149,6 +1302,12 @@ export function buildSmallProductJourneyProblemFallbackRecommendation(product, p
 
   return {
     ...rec,
+    stableKey: buildFallbackReferenceStableKey({
+      product,
+      journeyL1: combo.l1,
+      journeyL2: combo.l2,
+      problemType: combo.problemType,
+    }),
     evidenceStrength: /** @type {const} */ ('weak'),
     insufficientEvidence: true,
   }
@@ -1195,10 +1354,13 @@ export function limitPlanningRecommendations(list, maxOrOptions = MAX_RECOMMENDA
     return limitPlanningRecommendationsWithProductQuota(list, ticketRecords, max)
   }
 
-  const priorityScore = { high: 3, medium: 2, low: 1 }
-  return [...(list || [])]
-    .sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority])
-    .slice(0, max)
+  const formal = sortRecommendationsForSelection(
+    (list || []).filter((rec) => isFormalPainClusterRecommendation(rec)),
+  )
+  const fallback = sortRecommendationsForSelection(
+    (list || []).filter((rec) => !isFormalPainClusterRecommendation(rec)),
+  )
+  return [...formal, ...fallback].slice(0, max)
 }
 
 /**
@@ -1207,6 +1369,9 @@ export function limitPlanningRecommendations(list, maxOrOptions = MAX_RECOMMENDA
 export function sortRecommendationsForSelection(list) {
   const priorityScore = { high: 3, medium: 2, low: 1 }
   return [...(list || [])].sort((a, b) => {
+    const typeDelta =
+      Number(isFormalPainClusterRecommendation(b)) - Number(isFormalPainClusterRecommendation(a))
+    if (typeDelta !== 0) return typeDelta
     const er = compareEvidenceStrength(a.evidenceStrength, b.evidenceStrength)
     if (er !== 0) return er
     const scoreA =
@@ -1235,7 +1400,12 @@ export function limitPlanningRecommendationsWithProductQuota(
   if (!list?.length) return []
   if (!ticketRecords?.length) return limitPlanningRecommendations(list, max)
 
-  const sorted = sortRecommendationsForSelection(list)
+  const formalSorted = sortRecommendationsForSelection(
+    (list || []).filter((rec) => isFormalPainClusterRecommendation(rec)),
+  )
+  const fallbackSorted = sortRecommendationsForSelection(
+    (list || []).filter((rec) => !isFormalPainClusterRecommendation(rec)),
+  )
   const products = listProductsForPlanningCoverage(ticketRecords)
   /** @type {OverviewRecommendation[]} */
   const selected = []
@@ -1253,7 +1423,7 @@ export function limitPlanningRecommendationsWithProductQuota(
     const quota = targetRecommendationCountForProduct(productCount)
     if (!quota) continue
 
-    const productRecs = sorted.filter((rec) => recommendationProductName(rec) === product)
+    const productRecs = formalSorted.filter((rec) => recommendationProductName(rec) === product)
     let added = 0
     for (const rec of productRecs) {
       if (added >= quota || selected.length >= max) break
@@ -1261,7 +1431,7 @@ export function limitPlanningRecommendationsWithProductQuota(
     }
   }
 
-  for (const rec of sorted) {
+  for (const rec of [...formalSorted, ...fallbackSorted]) {
     if (selected.length >= max) break
     const prod = recommendationProductName(rec)
     if (prod) {

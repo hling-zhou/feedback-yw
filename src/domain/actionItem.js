@@ -50,6 +50,11 @@ export {
  * @property {string[]} [linkedTicketIds]
  * @property {string[]} [linkedRequirementTicketIds] - 关联需求工单号（可选，可多个）
  * @property {import('./enums.js').DataSourceType[]} [linkedDataSources]
+ * @property {string[]} [linkedInsightIds]
+ * @property {string[]} [evidenceRecordIds]
+ * @property {string} [insightTheme]
+ * @property {{ period?: string; metric?: string; value?: number; baseline?: number; unit?: string }} [triggerMetric]
+ * @property {{ status?: string; label?: string; explanation?: string }} [recoveryValidation]
  * @property {boolean} [scheduleChanged]
  * @property {ActionItemWarningLevel} [warningLevel]
  * @property {number} [recordRevision] - 乐观锁版本
@@ -123,6 +128,11 @@ export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'linkedTicketIds',
   'linkedRequirementTicketIds',
   'linkedDataSources',
+  'linkedInsightIds',
+  'evidenceRecordIds',
+  'insightTheme',
+  'triggerMetric',
+  'recoveryValidation',
   'scheduleChanged',
   'warningLevel',
 ]
@@ -138,6 +148,12 @@ export function toActionItemCreateBody(input) {
   const out = {}
   for (const key of ACTION_ITEM_CREATE_BODY_KEYS) {
     if (input[key] !== undefined) {
+      if (
+        (key === 'linkedInsightIds' || key === 'evidenceRecordIds') &&
+        Array.isArray(input[key]) &&
+        input[key].length === 0
+      ) continue
+      if (key === 'insightTheme' && !String(input[key] ?? '').trim()) continue
       // @ts-expect-error indexed assign
       out[key] = input[key]
     }
@@ -218,6 +234,15 @@ export function normalizeActionItem(input) {
     linkedDataSources: Array.isArray(input.linkedDataSources)
       ? input.linkedDataSources.filter(Boolean)
       : [],
+    linkedInsightIds: Array.isArray(input.linkedInsightIds)
+      ? input.linkedInsightIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    evidenceRecordIds: Array.isArray(input.evidenceRecordIds)
+      ? input.evidenceRecordIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    insightTheme: String(input.insightTheme ?? '').trim(),
+    triggerMetric: input.triggerMetric && typeof input.triggerMetric === 'object' ? input.triggerMetric : undefined,
+    recoveryValidation: input.recoveryValidation && typeof input.recoveryValidation === 'object' ? input.recoveryValidation : undefined,
     scheduleChanged: Boolean(input.scheduleChanged),
     warningLevel: isActionItemWarningLevel(input.warningLevel) ? input.warningLevel : 'none',
     createdAt: input.createdAt || now,

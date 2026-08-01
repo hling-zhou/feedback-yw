@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Card, Select, Typography } from 'antd'
+import { Alert, Button, Card, Select, Table, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import KeywordWordCloud from '../charts/KeywordWordCloud.jsx'
@@ -25,8 +25,9 @@ import {
  *
  * @param {Object} props
  * @param {import('../../lib/types.js').FeedbackRecord[]} props.ticketRecords 周期内投诉/咨询工单
+ * @param {{ totalSample: number; tenCount: number; rate: number; byProduct: Array<{ productName: string; sampleSize: number; tenCount: number; rate: number; smallSample?: boolean }> }} props.channelMetrics
  */
-export default function FollowUpSatisfactionPanel({ ticketRecords }) {
+export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetrics }) {
   const { currentPeriod } = useInsights()
   const [productKey, setProductKey] = useState('all')
 
@@ -107,14 +108,51 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
   )
 
   if (!followUpTickets.length) {
+    if (channelMetrics?.totalSample > 0) {
+      return (
+        <Card title="回访满意度（渠道口径）">
+          <Alert
+            className="!mb-4"
+            type="warning"
+            showIcon
+            title={`已导入 ${channelMetrics.totalSample} 条投诉回访评分，暂无样本关联到投诉/咨询工单`}
+            description="以下满意度数据可正常使用；请求场景、问题类型、未解决占比和工单下钻需关联原工单后才能分析。"
+          />
+          <div className="mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            <span>
+              有效样本 <strong className="tabular-nums">{channelMetrics.totalSample}</strong> 条
+            </span>
+            <span>
+              10 分样本 <strong className="tabular-nums">{channelMetrics.tenCount}</strong> 条
+            </span>
+            <span>
+              10 分满意度 <strong className="tabular-nums">{channelMetrics.rate}%</strong>
+            </span>
+          </div>
+          <Table
+            size="small"
+            rowKey="productName"
+            pagination={false}
+            dataSource={channelMetrics.byProduct}
+            columns={[
+              { title: '产品', dataIndex: 'productName' },
+              { title: '有效样本', dataIndex: 'sampleSize', width: 100 },
+              { title: '10 分样本', dataIndex: 'tenCount', width: 100 },
+              {
+                title: '10 分满意度',
+                dataIndex: 'rate',
+                width: 140,
+                render: (value, row) => `${value}%${row.smallSample ? '（参考）' : ''}`,
+              },
+            ]}
+          />
+        </Card>
+      )
+    }
     return (
       <Card title="回访满意度">
         <Typography.Text type="secondary">
-          当前周期内暂无回访满意度数据。请先在
-          {' '}
-          <Link to="/import?source=post_use_rating&subType=satisfaction_callback">导入页</Link>
-          {' '}
-          上传满意度回访记录并完成工单补全。
+          当前周期内暂无投诉回访评分样本。
         </Typography.Text>
       </Card>
     )
@@ -162,7 +200,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
           </Button>
         }
       >
-        <div data-pdf-chart="followup-ten-rate-trend" className="rounded-lg bg-white p-2">
+        <div className="rounded-lg bg-white p-2">
           <FollowUpTenPointRateChart data={trend.chartData} lines={trend.lines} />
         </div>
       </Card>
@@ -182,13 +220,12 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
           </Button>
         }
       >
-        <div data-pdf-chart="followup-score-distribution" className="rounded-lg bg-white p-2">
+        <div className="rounded-lg bg-white p-2">
           <FollowUpScoreDistributionChart rows={metrics.scoreDistributionByProduct} />
         </div>
       </Card>
 
       <div
-        data-pdf-chart="followup-unresolved"
         className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-ink-100 bg-white px-4 py-3"
       >
         <span className="shrink-0 text-sm font-medium text-ink-800">未解决占比</span>
@@ -232,7 +269,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
 
       <div className="grid items-stretch gap-4 lg:grid-cols-2">
         <Card title="非 10 分 · 请求场景">
-          <div data-pdf-chart="followup-request-scenes" className="rounded-lg bg-white p-2">
+          <div className="rounded-lg bg-white p-2">
             <ThemeBarChart
               data={requestSceneChart}
               showNegativePct={false}
@@ -246,7 +283,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
           </div>
         </Card>
         <Card title="非 10 分 · 问题类型">
-          <div data-pdf-chart="followup-problem-types" className="rounded-lg bg-white p-2">
+          <div className="rounded-lg bg-white p-2">
             <ThemeBarChart
               data={problemTypeChart}
               showNegativePct={false}
@@ -265,7 +302,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords }) {
         <Typography.Text type="secondary" className="mb-2 block text-xs">
           汇总非 10 分工单中填写的不满意原因原文；已自动过滤「无」「暂无」等占位值
         </Typography.Text>
-        <div data-pdf-chart="followup-dissatisfied-reasons" className="rounded-lg bg-white p-2">
+        <div className="rounded-lg bg-white p-2">
           <KeywordWordCloud
             words={reasonWordCloud}
             ariaLabel="不满意原因词云"

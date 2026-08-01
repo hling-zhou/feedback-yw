@@ -1,6 +1,6 @@
 /** @typedef {import('../../domain/enums.js').DataSourceType} DataSourceType */
 
-export const CLUSTERING_VERSION = 'v2.0'
+export const CLUSTERING_VERSION = 'v2.3'
 
 /** 一次聚类 Jaccard 层次聚类切分阈值 */
 export const PRIMARY_CLUSTER_THRESHOLD = 0.3

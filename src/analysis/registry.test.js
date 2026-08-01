@@ -23,9 +23,10 @@ describe('analysis registry', () => {
     )
   })
 
-  it('creates stub pipeline for post_use_rating', () => {
+  it('creates pipeline for post_use_rating (channel import production)', () => {
     const p = createPipeline('post_use_rating')
     expect(p).toBeInstanceOf(StubAnalysisPipeline)
+    expect(isStubPipeline('post_use_rating')).toBe(false)
   })
 
   it('isRegisteredSource', () => {
@@ -35,7 +36,7 @@ describe('analysis registry', () => {
 
   it('marks stub vs production pipelines', () => {
     expect(isStubPipeline('complaint_ticket')).toBe(false)
-    expect(isStubPipeline('post_use_rating')).toBe(true)
-    expect(listStubDataSourceTypes()).toEqual(['post_use_rating', 'user_survey', 'other'])
+    expect(isStubPipeline('post_use_rating')).toBe(false)
+    expect(listStubDataSourceTypes()).toEqual(['user_survey', 'other'])
   })
 })

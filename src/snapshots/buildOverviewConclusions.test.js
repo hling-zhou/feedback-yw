@@ -89,7 +89,13 @@ describe('buildOverviewConclusions', () => {
     expect(conclusions.executiveSummary).toBe('')
     expect(conclusions.highlights).toHaveLength(0)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2')
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
+    expect(
+      (conclusions.recommendationsMeta?.overviewFusedCount || 0)
+        + (conclusions.recommendationsMeta?.formalClusterCount || 0)
+        + (conclusions.recommendationsMeta?.singletonCount || 0),
+    ).toBeGreaterThan(0)
+    expect(conclusions.recommendationsMeta?.stableKeyVersion).toContain('cluster-stable-key-v1')
     const rec = conclusions.recommendations[0]
     expect(rec.summary || rec.text).toBeTruthy()
     expect(rec.sections?.painClusterScores || rec.sections?.productActions?.length).toBeTruthy()

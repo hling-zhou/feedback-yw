@@ -268,7 +268,7 @@ describe('painPointClustering/runProductClusteringPipeline', () => {
       }),
     ]
     const result = runProductClusteringPipeline(records, product)
-    expect(result.clusteringVersion).toBe('v2.0')
+    expect(result.clusteringVersion).toBe('v2.3')
     expect(result.productTotalTickets).toBe(4)
     expect(result.excludedPrimaryClusterCount).toBeGreaterThanOrEqual(1)
     expect(result.excludedPrimaryTicketCount).toBe(2)

@@ -1,141 +1,201 @@
-import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { Alert, Card, Col, Row, Statistic, Table, Typography } from 'antd'
-import ThemeBarChart from '../charts/ThemeBarChart.jsx'
-import FollowUpSatisfactionPanel from './FollowUpSatisfactionPanel.jsx'
+import { useEffect, useMemo, useState } from 'react'
+import { Card, Segmented, Space, Tag, Typography, message } from 'antd'
+import { BarChartOutlined, FileWordOutlined } from '@ant-design/icons'
+import PostUseMonthlyReportPreview from './PostUseMonthlyReportPreview.jsx'
+import PostUseStoryView from './PostUseStoryView.jsx'
+import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
+import { ensureHistoricalTrendSeed } from '../../lib/postUseRating/trendStore.js'
+import { listActionItems } from '../../lib/actionItemClient.js'
+import { createActionItem } from '../../lib/actionItemClient.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
-import { isStubPipeline } from '../../analysis/registry.js'
-import { filterRecordsForScope, resolveRecordsByIds } from '../../snapshots/recordScope.js'
-import { aggregateRatingByProduct, summarizeRatings } from '../../lib/ratingAnalytics.js'
+import { filterRecordsForScope } from '../../snapshots/recordScope.js'
+import {
+  getPostUseFocusTrackedNames,
+  getPostUseRatingProductNames,
+  scopePostUseRatingRecords,
+} from '../../lib/productCatalog/postUseRatingProducts.js'
+import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
+import { postUseVisitMonthsForPeriod } from '../../lib/postUseRating/periodScope.js'
+import { loadPostUsePeriodQuality } from '../../lib/postUseRating/qualityStore.js'
+import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
 
 /**
- * 用后即评工作台：仅「全部产品」维度（与工单 Tab 的分产品呈现区分）。
- *
- * @param {Object} props
- * @param {import('../../domain/snapshot.js').InsightSnapshot} props.snapshot
- * @param {string} props.sourceLabel
+ * 用后即评工作台：统一故事模型驱动线上综合分析与 Word 月报。
  */
-export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
-  const { feedbacks, currentPeriod } = useInsights()
+export default function PostUseRatingDashboardView() {
+  const { feedbacks, currentPeriod, adapter } = useInsights()
+  const [visits, setVisits] = useState([])
+  const [actionItems, setActionItems] = useState([])
+  const [trendSnap, setTrendSnap] = useState(null)
+  const [quality, setQuality] = useState(null)
+  const [creatingSignalKey, setCreatingSignalKey] = useState('')
+  const [viewMode, setViewMode] = useState('online')
   const items = useMemo(
-    () => resolveRecordsByIds(feedbacks, snapshot.recordIds),
-    [feedbacks, snapshot.recordIds],
+    () => filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating'),
+    [feedbacks, currentPeriod],
   )
 
-  const ticketRecordsForFollowUp = useMemo(() => {
-    if (!currentPeriod) return []
-    const complaint = filterRecordsForScope(feedbacks, currentPeriod, 'complaint_ticket')
-    const consultation = filterRecordsForScope(feedbacks, currentPeriod, 'consultation_ticket')
-    return [...complaint, ...consultation]
-  }, [feedbacks, currentPeriod])
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!adapter) return
+      try {
+        const [v, actionsRes, trend, qualityStore] = await Promise.all([
+          loadVisitRecords(adapter),
+          listActionItems({ limit: 500 }).catch(() => ({ items: [] })),
+          ensureHistoricalTrendSeed(adapter).catch(() => null),
+          loadPostUsePeriodQuality(adapter).catch(() => null),
+        ])
+        if (!cancelled) {
+          setVisits(v)
+          setActionItems(actionsRes?.items || [])
+          setTrendSnap(trend)
+          setQuality(qualityStore)
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [adapter, feedbacks])
 
-  const summary = useMemo(() => summarizeRatings(items), [items])
-  const byProduct = useMemo(() => aggregateRatingByProduct(items), [items])
-
-  const scoreChartData = useMemo(
-    () =>
-      byProduct
-        .filter((p) => p.avgScore != null)
-        .map((p) => ({
-          label: p.name,
-          count: Math.round(p.avgScore * 10),
-          negative: p.lowScoreCount,
-        })),
-    [byProduct],
+  const catalog = useMemo(() => getCatalogProducts(), [feedbacks])
+  const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
+  const focusNames = useMemo(() => getPostUseFocusTrackedNames(catalog), [catalog])
+  const scopedItems = useMemo(() => scopePostUseRatingRecords(items, catalog), [items, catalog])
+  const scopedVisits = useMemo(() => {
+    const months = new Set(postUseVisitMonthsForPeriod(currentPeriod))
+    return scopePostUseRatingRecords(
+      visits.filter((visit) => months.has(visit.importMonth || visit.visitMonth)),
+      catalog,
+    )
+  }, [visits, currentPeriod, catalog])
+  const allScopedItems = useMemo(
+    () => scopePostUseRatingRecords(feedbacks.filter((r) => r.dataSourceType === 'post_use_rating'), catalog),
+    [feedbacks, catalog],
   )
+  const monthReasons = useMemo(() => {
+    if (!trendSnap || !reportMonthSafe(currentPeriod)) return []
+    const month = reportMonthSafe(currentPeriod)
+    return (trendSnap.reasons || [])
+      .filter((r) => r.month === month)
+      .map((r) => ({
+        reason: r.reason,
+        count: r.count,
+        ...(r.channel != null && r.channel !== '' ? { channel: r.channel } : {}),
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [trendSnap, currentPeriod])
 
-  const stub = isStubPipeline('post_use_rating')
-  const hasRatingItems = items.length > 0
+  const createActionFromSignal = async (signal) => {
+    const key = `${signal.type}-${signal.productName}-${signal.title}`
+    if ((actionItems || []).some((item) => signal.linkedInsightIds?.some((id) => item.linkedInsightIds?.includes(id)))) {
+      message.info('该洞察已关联举措')
+      return
+    }
+    setCreatingSignalKey(key)
+    try {
+      const created = await createActionItem({
+        content: signal.title,
+        detail: signal.detail,
+        productName: signal.productName,
+        status: 'pending_evaluation',
+        painPointSnapshot: signal.insightTheme || signal.title,
+        linkedDataSources: ['post_use_rating'],
+        linkedInsightIds: signal.linkedInsightIds || [],
+        evidenceRecordIds: signal.evidenceRecordIds || [],
+        insightTheme: signal.insightTheme || '',
+        triggerMetric: signal.triggerMetric,
+        firstProposedAt: new Date().toISOString().slice(0, 10),
+      })
+      setActionItems((items) => [created, ...items])
+      message.success('已创建举措并关联洞察证据')
+    } catch (error) {
+      message.error(error?.message || '创建举措失败')
+    } finally {
+      setCreatingSignalKey('')
+    }
+  }
+
+  const reportMonth = reportMonthSafe(currentPeriod)
+  const activeViewMode = reportMonth ? viewMode : 'online'
+  useEffect(() => {
+    if (!reportMonth && viewMode !== 'online') setViewMode('online')
+  }, [reportMonth, viewMode])
+  const qualityMonth = reportMonth || [...new Set(scopedItems.map((r) => r.importMonth).filter(Boolean))].sort().at(-1) || ''
+  const periodQuality = quality?.periods?.[qualityMonth] || null
+  const storyModel = useMemo(() => buildPostUseStoryModel({
+    records: scopedItems,
+    allRecords: allScopedItems,
+    visits: scopedVisits,
+    productNames,
+    focusNames,
+    actions: actionItems,
+    trend: trendSnap,
+    quality: periodQuality,
+    period: currentPeriod,
+  }), [scopedItems, allScopedItems, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod])
 
   return (
     <div className="space-y-4">
-      {stub && hasRatingItems && (
-        <Alert
-          type="info"
-          showIcon
-          title="专项指标预览"
-          description="当前为导入占位 Pipeline，下图基于已入库明细按产品聚合；完整 KPI/季年加权将在用后即评 Pipeline 上线后对齐需求文档。"
-        />
-      )}
-
-      <Typography.Text type="secondary" className="block text-sm">
-        本 Tab 为<strong>全部产品</strong>维度展示（18 云网产品一览）；投诉/咨询工单 Tab 为分产品查看旅程与打标。
-      </Typography.Text>
-
-      <FollowUpSatisfactionPanel ticketRecords={ticketRecordsForFollowUp} />
-
-      {!hasRatingItems ? (
-        <Card>
-          <Typography.Text type="secondary">
-            当前周期内暂无「{sourceLabel}」评价明细，请先导入独立评价记录。
-          </Typography.Text>
-        </Card>
-      ) : (
-        <>
-          <Row gutter={[16, 16]}>
-        <Col xs={12} sm={6}>
-          <Card>
-            <Statistic title="周期内条数" value={summary.recordCount} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card>
-            <Statistic
-              title="有评分条数"
-              value={summary.scoredCount}
-              suffix={summary.recordCount ? `/ ${summary.recordCount}` : ''}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card>
-            <Statistic title="整体均分" value={summary.avgScore ?? '—'} precision={summary.avgScore != null ? 2 : 0} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card>
-            <Statistic title="9 分以下条数" value={summary.below9Count} />
-          </Card>
-        </Col>
-      </Row>
-
-      <Card title="各产品评分（周期内）">
-        <div data-pdf-chart="yhjp-product-scores" className="rounded-lg bg-white p-2">
-          <ThemeBarChart data={scoreChartData} />
+      <Card size="small">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Typography.Title level={4} className="!mb-0">
+              {reportMonth ? '用后即评分析与报告' : '用后即评综合分析'}
+            </Typography.Title>
+            {reportMonth ? (
+              <Segmented
+                className="post-use-report-tabs"
+                value={activeViewMode}
+                onChange={setViewMode}
+                options={[
+                  { value: 'online', label: '线上综合分析', icon: <BarChartOutlined /> },
+                  { value: 'report', label: 'Word 月报', icon: <FileWordOutlined /> },
+                ]}
+              />
+            ) : null}
+          </div>
+          <Space size={[8, 8]} wrap>
+            <Tag color={storyModel.scope.qualityWarningCount ? 'gold' : storyModel.quality ? 'green' : 'default'}>
+              {storyModel.scope.qualityStatus}
+            </Tag>
+            <Tag color={activeViewMode === 'online' ? 'blue' : 'default'}>范围 {storyModel.scope.periodLabel}</Tag>
+            <Tag>产品 {storyModel.scope.productCount}</Tag>
+            <Tag>样本 {storyModel.scope.validSample}</Tag>
+            {reportMonth ? <Tag color="green">月报 {reportMonth}</Tag> : null}
+          </Space>
         </div>
-        <Typography.Text type="secondary" className="mt-2 block text-xs">
-          条形长度为均分×10 便于展示；完整指标见下表。
-        </Typography.Text>
       </Card>
 
-      <Card
-        title="产品评分明细"
-        extra={
-          <Link to="/feedbacks?source=post_use_rating" className="text-sm">
-            反馈库
-          </Link>
-        }
-      >
-        <Table
-          size="small"
-          pagination={{ pageSize: 20, showSizeChanger: true }}
-          rowKey="productKey"
-          dataSource={byProduct}
-          columns={[
-            { title: '产品', dataIndex: 'name', ellipsis: true },
-            { title: '样本量', dataIndex: 'count', width: 88 },
-            {
-              title: '均分',
-              dataIndex: 'avgScore',
-              width: 88,
-              render: (v) => (v != null ? v.toFixed(2) : '—'),
-            },
-            { title: '9分以下', dataIndex: 'lowScoreCount', width: 96 },
-          ]}
+      {activeViewMode === 'report' ? (
+        <PostUseMonthlyReportPreview
+          adapter={adapter}
+          reportMonth={reportMonth}
+          scoredRows={storyModel.scoredRows}
+          productNames={productNames}
+          visits={visits}
+          actionItems={actionItems}
+          reasons={monthReasons}
+          insightBundle={storyModel.insightBundle}
+          quality={periodQuality}
+          storyModel={storyModel}
         />
-      </Card>
-        </>
+      ) : (
+        <PostUseStoryView
+          model={storyModel}
+          creatingSignalKey={creatingSignalKey}
+          onCreateAction={(signal) => void createActionFromSignal(signal)}
+        />
       )}
     </div>
   )
+}
+
+/** @param {{ id?: string } | null | undefined} period */
+function reportMonthSafe(period) {
+  if (!period?.id?.includes('period:month:')) return ''
+  return period.id.replace('period:month:', '')
 }

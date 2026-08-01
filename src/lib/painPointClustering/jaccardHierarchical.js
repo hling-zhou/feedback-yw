@@ -1,4 +1,5 @@
 import { PRIMARY_CLUSTER_MAX_ITEMS } from './constants.js'
+import { ensureNormalizedPainText } from './clusterSimilarity.js'
 import { normalizePainPointKey } from './normalizePainPoint.js'
 import {
   buildCandidatePairKeys,
@@ -83,7 +84,7 @@ function tokenSetsIntersect(a, b) {
  * @param {Set<string>[]} tokenSets
  * @param {number} threshold
  * @param {number} minSize
- * @param {{ minSharedTokens?: number }} [options]
+ * @param {{ minSharedTokens?: number; pairSimilarity?: (aIndex: number, bIndex: number) => number }} [options]
  */
 function hierarchicalClusterValid(valid, tokenSets, threshold, minSize, options = {}) {
   const n = valid.length
@@ -94,7 +95,7 @@ function hierarchicalClusterValid(valid, tokenSets, threshold, minSize, options 
     options.minSharedTokens ??
     (n > 1000 ? 4 : n > 500 ? 3 : n > PRIMARY_CLUSTER_MAX_ITEMS ? 2 : 1)
   const candidatePairKeys = buildCandidatePairKeys(n, tokenSets, minSharedTokens)
-  const leafSim = buildSparseLeafSimilarities(tokenSets, candidatePairKeys)
+  const leafSim = buildSparseLeafSimilarities(tokenSets, candidatePairKeys, options.pairSimilarity)
   const neighbors = buildNeighborLists(n, candidatePairKeys)
 
   /** @type {number[][]} */
@@ -334,23 +335,28 @@ function exactMergeByNormalizedText(items, getText) {
  * @param {(item: T) => string} getText
  * @returns {{ valid: { item: T; tokens: Set<string>; members: T[] }[]; cappedIsolated: T[] }}
  */
-function prepareHierarchicalValid(remainder, getText) {
-  /** @type {Map<string, { item: T; tokens: Set<string>; members: T[] }>} */
+function prepareHierarchicalValid(remainder, getText, pipelineOptions = {}) {
+  /** @type {Map<string, { item: T; tokens: Set<string>; members: T[]; normalizedPainText: ReturnType<typeof ensureNormalizedPainText> }>} */
   const unique = new Map()
 
   for (const item of remainder) {
     const text = getText(item)?.trim() || ''
-    const tokens = tokenSetFromPainPoint(text)
+    const normalizedPainText = pipelineOptions.buildNormalizedText
+      ? pipelineOptions.buildNormalizedText(text, item)
+      : ensureNormalizedPainText(text)
+    const tokens = pipelineOptions.getTokenSet
+      ? pipelineOptions.getTokenSet(text, item, normalizedPainText)
+      : normalizedPainText.semanticTokens || tokenSetFromPainPoint(text)
     if (!tokens.size) continue
     const key = normalizePainPointKey(text)
     if (!unique.has(key)) {
-      unique.set(key, { item, tokens, members: [item] })
+      unique.set(key, { item, tokens, members: [item], normalizedPainText })
     } else {
       unique.get(key).members.push(item)
     }
   }
 
-  /** @type {{ item: T; tokens: Set<string>; members: T[]; weight: number }[]} */
+  /** @type {{ item: T; tokens: Set<string>; members: T[]; normalizedPainText: ReturnType<typeof ensureNormalizedPainText>; weight: number }[]} */
   let entries = [...unique.values()].map((entry) => ({
     ...entry,
     weight: entry.members.length,
@@ -374,7 +380,12 @@ function prepareHierarchicalValid(remainder, getText) {
   }
 
   return {
-    valid: entries.map(({ item, tokens, members }) => ({ item, tokens, members })),
+    valid: entries.map(({ item, tokens, members, normalizedPainText }) => ({
+      item,
+      tokens,
+      members,
+      normalizedPainText,
+    })),
     cappedIsolated,
   }
 }
@@ -389,7 +400,13 @@ function prepareHierarchicalValid(remainder, getText) {
  * @param {(item: T) => string} getText
  * @param {number} threshold
  * @param {number} [minSize]
- * @param {{ useNaiveHierarchical?: boolean; minSharedTokens?: number }} [pipelineOptions]
+ * @param {{
+ *   useNaiveHierarchical?: boolean
+ *   minSharedTokens?: number
+ *   buildNormalizedText?: (text: string, item: T) => ReturnType<typeof ensureNormalizedPainText>
+ *   getTokenSet?: (text: string, item: T, normalizedPainText: ReturnType<typeof ensureNormalizedPainText>) => Set<string>
+ *   getPairSimilarity?: (a: { item: T; tokens: Set<string>; members: T[]; normalizedPainText: ReturnType<typeof ensureNormalizedPainText> }, b: { item: T; tokens: Set<string>; members: T[]; normalizedPainText: ReturnType<typeof ensureNormalizedPainText> }) => number
+ * }} [pipelineOptions]
  * @returns {{ clusters: T[][]; isolated: T[] }}
  */
 export function clusterByJaccard(items, getText, threshold, minSize = 2, pipelineOptions = {}) {
@@ -401,16 +418,28 @@ export function clusterByJaccard(items, getText, threshold, minSize = 2, pipelin
   const invalidFromRemainder = []
   for (const item of remainder) {
     const text = getText(item)?.trim() || ''
-    const tokens = tokenSetFromPainPoint(text)
+    const normalizedPainText = pipelineOptions.buildNormalizedText
+      ? pipelineOptions.buildNormalizedText(text, item)
+      : ensureNormalizedPainText(text)
+    const tokens = pipelineOptions.getTokenSet
+      ? pipelineOptions.getTokenSet(text, item, normalizedPainText)
+      : normalizedPainText.semanticTokens || tokenSetFromPainPoint(text)
     if (!tokens.size) invalidFromRemainder.push(item)
   }
 
   const { valid, cappedIsolated } = prepareHierarchicalValid(
     remainder.filter((item) => {
       const text = getText(item)?.trim() || ''
-      return tokenSetFromPainPoint(text).size > 0
+      const normalizedPainText = pipelineOptions.buildNormalizedText
+        ? pipelineOptions.buildNormalizedText(text, item)
+        : ensureNormalizedPainText(text)
+      const tokens = pipelineOptions.getTokenSet
+        ? pipelineOptions.getTokenSet(text, item, normalizedPainText)
+        : normalizedPainText.semanticTokens || tokenSetFromPainPoint(text)
+      return tokens.size > 0
     }),
     getText,
+    pipelineOptions,
   )
 
   if (!valid.length) {
@@ -421,9 +450,15 @@ export function clusterByJaccard(items, getText, threshold, minSize = 2, pipelin
   }
 
   const tokenSets = valid.map((v) => v.tokens)
+  const pairSimilarity = pipelineOptions.getPairSimilarity
+    ? (aIndex, bIndex) => pipelineOptions.getPairSimilarity(valid[aIndex], valid[bIndex])
+    : undefined
   const { clusters: hierMemberClusters, isolated: hierIsolatedItems } = pipelineOptions.useNaiveHierarchical
     ? hierarchicalClusterValidNaive(valid, tokenSets, threshold, minSize)
-    : hierarchicalClusterValid(valid, tokenSets, threshold, minSize, pipelineOptions)
+    : hierarchicalClusterValid(valid, tokenSets, threshold, minSize, {
+      ...pipelineOptions,
+      pairSimilarity,
+    })
 
   /** @type {Map<T, T[]>} */
   const membersByRep = new Map(valid.map((v) => [v.item, v.members]))

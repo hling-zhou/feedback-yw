@@ -7,6 +7,7 @@ import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
 import { yieldToMainThread } from '../lib/yieldToMainThread.js'
 import { isTicketSource } from '../lib/importUtils.js'
+import { buildImpactFocusSummaries } from '../lib/ticketImpactFocus.js'
 
 /** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
 
@@ -90,7 +91,7 @@ export async function rebuildSourceSnapshot({
       )?.planningConclusions?.recommendations || []
   }
 
-  const snapshot = buildSourceSnapshot({
+  let snapshot = buildSourceSnapshot({
     insightPeriodId,
     dataSourceType,
     records,
@@ -101,6 +102,30 @@ export async function rebuildSourceSnapshot({
     previousRecommendations,
     previousPeriodId: previousPeriodId || undefined,
   })
+
+  if (isTicketSource(dataSourceType)) {
+    try {
+      const impactFocusSummaries = await buildImpactFocusSummaries({
+        sourceLabel: dataSourceType === 'complaint_ticket' ? '投诉工单' : '咨询工单',
+        recommendations:
+          /** @type {{ planningConclusions?: { recommendations?: import('../domain/overviewConclusions.js').OverviewRecommendation[] } }} */ (
+            snapshot.aggregates
+          )?.planningConclusions?.recommendations || [],
+        records,
+        settings,
+      })
+      snapshot = {
+        ...snapshot,
+        aggregates: {
+          ...snapshot.aggregates,
+          impactFocusSummaries,
+        },
+      }
+    } catch (error) {
+      console.warn('[snapshot-service] 生成 impactFocusSummaries 失败:', error)
+    }
+  }
+
   await adapter.putSnapshot(snapshot)
   return snapshot
 }

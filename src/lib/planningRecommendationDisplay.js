@@ -1,4 +1,10 @@
 import { PLANNING_SECTION_LABELS, CLUSTER_SUB_LABELS } from './planningRecommendationSections.js'
+import {
+  isClusterFamilyRecommendation,
+  isFallbackReferenceRecommendation as isFallbackReferenceRecommendationSignal,
+  isHighRiskSingletonRecommendation,
+  isOverviewFusedClusterRecommendation,
+} from './planningRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 /** @typedef {import('../domain/overviewConclusions.js').PlanningClusterRootCause} PlanningClusterRootCause */
@@ -40,7 +46,14 @@ export const PAIN_CLUSTER_SECTION_TITLE = '优先级评定'
  * @param {OverviewRecommendation} rec
  */
 export function isPainClusterRecommendation(rec) {
-  return rec?.signalType === 'pain_cluster_v2'
+  return isClusterFamilyRecommendation(rec)
+}
+
+/**
+ * @param {OverviewRecommendation} rec
+ */
+export function isFallbackReferenceRecommendation(rec) {
+  return isFallbackReferenceRecommendationSignal(rec)
 }
 
 /**
@@ -51,8 +64,20 @@ export function buildRecommendationClusterHeading(rec) {
   if (!isPainClusterRecommendation(rec)) return null
   const scores = rec.sections?.painClusterScores
   const product = rec.scope?.product?.trim()
-  if (!scores?.rank || !scores?.totalFinal) return null
   const productLabel = product || '未命名产品'
+  if (isOverviewFusedClusterRecommendation(rec)) {
+    const sourceLabel =
+      rec.sourceGroup === 'cross_source'
+        ? '投诉/咨询共性'
+        : rec.sourceGroup === 'consultation_only'
+          ? '咨询专题'
+          : '投诉专题'
+    return `${sourceLabel} · ${productLabel}`
+  }
+  if (isHighRiskSingletonRecommendation(rec)) {
+    return `高危单例 · ${productLabel}`
+  }
+  if (!scores?.rank || !scores?.totalFinal) return null
   return `痛点群组 ${scores.rank}/${scores.totalFinal} · ${productLabel}`
 }
 
@@ -68,7 +93,7 @@ export function buildRecommendationEvidenceLinkLabel(rec, evidenceRecords = []) 
   const count = fromScores ?? fromBundle ?? fromTickets ?? fromRecords
   if (!count) return '在反馈库查看依据工单'
 
-  if (isPainClusterRecommendation(rec)) {
+  if (isPainClusterRecommendation(rec) && !isHighRiskSingletonRecommendation(rec)) {
     return `查看簇内 ${count} 条工单`
   }
   return `在反馈库查看 ${count} 条依据工单`
@@ -278,7 +303,7 @@ export function painClusterScoresToExportFields(scores, executiveSummary = '') {
 }
 
 /**
- * 与 PlanningRecommendationSectionsView 一致的结构化正文（PDF / 全文导出）
+ * 与 PlanningRecommendationSectionsView 一致的结构化正文（报告 / 全文导出）
  * @param {PlanningRecommendationSections | undefined} sections
  * @param {string} [summary]
  */
@@ -325,7 +350,7 @@ export function formatRecommendationSectionsForExport(sections, summary = '') {
 }
 
 /**
- * 行动建议 PDF 正文（与概览页卡片 sections 一致）
+ * 行动建议导出正文（与概览页卡片 sections 一致）
  * @param {OverviewRecommendation} rec
  */
 export function buildRecommendationExportFullText(rec) {

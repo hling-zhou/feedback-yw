@@ -19,3 +19,20 @@ export function getMaxSeverity(records) {
   }
   return max
 }
+
+/**
+ * @param {import('../types.js').FeedbackRecord[]} records
+ */
+export function getSeverityValues(records) {
+  return (records || []).map((record) => getSeverityFromProblemType(record?.problemType))
+}
+
+/**
+ * @param {import('../types.js').FeedbackRecord[]} records
+ */
+export function getP90Severity(records) {
+  const values = getSeverityValues(records).sort((a, b) => a - b)
+  if (!values.length) return 0
+  const idx = Math.ceil(values.length * 0.9) - 1
+  return values[Math.max(0, Math.min(values.length - 1, idx))]
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ensureTargetProductsInCatalog } from './ensureTargetProducts.js'
+import { POST_USE_RATING_PRODUCT_NAMES } from './postUseRatingProducts.js'
 
 describe('ensureTargetProductsInCatalog', () => {
   it('adds vpc when missing', () => {
@@ -18,7 +19,7 @@ describe('ensureTargetProductsInCatalog', () => {
     expect(products.find((p) => p.key === 'vpc')?.specs?.[0]?.name).toBe('虚拟私有云')
   })
 
-  it('does not change catalog when target products already present', () => {
+  it('backfills 用后即评 16 products and analysis flags', () => {
     const catalog = [
       {
         key: 'eip',
@@ -59,7 +60,21 @@ describe('ensureTargetProductsInCatalog', () => {
       },
     ]
     const { products, changed } = ensureTargetProductsInCatalog(catalog)
-    expect(changed).toBe(false)
-    expect(products.filter((p) => p.key === 'vpc')).toHaveLength(1)
+    expect(changed).toBe(true)
+    const names = new Set(
+      products.filter((p) => p.analysisPostUseRating).map((p) => p.name),
+    )
+    for (const n of POST_USE_RATING_PRODUCT_NAMES) {
+      expect(names.has(n)).toBe(true)
+    }
+    expect(products.find((p) => p.key === 'eip')?.analysisPostUseRating).toBe(true)
+    expect(products.find((p) => p.key === 'eip')?.focusTracked).toBe(true)
+    expect(products.find((p) => p.key === 'shared_bw')?.name).toBe('共享带宽')
+  })
+
+  it('is idempotent when seeds already applied', () => {
+    const first = ensureTargetProductsInCatalog([])
+    const second = ensureTargetProductsInCatalog(first.products)
+    expect(second.changed).toBe(false)
   })
 })

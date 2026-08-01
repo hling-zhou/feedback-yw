@@ -7,21 +7,22 @@ import { LOW_VALUE_PROBLEM_TYPES } from './constants.js'
 /**
  * @param {PrimaryPainCluster} cluster
  */
-export function isLowValuePrimaryCluster(cluster) {
-  return LOW_VALUE_PROBLEM_TYPES.has(cluster.problemType?.trim() || '')
+export function isLowValuePrimaryCluster(cluster, profile = null) {
+  const lowValueTypes = profile?.lowValueProblemTypes || LOW_VALUE_PROBLEM_TYPES
+  return lowValueTypes.has(cluster.problemType?.trim() || '')
 }
 
 /**
  * @param {PrimaryPainCluster[]} primaryClusters
  */
-export function filterLowValuePrimaryClusters(primaryClusters) {
+export function filterLowValuePrimaryClusters(primaryClusters, profile = null) {
   /** @type {PrimaryPainCluster[]} */
   const retained = []
   /** @type {PrimaryPainCluster[]} */
   const excluded = []
 
   for (const c of primaryClusters) {
-    if (isLowValuePrimaryCluster(c)) excluded.push(c)
+    if (isLowValuePrimaryCluster(c, profile)) excluded.push(c)
     else retained.push(c)
   }
 

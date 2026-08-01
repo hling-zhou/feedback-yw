@@ -1,6 +1,9 @@
 /** 工单详情抽屉宽度（px），与 FeedbackDrawer Drawer size 保持一致 */
 export const TICKET_DETAIL_DRAWER_WIDTH = 720
 
+/** 举措详情抽屉宽度（px），高度与工单详情同为满视口 */
+export const ACTION_ITEM_DRAWER_WIDTH = 640
+
 /** 更新动态抽屉宽度（px），高度与工单详情同为满视口 */
 export const WHATS_NEW_DRAWER_WIDTH = 480
 

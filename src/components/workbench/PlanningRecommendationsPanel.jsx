@@ -21,6 +21,10 @@ import {
 } from '../../lib/planningRecommendations.js'
 import { exportPlanningRecommendationsXlsx } from '../../lib/planningRecommendationsExport.js'
 import {
+  isHighRiskSingletonRecommendation,
+  isOverviewFusedClusterRecommendation,
+} from '../../lib/planningRecommendations.js'
+import {
   PERIOD_COMPARE_LABELS,
   summarizeRecommendationPeriodCompare,
 } from '../../lib/planningRecommendationCompare.js'
@@ -30,6 +34,7 @@ import {
   resolveRecommendationSummary,
   buildRecommendationClusterHeading,
   buildRecommendationEvidenceLinkLabel,
+  isFallbackReferenceRecommendation,
   isPainClusterRecommendation,
 } from '../../lib/planningRecommendationDisplay.js'
 import {
@@ -180,6 +185,14 @@ export default function PlanningRecommendationsPanel({
     )
     return limitPlanningRecommendations(raw)
   }, [conclusions?.recommendations, feedbacks])
+  const formalRecommendations = useMemo(
+    () => allRecommendations.filter((rec) => isPainClusterRecommendation(rec)),
+    [allRecommendations],
+  )
+  const fallbackRecommendations = useMemo(
+    () => allRecommendations.filter((rec) => isFallbackReferenceRecommendation(rec)),
+    [allRecommendations],
+  )
 
   const recommendationProductOptions = useMemo(
     () => collectRecommendationProductOptions(allRecommendations, feedbackByRecordId),
@@ -193,10 +206,18 @@ export default function PlanningRecommendationsPanel({
       feedbackByRecordId,
     )
   }, [allRecommendations, productFilter, feedbackByRecordId])
+  const filteredFormalRecommendations = useMemo(
+    () => filteredRecommendations.filter((rec) => isPainClusterRecommendation(rec)),
+    [filteredRecommendations],
+  )
+  const filteredFallbackRecommendations = useMemo(
+    () => filteredRecommendations.filter((rec) => isFallbackReferenceRecommendation(rec)),
+    [filteredRecommendations],
+  )
 
   const periodCompareSummary = useMemo(
-    () => summarizeRecommendationPeriodCompare(allRecommendations),
-    [allRecommendations],
+    () => summarizeRecommendationPeriodCompare(formalRecommendations),
+    [formalRecommendations],
   )
   const removedCount = conclusions?.recommendationsMeta?.removedFromPreviousCount ?? 0
   const showPeriodCompare =
@@ -246,7 +267,8 @@ export default function PlanningRecommendationsPanel({
     )
   }
 
-  const priorityCounts = countByPriority(allRecommendations)
+  const priorityCounts = countByPriority(formalRecommendations)
+  const fallbackCount = fallbackRecommendations.length
 
   return (
     <Card
@@ -324,17 +346,20 @@ export default function PlanningRecommendationsPanel({
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <Segmented size="small" value={viewMode} options={VIEW_MODES} onChange={setViewMode} />
-      </div>
+      {formalRecommendations.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <Segmented size="small" value={viewMode} options={VIEW_MODES} onChange={setViewMode} />
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Typography.Text type="secondary" className="text-xs">
           {productFilter
-            ? `已筛选「${productFilter}」· 显示 ${filteredRecommendations.length} / ${allRecommendations.length} 条`
-            : `本期 ${allRecommendations.length} 条可纳入规划讨论`}
+            ? `已筛选「${productFilter}」· 正式项 ${filteredFormalRecommendations.length} / ${formalRecommendations.length} 条`
+            : `本期正式聚类 ${formalRecommendations.length} 条`}
           {' · '}
           高 {priorityCounts.high} / 中 {priorityCounts.medium} / 低 {priorityCounts.low}
+          {fallbackCount > 0 ? ` · 参考项 ${fallbackCount} 条` : ''}
           {conclusions?.periodLabel ? ` · ${conclusions.periodLabel}` : ''}
         </Typography.Text>
         <Space wrap>
@@ -349,13 +374,13 @@ export default function PlanningRecommendationsPanel({
               options={recommendationProductOptions.map((p) => ({ label: p, value: p }))}
             />
           )}
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            disabled={!filteredRecommendations.length}
-            onClick={() =>
-              exportPlanningRecommendationsXlsx(
-                filteredRecommendations,
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              disabled={!filteredRecommendations.length}
+              onClick={() =>
+                exportPlanningRecommendationsXlsx(
+                  filteredRecommendations,
                 conclusions?.periodLabel
                   ? `行动建议_${conclusions.periodLabel}`
                   : '行动建议',
@@ -367,11 +392,11 @@ export default function PlanningRecommendationsPanel({
         </Space>
       </div>
 
-      {filteredRecommendations.length > 0 ? (
+      {filteredFormalRecommendations.length > 0 ? (
         viewMode === 'list' ? (
           <SimpleList
             size="small"
-            dataSource={filteredRecommendations}
+            dataSource={filteredFormalRecommendations}
             renderItem={(rec, idx) => (
               <PlanningRecommendationItem
                 rec={rec}
@@ -395,7 +420,7 @@ export default function PlanningRecommendationsPanel({
         ) : viewMode === 'product' ? (
           <Collapse
             size="small"
-            items={groupRecommendationsByProduct(filteredRecommendations).map(
+            items={groupRecommendationsByProduct(filteredFormalRecommendations).map(
               ([product, recs]) => ({
                 key: product,
                 label: (
@@ -451,7 +476,7 @@ export default function PlanningRecommendationsPanel({
                 key: category,
                 render: (_, row) => {
                   const cell = recommendationsForMatrixCell(
-                    filteredRecommendations,
+                    filteredFormalRecommendations,
                     row.priority,
                     category,
                   )
@@ -471,9 +496,48 @@ export default function PlanningRecommendationsPanel({
           />
         )
       ) : (
-        <Typography.Text type="secondary" className="text-sm">
-          当前产品暂无匹配的行动建议，请选择「全部产品」或切换其他产品。
-        </Typography.Text>
+        <Alert
+          className="!mb-3"
+          type="info"
+          showIcon
+          title="当前筛选下暂无正式 V2 痛点聚类"
+          description="正式 V2 痛点群组为空时，下面仍可能展示小样本参考项，供人工核实与补充判断。"
+        />
+      )}
+
+      {filteredFallbackRecommendations.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+          <Space align="center" className="mb-3">
+            <Typography.Text strong>小样本参考项</Typography.Text>
+            <Tag color="warning">推断型</Tag>
+            <Typography.Text type="secondary" className="text-xs">
+              不按正式聚类评分口径展示，可作为人工判断和创建举措的参考输入。
+            </Typography.Text>
+          </Space>
+          <SimpleList
+            size="small"
+            dataSource={filteredFallbackRecommendations}
+            renderItem={(rec, idx) => (
+              <PlanningRecommendationItem
+                rec={rec}
+                index={idx}
+                periodMonth={conclusions?.periodMonth}
+                insightPeriodId={conclusions?.insightPeriodId}
+                onFeedback={(type) => {
+                  void submitRecommendationFeedback({
+                    recommendationId: rec.id,
+                    type,
+                  })
+                }}
+                evidenceRecords={resolveEvidenceRecordsForRecommendation(
+                  rec,
+                  feedbackByRecordId,
+                  feedbackByTicketId,
+                )}
+              />
+            )}
+          />
+        </div>
       )}
 
       <Typography.Text type="secondary" className="mt-3 block text-xs">
@@ -556,7 +620,16 @@ function PlanningRecommendationItem({
 
           <Space wrap className="mb-2">
             {isPainClusterRecommendation(rec) && (
-              <Tag color="geekblue">痛点聚类 V2</Tag>
+              <Tag color={isHighRiskSingletonRecommendation(rec) ? 'magenta' : isOverviewFusedClusterRecommendation(rec) ? 'purple' : 'geekblue'}>
+                {isHighRiskSingletonRecommendation(rec)
+                  ? '高危 singleton'
+                  : isOverviewFusedClusterRecommendation(rec)
+                    ? '概览融合主题'
+                    : '痛点聚类 V2'}
+              </Tag>
+            )}
+            {isFallbackReferenceRecommendation(rec) && (
+              <Tag color="warning">小样本参考项</Tag>
             )}
             <Tag color={PRIORITY_COLORS[rec.priority]}>
               {PRIORITY_LABELS[rec.priority]}优先级
@@ -586,6 +659,20 @@ function PlanningRecommendationItem({
             {rec.periodCompare?.change && rec.periodCompare.change !== 'persist' && (
               <Tag color={PERIOD_COMPARE_COLORS[rec.periodCompare.change]}>
                 {PERIOD_COMPARE_LABELS[rec.periodCompare.change]}
+              </Tag>
+            )}
+            {rec.periodCompare?.lifecycle && !['new', 'persistent'].includes(rec.periodCompare.lifecycle) && (
+              <Tag color={rec.periodCompare.lifecycle === 'growing' ? 'volcano' : 'blue'}>
+                {rec.periodCompare.lifecycle === 'growing' ? '增长中' : rec.periodCompare.lifecycle === 'easing' ? '缓解中' : rec.periodCompare.lifecycle}
+              </Tag>
+            )}
+            {rec.sourceGroup && (
+              <Tag color="default">
+                {rec.sourceGroup === 'cross_source'
+                  ? '投诉/咨询共性'
+                  : rec.sourceGroup === 'consultation_only'
+                    ? '咨询专题'
+                    : '投诉专题'}
               </Tag>
             )}
           </Space>

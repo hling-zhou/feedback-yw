@@ -1,4 +1,4 @@
-/** @typedef {'import' | 'retag' | 'pdf_export'} BackgroundTaskType */
+/** @typedef {'import' | 'retag'} BackgroundTaskType */
 
 /**
  * @typedef {Object} BackgroundTaskLock
@@ -71,9 +71,6 @@ export function formatBackgroundTaskBlockedTip(lock) {
   if (lock.type === 'retag') {
     return `${who} 正在进行批量重新打标，请待完成后再试`
   }
-  if (lock.type === 'pdf_export') {
-    return `${who} 正在导出 PDF，请待完成后再试`
-  }
   return `${who} 正在执行后台任务，请稍后再试`
 }
 
@@ -98,13 +95,6 @@ export function formatBackgroundTaskRemoteBanner(lock) {
     if (progress) parts.push(progress)
     return parts.join(' · ')
   }
-  if (lock.type === 'pdf_export') {
-    const label = lock.meta?.label || lock.meta?.scope
-    const parts = [`${who} 正在导出 PDF`]
-    if (label) parts.push(String(label))
-    if (progress) parts.push(progress)
-    return parts.join(' · ')
-  }
   return progress ? `${who} · ${progress}` : `${who} 正在执行后台任务`
 }
 
@@ -114,6 +104,5 @@ export function formatBackgroundTaskRemoteBanner(lock) {
 export function backgroundTaskTypeLabel(type) {
   if (type === 'import') return '数据导入'
   if (type === 'retag') return '批量重新打标'
-  if (type === 'pdf_export') return 'PDF 导出'
   return '后台任务'
 }

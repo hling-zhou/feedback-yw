@@ -109,6 +109,19 @@ export const STANDARD_FIELDS = [
   { key: 'problemTypeL2FinalCol', label: '投诉原因二级（终判）', required: false },
   { key: 'problemTypeL3FinalCol', label: '投诉原因三级（终判）', required: false },
   { key: 'source', label: '渠道', required: false },
+  { key: 'visitMonth', label: '回访月份', required: false },
+  { key: 'productName', label: '产品名称', required: false },
+  { key: 'feedbackSummary', label: '客户反馈摘要', required: false },
+  { key: 'userFeedbackText', label: '用户反馈原文', required: false },
+  { key: 'scoreSource', label: '评分来源', required: false },
+  { key: 'ratingText', label: '用后即评评分', required: false },
+  { key: 'userInfo', label: '用户信息', required: false },
+  { key: 'userInfoDetail', label: '用户信息详情', required: false },
+  { key: 'visitResult', label: '回访结果', required: false },
+  { key: 'visitFeedbackDetail', label: '回访反馈信息', required: false },
+  { key: 'internalConclusion', label: '内部结论', required: false },
+  { key: 'internalEvaluationDetail', label: '回访反馈信息-内部评估', required: false },
+  { key: 'jiraId', label: '内部提单', required: false },
 ]
 
 export const FIELD_LABELS = Object.fromEntries(

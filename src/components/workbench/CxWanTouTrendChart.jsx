@@ -75,7 +75,7 @@ export default function CxWanTouTrendChart({
         </Typography.Text>
       ) : (
         <>
-          <div data-pdf-chart="cx-wantou-trend" className="rounded-lg bg-white p-2">
+          <div className="rounded-lg bg-white p-2">
             <TrendChart
               variant="line"
               allowDecimals

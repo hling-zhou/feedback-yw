@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -73,8 +72,8 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   )
   const [productForm] = Form.useForm()
   const [specForm] = Form.useForm()
+  const analysisPostUseRating = Form.useWatch('analysisPostUseRating', productForm)
 
-  const isManaged = catalogMeta?.source === 'managed'
   const tableData = useMemo(() => catalogToTableRows(products), [products])
 
   const mergeImportTooltip = (
@@ -116,6 +115,8 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       key: '',
       name: '',
       enabled: true,
+      analysisPostUseRating: false,
+      focusTracked: false,
       acceptParentName: true,
     })
     setProductModal(true)
@@ -127,6 +128,8 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       key: row.key,
       name: row.name,
       enabled: row.enabled,
+      analysisPostUseRating: Boolean(row.analysisPostUseRating),
+      focusTracked: Boolean(row.focusTracked),
       acceptParentName: row.acceptParentName,
     })
     setProductModal(true)
@@ -145,6 +148,8 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       key,
       name: v.name.trim(),
       enabled: Boolean(v.enabled),
+      analysisPostUseRating: Boolean(v.analysisPostUseRating),
+      focusTracked: Boolean(v.analysisPostUseRating && v.focusTracked),
       taxonomyKey: canonicalTaxonomyKey(key),
       acceptParentName: v.acceptParentName !== false,
       specs: editingProduct
@@ -270,11 +275,22 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
           </Typography.Text>
           {row.enabled ? (
             <Tag color="blue" className="!ml-2">
-              分析中
+              工单分析
             </Tag>
-          ) : (
+          ) : null}
+          {row.analysisPostUseRating ? (
+            <Tag color="green" className="!ml-2">
+              用后即评
+            </Tag>
+          ) : null}
+          {row.analysisPostUseRating && row.focusTracked ? (
+            <Tag color="gold" className="!ml-2">
+              重点跟踪
+            </Tag>
+          ) : null}
+          {!row.enabled && !row.analysisPostUseRating ? (
             <Tag className="!ml-2">未启用</Tag>
-          )}
+          ) : null}
         </span>
       ),
     },
@@ -313,7 +329,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   ]
 
   return (
-    <Card title={readOnly ? '目标产品与产品规格（只读）' : '目标产品与产品规格（本机可编辑）'}>
+    <div>
       <Alert
         type="info"
         showIcon
@@ -369,48 +385,6 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
           </>
         )}
       </Space>
-
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {catalogMeta && (
-          <>
-            <Tag
-              color={
-                catalogMeta.source === 'managed'
-                  ? 'purple'
-                  : catalogMeta.source === 'excel'
-                    ? 'success'
-                    : catalogMeta.source === 'json'
-                      ? 'blue'
-                      : 'default'
-              }
-            >
-              {catalogMeta.source === 'managed'
-                ? '本机可编辑'
-                : catalogMeta.source === 'excel'
-                  ? 'Excel 文件'
-                  : catalogMeta.source === 'json'
-                    ? 'JSON 文件'
-                    : '内置默认'}
-            </Tag>
-            {catalogMeta.configFile && (
-              <Typography.Text type="secondary" className="text-xs">
-                {catalogMeta.configFile}
-              </Typography.Text>
-            )}
-            {catalogMeta.loadedAt && (
-              <Typography.Text type="secondary" className="text-xs">
-                更新于 {catalogMeta.loadedAt.slice(0, 16).replace('T', ' ')}
-              </Typography.Text>
-            )}
-          </>
-        )}
-      </div>
-
-      {catalogMeta?.enabledNames && (
-        <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
-          当前分析范围：{catalogMeta.enabledNames}（共 {catalogMeta.enabledCount} 个产品）
-        </Typography.Paragraph>
-      )}
 
       <Table
         size="small"
@@ -493,9 +467,23 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
               <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '必填' }]}>
                 <Input placeholder="如 弹性公网IP" />
               </Form.Item>
-              <Form.Item name="enabled" label="参与导入分析" valuePropName="checked">
+              <Form.Item name="enabled" label="投诉/咨询工单分析" valuePropName="checked">
                 <Switch checkedChildren="启用" unCheckedChildren="关闭" />
               </Form.Item>
+              <Form.Item name="analysisPostUseRating" label="用后即评分析" valuePropName="checked">
+                <Switch
+                  checkedChildren="启用"
+                  unCheckedChildren="关闭"
+                  onChange={(checked) => {
+                    if (!checked) productForm.setFieldValue('focusTracked', false)
+                  }}
+                />
+              </Form.Item>
+              {analysisPostUseRating ? (
+                <Form.Item name="focusTracked" label="用后即评重点跟踪" valuePropName="checked">
+                  <Switch checkedChildren="是" unCheckedChildren="否" />
+                </Form.Item>
+              ) : null}
               <Alert
                 type="info"
                 showIcon
@@ -531,6 +519,6 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
           </Modal>
         </>
       )}
-    </Card>
+    </div>
   )
 }

@@ -14,8 +14,6 @@ import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isTicketSource } from '../lib/importUtils.js'
-import ExportPdfMenu from '../components/ExportPdfMenu.jsx'
-import { PdfExportProvider } from '../context/PdfExportContext.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import WorkbenchAnalysisNav from '../components/workbench/WorkbenchAnalysisNav.jsx'
 import WorkbenchAnalysisLink from '../components/workbench/WorkbenchAnalysisLink.jsx'
@@ -27,7 +25,6 @@ import {
 } from '../snapshots/recordScope.js'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
-import { ensurePdfFontsReady } from '../lib/report/registerPdfFonts.js'
 import {
   formatInsightRebuildButtonLabel,
   formatInsightRebuildSpinDescription,
@@ -125,10 +122,6 @@ export default function InsightWorkbench() {
       ? '已切换洞察周期，当前周期的洞察快照尚未生成或已过期。系统会自动尝试刷新；也可手动点击「生成 / 刷新洞察」。'
       : '反馈数据或打标结果已变更，快照与当前数据不一致。系统会自动尝试刷新；也可手动点击「生成 / 刷新洞察」。'
 
-  useEffect(() => {
-    ensurePdfFontsReady().catch(() => {})
-  }, [])
-
   const activeTabContent = useMemo(() => {
     if (activeTab === TAB_OVERVIEW) {
       return (
@@ -162,6 +155,7 @@ export default function InsightWorkbench() {
             onProductChange={setTicketProduct}
             showWhatsNew={showTicketTabsWhatsNew}
             onDismissWhatsNew={dismissTicketTabsWhatsNew}
+            onOpenFeedback={selectFeedback}
           />
         )
       }
@@ -239,7 +233,6 @@ export default function InsightWorkbench() {
   )
 
   return (
-    <PdfExportProvider>
     <div id="insight-workbench-root">
       <PageHeader
         title="洞察工作台"
@@ -257,9 +250,8 @@ export default function InsightWorkbench() {
           >
             {formatInsightRebuildButtonLabel(snapshotRebuilding)}
           </RebuildInsightsButton>
-          <ExportPdfMenu activeSource={activeTab === TAB_OVERVIEW ? undefined : activeTab} />
           <Link to="/tags?tab=review">
-            <Button>标签管理</Button>
+            <Button>分析维度</Button>
           </Link>
           <WorkbenchAnalysisLink
             source={analysisContext.source}
@@ -328,6 +320,5 @@ export default function InsightWorkbench() {
         onDirtyChange={onDrawerDirtyChange}
       />
     </div>
-    </PdfExportProvider>
   )
 }

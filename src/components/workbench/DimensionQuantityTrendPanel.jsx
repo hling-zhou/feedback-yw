@@ -162,7 +162,7 @@ export default function DimensionQuantityTrendPanel({
               </Typography.Text>
               {selectedValue ? (
                 <Card size="small" title={`${DIMENSION_OPTIONS.find((d) => d.value === dimension)?.label || ''} · ${selectedValue}`}>
-                  <div data-pdf-chart="dimension-quantity-trend" className="rounded-lg bg-white p-2">
+                  <div className="rounded-lg bg-white p-2">
                     <TrendChart
                       variant="line"
                       data={chartData}

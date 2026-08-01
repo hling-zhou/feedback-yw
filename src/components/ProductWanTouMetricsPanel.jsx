@@ -6,6 +6,7 @@ import {
   Divider,
   InputNumber,
   Select,
+  Space,
   Table,
   Typography,
 } from 'antd'
@@ -15,7 +16,60 @@ import { monthsInYear } from '../lib/wanTouRatio.js'
 
 const METRICS_HINT_TITLE = '万投比 = 投诉工单数 ÷ 产品订单数 × 10000'
 const METRICS_HINT_DESCRIPTION =
-  '按产品分别维护目标值与月订单数；每个产品独立编辑、独立保存。工作台选择洞察周期后，在综合概述与各产品投诉 Tab 中展示对应万投比及达标情况。'
+  '按产品分别维护目标值与月订单数；每个产品独立编辑。有未保存修改时底部会出现保存条。工作台选择洞察周期后，在综合概述与各产品投诉 Tab 中展示对应万投比及达标情况。'
+
+/**
+ * @param {object} params
+ * @param {string} params.productKey
+ * @param {number} params.year
+ * @param {string[]} params.months
+ * @param {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} params.orderVolumes
+ * @param {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} params.wanTouTargets
+ */
+function pickMetricsBaseline({ productKey, year, months, orderVolumes, wanTouTargets }) {
+  const targetRow = wanTouTargets.find((item) => item.productKey === productKey && item.year === year)
+  /** @type {Record<string, number | null>} */
+  const orderDraft = {}
+  for (const month of months) {
+    const row = orderVolumes.find((v) => v.productKey === productKey && v.month === month)
+    orderDraft[month] = row?.orderCount ?? null
+  }
+  return {
+    wanTouTarget: targetRow?.wanTouTarget ?? null,
+    cxWanTouTarget: targetRow?.customerExperienceWanTouTarget ?? null,
+    orderDraft,
+  }
+}
+
+/**
+ * @param {number | null | undefined} a
+ * @param {number | null | undefined} b
+ */
+function sameNullableNumber(a, b) {
+  const left = a == null || a === '' ? null : Number(a)
+  const right = b == null || b === '' ? null : Number(b)
+  if (left == null && right == null) return true
+  if (left == null || right == null) return false
+  return left === right
+}
+
+/**
+ * @param {{
+ *   wanTouTarget: number | null
+ *   cxWanTouTarget: number | null
+ *   orderDraft: Record<string, number | null>
+ * }} draft
+ * @param {ReturnType<typeof pickMetricsBaseline>} baseline
+ * @param {string[]} months
+ */
+function isMetricsDraftDirty(draft, baseline, months) {
+  if (!sameNullableNumber(draft.wanTouTarget, baseline.wanTouTarget)) return true
+  if (!sameNullableNumber(draft.cxWanTouTarget, baseline.cxWanTouTarget)) return true
+  for (const month of months) {
+    if (!sameNullableNumber(draft.orderDraft[month], baseline.orderDraft[month])) return true
+  }
+  return false
+}
 
 /**
  * @param {Object} props
@@ -50,19 +104,22 @@ function ProductWanTouMetricsTabContent({
     [currentYear],
   )
 
-  useEffect(() => {
-    const targetRow = wanTouTargets.find((item) => item.productKey === productKey && item.year === year)
-    setWanTouTarget(targetRow?.wanTouTarget ?? null)
-    setCxWanTouTarget(targetRow?.customerExperienceWanTouTarget ?? null)
+  const baseline = useMemo(
+    () => pickMetricsBaseline({ productKey, year, months, orderVolumes, wanTouTargets }),
+    [productKey, year, months, orderVolumes, wanTouTargets],
+  )
 
-    /** @type {Record<string, number | null>} */
-    const nextOrders = {}
-    for (const month of months) {
-      const row = orderVolumes.find((v) => v.productKey === productKey && v.month === month)
-      nextOrders[month] = row?.orderCount ?? null
-    }
-    setOrderDraft(nextOrders)
-  }, [wanTouTargets, orderVolumes, productKey, year, months])
+  useEffect(() => {
+    setWanTouTarget(baseline.wanTouTarget)
+    setCxWanTouTarget(baseline.cxWanTouTarget)
+    setOrderDraft(baseline.orderDraft)
+  }, [baseline])
+
+  const dirty = isMetricsDraftDirty(
+    { wanTouTarget, cxWanTouTarget, orderDraft },
+    baseline,
+    months,
+  )
 
   const persist = useCallback(async () => {
     setSaving(true)
@@ -97,6 +154,12 @@ function ProductWanTouMetricsTabContent({
     message,
   ])
 
+  const handleDiscard = () => {
+    setWanTouTarget(baseline.wanTouTarget)
+    setCxWanTouTarget(baseline.cxWanTouTarget)
+    setOrderDraft({ ...baseline.orderDraft })
+  }
+
   const orderColumns = [
     { title: '月份', dataIndex: 'month', width: 110 },
     {
@@ -116,65 +179,81 @@ function ProductWanTouMetricsTabContent({
   ]
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Typography.Text strong className="mb-1 block text-xs">
-          年份
-        </Typography.Text>
-        <Select className="min-w-[120px]" value={year} options={yearOptions} onChange={setYear} />
-      </div>
+    <>
+      <div className={`space-y-4 ${dirty ? 'pb-20' : ''}`}>
+        <div>
+          <Typography.Text strong className="mb-1 block text-xs">
+            年份
+          </Typography.Text>
+          <Select className="min-w-[120px]" value={year} options={yearOptions} onChange={setYear} />
+        </div>
 
-      <div>
-        <Typography.Text strong className="mb-3 block text-sm">
-          万投比目标值
-        </Typography.Text>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          <div>
-            <Typography.Text className="mb-1 block text-xs text-ink-600">万投比目标值</Typography.Text>
-            <InputNumber
-              className="w-[160px]"
-              min={0}
-              precision={2}
-              placeholder="如 50"
-              value={wanTouTarget}
-              onChange={setWanTouTarget}
-            />
+        <div>
+          <Typography.Text strong className="mb-3 block text-sm">
+            万投比目标值
+          </Typography.Text>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <div>
+              <Typography.Text className="mb-1 block text-xs text-ink-600">万投比目标值</Typography.Text>
+              <InputNumber
+                className="w-[160px]"
+                min={0}
+                precision={2}
+                placeholder="如 50"
+                value={wanTouTarget}
+                onChange={setWanTouTarget}
+              />
+            </div>
+            <div>
+              <Typography.Text className="mb-1 block text-xs text-ink-600">
+                客户体验类万投比目标值
+              </Typography.Text>
+              <InputNumber
+                className="w-[160px]"
+                min={0}
+                precision={2}
+                placeholder="如 20"
+                value={cxWanTouTarget}
+                onChange={setCxWanTouTarget}
+              />
+            </div>
           </div>
-          <div>
-            <Typography.Text className="mb-1 block text-xs text-ink-600">
-              客户体验类万投比目标值
-            </Typography.Text>
-            <InputNumber
-              className="w-[160px]"
-              min={0}
-              precision={2}
-              placeholder="如 20"
-              value={cxWanTouTarget}
-              onChange={setCxWanTouTarget}
-            />
-          </div>
+        </div>
+
+        <Divider className="!my-2" />
+
+        <div>
+          <Typography.Text strong className="mb-3 block text-sm">
+            产品月订单数
+          </Typography.Text>
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="month"
+            dataSource={months.map((month) => ({ month }))}
+            columns={orderColumns}
+          />
         </div>
       </div>
 
-      <Divider className="!my-2" />
-
-      <div>
-        <Typography.Text strong className="mb-3 block text-sm">
-          产品月订单数
-        </Typography.Text>
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="month"
-          dataSource={months.map((month) => ({ month }))}
-          columns={orderColumns}
-        />
-      </div>
-
-      <Button type="primary" loading={saving || loading} onClick={() => void persist()}>
-        保存当前产品
-      </Button>
-    </div>
+      {dirty ? (
+        <div className="page-sticky-footer">
+          <div className="flex max-w-4xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4 lg:px-5">
+            <Typography.Text type="secondary" className="text-sm">
+              有未保存的修改（{productName} · {year} 年）
+            </Typography.Text>
+            <Space wrap>
+              <Button disabled={saving || loading} onClick={handleDiscard}>
+                放弃更改
+              </Button>
+              <Button type="primary" loading={saving || loading} onClick={() => void persist()}>
+                保存当前产品
+              </Button>
+            </Space>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 

@@ -17,7 +17,7 @@ export function yieldToNextFrame() {
   })
 }
 
-/** 连续让出数帧，供重任务（截图、PDF）前刷新 loading 态 */
+/** 连续让出数帧，供重任务前刷新 loading 态 */
 export async function yieldForHeavyTask() {
   await yieldToNextFrame()
   await yieldToNextFrame()

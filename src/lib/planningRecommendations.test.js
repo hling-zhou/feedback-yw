@@ -1,23 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { randomId } from './randomId.js'
 import {
-  buildFeedbacksLinkForRecommendation,
-  buildPlanningAnalysisLink,
-  buildPlanningRecommendations,
-  buildRecommendationEvidenceBundle,
+  buildFallbackReferenceStableKey,
+    buildFeedbacksLinkForRecommendation,
+    buildPainClusterStableKey,
+    buildRecommendationInsightIds,
+    buildPlanningAnalysisLink,
+    buildPlanningRecommendations,
+    buildRecommendationEvidenceBundle,
   buildGenerationSelectedReason,
   computeRecommendationEvidenceStrength,
   compareEvidenceStrength,
   computeMaxPlanningRecommendations,
-  targetRecommendationCountForProduct,
-  collectActionItemsFromRecords,
-  collectMergedOptimizationDetails,
-  collectRecommendationProductOptions,
-  dedupeRecommendationsSemantically,
-  dedupeSameProductPlanningRecommendations,
-  listProductsForPlanningCoverage,
-  selectDiversePlanningRecommendations,
-  filterRecommendationsByProduct,
+    targetRecommendationCountForProduct,
+    collectActionItemsFromRecords,
+    collectMergedOptimizationDetails,
+    collectRecommendationProductOptions,
+    dedupeRecommendationsSemantically,
+    dedupeSameProductPlanningRecommendations,
+    isFormalPainClusterRecommendation,
+    listProductsForPlanningCoverage,
+    selectDiversePlanningRecommendations,
+    filterRecommendationsByProduct,
   formatRecommendationForExport,
   limitPlanningRecommendations,
   limitPlanningRecommendationsWithProductQuota,
@@ -230,6 +234,46 @@ describe('planningRecommendations', () => {
       },
     )
     expect(merged.evidenceTicketIds).toEqual(['T-1', 'T-2'])
+  })
+
+  it('builds stable keys and insight ids deterministically', () => {
+    expect(
+      buildPainClusterStableKey({
+        product: 'ECS',
+        representativePain: '公网访问失败',
+        problemType: '可用性/连通性故障',
+      }),
+    ).toBe(
+      buildPainClusterStableKey({
+        product: 'ECS',
+        representativePain: '公网访问失败',
+        problemType: '可用性/连通性故障',
+      }),
+    )
+    expect(
+      buildFallbackReferenceStableKey({
+        product: 'ECS',
+        journeyL1: '使用',
+        journeyL2: '公网访问不通',
+        problemType: '配置与操作',
+      }),
+    ).toMatch(/^pfr-/)
+
+    const ids = buildRecommendationInsightIds(
+      {
+        id: 'legacy-1',
+        stableKey: 'pcl-1234',
+        priority: 'high',
+        category: 'product',
+        text: 's',
+        summary: 's',
+      },
+      'complaint_ticket',
+    )
+    expect(ids).toEqual([
+      'ticket:complaint_ticket:pcl-1234',
+      'ticket:complaint_ticket:legacy-1',
+    ])
   })
 
   it('buildFeedbacksLinkForRecommendation uses ticketIds when evidence present', () => {
@@ -529,7 +573,7 @@ describe('planningRecommendations', () => {
 
     const globalOnly = limitPlanningRecommendations(recs, 10)
     const productsGlobal = new Set(globalOnly.map((r) => r.scope?.product))
-    expect(productsGlobal.has('云主机')).toBe(false)
+    expect(productsGlobal.has('云主机')).toBe(true)
 
     const quotaLimited = limitPlanningRecommendationsWithProductQuota(recs, ticketRecords, 10)
     const productsQuota = new Set(quotaLimited.map((r) => r.scope?.product))
@@ -633,6 +677,31 @@ describe('planningRecommendations', () => {
     expect(recommendationMatchesProduct(recommendations[0], '云主机', feedbackByRecordId)).toBe(false)
     expect(filterRecommendationsByProduct(recommendations, '弹性公网 IP', feedbackByRecordId)).toHaveLength(1)
     expect(filterRecommendationsByProduct(recommendations, undefined, feedbackByRecordId)).toHaveLength(2)
+  })
+
+  it('limitPlanningRecommendations keeps formal clusters ahead of fallback references', () => {
+    const limited = limitPlanningRecommendations([
+      {
+        id: 'fallback-1',
+        signalType: 'journey_problem_fallback',
+        priority: 'high',
+        category: 'product',
+        text: 'fallback',
+        summary: 'fallback',
+      },
+      {
+        id: 'cluster-1',
+        stableKey: 'pcl-1',
+        signalType: 'pain_cluster_v2',
+        priority: 'medium',
+        category: 'product',
+        text: 'cluster',
+        summary: 'cluster',
+        sections: { painClusterScores: { rank: 1, totalFinal: 1, priorityScore: 3.5 } },
+      },
+    ])
+    expect(isFormalPainClusterRecommendation(limited[0])).toBe(true)
+    expect(limited[1].signalType).toBe('journey_problem_fallback')
   })
 
   it('keeps distinct journey and problem type axes instead of merging by product alone', () => {

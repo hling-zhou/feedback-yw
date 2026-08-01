@@ -1,5 +1,6 @@
 import { LEGACY_INSIGHT_PERIOD_ID } from '../domain/constants.js'
 import { recordMatchesPeriod } from '../domain/insightPeriod.js'
+import { isPostUseRatingLibraryRecord } from '../domain/postUseRatingImport.js'
 import { extractFollowUpTicketRecords } from '../lib/followUpSatisfactionAnalytics.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
@@ -26,10 +27,25 @@ export function recordSourceType(fb) {
  * @param {FeedbackRecord[]} feedbacks
  * @param {InsightPeriod | null | undefined} period
  * @param {DataSourceType} [dataSourceType]
+ * @param {boolean | { libraryOnly?: boolean }} [optionsOrLibraryOnly]
+ *   libraryOnly + post_use_rating 时排除投诉回访独立行（isPostUseRatingLibraryRecord）
  */
-export function filterRecordsForScope(feedbacks, period, dataSourceType) {
+export function filterRecordsForScope(feedbacks, period, dataSourceType, optionsOrLibraryOnly) {
+  const opts =
+    typeof optionsOrLibraryOnly === 'boolean'
+      ? { libraryOnly: optionsOrLibraryOnly }
+      : optionsOrLibraryOnly || {}
+  const libraryOnly = Boolean(opts.libraryOnly)
+
   return feedbacks.filter((fb) => {
     if (dataSourceType && recordSourceType(fb) !== dataSourceType) return false
+    if (
+      libraryOnly &&
+      dataSourceType === 'post_use_rating' &&
+      !isPostUseRatingLibraryRecord(fb)
+    ) {
+      return false
+    }
     return recordMatchesPeriod(fb, period)
   })
 }
@@ -73,7 +89,11 @@ export function resolveSnapshotRecords(feedbacks, snapshot) {
  * @param {import('../domain/snapshot.js').InsightSnapshot | null | undefined} snapshot
  */
 export function postUseRatingFollowUpHasContent(feedbacks, period, snapshot) {
-  if ((snapshot?.aggregates?.followUpSatisfactionMetrics?.scoredCount ?? 0) > 0) {
+  const snapshotMatchesPeriod = !period?.id || snapshot?.insightPeriodId === period.id
+  if (
+    snapshotMatchesPeriod &&
+    (snapshot?.aggregates?.followUpSatisfactionMetrics?.scoredCount ?? 0) > 0
+  ) {
     return true
   }
   const tickets = [
@@ -91,9 +111,13 @@ export function postUseRatingFollowUpHasContent(feedbacks, period, snapshot) {
  */
 export function workbenchSourceHasContent(feedbacks, period, snapshot) {
   if (!snapshot?.dataSourceType) return false
-  const resolved = resolveSnapshotRecords(feedbacks, snapshot)
+  const snapshotMatchesPeriod = !period?.id || snapshot.insightPeriodId === period.id
+  const resolved = snapshotMatchesPeriod
+    ? resolveSnapshotRecords(feedbacks, snapshot).filter((record) => recordMatchesPeriod(record, period))
+    : []
   if (resolved.length > 0) return true
   if (
+    !snapshotMatchesPeriod ||
     snapshot.status === 'stale' ||
     snapshot.status === 'rebuilding' ||
     !(snapshot.recordIds?.length)
@@ -101,7 +125,7 @@ export function workbenchSourceHasContent(feedbacks, period, snapshot) {
     if (filterRecordsForScope(feedbacks, period, snapshot.dataSourceType).length > 0) {
       return true
     }
-  } else if ((snapshot.summary?.recordCount ?? 0) > 0) {
+  } else if (snapshotMatchesPeriod && (snapshot.summary?.recordCount ?? 0) > 0) {
     return true
   }
 
@@ -118,9 +142,13 @@ export function workbenchSourceHasContent(feedbacks, period, snapshot) {
  * @param {import('../domain/snapshot.js').InsightSnapshot} snapshot
  */
 export function workbenchTicketRecords(feedbacks, period, snapshot) {
-  const fromSnapshot = resolveSnapshotRecords(feedbacks, snapshot)
+  const snapshotMatchesPeriod = !period?.id || snapshot.insightPeriodId === period.id
+  const fromSnapshot = snapshotMatchesPeriod
+    ? resolveSnapshotRecords(feedbacks, snapshot).filter((record) => recordMatchesPeriod(record, period))
+    : []
   if (fromSnapshot.length > 0) return fromSnapshot
   if (
+    !snapshotMatchesPeriod ||
     snapshot.status === 'stale' ||
     snapshot.status === 'rebuilding' ||
     !(snapshot.recordIds?.length)

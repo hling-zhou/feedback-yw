@@ -51,6 +51,8 @@ describe('buildClusterActionRecommendations', () => {
     expect(recs[0].sections?.painClusterScores?.customerTierSummary).toContain('金牌')
     expect(recs[0].summary).toMatch(/安全组规则未放行/)
     expect(recs[0].summary).not.toMatch(/集中反馈|「弹性公网 IP」/)
+    expect(recs[0].stableKey).toMatch(/^pcl-/)
+    expect(recs[0].generationMeta?.fingerprintVersion).toBe('cluster-fingerprint-v2')
   })
 
   it('returns empty when no pain points', () => {
