@@ -1,9 +1,20 @@
 {
-  "generatedAt": "2026-08-01T10:24:47.526Z",
+  "generatedAt": "2026-08-01T11:39:59.582Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "61a1239dd01da51d8e1dcce435329a24f7341393",
+  "repoCommit": "b7d5874cc7c43179165ad882b7f3c4dde8b401d4",
   "items": [
+    {
+      "id": "b7d5874cc7c43179165ad882b7f3c4dde8b401d4",
+      "title": "upgrade insight workbench and post-use report flows",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-01",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "61a1239dd01da51d8e1dcce435329a24f7341393",
       "title": "列表投影裁剪大文本减负与状态标签视觉统一",

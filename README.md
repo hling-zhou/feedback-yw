@@ -62,6 +62,34 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 npm test && npm run build
 ```
 
+## 更新动态与 Commit 规范
+
+- 默认约定：**只要没有明确说明不写入更新动态，用户可见改动请使用会进入更新动态的 commit 写法。**
+- 更新动态来自 Git：执行 `npm run generate:whats-new` 或 `npm run build` 时，会从 `scripts/whats-new.since` 之后的 commit 生成 `public/config/whats-new.json`。
+- 默认收录类型：`feat:`、`fix:`。
+- 默认不收录类型：`docs:`、`chore:`、`refactor:` 等；若确需进入更新动态，请在 commit body 末尾加 `Changelog: show`。
+- 显式跳过：若本次提交不应进入更新动态，请在 commit body 末尾加 `Changelog: skip`。
+- 展示规则：
+  - commit `subject`：更新动态标题
+  - commit `body`：更新动态摘要
+  - commit `scope`：映射模块，例如 `feat(workbench): ...`
+
+推荐写法：
+
+```gitcommit
+feat(workbench): 升级洞察工作台与用后即评月报流程
+
+- 重构工作台故事化展示结构
+- 新增用后即评月报预览与导入链路
+- 优化分析维度与产品配置相关交互
+```
+
+说明：
+
+- 尽量使用 `feat(scope): 标题` / `fix(scope): 标题`。
+- 若希望更新动态里能直接看到“详情”，请务必写 commit body；只有标题没有 body 时，更新动态只会显示标题。
+- 同一个 commit 不会在 `git commit` 当下自动改写自己提交中的 `whats-new.json`；通常在后续构建或手动执行 `npm run generate:whats-new` 时生成。
+
 ## 数据与配置
 
 - 业务库：`server/data/auth.db`（SQLite，含用户与反馈记录）

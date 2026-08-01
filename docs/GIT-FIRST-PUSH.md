@@ -36,7 +36,26 @@ git status   # 应显示 working tree clean
 ```bash
 git add -A
 git status   # 再次确认无 .env / *.db
-git commit -m "你的提交说明"
+git commit
+```
+
+**提交说明规范（影响“更新动态”）**：
+
+- 默认约定：没有明确说明不写入更新动态时，用户可见改动请使用 `feat:` 或 `fix:` 提交。
+- 推荐使用 Conventional Commit：`feat(scope): 标题`、`fix(scope): 标题`。
+- commit `subject` 会显示为更新动态标题；commit `body` 会显示为更新动态摘要。
+- 若只写一行标题、不写 body，更新动态里通常只能看到标题，看不到详情。
+- 若不希望进入更新动态，在 commit body 末尾加：`Changelog: skip`
+- 若是 `docs:` / `chore:` 等非默认类型，但仍希望进入更新动态，在 commit body 末尾加：`Changelog: show`
+
+推荐示例：
+
+```text
+feat(workbench): 升级洞察工作台与用后即评月报流程
+
+- 重构工作台故事化展示结构
+- 新增用后即评月报预览与导入链路
+- 优化分析维度与产品配置相关交互
 ```
 
 ---

@@ -73,6 +73,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   const [productForm] = Form.useForm()
   const [specForm] = Form.useForm()
   const analysisPostUseRating = Form.useWatch('analysisPostUseRating', productForm)
+  const isManaged = catalogMeta?.source === 'managed'
 
   const tableData = useMemo(() => catalogToTableRows(products), [products])
 
