@@ -8,6 +8,10 @@ import {
   POST_USE_SMALL_SAMPLE_N,
 } from './metrics.js'
 
+function isPostUseActionItem(item) {
+  return Array.isArray(item?.linkedDataSources) && item.linkedDataSources.includes('post_use_rating')
+}
+
 /**
  * @typedef {Object} ActionSignal
  * @property {'satisfaction_below' | 'experience_below' | 'callback_non_ten'} type
@@ -122,6 +126,7 @@ export function filterActionsForMonthlyReport(items, opts) {
     m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
 
   return (items || []).filter((item) => {
+    if (!isPostUseActionItem(item)) return false
     const pname = item.productName || ''
     if (productSet.size && !productSet.has(pname)) return false
     if (opts.mode === 'this_month_proposed') {

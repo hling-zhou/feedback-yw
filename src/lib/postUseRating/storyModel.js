@@ -118,7 +118,10 @@ export function buildPostUseStoryModel(input) {
     period: period?.id || '',
   })
   const productSet = new Set(productNames)
-  const scopedActions = actions.filter((action) => !productSet.size || productSet.has(action.productName))
+  const scopedActions = actions.filter((action) => {
+    if (!action?.linkedDataSources?.includes('post_use_rating')) return false
+    return !productSet.size || productSet.has(action.productName)
+  })
   const evidenceByProduct = new Map(productOverview.map((product) => [product.productName, [
     ...(product.evidenceIds || []),
     ...(product.visitEvidenceIds || []),

@@ -79,4 +79,35 @@ describe('post-use story model', () => {
       expect.objectContaining({ type: 'unclassified_need', productName: '弹性公网IP' }),
     ]))
   })
+
+  it('only keeps post-use action items in actions and recovery modules', () => {
+    const model = buildPostUseStoryModel({
+      records,
+      allRecords: records,
+      productNames: ['弹性公网IP'],
+      actions: [
+        {
+          id: 'a-post-use',
+          productName: '弹性公网IP',
+          content: '用后即评举措',
+          status: 'completed',
+          linkedDataSources: ['post_use_rating'],
+          triggerMetric: { period: '2026-05', value: 8.2, baseline: 9, unit: '分' },
+        },
+        {
+          id: 'a-complaint',
+          productName: '弹性公网IP',
+          content: '投诉举措',
+          status: 'completed',
+          linkedDataSources: ['complaint_ticket'],
+          triggerMetric: { period: '2026-05', value: 8.2, baseline: 9, unit: '分' },
+        },
+      ],
+      period: { id: 'period:month:2026-06', label: '2026年6月', endDate: '2026-06-30', granularity: 'month', anchorYear: 2026 },
+    })
+
+    expect(model.actionsAndRecovery.rows.map((item) => item.id)).toContain('a-post-use')
+    expect(model.actionsAndRecovery.rows.map((item) => item.id)).not.toContain('a-complaint')
+    expect(model.actionsAndRecovery.recoveryRows.map((item) => item.id)).toEqual(['a-post-use'])
+  })
 })

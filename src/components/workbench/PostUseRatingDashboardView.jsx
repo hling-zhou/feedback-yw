@@ -42,7 +42,7 @@ export default function PostUseRatingDashboardView() {
       try {
         const [v, actionsRes, trend, qualityStore] = await Promise.all([
           loadVisitRecords(adapter),
-          listActionItems({ limit: 500 }).catch(() => ({ items: [] })),
+          listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           ensureHistoricalTrendSeed(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
         ])
