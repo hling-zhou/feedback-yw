@@ -53,6 +53,7 @@ import {
 import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
+  matchesCustomerNamesFilter,
   matchesFollowUpFilters,
   matchesHandlingKeywordFilter,
   matchesOptionalTextFilter,
@@ -393,6 +394,22 @@ export default function Feedbacks() {
       .map((tid) => ({ label: tid, value: tid }))
   }, [lanePeriodFeedbacks, filters.ticketIds])
 
+  const customerNameOptions = useMemo(() => {
+    /** @type {Map<string, string>} */
+    const map = new Map()
+    for (const name of filters.customerNames) {
+      const text = String(name || '').trim()
+      if (text) map.set(text, text)
+    }
+    for (const fb of scopedFeedbacks) {
+      const text = String(fb.customerName || '').trim()
+      if (text) map.set(text, text)
+    }
+    return [...map.values()]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+      .map((name) => ({ label: name, value: name }))
+  }, [filters.customerNames, scopedFeedbacks])
+
   const matchedEvidenceCount = useMemo(() => {
     if (!selectedTicketIdSet?.size) return 0
     let n = 0
@@ -456,6 +473,7 @@ export default function Feedbacks() {
       }
       if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
       if (!matchesHandlingKeywordFilter(fb, filters.handlingKeyword)) return false
+      if (!matchesCustomerNamesFilter(fb, filters.customerNames)) return false
       return true
     })
   }, [
@@ -780,8 +798,9 @@ export default function Feedbacks() {
           showMyReviewFilter={reviewEnabled}
           options={{
             dataSourceTypes: FEEDBACK_LANE_DATA_SOURCES[feedbackLane],
-            filterKeys: isPostUseLane ? ['journeyL1'] : undefined,
+            filterKeys: isPostUseLane ? ['journeyL1', 'customerNames'] : undefined,
             ticketIdOptions,
+            customerNameOptions,
             products,
             problemTypes,
             complaintCauseOptions,

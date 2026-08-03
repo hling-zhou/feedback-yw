@@ -133,6 +133,16 @@ export function matchesHandlingKeywordFilter(record, keyword = '') {
 }
 
 /**
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {string[]} [customerNames]
+ */
+export function matchesCustomerNamesFilter(record, customerNames = []) {
+  if (!Array.isArray(customerNames) || customerNames.length === 0) return true
+  const name = String(record?.customerName ?? '').trim()
+  return Boolean(name) && customerNames.includes(name)
+}
+
+/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackFollowUpSearchParams(searchParams) {
@@ -222,6 +232,17 @@ export function parseTicketIdsParam(raw) {
 }
 
 /**
+ * @param {string | null | undefined} raw
+ */
+export function parseCustomerNamesParam(raw) {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((t) => decodeURIComponent(t.trim()))
+    .filter(Boolean)
+}
+
+/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackSearchParams(searchParams) {
@@ -237,6 +258,7 @@ export function parseFeedbackSearchParams(searchParams) {
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
+    customerNames: parseCustomerNamesParam(searchParams.get('customerNames')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
     handlingKeyword: searchParams.get('handlingKeyword')?.trim() || '',
@@ -276,6 +298,11 @@ export function patchFeedbackSearchParams(base, patch) {
     const value = patch.ticketIds?.trim()
     if (value) next.set('ticketIds', value)
     else next.delete('ticketIds')
+  }
+  if ('customerNames' in patch) {
+    const value = patch.customerNames?.trim()
+    if (value) next.set('customerNames', value)
+    else next.delete('customerNames')
   }
   return next
 }
@@ -321,9 +348,11 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   reasonDim?: string
  *   ticketId?: string
  *   ticketIds?: string
+ *   customerNames?: string
  *   ticketDateFrom?: string
  *   ticketDateTo?: string
  *   source?: string
+ *   lane?: string
  *   todoStatus?: string
  *   handlingKeyword?: string
  * }} [params]
@@ -342,9 +371,11 @@ export function buildFeedbacksUrl(params = {}) {
     'reasonDim',
     'ticketId',
     'ticketIds',
+    'customerNames',
     'ticketDateFrom',
     'ticketDateTo',
     'source',
+    'lane',
     'todoStatus',
     'handlingKeyword',
   ]
@@ -368,6 +399,8 @@ export function buildFeedbacksUrl(params = {}) {
  *   followUp?: string
  *   followUpResolved?: string
  *   source?: string
+ *   customerNames?: string
+ *   lane?: string
  * }} [params]
  */
 export function buildFollowUpDrillDownUrl(params = {}) {
@@ -380,6 +413,8 @@ export function buildFollowUpDrillDownUrl(params = {}) {
     problemType: params.problemType,
     product,
     source: params.source,
+    customerNames: params.customerNames,
+    lane: params.lane,
   })
 }
 
@@ -393,6 +428,7 @@ export function buildFollowUpDrillDownUrl(params = {}) {
  *   requestScene?: string
  *   problemType?: string
  *   complaintCauseL1?: string
+ *   customerNames?: string
  * }} [params]
  */
 export function buildTicketWorkbenchDrillDownUrl(params = {}) {
@@ -403,5 +439,6 @@ export function buildTicketWorkbenchDrillDownUrl(params = {}) {
     requestScene: params.requestScene,
     problemType: params.problemType,
     complaintCauseL1: params.complaintCauseL1,
+    customerNames: params.customerNames,
   })
 }

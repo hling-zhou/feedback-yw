@@ -1,6 +1,6 @@
 import { matchAllReasonTaxonomy } from './reasonTaxonomy.js'
 import { normalizeEvidenceText } from './evidence.js'
-import { POST_USE_SMALL_SAMPLE_N } from './metrics.js'
+import { POST_USE_CRITICAL_LOW_SCORE, POST_USE_SMALL_SAMPLE_N, hasCriticalLowScore } from './metrics.js'
 import { POST_USE_ANALYSIS_RULE_VERSION } from './modelVersions.js'
 
 export const POST_USE_ORIGINAL_SCENE_EMPTY = '未提供'
@@ -59,12 +59,14 @@ export function buildProductExperienceOverview(records, visits = []) {
     const score = avg(g.rows.map((r) => r.score))
     const nonTenCount = g.rows.filter((r) => r.score < 10).length
     const sampleSize = g.rows.length
+    const minScore = g.rows.length ? Math.min(...g.rows.map((r) => r.score)) : null
+    const criticalLowScore = hasCriticalLowScore(g.rows.map((r) => r.score))
     let state = '良好'
     let stateCode = 'healthy'
-    if (sampleSize < POST_USE_SMALL_SAMPLE_N) {
+    if (sampleSize < POST_USE_SMALL_SAMPLE_N && !criticalLowScore) {
       state = '样本不足'
       stateCode = 'small_sample'
-    } else if (score < 9 || nonTenCount / sampleSize >= 0.3) {
+    } else if (criticalLowScore || score < 9 || nonTenCount / sampleSize >= 0.3) {
       state = '重点改善'
       stateCode = 'critical'
     } else if (score < 9.5 || nonTenCount > 0) {
@@ -78,10 +80,14 @@ export function buildProductExperienceOverview(records, visits = []) {
       avgScore: score,
       nonTenCount,
       nonTenRate: Math.round((nonTenCount / sampleSize) * 10000) / 100,
+      minScore,
+      hasCriticalLowScore: criticalLowScore,
       state,
       stateCode,
-      explanation: sampleSize < POST_USE_SMALL_SAMPLE_N
+      explanation: sampleSize < POST_USE_SMALL_SAMPLE_N && !criticalLowScore
         ? `n=${sampleSize}，低于小样本阈值 ${POST_USE_SMALL_SAMPLE_N}`
+        : criticalLowScore
+          ? `样本量 ${sampleSize}，但出现 ${POST_USE_CRITICAL_LOW_SCORE} 分及以下极低分（最低 ${minScore} 分）`
         : `均分 ${score}，非10分 ${nonTenCount}/${sampleSize}`,
       ruleVersion: POST_USE_ANALYSIS_RULE_VERSION,
       evidenceIds: g.rows.filter((r) => r.score < 10).map((r) => r.id).filter(Boolean),

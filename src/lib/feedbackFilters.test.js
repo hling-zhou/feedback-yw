@@ -6,9 +6,11 @@ import {
   drillDownFieldParam,
   EMPTY_FILTER_TOKEN,
   isFollowUpEnrichableRecord,
+  matchesCustomerNamesFilter,
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
   parseFeedbackFollowUpSearchParams,
+  parseCustomerNamesParam,
   parseFeedbackSearchParams,
   patchFeedbackFollowUpSearchParams,
   patchFeedbackSearchParams,
@@ -72,12 +74,13 @@ describe('feedbackFilters', () => {
   it('parseFeedbackSearchParams includes ticket ids and drill-down fields', () => {
     const parsed = parseFeedbackSearchParams(
       new URLSearchParams(
-        'product=VPC&source=complaint_ticket&ticketIds=A%2CB&ticketDateFrom=2026-05-01&followUp=non10&handlingKeyword=%E5%B8%A6%E5%AE%BD',
+        'product=VPC&source=complaint_ticket&ticketIds=A%2CB&customerNames=%E5%AE%A2%E6%88%B7A%2C%E5%AE%A2%E6%88%B7B&ticketDateFrom=2026-05-01&followUp=non10&handlingKeyword=%E5%B8%A6%E5%AE%BD',
       ),
     )
     expect(parsed.product).toBe('VPC')
     expect(parsed.dataSource).toBe('complaint_ticket')
     expect(parsed.ticketIds).toEqual(['A', 'B'])
+    expect(parsed.customerNames).toEqual(['客户A', '客户B'])
     expect(parsed.ticketDateFrom).toBe('2026-05-01')
     expect(parsed.followUp).toBe('non10')
     expect(parsed.handlingKeyword).toBe('带宽')
@@ -88,11 +91,13 @@ describe('feedbackFilters', () => {
       product: '',
       journeyL1: '开通',
       ticketIds: 'T-1,T-2',
+      customerNames: '客户A,客户B',
       handlingKeyword: '安全组',
     })
     expect(next.get('product')).toBeNull()
     expect(next.get('journeyL1')).toBe('开通')
     expect(next.get('ticketIds')).toBe('T-1,T-2')
+    expect(next.get('customerNames')).toBe('客户A,客户B')
     expect(next.get('handlingKeyword')).toBe('安全组')
   })
 
@@ -103,6 +108,14 @@ describe('feedbackFilters', () => {
     expect(matchesHandlingKeywordFilter(record, '调整')).toBe(true)
     expect(matchesHandlingKeywordFilter(record, '带宽')).toBe(false)
     expect(matchesHandlingKeywordFilter({ handlingText: '' }, '调整')).toBe(false)
+  })
+
+  it('matchesCustomerNamesFilter by exact customer name', () => {
+    expect(matchesCustomerNamesFilter({ customerName: '客户A' }, ['客户A'])).toBe(true)
+    expect(matchesCustomerNamesFilter({ customerName: '客户A' }, ['客户B'])).toBe(false)
+    expect(matchesCustomerNamesFilter({ customerName: '' }, ['客户A'])).toBe(false)
+    expect(matchesCustomerNamesFilter({ customerName: '客户A' }, [])).toBe(true)
+    expect(parseCustomerNamesParam('客户A,%E5%AE%A2%E6%88%B7B')).toEqual(['客户A', '客户B'])
   })
 
   it('parseFeedbackFollowUpSearchParams and patch round-trip', () => {
@@ -132,9 +145,11 @@ describe('feedbackFilters', () => {
       buildFeedbacksUrl({
         followUp: 'non10',
         product: '云主机',
+        customerNames: '客户A',
+        lane: 'post_use',
         requestScene: '报障',
       }),
-    ).toBe('/feedbacks?product=%E4%BA%91%E4%B8%BB%E6%9C%BA&requestScene=%E6%8A%A5%E9%9A%9C&followUp=non10')
+    ).toBe('/feedbacks?product=%E4%BA%91%E4%B8%BB%E6%9C%BA&requestScene=%E6%8A%A5%E9%9A%9C&followUp=non10&customerNames=%E5%AE%A2%E6%88%B7A&lane=post_use')
   })
 
   it('buildFollowUpDrillDownUrl defaults followUp to non10', () => {

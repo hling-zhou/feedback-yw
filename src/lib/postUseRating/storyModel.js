@@ -84,8 +84,10 @@ export function buildPostUseStoryModel(input) {
 
   const satisfactionByProduct = new Map(satisfaction.byProduct.map((item) => [item.productName, item]))
   const needsByProduct = new Map()
+  const needsByKey = new Map()
   for (const need of currentInsights.needs) {
     if (!needsByProduct.has(need.productName)) needsByProduct.set(need.productName, need)
+    needsByKey.set(`${need.productName}\u0000${need.need}`, need)
   }
   const productOverview = currentInsights.products.map((product) => {
     const sat = satisfactionByProduct.get(product.productName)
@@ -117,6 +119,33 @@ export function buildPostUseStoryModel(input) {
     needInsights: currentInsights.needs,
     period: period?.id || '',
   })
+  const triggerGroupsMap = new Map()
+  for (const signal of signals.filter((item) => item.type !== 'aggregated_need')) {
+    const key = signal.productName || '未标注产品'
+    const group = triggerGroupsMap.get(key) || {
+      productName: key,
+      priority: 'P1',
+      satisfactionSignal: null,
+      experienceSignal: null,
+      criticalLowScoreSignal: null,
+      callbackNonTenCount: 0,
+      callbackExamples: [],
+    }
+    if (signal.priority === 'P0') group.priority = 'P0'
+    if (signal.type === 'satisfaction_below') group.satisfactionSignal = signal
+    if (signal.type === 'experience_below') group.experienceSignal = signal
+    if (signal.type === 'experience_critical_low_score') group.criticalLowScoreSignal = signal
+    if (signal.type === 'callback_non_ten') {
+      group.callbackNonTenCount += 1
+      if (group.callbackExamples.length < 2) group.callbackExamples.push(signal.detail)
+    }
+    triggerGroupsMap.set(key, group)
+  }
+  const triggerGroups = [...triggerGroupsMap.values()].sort(
+    (a, b) =>
+      ({ P0: 0, P1: 1 }[a.priority] - ({ P0: 0, P1: 1 }[b.priority])) ||
+      a.productName.localeCompare(b.productName, 'zh'),
+  )
   const productSet = new Set(productNames)
   const scopedActions = actions.filter((action) => {
     if (!action?.linkedDataSources?.includes('post_use_rating')) return false
@@ -126,7 +155,14 @@ export function buildPostUseStoryModel(input) {
     ...(product.evidenceIds || []),
     ...(product.visitEvidenceIds || []),
   ]]))
-  const actionRows = signals.map((rawSignal) => {
+  const changeByKey = new Map(
+    changes.map((item) => [`${item.productName}\u0000${item.issue}`, item]),
+  )
+  const actionRows = signals
+    .filter((item) => item.type === 'aggregated_need')
+    .map((rawSignal) => {
+    const need = needsByKey.get(`${rawSignal.productName}\u0000${rawSignal.insightTheme || ''}`) || null
+    const change = changeByKey.get(`${rawSignal.productName}\u0000${rawSignal.insightTheme || ''}`) || null
     const signal = {
       ...rawSignal,
       linkedInsightIds: rawSignal.linkedInsightIds?.length
@@ -143,9 +179,18 @@ export function buildPostUseStoryModel(input) {
     return {
       id: linked?.id || `${signal.type}:${signal.productName}:${signal.title}`,
       productName: signal.productName,
+      theme: signal.insightTheme || signal.title,
       priority: signal.priority,
       title: signal.title,
       detail: signal.detail,
+      feedbackCount: need?.count ?? null,
+      customerCount: need?.customerCount ?? null,
+      visitEvidenceCount: need?.visitEvidenceCount ?? null,
+      avgScore: need?.avgScore ?? null,
+      priorityScore: need?.priorityScore ?? null,
+      change: change?.change || '',
+      changeDetail: change ? `${change.previousCount} → ${change.currentCount}` : '',
+      quotes: need?.quotes || [],
       status: linked?.status || 'recommended',
       action: linked || null,
       signal,
@@ -158,9 +203,18 @@ export function buildPostUseStoryModel(input) {
     actionRows.push({
       id: action.id,
       productName: action.productName,
+      theme: action.insightTheme || action.painPointSnapshot || '未关联主题',
       priority: '—',
       title: action.content,
       detail: action.detail || action.painPointSnapshot || '',
+      feedbackCount: null,
+      customerCount: null,
+      visitEvidenceCount: null,
+      avgScore: null,
+      priorityScore: null,
+      change: '',
+      changeDetail: '',
+      quotes: [],
       status: action.status,
       action,
       signal: null,
@@ -214,7 +268,7 @@ export function buildPostUseStoryModel(input) {
   return {
     scope: {
       periodLabel: period?.label || '未选择',
-      productCount: productNames.length,
+      productCount: productOverview.length,
       validSample: scoredRows.length,
       qualityStatus: !quality ? (unclassifiedNeedCount ? '未生成快照，存在未识别需求' : '未生成质量快照') : totalQualityWarnings ? '存在需关注项' : '数据质量正常',
       qualityWarningCount: totalQualityWarnings,
@@ -239,7 +293,7 @@ export function buildPostUseStoryModel(input) {
       customers: currentInsights.customers,
       visitEvidenceCount: currentInsights.visitEvidenceCount,
     },
-    actionsAndRecovery: { rows: actionRows, recoveryRows, unlinkedRecommendations, notRecovered },
+    actionsAndRecovery: { triggerGroups, rows: actionRows, recoveryRows, unlinkedRecommendations, notRecovered },
     quality: analysisQuality,
     scoredRows,
     insightBundle: { ...currentInsights, issueChanges: changes },

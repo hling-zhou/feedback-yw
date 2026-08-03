@@ -1,14 +1,17 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SMALL_SAMPLE_N } from '../../lib/postUseRating/metrics.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
+import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
 const recoveryColor = { recovered: 'green', not_recovered: 'red', pending: 'gold', not_applicable: 'default' }
+const actionPriorityColor = { P0: 'red', P1: 'gold', '—': 'default' }
 
 function downloadCsv(text, name) {
   const blob = new Blob([`\ufeff${text}`], { type: 'text/csv;charset=utf-8' })
@@ -46,6 +49,16 @@ function LimitedTable({ dataSource, limit = 10, ...props }) {
       ) : null}
     </>
   )
+}
+
+function customerFeedbackHref(customerName) {
+  const name = String(customerName || '').trim()
+  if (!name || name === '匿名客户') return ''
+  return buildFeedbacksUrl({
+    lane: 'post_use',
+    source: 'post_use_rating',
+    customerNames: name,
+  })
 }
 
 export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
@@ -199,7 +212,17 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           dataSource={drivers.customers}
           scroll={{ x: 1000 }}
           columns={[
-            { title: '客户', dataIndex: 'customerName', width: 190, fixed: 'left' },
+            {
+              title: '客户',
+              dataIndex: 'customerName',
+              width: 190,
+              fixed: 'left',
+              render: (value) => {
+                const href = customerFeedbackHref(value)
+                if (!href) return value || '—'
+                return <Link to={href}>{value}</Link>
+              },
+            },
             { title: '涉及产品', dataIndex: 'products', width: 180, render: (value) => value.join('、') },
             { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
             { title: '均分', dataIndex: 'avgScore', width: 76, render: (value) => value == null ? '—' : value },
@@ -211,19 +234,112 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         />
       </Card>
 
-      <SectionHeading title="行动" summary="将洞察转成举措，并持续跟踪推进状态" id="post-use-actions" />
-      <Card size="small">
+      <SectionHeading title="行动" summary="先识别触发推进的风险信号，再把上游主题转成可落地举措" id="post-use-actions" />
+      {actionsAndRecovery.triggerGroups?.length ? (
+        <Card size="small" title="行动触发摘要">
+          <Row gutter={[12, 12]}>
+            {actionsAndRecovery.triggerGroups.map((row) => (
+              <Col xs={24} md={12} xl={8} key={row.productName}>
+                <Card size="small" className="h-full bg-ink-50/50">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Typography.Text strong>{row.productName}</Typography.Text>
+                    <Tag color={actionPriorityColor[row.priority] || 'default'}>{row.priority}</Tag>
+                    {row.criticalLowScoreSignal ? <Tag color="red">极低分</Tag> : null}
+                    {row.satisfactionSignal ? <Tag color="volcano">回访未达标</Tag> : null}
+                    {row.experienceSignal ? <Tag color="gold">体验偏低</Tag> : null}
+                    {row.callbackNonTenCount ? <Tag color="purple">非10分回访 {row.callbackNonTenCount}</Tag> : null}
+                  </div>
+                  <div className="space-y-2">
+                    {row.criticalLowScoreSignal ? (
+                      <Typography.Paragraph className="!mb-0 text-xs">
+                        {row.criticalLowScoreSignal.detail}
+                      </Typography.Paragraph>
+                    ) : null}
+                    {row.satisfactionSignal ? (
+                      <Typography.Paragraph className="!mb-0 text-xs">
+                        {row.satisfactionSignal.detail}
+                      </Typography.Paragraph>
+                    ) : null}
+                    {row.experienceSignal ? (
+                      <Typography.Paragraph className="!mb-0 text-xs">
+                        {row.experienceSignal.detail}
+                      </Typography.Paragraph>
+                    ) : null}
+                    {row.callbackNonTenCount ? (
+                      <Typography.Paragraph className="!mb-0 text-xs">
+                        投诉回访非10分 {row.callbackNonTenCount} 条
+                        {row.callbackExamples?.length ? `；例如：${row.callbackExamples.join('；')}` : ''}
+                      </Typography.Paragraph>
+                    ) : null}
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      ) : null}
+      <Card size="small" title="主题级行动建议">
         <LimitedTable
           size="small"
           rowKey="id"
           dataSource={actionsAndRecovery.rows}
+          scroll={{ x: 1400 }}
           columns={[
-            { title: '优先级', dataIndex: 'priority', width: 78 },
+            {
+              title: '优先级',
+              dataIndex: 'priority',
+              width: 82,
+              render: (value) => <Tag color={actionPriorityColor[value] || 'default'}>{value}</Tag>,
+            },
             { title: '产品', dataIndex: 'productName', width: 145 },
-            { title: '建议/举措', dataIndex: 'title' },
-            { title: '证据', dataIndex: 'evidenceCount', width: 72 },
+            { title: '待改议题', dataIndex: 'theme', width: 190, ellipsis: true },
+            { title: '反馈数', dataIndex: 'feedbackCount', width: 82, render: (value) => value ?? '—' },
+            { title: '客户数', dataIndex: 'customerCount', width: 82, render: (value) => value ?? '—' },
+            { title: '回访证据', dataIndex: 'visitEvidenceCount', width: 92, render: (value) => value ?? '—' },
+            {
+              title: '变化',
+              width: 110,
+              render: (_, row) =>
+                row.change ? (
+                  <div>
+                    <Tag color={changeColor[row.change] || 'default'}>{row.change}</Tag>
+                    {row.changeDetail ? (
+                      <Typography.Text type="secondary" className="block text-xs">
+                        {row.changeDetail}
+                      </Typography.Text>
+                    ) : null}
+                  </div>
+                ) : '—',
+            },
+            {
+              title: '建议动作 / 举措',
+              width: 240,
+              render: (_, row) => (
+                <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
+                  {row.action?.content || row.title}
+                </Typography.Paragraph>
+              ),
+            },
+            {
+              title: '依据',
+              width: 260,
+              render: (_, row) => (
+                <Typography.Paragraph className="!mb-0 line-clamp-3 text-xs text-secondary">
+                  {row.detail || '—'}
+                </Typography.Paragraph>
+              ),
+            },
             { title: '状态', dataIndex: 'status', width: 100, render: (value) => <Tag color={value === 'recommended' ? 'gold' : 'blue'}>{actionStatusLabel(value)}</Tag> },
-            { title: '操作', width: 100, render: (_, row) => row.status === 'recommended' && row.signal?.linkedInsightIds?.length ? <Button type="link" size="small" icon={<PlusOutlined />} loading={creatingSignalKey === `${row.signal.type}-${row.signal.productName}-${row.signal.title}`} onClick={() => onCreateAction(row.signal)}>创建举措</Button> : <Button type="link" size="small" href="/actions" icon={<ArrowRightOutlined />}>查看</Button> },
+            {
+              title: '操作',
+              width: 108,
+              render: (_, row) =>
+                row.status === 'recommended' && row.signal?.linkedInsightIds?.length ? (
+                  <Button type="link" size="small" icon={<PlusOutlined />} loading={creatingSignalKey === `${row.signal.type}-${row.signal.productName}-${row.signal.title}`} onClick={() => onCreateAction(row.signal)}>创建举措</Button>
+                ) : (
+                  <Button type="link" size="small" href="/actions" icon={<ArrowRightOutlined />}>查看</Button>
+                ),
+            },
           ]}
         />
       </Card>
@@ -254,7 +370,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             children: (
               <div className="space-y-3">
                 <Typography.Paragraph className="!mb-0" type="secondary">
-                  体验均分使用短信与控制台评价；投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 仅作参考。客服回访只作为补充证据，不改变评分和需求改善优先级。
+                  体验均分使用短信与控制台评价；投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服回访只作为补充证据，不改变评分和需求改善优先级。
                 </Typography.Paragraph>
                 <Space size={[6, 6]} wrap>
                   <Tag>目录 {model.scope.catalogVersion}</Tag>

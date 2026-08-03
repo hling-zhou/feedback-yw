@@ -19,7 +19,9 @@ export function postUseTrendMonthsForPeriod(period) {
   if (period?.granularity === 'custom') return postUsePeriodMonths(period)
   const year = Number(period?.anchorYear || String(period?.startDate || '').slice(0, 4))
   if (!Number.isFinite(year)) return []
-  return listMonthsInclusive(`${year}-01`, `${year}-12`)
+  const endMonth = String(period?.endDate || '').slice(0, 7)
+  const normalizedEndMonth = /^\d{4}-\d{2}$/.test(endMonth) ? endMonth : `${year}-12`
+  return listMonthsInclusive(`${year}-01`, normalizedEndMonth)
 }
 
 /**

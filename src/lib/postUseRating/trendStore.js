@@ -139,6 +139,23 @@ export async function loadPostUseTrend(adapter) {
 }
 
 /**
+ * 历史演示种子使用 sampleSize=0 占位；线上看板不应把这类占位数据当成真实趋势展示。
+ * 若历史种子已写入 meta，这里在读展示层时剔除它们，避免污染当前库的真实导入结果。
+ *
+ * @param {PostUseTrendSnapshot | null | undefined} snapshot
+ * @returns {PostUseTrendSnapshot}
+ */
+export function stripHistoricalSeedRows(snapshot) {
+  const normalized = normalizePostUseTrend(snapshot)
+  if (!normalized.seededFromHistorical) return normalized
+  return {
+    ...normalized,
+    scores: normalized.scores.filter((row) => Number(row.sampleSize) > 0),
+    satisfaction: normalized.satisfaction.filter((row) => Number(row.sampleSize) > 0),
+  }
+}
+
+/**
  * 将内置累计表写入空缺月份（不覆盖已有同月同产品数据）
  * @param {PostUseTrendSnapshot} snap
  * @returns {PostUseTrendSnapshot}

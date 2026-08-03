@@ -16,6 +16,7 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 /** @type {Record<FeedbackFilterKey, FeedbackFilterEditorKind>} */
 export const FEEDBACK_FILTER_EDITOR_KIND = {
   ticketIds: 'multiSearch',
+  customerNames: 'multiSearch',
   handlingKeyword: 'text',
   ticketDateFrom: 'dateRange',
   ticketDateTo: 'dateRange',
@@ -50,6 +51,8 @@ export function readFilterDraftValue(filterKey, filters) {
   switch (filterKey) {
     case 'ticketIds':
       return [...filters.ticketIds]
+    case 'customerNames':
+      return [...filters.customerNames]
     case 'ticketDateFrom':
       return [
         filters.ticketDateFrom ? dayjs(filters.ticketDateFrom) : null,
@@ -68,8 +71,9 @@ export function readFilterDraftValue(filterKey, filters) {
 export function buildFilterPatchFromDraft(filterKey, draft) {
   switch (filterKey) {
     case 'ticketIds':
+    case 'customerNames':
       return {
-        ticketIds: Array.isArray(draft)
+        [filterKey]: Array.isArray(draft)
           ? [...new Set(draft.map((item) => String(item).trim()).filter(Boolean))]
           : [],
       }
@@ -96,6 +100,7 @@ export function buildFilterPatchFromDraft(filterKey, draft) {
 export function isFilterDraftValid(filterKey, draft) {
   switch (filterKey) {
     case 'ticketIds':
+    case 'customerNames':
       return Array.isArray(draft) && draft.length > 0
     case 'ticketDateFrom':
       return Boolean(Array.isArray(draft) && (draft[0] || draft[1]))
@@ -114,6 +119,8 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
   switch (filterKey) {
     case 'ticketIds':
       return options.ticketIdOptions || []
+    case 'customerNames':
+      return options.customerNameOptions || []
     case 'dataSource':
       return (options.dataSourceTypes || DATA_SOURCE_TYPES).map((type) => ({
         label: DATA_SOURCE_LABELS[type],

@@ -48,6 +48,22 @@ describe('post-use insight models', () => {
     expect(changes[0]).toMatchObject({ issue: '功能有缺失', change: '增长', previousCount: 1, currentCount: 2 })
   })
 
+  it('marks small-sample products with score <= 3 as critical', () => {
+    const products = buildProductExperienceOverview([
+      row('r1', { ratingScore: 3 }),
+      row('r2', { ratingScore: 10 }),
+      row('r3', { ratingScore: 10 }),
+    ])
+    expect(products[0]).toMatchObject({
+      sampleSize: 3,
+      minScore: 3,
+      hasCriticalLowScore: true,
+      state: '重点改善',
+      stateCode: 'critical',
+    })
+    expect(products[0].explanation).toContain('3 分及以下极低分')
+  })
+
   it('uses customer visits as evidence without changing score metrics', () => {
     const records = [row('r1', { ratingScore: 8, rawText: '功能有缺失', customerName: '客户A', customerCode: 'C1' })]
     const visits = [{ id: 'v1', importMonth: '2026-06', productName: '弹性公网IP', userInfo: '客户A C1', feedbackSummary: '功能有缺失', internalConclusion: '需求接纳' }]

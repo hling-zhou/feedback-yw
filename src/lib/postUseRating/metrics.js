@@ -8,11 +8,22 @@ import { POST_USE_RATING_PRODUCT_NAMES } from '../productCatalog/postUseRatingPr
 /** 小样本阈值（方案锁定） */
 export const POST_USE_SMALL_SAMPLE_N = 10
 
+/** 小样本下仍需重点关注的极低分阈值 */
+export const POST_USE_CRITICAL_LOW_SCORE = 3
+
 /** 投诉回访满意度达标线 */
 export const POST_USE_SATISFACTION_BASELINE = 0.88
 
 /** 体验均分关注线 */
 export const POST_USE_SCORE_BASELINE = 9
+
+/**
+ * @param {number[] | Array<number | string | null | undefined>} scores
+ * @param {number} [threshold]
+ */
+export function hasCriticalLowScore(scores, threshold = POST_USE_CRITICAL_LOW_SCORE) {
+  return (scores || []).some((score) => Number.isFinite(Number(score)) && Number(score) <= threshold)
+}
 
 /**
  * PRD 主子产品映射（公司级所有产品）
@@ -88,6 +99,8 @@ export function computeInternalExperienceMetrics(scoredRows, opts = {}) {
     ...p,
     smallSample: p.sampleSize < smallN,
     belowNine: p.avgScore < POST_USE_SCORE_BASELINE,
+    minScore: p.scores.length ? Math.min(...p.scores) : null,
+    hasCriticalLowScore: hasCriticalLowScore(p.scores),
   }))
   const totalSample = scoped.length
   const avgScore = totalSample

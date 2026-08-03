@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Alert, Button, Card, Space, Table, Tabs, Tag, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { buildPostUseInsightBundle } from '../../lib/postUseRating/insights.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { recomputePostUseInsightBundle } from '../../lib/postUseRating/insightStore.js'
+import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
+
+function customerFeedbackHref(customerName) {
+  const name = String(customerName || '').trim()
+  if (!name || name === '匿名客户') return ''
+  return buildFeedbacksUrl({
+    lane: 'post_use',
+    source: 'post_use_rating',
+    customerNames: name,
+  })
+}
 
 function downloadCsv(text, name) {
   const blob = new Blob([`\ufeff${text}`], { type: 'text/csv;charset=utf-8' })
@@ -84,7 +96,16 @@ export default function PostUseInsightPanel({ records, allRecords, visits = [], 
           { key: 'scene', label: '场景与旅程', children: <><Alert className="mb-3" type="info" showIcon title="仅使用原始评价场景与现有用户旅程标签" description="评价触发场景来自短信问卷场景或官网一级场景；未提供与未识别环节单独披露。不会添加请求场景、问题类型或情绪标签。"/><Table size="small" rowKey={(r) => `${r.productName}-${r.originalScene}-${r.journey}`} scroll={{ x: 760 }} pagination={{ pageSize: 10 }} columns={sceneColumns} dataSource={bundle.sceneJourneys} /></> },
           { key: 'needs', label: '用户需求', children: <Table size="small" rowKey={(r) => `${r.productName}-${r.need}`} scroll={{ x: 900 }} pagination={{ pageSize: 10 }} columns={needColumns} dataSource={bundle.needs} /> },
           { key: 'customers', label: '客户洞察', children: <Table size="small" rowKey={(r) => r.customerCode || r.customerName} pagination={{ pageSize: 10 }} columns={[
-            { title: '客户', dataIndex: 'customerName', width: 180 }, { title: '涉及产品', dataIndex: 'products', render: (v) => v.join('、') },
+            {
+              title: '客户',
+              dataIndex: 'customerName',
+              width: 180,
+              render: (value) => {
+                const href = customerFeedbackHref(value)
+                if (!href) return value || '—'
+                return <Link to={href}>{value}</Link>
+              },
+            }, { title: '涉及产品', dataIndex: 'products', render: (v) => v.join('、') },
             { title: '非10分次数', dataIndex: 'nonTenCount', width: 100 }, { title: '均分', dataIndex: 'avgScore', width: 76, render: (v) => v == null ? '—' : v },
             { title: '关注', dataIndex: 'highFrequency', width: 90, render: (v) => v ? <Tag color="red">高频低分</Tag> : <Tag>单次</Tag> },
             { title: '最新原话', dataIndex: 'latestQuote', ellipsis: true },

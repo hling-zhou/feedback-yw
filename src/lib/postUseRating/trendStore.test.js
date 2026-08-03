@@ -4,6 +4,7 @@ import {
   emptyPostUseTrend,
   buildFocusScoreTrendChartModel,
   POST_USE_TREND_HISTORICAL_SEED,
+  stripHistoricalSeedRows,
 } from './trendStore.js'
 import { aggregateOptionReasons } from './reasonStats.js'
 
@@ -41,6 +42,38 @@ describe('trendStore historical seed', () => {
     expect(areas).toHaveLength(2)
     expect(data[0].date).toBe('2025-09')
     expect(data[0]['云专线']).toBe(9.71)
+  })
+
+  it('strips historical seed rows with zero sample size for online display', () => {
+    const snap = mergeHistoricalTrendSeed(emptyPostUseTrend())
+    const stripped = stripHistoricalSeedRows(snap)
+    expect(stripped.scores).toEqual([])
+    expect(stripped.satisfaction).toEqual([])
+    expect(stripped.seededFromHistorical).toBe(true)
+  })
+
+  it('keeps real imported trend rows when historical seed also exists', () => {
+    const snap = mergeHistoricalTrendSeed(emptyPostUseTrend())
+    snap.scores.push({
+      month: '2026-07',
+      productName: '云专线',
+      avgScore: 9.5,
+      sampleSize: 12,
+      scope: 'internal_experience',
+    })
+    snap.satisfaction.push({
+      month: '2026-07',
+      productName: '云专线',
+      rate: 90,
+      sampleSize: 12,
+    })
+    const stripped = stripHistoricalSeedRows(snap)
+    expect(stripped.scores).toEqual([
+      expect.objectContaining({ month: '2026-07', productName: '云专线', sampleSize: 12 }),
+    ])
+    expect(stripped.satisfaction).toEqual([
+      expect.objectContaining({ month: '2026-07', productName: '云专线', sampleSize: 12 }),
+    ])
   })
 })
 

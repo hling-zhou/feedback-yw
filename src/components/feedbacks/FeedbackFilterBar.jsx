@@ -14,6 +14,7 @@ import FeedbackCompositeFilter from './FeedbackCompositeFilter.jsx'
  * @param {boolean} [props.showMyReviewFilter]
  * @param {{
  *   ticketIdOptions?: { label: string; value: string }[]
+ *   customerNameOptions?: { label: string; value: string }[]
  *   products?: { name: string; count?: number }[]
  *   problemTypes?: { name: string }[]
  *   complaintCauseOptions?: { name: string }[]

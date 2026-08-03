@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyFeedbackFilters } from './feedbackFilterModel.js'
-import { listEnumOptionsForFilterKey } from './feedbackFilterEditors.js'
+import { buildFilterPatchFromDraft, listEnumOptionsForFilterKey } from './feedbackFilterEditors.js'
 
 describe('feedbackFilterEditors data source scope', () => {
   it('limits ticket lane sources to complaint and consultation', () => {
@@ -24,5 +24,13 @@ describe('feedbackFilterEditors data source scope', () => {
       false,
     )
     expect(options).toEqual([{ label: '用后即评', value: 'post_use_rating' }])
+  })
+
+  it('normalizes customer name multi-select drafts', () => {
+    expect(
+      buildFilterPatchFromDraft('customerNames', [' 客户A ', '客户B', '客户A', '']),
+    ).toEqual({
+      customerNames: ['客户A', '客户B'],
+    })
   })
 })

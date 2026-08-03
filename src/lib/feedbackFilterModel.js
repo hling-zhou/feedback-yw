@@ -18,6 +18,7 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 /**
  * @typedef {Object} FeedbackFilterValues
  * @property {string[]} ticketIds
+ * @property {string[]} customerNames
  * @property {string | null} ticketDateFrom
  * @property {string | null} ticketDateTo
  * @property {string} dataSource
@@ -40,6 +41,7 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 
 export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'ticketIds',
+  'customerNames',
   'handlingKeyword',
   'ticketDateFrom',
   'ticketDateTo',
@@ -62,7 +64,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
 export const FEEDBACK_FILTER_GROUPS = [
   {
     label: '工单',
-    keys: ['ticketIds', 'handlingKeyword', 'ticketDateFrom', 'dataSource'],
+    keys: ['ticketIds', 'customerNames', 'handlingKeyword', 'ticketDateFrom', 'dataSource'],
   },
   {
     label: '打标维度',
@@ -89,6 +91,7 @@ export const FEEDBACK_FILTER_GROUPS = [
 /** @type {Record<FeedbackFilterKey, string>} */
 export const FEEDBACK_FILTER_LABELS = {
   ticketIds: '工单号',
+  customerNames: '客户名称',
   handlingKeyword: '工单内容',
   ticketDateFrom: '工单日期',
   ticketDateTo: '工单日期',
@@ -111,6 +114,7 @@ export const FEEDBACK_FILTER_LABELS = {
 export function createEmptyFeedbackFilters() {
   return {
     ticketIds: [],
+    customerNames: [],
     ticketDateFrom: null,
     ticketDateTo: null,
     dataSource: '',
@@ -138,6 +142,8 @@ export function isFeedbackFilterActive(values, key) {
   switch (key) {
     case 'ticketIds':
       return values.ticketIds.length > 0
+    case 'customerNames':
+      return values.customerNames.length > 0
     case 'ticketDateFrom':
     case 'ticketDateTo':
       return Boolean(values.ticketDateFrom || values.ticketDateTo)
@@ -168,6 +174,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   /** @type {FeedbackFilterKey[]} */
   const keys = []
   if (isFeedbackFilterActive(values, 'ticketIds')) keys.push('ticketIds')
+  if (isFeedbackFilterActive(values, 'customerNames')) keys.push('customerNames')
   if (isFeedbackFilterActive(values, 'handlingKeyword')) keys.push('handlingKeyword')
   if (isFeedbackFilterActive(values, 'ticketDateFrom')) keys.push('ticketDateFrom')
   if (values.dataSource) keys.push('dataSource')
@@ -201,6 +208,10 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return values.ticketIds.length === 1
         ? values.ticketIds[0]
         : `${values.ticketIds.length} 个`
+    case 'customerNames':
+      return values.customerNames.length === 1
+        ? values.customerNames[0]
+        : `${values.customerNames.length} 个`
     case 'handlingKeyword': {
       const keyword = String(values.handlingKeyword ?? '').trim()
       return keyword.length > 24 ? `${keyword.slice(0, 24)}…` : keyword
@@ -318,6 +329,9 @@ export function clearFeedbackFilterKey(key, current) {
     case 'ticketIds':
       patch.ticketIds = []
       break
+    case 'customerNames':
+      patch.customerNames = []
+      break
     case 'ticketDateFrom':
       patch.ticketDateFrom = null
       patch.ticketDateTo = null
@@ -355,6 +369,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     ticketDateFrom: filters.ticketDateFrom || '',
     ticketDateTo: filters.ticketDateTo || '',
     ticketIds: filters.ticketIds.length ? filters.ticketIds.join(',') : '',
+    customerNames: filters.customerNames.length ? filters.customerNames.join(',') : '',
     handlingKeyword: filters.handlingKeyword,
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
@@ -370,5 +385,6 @@ export function feedbackFiltersFromParsed(parsed) {
     ...createEmptyFeedbackFilters(),
     ...parsed,
     ticketIds: parsed.ticketIds || [],
+    customerNames: parsed.customerNames || [],
   }
 }

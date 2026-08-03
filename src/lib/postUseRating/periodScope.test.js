@@ -23,10 +23,10 @@ describe('post-use rating period scope', () => {
   })
 
   it('uses the whole containing year for month, quarter, and year trends', () => {
-    const expected = Array.from({ length: 12 }, (_, index) =>
+    const quarterExpected = Array.from({ length: 6 }, (_, index) =>
       `2026-${String(index + 1).padStart(2, '0')}`,
     )
-    expect(postUseTrendMonthsForPeriod(quarter)).toEqual(expected)
+    expect(postUseTrendMonthsForPeriod(quarter)).toEqual(quarterExpected)
     expect(
       postUseTrendMonthsForPeriod({
         granularity: 'month',
@@ -34,7 +34,15 @@ describe('post-use rating period scope', () => {
         startDate: '2026-06-01',
         endDate: '2026-06-30',
       }),
-    ).toEqual(expected)
+    ).toEqual(quarterExpected)
+    expect(
+      postUseTrendMonthsForPeriod({
+        granularity: 'month',
+        anchorYear: 2026,
+        startDate: '2026-05-01',
+        endDate: '2026-05-31',
+      }),
+    ).toEqual(['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'])
   })
 
   it('keeps the user-specified month range for custom trends', () => {
@@ -57,7 +65,7 @@ describe('post-use rating period scope', () => {
       quarter,
     )
     expect(filtered.scores.map((row) => row.month)).toEqual(['2026-03', '2026-04', '2026-06'])
-    expect(filtered.satisfaction.map((row) => row.month)).toEqual(['2026-05', '2026-07'])
+    expect(filtered.satisfaction.map((row) => row.month)).toEqual(['2026-05'])
     expect(filtered.reasons.map((row) => row.month)).toEqual(['2026-04'])
   })
 })

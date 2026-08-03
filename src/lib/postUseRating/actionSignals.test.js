@@ -18,6 +18,21 @@ describe('actionSignals', () => {
     expect(signals[0].type).toBe('satisfaction_below')
   })
 
+  it('flags critical low-score experience even when sample size is below 10', () => {
+    const signals = buildPostUseActionSignals({
+      internalSat: { byProduct: [] },
+      internalExp: {
+        byProduct: [
+          { productName: 'A', avgScore: 7.67, sampleSize: 3, minScore: 3, hasCriticalLowScore: true },
+          { productName: 'B', avgScore: 8.5, sampleSize: 4, minScore: 5, hasCriticalLowScore: false },
+        ],
+      },
+    })
+    expect(signals.map((s) => s.productName)).toEqual(['A'])
+    expect(signals[0].type).toBe('experience_critical_low_score')
+    expect(signals[0].priority).toBe('P0')
+  })
+
   it('filters monthly report actions by month and product', () => {
     const items = [
       {

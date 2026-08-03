@@ -43,6 +43,7 @@ describe('post-use story model', () => {
       sampleSize: 10,
       avgScore: 9.2,
     })
+    expect(model.scope.productCount).toBe(1)
     expect(model.metrics.nonTenDistributionProducts).toEqual(['弹性公网IP'])
     expect(model.metrics.scoreDistribution['弹性公网IP'].sampleSize).toBe(10)
     expect(model.drivers.needs[0].visitEvidenceCount).toBe(1)
@@ -59,6 +60,60 @@ describe('post-use story model', () => {
     expect(withVisits.metrics.internalExperience).toEqual(withoutVisits.metrics.internalExperience)
     expect(withVisits.drivers.needs[0].priorityScore).toBe(withoutVisits.drivers.needs[0].priorityScore)
     expect(withVisits.drivers.needs[0].visitEvidenceCount).toBe(1)
+  })
+
+  it('surfaces small-sample extreme low scores as critical in overview and actions', () => {
+    const smallSampleRecords = [
+      {
+        id: 'r-low',
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 3,
+        channel: 'sms',
+        importMonth: '2026-06',
+        rawText: '配置复杂难以上手',
+        customerName: '客户A',
+      },
+      {
+        id: 'r-ok1',
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 10,
+        channel: 'sms',
+        importMonth: '2026-06',
+        rawText: '',
+        customerName: '客户B',
+      },
+      {
+        id: 'r-ok2',
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 10,
+        channel: 'sms',
+        importMonth: '2026-06',
+        rawText: '',
+        customerName: '客户C',
+      },
+    ]
+    const model = buildPostUseStoryModel({
+      records: smallSampleRecords,
+      allRecords: smallSampleRecords,
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.productOverview[0]).toMatchObject({
+      sampleSize: 3,
+      minScore: 3,
+      hasCriticalLowScore: true,
+      state: '重点改善',
+      stateCode: 'critical',
+    })
+    expect(model.actionsAndRecovery.triggerGroups[0]).toMatchObject({
+      productName: '弹性公网IP',
+      priority: 'P0',
+    })
+    expect(model.actionsAndRecovery.triggerGroups[0].criticalLowScoreSignal?.type).toBe(
+      'experience_critical_low_score',
+    )
   })
 
   it('reports unclassified needs as quality evidence without creating insights or actions', () => {
@@ -109,5 +164,37 @@ describe('post-use story model', () => {
     expect(model.actionsAndRecovery.rows.map((item) => item.id)).toContain('a-post-use')
     expect(model.actionsAndRecovery.rows.map((item) => item.id)).not.toContain('a-complaint')
     expect(model.actionsAndRecovery.recoveryRows.map((item) => item.id)).toEqual(['a-post-use'])
+  })
+
+  it('keeps theme recommendations in action rows and product warnings in trigger groups', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'r1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 8,
+          channel: 'sms',
+          importMonth: '2026-06',
+          rawText: '功能有缺失',
+          customerName: '客户A',
+        },
+        {
+          id: 'r2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 6,
+          channel: 'callback',
+          importMonth: '2026-06',
+          lowScoreReason: '流程复杂',
+          rawText: '功能有缺失',
+          customerName: '客户B',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.actionsAndRecovery.rows.every((row) => row.signal?.type === 'aggregated_need' || !row.signal)).toBe(true)
+    expect(model.actionsAndRecovery.triggerGroups.some((item) => item.callbackNonTenCount > 0)).toBe(true)
   })
 })

@@ -4,7 +4,7 @@ import { BarChartOutlined, FileWordOutlined } from '@ant-design/icons'
 import PostUseMonthlyReportPreview from './PostUseMonthlyReportPreview.jsx'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
-import { ensureHistoricalTrendSeed } from '../../lib/postUseRating/trendStore.js'
+import { loadPostUseTrend, stripHistoricalSeedRows } from '../../lib/postUseRating/trendStore.js'
 import { listActionItems } from '../../lib/actionItemClient.js'
 import { createActionItem } from '../../lib/actionItemClient.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
@@ -43,7 +43,7 @@ export default function PostUseRatingDashboardView() {
         const [v, actionsRes, trend, qualityStore] = await Promise.all([
           loadVisitRecords(adapter),
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
-          ensureHistoricalTrendSeed(adapter).catch(() => null),
+          loadPostUseTrend(adapter).then((snap) => stripHistoricalSeedRows(snap)).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
         ])
         if (!cancelled) {

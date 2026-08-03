@@ -15,6 +15,7 @@ describe('feedbackFilterModel', () => {
       ...createEmptyFeedbackFilters(),
       product: '云主机',
       ticketIds: ['A', 'B'],
+      customerNames: ['客户甲', '客户乙'],
       ticketDateFrom: '2026-05-01',
       ticketDateTo: '2026-05-31',
       followUp: 'non10',
@@ -23,19 +24,22 @@ describe('feedbackFilterModel', () => {
     }
     expect(listActiveFeedbackFilterChipKeys(values)).toEqual([
       'ticketIds',
+      'customerNames',
       'handlingKeyword',
       'ticketDateFrom',
       'problemType',
       'followUp',
     ])
-    expect(countActiveFeedbackFilters(values)).toBe(5)
+    expect(countActiveFeedbackFilters(values)).toBe(6)
     expect(formatFeedbackFilterChipLabel('ticketIds', values)).toBe('2 个')
+    expect(formatFeedbackFilterChipLabel('customerNames', values)).toBe('2 个')
     expect(formatFeedbackFilterChipLabel('handlingKeyword', values)).toBe(
       '安全组放行端口后复测通过仍异常请继续排查带宽打满问题'.slice(0, 24) + '…',
     )
     expect(formatFeedbackFilterChipLabel('ticketDateFrom', values)).toBe('2026-05-01 ~ 2026-05-31')
     expect(formatFeedbackFilterChipLabel('problemType', values)).toBe('未分类')
     expect(isFeedbackFilterActive(values, 'product')).toBe(true)
+    expect(isFeedbackFilterActive(values, 'customerNames')).toBe(true)
     expect(isFeedbackFilterActive(values, 'handlingKeyword')).toBe(true)
   })
 

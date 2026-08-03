@@ -1,9 +1,35 @@
 {
-  "generatedAt": "2026-08-01T12:07:41.908Z",
+  "generatedAt": "2026-08-03T16:12:17.020Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "3722adfa90f21b070e32dcc6827a4d26ba2088c2",
+  "repoCommit": "d7bd664f27508f096fe693aac874e1f837ed98ab",
   "items": [
+    {
+      "id": "d7bd664f27508f096fe693aac874e1f837ed98ab",
+      "title": "升级行动模块并支持反馈库按客户搜索",
+      "category": "feature",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-08-04",
+      "appVersion": null,
+      "summary": "- 升级用后即评综合分析的行动模块，将结果压缩为更高层的卡片式摘要，并按触发信号与主题建议分层呈现\n- 反馈库新增按客户名称搜索/筛选，支持从客户视角下钻查看对应反馈",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9506fc02880eb948b67ba495bc5f11f2afa6f9aa",
+      "title": "restrict post-use actions to post-use source",
+      "category": "fix",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-08-03",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "b7d5874cc7c43179165ad882b7f3c4dde8b401d4",
       "title": "upgrade insight workbench and post-use report flows",

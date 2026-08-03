@@ -3,6 +3,7 @@
  */
 
 import {
+  POST_USE_CRITICAL_LOW_SCORE,
   POST_USE_SATISFACTION_BASELINE,
   POST_USE_SCORE_BASELINE,
   POST_USE_SMALL_SAMPLE_N,
@@ -14,7 +15,7 @@ function isPostUseActionItem(item) {
 
 /**
  * @typedef {Object} ActionSignal
- * @property {'satisfaction_below' | 'experience_below' | 'callback_non_ten'} type
+ * @property {'satisfaction_below' | 'experience_below' | 'experience_critical_low_score' | 'callback_non_ten'} type
  * @property {string} productName
  * @property {string} title
  * @property {string} detail
@@ -25,7 +26,7 @@ function isPostUseActionItem(item) {
 /**
  * @param {{
  *   internalSat?: { byProduct: Array<{ productName: string; rate: number; sampleSize: number; smallSample?: boolean; belowBaseline?: boolean }> }
- *   internalExp?: { byProduct: Array<{ productName: string; avgScore: number; sampleSize: number; smallSample?: boolean; belowNine?: boolean }> }
+ *   internalExp?: { byProduct: Array<{ productName: string; avgScore: number; sampleSize: number; smallSample?: boolean; belowNine?: boolean; minScore?: number | null; hasCriticalLowScore?: boolean }> }
  *   callbackNonTen?: Array<{ productName: string; score: number; customerName?: string; lowScoreReason?: string; originalTicketId?: string }>
  *   needInsights?: Array<{ productName: string; need: string; count: number; customerCount: number; avgScore: number; priority: 'P0'|'P1'|'P2'; priorityScore: number; explanation: string; evidenceIds?: string[] }>
  *   period?: string
@@ -75,7 +76,18 @@ export function buildPostUseActionSignals(input) {
   }
 
   for (const p of input.internalExp?.byProduct || []) {
-    if (p.sampleSize < smallN) continue
+    if (p.sampleSize < smallN) {
+      if (!p.hasCriticalLowScore) continue
+      signals.push({
+        type: 'experience_critical_low_score',
+        productName: p.productName,
+        priority: 'P0',
+        title: `${p.productName} 小样本下出现极低分反馈`,
+        detail: `样本量 ${p.sampleSize}（低于 ${smallN}），但出现 ${POST_USE_CRITICAL_LOW_SCORE} 分及以下反馈${p.minScore != null ? `，最低 ${p.minScore} 分` : ''}`,
+        meta: { minScore: p.minScore, sampleSize: p.sampleSize },
+      })
+      continue
+    }
     if (p.avgScore >= POST_USE_SCORE_BASELINE) continue
     signals.push({
       type: 'experience_below',
