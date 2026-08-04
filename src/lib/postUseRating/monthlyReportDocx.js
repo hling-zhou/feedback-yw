@@ -234,7 +234,7 @@ export async function buildMonthlyReportDocxBlob(model) {
       ),
     )
   } else {
-    children.push(new Paragraph({ text: '本月未识别到需关注客户或客服回访证据。' }))
+    children.push(new Paragraph({ text: '本月未识别到需关注客户或客服部回访证据。' }))
   }
 
   const issueChanges = model.issueChanges || []
@@ -284,7 +284,7 @@ export async function buildMonthlyReportDocxBlob(model) {
 
   children.push(
     new Paragraph({
-      text: `三、客服回访（数据月份 ${model.visitMonth}）`,
+      text: `三、客服部回访（数据月份 ${model.visitMonth}）`,
       heading: HeadingLevel.HEADING_2,
     }),
   )
@@ -301,17 +301,17 @@ export async function buildMonthlyReportDocxBlob(model) {
       ),
     )
   } else {
-    children.push(new Paragraph({ text: '本月暂无客服回访记录' }))
+    children.push(new Paragraph({ text: '本月暂无客服部回访记录' }))
   }
   const visitsDetailed = model.visitsDetailed || []
   children.push(new Paragraph({ text: '3.1 上期回访结果', heading: HeadingLevel.HEADING_3 }))
   if (visitsDetailed.length) {
     children.push(
       simpleTable(
-        ['用户反馈', '用户信息', '回访反馈信息', '回访反馈信息-内部评估'],
+        ['客户名称', '客户编码', '回访反馈信息', '回访反馈信息-内部评估'],
         visitsDetailed.map((item) => [
-          item.userFeedbackText || '—',
-          item.userInfoDetail || '—',
+          item.customerName || '—',
+          item.customerCode || '—',
           item.visitFeedbackDetail || '—',
           item.internalEvaluationDetail || '—',
         ]),

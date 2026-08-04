@@ -47,7 +47,7 @@ export function buildPostUseActionSignals(input) {
       productName: need.productName,
       priority: need.priority,
       title: `改善「${need.need}」相关体验`,
-      detail: `${need.count} 条评价反馈，涉及 ${need.customerCount} 个客户${need.visitEvidenceCount ? `，另有 ${need.visitEvidenceCount} 条客服回访证据` : ''}；${need.explanation}`,
+      detail: `${need.count} 条评价反馈，涉及 ${need.customerCount} 个客户${need.visitEvidenceCount ? `，另有 ${need.visitEvidenceCount} 条客服部回访证据` : ''}；${need.explanation}`,
       linkedInsightIds: [insightId],
       evidenceRecordIds: [...new Set([...(need.evidenceIds || []), ...(need.visitEvidenceIds || [])])],
       insightTheme: need.need,

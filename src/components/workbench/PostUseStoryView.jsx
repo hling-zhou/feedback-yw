@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SMALL_SAMPLE_N } from '../../lib/postUseRating/metrics.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
+import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
@@ -63,6 +64,9 @@ function customerFeedbackHref(customerName) {
 
 export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
+  const callbackRecommendations = (model.callbackRecommendations || []).filter(
+    (item) => !item.completed,
+  )
   const exp = metrics.internalExperience
   const sat = metrics.satisfaction
   const scoreDistributionRows = (metrics.nonTenDistributionProducts || []).map((productName) => ({
@@ -70,6 +74,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
+  const showCallbackDownload = !model.scope.isMonthPeriod || callbackRecommendations.length > 0
 
   return (
     <div className="space-y-5">
@@ -110,7 +115,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '回访满意度', dataIndex: 'satisfactionRate', width: 116, render: (value, row) => value == null ? '—' : <span>{value}%{row.satisfactionSmallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
             { title: '回访样本', dataIndex: 'satisfactionSample', width: 88 },
             { title: '主要需求', dataIndex: 'primaryNeed', width: 180, ellipsis: true },
-            { title: '客服回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
+            { title: '客服部回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
           ]}
         />
       </Card>
@@ -204,8 +209,39 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         />
       </Card>
 
-      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并评价原话与客服回访结论" id="post-use-customers" />
-      <Card size="small">
+      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并评价原话与客服部回访结论" id="post-use-customers" />
+      <Card
+        size="small"
+        extra={
+          showCallbackDownload ? (
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                if (!callbackRecommendations.length) {
+                  message.info('当前范围内暂无建议客服部回访客户')
+                  return
+                }
+                downloadPostUseCallbackRecommendationsExcel(
+                  callbackRecommendations,
+                  model.scope.periodLabel,
+                )
+              }}
+            >
+              下载建议客服部回访客户清单
+            </Button>
+          ) : null
+        }
+      >
+        {model.scope.postUseKeyCustomerCount === 0 ? (
+          <Alert
+            className="mb-3"
+            type="info"
+            showIcon
+            message="请先到设置中维护重点客户名单"
+            description="建议客服部回访清单仅针对重点客户中的 7 分以下反馈生成。"
+          />
+        ) : null}
         <LimitedTable
           size="small"
           rowKey={(row) => row.customerCode || `${row.customerName}-${row.products.join(',')}`}
@@ -370,7 +406,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             children: (
               <div className="space-y-3">
                 <Typography.Paragraph className="!mb-0" type="secondary">
-                  体验均分使用短信与控制台评价；投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服回访只作为补充证据，不改变评分和需求改善优先级。
+                  体验均分使用短信与控制台评价；投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
                 </Typography.Paragraph>
                 <Space size={[6, 6]} wrap>
                   <Tag>目录 {model.scope.catalogVersion}</Tag>

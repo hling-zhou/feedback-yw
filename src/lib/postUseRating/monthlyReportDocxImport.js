@@ -82,8 +82,10 @@ function normalizeScoreDistributionTable(rows) {
 function normalizeVisitsDetailed(rows) {
   return rowsToObjects(rows).map((row, index) => ({
     id: `visit-detail-${index + 1}`,
+    customerName: row['客户名称'] || row['用户反馈'] || '',
+    customerCode: row['客户编码'] || '',
     userFeedbackText: row['用户反馈'] || '',
-    userInfoDetail: row['用户信息'] || '',
+    userInfoDetail: row['用户信息'] || row['客户编码'] || '',
     visitFeedbackDetail: row['回访反馈信息'] || '',
     internalEvaluationDetail: row['回访反馈信息-内部评估'] || '',
   }))
@@ -223,7 +225,7 @@ function learningSummaryForSection(section, diff) {
 function learningRecommendationForSection(section) {
   if (section === '2.1') return '后续生成 Word 前，优先核查 2.1 产品名、样本量、得分与投诉回访满意度-10分满意比。'
   if (section === '2.3') return '后续生成 Word 前，优先核查 2.3 非10分产品覆盖与 10~1 分分布矩阵。'
-  return '后续生成 Word 前，优先核查上期回访结果是否已补齐用户反馈、用户信息、回访反馈与内部评估。'
+  return '后续生成 Word 前，优先核查上期回访结果是否已补齐客户名称、客户编码、回访反馈与内部评估。'
 }
 
 export function analyzeMonthlyReportRevisionLearning({ currentModel, revision }) {

@@ -11,6 +11,7 @@ describe('pickTeamAppSettings', () => {
       useRegex: true,
       themeMatchMode: 'hybrid',
       quoteExtraction: { complaint_ticket: 'plain' },
+      postUseKeyCustomers: ['中国铁塔'],
       llmBaseUrl: 'https://api.example.com/v1',
       llmModel: 'gpt-4',
       llmApiKey: 'secret',
@@ -19,6 +20,7 @@ describe('pickTeamAppSettings', () => {
       useRegex: true,
       themeMatchMode: 'hybrid',
       quoteExtraction: { complaint_ticket: 'plain' },
+      postUseKeyCustomers: ['中国铁塔'],
     })
     expect(picked).not.toHaveProperty('llmBaseUrl')
     expect(picked).not.toHaveProperty('llmModel')
@@ -45,7 +47,7 @@ describe('pickPersonalLlmSettings', () => {
 describe('mergeTeamAndLocalSettings', () => {
   it('applies team rules and keeps local api key', () => {
     const merged = mergeTeamAndLocalSettings(
-      { themeMatchMode: 'semantic', useRegex: false },
+      { themeMatchMode: 'semantic', useRegex: false, postUseKeyCustomers: ['中国铁塔'] },
       {
         themeMatchMode: 'keyword',
         useRegex: true,
@@ -56,6 +58,7 @@ describe('mergeTeamAndLocalSettings', () => {
     )
     expect(merged.themeMatchMode).toBe('semantic')
     expect(merged.useRegex).toBe(false)
+    expect(merged.postUseKeyCustomers).toEqual(['中国铁塔'])
     expect(merged.llmApiKey).toBe('local-key')
     expect(merged.llmBaseUrl).toBe('https://local/v1')
   })

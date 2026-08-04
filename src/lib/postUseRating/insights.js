@@ -25,11 +25,12 @@ function normalizedRecord(record) {
 
 /** @param {object} visit */
 function normalizedVisit(visit) {
+  const customerInfo = [visit.customerName, visit.customerCode].filter(Boolean).join(' / ')
   return {
     id: String(visit.id || ''),
     month: String(visit.importMonth || visit.visitMonth || '').slice(0, 7),
     productName: String(visit.productName || '').trim(),
-    userInfo: normalizeEvidenceText(visit.userInfo),
+    userInfo: normalizeEvidenceText(visit.userInfo || customerInfo),
     feedbackSummary: normalizeEvidenceText(visit.feedbackSummary),
     visitResult: normalizeEvidenceText(visit.visitResult),
     internalConclusion: normalizeEvidenceText(visit.internalConclusion),

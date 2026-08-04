@@ -1,5 +1,5 @@
 /**
- * 客服回访信息（人工录入）— meta 存储
+ * 客服部回访信息（人工录入）— meta 存储
  */
 export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 
@@ -9,6 +9,8 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} visitMonth YYYY-MM（实际回访月，业务信息）
  * @property {string} [importMonth] YYYY-MM（数据导入月份，控制线上分析范围）
  * @property {string} productName
+ * @property {string} [customerName]
+ * @property {string} [customerCode]
  * @property {string} feedbackSummary
  * @property {'控制台评分' | '短信评分' | '投诉回访' | string} scoreSource
  * @property {string} ratingText
@@ -33,8 +35,15 @@ export function normalizeVisitRecords(raw) {
   if (!Array.isArray(list)) return []
   return list.map((item) => ({
     ...item,
+    customerName: String(item?.customerName || item?.userInfoDetail || item?.userInfo || ''),
+    customerCode: String(item?.customerCode || ''),
     userFeedbackText: String(item?.userFeedbackText || ''),
-    userInfoDetail: String(item?.userInfoDetail || item?.userInfo || ''),
+    userInfoDetail: String(
+      item?.userInfoDetail
+      || [item?.customerName, item?.customerCode].filter(Boolean).join(' / ')
+      || item?.userInfo
+      || '',
+    ),
     visitFeedbackDetail: String(item?.visitFeedbackDetail || item?.visitResult || ''),
     internalEvaluationDetail: String(
       item?.internalEvaluationDetail || item?.internalConclusion || '',

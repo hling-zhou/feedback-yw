@@ -3,6 +3,69 @@ import * as XLSX from 'xlsx'
 import { detectPreset, MOBILE_CLOUD_TICKET_PRESET } from './columnPresets.js'
 import { normalizeTicketId, normalizeCreatedAt } from './desensitize.js'
 
+export const IMPORT_PARSE_ERROR_CODES = {
+  PASSWORD_REQUIRED: 'password_required',
+  PASSWORD_INCORRECT: 'password_incorrect',
+  PASSWORD_UNSUPPORTED: 'password_unsupported',
+}
+
+/**
+ * @param {string} code
+ * @param {string} message
+ * @param {unknown} [cause]
+ */
+function createImportParseError(code, message, cause) {
+  const error = new Error(message)
+  error.name = 'ImportParseError'
+  // @ts-expect-error runtime-only extension for stable UI branching
+  error.code = code
+  // @ts-expect-error runtime-only extension for debugging
+  error.cause = cause
+  return error
+}
+
+/**
+ * @param {unknown} err
+ * @param {{ password?: string }} [options]
+ */
+export function normalizeExcelParseError(err, options = {}) {
+  const message = err instanceof Error ? err.message : String(err ?? '解析 Excel 失败')
+  const hasPassword = typeof options.password === 'string' && options.password.length > 0
+
+  if (message.includes('Password is incorrect')) {
+    return createImportParseError(
+      IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT,
+      '文件密码错误，请重新输入后重试',
+      err,
+    )
+  }
+
+  if (message.includes('File is password-protected')) {
+    if (!hasPassword) {
+      return createImportParseError(
+        IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED,
+        '该 Excel 文件已加密，请输入密码后重试',
+        err,
+      )
+    }
+    return createImportParseError(
+      IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+      '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
+      err,
+    )
+  }
+
+  if (message.includes('Unsupported password protection')) {
+    return createImportParseError(
+      IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+      '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
+      err,
+    )
+  }
+
+  return err instanceof Error ? err : new Error(message)
+}
+
 /**
  * @typedef {Object} ColumnPreset
  * @property {string} id
@@ -83,11 +146,21 @@ function sheetToRows(sheet, options = {}) {
 
 /**
  * @param {ArrayBuffer} buffer
- * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number }} [options]
+ * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number; password?: string }} [options]
  * @returns {{ sheetNames: string[]; sheets: Record<string, { headers: string[]; rows: Record<string, string>[] }> }}
  */
 export function parseExcelBuffer(buffer, options = {}) {
-  const wb = XLSX.read(buffer, { type: 'array', cellText: true, cellDates: true })
+  let wb
+  try {
+    wb = XLSX.read(buffer, {
+      type: 'array',
+      cellText: true,
+      cellDates: true,
+      password: options.password,
+    })
+  } catch (err) {
+    throw normalizeExcelParseError(err, { password: options.password })
+  }
   /** @type {Record<string, { headers: string[]; rows: Record<string, string>[] }> } */
   const sheets = {}
 
@@ -104,7 +177,7 @@ export function parseExcelBuffer(buffer, options = {}) {
 
 /**
  * @param {File} file
- * @param {{ sheetName?: string }} [options]
+ * @param {{ sheetName?: string; password?: string }} [options]
  * @returns {Promise<{ headers: string[]; rows: Record<string, string>[]; sheetNames?: string[]; sheets?: Record<string, { headers: string[]; rows: Record<string, string>[] }> }>}
  */
 export async function parseUploadFile(file, options = {}) {
@@ -128,7 +201,7 @@ export async function parseUploadFile(file, options = {}) {
 
   if (ext === 'xlsx' || ext === 'xls') {
     const buffer = await file.arrayBuffer()
-    const { sheetNames, sheets } = parseExcelBuffer(buffer)
+    const { sheetNames, sheets } = parseExcelBuffer(buffer, { password: options.password })
 
     const normalizeRow = (row) => {
       /** @type {Record<string, string>} */

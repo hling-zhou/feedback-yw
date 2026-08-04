@@ -52,9 +52,8 @@ describe('customerVisitImport', () => {
     const visit = normalizeCustomerVisitRow({
       visitMonth: '2026-05',
       productName: '弹性公网IP',
-      scoreSource: '控制台评分',
-      ratingText: '1分*1',
-      userInfo: '甲公司 C001 订单123',
+      customerName: '甲公司',
+      customerCode: 'C001',
     })
 
     const result = matchLibraryRecord(candidates, visit)
@@ -74,26 +73,28 @@ describe('customerVisitImport', () => {
   })
 
   it('stableVisitRecordId is deterministic for same keys', () => {
-    expect(stableVisitRecordId('2026-05', '云专线', '客户A')).toBe(
-      stableVisitRecordId('2026-05', '云专线', '客户A'),
+    expect(stableVisitRecordId('2026-05', '云专线', '客户A/C001')).toBe(
+      stableVisitRecordId('2026-05', '云专线', '客户A/C001'),
     )
-    expect(stableVisitRecordId('2026-05', '云专线', '客户A')).not.toBe(
-      stableVisitRecordId('2026-05', '云专线', '客户B'),
+    expect(stableVisitRecordId('2026-05', '云专线', '客户A/C001')).not.toBe(
+      stableVisitRecordId('2026-05', '云专线', '客户B/C002'),
     )
   })
 
-  it('normalizes report-detail visit fields with fallback values', () => {
+  it('normalizes customer visit fields from the new template', () => {
     const row = normalizeCustomerVisitRow({
-      月份: '2026-06',
+      数据月份: '2026-06',
       产品名称: '云专线',
-      用户反馈原文: '希望支持跨用户变更',
-      用户信息: '客户A',
+      客户名称: '客户A',
+      客户编码: 'C001',
       回访结果: '电话已回访',
       内部评估: '待跟进',
     })
 
-    expect(row.userFeedbackText).toBe('希望支持跨用户变更')
-    expect(row.userInfoDetail).toBe('客户A')
+    expect(row.customerName).toBe('客户A')
+    expect(row.customerCode).toBe('C001')
+    expect(row.userInfoDetail).toBe('客户A / C001')
+    expect(row.feedbackSummary).toBe('电话已回访')
     expect(row.visitFeedbackDetail).toBe('电话已回访')
     expect(row.internalEvaluationDetail).toBe('待跟进')
   })
@@ -119,10 +120,10 @@ describe('customerVisitImport', () => {
       },
       rows: [
         {
-          月份: '2026-06',
+          数据月份: '2026-06',
           产品名称: '云专线',
-          用户反馈原文: '客户希望支持跨用户变更',
-          用户信息: '客户A 订单001',
+          客户名称: '客户A',
+          客户编码: 'C001',
           回访结果: '客户确认当前方案无法满足',
           内部评估: '建议进入需求池',
         },
@@ -137,8 +138,9 @@ describe('customerVisitImport', () => {
     expect(result.detailedFieldMissingCount).toBe(0)
     expect(updates).toHaveLength(1)
     expect(updates[0].id).toBe('rating-1')
-    expect(updates[0].customerVisit.feedbackSummary).toBe('客户希望支持跨用户变更')
-    expect(updates[0].customerVisit.userFeedbackText).toBe('客户希望支持跨用户变更')
+    expect(updates[0].customerVisit.feedbackSummary).toBe('客户确认当前方案无法满足')
+    expect(updates[0].customerVisit.customerName).toBe('客户A')
+    expect(updates[0].customerVisit.customerCode).toBe('C001')
     expect(updates[0].customerVisit.internalEvaluationDetail).toBe('建议进入需求池')
   })
 })

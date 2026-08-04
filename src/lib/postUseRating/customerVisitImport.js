@@ -1,5 +1,5 @@
 /**
- * 客服回访 Excel 导入：解析、软匹配用后即评明细、双写 visit_records + customerVisit
+ * 客服部回访 Excel 导入：解析、软匹配用后即评明细、双写 visit_records + customerVisit
  */
 import { isPostUseRatingLibraryRecord } from '../../domain/postUseRatingImport.js'
 import {
@@ -8,7 +8,7 @@ import {
   upsertVisitRecord,
 } from './visitRecords.js'
 
-/** 客服回访导入支持的 6 项内部结论 */
+/** 客服部回访导入支持的 6 项内部结论 */
 export const INTERNAL_CONCLUSIONS = [
   '无需优改（客户误操作/无实际不满/账户异常/极小概率场景）',
   '综合评估后暂不处理',
@@ -42,13 +42,13 @@ export function parseRatingScoreFromText(ratingText) {
 }
 
 /**
- * 稳定 id：visitMonth + productName + userInfo
+ * 稳定 id：visitMonth + productName + customer identity
  * @param {string} visitMonth
  * @param {string} productName
- * @param {string} userInfo
+ * @param {string} customerKey
  */
-export function stableVisitRecordId(visitMonth, productName, userInfo) {
-  const key = [visitMonth, productName, userInfo].map((x) => String(x ?? '').trim()).join('\0')
+export function stableVisitRecordId(visitMonth, productName, customerKey) {
+  const key = [visitMonth, productName, customerKey].map((x) => String(x ?? '').trim()).join('\0')
   let h = 2166136261
   for (let i = 0; i < key.length; i += 1) {
     h ^= key.charCodeAt(i)
@@ -62,18 +62,24 @@ export function stableVisitRecordId(visitMonth, productName, userInfo) {
  */
 export function normalizeCustomerVisitRow(mappedRow) {
   const row = mappedRow || {}
-  const visitMonth = String(row.visitMonth ?? row['月份'] ?? '').trim()
+  const visitMonth = String(row.visitMonth ?? row['数据月份'] ?? '').trim()
   const productName = String(row.productName ?? row.productSpec ?? row['产品名称'] ?? '').trim()
+  const customerName = String(row.customerName ?? row['客户名称'] ?? '').trim()
+  const customerCode = String(row.customerCode ?? row['客户编码'] ?? '').trim()
   const userFeedbackText = String(row.userFeedbackText ?? row['用户反馈原文'] ?? '').trim()
-  const feedbackSummary = userFeedbackText
   const scoreSource = ''
   const ratingText = ''
-  const userInfo = String(row.userInfo ?? row['用户信息'] ?? '').trim()
-  const userInfoDetail = userInfo
+  const userInfo = String(
+    row.userInfo
+    ?? row['用户信息']
+    ?? [customerName, customerCode].filter(Boolean).join(' / '),
+  ).trim()
+  const userInfoDetail = String(row.userInfoDetail ?? userInfo).trim()
   const visitResult = String(row.visitResult ?? row['回访结果'] ?? '').trim()
   const visitFeedbackDetail = visitResult
   const internalConclusion = String(row.internalConclusion ?? row['内部评估'] ?? '').trim()
   const internalEvaluationDetail = internalConclusion
+  const feedbackSummary = String(row.feedbackSummary ?? visitResult).trim()
   const jiraId = ''
   const ratingRecordId = ''
   const ratingScore = parseRatingScoreFromText(ratingText)
@@ -82,6 +88,8 @@ export function normalizeCustomerVisitRow(mappedRow) {
   return {
     visitMonth,
     productName,
+    customerName,
+    customerCode,
     feedbackSummary,
     userFeedbackText,
     scoreSource,
@@ -111,6 +119,33 @@ function recordRecencyKey(record) {
  */
 function pickMostRecent(list) {
   return [...list].sort((a, b) => recordRecencyKey(b).localeCompare(recordRecencyKey(a)))[0]
+}
+
+/**
+ * @param {ReturnType<typeof normalizeCustomerVisitRow>} visit
+ */
+function buildCustomerKey(visit) {
+  return [visit.customerCode, visit.customerName, visit.userInfo]
+    .map((item) => String(item || '').trim())
+    .find(Boolean) || ''
+}
+
+/**
+ * @param {import('../types.js').FeedbackRecord | Record<string, unknown>} record
+ * @param {ReturnType<typeof normalizeCustomerVisitRow>} visit
+ */
+function recordMatchesCustomer(record, visit) {
+  const recordCode = String(record.customerCode || '').trim()
+  const recordName = String(record.customerName || '').trim()
+  const visitCode = String(visit.customerCode || '').trim()
+  const visitName = String(visit.customerName || '').trim()
+  const visitUserInfo = String(visit.userInfo || '').trim()
+
+  if (visitCode && recordCode) return recordCode === visitCode
+  if (visitName && recordName) return recordName === visitName
+  if (visitCode && visitUserInfo && recordCode && visitUserInfo.includes(recordCode)) return true
+  if (visitName && visitUserInfo && recordName && visitUserInfo.includes(recordName)) return true
+  return false
 }
 
 /**
@@ -152,14 +187,7 @@ export function matchLibraryRecord(candidates, visit) {
     pool = pool.filter((r) => String(r.productName || r.product || '').trim() === product)
   }
 
-  const userInfo = String(visit.userInfo || '')
-  const withCustomer = pool.filter((r) => {
-    const code = String(r.customerCode || '').trim()
-    const name = String(r.customerName || '').trim()
-    if (code && userInfo.includes(code)) return true
-    if (name && userInfo.includes(name)) return true
-    return false
-  })
+  const withCustomer = pool.filter((r) => recordMatchesCustomer(r, visit))
 
   /** @param {typeof pool} list @param {string} by */
   const finish = (list, by) => {
@@ -193,6 +221,14 @@ export function matchLibraryRecord(candidates, visit) {
 }
 
 /**
+ * @param {string} left
+ * @param {string} right
+ */
+function sameNonEmptyText(left, right) {
+  return Boolean(left && right && left === right)
+}
+
+/**
  * @param {{
  *   rows: Record<string, unknown>[]
  *   libraryRecords: Array<import('../types.js').FeedbackRecord | Record<string, unknown>>
@@ -218,17 +254,20 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
   ;(rows || []).forEach((raw, i) => {
     const rowIndex = i + 1
     const visit = normalizeCustomerVisitRow(raw)
-    if (!visit.visitMonth || !visit.productName || !visit.userInfo) {
-      unmatched.push({ rowIndex, reason: '缺少回访月/产品/用户信息', visit })
+    if (!visit.visitMonth || !visit.productName || (!visit.customerName && !visit.customerCode)) {
+      unmatched.push({ rowIndex, reason: '缺少数据月份/产品名称/客户名称或客户编码', visit })
       return
     }
 
-    const id = stableVisitRecordId(importMonth || visit.visitMonth, visit.productName, visit.userInfo)
+    const customerKey = buildCustomerKey(visit)
+    const id = stableVisitRecordId(importMonth || visit.visitMonth, visit.productName, customerKey)
     const visitMeta = {
       id,
       visitMonth: visit.visitMonth,
       importMonth: importMonth || visit.visitMonth,
       productName: visit.productName,
+      customerName: visit.customerName,
+      customerCode: visit.customerCode,
       feedbackSummary: visit.feedbackSummary,
       userFeedbackText: visit.userFeedbackText,
       scoreSource: visit.scoreSource,
@@ -245,8 +284,10 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
     visitRecords.push(visitMeta)
 
     const hasDetailedFields = Boolean(
-      visit.userFeedbackText &&
-      (visit.userInfoDetail || visit.userInfo) &&
+      visit.visitMonth &&
+      visit.productName &&
+      visit.customerName &&
+      visit.customerCode &&
       (visit.visitFeedbackDetail || visit.visitResult) &&
       (visit.internalEvaluationDetail || visit.internalConclusion),
     )
@@ -278,6 +319,8 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
         visitMonth: visit.visitMonth,
         importMonth: importMonth || visit.visitMonth,
         productName: visit.productName,
+        customerName: visit.customerName,
+        customerCode: visit.customerCode,
         feedbackSummary: visit.feedbackSummary,
         userFeedbackText: visit.userFeedbackText,
         scoreSource: visit.scoreSource,
@@ -335,11 +378,20 @@ export async function executeCustomerVisitImport({
   let visits = await loadVisitRecords(adapter)
   for (const item of dry.visitRecords) {
     const existingIdx = visits.findIndex(
-      (r) =>
-        r.id === item.id ||
-        ((r.importMonth || r.visitMonth) === (item.importMonth || item.visitMonth) &&
-          r.productName === item.productName &&
-          r.userInfo === item.userInfo),
+      (r) => {
+        const recordCode = String(r.customerCode || '').trim()
+        const itemCode = String(item.customerCode || '').trim()
+        const recordName = String(r.customerName || '').trim()
+        const itemName = String(item.customerName || '').trim()
+        return (
+          r.id === item.id ||
+          ((r.importMonth || r.visitMonth) === (item.importMonth || item.visitMonth) &&
+            r.productName === item.productName &&
+            (sameNonEmptyText(recordCode, itemCode) ||
+              sameNonEmptyText(recordName, itemName) ||
+              sameNonEmptyText(String(r.userInfo || '').trim(), String(item.userInfo || '').trim())))
+        )
+      },
     )
     if (existingIdx >= 0) {
       item.id = visits[existingIdx].id

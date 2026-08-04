@@ -111,6 +111,8 @@ export const STANDARD_FIELDS = [
   { key: 'source', label: '渠道', required: false },
   { key: 'visitMonth', label: '回访月份', required: false },
   { key: 'productName', label: '产品名称', required: false },
+  { key: 'customerName', label: '客户名称', required: false },
+  { key: 'customerCode', label: '客户编码', required: false },
   { key: 'feedbackSummary', label: '客户反馈摘要', required: false },
   { key: 'userFeedbackText', label: '用户反馈原文', required: false },
   { key: 'scoreSource', label: '评分来源', required: false },

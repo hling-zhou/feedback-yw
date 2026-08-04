@@ -20,8 +20,13 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(indexes).toEqual([...indexes].sort((a, b) => a - b))
   })
 
+  it('keeps callback recommendation download entry in customer evidence section', () => {
+    expect(source).toContain('下载建议客服部回访客户清单')
+    expect(source).toContain('请先到设置中维护重点客户名单')
+  })
+
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {
-    expect(source).not.toMatch(/SectionHeading[^>]+title="客服回访"/)
+    expect(source).not.toMatch(/SectionHeading[^>]+title="客服部回访"/)
     expect(source).not.toMatch(/SectionHeading[^>]+title="投诉回访满意度"/)
   })
 

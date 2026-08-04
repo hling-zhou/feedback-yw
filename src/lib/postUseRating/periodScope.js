@@ -9,7 +9,7 @@ export function postUsePeriodMonths(period) {
   return listMonthsInclusive(from, to)
 }
 
-/** 客服回访与当前用后即评范围一致，按导入数据月份筛选。 */
+/** 客服部回访与当前用后即评范围一致，按导入数据月份筛选。 */
 export function postUseVisitMonthsForPeriod(period) {
   return postUsePeriodMonths(period)
 }

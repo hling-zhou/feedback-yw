@@ -34,7 +34,7 @@ function hasLocalStorage() {
 
 /** @typedef {import('./quoteNoise.js').QuoteNoiseConfig} QuoteNoiseConfig */
 
-/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean; optimizationMode: OptimizationMode; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
+/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean; optimizationMode: OptimizationMode; postUseKeyCustomers?: string[]; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
 
 /** @type {ThemeMatchMode} */
 export const DEFAULT_THEME_MATCH_MODE = 'hybrid'
@@ -62,8 +62,18 @@ const DEFAULT_SETTINGS = {
   /** 工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型 */
   retagDimensionsAfterTicketLlm: true,
   optimizationMode: 'llm',
+  postUseKeyCustomers: [],
   llmBaseUrl: '',
   llmModel: '',
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function normalizePostUseKeyCustomers(value) {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item || '').trim()).filter(Boolean)
 }
 
 /** @returns {AppSettings} */
@@ -185,6 +195,7 @@ export function loadSettings() {
       retagDimensionsAfterTicketLlm:
         parsed.retagDimensionsAfterTicketLlm ?? DEFAULT_SETTINGS.retagDimensionsAfterTicketLlm,
       optimizationMode: parsed.optimizationMode || DEFAULT_SETTINGS.optimizationMode,
+      postUseKeyCustomers: normalizePostUseKeyCustomers(parsed.postUseKeyCustomers),
       ...resolveLlmFieldsFromParsed(parsed),
       llmApiKey: typeof parsed.llmApiKey === 'string' ? parsed.llmApiKey : '',
     }

@@ -8,6 +8,7 @@ import {
 import { buildPostUseInsightBundle } from './insights.js'
 import { buildPostUseActionSignals } from './actionSignals.js'
 import { evaluateActionRecovery } from './actionRecovery.js'
+import { buildPostUseCallbackRecommendations } from './callbackRecommendations.js'
 import {
   buildFocusSatisfactionTrendChartModel,
   buildFocusScoreTrendChartModel,
@@ -47,6 +48,7 @@ export function buildPostUseStoryModel(input) {
     trend = null,
     quality = null,
     period = null,
+    settings = null,
   } = input
   const scoredRows = postUseRecordsToScoredRows(records)
   const internalExperience = computeInternalExperienceMetrics(scoredRows, { productNames })
@@ -235,6 +237,7 @@ export function buildPostUseStoryModel(input) {
     .sort((a, b) => ({ not_recovered: 0, pending: 1, recovered: 2, not_applicable: 3 }[a.validation.status] - ({ not_recovered: 0, pending: 1, recovered: 2, not_applicable: 3 }[b.validation.status])))
 
   const filteredTrend = trend ? filterPostUseTrendForPeriod(trend, period) : null
+  const callbackRecommendations = buildPostUseCallbackRecommendations(records, settings?.postUseKeyCustomers)
   const scoreTrend = filteredTrend
     ? buildFocusScoreTrendChartModel(filteredTrend, focusNames, 'internal_experience')
     : { data: [], areas: [] }
@@ -270,6 +273,8 @@ export function buildPostUseStoryModel(input) {
       periodLabel: period?.label || '未选择',
       productCount: productOverview.length,
       validSample: scoredRows.length,
+      isMonthPeriod: period?.granularity === 'month',
+      postUseKeyCustomerCount: settings?.postUseKeyCustomers?.length || 0,
       qualityStatus: !quality ? (unclassifiedNeedCount ? '未生成快照，存在未识别需求' : '未生成质量快照') : totalQualityWarnings ? '存在需关注项' : '数据质量正常',
       qualityWarningCount: totalQualityWarnings,
       catalogVersion: quality?.versions?.catalog || '—',
@@ -296,6 +301,7 @@ export function buildPostUseStoryModel(input) {
     actionsAndRecovery: { triggerGroups, rows: actionRows, recoveryRows, unlinkedRecommendations, notRecovered },
     quality: analysisQuality,
     scoredRows,
+    callbackRecommendations,
     insightBundle: { ...currentInsights, issueChanges: changes },
   }
 }

@@ -355,7 +355,7 @@ export default function PostUseMonthlyReportPreview(props) {
         locale={{ emptyText: '暂无（导入含选项类的双文件后写入趋势）' }}
       />
 
-      <Typography.Title level={5}>客服回访（数据月份 {model.visitMonth}）</Typography.Title>
+      <Typography.Title level={5}>客服部回访（数据月份 {model.visitMonth}）</Typography.Title>
       <Table
         size="small"
         rowKey="id"
@@ -367,7 +367,7 @@ export default function PostUseMonthlyReportPreview(props) {
           { title: '摘要', dataIndex: 'feedbackSummary', ellipsis: true },
           { title: '结论', dataIndex: 'internalConclusion', width: 160, ellipsis: true },
         ]}
-        locale={{ emptyText: '本月暂无客服回访记录' }}
+        locale={{ emptyText: '本月暂无客服部回访记录' }}
       />
 
       <Typography.Title level={5}>上期回访结果</Typography.Title>
@@ -378,8 +378,8 @@ export default function PostUseMonthlyReportPreview(props) {
         className="mb-4"
         dataSource={model.visitsDetailed}
         columns={[
-          { title: '用户反馈', dataIndex: 'userFeedbackText', ellipsis: true, render: (value) => value || '—' },
-          { title: '用户信息', dataIndex: 'userInfoDetail', width: 180, ellipsis: true, render: (value) => value || '—' },
+          { title: '客户名称', dataIndex: 'customerName', width: 180, ellipsis: true, render: (value, row) => value || row.userInfoDetail || row.userInfo || '—' },
+          { title: '客户编码', dataIndex: 'customerCode', width: 180, ellipsis: true, render: (value) => value || '—' },
           { title: '回访反馈信息', dataIndex: 'visitFeedbackDetail', ellipsis: true, render: (value) => value || '—' },
           { title: '回访反馈信息-内部评估', dataIndex: 'internalEvaluationDetail', ellipsis: true, render: (value) => value || '—' },
         ]}

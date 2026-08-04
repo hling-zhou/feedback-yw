@@ -35,7 +35,7 @@
 
 - **投诉咨询工单**（`lane=tickets`）与 **用后即评**（`lane=post_use`）分列：后者仅展示短信/控制台评价明细（不含投诉回访独立行）。
 - **非 10 分** 评价可补 **用户旅程**（规则关键词，`enrichPostUseJourney`），不走工单批量打标。
-- **客服回访**：支持 Excel 批量导入（`subType=customer_visit`）写入 `visit_records` 并软匹配挂到评价明细的 `customerVisit`；工作台亦支持单条补录。
+- **客服部回访**：支持 Excel 批量导入（`subType=customer_visit`）写入 `visit_records` 并软匹配挂到评价明细的 `customerVisit`；工作台亦支持单条补录。
 
 ---
 
@@ -278,4 +278,4 @@ flowchart TD
 | 2026-06-05 | **P4 完成**：`followUpSatisfactionAnalytics.js`、post_use_rating 快照预聚合 |
 | 2026-06-05 | **P5 完成**：工作台回访满意度面板、88% 基线趋势、非 10 分下钻 |
 | 2026-06-05 | **P6 完成**：TEST-PLAN TAG-FU-08～18、集成测、UAT 清单 |
-| 2026-08-01 | 补充 §1.3：反馈库双通道、非 10 分旅程、客服回访导入 |
+| 2026-08-01 | 补充 §1.3：反馈库双通道、非 10 分旅程、客服部回访导入 |

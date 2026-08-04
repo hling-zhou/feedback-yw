@@ -139,7 +139,15 @@ function pickAnalysisDraft(settings) {
     useRequestNodeForJourney: settings.useRequestNodeForJourney === true,
     themeMatchMode: settings.themeMatchMode,
     optimizationMode: settings.optimizationMode || 'llm',
+    postUseKeyCustomersText: (settings.postUseKeyCustomers || []).join('\n'),
   }
+}
+
+function normalizeKeyCustomerDraftText(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 /**
@@ -273,7 +281,8 @@ function isAnalysisDraftDirty(draft, settings) {
     draft.retagDimensionsAfterTicketLlm !== saved.retagDimensionsAfterTicketLlm ||
     draft.useRequestNodeForJourney !== saved.useRequestNodeForJourney ||
     draft.themeMatchMode !== saved.themeMatchMode ||
-    draft.optimizationMode !== saved.optimizationMode
+    draft.optimizationMode !== saved.optimizationMode ||
+    draft.postUseKeyCustomersText !== saved.postUseKeyCustomersText
   )
 }
 
@@ -295,12 +304,19 @@ function AnalysisSettingsPanel({ settings, onSave }) {
     settings.useRequestNodeForJourney,
     settings.themeMatchMode,
     settings.optimizationMode,
+    settings.postUseKeyCustomers,
   ])
 
   const handleSave = () => {
     setSaving(true)
     try {
-      onSave(draft)
+      onSave({
+        retagDimensionsAfterTicketLlm: draft.retagDimensionsAfterTicketLlm,
+        useRequestNodeForJourney: draft.useRequestNodeForJourney,
+        themeMatchMode: draft.themeMatchMode,
+        optimizationMode: draft.optimizationMode,
+        postUseKeyCustomers: normalizeKeyCustomerDraftText(draft.postUseKeyCustomersText),
+      })
       message.success('已保存分析与打标设置')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '保存失败')
@@ -399,6 +415,23 @@ function AnalysisSettingsPanel({ settings, onSave }) {
               </Radio>
             </Space>
           </Radio.Group>
+        </Card>
+
+        <Card title="用后即评重点客户名单">
+          <Typography.Text type="secondary" className="mb-3 block text-xs">
+            用于“建议客服部回访客户清单”筛选。一行一个客户关键词，系统按客户名称包含匹配：名单关键词包含客户名，或客户名包含名单关键词，均视为命中。
+          </Typography.Text>
+          <Input.TextArea
+            rows={10}
+            placeholder={'中国铁塔\n九识智能\n曙光天玑'}
+            value={draft.postUseKeyCustomersText}
+            onChange={(e) =>
+              setDraft((prev) => ({ ...prev, postUseKeyCustomersText: e.target.value }))
+            }
+          />
+          <Typography.Text type="secondary" className="mt-2 block text-xs">
+            当前共 {normalizeKeyCustomerDraftText(draft.postUseKeyCustomersText).length} 条关键词
+          </Typography.Text>
         </Card>
       </div>
 

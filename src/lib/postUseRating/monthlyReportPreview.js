@@ -173,6 +173,8 @@ export function buildMonthlyReportPreviewModel(input) {
     visits: monthVisits,
     visitsDetailed: monthVisits.map((visit) => ({
       ...visit,
+      customerName: visit.customerName || visit.userInfoDetail || visit.userInfo || '',
+      customerCode: visit.customerCode || '',
       userFeedbackText: visit.userFeedbackText || '',
       userInfoDetail: visit.userInfoDetail || visit.userInfo || '',
       visitFeedbackDetail: visit.visitFeedbackDetail || visit.visitResult || '',

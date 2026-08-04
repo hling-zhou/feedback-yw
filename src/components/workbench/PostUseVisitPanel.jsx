@@ -41,7 +41,7 @@ export default function PostUseVisitPanel({ period }) {
   return (
     <Card
       size="small"
-      title={`客服回访（${monthLabel}）`}
+      title={`客服部回访（${monthLabel}）`}
       extra={
         <Link to="/import?source=post_use_rating&subType=customer_visit">
           <Button type="primary" size="small" icon={<UploadOutlined />}>
@@ -59,7 +59,8 @@ export default function PostUseVisitPanel({ period }) {
           { title: '数据月份', width: 96, render: (_, row) => row.importMonth || row.visitMonth || '—' },
           { title: '实际回访月', dataIndex: 'visitMonth', width: 100 },
           { title: '产品', dataIndex: 'productName', width: 120 },
-          { title: '用户信息', dataIndex: 'userInfoDetail', width: 180, ellipsis: true, render: (value, row) => value || row.userInfo || '—' },
+          { title: '客户名称', dataIndex: 'customerName', width: 160, ellipsis: true, render: (value, row) => value || row.userInfoDetail || row.userInfo || '—' },
+          { title: '客户编码', dataIndex: 'customerCode', width: 160, ellipsis: true, render: (value) => value || '—' },
           { title: '回访反馈信息', dataIndex: 'visitFeedbackDetail', ellipsis: true, render: (value, row) => value || row.visitResult || row.feedbackSummary || '—' },
           { title: '内部评估', dataIndex: 'internalEvaluationDetail', width: 180, ellipsis: true, render: (value, row) => value || row.internalConclusion || '—' },
         ]}

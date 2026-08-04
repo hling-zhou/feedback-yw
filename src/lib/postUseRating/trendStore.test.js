@@ -4,6 +4,7 @@ import {
   emptyPostUseTrend,
   buildFocusScoreTrendChartModel,
   POST_USE_TREND_HISTORICAL_SEED,
+  loadPostUseTrend,
   stripHistoricalSeedRows,
 } from './trendStore.js'
 import { aggregateOptionReasons } from './reasonStats.js'
@@ -14,16 +15,22 @@ describe('trendStore historical seed', () => {
     expect(next.seededFromHistorical).toBe(true)
     expect(next.scores.length).toBeGreaterThan(20)
     const yx = next.scores.find(
-      (r) => r.productName === '云专线' && r.month === '2025-09' && r.scope === 'internal_experience',
+      (r) => r.productName === '云专线' && r.month === '2026-01' && r.scope === 'internal_experience',
     )
-    expect(yx?.avgScore).toBe(9.71)
-    expect(POST_USE_TREND_HISTORICAL_SEED.months).toContain('2026-06')
+    expect(yx?.avgScore).toBe(9.42)
+    expect(POST_USE_TREND_HISTORICAL_SEED.months).toEqual([
+      '2026-01',
+      '2026-02',
+      '2026-03',
+      '2026-04',
+      '2026-05',
+    ])
   })
 
   it('does not overwrite existing month product score', () => {
     const base = emptyPostUseTrend()
     base.scores.push({
-      month: '2025-09',
+      month: '2026-01',
       productName: '云专线',
       avgScore: 1.11,
       sampleSize: 9,
@@ -31,7 +38,7 @@ describe('trendStore historical seed', () => {
     })
     const next = mergeHistoricalTrendSeed(base)
     const yx = next.scores.find(
-      (r) => r.productName === '云专线' && r.month === '2025-09' && r.scope === 'internal_experience',
+      (r) => r.productName === '云专线' && r.month === '2026-01' && r.scope === 'internal_experience',
     )
     expect(yx?.avgScore).toBe(1.11)
   })
@@ -40,40 +47,52 @@ describe('trendStore historical seed', () => {
     const snap = mergeHistoricalTrendSeed(emptyPostUseTrend())
     const { data, areas } = buildFocusScoreTrendChartModel(snap, ['云专线', '共享带宽'])
     expect(areas).toHaveLength(2)
-    expect(data[0].date).toBe('2025-09')
-    expect(data[0]['云专线']).toBe(9.71)
+    expect(data[0].date).toBe('2026-01')
+    expect(data[0]['云专线']).toBe(9.42)
   })
 
-  it('strips historical seed rows with zero sample size for online display', () => {
+  it('keeps historical seed rows visible for online display', () => {
     const snap = mergeHistoricalTrendSeed(emptyPostUseTrend())
     const stripped = stripHistoricalSeedRows(snap)
-    expect(stripped.scores).toEqual([])
-    expect(stripped.satisfaction).toEqual([])
+    expect(stripped.scores.length).toBe(snap.scores.length)
+    expect(stripped.satisfaction.length).toBe(snap.satisfaction.length)
     expect(stripped.seededFromHistorical).toBe(true)
   })
 
-  it('keeps real imported trend rows when historical seed also exists', () => {
-    const snap = mergeHistoricalTrendSeed(emptyPostUseTrend())
-    snap.scores.push({
-      month: '2026-07',
-      productName: '云专线',
-      avgScore: 9.5,
-      sampleSize: 12,
-      scope: 'internal_experience',
-    })
-    snap.satisfaction.push({
-      month: '2026-07',
-      productName: '云专线',
-      rate: 90,
-      sampleSize: 12,
-    })
-    const stripped = stripHistoricalSeedRows(snap)
-    expect(stripped.scores).toEqual([
-      expect.objectContaining({ month: '2026-07', productName: '云专线', sampleSize: 12 }),
-    ])
-    expect(stripped.satisfaction).toEqual([
-      expect.objectContaining({ month: '2026-07', productName: '云专线', sampleSize: 12 }),
-    ])
+  it('loadPostUseTrend merges built-in historical rows with stored trend rows', async () => {
+    const adapter = {
+      getMeta: async () => ({
+        version: 1,
+        updatedAt: '2026-08-04T00:00:00.000Z',
+        scores: [
+          {
+            month: '2026-06',
+            productName: '云专线',
+            avgScore: 9.5,
+            sampleSize: 12,
+            scope: 'internal_experience',
+          },
+        ],
+        satisfaction: [
+          {
+            month: '2026-06',
+            productName: '云专线',
+            rate: 90,
+            sampleSize: 12,
+          },
+        ],
+      }),
+    }
+    const merged = await loadPostUseTrend(adapter)
+    expect(merged.scores).toContainEqual(
+      expect.objectContaining({ month: '2026-01', productName: '云专线', avgScore: 9.42 }),
+    )
+    expect(merged.scores).toContainEqual(
+      expect.objectContaining({ month: '2026-06', productName: '云专线', avgScore: 9.5 }),
+    )
+    expect(merged.satisfaction).toContainEqual(
+      expect.objectContaining({ month: '2026-05', productName: '共享带宽', rate: 100 }),
+    )
   })
 })
 

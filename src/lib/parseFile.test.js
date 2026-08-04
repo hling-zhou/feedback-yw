@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest'
+import * as XLSX from 'xlsx'
 import {
   applyDefaultTicketIdMapping,
   guessColumnMap,
+  IMPORT_PARSE_ERROR_CODES,
+  normalizeExcelParseError,
+  parseUploadFile,
   resolveTicketIdHeader,
 } from './parseFile.js'
+
+function buildWorkbookArrayBuffer() {
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['工单展示流水号', '处理意见'],
+    ['20260001', '已处理'],
+  ])
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+}
+
+function createExcelFile(name = 'sample.xlsx') {
+  return new File([buildWorkbookArrayBuffer()], name, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+}
 
 describe('parseFile ticketId mapping', () => {
   it('resolveTicketIdHeader prefers 工单展示流水号 over 工单流水号', () => {
@@ -50,5 +70,40 @@ describe('parseFile ticketId mapping', () => {
     const headers = ['工单展示流水号', '受理内容', '处理意见', '客户等级']
     const map = guessColumnMap(headers, 'complaint_ticket')
     expect(map.customerTierCol).toBe('客户等级')
+  })
+})
+
+describe('parseFile password-protected excel', () => {
+  it('parses a normal excel file without password', async () => {
+    const result = await parseUploadFile(createExcelFile())
+    expect(result.headers).toEqual(['工单展示流水号', '处理意见'])
+    expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
+  })
+
+  it('classifies password-required and incorrect errors', () => {
+    expect(normalizeExcelParseError(new Error('File is password-protected'))).toMatchObject({
+      name: 'ImportParseError',
+      code: IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED,
+      message: '该 Excel 文件已加密，请输入密码后重试',
+    })
+    expect(
+      normalizeExcelParseError(new Error('Password is incorrect'), { password: 'bad' }),
+    ).toMatchObject({
+      name: 'ImportParseError',
+      code: IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT,
+      message: '文件密码错误，请重新输入后重试',
+    })
+  })
+
+  it('classifies unsupported password protection explicitly', () => {
+    expect(
+      normalizeExcelParseError(new Error('Unsupported password protection'), {
+        password: 'secret',
+      }),
+    ).toMatchObject({
+      name: 'ImportParseError',
+      code: IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+      message: '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
+    })
   })
 })

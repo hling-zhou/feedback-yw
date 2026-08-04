@@ -4,7 +4,7 @@ import { BarChartOutlined, FileWordOutlined } from '@ant-design/icons'
 import PostUseMonthlyReportPreview from './PostUseMonthlyReportPreview.jsx'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
-import { loadPostUseTrend, stripHistoricalSeedRows } from '../../lib/postUseRating/trendStore.js'
+import { loadPostUseTrend } from '../../lib/postUseRating/trendStore.js'
 import { listActionItems } from '../../lib/actionItemClient.js'
 import { createActionItem } from '../../lib/actionItemClient.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
@@ -23,7 +23,7 @@ import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
  * 用后即评工作台：统一故事模型驱动线上综合分析与 Word 月报。
  */
 export default function PostUseRatingDashboardView() {
-  const { feedbacks, currentPeriod, adapter } = useInsights()
+  const { feedbacks, currentPeriod, adapter, settings } = useInsights()
   const [visits, setVisits] = useState([])
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
@@ -43,7 +43,7 @@ export default function PostUseRatingDashboardView() {
         const [v, actionsRes, trend, qualityStore] = await Promise.all([
           loadVisitRecords(adapter),
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
-          loadPostUseTrend(adapter).then((snap) => stripHistoricalSeedRows(snap)).catch(() => null),
+          loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
         ])
         if (!cancelled) {
@@ -136,7 +136,8 @@ export default function PostUseRatingDashboardView() {
     trend: trendSnap,
     quality: periodQuality,
     period: currentPeriod,
-  }), [scopedItems, allScopedItems, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod])
+    settings,
+  }), [scopedItems, allScopedItems, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings])
 
   return (
     <div className="space-y-4">

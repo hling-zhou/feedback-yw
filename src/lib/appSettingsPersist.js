@@ -1,5 +1,6 @@
 import { normalizeQuoteExtractionConfig } from './quoteExtraction.js'
 import { normalizeQuoteNoiseConfig } from './quoteNoise.js'
+import { normalizePostUseKeyCustomers } from './storage.js'
 
 /** @typedef {import('./storage.js').AppSettings} AppSettings */
 /** @typedef {import('../storage/adapter.js').StorageAdapter} StorageAdapter */
@@ -19,6 +20,7 @@ const TEAM_SHARED_KEYS = [
   'taggingPipelineOrder',
   'retagDimensionsAfterTicketLlm',
   'optimizationMode',
+  'postUseKeyCustomers',
 ]
 
 /** 仅本机 localStorage 的大模型连接参数 */
@@ -70,6 +72,7 @@ export async function loadTeamAppSettings(adapter) {
   if (partial.quoteNoise) {
     partial.quoteNoise = normalizeQuoteNoiseConfig(partial.quoteNoise)
   }
+  partial.postUseKeyCustomers = normalizePostUseKeyCustomers(partial.postUseKeyCustomers)
   return partial
 }
 

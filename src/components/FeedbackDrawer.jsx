@@ -1629,15 +1629,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Descriptions>
             </Card>
             {feedback.customerVisit ? (
-              <Card size="small" title="客服回访">
+              <Card size="small" title="客服部回访">
                 <Descriptions size="small" column={1} bordered>
-                  <Descriptions.Item label="用户反馈原文">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                      {feedback.customerVisit.userFeedbackText || '—'}
-                    </Typography.Paragraph>
+                  <Descriptions.Item label="客户名称">
+                    {feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="用户信息">
-                    {feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
+                  <Descriptions.Item label="客户编码">
+                    {feedback.customerVisit.customerCode || '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="回访反馈信息">
                     <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
@@ -1655,11 +1653,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   <Descriptions.Item label="反馈摘要">
                     <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
                       {feedback.customerVisit.feedbackSummary || '—'}
-                    </Typography.Paragraph>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="回访结果">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                      {feedback.customerVisit.visitResult || '—'}
                     </Typography.Paragraph>
                   </Descriptions.Item>
                 </Descriptions>

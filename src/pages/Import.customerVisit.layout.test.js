@@ -7,8 +7,8 @@ describe('Import customer visit upload rules', () => {
 
   it('allows multi-file customer visit upload and shows the new template hint', () => {
     expect(source).toContain("const singleFileEnrichImport = followUpImport")
-    expect(source).toContain('客服回访支持最多')
-    expect(source).toContain('用户反馈原文、用户信息、回访结果、内部评估')
-    expect(source).toContain('拖拽或点击选择客服回访文件（可多选）')
+    expect(source).toContain('客服部回访支持最多')
+    expect(source).toContain('数据月份、客户名称、客户编码、产品名称、回访结果、内部评估')
+    expect(source).toContain('拖拽或点击选择客服部回访文件（可多选）')
   })
 })

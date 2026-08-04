@@ -34,6 +34,8 @@ export function combineImportFileSha256(hashes) {
  * @property {string} selectedSheet
  * @property {string[]} headers
  * @property {Record<string, string>[]} rows
+ * @property {boolean} [requiresPassword]
+ * @property {string} [password]
  */
 
 /**

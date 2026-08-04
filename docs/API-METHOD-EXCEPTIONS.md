@@ -24,7 +24,7 @@
 | GET | `/api/storage/background-task` | 后台任务锁 | 低 | 只读 |
 | GET | `/api/storage/periods` | 洞察周期 | 低 | 只读 |
 | GET | `/api/storage/periods/:id` | 周期详情 | 低 | 只读 |
-| GET | `/api/storage/records` | 工单列表 | 中 | 业务只读；含脱敏后内容 |
+| GET | `/api/storage/records` | 工单列表 | 中 | 业务只读；返回库内当前存储内容（历史旧数据可能仍保留旧脱敏文本） |
 | GET | `/api/storage/records/:id` | 单条工单 | 中 | 同上 |
 | GET | `/api/storage/runs` | 分析运行 | 低 | 只读 |
 | GET | `/api/storage/runs/by-idempotency` | 幂等查询 | 低 | 只读 |

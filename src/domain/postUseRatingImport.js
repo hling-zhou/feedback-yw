@@ -10,7 +10,7 @@ export const POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT = /** @type {const} */ ('cus
 
 export const POST_USE_RATING_SUBTYPE_OPTIONS = [
   { value: POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE, label: '短信渠道+官网渠道 用户反馈' },
-  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '客服回访导入' },
+  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '客服部回访导入' },
 ]
 
 export const FEEDBACK_LANE_POST_USE = /** @type {const} */ ('post_use')

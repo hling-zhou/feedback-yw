@@ -1,32 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  maskIpAddresses,
-  desensitizeImportRow,
   normalizeTicketId,
   extractMobileTicketId,
   isLegacyDemoTicketId,
+  normalizeCreatedAt,
 } from './desensitize.js'
-
-describe('maskIpAddresses', () => {
-  it('masks IPv4', () => {
-    expect(maskIpAddresses('客户反馈 192.168.1.100 无法访问')).toBe(
-      '客户反馈 [IP已脱敏] 无法访问',
-    )
-  })
-
-  it('masks IPv4 after Chinese colon', () => {
-    expect(maskIpAddresses('资源IP：10.12.3.4')).toBe('资源IP：[IP已脱敏]')
-  })
-
-  it('masks IPv4 with port', () => {
-    expect(maskIpAddresses('白名单 10.0.0.5:8085')).toBe('白名单 [IP已脱敏]')
-  })
-
-  it('leaves non-IP text unchanged', () => {
-    expect(maskIpAddresses('无 IP 的工单')).toBe('无 IP 的工单')
-    expect(maskIpAddresses('弹性公网IP无法访问')).toBe('弹性公网IP无法访问')
-  })
-})
 
 describe('normalizeTicketId', () => {
   it('fixes scientific notation', () => {
@@ -56,9 +34,12 @@ describe('isLegacyDemoTicketId', () => {
   })
 })
 
-describe('desensitizeImportRow', () => {
-  it('skips when disabled', () => {
-    const row = { handlingText: '192.168.0.1' }
-    expect(desensitizeImportRow(row, false).handlingText).toBe('192.168.0.1')
+describe('normalizeCreatedAt', () => {
+  it('normalizes slash date to yyyy-mm-dd', () => {
+    expect(normalizeCreatedAt('2026/08/04')).toBe('2026-08-04')
+  })
+
+  it('keeps scientific notation string as-is for upstream handling', () => {
+    expect(normalizeCreatedAt('4.5401E+12')).toBe('4.5401E+12')
   })
 })
