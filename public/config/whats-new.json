@@ -1,9 +1,24 @@
 {
-  "generatedAt": "2026-08-04T05:55:00.000Z",
+  "generatedAt": "2026-08-04T06:50:00.000Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
   "repoCommit": "567921772d3ef930fd0f9a91b6b2a2d2138de02b",
   "items": [
+    {
+      "id": "2026-08-04-post-use-visit-feedback-tabs",
+      "title": "补齐重点客户维护与客服部回访反馈视图",
+      "category": "feature",
+      "modules": [
+        "feedbacks",
+        "workbench",
+        "tags"
+      ],
+      "publishedAt": "2026-08-04",
+      "appVersion": null,
+      "summary": "- 分析维度新增“重点客户”Tab，重点客户名单改为在此维护，点击保存后生效\n- 反馈库新增“客服部回访”Tab，展示导入的回访原单，支持客户名称搜索与导出\n- 用后即评综合分析中的“下载建议客服部回访客户清单”按钮在不可用时保留禁用态，并在悬停时提示原因",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "2026-08-04-post-use-import-updates",
       "title": "完善用后即评导入与客服部回访闭环",

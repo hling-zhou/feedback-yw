@@ -22,7 +22,10 @@ describe('PostUseStoryView narrative hierarchy', () => {
 
   it('keeps callback recommendation download entry in customer evidence section', () => {
     expect(source).toContain('下载建议客服部回访客户清单')
-    expect(source).toContain('请先到设置中维护重点客户名单')
+    expect(source).toContain('const callbackDownloadDisabled = !callbackRecommendations.length')
+    expect(source).toContain('disabled={callbackDownloadDisabled}')
+    expect(source).toContain('请先到分析维度维护重点客户名单')
+    expect(source).toContain('当前范围内没有命中“重点客户且评分低于 7 分”的记录')
   })
 
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {

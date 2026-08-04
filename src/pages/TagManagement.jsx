@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
 import CustomTagsPanel from '../components/tagManagement/CustomTagsPanel.jsx'
 import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx'
+import PostUseKeyCustomersPanel from '../components/tagManagement/PostUseKeyCustomersPanel.jsx'
 import ProductConfigurationCenter from '../components/tagManagement/ProductConfigurationCenter.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -14,6 +15,7 @@ const TAB_KEYS = {
   requestScene: 'request_scene',
   problemType: 'problem_type',
   journey: 'journey',
+  keyCustomers: 'key_customers',
   review: 'review',
 }
 
@@ -67,6 +69,11 @@ export default function TagManagement() {
         children: <CustomTagsPanel tagKind="journey" readOnly={readOnly} />,
       },
       {
+        key: TAB_KEYS.keyCustomers,
+        label: '重点客户',
+        children: <PostUseKeyCustomersPanel readOnly={readOnly} />,
+      },
+      {
         key: TAB_KEYS.review,
         label: (
           <span>
@@ -86,7 +93,7 @@ export default function TagManagement() {
     <div>
       <PageHeader
         title="分析维度"
-        desc="产品配置、通用请求场景与问题类型、分产品用户旅程，以及 LLM 提议标签复核"
+        desc="产品配置、通用请求场景与问题类型、分产品用户旅程、重点客户名单，以及 LLM 提议标签复核"
       />
       {readOnly && (
         <Alert

@@ -15,10 +15,12 @@ export const POST_USE_RATING_SUBTYPE_OPTIONS = [
 
 export const FEEDBACK_LANE_POST_USE = /** @type {const} */ ('post_use')
 export const FEEDBACK_LANE_TICKETS = /** @type {const} */ ('tickets')
+export const FEEDBACK_LANE_CUSTOMER_VISITS = /** @type {const} */ ('customer_visits')
 
 export const FEEDBACK_LANE_DATA_SOURCES = {
   [FEEDBACK_LANE_TICKETS]: ['complaint_ticket', 'consultation_ticket'],
   [FEEDBACK_LANE_POST_USE]: ['post_use_rating'],
+  [FEEDBACK_LANE_CUSTOMER_VISITS]: [],
 }
 
 /** 用后即评满意度大类提示：不含已挂到投诉/咨询工单的回访 */
@@ -101,7 +103,7 @@ export function isPostUseNon10LibraryRecord(record) {
 /**
  * 从 URLSearchParams / lane 字符串 / { lane, source } 解析反馈库大类
  * @param {string | URLSearchParams | { get?: (k: string) => string | null; lane?: string; source?: string } | null | undefined} searchParamsOrLane
- * @returns {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS}
+ * @returns {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS | typeof FEEDBACK_LANE_CUSTOMER_VISITS}
  */
 export function resolveFeedbackLane(searchParamsOrLane) {
   if (searchParamsOrLane == null) return FEEDBACK_LANE_TICKETS
@@ -109,6 +111,9 @@ export function resolveFeedbackLane(searchParamsOrLane) {
   if (typeof searchParamsOrLane === 'string') {
     const s = searchParamsOrLane.trim()
     if (s === FEEDBACK_LANE_POST_USE || s === 'post_use_rating') return FEEDBACK_LANE_POST_USE
+    if (s === FEEDBACK_LANE_CUSTOMER_VISITS || s === 'customer_visit') {
+      return FEEDBACK_LANE_CUSTOMER_VISITS
+    }
     return FEEDBACK_LANE_TICKETS
   }
 
@@ -124,6 +129,7 @@ export function resolveFeedbackLane(searchParamsOrLane) {
   const lane = String(get('lane') ?? '').trim()
   if (lane === FEEDBACK_LANE_POST_USE) return FEEDBACK_LANE_POST_USE
   if (lane === FEEDBACK_LANE_TICKETS) return FEEDBACK_LANE_TICKETS
+  if (lane === FEEDBACK_LANE_CUSTOMER_VISITS) return FEEDBACK_LANE_CUSTOMER_VISITS
 
   const source = String(get('source') ?? '').trim()
   if (source === 'post_use_rating') return FEEDBACK_LANE_POST_USE
@@ -132,7 +138,7 @@ export function resolveFeedbackLane(searchParamsOrLane) {
 }
 
 /**
- * @param {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS} lane
+ * @param {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS | typeof FEEDBACK_LANE_CUSTOMER_VISITS} lane
  * @param {string | null | undefined} source
  */
 export function normalizeFeedbackLaneDataSource(lane, source) {

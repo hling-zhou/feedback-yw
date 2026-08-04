@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
@@ -74,7 +74,10 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
-  const showCallbackDownload = !model.scope.isMonthPeriod || callbackRecommendations.length > 0
+  const callbackDownloadDisabled = !callbackRecommendations.length
+  const callbackDownloadDisabledReason = model.scope.postUseKeyCustomerCount === 0
+    ? '请先到分析维度维护重点客户名单'
+    : '当前范围内没有命中“重点客户且评分低于 7 分”的记录'
 
   return (
     <div className="space-y-5">
@@ -213,24 +216,27 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       <Card
         size="small"
         extra={
-          showCallbackDownload ? (
-            <Button
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={() => {
-                if (!callbackRecommendations.length) {
-                  message.info('当前范围内暂无建议客服部回访客户')
-                  return
-                }
-                downloadPostUseCallbackRecommendationsExcel(
-                  callbackRecommendations,
-                  model.scope.periodLabel,
-                )
-              }}
-            >
-              下载建议客服部回访客户清单
-            </Button>
-          ) : null
+          <Tooltip title={callbackDownloadDisabled ? callbackDownloadDisabledReason : ''}>
+            <span>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                disabled={callbackDownloadDisabled}
+                onClick={() => {
+                  if (!callbackRecommendations.length) {
+                    message.info('当前范围内暂无建议客服部回访客户')
+                    return
+                  }
+                  downloadPostUseCallbackRecommendationsExcel(
+                    callbackRecommendations,
+                    model.scope.periodLabel,
+                  )
+                }}
+              >
+                下载建议客服部回访客户清单
+              </Button>
+            </span>
+          </Tooltip>
         }
       >
         {model.scope.postUseKeyCustomerCount === 0 ? (
@@ -238,7 +244,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             className="mb-3"
             type="info"
             showIcon
-            message="请先到设置中维护重点客户名单"
+            message="请先到分析维度维护重点客户名单"
             description="建议客服部回访清单仅针对重点客户中的 7 分以下反馈生成。"
           />
         ) : null}
