@@ -290,9 +290,19 @@ export default function Feedbacks() {
     )
   }, [customerVisitRecords, activePeriod])
 
+  const postUseCatalog = useMemo(
+    () => getCatalogProducts(),
+    [feedbacks, productCatalogMeta?.loadedAt],
+  )
+
   const callbackRecommendationPool = useMemo(
-    () => buildPostUseCallbackRecommendations(feedbacks, settings?.postUseKeyCustomers),
-    [feedbacks, settings?.postUseKeyCustomers],
+    () => buildPostUseCallbackRecommendations(feedbacks, settings?.postUseKeyCustomers, {
+      productNames: postUseCatalog
+        .filter((product) => product?.analysisPostUseRating)
+        .map((product) => String(product.name || '').trim())
+        .filter(Boolean),
+    }),
+    [feedbacks, settings?.postUseKeyCustomers, postUseCatalog],
   )
 
   const filteredCustomerVisitRecords = useMemo(() => {
@@ -306,11 +316,6 @@ export default function Feedbacks() {
   const customerVisitTableRows = useMemo(
     () => buildPostUseCustomerVisitRows(filteredCustomerVisitRecords, callbackRecommendationPool),
     [filteredCustomerVisitRecords, callbackRecommendationPool],
-  )
-
-  const postUseCatalog = useMemo(
-    () => getCatalogProducts(),
-    [feedbacks, productCatalogMeta?.loadedAt],
   )
   const scopedPostUsePeriodFeedbacks = useMemo(
     () =>

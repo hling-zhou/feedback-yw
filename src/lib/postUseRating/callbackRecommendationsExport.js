@@ -18,19 +18,17 @@ function triggerDownload(blob, filename) {
  *   triggerType?: string
  *   lowScoreLt7Count?: number
  *   scoreBreakdown?: string
- *   quoteCount?: number
- *   reasonCount?: number
  *   latestFeedbackAt?: string
  *   channels?: string[]
  *   recommendedReason?: string
  *   quotes?: string[]
  *   reasons?: string[]
+ *   feedbackReasons?: string[]
+ *   feedbackReasonSummary?: string
  * }>} recommendations
  */
 export function buildPostUseCallbackRecommendationRows(recommendations) {
   const list = recommendations || []
-  const maxQuotes = Math.max(0, ...list.map((item) => item.quotes?.length || 0))
-  const maxReasons = Math.max(0, ...list.map((item) => item.reasons?.length || 0))
 
   return list.map((item) => {
     /** @type {Record<string, string | number>} */
@@ -42,36 +40,72 @@ export function buildPostUseCallbackRecommendationRows(recommendations) {
       建议触发类型: item.triggerType || '',
       '7分以下总次数': item.lowScoreLt7Count || 0,
       '7分以下分布': item.scoreBreakdown || '',
-      原话命中条数: item.quoteCount || 0,
-      低分原因命中条数: item.reasonCount || 0,
       最近反馈时间: item.latestFeedbackAt || '',
       涉及渠道: (item.channels || []).filter(Boolean).join('；'),
-      建议回访原因: item.recommendedReason || '',
+      反馈原因: item.feedbackReasonSummary || '',
     }
-    for (let i = 0; i < maxQuotes; i += 1) {
-      row[`客户原话${i + 1}`] = item.quotes?.[i] || ''
-    }
-    for (let i = 0; i < maxReasons; i += 1) {
-      row[`低分原因${i + 1}`] = item.reasons?.[i] || ''
-    }
+    row.建议回访原因 = item.recommendedReason || ''
     return row
   })
 }
 
 /**
+ * @param {Array<{
+ *   productName?: string
+ *   originalTicketId?: string
+ *   score?: number
+ *   customerName?: string
+ *   customerCode?: string
+ *   dissatisfactionReason?: string
+ * }>} rows
+ */
+export function buildPostUseCallbackNonTenRows(rows) {
+  return (rows || []).map((item) => ({
+    具体投诉产品: item.productName || '',
+    原工单编号: item.originalTicketId || '',
+    投诉整体服务评价: item.score ?? '',
+    客户名称: item.customerName || '',
+    集团客户编码: item.customerCode || '',
+    不满原因: item.dissatisfactionReason || '',
+  }))
+}
+
+/**
  * @param {Parameters<typeof buildPostUseCallbackRecommendationRows>[0]} recommendations
+ * @param {Parameters<typeof buildPostUseCallbackNonTenRows>[0]} callbackNonTenRows
+ */
+export function buildPostUseCallbackWorkbook(recommendations, callbackNonTenRows) {
+  const recommendationRows = buildPostUseCallbackRecommendationRows(recommendations)
+  const callbackRows = buildPostUseCallbackNonTenRows(callbackNonTenRows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(
+      recommendationRows.length ? recommendationRows : [{ 提示: '当前范围内暂无官网评分类建议回访记录' }],
+    ),
+    '官网评分类建议回访',
+  )
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(
+      callbackRows.length ? callbackRows : [{ 提示: '当前范围内暂无投诉回访非10分记录' }],
+    ),
+    '投诉回访非10分',
+  )
+  return wb
+}
+
+/**
+ * @param {Parameters<typeof buildPostUseCallbackRecommendationRows>[0]} recommendations
+ * @param {Parameters<typeof buildPostUseCallbackNonTenRows>[0]} callbackNonTenRows
  * @param {string} [scopeLabel]
  */
 export function downloadPostUseCallbackRecommendationsExcel(
   recommendations,
+  callbackNonTenRows,
   scopeLabel = '当前范围',
 ) {
-  const rows = buildPostUseCallbackRecommendationRows(recommendations)
-  const sheet = XLSX.utils.json_to_sheet(
-    rows.length ? rows : [{ 提示: '当前范围内暂无建议客服部回访客户' }],
-  )
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, sheet, '建议客服部回访客户清单')
+  const wb = buildPostUseCallbackWorkbook(recommendations, callbackNonTenRows)
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
   const datePart = new Date().toISOString().slice(0, 10)
   const safeScope = String(scopeLabel || '当前范围').replace(/[\\/:*?"<>|]+/g, '-')
@@ -79,6 +113,6 @@ export function downloadPostUseCallbackRecommendationsExcel(
     new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }),
-    `建议客服部回访客户清单-${safeScope}-${datePart}.xlsx`,
+    `建议回访-溯源清单-${safeScope}-${datePart}.xlsx`,
   )
 }

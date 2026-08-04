@@ -113,6 +113,8 @@ const JOURNEY_MATCH_OPTIONS = [
   },
 ]
 
+const CLEAR_ALL_PRODUCTS_VALUE = '__ALL_PRODUCTS__'
+
 function llmConfigSource(settings, serverConfiguredHint) {
   if (settings.llmServerConfigured || serverConfiguredHint) return 'server'
   if (settings.llmApiKey?.trim()) return 'client'
@@ -540,18 +542,28 @@ export default function Settings() {
   }, [clearScopeRecords, feedbacks, clearPeriod, clearSourceType])
 
   const clearProductOptions = useMemo(
-    () =>
-      listProducts(clearScopeFeedbacks).map((p) => ({
+    () => {
+      const productOptions = listProducts(clearScopeFeedbacks).map((p) => ({
         label: `${p.name}（${p.count} 条）`,
         value: p.name,
-      })),
+      }))
+      if (!productOptions.length) return productOptions
+      return [
+        {
+          label: `全部产品（${clearScopeFeedbacks.length} 条）`,
+          value: CLEAR_ALL_PRODUCTS_VALUE,
+        },
+        ...productOptions,
+      ]
+    },
     [clearScopeFeedbacks],
   )
 
   const buildScopedClearOptions = () => ({
     ...(clearPeriodId ? { insightPeriodId: clearPeriodId } : {}),
     ...(clearSourceType ? { dataSourceType: clearSourceType } : {}),
-    ...(clearProduct ? { product: clearProduct } : {}),
+    ...(clearProduct === CLEAR_ALL_PRODUCTS_VALUE ? { allProducts: true } : {}),
+    ...(clearProduct && clearProduct !== CLEAR_ALL_PRODUCTS_VALUE ? { product: clearProduct } : {}),
   })
 
   const importJson = (file) => {
@@ -688,8 +700,8 @@ export default function Settings() {
               <Card title={<span className="text-red-700">危险操作</span>} className="border-red-200">
                 <Typography.Text type="secondary" className="block text-xs">
                   清空已导入的反馈、洞察快照、分析记录与待复核标签。按条件清空须同时选择
-                  <strong> 洞察周期 + 数据来源 + 产品</strong>
-                  ，仅删除三者交集内的工单；其它产品或来源保留。全部清空请用下方独立按钮。
+                  <strong> 洞察周期 + 数据来源</strong>
+                  ，并指定<strong>单个产品或全部产品</strong>；全部清空请用下方独立按钮。
                 </Typography.Text>
                 <div className="mt-4 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -738,7 +750,7 @@ export default function Settings() {
                         optionFilterProp="label"
                         className="w-full"
                         placeholder={
-                          clearPeriodId && clearSourceType ? '请选择产品' : '请先选择周期与来源'
+                          clearPeriodId && clearSourceType ? '请选择产品或全部产品' : '请先选择周期与来源'
                         }
                         disabled={!clearPeriodId || !clearSourceType}
                         value={clearProduct || undefined}

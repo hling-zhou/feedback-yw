@@ -17,6 +17,7 @@ import {
  * @property {string} [insightPeriodId]
  * @property {DataSourceType} [dataSourceType]
  * @property {string} [product] 产品名称（与 record.product 精确匹配）
+ * @property {boolean} [allProducts] UI 显式选择“全部产品”时的辅助标记；执行清空时等同于不限产品
  */
 
 /**
@@ -81,8 +82,11 @@ export function validateClearImportedDataOptions(options) {
 export function validateScopedClearOptions(options) {
   const base = validateClearImportedDataOptions(options)
   if (base) return base
-  if (!options.insightPeriodId || !options.dataSourceType || !options.product?.trim()) {
-    return '请同时选择洞察周期、数据来源与产品'
+  if (!options.insightPeriodId || !options.dataSourceType) {
+    return '请同时选择洞察周期与数据来源'
+  }
+  if (!options.allProducts && !options.product?.trim()) {
+    return '请选择产品，或选择“全部产品”'
   }
   return null
 }
@@ -106,6 +110,9 @@ export function describeClearImportedScope(options, period = null) {
     parts.push(`数据来源：${DATA_SOURCE_LABELS[options.dataSourceType] || options.dataSourceType}`)
   } else {
     parts.push('数据来源：不限制')
+  }
+  if (options.allProducts) {
+    parts.push('产品：全部产品')
   }
   if (options.product?.trim()) {
     parts.push(`产品：${options.product.trim()}`)
@@ -133,6 +140,9 @@ export function describeClearImportedScopeRisk(options) {
   }
   if (options.insightPeriodId && options.dataSourceType && options.product?.trim()) {
     return `将仅删除上述周期、来源与「${options.product.trim()}」的交集工单；其它产品、月份或来源保留。洞察快照不会自动删除，清空后请在工作台刷新洞察。`
+  }
+  if (options.insightPeriodId && options.dataSourceType && options.allProducts) {
+    return '将删除上述周期与来源下的全部产品数据；其它月份或其它来源保留。对应洞察快照与分析记录也会一并清空。'
   }
   if (options.insightPeriodId && options.dataSourceType) {
     return '将仅删除上述周期与来源的交集数据，其它月份或其它来源保留。'

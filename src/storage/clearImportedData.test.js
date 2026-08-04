@@ -67,7 +67,7 @@ describe('clearImportedData', () => {
     expect(validateClearImportedDataOptions({ dataSourceType: 'complaint_ticket' })).toBeNull()
   })
 
-  it('validateScopedClearOptions requires period, source and product', () => {
+  it('validateScopedClearOptions requires period, source and product selection', () => {
     expect(validateScopedClearOptions({ insightPeriodId: 'p1' })).toMatch(/同时/)
     expect(validateScopedClearOptions({ dataSourceType: 'complaint_ticket' })).toMatch(/同时/)
     expect(
@@ -75,12 +75,19 @@ describe('clearImportedData', () => {
         insightPeriodId: q2Period.id,
         dataSourceType: 'complaint_ticket',
       }),
-    ).toMatch(/产品/)
+    ).toMatch(/全部产品/)
     expect(
       validateScopedClearOptions({
         insightPeriodId: q2Period.id,
         dataSourceType: 'complaint_ticket',
         product: '云主机 ECS',
+      }),
+    ).toBeNull()
+    expect(
+      validateScopedClearOptions({
+        insightPeriodId: q2Period.id,
+        dataSourceType: 'complaint_ticket',
+        allProducts: true,
       }),
     ).toBeNull()
   })
@@ -216,6 +223,13 @@ describe('clearImportedData', () => {
         product: '云主机 ECS',
       }),
     ).toContain('交集')
+    expect(
+      describeClearImportedScopeRisk({
+        insightPeriodId: period.id,
+        dataSourceType: 'complaint_ticket',
+        allProducts: true,
+      }),
+    ).toContain('全部产品')
   })
 
   it('recordMatchesClearFilter resolves period from id when period object omitted', () => {

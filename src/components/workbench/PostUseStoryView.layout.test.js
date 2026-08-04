@@ -21,11 +21,16 @@ describe('PostUseStoryView narrative hierarchy', () => {
   })
 
   it('keeps callback recommendation download entry in customer evidence section', () => {
-    expect(source).toContain('下载建议客服部回访客户清单')
-    expect(source).toContain('const callbackDownloadDisabled = !callbackRecommendations.length')
+    expect(source).toContain('下载建议回访/溯源清单')
+    expect(source).toContain('const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length')
     expect(source).toContain('disabled={callbackDownloadDisabled}')
-    expect(source).toContain('请先到分析维度维护重点客户名单')
-    expect(source).toContain('当前范围内没有命中“重点客户且评分低于 7 分”的记录')
+    expect(source).toContain('当前范围内暂无命中“官网评分类建议回访”或“投诉回访非10分”的记录')
+    expect(source).toContain('dataSource={drivers.customers}')
+    expect(source).toContain("title: '客户特征'")
+    expect(source).toContain("title: '反馈原因'")
+    expect(source).toContain('title="高频低分原因"')
+    expect(source).toContain('当前范围内暂无命中 高频低分原因规则 的记录')
+    expect(source).toContain("dataSource={drivers.highFrequencyLowScoreReasons || []}")
   })
 
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {

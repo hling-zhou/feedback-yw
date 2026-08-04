@@ -1,24 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { buildPostUseCallbackRecommendationRows } from './callbackRecommendationsExport.js'
+import {
+  buildPostUseCallbackNonTenRows,
+  buildPostUseCallbackRecommendationRows,
+  buildPostUseCallbackWorkbook,
+} from './callbackRecommendationsExport.js'
 
 describe('callbackRecommendationsExport', () => {
-  it('expands quote and reason columns without concatenation', () => {
+  it('aggregates quote reason fields into single counted columns and puts recommended reason at the end', () => {
     const rows = buildPostUseCallbackRecommendationRows([
       {
         importMonths: ['2026-06'],
         customerName: '中国铁塔',
         customerCode: 'C1',
         productName: '弹性公网IP',
-        triggerType: '7分以下重点客户',
+        triggerType: '重点客户；高频低分客户',
         lowScoreLt7Count: 2,
         scoreBreakdown: '6分1次；5分1次',
-        quoteCount: 2,
-        reasonCount: 1,
         latestFeedbackAt: '2026-06-05T10:00:00.000Z',
-        channels: ['console', 'sms'],
+        channels: ['官网评分类'],
         recommendedReason: '建议回访',
-        quotes: ['控制台原话2', '短信原话1'],
-        reasons: ['功能有缺失'],
+        feedbackReasonSummary: '满意原因A（2）；意见建议B（1）',
       },
     ])
 
@@ -27,9 +28,46 @@ describe('callbackRecommendationsExport', () => {
       客户名称: '中国铁塔',
       产品名称: '弹性公网IP',
       '7分以下总次数': 2,
-      客户原话1: '控制台原话2',
-      客户原话2: '短信原话1',
-      低分原因1: '功能有缺失',
+      反馈原因: '满意原因A（2）；意见建议B（1）',
+      建议回访原因: '建议回访',
     })
+    expect(rows[0]).not.toHaveProperty('客户原话')
+    expect(rows[0]).not.toHaveProperty('低分原因')
+    expect(rows[0]).not.toHaveProperty('原话命中条数')
+    expect(rows[0]).not.toHaveProperty('低分原因命中条数')
+    expect(Object.keys(rows[0]).at(-1)).toBe('建议回访原因')
+  })
+
+  it('maps callback non-ten rows to LD 3.9 columns', () => {
+    const rows = buildPostUseCallbackNonTenRows([
+      {
+        productName: '弹性公网IP',
+        originalTicketId: 'T-001',
+        score: 8,
+        customerName: '客户A',
+        customerCode: 'C1',
+        dissatisfactionReason: '处理周期长',
+      },
+    ])
+
+    expect(rows).toEqual([
+      {
+        具体投诉产品: '弹性公网IP',
+        原工单编号: 'T-001',
+        投诉整体服务评价: 8,
+        客户名称: '客户A',
+        集团客户编码: 'C1',
+        不满原因: '处理周期长',
+      },
+    ])
+  })
+
+  it('builds workbook with two sheets', () => {
+    const wb = buildPostUseCallbackWorkbook(
+      [{ customerName: '中国铁塔', productName: '弹性公网IP', recommendedReason: '建议回访' }],
+      [{ productName: '弹性公网IP', score: 8, customerName: '客户A' }],
+    )
+
+    expect(wb.SheetNames).toEqual(['官网评分类建议回访', '投诉回访非10分'])
   })
 })

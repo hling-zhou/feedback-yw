@@ -26,7 +26,7 @@ describe('post-use story model', () => {
 
     expect(Object.keys(model)).toEqual([
       'scope', 'conclusions', 'metrics', 'productOverview', 'trendsAndChanges',
-      'drivers', 'actionsAndRecovery', 'quality', 'scoredRows', 'callbackRecommendations', 'insightBundle',
+      'drivers', 'actionsAndRecovery', 'quality', 'scoredRows', 'callbackRecommendations', 'callbackNonTenRecords', 'insightBundle',
     ])
     expect(model.conclusions.map((item) => item.key)).toEqual(['overall', 'risk', 'change', 'action'])
     expect(model.productOverview[0]).toMatchObject({
@@ -198,7 +198,7 @@ describe('post-use story model', () => {
     expect(model.actionsAndRecovery.triggerGroups.some((item) => item.callbackNonTenCount > 0)).toBe(true)
   })
 
-  it('builds callback recommendations only for key customers with score below 7', () => {
+  it('builds callback recommendations for key or high-frequency console low-score customers', () => {
     const model = buildPostUseStoryModel({
       records: [
         {
@@ -206,13 +206,224 @@ describe('post-use story model', () => {
           dataSourceType: 'post_use_rating',
           productName: '弹性公网IP',
           ratingScore: 6,
-          channel: 'sms',
+          channel: 'console',
           importMonth: '2026-06',
-          commentText: '短信原话1',
-          rawText: '短信原话1',
+          commentText: '控制台原话1',
+          rawText: '控制台原话1',
+          lowScoreReason: '功能有缺失',
+          feedbackReasonTexts: ['满意原因A', '建议A'],
           customerName: '中国铁塔某省公司',
           customerCode: 'C1',
           createdAt: '2026-06-03T10:00:00.000Z',
+        },
+        {
+          id: 'r2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '控制台原话2',
+          rawText: '控制台原话2',
+          lowScoreReason: '功能有缺失',
+          feedbackReasonTexts: ['满意原因B', '建议B'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-05T10:00:00.000Z',
+        },
+        {
+          id: 'r3',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 4,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '普通客户原话1',
+          rawText: '普通客户原话1',
+          lowScoreReason: '流程复杂',
+          feedbackReasonTexts: ['满意原因C'],
+          customerName: '普通客户',
+          customerCode: 'C2',
+          createdAt: '2026-06-06T10:00:00.000Z',
+        },
+        {
+          id: 'r4',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '普通客户原话2',
+          rawText: '普通客户原话2',
+          lowScoreReason: '流程复杂',
+          feedbackReasonTexts: ['满意原因D', '建议D'],
+          customerName: '普通客户',
+          customerCode: 'C2',
+          createdAt: '2026-06-07T10:00:00.000Z',
+        },
+        {
+          id: 'r5',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 4,
+          channel: 'sms',
+          importMonth: '2026-06',
+          commentText: '短信不应命中',
+          rawText: '短信不应命中',
+          customerName: '普通客户',
+          customerCode: 'C2',
+          createdAt: '2026-06-08T10:00:00.000Z',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations).toHaveLength(2)
+    expect(model.callbackRecommendations[0]).toMatchObject({
+      customerName: '中国铁塔某省公司',
+      productName: '弹性公网IP',
+      lowScoreLt7Count: 2,
+      scoreBreakdown: '6分1次；5分1次',
+      quoteCount: 2,
+      reasonCount: 2,
+      triggerType: '重点客户；高频低分客户',
+      completed: false,
+      isKeyCustomer: true,
+      isHighFrequency: true,
+    })
+    expect(model.callbackRecommendations[0].quotes).toEqual(['控制台原话2', '控制台原话1'])
+    expect(model.callbackRecommendations[0].reasons).toEqual(['功能有缺失', '功能有缺失'])
+    expect(model.callbackRecommendations[0].feedbackReasons).toEqual(['满意原因B', '建议B', '满意原因A', '建议A'])
+    expect(model.callbackRecommendations[0].quoteSummary).toBe('控制台原话2（1）；控制台原话1（1）')
+    expect(model.callbackRecommendations[0].reasonSummary).toBe('功能有缺失（2）')
+    expect(model.callbackRecommendations[0].feedbackReasonSummary).toBe('满意原因B（1）；建议B（1）；满意原因A（1）；建议A（1）')
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('命中重点客户名单')
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('同一客户低分记录达到2次及以上')
+
+    expect(model.callbackRecommendations[1]).toMatchObject({
+      customerName: '普通客户',
+      productName: '弹性公网IP',
+      lowScoreLt7Count: 2,
+      scoreBreakdown: '5分1次；4分1次',
+      quoteCount: 2,
+      reasonCount: 2,
+      triggerType: '高频低分客户',
+      completed: false,
+      isKeyCustomer: false,
+      isHighFrequency: true,
+    })
+    expect(model.callbackRecommendations[1].quotes).toEqual(['普通客户原话2', '普通客户原话1'])
+    expect(model.callbackRecommendations[1].reasons).toEqual(['流程复杂', '流程复杂'])
+    expect(model.callbackRecommendations[1].quoteSummary).toBe('普通客户原话2（1）；普通客户原话1（1）')
+    expect(model.callbackRecommendations[1].reasonSummary).toBe('流程复杂（2）')
+  })
+
+  it('uses only the three customer-answer fields for feedback reason summary', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'r1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 4,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '客户原话A',
+          rawText: '客户原话A',
+          lowScoreReason: '低分原因A',
+          feedbackReasonTexts: ['客户回答A', '客户回答B', '客户回答A'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-03T10:00:00.000Z',
+        },
+        {
+          id: 'r2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '客户原话B',
+          rawText: '客户原话B',
+          lowScoreReason: '低分原因B',
+          feedbackReasonTexts: ['客户回答B'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-05T10:00:00.000Z',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations[0].feedbackReasons).toEqual(['客户回答B', '客户回答A', '客户回答B'])
+    expect(model.callbackRecommendations[0].feedbackReasonSummary).toBe('客户回答B（2）；客户回答A（1）')
+  })
+
+  it('builds callback non-ten trace rows from callback channel records', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'c1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 8,
+          channel: 'callback',
+          importMonth: '2026-06',
+          customerName: '客户A',
+          customerCode: 'C1',
+          lowScoreReason: '处理周期长',
+          originalTicketId: 'T-001',
+        },
+        {
+          id: 'c2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 10,
+          channel: 'callback',
+          importMonth: '2026-06',
+          customerName: '客户B',
+          customerCode: 'C2',
+          lowScoreReason: '不应命中',
+          originalTicketId: 'T-002',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+    })
+
+    expect(model.callbackNonTenRecords).toEqual([
+      expect.objectContaining({
+        productName: '弹性公网IP',
+        originalTicketId: 'T-001',
+        score: 8,
+        customerName: '客户A',
+        customerCode: 'C1',
+        dissatisfactionReason: '处理周期长',
+      }),
+    ])
+  })
+
+  it('keeps callback recommendations downloadable after customer visits are imported', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'r1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 4,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '控制台原话1',
+          rawText: '控制台原话1',
+          lowScoreReason: '功能有缺失',
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-03T10:00:00.000Z',
+          customerVisit: { visitMonth: '2026-06' },
         },
         {
           id: 'r2',
@@ -228,32 +439,6 @@ describe('post-use story model', () => {
           customerCode: 'C1',
           createdAt: '2026-06-05T10:00:00.000Z',
         },
-        {
-          id: 'r3',
-          dataSourceType: 'post_use_rating',
-          productName: '弹性公网IP',
-          ratingScore: 7,
-          channel: 'sms',
-          importMonth: '2026-06',
-          commentText: '7分不应命中',
-          rawText: '7分不应命中',
-          customerName: '中国铁塔某省公司',
-          customerCode: 'C1',
-          createdAt: '2026-06-06T10:00:00.000Z',
-        },
-        {
-          id: 'r4',
-          dataSourceType: 'post_use_rating',
-          productName: '弹性公网IP',
-          ratingScore: 4,
-          channel: 'sms',
-          importMonth: '2026-06',
-          commentText: '非重点客户',
-          rawText: '非重点客户',
-          customerName: '普通客户',
-          customerCode: 'C2',
-          createdAt: '2026-06-07T10:00:00.000Z',
-        },
       ],
       allRecords: [],
       productNames: ['弹性公网IP'],
@@ -265,39 +450,7 @@ describe('post-use story model', () => {
       customerName: '中国铁塔某省公司',
       productName: '弹性公网IP',
       lowScoreLt7Count: 2,
-      scoreBreakdown: '6分1次；5分1次',
-      quoteCount: 2,
-      reasonCount: 1,
-      completed: false,
-      isKeyCustomer: true,
+      completed: true,
     })
-    expect(model.callbackRecommendations[0].quotes).toEqual(['控制台原话2', '短信原话1'])
-    expect(model.callbackRecommendations[0].reasons).toEqual(['功能有缺失'])
-  })
-
-  it('marks callback recommendation completed when attached customer visit exists', () => {
-    const model = buildPostUseStoryModel({
-      records: [
-        {
-          id: 'r1',
-          dataSourceType: 'post_use_rating',
-          productName: '弹性公网IP',
-          ratingScore: 4,
-          channel: 'sms',
-          importMonth: '2026-06',
-          commentText: '短信原话1',
-          rawText: '短信原话1',
-          customerName: '中国铁塔某省公司',
-          customerCode: 'C1',
-          createdAt: '2026-06-03T10:00:00.000Z',
-          customerVisit: { visitMonth: '2026-06' },
-        },
-      ],
-      allRecords: [],
-      productNames: ['弹性公网IP'],
-      settings: { postUseKeyCustomers: ['中国铁塔'] },
-    })
-
-    expect(model.callbackRecommendations[0]?.completed).toBe(true)
   })
 })

@@ -2,9 +2,12 @@ import { matchAllReasonTaxonomy } from './reasonTaxonomy.js'
 import { normalizeEvidenceText } from './evidence.js'
 import { POST_USE_CRITICAL_LOW_SCORE, POST_USE_SMALL_SAMPLE_N, hasCriticalLowScore } from './metrics.js'
 import { POST_USE_ANALYSIS_RULE_VERSION } from './modelVersions.js'
+import { isKeyCustomerName } from './callbackRecommendations.js'
 
 export const POST_USE_ORIGINAL_SCENE_EMPTY = '未提供'
 export const POST_USE_JOURNEY_EMPTY = '未识别环节'
+const HIGH_FREQUENCY_LOW_SCORE_THRESHOLD = 7
+const HIGH_FREQUENCY_REASON_INVALID_WORDS = new Set(['无', '无/不涉及', '业务使用完毕', '其他'])
 
 /** @param {object} record */
 function normalizedRecord(record) {
@@ -36,6 +39,38 @@ function normalizedVisit(visit) {
     internalConclusion: normalizeEvidenceText(visit.internalConclusion),
     text: normalizeEvidenceText([visit.feedbackSummary, visit.visitResult, visit.internalConclusion].filter(Boolean).join(' ')),
   }
+}
+
+/** @param {unknown} value */
+function isValidHighFrequencyReasonCandidate(value) {
+  const text = normalizeEvidenceText(value)
+  if (!text) return false
+  if (HIGH_FREQUENCY_REASON_INVALID_WORDS.has(text)) return false
+  if (text.toLowerCase() === 'nan') return false
+  if (/^\d+$/.test(text)) return false
+  return true
+}
+
+/** @param {object} record */
+function pickHighFrequencyLowScoreReason(record) {
+  const explicit = Array.isArray(record.feedbackReasonTexts)
+    ? record.feedbackReasonTexts
+    : []
+  const candidates = explicit.length
+    ? explicit
+    : [
+      record.feedbackReasonPrimary,
+      record.feedbackReasonSecondary,
+      record.feedbackReasonTertiary,
+    ]
+  const seen = new Set()
+  for (const candidate of candidates) {
+    const text = normalizeEvidenceText(candidate)
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    if (isValidHighFrequencyReasonCandidate(text)) return text
+  }
+  return ''
 }
 
 /** @param {object[]} visits @param {string} productName */
@@ -220,6 +255,68 @@ export function buildCustomerInsights(records, visits = []) {
   })).sort((a, b) => b.nonTenCount - a.nonTenCount || a.avgScore - b.avgScore)
 }
 
+/**
+ * 3.8 高频低分原因登记：官网评分类、云网产品、得分<7，取首个有效反馈；
+ * 保留 Top5 高频原因或重点客户记录。
+ * @param {object[]} records
+ * @param {{ keyCustomers?: string[]; productNames?: string[] }} [options]
+ */
+export function buildHighFrequencyLowScoreReasonRows(records, options = {}) {
+  const keyCustomers = options.keyCustomers || []
+  const productNames = options.productNames || []
+  const productSet = productNames.length ? new Set(productNames) : null
+  const scoped = (records || [])
+    .filter((record) => String(record.channel || record.sourceSubType || '') === 'console')
+    .filter((record) => {
+      const productName = String(record.productName || record.product || '').trim()
+      return productName && (!productSet || productSet.has(productName))
+    })
+    .map((record) => {
+      const score = Number(record.ratingScore)
+      return {
+        id: String(record.id || ''),
+        productName: String(record.productName || record.product || '').trim(),
+        score,
+        customerName: String(record.customerName || '').trim(),
+        customerCode: String(record.customerCode || '').trim(),
+        reason: pickHighFrequencyLowScoreReason(record),
+        isKeyCustomer: isKeyCustomerName(record.customerName, keyCustomers),
+      }
+    })
+    .filter((record) => Number.isFinite(record.score) && record.score < HIGH_FREQUENCY_LOW_SCORE_THRESHOLD)
+    .filter((record) => record.reason)
+
+  const reasonCount = new Map()
+  for (const record of scoped) {
+    reasonCount.set(record.reason, (reasonCount.get(record.reason) || 0) + 1)
+  }
+  const topFiveReasons = new Set(
+    [...reasonCount.entries()]
+      .sort((a, b) => Number(b[1]) - Number(a[1]) || a[0].localeCompare(b[0], 'zh'))
+      .slice(0, 5)
+      .map(([reason]) => reason),
+  )
+
+  return scoped
+    .filter((record) => topFiveReasons.has(record.reason) || record.isKeyCustomer)
+    .map((record) => ({
+      id: record.id || [record.productName, record.customerCode || record.customerName, record.reason, record.score].join('\u0000'),
+      lowScoreFeedback: record.reason,
+      productName: record.productName,
+      score: record.score,
+      feedbackCount: reasonCount.get(record.reason) || 0,
+      customerName: record.customerName || '匿名客户',
+      customerCode: record.customerCode,
+      customerTag: record.isKeyCustomer ? '重点' : '',
+    }))
+    .sort((a, b) =>
+      Number(b.feedbackCount) - Number(a.feedbackCount)
+      || Number(Boolean(b.customerTag)) - Number(Boolean(a.customerTag))
+      || Number(a.score) - Number(b.score)
+      || a.productName.localeCompare(b.productName, 'zh')
+      || a.customerName.localeCompare(b.customerName, 'zh'))
+}
+
 /** @param {object[]} records */
 export function buildIssueChanges(records) {
   const rows = (records || []).map(normalizedRecord).filter((r) => r.month && r.score < 10 && r.text)
@@ -270,7 +367,7 @@ export function buildIssueChanges(records) {
   })
 }
 
-export function buildPostUseInsightBundle(records, { visits = [] } = {}) {
+export function buildPostUseInsightBundle(records, { visits = [], keyCustomers = [], productNames = [] } = {}) {
   return {
     generatedAt: new Date().toISOString(),
     ruleVersion: POST_USE_ANALYSIS_RULE_VERSION,
@@ -280,6 +377,7 @@ export function buildPostUseInsightBundle(records, { visits = [] } = {}) {
     needs: buildNeedInsights(records, visits),
     unclassifiedNeeds: buildUnclassifiedNeedEvidence(records),
     customers: buildCustomerInsights(records, visits),
+    highFrequencyLowScoreReasons: buildHighFrequencyLowScoreReasonRows(records, { keyCustomers, productNames }),
     issueChanges: buildIssueChanges(records),
   }
 }

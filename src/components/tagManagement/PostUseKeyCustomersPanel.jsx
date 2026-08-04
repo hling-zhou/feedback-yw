@@ -55,7 +55,7 @@ export default function PostUseKeyCustomersPanel({ readOnly = false }) {
       <div className={`space-y-4 ${dirty ? 'pb-20' : ''}`}>
         <Card title="用后即评重点客户名单">
           <Typography.Text type="secondary" className="mb-3 block text-xs">
-            用于“建议客服部回访客户清单”筛选。一行一个客户关键词，系统按客户名称包含匹配：
+            用于“建议回访/溯源清单”中的重点客户识别。一行一个客户关键词，系统按客户名称包含匹配：
             名单关键词包含客户名，或客户名包含名单关键词，均视为命中。修改后需要点击保存才会生效。
           </Typography.Text>
           <Input.TextArea

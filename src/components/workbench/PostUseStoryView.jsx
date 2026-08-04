@@ -64,9 +64,8 @@ function customerFeedbackHref(customerName) {
 
 export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
-  const callbackRecommendations = (model.callbackRecommendations || []).filter(
-    (item) => !item.completed,
-  )
+  const callbackRecommendations = model.callbackRecommendations || []
+  const callbackNonTenRecords = model.callbackNonTenRecords || []
   const exp = metrics.internalExperience
   const sat = metrics.satisfaction
   const scoreDistributionRows = (metrics.nonTenDistributionProducts || []).map((productName) => ({
@@ -74,10 +73,8 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
-  const callbackDownloadDisabled = !callbackRecommendations.length
-  const callbackDownloadDisabledReason = model.scope.postUseKeyCustomerCount === 0
-    ? '请先到分析维度维护重点客户名单'
-    : '当前范围内没有命中“重点客户且评分低于 7 分”的记录'
+  const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length
+  const callbackDownloadDisabledReason = '当前范围内暂无命中“官网评分类建议回访”或“投诉回访非10分”的记录'
 
   return (
     <div className="space-y-5">
@@ -212,7 +209,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         />
       </Card>
 
-      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并评价原话与客服部回访结论" id="post-use-customers" />
+      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并反馈原因与客服部回访结论" id="post-use-customers" />
       <Card
         size="small"
         extra={
@@ -223,31 +220,23 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
                 icon={<DownloadOutlined />}
                 disabled={callbackDownloadDisabled}
                 onClick={() => {
-                  if (!callbackRecommendations.length) {
-                    message.info('当前范围内暂无建议客服部回访客户')
+                  if (!callbackRecommendations.length && !callbackNonTenRecords.length) {
+                    message.info('当前范围内暂无建议回访/溯源记录')
                     return
                   }
                   downloadPostUseCallbackRecommendationsExcel(
                     callbackRecommendations,
+                    callbackNonTenRecords,
                     model.scope.periodLabel,
                   )
                 }}
               >
-                下载建议客服部回访客户清单
+                下载建议回访/溯源清单
               </Button>
             </span>
           </Tooltip>
         }
       >
-        {model.scope.postUseKeyCustomerCount === 0 ? (
-          <Alert
-            className="mb-3"
-            type="info"
-            showIcon
-            message="请先到分析维度维护重点客户名单"
-            description="建议客服部回访清单仅针对重点客户中的 7 分以下反馈生成。"
-          />
-        ) : null}
         <LimitedTable
           size="small"
           rowKey={(row) => row.customerCode || `${row.customerName}-${row.products.join(',')}`}
@@ -258,7 +247,6 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
               title: '客户',
               dataIndex: 'customerName',
               width: 190,
-              fixed: 'left',
               render: (value) => {
                 const href = customerFeedbackHref(value)
                 if (!href) return value || '—'
@@ -269,9 +257,27 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
             { title: '均分', dataIndex: 'avgScore', width: 76, render: (value) => value == null ? '—' : value },
             { title: '客户特征', width: 100, render: (_, row) => row.highFrequency ? <Tag color="red">高频低分</Tag> : row.visitEvidenceCount && !row.nonTenCount ? <Tag color="blue">仅回访证据</Tag> : <Tag>单次反馈</Tag> },
-            { title: '评价原话', dataIndex: 'latestQuote', ellipsis: true },
+            { title: '反馈原因', dataIndex: 'latestQuote', ellipsis: true },
             { title: '回访证据', dataIndex: 'visitEvidenceCount', width: 88, render: (value) => value || '—' },
             { title: '回访结论', dataIndex: 'visitConclusion', width: 180, ellipsis: true },
+          ]}
+        />
+      </Card>
+      <Card size="small" title="高频低分原因">
+        <LimitedTable
+          size="small"
+          rowKey={(row) => row.id}
+          dataSource={drivers.highFrequencyLowScoreReasons || []}
+          scroll={{ x: 980 }}
+          locale={{ emptyText: '当前范围内暂无命中 高频低分原因规则 的记录' }}
+          columns={[
+            { title: '低分反馈', dataIndex: 'lowScoreFeedback', width: 260, ellipsis: true },
+            { title: '产品名', dataIndex: 'productName', width: 145 },
+            { title: '得分', dataIndex: 'score', width: 76 },
+            { title: '低分反馈次数', dataIndex: 'feedbackCount', width: 108 },
+            { title: '集团客户名称', dataIndex: 'customerName', width: 180, ellipsis: true },
+            { title: '集团客户编码', dataIndex: 'customerCode', width: 140, render: (value) => value || '—' },
+            { title: '客户标识', dataIndex: 'customerTag', width: 88, render: (value) => value ? <Tag color="red">{value}</Tag> : '—' },
           ]}
         />
       </Card>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIssueChanges, buildNeedInsights, buildPostUseInsightBundle, buildProductExperienceOverview, buildSceneJourneyAnalysis, buildUnclassifiedNeedEvidence } from './insights.js'
+import { buildHighFrequencyLowScoreReasonRows, buildIssueChanges, buildNeedInsights, buildPostUseInsightBundle, buildProductExperienceOverview, buildSceneJourneyAnalysis, buildUnclassifiedNeedEvidence } from './insights.js'
 
 const row = (id, overrides = {}) => ({ id, dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 8, importMonth: '2026-06', ...overrides })
 
@@ -71,5 +71,60 @@ describe('post-use insight models', () => {
     expect(bundle.products[0]).toMatchObject({ sampleSize: 1, avgScore: 8, visitEvidenceCount: 1 })
     expect(bundle.needs.find((item) => item.need === '功能有缺失')).toMatchObject({ count: 1, visitEvidenceCount: 1 })
     expect(bundle.customers[0]).toMatchObject({ nonTenCount: 1, visitEvidenceCount: 1, visitConclusion: '需求接纳' })
+  })
+
+  it('builds high-frequency low-score reason rows from console records per LD 3.8', () => {
+    const reasons = buildHighFrequencyLowScoreReasonRows([
+      row('c1', { channel: 'console', ratingScore: 6, customerName: '中国铁塔华北', customerCode: 'K1', lowScoreReason: '不应命中', commentText: '无', rawText: '不应命中', feedbackReasonTexts: ['功能有缺失'] }),
+      row('c2', { channel: 'console', ratingScore: 5, customerName: '客户B', customerCode: 'C2', lowScoreReason: '不应命中', rawText: '不应命中', feedbackReasonTexts: ['功能有缺失'] }),
+      row('c3', { channel: 'console', ratingScore: 4, customerName: '客户C', customerCode: 'C3', lowScoreReason: '不应命中', rawText: '不应命中', feedbackReasonTexts: ['缺乏操作指引'] }),
+      row('c4', { channel: 'console', ratingScore: 6, customerName: '客户D', customerCode: 'C4', lowScoreReason: '不应命中', commentText: '不应命中', rawText: '不应命中', feedbackReasonTexts: ['其他', '内容/帮助说明不易懂'] }),
+      row('c5', { channel: 'sms', ratingScore: 5, customerName: '客户E', customerCode: 'C5', lowScoreReason: '功能有缺失', rawText: '功能有缺失', feedbackReasonTexts: ['功能有缺失'] }),
+      row('c6', { channel: 'console', ratingScore: 8, customerName: '客户F', customerCode: 'C6', lowScoreReason: '功能有缺失', rawText: '功能有缺失', feedbackReasonTexts: ['功能有缺失'] }),
+    ], {
+      keyCustomers: ['中国铁塔'],
+      productNames: ['弹性公网IP'],
+    })
+
+    expect(reasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        lowScoreFeedback: '功能有缺失',
+        feedbackCount: 2,
+        customerName: '中国铁塔华北',
+        customerTag: '重点',
+      }),
+      expect.objectContaining({
+        lowScoreFeedback: '内容/帮助说明不易懂',
+        feedbackCount: 1,
+        customerName: '客户D',
+      }),
+    ]))
+    expect(reasons.some((item) => item.customerName === '客户E')).toBe(false)
+    expect(reasons.some((item) => item.customerName === '客户F')).toBe(false)
+  })
+
+  it('uses only customer-answer fields for high-frequency low-score reasons', () => {
+    const reasons = buildHighFrequencyLowScoreReasonRows([
+      row('c1', {
+        channel: 'console',
+        ratingScore: 6,
+        customerName: '中国铁塔华东',
+        customerCode: 'K2',
+        lowScoreReason: '这里不该被拿来做高频低分原因',
+        commentText: '这里也不该被拿来做高频低分原因',
+        rawText: '这里也不该被拿来做高频低分原因',
+        feedbackReasonTexts: ['无', '客户回答A', '客户回答B'],
+      }),
+    ], {
+      keyCustomers: ['中国铁塔'],
+      productNames: ['弹性公网IP'],
+    })
+
+    expect(reasons).toEqual([
+      expect.objectContaining({
+        customerName: '中国铁塔华东',
+        lowScoreFeedback: '客户回答A',
+      }),
+    ])
   })
 })

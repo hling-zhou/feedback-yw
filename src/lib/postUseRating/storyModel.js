@@ -8,7 +8,10 @@ import {
 import { buildPostUseInsightBundle } from './insights.js'
 import { buildPostUseActionSignals } from './actionSignals.js'
 import { evaluateActionRecovery } from './actionRecovery.js'
-import { buildPostUseCallbackRecommendations } from './callbackRecommendations.js'
+import {
+  buildPostUseCallbackNonTenRecords,
+  buildPostUseCallbackRecommendations,
+} from './callbackRecommendations.js'
 import {
   buildFocusSatisfactionTrendChartModel,
   buildFocusScoreTrendChartModel,
@@ -59,7 +62,11 @@ export function buildPostUseStoryModel(input) {
     .filter((row) => row.avgScore !== 10 || row.hasNonTenScore)
     .map((row) => row.productName)
   const scoreDistribution = computeScoreDistribution(scoredRows, nonTenDistributionProducts)
-  const currentInsights = buildPostUseInsightBundle(records, { visits })
+  const currentInsights = buildPostUseInsightBundle(records, {
+    visits,
+    keyCustomers: settings?.postUseKeyCustomers,
+    productNames,
+  })
   const unclassifiedNeedCount = currentInsights.unclassifiedNeeds.length
   const analysisQuality = {
     ...(quality || {}),
@@ -82,7 +89,7 @@ export function buildPostUseStoryModel(input) {
   const comparisonRecords = endMonth
     ? allRecords.filter((record) => String(record.importMonth || record.createdAt || '').slice(0, 7) <= endMonth)
     : allRecords
-  const changes = buildPostUseInsightBundle(comparisonRecords).issueChanges
+  const changes = buildPostUseInsightBundle(comparisonRecords, { productNames }).issueChanges
 
   const satisfactionByProduct = new Map(satisfaction.byProduct.map((item) => [item.productName, item]))
   const needsByProduct = new Map()
@@ -237,7 +244,10 @@ export function buildPostUseStoryModel(input) {
     .sort((a, b) => ({ not_recovered: 0, pending: 1, recovered: 2, not_applicable: 3 }[a.validation.status] - ({ not_recovered: 0, pending: 1, recovered: 2, not_applicable: 3 }[b.validation.status])))
 
   const filteredTrend = trend ? filterPostUseTrendForPeriod(trend, period) : null
-  const callbackRecommendations = buildPostUseCallbackRecommendations(records, settings?.postUseKeyCustomers)
+  const callbackRecommendations = buildPostUseCallbackRecommendations(records, settings?.postUseKeyCustomers, {
+    productNames,
+  })
+  const callbackNonTenRecords = buildPostUseCallbackNonTenRecords(records, { productNames })
   const scoreTrend = filteredTrend
     ? buildFocusScoreTrendChartModel(filteredTrend, focusNames, 'internal_experience')
     : { data: [], areas: [] }
@@ -296,12 +306,14 @@ export function buildPostUseStoryModel(input) {
       needs: currentInsights.needs,
       unclassifiedNeeds: currentInsights.unclassifiedNeeds,
       customers: currentInsights.customers,
+      highFrequencyLowScoreReasons: currentInsights.highFrequencyLowScoreReasons,
       visitEvidenceCount: currentInsights.visitEvidenceCount,
     },
     actionsAndRecovery: { triggerGroups, rows: actionRows, recoveryRows, unlinkedRecommendations, notRecovered },
     quality: analysisQuality,
     scoredRows,
     callbackRecommendations,
+    callbackNonTenRecords,
     insightBundle: { ...currentInsights, issueChanges: changes },
   }
 }
