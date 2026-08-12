@@ -4,24 +4,20 @@ export const POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE = /** @type {const} */ ('cha
 export const POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK = /** @type {const} */ (
   'satisfaction_callback'
 )
+export const POST_USE_RATING_SUBTYPE_STANDALONE = /** @type {const} */ ('standalone')
 export const POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT = /** @type {const} */ ('customer_visit')
 
-/** @typedef {typeof POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE | typeof POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK | typeof POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT} PostUseRatingImportSubType */
+/** @typedef {typeof POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE | typeof POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK | typeof POST_USE_RATING_SUBTYPE_STANDALONE | typeof POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT} PostUseRatingImportSubType */
 
 export const POST_USE_RATING_SUBTYPE_OPTIONS = [
-  { value: POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE, label: '短信渠道+官网渠道 用户反馈' },
-  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '客服部回访导入' },
+  { value: POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE, label: '短信+官网双文件（推荐）' },
+  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '客服回访导入' },
+  { value: POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK, label: '满意度回访（兼容旧入口）' },
+  { value: POST_USE_RATING_SUBTYPE_STANDALONE, label: '独立评价记录' },
 ]
 
 export const FEEDBACK_LANE_POST_USE = /** @type {const} */ ('post_use')
 export const FEEDBACK_LANE_TICKETS = /** @type {const} */ ('tickets')
-export const FEEDBACK_LANE_CUSTOMER_VISITS = /** @type {const} */ ('customer_visits')
-
-export const FEEDBACK_LANE_DATA_SOURCES = {
-  [FEEDBACK_LANE_TICKETS]: ['complaint_ticket', 'consultation_ticket'],
-  [FEEDBACK_LANE_POST_USE]: ['post_use_rating'],
-  [FEEDBACK_LANE_CUSTOMER_VISITS]: [],
-}
 
 /** 用后即评满意度大类提示：不含已挂到投诉/咨询工单的回访 */
 export const POST_USE_LANE_HINT =
@@ -103,7 +99,7 @@ export function isPostUseNon10LibraryRecord(record) {
 /**
  * 从 URLSearchParams / lane 字符串 / { lane, source } 解析反馈库大类
  * @param {string | URLSearchParams | { get?: (k: string) => string | null; lane?: string; source?: string } | null | undefined} searchParamsOrLane
- * @returns {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS | typeof FEEDBACK_LANE_CUSTOMER_VISITS}
+ * @returns {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS}
  */
 export function resolveFeedbackLane(searchParamsOrLane) {
   if (searchParamsOrLane == null) return FEEDBACK_LANE_TICKETS
@@ -111,9 +107,6 @@ export function resolveFeedbackLane(searchParamsOrLane) {
   if (typeof searchParamsOrLane === 'string') {
     const s = searchParamsOrLane.trim()
     if (s === FEEDBACK_LANE_POST_USE || s === 'post_use_rating') return FEEDBACK_LANE_POST_USE
-    if (s === FEEDBACK_LANE_CUSTOMER_VISITS || s === 'customer_visit') {
-      return FEEDBACK_LANE_CUSTOMER_VISITS
-    }
     return FEEDBACK_LANE_TICKETS
   }
 
@@ -129,50 +122,11 @@ export function resolveFeedbackLane(searchParamsOrLane) {
   const lane = String(get('lane') ?? '').trim()
   if (lane === FEEDBACK_LANE_POST_USE) return FEEDBACK_LANE_POST_USE
   if (lane === FEEDBACK_LANE_TICKETS) return FEEDBACK_LANE_TICKETS
-  if (lane === FEEDBACK_LANE_CUSTOMER_VISITS) return FEEDBACK_LANE_CUSTOMER_VISITS
 
   const source = String(get('source') ?? '').trim()
   if (source === 'post_use_rating') return FEEDBACK_LANE_POST_USE
 
   return FEEDBACK_LANE_TICKETS
-}
-
-/**
- * @param {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS | typeof FEEDBACK_LANE_CUSTOMER_VISITS} lane
- * @param {string | null | undefined} source
- */
-export function normalizeFeedbackLaneDataSource(lane, source) {
-  const value = String(source ?? '').trim()
-  const allowed = FEEDBACK_LANE_DATA_SOURCES[lane] || FEEDBACK_LANE_DATA_SOURCES[FEEDBACK_LANE_TICKETS]
-  if (allowed.includes(value)) return value
-  return lane === FEEDBACK_LANE_POST_USE ? 'post_use_rating' : ''
-}
-
-/**
- * 反馈库大类分流的唯一口径。用后即评排除已挂回投诉/咨询工单的 callback 独立行。
- * @param {Array<{ dataSourceType?: string; channel?: string; sourceSubType?: string }>} records
- * @param {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS} lane
- */
-export function filterFeedbackRecordsForLane(records, lane) {
-  if (lane === FEEDBACK_LANE_POST_USE) {
-    return (records || []).filter(isPostUseRatingLibraryRecord)
-  }
-  return (records || []).filter(
-    (record) =>
-      record?.dataSourceType === 'complaint_ticket' ||
-      record?.dataSourceType === 'consultation_ticket' ||
-      !record?.dataSourceType,
-  )
-}
-
-/**
- * @param {Array<{ dataSourceType?: string; channel?: string; sourceSubType?: string }>} records
- */
-export function countFeedbackRecordsByLane(records) {
-  return {
-    tickets: filterFeedbackRecordsForLane(records, FEEDBACK_LANE_TICKETS).length,
-    postUse: filterFeedbackRecordsForLane(records, FEEDBACK_LANE_POST_USE).length,
-  }
 }
 
 /**

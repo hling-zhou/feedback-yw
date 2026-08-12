@@ -66,6 +66,8 @@ function buildModel() {
       changes: [],
       currentMonth: '',
       previousMonth: '',
+      previousPeriodLabel: '上月',
+      currentPeriodLabel: '本月',
     },
     drivers: {
       requestScenes: [],
@@ -134,6 +136,7 @@ function buildModel() {
           riskLevel: 'high',
           impactSignals: { highValueCount: 1, negativeCount: 0, urgentCount: 0, unresolvedCount: 1 },
           inferred: false,
+          evidenceTicketIds: ['20260416174551X751972102'],
           records: [
             {
               id: 'record-1',
@@ -215,6 +218,10 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('重点关注')
     expect(html).toContain('查看该主题证据')
     expect(html).toContain('主题证据')
+    expect(html).toContain('在反馈库查看')
+    expect(html).toContain('/feedbacks?source=complaint_ticket&amp;ticketIds=20260416174551X751972102')
+    expect(html).toContain('环比')
+    expect(html).toContain('客户体验类万投比')
     expect(html).toContain('高风险')
   })
 

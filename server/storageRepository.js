@@ -237,6 +237,35 @@ export const storageRepository = {
   },
 
   /**
+   * 按数据源 + 工单号批量取全量记录（导入覆盖合并用）
+   * @param {string} dataSourceType
+   * @param {string[]} ticketIds
+   * @returns {import('../src/domain/records.js').InsightRecord[]}
+   */
+  listRecordsByTicketIds(dataSourceType, ticketIds) {
+    const db = getDb()
+    const unique = [
+      ...new Set(
+        (ticketIds || [])
+          .map((id) => String(id || '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    if (!unique.length) return []
+    /** @type {import('../src/domain/records.js').InsightRecord[]} */
+    const out = []
+    const stmt = db.prepare(
+      `SELECT payload FROM records
+       WHERE data_source_type = ? AND ticket_id = ?`,
+    )
+    for (const ticketId of unique) {
+      const row = stmt.get(dataSourceType, ticketId)
+      if (row?.payload) out.push(parseJson(row.payload))
+    }
+    return out
+  },
+
+  /**
    * 按导入月份×数据源聚合记录数（首屏默认周期推断与空状态跨月提示用，避免全表下载）
    * @param {{ tenantId?: string }} [options]
    * @returns {{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number }}

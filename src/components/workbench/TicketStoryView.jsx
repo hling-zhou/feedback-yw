@@ -21,7 +21,7 @@ function SectionHeading({ title, summary, id }) {
   )
 }
 
-function LimitedTable({ dataSource = [], limit = 10, ...props }) {
+function LimitedTable({ dataSource = [], limit = 10, expandLabel = '展开全部', ...props }) {
   const [expanded, setExpanded] = useState(false)
   return (
     <>
@@ -29,7 +29,7 @@ function LimitedTable({ dataSource = [], limit = 10, ...props }) {
       {dataSource.length > limit ? (
         <div className="mt-2 text-center">
           <Button type="link" size="small" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? '收起' : `查看全部 ${dataSource.length} 项`}
+            {expanded ? '收起' : `${expandLabel}（${dataSource.length}）`}
           </Button>
         </div>
       ) : null}
@@ -51,6 +51,18 @@ function evidenceHref(sourceType, ticketIds) {
   const params = new URLSearchParams({ source: sourceType })
   if (ticketIds?.length) params.set('ticketIds', ticketIds.join(','))
   return `/feedbacks?${params.toString()}`
+}
+
+function uniqueTicketIdsFromRecords(records) {
+  const seen = new Set()
+  const ticketIds = []
+  for (const record of records || []) {
+    const ticketId = String(record?.ticketId || '').trim()
+    if (!ticketId || seen.has(ticketId)) continue
+    seen.add(ticketId)
+    ticketIds.push(ticketId)
+  }
+  return ticketIds
 }
 
 function themeEvidenceAnchor(themeId) {
@@ -82,6 +94,8 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
   const driversEmptyState = drivers.emptyState || null
   const impactSummary = impactAndEvidence.summary || null
   const impactThemeLinks = impactAndEvidence.themeLinks || []
+  const previousPeriodLabel = trendsAndChanges.previousPeriodLabel || '上月'
+  const currentPeriodLabel = trendsAndChanges.currentPeriodLabel || '本月'
 
   return (
     <div className="space-y-5">
@@ -130,9 +144,9 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
             { title: '产品', dataIndex: 'product', fixed: 'left', width: 150 },
             { title: '工单量', dataIndex: 'count', width: 82, render: (value, row) => <span>{value}{row.smallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
             { title: '占比', dataIndex: 'sharePct', width: 76, render: (value) => `${value}%` },
-            { title: '最新月变化', dataIndex: 'delta', width: 104, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
+            { title: '环比', dataIndex: 'delta', width: 104, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
             { title: '负向', dataIndex: 'negativePct', width: 82, render: (value, row) => `${row.negativeCount}（${value}%）` },
-            ...(complaint ? [{ title: '万投比', dataIndex: 'wanTouRatio', width: 92, render: (value, row) => value == null ? '—' : <span>{value.toFixed(2)}{row.wanTouTargetMet === false ? <Tag color="red" className="ml-1">未达标</Tag> : null}</span> }] : []),
+            ...(complaint ? [{ title: '客户体验类万投比', dataIndex: 'wanTouRatio', width: 130, render: (value, row) => value == null ? '—' : <span>{value.toFixed(2)}{row.wanTouTargetMet === false ? <Tag color="red" className="ml-1">未达标</Tag> : null}</span> }] : []),
             { title: '首要问题', dataIndex: 'primaryProblem', width: 210, ellipsis: true },
             { title: '主要旅程', dataIndex: 'primaryJourney', width: 130 },
             { title: '回访证据', dataIndex: 'followUpEvidence', width: 88 },
@@ -167,14 +181,14 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           size="small"
           rowKey="key"
           dataSource={trendsAndChanges.changes}
-          locale={{ emptyText: '至少需要两个有数据月份才能判断问题变化' }}
+          locale={{ emptyText: `需要${previousPeriodLabel}与${currentPeriodLabel}数据才能判断问题变化` }}
           columns={[
             { title: '变化', dataIndex: 'change', width: 82, render: (value) => <Tag color={changeColors[value]}>{value}</Tag> },
             { title: '产品', dataIndex: 'product', width: 150 },
             { title: '问题类型', dataIndex: 'problemType', width: 170 },
             { title: '用户旅程', dataIndex: 'journey', width: 130 },
-            { title: '上一有数据月', dataIndex: 'previousCount', width: 112 },
-            { title: '当前有数据月', dataIndex: 'currentCount', width: 112 },
+            { title: previousPeriodLabel, dataIndex: 'previousCount', width: 112 },
+            { title: currentPeriodLabel, dataIndex: 'currentCount', width: 112 },
             { title: '证据', width: 76, render: (_, row) => <Button type="link" size="small" href={evidenceHref(scope.sourceType, row.ticketIds)}>查看</Button> },
           ]}
         />
@@ -333,24 +347,34 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
                 id={themeEvidenceAnchor(link.themeId)}
                 className={index < impactThemeLinks.length - 1 ? 'border-b border-gray-100 pb-5' : ''}
               >
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Typography.Title level={5} className="!mb-0 !text-sm">
-                    {link.themeLabel}
-                  </Typography.Title>
-                  <Tag color={impactRiskColors[link.riskLevel] || 'default'}>
-                    {link.riskLevel === 'high' ? '高风险' : link.riskLevel === 'medium' ? '中风险' : '低风险'}
-                  </Tag>
-                  {link.inferred ? <Tag color="warning">推断型</Tag> : null}
-                  {link.impactSignals.highValueCount ? <Tag color="gold">高价值 {link.impactSignals.highValueCount}</Tag> : null}
-                  {link.impactSignals.negativeCount ? <Tag color="red">负向 {link.impactSignals.negativeCount}</Tag> : null}
-                  {link.impactSignals.urgentCount ? <Tag color="volcano">紧急 {link.impactSignals.urgentCount}</Tag> : null}
-                  {link.impactSignals.unresolvedCount ? <Tag color="purple">未解决 {link.impactSignals.unresolvedCount}</Tag> : null}
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Typography.Title level={5} className="!mb-0 !text-sm">
+                      {link.themeLabel}
+                    </Typography.Title>
+                    <Tag color={impactRiskColors[link.riskLevel] || 'default'}>
+                      {link.riskLevel === 'high' ? '高风险' : link.riskLevel === 'medium' ? '中风险' : '低风险'}
+                    </Tag>
+                    {link.inferred ? <Tag color="warning">推断型</Tag> : null}
+                    {link.impactSignals.highValueCount ? <Tag color="gold">高价值 {link.impactSignals.highValueCount}</Tag> : null}
+                    {link.impactSignals.negativeCount ? <Tag color="red">负向 {link.impactSignals.negativeCount}</Tag> : null}
+                    {link.impactSignals.urgentCount ? <Tag color="volcano">紧急 {link.impactSignals.urgentCount}</Tag> : null}
+                    {link.impactSignals.unresolvedCount ? <Tag color="purple">未解决 {link.impactSignals.unresolvedCount}</Tag> : null}
+                  </div>
+                  <Button
+                    type="link"
+                    size="small"
+                    href={evidenceHref(scope.sourceType, link.evidenceTicketIds || uniqueTicketIdsFromRecords(link.records))}
+                  >
+                    在反馈库查看
+                  </Button>
                 </div>
                 <LimitedTable
                   className="ticket-evidence-table"
                   size="small"
                   rowKey="id"
                   dataSource={link.records}
+                  expandLabel="展开全部"
                   tableLayout="fixed"
                   scroll={{ x: 1200 }}
                   columns={[
@@ -384,12 +408,25 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           </div>
         </Card>
       ) : impactSummary?.status === 'evidence_only' ? (
-        <Card size="small" title="高风险信号证据">
+        <Card
+          size="small"
+          title="高风险信号证据"
+          extra={(
+            <Button
+              type="link"
+              size="small"
+              href={evidenceHref(scope.sourceType, uniqueTicketIdsFromRecords(impactAndEvidence.records))}
+            >
+              在反馈库查看
+            </Button>
+          )}
+        >
           <LimitedTable
             className="ticket-evidence-table"
             size="small"
             rowKey="id"
             dataSource={impactAndEvidence.records}
+            expandLabel="展开全部"
             tableLayout="fixed"
             scroll={{ x: 1200 }}
             columns={[

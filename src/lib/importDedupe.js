@@ -22,30 +22,38 @@ export function buildExistingTicketKeySet(ticketIds, dataSourceType) {
 }
 
 /**
- * 打标前置全局去重：按"数据源类型+工单号"跳过与系统已有记录重复的行；
- * 批次内行间按同键去重（保留首行）；空工单号行一律放行。
+ * 导入批次内按「数据源类型+工单号」去重。
+ * - 同键保留**最后一行**（同文件内以较新行为准）
+ * - 空工单号一律放行
+ * - 不再按库内已有工单号跳过（同号再导入改为覆盖合并）
+ *
  * @param {Object[]} rows
  * @param {Object} options
  * @param {string} options.dataSourceType
- * @param {Set<string>} [options.existingKeys] buildExistingTicketKeySet 的产物
  * @returns {{ uniqueRows: Object[]; skippedCount: number }}
  */
-export function filterDuplicateImportRows(rows, { dataSourceType, existingKeys } = {}) {
-  const seen = new Set(existingKeys || [])
+export function filterDuplicateImportRows(rows, { dataSourceType } = {}) {
+  /** @type {Map<string, Object>} */
+  const byKey = new Map()
   /** @type {Object[]} */
-  const uniqueRows = []
-  let skippedCount = 0
+  const emptyTicketRows = []
+  let replacedCount = 0
+
   for (const row of rows || []) {
     const key = buildGlobalTicketDedupeKey({
       dataSourceType,
       ticketId: normalizeTicketId(row?.ticketId) || '',
     })
-    if (key && seen.has(key)) {
-      skippedCount += 1
+    if (!key) {
+      emptyTicketRows.push(row)
       continue
     }
-    if (key) seen.add(key)
-    uniqueRows.push(row)
+    if (byKey.has(key)) replacedCount += 1
+    byKey.set(key, row)
   }
-  return { uniqueRows, skippedCount }
+
+  return {
+    uniqueRows: [...byKey.values(), ...emptyTicketRows],
+    skippedCount: replacedCount,
+  }
 }

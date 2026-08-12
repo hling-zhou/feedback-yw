@@ -54,6 +54,7 @@ import { registerLlmRoutes } from './routes/llm.js'
 import { registerAuditRoutes } from './routes/audit.js'
 import { registerMessageBottleRoutes } from './routes/messageBottles.js'
 import { registerTicketReviewRoutes } from './routes/ticketReviews.js'
+import { registerComplaintCauseReviewRoutes } from './routes/complaintCauseReview.js'
 import { registerRequirementTicketProgressRoutes } from './routes/requirementTicketProgress.js'
 import { registerApiKeyRoutes } from './routes/apiKeys.js'
 import { buildHealthReport } from './health.js'
@@ -85,6 +86,7 @@ registerLlmRoutes(app)
 registerAuditRoutes(app)
 registerMessageBottleRoutes(app)
 registerTicketReviewRoutes(app)
+registerComplaintCauseReviewRoutes(app)
 registerRequirementTicketProgressRoutes(app)
 registerApiKeyRoutes(app)
 

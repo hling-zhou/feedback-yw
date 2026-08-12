@@ -3,10 +3,11 @@ import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
+  LISTENING_REVIEWED_FILTER_OPTIONS,
+  TODO_STATUS_FILTER_OPTIONS,
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
-import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
 
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterKey} FeedbackFilterKey */
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterValues} FeedbackFilterValues */
@@ -33,6 +34,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   reasonDim: 'enum',
   myReview: 'enum',
   todoStatus: 'enum',
+  listeningReviewed: 'enum',
 }
 
 /**
@@ -164,6 +166,8 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       }))
     case 'todoStatus':
       return TODO_STATUS_FILTER_OPTIONS.filter((item) => item.value)
+    case 'listeningReviewed':
+      return LISTENING_REVIEWED_FILTER_OPTIONS.filter((item) => item.value)
     default:
       return []
   }

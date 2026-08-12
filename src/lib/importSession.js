@@ -7,7 +7,8 @@ import { formatTicketLlmRemainRuleMessage } from './importEnrichmentStats.js'
  * @property {string} dataMonth YYYY-MM
  * @property {DataSourceType} [dataSourceType]
  * @property {number} added 新写入条数
- * @property {number} [skippedDuplicates]
+ * @property {number} [updated] 同工单号覆盖更新条数
+ * @property {number} [skippedDuplicates] 批次内同号折叠条数
  * @property {number} [failures] 分析失败行数
  * @property {number} [skippedProducts] 产品范围外跳过
  * @property {string} [batchName]
@@ -136,8 +137,11 @@ export function shouldConfirmLeaveImportPage({
  */
 export function formatImportFinishedToast(payload) {
   const parts = [`${payload.dataMonth} 新增 ${payload.added} 条`]
+  if (payload.updated) {
+    parts.push(`更新 ${payload.updated} 条`)
+  }
   if (payload.skippedDuplicates) {
-    parts.push(`去重跳过 ${payload.skippedDuplicates} 条`)
+    parts.push(`批次内同号折叠 ${payload.skippedDuplicates} 条`)
   }
   if (payload.failures) {
     parts.push(`分析失败 ${payload.failures} 行`)

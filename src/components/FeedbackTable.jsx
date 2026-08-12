@@ -38,28 +38,11 @@ function channelLabel(channel, sourceSubType) {
 function buildPostUseColumns() {
   return [
     {
-      title: '产品',
-      dataIndex: 'product',
-      width: 140,
+      title: '渠道',
+      dataIndex: 'channel',
+      width: 88,
       fixed: 'left',
-      render: (_, fb) => (
-        <div>
-          <Typography.Text>{fb.productName || fb.product || '—'}</Typography.Text>
-          {fb.productSpec && fb.productSpec !== (fb.productName || fb.product) ? (
-            <Typography.Text type="secondary" className="block text-xs">
-              {fb.productSpec}
-            </Typography.Text>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      title: '客户',
-      dataIndex: 'customerName',
-      width: 140,
-      fixed: 'left',
-      ellipsis: true,
-      render: (_, fb) => fb.customerName || fb.customerCode || '—',
+      render: (_, fb) => <Tag color="blue">{channelLabel(fb.channel, fb.sourceSubType)}</Tag>,
     },
     {
       title: '评分',
@@ -73,10 +56,19 @@ function buildPostUseColumns() {
         ),
     },
     {
-      title: '渠道',
-      dataIndex: 'channel',
-      width: 88,
-      render: (_, fb) => <Tag color="blue">{channelLabel(fb.channel, fb.sourceSubType)}</Tag>,
+      title: '产品',
+      dataIndex: 'product',
+      width: 140,
+      render: (_, fb) => (
+        <div>
+          <Typography.Text>{fb.productName || fb.product || '—'}</Typography.Text>
+          {fb.productSpec && fb.productSpec !== (fb.productName || fb.product) ? (
+            <Typography.Text type="secondary" className="block text-xs">
+              {fb.productSpec}
+            </Typography.Text>
+          ) : null}
+        </div>
+      ),
     },
     {
       title: '数据月份',
@@ -92,6 +84,13 @@ function buildPostUseColumns() {
       render: (_, fb) => fb.importBatchName || fb.importBatchId || '—',
     },
     {
+      title: '客户',
+      dataIndex: 'customerName',
+      width: 140,
+      ellipsis: true,
+      render: (_, fb) => fb.customerName || fb.customerCode || '—',
+    },
+    {
       title: '原文 / 意见',
       dataIndex: 'rawText',
       width: 280,
@@ -102,7 +101,7 @@ function buildPostUseColumns() {
       ),
     },
     {
-      title: '客服部回访',
+      title: '客服回访',
       dataIndex: 'customerVisit',
       width: 180,
       render: (_, fb) => {
@@ -132,6 +131,12 @@ function buildPostUseColumns() {
           </Typography.Text>
         </div>
       ),
+    },
+    {
+      title: '数据来源',
+      dataIndex: 'dataSourceType',
+      width: 100,
+      render: () => <Tag>{DATA_SOURCE_LABELS.post_use_rating || '用后即评'}</Tag>,
     },
   ]
 }
@@ -328,7 +333,7 @@ export default function FeedbackTable({
       rowKey="id"
       columns={columns}
       dataSource={items}
-      scroll={{ x: postUseView ? 1300 : reviewEnabled ? 1648 : 1560 }}
+      scroll={{ x: postUseView ? 1100 : reviewEnabled ? 1648 : 1560 }}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),

@@ -87,6 +87,19 @@ export function createApiStorageAdapter() {
       return data.ticketIds || []
     },
 
+    /**
+     * @param {string} dataSourceType
+     * @param {string[]} ticketIds
+     */
+    async listRecordsByTicketIds(dataSourceType, ticketIds) {
+      if (!ticketIds?.length) return []
+      const data = await storageFetch('/records/by-ticket-ids', {
+        method: 'POST',
+        body: JSON.stringify({ dataSourceType, ticketIds }),
+      })
+      return data.records || []
+    },
+
     async listImportMonthSummary() {
       const data = await storageFetch('/records/month-summary')
       return {

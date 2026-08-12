@@ -15,6 +15,7 @@ import {
   patchFeedbackFollowUpSearchParams,
   patchFeedbackSearchParams,
   matchesHandlingKeywordFilter,
+  matchesListeningReviewedFilter,
 } from './feedbackFilters.js'
 
 const withFollowUp = {
@@ -108,6 +109,23 @@ describe('feedbackFilters', () => {
     expect(matchesHandlingKeywordFilter(record, '调整')).toBe(true)
     expect(matchesHandlingKeywordFilter(record, '带宽')).toBe(false)
     expect(matchesHandlingKeywordFilter({ handlingText: '' }, '调整')).toBe(false)
+  })
+
+  it('matchesListeningReviewedFilter by yes/no', () => {
+    expect(matchesListeningReviewedFilter({ listeningReviewed: true }, '')).toBe(true)
+    expect(matchesListeningReviewedFilter({ listeningReviewed: true }, 'yes')).toBe(true)
+    expect(matchesListeningReviewedFilter({ listeningReviewed: false }, 'yes')).toBe(false)
+    expect(matchesListeningReviewedFilter({ listeningReviewed: false }, 'no')).toBe(true)
+    expect(matchesListeningReviewedFilter({ listeningReviewed: true }, 'no')).toBe(false)
+    expect(matchesListeningReviewedFilter({}, 'no')).toBe(true)
+  })
+
+  it('parseFeedbackSearchParams includes listeningReviewed', () => {
+    const parsed = parseFeedbackSearchParams(new URLSearchParams('listeningReviewed=yes'))
+    expect(parsed.listeningReviewed).toBe('yes')
+    expect(parseFeedbackSearchParams(new URLSearchParams('listeningReviewed=maybe')).listeningReviewed).toBe(
+      '',
+    )
   })
 
   it('matchesCustomerNamesFilter by exact customer name', () => {

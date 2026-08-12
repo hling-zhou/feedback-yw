@@ -105,4 +105,23 @@ describe('sourceColumns', () => {
     const cols = buildSourceColumns({ customerTierCol: '银牌' })
     expect(cols?.[CUSTOMER_TIER_SOURCE_COLUMN]).toBe('银牌')
   })
+
+  it('buildSourceColumns stores customer profile fields with 登录账号名称 key', () => {
+    const cols = buildSourceColumns({
+      customerTypeNameCol: '政企',
+      groupNameCol: '某集团',
+      groupCustomerCodeCol: 'G001',
+      groupProvinceCol: '广东',
+      groupCityCol: '广州',
+      loginAccountNameCol: 'user@example.com',
+      source: '在线客服',
+    })
+    expect(cols?.['客户类型名称']).toBe('政企')
+    expect(cols?.['集团名称']).toBe('某集团')
+    expect(cols?.['集团客户编码']).toBe('G001')
+    expect(cols?.['集团所属省份']).toBe('广东')
+    expect(cols?.['集团所属地市']).toBe('广州')
+    expect(cols?.['登录账号名称']).toBe('user@example.com')
+    expect(cols?.['受理渠道']).toBe('在线客服')
+  })
 })

@@ -27,6 +27,7 @@ import {
 import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
 import { mergeManualTagFieldsOnUserEdit, applyForceRetagOverrides } from '../lib/manualTagFields.js'
+import { mergeTicketImportOverExisting } from '../lib/ticketImportMerge.js'
 import { unlinkActionItemsForForceRetag } from '../lib/forceRetagActionUnlink.js'
 import {
   mergeEstablishedActionLibraryForRecords,
@@ -182,28 +183,53 @@ function attachJourneyRules(settings) {
 /**
  * @param {import('../lib/types.js').FeedbackRecord[]} prev
  * @param {import('../lib/types.js').FeedbackRecord[]} incoming
+ * @param {Map<string, import('../lib/types.js').FeedbackRecord>} [existingByTicketKey]
  */
-function mergeFeedbacksInto(prev, incoming) {
-  const seen = new Set(prev.map((fb) => duplicateKey(fb)).filter(Boolean))
+function mergeFeedbacksInto(prev, incoming, existingByTicketKey = new Map()) {
+  /** @type {Map<string, number>} */
+  const indexByKey = new Map()
+  const merged = prev.map((fb, index) => {
+    const key = duplicateKey(fb)
+    if (key) indexByKey.set(key, index)
+    return fb
+  })
+
   /** @type {import('../lib/types.js').FeedbackRecord[]} */
   const added = []
+  /** @type {import('../lib/types.js').FeedbackRecord[]} */
+  const updated = []
   let skippedDuplicates = 0
+
   for (const record of incoming) {
     const withMeta = {
       ...record,
       dataSourceType: record.dataSourceType || 'complaint_ticket',
     }
     const key = duplicateKey(withMeta)
-    if (key && seen.has(key)) {
-      skippedDuplicates += 1
+    const existingFromMemory =
+      key && indexByKey.has(key) ? merged[indexByKey.get(key)] : null
+    const existingFromStore = key ? existingByTicketKey.get(key) : null
+    // 优先用库内全量记录，避免列表投影缺大文本字段
+    const existing = existingFromStore || existingFromMemory
+
+    if (existing && key) {
+      const next = mergeTicketImportOverExisting(existing, withMeta)
+      if (indexByKey.has(key)) {
+        merged[indexByKey.get(key)] = next
+      }
+      updated.push(next)
       continue
     }
-    if (key) seen.add(key)
+
+    if (key) indexByKey.set(key, merged.length)
     added.push(withMeta)
+    merged.push(withMeta)
   }
+
   return {
-    merged: [...prev, ...added],
+    merged,
     added,
+    updated,
     skippedDuplicates,
   }
 }
@@ -1625,30 +1651,60 @@ export function InsightsProvider({ children }) {
      * @param {{ onUploadProgress?: (uploaded: number, total: number) => void }} [options]
      */
     async (records, options = {}) => {
-      const { merged, added, skippedDuplicates } = mergeFeedbacksInto(
+      /** @type {Map<string, import('../lib/types.js').FeedbackRecord>} */
+      const existingByTicketKey = new Map()
+      const ticketSourceRecords = records.filter((record) => {
+        const type = record.dataSourceType || 'complaint_ticket'
+        return type === 'complaint_ticket' || type === 'consultation_ticket'
+      })
+      if (ticketSourceRecords.length && typeof adapter.listRecordsByTicketIds === 'function') {
+        /** @type {Map<string, string[]>} */
+        const idsBySource = new Map()
+        for (const record of ticketSourceRecords) {
+          const type = record.dataSourceType || 'complaint_ticket'
+          const ticketId = String(record.ticketId || '').trim()
+          if (!ticketId) continue
+          const list = idsBySource.get(type) || []
+          list.push(ticketId)
+          idsBySource.set(type, list)
+        }
+        for (const [dataSourceType, ticketIds] of idsBySource) {
+          const existingRows = await adapter.listRecordsByTicketIds(dataSourceType, ticketIds)
+          for (const row of existingRows || []) {
+            const key = duplicateKey(row)
+            if (key) existingByTicketKey.set(key, row)
+          }
+        }
+      }
+
+      const { merged, added, updated, skippedDuplicates } = mergeFeedbacksInto(
         feedbacksRef.current,
         records,
+        existingByTicketKey,
       )
       feedbacksRef.current = merged
       setFeedbacks(merged)
 
-      if (added.length) {
+      const toPersist = [...added, ...updated]
+      if (toPersist.length) {
         emit('ImportCompleted', {
-          count: added.length,
+          count: toPersist.length,
           periodId: currentPeriodId,
           skipStaleMark: true,
         })
       }
 
-      if (added.length && storageReady) {
-        setTotalRecordCount((n) => n + added.length)
+      if (toPersist.length && storageReady) {
+        if (added.length) {
+          setTotalRecordCount((n) => n + added.length)
+        }
         if (currentPeriodId) {
           loadedPeriodIdsRef.current.add(currentPeriodId)
         }
         skipPersistRef.current = true
         try {
           const onProgress = options.onUploadProgress
-          await adapter.putRecords(added, {
+          await adapter.putRecords(toPersist, {
             onProgress: onProgress
               ? (uploaded, total) => onProgress(uploaded, total)
               : undefined,
@@ -1668,6 +1724,7 @@ export function InsightsProvider({ children }) {
 
       return {
         added: added.length,
+        updated: updated.length,
         skippedDuplicates,
         totalAfter: merged.length,
         analyzed: records.length,
@@ -1699,6 +1756,9 @@ export function InsightsProvider({ children }) {
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
       const merged = { ...existing, ...patch, manualTagFields }
+      // 是否听音：一旦为 true，全局不可再取消（含其他用户）
+      merged.listeningReviewed =
+        Boolean(existing.listeningReviewed) || Boolean(merged.listeningReviewed)
       const expectedRevision =
         options.expectedRevision ??
         (options.skipConflictCheck ? undefined : getRecordRevision(existing))
@@ -1734,6 +1794,17 @@ export function InsightsProvider({ children }) {
     },
     [adapter, storageReady, recordWriteActor],
   )
+
+  /**
+   * 将服务端已写入的记录合并进本地列表（避免二次 put）。
+   * @param {import('../lib/types.js').FeedbackRecord[]} records
+   */
+  const ingestUpdatedRecords = useCallback((records) => {
+    if (!Array.isArray(records) || !records.length) return
+    const byId = new Map(records.map((r) => [r.id, r]))
+    feedbacksRef.current = feedbacksRef.current.map((fb) => byId.get(fb.id) || fb)
+    setFeedbacks([...feedbacksRef.current])
+  }, [])
 
   const importAnalysisResults = useCallback(
     /**
@@ -2483,6 +2554,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      ingestUpdatedRecords,
       importAnalysisResults,
       replaceAll,
       clearAll,
@@ -2577,6 +2649,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      ingestUpdatedRecords,
       importAnalysisResults,
       replaceAll,
       clearAll,

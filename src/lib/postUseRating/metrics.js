@@ -8,22 +8,11 @@ import { POST_USE_RATING_PRODUCT_NAMES } from '../productCatalog/postUseRatingPr
 /** 小样本阈值（方案锁定） */
 export const POST_USE_SMALL_SAMPLE_N = 10
 
-/** 小样本下仍需重点关注的极低分阈值 */
-export const POST_USE_CRITICAL_LOW_SCORE = 3
-
 /** 投诉回访满意度达标线 */
 export const POST_USE_SATISFACTION_BASELINE = 0.88
 
 /** 体验均分关注线 */
 export const POST_USE_SCORE_BASELINE = 9
-
-/**
- * @param {number[] | Array<number | string | null | undefined>} scores
- * @param {number} [threshold]
- */
-export function hasCriticalLowScore(scores, threshold = POST_USE_CRITICAL_LOW_SCORE) {
-  return (scores || []).some((score) => Number.isFinite(Number(score)) && Number(score) <= threshold)
-}
 
 /**
  * PRD 主子产品映射（公司级所有产品）
@@ -99,8 +88,6 @@ export function computeInternalExperienceMetrics(scoredRows, opts = {}) {
     ...p,
     smallSample: p.sampleSize < smallN,
     belowNine: p.avgScore < POST_USE_SCORE_BASELINE,
-    minScore: p.scores.length ? Math.min(...p.scores) : null,
-    hasCriticalLowScore: hasCriticalLowScore(p.scores),
   }))
   const totalSample = scoped.length
   const avgScore = totalSample
@@ -165,16 +152,11 @@ export function computeInternalSatisfactionMetrics(scoredRows, opts = {}) {
       }
     })
     .sort((a, b) => a.productName.localeCompare(b.productName, 'zh'))
-  const totalSample = callback.length
-  const tenCount = callback.filter((row) => row.score === 10).length
 
   return {
     scope: 'internal_satisfaction',
     baseline: baseline * 100,
     smallSampleN: smallN,
-    totalSample,
-    tenCount,
-    rate: totalSample ? round2((tenCount / totalSample) * 100) : 0,
     byProduct,
     notQualified: byProduct.filter((p) => p.belowBaseline),
   }
@@ -220,106 +202,6 @@ export function computeExternalMixedMetrics(scoredRows, opts = {}) {
       byProduct: allByProduct,
     },
   }
-}
-
-/**
- * 月报口径产品总表：三渠道均分 + 投诉回访 10 分满意比。
- * @param {NormalizedPostUseRow[]} scoredRows
- * @param {{ productNames?: string[]; smallSampleN?: number }} [opts]
- */
-export function buildMonthlyScoreTable(scoredRows, opts = {}) {
-  const productNames = opts.productNames || [...POST_USE_RATING_PRODUCT_NAMES]
-  const smallN = opts.smallSampleN ?? POST_USE_SMALL_SAMPLE_N
-  const scoped = filterByProducts(scoredRows, productNames)
-  /** @type {Map<string, {
-   *   productName: string
-   *   sampleSize: number
-   *   avgScore: number
-   *   callbackTenPointRate: number | null
-   *   callbackSampleSize: number
-   *   smallSample: boolean
-   *   callbackSmallSample: boolean
-   *   scoreChannels: string[]
-   *   hasCallbackSamples: boolean
-   *   hasNonTenScore: boolean
-   * }>} */
-  const rowsByProduct = new Map()
-
-  for (const row of aggregateByProduct(scoped)) {
-    rowsByProduct.set(row.productName, {
-      productName: row.productName,
-      sampleSize: row.sampleSize,
-      avgScore: row.avgScore,
-      callbackTenPointRate: null,
-      callbackSampleSize: 0,
-      smallSample: row.sampleSize < smallN,
-      callbackSmallSample: false,
-      scoreChannels: [],
-      hasCallbackSamples: false,
-      hasNonTenScore: false,
-    })
-  }
-
-  /** @type {Map<string, Set<string>>} */
-  const channelsByProduct = new Map()
-  /** @type {Map<string, boolean>} */
-  const nonTenByProduct = new Map()
-  for (const row of scoped) {
-    const productName = String(row.productName || '').trim()
-    if (!productName) continue
-    if (!rowsByProduct.has(productName)) {
-      rowsByProduct.set(productName, {
-        productName,
-        sampleSize: 0,
-        avgScore: 0,
-        callbackTenPointRate: null,
-        callbackSampleSize: 0,
-        smallSample: true,
-        callbackSmallSample: false,
-        scoreChannels: [],
-        hasCallbackSamples: false,
-        hasNonTenScore: false,
-      })
-    }
-    if (!channelsByProduct.has(productName)) channelsByProduct.set(productName, new Set())
-    if (row.channel) channelsByProduct.get(productName)?.add(row.channel)
-    if (Number.isFinite(row.score) && row.score !== 10) nonTenByProduct.set(productName, true)
-  }
-
-  const satisfaction = computeInternalSatisfactionMetrics(scoredRows, { productNames, smallSampleN: smallN })
-  for (const callbackRow of satisfaction.byProduct) {
-    const base = rowsByProduct.get(callbackRow.productName) || {
-      productName: callbackRow.productName,
-      sampleSize: 0,
-      avgScore: 0,
-      callbackTenPointRate: null,
-      callbackSampleSize: 0,
-      smallSample: true,
-      callbackSmallSample: false,
-      scoreChannels: [],
-      hasCallbackSamples: false,
-      hasNonTenScore: false,
-    }
-    rowsByProduct.set(callbackRow.productName, {
-      ...base,
-      callbackTenPointRate: callbackRow.rate,
-      callbackSampleSize: callbackRow.sampleSize,
-      callbackSmallSample: callbackRow.smallSample,
-      hasCallbackSamples: callbackRow.sampleSize > 0,
-    })
-  }
-
-  return [...rowsByProduct.values()]
-    .map((row) => ({
-      ...row,
-      scoreChannels: [...(channelsByProduct.get(row.productName) || new Set())]
-        .sort((a, b) => {
-          const order = { sms: 0, console: 1, callback: 2 }
-          return (order[a] ?? 99) - (order[b] ?? 99)
-        }),
-      hasNonTenScore: Boolean(nonTenByProduct.get(row.productName)),
-    }))
-    .sort((a, b) => a.productName.localeCompare(b.productName, 'zh'))
 }
 
 /**

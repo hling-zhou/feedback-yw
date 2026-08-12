@@ -7,8 +7,9 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import { CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
+import { CUSTOMER_PROFILE_IMPORT_FIELD_KEYS } from '../domain/customerProfileColumns.js'
 
-/** 导出 Excel 时使用的原始工单列名（与工单模板一致） */
+/** 导出 Excel 时使用的原始工单列名（与工单模板一致；用于快照完整性提示，不含可选客户基础信息列） */
 export const TICKET_SOURCE_COLUMN_LABELS = [
   '处理意见',
   '投诉原因 一级（终判）',
@@ -41,6 +42,10 @@ export function buildSourceColumns(row) {
   put('问题原因', row.rootCauseCol)
   put('优化举措/建议', row.responseText)
   put(CUSTOMER_TIER_SOURCE_COLUMN, row.customerTierCol || row.customerTier)
+  put('受理渠道', row.source || row.acceptChannelCol)
+  for (const [fieldKey, label] of Object.entries(CUSTOMER_PROFILE_IMPORT_FIELD_KEYS)) {
+    put(label, row[fieldKey])
+  }
 
   return Object.keys(cols).length > 0 ? cols : undefined
 }
@@ -91,6 +96,21 @@ export function getSourceColumnValue(record, label) {
       snap?.['客户等级'] ||
       ''
     )
+  }
+  if (label === '受理渠道') {
+    return snap?.['受理渠道']?.trim() || record.source || ''
+  }
+  if (label === '登录账号名称' || label === '登陆账号名称') {
+    return snap?.['登录账号名称']?.trim() || snap?.['登陆账号名称']?.trim() || ''
+  }
+  if (
+    label === '客户类型名称'
+    || label === '集团名称'
+    || label === '集团客户编码'
+    || label === '集团所属省份'
+    || label === '集团所属地市'
+  ) {
+    return snap?.[label]?.trim() || ''
   }
   return ''
 }

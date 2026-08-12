@@ -55,22 +55,116 @@ describe('ticket story model', () => {
     expect(model.drivers.complaintCauses).toEqual([])
   })
 
-  it('does not treat empty months as disappeared problems', () => {
+  it('treats empty previous period as new problems instead of year-gap disappearances', () => {
     const records = [record('1')]
-    const model = buildTicketStoryModel({ sourceType: 'complaint_ticket', records, trendRecords: records, trendMonths: ['2026-05', '2026-06', '2026-07'] })
-    expect(model.trendsAndChanges.changes).toEqual([])
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records,
+      trendRecords: records,
+      comparisonRecords: records,
+      trendMonths: ['2026-05', '2026-06', '2026-07'],
+      period: {
+        id: 'period:month:2026-06',
+        label: '2026年6月',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        granularity: 'month',
+        anchorYear: 2026,
+        anchorMonth: 6,
+      },
+      periodEndMonth: '2026-06',
+    })
+    expect(model.trendsAndChanges.changes).toEqual([
+      expect.objectContaining({
+        change: '新增',
+        previousCount: 0,
+        currentCount: 1,
+        ticketIds: ['T-1'],
+      }),
+    ])
   })
 
   it('includes real ticket ids on change buckets for evidence drill-down', () => {
     const records = [record('1', { importMonth: '2026-05' }), record('2', { importMonth: '2026-06' })]
     const model = buildTicketStoryModel({
       sourceType: 'complaint_ticket',
-      records,
+      records: [records[1]],
       trendRecords: records,
+      comparisonRecords: records,
       trendMonths: ['2026-05', '2026-06'],
+      period: {
+        id: 'period:month:2026-06',
+        label: '2026年6月',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        granularity: 'month',
+        anchorYear: 2026,
+        anchorMonth: 6,
+      },
+      periodEndMonth: '2026-06',
     })
+    expect(model.trendsAndChanges.previousPeriodLabel).toBe('上月')
+    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本月')
     expect(model.trendsAndChanges.changes[0].change).toBe('持续')
     expect(model.trendsAndChanges.changes[0].ticketIds).toEqual(expect.arrayContaining(['T-1', 'T-2']))
+  })
+
+  it('uses quarter labels and aggregates across quarter months', () => {
+    const records = [
+      record('1', { importMonth: '2026-01', problemType: 'A' }),
+      record('2', { importMonth: '2026-04', problemType: 'A' }),
+      record('3', { importMonth: '2026-05', problemType: 'A' }),
+    ]
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records: records.filter((item) => item.importMonth.startsWith('2026-0') && Number(item.importMonth.slice(5)) >= 4),
+      comparisonRecords: records,
+      trendRecords: records,
+      trendMonths: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+      period: {
+        id: 'period:quarter:2026-Q2',
+        label: '2026年Q2',
+        startDate: '2026-04-01',
+        endDate: '2026-06-30',
+        granularity: 'quarter',
+        anchorYear: 2026,
+        anchorQuarter: 2,
+      },
+      periodEndMonth: '2026-06',
+    })
+    expect(model.trendsAndChanges.previousPeriodLabel).toBe('上一季度')
+    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本季度')
+    expect(model.trendsAndChanges.changes[0]).toMatchObject({
+      previousCount: 1,
+      currentCount: 2,
+      change: '增长',
+    })
+  })
+
+  it('computes product overview MoM delta against previous calendar month', () => {
+    const records = [
+      record('1', { importMonth: '2026-05' }),
+      record('2', { importMonth: '2026-06' }),
+      record('3', { importMonth: '2026-06' }),
+    ]
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records: records.filter((item) => item.importMonth === '2026-06'),
+      comparisonRecords: records,
+      trendRecords: records,
+      trendMonths: ['2026-05', '2026-06'],
+      period: {
+        id: 'period:month:2026-06',
+        label: '2026年6月',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        granularity: 'month',
+        anchorYear: 2026,
+        anchorMonth: 6,
+      },
+      periodEndMonth: '2026-06',
+    })
+    expect(model.overview.productOverview[0].delta).toBe(1)
   })
 
   it('keeps follow-up and customer tier out of cluster priority scores', () => {

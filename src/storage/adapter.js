@@ -38,7 +38,8 @@
  * @property {(period: InsightPeriod) => Promise<void>} putInsightPeriod
  * @property {(id: string) => Promise<InsightPeriod | null>} getInsightPeriod
  * @property {(query?: RecordQuery) => Promise<RecordListResult>} listRecords
- * @property {(dataSourceType?: string) => Promise<string[]>} [listExistingTicketIds] 导入前置全局去重：该数据类型下全部已有工单号
+ * @property {(dataSourceType?: string) => Promise<string[]>} [listExistingTicketIds] 该数据类型下全部已有工单号
+ * @property {(dataSourceType: string, ticketIds: string[]) => Promise<InsightRecord[]>} [listRecordsByTicketIds] 按工单号批量取记录（导入覆盖合并）
  * @property {() => Promise<{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number }>} [listImportMonthSummary] 首屏默认周期推断：按导入月份×数据源聚合记录数
  * @property {() => Promise<{ records: number; snapshots: number; tagCandidates: number }>} [getStorageStats]
  * @property {(record: InsightRecord, options?: import('../domain/recordRevision.js').PutRecordOptions) => Promise<{ recordRevision?: number } | void>} putRecord

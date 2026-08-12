@@ -525,6 +525,19 @@ export function initBusinessSchema() {
       ON user_ticket_review (user_id, marked_at DESC);
     CREATE INDEX IF NOT EXISTS idx_message_bottles_created ON message_bottles(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS complaint_cause_review_archive (
+      id TEXT PRIMARY KEY,
+      record_id TEXT NOT NULL,
+      ticket_id TEXT NOT NULL DEFAULT '',
+      decision TEXT NOT NULL CHECK(decision IN ('agree', 'reject')),
+      decided_at TEXT NOT NULL,
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_complaint_cause_review_archive_decided
+      ON complaint_cause_review_archive (decided_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_complaint_cause_review_archive_ticket
+      ON complaint_cause_review_archive (ticket_id);
+
     CREATE TABLE IF NOT EXISTS requirement_ticket_progress (
       ticket_id TEXT PRIMARY KEY,
       product TEXT NOT NULL DEFAULT '',

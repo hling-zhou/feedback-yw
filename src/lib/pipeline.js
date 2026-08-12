@@ -174,6 +174,7 @@ export function reprocessFeedbackRecord(fb, settings = null, options = {}) {
     complaintCauseL1Review: source.complaintCauseL1Review,
     complaintCauseL2Review: source.complaintCauseL2Review,
     complaintCauseL3Review: source.complaintCauseL3Review,
+    complaintCauseReviewReason: source.complaintCauseReviewReason,
     customerTier: source.customerTier ?? processed.customerTier,
     sourceColumns: source.sourceColumns,
     importMonth: source.importMonth,

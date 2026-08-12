@@ -164,6 +164,20 @@ export function createLocalIdbAdapter() {
       return [...ids]
     },
 
+    async listRecordsByTicketIds(dataSourceType, ticketIds) {
+      const want = new Set(
+        (ticketIds || []).map((id) => String(id || '').trim()).filter(Boolean),
+      )
+      if (!want.size) return []
+      const records = /** @type {InsightRecord[]} */ (await idbGetAll(STORES.records))
+      return records.filter((r) => {
+        const type = r.dataSourceType || 'complaint_ticket'
+        if (dataSourceType && type !== dataSourceType) return false
+        const ticketId = typeof r.ticketId === 'string' ? r.ticketId.trim() : ''
+        return ticketId && want.has(ticketId)
+      })
+    },
+
     async listImportMonthSummary() {
       const records = /** @type {InsightRecord[]} */ (await idbGetAll(STORES.records))
       /** @type {Map<string, number>} */

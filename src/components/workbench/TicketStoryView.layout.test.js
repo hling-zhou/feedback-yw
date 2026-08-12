@@ -14,6 +14,10 @@ describe('TicketStoryView narrative hierarchy', () => {
   it('keeps complaint-only metrics conditional and consultation opportunities available', () => {
     expect(source).toContain("const complaint = scope.sourceType === 'complaint_ticket'")
     expect(source).toContain('客户体验类万投比趋势')
+    expect(source).toContain('客户体验类万投比')
+    expect(source).toContain('环比')
+    expect(source).toContain('在反馈库查看')
+    expect(source).toContain('展开全部')
     expect(source).toContain('咨询优化机会')
     expect(source).toContain('投诉原因（终判）')
   })

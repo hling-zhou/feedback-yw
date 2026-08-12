@@ -78,11 +78,13 @@ export function createTicketRecord(input, opts = {}) {
     complaintCauseL1Review: input.complaintCauseL1Review || '',
     complaintCauseL2Review: input.complaintCauseL2Review || '',
     complaintCauseL3Review: input.complaintCauseL3Review || '',
+    complaintCauseReviewReason: input.complaintCauseReviewReason || '',
     sentiment: input.sentiment || 'neutral_inquiry',
     urgencyLevel: input.urgencyLevel || 'none',
     themes: input.themes || ['未分类'],
     status: input.status || 'open',
     note: input.note,
+    listeningReviewed: Boolean(input.listeningReviewed),
   }
 }
 

@@ -5,15 +5,28 @@ import { getManualTagFields } from '../lib/manualTagFields.js'
 /** @type {number} */
 export const COMPLAINT_CAUSE_REVIEW_MAX_LENGTH = 200
 
+/** @type {number} */
+export const COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH = 500
+
+/**
+ * @param {FeedbackRecord | null | undefined} record
+ * @returns {boolean}
+ */
+export function hasPendingComplaintCauseReview(record) {
+  return Boolean(
+    record?.complaintCauseL1Review?.trim()
+      || record?.complaintCauseL2Review?.trim()
+      || record?.complaintCauseL3Review?.trim()
+      || record?.complaintCauseReviewReason?.trim(),
+  )
+}
+
 /**
  * @param {FeedbackRecord | null | undefined} record
  * @returns {boolean}
  */
 export function hasManualComplaintCauseReview(record) {
-  return Boolean(
-    record?.complaintCauseL2Review?.trim()
-      || record?.complaintCauseL3Review?.trim(),
-  )
+  return hasPendingComplaintCauseReview(record)
 }
 
 /**
@@ -29,12 +42,14 @@ export function isComplaintCauseReviewManuallyMaintained(record) {
 
 /**
  * @param {FeedbackRecord | null | undefined} record
- * @returns {{ l2: string; l3: string }}
+ * @returns {{ l1: string; l2: string; l3: string; reason: string }}
  */
 export function getComplaintCauseReviewDraftDisplay(record) {
   return {
+    l1: record?.complaintCauseL1Review?.trim() ?? '',
     l2: record?.complaintCauseL2Review?.trim() ?? '',
     l3: record?.complaintCauseL3Review?.trim() ?? '',
+    reason: record?.complaintCauseReviewReason?.trim() ?? '',
   }
 }
 
@@ -48,14 +63,39 @@ export function shouldIncludeComplaintCauseReviewInSave(record, touched) {
 }
 
 /**
- * @param {{ l2?: string; l3?: string }} values
- * @returns {{ complaintCauseL1Review: string; complaintCauseL2Review: string; complaintCauseL3Review: string }}
+ * @param {{ l1?: string; l2?: string; l3?: string; reason?: string }} values
+ * @returns {{
+ *   complaintCauseL1Review: string
+ *   complaintCauseL2Review: string
+ *   complaintCauseL3Review: string
+ *   complaintCauseReviewReason: string
+ * }}
  */
 export function normalizeComplaintCauseReviewInput(values) {
-  const norm = (v) => String(v ?? '').trim().slice(0, COMPLAINT_CAUSE_REVIEW_MAX_LENGTH)
+  const norm = (v, max = COMPLAINT_CAUSE_REVIEW_MAX_LENGTH) =>
+    String(v ?? '').trim().slice(0, max)
   return {
-    complaintCauseL1Review: '',
+    complaintCauseL1Review: norm(values.l1),
     complaintCauseL2Review: norm(values.l2),
     complaintCauseL3Review: norm(values.l3),
+    complaintCauseReviewReason: norm(values.reason, COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH),
+  }
+}
+
+/**
+ * Admin 归档后清空拟复核字段。
+ * @returns {{
+ *   complaintCauseL1Review: string
+ *   complaintCauseL2Review: string
+ *   complaintCauseL3Review: string
+ *   complaintCauseReviewReason: string
+ * }}
+ */
+export function clearComplaintCauseReviewFields() {
+  return {
+    complaintCauseL1Review: '',
+    complaintCauseL2Review: '',
+    complaintCauseL3Review: '',
+    complaintCauseReviewReason: '',
   }
 }

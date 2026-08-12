@@ -5,31 +5,20 @@ import {
 } from './importDedupe.js'
 
 describe('importDedupe', () => {
-  it('skips rows whose ticketId already exists, regardless of importMonth', () => {
-    const existingKeys = buildExistingTicketKeySet(['T-1'], 'complaint_ticket')
+  it('keeps rows even when ticketId already exists in the system', () => {
     const { uniqueRows, skippedCount } = filterDuplicateImportRows(
       [
         { ticketId: 'T-1', importMonth: '2026-07' },
         { ticketId: 'T-2', importMonth: '2026-07' },
       ],
-      { dataSourceType: 'complaint_ticket', existingKeys },
+      { dataSourceType: 'complaint_ticket' },
     )
-    expect(uniqueRows).toHaveLength(1)
-    expect(uniqueRows[0].ticketId).toBe('T-2')
-    expect(skippedCount).toBe(1)
+    expect(uniqueRows).toHaveLength(2)
+    expect(skippedCount).toBe(0)
+    expect(buildExistingTicketKeySet(['T-1'], 'complaint_ticket').size).toBe(1)
   })
 
-  it('matches after normalization on both sides (trim / trailing .0)', () => {
-    const existingKeys = buildExistingTicketKeySet(['123'], 'complaint_ticket')
-    const { uniqueRows, skippedCount } = filterDuplicateImportRows(
-      [{ ticketId: ' 123.0 ' }],
-      { dataSourceType: 'complaint_ticket', existingKeys },
-    )
-    expect(uniqueRows).toHaveLength(0)
-    expect(skippedCount).toBe(1)
-  })
-
-  it('dedupes within the same batch, keeping the first row', () => {
+  it('dedupes within the same batch, keeping the last row', () => {
     const { uniqueRows, skippedCount } = filterDuplicateImportRows(
       [
         { ticketId: 'T-9', rawText: 'first' },
@@ -38,35 +27,29 @@ describe('importDedupe', () => {
       { dataSourceType: 'complaint_ticket' },
     )
     expect(uniqueRows).toHaveLength(1)
-    expect(uniqueRows[0].rawText).toBe('first')
+    expect(uniqueRows[0].rawText).toBe('second')
     expect(skippedCount).toBe(1)
   })
 
   it('lets rows with empty ticketId pass through', () => {
     const { uniqueRows, skippedCount } = filterDuplicateImportRows(
       [{ ticketId: '' }, {}, { ticketId: '   ' }],
-      { dataSourceType: 'complaint_ticket', existingKeys: new Set(['x']) },
+      { dataSourceType: 'complaint_ticket' },
     )
     expect(uniqueRows).toHaveLength(3)
     expect(skippedCount).toBe(0)
   })
 
-  it('does not skip when dataSourceType differs', () => {
-    const existingKeys = buildExistingTicketKeySet(['T-1'], 'consultation_ticket')
+  it('normalizes ticket ids when collapsing batch duplicates', () => {
     const { uniqueRows, skippedCount } = filterDuplicateImportRows(
-      [{ ticketId: 'T-1' }],
-      { dataSourceType: 'complaint_ticket', existingKeys },
+      [
+        { ticketId: '123.0', rawText: 'old' },
+        { ticketId: ' 123 ', rawText: 'new' },
+      ],
+      { dataSourceType: 'complaint_ticket' },
     )
     expect(uniqueRows).toHaveLength(1)
-    expect(skippedCount).toBe(0)
-  })
-
-  it('does not mutate the caller-provided existingKeys set', () => {
-    const existingKeys = buildExistingTicketKeySet(['T-1'], 'complaint_ticket')
-    filterDuplicateImportRows([{ ticketId: 'T-2' }], {
-      dataSourceType: 'complaint_ticket',
-      existingKeys,
-    })
-    expect(existingKeys.size).toBe(1)
+    expect(uniqueRows[0].rawText).toBe('new')
+    expect(skippedCount).toBe(1)
   })
 })

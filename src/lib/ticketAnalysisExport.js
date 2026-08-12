@@ -87,6 +87,22 @@ function exportRegistryFieldValue(record, field) {
       return extractHandlingTextFromFields(taggingFields)
     case 'rootCauseReview':
       return getEffectiveRootCauseReview(record)
+    case 'customerTypeName':
+      return getSourceColumnValue(record, '客户类型名称')
+    case 'groupName':
+      return getSourceColumnValue(record, '集团名称')
+    case 'groupCustomerCode':
+      return getSourceColumnValue(record, '集团客户编码')
+    case 'groupProvince':
+      return getSourceColumnValue(record, '集团所属省份')
+    case 'groupCity':
+      return getSourceColumnValue(record, '集团所属地市')
+    case 'loginAccountName':
+      return getSourceColumnValue(record, '登录账号名称')
+    case 'customerTierExport':
+      return getSourceColumnValue(record, '移动云客户服务等级') || record.customerTier || ''
+    case 'acceptChannel':
+      return getSourceColumnValue(record, '受理渠道') || record.source || ''
     default:
       return readFieldValue(record, field)
   }

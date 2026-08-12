@@ -10,7 +10,7 @@ import {
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
-import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
+import { TODO_STATUS_FILTER_OPTIONS, LISTENING_REVIEWED_FILTER_OPTIONS } from './feedbackFilters.js'
 
 /** @typedef {import('./feedbackFilters.js').FollowUpFilterValue} FollowUpFilterValue */
 /** @typedef {import('./feedbackFilters.js').FollowUpResolvedFilterValue} FollowUpResolvedFilterValue */
@@ -34,6 +34,7 @@ import { TODO_STATUS_FILTER_OPTIONS } from './feedbackFilters.js'
  * @property {string} reasonDim
  * @property {import('../domain/userTicketReview.js').MyReviewFilterValue} myReview
  * @property {import('./feedbackFilters.js').TodoStatusFilterValue | ''} todoStatus
+ * @property {import('./feedbackFilters.js').ListeningReviewedFilterValue} listeningReviewed
  * @property {string} handlingKeyword
  */
 
@@ -58,6 +59,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'reasonDim',
   'myReview',
   'todoStatus',
+  'listeningReviewed',
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
@@ -72,7 +74,7 @@ export const FEEDBACK_FILTER_GROUPS = [
   },
   {
     label: '会议跟进',
-    keys: ['todoStatus'],
+    keys: ['todoStatus', 'listeningReviewed'],
   },
   {
     label: '分析增强',
@@ -108,6 +110,7 @@ export const FEEDBACK_FILTER_LABELS = {
   reasonDim: '不满意原因',
   myReview: '我的处理状态',
   todoStatus: '会议待办',
+  listeningReviewed: '是否听音',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -130,6 +133,7 @@ export function createEmptyFeedbackFilters() {
     reasonDim: '',
     myReview: '',
     todoStatus: '',
+    listeningReviewed: '',
     handlingKeyword: '',
   }
 }
@@ -160,6 +164,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'ticketLlm':
     case 'myReview':
     case 'todoStatus':
+    case 'listeningReviewed':
     case 'handlingKeyword':
       return Boolean(String(values[key] ?? '').trim())
     default:
@@ -188,6 +193,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (values.followUpResolved) keys.push('followUpResolved')
   if (values.myReview) keys.push('myReview')
   if (values.todoStatus) keys.push('todoStatus')
+  if (values.listeningReviewed) keys.push('listeningReviewed')
   return keys
 }
 
@@ -244,6 +250,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return (
         TODO_STATUS_FILTER_OPTIONS.find((item) => item.value === values.todoStatus)?.label ||
         values.todoStatus
+      )
+    case 'listeningReviewed':
+      return (
+        LISTENING_REVIEWED_FILTER_OPTIONS.find((item) => item.value === values.listeningReviewed)?.label ||
+        values.listeningReviewed
       )
     default:
       return String(values[key] ?? '')
@@ -373,6 +384,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     handlingKeyword: filters.handlingKeyword,
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
+    listeningReviewed: filters.listeningReviewed,
   }
 }
 

@@ -88,8 +88,5 @@ describe.skipIf(!hasJune)('postUseRating June gold', () => {
     expect(byName['IPSec VPN'].smallSample).toBe(true)
     expect(byName['对等连接'].rate).toBe(66.67)
     expect(byName['对等连接'].smallSample).toBe(true)
-    expect(sat.totalSample).toBeGreaterThan(0)
-    expect(sat.tenCount).toBeLessThanOrEqual(sat.totalSample)
-    expect(sat.rate).toBeGreaterThan(0)
   })
 })

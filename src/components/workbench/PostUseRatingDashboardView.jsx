@@ -1,38 +1,72 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Segmented, Space, Tag, Typography, message } from 'antd'
-import { BarChartOutlined, FileWordOutlined } from '@ant-design/icons'
+import { Link } from 'react-router-dom'
+import { Alert, Card, Col, Row, Statistic, Table, Typography } from 'antd'
+import FollowUpSatisfactionPanel from './FollowUpSatisfactionPanel.jsx'
+import PostUseVisitPanel from './PostUseVisitPanel.jsx'
 import PostUseMonthlyReportPreview from './PostUseMonthlyReportPreview.jsx'
-import PostUseStoryView from './PostUseStoryView.jsx'
+import TrendChart from '../charts/TrendChart.jsx'
+import { buildPostUseActionSignals } from '../../lib/postUseRating/actionSignals.js'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
-import { loadPostUseTrend } from '../../lib/postUseRating/trendStore.js'
+import {
+  ensureHistoricalTrendSeed,
+  buildFocusScoreTrendChartModel,
+  buildFocusSatisfactionTrendChartModel,
+} from '../../lib/postUseRating/trendStore.js'
 import { listActionItems } from '../../lib/actionItemClient.js'
-import { createActionItem } from '../../lib/actionItemClient.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
-import { filterRecordsForScope } from '../../snapshots/recordScope.js'
+import { filterRecordsForScope, resolveRecordsByIds } from '../../snapshots/recordScope.js'
+import {
+  computeExternalMixedMetrics,
+  computeInternalExperienceMetrics,
+  computeInternalSatisfactionMetrics,
+  POST_USE_SMALL_SAMPLE_N,
+} from '../../lib/postUseRating/metrics.js'
 import {
   getPostUseFocusTrackedNames,
   getPostUseRatingProductNames,
-  scopePostUseRatingRecords,
 } from '../../lib/productCatalog/postUseRatingProducts.js'
 import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
-import { postUseVisitMonthsForPeriod } from '../../lib/postUseRating/periodScope.js'
-import { loadPostUsePeriodQuality } from '../../lib/postUseRating/qualityStore.js'
-import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
+import { extractFollowUpTicketRecords } from '../../lib/followUpSatisfactionAnalytics.js'
+import { isPostUseRatingCallbackRecord } from '../../domain/postUseRatingImport.js'
 
 /**
- * 用后即评工作台：统一故事模型驱动线上综合分析与 Word 月报。
+ * @param {import('../../lib/types.js').FeedbackRecord[]} items
  */
-export default function PostUseRatingDashboardView() {
-  const { feedbacks, currentPeriod, adapter, settings } = useInsights()
+function recordsToNormalized(items) {
+  return items
+    .filter((r) => r.dataSourceType === 'post_use_rating' && r.ratingScore != null)
+    .map((r) => ({
+      channel:
+        r.channel ||
+        (r.sourceSubType === 'sms_survey'
+          ? 'sms'
+          : r.sourceSubType === 'web_survey'
+            ? 'console'
+            : r.sourceSubType === 'satisfaction_callback'
+              ? 'callback'
+              : 'console'),
+      productName: r.productName || r.product || '',
+      score: Number(r.ratingScore),
+      customerName: r.customerName || '',
+      customerCode: r.customerCode || '',
+      answeredAt: r.createdAt || '',
+      originalTicketId: r.originalTicketId || '',
+      lowScoreReason: r.lowScoreReason || '',
+    }))
+    .filter((r) => Number.isFinite(r.score) && r.productName)
+}
+
+/**
+ * 用后即评工作台：对内分口径 KPI + 工单回访面板 + 重点跟踪趋势
+ */
+export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
+  const { feedbacks, currentPeriod, adapter } = useInsights()
   const [visits, setVisits] = useState([])
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
-  const [quality, setQuality] = useState(null)
-  const [creatingSignalKey, setCreatingSignalKey] = useState('')
-  const [viewMode, setViewMode] = useState('online')
   const items = useMemo(
-    () => filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating'),
-    [feedbacks, currentPeriod],
+    () => resolveRecordsByIds(feedbacks, snapshot.recordIds),
+    [feedbacks, snapshot.recordIds],
   )
 
   useEffect(() => {
@@ -40,17 +74,15 @@ export default function PostUseRatingDashboardView() {
     ;(async () => {
       if (!adapter) return
       try {
-        const [v, actionsRes, trend, qualityStore] = await Promise.all([
+        const [v, actionsRes, trend] = await Promise.all([
           loadVisitRecords(adapter),
-          listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
-          loadPostUseTrend(adapter).catch(() => null),
-          loadPostUsePeriodQuality(adapter).catch(() => null),
+          listActionItems({ limit: 500 }).catch(() => ({ items: [] })),
+          ensureHistoricalTrendSeed(adapter).catch(() => null),
         ])
         if (!cancelled) {
           setVisits(v)
           setActionItems(actionsRes?.items || [])
           setTrendSnap(trend)
-          setQuality(qualityStore)
         }
       } catch {
         /* ignore */
@@ -61,21 +93,51 @@ export default function PostUseRatingDashboardView() {
     }
   }, [adapter, feedbacks])
 
+  const ticketRecordsForFollowUp = useMemo(() => {
+    if (!currentPeriod) return []
+    const complaint = filterRecordsForScope(feedbacks, currentPeriod, 'complaint_ticket')
+    const consultation = filterRecordsForScope(feedbacks, currentPeriod, 'consultation_ticket')
+    return [...complaint, ...consultation]
+  }, [feedbacks, currentPeriod])
+
   const catalog = useMemo(() => getCatalogProducts(), [feedbacks])
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
   const focusNames = useMemo(() => getPostUseFocusTrackedNames(catalog), [catalog])
-  const scopedItems = useMemo(() => scopePostUseRatingRecords(items, catalog), [items, catalog])
-  const scopedVisits = useMemo(() => {
-    const months = new Set(postUseVisitMonthsForPeriod(currentPeriod))
-    return scopePostUseRatingRecords(
-      visits.filter((visit) => months.has(visit.importMonth || visit.visitMonth)),
-      catalog,
-    )
-  }, [visits, currentPeriod, catalog])
-  const allScopedItems = useMemo(
-    () => scopePostUseRatingRecords(feedbacks.filter((r) => r.dataSourceType === 'post_use_rating'), catalog),
-    [feedbacks, catalog],
+
+  const normalized = useMemo(() => recordsToNormalized(items), [items])
+  const internalExp = useMemo(
+    () => computeInternalExperienceMetrics(normalized, { productNames }),
+    [normalized, productNames],
   )
+  const internalSat = useMemo(
+    () => computeInternalSatisfactionMetrics(normalized, { productNames }),
+    [normalized, productNames],
+  )
+  const external = useMemo(
+    () => computeExternalMixedMetrics(normalized, { productNames }),
+    [normalized, productNames],
+  )
+
+  /** 渠道口径 callback vs 工单 enrich：披露未匹配，满意度明细以工单面板为准下钻 */
+  const callbackLinkage = useMemo(() => {
+    const callbackRows = items.filter(isPostUseRatingCallbackRecord)
+    const enriched = extractFollowUpTicketRecords(ticketRecordsForFollowUp)
+    const enrichedTicketIds = new Set(
+      enriched
+        .map((r) => String(r.ticketId || '').trim())
+        .filter(Boolean),
+    )
+    const unmatched = callbackRows.filter((r) => {
+      const oid = String(r.originalTicketId || '').trim()
+      return !oid || !enrichedTicketIds.has(oid)
+    })
+    return {
+      channelCallbackCount: callbackRows.length,
+      ticketEnrichedCount: enriched.length,
+      unmatchedCount: unmatched.length,
+    }
+  }, [items, ticketRecordsForFollowUp])
+
   const monthReasons = useMemo(() => {
     if (!trendSnap || !reportMonthSafe(currentPeriod)) return []
     const month = reportMonthSafe(currentPeriod)
@@ -89,107 +151,234 @@ export default function PostUseRatingDashboardView() {
       .sort((a, b) => b.count - a.count)
   }, [trendSnap, currentPeriod])
 
-  const createActionFromSignal = async (signal) => {
-    const key = `${signal.type}-${signal.productName}-${signal.title}`
-    if ((actionItems || []).some((item) => signal.linkedInsightIds?.some((id) => item.linkedInsightIds?.includes(id)))) {
-      message.info('该洞察已关联举措')
-      return
-    }
-    setCreatingSignalKey(key)
-    try {
-      const created = await createActionItem({
-        content: signal.title,
-        detail: signal.detail,
-        productName: signal.productName,
-        status: 'pending_evaluation',
-        painPointSnapshot: signal.insightTheme || signal.title,
-        linkedDataSources: ['post_use_rating'],
-        linkedInsightIds: signal.linkedInsightIds || [],
-        evidenceRecordIds: signal.evidenceRecordIds || [],
-        insightTheme: signal.insightTheme || '',
-        triggerMetric: signal.triggerMetric,
-        firstProposedAt: new Date().toISOString().slice(0, 10),
-      })
-      setActionItems((items) => [created, ...items])
-      message.success('已创建举措并关联洞察证据')
-    } catch (error) {
-      message.error(error?.message || '创建举措失败')
-    } finally {
-      setCreatingSignalKey('')
-    }
-  }
+  const scoreTrend = useMemo(
+    () =>
+      trendSnap
+        ? buildFocusScoreTrendChartModel(trendSnap, focusNames, 'internal_experience')
+        : { data: [], areas: [] },
+    [trendSnap, focusNames],
+  )
+  const satTrend = useMemo(
+    () =>
+      trendSnap ? buildFocusSatisfactionTrendChartModel(trendSnap, focusNames) : { data: [], areas: [] },
+    [trendSnap, focusNames],
+  )
+
+  const actionSignals = useMemo(() => {
+    const callbackNonTen = normalized
+      .filter((r) => r.channel === 'callback' && r.score !== 10)
+      .map((r) => ({
+        productName: r.productName,
+        score: r.score,
+        customerName: r.customerName,
+        lowScoreReason: r.lowScoreReason,
+        originalTicketId: r.originalTicketId,
+      }))
+    return buildPostUseActionSignals({
+      internalSat,
+      internalExp,
+      callbackNonTen: callbackNonTen.slice(0, 20),
+    })
+  }, [normalized, internalSat, internalExp])
 
   const reportMonth = reportMonthSafe(currentPeriod)
-  const activeViewMode = reportMonth ? viewMode : 'online'
-  useEffect(() => {
-    if (!reportMonth && viewMode !== 'online') setViewMode('online')
-  }, [reportMonth, viewMode])
-  const qualityMonth = reportMonth || [...new Set(scopedItems.map((r) => r.importMonth).filter(Boolean))].sort().at(-1) || ''
-  const periodQuality = quality?.periods?.[qualityMonth] || null
-  const storyModel = useMemo(() => buildPostUseStoryModel({
-    records: scopedItems,
-    allRecords: allScopedItems,
-    visits: scopedVisits,
-    productNames,
-    focusNames,
-    actions: actionItems,
-    trend: trendSnap,
-    quality: periodQuality,
-    period: currentPeriod,
-    settings,
-  }), [scopedItems, allScopedItems, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings])
+  const hasRatingItems = normalized.length > 0
+
+  const satColumns = [
+    { title: '产品', dataIndex: 'productName', key: 'productName' },
+    { title: '样本量', dataIndex: 'sampleSize', key: 'sampleSize', width: 88 },
+    {
+      title: '10分率',
+      dataIndex: 'rate',
+      key: 'rate',
+      width: 100,
+      render: (v, row) => `${v}%${row.smallSample ? '（参考）' : ''}`,
+    },
+  ]
 
   return (
     <div className="space-y-4">
-      <Card size="small">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <Typography.Title level={4} className="!mb-0">
-              {reportMonth ? '用后即评分析与报告' : '用后即评综合分析'}
-            </Typography.Title>
-            {reportMonth ? (
-              <Segmented
-                className="post-use-report-tabs"
-                value={activeViewMode}
-                onChange={setViewMode}
-                options={[
-                  { value: 'online', label: '线上综合分析', icon: <BarChartOutlined /> },
-                  { value: 'report', label: 'Word 月报', icon: <FileWordOutlined /> },
-                ]}
-              />
-            ) : null}
-          </div>
-          <Space size={[8, 8]} wrap>
-            <Tag color={storyModel.scope.qualityWarningCount ? 'gold' : storyModel.quality ? 'green' : 'default'}>
-              {storyModel.scope.qualityStatus}
-            </Tag>
-            <Tag color={activeViewMode === 'online' ? 'blue' : 'default'}>范围 {storyModel.scope.periodLabel}</Tag>
-            <Tag>产品 {storyModel.scope.productCount}</Tag>
-            <Tag>样本 {storyModel.scope.validSample}</Tag>
-            {reportMonth ? <Tag color="green">月报 {reportMonth}</Tag> : null}
-          </Space>
-        </div>
-      </Card>
+      <Typography.Text type="secondary" className="block text-sm">
+        对内默认：体验均分=短信+控制台；投诉回访单独算 10 分满意度（达标线 88%，n&lt;
+        {POST_USE_SMALL_SAMPLE_N} 标参考）。对外月报仍可按三渠道混算。投诉回访在反馈库只挂在投诉/咨询工单上，不重复列独立明细。
+      </Typography.Text>
 
-      {activeViewMode === 'report' ? (
-        <PostUseMonthlyReportPreview
-          adapter={adapter}
-          reportMonth={reportMonth}
-          scoredRows={storyModel.scoredRows}
-          productNames={productNames}
-          visits={visits}
-          actionItems={actionItems}
-          reasons={monthReasons}
-          insightBundle={storyModel.insightBundle}
-          quality={periodQuality}
-          storyModel={storyModel}
+      <div className="flex flex-wrap gap-2">
+        <Link
+          to="/import?source=post_use_rating&subType=channel_bundle"
+          className="text-sm"
+        >
+          导入短信+官网双文件
+        </Link>
+        <Link to="/feedbacks?lane=post_use&source=post_use_rating" className="text-sm">
+          查看用后即评明细（短信/控制台）
+        </Link>
+      </div>
+
+      <FollowUpSatisfactionPanel ticketRecords={ticketRecordsForFollowUp} />
+
+      {(callbackLinkage.channelCallbackCount > 0 || callbackLinkage.ticketEnrichedCount > 0) && (
+        <Alert
+          type="info"
+          showIcon
+          title="投诉回访数据源说明"
+          description={
+            <>
+              渠道口径明细 {callbackLinkage.channelCallbackCount} 条（用于对内满意度/对外混算 KPI）；已关联工单{' '}
+              {callbackLinkage.ticketEnrichedCount} 条（上方回访面板与反馈库下钻）。
+              {callbackLinkage.unmatchedCount > 0
+                ? ` 未匹配原工单 ${callbackLinkage.unmatchedCount} 条（仅计入渠道 KPI，不在反馈库用后即评列表展示）。`
+                : ' 渠道回访均已关联工单或暂无渠道回访行。'}
+            </>
+          }
         />
+      )}
+
+      <PostUseVisitPanel reportMonth={reportMonth} />
+
+      {scoreTrend.data.length > 0 && (
+        <Card size="small" title="重点跟踪产品 · 体验均分趋势（对内）" data-pdf-chart="yhjp-product-scores">
+          <TrendChart
+            variant="line"
+            allowDecimals
+            height={260}
+            data={scoreTrend.data}
+            areas={scoreTrend.areas}
+            referenceLine={{ y: 8, label: '考核基准 8' }}
+          />
+        </Card>
+      )}
+
+      {satTrend.data.length > 0 && (
+        <Card size="small" title="重点跟踪产品 · 投诉回访满意度趋势" data-pdf-chart="yhjp-product-satisfaction">
+          <TrendChart
+            variant="line"
+            allowDecimals
+            height={260}
+            data={satTrend.data}
+            areas={satTrend.areas}
+            referenceLine={{ y: 88, label: '达标线 88%' }}
+          />
+        </Card>
+      )}
+
+      {actionSignals.length > 0 && (
+        <Card
+          size="small"
+          title="举措推荐（草稿信号）"
+          extra={
+            <Link to="/actions" className="text-sm">
+              前往举措与进展
+            </Link>
+          }
+        >
+          <Table
+            size="small"
+            rowKey={(r) => `${r.type}-${r.productName}-${r.title}`}
+            pagination={{ pageSize: 8 }}
+            dataSource={actionSignals}
+            columns={[
+              { title: '优先级', dataIndex: 'priority', width: 72 },
+              { title: '产品', dataIndex: 'productName', width: 120 },
+              { title: '建议', dataIndex: 'title' },
+              { title: '说明', dataIndex: 'detail', ellipsis: true },
+            ]}
+          />
+        </Card>
+      )}
+
+      {!hasRatingItems ? (
+        <Card>
+          <Typography.Text type="secondary">
+            当前周期内暂无「{sourceLabel}」渠道明细。请导入短信渠道 + 官网渠道双文件。
+          </Typography.Text>
+          <Alert
+            className="mt-3"
+            type="info"
+            showIcon
+            title="工单回访补全仍可独立存在"
+            description="若仅完成了旧版满意度回访补全，上方回访面板仍可展示；渠道口径 KPI 需双文件导入后才有。重点跟踪趋势可先展示历史种子。"
+          />
+        </Card>
       ) : (
-        <PostUseStoryView
-          model={storyModel}
-          creatingSignalKey={creatingSignalKey}
-          onCreateAction={(signal) => void createActionFromSignal(signal)}
-        />
+        <>
+          <Row gutter={[16, 16]}>
+            <Col xs={12} sm={6}>
+              <Card>
+                <Statistic title="对内体验样本量" value={internalExp.totalSample} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card>
+                <Statistic title="对内体验均分" value={internalExp.avgScore} precision={2} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card>
+                <Statistic
+                  title="对外云网均分（混算）"
+                  value={external.yunwang.avgScore}
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card>
+                <Statistic title="对外云网样本量" value={external.yunwang.totalSample} />
+              </Card>
+            </Col>
+          </Row>
+
+          <Card title="投诉回访满意度（对内，渠道口径 · 与月报一致）" size="small">
+            <Table
+              size="small"
+              rowKey="productName"
+              pagination={false}
+              columns={satColumns}
+              dataSource={internalSat.byProduct}
+            />
+            {internalSat.notQualified.length > 0 && (
+              <Alert
+                className="mt-3"
+                type="warning"
+                showIcon
+                title={`不达标（n≥${POST_USE_SMALL_SAMPLE_N} 且 <88%）：${internalSat.notQualified
+                  .map((p) => `${p.productName} ${p.rate}%`)
+                  .join('、')}`}
+              />
+            )}
+          </Card>
+
+          <Card title="对内体验分·分产品" size="small">
+            <Table
+              size="small"
+              rowKey="productName"
+              pagination={false}
+              columns={[
+                { title: '产品', dataIndex: 'productName' },
+                { title: '样本量', dataIndex: 'sampleSize', width: 88 },
+                {
+                  title: '均分',
+                  dataIndex: 'avgScore',
+                  width: 88,
+                  render: (v, row) => `${v}${row.smallSample ? '（参考）' : ''}`,
+                },
+              ]}
+              dataSource={internalExp.byProduct}
+            />
+          </Card>
+
+          {reportMonth ? (
+            <PostUseMonthlyReportPreview
+              reportMonth={reportMonth}
+              scoredRows={normalized}
+              productNames={productNames}
+              visits={visits}
+              actionItems={actionItems}
+              reasons={monthReasons}
+            />
+          ) : null}
+        </>
       )}
     </div>
   )

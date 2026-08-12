@@ -32,7 +32,7 @@ export function normalizeCatalogProducts(raw) {
         name: String(p.name || p.key).trim(),
         enabled: Boolean(p.enabled),
         analysisPostUseRating: Boolean(p.analysisPostUseRating),
-        focusTracked: Boolean(p.analysisPostUseRating && p.focusTracked),
+        focusTracked: Boolean(p.focusTracked),
         taxonomyKey: canonicalTaxonomyKey(String(p.taxonomyKey || p.key || '').trim()),
         acceptParentName: p.acceptParentName !== false,
         specs: (p.specs || [])
@@ -263,8 +263,6 @@ export function catalogToTableRows(products) {
     key: p.key,
     name: p.name,
     enabled: p.enabled,
-    analysisPostUseRating: Boolean(p.analysisPostUseRating),
-    focusTracked: Boolean(p.analysisPostUseRating && p.focusTracked),
     taxonomyKey: p.taxonomyKey,
     acceptParentName: p.acceptParentName !== false,
     specs: p.specs || [],

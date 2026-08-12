@@ -137,10 +137,14 @@ export function mergeManualTagFieldsOnUserEdit(existing, patch) {
     set.add('rootCauseReview')
   }
   if (
-    ('complaintCauseL2Review' in patch
+    ('complaintCauseL1Review' in patch
+      && !fieldValueEqual(existing?.complaintCauseL1Review, patch.complaintCauseL1Review))
+    || ('complaintCauseL2Review' in patch
       && !fieldValueEqual(existing?.complaintCauseL2Review, patch.complaintCauseL2Review))
     || ('complaintCauseL3Review' in patch
       && !fieldValueEqual(existing?.complaintCauseL3Review, patch.complaintCauseL3Review))
+    || ('complaintCauseReviewReason' in patch
+      && !fieldValueEqual(existing?.complaintCauseReviewReason, patch.complaintCauseReviewReason))
   ) {
     set.add('complaintCauseReview')
   }
@@ -219,6 +223,7 @@ export function preserveManualTags(original, processed, options = {}) {
     out.complaintCauseL1Review = original.complaintCauseL1Review
     out.complaintCauseL2Review = original.complaintCauseL2Review
     out.complaintCauseL3Review = original.complaintCauseL3Review
+    out.complaintCauseReviewReason = original.complaintCauseReviewReason
   }
 
   return out

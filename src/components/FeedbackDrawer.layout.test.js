@@ -33,7 +33,8 @@ describe('FeedbackDrawer layout', () => {
     const classification = marker("id={isPostUseLibrary ? 'rating-detail-classification' : 'ticket-detail-classification'}")
     const tags = marker('dimension="requestScene"')
     const causeFinal = marker('投诉原因（终判）')
-    const causeReview = marker('二级（人工复核）')
+    const causeReview = marker('拟复核投诉原因（一/二/三级）')
+    marker('申请复核原因')
 
     expect(src).toMatch(/title=\{[\s\S]*TicketDetailDrawerTitle/)
     expect(src).toContain('justify-center')

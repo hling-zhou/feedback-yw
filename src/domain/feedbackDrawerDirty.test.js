@@ -64,6 +64,12 @@ describe('isFeedbackDrawerFormDirty', () => {
         ticketTodoItems: [{ id: 't1', text: '跟进', done: false }],
       }),
     ).toBe(true)
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord, listeningReviewed: false },
+        { ...baseForm, listeningReviewed: true },
+      ),
+    ).toBe(true)
   })
 
   it('areFeedbackDrawerFormSnapshotsEqual matches identical snapshots', () => {

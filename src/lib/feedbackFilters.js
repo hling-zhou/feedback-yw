@@ -49,9 +49,18 @@ export const TODO_STATUS_FILTER_OPTIONS = [
   { label: '我的待办（未完成）', value: 'my_open' },
 ]
 
+/** @typedef {'' | 'yes' | 'no'} ListeningReviewedFilterValue */
+
+export const LISTENING_REVIEWED_FILTER_OPTIONS = [
+  { label: '全部听音状态', value: '' },
+  { label: '已听音', value: 'yes' },
+  { label: '未听音', value: 'no' },
+]
+
 const FOLLOW_UP_FILTER_VALUES = new Set(['has', 'none', '10', 'non10'])
 const FOLLOW_UP_RESOLVED_VALUES = new Set(['resolved', 'unresolved'])
 const TODO_STATUS_FILTER_VALUES = new Set(['has_open', 'no_open', 'my_open'])
+const LISTENING_REVIEWED_FILTER_VALUES = new Set(['yes', 'no'])
 const REASON_DIM_VALUES = new Set(DISSATISFIED_REASON_PART_KEYS)
 
 /**
@@ -120,6 +129,30 @@ export function matchesTodoStatusFilter(record, todoStatus = '', ctx = {}) {
 }
 
 /**
+ * @param {string | null | undefined} raw
+ * @returns {ListeningReviewedFilterValue}
+ */
+export function parseListeningReviewedFilterParam(raw) {
+  const value = raw?.trim()
+  if (!value) return ''
+  return LISTENING_REVIEWED_FILTER_VALUES.has(value)
+    ? /** @type {ListeningReviewedFilterValue} */ (value)
+    : ''
+}
+
+/**
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {ListeningReviewedFilterValue} listeningReviewed
+ */
+export function matchesListeningReviewedFilter(record, listeningReviewed = '') {
+  if (!listeningReviewed) return true
+  const listened = Boolean(record?.listeningReviewed)
+  if (listeningReviewed === 'yes') return listened
+  if (listeningReviewed === 'no') return !listened
+  return true
+}
+
+/**
  * 按处理意见字段做关键字模糊匹配（大小写不敏感子串）。
  *
  * @param {FeedbackRecord | null | undefined} record
@@ -130,16 +163,6 @@ export function matchesHandlingKeywordFilter(record, keyword = '') {
   if (!needle) return true
   const haystack = String(record?.handlingText ?? '').toLowerCase()
   return haystack.includes(needle)
-}
-
-/**
- * @param {FeedbackRecord | null | undefined} record
- * @param {string[]} [customerNames]
- */
-export function matchesCustomerNamesFilter(record, customerNames = []) {
-  if (!Array.isArray(customerNames) || customerNames.length === 0) return true
-  const name = String(record?.customerName ?? '').trim()
-  return Boolean(name) && customerNames.includes(name)
 }
 
 /**
@@ -232,17 +255,6 @@ export function parseTicketIdsParam(raw) {
 }
 
 /**
- * @param {string | null | undefined} raw
- */
-export function parseCustomerNamesParam(raw) {
-  if (!raw) return []
-  return raw
-    .split(',')
-    .map((t) => decodeURIComponent(t.trim()))
-    .filter(Boolean)
-}
-
-/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackSearchParams(searchParams) {
@@ -258,9 +270,9 @@ export function parseFeedbackSearchParams(searchParams) {
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
-    customerNames: parseCustomerNamesParam(searchParams.get('customerNames')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
+    listeningReviewed: parseListeningReviewedFilterParam(searchParams.get('listeningReviewed')),
     handlingKeyword: searchParams.get('handlingKeyword')?.trim() || '',
   }
 }
@@ -286,6 +298,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'ticketDateTo',
     'myReview',
     'todoStatus',
+    'listeningReviewed',
     'handlingKeyword',
   ]
   for (const key of fields) {
@@ -298,11 +311,6 @@ export function patchFeedbackSearchParams(base, patch) {
     const value = patch.ticketIds?.trim()
     if (value) next.set('ticketIds', value)
     else next.delete('ticketIds')
-  }
-  if ('customerNames' in patch) {
-    const value = patch.customerNames?.trim()
-    if (value) next.set('customerNames', value)
-    else next.delete('customerNames')
   }
   return next
 }
@@ -348,12 +356,11 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   reasonDim?: string
  *   ticketId?: string
  *   ticketIds?: string
- *   customerNames?: string
  *   ticketDateFrom?: string
  *   ticketDateTo?: string
  *   source?: string
- *   lane?: string
  *   todoStatus?: string
+ *   listeningReviewed?: string
  *   handlingKeyword?: string
  * }} [params]
  */
@@ -371,12 +378,11 @@ export function buildFeedbacksUrl(params = {}) {
     'reasonDim',
     'ticketId',
     'ticketIds',
-    'customerNames',
     'ticketDateFrom',
     'ticketDateTo',
     'source',
-    'lane',
     'todoStatus',
+    'listeningReviewed',
     'handlingKeyword',
   ]
   for (const key of stringFields) {
@@ -399,8 +405,6 @@ export function buildFeedbacksUrl(params = {}) {
  *   followUp?: string
  *   followUpResolved?: string
  *   source?: string
- *   customerNames?: string
- *   lane?: string
  * }} [params]
  */
 export function buildFollowUpDrillDownUrl(params = {}) {
@@ -413,8 +417,6 @@ export function buildFollowUpDrillDownUrl(params = {}) {
     problemType: params.problemType,
     product,
     source: params.source,
-    customerNames: params.customerNames,
-    lane: params.lane,
   })
 }
 
@@ -428,7 +430,6 @@ export function buildFollowUpDrillDownUrl(params = {}) {
  *   requestScene?: string
  *   problemType?: string
  *   complaintCauseL1?: string
- *   customerNames?: string
  * }} [params]
  */
 export function buildTicketWorkbenchDrillDownUrl(params = {}) {
@@ -439,6 +440,5 @@ export function buildTicketWorkbenchDrillDownUrl(params = {}) {
     requestScene: params.requestScene,
     problemType: params.problemType,
     complaintCauseL1: params.complaintCauseL1,
-    customerNames: params.customerNames,
   })
 }

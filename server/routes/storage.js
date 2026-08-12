@@ -224,6 +224,19 @@ export function registerStorageRoutes(app) {
     },
   )
 
+  app.post(
+    '/api/storage/records/by-ticket-ids',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      const body = /** @type {{ dataSourceType?: string; ticketIds?: string[] }} */ (request.body || {})
+      const dataSourceType = body.dataSourceType?.trim() || 'complaint_ticket'
+      const ticketIds = Array.isArray(body.ticketIds) ? body.ticketIds : []
+      return {
+        records: storageRepository.listRecordsByTicketIds(dataSourceType, ticketIds),
+      }
+    },
+  )
+
   app.get(
     '/api/storage/records/month-summary',
     { preHandler: requirePermission('view') },

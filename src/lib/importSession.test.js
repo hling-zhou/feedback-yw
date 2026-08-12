@@ -53,11 +53,14 @@ describe('formatImportFinishedToast', () => {
       formatImportFinishedToast({
         dataMonth: '2025-03',
         added: 120,
+        updated: 8,
         skippedDuplicates: 2,
         failures: 1,
         skippedProducts: 5,
       }),
-    ).toBe('2025-03 新增 120 条，去重跳过 2 条，分析失败 1 行，范围外跳过 5 行')
+    ).toBe(
+      '2025-03 新增 120 条，更新 8 条，批次内同号折叠 2 条，分析失败 1 行，范围外跳过 5 行',
+    )
   })
 })
 

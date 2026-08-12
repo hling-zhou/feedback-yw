@@ -26,9 +26,10 @@
  * @property {string} [complaintCauseL1Final] - 投诉原因一级（终判），仅 complaint_ticket
  * @property {string} [complaintCauseL2Final] - 投诉原因二级（终判）
  * @property {string} [complaintCauseL3Final] - 投诉原因三级（终判）
- * @property {string} [complaintCauseL1Review] - 投诉原因一级（终判）人工复核，重新打标不覆盖
- * @property {string} [complaintCauseL2Review] - 投诉原因二级（终判）人工复核
- * @property {string} [complaintCauseL3Review] - 投诉原因三级（终判）人工复核
+ * @property {string} [complaintCauseL1Review] - 投诉原因一级（终判）拟复核，审批同意前不改 Final
+ * @property {string} [complaintCauseL2Review] - 投诉原因二级（终判）拟复核
+ * @property {string} [complaintCauseL3Review] - 投诉原因三级（终判）拟复核
+ * @property {string} [complaintCauseReviewReason] - 申请复核原因
  * @property {string} journeyL1 - 用户旅程一级
  * @property {string} journeyL2 - 用户旅程二级（即旅程标签，无二级时标签取一级）
  * @property {string} problemSummary - 需求痛点挖掘（与 painPoint 同步）
@@ -60,6 +61,7 @@
  * @property {string[]} themes - 由 journeyL1/journeyL2 同步，与二级环节名一致（无二级时取一级）
  * @property {FeedbackStatus} status
  * @property {string} [note]
+ * @property {boolean} [listeningReviewed] - 是否听音（人工维护，再导入保留）
  * @property {('requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview')[]} [manualTagFields] - 人工维护维度；见 fieldRegistry.js
  * @property {string} [importMonth] - 数据月份，格式 YYYY-MM，用于按月导入后的历史趋势分析
  * @property {boolean} [outOfPeriodWarning]
@@ -95,6 +97,17 @@ export const STANDARD_FIELDS = [
     label: '客户等级',
     required: false,
     hint: '映射到「移动云客户服务等级」列（金牌/银牌/铜牌/普通）；用于行动建议高价值客户影响展示，不参与聚类评分。',
+  },
+  { key: 'customerTypeNameCol', label: '客户类型名称', required: false },
+  { key: 'groupNameCol', label: '集团名称', required: false },
+  { key: 'groupCustomerCodeCol', label: '集团客户编码', required: false },
+  { key: 'groupProvinceCol', label: '集团所属省份', required: false },
+  { key: 'groupCityCol', label: '集团所属地市', required: false },
+  {
+    key: 'loginAccountNameCol',
+    label: '登录账号名称',
+    required: false,
+    hint: '导入兼容表头「登录账号名称」或「登陆账号名称」，入库统一为「登录账号名称」。',
   },
   { key: 'rawText', label: '受理内容 / 主文本', required: false, hint: '投诉/咨询工单：客户侧问题描述，常用列「受理内容」；可与下方「合并到主文本」列拼接。非工单来源时映射正文列。' },
   { key: 'handlingText', label: '处理意见（打标必填）', required: true, hint: '客服处理记录，四维打标与客户请求/痛点抽取的主要语料；投诉工单常用列「处理意见」。' },

@@ -65,11 +65,13 @@
  *   complaintCauseL1Review?: string
  *   complaintCauseL2Review?: string
  *   complaintCauseL3Review?: string
+ *   complaintCauseReviewReason?: string
  *   sentiment: Sentiment
  *   urgencyLevel?: import('../lib/sentiment.js').UrgencyLevel
  *   themes: string[]
  *   status: FeedbackStatus
  *   note?: string
+ *   listeningReviewed?: boolean
  *   followUpSatisfaction?: import('./followUpSatisfaction.js').FollowUpSatisfaction
  * }} TicketRecord
  */

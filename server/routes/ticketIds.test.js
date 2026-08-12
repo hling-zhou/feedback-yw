@@ -134,6 +134,23 @@ describeTicketIds('ticket-ids API', () => {
     expect(JSON.parse(res.body).record.id).toBe('rec-tid-1')
   })
 
+  it('returns full records by ticket ids', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/storage/records/by-ticket-ids',
+      headers: authHeader('editor'),
+      payload: {
+        dataSourceType: 'complaint_ticket',
+        ticketIds: ['T-GLOBAL-1', 'missing'],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.records).toHaveLength(1)
+    expect(body.records[0].ticketId).toBe('T-GLOBAL-1')
+    expect(body.records[0].id).toBe('rec-tid-1')
+  })
+
   it('PATCH 修改工单号为同类型已存在值时返回 409 TICKET_ID_CONFLICT', async () => {
     const getRes = await app.inject({
       method: 'GET',

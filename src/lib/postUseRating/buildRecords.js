@@ -1,6 +1,5 @@
 import { randomId } from '../randomId.js'
 import { SCHEMA_VERSION } from '../../domain/constants.js'
-import { buildPostUseEvidence } from './evidence.js'
 
 /** @typedef {import('./parseChannels.js').NormalizedPostUseRow} NormalizedPostUseRow */
 
@@ -26,11 +25,6 @@ export function buildPostUseRatingRecord(row, meta) {
           : 'web_option'
 
   const id = randomId()
-  const evidence = buildPostUseEvidence(row, {
-    recordId: id,
-    importMonth: meta.importMonth,
-    importBatchId: meta.importBatchId,
-  })
   return {
     id,
     schemaVersion: SCHEMA_VERSION,
@@ -54,13 +48,7 @@ export function buildPostUseRatingRecord(row, meta) {
     customerName: row.customerName,
     customerCode: row.customerCode,
     lowScoreReason: row.lowScoreReason,
-    feedbackReasonTexts: Array.isArray(row.feedbackReasonTexts) ? row.feedbackReasonTexts.filter(Boolean) : undefined,
-    feedbackReasonPrimary: Array.isArray(row.feedbackReasonTexts) ? row.feedbackReasonTexts[0] || '' : '',
-    feedbackReasonSecondary: Array.isArray(row.feedbackReasonTexts) ? row.feedbackReasonTexts[1] || '' : '',
-    feedbackReasonTertiary: Array.isArray(row.feedbackReasonTexts) ? row.feedbackReasonTexts[2] || '' : '',
     scene: row.scene,
-    originalScene: row.scene || '未提供',
-    evidence,
     followUpTicketId: row.followUpTicketId,
     originalTicketId: row.originalTicketId,
     ratingId: id,
@@ -73,6 +61,6 @@ export function buildPostUseRatingRecord(row, meta) {
  */
 export function buildPostUseRatingRecords(scoredRows, meta) {
   return scoredRows
-    .filter((r) => r.channel === 'option' || Number.isFinite(r.score))
+    .filter((r) => r.channel !== 'option' && Number.isFinite(r.score))
     .map((row) => buildPostUseRatingRecord(row, meta))
 }

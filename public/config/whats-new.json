@@ -1,36 +1,56 @@
 {
-  "generatedAt": "2026-08-04T06:50:00.000Z",
+  "generatedAt": "2026-08-12T17:35:49.716Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "567921772d3ef930fd0f9a91b6b2a2d2138de02b",
+  "repoCommit": "116d159fe4b3121973165047d455bacd078311b3",
   "items": [
     {
-      "id": "2026-08-04-post-use-visit-feedback-tabs",
-      "title": "补齐重点客户维护与客服部回访反馈视图",
+      "id": "116d159fe4b3121973165047d455bacd078311b3",
+      "title": "投诉原因拟复核审批、听音筛选与导出客户列",
       "category": "feature",
       "modules": [
-        "feedbacks",
-        "workbench",
-        "tags"
+        "feedbacks"
       ],
-      "publishedAt": "2026-08-04",
+      "publishedAt": "2026-08-13",
       "appVersion": null,
-      "summary": "- 分析维度新增“重点客户”Tab，重点客户名单改为在此维护，点击保存后生效\n- 反馈库新增“客服部回访”Tab，展示导入的回访原单，支持客户名称搜索与导出\n- 用后即评综合分析中的“下载建议客服部回访客户清单”按钮在不可用时保留禁用态，并在悬停时提示原因",
+      "summary": "工单详情支持三级联动拟复核与申请原因，管理员可审批归档；同意后更新终判。\n补充是否听音、同号覆盖导入，以及分析结果导出末尾客户基础信息列。",
       "commitUrl": null,
       "source": "git"
     },
     {
-      "id": "2026-08-04-post-use-import-updates",
-      "title": "完善用后即评导入与客服部回访闭环",
+      "id": "91a7592d50a79b0ec44563022707187a852e4d93",
+      "title": "update post-use callback recommendations",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-04",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "f131e9f52b9d031e6068d9a6101531657708b0fc",
+      "title": "增加客服部回访反馈视图",
       "category": "feature",
       "modules": [
-        "import",
-        "workbench",
-        "settings"
+        "feedbacks"
       ],
       "publishedAt": "2026-08-04",
       "appVersion": null,
-      "summary": "- 主数据导入支持识别受密码保护的 Excel，并在导入时弹窗输入密码后重试解析\n- 用后即评综合分析新增“建议客服部回访客户清单”下载，按重点客户范围与低于 7 分规则生成，并在导入回访后自动消失\n- 设置模块新增重点客户名单维护；客服回访统一更名为“客服部回访”\n- 关闭系统内 IP 脱敏写入链路，未来新导入数据默认保留明文展示\n- 客服部回访导入模板切换为“数据月份、客户名称、客户编码、产品名称、回访结果、内部评估”，导入后同步挂载到对应用后即评原单与月报回访视图",
+      "summary": "- 分析维度新增重点客户 tab，保存后生效\n- 反馈库新增客服部回访 tab，支持客户名称搜索与导出\n- 用后即评综合分析的回访清单下载按钮在禁用时显示原因提示",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8f16a85a73dad965085b4c652c551f59905d5558",
+      "title": "完善用后即评导入与客服部回访闭环",
+      "category": "feature",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-08-04",
+      "appVersion": null,
+      "summary": "- 支持受密码保护 Excel 在导入时输入密码重试解析\n- 移除系统内 IP 脱敏写入并补充审计说明\n- 新增建议客服部回访清单、重点客户设置与完成态联动\n- 将客服回访统一改为客服部回访，回访导入模板切换为新 6 列",
       "commitUrl": null,
       "source": "git"
     },

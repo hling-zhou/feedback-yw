@@ -28,6 +28,7 @@ function norm(value) {
 /**
  * @typedef {Object} FeedbackDrawerFormSnapshot
  * @property {string} [note]
+ * @property {boolean} [listeningReviewed]
  * @property {import('../lib/sentiment.js').Sentiment} [sentiment]
  * @property {import('../lib/sentiment.js').UrgencyLevel} [urgencyLevel]
  * @property {string} [requestScene]
@@ -43,8 +44,10 @@ function norm(value) {
  * @property {string} [actionSchedule]
  * @property {string} [actionId]
  * @property {string} [rootCauseReview]
+ * @property {string} [complaintCauseL1Review]
  * @property {string} [complaintCauseL2Review]
  * @property {string} [complaintCauseL3Review]
+ * @property {string} [complaintCauseReviewReason]
  * @property {import('./ticketTodo.js').TicketTodoItem[]} [ticketTodoItems]
  */
 
@@ -58,6 +61,7 @@ export function isFeedbackDrawerFormDirty(record, form) {
   if (!record) return false
 
   if (norm(form.note) !== norm(record.note)) return true
+  if (Boolean(form.listeningReviewed) !== Boolean(record.listeningReviewed)) return true
   if (normalizeSentiment(form.sentiment) !== normalizeSentiment(record.sentiment)) return true
   if (
     normalizeUrgencyLevel(form.urgencyLevel, form.sentiment)
@@ -115,11 +119,15 @@ export function isFeedbackDrawerFormDirty(record, form) {
 
   const causeBaseline = getComplaintCauseReviewDraftDisplay(record)
   const causeNorm = normalizeComplaintCauseReviewInput({
+    l1: form.complaintCauseL1Review,
     l2: form.complaintCauseL2Review,
     l3: form.complaintCauseL3Review,
+    reason: form.complaintCauseReviewReason,
   })
+  if (causeNorm.complaintCauseL1Review !== causeBaseline.l1) return true
   if (causeNorm.complaintCauseL2Review !== causeBaseline.l2) return true
   if (causeNorm.complaintCauseL3Review !== causeBaseline.l3) return true
+  if (causeNorm.complaintCauseReviewReason !== causeBaseline.reason) return true
 
   if (
     !ticketTodoItemsEqual(
@@ -141,6 +149,7 @@ export function isFeedbackDrawerFormDirty(record, form) {
  */
 export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
   if (norm(a.note) !== norm(b.note)) return false
+  if (Boolean(a.listeningReviewed) !== Boolean(b.listeningReviewed)) return false
   if (normalizeSentiment(a.sentiment) !== normalizeSentiment(b.sentiment)) return false
   if (
     normalizeUrgencyLevel(a.urgencyLevel, a.sentiment)
@@ -186,15 +195,21 @@ export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
     return false
   }
   const causeA = normalizeComplaintCauseReviewInput({
+    l1: a.complaintCauseL1Review,
     l2: a.complaintCauseL2Review,
     l3: a.complaintCauseL3Review,
+    reason: a.complaintCauseReviewReason,
   })
   const causeB = normalizeComplaintCauseReviewInput({
+    l1: b.complaintCauseL1Review,
     l2: b.complaintCauseL2Review,
     l3: b.complaintCauseL3Review,
+    reason: b.complaintCauseReviewReason,
   })
+  if (causeA.complaintCauseL1Review !== causeB.complaintCauseL1Review) return false
   if (causeA.complaintCauseL2Review !== causeB.complaintCauseL2Review) return false
   if (causeA.complaintCauseL3Review !== causeB.complaintCauseL3Review) return false
+  if (causeA.complaintCauseReviewReason !== causeB.complaintCauseReviewReason) return false
   if (
     !ticketTodoItemsEqual(
       normalizeTicketTodoInput(a.ticketTodoItems),

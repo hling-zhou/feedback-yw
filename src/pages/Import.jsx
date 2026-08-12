@@ -31,7 +31,6 @@ import {
   applyColumnMap,
   applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
-  IMPORT_PARSE_ERROR_CODES,
 } from '../lib/parseFile.js'
 import {
   getPresetsForImport,
@@ -40,10 +39,7 @@ import {
 } from '../lib/columnPresets.js'
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
-import {
-  buildExistingTicketKeySet,
-  filterDuplicateImportRows,
-} from '../lib/importDedupe.js'
+import { filterDuplicateImportRows } from '../lib/importDedupe.js'
 import {
   getEnabledProducts,
   partitionRowsByProductCatalog,
@@ -87,7 +83,7 @@ import {
   runCustomerVisitImportDryRun,
 } from '../lib/postUseRating/customerVisitImport.js'
 
-const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服部回访导入'
+const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服回访导入'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
@@ -147,7 +143,6 @@ export default function Import({ embedded = false }) {
     periods,
     importSession,
     syncSharedDataFromServer,
-    updateFeedback,
     feedbacks,
   } = useInsights()
   const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock()
@@ -186,23 +181,12 @@ export default function Import({ embedded = false }) {
   const [sheetNames, setSheetNames] = useState([])
   const [selectedSheet, setSelectedSheet] = useState('')
   const [activePreset, setActivePreset] = useState(null)
-  const [passwordPrompt, setPasswordPrompt] = useState(
-    /** @type {{ open: boolean; file: File | null; fileId: string; sheetName: string; password: string; error: string }} */ ({
-      open: false,
-      file: null,
-      fileId: '',
-      sheetName: '',
-      password: '',
-      error: '',
-    }),
-  )
-  const [passwordSubmitting, setPasswordSubmitting] = useState(false)
   const [importMonth, setImportMonth] = useState(currentMonth)
   const [batchName, setBatchName] = useState(() =>
     defaultBatchName('complaint_ticket', currentMonth()),
   )
   const [importResult, setImportResult] = useState(
-    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[]; enrichmentStats?: import('../lib/importEnrichmentStats.js').ImportEnrichmentStats; ingest?: { added: number; skippedDuplicates: number; totalAfter: number } }} */ (
+    /** @type {null | { run: import('../domain/analysisRun.js').AnalysisRun; records: object[]; failures: import('../domain/analysisRun.js').AnalysisRunFailure[]; skipped: number; dataMonth?: string; dataSourceType?: string; taggingWarnings?: string[]; enrichmentStats?: import('../lib/importEnrichmentStats.js').ImportEnrichmentStats; ingest?: { added: number; updated?: number; skippedDuplicates: number; totalAfter: number } }} */ (
       null
     ),
   )
@@ -230,15 +214,7 @@ export default function Import({ embedded = false }) {
   const followUpImport = isFollowUpSatisfactionImport(dataSourceType, postUseRatingSubType)
   const customerVisitImport = isCustomerVisitImport(dataSourceType, postUseRatingSubType)
   const channelBundleImport = isPostUseChannelBundleImport(dataSourceType, postUseRatingSubType)
-  const singleFileEnrichImport = followUpImport
-  const customerVisitFieldKeys = [
-    'visitMonth',
-    'productName',
-    'customerName',
-    'customerCode',
-    'visitResult',
-    'internalConclusion',
-  ]
+  const singleFileEnrichImport = followUpImport || customerVisitImport
   const stepItems = useMemo(() => {
     if (channelBundleImport) return STEPS_POST_USE.map((title) => ({ title }))
     return STEPS.map((title) => ({ title }))
@@ -285,15 +261,6 @@ export default function Import({ embedded = false }) {
     setSheetNames([])
     setSelectedSheet('')
     setActivePreset(null)
-    setPasswordPrompt({
-      open: false,
-      file: null,
-      fileId: '',
-      sheetName: '',
-      password: '',
-      error: '',
-    })
-    setPasswordSubmitting(false)
     setImportResult(null)
     setFollowUpPreview(null)
     setFollowUpPreviewError('')
@@ -312,14 +279,13 @@ export default function Import({ embedded = false }) {
     /**
      * @param {File} file
      * @param {string} [sheetName]
-     * @param {string} [password]
      */
-    async (file, sheetName, password) => {
+    async (file, sheetName) => {
       const fileCheck = validateImportFile(file)
       if (!fileCheck.ok) throw new Error(fileCheck.message)
 
       const sha256 = await hashFileSha256(file)
-      const first = await parseUploadFile(file, { password })
+      const first = await parseUploadFile(file)
       if (!first.headers.length || !first.rows.length) {
         throw new Error('文件为空或无法解析')
       }
@@ -332,7 +298,7 @@ export default function Import({ embedded = false }) {
       let rows = first.rows
 
       if (names.length && selected) {
-        const parsed = await parseUploadFile(file, { sheetName: selected, password })
+        const parsed = await parseUploadFile(file, { sheetName: selected })
         if (!parsed.headers.length || !parsed.rows.length) {
           throw new Error(`工作表「${selected}」为空`)
         }
@@ -351,37 +317,10 @@ export default function Import({ embedded = false }) {
         selectedSheet: selected,
         headers,
         rows,
-        requiresPassword: Boolean(password),
-        password: password || undefined,
       })
     },
     [dataSourceType],
   )
-
-  const openPasswordPrompt = useCallback((file, fileId = '', sheetName = '') => {
-    setPasswordPrompt({
-      open: true,
-      file,
-      fileId,
-      sheetName,
-      password: '',
-      error: '',
-    })
-  }, [])
-
-  const closePasswordPrompt = useCallback(() => {
-    setPasswordPrompt({
-      open: false,
-      file: null,
-      fileId: '',
-      sheetName: '',
-      password: '',
-      error: '',
-    })
-    setPasswordSubmitting(false)
-  }, [])
-
-  const isPasswordRequiredError = (err) => err?.code === IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED
 
   const addUploadFile = useCallback(
     async (file) => {
@@ -403,16 +342,12 @@ export default function Import({ embedded = false }) {
         const entry = await parseFileToEntry(file)
         setUploadFiles((prev) => [...prev, entry])
       } catch (e) {
-        if (isPasswordRequiredError(e)) {
-          openPasswordPrompt(file)
-        } else {
-          setError(e.message || '解析失败')
-        }
+        setError(e.message || '解析失败')
       } finally {
         setLoading(false)
       }
     },
-    [uploadFiles, parseFileToEntry, openPasswordPrompt],
+    [uploadFiles, parseFileToEntry],
   )
 
   const removeUploadFile = useCallback((id) => {
@@ -427,19 +362,15 @@ export default function Import({ embedded = false }) {
       setError('')
       setLoading(true)
       try {
-        const next = await parseFileToEntry(entry.file, sheetName, entry.password)
+        const next = await parseFileToEntry(entry.file, sheetName)
         setUploadFiles((prev) => prev.map((f) => (f.id === id ? { ...next, id } : f)))
       } catch (e) {
-        if (isPasswordRequiredError(e)) {
-          openPasswordPrompt(entry.file, id, sheetName)
-        } else {
-          setError(e.message || '切换工作表失败')
-        }
+        setError(e.message || '切换工作表失败')
       } finally {
         setLoading(false)
       }
     },
-    [uploadFiles, parseFileToEntry, openPasswordPrompt],
+    [uploadFiles, parseFileToEntry],
   )
 
   const proceedToColumnMapping = useCallback(async () => {
@@ -460,7 +391,7 @@ export default function Import({ embedded = false }) {
       if (customerVisitImport) {
         if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
           throw new Error(
-            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果、内部评估',
+            '表头需包含客服回访列（月份、产品名称、用户信息/客户反馈摘要、评分来源或内部结论等）',
           )
         }
       }
@@ -509,7 +440,7 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     try {
       const entry = uploadFiles[0]
-      const next = await parseFileToEntry(entry.file, sheetName, entry.password)
+      const next = await parseFileToEntry(entry.file, sheetName)
       const updated = [{ ...next, id: entry.id }]
       setUploadFiles(updated)
       const merged = mergeParsedUploadFiles(updated)
@@ -522,49 +453,11 @@ export default function Import({ embedded = false }) {
       setActivePreset(mapping.preset)
       setSelectedSheet(sheetName)
     } catch (e) {
-      if (isPasswordRequiredError(e)) {
-        openPasswordPrompt(uploadFiles[0].file, uploadFiles[0].id, sheetName)
-      } else {
-        setError(e.message || '切换工作表失败')
-      }
+      setError(e.message || '切换工作表失败')
     } finally {
       setLoading(false)
     }
   }
-
-  const submitPasswordPrompt = useCallback(async () => {
-    if (!passwordPrompt.file) return
-    setPasswordSubmitting(true)
-    setError('')
-    try {
-      const entry = await parseFileToEntry(
-        passwordPrompt.file,
-        passwordPrompt.sheetName || undefined,
-        passwordPrompt.password,
-      )
-      if (passwordPrompt.fileId) {
-        setUploadFiles((prev) =>
-          prev.map((item) =>
-            item.id === passwordPrompt.fileId ? { ...entry, id: passwordPrompt.fileId } : item,
-          ),
-        )
-      } else {
-        setUploadFiles((prev) => [...prev, entry])
-      }
-      closePasswordPrompt()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '解析失败'
-      setPasswordPrompt((prev) => ({ ...prev, error: message }))
-    } finally {
-      setPasswordSubmitting(false)
-    }
-  }, [passwordPrompt, parseFileToEntry, closePasswordPrompt])
-
-  const clearUploadFilePasswords = useCallback(() => {
-    setUploadFiles((prev) =>
-      prev.map(({ password, requiresPassword, ...item }) => ({ ...item })),
-    )
-  }, [])
 
   const applyPreset = (preset) => {
     const map = { ...preset.columnMap }
@@ -872,7 +765,6 @@ export default function Import({ embedded = false }) {
         const dry = runCustomerVisitImportDryRun({
           rows: mappedAll,
           libraryRecords,
-          importMonth: normalizeImportMonth(importMonth),
         })
         if (!cancelled) setCustomerVisitPreview(dry)
       } catch (err) {
@@ -888,7 +780,7 @@ export default function Import({ embedded = false }) {
     return () => {
       cancelled = true
     }
-  }, [step, customerVisitImport, mappedAll, adapter, feedbacks, storageReady, importMonth])
+  }, [step, customerVisitImport, mappedAll, adapter, feedbacks, storageReady])
 
   const doFollowUpImport = async () => {
     setLoading(true)
@@ -1013,7 +905,7 @@ export default function Import({ embedded = false }) {
         throw new Error('请选择有效的数据月份（YYYY-MM）')
       }
 
-      const progress0 = '正在导入客服部回访…'
+      const progress0 = '正在导入客服回访…'
       await prepareSharedBackgroundTask('import', {
         progress: progress0,
         meta: {
@@ -1040,13 +932,7 @@ export default function Import({ embedded = false }) {
         rows: mappedAll,
         libraryRecords,
         importBatchId,
-        importMonth: dataMonth,
-        updateRecords: (recs) =>
-          Promise.all(
-            recs.map((record) =>
-              updateFeedback(record.id, { customerVisit: record.customerVisit }),
-            ),
-          ),
+        putRecords: (recs) => adapter.putRecords(recs),
       })
 
       if (isApiStorageAdapter(adapter)) {
@@ -1085,7 +971,7 @@ export default function Import({ embedded = false }) {
       return
     }
     Modal.confirm({
-      title: '确认导入客服部回访？',
+      title: '确认导入客服回访？',
       content: (
         <>
           将写入回访元数据，并软匹配挂到短信/控制台用后即评明细的 <code>customerVisit</code> 字段。
@@ -1194,19 +1080,12 @@ export default function Import({ embedded = false }) {
 
       let rowsToAnalyze = inScope
       let dedupeSkippedCount = 0
-      if (ticketSource && typeof adapter.listExistingTicketIds === 'function') {
-        reportProgress('正在检查重复工单…')
-        const existingTicketIds = await adapter.listExistingTicketIds(dataSourceType)
-        const deduped = filterDuplicateImportRows(inScope, {
-          dataSourceType,
-          existingKeys: buildExistingTicketKeySet(existingTicketIds, dataSourceType),
-        })
+      if (ticketSource) {
+        const deduped = filterDuplicateImportRows(inScope, { dataSourceType })
         rowsToAnalyze = deduped.uniqueRows
         dedupeSkippedCount = deduped.skippedCount
         if (!rowsToAnalyze.length) {
-          throw new Error(
-            `全部 ${dedupeSkippedCount} 行工单的工单号在系统中已存在，无需导入`,
-          )
+          throw new Error('没有可导入的有效行，请检查列映射与工单号')
         }
       }
 
@@ -1289,13 +1168,13 @@ export default function Import({ embedded = false }) {
         console.warn('[import] snapshot rebuild after import:', snapErr)
       }
 
-      const totalSkippedDuplicates =
-        dedupeSkippedCount + (ingest.skippedDuplicates || 0)
+      const totalSkippedDuplicates = dedupeSkippedCount + (ingest.skippedDuplicates || 0)
 
       notifyImportFinished({
         dataMonth,
         dataSourceType,
         added: ingest.added,
+        updated: ingest.updated || 0,
         skippedDuplicates: totalSkippedDuplicates,
         failures: failures.length,
         skippedProducts: skipped.length,
@@ -1313,9 +1192,12 @@ export default function Import({ embedded = false }) {
         dataSourceType,
         taggingWarnings,
         enrichmentStats,
-        ingest: { ...ingest, skippedDuplicates: totalSkippedDuplicates },
+        ingest: {
+          ...ingest,
+          updated: ingest.updated || 0,
+          skippedDuplicates: totalSkippedDuplicates,
+        },
       })
-      clearUploadFilePasswords()
       setStep(4)
     } catch (e) {
       if (e?.code === 'DUPLICATE_RUN') {
@@ -1403,7 +1285,7 @@ export default function Import({ embedded = false }) {
               )}
               {customerVisitImport && (
                 <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  客服部回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
+                  客服回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
                 </Typography.Text>
               )}
               {pipelineDesc && !channelBundleImport && !followUpImport && !customerVisitImport && (
@@ -1551,7 +1433,7 @@ export default function Import({ embedded = false }) {
               followUpImport
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
-                  ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。`
+                  ? '客服回访仅支持单文件上传；需含月份、产品名称、用户信息、回访结果、内部结论等列。'
                   : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
             }
           />
@@ -1569,7 +1451,7 @@ export default function Import({ embedded = false }) {
               if (singleFileEnrichImport && uploadFiles.length >= 1) {
                 setError(
                   customerVisitImport
-                    ? `客服部回访导入最多支持 ${MAX_IMPORT_FILES} 个文件`
+                    ? '客服回访导入仅支持单文件'
                     : '满意度回访导入仅支持单文件',
                 )
                 return Upload.LIST_IGNORE
@@ -1589,7 +1471,7 @@ export default function Import({ embedded = false }) {
               {followUpImport
                 ? '拖拽或点击选择满意度回访文件'
                 : customerVisitImport
-                  ? '拖拽或点击选择客服部回访文件（可多选）'
+                  ? '拖拽或点击选择客服回访文件'
                   : '拖拽或点击选择文件（可多选）'}
             </p>
             <p className="ant-upload-hint">
@@ -1605,10 +1487,10 @@ export default function Import({ embedded = false }) {
             </Button>
           </Upload.Dragger>
 
-        {uploadFiles.length > 0 && (
-          <List
-            className="page-section-sm"
-            size="small"
+          {uploadFiles.length > 0 && (
+            <List
+              className="page-section-sm"
+              size="small"
               bordered
               dataSource={uploadFiles}
               renderItem={(item) => (
@@ -1630,11 +1512,6 @@ export default function Import({ embedded = false }) {
                         <Typography.Text type="secondary" className="text-xs">
                           {item.rows.length} 行 · SHA256 {item.sha256.slice(0, 8)}…
                         </Typography.Text>
-                        {item.requiresPassword && (
-                          <Typography.Text type="secondary" className="text-xs">
-                            该文件已用密码解锁，仅本次导入会话内生效
-                          </Typography.Text>
-                        )}
                         {item.sheetNames.length > 1 && (
                           <Select
                             size="small"
@@ -1722,8 +1599,8 @@ export default function Import({ embedded = false }) {
                   <Alert
                     type="warning"
                     showIcon
-                    title="未识别客服部回访表头"
-                    description="需包含数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。"
+                    title="未识别客服回访表头"
+                    description="需包含月份、产品名称、用户信息/客户反馈摘要、评分来源或内部结论等列。"
                   />
                 ) : (
                   <>
@@ -1800,11 +1677,7 @@ export default function Import({ embedded = false }) {
             )}
             <div className="page-section-sm page-grid-2">
               {STANDARD_FIELDS.filter((f) =>
-                ticketSource
-                  ? true
-                  : customerVisitImport
-                    ? customerVisitFieldKeys.includes(f.key)
-                    : ['createdAt', 'productSpec', 'rawText', 'handlingText', 'ticketId', 'source'].includes(f.key),
+                ticketSource ? true : ['createdAt', 'productSpec', 'rawText', 'handlingText', 'ticketId', 'source'].includes(f.key),
               ).map(({ key, label, required, hint }) => (
                 <div key={key}>
                   <Typography.Text strong className="mb-1 block text-xs">
@@ -1829,7 +1702,7 @@ export default function Import({ embedded = false }) {
                   />
                 </div>
               ))}
-              {!ticketSource && !customerVisitImport && (
+              {!ticketSource && (
                 <>
                   <div>
                     <Typography.Text strong className="mb-1 block text-xs">
@@ -1922,11 +1795,11 @@ export default function Import({ embedded = false }) {
             ) : customerVisitImport ? (
               <>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  写入客服部回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
+                  写入客服回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
                 </Typography.Text>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]} ·
-                  二级分类：客服部回访导入
+                  二级分类：客服回访导入
                 </Typography.Text>
                 <div className="page-section-sm space-y-3">
                   {customerVisitPreviewLoading ? (
@@ -1960,34 +1833,6 @@ export default function Import({ embedded = false }) {
                           </>
                         }
                       />
-                      {customerVisitPreview.detailedFieldMissingCount > 0 ? (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message={`有 ${customerVisitPreview.detailedFieldMissingCount} 条回访缺少模板必填内容，Word 的“上期回访结果”会展示不完整`}
-                          description="请检查这 6 列是否都有值：数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。"
-                        />
-                      ) : (
-                        <Alert
-                          type="success"
-                          showIcon
-                          message={`回访字段完整 ${customerVisitPreview.detailedFieldCompleteCount} 条，可直接用于 Word 的“上期回访结果”`}
-                        />
-                      )}
-                      <Table
-                        size="small"
-                        pagination={false}
-                        rowKey={(r) => `p-${r.id}`}
-                        dataSource={customerVisitPreview.visitRecords.slice(0, 5)}
-                        columns={[
-                          { title: '产品', dataIndex: 'productName', width: 120 },
-                          { title: '客户名称', dataIndex: 'customerName', width: 160, ellipsis: true, render: (value) => value || '—' },
-                          { title: '客户编码', dataIndex: 'customerCode', width: 160, ellipsis: true, render: (value) => value || '—' },
-                          { title: '回访反馈信息', dataIndex: 'visitFeedbackDetail', ellipsis: true, render: (value, row) => value || row.visitResult || '—' },
-                          { title: '内部评估', dataIndex: 'internalEvaluationDetail', ellipsis: true, render: (value, row) => value || row.internalConclusion || '—' },
-                        ]}
-                        locale={{ emptyText: '暂无可展示的回访预览' }}
-                      />
                       {customerVisitPreview.unmatched.length > 0 && (
                         <Table
                           size="small"
@@ -2003,16 +1848,9 @@ export default function Import({ embedded = false }) {
                               render: (_, r) => r.visit?.productName || '—',
                             },
                             {
-                              title: '客户名称',
-                              width: 160,
+                              title: '用户',
                               ellipsis: true,
-                              render: (_, r) => r.visit?.customerName || '—',
-                            },
-                            {
-                              title: '客户编码',
-                              width: 160,
-                              ellipsis: true,
-                              render: (_, r) => r.visit?.customerCode || '—',
+                              render: (_, r) => r.visit?.userInfo || '—',
                             },
                           ]}
                         />
@@ -2026,6 +1864,13 @@ export default function Import({ embedded = false }) {
             <Typography.Text type="secondary" className="mt-1 block text-xs">
               下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、四维、优化建议），再依次增强：请求场景与问题类型（本地）→ 客户请求/需求痛点/优化建议（配置 API Key 时 LLM）→ 请求场景与问题类型（LLM 语料，默认开）→ 用户旅程 → 用户情绪。
             </Typography.Text>
+            <Alert
+              className="mt-2"
+              type="info"
+              showIcon
+              title="同工单号处理规则"
+              description="相同工单号将覆盖库内导入表字段与自动打标结果；人工复核、确立举措、会议待办、是否听音、备注及回访满意度等用户维护内容予以保留。"
+            />
             <Typography.Text type="secondary" className="mt-1 block text-xs">
               数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]}
             </Typography.Text>
@@ -2209,13 +2054,12 @@ export default function Import({ embedded = false }) {
                 ? 'success'
                 : 'warning'
             }
-            title="客服部回访导入完成"
+            title="客服回访导入完成"
             subTitle={
               <>
                 回访元数据 <strong>{customerVisitImportResult.dry.visitMetaCount}</strong> 条 ·
                 匹配挂接 <strong>{customerVisitImportResult.dry.matchedCount}</strong> 条 · 未匹配{' '}
-                <strong>{customerVisitImportResult.dry.unmatched.length}</strong> 行 · 回访字段完整{' '}
-                <strong>{customerVisitImportResult.dry.detailedFieldCompleteCount}</strong> 条
+                <strong>{customerVisitImportResult.dry.unmatched.length}</strong> 行
               </>
             }
             extra={
@@ -2245,15 +2089,6 @@ export default function Import({ embedded = false }) {
               </Space>
             }
           />
-          {customerVisitImportResult.dry.detailedFieldMissingCount > 0 ? (
-            <Alert
-              className="mt-4"
-              type="warning"
-              showIcon
-              message={`仍有 ${customerVisitImportResult.dry.detailedFieldMissingCount} 条回访缺少模板必填字段`}
-              description="这些记录仍会导入，但 Word 的“上期回访结果”会展示为空列或不完整。"
-            />
-          ) : null}
           {customerVisitImportResult.dry.unmatched.length > 0 && (
             <Table
               className="mt-4"
@@ -2270,14 +2105,9 @@ export default function Import({ embedded = false }) {
                   render: (_, r) => r.visit?.productName || '—',
                 },
                 {
-                  title: '客户名称',
+                  title: '用户信息',
                   ellipsis: true,
-                  render: (_, r) => r.visit?.customerName || '—',
-                },
-                {
-                  title: '客户编码',
-                  ellipsis: true,
-                  render: (_, r) => r.visit?.customerCode || '—',
+                  render: (_, r) => r.visit?.userInfo || '—',
                 },
               ]}
             />
@@ -2310,9 +2140,11 @@ export default function Import({ embedded = false }) {
                 {importResult.ingest != null && (
                   <>
                     {' '}
-                    · 本次新增入库 {importResult.ingest.added} 条
+                    · 新增 {importResult.ingest.added} 条
+                    {importResult.ingest.updated > 0 &&
+                      ` · 更新 ${importResult.ingest.updated} 条`}
                     {importResult.ingest.skippedDuplicates > 0 &&
-                      `（与库内重复跳过 ${importResult.ingest.skippedDuplicates} 条）`}
+                      ` · 批次内同号折叠 ${importResult.ingest.skippedDuplicates} 条`}
                     {' '}
                     · 库内合计 {importResult.ingest.totalAfter} 条
                   </>
@@ -2419,47 +2251,6 @@ export default function Import({ embedded = false }) {
           )}
         </Card>
       )}
-      <Modal
-        open={passwordPrompt.open}
-        title="请输入 Excel 密码"
-        okText="解锁文件"
-        cancelText="取消"
-        confirmLoading={passwordSubmitting}
-        onOk={() => void submitPasswordPrompt()}
-        onCancel={closePasswordPrompt}
-        destroyOnHidden
-      >
-        <Space direction="vertical" size={12} className="w-full">
-          <Typography.Text type="secondary">
-            {passwordPrompt.file?.name
-              ? `文件「${passwordPrompt.file.name}」已加密，请输入密码后继续解析。`
-              : '该 Excel 文件已加密，请输入密码后继续解析。'}
-          </Typography.Text>
-          {passwordPrompt.error && (
-            <Alert
-              type="error"
-              showIcon
-              message={passwordPrompt.error}
-            />
-          )}
-          <Input.Password
-            autoFocus
-            placeholder="请输入 Excel 文件密码"
-            value={passwordPrompt.password}
-            onChange={(e) =>
-              setPasswordPrompt((prev) => ({
-                ...prev,
-                password: e.target.value,
-                error: '',
-              }))
-            }
-            onPressEnter={() => void submitPasswordPrompt()}
-          />
-          <Typography.Text type="secondary" className="text-xs">
-            密码仅保存在当前页面内存中，不会写入系统或随导入数据上传。
-          </Typography.Text>
-        </Space>
-      </Modal>
     </div>
   )
 }

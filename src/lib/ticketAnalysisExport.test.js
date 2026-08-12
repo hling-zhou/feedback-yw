@@ -41,7 +41,7 @@ describe('ticketAnalysisExport v3', () => {
     expect(EXPORT_ANALYSIS_VERSION).toBe(3)
   })
 
-  it('getExportV3Headers returns 21 columns in registry order', () => {
+  it('getExportV3Headers returns registry columns including customer profile fields', () => {
     expect(getExportV3Headers()).toEqual([
       '工单号',
       '产品名称',
@@ -61,9 +61,18 @@ describe('ticketAnalysisExport v3', () => {
       '设计师优化建议',
       '确立举措',
       '排期',
+      '未完成待办',
       '受理内容',
       '处理意见',
       '根因排查',
+      '客户类型名称',
+      '集团名称',
+      '集团客户编码',
+      '集团所属省份',
+      '集团所属地市',
+      '登录账号名称',
+      '移动云客户服务等级',
+      '受理渠道',
     ])
   })
 

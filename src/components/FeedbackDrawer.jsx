@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  Cascader,
   Collapse,
   Checkbox,
   DatePicker,
@@ -91,12 +92,13 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import {
-  COMPLAINT_CAUSE_REVIEW_MAX_LENGTH,
+  COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH,
   getComplaintCauseReviewDraftDisplay,
   isComplaintCauseReviewManuallyMaintained,
   normalizeComplaintCauseReviewInput,
   shouldIncludeComplaintCauseReviewInSave,
 } from '../domain/complaintCauseReview.js'
+import { getComplaintCauseCascaderOptions } from '../domain/complaintCauseTaxonomy.js'
 import { isFollowUpEnrichableRecord } from '../lib/feedbackFilters.js'
 import {
   getFollowUpDissatisfiedReasonsDisplay,
@@ -935,6 +937,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const isPostUseNon10 = isPostUseNon10LibraryRecord(feedback)
   const [journeyEnriching, setJourneyEnriching] = useState(false)
   const [note, setNote] = useState(feedback?.note || '')
+  const [listeningReviewed, setListeningReviewed] = useState(Boolean(feedback?.listeningReviewed))
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),
   )
@@ -956,8 +959,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [designerOptimization, setDesignerOptimization] = useState('')
   const [rootCauseReview, setRootCauseReview] = useState('')
   const [rootCauseReviewTouched, setRootCauseReviewTouched] = useState(false)
+  const [complaintCauseL1Review, setComplaintCauseL1Review] = useState('')
   const [complaintCauseL2Review, setComplaintCauseL2Review] = useState('')
   const [complaintCauseL3Review, setComplaintCauseL3Review] = useState('')
+  const [complaintCauseReviewReason, setComplaintCauseReviewReason] = useState('')
   const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
   const [ticketTodoItems, setTicketTodoItems] = useState(/** @type {import('../domain/ticketTodo.js').TicketTodoItem[]} */ ([]))
   const [todoAssigneeOptions, setTodoAssigneeOptions] = useState(
@@ -1044,6 +1049,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const applyFeedbackToForm = useCallback((record) => {
     if (!record) return
     setNote(record.note || '')
+    setListeningReviewed(Boolean(record.listeningReviewed))
     setSentiment(normalizeSentiment(record.sentiment))
     setUrgencyLevel(normalizeUrgencyLevel(record.urgencyLevel, record.sentiment))
     setRequestScene(record.requestScene || '')
@@ -1062,8 +1068,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     setRootCauseReview(getRootCauseReviewDraftDisplay(record))
     setRootCauseReviewTouched(false)
     const causeReview = getComplaintCauseReviewDraftDisplay(record)
+    setComplaintCauseL1Review(causeReview.l1)
     setComplaintCauseL2Review(causeReview.l2)
     setComplaintCauseL3Review(causeReview.l3)
+    setComplaintCauseReviewReason(causeReview.reason)
     setComplaintCauseReviewTouched(false)
     setTicketTodoItems(getTicketTodoDraftItems(record))
   }, [])
@@ -1201,6 +1209,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const drawerFormSnapshot = useMemo(
     () => ({
       note,
+      listeningReviewed,
       sentiment,
       urgencyLevel,
       requestScene,
@@ -1216,12 +1225,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       actionSchedule,
       actionId,
       rootCauseReview,
+      complaintCauseL1Review,
       complaintCauseL2Review,
       complaintCauseL3Review,
+      complaintCauseReviewReason,
       ticketTodoItems,
     }),
     [
       note,
+      listeningReviewed,
       sentiment,
       urgencyLevel,
       requestScene,
@@ -1237,8 +1249,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       actionSchedule,
       actionId,
       rootCauseReview,
+      complaintCauseL1Review,
       complaintCauseL2Review,
       complaintCauseL3Review,
+      complaintCauseReviewReason,
       ticketTodoItems,
     ],
   )
@@ -1283,6 +1297,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     const journey = { journeyL1, journeyL2 }
     return {
       note,
+      // 一旦保存为已听音，不可再取消
+      listeningReviewed: Boolean(feedback.listeningReviewed) || Boolean(listeningReviewed),
       themes: themesFromJourney(journey),
       sentiment,
       urgencyLevel,
@@ -1311,8 +1327,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       draft = {
         ...draft,
         ...normalizeComplaintCauseReviewInput({
+          l1: complaintCauseL1Review,
           l2: complaintCauseL2Review,
           l3: complaintCauseL3Review,
+          reason: complaintCauseReviewReason,
         }),
       }
     }
@@ -1346,8 +1364,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       Object.assign(
         patch,
         normalizeComplaintCauseReviewInput({
+          l1: complaintCauseL1Review,
           l2: complaintCauseL2Review,
           l3: complaintCauseL3Review,
+          reason: complaintCauseReviewReason,
         }),
       )
     }
@@ -1507,7 +1527,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       styles={{ body: { overflowX: 'hidden' } }}
       footer={
         reviewEnabled || canEdit || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {reviewEnabled ? (
               <Checkbox
                 checked={Boolean(feedback?.id && isReviewDone(feedback.id))}
@@ -1517,53 +1537,59 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 已处理
               </Checkbox>
             ) : null}
-            <div className="flex flex-1 gap-2">
-            {isPostUseNon10 && (
-              <Button
-                block
-                className="flex-1"
-                loading={journeyEnriching}
-                onClick={() => void handleEnrichPostUseJourney()}
+            {!isPostUseLibrary && (canEdit || Boolean(feedback?.listeningReviewed)) ? (
+              <Checkbox
+                checked={Boolean(listeningReviewed || feedback?.listeningReviewed)}
+                disabled={Boolean(feedback?.listeningReviewed) || !canEdit}
+                onChange={(event) => {
+                  if (feedback?.listeningReviewed) return
+                  setListeningReviewed(event.target.checked)
+                }}
               >
-                补全旅程
-              </Button>
-            )}
-            {canRetag && !isPostUseLibrary && (
-              <Tooltip title={retagTooltipTitle}>
-                <span className="flex flex-1">
+                听音
+              </Checkbox>
+            ) : null}
+            <div className="ml-auto flex shrink-0 gap-2">
+              {isPostUseNon10 && (
+                <Button
+                  className="min-w-[5.5rem]"
+                  loading={journeyEnriching}
+                  onClick={() => void handleEnrichPostUseJourney()}
+                >
+                  补全旅程
+                </Button>
+              )}
+              {canRetag && !isPostUseLibrary && (
+                <Tooltip title={retagTooltipTitle}>
                   <Button
-                    block
-                    className="flex-1"
+                    className="min-w-[5.5rem]"
                     loading={retagging}
                     disabled={bulkRetagActive}
                     onClick={handleRetag}
                   >
                     重新打标
                   </Button>
-                </span>
-              </Tooltip>
-            )}
-            {canEdit && (
-              <Tooltip
-                title={
-                  detailSaveBlocked
-                    ? detailSaveBlockedTip
-                    : SAVE_DETAIL_TIP
-                }
-              >
-                <span className="flex flex-1">
+                </Tooltip>
+              )}
+              {canEdit && (
+                <Tooltip
+                  title={
+                    detailSaveBlocked
+                      ? detailSaveBlockedTip
+                      : SAVE_DETAIL_TIP
+                  }
+                >
                   <Button
                     type="primary"
-                    className="flex-1"
+                    className="min-w-[4.5rem]"
                     loading={saving}
                     disabled={detailSaveBlocked}
                     onClick={() => save()}
                   >
                     保存
                   </Button>
-                </span>
-              </Tooltip>
-            )}
+                </Tooltip>
+              )}
             </div>
           </div>
         ) : null
@@ -1832,7 +1858,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 </Typography.Text>
                 <Input.TextArea
                   rows={3}
-                  placeholder="默认为空"
+                  placeholder="默认展示导入列「问题原因」"
                   maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
                   showCount
                   value={rootCauseReview}
@@ -2473,51 +2499,70 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 </Descriptions.Item>
               </Descriptions>
               <Typography.Text type="secondary" className="mb-2 block text-xs">
-                只读展示工单导入的终判字段；下方人工复核（二级/三级）为可选，保存后重新打标不会覆盖。
+                只读展示导入终判；下方拟复核（一级/二级/三级联动 + 申请原因）保存后不改写终判，需管理员在「投诉原因复核」中同意后才会更新终判。
               </Typography.Text>
               {canEdit ? (
                 <Form layout="vertical">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Form.Item label="二级（人工复核）" className="!mb-0">
-                      <Input
-                        placeholder="默认为空"
-                        maxLength={COMPLAINT_CAUSE_REVIEW_MAX_LENGTH}
-                        value={complaintCauseL2Review}
-                        onChange={(e) => {
-                          setComplaintCauseReviewTouched(true)
-                          setComplaintCauseL2Review(
-                            e.target.value.slice(0, COMPLAINT_CAUSE_REVIEW_MAX_LENGTH),
-                          )
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item label="三级（人工复核）" className="!mb-0">
-                      <Input
-                        placeholder="默认为空"
-                        maxLength={COMPLAINT_CAUSE_REVIEW_MAX_LENGTH}
-                        value={complaintCauseL3Review}
-                        onChange={(e) => {
-                          setComplaintCauseReviewTouched(true)
-                          setComplaintCauseL3Review(
-                            e.target.value.slice(0, COMPLAINT_CAUSE_REVIEW_MAX_LENGTH),
-                          )
-                        }}
-                      />
-                    </Form.Item>
-                  </div>
+                  <Form.Item label="拟复核投诉原因（一/二/三级）" className="!mb-3">
+                    <Cascader
+                      className="w-full"
+                      allowClear
+                      changeOnSelect={false}
+                      placeholder="默认为空，请选择"
+                      options={getComplaintCauseCascaderOptions()}
+                      value={
+                        complaintCauseL1Review
+                          ? [
+                              complaintCauseL1Review,
+                              ...(complaintCauseL2Review ? [complaintCauseL2Review] : []),
+                              ...(complaintCauseL3Review ? [complaintCauseL3Review] : []),
+                            ].filter(Boolean)
+                          : []
+                      }
+                      onChange={(path) => {
+                        setComplaintCauseReviewTouched(true)
+                        const [l1 = '', l2 = '', l3 = ''] = Array.isArray(path) ? path : []
+                        setComplaintCauseL1Review(String(l1 || ''))
+                        setComplaintCauseL2Review(String(l2 || ''))
+                        setComplaintCauseL3Review(String(l3 || ''))
+                      }}
+                      displayRender={(labels) => labels.join(' / ')}
+                    />
+                  </Form.Item>
+                  <Form.Item label="申请复核原因" className="!mb-0">
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="请填写申请复核原因"
+                      maxLength={COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH}
+                      showCount
+                      value={complaintCauseReviewReason}
+                      onChange={(e) => {
+                        setComplaintCauseReviewTouched(true)
+                        setComplaintCauseReviewReason(
+                          e.target.value.slice(0, COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH),
+                        )
+                      }}
+                    />
+                  </Form.Item>
                   {isComplaintCauseReviewManuallyMaintained(feedback) ? (
                     <Typography.Text type="secondary" className="mt-2 block text-xs">
-                      已人工复核；重新打标默认保留此维度。
+                      已填写拟复核；重新打标默认保留此维度。审批同意前系统仍显示上方终判。
                     </Typography.Text>
                   ) : null}
                 </Form>
               ) : (
-                <Descriptions column={2} size="small" bordered className="max-w-full">
-                  <Descriptions.Item label="二级（人工复核）">
+                <Descriptions column={1} size="small" bordered className="max-w-full">
+                  <Descriptions.Item label="拟复核一级">
+                    {complaintCauseL1Review || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="拟复核二级">
                     {complaintCauseL2Review || '—'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="三级（人工复核）">
+                  <Descriptions.Item label="拟复核三级">
                     {complaintCauseL3Review || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="申请复核原因">
+                    {complaintCauseReviewReason || '—'}
                   </Descriptions.Item>
                 </Descriptions>
               )}

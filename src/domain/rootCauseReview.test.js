@@ -86,14 +86,38 @@ describe('rootCauseReview', () => {
     )
   })
 
-  it('isRootCauseReviewManuallyMaintained respects manualTagFields', () => {
-    expect(isRootCauseReviewManuallyMaintained({ rootCauseReview: 'x' })).toBe(true)
+  it('getEffectiveRootCauseReview never uses complaint cause Final concatenation', () => {
     expect(
-      isRootCauseReviewManuallyMaintained({
-        manualTagFields: ['rootCauseReview'],
-        rootCauseReview: '',
+      getEffectiveRootCauseReview({
+        complaintCauseL1Final: '云能问题',
+        complaintCauseL2Final: '产品原因',
+        complaintCauseL3Final: '计算部原因',
+        rootCause: '云能问题 / 产品原因 / 计算部原因',
+        sourceColumns: {
+          '投诉原因 一级（终判）': '云能问题',
+          '投诉原因 二级（终判）': '产品原因',
+          '投诉原因 三级（终判）': '计算部原因',
+        },
       }),
-    ).toBe(true)
-    expect(isRootCauseReviewManuallyMaintained({ rootCause: 'x' })).toBe(false)
+    ).toBe('')
+    expect(
+      getEffectiveRootCauseReview({
+        complaintCauseL1Final: '云能问题',
+        complaintCauseL2Final: '产品原因',
+        complaintCauseL3Final: '计算部原因',
+        sourceColumns: { 问题原因: '安全组未放行' },
+      }),
+    ).toBe('安全组未放行')
+  })
+
+  it('getRootCauseReviewDraftDisplay never falls back to Final concat', () => {
+    expect(
+      getRootCauseReviewDraftDisplay({
+        complaintCauseL1Final: '云能问题',
+        complaintCauseL2Final: '产品原因',
+        complaintCauseL3Final: '计算部原因',
+        rootCause: '云能问题/产品原因/计算部原因',
+      }),
+    ).toBe('')
   })
 })

@@ -9,6 +9,7 @@ import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateO
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { buildTicketStoryModel } from '../../lib/ticketStoryModel.js'
 import { createActionItem, listActionItems } from '../../lib/actionItemClient.js'
+import { isCustomerExperienceComplaint } from '../../domain/complaintCause.js'
 import TicketStoryView from './TicketStoryView.jsx'
 
 function resolveDriversEmptyState({
@@ -81,12 +82,20 @@ export default function TicketDashboardView({
   const controlled = onProductChange != null
   const product = controlled ? productProp || '' : productLocal
   const sourceType = snapshot.dataSourceType
-  const periodRecords = useMemo(() => workbenchTicketRecords(feedbacks, currentPeriod, snapshot), [feedbacks, currentPeriod, snapshot])
+  const complaintOnlyCx = sourceType === 'complaint_ticket'
+  const periodRecords = useMemo(() => {
+    const rows = workbenchTicketRecords(feedbacks, currentPeriod, snapshot)
+    return complaintOnlyCx ? rows.filter(isCustomerExperienceComplaint) : rows
+  }, [feedbacks, currentPeriod, snapshot, complaintOnlyCx])
   const products = useMemo(() => listProducts(periodRecords), [periodRecords])
-  const sourceAllRecords = useMemo(() => feedbacks.filter((record) => (record.dataSourceType || 'complaint_ticket') === sourceType), [feedbacks, sourceType])
+  const sourceAllRecords = useMemo(() => {
+    const rows = feedbacks.filter((record) => (record.dataSourceType || 'complaint_ticket') === sourceType)
+    return complaintOnlyCx ? rows.filter(isCustomerExperienceComplaint) : rows
+  }, [feedbacks, sourceType, complaintOnlyCx])
   const trendWindow = useMemo(() => resolveTrendMonthWindow(currentPeriod), [currentPeriod])
   const records = useMemo(() => filterFeedbacks(periodRecords, { product: product || undefined }), [periodRecords, product])
   const trendRecords = useMemo(() => filterFeedbacks(filterRecordsByImportMonths(sourceAllRecords, trendWindow.months), { product: product || undefined }), [sourceAllRecords, trendWindow.months, product])
+  const comparisonRecords = useMemo(() => filterFeedbacks(sourceAllRecords, { product: product || undefined }), [sourceAllRecords, product])
 
   useEffect(() => {
     if (!adapter) return
@@ -114,9 +123,17 @@ export default function TicketDashboardView({
     [snapshot?.aggregates?.planningConclusions],
   )
   const allRecommendations = conclusions?.recommendations || []
+  const periodRecordIds = useMemo(() => new Set(periodRecords.map((record) => record.id)), [periodRecords])
+  const sourceRecommendations = useMemo(() => {
+    if (!complaintOnlyCx) return allRecommendations
+    return allRecommendations.filter((item) => {
+      const evidenceIds = item.evidenceRecordIds || []
+      return evidenceIds.some((id) => periodRecordIds.has(id))
+    })
+  }, [allRecommendations, complaintOnlyCx, periodRecordIds])
   const recommendations = useMemo(
-    () => allRecommendations.filter((item) => !product || item.scope?.product === product),
-    [allRecommendations, product],
+    () => sourceRecommendations.filter((item) => !product || item.scope?.product === product),
+    [sourceRecommendations, product],
   )
   const driversEmptyState = useMemo(
     () =>
@@ -125,7 +142,7 @@ export default function TicketDashboardView({
         conclusions,
         recommendationsPendingRefresh,
         product,
-        allRecommendations,
+        allRecommendations: sourceRecommendations,
         filteredRecommendations: recommendations,
       }),
     [
@@ -133,7 +150,7 @@ export default function TicketDashboardView({
       conclusions,
       recommendationsPendingRefresh,
       product,
-      allRecommendations,
+      sourceRecommendations,
       recommendations,
     ],
   )
@@ -141,8 +158,10 @@ export default function TicketDashboardView({
     sourceType,
     sourceLabel,
     periodLabel: currentPeriod?.label || '当前范围',
+    period: currentPeriod,
     records,
     trendRecords,
+    comparisonRecords,
     trendMonths: trendWindow.months,
     snapshot,
     recommendations,
@@ -153,7 +172,7 @@ export default function TicketDashboardView({
     selectedProduct: product,
     periodEndMonth: String(currentPeriod?.endDate || '').slice(0, 7),
     driversEmptyState,
-  }), [sourceType, sourceLabel, currentPeriod?.label, currentPeriod?.endDate, records, trendRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState])
+  }), [sourceType, sourceLabel, currentPeriod, records, trendRecords, comparisonRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState])
 
   const createAction = async (row) => {
     setCreatingInsightId(row.insightId)
@@ -183,7 +202,17 @@ export default function TicketDashboardView({
     }
   }
 
-  if (!periodRecords.length) return <Card><Typography.Text type="secondary">当前周期内暂无「{sourceLabel}」数据，请先导入。</Typography.Text></Card>
+  if (!periodRecords.length) {
+    return (
+      <Card>
+        <Typography.Text type="secondary">
+          {complaintOnlyCx
+            ? `当前周期内暂无「客户体验类」${sourceLabel}数据，请先导入或调整周期。`
+            : `当前周期内暂无「${sourceLabel}」数据，请先导入。`}
+        </Typography.Text>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -192,6 +221,7 @@ export default function TicketDashboardView({
           <Typography.Text strong>产品</Typography.Text>
           <Select showSearch optionFilterProp="label" className="min-w-[220px]" value={product} options={[{ value: '', label: `全部产品 (${periodRecords.length})` }, ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))]} onChange={setProduct} />
           <Tag color="blue">当前范围：{model.scope.periodLabel}</Tag>
+          {complaintOnlyCx ? <Tag color="purple">仅客户体验类投诉</Tag> : null}
           <Tag>产品 {model.scope.productCount}</Tag>
           <Tag>有效工单 {model.scope.total}</Tag>
           <Tag color={model.scope.qualityWarningCount ? 'gold' : 'green'}>{model.scope.qualityStatus}</Tag>
