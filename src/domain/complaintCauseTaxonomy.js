@@ -2,7 +2,7 @@
  * 投诉原因（终判）拟复核用三级标签树（源自附件1）。
  */
 
-import taxonomyJson from '../data/complaintCauseTaxonomy.json'
+import taxonomyJson from '../data/complaintCauseTaxonomy.json' with { type: 'json' }
 
 /**
  * @typedef {{ label: string; children?: ComplaintCauseTaxonomyNode[] }} ComplaintCauseTaxonomyNode
