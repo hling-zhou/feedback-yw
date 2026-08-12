@@ -1,6 +1,85 @@
 import { preserveManualTags } from './manualTagFields.js'
+import { buildDedupeKey, buildGlobalTicketDedupeKey } from '../domain/records.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
+
+/**
+ * @param {FeedbackRecord} record
+ */
+export function ticketImportDuplicateKey(record) {
+  const dataSourceType = record.dataSourceType || 'complaint_ticket'
+  const globalTicketKey = buildGlobalTicketDedupeKey({
+    dataSourceType,
+    ticketId: record.ticketId,
+  })
+  if (globalTicketKey) return globalTicketKey
+  return buildDedupeKey({
+    dataSourceType,
+    importMonth:
+      record.importMonth || record.createdAt?.slice(0, 7) || 'unknown',
+    ticketId: record.ticketId,
+    id: record.id,
+  })
+}
+
+/**
+ * 将导入行合并进内存列表；库内已有但未加载进内存的工单也会写入 merged。
+ *
+ * @param {FeedbackRecord[]} prev
+ * @param {FeedbackRecord[]} incoming
+ * @param {Map<string, FeedbackRecord>} [existingByTicketKey]
+ */
+export function mergeFeedbacksInto(prev, incoming, existingByTicketKey = new Map()) {
+  /** @type {Map<string, number>} */
+  const indexByKey = new Map()
+  const merged = prev.map((fb, index) => {
+    const key = ticketImportDuplicateKey(fb)
+    if (key) indexByKey.set(key, index)
+    return fb
+  })
+
+  /** @type {FeedbackRecord[]} */
+  const added = []
+  /** @type {FeedbackRecord[]} */
+  const updated = []
+  const skippedDuplicates = 0
+
+  for (const record of incoming) {
+    const withMeta = {
+      ...record,
+      dataSourceType: record.dataSourceType || 'complaint_ticket',
+    }
+    const key = ticketImportDuplicateKey(withMeta)
+    const existingFromMemory =
+      key && indexByKey.has(key) ? merged[indexByKey.get(key)] : null
+    const existingFromStore = key ? existingByTicketKey.get(key) : null
+    // 优先用库内全量记录，避免列表投影缺大文本字段
+    const existing = existingFromStore || existingFromMemory
+
+    if (existing && key) {
+      const next = mergeTicketImportOverExisting(existing, withMeta)
+      if (indexByKey.has(key)) {
+        merged[indexByKey.get(key)] = next
+      } else {
+        indexByKey.set(key, merged.length)
+        merged.push(next)
+      }
+      updated.push(next)
+      continue
+    }
+
+    if (key) indexByKey.set(key, merged.length)
+    added.push(withMeta)
+    merged.push(withMeta)
+  }
+
+  return {
+    merged,
+    added,
+    updated,
+    skippedDuplicates,
+  }
+}
 
 /**
  * 同工单号再导入时始终保留的用户侧字段（不依赖 manualTagFields）。

@@ -1,4 +1,5 @@
 import { requireAdmin, requirePermission } from '../middleware.js'
+import { getDb } from '../db.js'
 import { storageRepository } from '../storageRepository.js'
 import { complaintCauseReviewArchiveRepository } from '../complaintCauseReviewArchiveRepository.js'
 import {
@@ -6,7 +7,10 @@ import {
   buildComplaintCauseReviewArchiveRow,
 } from '../../src/domain/complaintCauseReviewArchive.js'
 import { isComplaintTicket } from '../../src/domain/complaintCause.js'
-import { hasPendingComplaintCauseReview } from '../../src/domain/complaintCauseReview.js'
+import {
+  hasPendingComplaintCauseReview,
+  isCompleteComplaintCauseReview,
+} from '../../src/domain/complaintCauseReview.js'
 
 /**
  * @param {import('fastify').FastifyInstance} app
@@ -41,6 +45,11 @@ export function registerComplaintCauseReviewRoutes(app) {
       /** @type {import('../../src/domain/records.js').InsightRecord[]} */
       const updatedRecords = []
       const errors = []
+      const db = getDb()
+      const applyOne = db.transaction((archive, next) => {
+        complaintCauseReviewArchiveRepository.insert(archive)
+        return storageRepository.putRecord(next, { actor })
+      })
 
       for (const item of items) {
         const recordId = String(item?.recordId || '').trim()
@@ -62,6 +71,10 @@ export function registerComplaintCauseReviewRoutes(app) {
           errors.push({ recordId, error: '无待复核内容' })
           continue
         }
+        if (!isCompleteComplaintCauseReview(record)) {
+          errors.push({ recordId, error: '拟复核不完整' })
+          continue
+        }
 
         const archive = buildComplaintCauseReviewArchiveRow(
           record,
@@ -74,7 +87,7 @@ export function registerComplaintCauseReviewRoutes(app) {
           /** @type {'agree' | 'reject'} */ (decision),
         )
         try {
-          const result = storageRepository.putRecord(next, { actor })
+          const result = applyOne(archive, next)
           archives.push(archive)
           updatedRecords.push(result.record)
         } catch (err) {
@@ -83,10 +96,6 @@ export function registerComplaintCauseReviewRoutes(app) {
             error: err instanceof Error ? err.message : '保存失败',
           })
         }
-      }
-
-      if (archives.length) {
-        complaintCauseReviewArchiveRepository.insertMany(archives)
       }
 
       return {

@@ -17,6 +17,7 @@ import {
   Modal,
   message,
   Select,
+  Switch,
   Tooltip,
   Typography,
 } from 'antd'
@@ -93,7 +94,9 @@ import {
 } from '../domain/complaintCause.js'
 import {
   COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH,
+  clearComplaintCauseReviewFields,
   getComplaintCauseReviewDraftDisplay,
+  isCompleteComplaintCauseReview,
   isComplaintCauseReviewManuallyMaintained,
   normalizeComplaintCauseReviewInput,
   shouldIncludeComplaintCauseReviewInSave,
@@ -964,6 +967,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [complaintCauseL3Review, setComplaintCauseL3Review] = useState('')
   const [complaintCauseReviewReason, setComplaintCauseReviewReason] = useState('')
   const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
+  const [complaintCauseReviewEnabled, setComplaintCauseReviewEnabled] = useState(false)
   const [ticketTodoItems, setTicketTodoItems] = useState(/** @type {import('../domain/ticketTodo.js').TicketTodoItem[]} */ ([]))
   const [todoAssigneeOptions, setTodoAssigneeOptions] = useState(
     /** @type {{ value: string; label: string; team?: string }[]} */ ([]),
@@ -1073,6 +1077,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     setComplaintCauseL3Review(causeReview.l3)
     setComplaintCauseReviewReason(causeReview.reason)
     setComplaintCauseReviewTouched(false)
+    setComplaintCauseReviewEnabled(isCompleteComplaintCauseReview(record))
     setTicketTodoItems(getTicketTodoDraftItems(record))
   }, [])
 
@@ -1324,14 +1329,18 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       }
     }
     if (shouldIncludeComplaintCauseReviewInSave(feedback, complaintCauseReviewTouched)) {
-      draft = {
-        ...draft,
-        ...normalizeComplaintCauseReviewInput({
-          l1: complaintCauseL1Review,
-          l2: complaintCauseL2Review,
-          l3: complaintCauseL3Review,
-          reason: complaintCauseReviewReason,
-        }),
+      if (complaintCauseReviewEnabled) {
+        draft = {
+          ...draft,
+          ...normalizeComplaintCauseReviewInput({
+            l1: complaintCauseL1Review,
+            l2: complaintCauseL2Review,
+            l3: complaintCauseL3Review,
+            reason: complaintCauseReviewReason,
+          }),
+        }
+      } else {
+        draft = { ...draft, ...clearComplaintCauseReviewFields() }
       }
     }
     return draft
@@ -1361,15 +1370,20 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       patch.rootCauseReview = normalizeRootCauseReviewInput(rootCauseReview)
     }
     if (shouldIncludeComplaintCauseReviewInSave(feedback, complaintCauseReviewTouched)) {
-      Object.assign(
-        patch,
-        normalizeComplaintCauseReviewInput({
+      if (complaintCauseReviewEnabled) {
+        const causePatch = normalizeComplaintCauseReviewInput({
           l1: complaintCauseL1Review,
           l2: complaintCauseL2Review,
           l3: complaintCauseL3Review,
           reason: complaintCauseReviewReason,
-        }),
-      )
+        })
+        if (!isCompleteComplaintCauseReview(causePatch)) {
+          throw new Error('发起复核需选择完整的一/二/三级投诉原因并填写申请原因')
+        }
+        Object.assign(patch, causePatch)
+      } else {
+        Object.assign(patch, clearComplaintCauseReviewFields())
+      }
     }
     Object.assign(
       patch,
@@ -2499,10 +2513,27 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 </Descriptions.Item>
               </Descriptions>
               <Typography.Text type="secondary" className="mb-2 block text-xs">
-                只读展示导入终判；下方拟复核（一级/二级/三级联动 + 申请原因）保存后不改写终判，需管理员在「投诉原因复核」中同意后才会更新终判。
+                只读展示导入终判；开启「发起投诉原因复核」后填写拟复核三级与申请原因，保存后不改写终判，需管理员在「投诉原因复核」中同意后才会更新终判。
               </Typography.Text>
               {canEdit ? (
                 <Form layout="vertical">
+                  <Form.Item label="发起投诉原因复核" className="!mb-3">
+                    <Switch
+                      checked={complaintCauseReviewEnabled}
+                      onChange={(checked) => {
+                        setComplaintCauseReviewTouched(true)
+                        setComplaintCauseReviewEnabled(checked)
+                        if (!checked) {
+                          setComplaintCauseL1Review('')
+                          setComplaintCauseL2Review('')
+                          setComplaintCauseL3Review('')
+                          setComplaintCauseReviewReason('')
+                        }
+                      }}
+                    />
+                  </Form.Item>
+                  {complaintCauseReviewEnabled ? (
+                    <>
                   <Form.Item label="拟复核投诉原因（一/二/三级）" className="!mb-3">
                     <Cascader
                       className="w-full"
@@ -2548,6 +2579,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     <Typography.Text type="secondary" className="mt-2 block text-xs">
                       已填写拟复核；重新打标默认保留此维度。审批同意前系统仍显示上方终判。
                     </Typography.Text>
+                  ) : null}
+                    </>
                   ) : null}
                 </Form>
               ) : (

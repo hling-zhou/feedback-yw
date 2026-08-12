@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { mergeTicketImportOverExisting, preserveUserEditedTicketFields } from './ticketImportMerge.js'
+import {
+  mergeFeedbacksInto,
+  mergeTicketImportOverExisting,
+  preserveUserEditedTicketFields,
+  ticketImportDuplicateKey,
+} from './ticketImportMerge.js'
 
 const existing = {
   id: 'rec-existing',
@@ -96,5 +101,18 @@ describe('ticketImportMerge', () => {
   it('preserveUserEditedTicketFields keeps follow-up from existing when missing on processed', () => {
     const out = preserveUserEditedTicketFields(existing, { ...incoming, followUpSatisfaction: undefined })
     expect(out.followUpSatisfaction).toEqual(existing.followUpSatisfaction)
+  })
+
+  it('mergeFeedbacksInto appends store-only matches into merged', () => {
+    const storeRecord = { ...existing, importMonth: '2026-07' }
+    const key = ticketImportDuplicateKey(storeRecord)
+    expect(key).toBeTruthy()
+    const existingByTicketKey = new Map([[key, storeRecord]])
+    const { merged, added, updated } = mergeFeedbacksInto([], [incoming], existingByTicketKey)
+    expect(added).toHaveLength(0)
+    expect(updated).toHaveLength(1)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe('rec-existing')
+    expect(merged[0].rawText).toBe('新受理')
   })
 })

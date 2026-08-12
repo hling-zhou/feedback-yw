@@ -97,6 +97,8 @@ export function filterActionsForMonthlyReport(items, opts) {
     m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
 
   return (items || []).filter((item) => {
+    const linked = item.linkedDataSources || []
+    if (!linked.includes('post_use_rating')) return false
     const pname = item.productName || ''
     if (productSet.size && !productSet.has(pname)) return false
     if (opts.mode === 'this_month_proposed') {

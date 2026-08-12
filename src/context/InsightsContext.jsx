@@ -27,7 +27,7 @@ import {
 import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
 import { mergeManualTagFieldsOnUserEdit, applyForceRetagOverrides } from '../lib/manualTagFields.js'
-import { mergeTicketImportOverExisting } from '../lib/ticketImportMerge.js'
+import { mergeFeedbacksInto } from '../lib/ticketImportMerge.js'
 import { unlinkActionItemsForForceRetag } from '../lib/forceRetagActionUnlink.js'
 import {
   mergeEstablishedActionLibraryForRecords,
@@ -84,7 +84,6 @@ import {
   touchBackgroundTask,
 } from '../lib/backgroundTaskClient.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
-import { buildDedupeKey, buildGlobalTicketDedupeKey } from '../domain/records.js'
 import { getRecordRevision, applyRecordWriteMetadata } from '../domain/recordRevision.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '../analysis/registry.js'
@@ -154,83 +153,10 @@ const META_PERIOD_SELECTION = 'insight_period_selection'
 
 const InsightsContext = createContext(null)
 
-/**
- * @param {import('../lib/types.js').FeedbackRecord} record
- */
-function duplicateKey(record) {
-  const dataSourceType = record.dataSourceType || 'complaint_ticket'
-  const globalTicketKey = buildGlobalTicketDedupeKey({
-    dataSourceType,
-    ticketId: record.ticketId,
-  })
-  if (globalTicketKey) return globalTicketKey
-  return buildDedupeKey({
-    dataSourceType,
-    importMonth:
-      record.importMonth || record.createdAt?.slice(0, 7) || 'unknown',
-    ticketId: record.ticketId,
-    id: record.id,
-  })
-}
-
 function attachJourneyRules(settings) {
   return {
     ...settings,
     themeRules: getThemeRulesForProduct(undefined, 'generic'),
-  }
-}
-
-/**
- * @param {import('../lib/types.js').FeedbackRecord[]} prev
- * @param {import('../lib/types.js').FeedbackRecord[]} incoming
- * @param {Map<string, import('../lib/types.js').FeedbackRecord>} [existingByTicketKey]
- */
-function mergeFeedbacksInto(prev, incoming, existingByTicketKey = new Map()) {
-  /** @type {Map<string, number>} */
-  const indexByKey = new Map()
-  const merged = prev.map((fb, index) => {
-    const key = duplicateKey(fb)
-    if (key) indexByKey.set(key, index)
-    return fb
-  })
-
-  /** @type {import('../lib/types.js').FeedbackRecord[]} */
-  const added = []
-  /** @type {import('../lib/types.js').FeedbackRecord[]} */
-  const updated = []
-  let skippedDuplicates = 0
-
-  for (const record of incoming) {
-    const withMeta = {
-      ...record,
-      dataSourceType: record.dataSourceType || 'complaint_ticket',
-    }
-    const key = duplicateKey(withMeta)
-    const existingFromMemory =
-      key && indexByKey.has(key) ? merged[indexByKey.get(key)] : null
-    const existingFromStore = key ? existingByTicketKey.get(key) : null
-    // 优先用库内全量记录，避免列表投影缺大文本字段
-    const existing = existingFromStore || existingFromMemory
-
-    if (existing && key) {
-      const next = mergeTicketImportOverExisting(existing, withMeta)
-      if (indexByKey.has(key)) {
-        merged[indexByKey.get(key)] = next
-      }
-      updated.push(next)
-      continue
-    }
-
-    if (key) indexByKey.set(key, merged.length)
-    added.push(withMeta)
-    merged.push(withMeta)
-  }
-
-  return {
-    merged,
-    added,
-    updated,
-    skippedDuplicates,
   }
 }
 

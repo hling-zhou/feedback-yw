@@ -26,6 +26,7 @@ describe('actionSignals', () => {
         status: 'in_progress',
         firstProposedAt: '2026-06-10',
         createdAt: '2026-06-10',
+        linkedDataSources: ['post_use_rating'],
       },
       {
         id: '2',
@@ -33,12 +34,22 @@ describe('actionSignals', () => {
         status: 'completed',
         firstProposedAt: '2026-05-01',
         updatedAt: '2026-06-15T00:00:00.000Z',
+        linkedDataSources: ['post_use_rating'],
       },
       {
         id: '3',
         productName: '云主机',
         status: 'in_progress',
         firstProposedAt: '2026-06-01',
+        linkedDataSources: ['post_use_rating'],
+      },
+      {
+        id: '4',
+        productName: '弹性公网IP',
+        status: 'in_progress',
+        firstProposedAt: '2026-06-10',
+        createdAt: '2026-06-10',
+        linkedDataSources: ['complaint_ticket'],
       },
     ]
     const proposed = filterActionsForMonthlyReport(items, {

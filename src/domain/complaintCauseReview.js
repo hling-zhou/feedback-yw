@@ -1,6 +1,7 @@
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 
 import { getManualTagFields } from '../lib/manualTagFields.js'
+import { isValidComplaintCausePath } from './complaintCauseTaxonomy.js'
 
 /** @type {number} */
 export const COMPLAINT_CAUSE_REVIEW_MAX_LENGTH = 200
@@ -19,6 +20,22 @@ export function hasPendingComplaintCauseReview(record) {
       || record?.complaintCauseL3Review?.trim()
       || record?.complaintCauseReviewReason?.trim(),
   )
+}
+
+/**
+ * 可进入管理员复核清单 / 可同意：合法三级路径 + 非空申请原因。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ * @returns {boolean}
+ */
+export function isCompleteComplaintCauseReview(record) {
+  const reason = String(record?.complaintCauseReviewReason || '').trim()
+  if (!reason) return false
+  return isValidComplaintCausePath({
+    l1: record?.complaintCauseL1Review,
+    l2: record?.complaintCauseL2Review,
+    l3: record?.complaintCauseL3Review,
+  })
 }
 
 /**

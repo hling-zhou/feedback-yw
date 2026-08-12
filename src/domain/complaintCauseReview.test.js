@@ -4,10 +4,19 @@ import {
   getComplaintCauseReviewDraftDisplay,
   hasManualComplaintCauseReview,
   hasPendingComplaintCauseReview,
+  isCompleteComplaintCauseReview,
   isComplaintCauseReviewManuallyMaintained,
   normalizeComplaintCauseReviewInput,
   shouldIncludeComplaintCauseReviewInSave,
 } from './complaintCauseReview.js'
+import { isComplaintCauseReviewPending } from './complaintCauseReviewArchive.js'
+
+const completeReview = {
+  complaintCauseL1Review: '云能问题',
+  complaintCauseL2Review: '产品原因',
+  complaintCauseL3Review: '计算部原因',
+  complaintCauseReviewReason: '分类不准',
+}
 
 describe('complaintCauseReview', () => {
   it('detects pending review for l1/l2/l3/reason', () => {
@@ -15,6 +24,23 @@ describe('complaintCauseReview', () => {
     expect(hasPendingComplaintCauseReview({ complaintCauseReviewReason: '需改' })).toBe(true)
     expect(hasManualComplaintCauseReview({ complaintCauseL2Review: '复核二级' })).toBe(true)
     expect(hasManualComplaintCauseReview({})).toBe(false)
+  })
+
+  it('isCompleteComplaintCauseReview requires valid path and reason', () => {
+    expect(isCompleteComplaintCauseReview(completeReview)).toBe(true)
+    expect(
+      isCompleteComplaintCauseReview({
+        ...completeReview,
+        complaintCauseReviewReason: '',
+      }),
+    ).toBe(false)
+    expect(
+      isCompleteComplaintCauseReview({
+        complaintCauseReviewReason: '仅原因',
+      }),
+    ).toBe(false)
+    expect(isComplaintCauseReviewPending({ complaintCauseReviewReason: '仅原因' })).toBe(false)
+    expect(isComplaintCauseReviewPending(completeReview)).toBe(true)
   })
 
   it('draft display returns l1/l2/l3/reason', () => {

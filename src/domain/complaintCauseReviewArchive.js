@@ -4,7 +4,7 @@
 
 import {
   clearComplaintCauseReviewFields,
-  hasPendingComplaintCauseReview,
+  isCompleteComplaintCauseReview,
 } from './complaintCauseReview.js'
 import { getManualTagFields } from '../lib/manualTagFields.js'
 
@@ -31,10 +31,11 @@ import { getManualTagFields } from '../lib/manualTagFields.js'
  */
 
 /**
+ * 管理员复核清单 / apply：仅完整拟复核。
  * @param {FeedbackRecord | null | undefined} record
  */
 export function isComplaintCauseReviewPending(record) {
-  return hasPendingComplaintCauseReview(record)
+  return isCompleteComplaintCauseReview(record)
 }
 
 /**

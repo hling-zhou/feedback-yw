@@ -76,7 +76,7 @@ export default function PostUseRatingDashboardView({ snapshot, sourceLabel }) {
       try {
         const [v, actionsRes, trend] = await Promise.all([
           loadVisitRecords(adapter),
-          listActionItems({ limit: 500 }).catch(() => ({ items: [] })),
+          listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           ensureHistoricalTrendSeed(adapter).catch(() => null),
         ])
         if (!cancelled) {
