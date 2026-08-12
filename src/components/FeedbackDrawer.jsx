@@ -1538,7 +1538,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       onClose={handleRequestClose}
       closable={{ placement: 'end' }}
       destroyOnClose
-      styles={{ body: { overflowX: 'hidden' } }}
+      styles={{
+        section: { overflow: 'hidden' },
+        body: { overflowX: 'hidden', overflowY: 'auto' },
+      }}
       footer={
         reviewEnabled || canEdit || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

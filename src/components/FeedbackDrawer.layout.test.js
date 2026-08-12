@@ -71,10 +71,11 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain('!isPostUseLibrary && hasDetailOptimizationContent(feedback)')
   })
 
-  it('exposes scroll helper and hides horizontal overflow in drawer body', () => {
+  it('exposes scroll helper and keeps a single vertical scrollbar on drawer body', () => {
     expect(src).toContain('scrollToTicketDetailSection')
     expect(src).toContain('scrollIntoView')
-    expect(src).toContain('overflowX: \'hidden\'')
+    expect(src).toContain("section: { overflow: 'hidden' }")
+    expect(src).toContain("body: { overflowX: 'hidden', overflowY: 'auto' }")
   })
 
   it('delegates close to parent and tracks dirty state for leave confirm', () => {

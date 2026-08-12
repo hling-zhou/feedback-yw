@@ -53,8 +53,8 @@ export const TODO_STATUS_FILTER_OPTIONS = [
 
 export const LISTENING_REVIEWED_FILTER_OPTIONS = [
   { label: '全部听音状态', value: '' },
-  { label: '已听音', value: 'yes' },
-  { label: '未听音', value: 'no' },
+  { label: '是', value: 'yes' },
+  { label: '否', value: 'no' },
 ]
 
 const FOLLOW_UP_FILTER_VALUES = new Set(['has', 'none', '10', 'non10'])

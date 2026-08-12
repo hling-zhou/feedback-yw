@@ -122,7 +122,10 @@ export default function ActionItemDrawer({
       onClose={onClose}
       closable={{ placement: 'end' }}
       destroyOnClose
-      styles={{ body: { overflowX: 'hidden' } }}
+      styles={{
+        section: { overflow: 'hidden' },
+        body: { overflowX: 'hidden', overflowY: 'auto' },
+      }}
       footer={
         canEdit && !locked ? (
           <div className="flex justify-end gap-2">
