@@ -54,6 +54,7 @@ import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
 import ComplaintCauseReviewAdminModal from '../components/ComplaintCauseReviewAdminModal.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
+  matchesCustomerNamesFilter,
   matchesFollowUpFilters,
   matchesHandlingKeywordFilter,
   matchesListeningReviewedFilter,
@@ -489,6 +490,7 @@ export default function Feedbacks() {
       if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
       if (!matchesListeningReviewedFilter(fb, filters.listeningReviewed)) return false
       if (!matchesHandlingKeywordFilter(fb, filters.handlingKeyword)) return false
+      if (!matchesCustomerNamesFilter(fb, filters.customerNames)) return false
       return true
     })
   }, [

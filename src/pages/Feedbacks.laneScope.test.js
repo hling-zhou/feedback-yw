@@ -10,6 +10,7 @@ describe('Feedbacks lane-scoped notices', () => {
     expect(source).toContain('isPostUseLane')
     expect(source).toContain('laneVisiblePeriodCount')
     expect(source).toContain("isPostUseLane ? 'post_use_rating' : filters.dataSource || ''")
+    expect(source).toContain('matchesCustomerNamesFilter(fb, filters.customerNames)')
   })
 
   it('keeps ticket quality notices off the post-use lane', () => {

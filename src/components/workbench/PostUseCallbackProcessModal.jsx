@@ -92,6 +92,17 @@ export default function PostUseCallbackProcessModal({
     try {
       await upsertPostUseCallbackDecisions([next])
     } catch (error) {
+      setDecisions((prev) => {
+        const map = new Map(prev)
+        const latest = map.get(itemKey)
+        if (
+          latest?.needCustomerVisit === next.needCustomerVisit &&
+          latest?.needInternalTrace === next.needInternalTrace
+        ) {
+          map.set(itemKey, current)
+        }
+        return map
+      })
       message.error(error?.message || '保存勾选失败')
     } finally {
       setSavingKey('')
