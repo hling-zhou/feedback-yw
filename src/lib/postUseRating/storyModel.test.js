@@ -468,6 +468,49 @@ describe('post-use story model', () => {
     expect(model.callbackRecommendations[0].feedbackReasonSummary).toBe('客户回答B（2）；客户回答A（1）')
   })
 
+  it('falls back to commentText when feedbackReasonTexts is missing', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'r1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 1,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '完全是垃圾，网都上不了',
+          rawText: '完全是垃圾，网都上不了',
+          lowScoreReason: '您遇到了哪些问题？（最多选3项）',
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-03T10:00:00.000Z',
+        },
+        {
+          id: 'r2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          commentText: '无/不涉及',
+          rawText: '无/不涉及',
+          lowScoreReason: '退订原因（最多选3项）',
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-05T10:00:00.000Z',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations[0].feedbackReasons).toEqual(['无/不涉及', '完全是垃圾，网都上不了'])
+    expect(model.callbackRecommendations[0].feedbackReasonSummary).toBe(
+      '无/不涉及（1）；完全是垃圾，网都上不了（1）',
+    )
+  })
+
   it('builds callback non-ten trace rows from callback channel records', () => {
     const model = buildPostUseStoryModel({
       records: [

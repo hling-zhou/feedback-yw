@@ -114,6 +114,10 @@ function getFeedbackReasonValues(record) {
     seen.add(text)
     values.push(text)
   }
+  if (!values.length) {
+    const comment = normalizeText(record.commentText)
+    if (comment) values.push(comment)
+  }
   return values
 }
 
