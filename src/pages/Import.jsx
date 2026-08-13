@@ -31,6 +31,7 @@ import {
   applyColumnMap,
   applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
+  IMPORT_PARSE_ERROR_CODES,
 } from '../lib/parseFile.js'
 import {
   getPresetsForImport,
@@ -202,6 +203,15 @@ export default function Import({ embedded = false }) {
   const [customerVisitPreviewLoading, setCustomerVisitPreviewLoading] = useState(false)
   /** @type {[null | { dry: ReturnType<typeof runCustomerVisitImportDryRun>; dataMonth: string }, Function]} */
   const [customerVisitImportResult, setCustomerVisitImportResult] = useState(null)
+  const [passwordPrompt, setPasswordPrompt] = useState({
+    open: false,
+    file: /** @type {File | null} */ (null),
+    fileId: '',
+    sheetName: '',
+    password: '',
+    error: '',
+  })
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false)
 
   const importMonthDisplay = useMemo(() => {
     const normalized = normalizeImportMonth(importMonth)
@@ -214,7 +224,7 @@ export default function Import({ embedded = false }) {
   const followUpImport = isFollowUpSatisfactionImport(dataSourceType, postUseRatingSubType)
   const customerVisitImport = isCustomerVisitImport(dataSourceType, postUseRatingSubType)
   const channelBundleImport = isPostUseChannelBundleImport(dataSourceType, postUseRatingSubType)
-  const singleFileEnrichImport = followUpImport || customerVisitImport
+  const singleFileEnrichImport = followUpImport
   const stepItems = useMemo(() => {
     if (channelBundleImport) return STEPS_POST_USE.map((title) => ({ title }))
     return STEPS.map((title) => ({ title }))
@@ -279,13 +289,14 @@ export default function Import({ embedded = false }) {
     /**
      * @param {File} file
      * @param {string} [sheetName]
+     * @param {string} [password]
      */
-    async (file, sheetName) => {
+    async (file, sheetName, password) => {
       const fileCheck = validateImportFile(file)
       if (!fileCheck.ok) throw new Error(fileCheck.message)
 
       const sha256 = await hashFileSha256(file)
-      const first = await parseUploadFile(file)
+      const first = await parseUploadFile(file, { password })
       if (!first.headers.length || !first.rows.length) {
         throw new Error('文件为空或无法解析')
       }
@@ -298,7 +309,7 @@ export default function Import({ embedded = false }) {
       let rows = first.rows
 
       if (names.length && selected) {
-        const parsed = await parseUploadFile(file, { sheetName: selected })
+        const parsed = await parseUploadFile(file, { sheetName: selected, password })
         if (!parsed.headers.length || !parsed.rows.length) {
           throw new Error(`工作表「${selected}」为空`)
         }
@@ -317,10 +328,37 @@ export default function Import({ embedded = false }) {
         selectedSheet: selected,
         headers,
         rows,
+        requiresPassword: Boolean(password),
+        password: password || undefined,
       })
     },
     [dataSourceType],
   )
+
+  const openPasswordPrompt = useCallback((file, fileId = '', sheetName = '') => {
+    setPasswordPrompt({
+      open: true,
+      file,
+      fileId,
+      sheetName,
+      password: '',
+      error: '',
+    })
+  }, [])
+
+  const closePasswordPrompt = useCallback(() => {
+    setPasswordPrompt({
+      open: false,
+      file: null,
+      fileId: '',
+      sheetName: '',
+      password: '',
+      error: '',
+    })
+    setPasswordSubmitting(false)
+  }, [])
+
+  const isPasswordRequiredError = (err) => err?.code === IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED
 
   const addUploadFile = useCallback(
     async (file) => {
@@ -342,12 +380,16 @@ export default function Import({ embedded = false }) {
         const entry = await parseFileToEntry(file)
         setUploadFiles((prev) => [...prev, entry])
       } catch (e) {
-        setError(e.message || '解析失败')
+        if (isPasswordRequiredError(e)) {
+          openPasswordPrompt(file)
+        } else {
+          setError(e.message || '解析失败')
+        }
       } finally {
         setLoading(false)
       }
     },
-    [uploadFiles, parseFileToEntry],
+    [uploadFiles, parseFileToEntry, openPasswordPrompt],
   )
 
   const removeUploadFile = useCallback((id) => {
@@ -362,15 +404,19 @@ export default function Import({ embedded = false }) {
       setError('')
       setLoading(true)
       try {
-        const next = await parseFileToEntry(entry.file, sheetName)
+        const next = await parseFileToEntry(entry.file, sheetName, entry.password)
         setUploadFiles((prev) => prev.map((f) => (f.id === id ? { ...next, id } : f)))
       } catch (e) {
-        setError(e.message || '切换工作表失败')
+        if (isPasswordRequiredError(e)) {
+          openPasswordPrompt(entry.file, id, sheetName)
+        } else {
+          setError(e.message || '切换工作表失败')
+        }
       } finally {
         setLoading(false)
       }
     },
-    [uploadFiles, parseFileToEntry],
+    [uploadFiles, parseFileToEntry, openPasswordPrompt],
   )
 
   const proceedToColumnMapping = useCallback(async () => {
@@ -391,7 +437,7 @@ export default function Import({ embedded = false }) {
       if (customerVisitImport) {
         if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
           throw new Error(
-            '表头需包含客服回访列（月份、产品名称、用户信息/客户反馈摘要、评分来源或内部结论等）',
+            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果、内部评估',
           )
         }
       }
@@ -440,7 +486,7 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     try {
       const entry = uploadFiles[0]
-      const next = await parseFileToEntry(entry.file, sheetName)
+      const next = await parseFileToEntry(entry.file, sheetName, entry.password)
       const updated = [{ ...next, id: entry.id }]
       setUploadFiles(updated)
       const merged = mergeParsedUploadFiles(updated)
@@ -453,11 +499,49 @@ export default function Import({ embedded = false }) {
       setActivePreset(mapping.preset)
       setSelectedSheet(sheetName)
     } catch (e) {
-      setError(e.message || '切换工作表失败')
+      if (isPasswordRequiredError(e)) {
+        openPasswordPrompt(uploadFiles[0].file, uploadFiles[0].id, sheetName)
+      } else {
+        setError(e.message || '切换工作表失败')
+      }
     } finally {
       setLoading(false)
     }
   }
+
+  const submitPasswordPrompt = useCallback(async () => {
+    if (!passwordPrompt.file) return
+    setPasswordSubmitting(true)
+    setError('')
+    try {
+      const entry = await parseFileToEntry(
+        passwordPrompt.file,
+        passwordPrompt.sheetName || undefined,
+        passwordPrompt.password,
+      )
+      if (passwordPrompt.fileId) {
+        setUploadFiles((prev) =>
+          prev.map((item) =>
+            item.id === passwordPrompt.fileId ? { ...entry, id: passwordPrompt.fileId } : item,
+          ),
+        )
+      } else {
+        setUploadFiles((prev) => [...prev, entry])
+      }
+      closePasswordPrompt()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '解析失败'
+      setPasswordPrompt((prev) => ({ ...prev, error: message }))
+    } finally {
+      setPasswordSubmitting(false)
+    }
+  }, [passwordPrompt, parseFileToEntry, closePasswordPrompt])
+
+  const clearUploadFilePasswords = useCallback(() => {
+    setUploadFiles((prev) =>
+      prev.map(({ password, requiresPassword, ...item }) => ({ ...item })),
+    )
+  }, [])
 
   const applyPreset = (preset) => {
     const map = { ...preset.columnMap }
@@ -1198,6 +1282,7 @@ export default function Import({ embedded = false }) {
           skippedDuplicates: totalSkippedDuplicates,
         },
       })
+      clearUploadFilePasswords()
       setStep(4)
     } catch (e) {
       if (e?.code === 'DUPLICATE_RUN') {
@@ -1433,7 +1518,7 @@ export default function Import({ embedded = false }) {
               followUpImport
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
-                  ? '客服回访仅支持单文件上传；需含月份、产品名称、用户信息、回访结果、内部结论等列。'
+                  ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。`
                   : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
             }
           />
@@ -1450,9 +1535,7 @@ export default function Import({ embedded = false }) {
             beforeUpload={(file) => {
               if (singleFileEnrichImport && uploadFiles.length >= 1) {
                 setError(
-                  customerVisitImport
-                    ? '客服回访导入仅支持单文件'
-                    : '满意度回访导入仅支持单文件',
+                  '满意度回访导入仅支持单文件',
                 )
                 return Upload.LIST_IGNORE
               }
@@ -1471,7 +1554,7 @@ export default function Import({ embedded = false }) {
               {followUpImport
                 ? '拖拽或点击选择满意度回访文件'
                 : customerVisitImport
-                  ? '拖拽或点击选择客服回访文件'
+                  ? '拖拽或点击选择客服部回访文件（可多选）'
                   : '拖拽或点击选择文件（可多选）'}
             </p>
             <p className="ant-upload-hint">
@@ -1512,6 +1595,9 @@ export default function Import({ embedded = false }) {
                         <Typography.Text type="secondary" className="text-xs">
                           {item.rows.length} 行 · SHA256 {item.sha256.slice(0, 8)}…
                         </Typography.Text>
+                        {item.requiresPassword && (
+                          <Tag color="gold">已用密码解锁（仅内存）</Tag>
+                        )}
                         {item.sheetNames.length > 1 && (
                           <Select
                             size="small"
@@ -2251,6 +2337,47 @@ export default function Import({ embedded = false }) {
           )}
         </Card>
       )}
+      <Modal
+        open={passwordPrompt.open}
+        title="请输入 Excel 密码"
+        okText="解锁文件"
+        cancelText="取消"
+        confirmLoading={passwordSubmitting}
+        onOk={() => void submitPasswordPrompt()}
+        onCancel={closePasswordPrompt}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} className="w-full">
+          <Typography.Text type="secondary">
+            {passwordPrompt.file?.name
+              ? `文件「${passwordPrompt.file.name}」已加密，请输入密码后继续解析。`
+              : '该 Excel 文件已加密，请输入密码后继续解析。'}
+          </Typography.Text>
+          {passwordPrompt.error && (
+            <Alert
+              type="error"
+              showIcon
+              message={passwordPrompt.error}
+            />
+          )}
+          <Input.Password
+            autoFocus
+            placeholder="请输入 Excel 文件密码"
+            value={passwordPrompt.password}
+            onChange={(e) =>
+              setPasswordPrompt((prev) => ({
+                ...prev,
+                password: e.target.value,
+                error: '',
+              }))
+            }
+            onPressEnter={() => void submitPasswordPrompt()}
+          />
+          <Typography.Text type="secondary" className="text-xs">
+            密码仅保存在当前页面内存中，不会写入系统或随导入数据上传。
+          </Typography.Text>
+        </Space>
+      </Modal>
     </div>
   )
 }

@@ -59,7 +59,7 @@ describe('buildSourceSnapshot', () => {
     expect(snap.recordIds).toEqual(['1'])
     expect(snap.aggregates.complaintCauseL1).toEqual([{ name: '服务不可用', count: 1 }])
     expect(snap.aggregates.problemTypes).toEqual([{ name: '计费与账单', count: 1 }])
-    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.0')
+    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.3')
     expect(snap.aggregates.painPointClustering?.products).toEqual({})
   })
 
@@ -113,7 +113,7 @@ describe('buildSourceSnapshot', () => {
       dataSourceType: 'complaint_ticket',
       records: scoped,
     })
-    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.0')
+    expect(snap.aggregates.painPointClustering?.clusteringVersion).toBe('v2.3')
     expect(snap.aggregates.painPointClustering?.products['弹性公网 IP']?.primaryClusters.length).toBeGreaterThanOrEqual(1)
   })
 

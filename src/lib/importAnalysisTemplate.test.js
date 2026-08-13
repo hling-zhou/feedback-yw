@@ -4,22 +4,34 @@ import {
   getImportAnalysisRequiredHeaders,
   getImportAnalysisTemplateHeaders,
 } from './importAnalysisTemplate.js'
-import { getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
+import { getImportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 describe('importAnalysisTemplate', () => {
-  it('template headers match export v3 column order with * on required columns', () => {
+  it('template headers follow export v3 order for importable columns with * on required', () => {
     const headers = getImportAnalysisTemplateHeaders()
     const exportHeaders = getExportV3Headers()
+    const importable = getImportColumns()
+    expect(exportHeaders).toHaveLength(30)
+    expect(headers).toHaveLength(importable.length)
     expect(headers).toHaveLength(21)
-    expect(exportHeaders).toHaveLength(21)
     const required = new Set(getImportRequiredDisplayNames())
     expect(headers).toEqual(
-      exportHeaders.map((name) => (required.has(name) ? `${name}*` : name)),
+      importable.map((field) =>
+        required.has(field.displayName) ? `${field.displayName}*` : field.displayName,
+      ),
     )
+    // 可导入列在导出列序中保持相对顺序
+    const exportIndex = new Map(exportHeaders.map((name, i) => [name, i]))
+    const importNames = importable.map((f) => f.displayName)
+    for (let i = 1; i < importNames.length; i += 1) {
+      expect(exportIndex.get(importNames[i])).toBeGreaterThan(exportIndex.get(importNames[i - 1]))
+    }
     expect(headers[0]).toBe('工单号*')
     expect(headers[1]).toBe('产品名称*')
     expect(headers).toContain('排期')
     expect(headers).not.toContain('排期*')
+    expect(headers).not.toContain('未完成待办')
+    expect(headers).not.toContain('集团名称')
   })
 
   it('required headers exclude optional columns (R1 + 0601)', () => {

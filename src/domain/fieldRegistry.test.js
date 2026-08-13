@@ -36,12 +36,20 @@ const EXPECTED_V2_HEADERS = [
   '受理内容',
   '处理意见',
   '根因排查',
+  '客户类型名称',
+  '集团名称',
+  '集团客户编码',
+  '集团所属省份',
+  '集团所属地市',
+  '登录账号名称',
+  '移动云客户服务等级',
+  '受理渠道',
 ]
 
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (22 columns)', () => {
+  it('exports v2 column order matches design (30 columns)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(22)
+    expect(cols).toHaveLength(30)
     expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
@@ -94,7 +102,8 @@ describe('fieldRegistry', () => {
     expect(l1).toBeDefined()
     expect(isFieldApplicable(l1, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
-    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(22)
+    // 客户基础信息列对投诉/咨询均导出；complaintCause*Final 本身不进 exportable 集
+    expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(30)
   })
 
   it('follow-up fields apply to complaint and consultation only', () => {

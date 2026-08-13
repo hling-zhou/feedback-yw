@@ -166,6 +166,27 @@ export function matchesHandlingKeywordFilter(record, keyword = '') {
 }
 
 /**
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {string[]} [customerNames]
+ */
+export function matchesCustomerNamesFilter(record, customerNames = []) {
+  if (!Array.isArray(customerNames) || customerNames.length === 0) return true
+  const name = String(record?.customerName ?? '').trim()
+  return Boolean(name) && customerNames.includes(name)
+}
+
+/**
+ * @param {string | null | undefined} raw
+ */
+export function parseCustomerNamesParam(raw) {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((t) => decodeURIComponent(t.trim()))
+    .filter(Boolean)
+}
+
+/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackFollowUpSearchParams(searchParams) {
@@ -270,6 +291,7 @@ export function parseFeedbackSearchParams(searchParams) {
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
     ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
+    customerNames: parseCustomerNamesParam(searchParams.get('customerNames')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
     listeningReviewed: parseListeningReviewedFilterParam(searchParams.get('listeningReviewed')),
@@ -311,6 +333,11 @@ export function patchFeedbackSearchParams(base, patch) {
     const value = patch.ticketIds?.trim()
     if (value) next.set('ticketIds', value)
     else next.delete('ticketIds')
+  }
+  if ('customerNames' in patch) {
+    const value = patch.customerNames?.trim()
+    if (value) next.set('customerNames', value)
+    else next.delete('customerNames')
   }
   return next
 }
@@ -378,9 +405,11 @@ export function buildFeedbacksUrl(params = {}) {
     'reasonDim',
     'ticketId',
     'ticketIds',
+    'customerNames',
     'ticketDateFrom',
     'ticketDateTo',
     'source',
+    'lane',
     'todoStatus',
     'listeningReviewed',
     'handlingKeyword',
