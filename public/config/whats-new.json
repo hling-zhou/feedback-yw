@@ -1,11 +1,70 @@
 {
-  "generatedAt": "2026-08-12T17:35:49.716Z",
+  "generatedAt": "2026-08-13T08:34:31.226Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "116d159fe4b3121973165047d455bacd078311b3",
+  "repoCommit": "3096e4299a958a82361a77ebc8eec0ec69092f2b",
   "items": [
     {
-      "id": "116d159fe4b3121973165047d455bacd078311b3",
+      "id": "6cd06d1c37305b26f23ea017cc4e097e584639b5",
+      "title": "分 Tab 清空筛选、精简工单列并支持待办负责人搜索",
+      "category": "fix",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "切换投诉咨询/用后即评时重置筛选；列表去掉优化建议（自动）；会议待办负责人支持模糊搜索。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ff5e0b4f18eca122a72997de2d677dfe1b8a0b60",
+      "title": "听音筛选项改为是/否，并消除抽屉双滚动条",
+      "category": "fix",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "是否听音筛选文案与勾选态对齐；抽屉仅保留 body 纵向滚动。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b3db852c12564a72f44659d7f7f128470e079491",
+      "title": "add JSON import attribute for Node ESM",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "Node 20 requires with { type: 'json' } when loading complaintCauseTaxonomy.json, which was crashing feedback-api on startup.",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b15c9b944ab7221050c6b909533216a14466ae0b",
+      "title": "restore post-use rating product scope helpers",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "Rebuild was failing because WorkbenchAnalysisNav still imported scopePostUseRatingRecords after it was dropped.",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "292fa50271d72f3f5913ad63e9890cdd64555c42",
+      "title": "harden complaint-cause review and import/report edge cases",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "Require complete L1–L3 + reason before agree, gate drawer review behind a switch, atomically archive with putRecord, refresh store-only re-imports in memory, and scope monthly-report actions to post_use_rating.",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "60c241d08fca742b4d052780225e883d6a031adc",
       "title": "投诉原因拟复核审批、听音筛选与导出客户列",
       "category": "feature",
       "modules": [

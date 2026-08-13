@@ -18,6 +18,21 @@ describe('actionSignals', () => {
     expect(signals[0].type).toBe('satisfaction_below')
   })
 
+  it('flags critical low-score experience even when sample size is below 10', () => {
+    const signals = buildPostUseActionSignals({
+      internalSat: { byProduct: [] },
+      internalExp: {
+        byProduct: [
+          { productName: 'A', avgScore: 7.67, sampleSize: 3, minScore: 3, hasCriticalLowScore: true },
+          { productName: 'B', avgScore: 8.5, sampleSize: 4, minScore: 5, hasCriticalLowScore: false },
+        ],
+      },
+    })
+    expect(signals.map((s) => s.productName)).toEqual(['A'])
+    expect(signals[0].type).toBe('experience_critical_low_score')
+    expect(signals[0].priority).toBe('P0')
+  })
+
   it('filters monthly report actions by month and product', () => {
     const items = [
       {
@@ -47,8 +62,7 @@ describe('actionSignals', () => {
         id: '4',
         productName: '弹性公网IP',
         status: 'in_progress',
-        firstProposedAt: '2026-06-10',
-        createdAt: '2026-06-10',
+        firstProposedAt: '2026-06-12',
         linkedDataSources: ['complaint_ticket'],
       },
     ]
@@ -68,8 +82,8 @@ describe('actionSignals', () => {
 })
 
 describe('visitMonthForReport', () => {
-  it('uses N-1 month', () => {
-    expect(visitMonthForReport('2026-06')).toBe('2026-05')
-    expect(visitMonthForReport('2026-01')).toBe('2025-12')
+  it('uses the same imported data month as the online scope', () => {
+    expect(visitMonthForReport('2026-06')).toBe('2026-06')
+    expect(visitMonthForReport('2026-01')).toBe('2026-01')
   })
 })

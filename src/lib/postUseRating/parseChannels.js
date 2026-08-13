@@ -16,6 +16,7 @@ import { parseYesNo } from '../../domain/followUpSatisfaction.js'
  * @property {string} answeredAt
  * @property {string} [rawComment]
  * @property {string} [lowScoreReason]
+ * @property {string[]} [feedbackReasonTexts]
  * @property {string} [scene]
  * @property {string} [followUpTicketId]
  * @property {string} [originalTicketId]
@@ -128,13 +129,14 @@ export function normalizeConsoleScoreRows(rows) {
   for (const row of rows) {
     const score = parseScore(row['得分'])
     if (score == null) continue
-    const headers = Object.keys(row)
-    // 客户原话：优先列名；否则取第 21/25 个字段附近（0-based 20 / 24）
-    const comment =
-      cell(row['客户回答_3']) ||
-      cell(row[headers[24]]) ||
-      cell(row[headers[20]]) ||
-      ''
+    // 官网评分类原始表头中，这三列业务上都叫“客户回答”；
+    // 解析后因重名被区分为 客户回答 / 客户回答_2 / 客户回答_3。
+    const feedbackReasonTexts = [
+      cell(row['客户回答']),
+      cell(row['客户回答_2']),
+      cell(row['客户回答_3']),
+    ].filter(Boolean)
+    const comment = cell(row['客户回答_3']) || cell(row['客户回答_2']) || cell(row['客户回答']) || ''
     out.push({
       channel: 'console',
       productName: cell(row['产品名']),
@@ -144,6 +146,7 @@ export function normalizeConsoleScoreRows(rows) {
       answeredAt: cell(row['填答时间']),
       rawComment: comment,
       lowScoreReason: cell(row['不满原因']),
+      feedbackReasonTexts,
       scene: cell(row['一级场景']),
       raw: row,
     })
@@ -248,12 +251,22 @@ export function buildMergedPostUseRows(input) {
       option: options,
     },
     counts: {
+      sourceRows:
+        (input.smsRows || []).length +
+        (input.consoleRows || []).length +
+        (input.callbackRows || []).length +
+        (input.optionRows || []).length,
       sms: sms.length,
       console: consoleRows.length,
       callback: callback.length,
       option: options.length,
       scoredMerged: scored.length,
       beforeDedupe: sms.length + consoleRows.length + callback.length,
+      rejected:
+        Math.max(0, (input.smsRows || []).length - sms.length) +
+        Math.max(0, (input.consoleRows || []).length - consoleRows.length) +
+        Math.max(0, (input.callbackRows || []).length - callback.length) +
+        Math.max(0, (input.optionRows || []).length - options.length),
     },
   }
 }

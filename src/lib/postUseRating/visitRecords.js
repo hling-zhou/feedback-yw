@@ -1,19 +1,26 @@
 /**
- * 客服回访信息（人工录入）— meta 存储
+ * 客服部回访信息（人工录入）— meta 存储
  */
 export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 
 /**
  * @typedef {Object} PostUseVisitRecord
  * @property {string} id
- * @property {string} visitMonth YYYY-MM（N-1 月）
+ * @property {string} visitMonth YYYY-MM（实际回访月，业务信息）
+ * @property {string} [importMonth] YYYY-MM（数据导入月份，控制线上分析范围）
  * @property {string} productName
+ * @property {string} [customerName]
+ * @property {string} [customerCode]
  * @property {string} feedbackSummary
  * @property {'控制台评分' | '短信评分' | '投诉回访' | string} scoreSource
  * @property {string} ratingText
  * @property {string} userInfo
  * @property {string} visitResult
  * @property {string} internalConclusion
+ * @property {string} [userFeedbackText]
+ * @property {string} [userInfoDetail]
+ * @property {string} [visitFeedbackDetail]
+ * @property {string} [internalEvaluationDetail]
  * @property {string} [jiraId]
  * @property {string} updatedAt
  */
@@ -25,7 +32,23 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 export function normalizeVisitRecords(raw) {
   if (!raw || typeof raw !== 'object') return []
   const list = /** @type {{ records?: PostUseVisitRecord[] }} */ (raw).records
-  return Array.isArray(list) ? list : []
+  if (!Array.isArray(list)) return []
+  return list.map((item) => ({
+    ...item,
+    customerName: String(item?.customerName || item?.userInfoDetail || item?.userInfo || ''),
+    customerCode: String(item?.customerCode || ''),
+    userFeedbackText: String(item?.userFeedbackText || ''),
+    userInfoDetail: String(
+      item?.userInfoDetail
+      || [item?.customerName, item?.customerCode].filter(Boolean).join(' / ')
+      || item?.userInfo
+      || '',
+    ),
+    visitFeedbackDetail: String(item?.visitFeedbackDetail || item?.visitResult || ''),
+    internalEvaluationDetail: String(
+      item?.internalEvaluationDetail || item?.internalConclusion || '',
+    ),
+  }))
 }
 
 /**
@@ -33,18 +56,15 @@ export function normalizeVisitRecords(raw) {
  * @param {string} visitMonth
  */
 export function filterVisitsByMonth(records, visitMonth) {
-  return records.filter((r) => r.visitMonth === visitMonth)
+  return records.filter((r) => (r.importMonth || r.visitMonth) === visitMonth)
 }
 
 /**
- * N 月月报使用 N-1 月回访
+ * 月报与线上当前月份使用同一数据范围。
  * @param {string} reportMonth YYYY-MM
  */
 export function visitMonthForReport(reportMonth) {
-  const [y, m] = reportMonth.split('-').map(Number)
-  if (!y || !m) return ''
-  if (m === 1) return `${y - 1}-12`
-  return `${y}-${String(m - 1).padStart(2, '0')}`
+  return /^\d{4}-\d{2}$/.test(String(reportMonth || '')) ? reportMonth : ''
 }
 
 /**

@@ -13,7 +13,10 @@ import {
   computeInternalExperienceMetrics,
   computeInternalSatisfactionMetrics,
 } from './metrics.js'
-import { getPostUseRatingProductNames } from '../productCatalog/postUseRatingProducts.js'
+import {
+  getPostUseRatingProductNames,
+  scopePostUseRatingRecords,
+} from '../productCatalog/postUseRatingProducts.js'
 import { processFollowUpSatisfactionImportRows } from '../followUpSatisfactionImport.js'
 import { persistPostUseTrendForMonth } from './trendStore.js'
 import { aggregateOptionReasons, toTrendReasonRows } from './reasonStats.js'
@@ -21,6 +24,7 @@ import { getCatalogProducts } from '../productCatalogLoader.js'
 import { isApiStorageAdapter } from '../../storage/feedbackStore.js'
 import { importFollowUpSatisfaction } from '../followUpSatisfactionClient.js'
 import { periodIdFromImportMonth } from '../../domain/postUseRatingImport.js'
+import { buildPostUsePeriodQuality, persistPostUsePeriodQuality } from './qualityStore.js'
 
 /**
  * 将 executePostUseChannelImport 的 phase 映射为导入会话进度文案
@@ -66,18 +70,19 @@ export function previewPostUseChannelImport(smsBuffer, officialBuffer, opts) {
     optionRows: official.option?.rows || [],
   })
 
-  const productNames = getPostUseRatingProductNames(
-    opts.catalogProducts || getCatalogProducts(),
-  )
-  const internalExp = computeInternalExperienceMetrics(merged.scored, { productNames })
-  const internalSat = computeInternalSatisfactionMetrics(merged.scored, { productNames })
-  const external = computeExternalMixedMetrics(merged.scored, { productNames })
+  const catalogProducts = opts.catalogProducts || getCatalogProducts()
+  const productNames = getPostUseRatingProductNames(catalogProducts)
+  const analysisRows = scopePostUseRatingRecords(merged.scored, catalogProducts)
+  const internalExp = computeInternalExperienceMetrics(analysisRows, { productNames })
+  const internalSat = computeInternalSatisfactionMetrics(analysisRows, { productNames })
+  const external = computeExternalMixedMetrics(analysisRows, { productNames })
 
   return {
     sms,
     official,
     merged,
     metrics: { internalExp, internalSat, external },
+    analysisRows,
     productNames,
   }
 }
@@ -113,13 +118,15 @@ export async function executePostUseChannelImport(params) {
 
   const importBatchId = `pur_${importMonth}_${randomId().slice(0, 8)}`
   const importedAt = new Date().toISOString()
-  const records = buildPostUseRatingRecords(preview.merged.scored, {
+  const records = buildPostUseRatingRecords(
+    [...preview.merged.scored, ...preview.merged.options], {
     importMonth,
     importBatchId,
     importBatchName: `用后即评-${importMonth}`,
     importFileName: `${smsFileName}+${officialFileName}`,
     importedAt,
-  })
+    },
+  )
 
   const callbackRawRows = preview.official.callback?.rows || []
 
@@ -145,9 +152,10 @@ export async function executePostUseChannelImport(params) {
       (r.sourceSubType === 'sms_survey' ||
         r.sourceSubType === 'web_survey' ||
         r.sourceSubType === 'satisfaction_callback' ||
+        r.sourceSubType === 'web_option' ||
         r.channel === 'sms' ||
         r.channel === 'console' ||
-        r.channel === 'callback'),
+        r.channel === 'callback' || r.channel === 'option'),
   )
   for (const rec of toDelete) {
     await adapter.deleteRecord(rec.id)
@@ -184,6 +192,20 @@ export async function executePostUseChannelImport(params) {
     }
   }
 
+  const callbackMatched = Number(followUpResult?.summary?.matched ?? followUpResult?.matched ?? followUpResult?.updatedRecords?.length ?? 0)
+  const quality = buildPostUsePeriodQuality({
+    importMonth,
+    merged: preview.merged,
+    catalogProducts: getCatalogProducts(),
+    callbackLinkage: {
+      matched: callbackMatched,
+      unmatched: Math.max(0, callbackRawRows.length - callbackMatched),
+    },
+    importedAt,
+    importBatchId,
+  })
+  await persistPostUsePeriodQuality(adapter, quality)
+
   onProgress?.({ phase: 'done' })
   try {
     const reasonAgg = aggregateOptionReasons(
@@ -215,5 +237,6 @@ export async function executePostUseChannelImport(params) {
     metrics: preview.metrics,
     followUpResult,
     deletedPrior: toDelete.length,
+    quality,
   }
 }

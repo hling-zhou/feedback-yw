@@ -4,37 +4,27 @@
 export const META_KEY_POST_USE_TREND = 'post_use_trend_v1'
 
 /**
- * 内置历史种子（来自参考「累计统计」低分分析 · 2026统计分布，重点跟踪 5 产品）
- * 月份 2025-09 … 2026-06；满意度存 0–100 百分数。
+ * 内置正式历史累计趋势（来自参考「累计统计」低分分析 · 2026统计分布）。
+ * 当前按业务要求仅开放 2026-01 ～ 2026-05，满意度存 0–100 百分数。
  */
 export const POST_USE_TREND_HISTORICAL_SEED = {
-  months: [
-    '2025-09',
-    '2025-10',
-    '2025-11',
-    '2025-12',
-    '2026-01',
-    '2026-02',
-    '2026-03',
-    '2026-04',
-    '2026-05',
-    '2026-06',
-  ],
+  months: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'],
   /** @type {Record<string, (number | null)[]>} */
   scores: {
-    云专线: [9.71, 9.95, 9.98, 9.45, 9.42, 10, 9.91, 9.65, 9.99, 9.83],
-    虚拟私有云: [9.9, 9.92, 9.61, 9.54, 10, 10, 10, 9.74, 9.89, 9.35],
-    弹性负载均衡: [10, 10, 7.5, 10, 10, null, 10, 9.5, 10, 10],
-    弹性公网IP: [9.29, 9.5, 9.55, 9.76, 9.87, 9.83, 9.86, 9.83, 9.89, 9.94],
-    共享带宽: [8.98, 10, 9.53, 9.62, 9.62, 9.65, 9.89, 9.82, 9.77, 9.99],
+    云专线: [9.42, 10, 9.91, 9.65, 9.99],
+    虚拟私有云: [10, 10, 10, 9.74, 9.89],
+    弹性负载均衡: [10, null, 10, 9.5, 10],
+    弹性公网IP: [9.87, 9.83, 9.86, 9.83, 9.89],
+    共享带宽: [9.62, 9.65, 9.89, 9.82, 9.77],
+    云监控: [9.67, null, 10, null, null],
   },
   /** @type {Record<string, (number | null)[]>} 原始 0–1，写入时 ×100 */
   satisfactionRates: {
-    云专线: [1, 1, 1, 1, 0.91, 1, 1, 0.9167, 1, 1],
-    虚拟私有云: [1, 0.95, 1, 0.9474, 1, 1, 1, 0.8462, 0.9167, 0.9167],
-    弹性负载均衡: [1, 1, 0.5, 1, 1, 1, 1, 0.5, 1, 1],
-    弹性公网IP: [0.875, 0.88, 0.9184, 0.9531, 0.9724, 1, 0.8889, 1, 0.9583, 0.9],
-    共享带宽: [null, 1, 1, 1, 0.85, 1, 1, 1, 1, 1],
+    云专线: [0.91, 1, 1, 0.9167, 1],
+    虚拟私有云: [1, 1, 1, 0.8462, 0.9167],
+    弹性负载均衡: [1, 1, 1, 0.5, 1],
+    弹性公网IP: [0.9724, 1, 0.8889, 1, 0.9583],
+    共享带宽: [0.85, 1, 1, 1, 1],
   },
 }
 
@@ -134,8 +124,20 @@ export function upsertPostUseTrendMonth(snap, month, scoreRows, satRows, reasonR
  * @param {{ getMeta: (k: string) => Promise<unknown> }} adapter
  */
 export async function loadPostUseTrend(adapter) {
-  if (!adapter?.getMeta) return emptyPostUseTrend()
-  return normalizePostUseTrend(await adapter.getMeta(META_KEY_POST_USE_TREND))
+  if (!adapter?.getMeta) return mergeHistoricalTrendSeed(emptyPostUseTrend())
+  return mergeHistoricalTrendSeed(
+    normalizePostUseTrend(await adapter.getMeta(META_KEY_POST_USE_TREND)),
+  )
+}
+
+/**
+ * 历史累计趋势现已作为正式最小版历史数据展示；保留该函数仅为兼容旧调用。
+ *
+ * @param {PostUseTrendSnapshot | null | undefined} snapshot
+ * @returns {PostUseTrendSnapshot}
+ */
+export function stripHistoricalSeedRows(snapshot) {
+  return normalizePostUseTrend(snapshot)
 }
 
 /**

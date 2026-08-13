@@ -62,6 +62,14 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 npm test && npm run build
 ```
 
+提交前再看一眼 `git diff --stat`：若标题/scope 只写某个模块（如 `feedbacks`），但 stat 里出现大量无关目录（尤其 `src/lib/postUseRating/**`、月报 preview），**先拆 commit**，不要用一次巨型提交混入多需求。超长 Agent 会话结束时禁止「整夜改动打成一个 commit」。
+
+高敏目录（无关需求不得顺手改写）：
+
+- `src/lib/postUseRating/**`
+- `src/components/workbench/PostUseMonthlyReportPreview.jsx`
+- `src/lib/productCatalog/postUseRatingProducts.js`
+
 ## 更新动态与 Commit 规范
 
 - 默认约定：**只要没有明确说明不写入更新动态，用户可见改动请使用会进入更新动态的 commit 写法。**

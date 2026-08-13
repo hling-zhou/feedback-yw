@@ -3,14 +3,19 @@
  */
 
 import {
+  POST_USE_CRITICAL_LOW_SCORE,
   POST_USE_SATISFACTION_BASELINE,
   POST_USE_SCORE_BASELINE,
   POST_USE_SMALL_SAMPLE_N,
 } from './metrics.js'
 
+function isPostUseActionItem(item) {
+  return Array.isArray(item?.linkedDataSources) && item.linkedDataSources.includes('post_use_rating')
+}
+
 /**
  * @typedef {Object} ActionSignal
- * @property {'satisfaction_below' | 'experience_below' | 'callback_non_ten'} type
+ * @property {'satisfaction_below' | 'experience_below' | 'experience_critical_low_score' | 'callback_non_ten'} type
  * @property {string} productName
  * @property {string} title
  * @property {string} detail
@@ -21,8 +26,10 @@ import {
 /**
  * @param {{
  *   internalSat?: { byProduct: Array<{ productName: string; rate: number; sampleSize: number; smallSample?: boolean; belowBaseline?: boolean }> }
- *   internalExp?: { byProduct: Array<{ productName: string; avgScore: number; sampleSize: number; smallSample?: boolean; belowNine?: boolean }> }
+ *   internalExp?: { byProduct: Array<{ productName: string; avgScore: number; sampleSize: number; smallSample?: boolean; belowNine?: boolean; minScore?: number | null; hasCriticalLowScore?: boolean }> }
  *   callbackNonTen?: Array<{ productName: string; score: number; customerName?: string; lowScoreReason?: string; originalTicketId?: string }>
+ *   needInsights?: Array<{ productName: string; need: string; count: number; customerCount: number; avgScore: number; priority: 'P0'|'P1'|'P2'; priorityScore: number; explanation: string; evidenceIds?: string[] }>
+ *   period?: string
  *   smallSampleN?: number
  * }} input
  * @returns {ActionSignal[]}
@@ -31,6 +38,29 @@ export function buildPostUseActionSignals(input) {
   const smallN = input.smallSampleN ?? POST_USE_SMALL_SAMPLE_N
   /** @type {ActionSignal[]} */
   const signals = []
+
+  for (const need of input.needInsights || []) {
+    if (need.priority === 'P2') continue
+    const insightId = `post-use:${need.productName}:${need.need}`
+    signals.push({
+      type: 'aggregated_need',
+      productName: need.productName,
+      priority: need.priority,
+      title: `改善「${need.need}」相关体验`,
+      detail: `${need.count} 条评价反馈，涉及 ${need.customerCount} 个客户${need.visitEvidenceCount ? `，另有 ${need.visitEvidenceCount} 条客服部回访证据` : ''}；${need.explanation}`,
+      linkedInsightIds: [insightId],
+      evidenceRecordIds: [...new Set([...(need.evidenceIds || []), ...(need.visitEvidenceIds || [])])],
+      insightTheme: need.need,
+      triggerMetric: {
+        period: input.period || '',
+        metric: '用后即评均分',
+        value: need.avgScore,
+        baseline: POST_USE_SCORE_BASELINE,
+        unit: '分',
+      },
+      meta: { priorityScore: need.priorityScore },
+    })
+  }
 
   for (const p of input.internalSat?.byProduct || []) {
     if (p.sampleSize < smallN) continue
@@ -46,7 +76,18 @@ export function buildPostUseActionSignals(input) {
   }
 
   for (const p of input.internalExp?.byProduct || []) {
-    if (p.sampleSize < smallN) continue
+    if (p.sampleSize < smallN) {
+      if (!p.hasCriticalLowScore) continue
+      signals.push({
+        type: 'experience_critical_low_score',
+        productName: p.productName,
+        priority: 'P0',
+        title: `${p.productName} 小样本下出现极低分反馈`,
+        detail: `样本量 ${p.sampleSize}（低于 ${smallN}），但出现 ${POST_USE_CRITICAL_LOW_SCORE} 分及以下反馈${p.minScore != null ? `，最低 ${p.minScore} 分` : ''}`,
+        meta: { minScore: p.minScore, sampleSize: p.sampleSize },
+      })
+      continue
+    }
     if (p.avgScore >= POST_USE_SCORE_BASELINE) continue
     signals.push({
       type: 'experience_below',
@@ -97,8 +138,7 @@ export function filterActionsForMonthlyReport(items, opts) {
     m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
 
   return (items || []).filter((item) => {
-    const linked = item.linkedDataSources || []
-    if (!linked.includes('post_use_rating')) return false
+    if (!isPostUseActionItem(item)) return false
     const pname = item.productName || ''
     if (productSet.size && !productSet.has(pname)) return false
     if (opts.mode === 'this_month_proposed') {
