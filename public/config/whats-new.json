@@ -1,9 +1,22 @@
 {
-  "generatedAt": "2026-08-13T08:34:31.226Z",
+  "generatedAt": "2026-08-13T08:36:05.113Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "3096e4299a958a82361a77ebc8eec0ec69092f2b",
+  "repoCommit": "58f15f9919234777e70dd6307c9d5aef46b4e98b",
   "items": [
+    {
+      "id": "58f15f9919234777e70dd6307c9d5aef46b4e98b",
+      "title": "恢复被巨型提交误伤的用后即评月报与客服部回访",
+      "category": "fix",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "从 91a7592 外科手术式还原 metrics/月报导出导入/preview 等链路，补回反馈库客服部回访 Tab，并保留投诉原因复核与听音等 8/13 明确需求；同步提交规范以防再混交。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "6cd06d1c37305b26f23ea017cc4e097e584639b5",
       "title": "分 Tab 清空筛选、精简工单列并支持待办负责人搜索",
