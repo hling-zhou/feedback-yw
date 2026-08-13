@@ -206,6 +206,43 @@ export function clearAllActionItemFilters() {
 }
 
 /**
+ * 举措筛选/表单用产品选项：value 必须是唯一 productKey（禁止 taxonomy generic 塌缩）。
+ * 优先产品目录名，再用举措库中的 productKey 补齐未入库项。
+ *
+ * @param {{ productKey?: string; productName?: string }[]} [scopeItems]
+ * @param {Map<string, string> | Record<string, string>} [productNameByKey]
+ * @returns {{ label: string; value: string }[]}
+ */
+export function buildActionItemProductFilterOptions(scopeItems = [], productNameByKey) {
+  /** @type {Map<string, string>} */
+  const map = new Map()
+
+  if (productNameByKey instanceof Map) {
+    for (const [key, name] of productNameByKey) {
+      const k = String(key || '').trim()
+      if (!k) continue
+      map.set(k, String(name || '').trim() || k)
+    }
+  } else if (productNameByKey && typeof productNameByKey === 'object') {
+    for (const [key, name] of Object.entries(productNameByKey)) {
+      const k = String(key || '').trim()
+      if (!k) continue
+      map.set(k, String(name || '').trim() || k)
+    }
+  }
+
+  for (const item of scopeItems) {
+    const k = item?.productKey?.trim()
+    if (!k || map.has(k)) continue
+    map.set(k, item.productName?.trim() || k)
+  }
+
+  return [...map.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+}
+
+/**
  * @param {ActionItemFilterValues} filters
  * @returns {{
  *   productKeys?: string

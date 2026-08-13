@@ -11,7 +11,7 @@ import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
 
 /** @type {Record<ActionItemFilterKey, ActionItemFilterEditorKind>} */
 export const ACTION_ITEM_FILTER_EDITOR_KIND = {
-  productKeys: 'multiEnum',
+  productKeys: 'multiSearch',
   statuses: 'multiEnum',
   ticketId: 'text',
   linkedDataSources: 'multiEnum',

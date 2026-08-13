@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   actionItemFiltersToListQuery,
+  buildActionItemProductFilterOptions,
   countActiveActionItemFilters,
   createEmptyActionItemFilters,
   formatActionItemFilterChipLabel,
@@ -60,6 +61,38 @@ describe('actionItemFilterModel', () => {
       linkedDataSources: ['post_use_rating'],
     }
     expect(formatActionItemFilterChipLabel('linkedDataSources', values)).toBe('用后即评')
+  })
+})
+
+describe('buildActionItemProductFilterOptions', () => {
+  it('keeps unique productKey values and prefers catalog names', () => {
+    const options = buildActionItemProductFilterOptions(
+      [
+        { productKey: 'eip', productName: '弹性公网 IP' },
+        { productKey: 'eip', productName: '弹性公网IP' },
+        { productKey: 'custom_live', productName: '云直播' },
+        { productKey: '', productName: '忽略空 key' },
+      ],
+      new Map([
+        ['eip', '弹性公网IP'],
+        ['vpc', '虚拟私有云'],
+      ]),
+    )
+    expect(options).toHaveLength(3)
+    expect(options.find((item) => item.value === 'eip')).toEqual({
+      value: 'eip',
+      label: '弹性公网IP',
+    })
+    expect(options.find((item) => item.value === 'custom_live')).toEqual({
+      value: 'custom_live',
+      label: '云直播',
+    })
+    expect(options.find((item) => item.value === 'vpc')).toEqual({
+      value: 'vpc',
+      label: '虚拟私有云',
+    })
+    const values = options.map((item) => item.value)
+    expect(new Set(values).size).toBe(values.length)
   })
 })
 

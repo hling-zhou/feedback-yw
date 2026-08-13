@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, DatePicker, Dropdown, Input, Select, Tooltip, Typography } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 
@@ -27,6 +28,22 @@ import { CloseOutlined } from '@ant-design/icons'
  * @property {(key: TKey, values: TValues, options: Record<string, unknown>) => { label: string; value: string; title?: string }[]} listEnumOptions
  * @property {(keys: TKey[]) => TKey[]} [filterMenuKeys]
  */
+
+function compactFilterText(text) {
+  return String(text || '')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+
+/** Ant Design Select：忽略空格的 label 匹配（「弹性公网 IP」可命中「弹性公网IP」） */
+function filterOptionIgnoreSpace(input, option) {
+  const needle = compactFilterText(input)
+  if (!needle) return true
+  const label = compactFilterText(option?.label ?? option?.value)
+  return label.includes(needle)
+}
+
+const POPUP_TO_BODY = () => document.body
 
 /**
  * @template {string} TKey
@@ -202,7 +219,7 @@ export default function CompositeFilter({
               style: { maxHeight: 280, overflow: 'auto' },
             }}
             trigger={['click']}
-            getPopupContainer={() => barRef.current || document.body}
+            getPopupContainer={POPUP_TO_BODY}
           >
             <button
               type="button"
@@ -230,7 +247,7 @@ export default function CompositeFilter({
               style: { maxHeight: 320, overflow: 'auto', minWidth: 200 },
             }}
             trigger={['click']}
-            getPopupContainer={() => barRef.current || document.body}
+            getPopupContainer={POPUP_TO_BODY}
           >
             <button
               type="button"
@@ -265,6 +282,7 @@ export default function CompositeFilter({
       {pendingKey && config.getEditorKind(pendingKey) !== 'enum' ? (
         <SpecialFilterPopover
           open={specialOpen}
+          anchorRef={barRef}
           label={config.labels[pendingKey]}
           filterKey={pendingKey}
           editorKind={config.getEditorKind(pendingKey)}
@@ -299,7 +317,7 @@ function AttributeMenuLabel({ reason, children }) {
       title={reason}
       placement="right"
       mouseEnterDelay={0.15}
-      getPopupContainer={() => document.body}
+      getPopupContainer={POPUP_TO_BODY}
     >
       <span className="composite-filter-attribute-item-label block w-full cursor-not-allowed">
         {children}
@@ -342,6 +360,7 @@ function CompositeFilterChip({ label, value, onRemove, onEdit, active }) {
  */
 function SpecialFilterPopover({
   open,
+  anchorRef,
   label,
   filterKey,
   editorKind,
@@ -354,42 +373,61 @@ function SpecialFilterPopover({
   onClose,
   onConfirm,
 }) {
-  if (!open) return null
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 360 })
+
+  useLayoutEffect(() => {
+    if (!open) return undefined
+    const sync = () => {
+      const rect = anchorRef?.current?.getBoundingClientRect()
+      if (!rect) return
+      setPos({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.min(420, Math.max(280, rect.width)),
+      })
+    }
+    sync()
+    window.addEventListener('scroll', sync, true)
+    window.addEventListener('resize', sync)
+    return () => {
+      window.removeEventListener('scroll', sync, true)
+      window.removeEventListener('resize', sync)
+    }
+  }, [open, anchorRef])
+
+  if (!open || typeof document === 'undefined') return null
 
   const enumOptions = listEnumOptions(filterKey, filters, options)
 
-  return (
+  return createPortal(
     <div
-      className="absolute left-0 z-20 mt-1 w-[min(420px,calc(100vw-32px))] rounded-lg border border-ink-200 bg-white p-3 shadow-lg"
+      className="rounded-lg border border-ink-200 bg-white p-3 shadow-lg"
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 1100,
+      }}
       onClick={(event) => event.stopPropagation()}
     >
       <Typography.Text strong className="mb-2 block text-sm">
         {label}
       </Typography.Text>
-      {editorKind === 'multiSearch' ? (
+      {editorKind === 'multiSearch' || editorKind === 'multiEnum' ? (
         <Select
           mode="multiple"
           allowClear
           showSearch
           autoFocus
           className="w-full"
-          placeholder="选择或搜索"
+          placeholder={editorKind === 'multiSearch' ? '选择或搜索' : '选择一项或多项'}
           value={/** @type {string[]} */ (draft)}
           options={enumOptions}
           onChange={setDraft}
           optionFilterProp="label"
-        />
-      ) : editorKind === 'multiEnum' ? (
-        <Select
-          mode="multiple"
-          allowClear
-          autoFocus
-          className="w-full"
-          placeholder="选择一项或多项"
-          value={/** @type {string[]} */ (draft)}
-          options={enumOptions}
-          onChange={setDraft}
-          optionFilterProp="label"
+          filterOption={filterOptionIgnoreSpace}
+          getPopupContainer={POPUP_TO_BODY}
         />
       ) : editorKind === 'dateRange' ? (
         <DatePicker.RangePicker
@@ -401,6 +439,7 @@ function SpecialFilterPopover({
             draft
           )}
           onChange={(range) => setDraft(range ?? [null, null])}
+          getPopupContainer={POPUP_TO_BODY}
         />
       ) : editorKind === 'text' ? (
         <Input
@@ -440,6 +479,7 @@ function SpecialFilterPopover({
           确定
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

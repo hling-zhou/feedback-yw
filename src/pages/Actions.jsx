@@ -97,6 +97,7 @@ import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
+  buildActionItemProductFilterOptions,
   clearAllActionItemFilters,
   createEmptyActionItemFilters,
 } from '../lib/actionItemFilterModel.js'
@@ -297,13 +298,6 @@ export default function Actions() {
     [watchedAddRequirementLinkEnabled, watchedAddStatus],
   )
 
-  const productOptions = useMemo(() => {
-    return listProducts(feedbacks).map((p) => ({
-      label: p.name,
-      value: p.key,
-    }))
-  }, [feedbacks])
-
   const periodFilterActive = Boolean(insightPeriodId)
 
   const periodTicketIdSet = useMemo(() => {
@@ -342,6 +336,11 @@ export default function Actions() {
       return linkedTicketIdsInPeriod(record.linkedTicketIds, periodTicketIdSet)
     },
     [periodFilterActive, periodTicketIdSet],
+  )
+
+  const productOptions = useMemo(
+    () => buildActionItemProductFilterOptions(scopeItemsForFilters, buildProductNameByKeyMap()),
+    [scopeItemsForFilters],
   )
 
   const productNameByKey = useMemo(() => {
