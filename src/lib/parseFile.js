@@ -2,6 +2,7 @@ import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { detectPreset, MOBILE_CLOUD_TICKET_PRESET } from './columnPresets.js'
 import { normalizeTicketId, normalizeCreatedAt } from './desensitize.js'
+import { parseImportFileNamePassword } from './importFilePassword.js'
 
 export const IMPORT_PARSE_ERROR_CODES = {
   PASSWORD_REQUIRED: 'password_required',
@@ -146,20 +147,49 @@ function sheetToRows(sheet, options = {}) {
 
 /**
  * @param {ArrayBuffer} buffer
- * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number; password?: string }} [options]
+ * @param {string} [password]
+ */
+function readExcelWorkbook(buffer, password) {
+  try {
+    return XLSX.read(buffer, {
+      type: 'array',
+      cellText: true,
+      cellDates: true,
+      password,
+    })
+  } catch (err) {
+    throw normalizeExcelParseError(err, { password })
+  }
+}
+
+/**
+ * 加密文件且密码不正确时不再次尝试；其余错误在带了密码时允许无密码再读一次
+ * （文件名含 # 但实际未加密）。
+ *
+ * @param {unknown} err
+ * @param {{ password?: string; retryWithoutPassword?: boolean }} options
+ */
+function shouldRetryExcelWithoutPassword(err, options) {
+  if (!options.retryWithoutPassword || !options.password) return false
+  const code = err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : ''
+  return (
+    code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT &&
+    code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED
+  )
+}
+
+/**
+ * @param {ArrayBuffer} buffer
+ * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number; password?: string; retryWithoutPassword?: boolean }} [options]
  * @returns {{ sheetNames: string[]; sheets: Record<string, { headers: string[]; rows: Record<string, string>[] }> }}
  */
 export function parseExcelBuffer(buffer, options = {}) {
   let wb
   try {
-    wb = XLSX.read(buffer, {
-      type: 'array',
-      cellText: true,
-      cellDates: true,
-      password: options.password,
-    })
+    wb = readExcelWorkbook(buffer, options.password)
   } catch (err) {
-    throw normalizeExcelParseError(err, { password: options.password })
+    if (!shouldRetryExcelWithoutPassword(err, options)) throw err
+    wb = readExcelWorkbook(buffer, undefined)
   }
   /** @type {Record<string, { headers: string[]; rows: Record<string, string>[] }> } */
   const sheets = {}
@@ -181,7 +211,10 @@ export function parseExcelBuffer(buffer, options = {}) {
  * @returns {Promise<{ headers: string[]; rows: Record<string, string>[]; sheetNames?: string[]; sheets?: Record<string, { headers: string[]; rows: Record<string, string>[] }> }>}
  */
 export async function parseUploadFile(file, options = {}) {
-  const ext = file.name.split('.').pop()?.toLowerCase()
+  const fromName = parseImportFileNamePassword(file.name)
+  const password = options.password || fromName.password || undefined
+  const retryWithoutPassword = Boolean(fromName.password) && !options.password
+  const ext = fromName.displayName.split('.').pop()?.toLowerCase() || file.name.split('.').pop()?.toLowerCase()
 
   if (ext === 'csv') {
     const text = await file.text()
@@ -201,7 +234,10 @@ export async function parseUploadFile(file, options = {}) {
 
   if (ext === 'xlsx' || ext === 'xls') {
     const buffer = await file.arrayBuffer()
-    const { sheetNames, sheets } = parseExcelBuffer(buffer, { password: options.password })
+    const { sheetNames, sheets } = parseExcelBuffer(buffer, {
+      password,
+      retryWithoutPassword,
+    })
 
     const normalizeRow = (row) => {
       /** @type {Record<string, string>} */

@@ -20,13 +20,18 @@ describe('importUtils', () => {
     expect(validateImportFile(file).ok).toBe(false)
   })
 
-  it('validateImportFile accepts csv', () => {
-    const file = new File(['a,b'], 't.csv', { type: 'text/csv' })
-    expect(validateImportFile(file).ok).toBe(true)
+  it('validateImportFile rejects files over 30MB', () => {
+    const file = new File(['x'], 'data.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    Object.defineProperty(file, 'size', { value: 30 * 1024 * 1024 + 1 })
+    expect(validateImportFile(file).ok).toBe(false)
+    expect(validateImportFile(file).message).toContain('30MB')
   })
 
   it('validateRowCount enforces max', () => {
-    expect(validateRowCount(5001).ok).toBe(false)
+    expect(validateRowCount(10000).ok).toBe(true)
+    expect(validateRowCount(10001).ok).toBe(false)
     expect(validateRowCount(100).ok).toBe(true)
   })
 

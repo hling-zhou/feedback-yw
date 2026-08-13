@@ -1,7 +1,7 @@
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024
-const MAX_ROWS = 5000
+export const MAX_FILE_BYTES = 30 * 1024 * 1024
+export const MAX_ROWS = 10000
 const ALLOWED_EXT = ['.csv', '.xlsx', '.xls']
 
 /**

@@ -375,7 +375,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
             <Typography.Paragraph className="!mb-3 text-sm text-ink-700">
               表头共 {TEMPLATE_COLUMN_COUNT} 列，与
               <Typography.Text code>导出分析结果 v3</Typography.Text>
-              一致；多余列将被忽略。排期可留空（R1，空=待评估）。
+              列序一致；带 * 为必填（与上一版相同）。「未完成待办」可留空（派生列，导入不落库）。排期可留空（R1，空=待评估）。多余未知列将被忽略。
             </Typography.Paragraph>
             <Button
               type="primary"

@@ -6,6 +6,8 @@ import {
   parseSmsChannelWorkbook,
   parseOfficialChannelWorkbook,
   buildMergedPostUseRows,
+  mergeSmsChannelWorkbooks,
+  mergeOfficialChannelWorkbooks,
 } from './parseChannels.js'
 import { buildPostUseRatingRecords } from './buildRecords.js'
 import {
@@ -53,13 +55,63 @@ export function formatPostUseChannelImportProgress(p) {
 export const POST_USE_CHANNEL_IMPORT_SESSION_LABEL = '用后即评双文件'
 
 /**
- * @param {ArrayBuffer} smsBuffer
- * @param {ArrayBuffer} officialBuffer
- * @param {{ importMonth: string; catalogProducts?: import('../productCatalogLoader.js').CatalogProduct[] }} opts
+ * @param {{ password?: string; retryWithoutPassword?: boolean }} [options]
+ * @param {string} channel
+ * @param {number} fileIndex
  */
-export function previewPostUseChannelImport(smsBuffer, officialBuffer, opts) {
-  const sms = parseSmsChannelWorkbook(smsBuffer)
-  const official = parseOfficialChannelWorkbook(officialBuffer)
+function withChannelParseError(channel, fileIndex, fn) {
+  try {
+    return fn()
+  } catch (err) {
+    if (err && typeof err === 'object') {
+      // @ts-expect-error runtime-only for Import.jsx password retry
+      err.channel = channel
+      // @ts-expect-error runtime-only for Import.jsx password retry
+      err.fileIndex = fileIndex
+    }
+    throw err
+  }
+}
+
+/**
+ * @param {ArrayBuffer[]} smsBuffers
+ * @param {ArrayBuffer[]} officialBuffers
+ * @param {{
+ *   importMonth: string
+ *   catalogProducts?: import('../productCatalogLoader.js').CatalogProduct[]
+ *   smsPasswords?: string[]
+ *   officialPasswords?: string[]
+ * }} opts
+ */
+export function previewPostUseChannelImport(smsBuffers, officialBuffers, opts = {}) {
+  const smsList = smsBuffers || []
+  const officialList = officialBuffers || []
+  const smsPasswords = opts.smsPasswords || []
+  const officialPasswords = opts.officialPasswords || []
+
+  if (!smsList.length || !officialList.length) {
+    throw new Error('请同时选择短信渠道与官网渠道文件')
+  }
+
+  const smsParses = smsList.map((buffer, index) =>
+    withChannelParseError('sms', index, () =>
+      parseSmsChannelWorkbook(buffer, {
+        password: smsPasswords[index] || undefined,
+        retryWithoutPassword: Boolean(smsPasswords[index]),
+      }),
+    ),
+  )
+  const officialParses = officialList.map((buffer, index) =>
+    withChannelParseError('official', index, () =>
+      parseOfficialChannelWorkbook(buffer, {
+        password: officialPasswords[index] || undefined,
+        retryWithoutPassword: Boolean(officialPasswords[index]),
+      }),
+    ),
+  )
+
+  const sms = mergeSmsChannelWorkbooks(smsParses)
+  const official = mergeOfficialChannelWorkbooks(officialParses)
   if (sms.error) throw new Error(sms.error)
   if (official.error) throw new Error(official.error)
 
@@ -90,30 +142,36 @@ export function previewPostUseChannelImport(smsBuffer, officialBuffer, opts) {
 /**
  * @param {Object} params
  * @param {import('../../storage/getStorageAdapter.js').StorageAdapter} params.adapter
- * @param {ArrayBuffer} params.smsBuffer
- * @param {ArrayBuffer} params.officialBuffer
+ * @param {ArrayBuffer[]} params.smsBuffers
+ * @param {ArrayBuffer[]} params.officialBuffers
  * @param {string} params.importMonth
- * @param {string} [params.smsFileName]
- * @param {string} [params.officialFileName]
+ * @param {string[]} [params.smsFileNames]
+ * @param {string[]} [params.officialFileNames]
+ * @param {string[]} [params.smsPasswords]
+ * @param {string[]} [params.officialPasswords]
  * @param {boolean} [params.dryRun]
  * @param {(p: { phase: string; detail?: string }) => void} [params.onProgress]
  */
 export async function executePostUseChannelImport(params) {
   const {
     adapter,
-    smsBuffer,
-    officialBuffer,
+    smsBuffers,
+    officialBuffers,
     importMonth,
-    smsFileName = '短信渠道.xls',
-    officialFileName = '官网渠道.xls',
+    smsFileNames = ['短信渠道.xls'],
+    officialFileNames = ['官网渠道.xls'],
+    smsPasswords,
+    officialPasswords,
     dryRun = false,
     onProgress,
   } = params
 
   onProgress?.({ phase: 'parse' })
-  const preview = previewPostUseChannelImport(smsBuffer, officialBuffer, {
+  const preview = previewPostUseChannelImport(smsBuffers, officialBuffers, {
     importMonth,
     catalogProducts: getCatalogProducts(),
+    smsPasswords,
+    officialPasswords,
   })
 
   const importBatchId = `pur_${importMonth}_${randomId().slice(0, 8)}`
@@ -123,7 +181,7 @@ export async function executePostUseChannelImport(params) {
     importMonth,
     importBatchId,
     importBatchName: `用后即评-${importMonth}`,
-    importFileName: `${smsFileName}+${officialFileName}`,
+    importFileName: `${smsFileNames.join('+')}+${officialFileNames.join('+')}`,
     importedAt,
     },
   )

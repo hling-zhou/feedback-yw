@@ -53,6 +53,7 @@ import {
   defaultBatchName,
   preferredSheetName,
   normalizeImportMonth,
+  MAX_FILE_BYTES,
 } from '../lib/importUtils.js'
 import {
   POST_USE_RATING_SUBTYPE_OPTIONS,
@@ -95,16 +96,18 @@ import QuoteImportPreviewTable from '../components/QuoteImportPreviewTable.jsx'
 import {
   MAX_IMPORT_FILES,
   MAX_ROWS_PER_FILE,
+  MAX_ROWS_BATCH_TOTAL,
   combineImportFileSha256,
   mergeParsedUploadFiles,
 } from '../lib/importBatchFiles.js'
+import { displayImportFileName, parseImportFileNamePassword } from '../lib/importFilePassword.js'
 import { IMPORT_ALREADY_IN_PROGRESS_TIP } from '../lib/importSession.js'
 
 /** @typedef {import('../lib/importBatchFiles.js').ParsedUploadFile} ParsedUploadFile */
 
 const STEPS = ['来源与月份', '上传文件', '列映射', '预览确认', '导入完成']
-/** 用后即评双文件：无列映射，预览确认独立成步 */
-const STEPS_POST_USE = ['来源与月份', '上传双文件', '预览确认', '导入完成']
+/** 用后即评双渠道：无列映射，预览确认独立成步 */
+const STEPS_POST_USE = ['来源与月份', '上传文件', '预览确认', '导入完成']
 
 const MERGE_OPTIONS = ['处理意见', '追加信息', '归档意见']
 
@@ -117,6 +120,24 @@ const SOURCE_OPTIONS = DATA_SOURCE_TYPES.map((value) => ({
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7)
+}
+
+/**
+ * @param {File} file
+ */
+function channelFileKey(file) {
+  return `${file.name}:${file.size}:${file.lastModified}`
+}
+
+/**
+ * @param {unknown} err
+ */
+function isPasswordPromptError(err) {
+  const code = err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : ''
+  return (
+    code === IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED ||
+    code === IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT
+  )
 }
 
 export default function Import({ embedded = false }) {
@@ -161,10 +182,10 @@ export default function Import({ embedded = false }) {
   const [step, setStep] = useState(0)
   /** @type {[null | { recordCount: number; counts?: object; deletedPrior?: number; importBatchId?: string }, Function]} */
   const [channelBundleResult, setChannelBundleResult] = useState(null)
-  /** @type {[File | null, Function]} */
-  const [channelSmsFile, setChannelSmsFile] = useState(null)
-  /** @type {[File | null, Function]} */
-  const [channelWebFile, setChannelWebFile] = useState(null)
+  /** @type {[File[], Function]} */
+  const [channelSmsFiles, setChannelSmsFiles] = useState([])
+  /** @type {[File[], Function]} */
+  const [channelWebFiles, setChannelWebFiles] = useState([])
   const [channelPreview, setChannelPreview] = useState(null)
   const [channelPreviewBusy, setChannelPreviewBusy] = useState(false)
   const [error, setError] = useState('')
@@ -210,8 +231,11 @@ export default function Import({ embedded = false }) {
     sheetName: '',
     password: '',
     error: '',
+    purpose: /** @type {'upload' | 'channel'} */ ('upload'),
   })
   const [passwordSubmitting, setPasswordSubmitting] = useState(false)
+  const channelPasswordsRef = useRef(/** @type {Record<string, string>} */ ({}))
+  const goChannelBundlePreviewRef = useRef(async () => {})
 
   const importMonthDisplay = useMemo(() => {
     const normalized = normalizeImportMonth(importMonth)
@@ -279,10 +303,11 @@ export default function Import({ embedded = false }) {
     setCustomerVisitPreviewError('')
     setCustomerVisitImportResult(null)
     setChannelBundleResult(null)
-    setChannelSmsFile(null)
-    setChannelWebFile(null)
+    setChannelSmsFiles([])
+    setChannelWebFiles([])
     setChannelPreview(null)
     setChannelPreviewBusy(false)
+    channelPasswordsRef.current = {}
   }, [])
 
   const parseFileToEntry = useCallback(
@@ -295,6 +320,8 @@ export default function Import({ embedded = false }) {
       const fileCheck = validateImportFile(file)
       if (!fileCheck.ok) throw new Error(fileCheck.message)
 
+      const fromName = parseImportFileNamePassword(file.name)
+      const resolvedPassword = password || fromName.password || undefined
       const sha256 = await hashFileSha256(file)
       const first = await parseUploadFile(file, { password })
       if (!first.headers.length || !first.rows.length) {
@@ -318,7 +345,7 @@ export default function Import({ embedded = false }) {
       }
 
       const rowCheck = validateRowCount(rows.length)
-      if (!rowCheck.ok) throw new Error(`${file.name}：${rowCheck.message}`)
+      if (!rowCheck.ok) throw new Error(`${fromName.displayName}：${rowCheck.message}`)
 
       return /** @type {ParsedUploadFile} */ ({
         id: randomId(),
@@ -328,23 +355,27 @@ export default function Import({ embedded = false }) {
         selectedSheet: selected,
         headers,
         rows,
-        requiresPassword: Boolean(password),
-        password: password || undefined,
+        requiresPassword: Boolean(resolvedPassword),
+        password: resolvedPassword,
       })
     },
     [dataSourceType],
   )
 
-  const openPasswordPrompt = useCallback((file, fileId = '', sheetName = '') => {
-    setPasswordPrompt({
-      open: true,
-      file,
-      fileId,
-      sheetName,
-      password: '',
-      error: '',
-    })
-  }, [])
+  const openPasswordPrompt = useCallback(
+    (file, fileId = '', sheetName = '', purpose = 'upload', error = '') => {
+      setPasswordPrompt({
+        open: true,
+        file,
+        fileId,
+        sheetName,
+        password: '',
+        error,
+        purpose,
+      })
+    },
+    [],
+  )
 
   const closePasswordPrompt = useCallback(() => {
     setPasswordPrompt({
@@ -354,11 +385,10 @@ export default function Import({ embedded = false }) {
       sheetName: '',
       password: '',
       error: '',
+      purpose: 'upload',
     })
     setPasswordSubmitting(false)
   }, [])
-
-  const isPasswordRequiredError = (err) => err?.code === IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED
 
   const addUploadFile = useCallback(
     async (file) => {
@@ -371,7 +401,7 @@ export default function Import({ embedded = false }) {
           (f) => f.file.name === file.name && f.file.size === file.size && f.file.lastModified === file.lastModified,
         )
       ) {
-        setError(`「${file.name}」已在列表中`)
+        setError(`「${displayImportFileName(file.name)}」已在列表中`)
         return
       }
       setError('')
@@ -380,8 +410,14 @@ export default function Import({ embedded = false }) {
         const entry = await parseFileToEntry(file)
         setUploadFiles((prev) => [...prev, entry])
       } catch (e) {
-        if (isPasswordRequiredError(e)) {
-          openPasswordPrompt(file)
+        if (isPasswordPromptError(e)) {
+          openPasswordPrompt(
+            file,
+            '',
+            '',
+            'upload',
+            e?.code === IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT ? e.message : '',
+          )
         } else {
           setError(e.message || '解析失败')
         }
@@ -407,8 +443,8 @@ export default function Import({ embedded = false }) {
         const next = await parseFileToEntry(entry.file, sheetName, entry.password)
         setUploadFiles((prev) => prev.map((f) => (f.id === id ? { ...next, id } : f)))
       } catch (e) {
-        if (isPasswordRequiredError(e)) {
-          openPasswordPrompt(entry.file, id, sheetName)
+        if (isPasswordPromptError(e)) {
+          openPasswordPrompt(entry.file, id, sheetName, 'upload')
         } else {
           setError(e.message || '切换工作表失败')
         }
@@ -499,8 +535,8 @@ export default function Import({ embedded = false }) {
       setActivePreset(mapping.preset)
       setSelectedSheet(sheetName)
     } catch (e) {
-      if (isPasswordRequiredError(e)) {
-        openPasswordPrompt(uploadFiles[0].file, uploadFiles[0].id, sheetName)
+      if (isPasswordPromptError(e)) {
+        openPasswordPrompt(uploadFiles[0].file, uploadFiles[0].id, sheetName, 'upload')
       } else {
         setError(e.message || '切换工作表失败')
       }
@@ -514,6 +550,12 @@ export default function Import({ embedded = false }) {
     setPasswordSubmitting(true)
     setError('')
     try {
+      if (passwordPrompt.purpose === 'channel') {
+        channelPasswordsRef.current[channelFileKey(passwordPrompt.file)] = passwordPrompt.password
+        closePasswordPrompt()
+        await goChannelBundlePreviewRef.current()
+        return
+      }
       const entry = await parseFileToEntry(
         passwordPrompt.file,
         passwordPrompt.sheetName || undefined,
@@ -667,7 +709,7 @@ export default function Import({ embedded = false }) {
    * 用后即评：解析预览后进入「预览确认」步。
    */
   const goChannelBundlePreview = async () => {
-    if (!channelSmsFile || !channelWebFile) {
+    if (!channelSmsFiles.length || !channelWebFiles.length) {
       setError('请同时选择短信渠道与官网渠道文件')
       return
     }
@@ -679,28 +721,54 @@ export default function Import({ embedded = false }) {
     setChannelPreviewBusy(true)
     setError('')
     try {
-      const [smsBuf, webBuf] = await Promise.all([
-        channelSmsFile.arrayBuffer(),
-        channelWebFile.arrayBuffer(),
+      const resolvePassword = (file) =>
+        channelPasswordsRef.current[channelFileKey(file)] ||
+        parseImportFileNamePassword(file.name).password ||
+        ''
+      const smsPasswords = channelSmsFiles.map(resolvePassword)
+      const officialPasswords = channelWebFiles.map(resolvePassword)
+      const [smsBuffers, officialBuffers] = await Promise.all([
+        Promise.all(channelSmsFiles.map((file) => file.arrayBuffer())),
+        Promise.all(channelWebFiles.map((file) => file.arrayBuffer())),
       ])
-      const preview = previewPostUseChannelImport(smsBuf, webBuf, { importMonth: dataMonth })
+      const preview = previewPostUseChannelImport(smsBuffers, officialBuffers, {
+        importMonth: dataMonth,
+        smsPasswords,
+        officialPasswords,
+      })
       setChannelPreview(preview)
       setStep(2)
     } catch (e) {
+      if (isPasswordPromptError(e)) {
+        const files = e.channel === 'sms' ? channelSmsFiles : channelWebFiles
+        const file = files[e.fileIndex]
+        if (file) {
+          openPasswordPrompt(
+            file,
+            '',
+            '',
+            'channel',
+            e?.code === IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT ? e.message : '',
+          )
+          setChannelPreview(null)
+          return
+        }
+      }
       setChannelPreview(null)
       setError(e.message || '预览失败')
     } finally {
       setChannelPreviewBusy(false)
     }
   }
+  goChannelBundlePreviewRef.current = goChannelBundlePreview
 
   /**
    * 用后即评双文件确认导入：与 doImport 同级编排后台会话，卸载组件后仍可收尾。
-   * @param {{ smsFile: File; webFile: File; importMonth: string }} [payload]
+   * @param {{ smsFiles?: File[]; webFiles?: File[]; importMonth: string }} [payload]
    */
   const doChannelBundleImport = async (payload) => {
-    const smsFile = payload?.smsFile || channelSmsFile
-    const webFile = payload?.webFile || channelWebFile
+    const smsFiles = payload?.smsFiles || channelSmsFiles
+    const webFiles = payload?.webFiles || channelWebFiles
     setLoading(true)
     setError('')
     let importFinishedNotified = false
@@ -718,7 +786,7 @@ export default function Import({ embedded = false }) {
             : '本地数据存储未就绪，请刷新页面后重试',
         )
       }
-      if (!smsFile || !webFile) {
+      if (!smsFiles.length || !webFiles.length) {
         throw new Error('请同时选择短信渠道与官网渠道文件')
       }
       if (!channelPreview) {
@@ -747,18 +815,24 @@ export default function Import({ embedded = false }) {
       })
       reportProgress(progress0)
 
-      const [smsBuffer, officialBuffer] = await Promise.all([
-        smsFile.arrayBuffer(),
-        webFile.arrayBuffer(),
+      const resolvePassword = (file) =>
+        channelPasswordsRef.current[channelFileKey(file)] ||
+        parseImportFileNamePassword(file.name).password ||
+        ''
+      const [smsBuffers, officialBuffers] = await Promise.all([
+        Promise.all(smsFiles.map((file) => file.arrayBuffer())),
+        Promise.all(webFiles.map((file) => file.arrayBuffer())),
       ])
 
       const res = await executePostUseChannelImport({
         adapter,
-        smsBuffer,
-        officialBuffer,
+        smsBuffers,
+        officialBuffers,
         importMonth: dataMonth,
-        smsFileName: smsFile.name,
-        officialFileName: webFile.name,
+        smsFileNames: smsFiles.map((file) => displayImportFileName(file.name)),
+        officialFileNames: webFiles.map((file) => displayImportFileName(file.name)),
+        smsPasswords: smsFiles.map(resolvePassword),
+        officialPasswords: webFiles.map(resolvePassword),
         onProgress: (p) => {
           reportProgress(formatPostUseChannelImportProgress(p))
         },
@@ -1315,7 +1389,7 @@ export default function Import({ embedded = false }) {
       {!embedded && (
         <PageHeader
           title="数据导入"
-          desc="选择数据来源与数据月份；投诉/咨询走打标流水线，用后即评默认导入短信+官网双文件"
+          desc="选择数据来源与数据月份；投诉/咨询走打标流水线，用后即评默认导入短信+官网渠道文件（各最多 5 个）"
         />
       )}
 
@@ -1365,7 +1439,7 @@ export default function Import({ embedded = false }) {
               />
               {channelBundleImport && (
                 <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  默认双文件导入：短信渠道.xls + 官网渠道.xls（含评分类 / 选项类 / 投诉处理-电话回访）。投诉回访同时写入明细并补全已有工单。
+                  默认导入短信渠道 + 官网渠道文件（各最多 {MAX_IMPORT_FILES} 个；官网含评分类 / 选项类 / 投诉处理-电话回访）。投诉回访同时写入明细并补全已有工单。加密文件可把密码写在文件名中：名称#密码.xlsx。
                 </Typography.Text>
               )}
               {customerVisitImport && (
@@ -1423,7 +1497,7 @@ export default function Import({ embedded = false }) {
           )}
           <div className="page-section">
             <Button type="primary" onClick={() => setStep(1)}>
-              {channelBundleImport ? '下一步：上传双文件' : '下一步：上传文件'}
+              下一步：上传文件
             </Button>
           </div>
         </Card>
@@ -1434,15 +1508,69 @@ export default function Import({ embedded = false }) {
           <PostUseChannelBundleImport
             phase="upload"
             importBusy={importBusy || channelPreviewBusy}
-            smsFile={channelSmsFile}
-            webFile={channelWebFile}
+            smsFiles={channelSmsFiles}
+            webFiles={channelWebFiles}
             preview={channelPreview}
-            onSmsFileChange={(file) => {
-              setChannelSmsFile(file)
+            onAddSmsFile={(file) => {
+              const check = validateImportFile(file)
+              if (!check.ok) {
+                setError(`${displayImportFileName(file.name)}：${check.message}`)
+                return
+              }
+              setChannelSmsFiles((prev) => {
+                if (prev.length >= MAX_IMPORT_FILES) {
+                  setError(`短信渠道最多 ${MAX_IMPORT_FILES} 个文件`)
+                  return prev
+                }
+                if (
+                  prev.some(
+                    (item) =>
+                      item.name === file.name &&
+                      item.size === file.size &&
+                      item.lastModified === file.lastModified,
+                  )
+                ) {
+                  setError(`「${displayImportFileName(file.name)}」已在列表中`)
+                  return prev
+                }
+                setError('')
+                setChannelPreview(null)
+                return [...prev, file]
+              })
+            }}
+            onAddWebFile={(file) => {
+              const check = validateImportFile(file)
+              if (!check.ok) {
+                setError(`${displayImportFileName(file.name)}：${check.message}`)
+                return
+              }
+              setChannelWebFiles((prev) => {
+                if (prev.length >= MAX_IMPORT_FILES) {
+                  setError(`官网渠道最多 ${MAX_IMPORT_FILES} 个文件`)
+                  return prev
+                }
+                if (
+                  prev.some(
+                    (item) =>
+                      item.name === file.name &&
+                      item.size === file.size &&
+                      item.lastModified === file.lastModified,
+                  )
+                ) {
+                  setError(`「${displayImportFileName(file.name)}」已在列表中`)
+                  return prev
+                }
+                setError('')
+                setChannelPreview(null)
+                return [...prev, file]
+              })
+            }}
+            onSmsFilesChange={(files) => {
+              setChannelSmsFiles(files)
               setChannelPreview(null)
             }}
-            onWebFileChange={(file) => {
-              setChannelWebFile(file)
+            onWebFilesChange={(files) => {
+              setChannelWebFiles(files)
               setChannelPreview(null)
             }}
           />
@@ -1454,7 +1582,7 @@ export default function Import({ embedded = false }) {
               <Button
                 type="primary"
                 loading={channelPreviewBusy}
-                disabled={!channelSmsFile || !channelWebFile || importBusy}
+                disabled={!channelSmsFiles.length || !channelWebFiles.length || importBusy}
                 onClick={() => void goChannelBundlePreview()}
               >
                 下一步：解析预览
@@ -1469,8 +1597,8 @@ export default function Import({ embedded = false }) {
           <PostUseChannelBundleImport
             phase="preview"
             importBusy={importBusy}
-            smsFile={channelSmsFile}
-            webFile={channelWebFile}
+            smsFiles={channelSmsFiles}
+            webFiles={channelWebFiles}
             preview={channelPreview}
           />
           <div className="page-section">
@@ -1484,8 +1612,8 @@ export default function Import({ embedded = false }) {
                 disabled={!channelPreview || !storageReady || importBlocked}
                 onClick={() =>
                   void doChannelBundleImport({
-                    smsFile: channelSmsFile,
-                    webFile: channelWebFile,
+                    smsFiles: channelSmsFiles,
+                    webFiles: channelWebFiles,
                     importMonth: normalizeImportMonth(importMonth),
                   })
                 }
@@ -1519,7 +1647,7 @@ export default function Import({ embedded = false }) {
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
                   ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。`
-                  : '可一次选择最多 5 个结构相同的文件；单文件 ≤20MB、≤5000 行，合并后总行数 ≤25000。'
+                  : `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
             }
           />
           <Upload.Dragger
@@ -1589,7 +1717,7 @@ export default function Import({ embedded = false }) {
                   ]}
                 >
                   <List.Item.Meta
-                    title={item.file.name}
+                    title={displayImportFileName(item.file.name)}
                     description={
                       <Space orientation="vertical" size={4} className="w-full">
                         <Typography.Text type="secondary" className="text-xs">
@@ -1641,7 +1769,7 @@ export default function Import({ embedded = false }) {
               type="info"
               showIcon
               title={`已合并 ${uploadFiles.length} 个文件，共 ${rows.length} 行`}
-              description={uploadFiles.map((f) => f.file.name).join('、')}
+              description={uploadFiles.map((f) => displayImportFileName(f.file.name)).join('、')}
             />
           )}
           {uploadFiles.length === 1 && sheetNames.length > 1 && (
@@ -2350,7 +2478,7 @@ export default function Import({ embedded = false }) {
         <Space direction="vertical" size={12} className="w-full">
           <Typography.Text type="secondary">
             {passwordPrompt.file?.name
-              ? `文件「${passwordPrompt.file.name}」已加密，请输入密码后继续解析。`
+              ? `文件「${displayImportFileName(passwordPrompt.file.name)}」已加密，请输入密码后继续解析。`
               : '该 Excel 文件已加密，请输入密码后继续解析。'}
           </Typography.Text>
           {passwordPrompt.error && (

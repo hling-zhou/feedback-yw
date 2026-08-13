@@ -32,8 +32,29 @@ const SENTIMENT_LABEL_TO_KEY = Object.fromEntries(
   Object.entries(SENTIMENT_LABELS).map(([key, label]) => [label, key]),
 )
 
-/** 导入时读取表头/单元格但不写入库内（自动优化建议由打标生成）。 */
-const IMPORT_SKIP_WRITE_FIELD_KEYS = new Set(['optimizationProduct', 'optimizationService'])
+/** 导入时读取表头/单元格但不写入库内（自动优化建议由打标生成；未完成待办为派生列）。 */
+const IMPORT_SKIP_WRITE_FIELD_KEYS = new Set([
+  'optimizationProduct',
+  'optimizationService',
+  'ticketTodoOpenSummary',
+])
+
+/**
+ * @param {FeedbackRecord} record
+ * @param {string} label
+ * @param {string} text
+ * @returns {FeedbackRecord}
+ */
+function writeSourceColumnLabel(record, label, text) {
+  const nextCols = { ...(record.sourceColumns || {}) }
+  if (text) nextCols[label] = text
+  else delete nextCols[label]
+  const keys = Object.keys(nextCols)
+  return {
+    ...record,
+    sourceColumns: keys.length > 0 ? nextCols : undefined,
+  }
+}
 
 const URGENT_IMPORT_TEXT = /^(?:是|加急|高|yes|true|1)$/i
 
@@ -221,6 +242,34 @@ export function writeImportField(record, fieldKey, value) {
       })
       break
     }
+    case 'customerTypeName':
+      next = writeSourceColumnLabel(next, '客户类型名称', String(value ?? '').trim())
+      break
+    case 'groupName':
+      next = writeSourceColumnLabel(next, '集团名称', String(value ?? '').trim())
+      break
+    case 'groupCustomerCode':
+      next = writeSourceColumnLabel(next, '集团客户编码', String(value ?? '').trim())
+      break
+    case 'groupProvince':
+      next = writeSourceColumnLabel(next, '集团所属省份', String(value ?? '').trim())
+      break
+    case 'groupCity':
+      next = writeSourceColumnLabel(next, '集团所属地市', String(value ?? '').trim())
+      break
+    case 'loginAccountName':
+      next = writeSourceColumnLabel(next, '登录账号名称', String(value ?? '').trim())
+      break
+    case 'customerTierExport': {
+      const text = String(value ?? '').trim()
+      next = writeSourceColumnLabel(next, '移动云客户服务等级', text)
+      next.customerTier = text
+      break
+    }
+    case 'acceptChannel':
+      // 仅回写 sourceColumns，不改动 record.source（数据来源类型）
+      next = writeSourceColumnLabel(next, '受理渠道', String(value ?? '').trim())
+      break
     default:
       break
   }

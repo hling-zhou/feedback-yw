@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Form,
   Input,
   Modal,
@@ -330,7 +329,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   ]
 
   return (
-    <Card title={readOnly ? '目标产品与产品规格（只读）' : '目标产品与产品规格（本机可编辑）'}>
+    <div>
       <Alert
         type="info"
         showIcon
@@ -341,6 +340,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
             配置保存在服务端共享数据库（auth.db，其他用户约 5 秒自动同步）。保存后会自动生成磁盘 Excel/JSON
             备份。保存产品时会自动创建同名旅程模板；可在上方切换到「旅程模板」查看同步结果。批量维护请使用「导入
             Excel」。
+            {readOnly ? '当前为只读浏览。' : null}
             {isManaged ? (
               <> 当前使用<strong>共享库配置</strong>。</>
             ) : (
@@ -554,6 +554,6 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
           </Modal>
         </>
       )}
-    </Card>
+    </div>
   )
 }

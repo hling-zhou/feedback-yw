@@ -53,10 +53,12 @@ describe('fieldRegistry', () => {
     expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
-  it('import columns match exportable importable v2 set', () => {
+  it('import columns match exportable importable v2 set (30 cols, same as export)', () => {
     const imp = getImportColumns()
     const exp = getExportColumns().filter((c) => c.importable)
+    expect(imp).toHaveLength(30)
     expect(imp.map((c) => c.fieldKey)).toEqual(exp.map((c) => c.fieldKey))
+    expect(imp.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
   it('import required excludes 排期 (R1) and optional manual/source columns', () => {

@@ -85,4 +85,31 @@ describe('parseFile password branches', () => {
       message: '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
     })
   })
+
+  it('uses password from 名称#密码.xlsx when none is passed', async () => {
+    const workbook = RealXLSX.read(buildWorkbookArrayBuffer(), { type: 'array' })
+    const readMock = vi.fn((_buffer, options) => {
+      if (!options?.password) throw new Error('File is password-protected')
+      if (options.password !== 'abc123') throw new Error('Password is incorrect')
+      return workbook
+    })
+    const mod = await loadParseFileWithReadMock(readMock)
+
+    const result = await mod.parseUploadFile(createExcelFile('用后即评-6月#abc123.xlsx'))
+    expect(readMock.mock.calls.at(-1)?.[1]).toMatchObject({ password: 'abc123' })
+    expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
+  })
+
+  it('retries without password when filename has # but the file is not encrypted', async () => {
+    const workbook = RealXLSX.read(buildWorkbookArrayBuffer(), { type: 'array' })
+    const readMock = vi.fn((_buffer, options) => {
+      if (options?.password) throw new Error('unexpected password option')
+      return workbook
+    })
+    const mod = await loadParseFileWithReadMock(readMock)
+
+    const result = await mod.parseUploadFile(createExcelFile('report#v2.xlsx'))
+    expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
+    expect(readMock).toHaveBeenCalledTimes(2)
+  })
 })

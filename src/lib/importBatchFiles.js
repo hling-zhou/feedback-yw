@@ -1,8 +1,10 @@
+import { MAX_ROWS } from './importUtils.js'
+
 /** 单次导入最多文件数 */
 export const MAX_IMPORT_FILES = 5
 
 /** 单文件最大行数（与 validateRowCount 一致） */
-export const MAX_ROWS_PER_FILE = 5000
+export const MAX_ROWS_PER_FILE = MAX_ROWS
 
 /** 多文件合并后总行数上限 */
 export const MAX_ROWS_BATCH_TOTAL = MAX_ROWS_PER_FILE * MAX_IMPORT_FILES

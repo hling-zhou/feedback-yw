@@ -60,10 +60,13 @@ function findSheetName(sheetNames, prefer) {
 
 /**
  * @param {ArrayBuffer} buffer
+ * @param {{ password?: string; retryWithoutPassword?: boolean }} [options]
  */
-export function parseSmsChannelWorkbook(buffer) {
+export function parseSmsChannelWorkbook(buffer, options = {}) {
   const { sheetNames, sheets } = parseExcelBuffer(buffer, {
     defaultHeaderRowIndex: 2,
+    password: options.password,
+    retryWithoutPassword: options.retryWithoutPassword,
   })
   const name = findSheetName(sheetNames, SMS_SHEET_NAME) || sheetNames[0]
   const sheet = name ? sheets[name] : null
@@ -75,9 +78,13 @@ export function parseSmsChannelWorkbook(buffer) {
 
 /**
  * @param {ArrayBuffer} buffer
+ * @param {{ password?: string; retryWithoutPassword?: boolean }} [options]
  */
-export function parseOfficialChannelWorkbook(buffer) {
-  const { sheetNames, sheets } = parseExcelBuffer(buffer)
+export function parseOfficialChannelWorkbook(buffer, options = {}) {
+  const { sheetNames, sheets } = parseExcelBuffer(buffer, {
+    password: options.password,
+    retryWithoutPassword: options.retryWithoutPassword,
+  })
   const scoreName = findSheetName(sheetNames, WEB_SCORE_SHEET)
   const optionName = findSheetName(sheetNames, WEB_OPTION_SHEET)
   const callbackName = findSheetName(sheetNames, WEB_CALLBACK_SHEET)
@@ -90,6 +97,68 @@ export function parseOfficialChannelWorkbook(buffer) {
     optionSheetName: optionName,
     callbackSheetName: callbackName,
     error: !scoreName && !callbackName ? '未找到评分类或投诉处理-电话回访 Sheet' : '',
+  }
+}
+
+/**
+ * @param {ReturnType<typeof parseSmsChannelWorkbook>[]} results
+ */
+export function mergeSmsChannelWorkbooks(results) {
+  const list = results || []
+  const failed = list.find((item) => item?.error)
+  if (failed) return failed
+  if (!list.length) {
+    return { sheetName: '', headers: [], rows: [], error: '未找到短信渠道 Sheet' }
+  }
+  return {
+    sheetName: [...new Set(list.map((item) => item.sheetName).filter(Boolean))].join('、'),
+    headers: list[0].headers || [],
+    rows: list.flatMap((item) => item.rows || []),
+    error: '',
+  }
+}
+
+/**
+ * @param {ReturnType<typeof parseOfficialChannelWorkbook>[]} results
+ */
+export function mergeOfficialChannelWorkbooks(results) {
+  const list = results || []
+  const failed = list.find((item) => item?.error)
+  if (failed) return failed
+  if (!list.length) {
+    return {
+      sheetNames: [],
+      score: null,
+      option: null,
+      callback: null,
+      scoreSheetName: '',
+      optionSheetName: '',
+      callbackSheetName: '',
+      error: '未找到评分类或投诉处理-电话回访 Sheet',
+    }
+  }
+
+  const concatSheet = (key) => {
+    const parts = list.map((item) => item[key]).filter(Boolean)
+    if (!parts.length) return null
+    return {
+      headers: parts[0].headers || [],
+      rows: parts.flatMap((part) => part.rows || []),
+    }
+  }
+
+  const score = concatSheet('score')
+  const option = concatSheet('option')
+  const callback = concatSheet('callback')
+  return {
+    sheetNames: [...new Set(list.flatMap((item) => item.sheetNames || []))],
+    score,
+    option,
+    callback,
+    scoreSheetName: list.map((item) => item.scoreSheetName).filter(Boolean).join('、'),
+    optionSheetName: list.map((item) => item.optionSheetName).filter(Boolean).join('、'),
+    callbackSheetName: list.map((item) => item.callbackSheetName).filter(Boolean).join('、'),
+    error: !score && !callback ? '未找到评分类或投诉处理-电话回访 Sheet' : '',
   }
 }
 

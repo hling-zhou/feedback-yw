@@ -1,13 +1,13 @@
 import * as XLSX from 'xlsx'
-import { getImportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
+import { getExportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 /**
- * v3 导入分析结果表头（与导出 v3 列序一致；必填列名带 *）。
+ * v3 导入分析结果表头（与导出 v3 列序一致共 30 列；必填列名带 *）。
  * @returns {string[]}
  */
 export function getImportAnalysisTemplateHeaders() {
   const required = new Set(getImportRequiredDisplayNames())
-  return getImportColumns().map((field) =>
+  return getExportColumns().map((field) =>
     required.has(field.displayName) ? `${field.displayName}*` : field.displayName,
   )
 }
