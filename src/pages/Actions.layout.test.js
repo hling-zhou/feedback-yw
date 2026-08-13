@@ -10,5 +10,8 @@ describe('Actions page tabs', () => {
     expect(source).toContain("searchParams.get('tab') === 'post-use-jira'")
     expect(source).toContain('<PostUseJiraTab />')
     expect(source).toContain('<ProductActionsTab />')
+    expect(source).not.toContain('title="产品举措与进展"')
+    expect(source).toContain('[&_.ant-tabs-tab]:text-xl')
+    expect(source).toContain('[&_.ant-tabs-tab]:font-bold')
   })
 })

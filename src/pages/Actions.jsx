@@ -193,6 +193,7 @@ export default function Actions() {
   return (
     <div className="space-y-4">
       <Tabs
+        className="[&_.ant-tabs-tab]:text-xl [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-xl [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
@@ -1197,7 +1198,6 @@ function ProductActionsTab() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="产品举措与进展"
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。点击行可打开举措详情。"
         hint={ACTIONS_PAGE_SUBTITLE_HINT}
         action={
