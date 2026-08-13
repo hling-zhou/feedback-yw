@@ -1,9 +1,20 @@
 {
-  "generatedAt": "2026-08-13T08:36:05.113Z",
+  "generatedAt": "2026-08-13T14:01:38.325Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "58f15f9919234777e70dd6307c9d5aef46b4e98b",
+  "repoCommit": "a53d565a0dbd0a6441a65f380468bc3c0e498e2d",
   "items": [
+    {
+      "id": "a53d565a0dbd0a6441a65f380468bc3c0e498e2d",
+      "title": "补齐导入密码/客服部回访与过时单测断言",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "恢复 Excel 密码解析与导入弹窗、客户名称筛选 URL，客服部回访改回多文件；同步 fieldRegistry/快照版本等测试到当前 30 列与 v2.3。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "58f15f9919234777e70dd6307c9d5aef46b4e98b",
       "title": "恢复被巨型提交误伤的用后即评月报与客服部回访",
