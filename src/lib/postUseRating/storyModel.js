@@ -19,9 +19,16 @@ import {
 import { filterPostUseTrendForPeriod } from './periodScope.js'
 
 /** @param {object[]} records */
+function isOptionScoreRecord(record) {
+  const channel = String(record?.channel || '').trim()
+  const sourceSubType = String(record?.sourceSubType || '').trim()
+  return channel === 'option' || sourceSubType === 'web_option'
+}
+
 export function postUseRecordsToScoredRows(records) {
   return (records || [])
     .filter((record) => record.dataSourceType === 'post_use_rating' && record.ratingScore != null)
+    .filter((record) => !isOptionScoreRecord(record))
     .map((record) => ({
       id: record.id,
       channel: record.channel || (record.sourceSubType === 'sms_survey' ? 'sms' : record.sourceSubType === 'satisfaction_callback' ? 'callback' : 'console'),
@@ -44,6 +51,7 @@ export function buildPostUseStoryModel(input) {
   const {
     records = [],
     allRecords = [],
+    companyRecords,
     visits = [],
     productNames = [],
     focusNames = [],
@@ -52,11 +60,18 @@ export function buildPostUseStoryModel(input) {
     quality = null,
     period = null,
     settings = null,
+    ticketRecords = [],
   } = input
   const scoredRows = postUseRecordsToScoredRows(records)
+  const companyScoredRows = companyRecords
+    ? postUseRecordsToScoredRows(companyRecords)
+    : scoredRows
   const internalExperience = computeInternalExperienceMetrics(scoredRows, { productNames })
   const satisfaction = computeInternalSatisfactionMetrics(scoredRows, { productNames })
-  const external = computeExternalMixedMetrics(scoredRows, { productNames })
+  const external = computeExternalMixedMetrics(scoredRows, {
+    productNames,
+    companyRows: companyScoredRows,
+  })
   const monthlyScoreTable = buildMonthlyScoreTable(scoredRows, { productNames })
   const nonTenDistributionProducts = monthlyScoreTable
     .filter((row) => row.avgScore !== 10 || row.hasNonTenScore)
@@ -247,7 +262,10 @@ export function buildPostUseStoryModel(input) {
   const callbackRecommendations = buildPostUseCallbackRecommendations(records, settings?.postUseKeyCustomers, {
     productNames,
   })
-  const callbackNonTenRecords = buildPostUseCallbackNonTenRecords(records, { productNames })
+  const callbackNonTenRecords = buildPostUseCallbackNonTenRecords(records, {
+    productNames,
+    ticketRecords,
+  })
   const scoreTrend = filteredTrend
     ? buildFocusScoreTrendChartModel(filteredTrend, focusNames, 'internal_experience')
     : { data: [], areas: [] }

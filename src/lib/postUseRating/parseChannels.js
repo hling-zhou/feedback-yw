@@ -18,6 +18,8 @@ import { parseYesNo } from '../../domain/followUpSatisfaction.js'
  * @property {string} [lowScoreReason]
  * @property {string[]} [feedbackReasonTexts]
  * @property {string} [scene]
+ * @property {string} [surveyName]
+ * @property {string} [touchpointPageName]
  * @property {string} [followUpTicketId]
  * @property {string} [originalTicketId]
  * @property {Record<string, string>} [raw]
@@ -217,6 +219,8 @@ export function normalizeConsoleScoreRows(rows) {
       lowScoreReason: cell(row['不满原因']),
       feedbackReasonTexts,
       scene: cell(row['一级场景']),
+      surveyName: cell(row['问卷名']),
+      touchpointPageName: cell(row['触点页面名称']),
       raw: row,
     })
   }
@@ -258,17 +262,33 @@ export function normalizeCallbackRows(rows) {
 export function normalizeOptionRows(rows) {
   /** @type {NormalizedPostUseRow[]} */
   const out = []
-  const headers = rows[0] ? Object.keys(rows[0]) : []
   for (const row of rows) {
+    const isRatingQuestion = cell(row['题型']).includes('评分')
+    const score = isRatingQuestion ? parseScore(row['客户回答']) : null
+    // 评分题的「客户回答」是得分；后续三列才是选项/建议（与评分类三列客户回答对应）。
+    const feedbackReasonTexts = [
+      isRatingQuestion ? '' : cell(row['客户回答']),
+      cell(row['客户回答_2']),
+      cell(row['客户回答_3']),
+      cell(row['列25']),
+    ].filter(Boolean)
+    const comment =
+      cell(row['列25']) ||
+      cell(row['客户回答_3']) ||
+      cell(row['客户回答_2']) ||
+      (isRatingQuestion ? '' : cell(row['客户回答']))
     out.push({
       channel: 'option',
       productName: cell(row['产品名']),
-      score: NaN,
+      score: score == null ? NaN : score,
       customerName: cell(row['集团客户名称']),
       customerCode: cell(row['集团客户编码']),
       answeredAt: cell(row['填答时间']),
-      rawComment: cell(row[headers[15]] || row['客户回答']),
+      rawComment: comment,
+      feedbackReasonTexts,
       scene: cell(row['一级场景']),
+      surveyName: cell(row['问卷名']),
+      touchpointPageName: cell(row['触点页面名称']),
       raw: row,
     })
   }

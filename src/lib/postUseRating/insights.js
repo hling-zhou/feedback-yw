@@ -9,13 +9,20 @@ export const POST_USE_JOURNEY_EMPTY = '未识别环节'
 const HIGH_FREQUENCY_LOW_SCORE_THRESHOLD = 7
 const HIGH_FREQUENCY_REASON_INVALID_WORDS = new Set(['无', '无/不涉及', '业务使用完毕', '其他'])
 
+function isOptionScoreRecord(record) {
+  const channel = String(record?.channel || '').trim()
+  const sourceSubType = String(record?.sourceSubType || '').trim()
+  return channel === 'option' || sourceSubType === 'web_option'
+}
+
 /** @param {object} record */
 function normalizedRecord(record) {
+  const rawScore = Number(record.ratingScore ?? record.score)
   return {
     id: String(record.id || record.ratingId || ''),
     month: String(record.importMonth || record.createdAt || '').slice(0, 7),
     productName: String(record.productName || record.product || '').trim(),
-    score: Number(record.ratingScore ?? record.score),
+    score: isOptionScoreRecord(record) ? NaN : rawScore,
     customerName: String(record.customerName || '').trim() || '匿名客户',
     customerCode: String(record.customerCode || '').trim(),
     originalScene: String(record.originalScene || record.scene || '').trim() || POST_USE_ORIGINAL_SCENE_EMPTY,

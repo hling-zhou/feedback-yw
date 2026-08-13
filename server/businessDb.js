@@ -573,6 +573,27 @@ export function initBusinessSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
     CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);
+
+    CREATE TABLE IF NOT EXISTS post_use_callback_decisions (
+      item_key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS post_use_jira_items (
+      id TEXT PRIMARY KEY,
+      item_key TEXT NOT NULL UNIQUE,
+      import_month TEXT NOT NULL DEFAULT '',
+      customer_name TEXT NOT NULL DEFAULT '',
+      customer_code TEXT NOT NULL DEFAULT '',
+      product_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待处理',
+      updated_at TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_month ON post_use_jira_items(import_month);
+    CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_product ON post_use_jira_items(product_name);
+    CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_status ON post_use_jira_items(status);
+    CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_updated ON post_use_jira_items(updated_at DESC);
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

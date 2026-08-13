@@ -127,7 +127,10 @@ export function previewPostUseChannelImport(smsBuffers, officialBuffers, opts = 
   const analysisRows = scopePostUseRatingRecords(merged.scored, catalogProducts)
   const internalExp = computeInternalExperienceMetrics(analysisRows, { productNames })
   const internalSat = computeInternalSatisfactionMetrics(analysisRows, { productNames })
-  const external = computeExternalMixedMetrics(analysisRows, { productNames })
+  const external = computeExternalMixedMetrics(analysisRows, {
+    productNames,
+    companyRows: merged.scored,
+  })
 
   return {
     sms,

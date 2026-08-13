@@ -60,6 +60,8 @@ export function buildPostUseRatingRecord(row, meta) {
     feedbackReasonTertiary: Array.isArray(row.feedbackReasonTexts) ? row.feedbackReasonTexts[2] || '' : '',
     scene: row.scene,
     originalScene: row.scene || '未提供',
+    surveyName: row.surveyName || '',
+    touchpointPageName: row.touchpointPageName || '',
     evidence,
     followUpTicketId: row.followUpTicketId,
     originalTicketId: row.originalTicketId,

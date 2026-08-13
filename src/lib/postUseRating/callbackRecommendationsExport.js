@@ -19,6 +19,8 @@ function triggerDownload(blob, filename) {
  *   lowScoreLt7Count?: number
  *   scoreBreakdown?: string
  *   latestFeedbackAt?: string
+ *   latestSurveyName?: string
+ *   latestTouchpointPageName?: string
  *   channels?: string[]
  *   recommendedReason?: string
  *   quotes?: string[]
@@ -67,6 +69,8 @@ export function buildPostUseCallbackNonTenRows(rows) {
     客户名称: item.customerName || '',
     集团客户编码: item.customerCode || '',
     不满原因: item.dissatisfactionReason || '',
+    客户请求内容: item.customerRequest || '',
+    问题原因: item.problemCause || '',
   }))
 }
 
@@ -81,9 +85,9 @@ export function buildPostUseCallbackWorkbook(recommendations, callbackNonTenRows
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(
-      recommendationRows.length ? recommendationRows : [{ 提示: '当前范围内暂无官网评分类建议回访记录' }],
+      recommendationRows.length ? recommendationRows : [{ 提示: '当前范围内暂无官网问卷类建议回访记录' }],
     ),
-    '官网评分类建议回访',
+    '官网问卷类建议回访',
   )
   XLSX.utils.book_append_sheet(
     wb,

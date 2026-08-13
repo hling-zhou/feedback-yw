@@ -21,10 +21,10 @@ describe('PostUseStoryView narrative hierarchy', () => {
   })
 
   it('keeps callback recommendation download entry in customer evidence section', () => {
-    expect(source).toContain('下载建议回访/溯源清单')
+    expect(source).toContain('查看并处理建议回访/溯源清单')
     expect(source).toContain('const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length')
     expect(source).toContain('disabled={callbackDownloadDisabled}')
-    expect(source).toContain('当前范围内暂无命中“官网评分类建议回访”或“投诉回访非10分”的记录')
+    expect(source).toContain('当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录')
     expect(source).toContain('dataSource={drivers.customers}')
     expect(source).toContain("title: '客户特征'")
     expect(source).toContain("title: '反馈原因'")
@@ -51,5 +51,16 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(source).toContain('title="产品体验总览"')
     expect(source).not.toContain('title="月报口径产品得分表"')
     expect(source).not.toContain('title="非10分产品评分分布"')
+  })
+
+  it('shows internal experience KPIs plus the three-channel yunwang vs company pair', () => {
+    expect(source).toContain('title="体验均分"')
+    expect(source).toContain('title="体验样本"')
+    expect(source).toContain('title="云网均分（三渠道）"')
+    expect(source).toContain('title="云网样本量"')
+    expect(source).toContain('title="公司均分（三渠道）"')
+    expect(source).toContain('title="公司样本量"')
+    expect(source).toContain('体验均分使用短信与控制台评价（云网 16 款）')
+    expect(source).toContain('公司均分（三渠道）为当期全部产品、主子合并后的记录级平均')
   })
 })

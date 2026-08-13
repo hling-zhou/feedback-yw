@@ -183,17 +183,18 @@ export function computeInternalSatisfactionMetrics(scoredRows, opts = {}) {
 /**
  * 对外：PRD 三渠道混算（云网 + 公司级）
  * @param {NormalizedPostUseRow[]} scoredRows
- * @param {{ productNames?: string[] }} [opts]
+ * @param {{ productNames?: string[]; companyRows?: NormalizedPostUseRow[] }} [opts]
  */
 export function computeExternalMixedMetrics(scoredRows, opts = {}) {
   const productNames = opts.productNames || [...POST_USE_RATING_PRODUCT_NAMES]
+  const companyRows = opts.companyRows || scoredRows
   const yw = filterByProducts(scoredRows, productNames)
   const ywByProduct = aggregateByProduct(yw)
   const ywTotal = yw.length
   const ywAvg = ywTotal ? round2(yw.reduce((a, r) => a + r.score, 0) / ywTotal) : 0
   const below9 = ywByProduct.filter((p) => p.avgScore < 9)
 
-  const mapped = scoredRows.map((r) => ({
+  const mapped = companyRows.map((r) => ({
     ...r,
     productName: SUB_PRODUCT_MAP[r.productName] || r.productName,
   }))

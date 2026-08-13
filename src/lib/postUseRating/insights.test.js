@@ -48,6 +48,18 @@ describe('post-use insight models', () => {
     expect(changes[0]).toMatchObject({ issue: '功能有缺失', change: '增长', previousCount: 1, currentCount: 2 })
   })
 
+  it('does not mix option-channel scores into product experience averages', () => {
+    const products = buildProductExperienceOverview([
+      row('console', { ratingScore: 10, channel: 'console' }),
+      row('option', { ratingScore: 1, channel: 'option' }),
+    ])
+    expect(products[0]).toMatchObject({
+      sampleSize: 1,
+      avgScore: 10,
+      nonTenCount: 0,
+    })
+  })
+
   it('marks small-sample products with score <= 3 as critical', () => {
     const products = buildProductExperienceOverview([
       row('r1', { ratingScore: 3 }),

@@ -65,6 +65,15 @@ export default function PostUseRatingDashboardView() {
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
   const focusNames = useMemo(() => getPostUseFocusTrackedNames(catalog), [catalog])
   const scopedItems = useMemo(() => scopePostUseRatingRecords(items, catalog), [items, catalog])
+  const ticketRecords = useMemo(
+    () =>
+      (feedbacks || []).filter(
+        (record) =>
+          record.dataSourceType === 'complaint_ticket' ||
+          record.dataSourceType === 'consultation_ticket',
+      ),
+    [feedbacks],
+  )
   const scopedVisits = useMemo(() => {
     const months = new Set(postUseVisitMonthsForPeriod(currentPeriod))
     return scopePostUseRatingRecords(
@@ -129,6 +138,7 @@ export default function PostUseRatingDashboardView() {
   const storyModel = useMemo(() => buildPostUseStoryModel({
     records: scopedItems,
     allRecords: allScopedItems,
+    companyRecords: items,
     visits: scopedVisits,
     productNames,
     focusNames,
@@ -137,7 +147,8 @@ export default function PostUseRatingDashboardView() {
     quality: periodQuality,
     period: currentPeriod,
     settings,
-  }), [scopedItems, allScopedItems, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings])
+    ticketRecords,
+  }), [scopedItems, allScopedItems, items, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords])
 
   return (
     <div className="space-y-4">

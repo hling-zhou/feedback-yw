@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildMonthlyScoreTable,
+  computeExternalMixedMetrics,
   computeInternalSatisfactionMetrics,
   computeScoreDistribution,
 } from './metrics.js'
@@ -84,5 +85,48 @@ describe('internal callback satisfaction summary', () => {
       1: 1,
     })
     expect(result.B).toBeUndefined()
+  })
+})
+
+describe('external mixed company vs yunwang scope', () => {
+  it('keeps yunwang on scoredRows and company on companyRows', () => {
+    const yunwangRows = [
+      { channel: 'sms', productName: '弹性公网IP', score: 10 },
+      { channel: 'console', productName: '弹性公网IP', score: 8 },
+      { channel: 'callback', productName: '弹性公网IP', score: 10 },
+    ]
+    const companyRows = [
+      ...yunwangRows,
+      { channel: 'sms', productName: '云主机 ECS', score: 10 },
+      { channel: 'console', productName: '工单', score: 6 },
+    ]
+    const result = computeExternalMixedMetrics(yunwangRows, {
+      productNames: ['弹性公网IP'],
+      companyRows,
+    })
+
+    expect(result.yunwang.productCount).toBe(1)
+    expect(result.yunwang.totalSample).toBe(3)
+    expect(result.yunwang.avgScore).toBe(9.33)
+    expect(result.company.totalSample).toBe(5)
+    expect(result.company.avgScore).toBe(8.8)
+    expect(result.company.productCount).toBe(3)
+  })
+
+  it('merges sub-products before counting company products', () => {
+    const rows = [
+      { channel: 'sms', productName: '云电脑（办公型）', score: 10 },
+      { channel: 'console', productName: '云电脑（信创型）', score: 8 },
+      { channel: 'sms', productName: '无/不涉及', score: 9 },
+    ]
+    const result = computeExternalMixedMetrics(rows, { productNames: ['弹性公网IP'] })
+
+    expect(result.yunwang.totalSample).toBe(0)
+    expect(result.company.productCount).toBe(2)
+    expect(result.company.totalSample).toBe(3)
+    expect(result.company.avgScore).toBe(9)
+    expect(result.company.byProduct.map((p) => p.productName)).toEqual(
+      expect.arrayContaining(['云电脑', '无/不涉及']),
+    )
   })
 })

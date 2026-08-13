@@ -6,8 +6,8 @@ import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SMALL_SAMPLE_N } from '../../lib/postUseRating/metrics.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
-import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
+import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
@@ -63,18 +63,21 @@ function customerFeedbackHref(customerName) {
 }
 
 export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
+  const [callbackProcessOpen, setCallbackProcessOpen] = useState(false)
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
   const callbackRecommendations = model.callbackRecommendations || []
   const callbackNonTenRecords = model.callbackNonTenRecords || []
   const exp = metrics.internalExperience
   const sat = metrics.satisfaction
+  const yw = metrics.external?.yunwang
+  const company = metrics.external?.company
   const scoreDistributionRows = (metrics.nonTenDistributionProducts || []).map((productName) => ({
     productName,
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
   const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length
-  const callbackDownloadDisabledReason = '当前范围内暂无命中“官网评分类建议回访”或“投诉回访非10分”的记录'
+  const callbackDownloadDisabledReason = '当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录'
 
   return (
     <div className="space-y-5">
@@ -98,6 +101,12 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         <Col xs={12} md={6}><Card size="small"><Statistic title="体验样本" value={exp.totalSample} /></Card></Col>
         <Col xs={12} md={6}><Card size="small"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></Card></Col>
         <Col xs={12} md={6}><Card size="small"><Statistic title="投诉回访样本" value={sat.totalSample} /></Card></Col>
+      </Row>
+      <Row gutter={[12, 12]}>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="云网均分（三渠道）" value={yw?.avgScore} precision={2} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="云网样本量" value={yw?.totalSample} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="公司样本量" value={company?.totalSample} /></Card></Col>
       </Row>
       <Card size="small" title="产品体验总览">
         <Table
@@ -224,14 +233,10 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
                     message.info('当前范围内暂无建议回访/溯源记录')
                     return
                   }
-                  downloadPostUseCallbackRecommendationsExcel(
-                    callbackRecommendations,
-                    callbackNonTenRecords,
-                    model.scope.periodLabel,
-                  )
+                  setCallbackProcessOpen(true)
                 }}
               >
-                下载建议回访/溯源清单
+                查看并处理建议回访/溯源清单
               </Button>
             </span>
           </Tooltip>
@@ -418,7 +423,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             children: (
               <div className="space-y-3">
                 <Typography.Paragraph className="!mb-0" type="secondary">
-                  体验均分使用短信与控制台评价；投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
+                  体验均分使用短信与控制台评价（云网 16 款）；云网均分（三渠道）为短信、控制台与投诉回访混算（云网 16 款）；公司均分（三渠道）为当期全部产品、主子合并后的记录级平均。投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
                 </Typography.Paragraph>
                 <Space size={[6, 6]} wrap>
                   <Tag>目录 {model.scope.catalogVersion}</Tag>
@@ -431,6 +436,13 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             ),
           },
         ]}
+      />
+      <PostUseCallbackProcessModal
+        open={callbackProcessOpen}
+        onClose={() => setCallbackProcessOpen(false)}
+        recommendations={callbackRecommendations}
+        callbackNonTenRecords={callbackNonTenRecords}
+        scopeLabel={model.scope.periodLabel}
       />
     </div>
   )

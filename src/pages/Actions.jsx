@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
@@ -12,6 +13,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -94,6 +96,7 @@ import ActionItemRequirementLinkFields, {
   toRequirementTicketFormList,
 } from '../components/actions/ActionItemRequirementLinkFields.jsx'
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
+import PostUseJiraTab from './PostUseJiraTab.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
@@ -185,6 +188,28 @@ function parseTicketIdsFromInput(text) {
 }
 
 export default function Actions() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') === 'post-use-jira' ? 'post-use-jira' : 'product'
+  return (
+    <div className="space-y-4">
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => {
+          const next = new URLSearchParams(searchParams)
+          if (key === 'product') next.delete('tab')
+          else next.set('tab', key)
+          setSearchParams(next, { replace: true })
+        }}
+        items={[
+          { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
+          { key: 'post-use-jira', label: '用后即评JIRA', children: <PostUseJiraTab /> },
+        ]}
+      />
+    </div>
+  )
+}
+
+function ProductActionsTab() {
   const { user, can } = useAuth()
   const canEditAction = can('editRecord')
   const isAdmin = user?.role === 'admin'
@@ -1172,7 +1197,7 @@ export default function Actions() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="举措与进展"
+        title="产品举措与进展"
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。点击行可打开举措详情。"
         hint={ACTIONS_PAGE_SUBTITLE_HINT}
         action={
