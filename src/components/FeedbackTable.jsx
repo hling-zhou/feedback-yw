@@ -5,7 +5,6 @@ import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfactio
 import { recordSourceType } from '../snapshots/recordScope.js'
 import SentimentBadge from './SentimentBadge.jsx'
 import {
-  formatListOptimizationPreview,
   getDisplayCustomerRequest,
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
@@ -273,16 +272,6 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
       render: (_, fb) => (
         <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
           {getEstablishedActionDisplay(fb) || '—'}
-        </Typography.Paragraph>
-      ),
-    },
-    {
-      title: '优化建议（自动）',
-      dataIndex: 'optimizationProduct',
-      width: 180,
-      render: (_, fb) => (
-        <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs" type="secondary">
-          {formatListOptimizationPreview(fb) || '—'}
         </Typography.Paragraph>
       ),
     },

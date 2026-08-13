@@ -2179,8 +2179,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         }}
                       />
                       <Select
-                        className="w-[132px] shrink-0"
+                        className="w-[160px] shrink-0"
                         placeholder="负责人"
+                        showSearch
+                        optionFilterProp="label"
+                        allowClear
                         disabled={saving || !todoAssigneeOptions.length}
                         value={item.assigneeUserId || undefined}
                         options={todoAssigneeOptions.map((option) => ({

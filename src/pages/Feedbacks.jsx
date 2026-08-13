@@ -120,13 +120,18 @@ export default function Feedbacks() {
 
   const switchFeedbackLane = useCallback(
     (lane) => {
-      const next = new URLSearchParams(searchParams)
-      next.set('lane', lane)
+      // 两大类 Tab 筛选相互独立：切换时清空，避免条件串到另一 Tab
+      const cleared = clearAllFeedbackFilters()
       if (lane === FEEDBACK_LANE_POST_USE) {
-        next.set('source', 'post_use_rating')
-      } else if (next.get('source') === 'post_use_rating') {
-        next.delete('source')
+        cleared.dataSource = 'post_use_rating'
       }
+      setFilters(cleared)
+      skipUrlSyncRef.current = true
+      const next = patchFeedbackSearchParams(searchParams, {
+        ...feedbackFiltersToUrlPatch(cleared),
+        lane,
+        source: lane === FEEDBACK_LANE_POST_USE ? 'post_use_rating' : '',
+      })
       setSearchParams(next, { replace: true })
     },
     [searchParams, setSearchParams],
