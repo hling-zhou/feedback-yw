@@ -46,7 +46,7 @@ export function customerIdentityKey(identity) {
 /**
  * @param {{ customerCode?: string, customerName?: string }} a
  * @param {{ customerCode?: string, customerName?: string }} b
- * @returns {'code' | 'name_approx' | null}
+ * @returns {'code' | 'name' | null}
  */
 export function matchCustomerIdentity(a, b) {
   const codeA = normalizeIdentityText(a?.customerCode)
@@ -55,31 +55,37 @@ export function matchCustomerIdentity(a, b) {
 
   const nameA = normalizeIdentityText(a?.customerName)
   const nameB = normalizeIdentityText(b?.customerName)
-  if (!nameA || !nameB) return null
-  if (nameA === nameB) return 'name_approx'
-  if (nameA.includes(nameB) || nameB.includes(nameA)) return 'name_approx'
+  if (nameA && nameB && nameA === nameB) return 'name'
   return null
 }
 
 /**
- * @param {object} record
- * @param {{ customerCode?: string, customerName?: string, query?: string }} topic
+ * @param {{ customerCode?: string, customerName?: string, query?: string, matchQuery?: string }} topic
+ * @param {{ customerCode?: string, customerName?: string }} identity
  */
-export function recordMatchesCustomerTopic(record, topic) {
-  const identity = extractCustomerIdentity(record)
+export function identityMatchesCustomerTopic(identity, topic) {
   if (matchCustomerIdentity(identity, topic)) return true
-  const query = normalizeIdentityText(topic?.query)
+  const query = normalizeIdentityText(topic?.query || topic?.matchQuery)
   if (!query) return false
   return (
-    normalizeIdentityText(identity.customerCode).includes(query)
-    || normalizeIdentityText(identity.customerName).includes(query)
+    normalizeIdentityText(identity.customerCode) === query
+    || normalizeIdentityText(identity.customerName) === query
   )
 }
 
 /**
- * @param {'code' | 'name_approx' | string} [mode]
+ * @param {object} record
+ * @param {{ customerCode?: string, customerName?: string, query?: string, matchQuery?: string }} topic
+ */
+export function recordMatchesCustomerTopic(record, topic) {
+  return identityMatchesCustomerTopic(extractCustomerIdentity(record), topic)
+}
+
+/**
+ * @param {'code' | 'name' | string} [mode]
  */
 export function customerMatchNote(mode) {
   if (mode === 'code') return '已按集团客户编码精确匹配'
-  return '按名称/编码近似匹配（当前数据可能已脱敏，无法保证同一客户）'
+  if (mode === 'name') return '已按客户名称精确匹配'
+  return '按客户名称或集团客户编码精确匹配'
 }

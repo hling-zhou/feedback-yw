@@ -43,7 +43,14 @@ describe('topicAnalysis', () => {
     const identity = extractCustomerIdentity(ticket())
     expect(identity.customerCode).toBe('C001')
     expect(matchCustomerIdentity(identity, { customerCode: 'C001', customerName: '其他' })).toBe('code')
-    expect(matchCustomerIdentity(identity, { customerName: '甲公司' })).toBe('name_approx')
+    expect(matchCustomerIdentity(identity, { customerName: '甲公司' })).toBe('name')
+    expect(matchCustomerIdentity(identity, { customerName: '甲' })).toBe(null)
+    expect(matchCustomerIdentity({ customerName: '甲公司科技' }, { customerName: '甲公司' })).toBe(null)
+    expect(recordMatchesTopic(
+      ticket({ customerName: '甲公司科技', customerCode: '', sourceColumns: { 集团名称: '甲公司科技' } }),
+      { type: 'customer', customerName: '甲公司', query: '甲公司' },
+    )).toBe(false)
+    expect(recordMatchesTopic(ticket(), { type: 'customer', customerName: '甲公司', query: '甲公司' })).toBe(true)
   })
 
   it('recommends product, customer and common topics from records', () => {

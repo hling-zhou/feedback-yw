@@ -7,6 +7,7 @@ import {
 import {
   customerMatchNote,
   extractCustomerIdentity,
+  identityMatchesCustomerTopic,
   matchCustomerIdentity,
   normalizeIdentityText,
   recordMatchesCustomerTopic,
@@ -112,12 +113,7 @@ function matchingVisits(visits, topic) {
   const needle = normalizeIdentityText(topic.matchQuery || topic.query || topic.problemKey || topic.customerName || topic.customerCode || '')
   return (visits || []).filter((visit) => {
     if (topic.type === 'customer') {
-      return Boolean(matchCustomerIdentity(visit, topic) || (
-        needle && (
-          normalizeIdentityText(visit.customerName).includes(needle)
-          || normalizeIdentityText(visit.customerCode).includes(needle)
-        )
-      ))
+      return identityMatchesCustomerTopic(visit, topic)
     }
     const blob = normalizeIdentityText([
       visit.productName,
@@ -150,7 +146,7 @@ export function collectTopicEvidence(input) {
   const problemTypes = new Map()
   const quotes = []
   const sources = []
-  let matchMode = topic.type === 'customer' ? 'name_approx' : 'keyword'
+  let matchMode = topic.type === 'customer' ? 'exact' : 'keyword'
 
   for (const record of matched) {
     const sourceType = recordSourceType(record)
@@ -161,7 +157,9 @@ export function collectTopicEvidence(input) {
     if (problem) problemTypes.set(problem, (problemTypes.get(problem) || 0) + 1)
     if (topic.type === 'customer') {
       const identity = extractCustomerIdentity(record)
-      if (matchCustomerIdentity(identity, topic) === 'code') matchMode = 'code'
+      const mode = matchCustomerIdentity(identity, topic)
+      if (mode === 'code') matchMode = 'code'
+      else if (mode === 'name' && matchMode !== 'code') matchMode = 'name'
     }
     if (quotes.length < MAX_TOPIC_QUOTES) {
       const quote = quoteFromRecord(record)
@@ -199,9 +197,6 @@ export function collectTopicEvidence(input) {
 
   const gaps = []
   if (matched.length === 0) gaps.push('当前周期系统数据中未匹配到相关记录')
-  if (topic.type === 'customer' && matchMode !== 'code') {
-    gaps.push('客户身份未能按编码精确对齐，可能把同名或脱敏客户算在一起')
-  }
   const identified = matched.filter((record) => extractCustomerIdentity(record).customerName || extractCustomerIdentity(record).customerCode).length
   if (topic.type === 'customer' && matched.length && identified / matched.length < 0.3) {
     gaps.push('大量记录缺少客户名称/编码（疑似上游脱敏）')

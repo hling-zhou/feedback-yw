@@ -14,7 +14,7 @@ export function topicRequestErrorMessage(err, fallback) {
  * @param {string} type
  */
 export function customTopicQueryHint(type) {
-  if (type === 'customer') return '可输入客户名称、编码或一段描述。下一步会抽出客户对象请你确认；匹配仍按名称/编码。'
+  if (type === 'customer') return '可输入客户名称、编码或一段描述。下一步会抽出客户对象请你确认；匹配按名称或编码精确匹配。'
   if (type === 'product_issue') return '可输入产品、问题或两者连写。系统会拆开匹配，原文不必出现完整连写。'
   return '按问题类型或关键词跨产品匹配；可夹杂产品名。原文不必 100% 连写。'
 }

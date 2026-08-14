@@ -501,7 +501,7 @@ export default function TopicAnalysis() {
               </Form.Item>
               {isCustomerTopic ? (
                 <>
-                  <Form.Item label="客户名称" extra="匹配按名称近似（编码优先）。">
+                  <Form.Item label="客户名称" extra="匹配按名称或集团客户编码精确匹配（编码优先）。">
                     <Input
                       value={interpretation.customerName || ''}
                       onChange={(event) => setInterpretation((prev) => ({ ...prev, customerName: event.target.value }))}

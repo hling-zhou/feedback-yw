@@ -94,7 +94,7 @@ export function buildRuleInterpretation(query, type) {
       keywords: [],
       customerName: identity.customerName,
       customerCode: identity.customerCode,
-      interpretation: `按${typeLabel}理解：分析对象是客户「${label}」。将按客户名称或集团客户编码匹配，不按问题关键词检索。`,
+      interpretation: `按${typeLabel}理解：分析对象是客户「${label}」。将按客户名称或集团客户编码精确匹配，不按问题关键词检索。`,
       scopeNote: `分析范围：该客户在所选周期内的投诉、咨询、用后即评。`,
       questions,
     }
