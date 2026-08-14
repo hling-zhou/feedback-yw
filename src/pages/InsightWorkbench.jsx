@@ -251,7 +251,7 @@ export default function InsightWorkbench() {
             {formatInsightRebuildButtonLabel(snapshotRebuilding)}
           </RebuildInsightsButton>
           <Link to="/tags?tab=review">
-            <Button>分析维度</Button>
+            <Button>对象与标签</Button>
           </Link>
           <WorkbenchAnalysisLink
             source={analysisContext.source}

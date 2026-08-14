@@ -23,7 +23,7 @@ export function buildProductCatalogSheets(products) {
   const guideRows = [
     {
       工作表: '（总览）',
-      说明: '由「分析维度 → 发布产品目录到服务端」从共享库生成。导入时仅分析「是否启用=是」的产品。',
+      说明: '由「对象与标签 → 发布产品目录到服务端」从共享库生成。导入时仅分析「是否启用=是」的产品。',
       示例: new Date().toISOString(),
     },
     {

@@ -124,7 +124,7 @@ function buildColumns({ onApprove, onReject, readOnly }) {
   return cols
 }
 
-/** LLM 提议标签复核（嵌入分析维度） */
+/** LLM 提议标签复核（嵌入对象与标签） */
 export default function LlmTagReviewPanel({ readOnly = false }) {
   const message = useAppMessage()
   const {
@@ -275,10 +275,10 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
               数据导入或批量重新打标时，若 LLM 无法匹配现有标签，会<strong>先按提议标签写入工单</strong>并在此列出待复核；采纳后正式并入标签库
             </li>
             <li>
-              <strong>请求场景 / 问题类型</strong>：采纳后写入本机标签库，在「分析维度 → 请求场景 / 问题类型」查看与导出
+              <strong>请求场景 / 问题类型</strong>：采纳后写入本机标签库，在「对象与标签 → 请求场景 / 问题类型」查看与导出
             </li>
             <li>
-              <strong>用户旅程</strong>：按产品写入对应模板，在「分析维度 → 用户旅程」维护；保存后写入共享库并自动生成磁盘备份
+              <strong>用户旅程</strong>：按产品写入对应模板，在「对象与标签 → 用户旅程」维护；保存后写入共享库并自动生成磁盘备份
             </li>
             <li>
               若列表出现相同提议标签的多行，可使用下方<strong>合并重复项</strong>（按类型+产品+标签名合并，累加出现次数）
@@ -500,7 +500,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
                 setApproving(null)
                 markSnapshotsStale()
                 message.success(
-                  '已采纳并写入共享标签库；可在「分析维度」对应 Tab 查看，其他用户约 5 秒内同步',
+                  '已采纳并写入共享标签库；可在「对象与标签」对应 Tab 查看，其他用户约 5 秒内同步',
                 )
               }}
             >

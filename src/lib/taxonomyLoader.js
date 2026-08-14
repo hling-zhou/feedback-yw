@@ -690,7 +690,7 @@ export function getTagLibraryVersion() {
 }
 
 /**
- * 从当前内存缓存构建可持久化的分析维度快照
+ * 从当前内存缓存构建可持久化的对象与标签快照
  */
 export function buildSnapshotFromCache() {
   /** @type {import('./tagLibrary/taxonomyManageModel.js').TaxonomyManagedSnapshot} */
@@ -713,7 +713,7 @@ export function buildSnapshotFromCache() {
 }
 
 /**
- * 应用本机分析维度快照（覆盖旅程与通用问题类型）
+ * 应用本机对象与标签快照（覆盖旅程与通用问题类型）
  * @param {import('./tagLibrary/taxonomyManageModel.js').TaxonomyManagedSnapshot | null} snapshot
  */
 export function applyManagedTaxonomySnapshot(snapshot) {

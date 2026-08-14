@@ -13,7 +13,7 @@
 ```
 
 - **协作数据**：反馈记录、快照、标签候选等存 SQLite，客户端约 5s 轮询 `dataRevision` 同步。工作台 `feedbacks` 为读库后的内存缓存，写入走单条/批量 API，**不会**全量 debounce 覆盖共享库。
-- **发布配置**：分析维度中的「发布」将共享库中的 managed 配置写入 `public/config/taxonomy/` 等目录（单节点直接写盘；多节点需共享卷，见 §6）。
+- **发布配置**：对象与标签中的「发布」将共享库中的 managed 配置写入 `public/config/taxonomy/` 等目录（单节点直接写盘；多节点需共享卷，见 §6）。
 - **持久化清单与发版防丢数据**：[DATA-PERSISTENCE.md](./DATA-PERSISTENCE.md)
 
 ---
@@ -164,7 +164,7 @@ sqlite3 server/data/auth.db ".backup 'backup/auth-$(date +%F).db'"
 
 ## 6. 标签 / 产品目录配置流程
 
-1. **权威数据**：`auth.db` 中 `taxonomy_managed`、`product_catalog_managed_v1`（分析维度页保存即写入）。  
+1. **权威数据**：`auth.db` 中 `taxonomy_managed`、`product_catalog_managed_v1`（对象与标签页保存即写入）。  
 2. **磁盘备份**：保存后由 API 自动生成 `public/config/taxonomy/`、`product-catalog/` 下 Excel/JSON。  
    - 生产默认开启：`AUTO_PUBLISH_CONFIG` 未设置且 `NODE_ENV=production` 时为 true。  
    - 开发默认关闭：避免本机 Excel 被占用导致写盘失败；可 `AUTO_PUBLISH_CONFIG=true` 开启。  

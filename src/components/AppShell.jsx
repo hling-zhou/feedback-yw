@@ -35,7 +35,7 @@ const ALL_NAV = [
   { key: '/feedbacks', label: '反馈库', icon: <UnorderedListOutlined /> },
   { key: '/actions', label: '举措与进展', icon: <FlagOutlined /> },
   { key: '/import', label: '数据导入', icon: <ImportOutlined /> },
-  { key: '/tags', label: '分析维度', icon: <TagOutlined /> },
+  { key: '/tags', label: '对象与标签', icon: <TagOutlined /> },
   { key: '/users', label: '用户管理', icon: <TeamOutlined />, adminOnly: true },
   { key: '/settings', label: '设置', icon: <SettingOutlined /> },
 ]

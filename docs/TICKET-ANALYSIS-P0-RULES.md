@@ -186,7 +186,7 @@ LLM 上下文：`buildCustomerRequestExtractionContext` 返回 `{ candidates, ru
 
 **否定 / 互斥**（代码内实现，非 Excel 配置）：如「如何退订」不归资源操作申请；「退订时报错」归资源操作申请；「申请+催办」归资源操作申请；强服务投诉优先于纯催办等（见 `requestSceneClassifier.test.js` §4 golden）。
 
-**配置发布**：`npm run generate:taxonomy-xlsx` 从 `REQUEST_SCENES_BUILTIN` 生成 Excel/`index.json`（`index.version` ≥ 5）。分析维度「发布打标配置」与之 sheet 顺序一致。
+**配置发布**：`npm run generate:taxonomy-xlsx` 从 `REQUEST_SCENES_BUILTIN` 生成 Excel/`index.json`（`index.version` ≥ 5）。对象与标签「发布打标配置」与之 sheet 顺序一致。
 
 **历史数据**：旧标签名（如 `报障与恢复`）经 `migrateRequestSceneLabel()` 映射；**决策树结果**需反馈库 **批量重新打标** 后才会刷新。
 

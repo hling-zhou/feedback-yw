@@ -92,7 +92,7 @@ export default function JourneyTemplatePanel() {
         showIcon
         className="!mb-4"
         title="旅程模板随产品自动维护"
-        description="新增产品时自动创建同名旅程模板（环节为空）；修改产品名称会同步更新模板；删除产品时移除对应模板。请在「分析维度 → 用户旅程」为各产品配置一级 / 二级环节。"
+        description="新增产品时自动创建同名旅程模板（环节为空）；修改产品名称会同步更新模板；删除产品时移除对应模板。请在「对象与标签 → 用户旅程」为各产品配置一级 / 二级环节。"
       />
 
       <Table

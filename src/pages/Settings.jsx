@@ -354,7 +354,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
         <Card title="用户旅程匹配方式">
           <Typography.Text type="secondary" className="mb-3 block text-xs">
             旅程环节在{' '}
-            <Link to="/tags?tab=journey">分析维度 → 用户旅程</Link>{' '}
+            <Link to="/tags?tab=journey">对象与标签 → 用户旅程</Link>{' '}
             维护。修改后可在 <Link to="/feedbacks">反馈库</Link> 批量重新打标。
             请求场景、投诉/咨询工单的问题类型始终为本地规则打标，不受此项影响。
           </Typography.Text>
@@ -441,7 +441,7 @@ function SettingsTabIntro({ tab }) {
       {tab === 'analysis' ? (
         <>
           {' '}
-          标签词表与用后即评重点客户名单请在 <Link to="/tags">分析维度</Link> 维护；洞察周期请在工作台或反馈库顶栏切换。
+          标签词表与用后即评重点客户名单请在 <Link to="/tags">对象与标签</Link> 维护；洞察周期请在工作台或反馈库顶栏切换。
         </>
       ) : null}
     </Typography.Text>
@@ -603,7 +603,7 @@ export default function Settings() {
     <div>
       <PageHeader
         title="设置"
-        desc="按用途分组：大模型、分析规则、万投比指标、数据管理与审计。标签库请在「分析维度」维护。"
+        desc="按用途分组：大模型、分析规则、万投比指标、数据管理与审计。标签库请在「对象与标签」维护。"
       />
 
       <WorkbenchTabNav

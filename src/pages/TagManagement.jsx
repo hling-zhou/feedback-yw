@@ -92,7 +92,7 @@ export default function TagManagement() {
   return (
     <div>
       <PageHeader
-        title="分析维度"
+        title="对象与标签"
         desc="产品配置、通用请求场景与问题类型、分产品用户旅程、重点客户名单，以及 LLM 提议标签复核"
       />
       {readOnly && (
@@ -101,7 +101,7 @@ export default function TagManagement() {
           type="info"
           showIcon
           message="当前为只读模式"
-          description="查看者角色可浏览分析维度配置，但不能新增、修改或导入。"
+          description="查看者角色可浏览对象与标签配置，但不能新增、修改或导入。"
         />
       )}
       <Tabs

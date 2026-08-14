@@ -22,7 +22,7 @@
 
 ### 2.1 纳入范围
 
-- 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、分析维度、用户管理
+- 前端页面：登录、工作台、洞察分析、反馈列表、导入、设置、对象与标签、用户管理
 - **LLM 打标 P0 优化**（设计稿）：[LLM-TAGGING-P0-DESIGN.md](./LLM-TAGGING-P0-DESIGN.md) — 已实现；自动化见 §5.4.1 TAG-LLM；**发布/UAT**：[LLM-TAGGING-P0-UAT.md](./LLM-TAGGING-P0-UAT.md)
 - **请求场景 V2 + Post-LLM 维度重打**（2026-06-02）：[data/请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md)；[TICKET-ANALYSIS-P0-RULES.md](./TICKET-ANALYSIS-P0-RULES.md) §5.5；自动化 §5.4.2 TAG-RS、§5.4.3 TAG-RT
 - **客户请求 / 痛点 V2 golden**（2026-06-02）：[data/从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) §1.4/§2.4；夹具 `fixtures/v2TicketExamples.js`；自动化 §5.4.4 TAG-CR/TAG-PP

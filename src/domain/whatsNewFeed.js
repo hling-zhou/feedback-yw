@@ -41,7 +41,7 @@ export const WHATS_NEW_MODULE_LABELS = {
   feedbacks: '反馈库',
   actions: '举措与进展',
   import: '数据导入',
-  tags: '分析维度',
+  tags: '对象与标签',
   settings: '设置',
   other: '其他',
 }
