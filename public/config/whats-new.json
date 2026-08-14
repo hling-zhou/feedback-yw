@@ -1,9 +1,165 @@
 {
-  "generatedAt": "2026-08-13T14:01:38.325Z",
+  "generatedAt": "2026-08-14T19:09:41.461Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "a53d565a0dbd0a6441a65f380468bc3c0e498e2d",
+  "repoCommit": "54079455511fe178cf14fae7a8dc2ba598689879",
   "items": [
+    {
+      "id": "de32435b64ceafec20cd5b2913ab9cc335d98aba",
+      "title": "把登录和工单更新等写操作记进操作审计",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-15",
+      "appVersion": null,
+      "summary": "登录成败、工单字段变更、配置保存、投诉复核和用后 Jira 都会入账；自动写盘不再单独记一条。保存产品目录时同时递增记录侧版本，避免推荐缓存不失效。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "393848748424b69877c56cca1cf56d4b95fbcb9c",
+      "title": "产品目录同步标签库时内容未变则不写盘",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-15",
+      "appVersion": null,
+      "summary": "忽略 updatedAt 和版本号后若快照相同，只应用本地缓存，避免无意义保存触发发布。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "98053b9af384999047ad39b50231ba4e60c4a72e",
+      "title": "用后内部提单改用复合筛选",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-15",
+      "appVersion": null,
+      "summary": "与反馈库同一套属性筛选，替换原先散落的月份、产品、状态和搜索框。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e6873b1bb4a9fe2841e024d698a105973ce4c979",
+      "title": "复合筛选改为弹出面板内选择，并按 Tab 收窄条件",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-15",
+      "appVersion": null,
+      "summary": "下拉和日期选择挂在筛选浮层内，避免被挡住；用后即评和客服回访只保留该 Tab 能用的条件。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9a5a44e8c667935362e41d22617f041882376c11",
+      "title": "专题推荐改为按近期密度打分，并缓存避免进页全量重算",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-15",
+      "appVersion": null,
+      "summary": "去掉条数垄断和占位主题，二级旅程并行出卡，页面展示 Top 20。改举措只补未闭环，不触发整表重算。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "783d6621de74ccddb49549b5ac2519443f6289d0",
+      "title": "专题分析按已启用产品取数，推荐不含满分无负面的用后即评",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "只分析「产品与规格」中开启工单或用后即评的产品；系统推荐再丢掉 10 分且无负面反馈的用后即评，自定义专题不套这条。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "638e1f406b4a9db8cb2bf848099eacf7f47fa515",
+      "title": "增加共享专题分析，纳入或新建后后台生成报告",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "按近 9 个月推荐客户/产品问题/共性专题；新建先理解再确认。报告记创建人与补充材料上传人，刷新后仍能看到生成中的条目。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "a1749a882257801c76adeb82de14ea08ae401c4b",
+      "title": "用后即评改为独立 HTML 月报，并收紧原因与原话口径",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "单月从工作台打开可交互月报并导出离线 HTML，替代页内 Word 预览；建议回访与原话只保留有实质内容的原因。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "20d169870936bd177a03ff7d70cbe0e5c3da4efb",
+      "title": "反馈库支持按工单号临时复原客户信息",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "历史脱敏工单缺少集团名称/编码时，可按工单号回填，便于后续按客户聚合分析。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "0b7c79541fad6e13bd2f40e4a32b042478e2e80d",
+      "title": "建议回访反馈原因在缺客户回答字段时回退到原话",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "旧导入没有 feedbackReasonTexts，清单反馈原因会整列空白；回退 commentText 后无需重导也能看到当时留下的回答。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "3742bf34a0bddc5d4299029971d37c35c8cdcaa9",
+      "title": "去掉 Tab 下重复标题，并加大加粗 Tab 字号",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "举措页标题与 Tab 文案重复；把视觉重量移到 Tab 上，避免同一名称出现两次。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7cf8a0dd80078498431b110fbdf58b4af544e5ec",
+      "title": "工单列表应用客户名筛选，勾选保存失败时回滚",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "用后即评深链的 customerNames 未过滤工单列表；回访勾选乐观更新失败后仍会进入导出/存档。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "58e50815c4d931a2f20c989861bf8d27364d1d62",
+      "title": "建议回访清单可在线分流，并增加用后即评 JIRA 跟踪",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-14",
+      "appVersion": null,
+      "summary": "让客服回访与部门内溯源能从清单勾选后导出或存档，避免只能下载 Excel 再人工拆表。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8edcb646271ce520557510fc9172e5ba8efdbf17",
+      "title": "导入模板对齐导出 30 列，并提高导入上限与用后即评多文件",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-08-13",
+      "appVersion": null,
+      "summary": "分析结果模板与导出列序一致且必填不变；产品配置与旅程模板同为扁平布局。单表 1 万行、单文件 30MB，短信/官网各最多 5 个文件，并支持从文件名「名称#密码.xlsx」自动解锁。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "a53d565a0dbd0a6441a65f380468bc3c0e498e2d",
       "title": "补齐导入密码/客服部回访与过时单测断言",
