@@ -22,8 +22,9 @@ import FeedbackCompositeFilter from './FeedbackCompositeFilter.jsx'
  *   resourcePools?: { name: string }[]
  *   requestScenes?: { name: string }[]
  *   dataSourceTypes?: string[]
- *   filterKeys?: string[]
- * }} [props.options]
+   *   filterKeys?: string[]
+   *   emptyPlaceholder?: string
+   * }} [props.options]
  * @param {import('react').ReactNode} [props.actions]
  */
 export default function FeedbackFilterBar({

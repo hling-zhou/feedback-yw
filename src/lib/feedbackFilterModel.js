@@ -90,6 +90,23 @@ export const FEEDBACK_FILTER_GROUPS = [
   },
 ]
 
+/** 用后即评 Tab 复合筛选（不含工单专属条件） */
+export const FEEDBACK_POST_USE_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
+  'ticketIds',
+  'customerNames',
+  'handlingKeyword',
+  'ticketDateFrom',
+  'problemType',
+  'journeyL1',
+  'resourcePool',
+  'requestScene',
+])
+
+/** 客服部回访 Tab 复合筛选 */
+export const FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
+  'customerNames',
+])
+
 /** @type {Record<FeedbackFilterKey, string>} */
 export const FEEDBACK_FILTER_LABELS = {
   ticketIds: '工单号',
@@ -204,6 +221,20 @@ export function countActiveFeedbackFilters(values) {
   return listActiveFeedbackFilterChipKeys(values).length
 }
 
+/** @type {number} */
+export const FEEDBACK_FILTER_CHIP_VALUE_MAX_LEN = 16
+
+/**
+ * Chip 上单个长值截断，避免工单号把筛选条撑满。
+ * @param {unknown} text
+ * @param {number} [maxLen]
+ */
+export function truncateFeedbackFilterChipValue(text, maxLen = FEEDBACK_FILTER_CHIP_VALUE_MAX_LEN) {
+  const value = String(text ?? '').trim()
+  if (value.length <= maxLen) return value
+  return `${value.slice(0, maxLen)}…`
+}
+
 /**
  * @param {FeedbackFilterKey} key
  * @param {FeedbackFilterValues} values
@@ -212,11 +243,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
   switch (key) {
     case 'ticketIds':
       return values.ticketIds.length === 1
-        ? values.ticketIds[0]
+        ? truncateFeedbackFilterChipValue(values.ticketIds[0])
         : `${values.ticketIds.length} 个`
     case 'customerNames':
       return values.customerNames.length === 1
-        ? values.customerNames[0]
+        ? truncateFeedbackFilterChipValue(values.customerNames[0])
         : `${values.customerNames.length} 个`
     case 'handlingKeyword': {
       const keyword = String(values.handlingKeyword ?? '').trim()
@@ -399,4 +430,24 @@ export function feedbackFiltersFromParsed(parsed) {
     ticketIds: parsed.ticketIds || [],
     customerNames: parsed.customerNames || [],
   }
+}
+
+/**
+ * 按 Tab 保留允许的筛选键；产品始终保留（条外范围开关）。
+ * @param {FeedbackFilterValues} filters
+ * @param {FeedbackFilterKey[]} keys
+ * @param {Partial<FeedbackFilterValues>} [extras]
+ * @returns {FeedbackFilterValues}
+ */
+export function restrictFeedbackFiltersToKeys(filters, keys, extras = {}) {
+  const next = createEmptyFeedbackFilters()
+  next.product = filters.product || ''
+  for (const key of keys) {
+    if (key === 'ticketDateTo') continue
+    next[key] = filters[key]
+  }
+  if (keys.includes('ticketDateFrom')) {
+    next.ticketDateTo = filters.ticketDateTo
+  }
+  return { ...next, ...extras }
 }

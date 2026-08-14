@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Input, Modal, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -21,6 +21,7 @@ import FeedbackTable from '../components/FeedbackTable.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
+import FeedbackCompositeFilter from '../components/feedbacks/FeedbackCompositeFilter.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
 import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
@@ -70,8 +71,11 @@ import {
   applyFeedbackFilterPatch,
   clearAllFeedbackFilters,
   createEmptyFeedbackFilters,
+  FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
+  FEEDBACK_POST_USE_COMPOSITE_KEYS,
   feedbackFiltersFromParsed,
   feedbackFiltersToUrlPatch,
+  restrictFeedbackFiltersToKeys,
 } from '../lib/feedbackFilterModel.js'
 import { matchesTicketActualDateRange } from '../domain/ticketActualDate.js'
 import { isTicketSource } from '../lib/importUtils.js'
@@ -128,7 +132,6 @@ export default function Feedbacks() {
   const [refreshing, setRefreshing] = useState(false)
   const [customerVisitRecords, setCustomerVisitRecords] = useState([])
   const [customerVisitLoading, setCustomerVisitLoading] = useState(false)
-  const [customerVisitKeyword, setCustomerVisitKeyword] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const skipUrlSyncRef = useRef(false)
 
@@ -194,9 +197,10 @@ export default function Feedbacks() {
 
   const handleClearFilters = useCallback(() => {
     const next = clearAllFeedbackFilters()
+    if (isPostUseLane) next.dataSource = 'post_use_rating'
     setFilters(next)
     syncFiltersToUrl(next)
-  }, [syncFiltersToUrl])
+  }, [isPostUseLane, syncFiltersToUrl])
 
   const refreshCustomerVisitRecords = useCallback(async () => {
     setCustomerVisitLoading(true)
@@ -243,12 +247,19 @@ export default function Feedbacks() {
     }
 
     const parsed = parseFeedbackSearchParams(searchParams)
-    setFilters(
-      feedbackFiltersFromParsed({
-        ...parsed,
-        ticketIds: parsed.ticketIds,
-      }),
-    )
+    const lane = resolveFeedbackLane(searchParams)
+    let next = feedbackFiltersFromParsed({
+      ...parsed,
+      ticketIds: parsed.ticketIds,
+    })
+    if (lane === FEEDBACK_LANE_POST_USE) {
+      next = restrictFeedbackFiltersToKeys(next, FEEDBACK_POST_USE_COMPOSITE_KEYS, {
+        dataSource: 'post_use_rating',
+      })
+    } else if (lane === FEEDBACK_LANE_CUSTOMER_VISITS) {
+      next = restrictFeedbackFiltersToKeys(next, FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS)
+    }
+    setFilters(next)
   }, [searchParams])
 
   useEffect(() => {
@@ -296,12 +307,13 @@ export default function Feedbacks() {
   )
 
   const filteredCustomerVisitRecords = useMemo(() => {
-    const keyword = String(customerVisitKeyword || '').trim().toLowerCase()
-    if (!keyword) return customerVisitPeriodRecords
-    return customerVisitPeriodRecords.filter((record) =>
-      String(record.customerName || '').trim().toLowerCase().includes(keyword),
-    )
-  }, [customerVisitPeriodRecords, customerVisitKeyword])
+    const needles = (filters.customerNames || []).map((name) => String(name || '').trim().toLowerCase()).filter(Boolean)
+    if (!needles.length) return customerVisitPeriodRecords
+    return customerVisitPeriodRecords.filter((record) => {
+      const name = String(record.customerName || '').trim().toLowerCase()
+      return needles.some((needle) => name.includes(needle))
+    })
+  }, [customerVisitPeriodRecords, filters.customerNames])
 
   const customerVisitTableRows = useMemo(
     () => buildPostUseCustomerVisitRows(filteredCustomerVisitRecords, callbackRecommendationPool),
@@ -428,6 +440,38 @@ export default function Feedbacks() {
       .sort((a, b) => a.localeCompare(b))
       .map((tid) => ({ label: tid, value: tid }))
   }, [periodFeedbacks, filters.ticketIds])
+
+  const customerNameOptions = useMemo(() => {
+    /** @type {Map<string, string>} */
+    const map = new Map()
+    for (const name of filters.customerNames) {
+      const trimmed = String(name || '').trim()
+      if (trimmed) map.set(trimmed, trimmed)
+    }
+    for (const fb of periodFeedbacks) {
+      const name = String(fb.customerName || '').trim()
+      if (name) map.set(name, name)
+    }
+    return [...map.values()]
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+      .map((name) => ({ label: name, value: name }))
+  }, [periodFeedbacks, filters.customerNames])
+
+  const visitCustomerNameOptions = useMemo(() => {
+    /** @type {Map<string, string>} */
+    const map = new Map()
+    for (const name of filters.customerNames) {
+      const trimmed = String(name || '').trim()
+      if (trimmed) map.set(trimmed, trimmed)
+    }
+    for (const record of customerVisitPeriodRecords) {
+      const name = String(record.customerName || '').trim()
+      if (name) map.set(name, name)
+    }
+    return [...map.values()]
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+      .map((name) => ({ label: name, value: name }))
+  }, [customerVisitPeriodRecords, filters.customerNames])
 
   const matchedEvidenceCount = useMemo(() => {
     if (!selectedTicketIdSet?.size) return 0
@@ -819,15 +863,18 @@ export default function Feedbacks() {
       >
         {isCustomerVisitLane ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Typography.Text className="shrink-0 text-sm text-ink-600">客户名称</Typography.Text>
-            <Input.Search
-              allowClear
-              placeholder="搜索客户名称"
-              className="min-w-[220px] max-w-[320px]"
-              value={customerVisitKeyword}
-              onChange={(e) => setCustomerVisitKeyword(e.target.value)}
-              onSearch={setCustomerVisitKeyword}
-            />
+            <div className="min-w-0 flex-1">
+              <FeedbackCompositeFilter
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                onClearFilters={handleClearFilters}
+                options={{
+                  filterKeys: FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
+                  customerNameOptions: visitCustomerNameOptions,
+                  emptyPlaceholder: '选择属性筛选（客户名称）',
+                }}
+              />
+            </div>
             <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
               <Button
                 icon={<UploadOutlined />}
@@ -855,12 +902,17 @@ export default function Feedbacks() {
           showMyReviewFilter={reviewEnabled}
           options={{
             ticketIdOptions,
+            customerNameOptions,
             products,
             problemTypes,
             complaintCauseOptions,
             journeys,
             resourcePools: pools,
             requestScenes,
+            filterKeys: isPostUseLane ? FEEDBACK_POST_USE_COMPOSITE_KEYS : undefined,
+            emptyPlaceholder: isPostUseLane
+              ? '选择属性筛选（客户、工单号、内容、日期…）'
+              : '选择属性筛选（工单号、客户、内容、日期…）',
           }}
           actions={
             <>

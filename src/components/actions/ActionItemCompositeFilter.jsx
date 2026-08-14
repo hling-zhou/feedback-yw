@@ -70,6 +70,7 @@ export default function ActionItemCompositeFilter({
       config={config}
       options={options}
       className={className}
+      emptyPlaceholder="选择属性筛选（产品、状态、关联工单…）"
     />
   )
 }

@@ -281,6 +281,20 @@
     pointer-events: auto;
   }
 
+  .composite-filter-popover .ant-select-dropdown,
+  .composite-filter-popover .ant-picker-dropdown {
+    z-index: 1110;
+  }
+
+  .composite-filter-select-tag.ant-tag {
+    @apply max-w-[10rem] overflow-hidden align-middle;
+  }
+
+  .composite-filter-attribute-dropdown .ant-dropdown-menu {
+    @apply shadow-none;
+    box-shadow: none;
+  }
+
   /** 举措添加/编辑弹窗：wrap 不滚动，仅 body 内滚动 */
   .action-form-modal-wrap.ant-modal-wrap {
     overflow: hidden !important;

@@ -98,6 +98,7 @@ export default function WorkbenchScopeCompositeFilter({
       disableCtx={disableCtx}
       options={options}
       className={className}
+      emptyPlaceholder="选择属性筛选（产品、来源、资源池…）"
     />
   )
 }

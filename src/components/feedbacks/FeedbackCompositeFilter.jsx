@@ -3,7 +3,6 @@ import CompositeFilter from '../filters/CompositeFilter.jsx'
 import {
   applyFeedbackFilterPatch,
   clearFeedbackFilterKey,
-  countActiveFeedbackFilters,
   FEEDBACK_FILTER_GROUPS,
   FEEDBACK_FILTER_LABELS,
   formatFeedbackFilterChipLabel,
@@ -63,12 +62,18 @@ export default function FeedbackCompositeFilter({
   )
 
   const config = useMemo(
-    () => ({
+    () => {
+      const allowedKeys = options.filterKeys ? new Set(options.filterKeys) : null
+      const listActive = (values) => {
+        const keys = listActiveFeedbackFilterChipKeys(values)
+        return allowedKeys ? keys.filter((key) => allowedKeys.has(key)) : keys
+      }
+      return {
       groups: filterGroups,
       labels: FEEDBACK_FILTER_LABELS,
       getEditorKind: getFeedbackFilterEditorKind,
-      listActiveChipKeys: listActiveFeedbackFilterChipKeys,
-      countActive: countActiveFeedbackFilters,
+      listActiveChipKeys: listActive,
+      countActive: (values) => listActive(values).length,
       formatChipLabel: formatFeedbackFilterChipLabel,
       isAddDisabled: isFeedbackFilterAddDisabled,
       getAddDisabledReason: getFeedbackFilterAddDisabledReason,
@@ -87,7 +92,8 @@ export default function FeedbackCompositeFilter({
             (showMyReviewFilter || key !== 'myReview') &&
             (!options.filterKeys || options.filterKeys.includes(key)),
         ),
-    }),
+    }
+    },
     [showComplaintCauseFilter, filterGroups, options.filterKeys, showMyReviewFilter],
   )
 
@@ -98,6 +104,7 @@ export default function FeedbackCompositeFilter({
       onClearFilters={onClearFilters}
       config={config}
       disableCtx={disableCtx}
+      emptyPlaceholder={options.emptyPlaceholder}
       options={{
         ...options,
         ticketIdOptions: options.ticketIdOptions,

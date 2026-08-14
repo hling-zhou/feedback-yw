@@ -26,4 +26,17 @@ describe('Feedbacks lane-scoped notices', () => {
     expect(source).toContain('clearAllFeedbackFilters()')
     expect(source).toContain('feedbackFiltersToUrlPatch(cleared)')
   })
+
+  it('wires customer name options into the composite filter', () => {
+    expect(source).toContain('const customerNameOptions = useMemo')
+    expect(source).toContain('fb.customerName')
+    expect(source).toContain('customerNameOptions,')
+    expect(source).toContain('ticketIdOptions,')
+  })
+
+  it('narrows post-use composite keys and keeps source locked on clear', () => {
+    expect(source).toContain('FEEDBACK_POST_USE_COMPOSITE_KEYS')
+    expect(source).toContain('restrictFeedbackFiltersToKeys')
+    expect(source).toContain("if (isPostUseLane) next.dataSource = 'post_use_rating'")
+  })
 })

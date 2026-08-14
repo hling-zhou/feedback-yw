@@ -33,4 +33,14 @@ describe('feedbackFilterEditors data source scope', () => {
       customerNames: ['客户A', '客户B'],
     })
   })
+
+  it('lists customer name options from the provided catalog', () => {
+    const options = listEnumOptionsForFilterKey(
+      'customerNames',
+      createEmptyFeedbackFilters(),
+      { customerNameOptions: [{ label: '客户甲', value: '客户甲' }] },
+      true,
+    )
+    expect(options).toEqual([{ label: '客户甲', value: '客户甲' }])
+  })
 })
