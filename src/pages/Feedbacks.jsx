@@ -871,7 +871,7 @@ export default function Feedbacks() {
               </Tooltip>
               {CUSTOMER_RESTORE_IMPORT_ENABLED ? (
                 <PermissionGate permission="import">
-                  <Tooltip title="临时：按工单号回填已脱敏工单的客户名称/编码。8 月及以后数据会自带这些字段，完成后可下架。">
+                  <Tooltip title="临时：按工单号回填已脱敏工单的客户名称/编码。1～7 月已复原。8 月及以后数据会自带这些字段，完成后可下架。">
                     <Button onClick={() => setImportCustomerRestoreOpen(true)}>
                       复原客户信息（临时）
                     </Button>

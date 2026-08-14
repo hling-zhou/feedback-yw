@@ -170,7 +170,7 @@ export default function ImportCustomerRestorePanel({ onImportComplete }) {
             <Tag color="orange" className="ml-2">可下架</Tag>
           </span>
         )}
-        description="用于回填 8 月之前已脱敏工单的客户名称/编码。8 月及以后导入的数据会自带这些字段，本入口将下架。用后即评仅当记录带原工单号时同步。"
+        description="用于回填 8 月之前已脱敏工单的客户名称/编码。1～7 月已复原。8 月及以后导入的数据会自带这些字段，本入口将下架。用后即评仅当记录带原工单号时同步。"
       />
       <div className="flex flex-wrap items-center gap-2">
         <Button icon={<DownloadOutlined />} onClick={() => downloadCustomerRestoreTemplate()}>
