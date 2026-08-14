@@ -10,6 +10,7 @@ import {
   LogoutOutlined,
   LockOutlined,
   FlagOutlined,
+  DeploymentUnitOutlined,
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -32,6 +33,7 @@ import WhatsNewDrawer from './WhatsNewDrawer.jsx'
 
 const ALL_NAV = [
   { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
+  { key: '/topics', label: '专题分析', icon: <DeploymentUnitOutlined /> },
   { key: '/feedbacks', label: '反馈库', icon: <UnorderedListOutlined /> },
   { key: '/actions', label: '举措与进展', icon: <FlagOutlined /> },
   { key: '/import', label: '数据导入', icon: <ImportOutlined /> },

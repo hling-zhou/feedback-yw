@@ -13,6 +13,8 @@ import Settings from './pages/Settings.jsx'
 import TagManagement from './pages/TagManagement.jsx'
 import Users from './pages/Users.jsx'
 import Actions from './pages/Actions.jsx'
+import TopicAnalysis from './pages/TopicAnalysis.jsx'
+import TopicReportDetail from './pages/TopicReportDetail.jsx'
 import Login from './pages/Login.jsx'
 import ChangePassword from './pages/ChangePassword.jsx'
 
@@ -45,6 +47,8 @@ const routes = [
           { path: 'workbench', element: <InsightWorkbench /> },
           { path: 'workbench/analysis', element: <Themes /> },
           { path: 'dashboard', element: <Navigate to="/workbench" replace /> },
+          { path: 'topics', element: <TopicAnalysis /> },
+          { path: 'topics/:reportId', element: <TopicReportDetail /> },
           { path: 'feedbacks', element: <Feedbacks /> },
           { path: 'actions', element: <Actions /> },
           { path: 'themes', element: <Navigate to="/workbench/analysis" replace /> },

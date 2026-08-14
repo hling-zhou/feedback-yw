@@ -18,6 +18,8 @@ const META_KEYS_TO_MIGRATE = [
   'tag_library_version',
   'product_catalog_managed_v1',
   'product_order_volumes_v1',
+  'topic_analysis_reports_v1',
+  'topic_analysis_runs_v1',
 ]
 
 /**
