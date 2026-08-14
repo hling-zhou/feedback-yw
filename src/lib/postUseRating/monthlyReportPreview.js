@@ -147,7 +147,7 @@ export function buildMonthlyReportPreviewModel(input) {
       belowNineRatio: yw.belowNineRatio,
       companyAvg: external.company.avgScore,
       companySample: external.company.totalSample,
-      note: '本报告是线上用后即评综合分析的月度发布视图。数据范围、产品范围、指标规则、洞察和举措均复用线上看板；Word 仅进行章节筛选与正式排版，不另行计算。',
+      note: '本报告是线上用后即评综合分析的月度发布视图。数据范围、产品范围、指标规则、洞察和举措均复用线上看板；本页仅进行叙述编辑与排版，不另行计算。',
     },
     onlineModel: {
       source: 'post_use_online_insight_bundle',

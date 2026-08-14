@@ -1,6 +1,7 @@
 /**
  * 用后即评固定原因清单（PRD §3.10 / task9 控制台 + 投诉回访）
  */
+import { normalizeEvidenceText } from './evidence.js'
 
 /** 控制台评分类（18 项，含「其他」） */
 export const CONSOLE_REASON_TAXONOMY = [
@@ -36,6 +37,52 @@ export const CALLBACK_REASON_TAXONOMY = [
 
 /** 柱状图展示排除标签 */
 export const REASON_TAXONOMY_EXCLUDE = new Set(['其他', '业务使用完毕', '空白'])
+
+/** 反馈原因占位词：不算实质负面，也不进入高频低分原因 / 客户原话 */
+export const FEEDBACK_REASON_PLACEHOLDERS = new Set(['无', '无/不涉及', '/', '业务使用完毕', '其他'])
+
+const FIXED_REASON_LABELS = new Set(
+  [...CONSOLE_REASON_TAXONOMY, ...CALLBACK_REASON_TAXONOMY].filter((label) => label !== '其他'),
+)
+
+/** @param {unknown} value */
+export function isValidCustomerText(value) {
+  const text = normalizeEvidenceText(value)
+  if (!text) return false
+  if (FEEDBACK_REASON_PLACEHOLDERS.has(text)) return false
+  if (text.toLowerCase() === 'nan') return false
+  if (/^\d+$/.test(text)) return false
+  if (/^[a-zA-Z]+$/.test(text)) return false
+  return true
+}
+
+/** @param {unknown} value */
+export function isSubstantiveFeedbackReason(value) {
+  return isValidCustomerText(value)
+}
+
+/**
+ * 一格多选项（分号）拆成单条后再判定。
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function splitFeedbackReasonPieces(value) {
+  return String(value ?? '')
+    .split(/[;；]/)
+    .map((part) => normalizeEvidenceText(part))
+    .filter(Boolean)
+}
+
+/**
+ * @param {unknown} value
+ * @returns {'option' | 'quote' | null}
+ */
+export function classifyCustomerTextKind(value) {
+  const text = normalizeEvidenceText(value)
+  if (!isValidCustomerText(text)) return null
+  if (FIXED_REASON_LABELS.has(text)) return 'option'
+  return 'quote'
+}
 
 /**
  * @param {string | null | undefined} text

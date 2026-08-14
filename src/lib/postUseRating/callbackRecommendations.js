@@ -4,6 +4,7 @@ import {
 } from '../../domain/postUseRatingImport.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import { POST_USE_RATING_PRODUCT_NAMES } from '../productCatalog/postUseRatingProducts.js'
+import { isSubstantiveFeedbackReason } from './reasonTaxonomy.js'
 import { normalizeTicketId } from '../desensitize.js'
 import { buildTicketRecordIndex } from '../followUpSatisfactionImport.js'
 import { normalizePostUseKeyCustomers } from '../storage.js'
@@ -121,6 +122,15 @@ function getFeedbackReasonValues(record) {
   return values
 }
 
+function recordHasNegativeFeedback(record) {
+  return getFeedbackReasonValues(record).some((text) => isSubstantiveFeedbackReason(text))
+}
+
+function isLowScoreRecord(record) {
+  const score = Number(record.ratingScore)
+  return Number.isFinite(score) && score < 7
+}
+
 export function isKeyCustomerName(customerName, keyCustomers = []) {
   const name = normalizeText(customerName)
   if (!name) return false
@@ -188,19 +198,36 @@ function resolveProductNames(productNames) {
   return new Set(names.map((name) => normalizeText(name)).filter(Boolean))
 }
 
-function buildTriggerType(isKeyCustomer, isHighFrequency) {
+function buildTriggerType(isKeyCustomer, isHighFrequency, isNegativeFeedback) {
   const tags = []
   if (isKeyCustomer) tags.push('重点客户')
   if (isHighFrequency) tags.push('高频低分客户')
+  if (isNegativeFeedback) tags.push('负面反馈')
   return tags.join('；')
 }
 
-function buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown) {
+function buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, feedbackReasonSummary) {
+  const parts = []
+  if (lowScoreLt7Count) {
+    parts.push(
+      `${group.customerName} 在${group.productName}下有 ${lowScoreLt7Count} 次7分以下反馈${scoreBreakdown ? `（${scoreBreakdown}）` : ''}`,
+    )
+  }
+  if (group.isNegativeFeedback) {
+    const negativeBit = feedbackReasonSummary
+      ? `反馈原因含负面表述（${feedbackReasonSummary}）`
+      : '反馈原因含负面表述'
+    if (parts.length) parts.push(negativeBit)
+    else parts.push(`${group.customerName} 在${group.productName}下有${negativeBit}`)
+  }
   const reasons = []
   if (group.isKeyCustomer) reasons.push('命中重点客户名单')
   if (group.isHighFrequency) reasons.push('同一客户低分记录达到2次及以上')
   const suffix = reasons.length ? `，${reasons.join('，')}` : ''
-  return `${group.customerName} 在${group.productName}下有 ${lowScoreLt7Count} 次7分以下反馈${scoreBreakdown ? `（${scoreBreakdown}）` : ''}${suffix}，建议客服部回访。`
+  const head = parts.length
+    ? parts.join('，')
+    : `${group.customerName} 在${group.productName}下建议客服部回访`
+  return `${head}${suffix}，建议客服部回访。`
 }
 
 function isCallbackTriggerChannel(record) {
@@ -209,7 +236,9 @@ function isCallbackTriggerChannel(record) {
 }
 
 /**
- * 建议回访：官网评分类或选项类 + 云网产品 + 低于7分 + 重点客户或同一客户低分至少2次。
+ * 建议回访：官网评分类或选项类 + 云网产品，且满足任一路径：
+ * - 低于7分 + 重点客户或同一客户低分至少2次
+ * - 反馈原因含实质负面表述（不看分数，不要重点/高频）
  * @param {import('../types.js').FeedbackRecord[]} records
  * @param {string[]} keyCustomers
  * @param {{ productNames?: string[] }} [opts]
@@ -217,18 +246,18 @@ function isCallbackTriggerChannel(record) {
 export function buildPostUseCallbackRecommendations(records, keyCustomers = [], opts = {}) {
   const keywords = normalizePostUseKeyCustomers(keyCustomers)
   const productNames = resolveProductNames(opts.productNames)
-  const scoped = (records || [])
+  const channelScoped = (records || [])
     .filter((record) => isPostUseRatingLibraryRecord(record))
     .filter((record) => isCallbackTriggerChannel(record))
     .filter((record) => productNames.has(normalizeText(record.productName || record.product)))
-    .filter((record) => {
-      const score = Number(record.ratingScore)
-      return Number.isFinite(score) && score < 7
-    })
+  const scoped = channelScoped.filter(
+    (record) => isLowScoreRecord(record) || recordHasNegativeFeedback(record),
+  )
 
   /** @type {Map<string, number>} */
   const customerLowScoreCounts = new Map()
-  for (const record of scoped) {
+  for (const record of channelScoped) {
+    if (!isLowScoreRecord(record)) continue
     const customerKey = normalizeText(record.customerName) || normalizeText(record.customerCode)
     if (!customerKey) continue
     customerLowScoreCounts.set(customerKey, (customerLowScoreCounts.get(customerKey) || 0) + 1)
@@ -243,7 +272,9 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
     const customerCountKey = customerName !== '匿名客户' ? customerName : customerCode
     const isKeyCustomer = keywords.length ? isKeyCustomerName(record.customerName, keywords) : false
     const isHighFrequency = Number(customerLowScoreCounts.get(customerCountKey) || 0) >= 2
-    if (!isKeyCustomer && !isHighFrequency) continue
+    const hasNegative = recordHasNegativeFeedback(record)
+    const isLowScore = isLowScoreRecord(record)
+    if (!hasNegative && !(isLowScore && (isKeyCustomer || isHighFrequency))) continue
 
     const key = `${normalizeCustomerKey(record)}\u0000${productName}`
     const group = groups.get(key) || {
@@ -258,15 +289,19 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
       latestFeedbackAt: '',
       isKeyCustomer: false,
       isHighFrequency: false,
+      isNegativeFeedback: false,
     }
     const score = Number(record.ratingScore)
     group.importMonths.add(normalizeText(record.importMonth))
     group.evidenceRecordIds.push(String(record.id))
     group.triggerRecords.push(record)
-    const breakdownKey = scoreBreakdownKey(record, score)
-    group.scoreBreakdown.set(breakdownKey, (group.scoreBreakdown.get(breakdownKey) || 0) + 1)
+    if (isLowScore) {
+      const breakdownKey = scoreBreakdownKey(record, score)
+      group.scoreBreakdown.set(breakdownKey, (group.scoreBreakdown.get(breakdownKey) || 0) + 1)
+    }
     group.isKeyCustomer = group.isKeyCustomer || isKeyCustomer
     group.isHighFrequency = group.isHighFrequency || isHighFrequency
+    group.isNegativeFeedback = group.isNegativeFeedback || hasNegative
     if (feedbackTime(record) >= group.latestFeedbackAt) {
       group.latestFeedbackAt = feedbackTime(record)
     }
@@ -287,7 +322,7 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
 
   return [...groups.values()]
     .map((group) => {
-      const lowScoreLt7Count = group.triggerRecords.length
+      const lowScoreLt7Count = group.triggerRecords.filter(isLowScoreRecord).length
       const scoreBreakdown = buildScoreBreakdownText(group.scoreBreakdown)
       const orderedRecords = [...group.triggerRecords].sort((a, b) =>
         compareDesc(feedbackTime(a), feedbackTime(b)),
@@ -295,6 +330,7 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
       const quotes = orderedRecords.map(getEffectiveQuote).filter(Boolean)
       const reasons = orderedRecords.map(getEffectiveReason).filter(Boolean)
       const feedbackReasons = orderedRecords.flatMap((record) => getFeedbackReasonValues(record))
+      const feedbackReasonSummary = summarizeRepeatedValues(feedbackReasons)
       const related = relatedByKey.get(group.key) || group.triggerRecords
       const latestSurveyRecord = pickLatestSurveyRecord(related)
       const channelLabels = new Set()
@@ -310,7 +346,7 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
         customerCode: group.customerCode,
         productName: group.productName,
         importMonths: [...group.importMonths].filter(Boolean).sort(),
-        triggerType: buildTriggerType(group.isKeyCustomer, group.isHighFrequency),
+        triggerType: buildTriggerType(group.isKeyCustomer, group.isHighFrequency, group.isNegativeFeedback),
         lowScoreLt7Count,
         scoreBreakdown,
         quoteCount: quotes.length,
@@ -320,23 +356,26 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
         feedbackReasons,
         quoteSummary: summarizeRepeatedValues(quotes),
         reasonSummary: summarizeRepeatedValues(reasons),
-        feedbackReasonSummary: summarizeRepeatedValues(feedbackReasons),
+        feedbackReasonSummary,
         latestFeedbackAt: group.latestFeedbackAt,
         latestSurveyName: latestSurveyRecord ? getSurveyName(latestSurveyRecord) : '',
         latestTouchpointPageName: latestSurveyRecord ? getTouchpointPageName(latestSurveyRecord) : '',
         channels: sortChannelLabels(channelLabels),
-        recommendedReason: buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown),
+        recommendedReason: buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, feedbackReasonSummary),
         evidenceRecordIds: [...group.evidenceRecordIds],
         completed: Boolean(group.triggerRecords.some((record) => record.customerVisit)),
         isKeyCustomer: group.isKeyCustomer,
         isHighFrequency: group.isHighFrequency,
+        isNegativeFeedback: group.isNegativeFeedback,
       }
     })
     .sort(
       (a, b) =>
+        Number(b.evidenceRecordIds.length) - Number(a.evidenceRecordIds.length) ||
         Number(b.lowScoreLt7Count) - Number(a.lowScoreLt7Count) ||
         Number(Boolean(b.isKeyCustomer)) - Number(Boolean(a.isKeyCustomer)) ||
         Number(Boolean(b.isHighFrequency)) - Number(Boolean(a.isHighFrequency)) ||
+        Number(Boolean(b.isNegativeFeedback)) - Number(Boolean(a.isNegativeFeedback)) ||
         compareDesc(a.latestFeedbackAt, b.latestFeedbackAt) ||
         a.customerName.localeCompare(b.customerName, 'zh') ||
         a.productName.localeCompare(b.productName, 'zh'),

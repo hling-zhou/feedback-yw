@@ -57,6 +57,27 @@ describe('callbackRecommendationsExport', () => {
     expect(Object.keys(rows[0]).at(-1)).toBe('建议回访原因')
   })
 
+  it('exports 负面反馈 rows with zero 7分以下 counts', () => {
+    const rows = buildPostUseCallbackRecommendationRows([
+      {
+        customerName: '普通客户丙',
+        customerCode: 'C9',
+        productName: '弹性公网IP',
+        triggerType: '负面反馈',
+        lowScoreLt7Count: 0,
+        scoreBreakdown: '',
+        feedbackReasonSummary: '功能有缺失（1）',
+        recommendedReason: '反馈原因含负面表述',
+      },
+    ])
+    expect(rows[0]).toMatchObject({
+      建议触发类型: '负面反馈',
+      '7分以下总次数': 0,
+      '7分以下分布': '',
+      反馈原因: '功能有缺失（1）',
+    })
+  })
+
   it('maps callback non-ten rows to LD 3.9 columns', () => {
     const rows = buildPostUseCallbackNonTenRows([
       {

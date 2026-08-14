@@ -5,6 +5,7 @@ import AppShell from './components/AppShell.jsx'
 import { InsightsProvider } from './context/InsightsContext.jsx'
 import { UserTicketReviewProvider } from './context/UserTicketReviewContext.jsx'
 import InsightWorkbench from './pages/InsightWorkbench.jsx'
+import PostUseHtmlReport from './pages/PostUseHtmlReport.jsx'
 import Feedbacks from './pages/Feedbacks.jsx'
 import Themes from './pages/Themes.jsx'
 import ImportHub from './pages/ImportHub.jsx'
@@ -23,6 +24,14 @@ const routes = [
     path: '/',
     element: <RequireAuth />,
     children: [
+      {
+        path: 'workbench/post-use-report/:month',
+        element: (
+          <InsightsProvider>
+            <PostUseHtmlReport />
+          </InsightsProvider>
+        ),
+      },
       {
         element: (
           <InsightsProvider>

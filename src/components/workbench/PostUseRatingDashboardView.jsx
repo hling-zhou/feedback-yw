@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Segmented, Space, Tag, Typography, message } from 'antd'
-import { BarChartOutlined, FileWordOutlined } from '@ant-design/icons'
-import PostUseMonthlyReportPreview from './PostUseMonthlyReportPreview.jsx'
+import { Button, Card, Space, Tag, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
 import { loadPostUseTrend } from '../../lib/postUseRating/trendStore.js'
@@ -20,7 +18,7 @@ import { loadPostUsePeriodQuality } from '../../lib/postUseRating/qualityStore.j
 import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
 
 /**
- * 用后即评工作台：统一故事模型驱动线上综合分析与 Word 月报。
+ * 用后即评工作台：线上综合分析；单月可打开独立 HTML 月报。
  */
 export default function PostUseRatingDashboardView() {
   const { feedbacks, currentPeriod, adapter, settings } = useInsights()
@@ -29,7 +27,6 @@ export default function PostUseRatingDashboardView() {
   const [trendSnap, setTrendSnap] = useState(null)
   const [quality, setQuality] = useState(null)
   const [creatingSignalKey, setCreatingSignalKey] = useState('')
-  const [viewMode, setViewMode] = useState('online')
   const items = useMemo(
     () => filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating'),
     [feedbacks, currentPeriod],
@@ -85,18 +82,6 @@ export default function PostUseRatingDashboardView() {
     () => scopePostUseRatingRecords(feedbacks.filter((r) => r.dataSourceType === 'post_use_rating'), catalog),
     [feedbacks, catalog],
   )
-  const monthReasons = useMemo(() => {
-    if (!trendSnap || !reportMonthSafe(currentPeriod)) return []
-    const month = reportMonthSafe(currentPeriod)
-    return (trendSnap.reasons || [])
-      .filter((r) => r.month === month)
-      .map((r) => ({
-        reason: r.reason,
-        count: r.count,
-        ...(r.channel != null && r.channel !== '' ? { channel: r.channel } : {}),
-      }))
-      .sort((a, b) => b.count - a.count)
-  }, [trendSnap, currentPeriod])
 
   const createActionFromSignal = async (signal) => {
     const key = `${signal.type}-${signal.productName}-${signal.title}`
@@ -129,10 +114,6 @@ export default function PostUseRatingDashboardView() {
   }
 
   const reportMonth = reportMonthSafe(currentPeriod)
-  const activeViewMode = reportMonth ? viewMode : 'online'
-  useEffect(() => {
-    if (!reportMonth && viewMode !== 'online') setViewMode('online')
-  }, [reportMonth, viewMode])
   const qualityMonth = reportMonth || [...new Set(scopedItems.map((r) => r.importMonth).filter(Boolean))].sort().at(-1) || ''
   const periodQuality = quality?.periods?.[qualityMonth] || null
   const storyModel = useMemo(() => buildPostUseStoryModel({
@@ -159,22 +140,18 @@ export default function PostUseRatingDashboardView() {
               {reportMonth ? '用后即评分析与报告' : '用后即评综合分析'}
             </Typography.Title>
             {reportMonth ? (
-              <Segmented
-                className="post-use-report-tabs"
-                value={activeViewMode}
-                onChange={setViewMode}
-                options={[
-                  { value: 'online', label: '线上综合分析', icon: <BarChartOutlined /> },
-                  { value: 'report', label: 'Word 月报', icon: <FileWordOutlined /> },
-                ]}
-              />
+              <Button
+                onClick={() => window.open(`/workbench/post-use-report/${reportMonth}`, '_blank')}
+              >
+                打开月报
+              </Button>
             ) : null}
           </div>
           <Space size={[8, 8]} wrap>
             <Tag color={storyModel.scope.qualityWarningCount ? 'gold' : storyModel.quality ? 'green' : 'default'}>
               {storyModel.scope.qualityStatus}
             </Tag>
-            <Tag color={activeViewMode === 'online' ? 'blue' : 'default'}>范围 {storyModel.scope.periodLabel}</Tag>
+            <Tag color="blue">范围 {storyModel.scope.periodLabel}</Tag>
             <Tag>产品 {storyModel.scope.productCount}</Tag>
             <Tag>样本 {storyModel.scope.validSample}</Tag>
             {reportMonth ? <Tag color="green">月报 {reportMonth}</Tag> : null}
@@ -182,26 +159,11 @@ export default function PostUseRatingDashboardView() {
         </div>
       </Card>
 
-      {activeViewMode === 'report' ? (
-        <PostUseMonthlyReportPreview
-          adapter={adapter}
-          reportMonth={reportMonth}
-          scoredRows={storyModel.scoredRows}
-          productNames={productNames}
-          visits={visits}
-          actionItems={actionItems}
-          reasons={monthReasons}
-          insightBundle={storyModel.insightBundle}
-          quality={periodQuality}
-          storyModel={storyModel}
-        />
-      ) : (
-        <PostUseStoryView
-          model={storyModel}
-          creatingSignalKey={creatingSignalKey}
-          onCreateAction={(signal) => void createActionFromSignal(signal)}
-        />
-      )}
+      <PostUseStoryView
+        model={storyModel}
+        creatingSignalKey={creatingSignalKey}
+        onCreateAction={(signal) => void createActionFromSignal(signal)}
+      />
     </div>
   )
 }

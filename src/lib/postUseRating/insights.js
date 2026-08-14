@@ -1,4 +1,4 @@
-import { matchAllReasonTaxonomy } from './reasonTaxonomy.js'
+import { isSubstantiveFeedbackReason, matchAllReasonTaxonomy } from './reasonTaxonomy.js'
 import { normalizeEvidenceText } from './evidence.js'
 import { POST_USE_CRITICAL_LOW_SCORE, POST_USE_SMALL_SAMPLE_N, hasCriticalLowScore } from './metrics.js'
 import { POST_USE_ANALYSIS_RULE_VERSION } from './modelVersions.js'
@@ -7,7 +7,6 @@ import { isKeyCustomerName } from './callbackRecommendations.js'
 export const POST_USE_ORIGINAL_SCENE_EMPTY = '未提供'
 export const POST_USE_JOURNEY_EMPTY = '未识别环节'
 const HIGH_FREQUENCY_LOW_SCORE_THRESHOLD = 7
-const HIGH_FREQUENCY_REASON_INVALID_WORDS = new Set(['无', '无/不涉及', '业务使用完毕', '其他'])
 
 function isOptionScoreRecord(record) {
   const channel = String(record?.channel || '').trim()
@@ -48,16 +47,6 @@ function normalizedVisit(visit) {
   }
 }
 
-/** @param {unknown} value */
-function isValidHighFrequencyReasonCandidate(value) {
-  const text = normalizeEvidenceText(value)
-  if (!text) return false
-  if (HIGH_FREQUENCY_REASON_INVALID_WORDS.has(text)) return false
-  if (text.toLowerCase() === 'nan') return false
-  if (/^\d+$/.test(text)) return false
-  return true
-}
-
 /** @param {object} record */
 function pickHighFrequencyLowScoreReason(record) {
   const explicit = Array.isArray(record.feedbackReasonTexts)
@@ -75,7 +64,7 @@ function pickHighFrequencyLowScoreReason(record) {
     const text = normalizeEvidenceText(candidate)
     if (!text || seen.has(text)) continue
     seen.add(text)
-    if (isValidHighFrequencyReasonCandidate(text)) return text
+    if (isSubstantiveFeedbackReason(text)) return text
   }
   return ''
 }

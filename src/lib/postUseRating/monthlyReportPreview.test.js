@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildMonthlyReportPreviewModel } from './monthlyReportPreview.js'
 
-describe('post-use online analysis to Word report', () => {
+describe('post-use online analysis to monthly report preview', () => {
   it('uses the same month for visits and reuses the online insight bundle', () => {
     const model = buildMonthlyReportPreviewModel({
       reportMonth: '2026-06',

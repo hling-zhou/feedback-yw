@@ -57,7 +57,7 @@
 | 数据 | 存储 | 生产影响 |
 |------|------|----------|
 | LLM API Key（用户自填） | `localStorage` | 每浏览器一份；应用服务端 `LLM_API_KEY` |
-| 登录 Token | `localStorage` / `sessionStorage` | 会话级 |
+| 登录 Token | `sessionStorage` | 仅当前标签会话；关闭浏览器即失效。同域 `window.open` 新标签可继承，不必再登录 |
 | 旧版工单缓存键 | `localStorage` `feedback-insights-records` | 仅首次迁移用 |
 
 ### 2.4 仅内存 / 会话（刷新即失）

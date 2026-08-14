@@ -304,7 +304,7 @@ describe('post-use story model', () => {
       scoreBreakdown: '旧问卷*6分*1次；控制台用后即评*5分*1次',
       quoteCount: 2,
       reasonCount: 2,
-      triggerType: '重点客户；高频低分客户',
+      triggerType: '重点客户；高频低分客户；负面反馈',
       completed: false,
       isKeyCustomer: true,
       isHighFrequency: true,
@@ -328,7 +328,7 @@ describe('post-use story model', () => {
       scoreBreakdown: '未填写问卷名*5分*1次；未填写问卷名*4分*1次',
       quoteCount: 2,
       reasonCount: 2,
-      triggerType: '高频低分客户',
+      triggerType: '高频低分客户；负面反馈',
       completed: false,
       isKeyCustomer: false,
       isHighFrequency: true,
@@ -414,7 +414,7 @@ describe('post-use story model', () => {
       customerName: '中国铁塔某省公司',
       lowScoreLt7Count: 1,
       scoreBreakdown: '选项类问卷*5分*1次',
-      triggerType: '重点客户',
+      triggerType: '重点客户；负面反馈',
       isKeyCustomer: true,
       channels: ['选项类'],
       latestSurveyName: '选项类问卷',
@@ -509,6 +509,201 @@ describe('post-use story model', () => {
     expect(model.callbackRecommendations[0].feedbackReasonSummary).toBe(
       '无/不涉及（1）；完全是垃圾，网都上不了（1）',
     )
+  })
+
+  it('includes a 10-score ordinary customer when feedback reason is substantive', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'n1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 10,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['功能有缺失'],
+          customerName: '普通客户丙',
+          customerCode: 'C9',
+          createdAt: '2026-06-10T10:00:00.000Z',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations).toHaveLength(1)
+    expect(model.callbackRecommendations[0]).toMatchObject({
+      customerName: '普通客户丙',
+      triggerType: '负面反馈',
+      lowScoreLt7Count: 0,
+      scoreBreakdown: '',
+      isNegativeFeedback: true,
+      isKeyCustomer: false,
+      isHighFrequency: false,
+      feedbackReasonSummary: '功能有缺失（1）',
+    })
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('反馈原因含负面表述')
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('功能有缺失（1）')
+  })
+
+  it('includes option-channel negative reasons even without a numeric score', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'opt-neg',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          channel: 'option',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['界面不好用'],
+          customerName: '普通客户戊',
+          customerCode: 'C12',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+    })
+
+    expect(model.callbackRecommendations).toHaveLength(1)
+    expect(model.callbackRecommendations[0]).toMatchObject({
+      customerName: '普通客户戊',
+      triggerType: '负面反馈',
+      lowScoreLt7Count: 0,
+      isNegativeFeedback: true,
+    })
+  })
+
+  it('excludes a 10-score record whose only reason is a placeholder', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'p1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 10,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['无/不涉及'],
+          customerName: '普通客户丁',
+          customerCode: 'C10',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations).toEqual([])
+  })
+
+  it('still includes low-score key or high-frequency customers with only placeholder reasons', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'l1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['无/不涉及'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-01T10:00:00.000Z',
+        },
+        {
+          id: 'l2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 4,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['业务使用完毕'],
+          customerName: '普通高频',
+          customerCode: 'C11',
+          createdAt: '2026-06-02T10:00:00.000Z',
+        },
+        {
+          id: 'l3',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 3,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['其他'],
+          customerName: '普通高频',
+          customerCode: 'C11',
+          createdAt: '2026-06-03T10:00:00.000Z',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations.map((item) => item.customerName)).toEqual([
+      '普通高频',
+      '中国铁塔某省公司',
+    ])
+    expect(model.callbackRecommendations[0]).toMatchObject({
+      triggerType: '高频低分客户',
+      lowScoreLt7Count: 2,
+      isNegativeFeedback: false,
+    })
+    expect(model.callbackRecommendations[1]).toMatchObject({
+      triggerType: '重点客户',
+      lowScoreLt7Count: 1,
+      isNegativeFeedback: false,
+    })
+  })
+
+  it('merges a low-score hit and a high-score negative hit for the same customer and product', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'm1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 5,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['无/不涉及'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-01T10:00:00.000Z',
+          surveyName: '旧问卷',
+        },
+        {
+          id: 'm2',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 9,
+          channel: 'console',
+          importMonth: '2026-06',
+          feedbackReasonTexts: ['功能有缺失'],
+          customerName: '中国铁塔某省公司',
+          customerCode: 'C1',
+          createdAt: '2026-06-02T10:00:00.000Z',
+          surveyName: '控制台用后即评',
+        },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+
+    expect(model.callbackRecommendations).toHaveLength(1)
+    expect(model.callbackRecommendations[0]).toMatchObject({
+      lowScoreLt7Count: 1,
+      scoreBreakdown: '旧问卷*5分*1次',
+      triggerType: '重点客户；负面反馈',
+      isKeyCustomer: true,
+      isNegativeFeedback: true,
+    })
+    expect(model.callbackRecommendations[0].feedbackReasons).toEqual(['功能有缺失', '无/不涉及'])
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('1 次7分以下反馈')
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('反馈原因含负面表述')
   })
 
   it('builds callback non-ten trace rows from callback channel records', () => {

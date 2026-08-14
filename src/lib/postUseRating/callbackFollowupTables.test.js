@@ -30,6 +30,14 @@ describe('callbackFollowupTables', () => {
     })
   })
 
+  it('keeps only 反馈原因 in 客户反馈 when there is no 7分以下分布', () => {
+    expect(
+      buildQuestionnaireFollowupFeedback({
+        feedbackReasonSummary: '功能有缺失（1）',
+      }),
+    ).toBe('反馈原因：功能有缺失（1）')
+  })
+
   it('joins callback non-ten fields into 客户反馈', () => {
     const item = {
       importMonth: '2026-06',
