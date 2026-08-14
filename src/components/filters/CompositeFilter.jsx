@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { Button, DatePicker, Dropdown, Input, Select, Tag, Tooltip, Typography } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 
-const MULTI_SEARCH_TOKEN_SEPARATORS = [',', '\n', '\t', ' ']
+/** 逗号/换行/制表符分词；不用空格，避免「甲公司 北京」被拆开 */
+const MULTI_SEARCH_TOKEN_SEPARATORS = [',', '\n', '\t']
 
 /**
  * @typedef {'enum' | 'multiEnum' | 'dateRange' | 'multiSearch' | 'text'} CompositeFilterEditorKind

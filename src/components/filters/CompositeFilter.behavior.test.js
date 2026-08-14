@@ -9,6 +9,7 @@ describe('CompositeFilter special popover', () => {
     expect(source).toContain('getPopupContainer = () => panelRef.current || document.body')
     expect(source).toContain("mode={editorKind === 'multiSearch' ? 'tags' : 'multiple'}")
     expect(source).toContain("placeholder={editorKind === 'multiSearch' ? '搜索或粘贴，回车添加'")
+    expect(source).toContain("const MULTI_SEARCH_TOKEN_SEPARATORS = [',', '\\n', '\\t']")
     expect(source).toContain('maxTagCount="responsive"')
     expect(source).toContain('已选 {draftCount} 项，确定后生效')
     expect(source).toContain("event.key !== 'Escape'")
