@@ -102,7 +102,7 @@ HTML 月报（无侧栏）
 | `/tags?tab=products` | `analysisPostUseRating` / `focusTracked` |
 | `/tags?tab=key_customers` | 建议回访重点客户名单 |
 | `/actions?tab=post-use-jira` | 用后即评 JIRA |
-| `/topics` | 专题分析 Demo，证据可含 `post_use_rating` |
+| `/topics` | 专题分析 Beta，证据可含 `post_use_rating` |
 
 ---
 

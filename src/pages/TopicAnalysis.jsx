@@ -358,7 +358,7 @@ export default function TopicAnalysis() {
       <Alert
         type="info"
         showIcon
-        message="Demo 版"
+        message="Beta 版"
         description={`系统推荐固定使用近 9 个月（${rollingPeriod.label}），按近期 4 个月与更早 5 个月对比。新建专题时才选择周期，不会改工作台的洞察周期。`}
       />
 

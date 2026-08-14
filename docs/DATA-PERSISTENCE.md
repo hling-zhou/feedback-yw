@@ -43,7 +43,7 @@
 | 用户与审计 | `users`, `audit_log` | ✅ |
 | 共享应用设置（非密钥） | `meta.app_settings_shared_v1` | ✅ |
 | 行动建议反馈 | `meta.recommendation_feedback_v1` | ✅ |
-| 专题分析报告（Demo） | `meta.topic_analysis_reports_v1` | ✅；口径见 [DESIGN-专题分析.md](./DESIGN-专题分析.md) §8 |
+| 专题分析报告（Beta） | `meta.topic_analysis_reports_v1` | ✅；口径见 [DESIGN-专题分析.md](./DESIGN-专题分析.md) §8 |
 
 ### 2.2 自动生成备份（P1，非权威）
 
