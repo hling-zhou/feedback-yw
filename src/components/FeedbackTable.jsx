@@ -11,24 +11,14 @@ import {
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import { extractTicketActualDate } from '../domain/ticketActualDate.js'
-
-const CHANNEL_LABELS = {
-  sms: '短信',
-  console: '控制台',
-  option: '选项类',
-  callback: '投诉回访',
-}
+import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
 
 /**
  * @param {string | undefined} channel
  * @param {string | undefined} sourceSubType
  */
 function channelLabel(channel, sourceSubType) {
-  if (channel && CHANNEL_LABELS[channel]) return CHANNEL_LABELS[channel]
-  if (sourceSubType === 'sms_survey') return '短信'
-  if (sourceSubType === 'web_survey') return '控制台'
-  if (sourceSubType === 'web_option') return '选项类'
-  return channel || sourceSubType || '—'
+  return getPostUseChannelLabel({ channel, sourceSubType })
 }
 
 /**

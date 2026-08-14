@@ -11,6 +11,10 @@ import {
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
 import { TODO_STATUS_FILTER_OPTIONS, LISTENING_REVIEWED_FILTER_OPTIONS } from './feedbackFilters.js'
+import {
+  getPostUseChannelLabel,
+  POST_USE_RATING_BAND_OPTIONS,
+} from './postUseRating/libraryFilters.js'
 
 /** @typedef {import('./feedbackFilters.js').FollowUpFilterValue} FollowUpFilterValue */
 /** @typedef {import('./feedbackFilters.js').FollowUpResolvedFilterValue} FollowUpResolvedFilterValue */
@@ -36,6 +40,9 @@ import { TODO_STATUS_FILTER_OPTIONS, LISTENING_REVIEWED_FILTER_OPTIONS } from '.
  * @property {import('./feedbackFilters.js').TodoStatusFilterValue | ''} todoStatus
  * @property {import('./feedbackFilters.js').ListeningReviewedFilterValue} listeningReviewed
  * @property {string} handlingKeyword
+ * @property {string} ratingScore
+ * @property {string} channel
+ * @property {string} commentKeyword
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
@@ -60,10 +67,17 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'myReview',
   'todoStatus',
   'listeningReviewed',
+  'ratingScore',
+  'channel',
+  'commentKeyword',
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
 export const FEEDBACK_FILTER_GROUPS = [
+  {
+    label: '用后即评',
+    keys: ['ratingScore', 'channel', 'commentKeyword'],
+  },
   {
     label: '工单',
     keys: ['ticketIds', 'customerNames', 'handlingKeyword', 'ticketDateFrom', 'dataSource'],
@@ -92,14 +106,36 @@ export const FEEDBACK_FILTER_GROUPS = [
 
 /** 用后即评 Tab 复合筛选（不含工单专属条件） */
 export const FEEDBACK_POST_USE_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
+  'ratingScore',
+  'channel',
+  'commentKeyword',
   'ticketIds',
   'customerNames',
-  'handlingKeyword',
   'ticketDateFrom',
   'problemType',
   'journeyL1',
   'resourcePool',
   'requestScene',
+])
+
+/** 投诉咨询 Tab 复合筛选（不含用后即评专用条件） */
+export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
+  'ticketIds',
+  'customerNames',
+  'handlingKeyword',
+  'ticketDateFrom',
+  'dataSource',
+  'problemType',
+  'complaintCauseL1',
+  'journeyL1',
+  'resourcePool',
+  'requestScene',
+  'ticketLlm',
+  'followUp',
+  'followUpResolved',
+  'todoStatus',
+  'listeningReviewed',
+  'myReview',
 ])
 
 /** 客服部回访 Tab 复合筛选 */
@@ -128,6 +164,9 @@ export const FEEDBACK_FILTER_LABELS = {
   myReview: '我的处理状态',
   todoStatus: '会议待办',
   listeningReviewed: '是否听音',
+  ratingScore: '评分',
+  channel: '渠道',
+  commentKeyword: '原文',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -152,6 +191,9 @@ export function createEmptyFeedbackFilters() {
     todoStatus: '',
     listeningReviewed: '',
     handlingKeyword: '',
+    ratingScore: '',
+    channel: '',
+    commentKeyword: '',
   }
 }
 
@@ -183,6 +225,9 @@ export function isFeedbackFilterActive(values, key) {
     case 'todoStatus':
     case 'listeningReviewed':
     case 'handlingKeyword':
+    case 'ratingScore':
+    case 'channel':
+    case 'commentKeyword':
       return Boolean(String(values[key] ?? '').trim())
     default:
       return false
@@ -198,6 +243,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (isFeedbackFilterActive(values, 'ticketIds')) keys.push('ticketIds')
   if (isFeedbackFilterActive(values, 'customerNames')) keys.push('customerNames')
   if (isFeedbackFilterActive(values, 'handlingKeyword')) keys.push('handlingKeyword')
+  if (isFeedbackFilterActive(values, 'commentKeyword')) keys.push('commentKeyword')
   if (isFeedbackFilterActive(values, 'ticketDateFrom')) keys.push('ticketDateFrom')
   if (values.dataSource) keys.push('dataSource')
   if (values.problemType) keys.push('problemType')
@@ -211,6 +257,8 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (values.myReview) keys.push('myReview')
   if (values.todoStatus) keys.push('todoStatus')
   if (values.listeningReviewed) keys.push('listeningReviewed')
+  if (values.ratingScore) keys.push('ratingScore')
+  if (values.channel) keys.push('channel')
   return keys
 }
 
@@ -253,6 +301,10 @@ export function formatFeedbackFilterChipLabel(key, values) {
       const keyword = String(values.handlingKeyword ?? '').trim()
       return keyword.length > 24 ? `${keyword.slice(0, 24)}…` : keyword
     }
+    case 'commentKeyword': {
+      const keyword = String(values.commentKeyword ?? '').trim()
+      return keyword.length > 24 ? `${keyword.slice(0, 24)}…` : keyword
+    }
     case 'ticketDateFrom': {
       const from = values.ticketDateFrom || '…'
       const to = values.ticketDateTo || '…'
@@ -287,6 +339,13 @@ export function formatFeedbackFilterChipLabel(key, values) {
         LISTENING_REVIEWED_FILTER_OPTIONS.find((item) => item.value === values.listeningReviewed)?.label ||
         values.listeningReviewed
       )
+    case 'ratingScore':
+      return (
+        POST_USE_RATING_BAND_OPTIONS.find((item) => item.value === values.ratingScore)?.label ||
+        (values.ratingScore === EMPTY_FILTER_TOKEN ? '未评分' : `${values.ratingScore} 分`)
+      )
+    case 'channel':
+      return getPostUseChannelLabel(values.channel)
     default:
       return String(values[key] ?? '')
   }
@@ -413,6 +472,9 @@ export function feedbackFiltersToUrlPatch(filters) {
     ticketIds: filters.ticketIds.length ? filters.ticketIds.join(',') : '',
     customerNames: filters.customerNames.length ? filters.customerNames.join(',') : '',
     handlingKeyword: filters.handlingKeyword,
+    ratingScore: filters.ratingScore,
+    channel: filters.channel,
+    commentKeyword: filters.commentKeyword,
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
     listeningReviewed: filters.listeningReviewed,

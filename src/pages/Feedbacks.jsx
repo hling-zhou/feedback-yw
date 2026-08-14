@@ -66,6 +66,13 @@ import {
   parseFeedbackSearchParams,
   patchFeedbackSearchParams,
 } from '../lib/feedbackFilters.js'
+import {
+  listPostUseChannelFilterOptions,
+  listPostUseRatingFilterOptions,
+  matchesCommentKeywordFilter,
+  matchesPostUseChannelFilter,
+  matchesPostUseRatingFilter,
+} from '../lib/postUseRating/libraryFilters.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import {
   applyFeedbackFilterPatch,
@@ -73,6 +80,7 @@ import {
   createEmptyFeedbackFilters,
   FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
   FEEDBACK_POST_USE_COMPOSITE_KEYS,
+  FEEDBACK_TICKET_COMPOSITE_KEYS,
   feedbackFiltersFromParsed,
   feedbackFiltersToUrlPatch,
   restrictFeedbackFiltersToKeys,
@@ -363,9 +371,17 @@ export default function Feedbacks() {
     }
   }, [postUseNon10NeedingJourney, updateFeedback])
 
+  const filterOptionRecords = useMemo(() => {
+    if (!isPostUseLane) return periodFeedbacks
+    return periodFeedbacks.filter(isPostUseRatingLibraryRecord).map((fb) => {
+      const product = String(fb.product || fb.productName || '').trim()
+      return product && product !== fb.product ? { ...fb, product } : fb
+    })
+  }, [isPostUseLane, periodFeedbacks])
+
   const handleProductChange = useCallback(
     (product) => {
-      const scoped = scopeFeedbacksByProduct(periodFeedbacks, product || '')
+      const scoped = scopeFeedbacksByProduct(filterOptionRecords, product || '')
       const next = cascadeClearProductDependentFilters(
         applyFeedbackFilterPatch('product', { product: product || '' }, filters),
         scoped,
@@ -373,15 +389,15 @@ export default function Feedbacks() {
       setFilters(next)
       syncFiltersToUrl(next)
     },
-    [filters, periodFeedbacks, syncFiltersToUrl],
+    [filters, filterOptionRecords, syncFiltersToUrl],
   )
 
   const scopedFeedbacks = useMemo(
-    () => scopeFeedbacksByProduct(periodFeedbacks, filters.product || undefined),
-    [periodFeedbacks, filters.product],
+    () => scopeFeedbacksByProduct(filterOptionRecords, filters.product || undefined),
+    [filterOptionRecords, filters.product],
   )
 
-  const products = useMemo(() => listProducts(periodFeedbacks), [periodFeedbacks])
+  const products = useMemo(() => listProducts(filterOptionRecords), [filterOptionRecords])
   const pools = useMemo(
     () => listResourcePools(scopedFeedbacks, filters.product || undefined),
     [scopedFeedbacks, filters.product],
@@ -394,6 +410,14 @@ export default function Feedbacks() {
   const showComplaintCauseFilter = !filters.dataSource || filters.dataSource === 'complaint_ticket'
   const journeys = useMemo(() => countByField(scopedFeedbacks, 'journeyL1'), [scopedFeedbacks])
   const requestScenes = useMemo(() => countByField(scopedFeedbacks, 'requestScene'), [scopedFeedbacks])
+  const ratingScoreOptions = useMemo(
+    () => (isPostUseLane ? listPostUseRatingFilterOptions(scopedFeedbacks) : []),
+    [isPostUseLane, scopedFeedbacks],
+  )
+  const channelOptions = useMemo(
+    () => (isPostUseLane ? listPostUseChannelFilterOptions(scopedFeedbacks) : []),
+    [isPostUseLane, scopedFeedbacks],
+  )
   const unknownJourneySummary = useMemo(
     () => summarizeUnknownJourneyRecords(periodFeedbacks),
     [periodFeedbacks],
@@ -432,14 +456,14 @@ export default function Feedbacks() {
     for (const tid of filters.ticketIds) {
       if (tid) map.set(tid, tid)
     }
-    for (const fb of periodFeedbacks) {
+    for (const fb of filterOptionRecords) {
       const tid = fb.ticketId?.trim()
       if (tid) map.set(tid, tid)
     }
     return [...map.values()]
       .sort((a, b) => a.localeCompare(b))
       .map((tid) => ({ label: tid, value: tid }))
-  }, [periodFeedbacks, filters.ticketIds])
+  }, [filterOptionRecords, filters.ticketIds])
 
   const customerNameOptions = useMemo(() => {
     /** @type {Map<string, string>} */
@@ -448,14 +472,14 @@ export default function Feedbacks() {
       const trimmed = String(name || '').trim()
       if (trimmed) map.set(trimmed, trimmed)
     }
-    for (const fb of periodFeedbacks) {
+    for (const fb of filterOptionRecords) {
       const name = String(fb.customerName || '').trim()
       if (name) map.set(name, name)
     }
     return [...map.values()]
       .sort((a, b) => a.localeCompare(b, 'zh-CN'))
       .map((name) => ({ label: name, value: name }))
-  }, [periodFeedbacks, filters.customerNames])
+  }, [filterOptionRecords, filters.customerNames])
 
   const visitCustomerNameOptions = useMemo(() => {
     /** @type {Map<string, string>} */
@@ -537,6 +561,9 @@ export default function Feedbacks() {
       if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
       if (!matchesListeningReviewedFilter(fb, filters.listeningReviewed)) return false
       if (!matchesHandlingKeywordFilter(fb, filters.handlingKeyword)) return false
+      if (!matchesCommentKeywordFilter(fb, filters.commentKeyword)) return false
+      if (!matchesPostUseRatingFilter(fb, filters.ratingScore)) return false
+      if (!matchesPostUseChannelFilter(fb, filters.channel)) return false
       if (!matchesCustomerNamesFilter(fb, filters.customerNames)) return false
       return true
     })
@@ -909,10 +936,12 @@ export default function Feedbacks() {
             journeys,
             resourcePools: pools,
             requestScenes,
-            filterKeys: isPostUseLane ? FEEDBACK_POST_USE_COMPOSITE_KEYS : undefined,
+            filterKeys: isPostUseLane ? FEEDBACK_POST_USE_COMPOSITE_KEYS : FEEDBACK_TICKET_COMPOSITE_KEYS,
             emptyPlaceholder: isPostUseLane
-              ? '选择属性筛选（客户、工单号、内容、日期…）'
+              ? '选择属性筛选（评分、渠道、原文、客户…）'
               : '选择属性筛选（工单号、客户、内容、日期…）',
+            ratingScoreOptions,
+            channelOptions,
           }}
           actions={
             <>

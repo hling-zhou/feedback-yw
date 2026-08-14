@@ -36,7 +36,14 @@ describe('Feedbacks lane-scoped notices', () => {
 
   it('narrows post-use composite keys and keeps source locked on clear', () => {
     expect(source).toContain('FEEDBACK_POST_USE_COMPOSITE_KEYS')
+    expect(source).toContain('FEEDBACK_TICKET_COMPOSITE_KEYS')
     expect(source).toContain('restrictFeedbackFiltersToKeys')
     expect(source).toContain("if (isPostUseLane) next.dataSource = 'post_use_rating'")
+    expect(source).toContain('filterOptionRecords')
+    expect(source).toContain('ratingScoreOptions')
+    expect(source).toContain('channelOptions')
+    expect(source).toContain('matchesCommentKeywordFilter')
+    expect(source).toContain('matchesPostUseRatingFilter')
+    expect(source).toContain('matchesPostUseChannelFilter')
   })
 })

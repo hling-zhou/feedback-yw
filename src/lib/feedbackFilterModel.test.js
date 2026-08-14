@@ -4,6 +4,7 @@ import {
   createEmptyFeedbackFilters,
   FEEDBACK_FILTER_CHIP_VALUE_MAX_LEN,
   FEEDBACK_POST_USE_COMPOSITE_KEYS,
+  FEEDBACK_TICKET_COMPOSITE_KEYS,
   formatFeedbackFilterChipLabel,
   getFeedbackFilterAddDisabledReason,
   isFeedbackFilterActive,
@@ -45,6 +46,21 @@ describe('feedbackFilterModel', () => {
     expect(isFeedbackFilterActive(values, 'product')).toBe(true)
     expect(isFeedbackFilterActive(values, 'customerNames')).toBe(true)
     expect(isFeedbackFilterActive(values, 'handlingKeyword')).toBe(true)
+  })
+
+  it('formats post-use rating, channel and comment chips', () => {
+    const values = {
+      ...createEmptyFeedbackFilters(),
+      ratingScore: 'non10',
+      channel: 'sms',
+      commentKeyword: '延迟高到无法使用请尽快处理网络质量问题',
+    }
+    expect(formatFeedbackFilterChipLabel('ratingScore', values)).toBe('非 10 分')
+    expect(formatFeedbackFilterChipLabel('channel', values)).toBe('短信')
+    expect(formatFeedbackFilterChipLabel('commentKeyword', values)).toBe(
+      '延迟高到无法使用请尽快处理网络质量问题',
+    )
+    expect(formatFeedbackFilterChipLabel('ratingScore', { ...values, ratingScore: '8' })).toBe('8 分')
   })
 
   it('truncates a single long ticket id or customer name on the chip', () => {
@@ -97,6 +113,29 @@ describe('feedbackFilterModel', () => {
     expect(next.customerNames).toEqual(['客户甲'])
     expect(next.followUp).toBe('')
     expect(next.dataSource).toBe('post_use_rating')
+  })
+
+  it('keeps post-use rating/channel/comment keys and drops ticket-only filters', () => {
+    const values = {
+      ...createEmptyFeedbackFilters(),
+      ratingScore: 'non10',
+      channel: 'sms',
+      commentKeyword: '延迟',
+      handlingKeyword: '处理意见',
+      followUp: 'has',
+    }
+    const next = restrictFeedbackFiltersToKeys(values, FEEDBACK_POST_USE_COMPOSITE_KEYS)
+    expect(next.ratingScore).toBe('non10')
+    expect(next.channel).toBe('sms')
+    expect(next.commentKeyword).toBe('延迟')
+    expect(next.handlingKeyword).toBe('')
+    expect(next.followUp).toBe('')
+    expect(FEEDBACK_POST_USE_COMPOSITE_KEYS).toEqual(
+      expect.arrayContaining(['ratingScore', 'channel', 'commentKeyword']),
+    )
+    expect(FEEDBACK_TICKET_COMPOSITE_KEYS).not.toContain('ratingScore')
+    expect(FEEDBACK_TICKET_COMPOSITE_KEYS).not.toContain('channel')
+    expect(FEEDBACK_TICKET_COMPOSITE_KEYS).not.toContain('commentKeyword')
   })
 
   it('keeps ticket date range when restricting to post-use keys', () => {

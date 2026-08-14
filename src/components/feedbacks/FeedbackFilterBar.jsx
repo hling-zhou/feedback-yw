@@ -20,10 +20,12 @@ import FeedbackCompositeFilter from './FeedbackCompositeFilter.jsx'
  *   complaintCauseOptions?: { name: string }[]
  *   journeys?: { name: string }[]
  *   resourcePools?: { name: string }[]
- *   requestScenes?: { name: string }[]
- *   dataSourceTypes?: string[]
+   *   requestScenes?: { name: string }[]
+   *   dataSourceTypes?: string[]
    *   filterKeys?: string[]
    *   emptyPlaceholder?: string
+   *   ratingScoreOptions?: { label: string; value: string }[]
+   *   channelOptions?: { label: string; value: string }[]
    * }} [props.options]
  * @param {import('react').ReactNode} [props.actions]
  */

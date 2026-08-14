@@ -34,6 +34,23 @@ describe('feedbackFilterEditors data source scope', () => {
     })
   })
 
+  it('lists rating and channel options from the provided catalog', () => {
+    const rating = listEnumOptionsForFilterKey(
+      'ratingScore',
+      createEmptyFeedbackFilters(),
+      { ratingScoreOptions: [{ label: '非 10 分', value: 'non10' }] },
+      false,
+    )
+    const channel = listEnumOptionsForFilterKey(
+      'channel',
+      createEmptyFeedbackFilters(),
+      { channelOptions: [{ label: '短信', value: 'sms' }] },
+      false,
+    )
+    expect(rating).toEqual([{ label: '非 10 分', value: 'non10' }])
+    expect(channel).toEqual([{ label: '短信', value: 'sms' }])
+  })
+
   it('lists customer name options from the provided catalog', () => {
     const options = listEnumOptionsForFilterKey(
       'customerNames',

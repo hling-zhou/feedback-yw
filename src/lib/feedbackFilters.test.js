@@ -87,6 +87,15 @@ describe('feedbackFilters', () => {
     expect(parsed.handlingKeyword).toBe('带宽')
   })
 
+  it('parseFeedbackSearchParams includes post-use rating filters', () => {
+    const parsed = parseFeedbackSearchParams(
+      new URLSearchParams('ratingScore=non10&channel=sms&commentKeyword=%E5%BB%B6%E8%BF%9F'),
+    )
+    expect(parsed.ratingScore).toBe('non10')
+    expect(parsed.channel).toBe('sms')
+    expect(parsed.commentKeyword).toBe('延迟')
+  })
+
   it('patchFeedbackSearchParams round-trip', () => {
     const next = patchFeedbackSearchParams(new URLSearchParams('product=VPC'), {
       product: '',
@@ -100,6 +109,17 @@ describe('feedbackFilters', () => {
     expect(next.get('ticketIds')).toBe('T-1,T-2')
     expect(next.get('customerNames')).toBe('客户A,客户B')
     expect(next.get('handlingKeyword')).toBe('安全组')
+  })
+
+  it('patchFeedbackSearchParams round-trips post-use rating filters', () => {
+    const next = patchFeedbackSearchParams(new URLSearchParams(), {
+      ratingScore: 'lt7',
+      channel: 'console',
+      commentKeyword: '卡顿',
+    })
+    expect(next.get('ratingScore')).toBe('lt7')
+    expect(next.get('channel')).toBe('console')
+    expect(next.get('commentKeyword')).toBe('卡顿')
   })
 
   it('matchesHandlingKeywordFilter does case-insensitive substring match on handlingText', () => {

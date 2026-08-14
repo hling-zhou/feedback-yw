@@ -35,6 +35,9 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   myReview: 'enum',
   todoStatus: 'enum',
   listeningReviewed: 'enum',
+  ratingScore: 'enum',
+  channel: 'enum',
+  commentKeyword: 'text',
 }
 
 /**
@@ -81,6 +84,8 @@ export function buildFilterPatchFromDraft(filterKey, draft) {
       }
     case 'handlingKeyword':
       return { handlingKeyword: String(draft ?? '').trim() }
+    case 'commentKeyword':
+      return { commentKeyword: String(draft ?? '').trim() }
     case 'ticketDateFrom': {
       const range = /** @type {[import('dayjs').Dayjs | null, import('dayjs').Dayjs | null] | null} */ (
         draft
@@ -168,6 +173,10 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       return TODO_STATUS_FILTER_OPTIONS.filter((item) => item.value)
     case 'listeningReviewed':
       return LISTENING_REVIEWED_FILTER_OPTIONS.filter((item) => item.value)
+    case 'ratingScore':
+      return options.ratingScoreOptions || []
+    case 'channel':
+      return options.channelOptions || []
     default:
       return []
   }

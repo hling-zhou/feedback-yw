@@ -296,6 +296,9 @@ export function parseFeedbackSearchParams(searchParams) {
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
     listeningReviewed: parseListeningReviewedFilterParam(searchParams.get('listeningReviewed')),
     handlingKeyword: searchParams.get('handlingKeyword')?.trim() || '',
+    ratingScore: searchParams.get('ratingScore')?.trim() || '',
+    channel: searchParams.get('channel')?.trim() || '',
+    commentKeyword: searchParams.get('commentKeyword')?.trim() || '',
   }
 }
 
@@ -322,6 +325,9 @@ export function patchFeedbackSearchParams(base, patch) {
     'todoStatus',
     'listeningReviewed',
     'handlingKeyword',
+    'ratingScore',
+    'channel',
+    'commentKeyword',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue
@@ -389,6 +395,9 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   todoStatus?: string
  *   listeningReviewed?: string
  *   handlingKeyword?: string
+ *   ratingScore?: string
+ *   channel?: string
+ *   commentKeyword?: string
  * }} [params]
  */
 export function buildFeedbacksUrl(params = {}) {
@@ -413,6 +422,9 @@ export function buildFeedbacksUrl(params = {}) {
     'todoStatus',
     'listeningReviewed',
     'handlingKeyword',
+    'ratingScore',
+    'channel',
+    'commentKeyword',
   ]
   for (const key of stringFields) {
     const value = params[key]?.trim()
