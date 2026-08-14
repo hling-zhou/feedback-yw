@@ -2,16 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Form,
-  Input,
   Popconfirm,
-  Select,
   Space,
   Table,
   Typography,
   message,
 } from 'antd'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
-import { POST_USE_JIRA_STATUSES } from '../domain/postUseJira.js'
 import {
   deletePostUseJiraItem,
   deletePostUseJiraItems,
@@ -20,6 +17,12 @@ import {
 } from '../lib/postUseJiraClient.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import PostUseJiraDrawer from '../components/actions/PostUseJiraDrawer.jsx'
+import PostUseJiraCompositeFilter from '../components/actions/PostUseJiraCompositeFilter.jsx'
+import {
+  clearAllPostUseJiraFilters,
+  createEmptyPostUseJiraFilters,
+  postUseJiraFiltersToListQuery,
+} from '../lib/postUseJiraFilterModel.js'
 
 const PAGE_SIZE = 20
 
@@ -31,24 +34,18 @@ export default function PostUseJiraTab() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
-  const [importMonth, setImportMonth] = useState('')
-  const [productName, setProductName] = useState('')
-  const [status, setStatus] = useState('')
-  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState(createEmptyPostUseJiraFilters)
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
 
   const query = useMemo(
     () => ({
-      importMonth: importMonth.trim() || undefined,
-      productName: productName.trim() || undefined,
-      status: status || undefined,
-      search: search.trim() || undefined,
+      ...postUseJiraFiltersToListQuery(filters),
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
     }),
-    [importMonth, productName, status, search, page],
+    [filters, page],
   )
 
   const load = async () => {
@@ -146,49 +143,20 @@ export default function PostUseJiraTab() {
           ) : null}
         </Space>
       </div>
-      <Space wrap>
-        <Input
-          allowClear
-          placeholder="数据月份"
-          value={importMonth}
-          onChange={(event) => {
-            setImportMonth(event.target.value)
+      <div className="flex flex-wrap items-start gap-2">
+        <PostUseJiraCompositeFilter
+          className="min-w-0 flex-1"
+          filters={filters}
+          onFiltersChange={(next) => {
+            setFilters(next)
             setPage(1)
           }}
-          style={{ width: 140 }}
-        />
-        <Input
-          allowClear
-          placeholder="产品名称"
-          value={productName}
-          onChange={(event) => {
-            setProductName(event.target.value)
+          onClearFilters={() => {
+            setFilters(clearAllPostUseJiraFilters())
             setPage(1)
           }}
-          style={{ width: 180 }}
         />
-        <Select
-          allowClear
-          placeholder="状态"
-          value={status || undefined}
-          options={POST_USE_JIRA_STATUSES.map((value) => ({ label: value, value }))}
-          onChange={(value) => {
-            setStatus(value || '')
-            setPage(1)
-          }}
-          style={{ width: 140 }}
-        />
-        <Input.Search
-          allowClear
-          placeholder="客户名称 / 编码 / JIRA"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value)
-            setPage(1)
-          }}
-          style={{ width: 240 }}
-        />
-      </Space>
+      </div>
       <Table
         size="small"
         rowKey="id"
