@@ -51,6 +51,8 @@ import {
   UNKNOWN_JOURNEY_REASON_LABELS,
 } from '../lib/journeyRetagSummary.js'
 import ImportAnalysisPanel from '../components/ImportAnalysisPanel.jsx'
+import ImportCustomerRestorePanel from '../components/ImportCustomerRestorePanel.jsx'
+import { CUSTOMER_RESTORE_IMPORT_ENABLED } from '../lib/customerRestore/constants.js'
 import ComplaintCauseReviewAdminModal from '../components/ComplaintCauseReviewAdminModal.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
@@ -121,6 +123,7 @@ export default function Feedbacks() {
   const [view, setView] = useState('table')
   const [filters, setFilters] = useState(createEmptyFeedbackFilters)
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
+  const [importCustomerRestoreOpen, setImportCustomerRestoreOpen] = useState(false)
   const [complaintCauseReviewOpen, setComplaintCauseReviewOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [customerVisitRecords, setCustomerVisitRecords] = useState([])
@@ -866,6 +869,15 @@ export default function Feedbacks() {
                   导入分析结果
                 </Button>
               </Tooltip>
+              {CUSTOMER_RESTORE_IMPORT_ENABLED ? (
+                <PermissionGate permission="import">
+                  <Tooltip title="临时：按工单号回填已脱敏工单的客户名称/编码。8 月及以后数据会自带这些字段，完成后可下架。">
+                    <Button onClick={() => setImportCustomerRestoreOpen(true)}>
+                      复原客户信息（临时）
+                    </Button>
+                  </Tooltip>
+                </PermissionGate>
+              ) : null}
               <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
                 导出分析结果
               </Button>
@@ -963,6 +975,19 @@ export default function Feedbacks() {
           destroyOnClose
         >
           <ImportAnalysisPanel inModal onImportComplete={() => setImportAnalysisOpen(false)} />
+        </Modal>
+      ) : null}
+
+      {!isCustomerVisitLane && CUSTOMER_RESTORE_IMPORT_ENABLED ? (
+        <Modal
+          title="按工单号复原客户信息（临时）"
+          open={importCustomerRestoreOpen}
+          onCancel={() => setImportCustomerRestoreOpen(false)}
+          footer={null}
+          width={720}
+          destroyOnClose
+        >
+          <ImportCustomerRestorePanel onImportComplete={() => setImportCustomerRestoreOpen(false)} />
         </Modal>
       ) : null}
 

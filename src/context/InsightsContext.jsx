@@ -100,6 +100,8 @@ import {
 } from '../snapshots/index.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { applyImportAnalysisToRecords } from '../lib/importAnalysis.js'
+import { applyCustomerRestoreToRecords } from '../lib/customerRestore/customerRestoreImport.js'
+import { CUSTOMER_RESTORE_SESSION_LABEL } from '../lib/customerRestore/constants.js'
 import {
   SNAPSHOT_AUTO_REBUILD_DEBOUNCE_MS,
   snapshotsHavePeriodData,
@@ -1880,6 +1882,138 @@ export function InsightsProvider({ children }) {
     ],
   )
 
+  const importCustomerRestore = useCallback(
+    /**
+     * @param {{ ticketId: string, fields: Record<string, string> }[]} validRows
+     * @param {(text: string) => void} [reportProgress]
+     */
+    async (validRows, reportProgress) => {
+      if (!validRows.length) {
+        return {
+          appliedRowCount: 0,
+          skippedRowCount: 0,
+          updatedRecordCount: 0,
+          unchangedRecordCount: 0,
+          skippedUnknownTicketIds: [],
+        }
+      }
+
+      if (reprocessingRef.current) {
+        throw new Error(IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP)
+      }
+      if (importLockRef.current) {
+        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
+      }
+
+      let sessionStarted = false
+      const progress = (text) => {
+        reportProgress?.(text)
+        if (sessionStarted) setImportSessionProgress(text)
+      }
+
+      try {
+        await prepareSharedBackgroundTask('import', {
+          progress: '正在复原客户信息…',
+          meta: {
+            importKind: 'customer_restore',
+            rowCount: validRows.length,
+            batchName: CUSTOMER_RESTORE_SESSION_LABEL,
+          },
+        })
+        beginImportSession({
+          kind: 'customer_restore',
+          batchName: CUSTOMER_RESTORE_SESSION_LABEL,
+          progress: '正在复原客户信息…',
+        })
+        sessionStarted = true
+
+        progress('正在加载库内工单…')
+        await adapter.init()
+        const { records: allRecords } = await fetchAllRecordPages(adapter)
+
+        progress('正在按工单号回写客户字段…')
+        const applyResult = applyCustomerRestoreToRecords(allRecords, validRows)
+
+        if (!applyResult.updatedRecords.length) {
+          return {
+            appliedRowCount: applyResult.appliedRowCount,
+            skippedRowCount: applyResult.skippedRowCount,
+            updatedRecordCount: 0,
+            unchangedRecordCount: applyResult.unchangedRecordCount,
+            skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+          }
+        }
+
+        const updatedById = applyResult.updatedById
+        const mergedVisible = feedbacksRef.current.map((fb) =>
+          updatedById.has(fb.id) ? updatedById.get(fb.id) : fb,
+        )
+        feedbacksRef.current = mergedVisible
+        setFeedbacks(mergedVisible)
+
+        if (storageReady) {
+          skipPersistRef.current = true
+          try {
+            progress(`正在保存（0/${applyResult.updatedRecords.length}）…`)
+            await persistRecordUpdates(adapter, applyResult.updatedRecords, {
+              onProgress: (uploaded, total) => {
+                progress(`正在保存（${uploaded}/${total}）…`)
+              },
+            })
+            if (typeof adapter.getDataRevision === 'function') {
+              const rev = await adapter.getDataRevision()
+              dataRevisionRef.current = rev.revision
+            } else {
+              const rev = await fetchDataRevision()
+              dataRevisionRef.current = rev.revision
+            }
+          } finally {
+            skipPersistRef.current = false
+          }
+        }
+
+        if (currentPeriod) {
+          progress('正在排队刷新洞察快照…')
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: mergedVisible,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+
+        emit('CustomerRestoreCompleted', {
+          appliedRowCount: applyResult.appliedRowCount,
+          skippedRowCount: applyResult.skippedRowCount,
+          updatedRecordCount: applyResult.updatedRecordCount,
+          skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+        })
+
+        return {
+          appliedRowCount: applyResult.appliedRowCount,
+          skippedRowCount: applyResult.skippedRowCount,
+          updatedRecordCount: applyResult.updatedRecordCount,
+          unchangedRecordCount: applyResult.unchangedRecordCount,
+          skippedUnknownTicketIds: applyResult.skippedUnknownTicketIds,
+        }
+      } finally {
+        if (sessionStarted) endImportSession()
+        await releaseSharedBackgroundTask()
+      }
+    },
+    [
+      adapter,
+      beginImportSession,
+      currentPeriod,
+      endImportSession,
+      prepareSharedBackgroundTask,
+      releaseSharedBackgroundTask,
+      scheduleSnapshotRebuild,
+      setImportSessionProgress,
+      storageReady,
+    ],
+  )
+
   const replaceAll = useCallback(
     async (records) => {
       setFeedbacks(records)
@@ -2482,6 +2616,7 @@ export function InsightsProvider({ children }) {
       updateFeedback,
       ingestUpdatedRecords,
       importAnalysisResults,
+      importCustomerRestore,
       replaceAll,
       clearAll,
       clearImportedData,
@@ -2577,6 +2712,7 @@ export function InsightsProvider({ children }) {
       updateFeedback,
       ingestUpdatedRecords,
       importAnalysisResults,
+      importCustomerRestore,
       replaceAll,
       clearAll,
       clearImportedData,
