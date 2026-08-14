@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
+  countCatalogRefsToTaxonomyKey,
   ensureTaxonomyProduct,
   syncCatalogProductsToTaxonomy,
-  countCatalogRefsToTaxonomyKey,
+  taxonomySnapshotContentEqual,
 } from './productCenterSync.js'
 
 describe('productCenterSync', () => {
@@ -146,5 +147,29 @@ describe('productCenterSync', () => {
       { key: 'x', taxonomyKey: 'generic' },
     ]
     expect(countCatalogRefsToTaxonomyKey(catalog, 'ecs')).toBe(1)
+  })
+
+  it('taxonomySnapshotContentEqual ignores updatedAt and tagLibraryVersion', () => {
+    const base = {
+      products: { generic: { key: 'generic', name: '通用', match: [], journeys: [] } },
+      sharedProblemTypes: [{ id: 'a', label: 'A' }],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      tagLibraryVersion: 'v1',
+    }
+    const later = {
+      ...base,
+      updatedAt: '2026-08-15T00:00:00.000Z',
+      tagLibraryVersion: 'v2',
+    }
+    expect(taxonomySnapshotContentEqual(base, later)).toBe(true)
+    expect(
+      taxonomySnapshotContentEqual(base, {
+        ...later,
+        products: {
+          ...base.products,
+          ecs: { key: 'ecs', name: '云主机', match: ['云主机'], journeys: [] },
+        },
+      }),
+    ).toBe(false)
   })
 })

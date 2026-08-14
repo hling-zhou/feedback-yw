@@ -42,6 +42,7 @@ import {
 } from '../lib/journeyRetagSummary.js'
 import { computeTicketLlmEnrichmentDelta } from '../lib/importEnrichmentStats.js'
 import {
+  applyManagedTaxonomySnapshot,
   getThemeRulesForProduct,
   initTaxonomyCacheFromBuiltin,
 } from '../lib/taxonomyLoader.js'
@@ -130,7 +131,7 @@ import {
   repairBuiltinTaxonomyJourneys,
   saveManagedTaxonomy,
 } from '../lib/tagLibrary/taxonomyManagedStore.js'
-import { syncCatalogProductsToTaxonomy } from '../lib/productCenterSync.js'
+import { syncCatalogProductsToTaxonomy, taxonomySnapshotContentEqual } from '../lib/productCenterSync.js'
 import { downloadManagedTaxonomyExcel } from '../lib/tagLibrary/taxonomyManageModel.js'
 import { listOrderVolumes, upsertOrderVolume } from '../storage/orderVolumeStore.js'
 import { listWanTouTargets, upsertWanTouTarget } from '../storage/wanTouTargetStore.js'
@@ -1345,7 +1346,9 @@ export function InsightsProvider({ children }) {
           taxonomyKey: String(p.taxonomyKey || p.key || '').trim(),
         }))
         const synced = syncCatalogProductsToTaxonomy(taxSnap, normalized)
-        merged = await saveManagedTaxonomy(adapter, synced)
+        merged = taxonomySnapshotContentEqual(taxSnap, synced)
+          ? applyManagedTaxonomySnapshot(taxSnap)
+          : await saveManagedTaxonomy(adapter, synced)
       }
       setTaxonomyMeta(merged)
       setSettingsState((prev) => attachJourneyRules({ ...prev }))

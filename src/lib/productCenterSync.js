@@ -132,6 +132,36 @@ export function syncCatalogProductsToTaxonomy(snapshot, catalogProducts) {
   return next
 }
 
+const TAXONOMY_SNAPSHOT_VOLATILE_KEYS = new Set(['updatedAt', 'tagLibraryVersion'])
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function stableSerialize(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  const keys = Object.keys(value)
+    .filter((key) => !TAXONOMY_SNAPSHOT_VOLATILE_KEYS.has(key))
+    .sort()
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`
+}
+
+/**
+ * 比较标签库快照内容，忽略 updatedAt / tagLibraryVersion。
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+export function taxonomySnapshotContentEqual(a, b) {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  try {
+    return stableSerialize(a) === stableSerialize(b)
+  } catch {
+    return false
+  }
+}
+
 /**
  * @param {TaxonomyManagedSnapshot} snapshot
  * @param {string} productKey
