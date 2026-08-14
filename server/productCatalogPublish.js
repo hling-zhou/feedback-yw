@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { normalizeCatalogProducts } from '../src/lib/productCatalogManageModel.js'
 import { META_KEY_PRODUCT_CATALOG_MANAGED } from '../src/storage/productCatalogStore.js'
 import { storageRepository } from './storageRepository.js'
-import { bumpDataRevision } from './dataRevision.js'
+import { bumpRecordsRevision } from './dataRevision.js'
 import { PROJECT_ROOT } from './taxonomyPublish.js'
 import { writeBufferAtomically } from './writeFileAtomic.js'
 
@@ -143,7 +143,7 @@ export function publishProductCatalogToFiles(options = {}) {
     jsonPath,
   }
   storageRepository.putMeta('product_catalog_last_publish', meta)
-  bumpDataRevision()
+  bumpRecordsRevision()
 
   return {
     ok: true,

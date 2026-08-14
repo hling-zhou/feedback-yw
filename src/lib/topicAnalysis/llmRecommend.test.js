@@ -64,6 +64,6 @@ describe('llmRecommend', () => {
       ],
     })
     const result = applyLlmRecommendResult(candidates, { cards: [{ id: 'nope' }] })
-    expect(result.map((card) => card.id)).toEqual(candidates.slice(0, 8).map((card) => card.id))
+    expect(result.map((card) => card.id)).toEqual(candidates.slice(0, 20).map((card) => card.id))
   })
 })

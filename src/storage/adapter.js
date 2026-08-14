@@ -63,7 +63,7 @@
  * @property {(candidates: import('../domain/tagCandidate.js').TagCandidate[]) => Promise<void>} putTagCandidates
  * @property {(id: string) => Promise<void>} deleteTagCandidate
  * @property {(options?: import('./clearImportedData.js').ClearImportedDataOptions) => Promise<import('./clearImportedData.js').ClearImportedDataResult>} [clearImportedData]
- * @property {() => Promise<{ revision: number; updatedAt: string | null }>} [getDataRevision]
+ * @property {() => Promise<{ revision: number; recordsRevision?: number; updatedAt: string | null }>} [getDataRevision]
  */
 
 export {}

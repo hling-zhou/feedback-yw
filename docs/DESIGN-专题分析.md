@@ -147,14 +147,24 @@
 
 ### 3.4 问题键（产品问题 / 共性分组）
 
-优先取第一个非空、且不是「未识别 / 未分类 / 未识别环节」的值：
+优先取第一个非空、且不是占位词的值：
 
 1. `problemType`  
 2. `feedbackReasonPrimary`  
 3. `feedbackReasonTexts[0]`  
 4. `journeyL1`  
 
-用后即评往往没有工单问题类型，因此允许落到评价原因或一级旅程，以便和工单对齐。没有问题键的记录**不进入**产品问题卡、共性卡。
+跳过：`未识别`、`未分类`、`未识别环节`、`未识别子环节`、`未知环节`、`无`、`无/不涉及`、`/`、`业务使用完毕`、`其他`。
+
+用后即评往往没有工单问题类型，因此允许落到评价原因或一级旅程，以便和工单对齐。没有问题键的记录**不进入**按问题键聚的产品问题卡、共性卡。
+
+### 3.4.1 二级旅程（并行分组）
+
+`journeyL2` 与问题键**并行**出卡，不是问题键的兜底。同一产品下同一二级旅程 → 产品问题卡；同一二级旅程跨 ≥2 个产品 → 共性卡。字符串精确相等，不做模糊「类似」。跳过空值与上面同一套占位词。卡片 id 带 `l2:` 前缀。标题仍是 `{产品} · {L2}` / `共性问题 · {L2}`。`type:title` 去重：L2 与问题键文本完全相同则只留分更高的一张。
+
+### 3.4.2 客户名占位
+
+无集团客户编码时，展示名为占位词、**11 位手机号**或纯长数字（≥8 位）的记录不进客户专题。`YDY_` 开头账号保留。有编码仍按编码聚。
 
 ### 3.5 产品名
 
@@ -183,7 +193,7 @@
 2. 否则名称去空白、去括号后**完全相等** → `name`（精确）  
 3. 都对不上 → 不算同一客户  
 
-分组键：有编码用 `code:规范化编码`，否则 `name:规范化名称`；两者都空则该条**不进客户专题**。`甲公司` 不会命中 `甲公司科技`。
+分组键：有编码用 `code:规范化编码`，否则 `name:规范化名称`；两者都空则该条**不进客户专题**。无编码且名称为占位词、手机号或纯长数字时也不进组。`甲公司` 不会命中 `甲公司科技`。
 
 历史脱敏工单可在反馈库用 **复原客户信息（临时）** 按工单号回填。8 月及以后源数据会自带客户字段；入口由 `CUSTOMER_RESTORE_IMPORT_ENABLED` 控制，改 `false` 即下架。专题分析本身不做客户主数据还原。
 
@@ -196,24 +206,26 @@
 ```mermaid
 flowchart LR
   records["近9个月 投诉+咨询+用后即评"] --> signals["按月聚合与场景打分"]
-  signals --> candidates["规则候选 最多 12 张"]
-  candidates --> cards["立刻展示 Top 8"]
+  signals --> candidates["规则候选 最多 30 张"]
+  candidates --> cards["立刻展示 Top 20"]
   candidates --> llm["一次 LLM：排序/合并/改写"]
   llm --> cards
   cards --> adopt["纳入分析 → 锁定窗口生成简报"]
 ```
 
-实现：`src/lib/topicAnalysis/recommendTopics.js`。入口先丢掉「10 分且无负面」的用后即评（`recommendScope.js`），再分组打分。推荐页还会拉取状态为 `pending_evaluation` / `in_progress` / `suspended` 的举措（最多 80 条）供「未闭环」打标。纳入后的简报对 `origin = recommended` 用同一过滤；自定义专题不滤。
+实现：`src/lib/topicAnalysis/recommendTopics.js`。入口先丢掉「10 分且无负面」的用后即评（`recommendScope.js`），再分组打分。推荐页还会拉取状态为 `pending_evaluation` / `in_progress` / `suspended` 的举措（最多 80 条）给卡补「未闭环」；改举措**不**触发整表重算。纳入后的简报对 `origin = recommended` 用同一过滤；自定义专题不滤。结果按记录侧版本缓存，见 §4.6。
 
 ### 4.1 三类对象怎么聚
 
 | 类型 | 分组键 | 卡片 id | 标题 |
 |------|--------|---------|------|
 | 客户 | 客户身份键 | `customer:{identityKey}` | `客户 · {名称或编码}` |
-| 产品问题 | `产品::问题键` | `product:{产品}:{问题键}` | `{产品} · {问题键}` |
-| 共性 | 问题键（跨产品） | `common:{问题键}` | `共性问题 · {问题键}` |
+| 产品问题（问题键） | `产品::问题键` | `product:{产品}:{问题键}` | `{产品} · {问题键}` |
+| 产品问题（二级旅程） | `产品::二级旅程` | `product:{产品}:l2:{L2}` | `{产品} · {L2}` |
+| 共性（问题键） | 问题键（跨产品） | `common:{问题键}` | `共性问题 · {问题键}` |
+| 共性（二级旅程） | 二级旅程（跨产品） | `common:l2:{L2}` | `共性问题 · {L2}` |
 
-同一窗口内三类并行出卡，再按分数去重截断。产品问题卡与共性卡可能同时出现（例如「云主机 · 控制台卡顿」和「共性问题 · 控制台卡顿」）；LLM 可以把它们合并。
+同一窗口内三类并行出卡，产品问题/共性各有问题键与二级旅程两套，再按分数去重截断。产品问题卡与共性卡可能同时出现；LLM 可以把它们合并。
 
 ### 4.2 入选门槛
 
@@ -247,11 +259,16 @@ flowchart LR
 
 ### 4.4 规则打分
 
-用于规则排序（LLM 可重排）。公式：
+三类卡共用同一公式（客户 / 产品问题 / 共性）。不再加总条数，也不再加全窗口负向 ×2。简介仍展示真实条数。
+
+| 信号 | 用后即评 | 投诉 / 咨询 |
+|------|----------|-------------|
+| 近期密度 | 近期 `ratingScore !== 10` 的月均 | 近期工单月均（开了单就算，含中性咨询） |
+| 近期负向 | 近期 `ratingScore < 7` 的月均 | 近期轻度不满 / 不满 / 强烈不满的月均（中性咨询不算） |
 
 ```
-条数
-+ 负向条数 × 2
+log1p(近期密度月均) × 10
++ log1p(近期负向月均) × 12
 + 覆盖月数 × 3
 + 加重倍率加分 × 8
 + (产品数 − 1) × 4
@@ -261,7 +278,7 @@ flowchart LR
 + 强负向/加急 × 2
 ```
 
-其中「加重倍率加分」仅在已打上「近期加重」时取 `max(0, worseningRatio − 1)`，否则为 0。例如近期月均正好是基线的 1.5 倍，加分为 `0.5 × 8 = 4`。
+其中「加重倍率加分」仅在已打上「近期加重」时取 `max(0, worseningRatio − 1)`，否则为 0。例如近期月均正好是基线的 1.5 倍，加分为 `0.5 × 8 = 4`。月均分母为近期 4 / 基线 5（至少为 1）。
 
 `priority`：分数 ≥ 20，或带「近期加重 / 长期未解」→ `high`，否则 `medium`。仅作内部标记，页面以场景 Tag 为准。
 
@@ -269,18 +286,26 @@ flowchart LR
 
 1. 全部合格卡按 `score` 降序，同分按 `sampleSize` 降序。  
 2. 按 `type:title` 去重。  
-3. 取前 **12** 张作为 LLM 候选（`MAX_TOPIC_RECOMMEND_CANDIDATES`）。  
-4. 页面先展示规则 Top **8**（`MAX_TOPIC_RECOMMENDATIONS`）。  
+3. 取前 **30** 张作为 LLM 候选（`MAX_TOPIC_RECOMMEND_CANDIDATES`）。  
+4. 页面先展示规则 Top **20**（`MAX_TOPIC_RECOMMENDATIONS`）。  
 
 规则简介示例：「近9个月「弹性公网IP」上「带宽限速」出现 4 条。」规则理由由场景拼句，例如「覆盖 3 个月且近期仍在发生，跨 投诉工单、用后即评。」
 
 原话优先级：`customerQuote` → `painPoint` → `problemSummary` → `commentText` → `lowScoreReason` → `rawText` → `customerRequest`，截断 120 字，推荐卡最多 3 条。
 
+### 4.6 推荐缓存
+
+不按小时过期。缓存键 = `TOPIC_RECOMMEND_CACHE_VERSION` + `recordsRevision` + 窗口截止月。全局 `dataRevision` 不能当键（改举措也会 bump）。
+
+会整体重算：导入 / 改工单字段 / 复原客户 / 改产品目录 / 自然月滚动 / 规则版本变化。
+
+改举措不整体重算：进页用最新开放举措给已缓存卡补打或去掉「未闭环」。卡片不把工单全文写入 meta。点「纳入分析」时再取数。
+
 ---
 
 ## 5. LLM：排序 / 合并 / 改写（不选题）
 
-实现：`src/lib/topicAnalysis/llmRecommend.js`。仅当 `isLlmAvailable(settings)` 为真时调用；未配置或失败则保留规则 Top 8。
+实现：`src/lib/topicAnalysis/llmRecommend.js`。仅当 `isLlmAvailable(settings)` 为真时调用；未配置或失败则保留规则 Top 20。
 
 ### 5.1 输入（禁止传全文工单）
 
@@ -301,9 +326,9 @@ flowchart LR
 | 约束 | 处理 |
 |------|------|
 | `id` / `mergeIds` 必须来自输入 | 未知 id 丢弃 |
-| 最多 8 张 | 超出截断 |
+| 最多 20 张 | 超出截断 |
 | 模型不能改条数、来源、原话 | 合并后由 `mergeRecommendCards` 对记录做并集再重算统计 |
-| 不能新造专题 | 输出里出现的新 id 直接忽略；若合法卡为 0 则回退规则 Top 8 |
+| 不能新造专题 | 输出里出现的新 id 直接忽略；若合法卡为 0 则回退规则 Top 20 |
 | `intro` / `whyNow` 各 1～2 句 | 空则保留规则文案 |
 
 合并后主卡保留第一张的标题与类型；`mergeIds` 记录被并入的候选 id。纳入分析时，主 id 或任一 `mergeIds` 已有报告则跳转已有报告，不新建第二份。
@@ -447,7 +472,8 @@ flowchart LR
 | `src/lib/productCatalog/resolveCatalogProduct.js` | 按 key/名称/规格精确对照目录产品 |
 | `src/lib/topicAnalysis/constants.js` | 类型/场景文案、数量上限、meta key |
 | `src/lib/topicAnalysis/customerIdentity.js` | 客户编码/名称/等级 |
-| `src/lib/topicAnalysis/recommendTopics.js` | 分组、场景、打分、合并 |
+| `src/lib/topicAnalysis/recommendTopics.js` | 分组、场景、打分、合并、未闭环叠加 |
+| `src/lib/topicAnalysis/recommendCache.js` | 按 recordsRevision + 月份缓存推荐卡 |
 | `src/lib/topicAnalysis/recommendScope.js` | 推荐：丢掉 10 分且无负面的用后即评 |
 | `src/lib/topicAnalysis/llmRecommend.js` | 推荐排序合并 |
 | `src/lib/topicAnalysis/matchQuery.js` | 产品名 + 问题片段匹配 |
@@ -472,7 +498,7 @@ flowchart LR
 npx vitest run src/lib/topicAnalysis/
 ```
 
-覆盖：9 个月窗口、产品并集收窄（至少一项分析）、推荐丢掉 10 分且无负面的用后即评（自定义不套）、客户编码优先、名称精确匹配（不做包含）、三类出卡、跨来源、长期/加重/跨产品/客户持续负面、报告去重、旧 runs 迁移、补充材料解析、LLM 合并时丢弃非法 id 并重算条数、理解范围时丢弃模型新造的产品/客户名。
+覆盖：9 个月窗口、产品并集收窄（至少一项分析）、推荐丢掉 10 分且无负面的用后即评（自定义不套）、客户编码优先、名称精确匹配（不做包含）、占位问题键/脏客户名跳过、二级旅程并行出卡、密度/负向打分、推荐缓存键、三类出卡、跨来源、长期/加重/跨产品/客户持续负面、报告去重、旧 runs 迁移、补充材料解析、LLM 合并时丢弃非法 id 并重算条数、理解范围时丢弃模型新造的产品/客户名。
 
 ---
 
@@ -567,8 +593,9 @@ npx vitest run src/lib/topicAnalysis/
 | `TOPIC_ROLLING_MONTHS` | 9 | 推荐与纳入锁定窗口 |
 | `TOPIC_RECENT_MONTHS` | 4 | 近期桶 |
 | `TOPIC_BASELINE_MONTHS` | 5 | 基线桶 |
-| `MAX_TOPIC_RECOMMEND_CANDIDATES` | 12 | 送给 LLM 的候选 |
-| `MAX_TOPIC_RECOMMENDATIONS` | 8 | 页面展示 |
+| `MAX_TOPIC_RECOMMEND_CANDIDATES` | 30 | 送给 LLM 的候选 |
+| `MAX_TOPIC_RECOMMENDATIONS` | 20 | 页面展示 |
+| `TOPIC_RECOMMEND_CACHE_VERSION` | 1 | 推荐缓存规则版本 |
 | `MAX_TOPIC_QUOTES` | 8 | 简报原话 |
 | `MAX_TOPIC_SOURCES` | 40 | 简报信息源 |
 | `MAX_EVIDENCE_SCAN` | 400 | 简报扫描记录上限 |

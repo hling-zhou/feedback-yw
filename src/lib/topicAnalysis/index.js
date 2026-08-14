@@ -1,4 +1,15 @@
-import { recommendTopics, topicFromUserQuery } from './recommendTopics.js'
+import {
+  applyUnresolvedOverlay,
+  compactRecommendCardsForCache,
+  recommendTopics,
+  topicFromUserQuery,
+} from './recommendTopics.js'
+import {
+  buildRecommendCacheKey,
+  loadRecommendCache,
+  recommendCacheMatches,
+  saveRecommendCache,
+} from './recommendCache.js'
 import {
   customTopicQueryHint,
   customTopicTypeMismatch,
@@ -34,6 +45,8 @@ import {
 export {
   recommendTopics,
   topicFromUserQuery,
+  applyUnresolvedOverlay,
+  compactRecommendCardsForCache,
   customTopicQueryHint,
   customTopicTypeMismatch,
   topicForPersist,
@@ -59,4 +72,8 @@ export {
   loadRecordsForTopicPeriod,
   periodFromSnapshot,
   snapshotPeriod,
+  buildRecommendCacheKey,
+  loadRecommendCache,
+  recommendCacheMatches,
+  saveRecommendCache,
 }

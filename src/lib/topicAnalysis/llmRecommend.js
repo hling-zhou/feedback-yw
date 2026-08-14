@@ -66,12 +66,12 @@ export async function polishRecommendationsWithLlm(candidates, settings) {
   const payload = candidates.map(compactCandidate)
   const data = await llmChatCompletion(settings, {
     temperature: 0.2,
-    max_tokens: 1600,
+    max_tokens: 4000,
     messages: [
       {
         role: 'system',
         content:
-          '你是云产品体验分析师。只根据给定候选专题做排序、合并相似项、改写简介与推荐理由。输出 JSON：{"cards":[{"id":"...","mergeIds":[],"intro":"...","whyNow":"..."}]}。id 与 mergeIds 必须来自输入。禁止编造新专题、工单、客户或数字。最多 8 张。每条 intro/whyNow 各 1-2 句。',
+          '你是云产品体验分析师。只根据给定候选专题做排序、合并相似项、改写简介与推荐理由。输出 JSON：{"cards":[{"id":"...","mergeIds":[],"intro":"...","whyNow":"..."}]}。id 与 mergeIds 必须来自输入。禁止编造新专题、工单、客户或数字。最多 20 张。每条 intro/whyNow 各 1-2 句。',
       },
       {
         role: 'user',

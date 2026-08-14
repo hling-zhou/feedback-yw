@@ -5,6 +5,9 @@ export const TOPIC_ANALYSIS_DEMO_NOTE =
 
 export const META_KEY_TOPIC_ANALYSIS_RUNS = 'topic_analysis_runs_v1'
 export const META_KEY_TOPIC_ANALYSIS_REPORTS = 'topic_analysis_reports_v1'
+export const META_KEY_TOPIC_ANALYSIS_RECOMMEND_CACHE = 'topic_analysis_recommend_cache_v1'
+/** 打分 / 占位 / 二级旅程 / Top20 改版后 bump，旧缓存自动失效 */
+export const TOPIC_RECOMMEND_CACHE_VERSION = 1
 
 /** @typedef {'customer' | 'product_issue' | 'common_issue'} TopicType */
 
@@ -17,8 +20,8 @@ export const TOPIC_TYPE_LABELS = {
   common_issue: '共性问题专题',
 }
 
-export const MAX_TOPIC_RECOMMENDATIONS = 8
-export const MAX_TOPIC_RECOMMEND_CANDIDATES = 12
+export const MAX_TOPIC_RECOMMENDATIONS = 20
+export const MAX_TOPIC_RECOMMEND_CANDIDATES = 30
 
 /** @typedef {'chronic' | 'worsening' | 'emerging' | 'cross_product' | 'customer_persistent' | 'key_customer' | 'cross_source' | 'high_severity' | 'unresolved'} TopicScenario */
 

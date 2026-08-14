@@ -22,9 +22,20 @@ import {
   normalizeIdentityText,
 } from './customerIdentity.js'
 import { filterRecordsForTopicRecommend } from './recommendScope.js'
+import { FEEDBACK_REASON_PLACEHOLDERS } from '../postUseRating/reasonTaxonomy.js'
 
-const SKIP_PROBLEM_KEYS = new Set(['', '未识别', '未分类', '未识别环节'])
+const SKIP_PROBLEM_KEYS = new Set([
+  '',
+  '未识别',
+  '未分类',
+  '未识别环节',
+  '未识别子环节',
+  '未知环节',
+  ...FEEDBACK_REASON_PLACEHOLDERS,
+])
 const OPEN_ACTION_STATUSES = new Set(['pending_evaluation', 'in_progress', 'suspended'])
+const PHONE_NAME_RE = /^1\d{10}$/
+const LONG_DIGIT_NAME_RE = /^\d{8,}$/
 
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -47,6 +58,21 @@ export function recordProblemKey(record) {
   return key
 }
 
+export function recordJourneyL2Key(record) {
+  const key = compactText(record?.journeyL2)
+  if (SKIP_PROBLEM_KEYS.has(key)) return ''
+  return key
+}
+
+export function isDirtyCustomerName(name) {
+  const text = compactText(name)
+  if (!text) return false
+  if (SKIP_PROBLEM_KEYS.has(text)) return true
+  const compact = text.replace(/\s+/g, '')
+  if (/^ydy_/i.test(compact)) return false
+  return PHONE_NAME_RE.test(compact) || LONG_DIGIT_NAME_RE.test(compact)
+}
+
 export function recordProductName(record) {
   return compactText(record?.product || record?.productName || '')
 }
@@ -55,6 +81,13 @@ export function isNegativeRecord(record) {
   if (isNegativeSentiment(record?.sentiment)) return true
   const score = Number(record?.ratingScore)
   return Number.isFinite(score) && score < 7
+}
+
+export function isDensityRecord(record) {
+  const source = recordSourceType(record)
+  if (isTicketSource(source)) return true
+  const score = Number(record?.ratingScore)
+  return Number.isFinite(score) && score !== 10
 }
 
 export function isHighSeverityRecord(record) {
@@ -158,15 +191,22 @@ export function analyzeTopicGroup(rows, window, topic, actionItems = []) {
   let unresolvedFollowup = 0
   let keyCustomer = false
 
+  const recentMonths = new Set(window.recent || [])
+  let recentIssueCount = 0
+  let recentNegativeCount = 0
+
   for (const record of rows || []) {
     const month = recordMonthKey(record)
     if (month) monthCounts[month] = (monthCounts[month] || 0) + 1
     const product = recordProductName(record)
     if (product) products.add(product)
     sourceTypes.add(recordSourceType(record))
+    const inRecent = Boolean(month && recentMonths.has(month))
+    if (inRecent && isDensityRecord(record)) recentIssueCount += 1
     if (isNegativeRecord(record)) {
       negative += 1
       if (month) negativeMonths.add(month)
+      if (inRecent) recentNegativeCount += 1
     }
     if (isHighSeverityRecord(record)) highSeverity += 1
     if (isFollowUpUnresolved(record)) unresolvedFollowup += 1
@@ -198,9 +238,11 @@ export function analyzeTopicGroup(rows, window, topic, actionItems = []) {
   if (unresolvedFollowup > 0 || unresolvedAction) scenarios.push('unresolved')
 
   const worseningBoost = scenarios.includes('worsening') ? Math.max(0, worseningRatio - 1) : 0
+  const recentIssueAvg = recentIssueCount / recentLen
+  const recentNegativeAvg = recentNegativeCount / recentLen
   const score = (
-    rows.length
-    + negative * 2
+    Math.log1p(recentIssueAvg) * 10
+    + Math.log1p(recentNegativeAvg) * 12
     + monthCount * 3
     + worseningBoost * 8
     + Math.max(0, products.size - 1) * 4
@@ -225,6 +267,10 @@ export function analyzeTopicGroup(rows, window, topic, actionItems = []) {
     unresolvedFollowup,
     unresolvedAction,
     keyCustomer,
+    recentIssueCount,
+    recentNegativeCount,
+    recentIssueAvg,
+    recentNegativeAvg,
     scenarios,
     score,
   }
@@ -282,6 +328,8 @@ function decorateCard(card, rows, analysis, periodLabel) {
     baselineCount: analysis.baselineCount,
     negative: analysis.negative,
     products: analysis.products,
+    unresolvedFollowup: analysis.unresolvedFollowup,
+    unresolvedAction: analysis.unresolvedAction,
     records: rows,
     priority: analysis.score >= 20 || analysis.scenarios.includes('worsening') || analysis.scenarios.includes('chronic')
       ? 'high'
@@ -296,6 +344,7 @@ function customerGroups(records) {
     const identity = extractCustomerIdentity(record)
     const key = customerIdentityKey(identity)
     if (!key) continue
+    if (!identity.customerCode && isDirtyCustomerName(identity.customerName)) continue
     const current = grouped.get(key) || { identity, rows: [] }
     current.rows.push(record)
     grouped.set(key, current)
@@ -303,32 +352,48 @@ function customerGroups(records) {
   return [...grouped.values()]
 }
 
-function productIssueGroups(records) {
-  /** @type {Map<string, { product: string, problem: string, rows: object[] }>} */
+function groupedByProductAndKey(records, keyOf) {
+  /** @type {Map<string, { product: string, problem: string, idKind?: string, rows: object[] }>} */
   const grouped = new Map()
   for (const record of records || []) {
     const product = recordProductName(record)
-    const problem = recordProblemKey(record)
+    const problem = keyOf(record)
     if (!product || !problem) continue
-    const key = `${product}::${problem}`
-    const current = grouped.get(key) || { product, problem, rows: [] }
+    const mapKey = `${product}::${problem}`
+    const current = grouped.get(mapKey) || { product, problem, rows: [] }
     current.rows.push(record)
-    grouped.set(key, current)
+    grouped.set(mapKey, current)
   }
   return [...grouped.values()]
 }
 
-function commonIssueGroups(records) {
-  /** @type {Map<string, { problem: string, rows: object[] }>} */
+function groupedByKey(records, keyOf) {
+  /** @type {Map<string, { problem: string, idKind?: string, rows: object[] }>} */
   const grouped = new Map()
   for (const record of records || []) {
-    const problem = recordProblemKey(record)
+    const problem = keyOf(record)
     if (!problem) continue
     const current = grouped.get(problem) || { problem, rows: [] }
     current.rows.push(record)
     grouped.set(problem, current)
   }
   return [...grouped.values()]
+}
+
+function productIssueGroups(records) {
+  return groupedByProductAndKey(records, recordProblemKey)
+}
+
+function commonIssueGroups(records) {
+  return groupedByKey(records, recordProblemKey)
+}
+
+function journeyL2ProductGroups(records) {
+  return groupedByProductAndKey(records, recordJourneyL2Key).map((group) => ({ ...group, idKind: 'l2' }))
+}
+
+function journeyL2CommonGroups(records) {
+  return groupedByKey(records, recordJourneyL2Key).map((group) => ({ ...group, idKind: 'l2' }))
 }
 
 function buildCustomerCard(group, window, periodLabel, actionItems) {
@@ -354,8 +419,9 @@ function buildCustomerCard(group, window, periodLabel, actionItems) {
 
 function buildProductIssueCard(group, window, periodLabel, actionItems) {
   if (group.rows.length < 2) return null
+  const l2 = group.idKind === 'l2'
   const topic = {
-    id: `product:${group.product}:${group.problem}`,
+    id: l2 ? `product:${group.product}:l2:${group.problem}` : `product:${group.product}:${group.problem}`,
     type: 'product_issue',
     title: `${group.product} · ${group.problem}`,
     product: group.product,
@@ -372,8 +438,9 @@ function buildProductIssueCard(group, window, periodLabel, actionItems) {
 function buildCommonIssueCard(group, window, periodLabel, actionItems) {
   const products = new Set(group.rows.map(recordProductName).filter(Boolean))
   if (products.size < 2 || group.rows.length < 3) return null
+  const l2 = group.idKind === 'l2'
   const topic = {
-    id: `common:${group.problem}`,
+    id: l2 ? `common:l2:${group.problem}` : `common:${group.problem}`,
     type: 'common_issue',
     title: `共性问题 · ${group.problem}`,
     problemKey: group.problem,
@@ -432,7 +499,9 @@ export function recommendTopics(input = {}) {
   const cards = [
     ...customerGroups(records).map((group) => buildCustomerCard(group, window, periodLabel, actionItems)),
     ...productIssueGroups(records).map((group) => buildProductIssueCard(group, window, periodLabel, actionItems)),
+    ...journeyL2ProductGroups(records).map((group) => buildProductIssueCard(group, window, periodLabel, actionItems)),
     ...commonIssueGroups(records).map((group) => buildCommonIssueCard(group, window, periodLabel, actionItems)),
+    ...journeyL2CommonGroups(records).map((group) => buildCommonIssueCard(group, window, periodLabel, actionItems)),
   ].filter(Boolean)
 
   const seen = new Set()
@@ -450,6 +519,51 @@ export function recommendTopics(input = {}) {
 
 export function topRecommendCards(cards, limit = MAX_TOPIC_RECOMMENDATIONS) {
   return (cards || []).slice(0, limit)
+}
+
+/**
+ * 用最新开放举措给已有卡补打 / 去掉未闭环，不重跑分组。
+ * @param {object[]} cards
+ * @param {object[]} [actionItems]
+ */
+export function applyUnresolvedOverlay(cards, actionItems = []) {
+  return (cards || []).map((card) => {
+    const unresolvedAction = (actionItems || []).some((item) => actionMatchesTopic(item, card))
+    const unresolvedFollowup = Number(card.unresolvedFollowup) > 0
+    const unresolved = unresolvedFollowup || unresolvedAction
+    const scenarios = [...(card.scenarios || [])]
+    const had = scenarios.includes('unresolved')
+    if (unresolved === had && Boolean(card.unresolvedAction) === unresolvedAction) return card
+    const nextScenarios = scenarios.filter((key) => key !== 'unresolved')
+    if (unresolved) nextScenarios.push('unresolved')
+    let score = Number(card.score) || 0
+    if (unresolved && !had) score += 3
+    if (!unresolved && had) score -= 3
+    return {
+      ...card,
+      unresolvedAction,
+      scenarios: nextScenarios,
+      scenarioLabels: nextScenarios.map((key) => TOPIC_SCENARIO_LABELS[key] || key),
+      score,
+      priority: score >= 20 || nextScenarios.includes('worsening') || nextScenarios.includes('chronic')
+        ? 'high'
+        : 'medium',
+    }
+  })
+}
+
+/**
+ * 写入推荐缓存时去掉工单全文。
+ * @param {object[]} cards
+ */
+export function compactRecommendCardsForCache(cards) {
+  return (cards || []).map((card) => {
+    const { records, ...rest } = card
+    return {
+      ...rest,
+      recordIds: (Array.isArray(records) ? records : []).map((row) => row?.id).filter(Boolean),
+    }
+  })
 }
 
 /**

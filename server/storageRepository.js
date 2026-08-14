@@ -16,7 +16,7 @@ import {
 } from './recordIndex.js'
 import { getDb } from './db.js'
 import { META_KEY_STORAGE_INIT } from './businessDb.js'
-import { bumpDataRevision } from './dataRevision.js'
+import { bumpRecordsRevision } from './dataRevision.js'
 import {
   analysisRunMatchesClearFilter,
   isClearAllImportedData,
@@ -339,7 +339,7 @@ export const storageRepository = {
       if (isTicketUniqueViolation(err)) throw toTicketIdConflictError(next)
       throw err
     }
-    bumpDataRevision()
+    bumpRecordsRevision()
     return { record: next, recordRevision: next.recordRevision }
   },
 
@@ -382,7 +382,7 @@ export const storageRepository = {
       }
     })
     tx(records)
-    if (written) bumpDataRevision()
+    if (written) bumpRecordsRevision()
     return { written, skippedTicketConflicts }
   },
 
@@ -426,7 +426,7 @@ export const storageRepository = {
         `[storage] replaceAllRecords 内含重复工单号，已置 NULL 保留 payload: ${nulledTicketConflicts} 条`,
       )
     }
-    bumpDataRevision()
+    bumpRecordsRevision()
   },
 
   /**
@@ -460,7 +460,7 @@ export const storageRepository = {
         DELETE FROM artifacts;
         DELETE FROM tag_candidates WHERE status = 'pending';
       `)
-      bumpDataRevision()
+      bumpRecordsRevision()
       return result
     }
 
@@ -528,7 +528,7 @@ export const storageRepository = {
       result.runsDeleted ||
       result.pendingTagCandidatesDeleted
     ) {
-      bumpDataRevision()
+      bumpRecordsRevision()
     }
     return result
   },
@@ -566,7 +566,7 @@ export const storageRepository = {
 
   deleteRecord(id) {
     getDb().prepare('DELETE FROM records WHERE id = ?').run(id)
-    bumpDataRevision()
+    bumpRecordsRevision()
   },
 
   putAnalysisRun(run) {
@@ -694,7 +694,7 @@ export const storageRepository = {
     db.prepare(
       'INSERT OR REPLACE INTO snapshots (id, insight_period_id, payload) VALUES (?, ?, ?)',
     ).run(snapshot.id, snapshot.insightPeriodId, stringifyJson(snapshot))
-    bumpDataRevision()
+    bumpRecordsRevision()
   },
 
   getSnapshot(id) {
@@ -747,12 +747,12 @@ export const storageRepository = {
     db.prepare(
       'INSERT OR REPLACE INTO tag_candidates (id, status, tag_type, payload) VALUES (?, ?, ?, ?)',
     ).run(candidate.id, candidate.status, candidate.tagType, stringifyJson(candidate))
-    bumpDataRevision()
+    bumpRecordsRevision()
   },
 
   deleteTagCandidate(id) {
     getDb().prepare('DELETE FROM tag_candidates WHERE id = ?').run(id)
-    bumpDataRevision()
+    bumpRecordsRevision()
   },
 
   putTagCandidates(candidates) {
@@ -764,7 +764,7 @@ export const storageRepository = {
       for (const c of items) stmt.run(c.id, c.status, c.tagType, stringifyJson(c))
     })
     tx(candidates)
-    if (candidates.length) bumpDataRevision()
+    if (candidates.length) bumpRecordsRevision()
   },
 
   getStats() {
@@ -815,7 +815,7 @@ export const storageRepository = {
       }
     }
 
-    bumpDataRevision()
+    bumpRecordsRevision()
     return {
       records: payload.records?.length || 0,
       snapshots: payload.snapshots?.length || 0,

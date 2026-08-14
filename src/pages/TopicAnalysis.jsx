@@ -34,7 +34,18 @@ import {
   topicReportStatus,
 } from '../lib/topicAnalysis/constants.js'
 import { polishRecommendationsWithLlm } from '../lib/topicAnalysis/llmRecommend.js'
-import { recommendTopics, topicFromUserQuery, topRecommendCards } from '../lib/topicAnalysis/recommendTopics.js'
+import {
+  applyUnresolvedOverlay,
+  recommendTopics,
+  topicFromUserQuery,
+  topRecommendCards,
+} from '../lib/topicAnalysis/recommendTopics.js'
+import {
+  buildRecommendCacheKey,
+  loadRecommendCache,
+  recommendCacheMatches,
+  saveRecommendCache,
+} from '../lib/topicAnalysis/recommendCache.js'
 import {
   customTopicQueryHint,
   customTopicTypeMismatch,
@@ -78,7 +89,6 @@ export default function TopicAnalysis() {
 
   const rollingPeriod = useMemo(() => buildRollingMonthPeriod(), [])
   const [records, setRecords] = useState([])
-  const [actionItems, setActionItems] = useState([])
   const [recordsLoading, setRecordsLoading] = useState(true)
   const [reports, setReports] = useState([])
   const [reportsLoading, setReportsLoading] = useState(true)
@@ -97,38 +107,6 @@ export default function TopicAnalysis() {
   const [cards, setCards] = useState([])
   const [llmPolishing, setLlmPolishing] = useState(false)
   const [llmPolished, setLlmPolished] = useState(false)
-
-  const candidates = useMemo(
-    () => recommendTopics({
-      records,
-      actionItems,
-      periodLabel: rollingPeriod.label,
-      toMonth: rollingPeriod.customToMonth || rollingPeriod.endDate?.slice(0, 7),
-    }),
-    [actionItems, records, rollingPeriod],
-  )
-
-  useEffect(() => {
-    setCards(topRecommendCards(candidates))
-    setLlmPolished(false)
-    if (!candidates.length || !isLlmAvailable(settings)) {
-      setLlmPolishing(false)
-      return undefined
-    }
-    let cancelled = false
-    setLlmPolishing(true)
-    void polishRecommendationsWithLlm(candidates, settings)
-      .then((next) => {
-        if (cancelled || !next?.length) return
-        setCards(next)
-        setLlmPolished(true)
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLlmPolishing(false)
-      })
-    return () => { cancelled = true }
-  }, [candidates, settings])
 
   useEffect(() => {
     if (!adapter || !storageReady) return undefined
@@ -149,23 +127,91 @@ export default function TopicAnalysis() {
     if (!adapter || !storageReady) return undefined
     let cancelled = false
     setRecordsLoading(true)
-    void Promise.all([
-      loadRecordsForTopicPeriod(adapter, rollingPeriod),
-      listActionItems({ statuses: 'pending_evaluation,in_progress,suspended', limit: 80 }).catch(() => ({ items: [] })),
-    ]).then(([nextRecords, actionResult]) => {
-      if (cancelled) return
-      setRecords(nextRecords)
-      setActionItems(actionResult?.items || [])
-    }).catch((err) => {
-      if (cancelled) return
-      setRecords([])
-      setActionItems([])
-      message.error(topicRequestErrorMessage(err, '专题推荐数据加载失败'))
-    }).finally(() => {
-      if (!cancelled) setRecordsLoading(false)
-    })
+    setLlmPolishing(false)
+    setLlmPolished(false)
+
+    const toMonth = rollingPeriod.customToMonth || rollingPeriod.endDate?.slice(0, 7) || ''
+    const periodLabel = rollingPeriod.label
+
+    const overlayAndSet = (nextCards, items) => {
+      setCards(applyUnresolvedOverlay(topRecommendCards(nextCards), items))
+    }
+
+    void (async () => {
+      try {
+        const [actionResult, revision, cached] = await Promise.all([
+          listActionItems({ statuses: 'pending_evaluation,in_progress,suspended', limit: 80 }).catch(() => ({ items: [] })),
+          typeof adapter.getDataRevision === 'function'
+            ? adapter.getDataRevision().catch(() => ({ recordsRevision: 0 }))
+            : Promise.resolve({ recordsRevision: 0 }),
+          loadRecommendCache(adapter).catch(() => null),
+        ])
+        if (cancelled) return
+        const items = actionResult?.items || []
+        const key = buildRecommendCacheKey({
+          recordsRevision: revision?.recordsRevision,
+          toMonth,
+        })
+        if (recommendCacheMatches(cached, key)) {
+          setRecords([])
+          overlayAndSet(cached.cards, items)
+          setLlmPolished(Boolean(cached.llmPolished))
+          setLlmPolishing(false)
+          setRecordsLoading(false)
+          return
+        }
+
+        const nextRecords = await loadRecordsForTopicPeriod(adapter, rollingPeriod)
+        if (cancelled) return
+        setRecords(nextRecords)
+        const candidates = recommendTopics({
+          records: nextRecords,
+          actionItems: [],
+          periodLabel,
+          toMonth,
+        })
+        overlayAndSet(candidates, items)
+        setRecordsLoading(false)
+
+        let polished = topRecommendCards(candidates)
+        let didLlm = false
+        if (candidates.length && isLlmAvailable(settings)) {
+          setLlmPolishing(true)
+          try {
+            const next = await polishRecommendationsWithLlm(candidates, settings)
+            if (!cancelled && next?.length) {
+              polished = next
+              didLlm = true
+              overlayAndSet(next, items)
+              setLlmPolished(true)
+            }
+          } catch {
+            /* 保留规则卡 */
+          }
+          if (!cancelled) setLlmPolishing(false)
+        }
+
+        if (!cancelled) {
+          await saveRecommendCache(adapter, {
+            key,
+            recordsRevision: revision?.recordsRevision,
+            toMonth,
+            llmPolished: didLlm,
+            cards: polished,
+          }).catch(() => {})
+        }
+      } catch (err) {
+        if (cancelled) return
+        setRecords([])
+        setCards([])
+        message.error(topicRequestErrorMessage(err, '专题推荐数据加载失败'))
+        setRecordsLoading(false)
+        setLlmPolishing(false)
+      }
+    })()
+
     return () => { cancelled = true }
-  }, [adapter, storageReady, rollingPeriod.id, message])
+  }, [adapter, storageReady, rollingPeriod, settings, message])
 
   const generatingKey = reports
     .filter((item) => topicReportStatus(item) === 'generating')
