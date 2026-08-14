@@ -7,29 +7,50 @@ import { apiFetch } from '../../lib/apiClient.js'
 
 /** @type {Record<string, string>} */
 export const AUDIT_ACTION_LABELS = {
+  'auth.login': '登录',
+  'auth.login_failed': '登录失败',
   'auth.logout': '退出登录',
+  'auth.password_changed': '修改密码',
   'storage.import_batch': '导入反馈批次',
   'storage.replace_all_records': '全量替换反馈',
   'storage.delete_record': '删除单条反馈',
+  'storage.record_update': '更新工单',
   'storage.record_force_overwrite': '工单冲突强制覆盖',
   'storage.clear_imported_data': '清空导入数据',
   'storage.background_task_acquire': '获取后台任务锁',
   'storage.background_task_release': '释放后台任务锁',
   'storage.insight_rebuild_enqueue': '刷新洞察快照',
+  'storage.taxonomy_update': '保存打标配置',
+  'storage.product_catalog_update': '保存产品目录',
+  'storage.team_settings_update': '更新团队分析设置',
+  'storage.order_volumes_update': '更新订购量',
+  'storage.wan_tou_targets_update': '更新万投比目标',
   'storage.publish_taxonomy': '发布打标配置（手动/重试）',
   'storage.publish_product_catalog': '发布产品目录（手动/重试）',
   'storage.auto_publish_taxonomy': '自动备份打标配置到磁盘',
   'storage.auto_publish_product_catalog': '自动备份产品目录到磁盘',
   'storage.bootstrap_from_local': '本机数据迁移至服务端',
   'action.create': '创建举措',
+  'action.batch_create': '批量创建举措',
   'action.update': '更新举措',
   'action.delete': '删除举措',
   'action.unlink_tickets': '举措解关联工单',
   'user.create': '创建用户',
   'user.update': '更新用户',
   'user.delete': '删除用户',
+  'api_key.create': '创建 API Key',
+  'api_key.revoke': '撤销 API Key',
   'message_bottle.create': '提交漂流瓶',
   'message_bottle.progress_update': '更新漂流瓶处理进展',
+  'follow_up_satisfaction.import': '导入回访满意度',
+  'requirement_ticket_progress.import': '导入需求工单进展',
+  'requirement_status_mapping.replace': '替换需求状态映射',
+  'complaint_cause_review.apply': '投诉原因复核落地',
+  'post_use_jira.create': '新增用后内部提单',
+  'post_use_jira.update': '更新用后内部提单',
+  'post_use_jira.delete': '删除用后内部提单',
+  'post_use_jira.batch_delete': '批量删除用后内部提单',
+  'post_use_callback_decisions.replace': '更新回访跟进决策',
 }
 
 /**
@@ -45,6 +66,9 @@ export function formatAuditDetailSummary(detail) {
   if (detail.ticketId) parts.push(`工单 ${detail.ticketId}`)
   if (detail.recordId) parts.push(`记录 ${detail.recordId}`)
   if (detail.actionId) parts.push(`举措 ${detail.actionId}`)
+  if (detail.reason) parts.push(String(detail.reason))
+  if (detail.appliedCount != null) parts.push(`落地 ${detail.appliedCount}`)
+  if (detail.forceOverwrite === true) parts.push('强制覆盖')
   if (detail.fields && Array.isArray(detail.fields)) {
     parts.push(`字段 ${detail.fields.join('、')}`)
   }

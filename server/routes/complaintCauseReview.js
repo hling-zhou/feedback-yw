@@ -1,4 +1,5 @@
 import { requireAdmin, requirePermission } from '../middleware.js'
+import { logAuditFromRequest } from '../audit.js'
 import { getDb } from '../db.js'
 import { storageRepository } from '../storageRepository.js'
 import { complaintCauseReviewArchiveRepository } from '../complaintCauseReviewArchiveRepository.js'
@@ -98,6 +99,12 @@ export function registerComplaintCauseReviewRoutes(app) {
         }
       }
 
+      logAuditFromRequest(request, 'complaint_cause_review.apply', {
+        appliedCount: archives.length,
+        agreeCount: archives.filter((row) => row.decision === 'agree').length,
+        rejectCount: archives.filter((row) => row.decision === 'reject').length,
+        errorCount: errors.length,
+      })
       return {
         ok: errors.length === 0,
         appliedCount: archives.length,

@@ -17,6 +17,8 @@ describe('AuditLogPanel helpers', () => {
 
   it('AUDIT_ACTION_LABELS covers action and storage events', () => {
     expect(AUDIT_ACTION_LABELS['action.update']).toBe('更新举措')
-    expect(AUDIT_ACTION_LABELS['storage.record_force_overwrite']).toBeTruthy()
+    expect(AUDIT_ACTION_LABELS['storage.record_update']).toBe('更新工单')
+    expect(AUDIT_ACTION_LABELS['storage.taxonomy_update']).toBe('保存打标配置')
+    expect(AUDIT_ACTION_LABELS['auth.login']).toBe('登录')
   })
 })

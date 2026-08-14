@@ -9,7 +9,7 @@ import {
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import compress from '@fastify/compress'
-import { hasPermission, ROLE_PERMISSIONS } from '../src/domain/auth/permissions.js'
+import { ROLE_PERMISSIONS } from '../src/domain/auth/permissions.js'
 import { getDb, closeDb } from './db.js'
 import { registerAuthHooks, requirePermission } from './middleware.js'
 import { registerSchemaErrorHandler } from './registerSchemaErrorHandler.js'
@@ -26,10 +26,6 @@ assertJwtConfig()
 assertCorsConfig()
 assertProductionConfig()
 import {
-  PASSWORD_EXPIRED_CODE,
-  PASSWORD_EXPIRED_MESSAGE,
-} from '../src/domain/passwordExpiry.js'
-import {
   createUser,
   changePasswordWithVerification,
   batchCreateUsers,
@@ -38,16 +34,10 @@ import {
   seedAdminUser,
   toPublicUser,
   updateUser,
-  verifyPasswordCredentials,
   invalidateUserSessions,
 } from './users.js'
-import {
-  checkLoginRateLimit,
-  clearLoginFailures,
-  recordLoginFailure,
-  registerLoginRateLimitCleanup,
-} from './loginRateLimit.js'
-import { signAccessToken } from './auth.js'
+import { registerLoginRateLimitCleanup } from './loginRateLimit.js'
+import { handlePasswordLogin } from './authLogin.js'
 import { registerStorageRoutes } from './routes/storage.js'
 import { registerActionRoutes } from './routes/actions.js'
 import { registerLlmRoutes } from './routes/llm.js'
@@ -100,41 +90,7 @@ app.get('/health', async (_request, reply) => {
   return report
 })
 
-app.post('/api/auth/login', { schema: { body: loginBodySchema } }, async (request, reply) => {
-  const body = /** @type {{ username: string; password: string }} */ (request.body)
-  const username = body.username.trim()
-  const password = body.password
-
-  const rate = checkLoginRateLimit(request, username)
-  if (rate.blocked) {
-    reply.code(429).send({ error: '登录尝试次数过多，请稍后再试' })
-    return
-  }
-
-  const verified = await verifyPasswordCredentials(username, password)
-  if (!verified) {
-    recordLoginFailure(request, username)
-    reply.code(401).send({ error: '用户名或密码错误' })
-    return
-  }
-
-  clearLoginFailures(request, username)
-
-  const passwordChangedAt =
-    verified.row.password_changed_at || verified.row.created_at || ''
-  if (verified.user.passwordExpired) {
-    reply.code(403).send({
-      code: PASSWORD_EXPIRED_CODE,
-      error: PASSWORD_EXPIRED_MESSAGE,
-      username: verified.user.username,
-      passwordChangedAt,
-    })
-    return
-  }
-
-  const accessToken = signAccessToken(verified.user, verified.sessionVersion)
-  return { user: verified.user, accessToken }
-})
+app.post('/api/auth/login', { schema: { body: loginBodySchema } }, handlePasswordLogin)
 
 app.post(
   '/api/auth/change-password',

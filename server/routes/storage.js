@@ -19,7 +19,7 @@ import {
   tagCandidatesPutBodySchema,
 } from '../schemas/storageWriteSchemas.js'
 import { requireAdmin, requirePermission } from '../middleware.js'
-import { bumpDataRevision, getDataRevision } from '../dataRevision.js'
+import { bumpDataRevision, bumpRecordsRevision, getDataRevision } from '../dataRevision.js'
 import { storageRepository, TICKET_ID_CONFLICT_CODE } from '../storageRepository.js'
 import {
   getProductCatalogPublishStatus,
@@ -29,6 +29,7 @@ import { logAuditFromRequest } from '../audit.js'
 import { scheduleConfigAutoPublish } from '../autoPublishConfig.js'
 import { getTaxonomyPublishStatus, publishTaxonomyToFiles } from '../taxonomyPublish.js'
 import { readTaxonomyManagedMetaHydrated } from '../taxonomyMetaHygiene.js'
+import { listChangedObjectKeys, listChangedRecordFields } from '../../src/domain/recordAuditDiff.js'
 import {
   enqueueInsightRebuild,
   getInsightRebuildJob,
@@ -40,6 +41,34 @@ import {
   releaseBackgroundTaskLock,
   touchBackgroundTaskLock,
 } from '../backgroundTaskLock.js'
+
+const META_AUDIT_ACTIONS = {
+  taxonomy_managed: 'storage.taxonomy_update',
+  product_catalog_managed_v1: 'storage.product_catalog_update',
+  app_settings_shared_v1: 'storage.team_settings_update',
+  product_order_volumes_v1: 'storage.order_volumes_update',
+  wan_tou_targets_v1: 'storage.wan_tou_targets_update',
+}
+
+/**
+ * @param {string} key
+ * @param {unknown} previous
+ * @param {unknown} next
+ */
+function buildMetaAuditDetail(key, previous, next) {
+  const detail = { key }
+  if (key === 'product_catalog_managed_v1') {
+    const products = next && typeof next === 'object' ? next.products : null
+    if (Array.isArray(products)) detail.productCount = products.length
+  }
+  if (key === 'app_settings_shared_v1') {
+    detail.fields = listChangedObjectKeys(previous, next)
+  }
+  if (key === 'product_order_volumes_v1' || key === 'wan_tou_targets_v1') {
+    if (Array.isArray(next)) detail.count = next.length
+  }
+  return detail
+}
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertWritePermission(request, reply, permissions) {
@@ -298,6 +327,7 @@ export function registerStorageRoutes(app) {
       return
     }
     const user = request.user
+    const existing = storageRepository.getRecord(id)
     try {
       const result = storageRepository.putRecord(body.record, {
         expectedRevision: body.expectedRevision,
@@ -305,14 +335,12 @@ export function registerStorageRoutes(app) {
           ? { userId: user.id, username: user.username || user.id }
           : null,
       })
-      if (body.forceOverwrite === true) {
-        logAuditFromRequest(request, 'storage.record_force_overwrite', {
-          recordId: id,
-          ticketId: body.record.ticketId ?? null,
-          expectedRevision: body.expectedRevision ?? null,
-          recordRevision: result.recordRevision,
-        })
-      }
+      logAuditFromRequest(request, 'storage.record_update', {
+        recordId: id,
+        ticketId: body.record.ticketId ?? existing?.ticketId ?? null,
+        fields: listChangedRecordFields(existing, body.record),
+        forceOverwrite: body.forceOverwrite === true,
+      })
       return { ok: true, recordRevision: result.recordRevision }
     } catch (err) {
       const e = /** @type {Error & { code?: string; current?: unknown; currentRevision?: number }} */ (
@@ -651,8 +679,15 @@ export function registerStorageRoutes(app) {
     } else perms.push('view')
     if (!assertWritePermission(request, reply, perms)) return
     const body = /** @type {{ value?: unknown }} */ (request.body || {})
+    const previous = storageRepository.getMeta(decodedKey)
     storageRepository.putMeta(decodedKey, body.value ?? null)
-    if (tagMetaKeys.includes(decodedKey) || decodedKey === 'product_catalog_managed_v1') {
+    const auditAction = META_AUDIT_ACTIONS[decodedKey]
+    if (auditAction) {
+      logAuditFromRequest(request, auditAction, buildMetaAuditDetail(decodedKey, previous, body.value ?? null))
+    }
+    if (decodedKey === 'product_catalog_managed_v1') {
+      bumpRecordsRevision()
+    } else if (tagMetaKeys.includes(decodedKey)) {
       bumpDataRevision()
     }
     if (decodedKey === 'taxonomy_managed' || decodedKey === 'product_catalog_managed_v1') {

@@ -1,5 +1,4 @@
 import { isAutoPublishConfigEnabled } from './config.js'
-import { logAudit } from './audit.js'
 import { publishProductCatalogToFiles } from './productCatalogPublish.js'
 import { publishTaxonomyToFiles } from './taxonomyPublish.js'
 import { storageRepository } from './storageRepository.js'
@@ -58,12 +57,7 @@ async function flushTaxonomyPublish() {
   const by = pendingTaxonomyBy || 'auto'
   pendingTaxonomyBy = undefined
   try {
-    const result = runConfigPublishNow('taxonomy', by)
-    logAudit({
-      action: 'storage.auto_publish_taxonomy',
-      username: by,
-      detail: { excelPath: result.excelPath },
-    })
+    runConfigPublishNow('taxonomy', by)
   } catch (err) {
     recordPublishError('taxonomy_managed', err)
     console.warn('[auto-publish] taxonomy failed:', err)
@@ -75,12 +69,7 @@ async function flushCatalogPublish() {
   const by = pendingCatalogBy || 'auto'
   pendingCatalogBy = undefined
   try {
-    const result = runConfigPublishNow('product_catalog', by)
-    logAudit({
-      action: 'storage.auto_publish_product_catalog',
-      username: by,
-      detail: { excelPath: result.excelPath },
-    })
+    runConfigPublishNow('product_catalog', by)
   } catch (err) {
     recordPublishError('product_catalog_managed_v1', err)
     console.warn('[auto-publish] product catalog failed:', err)

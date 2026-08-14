@@ -1,6 +1,7 @@
 import { requirePermission } from '../middleware.js'
 import { hasPermission } from '../../src/domain/auth/permissions.js'
 import { pickPostUseJiraEditablePatch } from '../../src/domain/postUseJira.js'
+import { logAuditFromRequest } from '../audit.js'
 import {
   postUseCallbackDecisionRepository,
   postUseJiraRepository,
@@ -35,6 +36,9 @@ export function registerPostUseJiraRoutes(app) {
     const body = /** @type {{ items?: Record<string, unknown>[] }} */ (request.body || {})
     const items = Array.isArray(body.items) ? body.items : []
     const saved = postUseCallbackDecisionRepository.upsertMany(items)
+    logAuditFromRequest(request, 'post_use_callback_decisions.replace', {
+      count: saved.length,
+    })
     return { items: saved }
   })
 
@@ -59,6 +63,9 @@ export function registerPostUseJiraRoutes(app) {
       return { error: '请至少提交一条待内部提单记录' }
     }
     const saved = postUseJiraRepository.archiveMany(items)
+    logAuditFromRequest(request, 'post_use_jira.create', {
+      count: saved.length,
+    })
     return { items: saved }
   })
 
@@ -72,6 +79,10 @@ export function registerPostUseJiraRoutes(app) {
       reply.code(404)
       return { error: '记录不存在' }
     }
+    logAuditFromRequest(request, 'post_use_jira.update', {
+      id,
+      fields: Object.keys(patch),
+    })
     return { item }
   })
 
@@ -83,6 +94,7 @@ export function registerPostUseJiraRoutes(app) {
       reply.code(404)
       return { error: '记录不存在' }
     }
+    logAuditFromRequest(request, 'post_use_jira.delete', { id })
     return { ok: true }
   })
 
@@ -95,6 +107,7 @@ export function registerPostUseJiraRoutes(app) {
       return { error: '请选择要删除的记录' }
     }
     const deleted = postUseJiraRepository.deleteMany(ids)
+    logAuditFromRequest(request, 'post_use_jira.batch_delete', { count: deleted })
     return { deleted }
   })
 }
