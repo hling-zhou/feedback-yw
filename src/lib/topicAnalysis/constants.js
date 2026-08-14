@@ -1,7 +1,7 @@
 export const TOPIC_ANALYSIS_DEMO = true
 export const TOPIC_ANALYSIS_DEMO_LABEL = 'Beta 版'
 export const TOPIC_ANALYSIS_DEMO_NOTE =
-  '专题分析目前为 Beta 版本。系统推荐默认看近 9 个月（近期 4 个月 vs 更早 5 个月）投诉/咨询/用后即评；只有新建专题时才指定周期。本地补充材料（Markdown / Word / PDF / Excel）可在报告详情中提供。客户身份按名称或编码精确匹配。'
+  '专题分析目前为 Beta 版本。系统推荐默认看近 9 个月（近期 4 个月 vs 更早 5 个月）投诉/咨询/用后即评，且只纳入「产品与规格」中至少开启一项分析的产品；用后即评不含 10 分且无负面反馈的记录。只有新建专题时才指定周期，自定义专题不套这条满分过滤。本地补充材料（Markdown / Word / PDF / Excel）可在报告详情中提供。客户身份按名称或编码精确匹配。'
 
 export const META_KEY_TOPIC_ANALYSIS_RUNS = 'topic_analysis_runs_v1'
 export const META_KEY_TOPIC_ANALYSIS_REPORTS = 'topic_analysis_reports_v1'

@@ -21,6 +21,7 @@ import {
   extractCustomerIdentity,
   normalizeIdentityText,
 } from './customerIdentity.js'
+import { filterRecordsForTopicRecommend } from './recommendScope.js'
 
 const SKIP_PROBLEM_KEYS = new Set(['', '未识别', '未分类', '未识别环节'])
 const OPEN_ACTION_STATUSES = new Set(['pending_evaluation', 'in_progress', 'suspended'])
@@ -421,7 +422,7 @@ export function mergeRecommendCards(cards) {
  * }} [input]
  */
 export function recommendTopics(input = {}) {
-  const records = Array.isArray(input.records) ? input.records : []
+  const records = filterRecordsForTopicRecommend(Array.isArray(input.records) ? input.records : [])
   const periodLabel = input.periodLabel || '近9个月'
   const toMonth = input.toMonth || currentYearMonth()
   const actionItems = Array.isArray(input.actionItems) ? input.actionItems : []

@@ -1,3 +1,4 @@
+import { getAnalysisEnabledProducts } from '../productCatalog/analysisScope.js'
 import { getCatalogProducts } from '../productCatalogLoader.js'
 import { normalizeIdentityText } from './customerIdentity.js'
 
@@ -27,7 +28,7 @@ function uniqueNormalized(values) {
  */
 export function topicProductHints() {
   const names = []
-  for (const product of getCatalogProducts() || []) {
+  for (const product of getAnalysisEnabledProducts(getCatalogProducts())) {
     names.push(product.name, product.key)
     for (const spec of product.specs || []) {
       names.push(spec.name, ...(spec.match || []))

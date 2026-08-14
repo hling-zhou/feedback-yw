@@ -104,7 +104,9 @@
 
 推荐与报告取数均为：
 
-`listAllFeedbacks(adapter)` → `filterRecordsForScope(all, period)`
+`listAllFeedbacks(adapter)` → `filterRecordsForScope(all, period)` → 再按当前「产品与规格」收窄。
+
+基础范围：目录中 **`enabled`（投诉/咨询工单分析）或 `analysisPostUseRating`（用后即评分析）至少开一项** 的产品。命中后把 `product` / `productName` / `productKey` 写成目录标准名。未知产品、两开关都关、没有产品字段的记录不进专题。库内原始记录不删；导入逻辑不变。
 
 | 纳入 | 不单独作为推荐主样本 |
 |------|----------------------|
@@ -112,7 +114,9 @@
 | 咨询工单 `consultation_ticket` | 洞察快照、行动建议正文本身（举措只作「未闭环」信号） |
 | 用后即评 `post_use_rating` | — |
 
-客服拜访记录（`visit_records`）**不进推荐打分**，只在生成简报时按专题关键词匹配，最多 12 条。
+客服拜访记录（`visit_records`）**不进推荐打分**，只在生成简报时按专题关键词匹配，最多 12 条。拜访/举措本轮不按产品目录再滤。
+
+**推荐额外过滤（自定义专题不套）：** 用后即评若 `ratingScore === 10` 且没有负面反馈（沿用 `extractValidCustomerTexts` / `classifyFeedbackPolarity`：固定原因选项一律为负；10 分自由文本再看情绪），不进入系统推荐，也不进入 `origin = recommended` 的简报。投诉/咨询不受影响。用户自定义专题仍用产品并集内全量记录。
 
 ### 3.2 时间：记录落在哪个月
 
@@ -199,7 +203,7 @@ flowchart LR
   cards --> adopt["纳入分析 → 锁定窗口生成简报"]
 ```
 
-实现：`src/lib/topicAnalysis/recommendTopics.js`。推荐页还会拉取状态为 `pending_evaluation` / `in_progress` / `suspended` 的举措（最多 80 条）供「未闭环」打标。
+实现：`src/lib/topicAnalysis/recommendTopics.js`。入口先丢掉「10 分且无负面」的用后即评（`recommendScope.js`），再分组打分。推荐页还会拉取状态为 `pending_evaluation` / `in_progress` / `suspended` 的举措（最多 80 条）供「未闭环」打标。纳入后的简报对 `origin = recommended` 用同一过滤；自定义专题不滤。
 
 ### 4.1 三类对象怎么聚
 
@@ -423,7 +427,7 @@ flowchart LR
 ## 9. Beta 边界与已知限制
 
 - 客户按编码优先、否则名称精确匹配；无编码且同名的记录仍会归到同一客户。缺名称/编码的记录不进客户专题。  
-- 推荐扫描的是周期内全部投诉/咨询/用后即评；简报证据再截断前 400 条扫描、40 条信息源，极大窗口可能漏检。  
+- 推荐扫描的是周期内、且属于「产品与规格」至少开启一项分析的产品上的投诉/咨询/用后即评；简报证据再截断前 400 条扫描、40 条信息源，极大窗口可能漏检。  
 - 客户专题简报与推荐分组口径一致（名称/编码精确匹配）；产品/共性简报仍偏关键词，自定义专题可能更「松」。  
 - 未闭环举措匹配是文本包含，可能误伤同名产品或笼统问题键。  
 - 推荐卡不做完整 LLM 长文；完整判断只在报告里，且仍受证据包约束。  
@@ -438,10 +442,13 @@ flowchart LR
 
 | 路径 | 职责 |
 |------|------|
-| `src/lib/topicAnalysis/period.js` | 9 个月滚动窗口、近期/基线切分、取数 |
+| `src/lib/topicAnalysis/period.js` | 9 个月滚动窗口、近期/基线切分、取数（含产品并集收窄） |
+| `src/lib/productCatalog/analysisScope.js` | 专题分析：投诉/咨询或用后即评至少开一项的产品并集 |
+| `src/lib/productCatalog/resolveCatalogProduct.js` | 按 key/名称/规格精确对照目录产品 |
 | `src/lib/topicAnalysis/constants.js` | 类型/场景文案、数量上限、meta key |
 | `src/lib/topicAnalysis/customerIdentity.js` | 客户编码/名称/等级 |
 | `src/lib/topicAnalysis/recommendTopics.js` | 分组、场景、打分、合并 |
+| `src/lib/topicAnalysis/recommendScope.js` | 推荐：丢掉 10 分且无负面的用后即评 |
 | `src/lib/topicAnalysis/llmRecommend.js` | 推荐排序合并 |
 | `src/lib/topicAnalysis/matchQuery.js` | 产品名 + 问题片段匹配 |
 | `src/lib/topicAnalysis/interpretTopic.js` | 新建专题：理解范围（规则 + LLM），客户/产品名不能新造 |
@@ -465,7 +472,7 @@ flowchart LR
 npx vitest run src/lib/topicAnalysis/
 ```
 
-覆盖：9 个月窗口、客户编码优先、名称精确匹配（不做包含）、三类出卡、跨来源、长期/加重/跨产品/客户持续负面、报告去重、旧 runs 迁移、补充材料解析、LLM 合并时丢弃非法 id 并重算条数、理解范围时丢弃模型新造的产品/客户名。
+覆盖：9 个月窗口、产品并集收窄（至少一项分析）、推荐丢掉 10 分且无负面的用后即评（自定义不套）、客户编码优先、名称精确匹配（不做包含）、三类出卡、跨来源、长期/加重/跨产品/客户持续负面、报告去重、旧 runs 迁移、补充材料解析、LLM 合并时丢弃非法 id 并重算条数、理解范围时丢弃模型新造的产品/客户名。
 
 ---
 

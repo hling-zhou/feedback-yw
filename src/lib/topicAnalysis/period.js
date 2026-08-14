@@ -4,6 +4,8 @@ import {
   insightPeriodFromSpec,
   shiftYearMonth,
 } from '../../domain/insightPeriod.js'
+import { scopeTopicAnalysisRecords } from '../productCatalog/analysisScope.js'
+import { getCatalogProducts } from '../productCatalogLoader.js'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
 
@@ -84,9 +86,12 @@ export function periodFromSnapshot(snapshot) {
 /**
  * @param {{ listRecords?: Function, init?: Function }} adapter
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null | undefined} period
+ * @param {{ products?: import('../productCatalogLoader.js').CatalogProduct[] }} [options]
  */
-export async function loadRecordsForTopicPeriod(adapter, period) {
+export async function loadRecordsForTopicPeriod(adapter, period, options = {}) {
   if (!adapter) return []
   const all = await listAllFeedbacks(adapter)
-  return filterRecordsForScope(all, period)
+  const inPeriod = filterRecordsForScope(all, period)
+  const products = options.products ?? getCatalogProducts()
+  return scopeTopicAnalysisRecords(inPeriod, products)
 }

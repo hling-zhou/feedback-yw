@@ -1,3 +1,5 @@
+import { canonicalizeRecordProduct, resolveCatalogProduct } from './resolveCatalogProduct.js'
+
 /** @typedef {import('../productCatalogLoader.js').CatalogProduct} CatalogProduct */
 
 /**
@@ -208,15 +210,6 @@ export function getPostUseFocusTrackedNames(products) {
   return names.length ? names : [...POST_USE_FOCUS_TRACKED_NAMES]
 }
 
-/** @param {unknown} value */
-function normalizeMatchText(value) {
-  return String(value ?? '')
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(/[－—–]/g, '-')
-    .toLowerCase()
-}
-
 /**
  * 按“目标产品与产品规格”中的用后即评开关解析原始产品值。
  * 产品名、产品 key、规格名和规格别名均可命中，返回目录中的标准产品。
@@ -229,30 +222,7 @@ export function resolvePostUseRatingProduct(recordOrName, products) {
     ? POST_USE_RATING_CATALOG_SEED_PRODUCTS
     : products
   ).filter((product) => product?.analysisPostUseRating)
-  const record = typeof recordOrName === 'string' ? { productName: recordOrName } : recordOrName || {}
-  const rawKey = normalizeMatchText(record.productKey)
-  if (rawKey) {
-    const keyed = enabled.find((product) => normalizeMatchText(product.key) === rawKey)
-    if (keyed) return keyed
-  }
-
-  const rawValues = [record.productName, record.product, record.productSpec]
-    .map(normalizeMatchText)
-    .filter(Boolean)
-  if (!rawValues.length) return null
-
-  for (const product of enabled) {
-    const candidates = [
-      product.name,
-      product.key,
-      ...(product.specs || []).flatMap((spec) => [spec.name, ...(spec.match || [])]),
-    ]
-      .map(normalizeMatchText)
-      .filter(Boolean)
-    if (rawValues.some((raw) => candidates.some((candidate) => raw === candidate))) return product
-  }
-
-  return null
+  return resolveCatalogProduct(recordOrName, enabled)
 }
 
 /**
@@ -267,6 +237,6 @@ export function scopePostUseRatingRecords(records, products) {
   return (records || []).flatMap((record) => {
     const product = resolvePostUseRatingProduct(record, products)
     if (!product) return []
-    return [{ ...record, productKey: product.key, product: product.name, productName: product.name }]
+    return [canonicalizeRecordProduct(record, product)]
   })
 }

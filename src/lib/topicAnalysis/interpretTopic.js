@@ -4,6 +4,7 @@ import {
   llmChatCompletion,
   parseLlmMessageContent,
 } from '../llmClient.js'
+import { getAnalysisEnabledProducts } from '../productCatalog/analysisScope.js'
 import { getCatalogProducts } from '../productCatalogLoader.js'
 import { TOPIC_TYPE_LABELS } from './constants.js'
 import { normalizeIdentityText } from './customerIdentity.js'
@@ -12,7 +13,7 @@ import { parseTopicSearchQuery, topicProductHints } from './matchQuery.js'
 function catalogDisplayName(token) {
   const needle = normalizeIdentityText(token)
   if (!needle) return ''
-  for (const product of getCatalogProducts() || []) {
+  for (const product of getAnalysisEnabledProducts(getCatalogProducts())) {
     const candidates = [product.name, product.key, ...(product.specs || []).flatMap((spec) => [spec.name, ...(spec.match || [])])]
     if (candidates.some((item) => {
       const normalized = normalizeIdentityText(item)

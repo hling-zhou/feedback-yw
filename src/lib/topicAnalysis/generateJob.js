@@ -1,6 +1,7 @@
 import { topicRequestErrorMessage } from './customTopic.js'
 import { generateTopicReportBrief } from './generateReport.js'
 import { loadRecordsForTopicPeriod, periodFromSnapshot } from './period.js'
+import { filterRecordsForTopicRecommend } from './recommendScope.js'
 import { saveTopicReport } from './store.js'
 
 /** @type {Set<string>} */
@@ -39,9 +40,12 @@ export async function runTopicReportJob(input) {
   inflightIds.add(id)
   try {
     const period = periodFromSnapshot(report.period)
-    const records = Array.isArray(input.records) && input.records.length
+    const loaded = Array.isArray(input.records) && input.records.length
       ? input.records
       : await loadRecordsForTopicPeriod(input.adapter, period)
+    const records = report.origin === 'custom'
+      ? loaded
+      : filterRecordsForTopicRecommend(loaded)
     const brief = await generateTopicReportBrief({
       adapter: input.adapter,
       settings: input.settings,

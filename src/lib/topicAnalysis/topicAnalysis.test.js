@@ -73,6 +73,40 @@ describe('topicAnalysis', () => {
     expect(cards.find((card) => card.title.includes('弹性公网IP'))?.scenarios).toContain('cross_source')
   })
 
+  it('excludes 10-score post-use without negative feedback from recommendations', () => {
+    const cards = recommendTopics({
+      periodLabel: '近9个月',
+      toMonth: '2026-08',
+      records: [
+        ticket({ id: 't1', importMonth: '2026-07' }),
+        ticket({
+          id: 'praise',
+          ticketId: 'P-10',
+          dataSourceType: 'post_use_rating',
+          ratingScore: 10,
+          commentText: '用着很稳定',
+          customerName: '甲公司',
+          customerCode: 'C001',
+          importMonth: '2026-07',
+        }),
+        ticket({
+          id: 'ten-negative',
+          ticketId: 'P-10n',
+          dataSourceType: 'post_use_rating',
+          ratingScore: 10,
+          channel: 'console',
+          feedbackReasonTexts: ['功能有缺失'],
+          customerName: '甲公司',
+          customerCode: 'C001',
+          importMonth: '2026-07',
+        }),
+      ],
+    })
+    const customer = cards.find((card) => card.type === 'customer')
+    expect(customer?.sampleSize).toBe(2)
+    expect(customer?.evidenceQuotes?.some((quote) => quote.text?.includes('用着很稳定'))).toBeFalsy()
+  })
+
   it('builds a rolling 9-month period without touching global periods', () => {
     const period = buildRollingMonthPeriod(undefined, new Date('2026-08-14T00:00:00'))
     const snap = snapshotPeriod(period)
@@ -191,8 +225,59 @@ describe('topicAnalysis', () => {
         total: 2,
       }),
     }
-    const scoped = await loadRecordsForTopicPeriod(adapter, period)
+    const scoped = await loadRecordsForTopicPeriod(adapter, period, {
+      products: [{ key: 'eip', name: '弹性公网IP', enabled: true, analysisPostUseRating: true, specs: [] }],
+    })
     expect(scoped.map((row) => row.id)).toEqual(['in'])
+  })
+
+  it('keeps 10-score post-use praise in the period loader for custom topics', async () => {
+    const period = buildRollingMonthPeriod(6, new Date('2026-08-14T00:00:00'))
+    const adapter = {
+      init: async () => {},
+      listRecords: async () => ({
+        records: [
+          ticket({
+            id: 'praise',
+            importMonth: '2026-05',
+            dataSourceType: 'post_use_rating',
+            ratingScore: 10,
+            commentText: '用着很稳定',
+            product: '弹性公网IP',
+            productName: '弹性公网IP',
+            productKey: 'eip',
+          }),
+        ],
+        total: 1,
+      }),
+    }
+    const scoped = await loadRecordsForTopicPeriod(adapter, period, {
+      products: [{ key: 'eip', name: '弹性公网IP', enabled: true, analysisPostUseRating: true, specs: [] }],
+    })
+    expect(scoped.map((row) => row.id)).toEqual(['praise'])
+  })
+
+  it('drops records whose product is not analysis-enabled', async () => {
+    const period = buildRollingMonthPeriod(6, new Date('2026-08-14T00:00:00'))
+    const adapter = {
+      init: async () => {},
+      listRecords: async () => ({
+        records: [
+          ticket({ id: 'in', importMonth: '2026-05', product: '弹性公网IP', productName: '弹性公网IP', productKey: 'eip' }),
+          ticket({ id: 'off', importMonth: '2026-05', product: '未启用产品', productName: '未启用产品', productKey: 'off', sourceColumns: {} }),
+          ticket({ id: 'unknown', importMonth: '2026-05', product: '未知云产品', productName: '未知云产品', productKey: '', sourceColumns: {} }),
+        ],
+        total: 3,
+      }),
+    }
+    const scoped = await loadRecordsForTopicPeriod(adapter, period, {
+      products: [
+        { key: 'eip', name: '弹性公网IP', enabled: true, analysisPostUseRating: true, specs: [] },
+        { key: 'off', name: '未启用产品', enabled: false, analysisPostUseRating: false, specs: [] },
+      ],
+    })
+    expect(scoped.map((row) => row.id)).toEqual(['in'])
+    expect(scoped[0].productKey).toBe('eip')
   })
 
   it('tags chronic, worsening, cross-product and persistent customer scenarios', () => {
