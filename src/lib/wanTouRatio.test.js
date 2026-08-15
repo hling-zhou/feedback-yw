@@ -75,6 +75,9 @@ describe('wanTouRatio', () => {
     expect(failed.met).toBe(false)
     expect(failed.excessComplaints).toBe(20)
     expect(computeWanTouExcessComplaints(120, 100, 10000, 12)).toBe(20)
+    const pending = evaluateWanTouTarget({ ratio: null, target: 100, orders: null, complaints: 0 })
+    expect(pending.hasTarget).toBe(true)
+    expect(pending.met).toBeNull()
   })
 
   it('formatWanTouRatioWithTarget appends target status and excess', () => {

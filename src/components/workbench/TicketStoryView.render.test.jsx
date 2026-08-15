@@ -31,6 +31,7 @@ function buildModel() {
     overview: {
       metrics: {
         total: 2,
+        volumeDelta: 1,
         negativeCount: 2,
         negativePct: 100,
         urgentCount: 0,
@@ -147,7 +148,8 @@ function buildModel() {
               customerTier: '战略',
               customerRequest: '客户反馈公网不通，需要尽快排查',
               painPoint: '公网 IP 无法访问',
-              rootCause: '安全组未放行',
+              rootCause: '云能问题 / 产品原因 / 计算部原因',
+              sourceColumns: { 问题原因: '安全组未放行' },
               solutionSummary: '协助核查放通规则',
               followUpSatisfaction: { score: 6, problemResolved: 'unresolved' },
             },
@@ -162,7 +164,8 @@ function buildModel() {
           customerTier: '战略',
           customerRequest: '客户反馈公网不通，需要尽快排查',
           painPoint: '公网 IP 无法访问',
-          rootCause: '安全组未放行',
+          rootCause: '云能问题 / 产品原因 / 计算部原因',
+          sourceColumns: { 问题原因: '安全组未放行' },
           solutionSummary: '协助核查放通规则',
           followUpSatisfaction: { score: 6, problemResolved: 'unresolved' },
         },
@@ -206,6 +209,13 @@ describe('TicketStoryView render', () => {
     expect(html).not.toContain('全部反馈')
     expect(html).not.toContain('请求场景 → 用户旅程 → 问题类型')
     expect(html).not.toContain('title="问题变化"')
+    expect(html).toContain('规模')
+    expect(html).toContain('体验质量')
+    expect(html).toContain('风险与闭环')
+    expect(html).toContain('产品总览')
+    expect(html).toContain('环比 +1')
+    expect(html).not.toContain('投诉原因（终判）')
+    expect(html).not.toContain('客户体验类投诉')
   })
 
   it('prevents long fixed-left ticket ids from overflowing adjacent evidence columns', () => {
@@ -231,6 +241,9 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('环比')
     expect(html).toContain('客户体验类万投比')
     expect(html).toContain('高风险')
+    expect(html).toContain('安全组未放行')
+    expect(html).not.toContain('云能问题 / 产品原因 / 计算部原因')
+    expect(html).not.toContain('解决方案')
   })
 
   it('renders refresh-empty state when V2 recommendations are pending refresh', () => {
@@ -295,6 +308,69 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('体验断点')
     expect(html).toContain('卡在 公网访问不通')
     expect(html).not.toContain('全部反馈')
+    expect(html).not.toContain('产品总览')
+    expect(html).toContain('首要问题 公网IP无法访问')
+    expect(html).toContain('主要旅程 使用')
+    expect(html).toContain('举措 待创建')
+  })
+
+  it('does not treat a pending wan-tou comparison as meeting the target', () => {
+    const pending = buildModel()
+    pending.scope.selectedProduct = '弹性公网IP'
+    pending.overview.wanTou = {
+      productKey: 'eip',
+      trend: [],
+      latest: { ratio: null, orders: null, complaints: 2 },
+      evaluation: { target: 1, met: null, hasTarget: true },
+    }
+    pending.overview.productOverview[0].wanTouRatio = null
+    pending.overview.productOverview[0].wanTouTargetMet = null
+
+    const pendingHtml = renderToStaticMarkup(
+      <TicketStoryView model={pending} creatingInsightId="" />,
+    )
+    expect(pendingHtml).toContain('待对比')
+    expect(pendingHtml).not.toContain('已达标')
+    expect(pendingHtml).not.toContain('未达标')
+
+    const met = buildModel()
+    met.scope.selectedProduct = '弹性公网IP'
+    met.overview.wanTou = {
+      productKey: 'eip',
+      trend: [],
+      latest: { ratio: 0.5, orders: 10000, complaints: 1 },
+      evaluation: { target: 1, met: true, hasTarget: true },
+    }
+    met.overview.productOverview[0].wanTouRatio = 0.5
+    met.overview.productOverview[0].wanTouTargetMet = true
+    expect(renderToStaticMarkup(<TicketStoryView model={met} creatingInsightId="" />)).toContain('已达标')
+
+    const missed = buildModel()
+    missed.scope.selectedProduct = '弹性公网IP'
+    missed.overview.wanTou = {
+      productKey: 'eip',
+      trend: [],
+      latest: { ratio: 2, orders: 10000, complaints: 2 },
+      evaluation: { target: 1, met: false, hasTarget: true },
+    }
+    missed.overview.productOverview[0].wanTouRatio = 2
+    missed.overview.productOverview[0].wanTouTargetMet = false
+    expect(renderToStaticMarkup(<TicketStoryView model={missed} creatingInsightId="" />)).toContain('未达标')
+  })
+
+  it('shows follow-up as missing instead of a fake zero satisfaction rate', () => {
+    const model = buildModel()
+    model.overview.metrics.followUpCount = 0
+    model.overview.metrics.unresolvedCount = 0
+    model.overview.metrics.followUpTenPointRate = null
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('无回访')
+    expect(html).toContain('本期没有回访样本')
+    expect(html).not.toContain('10分满意率 0%')
   })
 
   it('falls back to ungrouped evidence when no theme is available', () => {

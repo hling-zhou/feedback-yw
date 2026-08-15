@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
-import { ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
+import { isJourneyProductSelected, ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
+import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import TicketJourneyMap from './TicketJourneyMap.jsx'
 
 const priorityColors = { high: 'red', medium: 'gold', low: 'default' }
@@ -19,6 +20,85 @@ function SectionHeading({ title, summary, id }) {
       {summary ? <Typography.Text type="secondary" className="text-xs">{summary}</Typography.Text> : null}
     </div>
   )
+}
+
+function formatSignedDelta(delta) {
+  if (delta == null || !Number.isFinite(delta)) return '暂无对比'
+  if (delta === 0) return '环比持平'
+  return `环比 ${delta > 0 ? '+' : ''}${delta}`
+}
+
+function formatShare(count, total) {
+  if (!total) return String(count ?? 0)
+  return `${count}（${Math.round((count / total) * 1000) / 10}%）`
+}
+
+function StatusMetric({ label, value, hint, alert = false }) {
+  return (
+    <div className="min-w-[7rem]">
+      <div className="text-[11px] leading-4 text-ink-500">{label}</div>
+      <div className={`mt-0.5 text-xl font-semibold leading-7 tabular-nums ${alert ? 'text-red-600' : 'text-ink-900'}`}>
+        {value}
+      </div>
+      {hint ? <div className="text-[11px] leading-4 text-ink-400">{hint}</div> : null}
+    </div>
+  )
+}
+
+function StatusGroup({ label, children }) {
+  return (
+    <div className="min-w-0 flex-1 px-4 py-3">
+      <div className="mb-2 text-[11px] font-medium tracking-wide text-ink-400">{label}</div>
+      <div className="flex flex-wrap gap-x-6 gap-y-3">{children}</div>
+    </div>
+  )
+}
+
+function formatRatePct(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return `${Math.round(Number(value) * 1000) / 10}%`
+}
+
+function evidenceTicketColumns({ complaint, onOpenFeedback }) {
+  /** @type {import('antd').TableProps['columns']} */
+  const columns = [
+    {
+      title: '工单号',
+      dataIndex: 'ticketId',
+      fixed: 'left',
+      width: 220,
+      render: (value, row) => (
+        <Button
+          type="link"
+          size="small"
+          className="ticket-evidence-table__ticket-link"
+          onClick={() => onOpenFeedback?.(row)}
+        >
+          {value || row.id}
+        </Button>
+      ),
+    },
+    { title: '产品', width: 150, render: (_, row) => row.product || row.productSpec || '未标注产品' },
+    { title: '客户等级', dataIndex: 'customerTier', width: 88, render: (value) => value || '—' },
+    { title: '客户请求', dataIndex: 'customerRequest', width: 230, ellipsis: true },
+    { title: '需求痛点', width: 220, ellipsis: true, render: (_, row) => row.painPoint || row.problemSummary || '—' },
+  ]
+  if (complaint) {
+    columns.push({
+      title: '根因',
+      width: 190,
+      ellipsis: true,
+      render: (_, row) => getEffectiveRootCauseReview(row) || '—',
+    })
+  }
+  columns.push({
+    title: '回访',
+    width: 120,
+    render: (_, row) => row.followUpSatisfaction
+      ? `${row.followUpSatisfaction.score ?? '—'}分 · ${row.followUpSatisfaction.problemResolved === 'unresolved' ? '未解决' : row.followUpSatisfaction.problemResolved === 'resolved' ? '已解决' : '未确认'}`
+      : '—',
+  })
+  return columns
 }
 
 function LimitedTable({ dataSource = [], limit = 10, expandLabel = '展开全部', ...props }) {
@@ -100,6 +180,21 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
   const impactThemeLinks = impactAndEvidence.themeLinks || []
   const previousPeriodLabel = trendsAndChanges.previousPeriodLabel || '上月'
   const currentPeriodLabel = trendsAndChanges.currentPeriodLabel || '本月'
+  const productSelected = isJourneyProductSelected(scope.selectedProduct)
+  const productRow = productSelected
+    ? (overview.productOverview || []).find((row) => row.product === scope.selectedProduct) || overview.productOverview?.[0]
+    : null
+  const wanTou = overview.wanTou || {}
+  const wanTouRatio = wanTou.latest?.ratio ?? productRow?.wanTouRatio
+  const wanTouMissed = wanTou.evaluation?.met === false || productRow?.wanTouTargetMet === false
+  const wanTouMet = !wanTouMissed && (wanTou.evaluation?.met === true || productRow?.wanTouTargetMet === true)
+  const wanTouHint = wanTouMissed
+    ? '未达标'
+    : wanTouMet
+      ? '已达标'
+      : wanTou.evaluation?.hasTarget
+        ? '待对比'
+        : null
 
   return (
     <div className="space-y-5">
@@ -117,47 +212,117 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
         ))}
       </Row>
 
-      <SectionHeading title="规模与体验现状" summary={complaint ? '衡量投诉规模、体验风险和问题解决情况' : '衡量咨询负担及可转化为产品与自助能力的机会'} id="ticket-status" />
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="工单量" value={metrics.total} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="负向占比" value={metrics.negativePct} suffix="%" /></Card></Col>
-        {complaint ? (
-          <>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="客户体验类投诉" value={metrics.customerExperienceComplaintCount} /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="回访未解决" value={metrics.unresolvedCount} suffix={metrics.followUpCount ? `/ ${metrics.followUpCount}` : ''} /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="回访10分满意率" value={metrics.followUpTenPointRate} suffix="%" /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="紧急工单" value={metrics.urgentCount} /></Card></Col>
-          </>
-        ) : (
-          <>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="重复咨询占比" value={metrics.repeatConsultationPct} suffix="%" /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="自助优化机会占比" value={metrics.selfServicePct} suffix="%" /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="高频咨询主题" value={metrics.highFrequencyTopicCount} /></Card></Col>
-            <Col xs={12} md={6}><Card size="small"><Statistic title="紧急工单" value={metrics.urgentCount} /></Card></Col>
-          </>
-        )}
-      </Row>
-      <Card size="small" title="产品总览">
-        <Table
-          size="small"
-          rowKey="product"
-          scroll={{ x: 1050 }}
-          pagination={{ pageSize: 10 }}
-          dataSource={overview.productOverview}
-          columns={[
-            { title: '产品', dataIndex: 'product', fixed: 'left', width: 150 },
-            { title: '工单量', dataIndex: 'count', width: 82, render: (value, row) => <span>{value}{row.smallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
-            { title: '占比', dataIndex: 'sharePct', width: 76, render: (value) => `${value}%` },
-            { title: '环比', dataIndex: 'delta', width: 104, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
-            { title: '负向', dataIndex: 'negativePct', width: 82, render: (value, row) => `${row.negativeCount}（${value}%）` },
-            ...(complaint ? [{ title: '客户体验类万投比', dataIndex: 'wanTouRatio', width: 130, render: (value, row) => value == null ? '—' : <span>{value.toFixed(2)}{row.wanTouTargetMet === false ? <Tag color="red" className="ml-1">未达标</Tag> : null}</span> }] : []),
-            { title: <Tooltip title="该产品优先痛点聚类，无聚类时回退为最高频问题类型">首要问题</Tooltip>, dataIndex: 'primaryProblem', width: 210, ellipsis: true },
-            { title: '主要旅程', dataIndex: 'primaryJourney', width: 130 },
-            { title: '回访证据', dataIndex: 'followUpEvidence', width: 88 },
-            { title: '举措状态', dataIndex: 'actionStatus', width: 100 },
-          ]}
-        />
+      <SectionHeading
+        title={complaint ? '规模与体验现状' : '负担与机会现状'}
+        summary={complaint
+          ? '投诉仅含客户体验类。看规模、体验质量和闭环风险。'
+          : '看咨询负担、可转为自助的机会，以及仍需跟进的紧急单。'}
+        id="ticket-status"
+      />
+      <Card size="small" className="overflow-hidden">
+        <div className="grid divide-y divide-ink-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+          <StatusGroup label={complaint ? '规模' : '负担'}>
+            <StatusMetric
+              label="工单量"
+              value={metrics.total}
+              hint={formatSignedDelta(metrics.volumeDelta)}
+            />
+            {complaint ? null : (
+              <StatusMetric label="重复咨询" value={`${metrics.repeatConsultationPct}%`} />
+            )}
+          </StatusGroup>
+          {complaint ? (
+            <StatusGroup label="体验质量">
+              <StatusMetric
+                label="负向"
+                value={`${metrics.negativePct}%`}
+                hint={`${metrics.negativeCount} 条`}
+                alert={metrics.negativePct >= 30}
+              />
+              {productSelected ? (
+                <StatusMetric
+                  label="客户体验类万投比"
+                  value={wanTouRatio == null ? '—' : Number(wanTouRatio).toFixed(2)}
+                  hint={wanTouHint}
+                  alert={wanTouMissed}
+                />
+              ) : null}
+            </StatusGroup>
+          ) : (
+            <StatusGroup label="可自助机会">
+              <StatusMetric label="可转自助" value={`${metrics.selfServicePct}%`} />
+              <StatusMetric label="主机会类型" value={metrics.topOpportunity || '—'} />
+            </StatusGroup>
+          )}
+          <StatusGroup label={complaint ? '风险与闭环' : '风险'}>
+            <StatusMetric
+              label="紧急"
+              value={formatShare(metrics.urgentCount, metrics.total)}
+              alert={metrics.urgentCount > 0}
+            />
+            {complaint ? (
+              metrics.followUpCount ? (
+                <StatusMetric
+                  label="回访未解决"
+                  value={`${metrics.unresolvedCount} / ${metrics.followUpCount}`}
+                  hint={`10分满意率 ${metrics.followUpTenPointRate}%`}
+                  alert={metrics.unresolvedCount > 0}
+                />
+              ) : (
+                <StatusMetric label="回访" value="无回访" hint="本期没有回访样本" />
+              )
+            ) : null}
+          </StatusGroup>
+        </div>
       </Card>
+      {productSelected && productRow ? (
+        <Card size="small">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span className="font-medium text-ink-800">{productRow.product}</span>
+            {productRow.smallSample ? <Tag>参考</Tag> : null}
+            <Typography.Text type="secondary">
+              首要问题 {productRow.primaryProblem || '—'}
+            </Typography.Text>
+            {complaint ? (
+              <Typography.Text type="secondary">
+                主要旅程 {productRow.primaryJourney || '—'}
+              </Typography.Text>
+            ) : (
+              <Typography.Text type="secondary">
+                重复咨询 {productRow.repeatConsultationPct ?? 0}%
+              </Typography.Text>
+            )}
+            <Typography.Text type="secondary">
+              举措 {productRow.actionStatus || '待创建'}
+            </Typography.Text>
+          </div>
+        </Card>
+      ) : (
+        <Card size="small" title="产品总览">
+          <Table
+            size="small"
+            rowKey="product"
+            scroll={{ x: 860 }}
+            pagination={overview.productOverview?.length > 10 ? { pageSize: 10 } : false}
+            dataSource={overview.productOverview}
+            columns={[
+              { title: '产品', dataIndex: 'product', fixed: 'left', width: 150 },
+              { title: '工单量', dataIndex: 'count', width: 82, render: (value, row) => <span>{value}{row.smallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
+              { title: '环比', dataIndex: 'delta', width: 88, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
+              ...(complaint
+                ? [
+                    { title: '负向', dataIndex: 'negativePct', width: 110, render: (value, row) => `${row.negativeCount}（${value}%）` },
+                    { title: '客户体验类万投比', dataIndex: 'wanTouRatio', width: 140, render: (value, row) => value == null ? '—' : <span>{value.toFixed(2)}{row.wanTouTargetMet === false ? <Tag color="red" className="ml-1">未达标</Tag> : null}</span> },
+                  ]
+                : [
+                    { title: '重复咨询', dataIndex: 'repeatConsultationPct', width: 100, render: (value) => `${value ?? 0}%` },
+                  ]),
+              { title: <Tooltip title="该产品优先痛点聚类（按改善优先分），无聚类时回退为最高频问题类型">首要问题</Tooltip>, dataIndex: 'primaryProblem', width: 220, ellipsis: true },
+              { title: '举措状态', dataIndex: 'actionStatus', width: 100 },
+            ]}
+          />
+        </Card>
+      )}
 
       <SectionHeading title="趋势与变化" summary="判断规模是在增长、持续还是缓解；环节变化见下方用户旅程" id="ticket-trends" />
       <Row gutter={[12, 12]}>
@@ -194,12 +359,6 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           currentPeriodLabel={currentPeriodLabel}
         />
       </Card>
-      {complaint ? (
-        <Card size="small" title="投诉原因（终判）">
-          <Typography.Text type="secondary" className="mb-3 block text-xs">终判投诉原因来自工单业务口径，与系统自动打标的“问题类型”不同。</Typography.Text>
-          <ThemeBarChart data={drivers.complaintCauses.map((row) => ({ label: row.name, count: row.count, negative: 0 }))} />
-        </Card>
-      ) : null}
 
       <SectionHeading title="原因与用户需求" summary="以痛点聚类解释用户遇到了什么、为何值得改善" id="ticket-drivers" />
       {!complaint ? (
@@ -218,12 +377,19 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
               { title: '改善优先级', dataIndex: 'priority', fixed: 'left', width: 104, render: (value) => <Tag color={priorityColors[value]}>{value === 'high' ? '高' : value === 'medium' ? '中' : '低'}</Tag> },
               { title: '产品', dataIndex: 'product', width: 150 },
               { title: '用户需求/痛点', dataIndex: 'pain', width: 240, ellipsis: true },
-              { title: '客户请求摘要', dataIndex: 'customerRequest', width: 220, ellipsis: true },
+              { title: <Tooltip title="簇内最高频客户请求原文；过于分散时显示「请求表述分散」">客户请求摘要</Tooltip>, dataIndex: 'customerRequest', width: 220, ellipsis: true },
               { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
               { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
               { title: '广度分', dataIndex: 'breadthScore', width: 76 },
-              { title: '严重度', dataIndex: 'severity', width: 76 },
-              { title: 'P90情绪', dataIndex: 'emotion', width: 88 },
+              ...(complaint
+                ? [
+                    { title: '严重度', dataIndex: 'severity', width: 76 },
+                    { title: 'P90情绪', dataIndex: 'emotion', width: 88 },
+                  ]
+                : [
+                    { title: '重复率', dataIndex: 'repeatRate', width: 88, render: (value) => formatRatePct(value) },
+                    { title: '可转自助率', dataIndex: 'selfServiceRate', width: 100, render: (value) => formatRatePct(value) },
+                  ]),
               { title: '改善优先分', dataIndex: 'priorityScore', width: 104, render: (value) => typeof value === 'number' ? value.toFixed(2) : value },
               { title: '依据', dataIndex: 'basis', width: 240, ellipsis: true },
             ]}
@@ -243,7 +409,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
               { title: '类型', width: 110, render: () => <Tag color="warning">推断型</Tag> },
               { title: '产品', dataIndex: 'product', width: 150 },
               { title: '参考主题', dataIndex: 'pain', width: 260, ellipsis: true },
-              { title: '客户请求摘要', dataIndex: 'customerRequest', width: 220, ellipsis: true },
+              { title: <Tooltip title="簇内最高频客户请求原文；过于分散时显示「请求表述分散」">客户请求摘要</Tooltip>, dataIndex: 'customerRequest', width: 220, ellipsis: true },
               { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
               { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
               { title: '依据', dataIndex: 'basis', width: 260, ellipsis: true },
@@ -359,31 +525,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
                   expandLabel="展开全部"
                   tableLayout="fixed"
                   scroll={{ x: 1200 }}
-                  columns={[
-                    {
-                      title: '工单号',
-                      dataIndex: 'ticketId',
-                      fixed: 'left',
-                      width: 220,
-                      render: (value, row) => (
-                        <Button
-                          type="link"
-                          size="small"
-                          className="ticket-evidence-table__ticket-link"
-                          onClick={() => onOpenFeedback?.(row)}
-                        >
-                          {value || row.id}
-                        </Button>
-                      ),
-                    },
-                    { title: '产品', width: 150, render: (_, row) => row.product || row.productSpec || '未标注产品' },
-                    { title: '客户等级', dataIndex: 'customerTier', width: 88, render: (value) => value || '—' },
-                    { title: '客户请求', dataIndex: 'customerRequest', width: 230, ellipsis: true },
-                    { title: '需求痛点', width: 220, ellipsis: true, render: (_, row) => row.painPoint || row.problemSummary || '—' },
-                    { title: '根因', width: 190, ellipsis: true, render: (_, row) => row.rootCauseReview || row.rootCause || '—' },
-                    { title: '解决方案', dataIndex: 'solutionSummary', width: 190, ellipsis: true },
-                    { title: '回访', width: 120, render: (_, row) => row.followUpSatisfaction ? `${row.followUpSatisfaction.score ?? '—'}分 · ${row.followUpSatisfaction.problemResolved === 'unresolved' ? '未解决' : row.followUpSatisfaction.problemResolved === 'resolved' ? '已解决' : '未确认'}` : '—' },
-                  ]}
+                  columns={evidenceTicketColumns({ complaint, onOpenFeedback })}
                 />
               </div>
             ))}
@@ -411,31 +553,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
             expandLabel="展开全部"
             tableLayout="fixed"
             scroll={{ x: 1200 }}
-            columns={[
-              {
-                title: '工单号',
-                dataIndex: 'ticketId',
-                fixed: 'left',
-                width: 220,
-                render: (value, row) => (
-                  <Button
-                    type="link"
-                    size="small"
-                    className="ticket-evidence-table__ticket-link"
-                    onClick={() => onOpenFeedback?.(row)}
-                  >
-                    {value || row.id}
-                  </Button>
-                ),
-              },
-              { title: '产品', width: 150, render: (_, row) => row.product || row.productSpec || '未标注产品' },
-              { title: '客户等级', dataIndex: 'customerTier', width: 88, render: (value) => value || '—' },
-              { title: '客户请求', dataIndex: 'customerRequest', width: 230, ellipsis: true },
-              { title: '需求痛点', width: 220, ellipsis: true, render: (_, row) => row.painPoint || row.problemSummary || '—' },
-              { title: '根因', width: 190, ellipsis: true, render: (_, row) => row.rootCauseReview || row.rootCause || '—' },
-              { title: '解决方案', dataIndex: 'solutionSummary', width: 190, ellipsis: true },
-              { title: '回访', width: 120, render: (_, row) => row.followUpSatisfaction ? `${row.followUpSatisfaction.score ?? '—'}分 · ${row.followUpSatisfaction.problemResolved === 'unresolved' ? '未解决' : row.followUpSatisfaction.problemResolved === 'resolved' ? '已解决' : '未确认'}` : '—' },
-            ]}
+            columns={evidenceTicketColumns({ complaint, onOpenFeedback })}
           />
         </Card>
       ) : null}

@@ -37,6 +37,8 @@ export const JOURNEY_SOURCE_FILTERS = /** @type {const} */ ({
 })
 const UNCLASSIFIED = new Set(['', '未分类', '未识别环节', '未识别子环节'])
 const CHANGE_RANK = { 新增: 0, 增长: 1, 持续: 2, 缓解: 3, 消失: 4 }
+export const CUSTOMER_REQUEST_DISPERSED = '请求表述分散'
+const CUSTOMER_REQUEST_MAJORITY_SHARE = 0.4
 const TICKET_COUNT_SUFFIX_RE = /（\d+ 条工单[^）]*）$/
 
 const pct = (value, total) => total ? Math.round((value / total) * 1000) / 10 : 0
@@ -129,6 +131,7 @@ export function clusterPainLabel(recommendation) {
 
 /**
  * 簇内客户请求代表值：按频次，并列时取更长文本。禁止用「第一条证据工单」顶替。
+ * 最高频占比过低时返回「请求表述分散」，避免把单票原文当成簇结论。
  * @param {import('./types.js').FeedbackRecord[]} records
  */
 export function pickRepresentativeCustomerRequest(records) {
@@ -141,13 +144,48 @@ export function pickRepresentativeCustomerRequest(records) {
   if (!counts.size) return '—'
   let best = ''
   let bestCount = 0
+  let total = 0
   for (const [text, count] of counts) {
+    total += count
     if (count > bestCount || (count === bestCount && text.length > best.length)) {
       best = text
       bestCount = count
     }
   }
+  if (counts.size > 1 && bestCount / total < CUSTOMER_REQUEST_MAJORITY_SHARE) {
+    return CUSTOMER_REQUEST_DISPERSED
+  }
   return best
+}
+
+function numericPriority(value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : -1
+}
+
+/**
+ * 产品首要问题：正式簇里优先分最高的痛点，否则回退最高频问题类型。
+ * @param {{ pain?: string; priorityScore?: number | string; ticketCount?: number; isFormalCluster?: boolean; isHighRiskSingleton?: boolean; isOverviewFusedCluster?: boolean }[]} productRecommendations
+ * @param {import('./types.js').FeedbackRecord[]} rows
+ */
+export function pickPrimaryProblem(productRecommendations, rows) {
+  const ranked = (productRecommendations || [])
+    .filter((row) => row.isFormalCluster || row.isHighRiskSingleton || row.isOverviewFusedCluster)
+    .slice()
+    .sort((a, b) => numericPriority(b.priorityScore) - numericPriority(a.priorityScore)
+      || (b.ticketCount || 0) - (a.ticketCount || 0))
+  return ranked[0]?.pain || productRecommendations?.[0]?.pain || topValue(rows, 'problemType')
+}
+
+function repeatConsultationShare(rows) {
+  const groups = new Map()
+  for (const record of rows || []) {
+    const key = `${record.problemType || '未分类'}\u0000${record.journeyL1 || '未识别环节'}\u0000${painOf(record).slice(0, 40)}`
+    groups.set(key, (groups.get(key) || 0) + 1)
+  }
+  let repeated = 0
+  for (const count of groups.values()) if (count > 1) repeated += count
+  return pct(repeated, rows?.length || 0)
 }
 
 function topCountedEntries(map, limit = 1) {
@@ -447,6 +485,8 @@ function recommendationRows(recommendations, records, actions, sourceType) {
       sharePct: scores.sharePct ?? recommendation.evidenceBundle?.sharePct ?? 0,
       severity: scores.maxSeverity ?? '—',
       emotion: scores.p90Emotion ?? '—',
+      repeatRate: scores.repeatRate ?? null,
+      selfServiceRate: scores.selfServiceRate ?? null,
       priorityScore: scores.priorityScore ?? recommendation.generationMeta?.score ?? '—',
       priority: recommendation.priority || 'low',
       basis: recommendation.generationMeta?.selectedReason || '按痛点聚类的覆盖广度与业务危害度计算',
@@ -589,9 +629,10 @@ export function buildTicketStoryModel(input) {
       delta: momPreviousMonth ? currentCount - previousCount : null,
       negativeCount: rows.filter((record) => isNegativeSentiment(record.sentiment)).length,
       negativePct: pct(rows.filter((record) => isNegativeSentiment(record.sentiment)).length, rows.length),
-      primaryProblem: productRecommendations[0]?.pain || topValue(rows, 'problemType'),
+      primaryProblem: pickPrimaryProblem(productRecommendations, rows),
       primaryJourney: topValue(rows, 'journeyL1'),
       followUpEvidence: rowFollowUps.length,
+      repeatConsultationPct: repeatConsultationShare(rows),
       actionStatus: productRecommendations.find((row) => row.action)?.actionStatus || '待创建',
       wanTouRatio: productWanTou?.latest?.ratio ?? null,
       wanTouTargetMet: productWanTou?.evaluation?.met ?? null,
@@ -689,16 +730,18 @@ export function buildTicketStoryModel(input) {
     overview: {
       metrics: {
         total,
+        volumeDelta,
         negativeCount: negativeRecords.length,
         negativePct: pct(negativeRecords.length, total),
         urgentCount: urgentRecords.length,
         followUpCount: followUpRecords.length,
-        followUpTenPointRate: pct(tenPoint, followUpRecords.length),
+        followUpTenPointRate: followUpRecords.length ? pct(tenPoint, followUpRecords.length) : null,
         unresolvedCount: unresolvedRecords.length,
         customerExperienceComplaintCount: complaint ? records.filter(isCustomerExperienceComplaint).length : 0,
         highFrequencyTopicCount: complaint ? 0 : [...repeatGroups.values()].filter((group) => group.length > 1).length,
         repeatConsultationPct: complaint ? 0 : pct(repeatedRecords.size, total),
         selfServicePct: complaint ? 0 : pct(selfServiceRecords.length, total),
+        topOpportunity: complaint ? '' : (drivers.opportunities[0]?.name || ''),
       },
       productOverview,
       wanTou: selectedWanTou,

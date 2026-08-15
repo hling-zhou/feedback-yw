@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords } from './ticketStoryModel.js'
+import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords, pickRepresentativeCustomerRequest, CUSTOMER_REQUEST_DISPERSED } from './ticketStoryModel.js'
 
 const record = (id, overrides = {}) => ({
   id,
@@ -50,6 +50,9 @@ describe('ticket story model', () => {
     const model = buildTicketStoryModel({ sourceType: 'consultation_ticket', sourceLabel: '咨询工单', records, trendRecords: records, trendMonths: ['2026-06'] })
     expect(model.overview.metrics.repeatConsultationPct).toBe(100)
     expect(model.overview.metrics.selfServicePct).toBe(100)
+    expect(model.overview.metrics.followUpTenPointRate).toBeNull()
+    expect(model.overview.metrics.topOpportunity).toBe('文档自助')
+    expect(model.overview.productOverview[0].repeatConsultationPct).toBe(100)
     expect(model.drivers.opportunities[0].name).toBe('文档自助')
     expect(model.drivers.complaintCauses).toEqual([])
     expect(model.drivers.journeySourceFilter).toBe('consultation')
@@ -290,6 +293,7 @@ describe('ticket story model', () => {
       periodEndMonth: '2026-06',
     })
     expect(model.drivers.journeyLayout).toBe('lifecycle')
+    expect(model.overview.metrics.volumeDelta).toBe(1)
     expect(model.drivers.journeyStages[0].journeyL1).toBe('认知与选型')
     expect(model.drivers.journeyStages[0].empty).toBe(true)
     const operate = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '业务使用与连通')
@@ -459,5 +463,49 @@ describe('ticket story model', () => {
     expect(model.drivers.clusters[0].customerRequest).toBe('公网IP无法访问外网')
     expect(model.drivers.clusters[0].ticketCount).toBe(3)
     expect(model.drivers.clusters[0]).not.toHaveProperty('rootCause')
+  })
+
+  it('uses the highest-priority formal cluster as the product primary problem', () => {
+    const records = [record('1'), record('2')]
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records,
+      recommendations: [
+        {
+          id: 'low',
+          signalType: 'pain_cluster_v2',
+          summary: '次要问题',
+          generationMeta: { representativePain: '次要问题' },
+          priority: 'low',
+          scope: { product: '弹性公网IP' },
+          evidenceRecordIds: ['1'],
+          sections: { painClusterScores: { ticketCount: 1, priorityScore: 2.1 } },
+        },
+        {
+          id: 'high',
+          signalType: 'pain_cluster_v2',
+          summary: '首要连通故障',
+          generationMeta: { representativePain: '首要连通故障' },
+          priority: 'high',
+          scope: { product: '弹性公网IP' },
+          evidenceRecordIds: ['1', '2'],
+          sections: { painClusterScores: { ticketCount: 2, priorityScore: 4.6 } },
+        },
+      ],
+    })
+    expect(model.overview.productOverview[0].primaryProblem).toBe('首要连通故障')
+  })
+
+  it('marks dispersed customer requests instead of a singleton wording', () => {
+    expect(pickRepresentativeCustomerRequest([
+      record('1', { customerRequest: '怎么开通' }),
+      record('2', { customerRequest: '带宽如何升配' }),
+      record('3', { customerRequest: '能否绑定多IP' }),
+    ])).toBe(CUSTOMER_REQUEST_DISPERSED)
+    expect(pickRepresentativeCustomerRequest([
+      record('1', { customerRequest: '公网IP无法访问外网' }),
+      record('2', { customerRequest: '公网IP无法访问外网' }),
+      record('3', { customerRequest: '偶发连不上' }),
+    ])).toBe('公网IP无法访问外网')
   })
 })
