@@ -271,13 +271,6 @@ export default function Feedbacks() {
   }, [searchParams])
 
   useEffect(() => {
-    const ticketId = searchParams.get('ticketId')
-    if (!ticketId || !feedbacks.length) return
-    const match = feedbacks.find((fb) => fb.ticketId === ticketId || fb.id === ticketId)
-    if (match) setSelectedDirect(match)
-  }, [searchParams, feedbacks, currentPeriodId])
-
-  useEffect(() => {
     setSelectedDirect(null)
   }, [currentPeriodId])
 

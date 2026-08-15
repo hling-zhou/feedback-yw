@@ -7,6 +7,7 @@ import { buildJourneyInsights, journeyChartData } from '../lib/journeyInsights.j
 import { resolveJourneyClusterViewForDisplay } from '../lib/painPointClustering/index.js'
 import { isNegativeSentiment } from '../lib/sentiment.js'
 import { buildWorkbenchAnalysisUrl } from '../lib/workbenchAnalysisLink.js'
+import { buildFeedbacksTicketFilterHref } from '../lib/feedbackFilters.js'
 
 /**
  * @param {string[]} recordIds
@@ -329,7 +330,7 @@ export default function JourneyFeedbackSection({
                               <li key={sample.id} className="text-xs text-ink-700">
                                 {sample.ticketId ? (
                                   <Link
-                                    to={`/feedbacks?ticketId=${encodeURIComponent(sample.ticketId)}`}
+                                    to={buildFeedbacksTicketFilterHref(sample.ticketId)}
                                     className="text-indigo-600 hover:underline"
                                   >
                                     {sample.ticketId}

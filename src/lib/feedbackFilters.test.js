@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFeedbacksUrl,
+  buildFeedbacksTicketFilterHref,
   buildFollowUpDrillDownUrl,
   buildTicketWorkbenchDrillDownUrl,
   drillDownFieldParam,
@@ -85,6 +86,18 @@ describe('feedbackFilters', () => {
     expect(parsed.ticketDateFrom).toBe('2026-05-01')
     expect(parsed.followUp).toBe('non10')
     expect(parsed.handlingKeyword).toBe('带宽')
+  })
+
+  it('parses singular ticketId into ticketIds filter and prefers ticketIds', () => {
+    expect(parseFeedbackSearchParams(new URLSearchParams('ticketId=T-1')).ticketIds).toEqual(['T-1'])
+    expect(
+      parseFeedbackSearchParams(new URLSearchParams('ticketId=OLD&ticketIds=A%2CB')).ticketIds,
+    ).toEqual(['A', 'B'])
+  })
+
+  it('buildFeedbacksTicketFilterHref uses ticketIds without opening a single-ticket param', () => {
+    expect(buildFeedbacksTicketFilterHref('T-1')).toBe('/feedbacks?ticketIds=T-1')
+    expect(buildFeedbacksTicketFilterHref('')).toBe('/feedbacks')
   })
 
   it('parseFeedbackSearchParams includes post-use rating filters', () => {

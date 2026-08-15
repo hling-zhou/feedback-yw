@@ -23,6 +23,7 @@ import {
 } from './customerIdentity.js'
 import { filterRecordsForTopicRecommend } from './recommendScope.js'
 import { FEEDBACK_REASON_PLACEHOLDERS } from '../postUseRating/reasonTaxonomy.js'
+import { buildFeedbacksTicketFilterHref } from '../feedbackFilters.js'
 
 const SKIP_PROBLEM_KEYS = new Set([
   '',
@@ -122,7 +123,7 @@ function quoteFromRecord(record) {
   return {
     ticketId,
     text: text.slice(0, 120),
-    href: ticketId ? `/feedbacks?ticketId=${encodeURIComponent(ticketId)}` : '/feedbacks',
+    href: buildFeedbacksTicketFilterHref(ticketId),
     sourceLabel: DATA_SOURCE_LABELS[recordSourceType(record)] || recordSourceType(record),
   }
 }

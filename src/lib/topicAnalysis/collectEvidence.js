@@ -14,6 +14,7 @@ import {
 } from './customerIdentity.js'
 import { recordSourceType } from '../../snapshots/recordScope.js'
 import { blobMatchesTopicQuery, parseTopicSearchQuery } from './matchQuery.js'
+import { buildFeedbacksTicketFilterHref } from '../feedbackFilters.js'
 
 /**
  * @param {string} value
@@ -101,7 +102,7 @@ function quoteFromRecord(record) {
     customerName: identity.customerName,
     customerCode: identity.customerCode,
     text: text.slice(0, 280),
-    href: ticketId ? `/feedbacks?ticketId=${encodeURIComponent(ticketId)}` : '/feedbacks',
+    href: buildFeedbacksTicketFilterHref(ticketId),
   }
 }
 
@@ -176,7 +177,7 @@ export function collectTopicEvidence(input) {
         customerName: extractCustomerIdentity(record).customerName,
         customerCode: extractCustomerIdentity(record).customerCode,
         summary: quote?.text || compactText(record.painPoint || record.rawText).slice(0, 160),
-        href: record.ticketId ? `/feedbacks?ticketId=${encodeURIComponent(record.ticketId)}` : '/feedbacks',
+        href: buildFeedbacksTicketFilterHref(record.ticketId || record.originalTicketId),
       })
     }
   }

@@ -46,4 +46,9 @@ describe('Feedbacks lane-scoped notices', () => {
     expect(source).toContain('matchesPostUseRatingFilter')
     expect(source).toContain('matchesPostUseChannelFilter')
   })
+
+  it('does not auto-open the drawer from a ticketId query', () => {
+    expect(source).not.toContain("searchParams.get('ticketId')")
+    expect(source).toContain('selectedTicketIdSet')
+  })
 })

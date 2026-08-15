@@ -282,6 +282,8 @@ export function parseFeedbackSearchParams(searchParams) {
   const followUpParams = parseFeedbackFollowUpSearchParams(searchParams)
   const source = searchParams.get('source')?.trim() || ''
   const lane = searchParams.get('lane')?.trim() || ''
+  const ticketIds = parseTicketIdsParam(searchParams.get('ticketIds'))
+  const ticketId = parseTicketIdsParam(searchParams.get('ticketId'))
   return {
     ...followUpParams,
     product: searchParams.get('product')?.trim() || '',
@@ -290,7 +292,7 @@ export function parseFeedbackSearchParams(searchParams) {
     journeyL1: searchParams.get('journeyL1')?.trim() || '',
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
-    ticketIds: parseTicketIdsParam(searchParams.get('ticketIds')),
+    ticketIds: ticketIds.length ? ticketIds : ticketId,
     customerNames: parseCustomerNamesParam(searchParams.get('customerNames')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
@@ -432,6 +434,17 @@ export function buildFeedbacksUrl(params = {}) {
   }
   const qs = sp.toString()
   return qs ? `/feedbacks?${qs}` : '/feedbacks'
+}
+
+/**
+ * 按工单号跳转反馈库列表筛选（不打开抽屉）。
+ * 兼容旧链接 `ticketId=`：解析时也会并入 ticketIds。
+ *
+ * @param {string | null | undefined} ticketId
+ */
+export function buildFeedbacksTicketFilterHref(ticketId) {
+  const id = String(ticketId || '').trim()
+  return id ? buildFeedbacksUrl({ ticketIds: id }) : '/feedbacks'
 }
 
 /**
