@@ -124,6 +124,17 @@ describe('feedbackFilters', () => {
     expect(next.get('handlingKeyword')).toBe('安全组')
   })
 
+  it('parses and patches ticketIdSet without putting ids in ticketIds', () => {
+    const parsed = parseFeedbackSearchParams(new URLSearchParams('source=complaint_ticket&ticketIdSet=abc-1'))
+    expect(parsed.ticketIdSet).toBe('abc-1')
+    expect(parsed.ticketIds).toEqual([])
+    const next = patchFeedbackSearchParams(new URLSearchParams('ticketIdSet=abc-1&source=complaint_ticket'), {
+      ticketIdSet: '',
+    })
+    expect(next.get('ticketIdSet')).toBeNull()
+    expect(next.get('source')).toBe('complaint_ticket')
+  })
+
   it('patchFeedbackSearchParams round-trips post-use rating filters', () => {
     const next = patchFeedbackSearchParams(new URLSearchParams(), {
       ratingScore: 'lt7',

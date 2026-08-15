@@ -284,6 +284,7 @@ export function parseFeedbackSearchParams(searchParams) {
   const lane = searchParams.get('lane')?.trim() || ''
   const ticketIds = parseTicketIdsParam(searchParams.get('ticketIds'))
   const ticketId = parseTicketIdsParam(searchParams.get('ticketId'))
+  const ticketIdSet = searchParams.get('ticketIdSet')?.trim() || ''
   return {
     ...followUpParams,
     product: searchParams.get('product')?.trim() || '',
@@ -293,6 +294,7 @@ export function parseFeedbackSearchParams(searchParams) {
     dataSource: DATA_SOURCE_TYPES.includes(source) ? source : '',
     lane: lane === 'post_use' || lane === 'tickets' ? lane : '',
     ticketIds: ticketIds.length ? ticketIds : ticketId,
+    ticketIdSet,
     customerNames: parseCustomerNamesParam(searchParams.get('customerNames')),
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
@@ -341,6 +343,11 @@ export function patchFeedbackSearchParams(base, patch) {
     const value = patch.ticketIds?.trim()
     if (value) next.set('ticketIds', value)
     else next.delete('ticketIds')
+  }
+  if ('ticketIdSet' in patch) {
+    const value = patch.ticketIdSet?.trim()
+    if (value) next.set('ticketIdSet', value)
+    else next.delete('ticketIdSet')
   }
   if ('customerNames' in patch) {
     const value = patch.customerNames?.trim()
@@ -391,6 +398,7 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   reasonDim?: string
  *   ticketId?: string
  *   ticketIds?: string
+ *   ticketIdSet?: string
  *   ticketDateFrom?: string
  *   ticketDateTo?: string
  *   source?: string
@@ -416,6 +424,7 @@ export function buildFeedbacksUrl(params = {}) {
     'reasonDim',
     'ticketId',
     'ticketIds',
+    'ticketIdSet',
     'customerNames',
     'ticketDateFrom',
     'ticketDateTo',

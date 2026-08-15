@@ -7,6 +7,10 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
+import {
+  clearFeedbackTicketIdSet,
+  readFeedbackTicketIdSet,
+} from '../lib/feedbackTicketIdSet.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import { TaggingProgressAlert } from '../components/TaggingProgressAlert.jsx'
@@ -156,10 +160,13 @@ export default function Feedbacks() {
       }
       setFilters(cleared)
       skipUrlSyncRef.current = true
+      const existingSetKey = searchParams.get('ticketIdSet')?.trim() || ''
+      if (existingSetKey) clearFeedbackTicketIdSet(existingSetKey)
       const next = patchFeedbackSearchParams(searchParams, {
         ...feedbackFiltersToUrlPatch(cleared),
         lane,
         source: lane === FEEDBACK_LANE_POST_USE ? 'post_use_rating' : '',
+        ticketIdSet: '',
       })
       setSearchParams(next, { replace: true })
     },
@@ -207,8 +214,14 @@ export default function Feedbacks() {
     const next = clearAllFeedbackFilters()
     if (isPostUseLane) next.dataSource = 'post_use_rating'
     setFilters(next)
-    syncFiltersToUrl(next)
-  }, [isPostUseLane, syncFiltersToUrl])
+    const ticketIdSetKey = searchParams.get('ticketIdSet')?.trim() || ''
+    if (ticketIdSetKey) clearFeedbackTicketIdSet(ticketIdSetKey)
+    skipUrlSyncRef.current = true
+    setSearchParams(patchFeedbackSearchParams(searchParams, {
+      ...feedbackFiltersToUrlPatch(next),
+      ticketIdSet: '',
+    }), { replace: true })
+  }, [isPostUseLane, searchParams, setSearchParams])
 
   const refreshCustomerVisitRecords = useCallback(async () => {
     setCustomerVisitLoading(true)
@@ -255,9 +268,10 @@ export default function Feedbacks() {
     }
 
     const parsed = parseFeedbackSearchParams(searchParams)
+    const { ticketIdSet: _ignoredTicketIdSet, ...parsedFilters } = parsed
     const lane = resolveFeedbackLane(searchParams)
     let next = feedbackFiltersFromParsed({
-      ...parsed,
+      ...parsedFilters,
       ticketIds: parsed.ticketIds,
     })
     if (lane === FEEDBACK_LANE_POST_USE) {
@@ -438,10 +452,17 @@ export default function Feedbacks() {
     [feedbacks],
   )
 
-  const selectedTicketIdSet = useMemo(
-    () => (filters.ticketIds.length ? new Set(filters.ticketIds) : null),
-    [filters.ticketIds],
+  const ticketIdSetKey = searchParams.get('ticketIdSet')?.trim() || ''
+  const ticketIdSet = useMemo(
+    () => readFeedbackTicketIdSet(ticketIdSetKey),
+    [ticketIdSetKey],
   )
+
+  const selectedTicketIdSet = useMemo(() => {
+    if (ticketIdSet?.ticketIds.length) return new Set(ticketIdSet.ticketIds)
+    if (filters.ticketIds.length) return new Set(filters.ticketIds)
+    return null
+  }, [ticketIdSet, filters.ticketIds])
 
   const ticketIdOptions = useMemo(() => {
     /** @type {Map<string, string>} */
@@ -763,7 +784,8 @@ export default function Feedbacks() {
         (needsTicketLlmCount > 0 ||
           needsJourneyLlmCount > 0 ||
           missingTags > 0 ||
-          filters.ticketIds.length > 0) && (
+          filters.ticketIds.length > 0 ||
+          ticketIdSetKey) && (
         <div className="page-section page-stack">
           {(needsTicketLlmCount > 0 || needsJourneyLlmCount > 0) && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-1.5 text-sm text-sky-900">
@@ -856,7 +878,26 @@ export default function Feedbacks() {
             />
           )}
 
-          {filters.ticketIds.length > 0 && (
+          {ticketIdSetKey && !ticketIdSet ? (
+            <Alert
+              type="warning"
+              showIcon
+              title="依据工单集已失效，请从看板重新打开"
+            />
+          ) : null}
+
+          {ticketIdSet ? (
+            <Alert
+              type="info"
+              showIcon
+              title={ticketIdSet.label}
+              description={
+                matchedEvidenceCount > 0
+                  ? `库内匹配证据 ${matchedEvidenceCount} 条（含跨周期）。`
+                  : '当前主题依据工单号在库内暂无匹配记录。'
+              }
+            />
+          ) : filters.ticketIds.length > 0 ? (
             <Alert
               type="info"
               showIcon
@@ -867,7 +908,7 @@ export default function Feedbacks() {
                   : '当前筛选工单号在库内暂无匹配记录。'
               }
             />
-          )}
+          ) : null}
         </div>
       )}
 
@@ -876,7 +917,8 @@ export default function Feedbacks() {
           needsTicketLlmCount > 0 ||
           needsJourneyLlmCount > 0 ||
           missingTags > 0 ||
-          filters.ticketIds.length > 0
+          filters.ticketIds.length > 0 ||
+          ticketIdSetKey
             ? 'page-section-sm'
             : 'page-section'
         }`}
@@ -913,6 +955,21 @@ export default function Feedbacks() {
             </div>
           </div>
         ) : (
+        <div className="space-y-2">
+          {ticketIdSet ? (
+            <Tag
+              color="blue"
+              closable
+              onClose={(event) => {
+                event.preventDefault()
+                clearFeedbackTicketIdSet(ticketIdSetKey)
+                skipUrlSyncRef.current = true
+                setSearchParams(patchFeedbackSearchParams(searchParams, { ticketIdSet: '' }), { replace: true })
+              }}
+            >
+              {ticketIdSet.label}
+            </Tag>
+          ) : null}
         <FeedbackFilterBar
           filters={filters}
           onFiltersChange={handleFiltersChange}
@@ -1001,6 +1058,7 @@ export default function Feedbacks() {
             </>
           }
         />
+        </div>
         )}
       </div>
 

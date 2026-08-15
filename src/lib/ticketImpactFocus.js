@@ -16,6 +16,7 @@ import {
 
 const TOP_THEME_LIMIT = 4
 const THEME_EVIDENCE_LIMIT = 6
+const TICKET_COUNT_SUFFIX_RE = /（\d+ 条工单[^）]*）$/
 
 function painOf(record) {
   return String(record?.painPoint || record?.problemSummary || '').trim()
@@ -40,7 +41,8 @@ function themeTypeOf(recommendation) {
 }
 
 function themeLabelOf(recommendation) {
-  return String(recommendation?.summary || recommendation?.text || '未命名主题').trim() || '未命名主题'
+  const raw = String(recommendation?.summary || recommendation?.text || '未命名主题').trim() || '未命名主题'
+  return raw.replace(TICKET_COUNT_SUFFIX_RE, '').trim() || '未命名主题'
 }
 
 function tokenize(text) {
@@ -188,6 +190,16 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
   const rows = [...linked.values()].sort(compareEvidenceRows).slice(0, THEME_EVIDENCE_LIMIT)
   const impactSignals = buildImpactSignals(rows)
   const riskScore = computeRiskScore(impactSignals, rows.length, themeTypeOf(recommendation))
+  const clusterRecords = (recommendation?.evidenceRecordIds || [])
+    .map((id) => recordById.get(id))
+    .filter(Boolean)
+  const clusterTicketIds = dedupeTicketIds(clusterRecords)
+  const ticketCount = Number(
+    recommendation?.sections?.painClusterScores?.ticketCount
+      ?? recommendation?.evidenceBundle?.ticketCount
+      ?? clusterTicketIds.length
+      ?? (recommendation?.evidenceRecordIds || []).length,
+  )
 
   return {
     themeId: themeIdOf(recommendation),
@@ -195,10 +207,8 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
     themeType: themeTypeOf(recommendation),
     themeLabel: themeLabelOf(recommendation),
     product: recommendation?.scope?.product || '',
-    ticketCount:
-      recommendation?.sections?.painClusterScores?.ticketCount
-      ?? recommendation?.evidenceBundle?.ticketCount
-      ?? (recommendation?.evidenceRecordIds || []).length,
+    ticketCount: Number.isFinite(ticketCount) ? ticketCount : clusterTicketIds.length,
+    clusterTicketIds,
     evidenceRecordIds: rows.map((row) => row.id).filter(Boolean),
     evidenceTicketIds: dedupeTicketIds(rows),
     impactSignals,

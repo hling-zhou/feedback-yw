@@ -139,6 +139,8 @@ function buildModel() {
           riskLevel: 'high',
           impactSignals: { highValueCount: 1, negativeCount: 0, urgentCount: 0, unresolvedCount: 1 },
           inferred: false,
+          ticketCount: 1,
+          clusterTicketIds: ['20260416174551X751972102'],
           evidenceTicketIds: ['20260416174551X751972102'],
           records: [
             {
@@ -236,8 +238,10 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('重点关注')
     expect(html).toContain('查看该主题证据')
     expect(html).toContain('主题证据')
-    expect(html).toContain('在反馈库查看')
-    expect(html).toContain('/feedbacks?source=complaint_ticket&amp;ticketIds=20260416174551X751972102')
+    expect(html).toContain('查看簇内 1 条')
+    expect(html).toContain('高风险抽样 1 / 簇内 1')
+    expect(html).toContain('ticketIds=20260416174551X751972102')
+    expect(html).toContain('source=complaint_ticket')
     expect(html).toContain('环比')
     expect(html).toContain('客户体验类万投比')
     expect(html).toContain('高风险')
@@ -388,5 +392,26 @@ describe('TicketStoryView render', () => {
 
     expect(html).toContain('当前未形成稳定主题')
     expect(html).toContain('高风险信号证据')
+    expect(html).toContain('在反馈库查看')
+  })
+
+  it('does not put a large cluster ticket-id list into the feedbacks href', () => {
+    const model = buildModel()
+    const clusterTicketIds = Array.from({ length: 21 }, (_, index) => `T-${String(index + 1).padStart(3, '0')}`)
+    model.impactAndEvidence.themeLinks[0].ticketCount = 248
+    model.impactAndEvidence.themeLinks[0].clusterTicketIds = clusterTicketIds
+    model.impactAndEvidence.themeLinks[0].themeLabel = '当前带宽配额无法满足业务流量需求（248 条工单，占该产品 23%）'
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('高风险抽样 1 / 簇内 248')
+    expect(html).toContain('查看簇内 248 条')
+    expect(html).toContain('复制工单号')
+    expect(html).toContain('当前带宽配额无法满足业务流量需求')
+    expect(html).not.toContain('占该产品 23%')
+    expect(html).not.toContain('ticketIds=T-001')
+    expect(html).not.toContain(clusterTicketIds.join(','))
   })
 })

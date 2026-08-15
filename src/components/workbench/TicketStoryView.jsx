@@ -1,12 +1,17 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography } from 'antd'
-import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { ArrowRightOutlined, CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { isJourneyProductSelected, ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import TicketJourneyMap from './TicketJourneyMap.jsx'
+import {
+  FEEDBACK_TICKET_ID_URL_LIMIT,
+  formatClusterEvidenceLinkLabel,
+  resolveClusterFeedbacksNavigation,
+} from '../../lib/feedbackTicketIdSet.js'
 
 const priorityColors = { high: 'red', medium: 'gold', low: 'default' }
 const recoveryColors = { recovered: 'green', not_recovered: 'red', pending: 'gold' }
@@ -128,9 +133,7 @@ function downloadCsv(text, name) {
 }
 
 function evidenceHref(sourceType, ticketIds) {
-  const params = new URLSearchParams({ source: sourceType })
-  if (ticketIds?.length) params.set('ticketIds', ticketIds.join(','))
-  return `/feedbacks?${params.toString()}`
+  return resolveClusterFeedbacksNavigation({ sourceType, ticketIds }).href
 }
 
 function uniqueTicketIdsFromRecords(records) {
@@ -143,6 +146,30 @@ function uniqueTicketIdsFromRecords(records) {
     ticketIds.push(ticketId)
   }
   return ticketIds
+}
+
+function displayThemeLabel(label) {
+  return String(label || '').replace(/（\d+ 条工单[^）]*）$/, '').trim() || label || '未命名主题'
+}
+
+function clusterTicketIdsOf(link) {
+  return link.clusterTicketIds?.length
+    ? link.clusterTicketIds
+    : uniqueTicketIdsFromRecords(link.records)
+}
+
+async function copyClusterTicketIds(ticketIds) {
+  const ids = ticketIds || []
+  if (!ids.length) {
+    message.info('当前主题没有可复制的工单号')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(ids.join('\n'))
+    message.success(`已复制 ${ids.length} 个工单号`)
+  } catch {
+    message.error('复制工单号失败')
+  }
 }
 
 function themeEvidenceAnchor(themeId) {
@@ -489,16 +516,20 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
       {impactThemeLinks.length ? (
         <Card size="small" title="主题证据">
           <div className="space-y-5">
-            {impactThemeLinks.map((link, index) => (
+            {impactThemeLinks.map((link, index) => {
+              const clusterTicketIds = clusterTicketIdsOf(link)
+              const clusterCount = link.ticketCount || clusterTicketIds.length
+              const useSessionJump = clusterTicketIds.length > FEEDBACK_TICKET_ID_URL_LIMIT
+              return (
               <div
                 key={link.themeId}
                 id={themeEvidenceAnchor(link.themeId)}
                 className={index < impactThemeLinks.length - 1 ? 'border-b border-gray-100 pb-5' : ''}
               >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Typography.Title level={5} className="!mb-0 !text-sm">
-                      {link.themeLabel}
+                      {displayThemeLabel(link.themeLabel)}
                     </Typography.Title>
                     <Tag color={impactRiskColors[link.riskLevel] || 'default'}>
                       {link.riskLevel === 'high' ? '高风险' : link.riskLevel === 'medium' ? '中风险' : '低风险'}
@@ -508,27 +539,61 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
                     {link.impactSignals.negativeCount ? <Tag color="red">负向 {link.impactSignals.negativeCount}</Tag> : null}
                     {link.impactSignals.urgentCount ? <Tag color="volcano">紧急 {link.impactSignals.urgentCount}</Tag> : null}
                     {link.impactSignals.unresolvedCount ? <Tag color="purple">未解决 {link.impactSignals.unresolvedCount}</Tag> : null}
+                    <Typography.Text type="secondary" className="text-xs">
+                      高风险抽样 {link.records.length} / 簇内 {clusterCount}
+                    </Typography.Text>
                   </div>
-                  <Button
-                    type="link"
-                    size="small"
-                    href={evidenceHref(scope.sourceType, link.evidenceTicketIds || uniqueTicketIdsFromRecords(link.records))}
-                  >
-                    在反馈库查看
-                  </Button>
+                  <Space size={0}>
+                    {useSessionJump ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => void copyClusterTicketIds(clusterTicketIds)}
+                      >
+                        复制工单号
+                      </Button>
+                    ) : null}
+                    {useSessionJump ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => {
+                          const nav = resolveClusterFeedbacksNavigation({
+                            sourceType: scope.sourceType,
+                            ticketIds: clusterTicketIds,
+                            ticketCount: clusterCount,
+                          })
+                          window.location.assign(nav.href)
+                        }}
+                      >
+                        {formatClusterEvidenceLinkLabel(clusterCount)}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="link"
+                        size="small"
+                        href={evidenceHref(scope.sourceType, clusterTicketIds)}
+                      >
+                        {formatClusterEvidenceLinkLabel(clusterCount)}
+                      </Button>
+                    )}
+                  </Space>
                 </div>
                 <LimitedTable
                   className="ticket-evidence-table"
                   size="small"
                   rowKey="id"
                   dataSource={link.records}
+                  limit={link.records.length}
                   expandLabel="展开全部"
                   tableLayout="fixed"
                   scroll={{ x: 1200 }}
                   columns={evidenceTicketColumns({ complaint, onOpenFeedback })}
                 />
               </div>
-            ))}
+              )
+            })}
           </div>
         </Card>
       ) : impactSummary?.status === 'evidence_only' ? (

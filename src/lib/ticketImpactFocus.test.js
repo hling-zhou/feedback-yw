@@ -55,8 +55,8 @@ describe('ticketImpactFocus', () => {
 
     expect(result.all.summary.status).toBe('linked')
     expect(result.all.themeLinks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ themeId: 'pcl-1', evidenceRecordIds: ['1'] }),
-      expect.objectContaining({ themeId: 'pfr-1', evidenceRecordIds: ['2'], inferred: true }),
+      expect.objectContaining({ themeId: 'pcl-1', evidenceRecordIds: ['1'], clusterTicketIds: ['T-1'], ticketCount: 1 }),
+      expect.objectContaining({ themeId: 'pfr-1', evidenceRecordIds: ['2'], inferred: true, clusterTicketIds: ['T-2'] }),
     ]))
     expect(result.byProduct['弹性公网IP'].summary.focusItems[0]).toMatchObject({ themeId: 'pcl-1' })
   })
@@ -94,5 +94,30 @@ describe('ticketImpactFocus', () => {
     })
 
     expect(merged).toEqual(ruleSummary)
+  })
+
+  it('keeps cluster ticket ids while sampling high-risk evidence rows', () => {
+    const records = Array.from({ length: 8 }, (_, index) => record(String(index + 1), {
+      customerTier: '金牌',
+      sentiment: 'negative',
+    }))
+    const result = buildImpactFocusSummaryRule({
+      scopeLabel: '投诉工单整体',
+      recommendations: [{
+        id: 'cluster-1',
+        stableKey: 'pcl-big',
+        signalType: 'pain_cluster_v2',
+        summary: '当前带宽配额无法满足业务流量需求（8 条工单，占该产品 23%）',
+        scope: { product: '弹性公网IP', problemType: '可用性/连通性故障', journeyL1: '使用' },
+        evidenceRecordIds: records.map((item) => item.id),
+        sections: { painClusterScores: { ticketCount: 8 } },
+      }],
+      records,
+    })
+
+    expect(result.themeLinks[0].themeLabel).toBe('当前带宽配额无法满足业务流量需求')
+    expect(result.themeLinks[0].ticketCount).toBe(8)
+    expect(result.themeLinks[0].evidenceRecordIds).toHaveLength(6)
+    expect(result.themeLinks[0].clusterTicketIds).toEqual(records.map((item) => item.ticketId))
   })
 })

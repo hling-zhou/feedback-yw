@@ -679,11 +679,35 @@ export function buildTicketStoryModel(input) {
     : null
   const resolvedImpactFocus = snapshotImpactFocus || localImpactFocus || { summary: null, themeLinks: [], ungroupedEvidenceRecordIds: [] }
   const recordById = new Map(records.map((record) => [record.id, record]))
+  const recommendationByThemeId = new Map()
+  for (const rec of recommendations || []) {
+    const stableKey = String(rec.stableKey || '').trim()
+    const id = String(rec.id || '').trim()
+    if (stableKey) recommendationByThemeId.set(stableKey, rec)
+    if (id) recommendationByThemeId.set(id, rec)
+  }
   const groupedThemeLinks = (resolvedImpactFocus.themeLinks || [])
-    .map((link) => ({
-      ...link,
-      records: (link.evidenceRecordIds || []).map((id) => recordById.get(id)).filter(Boolean),
-    }))
+    .map((link) => {
+      const rec = recommendationByThemeId.get(String(link.themeId || '').trim())
+        || recommendationByThemeId.get(String(link.recommendationId || '').trim())
+      const sampleRecords = (link.evidenceRecordIds || []).map((id) => recordById.get(id)).filter(Boolean)
+      const clusterTicketIds = (link.clusterTicketIds?.length
+        ? link.clusterTicketIds
+        : uniqueTicketIds((rec?.evidenceRecordIds || []).map((id) => recordById.get(id)).filter(Boolean)))
+      const resolvedClusterTicketIds = clusterTicketIds.length ? clusterTicketIds : uniqueTicketIds(sampleRecords)
+      const ticketCount = Number(
+        link.ticketCount
+          ?? rec?.sections?.painClusterScores?.ticketCount
+          ?? rec?.evidenceBundle?.ticketCount
+          ?? resolvedClusterTicketIds.length,
+      )
+      return {
+        ...link,
+        records: sampleRecords,
+        clusterTicketIds: resolvedClusterTicketIds,
+        ticketCount: Number.isFinite(ticketCount) && ticketCount > 0 ? ticketCount : resolvedClusterTicketIds.length,
+      }
+    })
     .filter((link) => link.records.length > 0)
   const fallbackImpactRecords = (resolvedImpactFocus.ungroupedEvidenceRecordIds || [])
     .map((id) => recordById.get(id))
