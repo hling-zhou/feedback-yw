@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
+import TicketJourneyMap from './TicketJourneyMap.jsx'
 
-const changeColors = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
 const priorityColors = { high: 'red', medium: 'gold', low: 'default' }
 const recoveryColors = { recovered: 'green', not_recovered: 'red', pending: 'gold' }
 const impactRiskColors = { high: 'red', medium: 'gold', low: 'default' }
@@ -88,7 +88,11 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
   const { scope, overview, trendsAndChanges, drivers, impactAndEvidence, actionsAndRecovery, quality } = model
   const complaint = scope.sourceType === 'complaint_ticket'
   const metrics = overview.metrics
-  const hierarchyRows = drivers.locationRows
+  const journeyStages = drivers.journeyStages || []
+  const journeyLayout = drivers.journeyLayout || 'empty'
+  const journeyHighlights = drivers.journeyChangeHighlights || trendsAndChanges.highlights || []
+  const journeySourceFilter = drivers.journeySourceFilter
+    || (complaint ? 'complaint' : 'consultation')
   const formalClusters = drivers.clusters || []
   const fallbackReferences = drivers.fallbackReferences || []
   const driversEmptyState = drivers.emptyState || null
@@ -147,7 +151,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
             { title: '环比', dataIndex: 'delta', width: 104, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
             { title: '负向', dataIndex: 'negativePct', width: 82, render: (value, row) => `${row.negativeCount}（${value}%）` },
             ...(complaint ? [{ title: '客户体验类万投比', dataIndex: 'wanTouRatio', width: 130, render: (value, row) => value == null ? '—' : <span>{value.toFixed(2)}{row.wanTouTargetMet === false ? <Tag color="red" className="ml-1">未达标</Tag> : null}</span> }] : []),
-            { title: '首要问题', dataIndex: 'primaryProblem', width: 210, ellipsis: true },
+            { title: <Tooltip title="该产品优先痛点聚类，无聚类时回退为最高频问题类型">首要问题</Tooltip>, dataIndex: 'primaryProblem', width: 210, ellipsis: true },
             { title: '主要旅程', dataIndex: 'primaryJourney', width: 130 },
             { title: '回访证据', dataIndex: 'followUpEvidence', width: 88 },
             { title: '举措状态', dataIndex: 'actionStatus', width: 100 },
@@ -155,7 +159,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
         />
       </Card>
 
-      <SectionHeading title="趋势与变化" summary="判断规模和重点问题是在增长、持续还是缓解" id="ticket-trends" />
+      <SectionHeading title="趋势与变化" summary="判断规模是在增长、持续还是缓解；环节变化见下方用户旅程" id="ticket-trends" />
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={12}>
           <Card size="small" title="工单量趋势" className="h-full">
@@ -176,38 +180,18 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           )}
         </Col>
       </Row>
-      <Card size="small" title="问题变化">
-        <LimitedTable
-          size="small"
-          rowKey="key"
-          dataSource={trendsAndChanges.changes}
-          locale={{ emptyText: `需要${previousPeriodLabel}与${currentPeriodLabel}数据才能判断问题变化` }}
-          columns={[
-            { title: '变化', dataIndex: 'change', width: 82, render: (value) => <Tag color={changeColors[value]}>{value}</Tag> },
-            { title: '产品', dataIndex: 'product', width: 150 },
-            { title: '问题类型', dataIndex: 'problemType', width: 170 },
-            { title: '用户旅程', dataIndex: 'journey', width: 130 },
-            { title: previousPeriodLabel, dataIndex: 'previousCount', width: 112 },
-            { title: currentPeriodLabel, dataIndex: 'currentCount', width: 112 },
-            { title: '证据', width: 76, render: (_, row) => <Button type="link" size="small" href={evidenceHref(scope.sourceType, row.ticketIds)}>查看</Button> },
-          ]}
-        />
-      </Card>
 
-      <SectionHeading title="问题发生位置" summary="从请求场景沿用户旅程下钻到问题类型" id="ticket-location" />
-      <Card size="small" title="请求场景 → 用户旅程 → 问题类型">
-        <LimitedTable
-          size="small"
-          rowKey="key"
-          dataSource={hierarchyRows}
-          columns={[
-            { title: '请求场景', dataIndex: 'scene', width: 170 },
-            { title: '一级旅程', dataIndex: 'journeyL1', width: 150 },
-            { title: '二级旅程', dataIndex: 'journeyL2', width: 170 },
-            { title: '主要问题类型', dataIndex: 'problemType', width: 180 },
-            { title: '工单数', dataIndex: 'count', width: 82 },
-            { title: '证据', width: 76, render: (_, row) => <Button type="link" size="small" href={evidenceHref(scope.sourceType, row.ticketIds)}>查看</Button> },
-          ]}
+      <SectionHeading title="问题发生位置" summary="沿一级用户旅程查看问题卡在哪一站，以及比上期更好还是更差" id="ticket-location" />
+      <Card size="small" title="用户旅程">
+        <TicketJourneyMap
+          layout={journeyLayout}
+          stages={journeyStages}
+          highlights={journeyHighlights}
+          sourceType={scope.sourceType}
+          sourceFilter={journeySourceFilter}
+          selectedProduct={scope.selectedProduct}
+          previousPeriodLabel={previousPeriodLabel}
+          currentPeriodLabel={currentPeriodLabel}
         />
       </Card>
       {complaint ? (
@@ -229,13 +213,12 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
             size="small"
             rowKey="id"
             dataSource={formalClusters}
-            scroll={{ x: 1250 }}
+            scroll={{ x: 1100 }}
             columns={[
               { title: '改善优先级', dataIndex: 'priority', fixed: 'left', width: 104, render: (value) => <Tag color={priorityColors[value]}>{value === 'high' ? '高' : value === 'medium' ? '中' : '低'}</Tag> },
               { title: '产品', dataIndex: 'product', width: 150 },
               { title: '用户需求/痛点', dataIndex: 'pain', width: 240, ellipsis: true },
               { title: '客户请求摘要', dataIndex: 'customerRequest', width: 220, ellipsis: true },
-              { title: '根因', dataIndex: 'rootCause', width: 190, ellipsis: true },
               { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
               { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
               { title: '广度分', dataIndex: 'breadthScore', width: 76 },
@@ -255,13 +238,12 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
             size="small"
             rowKey="id"
             dataSource={fallbackReferences}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 960 }}
             columns={[
               { title: '类型', width: 110, render: () => <Tag color="warning">推断型</Tag> },
               { title: '产品', dataIndex: 'product', width: 150 },
               { title: '参考主题', dataIndex: 'pain', width: 260, ellipsis: true },
               { title: '客户请求摘要', dataIndex: 'customerRequest', width: 220, ellipsis: true },
-              { title: '根因', dataIndex: 'rootCause', width: 190, ellipsis: true },
               { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
               { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
               { title: '依据', dataIndex: 'basis', width: 260, ellipsis: true },

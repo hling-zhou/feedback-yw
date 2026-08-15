@@ -73,7 +73,9 @@ function buildModel() {
       requestScenes: [],
       journeyTree: [],
       problemTypes: [],
-      locationRows: [],
+      journeyLayout: 'empty',
+      journeyStages: [],
+      journeyChangeHighlights: [],
       complaintCauses: [{ name: '产品能力', count: 2 }],
       emptyState: null,
       clusters: [
@@ -198,6 +200,12 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('P90情绪')
     expect(html).toContain('推断型')
     expect(html).toContain('参考主题')
+    expect(html).toContain('用户旅程')
+    expect(html).toContain('用户旅程按单产品生命周期查看，请选择一个产品。')
+    expect(html).not.toContain('一级环节热力')
+    expect(html).not.toContain('全部反馈')
+    expect(html).not.toContain('请求场景 → 用户旅程 → 问题类型')
+    expect(html).not.toContain('title="问题变化"')
   })
 
   it('prevents long fixed-left ticket ids from overflowing adjacent evidence columns', () => {
@@ -261,6 +269,32 @@ describe('TicketStoryView render', () => {
 
     expect(html).toContain('当前产品暂无结果')
     expect(html).toContain('专有网络 VPC')
+  })
+
+  it('renders product journey map in lifecycle order when a product is selected', () => {
+    const model = buildModel()
+    model.scope.selectedProduct = '弹性公网IP'
+    model.drivers.journeyLayout = 'lifecycle'
+    model.drivers.journeyStages = [
+      { key: '认知与选型', journeyL1: '认知与选型', count: 0, sharePct: 0, previousCount: 0, currentCount: 0, delta: 0, change: null, headline: '—', actionLabel: '', children: [], topProblemTypes: [], ticketIds: [], empty: true, complaintCount: 0, consultationCount: 0, isFrictionPeak: false },
+      { key: '业务使用与连通', journeyL1: '业务使用与连通', count: 2, sharePct: 100, previousCount: 0, currentCount: 2, delta: 2, change: '新增', headline: '公网访问不通', actionLabel: '公网访问不通', children: [], topProblemTypes: [], ticketIds: ['T-1'], empty: false, complaintCount: 2, consultationCount: 0, isFrictionPeak: true },
+    ]
+    model.drivers.journeyChangeHighlights = [
+      { key: '业务使用与连通', journeyL1: '业务使用与连通', change: '新增', previousCount: 0, currentCount: 2, text: '业务使用与连通 0→2，新增' },
+    ]
+    model.drivers.journeySourceFilter = 'complaint'
+
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+
+    expect(html).toContain('用户旅程')
+    expect(html).toContain('认知与选型')
+    expect(html).toContain('业务使用与连通')
+    expect(html).toContain('按弹性公网IP用户旅程一级环节排列')
+    expect(html).toContain('体验断点')
+    expect(html).toContain('卡在 公网访问不通')
+    expect(html).not.toContain('全部反馈')
   })
 
   it('falls back to ungrouped evidence when no theme is available', () => {

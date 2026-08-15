@@ -1,4 +1,5 @@
 import { countByField, journeyTree } from './productAnalytics.js'
+import { getTaxonomy } from './productTaxonomy.js'
 import { isNegativeSentiment, getUrgencyLevel } from './sentiment.js'
 import { getFollowUpScore } from '../domain/followUpSatisfaction.js'
 import { getComplaintCauseL1Display, isCustomerExperienceComplaint } from '../domain/complaintCause.js'
@@ -28,7 +29,15 @@ import {
 import { buildImpactFocusSummaryRule } from './ticketImpactFocus.js'
 
 export const TICKET_STORY_SMALL_SAMPLE_N = 5
+export const JOURNEY_EMPTY_HINT = '用户旅程按单产品生命周期查看，请选择一个产品。'
+export const JOURNEY_SOURCE_FILTERS = /** @type {const} */ ({
+  all: 'all',
+  complaint: 'complaint',
+  consultation: 'consultation',
+})
 const UNCLASSIFIED = new Set(['', '未分类', '未识别环节', '未识别子环节'])
+const CHANGE_RANK = { 新增: 0, 增长: 1, 持续: 2, 缓解: 3, 消失: 4 }
+const TICKET_COUNT_SUFFIX_RE = /（\d+ 条工单[^）]*）$/
 
 const pct = (value, total) => total ? Math.round((value / total) * 1000) / 10 : 0
 const productOf = (record) => String(record.product || record.productSpec || '未标注产品').trim()
@@ -75,63 +84,320 @@ function topValue(records, field, fallback = '—') {
   return countByField(records, field)[0]?.name || fallback
 }
 
+function journeyL1Of(record) {
+  const value = String(record?.journeyL1 || '').trim()
+  return !value || UNCLASSIFIED.has(value) ? '未识别环节' : value
+}
+
+function journeyL2Of(record) {
+  const value = String(record?.journeyL2 || '').trim()
+  return !value || UNCLASSIFIED.has(value) ? '未识别子环节' : value
+}
+
+function recordsInMonths(records, months) {
+  const monthSet = new Set((months || []).filter(Boolean))
+  if (!monthSet.size) return []
+  return (records || []).filter((item) => monthSet.has(monthOf(item)))
+}
+
 /**
- * 按上一周期 / 本周期（月集合）对比问题变化，不再取「有数据的相邻月」。
- * @param {import('./types.js').FeedbackRecord[]} records
- * @param {string[]} currentMonths
- * @param {string[]} previousMonths
+ * @param {number} previousCount
+ * @param {number} currentCount
+ * @param {boolean} hasPreviousPeriod
+ * @returns {'新增' | '增长' | '持续' | '缓解' | '消失' | null}
  */
-function changeBuckets(records, currentMonths, previousMonths) {
-  const currentMonthList = (currentMonths || []).filter(Boolean)
-  const previousMonthList = (previousMonths || []).filter(Boolean)
-  if (!currentMonthList.length || !previousMonthList.length) {
-    return {
-      currentMonth: currentMonthList.at(-1) || '',
-      previousMonth: previousMonthList.at(-1) || '',
-      rows: [],
+export function classifyJourneyChange(previousCount, currentCount, hasPreviousPeriod) {
+  if (!hasPreviousPeriod) return null
+  if (!previousCount && currentCount) return '新增'
+  if (previousCount && !currentCount) return '消失'
+  if (currentCount > previousCount) return '增长'
+  if (currentCount < previousCount) return '缓解'
+  if (!previousCount && !currentCount) return null
+  return '持续'
+}
+
+/**
+ * 簇级痛点展示：代表痛点，去掉洞察句里重复的工单数量后缀。
+ * @param {{ summary?: string; text?: string; generationMeta?: { representativePain?: string } }} recommendation
+ */
+export function clusterPainLabel(recommendation) {
+  const representative = String(recommendation?.generationMeta?.representativePain || '').trim()
+  const summary = String(recommendation?.summary || recommendation?.text || '').trim()
+  const raw = representative || summary
+  return raw.replace(TICKET_COUNT_SUFFIX_RE, '').trim() || '未命名问题'
+}
+
+/**
+ * 簇内客户请求代表值：按频次，并列时取更长文本。禁止用「第一条证据工单」顶替。
+ * @param {import('./types.js').FeedbackRecord[]} records
+ */
+export function pickRepresentativeCustomerRequest(records) {
+  const counts = new Map()
+  for (const record of records || []) {
+    const text = String(record?.customerRequest || '').trim()
+    if (!text || text === '—') continue
+    counts.set(text, (counts.get(text) || 0) + 1)
+  }
+  if (!counts.size) return '—'
+  let best = ''
+  let bestCount = 0
+  for (const [text, count] of counts) {
+    if (count > bestCount || (count === bestCount && text.length > best.length)) {
+      best = text
+      bestCount = count
     }
   }
-  const bucket = (months) => {
-    const monthSet = new Set(months)
-    const groups = new Map()
-    for (const record of records.filter((item) => monthSet.has(monthOf(item)))) {
-      const product = productOf(record)
-      const problemType = String(record.problemType || '未分类').trim()
-      const journey = String(record.journeyL1 || '未识别环节').trim()
-      const key = `${product}\u0000${problemType}\u0000${journey}`
-      const group = groups.get(key) || { key, product, problemType, journey, count: 0, recordIds: [], ticketIds: [] }
-      group.count += 1
-      if (record.id) group.recordIds.push(record.id)
-      if (record.ticketId) group.ticketIds.push(record.ticketId)
-      groups.set(key, group)
-    }
-    return groups
+  return best
+}
+
+function topCountedEntries(map, limit = 1) {
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh'))
+    .slice(0, limit)
+}
+
+function recordSourceKind(record) {
+  const type = record?.dataSourceType || 'complaint_ticket'
+  if (type === 'consultation_ticket') return 'consultation'
+  if (type === 'complaint_ticket') return 'complaint'
+  return 'other'
+}
+
+/**
+ * @param {string} [selectedProduct]
+ */
+export function isJourneyProductSelected(selectedProduct) {
+  const name = String(selectedProduct || '').trim()
+  return Boolean(name) && name !== '全部产品'
+}
+
+/**
+ * @param {import('./types.js').FeedbackRecord[]} records
+ * @param {'all' | 'complaint' | 'consultation'} sourceFilter
+ */
+export function filterRecordsByJourneySource(records, sourceFilter = 'all') {
+  const rows = records || []
+  if (sourceFilter === 'complaint') {
+    return rows.filter((record) => recordSourceKind(record) === 'complaint')
   }
-  const current = bucket(currentMonthList)
-  const previous = bucket(previousMonthList)
+  if (sourceFilter === 'consultation') {
+    return rows.filter((record) => recordSourceKind(record) === 'consultation')
+  }
+  return rows.filter((record) => {
+    const kind = recordSourceKind(record)
+    return kind === 'complaint' || kind === 'consultation'
+  })
+}
+
+function emptyStageStats() {
   return {
-    currentMonth: currentMonthList.at(-1) || '',
-    previousMonth: previousMonthList.at(-1) || '',
-    rows: [...new Set([...current.keys(), ...previous.keys()])].map((key) => {
-      const now = current.get(key)
-      const before = previous.get(key)
-      const currentCount = now?.count || 0
-      const previousCount = before?.count || 0
-      let change = '持续'
-      if (!previousCount && currentCount) change = '新增'
-      else if (previousCount && !currentCount) change = '消失'
-      else if (currentCount > previousCount) change = '增长'
-      else if (currentCount < previousCount) change = '缓解'
-      return {
-        ...(now || before),
-        currentCount,
-        previousCount,
-        change,
-        recordIds: [...(now?.recordIds || []), ...(before?.recordIds || [])],
-        ticketIds: [...new Set([...(now?.ticketIds || []), ...(before?.ticketIds || [])])],
-      }
-    }).sort((a, b) => ({ 新增: 0, 增长: 1, 持续: 2, 缓解: 3, 消失: 4 }[a.change] - ({ 新增: 0, 增长: 1, 持续: 2, 缓解: 3, 消失: 4 }[b.change]) || b.currentCount - a.currentCount)),
+    count: 0,
+    complaintCount: 0,
+    consultationCount: 0,
+    negativeCount: 0,
+    recordIds: [],
+    ticketIds: [],
+    l2: new Map(),
+    problemTypes: new Map(),
+    pains: new Map(),
   }
+}
+
+function collectJourneyStageStats(records) {
+  /** @type {Map<string, ReturnType<typeof emptyStageStats>>} */
+  const map = new Map()
+  for (const record of records || []) {
+    const l1 = journeyL1Of(record)
+    const entry = map.get(l1) || emptyStageStats()
+    entry.count += 1
+    if (recordSourceKind(record) === 'consultation') entry.consultationCount += 1
+    else entry.complaintCount += 1
+    if (isNegativeSentiment(record.sentiment)) entry.negativeCount += 1
+    if (record.id) entry.recordIds.push(record.id)
+    if (record.ticketId) entry.ticketIds.push(record.ticketId)
+    const l2 = journeyL2Of(record)
+    const child = entry.l2.get(l2) || { count: 0, ticketIds: [] }
+    child.count += 1
+    if (record.ticketId) child.ticketIds.push(record.ticketId)
+    entry.l2.set(l2, child)
+    const problemType = String(record.problemType || '未分类').trim() || '未分类'
+    entry.problemTypes.set(problemType, (entry.problemTypes.get(problemType) || 0) + 1)
+    const pain = painOf(record)
+    if (pain) entry.pains.set(pain, (entry.pains.get(pain) || 0) + 1)
+    map.set(l1, entry)
+  }
+  return map
+}
+
+function listLifecycleJourneyL1(productName) {
+  if (!productName) return []
+  return (getTaxonomy(productName)?.journeys || [])
+    .map((item) => ({
+      label: String(item.label || '').trim(),
+      description: String(item.description || '').trim(),
+    }))
+    .filter((item) => item.label)
+}
+
+function displayCountForFilter(entry, sourceFilter) {
+  if (!entry) return 0
+  if (sourceFilter === 'complaint') return entry.complaintCount || 0
+  if (sourceFilter === 'consultation') return entry.consultationCount || 0
+  return entry.count || 0
+}
+
+/**
+ * 按一级用户旅程建站点。未选产品时 layout=empty，不画跨产品图；changeRows 仍按 L1 汇总供结论使用。
+ */
+export function buildJourneyStages({
+  currentRecords = [],
+  previousRecords = [],
+  hasPreviousPeriod = false,
+  selectedProduct = '',
+  sourceFilter = 'all',
+} = {}) {
+  const filteredCurrent = filterRecordsByJourneySource(currentRecords, sourceFilter)
+  const filteredPrevious = hasPreviousPeriod
+    ? filterRecordsByJourneySource(previousRecords, sourceFilter)
+    : []
+  const currentStats = collectJourneyStageStats(filteredCurrent)
+  const previousStats = collectJourneyStageStats(filteredPrevious)
+  const lifecycle = listLifecycleJourneyL1(selectedProduct)
+  const descriptionByLabel = new Map(lifecycle.map((item) => [item.label, item.description]))
+  const productSelected = isJourneyProductSelected(selectedProduct)
+  const layout = productSelected ? 'lifecycle' : 'empty'
+  const observed = new Set([...currentStats.keys(), ...previousStats.keys()])
+  const ordered = []
+  const seen = new Set()
+  for (const item of lifecycle) {
+    if (seen.has(item.label)) continue
+    seen.add(item.label)
+    ordered.push(item.label)
+  }
+  const extras = [...observed].filter((label) => !seen.has(label))
+  extras.sort((a, b) => {
+    if (a === '未识别环节') return 1
+    if (b === '未识别环节') return -1
+    return displayCountForFilter(currentStats.get(b), sourceFilter) - displayCountForFilter(currentStats.get(a), sourceFilter)
+      || a.localeCompare(b, 'zh')
+  })
+  ordered.push(...extras)
+
+  const total = filteredCurrent.length
+  const stages = ordered.map((journeyL1) => {
+    const now = currentStats.get(journeyL1)
+    const before = previousStats.get(journeyL1)
+    const currentCount = displayCountForFilter(now, sourceFilter)
+    const previousCount = displayCountForFilter(before, sourceFilter)
+    const change = classifyJourneyChange(previousCount, currentCount, hasPreviousPeriod)
+    const l2Keys = new Set([...(now?.l2.keys() || []), ...(before?.l2.keys() || [])])
+    const children = [...l2Keys].map((l2) => {
+      const childNow = now?.l2.get(l2)
+      const childBefore = before?.l2.get(l2)
+      const childCurrent = childNow?.count || 0
+      const childPrevious = childBefore?.count || 0
+      return {
+        l2,
+        count: childCurrent,
+        previousCount: childPrevious,
+        change: classifyJourneyChange(childPrevious, childCurrent, hasPreviousPeriod),
+        ticketIds: [...new Set(childNow?.ticketIds || [])],
+      }
+    }).sort((a, b) => b.count - a.count || a.l2.localeCompare(b.l2, 'zh'))
+    const topL2 = children.find((child) => child.count > 0 && child.l2 !== '未识别子环节')?.l2 || ''
+    const topPain = topCountedEntries(now?.pains || new Map(), 1)[0]?.[0] || ''
+    const actionLabel = topL2 || topPain || ''
+    const complaintCount = now?.complaintCount || 0
+    const consultationCount = now?.consultationCount || 0
+    const negativeCount = now?.negativeCount || 0
+    return {
+      key: journeyL1,
+      journeyL1,
+      count: currentCount,
+      sharePct: pct(currentCount, total),
+      previousCount,
+      currentCount,
+      delta: hasPreviousPeriod ? currentCount - previousCount : null,
+      change,
+      headline: actionLabel || '—',
+      actionLabel,
+      description: descriptionByLabel.get(journeyL1) || '',
+      children,
+      topProblemTypes: topCountedEntries(now?.problemTypes || new Map(), 2).map(([name, count]) => ({ name, count })),
+      ticketIds: [...new Set(now?.ticketIds || [])],
+      previousTicketIds: [...new Set(before?.ticketIds || [])],
+      recordIds: now?.recordIds || [],
+      complaintCount,
+      consultationCount,
+      negativeCount,
+      negativePct: pct(negativeCount, currentCount),
+      empty: currentCount === 0 && previousCount === 0,
+      fromTaxonomy: descriptionByLabel.has(journeyL1),
+      isFrictionPeak: false,
+    }
+  })
+
+  let peakCount = 0
+  for (const stage of stages) {
+    if (stage.currentCount > peakCount) peakCount = stage.currentCount
+  }
+  const peakKeys = []
+  for (const stage of stages) {
+    stage.isFrictionPeak = peakCount > 0 && stage.currentCount === peakCount
+    if (stage.isFrictionPeak) peakKeys.push(stage.key)
+  }
+
+  const changeRows = stages
+    .filter((stage) => !stage.empty && stage.change)
+    .sort((a, b) => (CHANGE_RANK[a.change] ?? 9) - (CHANGE_RANK[b.change] ?? 9) || b.currentCount - a.currentCount)
+    .map((stage) => ({
+      key: stage.key,
+      journey: stage.journeyL1,
+      journeyL1: stage.journeyL1,
+      currentCount: stage.currentCount,
+      previousCount: stage.previousCount,
+      change: stage.change,
+      ticketIds: [...new Set([...(stage.ticketIds || []), ...(stage.previousTicketIds || [])])],
+    }))
+
+  const highlights = changeRows
+    .filter((row) => row.change !== '持续')
+    .slice(0, 3)
+    .map((row) => ({
+      key: row.key,
+      journeyL1: row.journeyL1,
+      change: row.change,
+      previousCount: row.previousCount,
+      currentCount: row.currentCount,
+      text: `${row.journeyL1} ${row.previousCount}→${row.currentCount}，${row.change}`,
+    }))
+
+  return {
+    stages: productSelected ? stages : [],
+    layout,
+    changeRows,
+    highlights: productSelected ? highlights : [],
+    peakKeys: productSelected ? peakKeys : [],
+    sourceFilter,
+  }
+}
+
+/**
+ * 综合概述总图语料：客户体验类投诉 + 咨询全量。
+ * @param {import('./types.js').FeedbackRecord[]} feedbacks
+ * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
+ */
+export function collectOverviewJourneyRecords(feedbacks, period) {
+  if (!period) return []
+  const months = monthsForInsightPeriod(period)
+  if (!months.length) return []
+  const inPeriod = (feedbacks || []).filter((record) => months.includes(monthOf(record)))
+  return inPeriod.filter((record) => {
+    const kind = recordSourceKind(record)
+    if (kind === 'consultation') return true
+    if (kind === 'complaint') return isCustomerExperienceComplaint(record)
+    return false
+  })
 }
 
 function consultationOpportunity(record) {
@@ -140,26 +406,6 @@ function consultationOpportunity(record) {
   if (/流程|操作|配置|开通|申请|步骤/.test(text)) return '流程简化'
   if (/功能|能力|支持|缺少|无法/.test(text)) return '产品能力补足'
   return '信息透明'
-}
-
-function buildLocationRows(records) {
-  const groups = new Map()
-  for (const record of records) {
-    const scene = String(record.requestScene || '未分类').trim()
-    const journeyL1 = String(record.journeyL1 || '未识别环节').trim()
-    const journeyL2 = String(record.journeyL2 || '未识别子环节').trim()
-    const problemType = String(record.problemType || '未分类').trim()
-    const key = `${scene}\u0000${journeyL1}\u0000${journeyL2}\u0000${problemType}`
-    const group = groups.get(key) || { key, scene, journeyL1, journeyL2, problemType, count: 0, recordIds: [], ticketIds: [] }
-    group.count += 1
-    if (record.id) group.recordIds.push(record.id)
-    if (record.ticketId) group.ticketIds.push(record.ticketId)
-    groups.set(key, group)
-  }
-  return [...groups.values()].map((group) => ({
-    ...group,
-    ticketIds: [...new Set(group.ticketIds)],
-  })).sort((a, b) => b.count - a.count)
 }
 
 function buildWanTou(records, trendRecords, months, productName, orderVolumes, wanTouTargets, baselineYear) {
@@ -195,9 +441,8 @@ function recommendationRows(recommendations, records, actions, sourceType) {
       insightId,
       insightIds,
       product: recommendation.scope?.product || productOf(evidence[0] || {}),
-      pain: recommendation.summary || recommendation.text || '未命名问题',
-      customerRequest: evidence.find((item) => item.customerRequest)?.customerRequest || '—',
-      rootCause: evidence.find((item) => item.rootCause || item.rootCauseReview)?.rootCauseReview || evidence.find((item) => item.rootCause)?.rootCause || '—',
+      pain: clusterPainLabel(recommendation),
+      customerRequest: pickRepresentativeCustomerRequest(evidence),
       ticketCount: scores.ticketCount ?? recommendation.evidenceBundle?.ticketCount ?? evidence.length,
       sharePct: scores.sharePct ?? recommendation.evidenceBundle?.sharePct ?? 0,
       severity: scores.maxSeverity ?? '—',
@@ -292,7 +537,15 @@ export function buildTicketStoryModel(input) {
   const unresolvedRecords = followUpRecords.filter((record) => record.followUpSatisfaction?.problemResolved === 'unresolved')
   const scopedActions = selectedProduct ? actions.filter((action) => action.productName === selectedProduct) : actions
   const actionRows = recommendationRows(recommendations, records, scopedActions, sourceType)
-  const changes = changeBuckets(changeSourceRecords, currentPeriodMonths, previousPeriodMonths)
+  const hasPreviousPeriod = previousPeriodMonths.length > 0 && currentPeriodMonths.length > 0
+  const previousPeriodRecords = hasPreviousPeriod ? recordsInMonths(changeSourceRecords, previousPeriodMonths) : []
+  const journeyModel = buildJourneyStages({
+    currentRecords: records,
+    previousRecords: previousPeriodRecords,
+    hasPreviousPeriod,
+    selectedProduct,
+    sourceFilter: sourceType === 'consultation_ticket' ? 'consultation' : 'complaint',
+  })
   const endMonth = normalizeYearMonth(periodEndMonth) || currentPeriodMonths.at(-1) || trendMonths.at(-1) || ''
   const momPreviousMonth = endMonth ? shiftYearMonth(endMonth, -1) : ''
   const volumeTrend = trendMonths.map((month) => {
@@ -352,7 +605,10 @@ export function buildTicketStoryModel(input) {
     requestScenes: countByField(records, 'requestScene'),
     journeyTree: journeyTree(records),
     problemTypes: countByField(records, 'problemType'),
-    locationRows: buildLocationRows(records),
+    journeyLayout: journeyModel.layout,
+    journeyStages: journeyModel.stages,
+    journeyChangeHighlights: journeyModel.highlights,
+    journeySourceFilter: journeyModel.sourceFilter,
     complaintCauses: complaint ? [...records.reduce((map, record) => {
       const value = getComplaintCauseL1Display(record) || '未分类'
       map.set(value, (map.get(value) || 0) + 1)
@@ -391,7 +647,7 @@ export function buildTicketStoryModel(input) {
   const fallbackImpactRecords = (resolvedImpactFocus.ungroupedEvidenceRecordIds || [])
     .map((id) => recordById.get(id))
     .filter(Boolean)
-  const growing = changes.rows.find((row) => row.change === '新增' || row.change === '增长')
+  const growing = journeyModel.changeRows.find((row) => row.change === '新增' || row.change === '增长')
   const topCluster = actionRows.find((row) => row.isFormalCluster) || actionRows[0]
   const pendingActions = actionRows.filter((row) => !row.action).length
   const recoveryRows = scopedActions.filter((action) => action.status === 'completed').map((action) => {
@@ -427,7 +683,7 @@ export function buildTicketStoryModel(input) {
     conclusions: [
       { key: 'overall', label: '整体状态', value: overallState, detail: `工单 ${total} 条，负向 ${negativeRecords.length} 条（${pct(negativeRecords.length, total)}%）`, target: '#ticket-status' },
       { key: 'risk', label: complaint ? '首要风险' : '首要机会', value: topCluster ? `${topCluster.product} · ${topCluster.pain}` : '暂无稳定痛点聚类', detail: topCluster?.basis || '样本不足时不做确定性判断', target: '#ticket-drivers' },
-      { key: 'change', label: '最大变化', value: growing ? `${growing.product} · ${growing.problemType}` : '暂无新增或增长问题', detail: growing ? `${growing.change}：${growing.previousCount} → ${growing.currentCount}` : `需要${comparisonLabels.previous}与${comparisonLabels.current}数据才能比较`, target: '#ticket-trends' },
+      { key: 'change', label: '最大变化', value: growing ? growing.journeyL1 : '暂无新增或增长问题', detail: growing ? `${growing.change}：${growing.previousCount} → ${growing.currentCount}` : `需要${comparisonLabels.previous}与${comparisonLabels.current}数据才能比较`, target: '#ticket-location' },
       { key: 'action', label: '行动状态', value: `${pendingActions} 项待创建`, detail: `${notImproved} 项已完成但未改善`, target: '#ticket-actions' },
     ],
     overview: {
@@ -449,9 +705,10 @@ export function buildTicketStoryModel(input) {
     },
     trendsAndChanges: {
       volumeTrend,
-      changes: changes.rows,
-      currentMonth: changes.currentMonth,
-      previousMonth: changes.previousMonth,
+      changes: journeyModel.changeRows,
+      highlights: journeyModel.highlights,
+      currentMonth: currentPeriodMonths.at(-1) || '',
+      previousMonth: previousPeriodMonths.at(-1) || '',
       previousPeriodLabel: comparisonLabels.previous,
       currentPeriodLabel: comparisonLabels.current,
     },

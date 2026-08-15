@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTicketStoryModel } from './ticketStoryModel.js'
+import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords } from './ticketStoryModel.js'
 
 const record = (id, overrides = {}) => ({
   id,
@@ -37,10 +37,9 @@ describe('ticket story model', () => {
     expect(model.drivers.clusters[0]).toMatchObject({ pain: '公网IP无法访问', priorityScore: 4.5 })
     expect(model.drivers.fallbackReferences).toEqual([])
     expect(model.impactAndEvidence.highValueCount).toBe(1)
-    expect(model.drivers.locationRows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scene: '报障与排错', journeyL1: '使用', problemType: '可用性/连通性故障', count: 2 }),
-    ]))
-    expect(model.drivers.locationRows[0].ticketIds).toEqual(['T-1', 'T-2'])
+    expect(model.drivers.journeyLayout).toBe('empty')
+    expect(model.drivers.journeyStages).toEqual([])
+    expect(model.drivers.journeySourceFilter).toBe('complaint')
   })
 
   it('uses consultation-specific opportunity metrics and omits complaint causes', () => {
@@ -53,6 +52,8 @@ describe('ticket story model', () => {
     expect(model.overview.metrics.selfServicePct).toBe(100)
     expect(model.drivers.opportunities[0].name).toBe('文档自助')
     expect(model.drivers.complaintCauses).toEqual([])
+    expect(model.drivers.journeySourceFilter).toBe('consultation')
+    expect(model.drivers.journeyLayout).toBe('empty')
   })
 
   it('treats empty previous period as new problems instead of year-gap disappearances', () => {
@@ -76,6 +77,7 @@ describe('ticket story model', () => {
     })
     expect(model.trendsAndChanges.changes).toEqual([
       expect.objectContaining({
+        journeyL1: '使用',
         change: '新增',
         previousCount: 0,
         currentCount: 1,
@@ -106,6 +108,7 @@ describe('ticket story model', () => {
     expect(model.trendsAndChanges.previousPeriodLabel).toBe('上月')
     expect(model.trendsAndChanges.currentPeriodLabel).toBe('本月')
     expect(model.trendsAndChanges.changes[0].change).toBe('持续')
+    expect(model.trendsAndChanges.changes[0].journeyL1).toBe('使用')
     expect(model.trendsAndChanges.changes[0].ticketIds).toEqual(expect.arrayContaining(['T-1', 'T-2']))
   })
 
@@ -135,6 +138,7 @@ describe('ticket story model', () => {
     expect(model.trendsAndChanges.previousPeriodLabel).toBe('上一季度')
     expect(model.trendsAndChanges.currentPeriodLabel).toBe('本季度')
     expect(model.trendsAndChanges.changes[0]).toMatchObject({
+      journeyL1: '使用',
       previousCount: 1,
       currentCount: 2,
       change: '增长',
@@ -260,5 +264,200 @@ describe('ticket story model', () => {
     expect(model.impactAndEvidence.summary.status).toBe('evidence_only')
     expect(model.impactAndEvidence.themeLinks).toEqual([])
     expect(model.impactAndEvidence.records[0].id).toBe('1')
+  })
+
+  it('uses product taxonomy lifecycle order and keeps disappeared stages', () => {
+    const records = [
+      record('1', { importMonth: '2026-05', journeyL1: '故障与应急', journeyL2: '业务中断/不可用' }),
+      record('2', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('3', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+    ]
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records: records.filter((item) => item.importMonth === '2026-06'),
+      comparisonRecords: records,
+      trendRecords: records,
+      selectedProduct: '弹性公网IP',
+      period: {
+        id: 'period:month:2026-06',
+        label: '2026年6月',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        granularity: 'month',
+        anchorYear: 2026,
+        anchorMonth: 6,
+      },
+      periodEndMonth: '2026-06',
+    })
+    expect(model.drivers.journeyLayout).toBe('lifecycle')
+    expect(model.drivers.journeyStages[0].journeyL1).toBe('认知与选型')
+    expect(model.drivers.journeyStages[0].empty).toBe(true)
+    const operate = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '业务使用与连通')
+    const incident = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '故障与应急')
+    expect(operate).toMatchObject({
+      currentCount: 2,
+      previousCount: 0,
+      change: '新增',
+      headline: '公网访问不通',
+      actionLabel: '公网访问不通',
+      delta: 2,
+      complaintCount: 2,
+      consultationCount: 0,
+      isFrictionPeak: true,
+    })
+    expect(incident).toMatchObject({ currentCount: 0, previousCount: 1, change: '消失' })
+    expect(model.drivers.journeyChangeHighlights.map((item) => item.change)).toEqual(['新增', '消失'])
+    expect(model.conclusions.find((item) => item.key === 'change')?.value).toBe('业务使用与连通')
+  })
+
+  it('splits journey volume by source filter and keeps change rows without a product', () => {
+    const records = [
+      record('c1', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('c2', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('q1', {
+        importMonth: '2026-06',
+        dataSourceType: 'consultation_ticket',
+        journeyL1: '认知与选型',
+        journeyL2: '产品与规格咨询',
+        problemType: '配置与操作',
+        painPoint: '规格怎么选',
+        sentiment: 'neutral_inquiry',
+      }),
+      record('c0', { importMonth: '2026-05', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+    ]
+    const period = {
+      id: 'period:month:2026-06',
+      label: '2026年6月',
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+      granularity: 'month',
+      anchorYear: 2026,
+      anchorMonth: 6,
+    }
+    const all = buildJourneyStages({
+      currentRecords: records.filter((item) => item.importMonth === '2026-06'),
+      previousRecords: records.filter((item) => item.importMonth === '2026-05'),
+      hasPreviousPeriod: true,
+      selectedProduct: '弹性公网IP',
+      sourceFilter: 'all',
+    })
+    const operate = all.stages.find((stage) => stage.journeyL1 === '业务使用与连通')
+    const learn = all.stages.find((stage) => stage.journeyL1 === '认知与选型')
+    expect(operate).toMatchObject({
+      count: 2,
+      complaintCount: 2,
+      consultationCount: 0,
+      isFrictionPeak: true,
+    })
+    expect(learn).toMatchObject({ count: 1, complaintCount: 0, consultationCount: 1 })
+
+    const consultOnly = buildJourneyStages({
+      currentRecords: records.filter((item) => item.importMonth === '2026-06'),
+      previousRecords: records.filter((item) => item.importMonth === '2026-05'),
+      hasPreviousPeriod: true,
+      selectedProduct: '弹性公网IP',
+      sourceFilter: 'consultation',
+    })
+    expect(consultOnly.stages.find((stage) => stage.journeyL1 === '认知与选型')).toMatchObject({
+      count: 1,
+      consultationCount: 1,
+      isFrictionPeak: true,
+    })
+    expect(consultOnly.stages.find((stage) => stage.journeyL1 === '业务使用与连通').count).toBe(0)
+
+    const tied = buildJourneyStages({
+      currentRecords: [
+        record('a1', { journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+        record('a2', { journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+        record('b1', { journeyL1: '认知与选型', journeyL2: '产品与规格咨询' }),
+        record('b2', { journeyL1: '认知与选型', journeyL2: '产品与规格咨询' }),
+      ],
+      previousRecords: [],
+      hasPreviousPeriod: false,
+      selectedProduct: '弹性公网IP',
+      sourceFilter: 'all',
+    })
+    const tiedPeaks = tied.stages.filter((stage) => stage.isFrictionPeak).map((stage) => stage.journeyL1)
+    expect(tiedPeaks).toEqual(['认知与选型', '业务使用与连通'])
+    expect(tied.peakKeys).toEqual(['认知与选型', '业务使用与连通'])
+
+    const noPrevious = buildJourneyStages({
+      currentRecords: records.filter((item) => item.importMonth === '2026-06'),
+      previousRecords: records,
+      hasPreviousPeriod: false,
+      selectedProduct: '弹性公网IP',
+      sourceFilter: 'all',
+    })
+    const noPreviousOperate = noPrevious.stages.find((stage) => stage.journeyL1 === '业务使用与连通')
+    expect(noPreviousOperate).toMatchObject({
+      currentCount: 2,
+      previousCount: 0,
+      delta: null,
+      change: null,
+    })
+    const idleStage = all.stages.find((stage) => stage.currentCount === 0 && stage.previousCount === 0)
+    expect(idleStage).toMatchObject({ empty: true, delta: 0, change: null })
+
+    const noProduct = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records: records.filter((item) => item.importMonth === '2026-06' && item.dataSourceType === 'complaint_ticket'),
+      comparisonRecords: records.filter((item) => item.dataSourceType !== 'consultation_ticket'),
+      trendRecords: records,
+      period,
+      periodEndMonth: '2026-06',
+    })
+    expect(noProduct.drivers.journeyLayout).toBe('empty')
+    expect(noProduct.drivers.journeyStages).toEqual([])
+    expect(noProduct.trendsAndChanges.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ journeyL1: '业务使用与连通', currentCount: 2, change: '增长' }),
+    ]))
+  })
+
+  it('collects overview journey records from CX complaints and all consultations', () => {
+    const rows = [
+      record('cx', { complaintCauseL1Final: '客户体验类' }),
+      record('ops', { complaintCauseL1Final: '云能问题' }),
+      record('q', { dataSourceType: 'consultation_ticket', sentiment: 'neutral_inquiry' }),
+      record('rating', { dataSourceType: 'post_use_rating' }),
+    ]
+    const collected = collectOverviewJourneyRecords(rows, {
+      id: 'period:month:2026-06',
+      label: '2026年6月',
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+      granularity: 'month',
+      anchorYear: 2026,
+      anchorMonth: 6,
+    })
+    expect(collected.map((item) => item.id).sort()).toEqual(['cx', 'q'])
+    expect(collectOverviewJourneyRecords(rows, null)).toEqual([])
+  })
+
+  it('uses cluster-level pain and majority customer request instead of the first evidence ticket', () => {
+    const records = [
+      record('1', { customerRequest: '偶发连不上', painPoint: '公网IP无法访问' }),
+      record('2', { customerRequest: '公网IP无法访问外网', painPoint: '公网IP无法访问' }),
+      record('3', { customerRequest: '公网IP无法访问外网', painPoint: '公网IP无法访问' }),
+    ]
+    const recommendations = [{
+      id: 'cluster-1',
+      stableKey: 'pcl-1',
+      signalType: 'pain_cluster_v2',
+      summary: '公网IP无法访问（3 条工单，占该产品 100%）',
+      generationMeta: { representativePain: '公网IP无法访问' },
+      priority: 'high',
+      scope: { product: '弹性公网IP' },
+      evidenceRecordIds: ['1', '2', '3'],
+      sections: { painClusterScores: { ticketCount: 3, sharePct: 100, maxSeverity: 5, p90Emotion: 4, priorityScore: 4.5 } },
+    }]
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records,
+      recommendations,
+    })
+    expect(model.drivers.clusters[0].pain).toBe('公网IP无法访问')
+    expect(model.drivers.clusters[0].customerRequest).toBe('公网IP无法访问外网')
+    expect(model.drivers.clusters[0].ticketCount).toBe(3)
+    expect(model.drivers.clusters[0]).not.toHaveProperty('rootCause')
   })
 })

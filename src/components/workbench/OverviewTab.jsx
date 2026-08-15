@@ -15,6 +15,7 @@ import { buildWanTouProductTableColumns } from './WanTouRatioCells.jsx'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
+import OverviewJourneyMap from './OverviewJourneyMap.jsx'
 
 /**
  * @param {Object} props
@@ -137,6 +138,8 @@ export default function OverviewTab({
         conclusions={displayConclusions}
         feedbacks={feedbacks}
       />
+
+      <OverviewJourneyMap feedbacks={feedbacks} currentPeriod={currentPeriod} />
 
       {wanTouRows.length > 0 && (
         <Card

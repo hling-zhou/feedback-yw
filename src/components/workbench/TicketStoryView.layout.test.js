@@ -20,6 +20,11 @@ describe('TicketStoryView narrative hierarchy', () => {
     expect(source).toContain('展开全部')
     expect(source).toContain('咨询优化机会')
     expect(source).toContain('投诉原因（终判）')
+    expect(source).toContain('TicketJourneyMap')
+    expect(source).not.toContain('全部反馈')
+    expect(source).not.toContain('请求场景 → 用户旅程 → 问题类型')
+    expect(source).not.toContain('title="问题变化"')
+    expect(source).not.toContain("title: '根因', dataIndex: 'rootCause'")
   })
 
   it('provides evidence, action and quality operations in the same tab', () => {
