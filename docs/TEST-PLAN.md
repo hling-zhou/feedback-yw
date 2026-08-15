@@ -366,6 +366,7 @@
 | INS-01 | P0 | 周期条数一致 | 洞察分析页 | 侧栏/标题/描述三处 count 相同 | E2E-01 |
 | INS-02 | P1 | 投诉原因统计 | 列表有终判字段 | 统计按 `complaintCauseL1Final` | 手工 |
 | INS-03 | P2 | 报告导出 | 导出 PDF/对比 | 不崩溃 | quoteComparison 等 |
+| INS-04 | P1 | 主题证据跳转反馈库 | 投诉/咨询看板大簇 | 本页高风险抽样；「查看簇内 N 条」N=工单号名单长度；>20 不把 ID 填进 URL/多选；反馈库花片「筛选 N / 库内匹配 M」 | `TicketStoryView.render.test.jsx`、`feedbackTicketIdSet.test.js`、`ticketImpactFocus.test.js`、`ticketStoryModel.test.js` |
 
 ### 5.6 存储与同步（STG）
 

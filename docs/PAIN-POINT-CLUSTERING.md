@@ -49,6 +49,16 @@
 | `journeyL1` | 一次聚类分组 |
 | `customerTier`（导入列「移动云客户服务等级」） | §8 展示，不参与评分 |
 | `dataSourceType` | 投诉 / 咨询分组 |
+| `evidenceTicketIds` | 建簇时写入的**簇内全部工单号**，供看板跳转 / 复制；**不截断为抽样** |
+| `evidenceRecordIds` | 簇内记录 id 全集；工作台主题证据表另按高风险抽样最多 6 行（`THEME_EVIDENCE_LIMIT`） |
+
+## 看板主题证据（投诉 / 咨询）
+
+投诉与咨询 Tab 共用主题证据表，**不在本页展开整簇**。跳转 / 复制用工单号名单，数字跟名单长度走，不用当前页抽样、也不用摘要里的「×× 条工单」后缀去凑。
+
+- 解析顺序：`resolveClusterTicketIds` 优先建议上的 `evidenceTicketIds`，再并入当前能解析到的记录；**禁止**用产品 + 旅程近似补齐。
+- ≤20 条走 URL `ticketIds=`；>20 条走 `ticketIdSet` + 本标签 `sessionStorage`（`src/lib/feedbackTicketIdSet.js`）。反馈库一枚花片「筛选 N / 库内匹配 M」，不把 ID 填进工单号多选。
+- 用后即评故事页不走这条链路。旧快照若只存了抽样 ID，刷新洞察后才会带上全量名单。
 
 ## 优化语料（行动建议 / 群组措施，非痛点主文本）
 

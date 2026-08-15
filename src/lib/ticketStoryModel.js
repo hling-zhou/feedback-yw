@@ -26,7 +26,7 @@ import {
   isHighRiskSingletonRecommendation,
   isOverviewFusedClusterRecommendation,
 } from './planningRecommendations.js'
-import { buildImpactFocusSummaryRule } from './ticketImpactFocus.js'
+import { buildImpactFocusSummaryRule, resolveClusterTicketIds } from './ticketImpactFocus.js'
 
 export const TICKET_STORY_SMALL_SAMPLE_N = 5
 export const JOURNEY_EMPTY_HINT = '用户旅程按单产品生命周期查看，请选择一个产品。'
@@ -691,21 +691,17 @@ export function buildTicketStoryModel(input) {
       const rec = recommendationByThemeId.get(String(link.themeId || '').trim())
         || recommendationByThemeId.get(String(link.recommendationId || '').trim())
       const sampleRecords = (link.evidenceRecordIds || []).map((id) => recordById.get(id)).filter(Boolean)
-      const clusterTicketIds = (link.clusterTicketIds?.length
-        ? link.clusterTicketIds
-        : uniqueTicketIds((rec?.evidenceRecordIds || []).map((id) => recordById.get(id)).filter(Boolean)))
-      const resolvedClusterTicketIds = clusterTicketIds.length ? clusterTicketIds : uniqueTicketIds(sampleRecords)
-      const ticketCount = Number(
-        link.ticketCount
-          ?? rec?.sections?.painClusterScores?.ticketCount
-          ?? rec?.evidenceBundle?.ticketCount
-          ?? resolvedClusterTicketIds.length,
+      const clusterTicketIds = resolveClusterTicketIds(
+        rec,
+        recordById,
+        link.clusterTicketIds,
       )
+      const resolvedClusterTicketIds = clusterTicketIds.length ? clusterTicketIds : uniqueTicketIds(sampleRecords)
       return {
         ...link,
         records: sampleRecords,
         clusterTicketIds: resolvedClusterTicketIds,
-        ticketCount: Number.isFinite(ticketCount) && ticketCount > 0 ? ticketCount : resolvedClusterTicketIds.length,
+        ticketCount: resolvedClusterTicketIds.length,
       }
     })
     .filter((link) => link.records.length > 0)

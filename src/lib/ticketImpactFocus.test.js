@@ -120,4 +120,30 @@ describe('ticketImpactFocus', () => {
     expect(result.themeLinks[0].evidenceRecordIds).toHaveLength(6)
     expect(result.themeLinks[0].clusterTicketIds).toEqual(records.map((item) => item.ticketId))
   })
+
+  it('keeps stored cluster ticket ids when current records only resolve a sample', () => {
+    const storedIds = Array.from({ length: 8 }, (_, index) => `WO-${index + 1}`)
+    const records = [
+      record('1', { ticketId: 'WO-1', customerTier: '金牌', sentiment: 'negative' }),
+      record('2', { ticketId: 'WO-2', customerTier: '金牌', sentiment: 'negative' }),
+    ]
+    const result = buildImpactFocusSummaryRule({
+      scopeLabel: '投诉工单整体',
+      recommendations: [{
+        id: 'cluster-1',
+        stableKey: 'pcl-stored',
+        signalType: 'pain_cluster_v2',
+        summary: '带宽配额不足',
+        scope: { product: '弹性公网IP', problemType: '可用性/连通性故障', journeyL1: '使用' },
+        evidenceRecordIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
+        evidenceTicketIds: storedIds,
+        sections: { painClusterScores: { ticketCount: 248 } },
+      }],
+      records,
+    })
+
+    expect(result.themeLinks[0].evidenceRecordIds).toHaveLength(2)
+    expect(result.themeLinks[0].clusterTicketIds).toEqual(storedIds)
+    expect(result.themeLinks[0].ticketCount).toBe(8)
+  })
 })

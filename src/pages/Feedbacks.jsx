@@ -9,6 +9,7 @@ import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
 import {
   clearFeedbackTicketIdSet,
+  formatClusterTicketSetChipLabel,
   readFeedbackTicketIdSet,
 } from '../lib/feedbackTicketIdSet.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
@@ -890,10 +891,10 @@ export default function Feedbacks() {
             <Alert
               type="info"
               showIcon
-              title={ticketIdSet.label}
+              title={formatClusterTicketSetChipLabel(ticketIdSet.ticketIds.length, matchedEvidenceCount)}
               description={
                 matchedEvidenceCount > 0
-                  ? `库内匹配证据 ${matchedEvidenceCount} 条（含跨周期）。`
+                  ? '含当前库内跨周期记录。'
                   : '当前主题依据工单号在库内暂无匹配记录。'
               }
             />
@@ -901,10 +902,10 @@ export default function Feedbacks() {
             <Alert
               type="info"
               showIcon
-              title={`已按工单号筛选 ${filters.ticketIds.length} 个`}
+              title={formatClusterTicketSetChipLabel(filters.ticketIds.length, matchedEvidenceCount)}
               description={
                 matchedEvidenceCount > 0
-                  ? `库内匹配证据 ${matchedEvidenceCount} 条（含跨周期）。`
+                  ? '含当前库内跨周期记录。'
                   : '当前筛选工单号在库内暂无匹配记录。'
               }
             />
@@ -967,7 +968,7 @@ export default function Feedbacks() {
                 setSearchParams(patchFeedbackSearchParams(searchParams, { ticketIdSet: '' }), { replace: true })
               }}
             >
-              {ticketIdSet.label}
+              {formatClusterTicketSetChipLabel(ticketIdSet.ticketIds.length, matchedEvidenceCount)}
             </Tag>
           ) : null}
         <FeedbackFilterBar

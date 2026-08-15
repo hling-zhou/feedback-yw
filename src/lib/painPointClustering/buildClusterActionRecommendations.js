@@ -21,7 +21,6 @@ import {
   computeRecommendationEvidenceStrength,
   downgradeEvidenceStrength,
   isHighRiskSingletonRecommendation,
-  pickEvidenceRecords,
 } from '../planningRecommendations.js'
 
 /** @typedef {import('./priorityScore.js').ScoredFinalCluster} ScoredFinalCluster */
@@ -143,7 +142,7 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     rawLabel.trim() ||
     '未命名痛点群组'
   const painClusterScores = buildPainClusterScoreMeta(cluster, records)
-  const { ticketIds } = pickEvidenceRecords(records, 20)
+  const clusterTicketIds = [...new Set(records.map((record) => String(record.ticketId || '').trim()).filter(Boolean))]
   const topL2 = records.reduce(
     (acc, r) => {
       const j2 = r.journeyL2?.trim()
@@ -193,7 +192,7 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
       problemType: dominantProblemType,
     },
     evidenceRecordIds: cluster.recordIds,
-    evidenceTicketIds: ticketIds,
+    evidenceTicketIds: clusterTicketIds,
     evidenceNote: `V2 二次聚类 Top ${cluster.rank}/${cluster.totalFinal} · ${cluster.product}`,
     evidenceBundle: {
       ticketCount: cluster.ticketCount,

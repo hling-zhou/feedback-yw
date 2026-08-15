@@ -4,6 +4,7 @@ import {
   FEEDBACK_TICKET_ID_URL_LIMIT,
   clearFeedbackTicketIdSet,
   formatClusterEvidenceLinkLabel,
+  formatClusterTicketSetChipLabel,
   readFeedbackTicketIdSet,
   resolveClusterFeedbacksNavigation,
   writeFeedbackTicketIdSet,
@@ -51,7 +52,7 @@ describe('feedbackTicketIdSet', () => {
     expect(params.get('source')).toBe('consultation_ticket')
     expect(readFeedbackTicketIdSet(setId)).toEqual({
       ticketIds: ids,
-      label: '主题依据 248 条',
+      label: '主题依据 21 条',
     })
   })
 
@@ -64,5 +65,10 @@ describe('feedbackTicketIdSet', () => {
   it('formats the cluster evidence link from cluster size', () => {
     expect(formatClusterEvidenceLinkLabel(248)).toBe('查看簇内 248 条')
     expect(formatClusterEvidenceLinkLabel(0)).toBe('查看簇内工单')
+  })
+
+  it('shows filter count and library match count on the feedbacks chip', () => {
+    expect(formatClusterTicketSetChipLabel(248, 240)).toBe('筛选 248 / 库内匹配 240')
+    expect(formatClusterTicketSetChipLabel(21, 0)).toBe('筛选 21 / 库内匹配 0')
   })
 })

@@ -301,6 +301,50 @@ describe('ticket story model', () => {
     expect(model.impactAndEvidence.themeLinks[0].ticketCount).toBe(3)
   })
 
+  it('uses stored recommendation ticket ids even when the current page only has the sample', () => {
+    const model = buildTicketStoryModel({
+      sourceType: 'complaint_ticket',
+      records: [record('1', { customerTier: '金牌', sentiment: 'negative' })],
+      recommendations: [{
+        id: 'cluster-1',
+        stableKey: 'pcl-1',
+        signalType: 'pain_cluster_v2',
+        summary: '公网IP无法访问',
+        scope: { product: '弹性公网IP' },
+        evidenceRecordIds: ['1'],
+        evidenceTicketIds: ['T-1', 'T-2', 'T-3', 'T-4'],
+        sections: { painClusterScores: { ticketCount: 248 } },
+      }],
+      snapshot: {
+        status: 'ready',
+        pipelineVersion: 'ticket-v1',
+        aggregates: {
+          impactFocusSummaries: {
+            all: {
+              summary: { status: 'linked', executiveSummary: '公网IP无法访问', focusItems: [] },
+              themeLinks: [{
+                themeId: 'pcl-1',
+                themeLabel: '公网IP无法访问',
+                riskLevel: 'high',
+                impactSignals: { highValueCount: 1, negativeCount: 1, urgentCount: 0, unresolvedCount: 0 },
+                evidenceRecordIds: ['1'],
+                clusterTicketIds: ['T-1'],
+                ticketCount: 248,
+                inferred: false,
+              }],
+              ungroupedEvidenceRecordIds: [],
+            },
+            byProduct: {},
+          },
+        },
+      },
+    })
+
+    expect(model.impactAndEvidence.themeLinks[0].records).toHaveLength(1)
+    expect(model.impactAndEvidence.themeLinks[0].clusterTicketIds).toEqual(['T-1', 'T-2', 'T-3', 'T-4'])
+    expect(model.impactAndEvidence.themeLinks[0].ticketCount).toBe(4)
+  })
+
   it('falls back to evidence-only impact summary when there is no theme', () => {
     const model = buildTicketStoryModel({
       sourceType: 'complaint_ticket',

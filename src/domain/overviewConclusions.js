@@ -154,8 +154,8 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string[]} [details] 详细意见（2～4 条）
  * @property {PlanningRecommendationSections} [sections] 五段式结构（与 details 同步）
  * @property {OverviewConclusionEvidence[]} [metrics]
- * @property {string[]} [evidenceRecordIds]
- * @property {string[]} [evidenceTicketIds]
+ * @property {string[]} [evidenceRecordIds] 簇内记录 id 全集；工作台主题证据表另抽样最多 6 行
+ * @property {string[]} [evidenceTicketIds] 建簇时写入的簇内全部工单号（不截断）；看板跳转 / 复制用此名单
  * @property {string} [evidenceNote]
  * @property {OverviewRecommendationScope} [scope]
  * @property {string} [signalType]

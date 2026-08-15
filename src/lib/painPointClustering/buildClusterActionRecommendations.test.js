@@ -4,6 +4,7 @@ import {
   buildClusterActionRecommendations,
   formatCustomerTierSummary,
   mapClusterPriorityScore,
+  scoredFinalClusterToRecommendation,
 } from './buildClusterActionRecommendations.js'
 
 function makeRecord(overrides = {}) {
@@ -53,6 +54,43 @@ describe('buildClusterActionRecommendations', () => {
     expect(recs[0].summary).not.toMatch(/集中反馈|「弹性公网 IP」/)
     expect(recs[0].stableKey).toMatch(/^pcl-/)
     expect(recs[0].generationMeta?.fingerprintVersion).toBe('cluster-fingerprint-v2')
+    expect(recs[0].evidenceTicketIds).toEqual(
+      recs[0].evidenceRecordIds
+        .map((id) => records.find((record) => record.id === id)?.ticketId)
+        .filter(Boolean),
+    )
+    expect(recs[0].evidenceTicketIds.length).toBe(recs[0].evidenceRecordIds.length)
+  })
+
+  it('persists every cluster ticket id instead of a sampled subset', () => {
+    const pain = '安全组规则未放行导致公网端口无法访问'
+    const records = Array.from({ length: 25 }, (_, index) => makeRecord({
+      id: `r-${index + 1}`,
+      ticketId: `WO-${String(index + 1).padStart(3, '0')}`,
+      painPoint: pain,
+      customerTier: index === 0 ? '金牌' : '普通',
+    }))
+    const rec = scoredFinalClusterToRecommendation({
+      id: 'cluster-big',
+      product: '弹性公网 IP',
+      recordIds: records.map((record) => record.id),
+      ticketCount: 25,
+      sharePct: 80,
+      rank: 1,
+      totalFinal: 1,
+      priorityScore: 4.5,
+      breadthScore: 5,
+      harmScore: 4,
+      maxSeverity: 4,
+      p90Emotion: 3,
+      representativePainPoint: pain,
+      label: pain,
+      primaryGroups: [],
+    }, records)
+
+    expect(rec.evidenceTicketIds).toEqual(records.map((record) => record.ticketId))
+    expect(rec.evidenceRecordIds).toHaveLength(25)
+    expect(rec.evidenceTicketIds).toHaveLength(25)
   })
 
   it('returns empty when no pain points', () => {

@@ -59,6 +59,7 @@
 |------|------|----------|
 | LLM API Key（用户自填） | `localStorage` | 每浏览器一份；应用服务端 `LLM_API_KEY` |
 | 登录 Token | `sessionStorage` | 仅当前标签会话；关闭浏览器即失效。同域 `window.open` 新标签可继承，不必再登录 |
+| 主题依据工单集（大簇跳转反馈库） | `sessionStorage` `feedbacks:ticketIdSet:*` | 仅当前标签；URL 只带 `ticketIdSet=`，不写库。关标签或关浏览器后失效，需从看板重新打开 |
 | 旧版工单缓存键 | `localStorage` `feedback-insights-records` | 仅首次迁移用 |
 
 ### 2.4 仅内存 / 会话（刷新即失）

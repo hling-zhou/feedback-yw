@@ -518,7 +518,7 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           <div className="space-y-5">
             {impactThemeLinks.map((link, index) => {
               const clusterTicketIds = clusterTicketIdsOf(link)
-              const clusterCount = link.ticketCount || clusterTicketIds.length
+              const clusterCount = clusterTicketIds.length
               const useSessionJump = clusterTicketIds.length > FEEDBACK_TICKET_ID_URL_LIMIT
               return (
               <div

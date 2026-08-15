@@ -140,16 +140,34 @@ function weakMatchRecommendation(recommendation, record) {
   return structureScore >= 4 || (structureScore >= 2 && textScore >= 0.18) || textScore >= 0.34
 }
 
-function dedupeTicketIds(records) {
+function uniqueTicketIdList(values) {
   const seen = new Set()
-  const ticketIds = []
-  for (const record of records || []) {
-    const ticketId = String(record?.ticketId || '').trim()
-    if (!ticketId || seen.has(ticketId)) continue
-    seen.add(ticketId)
-    ticketIds.push(ticketId)
+  const ids = []
+  for (const raw of values || []) {
+    const id = String(raw || '').trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
   }
-  return ticketIds
+  return ids
+}
+
+function dedupeTicketIds(records) {
+  return uniqueTicketIdList((records || []).map((record) => record?.ticketId))
+}
+
+/**
+ * 簇跳转用工单号：优先建议上建簇时写入的全量名单，再并入当前能解析到的记录。
+ * @param {OverviewRecommendation | null | undefined} recommendation
+ * @param {Map<string, FeedbackRecord>} [recordById]
+ * @param {string[]} [extraTicketIds]
+ */
+export function resolveClusterTicketIds(recommendation, recordById, extraTicketIds = []) {
+  const stored = uniqueTicketIdList(recommendation?.evidenceTicketIds)
+  const fromRecords = uniqueTicketIdList(
+    (recommendation?.evidenceRecordIds || []).map((id) => recordById?.get(id)?.ticketId),
+  )
+  return uniqueTicketIdList([...stored, ...fromRecords, ...extraTicketIds])
 }
 
 /**
@@ -190,14 +208,10 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
   const rows = [...linked.values()].sort(compareEvidenceRows).slice(0, THEME_EVIDENCE_LIMIT)
   const impactSignals = buildImpactSignals(rows)
   const riskScore = computeRiskScore(impactSignals, rows.length, themeTypeOf(recommendation))
-  const clusterRecords = (recommendation?.evidenceRecordIds || [])
-    .map((id) => recordById.get(id))
-    .filter(Boolean)
-  const clusterTicketIds = dedupeTicketIds(clusterRecords)
-  const ticketCount = Number(
+  const clusterTicketIds = resolveClusterTicketIds(recommendation, recordById)
+  const ticketCount = clusterTicketIds.length || Number(
     recommendation?.sections?.painClusterScores?.ticketCount
       ?? recommendation?.evidenceBundle?.ticketCount
-      ?? clusterTicketIds.length
       ?? (recommendation?.evidenceRecordIds || []).length,
   )
 
@@ -207,7 +221,7 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
     themeType: themeTypeOf(recommendation),
     themeLabel: themeLabelOf(recommendation),
     product: recommendation?.scope?.product || '',
-    ticketCount: Number.isFinite(ticketCount) ? ticketCount : clusterTicketIds.length,
+    ticketCount: Number.isFinite(ticketCount) && ticketCount > 0 ? ticketCount : clusterTicketIds.length,
     clusterTicketIds,
     evidenceRecordIds: rows.map((row) => row.id).filter(Boolean),
     evidenceTicketIds: dedupeTicketIds(rows),

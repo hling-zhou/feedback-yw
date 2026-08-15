@@ -406,8 +406,8 @@ describe('TicketStoryView render', () => {
       <TicketStoryView model={model} creatingInsightId="" />,
     )
 
-    expect(html).toContain('高风险抽样 1 / 簇内 248')
-    expect(html).toContain('查看簇内 248 条')
+    expect(html).toContain('高风险抽样 1 / 簇内 21')
+    expect(html).toContain('查看簇内 21 条')
     expect(html).toContain('复制工单号')
     expect(html).toContain('当前带宽配额无法满足业务流量需求')
     expect(html).not.toContain('占该产品 23%')

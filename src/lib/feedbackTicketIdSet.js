@@ -97,17 +97,27 @@ export function formatClusterEvidenceLinkLabel(ticketCount) {
 }
 
 /**
+ * 反馈库主题依据：筛选名单条数 vs 库内实际匹配条数（工单已删除时两者会分叉）。
+ * @param {number} filterCount
+ * @param {number} matchedCount
+ */
+export function formatClusterTicketSetChipLabel(filterCount, matchedCount) {
+  const filter = Number(filterCount)
+  const matched = Number(matchedCount)
+  const n = Number.isFinite(filter) && filter > 0 ? filter : 0
+  const m = Number.isFinite(matched) && matched >= 0 ? matched : 0
+  return `筛选 ${n} / 库内匹配 ${m}`
+}
+
+/**
  * @param {Object} params
  * @param {string} [params.sourceType]
  * @param {string[]} params.ticketIds
- * @param {number} [params.ticketCount]
  * @returns {{ href: string; usesSession: boolean; ticketIds: string[] }}
  */
-export function resolveClusterFeedbacksNavigation({ sourceType, ticketIds, ticketCount } = {}) {
+export function resolveClusterFeedbacksNavigation({ sourceType, ticketIds } = {}) {
   const ids = uniqueTicketIds(ticketIds)
-  const count = Number.isFinite(Number(ticketCount)) && Number(ticketCount) > 0
-    ? Number(ticketCount)
-    : ids.length
+  const count = ids.length
   if (!ids.length) {
     return {
       href: buildFeedbacksUrl({ source: sourceType || '' }),
