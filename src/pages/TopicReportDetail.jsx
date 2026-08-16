@@ -4,8 +4,10 @@ import { Alert, Button, Space, Spin, Tag, Typography, Upload } from 'antd'
 import { ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import TopicBriefView from '../components/topicAnalysis/TopicBriefView.jsx'
+import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import {
   SUPPLEMENT_ACCEPT,
@@ -23,10 +25,12 @@ import { getTopicReport, saveTopicReport } from '../lib/topicAnalysis/store.js'
 export default function TopicReportDetail() {
   const { reportId } = useParams()
   const { adapter, settings, storageReady } = useInsights()
+  const { feedbacks } = useFeedbacks()
   const { user } = useAuth()
   const message = useAppMessage()
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [selectedFeedback, setSelectedFeedback] = useState(null)
   const status = topicReportStatus(report)
 
   const reload = useCallback(async () => {
@@ -106,6 +110,12 @@ export default function TopicReportDetail() {
 
   const generating = status === 'generating'
   const failed = status === 'failed'
+  const openTicket = useCallback((reference) => {
+    const key = String(reference || '')
+    const record = feedbacks.find((item) => String(item.id) === key || String(item.ticketId) === key || String(item.originalTicketId) === key)
+    if (record) setSelectedFeedback(record)
+    else message.warning('未找到该工单记录')
+  }, [feedbacks, message])
 
   return (
     <div className="space-y-4">
@@ -155,8 +165,9 @@ export default function TopicReportDetail() {
           action={<Button onClick={() => void queueRegenerate(report.supplements || [])}>重新生成</Button>}
         />
       ) : (
-        <TopicBriefView brief={report.brief} settings={settings} />
+        <TopicBriefView brief={report.brief} onTicketClick={openTicket} />
       )}
+      <FeedbackDrawer feedback={selectedFeedback} onClose={() => setSelectedFeedback(null)} />
     </div>
   )
 }

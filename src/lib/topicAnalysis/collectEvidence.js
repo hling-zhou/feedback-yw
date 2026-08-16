@@ -15,12 +15,161 @@ import {
 import { recordSourceType } from '../../snapshots/recordScope.js'
 import { blobMatchesTopicQuery, parseTopicSearchQuery } from './matchQuery.js'
 import { buildFeedbacksTicketFilterHref } from '../feedbackFilters.js'
+import {
+  analyzeTopicGroup,
+  isNegativeRecord,
+  recordJourneyL2Key,
+  recordMonthKey,
+  recordProblemKey,
+  recordProductName,
+} from './recommendTopics.js'
+import { shiftYearMonth } from '../../domain/insightPeriod.js'
 
 /**
  * @param {string} value
  */
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+const OPEN_ACTION_STATUSES = new Set(['pending_evaluation', 'in_progress', 'suspended'])
+const TERMINAL_ACTION_STATUSES = new Set(['completed', 'not_implemented', 'abnormal_terminated'])
+const EXPECTATION_RE = /我以为|应该|不是说|承诺|宣传/
+
+function monthRange(fromMonth, toMonth) {
+  if (!/^\d{4}-\d{2}$/.test(fromMonth) || !/^\d{4}-\d{2}$/.test(toMonth) || fromMonth > toMonth) {
+    return []
+  }
+  const out = []
+  let month = fromMonth
+  while (month <= toMonth && out.length < 24) {
+    out.push(month)
+    month = shiftYearMonth(month, 1) || ''
+  }
+  return out
+}
+
+function decisionWindow(period, matched) {
+  const recordMonths = matched.map(recordMonthKey).filter(Boolean).sort()
+  const all = monthRange(period?.fromMonth || recordMonths[0], period?.toMonth || recordMonths.at(-1))
+  if (all.length >= 6) return { recent: all.slice(-4), baseline: all.slice(0, -4), all }
+  if (all.length >= 3) {
+    const split = Math.floor(all.length / 2)
+    return { recent: all.slice(split), baseline: all.slice(0, split), all }
+  }
+  return { recent: [], baseline: [], all }
+}
+
+function distribution(records, keyOf) {
+  const counts = new Map()
+  for (const record of records) {
+    const key = compactText(keyOf(record))
+    if (key) counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'))
+}
+
+function concentration(rows) {
+  const total = rows.reduce((sum, row) => sum + row.count, 0)
+  const top = rows[0] || { name: '', count: 0 }
+  const second = rows[1] || { name: '', count: 0 }
+  const headShare = total ? top.count / total : 0
+  const secondShare = total ? second.count / total : 0
+  return {
+    total,
+    rows,
+    top,
+    second,
+    headShare,
+    secondShare,
+    concentrated: total >= 5 && headShare >= 0.4 && top.count - second.count >= 2,
+  }
+}
+
+function quoteText(record) {
+  return compactText(
+    record.customerQuote || record.painPoint || record.problemSummary || record.commentText
+    || record.lowScoreReason || record.rawText || record.customerRequest,
+  )
+}
+
+function quoteClusters(records) {
+  const groups = new Map()
+  for (const record of records) {
+    const text = quoteText(record)
+    if (!text) continue
+    const action = text.match(/(申请|配置|创建|购买|使用|开通|删除|修改|访问|登录|查询|操作|提交|升级|续费|绑定|切换).{0,8}/)?.[0]
+      || recordProblemKey(record)
+      || recordJourneyL2Key(record)
+    if (!action) continue
+    const key = action.replace(/\s+/g, '').slice(0, 12)
+    const current = groups.get(key) || { key, count: 0, recordIds: [] }
+    current.count += 1
+    if (record.id) current.recordIds.push(String(record.id))
+    groups.set(key, current)
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, 'zh-CN'))
+}
+
+function buildSignalPack({ matched, topic, actionItems, period }) {
+  const window = decisionWindow(period, matched)
+  const analysis = analyzeTopicGroup(matched, window, topic, actionItems)
+  const savedScenarios = Array.isArray(topic.scenarios) ? topic.scenarios : []
+  const scenarios = [...new Set([...savedScenarios, ...analysis.scenarios])]
+  const dimensions = {
+    problem: concentration(distribution(matched, recordProblemKey)),
+    journeyL1: concentration(distribution(matched, (record) => record.journeyL1)),
+    journeyL2: concentration(distribution(matched, recordJourneyL2Key)),
+    requestScene: concentration(distribution(matched, (record) => record.requestScene)),
+    resourcePool: concentration(distribution(matched, (record) => record.resourcePool)),
+    productSpec: concentration(distribution(matched, (record) => record.productSpec)),
+    source: concentration(distribution(matched, recordSourceType)),
+    product: concentration(distribution(matched, recordProductName)),
+  }
+  const actionStatus = (actionItems || []).reduce((out, item) => {
+    const status = String(item.status || '')
+    if (OPEN_ACTION_STATUSES.has(status)) out.open.push(item)
+    else if (TERMINAL_ACTION_STATUSES.has(status)) out.terminal.push(item)
+    return out
+  }, { open: [], terminal: [] })
+  const quoteRows = matched.map(quoteText).filter(Boolean)
+  const expectationCount = quoteRows.filter((text) => EXPECTATION_RE.test(text)).length
+  const problem = dimensions.problem
+  const splitSuggested = matched.length >= 5 && (
+    (topic.type === 'common_issue' && (
+      dimensions.product.rows.length < 2
+      || dimensions.product.rows.slice(0, 2).some((product) => {
+        const productRows = matched.filter((record) => recordProductName(record) === product.name)
+        return concentration(distribution(productRows, recordProblemKey)).top.name !== problem.top.name
+      })
+    ))
+    || (problem.rows.length >= 2 && problem.rows[0].count / problem.total < 0.5
+      && problem.rows[0].count / problem.total >= 0.25
+      && problem.rows[1].count / problem.total >= 0.25)
+  )
+  return {
+    window,
+    analysis: { ...analysis, scenarios },
+    dimensions,
+    inventory: {
+      openCount: actionStatus.open.length,
+      doneCount: actionStatus.terminal.filter((item) => item.status === 'completed').length,
+      stoppedCount: actionStatus.terminal.filter((item) => item.status !== 'completed').length,
+      open: actionStatus.open.slice(0, 3).map((item) => ({ id: item.id, title: item.content || item.detail || '未命名举措', status: item.status })),
+    },
+    sample: {
+      total: matched.length,
+      negative: matched.filter(isNegativeRecord).length,
+      productCount: dimensions.product.rows.length,
+      expectationRate: quoteRows.length ? expectationCount / quoteRows.length : 0,
+      expectationCount,
+      quoteCount: quoteRows.length,
+    },
+    quoteClusters: quoteClusters(matched).slice(0, 5),
+    splitSuggested,
+  }
 }
 
 /**
@@ -129,7 +278,7 @@ function matchingVisits(visits, topic) {
 }
 
 /**
- * @param {{ topic: object, records?: object[], visits?: object[], actionItems?: object[], periodLabel?: string }} input
+ * @param {{ topic: object, records?: object[], visits?: object[], actionItems?: object[], periodLabel?: string, period?: object }} input
  */
 export function collectTopicEvidence(input) {
   const topic = input.topic
@@ -195,6 +344,12 @@ export function collectTopicEvidence(input) {
     const needle = topic.matchQuery || topic.problemKey || topic.query || topic.product || topic.customerName || ''
     return !normalizeIdentityText(needle) || blobMatchesTopicQuery(blob, needle)
   }).slice(0, 12)
+  const signalPack = buildSignalPack({
+    matched,
+    topic,
+    actionItems,
+    period: input.period,
+  })
 
   const gaps = []
   if (matched.length === 0) gaps.push('当前周期系统数据中未匹配到相关记录')
@@ -229,6 +384,7 @@ export function collectTopicEvidence(input) {
       status: item.status || '',
       productName: item.productName || '',
     })),
+    signalPack,
     gaps,
     evidenceIds: sources.map((row) => row.id).filter(Boolean),
   }

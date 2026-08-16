@@ -3,6 +3,7 @@ import { loadVisitRecords } from '../postUseRating/visitRecords.js'
 import { collectTopicEvidence } from './collectEvidence.js'
 import { buildTopicBrief } from './buildBrief.js'
 import { polishTopicBriefWithLlm } from './llmBrief.js'
+import { qualifyTopicEvidenceWithLlm } from './llmQualify.js'
 
 /**
  * @param {object} visit
@@ -54,21 +55,27 @@ export async function generateTopicReportBrief(input) {
     actionItems = []
   }
 
-  const evidence = collectTopicEvidence({
+  let evidence = collectTopicEvidence({
     topic,
     records,
     visits,
     actionItems,
     periodLabel,
+    period: input.period,
   })
+  try {
+    evidence = await qualifyTopicEvidenceWithLlm(evidence, input.settings)
+  } catch {
+    // A semantic qualifier must never block the deterministic report.
+  }
   let brief = buildTopicBrief({ evidence, supplements })
   try {
-    const llmJudgments = await polishTopicBriefWithLlm(brief, input.settings)
-    if (llmJudgments.length) {
+    const llmDecision = await polishTopicBriefWithLlm(brief, input.settings)
+    if (llmDecision) {
       brief = buildTopicBrief({
         evidence,
         supplements,
-        llmJudgments,
+        llmDecision,
         generatedAt: brief.generatedAt,
       })
     }

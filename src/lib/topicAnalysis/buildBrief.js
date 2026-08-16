@@ -1,5 +1,6 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { TOPIC_ANALYSIS_DEMO, TOPIC_TYPE_LABELS } from './constants.js'
+import { buildTopicDecision } from './buildDecision.js'
 
 /**
  * @param {object} evidence
@@ -72,7 +73,7 @@ function ruleJudgments(evidence) {
 }
 
 /**
- * @param {{ evidence: object, supplements?: object[], llmJudgments?: object[], generatedAt?: string }} input
+ * @param {{ evidence: object, supplements?: object[], llmJudgments?: object[], llmDecision?: object | null, generatedAt?: string }} input
  */
 export function buildTopicBrief(input) {
   const evidence = input.evidence
@@ -103,6 +104,7 @@ export function buildTopicBrief(input) {
       total: evidence.total,
       countsBySource: evidence.countsBySource,
     },
+    decision: input.llmDecision || buildTopicDecision(evidence),
     whyNow: topic.whyNow || '用户指定或系统推荐深入',
     whatHappened: {
       products: evidence.products || [],
@@ -110,7 +112,7 @@ export function buildTopicBrief(input) {
     },
     quotes: evidence.quotes || [],
     judgments: llmJudgments.length ? llmJudgments : ruleJudgments(evidence),
-    llmApplied: llmJudgments.length > 0,
+    llmApplied: llmJudgments.length > 0 || Boolean(input.llmDecision?.llmPolished),
     actions: evidence.actionItems || [],
     supplements,
     supplementItems,

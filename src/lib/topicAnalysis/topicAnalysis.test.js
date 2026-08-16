@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx'
 import { recommendTopics, topicFromUserQuery } from './recommendTopics.js'
 import { collectTopicEvidence, recordMatchesTopic } from './collectEvidence.js'
 import { buildTopicBrief } from './buildBrief.js'
+import { buildTopicDecision } from './buildDecision.js'
+import { applySemanticSplitResult } from './llmQualify.js'
 import { buildTopicMarkdown } from './markdown.js'
 import { parseTopicSupplementFile } from './parseSupplement.js'
 import { extractCustomerIdentity, matchCustomerIdentity } from './customerIdentity.js'
@@ -325,7 +327,67 @@ describe('topicAnalysis', () => {
     const md = buildTopicMarkdown(brief)
     expect(md).toContain('带宽限速')
     expect(md).toContain('信息源')
-    expect(md).toContain('用户补充材料')
+    expect(md).toContain('补充材料')
+  })
+
+  it('builds a low-confidence observation for sparse evidence', () => {
+    const evidence = collectTopicEvidence({
+      topic: topicFromUserQuery('带宽限速', { type: 'common_issue' }),
+      records: [ticket({ importMonth: '2026-08', sentiment: 'strong_negative' })],
+      period: { fromMonth: '2026-08', toMonth: '2026-08' },
+    })
+    const decision = buildTopicDecision(evidence)
+    expect(decision.attribution.confidence).toBe('low')
+    expect(decision.action.type).toBe('observe')
+    expect(decision.urgency.level).toBe('P2')
+  })
+
+  it('keeps split topics out of repair actions', () => {
+    const evidence = {
+      topic: { type: 'common_issue', title: '共性问题' },
+      evidenceIds: ['r1'],
+      signalPack: {
+        sample: { total: 8, negative: 4, productCount: 2 },
+        analysis: { scenarios: ['worsening'], keyCustomer: true, monthCounts: {}, recentAvg: 2, baselineAvg: 1 },
+        dimensions: {
+          problem: { rows: [{ name: 'A', count: 4 }, { name: 'B', count: 4 }], total: 8, top: { name: 'A', count: 4 }, headShare: 0.5 },
+        },
+        inventory: { openCount: 0, doneCount: 0, stoppedCount: 0, open: [] },
+        splitSuggested: true,
+        window: { all: ['2026-01', '2026-02', '2026-03'] },
+      },
+    }
+    const decision = buildTopicDecision(evidence)
+    expect(decision.urgency.level).toBe('P0')
+    expect(decision.action.type).toBe('split')
+    expect(decision.action.what).toContain('拆')
+  })
+
+  it('only adds a semantic split with two independent evidence clusters', () => {
+    const evidence = {
+      quotes: [
+        { id: 'a1', recordId: 'a1', ticketId: 'T-1' },
+        { id: 'a2', recordId: 'a2', ticketId: 'T-2' },
+        { id: 'b1', recordId: 'b1', ticketId: 'T-3' },
+        { id: 'b2', recordId: 'b2', ticketId: 'T-4' },
+      ],
+      signalPack: { splitSuggested: false },
+    }
+    const accepted = applySemanticSplitResult(evidence, {
+      semanticSplit: {
+        suggestSplit: true,
+        clusters: [
+          { label: '创建失败', sourceIds: ['a1', 'T-2'] },
+          { label: '计费疑问', sourceIds: ['b1', 'T-4'] },
+        ],
+      },
+    })
+    expect(accepted.signalPack.semanticSplitSuggested).toBe(true)
+    expect(accepted.signalPack.semanticClusters).toHaveLength(2)
+    const rejected = applySemanticSplitResult(evidence, {
+      semanticSplit: { suggestSplit: true, clusters: [{ label: '单一问题', sourceIds: ['a1'] }] },
+    })
+    expect(rejected.signalPack.semanticSplitSuggested).toBeUndefined()
   })
 
   it('matches split product and problem tokens without requiring a contiguous phrase', () => {

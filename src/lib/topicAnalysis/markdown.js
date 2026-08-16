@@ -17,18 +17,25 @@ export function buildTopicMarkdown(brief) {
     '',
     `> ${TOPIC_ANALYSIS_DEMO_LABEL} · ${TOPIC_TYPE_LABELS[topic.type] || topic.typeLabel || ''} · 生成于 ${brief.generatedAt || ''}`,
     '',
-    '## 范围与可信度',
+    '## 决策摘要',
+    '',
+    `- 紧迫度：${brief.decision?.urgency?.level || '—'} · ${brief.decision?.urgency?.label || '—'}`,
+    `- 做什么：${brief.decision?.action?.what || '—'}`,
+    `- 谁来做：${brief.decision?.action?.owner || '—'}`,
+    `- 怎么验证：${brief.decision?.action?.verify || '—'}`,
+    '',
+    '## 定性',
+    '',
+    brief.decision?.qualitative?.text || '—',
+    '',
+    '## 归因假设',
+    '',
+    brief.decision?.attribution?.text || '—',
+    '',
+    '## 指标',
     '',
     `- 洞察周期：${brief.scope?.periodLabel || '—'}`,
-    `- 匹配方式：${brief.scope?.matchNote || '—'}`,
     `- 系统记录：${brief.scope?.total ?? 0} 条${sourceCountLine(brief.scope?.countsBySource) ? `（${sourceCountLine(brief.scope.countsBySource)}）` : ''}`,
-    '',
-    '## 为何值得深入',
-    '',
-    brief.whyNow || '—',
-    '',
-    '## 发生了什么（系统统计）',
-    '',
   ]
   const products = brief.whatHappened?.products || []
   const problems = brief.whatHappened?.problemTypes || []
@@ -49,15 +56,7 @@ export function buildTopicMarkdown(brief) {
     lines.push('暂无可用原话。')
   }
 
-  lines.push('', '## 初步判断', '')
-  if (brief.llmApplied) lines.push('_以下为 AI 归纳，每条均应能回到信息源。_', '')
-  else lines.push('_以下为系统统计归纳（未使用 AI 或 AI 不可用）。_', '')
-  for (const item of brief.judgments || []) {
-    const refs = (item.sourceIds || []).length ? `〔来源 ${item.sourceIds.join(', ')}〕` : ''
-    lines.push(`- ${item.text}${refs}`)
-  }
-
-  lines.push('', '## 已有举措与缺口', '')
+  lines.push('', '## 关联举措', '')
   if (brief.actions?.length) {
     for (const action of brief.actions) {
       lines.push(`- ${action.title}${action.status ? `（${action.status}）` : ''}`)
@@ -66,7 +65,7 @@ export function buildTopicMarkdown(brief) {
     lines.push('系统内未见确立举措。')
   }
 
-  lines.push('', '## 用户补充材料', '')
+  lines.push('', '## 补充材料', '')
   if (brief.supplements?.length) {
     for (const sup of brief.supplements) {
       lines.push(`- ${sup.fileName}（${sup.format}，${sup.importedAt || ''}）`)
@@ -77,9 +76,6 @@ export function buildTopicMarkdown(brief) {
   } else {
     lines.push('尚未提供补充材料。可将本地 Word / Markdown / PDF / Excel 提供给系统。')
   }
-
-  lines.push('', '## 待补充', '')
-  for (const gap of brief.toSupplement || []) lines.push(`- ${gap}`)
 
   lines.push('', '## 信息源', '')
   if (brief.sources?.length) {
