@@ -98,6 +98,30 @@ export async function getTopicReport(adapter, id) {
 }
 
 /**
+ * @param {{ getMeta: (k: string) => Promise<unknown>, putMeta: (k: string, v: unknown) => Promise<void> }} adapter
+ * @param {string} id
+ */
+export async function deleteTopicReport(adapter, id) {
+  const reportId = String(id || '').trim()
+  if (!reportId) throw new Error('缺少报告 id')
+  const prev = await loadTopicReports(adapter)
+  if (!prev.some((item) => item.id === reportId)) {
+    throw new Error('未找到该专题报告')
+  }
+  const next = prev.filter((item) => item.id !== reportId)
+  await adapter.putMeta(META_KEY_TOPIC_ANALYSIS_REPORTS, {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    reports: next,
+  })
+  const saved = await loadTopicReports(adapter)
+  if (saved.some((item) => item.id === reportId)) {
+    throw new Error('专题报告未能删除，请重试')
+  }
+  return saved
+}
+
+/**
  * @param {Partial<object>} fields
  */
 export function createTopicReport(fields) {

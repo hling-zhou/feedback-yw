@@ -147,7 +147,7 @@ describe('topicAnalysis', () => {
   })
 
   it('keeps createdBy when a later save omits it, and records updatedBy separately', async () => {
-    const { preserveTopicReportActors, topicReportCreatedByLabel, topicReportUpdatedByLabel, sortTopicReportsForViewer } = await import('./reportActors.js')
+    const { preserveTopicReportActors, topicReportCreatedByLabel, topicReportUpdatedByLabel, sortTopicReportsForViewer, canDeleteTopicReport } = await import('./reportActors.js')
     const creator = { userId: 'u1', username: '甲' }
     const other = { userId: 'u2', username: '乙' }
     const created = createTopicReport({ title: '客户专题', createdBy: creator })
@@ -169,11 +169,31 @@ describe('topicAnalysis', () => {
     expect(topicReportCreatedByLabel({}, creator)).toBe('未知创建人')
     expect(topicReportUpdatedByLabel(afterSupplement, other)).toBe('我上传了补充材料')
     expect(topicReportUpdatedByLabel(afterSupplement, creator)).toBe('乙 上传了补充材料')
+    expect(canDeleteTopicReport(afterSupplement, creator)).toBe(true)
+    expect(canDeleteTopicReport(afterSupplement, other)).toBe(false)
+    expect(canDeleteTopicReport(afterSupplement, { ...other, role: 'admin' })).toBe(true)
+    expect(canDeleteTopicReport({ id: 'x', createdBy: null }, creator)).toBe(false)
+    expect(canDeleteTopicReport({ id: 'x', createdBy: null }, { ...creator, role: 'admin' })).toBe(true)
     const sorted = sortTopicReportsForViewer([
       { id: 'b', createdBy: other, updatedAt: '2026-08-14T05:00:00.000Z' },
       { id: 'a', createdBy: creator, updatedAt: '2026-08-14T04:00:00.000Z' },
     ], creator)
     expect(sorted.map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
+  it('deletes a saved topic report', async () => {
+    const { deleteTopicReport } = await import('./store.js')
+    const meta = new Map()
+    const adapter = {
+      getMeta: async (key) => meta.get(key),
+      putMeta: async (key, value) => { meta.set(key, value) },
+    }
+    const report = createTopicReport({ title: '待删', createdBy: { userId: 'u1', username: '甲' } })
+    await saveTopicReport(adapter, report)
+    expect(await loadTopicReports(adapter)).toHaveLength(1)
+    const next = await deleteTopicReport(adapter, report.id)
+    expect(next).toHaveLength(0)
+    expect(await loadTopicReports(adapter)).toHaveLength(0)
   })
 
   it('keeps a just-saved generating report when a later empty load arrives', async () => {

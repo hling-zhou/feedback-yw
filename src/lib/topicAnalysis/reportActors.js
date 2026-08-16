@@ -19,6 +19,17 @@ export function isOwnTopicActor(actor, user) {
 }
 
 /**
+ * 本人可删自己创建的报告；管理员可删任何人的（含未知创建人）。
+ * @param {object | null | undefined} report
+ * @param {{ id?: string, userId?: string, role?: string } | null | undefined} user
+ */
+export function canDeleteTopicReport(report, user) {
+  if (!report?.id || !user) return false
+  if (user.role === 'admin') return true
+  return isOwnTopicActor(report.createdBy, user)
+}
+
+/**
  * 保存时：创建人一旦有就不再改；updatedBy 有新值才覆盖，否则保留已有。
  * @param {object} incoming
  * @param {object | null | undefined} existing

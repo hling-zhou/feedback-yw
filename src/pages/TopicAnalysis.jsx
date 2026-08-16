@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Segmented,
   Space,
   Spin,
@@ -15,7 +16,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import TopicRecommendPanel from '../components/topicAnalysis/TopicRecommendPanel.jsx'
@@ -57,6 +58,7 @@ import {
 } from '../lib/topicAnalysis/customTopic.js'
 import { interpretCustomTopic, applyInterpretationToTopic } from '../lib/topicAnalysis/interpretTopic.js'
 import {
+  canDeleteTopicReport,
   isOwnTopicActor,
   sortTopicReportsForViewer,
   topicActorFromUser,
@@ -66,6 +68,7 @@ import {
 import { isTopicReportJobRunning, runTopicReportJob } from '../lib/topicAnalysis/generateJob.js'
 import {
   createTopicReport,
+  deleteTopicReport,
   findReportByRecommendationId,
   loadTopicReports,
   mergeTopicReports,
@@ -96,6 +99,7 @@ export default function TopicAnalysis() {
   recordsRef.current = records
   const [typeFilter, setTypeFilter] = useState('all')
   const [adoptingId, setAdoptingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [customType, setCustomType] = useState('common_issue')
@@ -301,6 +305,23 @@ export default function TopicAnalysis() {
     }
   }, [actor, enqueueReportJob, message, navigate, reports, rollingPeriod, setSearchParams])
 
+  const handleDeleteReport = useCallback(async (report) => {
+    if (!adapter || !canDeleteTopicReport(report, user)) {
+      message.warning('无权删除该报告')
+      return
+    }
+    setDeletingId(report.id)
+    try {
+      const list = await deleteTopicReport(adapter, report.id)
+      setReports(list)
+      message.success('已删除专题报告')
+    } catch (err) {
+      message.error(topicRequestErrorMessage(err, '删除失败'))
+    } finally {
+      setDeletingId(null)
+    }
+  }, [adapter, message, user])
+
   const handleCreate = useCallback(async () => {
     if (!interpretation) {
       message.warning('请先理解并确认范围')
@@ -451,12 +472,38 @@ export default function TopicAnalysis() {
                   const createdLabel = topicReportCreatedByLabel(report, user)
                   const updatedLabel = topicReportUpdatedByLabel(report, user)
                   const mine = isOwnTopicActor(report.createdBy, user)
+                  const canDelete = canDeleteTopicReport(report, user)
                   return (
                   <Card
                     key={report.id}
                     size="small"
                     title={report.title}
-                    extra={<Link to={`/topics/${report.id}`}>{status === 'generating' ? '查看进度' : '进入详情'}</Link>}
+                    extra={(
+                      <Space size={8}>
+                        {canDelete ? (
+                          <Popconfirm
+                            title="确定删除该专题报告？"
+                            description="删除后无法恢复。"
+                            okText="删除"
+                            okButtonProps={{ danger: true }}
+                            cancelText="取消"
+                            onConfirm={() => void handleDeleteReport(report)}
+                          >
+                            <Button
+                              type="link"
+                              size="small"
+                              danger
+                              className="!px-0"
+                              icon={<DeleteOutlined />}
+                              loading={deletingId === report.id}
+                            >
+                              删除
+                            </Button>
+                          </Popconfirm>
+                        ) : null}
+                        <Link to={`/topics/${report.id}`}>{status === 'generating' ? '查看进度' : '进入详情'}</Link>
+                      </Space>
+                    )}
                   >
                     <Space wrap size={4}>
                       <Tag>{TOPIC_TYPE_LABELS[report.type] || report.type}</Tag>

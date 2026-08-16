@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { Alert, Button, Space, Spin, Tag, Typography, Upload } from 'antd'
-import { ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Alert, Button, Popconfirm, Space, Spin, Tag, Typography, Upload } from 'antd'
+import { DeleteOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import TopicBriefView from '../components/topicAnalysis/TopicBriefView.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
@@ -19,11 +19,17 @@ import {
 import { topicRequestErrorMessage } from '../lib/topicAnalysis/customTopic.js'
 import { isTopicReportJobRunning, runTopicReportJob } from '../lib/topicAnalysis/generateJob.js'
 import { parseTopicSupplementFile } from '../lib/topicAnalysis/parseSupplement.js'
-import { topicActorFromUser, topicReportCreatedByLabel, topicReportUpdatedByLabel } from '../lib/topicAnalysis/reportActors.js'
-import { getTopicReport, saveTopicReport } from '../lib/topicAnalysis/store.js'
+import {
+  canDeleteTopicReport,
+  topicActorFromUser,
+  topicReportCreatedByLabel,
+  topicReportUpdatedByLabel,
+} from '../lib/topicAnalysis/reportActors.js'
+import { deleteTopicReport, getTopicReport, saveTopicReport } from '../lib/topicAnalysis/store.js'
 
 export default function TopicReportDetail() {
   const { reportId } = useParams()
+  const navigate = useNavigate()
   const { adapter, settings, storageReady } = useInsights()
   const { feedbacks } = useFeedbacks()
   const { user } = useAuth()
@@ -31,6 +37,7 @@ export default function TopicReportDetail() {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedFeedback, setSelectedFeedback] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const status = topicReportStatus(report)
 
   const reload = useCallback(async () => {
@@ -105,6 +112,23 @@ export default function TopicReportDetail() {
     else message.warning('未找到该工单记录')
   }, [feedbacks, message])
 
+  const handleDelete = useCallback(async () => {
+    if (!adapter || !report || !canDeleteTopicReport(report, user)) {
+      message.warning('无权删除该报告')
+      return
+    }
+    setDeleting(true)
+    try {
+      await deleteTopicReport(adapter, report.id)
+      message.success('已删除专题报告')
+      navigate('/topics?tab=reports', { replace: true })
+    } catch (err) {
+      message.error(topicRequestErrorMessage(err, '删除失败'))
+    } finally {
+      setDeleting(false)
+    }
+  }, [adapter, message, navigate, report, user])
+
   if (loading) return <Spin className="py-12" />
   if (!report) {
     return (
@@ -117,6 +141,7 @@ export default function TopicReportDetail() {
 
   const generating = status === 'generating'
   const failed = status === 'failed'
+  const canDelete = canDeleteTopicReport(report, user)
 
   return (
     <div className="space-y-4">
@@ -139,16 +164,30 @@ export default function TopicReportDetail() {
         action={(
           <Space wrap>
             <Link to="/topics?tab=reports">返回列表</Link>
-            <Upload accept={SUPPLEMENT_ACCEPT} showUploadList={false} disabled={generating} beforeUpload={handleImport}>
-              <Button icon={<UploadOutlined />} disabled={generating}>提供补充材料</Button>
+            <Upload accept={SUPPLEMENT_ACCEPT} showUploadList={false} disabled={generating || deleting} beforeUpload={handleImport}>
+              <Button icon={<UploadOutlined />} disabled={generating || deleting}>提供补充材料</Button>
             </Upload>
             <Button
               icon={<ReloadOutlined />}
-              disabled={generating}
+              disabled={generating || deleting}
               onClick={() => void queueRegenerate(report.supplements || report.brief?.supplements || [])}
             >
               {failed ? '重新生成' : '按系统数据重算'}
             </Button>
+            {canDelete ? (
+              <Popconfirm
+                title="确定删除该专题报告？"
+                description="删除后无法恢复。"
+                okText="删除"
+                okButtonProps={{ danger: true }}
+                cancelText="取消"
+                onConfirm={() => void handleDelete()}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={deleting}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
         )}
       />

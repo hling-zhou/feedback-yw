@@ -31,6 +31,7 @@ import {
   loadTopicReports,
   mergeTopicReports,
   saveTopicReport,
+  deleteTopicReport,
 } from './store.js'
 import { generateTopicReportBrief } from './generateReport.js'
 import { runTopicReportJob } from './generateJob.js'
@@ -65,6 +66,7 @@ export {
   loadTopicReports,
   mergeTopicReports,
   saveTopicReport,
+  deleteTopicReport,
   generateTopicReportBrief,
   runTopicReportJob,
   buildTopicMarkdown,
