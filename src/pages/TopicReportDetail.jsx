@@ -98,6 +98,13 @@ export default function TopicReportDetail() {
     return false
   }, [message, queueRegenerate, report, user])
 
+  const openTicket = useCallback((reference) => {
+    const key = String(reference || '')
+    const record = feedbacks.find((item) => String(item.id) === key || String(item.ticketId) === key || String(item.originalTicketId) === key)
+    if (record) setSelectedFeedback(record)
+    else message.warning('未找到该工单记录')
+  }, [feedbacks, message])
+
   if (loading) return <Spin className="py-12" />
   if (!report) {
     return (
@@ -110,12 +117,6 @@ export default function TopicReportDetail() {
 
   const generating = status === 'generating'
   const failed = status === 'failed'
-  const openTicket = useCallback((reference) => {
-    const key = String(reference || '')
-    const record = feedbacks.find((item) => String(item.id) === key || String(item.ticketId) === key || String(item.originalTicketId) === key)
-    if (record) setSelectedFeedback(record)
-    else message.warning('未找到该工单记录')
-  }, [feedbacks, message])
 
   return (
     <div className="space-y-4">
