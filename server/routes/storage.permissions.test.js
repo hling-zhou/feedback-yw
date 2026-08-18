@@ -239,4 +239,114 @@ describeStorage('storage route permissions', () => {
     })
     expect(res.statusCode).toBe(403)
   })
+
+  it('viewer cannot DELETE a storage record', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/storage/records/batch',
+      headers: authHeader('admin'),
+      payload: {
+        records: [
+          {
+            id: 'rec-delete-viewer-1',
+            schemaVersion: '2.0',
+            tenantId: 'local',
+            dataSourceType: 'complaint_ticket',
+            recordStatus: 'analyzed',
+            importMonth: '2025-01',
+            rawText: '测试删除',
+            customerQuote: '测试删除',
+            importedAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+    expect(created.statusCode).toBe(200)
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/storage/records/rec-delete-viewer-1',
+      headers: authHeader('viewer'),
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('editor can DELETE a storage record', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/storage/records/batch',
+      headers: authHeader('admin'),
+      payload: {
+        records: [
+          {
+            id: 'rec-delete-editor-1',
+            schemaVersion: '2.0',
+            tenantId: 'local',
+            dataSourceType: 'complaint_ticket',
+            recordStatus: 'analyzed',
+            importMonth: '2025-01',
+            rawText: '测试删除',
+            customerQuote: '测试删除',
+            importedAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+    expect(created.statusCode).toBe(200)
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/storage/records/rec-delete-editor-1',
+      headers: authHeader('editor'),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ ok: true })
+  })
+
+  it('DELETE record unlinks ticket from action library without deleting the action', async () => {
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    const { validateActionItemCreate } = await import('../../src/domain/actionItem.js')
+    const createdAction = validateActionItemCreate({
+      content: '删除工单应解绑',
+      linkedTicketIds: ['C-UNLINK-1', 'C-KEEP'],
+    })
+    expect(createdAction.ok).toBe(true)
+    if (!createdAction.ok) return
+    actionItemRepository.putActionItem(createdAction.item, { skipConflictCheck: true })
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/storage/records/batch',
+      headers: authHeader('admin'),
+      payload: {
+        records: [
+          {
+            id: 'rec-delete-unlink-1',
+            ticketId: 'C-UNLINK-1',
+            schemaVersion: '2.0',
+            tenantId: 'local',
+            dataSourceType: 'complaint_ticket',
+            recordStatus: 'analyzed',
+            importMonth: '2025-01',
+            rawText: '测试删除解绑',
+            customerQuote: '测试删除解绑',
+            importedAt: '2025-01-01T00:00:00.000Z',
+            actionId: createdAction.item.id,
+          },
+        ],
+      },
+    })
+    expect(created.statusCode).toBe(200)
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/storage/records/rec-delete-unlink-1',
+      headers: authHeader('editor'),
+    })
+    expect(res.statusCode).toBe(200)
+
+    const item = actionItemRepository.getActionItem(createdAction.item.id)
+    expect(item?.content).toBe('删除工单应解绑')
+    expect(item?.linkedTicketIds).toEqual(['C-KEEP'])
+  })
 })

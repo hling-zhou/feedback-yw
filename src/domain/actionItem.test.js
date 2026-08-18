@@ -3,6 +3,7 @@ import {
   ACTION_ITEM_STATUS_LABELS,
   aggregateActionItemsByProductStatus,
   canDeleteActionItem,
+  computeActionItemCompletionRate,
   computeScheduleChanged,
   deriveActionItemStatusFromSchedule,
   linkTicketToActionItem,
@@ -191,6 +192,19 @@ describe('actionItem', () => {
     expect(next.linkedDataSources).toEqual(['consultation_ticket'])
   })
 
+  it('computeActionItemCompletionRate is completed over all statuses', () => {
+    expect(
+      computeActionItemCompletionRate({
+        pending_evaluation: 1,
+        in_progress: 1,
+        completed: 2,
+        suspended: 0,
+        not_implemented: 0,
+        abnormal_terminated: 0,
+      }),
+    ).toBe(50)
+  })
+
   it('aggregateActionItemsByProductStatus sums linked feedback by status', () => {
     const rows = aggregateActionItemsByProductStatus(
       [
@@ -222,6 +236,7 @@ describe('actionItem', () => {
     expect(rows[0].linkedFeedbackCounts.in_progress).toBe(1)
     expect(rows[0].linkedFeedbackCounts.pending_evaluation).toBe(1)
     expect(rows[0].linkedFeedbackTotal).toBe(2)
+    expect(rows[0].rate).toBe(0)
   })
 
   it('resolveActionItemProductDisplayName prefers catalog name over stored spec name', () => {

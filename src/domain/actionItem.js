@@ -101,6 +101,15 @@ export function createEmptyActionItemStatusCounts() {
   return Object.fromEntries(ACTION_ITEM_STATUSES.map((status) => [status, 0]))
 }
 
+/**
+ * @param {Record<ActionItemStatus, number> | null | undefined} counts
+ */
+export function computeActionItemCompletionRate(counts) {
+  const total = ACTION_ITEM_STATUSES.reduce((sum, status) => sum + (counts?.[status] ?? 0), 0)
+  if (!total) return 0
+  return Math.round(((counts?.completed ?? 0) / total) * 1000) / 10
+}
+
 /** @param {ActionItemStatus} status */
 export function actionItemStatusLinkedFeedbackLabel(status) {
   return `${ACTION_ITEM_STATUS_LABELS[status]}(关联反馈)`
@@ -498,11 +507,11 @@ export function resolveActionItemProductDisplayName(item, productNameByKey) {
  * 前端兜底：按产品 × 状态聚合（与 server/actionItemRepository 逻辑一致）。
  * @param {ActionItem[]} items
  * @param {{ periodTicketIdSet?: Set<string> | null; productNameByKey?: Map<string, string> }} [options]
- * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }[]}
+ * @returns {{ productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number; rate: number }[]}
  */
 export function aggregateActionItemsByProductStatus(items, options = {}) {
   const { periodTicketIdSet, productNameByKey } = options
-  /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number }>} */
+  /** @type {Map<string, { productKey: string; productName: string; counts: Record<ActionItemStatus, number>; linkedFeedbackCounts: Record<ActionItemStatus, number>; total: number; linkedFeedbackTotal: number; rate: number }>} */
   const map = new Map()
 
   for (const item of items || []) {
@@ -520,6 +529,7 @@ export function aggregateActionItemsByProductStatus(items, options = {}) {
         linkedFeedbackCounts: createEmptyActionItemStatusCounts(),
         total: 0,
         linkedFeedbackTotal: 0,
+        rate: 0,
       }
       map.set(productKey, row)
     }
@@ -532,10 +542,15 @@ export function aggregateActionItemsByProductStatus(items, options = {}) {
     }
   }
 
-  return [...map.values()].sort((a, b) => {
-    if (b.total !== a.total) return b.total - a.total
-    return a.productName.localeCompare(b.productName, 'zh-CN')
-  })
+  return [...map.values()]
+    .map((row) => ({
+      ...row,
+      rate: row.total ? Math.round(((row.counts.completed || 0) / row.total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total
+      return a.productName.localeCompare(b.productName, 'zh-CN')
+    })
 }
 
 export const ACTION_ITEM_DELETE_BLOCKED_CODE = 'ACTION_ITEM_DELETE_BLOCKED'

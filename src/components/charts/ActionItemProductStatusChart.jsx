@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
+  Line,
   XAxis,
   YAxis,
 } from 'recharts'
@@ -11,23 +12,34 @@ import ChartTooltip from './ChartTooltip.jsx'
 import { ACTION_ITEM_STATUSES, ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { ACTION_ITEM_STATUS_CHART_COLORS } from '../../domain/actionItemStatusStyle.js'
 
-/** @typedef {import('../../lib/actionItemClient.js').ActionItemProductStatusRow} ActionItemProductStatusRow */
+/**
+ * @typedef {{ productName?: string; productKey?: string; counts?: Record<string, number>; linkedFeedbackCounts?: Record<string, number>; total?: number; rate?: number }} ProductStatusChartRow
+ */
 
 /**
- * @param {ActionItemProductStatusRow[]} rows
+ * @param {ProductStatusChartRow[]} rows
+ * @param {string[]} statuses
  */
-function buildChartData(rows) {
-  return (rows || []).map((row) => ({
-    productName: row.productName || row.productKey || '未标注产品',
-    ...ACTION_ITEM_STATUSES.reduce(
-      (acc, status) => {
-        acc[status] = row.counts?.[status] ?? 0
-        acc[`${status}Feedback`] = row.linkedFeedbackCounts?.[status] ?? 0
-        return acc
-      },
-      /** @type {Record<string, number>} */ ({}),
-    ),
-  }))
+export function buildProductStatusChartData(rows, statuses) {
+  return (rows || []).map((row) => {
+    const counts = row.counts || {}
+    const total =
+      row.total ??
+      statuses.reduce((sum, status) => sum + (counts[status] ?? 0), 0)
+    return {
+      productName: row.productName || row.productKey || '未标注产品',
+      rate: Number.isFinite(Number(row.rate)) ? Number(row.rate) : 0,
+      total,
+      ...statuses.reduce(
+        (acc, status) => {
+          acc[status] = counts[status] ?? 0
+          acc[`${status}Feedback`] = row.linkedFeedbackCounts?.[status] ?? 0
+          return acc
+        },
+        /** @type {Record<string, number>} */ ({}),
+      ),
+    }
+  })
 }
 
 /**
@@ -57,11 +69,25 @@ function useElementWidth(ref, fallback) {
 
 /**
  * @param {Object} props
- * @param {ActionItemProductStatusRow[]} [props.data]
+ * @param {ProductStatusChartRow[]} [props.data]
+ * @param {string[]} [props.statuses]
+ * @param {Record<string, string>} [props.statusLabels]
+ * @param {Record<string, string>} [props.statusColors]
+ * @param {string} [props.rateLabel]
+ * @param {string} [props.countNoun]
+ * @param {boolean} [props.showLinkedFeedback]
  */
-export default function ActionItemProductStatusChart({ data }) {
+export default function ActionItemProductStatusChart({
+  data,
+  statuses = ACTION_ITEM_STATUSES,
+  statusLabels = ACTION_ITEM_STATUS_LABELS,
+  statusColors = ACTION_ITEM_STATUS_CHART_COLORS,
+  rateLabel = '完成率',
+  countNoun = '条举措',
+  showLinkedFeedback = true,
+}) {
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null))
-  const chartData = useMemo(() => buildChartData(data), [data])
+  const chartData = useMemo(() => buildProductStatusChartData(data, statuses), [data, statuses])
   const chartHeight = Math.min(360, Math.max(220, Math.max(chartData.length, 1) * 52 + 48))
   const chartWidth = useElementWidth(containerRef, 520)
 
@@ -75,11 +101,11 @@ export default function ActionItemProductStatusChart({ data }) {
           暂无数据
         </div>
       ) : (
-        <BarChart
+        <ComposedChart
           width={chartWidth}
           height={chartHeight}
           data={chartData}
-          margin={{ top: 8, right: 12, left: 0, bottom: chartData.length > 6 ? 56 : 8 }}
+          margin={{ top: 8, right: 44, left: 0, bottom: chartData.length > 6 ? 56 : 8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
           <XAxis
@@ -90,35 +116,61 @@ export default function ActionItemProductStatusChart({ data }) {
             textAnchor={chartData.length > 6 ? 'end' : 'middle'}
             height={chartData.length > 6 ? 56 : 32}
           />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6B7280' }} width={36} />
+          <YAxis
+            yAxisId="count"
+            allowDecimals={false}
+            tick={{ fontSize: 11, fill: '#6B7280' }}
+            width={36}
+          />
+          <YAxis
+            yAxisId="rate"
+            orientation="right"
+            domain={[0, 100]}
+            tick={{ fontSize: 11, fill: '#0F766E' }}
+            width={40}
+            tickFormatter={(value) => `${value}%`}
+          />
           <ChartTooltip
             formatter={(value, name, item) => {
-              const status = /** @type {keyof typeof ACTION_ITEM_STATUS_LABELS} */ (name)
+              if (name === 'rate') {
+                return [`${value ?? 0}%`, rateLabel]
+              }
+              const status = String(name)
               const feedback = item?.payload?.[`${status}Feedback`] ?? 0
+              const countText = `${value ?? 0} ${countNoun}`
               return [
-                `${value ?? 0} 条举措，关联反馈 ${feedback} 条`,
-                ACTION_ITEM_STATUS_LABELS[status] || name,
+                showLinkedFeedback ? `${countText}，关联反馈 ${feedback} 条` : countText,
+                statusLabels[status] || status,
               ]
             }}
           />
           <Legend
             wrapperStyle={{ fontSize: 12 }}
             formatter={(value) =>
-              ACTION_ITEM_STATUS_LABELS[/** @type {keyof typeof ACTION_ITEM_STATUS_LABELS} */ (value)] ||
-              value
+              value === 'rate' ? rateLabel : statusLabels[value] || value
             }
           />
-          {ACTION_ITEM_STATUSES.map((status) => (
+          {statuses.map((status) => (
             <Bar
               key={status}
+              yAxisId="count"
               dataKey={status}
               name={status}
-              fill={ACTION_ITEM_STATUS_CHART_COLORS[status]}
+              fill={statusColors[status] || '#94A3B8'}
               maxBarSize={32}
               radius={[2, 2, 0, 0]}
             />
           ))}
-        </BarChart>
+          <Line
+            yAxisId="rate"
+            type="monotone"
+            dataKey="rate"
+            name="rate"
+            stroke="#0F766E"
+            strokeWidth={2}
+            dot={{ r: 3, fill: '#0F766E' }}
+          />
+        </ComposedChart>
       )}
     </div>
   )

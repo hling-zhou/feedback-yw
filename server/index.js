@@ -48,6 +48,7 @@ import { registerComplaintCauseReviewRoutes } from './routes/complaintCauseRevie
 import { registerRequirementTicketProgressRoutes } from './routes/requirementTicketProgress.js'
 import { registerApiKeyRoutes } from './routes/apiKeys.js'
 import { registerPostUseJiraRoutes } from './routes/postUseJira.js'
+import { registerTicketTodoRoutes } from './routes/ticketTodos.js'
 import { buildHealthReport } from './health.js'
 import { logAuditFromRequest, logAudit } from './audit.js'
 
@@ -81,6 +82,7 @@ registerComplaintCauseReviewRoutes(app)
 registerRequirementTicketProgressRoutes(app)
 registerApiKeyRoutes(app)
 registerPostUseJiraRoutes(app)
+registerTicketTodoRoutes(app)
 
 app.get('/health', async (_request, reply) => {
   const report = buildHealthReport()

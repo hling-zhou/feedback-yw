@@ -56,6 +56,34 @@ async function unlinkTicketIfLeavingAction(record, nextActionId) {
   await unlinkTicketsFromActionLibrary([{ actionId: previousActionId, ticketId }])
 }
 
+async function persistLinkedLibraryAction(record, actionId) {
+  const ticketId = record.ticketId?.trim() || ''
+  const dataSourceType = record.dataSourceType
+  await unlinkTicketIfLeavingAction(record, actionId)
+  const item = await getActionItem(actionId)
+  if (!item) {
+    throw new Error('关联的举措不存在或已被删除')
+  }
+  const linked = ensureTicketLinkedOnActionItem(item, ticketId, dataSourceType)
+  const snapshotPatch = ticketId ? buildSnapshotPatchOnTicketLink(item, record) : null
+  const linkChanged =
+    ticketId &&
+    (linked.linkedTicketIds?.length !== item.linkedTicketIds?.length ||
+      linked.linkedDataSources?.length !== item.linkedDataSources?.length)
+  if (linkChanged || snapshotPatch) {
+    await updateActionItem(
+      actionId,
+      {
+        linkedTicketIds: linked.linkedTicketIds,
+        linkedDataSources: linked.linkedDataSources,
+        ...snapshotPatch,
+      },
+      { skipConflictCheck: true },
+    )
+  }
+  return buildLinkedEstablishedActionRecordPatch(linked)
+}
+
 /**
  * @param {FeedbackRecord} record
  * @param {PersistEstablishedActionInput} input
@@ -66,37 +94,15 @@ export async function persistEstablishedActionForTicket(record, input) {
   const scheduleAt = normalizeActionSchedule(input.scheduleAt)
   const ticketId = record.ticketId?.trim() || ''
   const dataSourceType = record.dataSourceType
+  const libraryActionId = input.linkedFromLibrary ? String(input.actionId || '').trim() : ''
+
+  if (libraryActionId) {
+    return persistLinkedLibraryAction(record, libraryActionId)
+  }
 
   if (!content) {
     await unlinkTicketFromPriorAction(record)
     return buildClearEstablishedActionRecordPatch()
-  }
-
-  if (input.linkedFromLibrary && input.actionId?.trim()) {
-    const actionId = input.actionId.trim()
-    await unlinkTicketIfLeavingAction(record, actionId)
-    const item = await getActionItem(actionId)
-    if (!item) {
-      throw new Error('关联的举措不存在或已被删除')
-    }
-    const linked = ensureTicketLinkedOnActionItem(item, ticketId, dataSourceType)
-    const snapshotPatch = ticketId ? buildSnapshotPatchOnTicketLink(item, record) : null
-    const linkChanged =
-      ticketId &&
-      (linked.linkedTicketIds?.length !== item.linkedTicketIds?.length ||
-        linked.linkedDataSources?.length !== item.linkedDataSources?.length)
-    if (linkChanged || snapshotPatch) {
-      await updateActionItem(
-        actionId,
-        {
-          linkedTicketIds: linked.linkedTicketIds,
-          linkedDataSources: linked.linkedDataSources,
-          ...snapshotPatch,
-        },
-        { skipConflictCheck: true },
-      )
-    }
-    return buildLinkedEstablishedActionRecordPatch(linked)
   }
 
   const upsertPayload = buildManualEstablishedActionUpsertPayload(record, {

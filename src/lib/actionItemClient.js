@@ -63,6 +63,7 @@ export async function listActionItems(query = {}) {
  * @property {Record<ActionItemStatus, number>} [linkedFeedbackCounts]
  * @property {number} total
  * @property {number} [linkedFeedbackTotal]
+ * @property {number} [rate]
  */
 
 /**

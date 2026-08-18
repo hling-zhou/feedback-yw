@@ -38,6 +38,7 @@ import {
   ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
   aggregateActionItemsByProductStatus,
   canDeleteActionItem,
+  computeActionItemCompletionRate,
   createEmptyActionItemStatusCounts,
   getActionItemStatusSelectOptions,
   isActionItemLocked,
@@ -56,6 +57,7 @@ import {
 } from '../domain/actionItemPeriodFilter.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { formatSharePercent } from '../domain/ticketTodo.js'
 import {
   getActionItemStats,
   listActionItems,
@@ -97,6 +99,7 @@ import ActionItemRequirementLinkFields, {
 } from '../components/actions/ActionItemRequirementLinkFields.jsx'
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import PostUseJiraTab from './PostUseJiraTab.jsx'
+import TicketTodoTab from './TicketTodoTab.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
@@ -189,7 +192,9 @@ function parseTicketIdsFromInput(text) {
 
 export default function Actions() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') === 'post-use-jira' ? 'post-use-jira' : 'product'
+  const rawTab = searchParams.get('tab')
+  const tab =
+    rawTab === 'product' || rawTab === 'post-use-jira' ? rawTab : 'ticket-todos'
   return (
     <div className="space-y-4">
       <Tabs
@@ -197,11 +202,12 @@ export default function Actions() {
         activeKey={tab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
-          if (key === 'product') next.delete('tab')
+          if (key === 'ticket-todos') next.delete('tab')
           else next.set('tab', key)
           setSearchParams(next, { replace: true })
         }}
         items={[
+          { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
           { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
           { key: 'post-use-jira', label: '用后即评JIRA', children: <PostUseJiraTab /> },
         ]}
@@ -1293,13 +1299,19 @@ function ProductActionsTab() {
                 </span>
               </div>
             ))}
+            <div className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1">
+              <span className="text-xs text-ink-500">完成率</span>
+              <span className="text-base font-semibold tabular-nums text-ink-900">
+                {formatSharePercent(computeActionItemCompletionRate(stats))}
+              </span>
+            </div>
           </div>
 
           <div>
             <Typography.Text type="secondary" className="mb-2 block text-xs">
-              分产品 · 分状态
+              分产品 · 分状态 · 完成率
             </Typography.Text>
-            <ActionItemProductStatusChart data={statsByProduct} />
+            <ActionItemProductStatusChart data={statsByProduct} rateLabel="完成率" />
           </div>
         </div>
       </Card>

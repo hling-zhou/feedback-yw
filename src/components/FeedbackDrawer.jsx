@@ -8,7 +8,6 @@ import {
   Cascader,
   Collapse,
   Checkbox,
-  DatePicker,
   Descriptions,
   Divider,
   Drawer,
@@ -23,9 +22,9 @@ import {
 } from 'antd'
 import { ExpandOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../constants/appLayout.js'
-import dayjs from 'dayjs'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
+import DeleteTicketConfirmModal from './DeleteTicketConfirmModal.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
@@ -70,18 +69,16 @@ import {
 } from '../domain/ticketAnalysisManualFields.js'
 import {
   getActionScheduleDisplay,
-  normalizeActionSchedule,
 } from '../domain/actionSchedule.js'
 import {
-  ESTABLISHED_ACTION_MAX_LENGTH,
-  ESTABLISHED_ACTION_DETAIL_MAX_LENGTH,
   getEstablishedActionDisplay,
   getEstablishedActionDetailDisplay,
 } from '../domain/establishedAction.js'
+import EstablishedActionFields, {
+  getActionItemDisplayScheduleAt,
+} from './actions/EstablishedActionFields.jsx'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
-import ActionItemSelect from './ActionItemSelect.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
-import { getActionItemDisplayScheduleAt } from '../domain/requirementTicketProgress.js'
 import {
   buildDetailOptimizationSavePatch,
   DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH,
@@ -121,13 +118,19 @@ import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
 import {
+  applyTicketTodoResolutionToItem,
   buildTicketTodoSavePatch,
   createEmptyTicketTodoItem,
   formatTicketTodoAssigneeLabel,
-  formatTicketTodoItemUpdatedLine,
   getTicketTodoDraftItems,
+  getTicketTodoResolution,
+  isTicketTodoOpen,
+  markOpenTicketTodosConvertedWhenEstablishingAction,
+  TICKET_TODO_MANUAL_RESOLUTION_SELECT_OPTIONS,
+  TICKET_TODO_RESOLUTION_SELECT_OPTIONS,
   TICKET_TODO_TEXT_MAX_LENGTH,
 } from '../domain/ticketTodo.js'
+import TicketTodoStatusTag from './tags/TicketTodoStatusTag.jsx'
 import { apiFetch } from '../lib/apiClient.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
 import {
@@ -893,6 +896,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     feedbacks,
     adapter,
     updateFeedback,
+    removeFeedback,
     reprocessOne,
     retagSession,
     importSession,
@@ -909,6 +913,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const cachedFeedback = selected
     ? feedbacks.find((f) => f.id === selected.id) ?? selected
     : null
@@ -938,6 +944,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const feedback = fullFeedback ?? cachedFeedback
   const isPostUseLibrary = isPostUseRatingLibraryRecord(feedback)
   const isPostUseNon10 = isPostUseNon10LibraryRecord(feedback)
+  const canDeleteTicket = can('deleteData') && !isPostUseLibrary
   const [journeyEnriching, setJourneyEnriching] = useState(false)
   const [note, setNote] = useState(feedback?.note || '')
   const [listeningReviewed, setListeningReviewed] = useState(Boolean(feedback?.listeningReviewed))
@@ -1279,6 +1286,23 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     onClose()
   }, [onClose])
 
+  const handleDeleteTicket = async () => {
+    if (!can('deleteData') || !feedback?.id || deleting) return
+    setDeleting(true)
+    try {
+      await removeFeedback(feedback.id)
+      const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
+      message.success(`${label} 已删除`)
+      setDeleteOpen(false)
+      onDirtyChange?.(false)
+      ;(onSavedClose ?? onClose)()
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '删除失败，请重试')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   useEffect(() => {
     if (!feedback) {
       onDirtyChange?.(false)
@@ -1289,14 +1313,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }, [feedback, isDrawerDirty, onDirtyChange])
 
   if (!feedback) return null
-
-  const libraryLinked = linkedFromLibrary && Boolean(actionId?.trim())
-  const schedulePickerValue = (() => {
-    const normalized = normalizeActionSchedule(actionSchedule)
-    if (!normalized) return null
-    const parsed = dayjs(normalized, 'YYYY-MM-DD', true)
-    return parsed.isValid() ? parsed : null
-  })()
 
   const buildSavePatch = () => {
     const journey = { journeyL1, journeyL2 }
@@ -1385,13 +1401,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         Object.assign(patch, clearComplaintCauseReviewFields())
       }
     }
-    Object.assign(
-      patch,
-      buildTicketTodoSavePatch(
-        feedback,
-        ticketTodoItems,
-        user?.id ? { userId: user.id, username: user.username || user.id } : null,
-      ),
+    const hadAction = Boolean(
+      getEstablishedActionDisplay(feedback) || String(feedback.actionId || '').trim(),
     )
     const actionPatch = await persistEstablishedActionForTicket(feedback, {
       content: establishedAction,
@@ -1401,9 +1412,27 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       linkedFromLibrary,
     })
     Object.assign(patch, actionPatch)
+    const nextActionId = String(actionPatch.actionId ?? actionId ?? '').trim()
     if ('actionId' in actionPatch) {
-      setActionId(String(actionPatch.actionId ?? '').trim())
+      setActionId(nextActionId)
     }
+    Object.assign(
+      patch,
+      buildTicketTodoSavePatch(
+        feedback,
+        markOpenTicketTodosConvertedWhenEstablishingAction(ticketTodoItems, {
+          hadAction,
+          nowHasAction: Boolean(String(establishedAction || '').trim() || nextActionId),
+          linkedActionId: nextActionId,
+        }).map((item) => {
+          if (getTicketTodoResolution(item) !== 'converted_to_action' || item.linkedActionId?.trim()) {
+            return item
+          }
+          return nextActionId ? { ...item, linkedActionId: nextActionId } : item
+        }),
+        user?.id ? { userId: user.id, username: user.username || user.id } : null,
+      ),
+    )
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase: saveOptions.mergeBase,
@@ -1531,6 +1560,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }
 
   return (
+    <>
     <Drawer
       title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} postUse={isPostUseLibrary} />}
       size={TICKET_DETAIL_DRAWER_WIDTH}
@@ -1543,7 +1573,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         body: { overflowX: 'hidden', overflowY: 'auto' },
       }}
       footer={
-        reviewEnabled || canEdit || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
+        reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {reviewEnabled ? (
               <Checkbox
@@ -1567,6 +1597,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Checkbox>
             ) : null}
             <div className="ml-auto flex shrink-0 gap-2">
+              {canDeleteTicket && (
+                <Button
+                  danger
+                  className="min-w-[4.5rem]"
+                  disabled={!feedback?.id || deleting}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  删除
+                </Button>
+              )}
               {isPostUseNon10 && (
                 <Button
                   className="min-w-[5.5rem]"
@@ -1976,87 +2016,32 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   <Typography.Text strong className="text-xs">
                     确立举措
                   </Typography.Text>
-                  <Form layout="vertical">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <Typography.Text className="shrink-0 text-sm after:content-[':']">
-                        从举措库选择
-                      </Typography.Text>
-                      <div className="min-w-0 flex-1">
-                        <ActionItemSelect
-                          value={actionId || undefined}
-                          productKey={feedback.productKey || feedback.taxonomyKey}
-                          disabled={saving}
-                          onSelect={(item) => {
-                            setActionId(item.id)
-                            setEstablishedAction(item.content)
-                            setEstablishedActionDetail(item.detail || '')
-                            setActionSchedule(getActionItemDisplayScheduleAt(item))
-                            setLinkedFromLibrary(true)
-                          }}
-                          onClear={() => {
-                            setActionId('')
-                            setEstablishedAction('')
-                            setEstablishedActionDetail('')
-                            setActionSchedule('')
-                            setLinkedFromLibrary(false)
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <Form.Item label="举措内容" className="!mb-3">
-                      <Input.TextArea
-                        rows={3}
-                        placeholder="默认为空"
-                        maxLength={ESTABLISHED_ACTION_MAX_LENGTH}
-                        showCount
-                        disabled={libraryLinked || saving}
-                        value={establishedAction}
-                        onChange={(e) => {
-                          setEstablishedAction(
-                            e.target.value.slice(0, ESTABLISHED_ACTION_MAX_LENGTH),
-                          )
-                        }}
-                      />
-                    </Form.Item>
-                    <Collapse
-                      ghost
-                      className="!mb-3 [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
-                      items={[
-                        {
-                          key: 'detail',
-                          label: '举措详情（可选）',
-                          children: (
-                            <Input.TextArea
-                              rows={3}
-                              placeholder="默认为空"
-                              maxLength={ESTABLISHED_ACTION_DETAIL_MAX_LENGTH}
-                              showCount
-                              disabled={libraryLinked || saving}
-                              value={establishedActionDetail}
-                              onChange={(e) => {
-                                setEstablishedActionDetail(
-                                  e.target.value.slice(0, ESTABLISHED_ACTION_DETAIL_MAX_LENGTH),
-                                )
-                              }}
-                            />
-                          ),
-                        },
-                      ]}
-                    />
-                    <Form.Item label="排期" className="!mb-0">
-                      <DatePicker
-                        className="w-full"
-                        format="YYYY-MM-DD"
-                        placeholder="留空 = 待评估"
-                        value={schedulePickerValue}
-                        disabled={libraryLinked || saving}
-                        allowClear={!libraryLinked}
-                        onChange={(date) =>
-                          setActionSchedule(date ? date.format('YYYY-MM-DD') : '')
-                        }
-                      />
-                    </Form.Item>
-                  </Form>
+                  <EstablishedActionFields
+                    productKey={feedback.productKey || feedback.taxonomyKey}
+                    actionId={actionId}
+                    establishedAction={establishedAction}
+                    establishedActionDetail={establishedActionDetail}
+                    actionSchedule={actionSchedule}
+                    linkedFromLibrary={linkedFromLibrary}
+                    disabled={saving}
+                    onSelect={(item) => {
+                      setActionId(item.id)
+                      setEstablishedAction(item.content)
+                      setEstablishedActionDetail(item.detail || '')
+                      setActionSchedule(getActionItemDisplayScheduleAt(item))
+                      setLinkedFromLibrary(true)
+                    }}
+                    onClear={() => {
+                      setActionId('')
+                      setEstablishedAction('')
+                      setEstablishedActionDetail('')
+                      setActionSchedule('')
+                      setLinkedFromLibrary(false)
+                    }}
+                    onContentChange={setEstablishedAction}
+                    onDetailChange={setEstablishedActionDetail}
+                    onScheduleChange={setActionSchedule}
+                  />
                 </div>
               </div>
             ) : (
@@ -2150,16 +2135,25 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           >
             {canEdit ? (
               <div className="space-y-3">
-                {ticketTodoItems.map((item, index) => (
+                {ticketTodoItems.map((item, index) => {
+                  const openItem = isTicketTodoOpen(item)
+                  const itemDisabled = saving || !openItem
+                  return (
                   <div key={item.id} className="rounded-md border border-ink-100 p-2">
-                    <div className="flex items-start gap-2">
-                      <Checkbox
-                        className="mt-1"
-                        checked={item.done}
-                        disabled={saving}
-                        onChange={(event) => {
+                    <div className="flex items-center gap-2">
+                      <Select
+                        className="w-[168px] shrink-0"
+                        value={getTicketTodoResolution(item)}
+                        disabled={saving || !openItem}
+                        options={
+                          openItem
+                            ? TICKET_TODO_MANUAL_RESOLUTION_SELECT_OPTIONS
+                            : TICKET_TODO_RESOLUTION_SELECT_OPTIONS
+                        }
+                        onChange={(resolution) => {
+                          if (resolution === 'converted_to_action') return
                           const next = [...ticketTodoItems]
-                          next[index] = { ...item, done: event.target.checked }
+                          next[index] = applyTicketTodoResolutionToItem(item, resolution)
                           setTicketTodoItems(next)
                         }}
                       />
@@ -2168,7 +2162,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         placeholder="输入待办内容"
                         maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
                         value={item.text}
-                        disabled={saving}
+                        disabled={itemDisabled}
                         onChange={(event) => {
                           const next = [...ticketTodoItems]
                           next[index] = {
@@ -2184,7 +2178,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         showSearch
                         optionFilterProp="label"
                         allowClear
-                        disabled={saving || !todoAssigneeOptions.length}
+                        disabled={itemDisabled || !todoAssigneeOptions.length}
                         value={item.assigneeUserId || undefined}
                         options={todoAssigneeOptions.map((option) => ({
                           value: option.value,
@@ -2211,13 +2205,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         }}
                       />
                     </div>
-                    {formatTicketTodoItemUpdatedLine(item) ? (
-                      <Typography.Text type="secondary" className="mt-1 block pl-6 text-xs">
-                        最近编辑：{formatTicketTodoItemUpdatedLine(item)}
-                      </Typography.Text>
-                    ) : null}
                   </div>
-                ))}
+                  )
+                })}
                 <Button
                   type="dashed"
                   block
@@ -2235,16 +2225,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 {ticketTodoItems.map((item) => (
                   <li key={item.id} className="rounded-md border border-ink-100 p-2 text-sm">
                     <div className="flex items-start gap-2">
-                      <Checkbox checked={item.done} disabled className="mt-0.5" />
-                      <span className={item.done ? 'text-ink-400 line-through' : undefined}>
+                      <TicketTodoStatusTag className="mt-0.5" item={item} />
+                      <span className={!isTicketTodoOpen(item) ? 'text-ink-400' : undefined}>
                         {item.text}
                       </span>
                     </div>
                     <Typography.Text type="secondary" className="mt-1 block pl-6 text-xs">
                       负责人：{formatTicketTodoAssigneeLabel(item)}
-                      {formatTicketTodoItemUpdatedLine(item)
-                        ? ` · 最近编辑：${formatTicketTodoItemUpdatedLine(item)}`
-                        : ''}
                     </Typography.Text>
                   </li>
                 ))}
@@ -2633,5 +2620,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         }}
       />
     </Drawer>
+    {canDeleteTicket ? (
+      <DeleteTicketConfirmModal
+        open={deleteOpen}
+        ticketId={feedback?.ticketId}
+        confirming={deleting}
+        onCancel={() => {
+          if (!deleting) setDeleteOpen(false)
+        }}
+        onConfirm={handleDeleteTicket}
+      />
+    ) : null}
+    </>
   )
 }

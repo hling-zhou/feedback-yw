@@ -2,14 +2,23 @@
 /** @typedef {import('../domain/recordRevision.js').RecordUpdatedBy} RecordUpdatedBy */
 
 import { randomId } from '../lib/randomId.js'
+import { resolveActionItemProductDisplayName } from './actionItem.js'
+
+/**
+ * @typedef {'open' | 'converted_to_action' | 'processed_without_action'} TicketTodoResolution
+ */
 
 /**
  * @typedef {Object} TicketTodoItem
  * @property {string} id
  * @property {string} text
  * @property {boolean} done
+ * @property {TicketTodoResolution} resolution
  * @property {string} [assigneeUserId]
  * @property {string} [assigneeUsername]
+ * @property {string} [processNote]
+ * @property {string} [linkedActionId]
+ * @property {string} [createdAt]
  * @property {string} [updatedAt]
  * @property {RecordUpdatedBy} [updatedBy]
  */
@@ -21,13 +30,77 @@ import { randomId } from '../lib/randomId.js'
  * @property {RecordUpdatedBy} updatedBy
  */
 
+/**
+ * @typedef {Object} TicketTodoRow
+ * @property {string} id
+ * @property {string} recordId
+ * @property {string} ticketId
+ * @property {string} ticketTodoItemId
+ * @property {import('./enums.js').DataSourceType | string} dataSourceType
+ * @property {string} productKey
+ * @property {string} productName
+ * @property {string} painPoint
+ * @property {string} problemType
+ * @property {string} journeyL1
+ * @property {string} journeyL2
+ * @property {string} text
+ * @property {TicketTodoResolution} resolution
+ * @property {string} assigneeUserId
+ * @property {string} assigneeUsername
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ * @property {RecordUpdatedBy} [updatedBy]
+ * @property {string} processNote
+ * @property {string} linkedActionId
+ * @property {FeedbackRecord} [record]
+ */
+
 export const TICKET_TODO_TEXT_MAX_LENGTH = 200
+export const TICKET_TODO_PROCESS_NOTE_MAX_LENGTH = 500
+export const TICKET_TODO_UNASSIGNED_ASSIGNEE = '__unassigned__'
+
+/** @type {TicketTodoResolution[]} */
+export const TICKET_TODO_RESOLUTIONS = [
+  'open',
+  'converted_to_action',
+  'processed_without_action',
+]
+
+/** @type {Record<TicketTodoResolution, string>} */
+export const TICKET_TODO_RESOLUTION_LABELS = {
+  open: '未处理',
+  converted_to_action: '已转举措',
+  processed_without_action: '已处理无举措',
+}
+
+/** @type {{ value: TicketTodoResolution; label: string }[]} */
+export const TICKET_TODO_RESOLUTION_SELECT_OPTIONS = TICKET_TODO_RESOLUTIONS.map((value) => ({
+  value,
+  label: TICKET_TODO_RESOLUTION_LABELS[value],
+}))
+
+/** 工单详情未处理待办可手选的状态：已转举措只能由确立举措写入。 */
+export const TICKET_TODO_MANUAL_RESOLUTION_SELECT_OPTIONS =
+  TICKET_TODO_RESOLUTION_SELECT_OPTIONS.filter((item) => item.value !== 'converted_to_action')
+
+export const TICKET_TODO_SOURCE_TYPES = /** @type {const} */ ([
+  'complaint_ticket',
+  'consultation_ticket',
+])
 
 /**
  * @param {unknown} value
  */
 function norm(value) {
   return String(value ?? '').trim()
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is TicketTodoResolution}
+ */
+export function isTicketTodoResolution(value) {
+  return TICKET_TODO_RESOLUTIONS.includes(/** @type {TicketTodoResolution} */ (value))
 }
 
 /**
@@ -44,6 +117,161 @@ function normalizeUpdatedBy(raw) {
 
 /**
  * @param {unknown} entry
+ * @returns {TicketTodoResolution}
+ */
+export function getTicketTodoResolution(entry) {
+  if (!entry || typeof entry !== 'object') return 'open'
+  const raw = /** @type {{ resolution?: unknown; done?: unknown }} */ (entry).resolution
+  if (isTicketTodoResolution(raw)) return raw
+  return /** @type {{ done?: unknown }} */ (entry).done ? 'processed_without_action' : 'open'
+}
+
+/**
+ * @param {TicketTodoResolution} resolution
+ */
+export function ticketTodoResolutionImpliesDone(resolution) {
+  return resolution !== 'open'
+}
+
+/**
+ * @param {TicketTodoItem | null | undefined} item
+ */
+export function isTicketTodoOpen(item) {
+  return getTicketTodoResolution(item) === 'open'
+}
+
+/**
+ * @param {number} part
+ * @param {number} total
+ */
+export function computeSharePercent(part, total) {
+  if (!total) return 0
+  return Math.round((Number(part) / Number(total)) * 1000) / 10
+}
+
+/**
+ * @param {number} percent
+ */
+export function formatSharePercent(percent) {
+  const n = Number(percent)
+  if (!Number.isFinite(n)) return '0%'
+  return `${Number.isInteger(n) ? String(n) : n.toFixed(1)}%`
+}
+
+/** @typedef {'establish_action' | 'no_action'} TicketTodoProcessMode */
+
+export const TICKET_TODO_PROCESS_MODE = {
+  ESTABLISH_ACTION: /** @type {const} */ ('establish_action'),
+  NO_ACTION: /** @type {const} */ ('no_action'),
+}
+
+function hasEstablishedActionInProcessInput(input) {
+  const content = norm(input?.establishedActionContent)
+  const actionId = norm(input?.actionId)
+  return Boolean(content || (input?.linkedFromLibrary && actionId))
+}
+
+/**
+ * 处理提交：按单选路径判定。制定举措 → 已转举措；无举措且勾选已处理 → 已处理无举措；否则保持未处理。
+ * 未传 processMode 时回退为旧规则（有举措内容优先于勾选）。
+ *
+ * @param {{
+ *   processMode?: TicketTodoProcessMode | string
+ *   establishedActionContent?: string
+ *   actionId?: string
+ *   linkedFromLibrary?: boolean
+ *   markProcessed?: boolean
+ * }} input
+ * @returns {TicketTodoResolution}
+ */
+export function resolveTicketTodoProcessResolution(input) {
+  const mode = String(input?.processMode || '').trim()
+  if (mode === TICKET_TODO_PROCESS_MODE.NO_ACTION) {
+    return input?.markProcessed ? 'processed_without_action' : 'open'
+  }
+  if (mode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION) {
+    return hasEstablishedActionInProcessInput(input) ? 'converted_to_action' : 'open'
+  }
+  if (hasEstablishedActionInProcessInput(input)) return 'converted_to_action'
+  if (input?.markProcessed) return 'processed_without_action'
+  return 'open'
+}
+
+/**
+ * @param {TicketTodoResolution} resolution
+ */
+export function shouldPersistEstablishedActionOnProcess(resolution) {
+  return resolution === 'converted_to_action'
+}
+
+/**
+ * 工单详情本次新确立举措时，未处理待办视为已转举措。
+ *
+ * @param {TicketTodoItem[]} items
+ * @param {{ hadAction?: boolean; nowHasAction?: boolean; linkedActionId?: string }} [options]
+ * @returns {TicketTodoItem[]}
+ */
+export function markOpenTicketTodosConvertedWhenEstablishingAction(items, options = {}) {
+  if (options.hadAction || !options.nowHasAction) return items
+  return items.map((item) => {
+    if (!isTicketTodoOpen(item)) return item
+    return applyTicketTodoResolutionToItem(item, 'converted_to_action', {
+      linkedActionId: options.linkedActionId,
+    })
+  })
+}
+
+/**
+ * @param {unknown} entry
+ * @param {FeedbackRecord | null | undefined} [record]
+ */
+export function resolveTicketTodoCreatedAt(entry, record) {
+  if (entry && typeof entry === 'object') {
+    const createdAt = norm(/** @type {{ createdAt?: unknown }} */ (entry).createdAt)
+    if (createdAt) return createdAt
+    const updatedAt = norm(/** @type {{ updatedAt?: unknown }} */ (entry).updatedAt)
+    if (updatedAt) return updatedAt
+  }
+  return norm(record?.createdAt) || norm(record?.importedAt)
+}
+
+/**
+ * @param {TicketTodoItem} item
+ * @param {TicketTodoResolution} resolution
+ * @param {{ processNote?: string; linkedActionId?: string }} [extras]
+ * @returns {TicketTodoItem}
+ */
+export function applyTicketTodoResolutionToItem(item, resolution, extras = {}) {
+  const next = {
+    ...item,
+    resolution,
+    done: ticketTodoResolutionImpliesDone(resolution),
+  }
+  if (extras.processNote != null) {
+    next.processNote = norm(extras.processNote).slice(0, TICKET_TODO_PROCESS_NOTE_MAX_LENGTH)
+  }
+  if (extras.linkedActionId != null) {
+    next.linkedActionId = norm(extras.linkedActionId)
+  }
+  return next
+}
+
+/**
+ * 终态（已转举措 / 已处理无举措）不可改回未处理。
+ *
+ * @param {TicketTodoResolution | undefined} previous
+ * @param {TicketTodoResolution} next
+ * @returns {TicketTodoResolution}
+ */
+export function lockTicketTodoResolution(previous, next) {
+  if (previous === 'converted_to_action' || previous === 'processed_without_action') {
+    return previous
+  }
+  return next
+}
+
+/**
+ * @param {unknown} entry
  * @returns {TicketTodoItem | null}
  */
 function normalizeTicketTodoItem(entry) {
@@ -53,12 +281,23 @@ function normalizeTicketTodoItem(entry) {
   const id = norm(/** @type {{ id?: string }} */ (entry).id) || randomId()
   const updatedBy = normalizeUpdatedBy(/** @type {{ updatedBy?: unknown }} */ (entry).updatedBy)
   const updatedAt = norm(/** @type {{ updatedAt?: string }} */ (entry).updatedAt)
+  const createdAt = norm(/** @type {{ createdAt?: string }} */ (entry).createdAt)
+  const processNote = norm(/** @type {{ processNote?: string }} */ (entry).processNote).slice(
+    0,
+    TICKET_TODO_PROCESS_NOTE_MAX_LENGTH,
+  )
+  const linkedActionId = norm(/** @type {{ linkedActionId?: string }} */ (entry).linkedActionId)
+  const resolution = getTicketTodoResolution(entry)
   return {
     id,
     text,
-    done: Boolean(/** @type {{ done?: boolean }} */ (entry).done),
+    resolution,
+    done: ticketTodoResolutionImpliesDone(resolution),
     assigneeUserId: norm(/** @type {{ assigneeUserId?: string }} */ (entry).assigneeUserId),
     assigneeUsername: norm(/** @type {{ assigneeUsername?: string }} */ (entry).assigneeUsername),
+    ...(processNote ? { processNote } : {}),
+    ...(linkedActionId ? { linkedActionId } : {}),
+    ...(createdAt ? { createdAt } : {}),
     ...(updatedAt ? { updatedAt } : {}),
     ...(updatedBy ? { updatedBy } : {}),
   }
@@ -96,7 +335,10 @@ function todoItemContentEqual(a, b) {
     a.id === b.id &&
     a.text === b.text &&
     a.done === b.done &&
-    norm(a.assigneeUserId) === norm(b.assigneeUserId)
+    getTicketTodoResolution(a) === getTicketTodoResolution(b) &&
+    norm(a.assigneeUserId) === norm(b.assigneeUserId) &&
+    norm(a.processNote) === norm(b.processNote) &&
+    norm(a.linkedActionId) === norm(b.linkedActionId)
   )
 }
 
@@ -118,7 +360,7 @@ export function ticketTodoItemsEqual(a, b) {
  * @param {FeedbackRecord | null | undefined} record
  */
 export function hasOpenTicketTodos(record) {
-  return normalizeTicketTodoInput(record?.ticketTodo?.items).some((item) => !item.done)
+  return normalizeTicketTodoInput(record?.ticketTodo?.items).some((item) => isTicketTodoOpen(item))
 }
 
 /**
@@ -129,7 +371,7 @@ export function hasOpenTicketTodosAssignedTo(record, userId) {
   const uid = norm(userId)
   if (!uid) return false
   return normalizeTicketTodoInput(record?.ticketTodo?.items).some(
-    (item) => !item.done && norm(item.assigneeUserId) === uid,
+    (item) => isTicketTodoOpen(item) && norm(item.assigneeUserId) === uid,
   )
 }
 
@@ -138,7 +380,7 @@ export function hasOpenTicketTodosAssignedTo(record, userId) {
  */
 export function getOpenTicketTodoSummary(record) {
   return normalizeTicketTodoInput(record?.ticketTodo?.items)
-    .filter((item) => !item.done)
+    .filter((item) => isTicketTodoOpen(item))
     .map((item) => {
       const owner = item.assigneeUsername || '未指定'
       return `${owner}：${item.text}`
@@ -154,6 +396,7 @@ export function createEmptyTicketTodoItem() {
     id: randomId(),
     text: '',
     done: false,
+    resolution: 'open',
     assigneeUserId: '',
     assigneeUsername: '',
   }
@@ -174,18 +417,33 @@ function mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now) {
     const text = norm(draft.text).slice(0, TICKET_TODO_TEXT_MAX_LENGTH)
     if (!text) continue
     const prev = currentById.get(draft.id)
+    const prevResolution = prev ? getTicketTodoResolution(prev) : undefined
+    const draftResolution = lockTicketTodoResolution(prevResolution, getTicketTodoResolution(draft))
+    const processNote = norm(draft.processNote || prev?.processNote).slice(
+      0,
+      TICKET_TODO_PROCESS_NOTE_MAX_LENGTH,
+    )
+    const linkedActionId = norm(draft.linkedActionId || prev?.linkedActionId)
+    const createdAt = prev?.createdAt || now
     const candidate = {
       id: draft.id || randomId(),
       text,
-      done: Boolean(draft.done),
+      resolution: draftResolution,
+      done: ticketTodoResolutionImpliesDone(draftResolution),
       assigneeUserId: norm(draft.assigneeUserId),
       assigneeUsername: norm(draft.assigneeUsername),
+      ...(processNote ? { processNote } : {}),
+      ...(linkedActionId ? { linkedActionId } : {}),
+      createdAt,
     }
     const changed =
       !prev ||
       prev.text !== candidate.text ||
       prev.done !== candidate.done ||
-      norm(prev.assigneeUserId) !== candidate.assigneeUserId
+      getTicketTodoResolution(prev) !== candidate.resolution ||
+      norm(prev.assigneeUserId) !== candidate.assigneeUserId ||
+      norm(prev.processNote) !== processNote ||
+      norm(prev.linkedActionId) !== linkedActionId
 
     if (changed) {
       next.push({
@@ -246,16 +504,23 @@ export function formatTicketTodoAssigneeLabel(item) {
 }
 
 /**
+ * @param {string | null | undefined} iso
+ */
+export function formatTicketTodoDateTime(iso) {
+  const value = norm(iso)
+  if (!value) return ''
+  const time = new Date(value)
+  if (Number.isNaN(time.getTime())) return value.replace('T', ' ').slice(0, 19)
+  return time.toLocaleString('zh-CN', { hour12: false })
+}
+
+/**
  * @param {TicketTodoItem | null | undefined} item
  */
 export function formatTicketTodoItemUpdatedLine(item) {
   if (!item?.updatedAt) return ''
   const name = item.updatedBy?.username?.trim() || item.updatedBy?.userId || '未知用户'
-  const time = new Date(item.updatedAt)
-  const timeText = Number.isNaN(time.getTime())
-    ? item.updatedAt
-    : time.toLocaleString('zh-CN', { hour12: false })
-  return `${name} · ${timeText}`
+  return `${name} · ${formatTicketTodoDateTime(item.updatedAt)}`
 }
 
 /**
@@ -264,9 +529,149 @@ export function formatTicketTodoItemUpdatedLine(item) {
 export function formatTicketTodoUpdatedLine(ticketTodo) {
   if (!ticketTodo?.updatedAt) return ''
   const name = ticketTodo.updatedBy?.username?.trim() || ticketTodo.updatedBy?.userId || '未知用户'
-  const time = new Date(ticketTodo.updatedAt)
-  const timeText = Number.isNaN(time.getTime())
-    ? ticketTodo.updatedAt
-    : time.toLocaleString('zh-CN', { hour12: false })
-  return `${name} · ${timeText}`
+  return `${name} · ${formatTicketTodoDateTime(ticketTodo.updatedAt)}`
+}
+
+/**
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function isComplaintOrConsultationTicket(record) {
+  const type = record?.dataSourceType
+  return type === 'complaint_ticket' || type === 'consultation_ticket'
+}
+
+/**
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {Map<string, string>} [productNameByKey]
+ * @returns {TicketTodoRow[]}
+ */
+export function flattenTicketTodosFromRecord(record, productNameByKey) {
+  if (!isComplaintOrConsultationTicket(record)) return []
+  const items = normalizeTicketTodoInput(record?.ticketTodo?.items)
+  if (!items.length) return []
+  const productKey = norm(record.productKey)
+  const productName = resolveActionItemProductDisplayName(
+    { productKey, productName: norm(record.product) },
+    productNameByKey,
+  )
+  const painPoint = norm(record.painPoint) || norm(record.problemSummary)
+  return items.map((item) => ({
+    id: `${record.id}::${item.id}`,
+    recordId: record.id,
+    ticketId: norm(record.ticketId),
+    ticketTodoItemId: item.id,
+    dataSourceType: record.dataSourceType || 'complaint_ticket',
+    productKey,
+    productName,
+    painPoint,
+    problemType: norm(record.problemType),
+    journeyL1: norm(record.journeyL1),
+    journeyL2: norm(record.journeyL2),
+    text: item.text,
+    resolution: getTicketTodoResolution(item),
+    assigneeUserId: norm(item.assigneeUserId),
+    assigneeUsername: norm(item.assigneeUsername),
+    createdAt: resolveTicketTodoCreatedAt(item, record),
+    updatedAt: item.updatedAt || '',
+    updatedBy: item.updatedBy,
+    processNote: item.processNote || '',
+    linkedActionId: item.linkedActionId || '',
+    record,
+  }))
+}
+
+/**
+ * @returns {Record<TicketTodoResolution, number>}
+ */
+export function createEmptyTicketTodoResolutionCounts() {
+  return Object.fromEntries(TICKET_TODO_RESOLUTIONS.map((status) => [status, 0]))
+}
+
+/**
+ * @param {TicketTodoRow[]} rows
+ * @param {Map<string, string>} [productNameByKey]
+ * @returns {{
+ *   productKey: string
+ *   productName: string
+ *   counts: Record<TicketTodoResolution, number>
+ *   total: number
+ *   rate: number
+ * }[]}
+ */
+export function aggregateTicketTodosByProductStatus(rows, productNameByKey) {
+  /** @type {Map<string, { productKey: string; productName: string; counts: Record<TicketTodoResolution, number>; total: number; rate: number }>} */
+  const map = new Map()
+  for (const row of rows || []) {
+    const productKey = row.productKey?.trim() || '_unknown'
+    const productName = resolveActionItemProductDisplayName(
+      { productKey, productName: row.productName },
+      productNameByKey,
+    )
+    let group = map.get(productKey)
+    if (!group) {
+      group = {
+        productKey,
+        productName,
+        counts: createEmptyTicketTodoResolutionCounts(),
+        total: 0,
+        rate: 0,
+      }
+      map.set(productKey, group)
+    }
+    const resolution = getTicketTodoResolution(row)
+    group.counts[resolution] += 1
+    group.total += 1
+  }
+  return [...map.values()]
+    .map((group) => ({
+      ...group,
+      rate: computeSharePercent(group.counts.converted_to_action, group.total),
+    }))
+    .sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total
+      return a.productName.localeCompare(b.productName, 'zh-CN')
+    })
+}
+
+/**
+ * 全量待办上的筛选项（产品 / 负责人），不受 list limit 截断。
+ *
+ * @param {TicketTodoRow[]} rows
+ * @returns {{
+ *   products: { productKey: string; productName: string }[]
+ *   assignees: { userId: string; username: string }[]
+ *   hasUnassigned: boolean
+ * }}
+ */
+export function collectTicketTodoFacets(rows) {
+  /** @type {Map<string, { productKey: string; productName: string }>} */
+  const products = new Map()
+  /** @type {Map<string, { userId: string; username: string }>} */
+  const assignees = new Map()
+  let hasUnassigned = false
+  for (const row of rows || []) {
+    const productKey = row.productKey?.trim() || '_unknown'
+    if (!products.has(productKey)) {
+      products.set(productKey, {
+        productKey,
+        productName: row.productName?.trim() || productKey,
+      })
+    }
+    const userId = row.assigneeUserId?.trim()
+    if (!userId) {
+      hasUnassigned = true
+      continue
+    }
+    if (!assignees.has(userId)) {
+      assignees.set(userId, {
+        userId,
+        username: row.assigneeUsername?.trim() || userId,
+      })
+    }
+  }
+  return {
+    products: [...products.values()],
+    assignees: [...assignees.values()],
+    hasUnassigned,
+  }
 }

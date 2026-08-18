@@ -21,6 +21,7 @@ import {
 import { requireAdmin, requirePermission } from '../middleware.js'
 import { bumpDataRevision, bumpRecordsRevision, getDataRevision } from '../dataRevision.js'
 import { storageRepository, TICKET_ID_CONFLICT_CODE } from '../storageRepository.js'
+import { actionItemRepository } from '../actionItemRepository.js'
 import {
   getProductCatalogPublishStatus,
   publishProductCatalogToFiles,
@@ -460,8 +461,21 @@ export function registerStorageRoutes(app) {
   app.delete('/api/storage/records/:id', {
     schema: { params: recordIdParamsSchema },
   }, async (request, reply) => {
-    if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+    if (!assertWritePermission(request, reply, ['deleteData'])) return
     const { id } = /** @type {{ id: string }} */ (request.params)
+    const record = storageRepository.getRecord(id)
+    const actionId = String(record?.actionId ?? '').trim()
+    const ticketId = String(record?.ticketId ?? '').trim()
+    if (actionId && ticketId) {
+      actionItemRepository.unlinkTicketsFromActionItems(
+        [{ actionId, ticketId }],
+        {
+          actor: request.user?.id
+            ? { userId: request.user.id, username: request.user.username || request.user.id }
+            : null,
+        },
+      )
+    }
     storageRepository.deleteRecord(id)
     logAuditFromRequest(request, 'storage.delete_record', { recordId: id })
     return { ok: true }

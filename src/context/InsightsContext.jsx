@@ -1726,6 +1726,48 @@ export function InsightsProvider({ children }) {
     [adapter, storageReady, recordWriteActor],
   )
 
+  const removeFeedback = useCallback(
+    async (id) => {
+      if (!id) throw new Error('工单不存在或已删除')
+      let existing = feedbacksRef.current.find((fb) => fb.id === id) || null
+      if (!existing && typeof adapter.getRecord === 'function') {
+        try {
+          existing = await adapter.getRecord(id)
+        } catch {
+          existing = null
+        }
+      }
+      if (storageReady && existing) {
+        await unlinkActionItemsForForceRetag([existing])
+      }
+      if (storageReady) {
+        await adapter.deleteRecord(id)
+      }
+      feedbacksRef.current = feedbacksRef.current.filter((fb) => fb.id !== id)
+      setFeedbacks(feedbacksRef.current)
+      setSnapshotsStale(true)
+      if (storageReady) {
+        try {
+          setTotalRecordCount(await getTotalRecordCount(adapter))
+        } catch {
+          setTotalRecordCount((n) => Math.max(0, (n || 1) - 1))
+        }
+        void refreshImportMonthSummary()
+        if (typeof adapter.getDataRevision === 'function') {
+          try {
+            const rev = await fetchDataRevision()
+            dataRevisionRef.current = rev.revision
+          } catch {
+            /* ignore */
+          }
+        }
+      } else {
+        setTotalRecordCount((n) => Math.max(0, (n || 1) - 1))
+      }
+    },
+    [adapter, storageReady, refreshImportMonthSummary],
+  )
+
   /**
    * 将服务端已写入的记录合并进本地列表（避免二次 put）。
    * @param {import('../lib/types.js').FeedbackRecord[]} records
@@ -2617,6 +2659,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      removeFeedback,
       ingestUpdatedRecords,
       importAnalysisResults,
       importCustomerRestore,
@@ -2713,6 +2756,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
+      removeFeedback,
       ingestUpdatedRecords,
       importAnalysisResults,
       importCustomerRestore,

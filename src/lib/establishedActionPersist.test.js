@@ -215,6 +215,34 @@ describe('establishedActionPersist', () => {
     expect(createActionItem).not.toHaveBeenCalled()
   })
 
+  it('empty content still links library action and does not clear the ticket', async () => {
+    getActionItem.mockResolvedValue({
+      id: 'act-lib',
+      content: '库内举措文本',
+      status: 'in_progress',
+      scheduleAt: '2026-08-15',
+      linkedTicketIds: ['T-100'],
+      linkedDataSources: ['complaint_ticket'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    const patch = await persistEstablishedActionForTicket(
+      { ...record, actionId: 'act-lib' },
+      {
+        content: '',
+        scheduleAt: '',
+        actionId: 'act-lib',
+        linkedFromLibrary: true,
+      },
+    )
+
+    expect(unlinkTicketsFromActionLibrary).not.toHaveBeenCalled()
+    expect(patch.actionId).toBe('act-lib')
+    expect(patch.establishedAction).toBe('库内举措文本')
+    expect(createActionItem).not.toHaveBeenCalled()
+  })
+
   it('switching library action unlinks ticket from previous action', async () => {
     getActionItem.mockResolvedValue({
       id: 'act-new',
