@@ -13,6 +13,7 @@ import {
   upsertPostUseCallbackDecisions,
 } from '../../lib/postUseJiraClient.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 
 function decisionOf(map, itemKey) {
   return map.get(itemKey) || { needCustomerVisit: false, needInternalTrace: false }
@@ -33,8 +34,8 @@ export default function PostUseCallbackProcessModal({
   callbackNonTenRecords = [],
   scopeLabel = '当前范围',
 }) {
-  const { can } = useAuth()
-  const canEdit = can('editRecord')
+  const { user } = useAuth()
+  const canEdit = canUsePostUseCallbackList(user?.role)
   const [decisions, setDecisions] = useState(() => new Map())
   const [loading, setLoading] = useState(false)
   const [savingKey, setSavingKey] = useState('')
@@ -262,7 +263,7 @@ export default function PostUseCallbackProcessModal({
           <Button icon={<DownloadOutlined />} onClick={exportTrace}>
             导出待内部提单表
           </Button>
-          <Tooltip title={canEdit ? '' : '需要编辑权限才能存档'}>
+          <Tooltip title={canEdit ? '' : '仅管理员与体验运营可处理清单并存档'}>
             <Button
               type="primary"
               icon={<FolderAddOutlined />}

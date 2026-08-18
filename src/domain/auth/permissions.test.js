@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   canAccessRoute,
   canBulkRetagScope,
+  canUsePostUseCallbackList,
   hasPermission,
   ROLE_LABELS,
   ROLE_PERMISSIONS,
@@ -87,5 +88,12 @@ describe('auth permissions', () => {
     for (const role of ['admin', 'editor', 'partial_editor', 'viewer']) {
       expect(hasPermission(role, 'viewAudit')).toBe(true)
     }
+  })
+
+  it('post-use callback list is open to admin and 体验运营', () => {
+    expect(canUsePostUseCallbackList('admin')).toBe(true)
+    expect(canUsePostUseCallbackList('editor')).toBe(true)
+    expect(canUsePostUseCallbackList('partial_editor')).toBe(false)
+    expect(canUsePostUseCallbackList('viewer')).toBe(false)
   })
 })

@@ -106,3 +106,12 @@ export function canAccessRoute(role, path) {
   const hidden = ROLE_HIDDEN_ROUTES[/** @type {UserRole} */ (role)] || []
   return !hidden.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
+
+/**
+ * 用后即评看板「建议回访/溯源清单」：管理员与体验运营可打开并处理。
+ *
+ * @param {UserRole | string | undefined | null} role
+ */
+export function canUsePostUseCallbackList(role) {
+  return role === 'admin' || role === 'editor'
+}

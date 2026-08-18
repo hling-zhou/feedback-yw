@@ -21,6 +21,7 @@ describe('PostUseStoryView narrative hierarchy', () => {
   })
 
   it('keeps callback recommendation download entry in customer evidence section', () => {
+    expect(source).toContain('canUsePostUseCallbackList')
     expect(source).toContain('查看并处理建议回访/溯源清单')
     expect(source).toContain('const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length')
     expect(source).toContain('disabled={callbackDownloadDisabled}')

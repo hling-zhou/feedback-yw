@@ -8,6 +8,8 @@ import { POST_USE_SATISFACTION_BASELINE, POST_USE_SMALL_SAMPLE_N } from '../../l
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
+import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
@@ -64,6 +66,8 @@ function customerFeedbackHref(customerName) {
 
 export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
   const [callbackProcessOpen, setCallbackProcessOpen] = useState(false)
+  const { user } = useAuth()
+  const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
   const callbackRecommendations = model.callbackRecommendations || []
   const callbackNonTenRecords = model.callbackNonTenRecords || []
@@ -222,6 +226,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       <Card
         size="small"
         extra={
+          canOpenCallbackList ? (
           <Tooltip title={callbackDownloadDisabled ? callbackDownloadDisabledReason : ''}>
             <span>
               <Button
@@ -240,6 +245,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
               </Button>
             </span>
           </Tooltip>
+          ) : null
         }
       >
         <LimitedTable
