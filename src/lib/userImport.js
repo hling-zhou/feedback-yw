@@ -1,17 +1,18 @@
 import * as XLSX from 'xlsx'
-import { ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
+import { ROLE_LABEL_ALIASES, ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { validatePasswordPolicy } from '../domain/passwordPolicy.js'
 import { USER_IMPORT_SHEET_NAME } from './userImportTemplate.js'
 
 /** @typedef {import('../domain/auth/permissions.js').UserRole} UserRole */
 
 /** @type {Record<string, UserRole>} */
-const ROLE_BY_LABEL = Object.fromEntries(
-  ROLES.flatMap((role) => [
+const ROLE_BY_LABEL = Object.fromEntries([
+  ...ROLES.flatMap((role) => [
     [ROLE_LABELS[role], role],
     [role, role],
   ]),
-)
+  ...Object.entries(ROLE_LABEL_ALIASES),
+])
 
 /**
  * @param {string} header

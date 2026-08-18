@@ -3,22 +3,29 @@ import {
   canAccessRoute,
   canBulkRetagScope,
   hasPermission,
+  ROLE_LABELS,
   ROLE_PERMISSIONS,
 } from './permissions.js'
 
 describe('auth permissions', () => {
+  it('displays business-facing role names', () => {
+    expect(ROLE_LABELS.editor).toBe('体验运营角色')
+    expect(ROLE_LABELS.partial_editor).toBe('工单分析角色')
+  })
+
   it('admin has all module permissions', () => {
     expect(hasPermission('admin', 'manageUsers')).toBe(true)
     expect(hasPermission('admin', 'deleteData')).toBe(true)
   })
 
-  it('editor can delete imported data but not manage users', () => {
+  it('editor can manage users and delete imported data', () => {
     expect(hasPermission('editor', 'import')).toBe(true)
-    expect(hasPermission('editor', 'manageUsers')).toBe(false)
+    expect(hasPermission('editor', 'manageUsers')).toBe(true)
     expect(hasPermission('editor', 'deleteData')).toBe(true)
     expect(hasPermission('editor', 'manageTeamSettings')).toBe(false)
     expect(hasPermission('editor', 'editOrderVolumes')).toBe(true)
     expect(hasPermission('editor', 'configureLlmPersonal')).toBe(true)
+    expect(canAccessRoute('editor', '/users')).toBe(true)
   })
 
   it('partial_editor can edit records but not import, retag, tags, users, or delete', () => {
@@ -30,6 +37,9 @@ describe('auth permissions', () => {
     expect(hasPermission('partial_editor', 'manageTags')).toBe(false)
     expect(hasPermission('partial_editor', 'manageUsers')).toBe(false)
     expect(hasPermission('partial_editor', 'deleteData')).toBe(false)
+    expect(hasPermission('viewer', 'deleteData')).toBe(false)
+    expect(hasPermission('admin', 'deleteData')).toBe(true)
+    expect(hasPermission('editor', 'deleteData')).toBe(true)
   })
 
   it('viewer is read-only except export and personal llm', () => {

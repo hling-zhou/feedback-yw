@@ -21,9 +21,15 @@ export const ROLES = /** @type {const} */ (['admin', 'editor', 'partial_editor',
 
 export const ROLE_LABELS = {
   admin: '管理员',
-  editor: '编辑者',
-  partial_editor: '部分编辑者',
+  editor: '体验运营角色',
+  partial_editor: '工单分析角色',
   viewer: '查看者',
+}
+
+/** 导入等场景兼容旧角色中文名 */
+export const ROLE_LABEL_ALIASES = {
+  编辑者: 'editor',
+  部分编辑者: 'partial_editor',
 }
 
 /** @type {Record<UserRole, PermissionCode[]>} */
@@ -52,10 +58,10 @@ export const ROLE_PERMISSIONS = {
     'editRecord',
     'export',
     'manageTags',
+    'manageUsers',
     'deleteData',
     'configureLlmPersonal',
     'editOrderVolumes',
-    'viewAudit',
   ],
   partial_editor: ['view', 'viewAudit', 'editRecord', 'export', 'configureLlmPersonal'],
   viewer: ['view', 'viewAudit', 'export', 'configureLlmPersonal'],
@@ -64,7 +70,7 @@ export const ROLE_PERMISSIONS = {
 /** @type {Record<UserRole, string[]>} */
 export const ROLE_HIDDEN_ROUTES = {
   admin: [],
-  editor: ['/users'],
+  editor: [],
   partial_editor: ['/import', '/users'],
   viewer: ['/import', '/users'],
 }

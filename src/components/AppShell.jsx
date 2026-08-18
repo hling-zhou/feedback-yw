@@ -38,7 +38,7 @@ const ALL_NAV = [
   { key: '/actions', label: '举措与进展', icon: <FlagOutlined /> },
   { key: '/import', label: '数据导入', icon: <ImportOutlined /> },
   { key: '/tags', label: '对象与标签', icon: <TagOutlined /> },
-  { key: '/users', label: '用户管理', icon: <TeamOutlined />, adminOnly: true },
+  { key: '/users', label: '用户管理', icon: <TeamOutlined /> },
   { key: '/settings', label: '设置', icon: <SettingOutlined /> },
 ]
 
@@ -77,10 +77,11 @@ export default function AppShell() {
     setWhatsNewUnread(false)
   }, [])
 
-  const navItems = ALL_NAV.filter((item) => {
-    if (item.adminOnly && user?.role !== 'admin') return false
-    return canRoute(item.key)
-  }).map(({ key, label, icon }) => ({ key, label, icon }))
+  const navItems = ALL_NAV.filter((item) => canRoute(item.key)).map(({ key, label, icon }) => ({
+    key,
+    label,
+    icon,
+  }))
 
   const goChangePassword = () => {
     navigate('/change-password?mode=voluntary', {

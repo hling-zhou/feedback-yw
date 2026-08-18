@@ -17,7 +17,7 @@ describe('userImport', () => {
         '用户名*（必填）': 'alice',
         '密码*（必填）': 'SecurePass123!',
         '所属班组*（必填）': '华东组',
-        '角色*（必填）': '编辑者',
+        '角色*（必填）': '体验运营角色',
       },
     ])
     const { rows, errors } = parseUserImportFile(buf)
@@ -28,6 +28,20 @@ describe('userImport', () => {
       team: '华东组',
       role: 'editor',
     })
+  })
+
+  it('accepts legacy role labels', () => {
+    const buf = buildWorkbook([
+      {
+        '用户名*（必填）': 'legacy',
+        '密码*（必填）': 'SecurePass123!',
+        '所属班组*（必填）': '华东组',
+        '角色*（必填）': '编辑者',
+      },
+    ])
+    const { rows, errors } = parseUserImportFile(buf)
+    expect(errors).toHaveLength(0)
+    expect(rows[0].role).toBe('editor')
   })
 
   it('reports invalid role and weak password', () => {
