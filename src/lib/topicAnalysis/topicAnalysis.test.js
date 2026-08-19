@@ -433,6 +433,42 @@ describe('topicAnalysis', () => {
     )).toBe(true)
   })
 
+  it('matches quota tickets from a natural-language common topic title', async () => {
+    const { applyInterpretationToTopic, buildRuleInterpretation } = await import('./interpretTopic.js')
+    const query = '配额申请与配额不足问题分析'
+    const topic = applyInterpretationToTopic(
+      topicFromUserQuery(query, { type: 'common_issue' }),
+      buildRuleInterpretation(query, 'common_issue'),
+    )
+    expect(topic.problemKey).toBe('配额申请与配额不足')
+    expect(topic.matchQuery).toBe('配额；申请、不足')
+    expect(topic.matchLayers).toEqual([
+      { terms: ['配额'] },
+      { terms: ['申请', '不足'] },
+    ])
+    const hitApply = ticket({
+      problemType: '配额与权限申请',
+      painPoint: '申请提升带宽配额上限',
+      rawText: '申请将公网IP全局配额从20提升至300',
+    })
+    const hitShortage = ticket({
+      id: 'r2',
+      problemType: '配额与权限申请',
+      painPoint: '创建IP时提示配额不足',
+      rawText: '创建IP时提示配额不足，请提升配额',
+    })
+    const miss = ticket({
+      id: 'r3',
+      problemType: '带宽限速',
+      painPoint: '高峰时段带宽经常被限速',
+      rawText: '客户反馈晚上公网带宽不够用，会被限制',
+    })
+    expect(recordMatchesTopic(hitApply, topic)).toBe(true)
+    expect(recordMatchesTopic(hitShortage, topic)).toBe(true)
+    expect(recordMatchesTopic(miss, topic)).toBe(false)
+    expect(recordMatchesTopic(hitApply, topicFromUserQuery(query, { type: 'common_issue' }))).toBe(true)
+  })
+
   it('parses markdown and excel supplements including 待补充 columns', async () => {
     const mdFile = new File(['产品已在 JIRA-9 跟进扩容'], 'note.md', { type: 'text/markdown' })
     const md = await parseTopicSupplementFile(mdFile, 'note.md')

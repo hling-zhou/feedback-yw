@@ -8,7 +8,7 @@ import { getAnalysisEnabledProducts } from '../productCatalog/analysisScope.js'
 import { getCatalogProducts } from '../productCatalogLoader.js'
 import { TOPIC_TYPE_LABELS } from './constants.js'
 import { normalizeIdentityText } from './customerIdentity.js'
-import { parseTopicSearchQuery, topicProductHints } from './matchQuery.js'
+import { parseTopicSearchQuery, topicProductHints, serializeTopicMatchLayers, formatTopicMatchLayers, normalizeMatchLayers } from './matchQuery.js'
 
 function catalogDisplayName(token) {
   const needle = normalizeIdentityText(token)
@@ -93,6 +93,7 @@ export function buildRuleInterpretation(query, type) {
       products: [],
       problem: '',
       keywords: [],
+      keywordLayers: [],
       customerName: identity.customerName,
       customerCode: identity.customerCode,
       interpretation: `按${typeLabel}理解：分析对象是客户「${label}」。将按客户名称或集团客户编码精确匹配，不按问题关键词检索。`,
@@ -103,16 +104,20 @@ export function buildRuleInterpretation(query, type) {
 
   const parsed = parseTopicSearchQuery(text)
   const products = uniqueTexts(parsed.productTokens.map(catalogDisplayName).filter(Boolean))
-  const keywords = uniqueTexts(
-    parsed.tokens.filter((token) => !parsed.productTokens.includes(token)),
-  )
-  const problem = keywords.join('') || text
+  const problemLayers = (parsed.layers || []).filter((layer) => {
+    const terms = layer.terms || []
+    return !terms.every((term) => parsed.productTokens.includes(term))
+  })
+  const keywordLayers = problemLayers.map((layer) => [...layer.terms])
+  const keywords = uniqueTexts(keywordLayers.flat())
+  const problem = parsed.problemText || keywords.join('、') || text
   const title = products[0] && problem && problem !== products[0]
     ? `${products[0]} · ${problem}`
     : (products[0] || problem || text)
   const productBit = products.length
     ? `对象是「${products.join('、')}」`
     : '没有识别到明确产品，将按问题词匹配'
+  const matchBit = formatTopicMatchLayers(parsed.layers)
   const questions = []
   if (type === 'product_issue' && !products.length) {
     questions.push('没有识别到产品名。是只看某一个产品，还是改成共性问题专题？')
@@ -127,7 +132,8 @@ export function buildRuleInterpretation(query, type) {
     products,
     problem,
     keywords,
-    interpretation: `按${typeLabel}理解：${productBit}；问题关注「${problem}」。匹配时允许中间夹字，限速等词可用近义。`,
+    keywordLayers: keywordLayers.length ? keywordLayers : (keywords.length ? [keywords] : []),
+    interpretation: `按${typeLabel}理解：${productBit}；问题关注「${problem}」。${matchBit ? `匹配规则：${matchBit}。` : ''}同一层为或，层与层为且。`,
     scopeNote: type === 'product_issue' && products[0]
       ? `分析范围：${products[0]} 上与「${problem}」相关的投诉、咨询、用后即评。`
       : `分析范围：与「${problem}」相关的投诉、咨询、用后即评${products.length ? `（输入中的产品：${products.join('、')}）` : '（不限产品）'}。`,
@@ -161,6 +167,10 @@ export function applyLlmInterpretation(baseline, parsed, query) {
     products: products.length ? products : baseline.products,
     problem,
     keywords: keywords.length ? keywords : baseline.keywords,
+    keywordLayers: Array.isArray(parsed.keywordLayers) && parsed.keywordLayers.length
+      ? parsed.keywordLayers.map((layer) => uniqueTexts(Array.isArray(layer?.terms) ? layer.terms : layer))
+        .filter((layer) => layer.length)
+      : baseline.keywordLayers,
     customerName,
     customerCode,
     interpretation,
@@ -214,11 +224,19 @@ export async function interpretCustomTopic(input) {
 export function applyInterpretationToTopic(topic, interpretation) {
   if (!topic || !interpretation) return topic
   const products = uniqueTexts(interpretation.products)
-  const keywords = uniqueTexts(interpretation.keywords)
+  const keywordLayers = (Array.isArray(interpretation.keywordLayers) && interpretation.keywordLayers.length
+    ? interpretation.keywordLayers
+    : [uniqueTexts(interpretation.keywords)]
+  ).map((layer) => uniqueTexts(Array.isArray(layer?.terms) ? layer.terms : layer)).filter((layer) => layer.length)
+  const keywords = uniqueTexts(keywordLayers.flat())
   const problem = String(interpretation.problem || '').trim()
   const customerName = String(interpretation.customerName || '').trim()
   const customerCode = String(interpretation.customerCode || '').trim()
-  const matchQuery = uniqueTexts([...products, problem, ...keywords]).join(' ')
+  const matchLayers = normalizeMatchLayers([
+    ...(products.length ? [{ terms: products }] : []),
+    ...keywordLayers.map((terms) => ({ terms })),
+  ])
+  const matchQuery = serializeTopicMatchLayers(matchLayers) || problem || topic.query
   const isCustomer = topic.type === 'customer' || interpretation.type === 'customer'
   return {
     ...topic,
@@ -228,7 +246,8 @@ export function applyInterpretationToTopic(topic, interpretation) {
     customerName: isCustomer ? customerName : topic.customerName,
     customerCode: isCustomer ? customerCode : topic.customerCode,
     query: isCustomer ? (customerName || customerCode || topic.query) : topic.query,
-    matchQuery: isCustomer ? (customerName || customerCode || topic.query) : (matchQuery || topic.query),
+    matchQuery: isCustomer ? (customerName || customerCode || topic.query) : matchQuery,
+    matchLayers: isCustomer ? undefined : matchLayers,
     whyNow: interpretation.interpretation || topic.whyNow,
     interpretation,
   }

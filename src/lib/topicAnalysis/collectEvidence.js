@@ -1,6 +1,5 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import {
-  MAX_EVIDENCE_SCAN,
   MAX_TOPIC_QUOTES,
   MAX_TOPIC_SOURCES,
 } from './constants.js'
@@ -13,7 +12,7 @@ import {
   recordMatchesCustomerTopic,
 } from './customerIdentity.js'
 import { recordSourceType } from '../../snapshots/recordScope.js'
-import { blobMatchesTopicQuery, parseTopicSearchQuery } from './matchQuery.js'
+import { blobMatchesTopicQuery, parseTopicMatchInput, formatTopicMatchLayers } from './matchQuery.js'
 import { buildFeedbacksTicketFilterHref } from '../feedbackFilters.js'
 import {
   analyzeTopicGroup,
@@ -206,7 +205,7 @@ export function recordMatchesTopic(record, topic) {
   const type = topic.type
   if (type === 'customer') return recordMatchesCustomerTopic(record, topic)
 
-  const parsed = parseTopicSearchQuery(topic.matchQuery || topic.problemKey || topic.query || '')
+  const parsed = parseTopicMatchInput(topic)
   const productHint = normalizeIdentityText(topic.product || parsed.productName)
   const product = normalizeIdentityText(record.product || record.productName)
   if (type === 'product_issue' && productHint && product) {
@@ -219,7 +218,7 @@ export function recordMatchesTopic(record, topic) {
   }
 
   const needle = parsed.needle
-  if (!needle) return type === 'product_issue' ? Boolean(productHint && product) : false
+  if (!needle && !parsed.layers?.length) return type === 'product_issue' ? Boolean(productHint && product) : false
   return blobMatchesTopicQuery(recordSearchText(record), parsed)
 }
 
@@ -260,20 +259,21 @@ function quoteFromRecord(record) {
  * @param {object} topic
  */
 function matchingVisits(visits, topic) {
-  const needle = normalizeIdentityText(topic.matchQuery || topic.query || topic.problemKey || topic.customerName || topic.customerCode || '')
+  const parsed = parseTopicMatchInput(topic)
   return (visits || []).filter((visit) => {
     if (topic.type === 'customer') {
       return identityMatchesCustomerTopic(visit, topic)
     }
-    const blob = normalizeIdentityText([
+    const blob = [
       visit.productName,
       visit.customerName,
       visit.feedbackSummary,
       visit.visitResult,
       visit.internalConclusion,
-    ].join(' '))
-    if (topic.product && !blob.includes(normalizeIdentityText(topic.product))) return false
-    return !needle || blobMatchesTopicQuery(blob, needle)
+    ].join(' ')
+    if (topic.product && !normalizeIdentityText(blob).includes(normalizeIdentityText(topic.product))) return false
+    if (!parsed.needle && !parsed.layers?.length) return true
+    return blobMatchesTopicQuery(blob, parsed)
   })
 }
 
@@ -283,13 +283,7 @@ function matchingVisits(visits, topic) {
 export function collectTopicEvidence(input) {
   const topic = input.topic
   const periodLabel = input.periodLabel || '当前周期'
-  const matched = []
-  let scanned = 0
-  for (const record of input.records || []) {
-    scanned += 1
-    if (scanned > MAX_EVIDENCE_SCAN) break
-    if (recordMatchesTopic(record, topic)) matched.push(record)
-  }
+  const matched = (input.records || []).filter((record) => recordMatchesTopic(record, topic))
 
   const countsBySource = {}
   const products = new Map()
@@ -331,18 +325,20 @@ export function collectTopicEvidence(input) {
     }
   }
 
+  const parsedMatch = topic.type === 'customer' ? null : parseTopicMatchInput(topic)
   const visits = matchingVisits(input.visits || [], topic).slice(0, 12)
   const actionItems = (input.actionItems || []).filter((item) => {
-    const blob = normalizeIdentityText([
+    const blob = [
       item.content,
       item.detail,
       item.productName,
       item.insightTheme,
       item.problemTypeSnapshot,
       ...(Array.isArray(item.linkedTicketIds) ? item.linkedTicketIds : []),
-    ].join(' '))
-    const needle = topic.matchQuery || topic.problemKey || topic.query || topic.product || topic.customerName || ''
-    return !normalizeIdentityText(needle) || blobMatchesTopicQuery(blob, needle)
+    ].join(' ')
+    if (topic.type === 'customer') return true
+    if (!parsedMatch?.needle && !parsedMatch?.layers?.length) return true
+    return blobMatchesTopicQuery(blob, parsedMatch)
   }).slice(0, 12)
   const signalPack = buildSignalPack({
     matched,
@@ -364,7 +360,11 @@ export function collectTopicEvidence(input) {
     topic,
     periodLabel,
     matchMode,
-    matchNote: topic.type === 'customer' ? customerMatchNote(matchMode) : '按产品/问题关键词匹配（允许拆开、中间夹字，不必原文连写）',
+    matchNote: topic.type === 'customer' ? customerMatchNote(matchMode) : (
+      formatTopicMatchLayers(parsedMatch?.layers)
+        ? `分层匹配（层内或、层间且）：${formatTopicMatchLayers(parsedMatch.layers)}`
+        : '按产品/问题关键词匹配（层内为或，层与层为且；允许拆开、中间夹字）'
+    ),
     total: matched.length,
     countsBySource,
     products: [...products.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),

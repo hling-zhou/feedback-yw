@@ -16,7 +16,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import TopicRecommendPanel from '../components/topicAnalysis/TopicRecommendPanel.jsx'
@@ -57,6 +57,7 @@ import {
   topicRequestErrorMessage,
 } from '../lib/topicAnalysis/customTopic.js'
 import { interpretCustomTopic, applyInterpretationToTopic } from '../lib/topicAnalysis/interpretTopic.js'
+import { formatTopicMatchLayers } from '../lib/topicAnalysis/matchQuery.js'
 import {
   canDeleteTopicReport,
   isOwnTopicActor,
@@ -332,7 +333,7 @@ export default function TopicAnalysis() {
       {
         ...interpretation,
         products: parseTopicLabelList(interpretation.products),
-        keywords: parseTopicLabelList(interpretation.keywords),
+        keywordLayers: (interpretation.keywordLayers || []).map((layer) => parseTopicLabelList(layer)),
       },
     )
     if (!topic) {
@@ -627,15 +628,56 @@ export default function TopicAnalysis() {
                       onChange={(event) => setInterpretation((prev) => ({ ...prev, problem: event.target.value }))}
                     />
                   </Form.Item>
-                  <Form.Item label="匹配关键词（可改，顿号分隔）" extra="生成报告时按这些词拆开匹配，不必在原文中连写。">
-                    <Input
-                      value={topicLabelListToInput(interpretation.keywords)}
-                      onChange={(event) => setInterpretation((prev) => ({
-                        ...prev,
-                        keywords: topicLabelListFromInput(event.target.value),
-                      }))}
-                      placeholder="例如 安全组、配置不当"
-                    />
+                  <Form.Item
+                    label="匹配条件"
+                    extra="同一层内多个词为「或」，层与层为「且」。可增删层。例如「配额」且（「申请」或「不足」）。"
+                  >
+                    <div className="space-y-2">
+                      {(interpretation.keywordLayers?.length ? interpretation.keywordLayers : [['']]).map((layer, index) => (
+                        <div key={`layer-${index}`}>
+                          {index > 0 ? <div className="py-1 text-xs text-ink-500">且</div> : null}
+                          <Space.Compact className="w-full">
+                            <Input
+                              value={topicLabelListToInput(layer)}
+                              onChange={(event) => setInterpretation((prev) => {
+                                const next = [...(prev.keywordLayers?.length ? prev.keywordLayers : [['']])]
+                                next[index] = topicLabelListFromInput(event.target.value)
+                                return { ...prev, keywordLayers: next, keywords: next.flat() }
+                              })}
+                              placeholder={index === 0 ? '本层词用顿号分隔，命中任一即可' : '本层任一命中即可'}
+                            />
+                            <Button
+                              icon={<MinusOutlined />}
+                              disabled={(interpretation.keywordLayers || []).length <= 1}
+                              onClick={() => setInterpretation((prev) => {
+                                const next = (prev.keywordLayers || []).filter((_, layerIndex) => layerIndex !== index)
+                                return { ...prev, keywordLayers: next.length ? next : [['']], keywords: next.flat() }
+                              })}
+                            />
+                          </Space.Compact>
+                        </div>
+                      ))}
+                      <Button
+                        type="link"
+                        size="small"
+                        className="px-0"
+                        icon={<PlusOutlined />}
+                        onClick={() => setInterpretation((prev) => ({
+                          ...prev,
+                          keywordLayers: [...(prev.keywordLayers?.length ? prev.keywordLayers : [['']]), ['']],
+                        }))}
+                      >
+                        添加一层（且）
+                      </Button>
+                      {formatTopicMatchLayers(interpretation.keywordLayers) ? (
+                        <p className="text-xs text-ink-500">
+                          当前规则：{formatTopicMatchLayers([
+                            ...(parseTopicLabelList(interpretation.products).length ? [parseTopicLabelList(interpretation.products)] : []),
+                            ...(interpretation.keywordLayers || []),
+                          ])}
+                        </p>
+                      ) : null}
+                    </div>
                   </Form.Item>
                 </>
               )}
