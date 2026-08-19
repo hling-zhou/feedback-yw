@@ -3,6 +3,7 @@ import {
   recordHasUnknownJourney,
   recordTaxonomyKey,
 } from './journeySemantic.js'
+import { resolveJourneyTaggingText } from './ticketAnalysis/dimensionTaggingText.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
 import { BULK_RETAG_SCOPE_LABELS } from './retagSession.js'
 import { formatTicketLlmRemainRuleMessage } from './importEnrichmentStats.js'
@@ -23,7 +24,7 @@ export const UNKNOWN_JOURNEY_REASON_LABELS = {
  * @param {import('./types.js').FeedbackRecord} record
  */
 export function journeyTaggingText(record) {
-  return buildTaggingTextForRecord(record)
+  return resolveJourneyTaggingText(record) || buildTaggingTextForRecord(record)
 }
 
 /**

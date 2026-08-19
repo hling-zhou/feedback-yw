@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildJourneyLlmPrompts,
   catalogHasJourneyOptions,
+  enrichRecordsWithJourneys,
   isLlmProposedJourney,
   mergeJourneyResult,
   recordTaxonomyKey,
@@ -95,5 +96,25 @@ describe('journeySemantic', () => {
       },
     ]
     expect(recordsNeedJourneyLlmProposal(records)).toBe(true)
+  })
+
+  it('locally rematches unknown journeys from customerRequest when LLM is off', async () => {
+    const out = await enrichRecordsWithJourneys(
+      [
+        {
+          id: '1',
+          product: '弹性公网IP',
+          productKey: 'eip',
+          journeyL1: '未识别环节',
+          journeyL2: '未识别子环节',
+          handlingText: '无',
+          customerRequest: '需要将西南-成都单资源池带宽配额提升至5120M。',
+          problemType: '配额与权限申请',
+        },
+      ],
+      { themeMatchMode: 'keyword', useRequestNodeForJourney: false },
+    )
+    expect(out[0].journeyL1).toMatch(/开通与申领|产品订改续/)
+    expect(out[0].journeyL2).toMatch(/配额/)
   })
 })

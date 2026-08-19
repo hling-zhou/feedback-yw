@@ -53,12 +53,14 @@ function resolveRequestSceneForTicket(text, requestSceneRules) {
  * @param {string} text
  * @param {import('../productTaxonomy.js').ProductTaxonomy} taxonomy
  * @param {string} taxonomyKey
+ * @param {{ problemType?: string }} [opts]
  */
-function matchSceneAndJourneyFromText(text, taxonomy, taxonomyKey) {
+function matchSceneAndJourneyFromText(text, taxonomy, taxonomyKey, opts = {}) {
   return {
     requestScene: resolveRequestSceneForTicket(text, taxonomy.requestScenes),
     journey: matchJourneyByDescription(text, taxonomy.journeys, taxonomyKey, {
       useRequestNode: false,
+      problemType: opts.problemType,
     }),
   }
 }
@@ -81,15 +83,40 @@ export function tagTicketDimensions(opts) {
       .filter((s) => s && s !== 'undefined') || []
 
   const layers = input ? buildDimensionTaggingLayers(input) : null
-  const primaryText = layers?.primaryText || text
-  const secondaryText = layers?.secondaryText || ''
-  const taggingCorpus = layers?.fullText || text
+  const requestCorpus = input ? buildDimensionTaggingText(input) : ''
+  const hasExtractedRequest = Boolean(
+    input?.customerRequest?.trim() || input?.painPoint?.trim() || input?.problemSummary?.trim(),
+  )
+  const primaryText = hasExtractedRequest
+    ? requestCorpus
+    : layers?.primaryText || text
+  const secondaryText = hasExtractedRequest
+    ? layers?.primaryText && layers.primaryText !== primaryText
+      ? layers.primaryText
+      : layers?.secondaryText || ''
+    : layers?.secondaryText || ''
+  const taggingCorpus = requestCorpus || layers?.fullText || text
 
   const primary = matchSceneAndJourneyFromText(primaryText, taxonomy, taxonomyKey)
   let requestScene = normalizeTagLabel(primary.requestScene, 'dimension')
   let problemType = resolveProblemTypeForTicket(input, text, taxonomy.problemTypes)
   let journeyL1 = normalizeTagLabel(primary.journey.journeyL1, 'journeyL1')
   let journeyL2 = normalizeTagLabel(primary.journey.journeyL2, 'journeyL2')
+
+  if (problemType === '配额与权限申请') {
+    const quotaJourney = matchJourneyByDescription(primaryText, taxonomy.journeys, taxonomyKey, {
+      useRequestNode: false,
+      problemType,
+    })
+    if (!isUnrecognizedTag(quotaJourney.journeyL1)) {
+      const quotaHit = /配额/.test(`${quotaJourney.journeyL1}${quotaJourney.journeyL2}`)
+      const currentHit = /配额/.test(`${journeyL1}${journeyL2}`)
+      if (quotaHit && (isUnrecognizedTag(journeyL1) || !currentHit)) {
+        journeyL1 = normalizeTagLabel(quotaJourney.journeyL1, 'journeyL1')
+        journeyL2 = normalizeTagLabel(quotaJourney.journeyL2, 'journeyL2')
+      }
+    }
+  }
 
   if (secondaryText) {
     const secondary = matchSceneAndJourneyFromText(secondaryText, taxonomy, taxonomyKey)

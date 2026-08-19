@@ -11,6 +11,7 @@ import { canUseSemanticMatch, usesLlmThemeMatch } from './themeSemantic.js'
 import { captureJourneyCandidateIfNeeded } from './tagCandidates.js'
 import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
+import { resolveJourneyTaggingText } from './ticketAnalysis/dimensionTaggingText.js'
 import { evaluateJourneyGatingBatch } from './journeyMatchConfidence.js'
 
 const UNKNOWN_L1 = '未识别环节'
@@ -260,7 +261,10 @@ export async function matchJourneySemantic(text, journeys, settings, taxonomyKey
 export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onProgress, records) {
   const localResults = texts.map((text, i) => {
     const key = taxonomyKeys[i] || 'generic'
-    return matchJourneyByDescription(text, journeysForKey(key), key, journeyMatchOpts(settings))
+    return matchJourneyByDescription(text, journeysForKey(key), key, {
+      ...journeyMatchOpts(settings),
+      problemType: records?.[i]?.problemType,
+    })
   })
 
   if (!canUseSemanticMatch(settings)) return localResults
@@ -374,12 +378,29 @@ export async function enrichRecordsWithJourneys(records, settings, onProgress) {
   const hasUnknown = records.some(recordHasUnknownJourney)
   const useLlmJourney =
     canLlm && (usesLlmThemeMatch(mode) || needsProposal || hasUnknown)
-  if (!useLlmJourney) {
-    return records
-  }
 
-  const texts = records.map((r) => buildTaggingTextForRecord(r))
+  const texts = records.map((r) => resolveJourneyTaggingText(r) || buildTaggingTextForRecord(r))
   const taxonomyKeys = records.map((r) => recordTaxonomyKey(r))
+
+  if (!useLlmJourney) {
+    return records.map((r, i) => {
+      onProgress?.(i + 1, records.length)
+      if (!recordHasUnknownJourney(r) && !recordsNeedJourneyLlmProposal([r])) return r
+      const key = taxonomyKeys[i] || 'generic'
+      const local = matchJourneyByDescription(texts[i], journeysForKey(key), key, {
+        ...journeyMatchOpts(settings),
+        problemType: r.problemType,
+      })
+      if (!local.journeyL1 || local.journeyL1 === UNKNOWN_L1) return r
+      return {
+        ...r,
+        productKey: r.productKey || key,
+        journeyL1: local.journeyL1,
+        journeyL2: local.journeyL2,
+        journeySource: /** @type {'rule'} */ ('rule'),
+      }
+    })
+  }
 
   const useHybrid = mode === 'hybrid' || needsProposal || hasUnknown
   const journeyResults = useHybrid

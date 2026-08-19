@@ -20,17 +20,36 @@ export { UNKNOWN_L1 as JOURNEY_UNKNOWN_L1, UNKNOWN_L2 as JOURNEY_UNKNOWN_L2 }
  */
 
 /**
+ * @param {import('./productTaxonomy.js').JourneyL1} l1
+ * @param {{ id?: string; label?: string; description?: string; keywords?: string[] }} l2
+ */
+function journeyNodeMentionsQuota(l1, l2) {
+  return /配额/.test(`${l1.label || ''}${l2.label || ''}${(l2.keywords || []).join('')}`)
+}
+
+/**
+ * 「带宽配额」是配额申请，不是带宽升降配：配额节点加权，避免裸「带宽」抢走。
+ * @param {string} text
+ * @param {string} [problemType]
+ */
+function isQuotaJourneyIntent(text, problemType) {
+  return /配额/.test(text || '') || /配额/.test(String(problemType || ''))
+}
+
+/**
  * 仅从工单正文匹配旅程，并返回本地置信分数（关键词 +3）
  * @param {string} text
  * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
  * @param {string} [taxonomyKey]
+ * @param {{ problemType?: string }} [opts]
  * @returns {JourneyTextMatch}
  */
-export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey) {
+export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey, opts = {}) {
   const lower = text.toLowerCase()
   const title = (text.match(/工单标题[：:]([^\n]+)/) || [])[1] || ''
   const titleLower = title.toLowerCase()
   const corpus = titleLower + lower
+  const quotaIntent = isQuotaJourneyIntent(corpus, opts.problemType)
 
   let bestL1 = UNKNOWN_L1
   let bestL2 = UNKNOWN_L2
@@ -48,6 +67,14 @@ export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey) {
         if (lower.includes(t)) score += 1
       }
       if (l1.description && lower.includes(l1.description.slice(0, 6))) score += 1
+      if (quotaIntent && journeyNodeMentionsQuota(l1, l2)) score += 6
+      if (
+        quotaIntent &&
+        !journeyNodeMentionsQuota(l1, l2) &&
+        (l2.keywords || []).some((kw) => kw === '带宽' || kw === '调整带宽')
+      ) {
+        score -= 3
+      }
       if (score > bestScore) {
         bestScore = score
         bestL1 = l1.label
@@ -75,10 +102,22 @@ export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey) {
  * @param {string} text
  * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
  * @param {string} [taxonomyKey]
+ * @param {{ problemType?: string }} [opts]
  */
-function matchJourneyFromText(text, journeys, taxonomyKey) {
-  const { journeyL1, journeyL2 } = matchJourneyFromTextWithScore(text, journeys, taxonomyKey)
+function matchJourneyFromText(text, journeys, taxonomyKey, opts = {}) {
+  const { journeyL1, journeyL2 } = matchJourneyFromTextWithScore(text, journeys, taxonomyKey, opts)
   return { journeyL1, journeyL2 }
+}
+
+/**
+ * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
+ * @param {RegExp} hint
+ */
+function findJourneyL1IdByChildHint(journeys, hint) {
+  const node = journeys.find(
+    (l1) => hint.test(l1.label || '') || (l1.children || []).some((l2) => hint.test(l2.label || '')),
+  )
+  return node?.id || null
 }
 
 /**
@@ -91,12 +130,13 @@ function inferEipJourneyFromKeywords(corpus, journeys) {
   let l1Id = null
   if (/退订|释放|删除|到期/.test(corpus)) l1Id = 'release'
   else if (/绑定|解绑|网卡|空闲.*ip/i.test(corpus)) l1Id = 'bind'
-  else if (/带宽|升降配/.test(corpus)) l1Id = 'bind'
+  else if (/配额/.test(corpus)) l1Id = findJourneyL1IdByChildHint(journeys, /配额/) || 'buy'
+  else if (/带宽|升降配/.test(corpus)) l1Id = findJourneyL1IdByChildHint(journeys, /升降配|带宽/) || 'buy'
   else if (/无法访问|不通|外网|ip无法访问/i.test(corpus)) l1Id = 'operate'
   else if (/丢包|波动|ping|延迟/.test(corpus)) l1Id = 'operate'
   else if (/远程|登录|ssh|rdp/.test(corpus)) l1Id = 'operate'
   else if (/流量|监控|查询.*流量/.test(corpus)) l1Id = 'operate'
-  else if (/开通|创建|配额/.test(corpus)) l1Id = 'provision'
+  else if (/开通|创建/.test(corpus)) l1Id = findJourneyL1IdByChildHint(journeys, /开通|申购|订改续/) || 'buy'
   else if (/协查|排查|根因|无法复现/.test(corpus)) l1Id = 'incident'
   if (!l1Id) return null
 
@@ -177,10 +217,10 @@ function applyRequestNodeFallback(textResult, nodeResult) {
  * @param {string} text
  * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
  * @param {string} [taxonomyKey]
- * @param {{ useRequestNode?: boolean }} [opts]
+ * @param {{ useRequestNode?: boolean; problemType?: string }} [opts]
  */
 export function matchJourneyByDescription(text, journeys, taxonomyKey, opts = {}) {
-  const textResult = matchJourneyFromText(text, journeys, taxonomyKey)
+  const textResult = matchJourneyFromText(text, journeys, taxonomyKey, opts)
 
   const useRequestNode =
     opts.useRequestNode === true &&

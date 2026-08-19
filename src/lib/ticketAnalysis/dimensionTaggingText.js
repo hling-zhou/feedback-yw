@@ -109,6 +109,14 @@ export function buildDimensionTaggingTextForRecord(record, options = {}) {
 }
 
 /**
+ * 用户旅程打标语料：有客户请求/痛点时用之，否则回退受理/处理意见。
+ * @param {import('../types.js').FeedbackRecord | Record<string, unknown>} record
+ */
+export function resolveJourneyTaggingText(record = {}) {
+  return buildDimensionTaggingTextForRecord(record)
+}
+
+/**
  * 全文 taggingText（含处理意见），仅用于问题类型 §3 对端排除等兜底
  *
  * @param {import('../types.js').FeedbackRecord} record

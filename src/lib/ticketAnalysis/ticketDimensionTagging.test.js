@@ -62,4 +62,22 @@ describe('tagTicketDimensions (P2a)', () => {
     expect(dims.requestScene).toMatch(/产品信息咨询|操作指导/)
     expect(dims.requestScene).not.toBe('报障与排错')
   })
+
+  it('uses extracted customerRequest for journey when handling text is empty', () => {
+    const tax = getTaxonomy('弹性公网IP', 'eip')
+    const dims = tagTicketDimensions({
+      text: '无',
+      input: {
+        handlingText: '无',
+        customerRequest: '需要将西南-成都单资源池带宽配额提升至5120M。',
+      },
+      taxonomy: tax,
+      taxonomyKey: 'eip',
+    })
+
+    expect(dims.problemType).toBe('配额与权限申请')
+    expect(dims.journeyL1).toMatch(/开通与申领|产品订改续/)
+    expect(dims.journeyL2).toMatch(/配额/)
+    expect(dims.journeyL2).not.toMatch(/升降配|变更其他/)
+  })
 })

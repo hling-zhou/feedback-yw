@@ -22,6 +22,22 @@ describe('journeyRetagSummary', () => {
         handlingText: '无法判断',
       }),
     ).toBe('short_text')
+    expect(
+      diagnoseUnknownJourneyReason({
+        id: '3',
+        journeyL1: '未识别环节',
+        handlingText: '无',
+        customerRequest: '需要将西南-成都单资源池带宽配额提升至5120M。',
+      }),
+    ).not.toBe('short_text')
+    expect(
+      diagnoseUnknownJourneyReason({
+        id: '3',
+        journeyL1: '未识别环节',
+        handlingText: '无',
+        customerRequest: '需要将西南-成都单资源池带宽配额提升至5120M。',
+      }),
+    ).not.toBe('empty_text')
   })
 
   it('summarizes unknown records by reason', () => {
