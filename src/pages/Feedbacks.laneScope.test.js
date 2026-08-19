@@ -40,6 +40,8 @@ describe('Feedbacks lane-scoped notices', () => {
     expect(source).toContain('restrictFeedbackFiltersToKeys')
     expect(source).toContain("if (isPostUseLane) next.dataSource = 'post_use_rating'")
     expect(source).toContain('filterOptionRecords')
+    expect(source).toContain('libraryFilterOptionRecords')
+    expect(source).toContain('listFeedbackLibraryProducts')
     expect(source).toContain('ratingScoreOptions')
     expect(source).toContain('channelOptions')
     expect(source).toContain('matchesCommentKeywordFilter')

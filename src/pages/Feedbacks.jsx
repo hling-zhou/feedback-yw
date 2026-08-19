@@ -29,10 +29,12 @@ import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
 import FeedbackCompositeFilter from '../components/feedbacks/FeedbackCompositeFilter.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
-import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
+import { listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
 import {
   cascadeClearProductDependentFilters,
+  libraryFilterOptionRecords,
+  listFeedbackLibraryProducts,
   scopeFeedbacksByProduct,
 } from '../lib/feedbackFilterScope.js'
 import {
@@ -303,7 +305,7 @@ export default function Feedbacks() {
     )
   }, [customerVisitRecords, activePeriod])
 
-  const postUseCatalog = useMemo(
+  const catalogProducts = useMemo(
     () => getCatalogProducts(),
     // productCatalogMeta.loadedAt 变化时重新取目录
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -314,12 +316,12 @@ export default function Feedbacks() {
     () =>
       buildPostUseCallbackRecommendations(feedbacks, {
         keyCustomers: settings?.postUseKeyCustomers,
-        productNames: postUseCatalog
+        productNames: catalogProducts
           .filter((product) => product?.analysisPostUseRating)
           .map((product) => String(product.name || '').trim())
           .filter(Boolean),
       }),
-    [feedbacks, settings?.postUseKeyCustomers, postUseCatalog],
+    [feedbacks, settings?.postUseKeyCustomers, catalogProducts],
   )
 
   const filteredCustomerVisitRecords = useMemo(() => {
@@ -379,13 +381,10 @@ export default function Feedbacks() {
     }
   }, [postUseNon10NeedingJourney, updateFeedback])
 
-  const filterOptionRecords = useMemo(() => {
-    if (!isPostUseLane) return periodFeedbacks
-    return periodFeedbacks.filter(isPostUseRatingLibraryRecord).map((fb) => {
-      const product = String(fb.product || fb.productName || '').trim()
-      return product && product !== fb.product ? { ...fb, product } : fb
-    })
-  }, [isPostUseLane, periodFeedbacks])
+  const filterOptionRecords = useMemo(
+    () => libraryFilterOptionRecords(periodFeedbacks, feedbackLane),
+    [feedbackLane, periodFeedbacks],
+  )
 
   const handleProductChange = useCallback(
     (product) => {
@@ -405,7 +404,17 @@ export default function Feedbacks() {
     [filterOptionRecords, filters.product],
   )
 
-  const products = useMemo(() => listProducts(filterOptionRecords), [filterOptionRecords])
+  const products = useMemo(
+    () => listFeedbackLibraryProducts(filterOptionRecords, catalogProducts, feedbackLane),
+    [catalogProducts, feedbackLane, filterOptionRecords],
+  )
+
+  useEffect(() => {
+    if (!filters.product) return
+    if (products.some((item) => item.name === filters.product)) return
+    handleProductChange('')
+  }, [filters.product, handleProductChange, products])
+
   const pools = useMemo(
     () => listResourcePools(scopedFeedbacks, filters.product || undefined),
     [scopedFeedbacks, filters.product],
