@@ -1,6 +1,7 @@
 /**
  * 用后即评双文件导入会话：解析 → 明细落库 → 投诉回访双写补全工单
  */
+import { resolveExcelReadBuffer } from '../parseFile.js'
 import { randomId } from '../randomId.js'
 import {
   parseSmsChannelWorkbook,
@@ -55,13 +56,13 @@ export function formatPostUseChannelImportProgress(p) {
 export const POST_USE_CHANNEL_IMPORT_SESSION_LABEL = '用后即评双文件'
 
 /**
- * @param {{ password?: string; retryWithoutPassword?: boolean }} [options]
  * @param {string} channel
  * @param {number} fileIndex
+ * @param {() => Promise<unknown> | unknown} fn
  */
-function withChannelParseError(channel, fileIndex, fn) {
+async function withChannelParseError(channel, fileIndex, fn) {
   try {
-    return fn()
+    return await fn()
   } catch (err) {
     if (err && typeof err === 'object') {
       // @ts-expect-error runtime-only for Import.jsx password retry
@@ -83,7 +84,7 @@ function withChannelParseError(channel, fileIndex, fn) {
  *   officialPasswords?: string[]
  * }} opts
  */
-export function previewPostUseChannelImport(smsBuffers, officialBuffers, opts = {}) {
+export async function previewPostUseChannelImport(smsBuffers, officialBuffers, opts = {}) {
   const smsList = smsBuffers || []
   const officialList = officialBuffers || []
   const smsPasswords = opts.smsPasswords || []
@@ -93,19 +94,27 @@ export function previewPostUseChannelImport(smsBuffers, officialBuffers, opts = 
     throw new Error('请同时选择短信渠道与官网渠道文件')
   }
 
-  const smsParses = smsList.map((buffer, index) =>
-    withChannelParseError('sms', index, () =>
-      parseSmsChannelWorkbook(buffer, {
-        password: smsPasswords[index] || undefined,
-        retryWithoutPassword: Boolean(smsPasswords[index]),
+  const smsParses = await Promise.all(
+    smsList.map((buffer, index) =>
+      withChannelParseError('sms', index, async () => {
+        const password = smsPasswords[index] || undefined
+        const resolved = await resolveExcelReadBuffer(buffer, password)
+        return parseSmsChannelWorkbook(resolved.buffer, {
+          password: resolved.password,
+          retryWithoutPassword: Boolean(password) && Boolean(resolved.password),
+        })
       }),
     ),
   )
-  const officialParses = officialList.map((buffer, index) =>
-    withChannelParseError('official', index, () =>
-      parseOfficialChannelWorkbook(buffer, {
-        password: officialPasswords[index] || undefined,
-        retryWithoutPassword: Boolean(officialPasswords[index]),
+  const officialParses = await Promise.all(
+    officialList.map((buffer, index) =>
+      withChannelParseError('official', index, async () => {
+        const password = officialPasswords[index] || undefined
+        const resolved = await resolveExcelReadBuffer(buffer, password)
+        return parseOfficialChannelWorkbook(resolved.buffer, {
+          password: resolved.password,
+          retryWithoutPassword: Boolean(password) && Boolean(resolved.password),
+        })
       }),
     ),
   )
@@ -170,7 +179,7 @@ export async function executePostUseChannelImport(params) {
   } = params
 
   onProgress?.({ phase: 'parse' })
-  const preview = previewPostUseChannelImport(smsBuffers, officialBuffers, {
+  const preview = await previewPostUseChannelImport(smsBuffers, officialBuffers, {
     importMonth,
     catalogProducts: getCatalogProducts(),
     smsPasswords,

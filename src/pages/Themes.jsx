@@ -46,6 +46,7 @@ import {
   workbenchScopeFiltersFromAnalysisParams,
 } from '../lib/workbenchScopeFilterModel.js'
 import { buildFeedbacksUrl } from '../lib/feedbackFilters.js'
+import { buildImportUrl } from '../lib/importRoute.js'
 
 /**
  * @param {ReturnType<typeof parseAnalysisSearchParams>} p
@@ -447,7 +448,7 @@ export default function Themes() {
         </div>
         <Card className="page-section">
           <Empty description="暂无数据">
-            <Link to="/import">
+            <Link to={buildImportUrl({ source: dataSource })}>
               <Button type="primary">去导入</Button>
             </Link>
           </Empty>

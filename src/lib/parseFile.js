@@ -56,7 +56,10 @@ export function normalizeExcelParseError(err, options = {}) {
     )
   }
 
-  if (message.includes('Unsupported password protection')) {
+  if (
+    message.includes('Unsupported password protection') ||
+    message.includes('Encryption scheme unsupported')
+  ) {
     return createImportParseError(
       IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
       '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
@@ -145,6 +148,32 @@ function sheetToRows(sheet, options = {}) {
   return { headers, rows }
 }
 
+const HEADER_MARKER_SCAN_ROWS = 20
+
+/**
+ * 按单元格文本定位表头行（0-based）。表头不一定在第 1 行或第 3 行。
+ *
+ * @param {import('xlsx').WorkSheet} sheet
+ * @param {string | string[]} marker
+ * @param {{ maxScanRows?: number }} [options]
+ * @returns {number | undefined}
+ */
+export function findHeaderRowIndexByMarker(sheet, marker, options = {}) {
+  const needles = (Array.isArray(marker) ? marker : [marker])
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+  if (!needles.length || !sheet?.['!ref']) return undefined
+  const range = XLSX.utils.decode_range(sheet['!ref'])
+  const last = Math.min(range.e.r, range.s.r + (options.maxScanRows ?? HEADER_MARKER_SCAN_ROWS) - 1)
+  for (let r = range.s.r; r <= last; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const text = cellValueToString(sheet[XLSX.utils.encode_cell({ r, c })])
+      if (needles.includes(text)) return r
+    }
+  }
+  return undefined
+}
+
 /**
  * @param {ArrayBuffer} buffer
  * @param {string} [password]
@@ -163,8 +192,8 @@ function readExcelWorkbook(buffer, password) {
 }
 
 /**
- * 加密文件且密码不正确时不再次尝试；其余错误在带了密码时允许无密码再读一次
- * （文件名含 # 但实际未加密）。
+ * 仅当文件名带了 `#密码` 但文件其实未加密、且 SheetJS 因多余 password 报了非加密类错误时，才无密码再读一次。
+ * 加密相关失败不得重试，否则会把「有密码但解不开」误报成「请输入密码」。
  *
  * @param {unknown} err
  * @param {{ password?: string; retryWithoutPassword?: boolean }} options
@@ -174,13 +203,75 @@ function shouldRetryExcelWithoutPassword(err, options) {
   const code = err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : ''
   return (
     code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT &&
-    code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED
+    code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_REQUIRED &&
+    code !== IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED
   )
+}
+
+const OLE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0]
+
+/**
+ * @param {ArrayBuffer | Uint8Array | ArrayBufferView} buffer
+ */
+function toUint8Array(buffer) {
+  if (buffer instanceof Uint8Array) return buffer
+  if (buffer instanceof ArrayBuffer) return new Uint8Array(buffer)
+  if (ArrayBuffer.isView(buffer)) {
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+  }
+  return new Uint8Array(buffer)
+}
+
+/**
+ * 加密 xlsx（Excel「用密码进行加密」）是 OLE 复合文档，不是 ZIP。
+ * @param {ArrayBuffer | Uint8Array | ArrayBufferView} buffer
+ */
+function isOleCompoundFile(buffer) {
+  const bytes = toUint8Array(buffer)
+  return bytes.length >= 4 && OLE_MAGIC.every((value, index) => bytes[index] === value)
+}
+
+/**
+ * 现代加密 xlsx 走 Agile OOXML 解密；解不开再交给 SheetJS（旧版 .xls XOR 等）。
+ *
+ * @param {ArrayBuffer | Uint8Array | ArrayBufferView} buffer
+ * @param {string} [password]
+ * @returns {Promise<{ buffer: ArrayBuffer | Uint8Array; password?: string }>}
+ */
+export async function resolveExcelReadBuffer(buffer, password) {
+  if (!password || !isOleCompoundFile(buffer)) {
+    return { buffer, password }
+  }
+  try {
+    const { decryptWorkbook } = await import('ooxml-encryption')
+    const decrypted = await decryptWorkbook(toUint8Array(buffer), password)
+    return { buffer: decrypted, password: undefined }
+  } catch (err) {
+    const code = err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : ''
+    if (code === 'invalidPassword') {
+      throw createImportParseError(
+        IMPORT_PARSE_ERROR_CODES.PASSWORD_INCORRECT,
+        '文件密码错误，请重新输入后重试',
+        err,
+      )
+    }
+    if (code === 'unsupportedEncryptionType' || code === 'unsupportedAgileParameters') {
+      throw createImportParseError(
+        IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+        '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
+        err,
+      )
+    }
+    if (code === 'invalidOleContainer' || code === 'missingOleStream') {
+      return { buffer, password }
+    }
+    throw err
+  }
 }
 
 /**
  * @param {ArrayBuffer} buffer
- * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number; password?: string; retryWithoutPassword?: boolean }} [options]
+ * @param {{ headerRowIndexBySheet?: Record<string, number>; defaultHeaderRowIndex?: number; headerMarker?: string | string[]; password?: string; retryWithoutPassword?: boolean }} [options]
  * @returns {{ sheetNames: string[]; sheets: Record<string, { headers: string[]; rows: Record<string, string>[] }> }}
  */
 export function parseExcelBuffer(buffer, options = {}) {
@@ -196,8 +287,12 @@ export function parseExcelBuffer(buffer, options = {}) {
 
   for (const name of wb.SheetNames) {
     if (name === 'WpsReserved_CellImgList') continue
+    const marked =
+      options.headerMarker
+        ? findHeaderRowIndexByMarker(wb.Sheets[name], options.headerMarker)
+        : undefined
     const headerRowIndex =
-      options.headerRowIndexBySheet?.[name] ?? options.defaultHeaderRowIndex
+      options.headerRowIndexBySheet?.[name] ?? marked ?? options.defaultHeaderRowIndex
     const { headers, rows } = sheetToRows(wb.Sheets[name], { headerRowIndex })
     if (headers.length > 0) sheets[name] = { headers, rows }
   }
@@ -207,7 +302,7 @@ export function parseExcelBuffer(buffer, options = {}) {
 
 /**
  * @param {File} file
- * @param {{ sheetName?: string; password?: string }} [options]
+ * @param {{ sheetName?: string; password?: string; headerMarker?: string | string[] }} [options]
  * @returns {Promise<{ headers: string[]; rows: Record<string, string>[]; sheetNames?: string[]; sheets?: Record<string, { headers: string[]; rows: Record<string, string>[] }> }>}
  */
 export async function parseUploadFile(file, options = {}) {
@@ -234,9 +329,11 @@ export async function parseUploadFile(file, options = {}) {
 
   if (ext === 'xlsx' || ext === 'xls') {
     const buffer = await file.arrayBuffer()
-    const { sheetNames, sheets } = parseExcelBuffer(buffer, {
-      password,
-      retryWithoutPassword,
+    const resolved = await resolveExcelReadBuffer(buffer, password)
+    const { sheetNames, sheets } = parseExcelBuffer(resolved.buffer, {
+      password: resolved.password,
+      retryWithoutPassword: retryWithoutPassword && Boolean(resolved.password),
+      headerMarker: options.headerMarker,
     })
 
     const normalizeRow = (row) => {

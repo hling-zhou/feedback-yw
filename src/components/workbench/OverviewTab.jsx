@@ -3,6 +3,7 @@ import { Alert, Card, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import { buildImportUrl } from '../../lib/importRoute.js'
 import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../../lib/sourceOverviewMetrics.js'
 import TrendChart from '../charts/TrendChart.jsx'
@@ -278,7 +279,7 @@ export default function OverviewTab({
 
       <Card>
         <Typography.Text type="secondary" className="text-xs">
-          无数据？<Link to="/import">去导入</Link>
+          无数据？<Link to={buildImportUrl()}>去导入</Link>
           {' · '}
           <Link to="/feedbacks">反馈库</Link>
         </Typography.Text>

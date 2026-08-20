@@ -105,5 +105,38 @@ describe('parseFile password-protected excel', () => {
       code: IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
       message: '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
     })
+    expect(
+      normalizeExcelParseError(new Error('Encryption scheme unsupported'), {
+        password: 'secret',
+      }),
+    ).toMatchObject({
+      code: IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+    })
+    expect(
+      normalizeExcelParseError(new Error('File is password-protected'), {
+        password: 'secret',
+      }),
+    ).toMatchObject({
+      code: IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+    })
+  })
+})
+
+describe('parseUploadFile headerMarker', () => {
+  it('finds 工单展示流水号 below title rows', async () => {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['投诉工单明细'],
+      ['导出时间：2026-08'],
+      ['工单展示流水号', '处理意见', '受理内容'],
+      ['20260001', '已处理', '无法登录'],
+    ])
+    XLSX.utils.book_append_sheet(wb, ws, '投诉明细')
+    const file = new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], '投诉.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const result = await parseUploadFile(file, { headerMarker: '工单展示流水号' })
+    expect(result.headers).toEqual(['工单展示流水号', '处理意见', '受理内容'])
+    expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理', 受理内容: '无法登录' }])
   })
 })

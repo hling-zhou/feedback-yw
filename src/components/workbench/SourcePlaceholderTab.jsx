@@ -1,6 +1,7 @@
 import { Alert, Card, Statistic, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { isStubPipeline } from '../../analysis/registry.js'
+import { buildImportUrl } from '../../lib/importRoute.js'
 
 /**
  * @param {Object} props
@@ -47,7 +48,7 @@ export default function SourcePlaceholderTab({ sourceLabel, dataSourceType, snap
         )}
       </Card>
 
-      <Link to="/import" className="text-brand-600 text-sm">
+      <Link to={buildImportUrl({ source: dataSourceType })} className="text-brand-600 text-sm">
         导入 {sourceLabel} 数据
       </Link>
     </div>

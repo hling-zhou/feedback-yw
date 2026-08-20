@@ -32,6 +32,7 @@ import {
   applyDefaultTicketIdMapping,
   buildMappingFromHeaders,
   IMPORT_PARSE_ERROR_CODES,
+  PRIMARY_TICKET_ID_HEADERS,
 } from '../lib/parseFile.js'
 import {
   getPresetsForImport,
@@ -142,9 +143,11 @@ function isPasswordPromptError(err) {
 
 export default function Import({ embedded = false }) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const initialSource = searchParams.get('source')
   const initialSubType = searchParams.get('subType')
+  const importUrlKey = `${initialSource || ''}|${initialSubType || ''}`
+  const appliedImportUrlRef = useRef(importUrlKey)
   const {
     addFeedbacks,
     adapter,
@@ -310,6 +313,39 @@ export default function Import({ embedded = false }) {
     channelPasswordsRef.current = {}
   }, [])
 
+  const writeImportSourceToUrl = useCallback(
+    (source, subType) => {
+      const nextSubType =
+        source === 'post_use_rating' ? subType || POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE : ''
+      appliedImportUrlRef.current = `${source}|${nextSubType}`
+      const next = new URLSearchParams(searchParams)
+      next.set('source', source)
+      if (source === 'post_use_rating') {
+        next.set('subType', nextSubType)
+      } else {
+        next.delete('subType')
+      }
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  useEffect(() => {
+    if (appliedImportUrlRef.current === importUrlKey) return
+    appliedImportUrlRef.current = importUrlKey
+    if (!initialSource || !DATA_SOURCE_TYPES.includes(initialSource)) return
+    const nextSource = /** @type {import('../domain/enums.js').DataSourceType} */ (initialSource)
+    setDataSourceType(nextSource)
+    if (nextSource === 'post_use_rating') {
+      const fromUrl = POST_USE_RATING_SUBTYPE_OPTIONS.find((item) => item.value === initialSubType)
+      setPostUseRatingSubType(fromUrl ? fromUrl.value : POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE)
+    }
+    resetFileState()
+    setStep(0)
+    setError('')
+  }, [importUrlKey, initialSource, initialSubType, resetFileState])
+
+
   const parseFileToEntry = useCallback(
     /**
      * @param {File} file
@@ -322,8 +358,9 @@ export default function Import({ embedded = false }) {
 
       const fromName = parseImportFileNamePassword(file.name)
       const resolvedPassword = password || fromName.password || undefined
+      const headerMarker = isTicketSource(dataSourceType) ? PRIMARY_TICKET_ID_HEADERS[0] : undefined
       const sha256 = await hashFileSha256(file)
-      const first = await parseUploadFile(file, { password })
+      const first = await parseUploadFile(file, { password: resolvedPassword, headerMarker })
       if (!first.headers.length || !first.rows.length) {
         throw new Error('文件为空或无法解析')
       }
@@ -336,7 +373,11 @@ export default function Import({ embedded = false }) {
       let rows = first.rows
 
       if (names.length && selected) {
-        const parsed = await parseUploadFile(file, { sheetName: selected, password })
+        const parsed = await parseUploadFile(file, {
+          sheetName: selected,
+          password: resolvedPassword,
+          headerMarker,
+        })
         if (!parsed.headers.length || !parsed.rows.length) {
           throw new Error(`工作表「${selected}」为空`)
         }
@@ -501,12 +542,15 @@ export default function Import({ embedded = false }) {
 
   const onSourceChange = (value) => {
     setDataSourceType(value)
+    const nextSubType =
+      value === 'post_use_rating' ? POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE : postUseRatingSubType
     if (value === 'post_use_rating') {
       setPostUseRatingSubType(POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE)
     }
     resetFileState()
     setStep(0)
     setError('')
+    writeImportSourceToUrl(value, nextSubType)
   }
 
   const onPostUseRatingSubTypeChange = (value) => {
@@ -514,6 +558,7 @@ export default function Import({ embedded = false }) {
     resetFileState()
     setStep(0)
     setError('')
+    writeImportSourceToUrl(dataSourceType, value)
   }
 
   const onSheetChange = async (sheetName) => {
@@ -731,7 +776,7 @@ export default function Import({ embedded = false }) {
         Promise.all(channelSmsFiles.map((file) => file.arrayBuffer())),
         Promise.all(channelWebFiles.map((file) => file.arrayBuffer())),
       ])
-      const preview = previewPostUseChannelImport(smsBuffers, officialBuffers, {
+      const preview = await previewPostUseChannelImport(smsBuffers, officialBuffers, {
         importMonth: dataMonth,
         smsPasswords,
         officialPasswords,
@@ -1439,7 +1484,7 @@ export default function Import({ embedded = false }) {
               />
               {channelBundleImport && (
                 <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  默认导入短信渠道 + 官网渠道文件（各最多 {MAX_IMPORT_FILES} 个；官网含评分类 / 选项类 / 投诉处理-电话回访）。投诉回访同时写入明细并补全已有工单。加密文件可把密码写在文件名中：名称#密码.xlsx。
+                  默认导入短信渠道 + 官网渠道文件（各最多 {MAX_IMPORT_FILES} 个；官网含评分类 / 选项类 / 投诉处理-电话回访）。短信按「调研结果状态」、官网评分类 / 选项类按「产品名」、投诉处理-电话回访按「回访工单编号」识别表头。投诉回访同时写入明细并补全已有工单。加密文件可把密码写在文件名中：名称#密码.xlsx。
                 </Typography.Text>
               )}
               {customerVisitImport && (
@@ -1647,7 +1692,9 @@ export default function Import({ embedded = false }) {
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
                   ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果、内部评估。`
-                  : `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
+                  : ticketSource
+                    ? `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；按表头列「工单展示流水号」识别表头。单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
+                    : `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
             }
           />
           <Upload.Dragger

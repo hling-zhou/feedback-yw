@@ -112,4 +112,27 @@ describe('parseFile password branches', () => {
     expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
     expect(readMock).toHaveBeenCalledTimes(2)
   })
+
+  it('does not fall back to password_required when filename password cannot decrypt', async () => {
+    const mod = await loadParseFileWithReadMock((_buffer, options) => {
+      if (!options?.password) throw new Error('File is password-protected')
+      throw new Error('File is password-protected')
+    })
+
+    await expect(mod.parseUploadFile(createExcelFile('用后即评-6月#abc123.xlsx'))).rejects.toMatchObject({
+      code: mod.IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+      message: '当前暂不支持该 Excel 文件的加密方式，请先解密后再导入',
+    })
+  })
+
+  it('decrypts agile-encrypted xlsx using 名称#密码.xlsx', async () => {
+    const { encryptWorkbook } = await import('ooxml-encryption')
+    const encrypted = await encryptWorkbook(new Uint8Array(buildWorkbookArrayBuffer()), 'abc123')
+    const file = new File([encrypted], '用后即评-6月#abc123.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const { parseUploadFile } = await import('./parseFile.js')
+    const result = await parseUploadFile(file)
+    expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
+  })
 })

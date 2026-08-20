@@ -13,6 +13,7 @@ import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { buildImportUrl } from '../lib/importRoute.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import WorkbenchAnalysisNav from '../components/workbench/WorkbenchAnalysisNav.jsx'
@@ -285,7 +286,7 @@ export default function InsightWorkbench() {
       {!hasAnyData && !snapshotRebuilding && (
         <Card className="page-section">
           <Empty description="当前周期尚无反馈数据">
-            <Link to="/import">
+            <Link to={buildImportUrl({ source: activeTab === TAB_OVERVIEW ? undefined : activeTab })}>
               <Button type="primary">导入数据</Button>
             </Link>
           </Empty>

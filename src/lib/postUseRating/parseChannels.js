@@ -26,6 +26,9 @@ import { parseYesNo } from '../../domain/followUpSatisfaction.js'
  */
 
 export const SMS_SHEET_NAME = '短信渠道用后即评明细数据'
+export const SMS_STATUS_HEADER = '调研结果状态'
+export const WEB_PRODUCT_HEADER = '产品名'
+export const WEB_CALLBACK_TICKET_HEADER = '回访工单编号'
 export const WEB_SCORE_SHEET = '评分类'
 export const WEB_OPTION_SHEET = '选项类'
 export const WEB_CALLBACK_SHEET = '投诉处理-电话回访'
@@ -66,6 +69,7 @@ function findSheetName(sheetNames, prefer) {
  */
 export function parseSmsChannelWorkbook(buffer, options = {}) {
   const { sheetNames, sheets } = parseExcelBuffer(buffer, {
+    headerMarker: SMS_STATUS_HEADER,
     defaultHeaderRowIndex: 2,
     password: options.password,
     retryWithoutPassword: options.retryWithoutPassword,
@@ -84,6 +88,7 @@ export function parseSmsChannelWorkbook(buffer, options = {}) {
  */
 export function parseOfficialChannelWorkbook(buffer, options = {}) {
   const { sheetNames, sheets } = parseExcelBuffer(buffer, {
+    headerMarker: [WEB_PRODUCT_HEADER, WEB_CALLBACK_TICKET_HEADER],
     password: options.password,
     retryWithoutPassword: options.retryWithoutPassword,
   })
@@ -172,7 +177,7 @@ export function normalizeSmsRows(rows) {
   /** @type {NormalizedPostUseRow[]} */
   const out = []
   for (const row of rows) {
-    if (cell(row['调研结果状态']) !== '客户已反馈') continue
+    if (cell(row[SMS_STATUS_HEADER]) !== '客户已反馈') continue
     const score = parseScore(row['得分（加权）'] ?? row['得分'])
     if (score == null) continue
     out.push({

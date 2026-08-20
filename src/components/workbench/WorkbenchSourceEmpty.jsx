@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Space, Typography } from 'antd'
 import { countBySourceInScope } from '../../hooks/usePeriodScope.js'
 import { recordSourceType } from '../../snapshots/recordScope.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
+import { buildImportUrl } from '../../lib/importRoute.js'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 
 /**
@@ -74,7 +75,7 @@ export default function WorkbenchSourceEmpty({
             <Link to={`/feedbacks?source=${sourceType}${months[0] ? `&month=${months[months.length - 1]}` : ''}`}>
               <Button>在反馈库查看</Button>
             </Link>
-            <Link to="/import">
+            <Link to={buildImportUrl({ source: sourceType })}>
               <Button>去导入</Button>
             </Link>
           </Space>

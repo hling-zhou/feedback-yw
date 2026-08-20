@@ -14,6 +14,7 @@ import {
   readImportSessionMarker,
   shouldConfirmLeaveImportPage,
 } from '../lib/importSession.js'
+import { buildImportUrl } from '../lib/importRoute.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import {
   formatImportProgressDescription,
@@ -124,7 +125,7 @@ export default function ImportSessionGuard() {
 
   const goRetryImport = () => {
     dismissInterruptedImport()
-    navigate('/import')
+    navigate(buildImportUrl({ source: interruptedImport?.dataSourceType }))
   }
 
   return (

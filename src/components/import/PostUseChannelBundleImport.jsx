@@ -92,7 +92,7 @@ export default function PostUseChannelBundleImport({
         type="info"
         showIcon
         title="请上传短信渠道与官网渠道原始文件"
-        description={`短信渠道.xls（表头在第 3 行）与官网渠道.xls（含评分类 / 选项类 / 投诉处理-电话回访）各支持最多 ${MAX_IMPORT_FILES} 个文件，将按渠道合并解析。选好文件后进入「预览确认」核对条数与口径。加密文件可把密码写在文件名中，格式为 名称#密码.xlsx。`}
+        description={`短信渠道按表头列「调研结果状态」识别；官网评分类 / 选项类按「产品名」、投诉处理-电话回访按「回访工单编号」识别。各支持最多 ${MAX_IMPORT_FILES} 个文件，将按渠道合并解析。选好文件后进入「预览确认」核对条数与口径。加密文件可把密码写在文件名中，格式为 名称#密码.xlsx。`}
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Card size="small" title={`短信渠道.xls（${smsFiles.length}/${MAX_IMPORT_FILES}）`}>

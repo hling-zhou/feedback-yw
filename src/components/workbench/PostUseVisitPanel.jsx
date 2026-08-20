@@ -7,6 +7,7 @@ import {
   loadVisitRecords,
 } from '../../lib/postUseRating/visitRecords.js'
 import { postUseVisitMonthsForPeriod } from '../../lib/postUseRating/periodScope.js'
+import { buildImportUrl } from '../../lib/importRoute.js'
 
 /**
  * @param {{ period?: import('../../domain/insightPeriod.js').InsightPeriod | null }} props
@@ -43,7 +44,7 @@ export default function PostUseVisitPanel({ period }) {
       size="small"
       title={`客服部回访（${monthLabel}）`}
       extra={
-        <Link to="/import?source=post_use_rating&subType=customer_visit">
+        <Link to={buildImportUrl({ source: 'post_use_rating', subType: 'customer_visit' })}>
           <Button type="primary" size="small" icon={<UploadOutlined />}>
             前往数据导入
           </Button>

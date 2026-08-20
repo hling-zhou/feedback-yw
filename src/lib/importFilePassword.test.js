@@ -11,6 +11,14 @@ describe('parseImportFileNamePassword', () => {
       password: 'secret',
       displayName: 'report#v2.xls',
     })
+    expect(parseImportFileNamePassword('用后即评-6月＃abc123.xlsx')).toEqual({
+      password: 'abc123',
+      displayName: '用后即评-6月.xlsx',
+    })
+    expect(parseImportFileNamePassword('用后即评-6月# abc123 .xlsx')).toEqual({
+      password: 'abc123',
+      displayName: '用后即评-6月.xlsx',
+    })
   })
 
   it('returns empty password when # is missing or password is empty', () => {

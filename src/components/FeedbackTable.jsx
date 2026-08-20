@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button, Empty, Table, Tag, Typography } from 'antd'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { buildImportUrl } from '../lib/importRoute.js'
 import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
 import SentimentBadge from './SentimentBadge.jsx'
@@ -292,7 +293,7 @@ export default function FeedbackTable({
         className="rounded-xl border border-ink-200 bg-white py-12"
         description="暂无反馈数据"
       >
-        <Link to="/import">
+        <Link to={buildImportUrl({ source: dataSource })}>
           <Button type="primary">导入数据</Button>
         </Link>
       </Empty>
