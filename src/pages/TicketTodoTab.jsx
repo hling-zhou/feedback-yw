@@ -5,10 +5,11 @@ import {
   Popconfirm,
   Space,
   Table,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
-import { DeleteOutlined, EyeOutlined, FormOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
@@ -21,7 +22,6 @@ import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
-import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   TICKET_TODO_PROCESS_MODE,
   TICKET_TODO_RESOLUTIONS,
@@ -387,21 +387,9 @@ export default function TicketTodoTab() {
       render: (value) => value || '—',
     },
     {
-      title: '问题',
-      dataIndex: 'painPoint',
-      width: 220,
-      render: (value) => <CopyableEllipsisCell text={value} />,
-    },
-    {
-      title: '来源',
-      dataIndex: 'dataSourceType',
-      width: 96,
-      render: (value) => DATA_SOURCE_LABELS[value] || value || '—',
-    },
-    {
       title: '待办',
       dataIndex: 'text',
-      width: 240,
+      width: 260,
       render: (value) => <CopyableEllipsisCell text={value} />,
     },
     {
@@ -429,19 +417,21 @@ export default function TicketTodoTab() {
       render: (_, record) => formatTicketTodoAssigneeLabel(record),
     },
     {
-      title: '提出时间',
-      dataIndex: 'createdAt',
+      title: '时间',
+      key: 'time',
       width: 160,
-      render: (value) => formatTicketTodoDateTime(value) || '—',
-    },
-    {
-      title: '最近更新时间',
-      dataIndex: 'updatedAt',
-      width: 180,
-      render: (value, record) =>
-        value
-          ? `${record.updatedBy?.username || record.updatedBy?.userId || ''} ${formatTicketTodoDateTime(value)}`.trim()
-          : '—',
+      render: (_, record) => {
+        const created = formatTicketTodoDateTime(record.createdAt) || '—'
+        const updated = record.updatedAt
+          ? `${record.updatedBy?.username || record.updatedBy?.userId || ''} ${formatTicketTodoDateTime(record.updatedAt)}`.trim()
+          : ''
+        if (!updated) return <Typography.Text className="text-xs">{created}</Typography.Text>
+        return (
+          <Tooltip title={`最近更新：${updated}`}>
+            <Typography.Text className="text-xs">{created}</Typography.Text>
+          </Tooltip>
+        )
+      },
     },
     {
       title: '状态',
@@ -452,42 +442,27 @@ export default function TicketTodoTab() {
     {
       title: '操作',
       key: 'actions',
-      width: 140,
+      width: 60,
       fixed: 'right',
-      render: (_, record) => {
-        const openItem = isTicketTodoOpen(record)
-        return (
+      render: (_, record) =>
+        canEdit ? (
           <Space size={0} onClick={(event) => event.stopPropagation()}>
-            {canEdit && openItem ? (
-              <Button type="link" size="small" icon={<FormOutlined />} onClick={() => openRow(record)}>
-                处理
-              </Button>
-            ) : (
-              <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openRow(record)}>
-                查看
-              </Button>
-            )}
-            {canEdit ? (
-              <Popconfirm
-                title="删除这条会议待办？"
-                okText="删除"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => void handleDelete(record)}
-              >
-                <Button
-                  type="link"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={deletingId === record.id}
-                >
-                  删除
-                </Button>
-              </Popconfirm>
-            ) : null}
+            <Popconfirm
+              title="删除这条会议待办？"
+              okText="删除"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleDelete(record)}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                loading={deletingId === record.id}
+              />
+            </Popconfirm>
           </Space>
-        )
-      },
+        ) : null,
     },
   ]
 
@@ -588,7 +563,7 @@ export default function TicketTodoTab() {
           columns={columns}
           dataSource={items}
           sticky={{ offsetHeader: stickyChromeHeight }}
-          scroll={{ x: 1560 }}
+          scroll={{ x: 960 }}
           onRow={(record) => ({
             onClick: () => openRow(record),
             className: 'cursor-pointer',
