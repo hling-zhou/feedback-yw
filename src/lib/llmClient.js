@@ -38,10 +38,9 @@ export function getLlmServerConfigured() {
 }
 
 /**
- * @param {AppSettings | { llmServerConfigured?: boolean; llmApiKey?: string }} [settings]
+ * @param {AppSettings | { llmServerConfigured?: boolean }} [settings]
  */
 export function isLlmAvailable(settings) {
-  if (settings?.llmApiKey?.trim()) return true
   if (serverConfiguredCache === true) return true
   if (settings?.llmServerConfigured === true) return true
   return false
@@ -225,10 +224,6 @@ export async function llmChatCompletion(settings, body) {
   if (model) {
     payload.model = model
   }
-  const clientKey = settings?.llmApiKey?.trim()
-  if (clientKey && getLlmServerConfigured() !== true) {
-    payload.apiKey = clientKey
-  }
 
   try {
     return await apiFetch('/api/llm/chat', {
@@ -239,7 +234,7 @@ export async function llmChatCompletion(settings, body) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
       throw new Error(
-        '无法连接 LLM 代理。请确认 API 已启动（npm run dev:all）且已登录；LLM_API_KEY 由服务端配置。',
+        '无法连接 LLM 代理。请确认 API 已启动（npm run dev:all）且已登录；大模型配置由管理员在「设置」中维护。',
       )
     }
     throw err

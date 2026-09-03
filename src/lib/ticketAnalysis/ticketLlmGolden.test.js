@@ -74,7 +74,7 @@ vi.mock('./ticketAnalysisUnifiedLLM.js', async (importOriginal) => {
   }
 })
 
-const SETTINGS = { llmApiKey: 'sk-test', themeMatchMode: 'hybrid' }
+const SETTINGS = { llmServerConfigured: true, themeMatchMode: 'hybrid' }
 
 describe('ticketLlmGolden U-06 / O-golden', () => {
   beforeEach(() => {

@@ -27,14 +27,14 @@ describe('normalizeLlmBaseUrl', () => {
 })
 
 describe('isLlmAvailable', () => {
-  it('is true when settings has llmApiKey', () => {
-    expect(isLlmAvailable({ llmApiKey: 'sk-local' })).toBe(true)
-  })
-
-  it('uses refreshed server cache even when llmServerConfigured is false in settings', async () => {
+  it('is true when server cache is configured', async () => {
     vi.mocked(apiFetch).mockResolvedValue({ configured: true })
     await refreshLlmServerStatus()
     expect(isLlmAvailable({ llmServerConfigured: false })).toBe(true)
+  })
+
+  it('is true when settings.llmServerConfigured is true', () => {
+    expect(isLlmAvailable({ llmServerConfigured: true })).toBe(true)
   })
 
   it('is false when no key and server not configured', async () => {

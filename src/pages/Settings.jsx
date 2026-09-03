@@ -24,7 +24,8 @@ import {
 } from '../storage/clearImportedData.js'
 import { listProducts } from '../lib/productTaxonomy.js'
 import { normalizeInsightPeriod, recordMatchesPeriod } from '../domain/insightPeriod.js'
-import { getLlmServerConfigured, refreshLlmServerStatus } from '../lib/llmClient.js'
+import { refreshLlmServerStatus } from '../lib/llmClient.js'
+import { apiFetch } from '../lib/apiClient.js'
 import {
   getVisibleSettingsTabs,
   resolveSettingsTab,
@@ -115,23 +116,6 @@ const JOURNEY_MATCH_OPTIONS = [
 
 const CLEAR_ALL_PRODUCTS_VALUE = '__ALL_PRODUCTS__'
 
-function llmConfigSource(settings, serverConfiguredHint) {
-  if (settings.llmServerConfigured || serverConfiguredHint) return 'server'
-  if (settings.llmApiKey?.trim()) return 'client'
-  return 'none'
-}
-
-/**
- * @param {import('../lib/storage.js').AppSettings} settings
- */
-function pickLlmDraft(settings) {
-  return {
-    llmApiKey: settings.llmApiKey || '',
-    llmBaseUrl: settings.llmBaseUrl || '',
-    llmModel: settings.llmModel || '',
-  }
-}
-
 /**
  * @param {import('../lib/storage.js').AppSettings} settings
  */
@@ -145,45 +129,73 @@ function pickAnalysisDraft(settings) {
 }
 
 /**
+ * 团队大模型配置面板：仅管理员可见。保存到服务端 meta llm_config_v1，库优先于环境变量。
  * @param {Object} props
- * @param {import('../lib/storage.js').AppSettings} props.settings
- * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onSave
  * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onServerStatusChange
  */
-function LlmSettingsPanel({ settings, onSave, onServerStatusChange }) {
+function LlmSettingsPanel({ onServerStatusChange }) {
   const message = useAppMessage()
-  const [draft, setDraft] = useState(() => pickLlmDraft(settings))
-  const [saving, setSaving] = useState(false)
-  const [serverConfiguredHint, setServerConfiguredHint] = useState(
-    () => settings.llmServerConfigured === true || getLlmServerConfigured() === true,
+  /** @type {import('react').Dispatch<any>} */
+  // @ts-ignore — useState 联合类型推断过宽，运行时为对象
+  const [draft, setDraft] = useState(() => ({
+    apiKey: '',
+    llmBaseUrl: '',
+    llmModel: '',
+  }))
+  const [serverStatus, setServerStatus] = useState(
+    /** @type {{ source: 'db' | 'env' | 'none'; apiKeyMasked: string; baseUrl: string; model: string } | null} */ (null),
   )
+  const [saving, setSaving] = useState(false)
+
+  const loadConfig = async () => {
+    try {
+      const data = await apiFetch('/api/llm/config')
+      setServerStatus({
+        source: data.source,
+        apiKeyMasked: data.apiKeyMasked || '',
+        baseUrl: data.baseUrl || '',
+        model: data.model || '',
+      })
+      setDraft((prev) => ({
+        ...prev,
+        llmBaseUrl: data.baseUrl || '',
+        llmModel: data.model || '',
+      }))
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '读取大模型配置失败')
+    }
+  }
 
   useEffect(() => {
-    setDraft(pickLlmDraft(settings))
-  }, [settings.llmApiKey, settings.llmBaseUrl, settings.llmModel])
-
-  useEffect(() => {
-    let cancelled = false
+    loadConfig()
+    // 同步 llmServerConfigured 给全局 settings，供打标前 isLlmAvailable 判断
     refreshLlmServerStatus().then((configured) => {
-      if (cancelled) return
-      setServerConfiguredHint(configured)
       onServerStatusChange({ llmServerConfigured: configured })
     })
-    return () => {
-      cancelled = true
-    }
-  }, [onServerStatusChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const configSource = llmConfigSource(
-    { ...settings, llmApiKey: draft.llmApiKey },
-    serverConfiguredHint,
-  )
+  const source = serverStatus?.source ?? 'none'
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true)
     try {
-      onSave(draft)
+      await apiFetch('/api/storage/meta/llm_config_v1', {
+        method: 'PUT',
+        body: JSON.stringify({
+          value: {
+            // apiKey 留空表示保留现有密钥（服务端合并）
+            apiKey: draft.apiKey || undefined,
+            baseUrl: draft.llmBaseUrl || '',
+            model: draft.llmModel || '',
+          },
+        }),
+      })
       message.success('已保存大模型配置')
+      setDraft((prev) => ({ ...prev, apiKey: '' }))
+      await loadConfig()
+      await refreshLlmServerStatus()
+      onServerStatusChange({ llmServerConfigured: true })
     } catch (err) {
       message.error(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -194,46 +206,48 @@ function LlmSettingsPanel({ settings, onSave, onServerStatusChange }) {
   return (
     <div className="space-y-3">
       <Typography.Text type="secondary" className="block text-xs">
-        仅保存在<strong>本浏览器</strong>，不会修改团队共享库，也不会让其他用户使用你的 API Key。
-        生产环境若已配置服务端 <code className="text-xs">LLM_API_KEY</code>，所有人优先用服务端密钥。
+        团队大模型配置，<strong>仅管理员可改</strong>；保存后全团队生效，存于服务端数据库，
+        <strong>库优先于环境变量</strong>。未在库中配置时，回退服务端
+        <code className="text-xs">LLM_API_KEY</code> / <code className="text-xs">LLM_BASE_URL</code> /
+        <code className="text-xs"> LLM_MODEL</code>。
       </Typography.Text>
-      {configSource === 'server' && (
+
+      {source === 'db' && (
         <Alert
           type="success"
           showIcon
-          title="大模型已由服务端配置（LLM_API_KEY）"
-          description="API 地址与模型留空时，使用服务端环境变量 LLM_BASE_URL / LLM_MODEL；填写则仅覆盖本机请求参数。个人 API Key 不会用于请求。"
+          title="当前由数据库配置生效"
+          description={`已配置 API Key（${serverStatus?.apiKeyMasked || '••••'}）；API 地址与模型留空时回退环境变量。`}
         />
       )}
-      {configSource === 'client' && (
+      {source === 'env' && (
         <Alert
-          type="success"
+          type="info"
           showIcon
-          title="使用本机 API Key"
-          description="服务端未配置 LLM_API_KEY 时，仅本浏览器发起的 LLM 请求会使用下方密钥。"
+          title="当前由环境变量兜底"
+          description="数据库未配置 API Key，正在使用服务端 LLM_API_KEY。管理员可在此保存以固化到数据库。"
         />
       )}
-      {configSource === 'none' && (
+      {source === 'none' && (
         <Alert
           type="warning"
           showIcon
           title="大模型未配置"
-          description="请由管理员配置服务端 LLM_API_KEY，或在本机填写 API Key（仅本浏览器有效）。"
+          description="数据库与环境变量均未配置 API Key，大模型相关功能将回退规则结果。"
         />
       )}
-      {configSource !== 'server' && (
-        <div>
-          <Typography.Text strong className="mb-1 block text-xs">
-            API Key（本机，可选）
-          </Typography.Text>
-          <Input.Password
-            placeholder="sk-…"
-            value={draft.llmApiKey}
-            onChange={(e) => setDraft((prev) => ({ ...prev, llmApiKey: e.target.value }))}
-            autoComplete="off"
-          />
-        </div>
-      )}
+
+      <div>
+        <Typography.Text strong className="mb-1 block text-xs">
+          API Key{source !== 'none' ? `（当前 ${serverStatus?.apiKeyMasked || '••••'}；留空保留）` : ''}
+        </Typography.Text>
+        <Input.Password
+          placeholder={source !== 'none' ? '留空则保留现有 Key' : 'sk-…'}
+          value={draft.apiKey}
+          onChange={(e) => setDraft((prev) => ({ ...prev, apiKey: e.target.value }))}
+          autoComplete="off"
+        />
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Typography.Text strong className="mb-1 block text-xs">API 地址</Typography.Text>
@@ -243,7 +257,7 @@ function LlmSettingsPanel({ settings, onSave, onServerStatusChange }) {
             onChange={(e) => setDraft((prev) => ({ ...prev, llmBaseUrl: e.target.value }))}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
-            留空则使用服务端 LLM_BASE_URL（若已配置）
+            留空则回退环境变量 LLM_BASE_URL
           </Typography.Text>
         </div>
         <div>
@@ -254,7 +268,7 @@ function LlmSettingsPanel({ settings, onSave, onServerStatusChange }) {
             onChange={(e) => setDraft((prev) => ({ ...prev, llmModel: e.target.value }))}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
-            留空则使用服务端 LLM_MODEL（若已配置）
+            留空则回退环境变量 LLM_MODEL
           </Typography.Text>
         </div>
       </div>
@@ -625,12 +639,8 @@ export default function Settings() {
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
-          <Card title="大模型配置（本机）">
-            <LlmSettingsPanel
-              settings={settings}
-              onSave={setPersonalSettings}
-              onServerStatusChange={setPersonalSettings}
-            />
+          <Card title="大模型配置（团队）">
+            <LlmSettingsPanel onServerStatusChange={setPersonalSettings} />
           </Card>
         )}
 

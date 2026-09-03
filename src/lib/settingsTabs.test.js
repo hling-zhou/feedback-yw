@@ -5,7 +5,7 @@ describe('settingsTabs', () => {
   it('getVisibleSettingsTabs respects role capabilities', () => {
     const admin = getVisibleSettingsTabs((p) =>
       [
-        'configureLlmPersonal',
+        'manageLlmConfig',
         'manageTeamSettings',
         'editOrderVolumes',
         'deleteData',
@@ -18,16 +18,13 @@ describe('settingsTabs', () => {
     expect(admin).toEqual(['llm', 'analysis', 'metrics', 'data', 'audit', 'bottles', 'requirement_sync'])
 
     const editor = getVisibleSettingsTabs((p) =>
-      ['configureLlmPersonal', 'editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(
-        p,
-      ),
+      ['editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(p),
     )
-    expect(editor).toEqual(['llm', 'metrics', 'data', 'audit', 'bottles'])
+    // editor 不再有大模型 Tab（manageLlmConfig 仅 admin）
+    expect(editor).toEqual(['metrics', 'data', 'audit', 'bottles'])
 
-    const viewer = getVisibleSettingsTabs((p) =>
-      ['configureLlmPersonal', 'export', 'viewAudit', 'view'].includes(p),
-    )
-    expect(viewer).toEqual(['llm', 'data', 'audit', 'bottles'])
+    const viewer = getVisibleSettingsTabs((p) => ['export', 'viewAudit', 'view'].includes(p))
+    expect(viewer).toEqual(['data', 'audit', 'bottles'])
   })
 
   it('resolveSettingsTab falls back to first visible tab', () => {

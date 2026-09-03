@@ -47,6 +47,7 @@ const META_AUDIT_ACTIONS = {
   taxonomy_managed: 'storage.taxonomy_update',
   product_catalog_managed_v1: 'storage.product_catalog_update',
   app_settings_shared_v1: 'storage.team_settings_update',
+  llm_config_v1: 'storage.llm_config_update',
   product_order_volumes_v1: 'storage.order_volumes_update',
   wan_tou_targets_v1: 'storage.wan_tou_targets_update',
 }
@@ -64,6 +65,14 @@ function buildMetaAuditDetail(key, previous, next) {
   }
   if (key === 'app_settings_shared_v1') {
     detail.fields = listChangedObjectKeys(previous, next)
+  }
+  if (key === 'llm_config_v1') {
+    // 不记录 apiKey 明文，仅记录是否变更、baseUrl、model
+    const prev = previous && typeof previous === 'object' ? previous : {}
+    const next2 = next && typeof next === 'object' ? next : {}
+    detail.baseUrlChanged = (prev.baseUrl || '') !== (next2.baseUrl || '')
+    detail.modelChanged = (prev.model || '') !== (next2.model || '')
+    detail.apiKeyChanged = Boolean(next2.apiKey)
   }
   if (key === 'product_order_volumes_v1' || key === 'wan_tou_targets_v1') {
     if (Array.isArray(next)) detail.count = next.length
@@ -667,11 +676,16 @@ export function registerStorageRoutes(app) {
       preHandler: requirePermission('view'),
       schema: { params: metaKeyParamsSchema },
     },
-    async (request) => {
+    async (request, reply) => {
       const { key } = /** @type {{ key: string }} */ (request.params)
       const decodedKey = decodeURIComponent(key)
       if (decodedKey === 'taxonomy_managed') {
         return { value: readTaxonomyManagedMetaHydrated() }
+      }
+      // llm_config_v1 含密钥，禁止经通用 meta GET 读取；请用 GET /api/llm/config（脱敏）
+      if (decodedKey === 'llm_config_v1') {
+        reply.code(403).send({ error: '大模型配置请通过 GET /api/llm/config 读取' })
+        return
       }
       return { value: storageRepository.getMeta(decodedKey) }
     },
@@ -690,14 +704,31 @@ export function registerStorageRoutes(app) {
     }
     else if (decodedKey === 'app_settings_shared_v1' || decodedKey === 'recommendation_feedback_v1') {
       perms.push('manageTeamSettings')
+    }
+    else if (decodedKey === 'llm_config_v1') {
+      perms.push('manageLlmConfig')
     } else perms.push('view')
     if (!assertWritePermission(request, reply, perms)) return
     const body = /** @type {{ value?: unknown }} */ (request.body || {})
     const previous = storageRepository.getMeta(decodedKey)
-    storageRepository.putMeta(decodedKey, body.value ?? null)
+    let nextValue = body.value ?? null
+    // llm_config_v1：apiKey 留空表示保留现有密钥；并补 updatedBy
+    if (decodedKey === 'llm_config_v1' && nextValue && typeof nextValue === 'object') {
+      const incoming = /** @type {Record<string, unknown>} */ (nextValue)
+      const prev = previous && typeof previous === 'object'
+        ? /** @type {Record<string, unknown>} */ (previous)
+        : {}
+      if (!incoming.apiKey) {
+        incoming.apiKey = prev.apiKey ?? ''
+      }
+      incoming.updatedBy = request.user?.username || 'unknown'
+      incoming.updatedAt = new Date().toISOString()
+      nextValue = incoming
+    }
+    storageRepository.putMeta(decodedKey, nextValue)
     const auditAction = META_AUDIT_ACTIONS[decodedKey]
     if (auditAction) {
-      logAuditFromRequest(request, auditAction, buildMetaAuditDetail(decodedKey, previous, body.value ?? null))
+      logAuditFromRequest(request, auditAction, buildMetaAuditDetail(decodedKey, previous, nextValue))
     }
     if (decodedKey === 'product_catalog_managed_v1') {
       bumpRecordsRevision()

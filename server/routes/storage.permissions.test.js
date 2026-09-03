@@ -215,6 +215,58 @@ describeStorage('storage route permissions', () => {
     expect(res.json().ok).toBe(true)
   })
 
+  it('editor cannot PUT llm config meta (admin only)', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: authHeader('editor'),
+      payload: { value: { apiKey: 'sk-x', baseUrl: '', model: '' } },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('viewer cannot PUT llm config meta', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: authHeader('viewer'),
+      payload: { value: { apiKey: 'sk-x' } },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('viewer cannot GET llm config meta via generic endpoint', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: authHeader('viewer'),
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('admin can PUT llm config meta and apiKey blank preserves existing', async () => {
+    const first = await app.inject({
+      method: 'PUT',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: authHeader('admin'),
+      payload: { value: { apiKey: 'sk-secret-12345678', baseUrl: 'https://a/v1', model: 'm1' } },
+    })
+    expect(first.statusCode).toBe(200)
+    // 第二次不传 apiKey，应保留第一次的密钥
+    const second = await app.inject({
+      method: 'PUT',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: authHeader('admin'),
+      payload: { value: { apiKey: '', baseUrl: 'https://b/v1', model: 'm2' } },
+    })
+    expect(second.statusCode).toBe(200)
+    const { storageRepository } = await import('../storageRepository.js')
+    const stored = storageRepository.getMeta('llm_config_v1')
+    expect(stored.apiKey).toBe('sk-secret-12345678')
+    expect(stored.baseUrl).toBe('https://b/v1')
+    expect(stored.model).toBe('m2')
+  })
+
   it('editor can PUT product order volumes meta', async () => {
     const res = await app.inject({
       method: 'PUT',

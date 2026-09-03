@@ -171,6 +171,23 @@ describeAudit('audit events for shared writes', () => {
     expect(entry?.detail.fields).toEqual(expect.arrayContaining(['useRegex', 'ticketLlmMode']))
   })
 
+  it('writes llm_config_update without key plaintext', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/storage/meta/llm_config_v1',
+      headers: { ...authHeader('admin'), 'content-type': 'application/json' },
+      payload: { value: { apiKey: 'sk-super-secret', baseUrl: 'https://a/v1', model: 'm1' } },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const { listAuditLogs } = await import('../audit.js')
+    const entry = listAuditLogs(7).find((row) => row.action === 'storage.llm_config_update')
+    expect(entry?.detail.key).toBe('llm_config_v1')
+    expect(entry?.detail.apiKeyChanged).toBe(true)
+    // 不得在审计 detail 中泄露密钥明文
+    expect(JSON.stringify(entry?.detail)).not.toContain('sk-super-secret')
+  })
+
   it('writes post_use_callback_decisions.replace', async () => {
     const res = await app.inject({
       method: 'PUT',

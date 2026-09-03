@@ -36,9 +36,9 @@ npm run dev:all
 | `ALLOW_BIND_ALL` | 否 | 生产环境监听 `0.0.0.0` 时须设为 `true`（建议前方有反向代理 + TLS） |
 | `ADMIN_INITIAL_USERNAME` | 否 | 空库首次创建管理员时的用户名，默认 `admin` |
 | `ADMIN_INITIAL_PASSWORD` | **空库首次必填** | 初始管理员密码，≥12 字符；禁止 `admin123` 等弱口令；**无默认值** |
-| `LLM_API_KEY` | 否 | 大模型 API 密钥（仅存服务端）；未设置时 LLM 打标/润色/举措生成回退本地规则 |
-| `LLM_BASE_URL` | 否 | OpenAI 兼容 API 基址，默认 `https://api.openai.com/v1` |
-| `LLM_MODEL` | 否 | 默认模型名，默认 `gpt-4o-mini`；设置页中的模型名可覆盖单次请求 |
+| `LLM_API_KEY` | 否 | 大模型 API 密钥（仅存服务端）；**库优先于环境变量**——管理员可在「设置」页配置并存入数据库，未在库中配置时回退此环境变量；两者皆无时 LLM 打标/润色/举措生成回退本地规则 |
+| `LLM_BASE_URL` | 否 | OpenAI 兼容 API 基址，默认 `https://api.openai.com/v1`；库内大模型配置留空时回退此变量 |
+| `LLM_MODEL` | 否 | 默认模型名，默认 `gpt-4o-mini`；库内大模型配置留空时回退此变量 |
 
 ## 常用命令
 

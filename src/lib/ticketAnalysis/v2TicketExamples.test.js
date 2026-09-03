@@ -87,7 +87,7 @@ vi.mock('./ticketAnalysisUnifiedLLM.js', async (importOriginal) => {
   }
 })
 
-const SETTINGS = { llmApiKey: 'sk-test', ticketLlmMode: 'unified', themeMatchMode: 'hybrid' }
+const SETTINGS = { llmServerConfigured: true, ticketLlmMode: 'unified', themeMatchMode: 'hybrid' }
 
 describe('V2 ticket examples §1.4 — customer request rule layer', () => {
   it.each(V2_CUSTOMER_REQUEST_EXAMPLES.map((c) => [c.id, c]))(

@@ -10,6 +10,7 @@
  *   | 'deleteData'
  *   | 'manageUsers'
  *   | 'configureLlmPersonal'
+ *   | 'manageLlmConfig'
  *   | 'editOrderVolumes'
  *   | 'manageTeamSettings'
  *   | 'viewAudit'
@@ -43,7 +44,7 @@ export const ROLE_PERMISSIONS = {
     'manageTags',
     'deleteData',
     'manageUsers',
-    'configureLlmPersonal',
+    'manageLlmConfig',
     'editOrderVolumes',
     'manageTeamSettings',
     'viewAudit',
@@ -60,11 +61,10 @@ export const ROLE_PERMISSIONS = {
     'manageTags',
     'manageUsers',
     'deleteData',
-    'configureLlmPersonal',
     'editOrderVolumes',
   ],
-  partial_editor: ['view', 'viewAudit', 'editRecord', 'export', 'configureLlmPersonal'],
-  viewer: ['view', 'viewAudit', 'export', 'configureLlmPersonal'],
+  partial_editor: ['view', 'viewAudit', 'editRecord', 'export'],
+  viewer: ['view', 'viewAudit', 'export'],
 }
 
 /** @type {Record<UserRole, string[]>} */

@@ -23,7 +23,7 @@ export const SETTINGS_TAB_LABELS = {
 
 /** @type {Record<SettingsTabKey, string>} */
 export const SETTINGS_TAB_DESCRIPTIONS = {
-  llm: '本机大模型连接，用于导入、打标与洞察中的 LLM 能力；仅保存在当前浏览器。',
+  llm: '团队大模型配置，用于导入、打标与洞察中的 LLM 能力；仅管理员可改，保存后全团队生效（库优先于环境变量）。',
   analysis:
     '团队共享的自动打标与分析规则；修改后底部会出现保存条，保存后约 5 秒内同步给其他用户。',
   metrics:
@@ -44,7 +44,7 @@ const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
 export function getVisibleSettingsTabs(can) {
   /** @type {SettingsTabKey[]} */
   const tabs = []
-  if (can('configureLlmPersonal')) tabs.push('llm')
+  if (can('manageLlmConfig')) tabs.push('llm')
   if (can('manageTeamSettings')) tabs.push('analysis')
   if (can('editOrderVolumes')) tabs.push('metrics')
   if (can('manageTeamSettings') || can('deleteData') || can('export')) tabs.push('data')

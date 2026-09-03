@@ -25,7 +25,10 @@ describe('auth permissions', () => {
     expect(hasPermission('editor', 'deleteData')).toBe(true)
     expect(hasPermission('editor', 'manageTeamSettings')).toBe(false)
     expect(hasPermission('editor', 'editOrderVolumes')).toBe(true)
-    expect(hasPermission('editor', 'configureLlmPersonal')).toBe(true)
+    // 大模型配置仅管理员；editor 不再有 configureLlmPersonal
+    expect(hasPermission('editor', 'configureLlmPersonal')).toBe(false)
+    expect(hasPermission('editor', 'manageLlmConfig')).toBe(false)
+    expect(hasPermission('admin', 'manageLlmConfig')).toBe(true)
     expect(canAccessRoute('editor', '/users')).toBe(true)
   })
 
@@ -43,12 +46,14 @@ describe('auth permissions', () => {
     expect(hasPermission('editor', 'deleteData')).toBe(true)
   })
 
-  it('viewer is read-only except export and personal llm', () => {
+  it('viewer is read-only except export and audit', () => {
     expect(hasPermission('viewer', 'export')).toBe(true)
     expect(hasPermission('viewer', 'import')).toBe(false)
     expect(hasPermission('viewer', 'retag')).toBe(false)
     expect(hasPermission('viewer', 'manageTags')).toBe(false)
-    expect(hasPermission('viewer', 'configureLlmPersonal')).toBe(true)
+    // 大模型配置仅管理员；viewer 不再有 configureLlmPersonal
+    expect(hasPermission('viewer', 'configureLlmPersonal')).toBe(false)
+    expect(hasPermission('viewer', 'manageLlmConfig')).toBe(false)
     expect(hasPermission('viewer', 'editOrderVolumes')).toBe(false)
     expect(hasPermission('viewer', 'manageTeamSettings')).toBe(false)
   })
