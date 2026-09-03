@@ -17,6 +17,7 @@ import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import OverviewJourneyMap from './OverviewJourneyMap.jsx'
+import ProductExperienceTrendPanel from './ProductExperienceTrendPanel.jsx'
 
 /**
  * @param {Object} props
@@ -139,6 +140,8 @@ export default function OverviewTab({
         conclusions={displayConclusions}
         feedbacks={feedbacks}
       />
+
+      <ProductExperienceTrendPanel feedbacks={feedbacks} />
 
       <OverviewJourneyMap feedbacks={feedbacks} currentPeriod={currentPeriod} />
 

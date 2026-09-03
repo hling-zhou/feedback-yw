@@ -10,4 +10,17 @@ describe('OverviewTab journey map', () => {
     expect(map).toContain('投诉仅含客户体验类')
     expect(map).toContain('sourceFilter')
   })
+
+  it('mounts the single-product experience trend panel after 行动建议', () => {
+    const overview = fs.readFileSync(new URL('./OverviewTab.jsx', import.meta.url), 'utf8')
+    expect(overview).toContain('ProductExperienceTrendPanel')
+    expect(overview).toContain('<ProductExperienceTrendPanel feedbacks={feedbacks} />')
+    // 顺序：行动建议之后、用户旅程之前
+    expect(overview.indexOf('<PlanningRecommendationsPanel')).toBeLessThan(
+      overview.indexOf('<ProductExperienceTrendPanel'),
+    )
+    expect(overview.indexOf('<ProductExperienceTrendPanel')).toBeLessThan(
+      overview.indexOf('<OverviewJourneyMap'),
+    )
+  })
 })

@@ -34,6 +34,8 @@ export default function TrendChart({
   allowDecimals = false,
   referenceLine = null,
   referenceLines = null,
+  tooltipFormatter = null,
+  tooltipLabelFormatter = null,
 }) {
   if (!data?.length) {
     return <EmptyChart message="暂无趋势数据" height={height} />
@@ -104,7 +106,7 @@ export default function TrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
           <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
           <YAxis allowDecimals={allowDecimals} tick={{ fontSize: 11, fill: '#6B7280' }} />
-          <ChartTooltip />
+          <ChartTooltip formatter={tooltipFormatter || undefined} labelFormatter={tooltipLabelFormatter || undefined} />
           <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
           {ref}
           {series.map((line) => (
@@ -140,7 +142,7 @@ export default function TrendChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
         <YAxis allowDecimals={allowDecimals} tick={{ fontSize: 11, fill: '#6B7280' }} />
-        <ChartTooltip />
+        <ChartTooltip formatter={tooltipFormatter || undefined} labelFormatter={tooltipLabelFormatter || undefined} />
         <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
         {ref}
         {series.map((area) => (
