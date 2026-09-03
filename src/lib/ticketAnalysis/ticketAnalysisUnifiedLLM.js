@@ -34,6 +34,8 @@ import {
  * @property {string} [problemType]
  * @property {string} [journeyL2]
  * @property {boolean} [fuzzy]
+ * @property {string} [productName] 投诉产品名（知识库注入用）
+ * @property {string} [knowledgeSnippets] 格式化后的知识库片段（空则不注入）
  */
 
 /**
@@ -79,6 +81,8 @@ ${candidatesBlock || '（无）'}
 - customerRequest: ${input.ruleFallback.customerRequest || '（空）'}
 - painPoint: ${input.ruleFallback.painPoint || '（空）'}
 
+产品：${input.productName || '未标注'}
+${input.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据其中与工单相关的规则/特性；跨产品痛点可综合多产品知识库）：\n${input.knowledgeSnippets}\n` : ''}
 维度（优化建议参考）：
 - 问题类型：${input.problemType || '未分类'}
 - 请求场景：${input.requestScene || '未分类'}
@@ -107,6 +111,7 @@ const UNIFIED_SYSTEM_PROMPT = `你是云计算客户体验分析师兼产品体�
 
 步骤 3 — 优化建议（不可省略 productOptimizations）：
 - productOptimizations 至少 1 条：功能/交互/策略/报错等可执行改进，每条 25～80 字。
+- 若提供了「产品知识库参考」，优先依据其中与工单相关的规则/特性给出可执行改进；跨产品痛点可综合多产品知识库。
 - serviceOptimizations 按需：SLA/协同/知识库等；禁止空泛套话。
 - 不要复述临时规避操作。
 
@@ -115,9 +120,10 @@ const UNIFIED_SYSTEM_PROMPT = `你是云计算客户体验分析师兼产品体�
 /**
  * @param {TicketAnalysisUnifiedInput} input
  * @param {import('../storage.js').AppSettings} settings
+ * @param {{ knowledgeSnippets?: string; productName?: string }} [extras]
  * @returns {Promise<TicketAnalysisUnifiedResult>}
  */
-export async function extractTicketAnalysisUnifiedWithLLM(input, settings) {
+export async function extractTicketAnalysisUnifiedWithLLM(input, settings, extras = {}) {
   const rule = input.ruleFallback
   /** @type {TicketAnalysisPartialFailure[]} */
   const partialFailures = []
@@ -154,7 +160,7 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings) {
       max_tokens: 1024,
       messages: [
         { role: 'system', content: UNIFIED_SYSTEM_PROMPT },
-        { role: 'user', content: buildUnifiedUserPrompt(input) },
+        { role: 'user', content: buildUnifiedUserPrompt({ ...input, ...extras }) },
       ],
     })
 

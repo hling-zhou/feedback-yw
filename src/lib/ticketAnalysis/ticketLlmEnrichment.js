@@ -17,6 +17,20 @@ import { normalizeTicketRecordFields } from './recordNormalize.js'
 import { validateTicketAnalysisPair } from './validateTicketAnalysisPair.js'
 import { analyzeTicketSentiment } from '../sentiment.js'
 import { buildSentimentAnalysisText } from '../sentimentAnalysisText.js'
+import { getCatalogProduct, getCatalogProducts } from '../productCatalogLoader.js'
+import {
+  buildKnowledgeQuery,
+  retrieveKnowledgeSnippets,
+  formatKnowledgeSnippetsForPrompt,
+} from '../knowledgeBaseClient.js'
+
+/**
+ * @param {string} [productKey]
+ * @returns {string}
+ */
+function resolveProductName(productKey) {
+  return getCatalogProduct(productKey)?.name || ''
+}
 
 /**
  * @param {import('../types.js').FeedbackRecord} record
@@ -80,8 +94,9 @@ function buildTicketLlmRuleContext(record) {
  * @param {import('../types.js').FeedbackRecord} record
  * @param {import('../storage.js').AppSettings} settings
  * @param {ReturnType<typeof buildTicketLlmRuleContext>} ctx
+ * @param {{ knowledgeSnippets?: string; productName?: string }} [extras]
  */
-async function enrichRecordWithTicketLlmSeparate(record, settings, ctx) {
+async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras = {}) {
   const {
     corpus,
     candidates,
@@ -166,6 +181,7 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx) {
         fuzzy: corpus.fuzzy,
       },
       settings,
+      extras,
     )
     if (llmOpt.optimizationProduct) optimizationProduct = llmOpt.optimizationProduct
     if (llmOpt.optimizationService) optimizationService = llmOpt.optimizationService
@@ -198,8 +214,9 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx) {
  * @param {import('../types.js').FeedbackRecord} record
  * @param {import('../storage.js').AppSettings} settings
  * @param {ReturnType<typeof buildTicketLlmRuleContext>} ctx
+ * @param {{ knowledgeSnippets?: string; productName?: string }} [extras]
  */
-async function enrichRecordWithTicketLlmUnified(record, settings, ctx) {
+async function enrichRecordWithTicketLlmUnified(record, settings, ctx, extras = {}) {
   const {
     corpus,
     candidates,
@@ -229,6 +246,7 @@ async function enrichRecordWithTicketLlmUnified(record, settings, ctx) {
       fuzzy: corpus.fuzzy,
     },
     settings,
+    extras,
   )
 
   const { sentiment, urgencyLevel } = analyzeTicketSentiment(
@@ -258,9 +276,19 @@ async function enrichRecordWithTicketLlmUnified(record, settings, ctx) {
  * 对已有初标记录用 LLM 增强客户请求、痛点与单条优化建议（不覆盖四维标签）
  * @param {import('../types.js').FeedbackRecord} record
  * @param {import('../storage.js').AppSettings} settings
+ * @param {{ knowledgeSnippets?: string; productName?: string }} [extras]
  */
-export async function enrichRecordWithTicketLlm(record, settings) {
+export async function enrichRecordWithTicketLlm(record, settings, extras = {}) {
   if (!canUseSemanticMatch(settings)) return record
+
+  const productName = extras.productName ?? resolveProductName(record.productKey)
+  let knowledgeSnippets = extras.knowledgeSnippets
+  if (knowledgeSnippets === undefined) {
+    const query = buildKnowledgeQuery(record, getCatalogProducts())
+    const [snippets] = await retrieveKnowledgeSnippets([query])
+    knowledgeSnippets = formatKnowledgeSnippetsForPrompt(snippets || [])
+  }
+  const mergedExtras = { productName, knowledgeSnippets }
 
   const ctx = buildTicketLlmRuleContext(record)
   const mode = resolveTicketLlmMode(settings)
@@ -268,9 +296,9 @@ export async function enrichRecordWithTicketLlm(record, settings) {
     if (mode === 'split2') {
       console.warn('[ticket-llm] split2 尚未实现，回退 separate')
     }
-    return enrichRecordWithTicketLlmSeparate(record, settings, ctx)
+    return enrichRecordWithTicketLlmSeparate(record, settings, ctx, mergedExtras)
   }
-  return enrichRecordWithTicketLlmUnified(record, settings, ctx)
+  return enrichRecordWithTicketLlmUnified(record, settings, ctx, mergedExtras)
 }
 
 /**
@@ -287,13 +315,26 @@ export async function enrichRecordsWithTicketLlm(records, settings, onProgress, 
 
   const BATCH = 4
   const out = [...records]
+  const catalogProducts = getCatalogProducts()
 
   for (let i = 0; i < records.length; i += BATCH) {
     const chunk = records.slice(i, i + BATCH)
+    // 每批一次知识库检索，避免逐条往返
+    const queries = chunk.map((record) => buildKnowledgeQuery(record, catalogProducts))
+    let snippetsPerRecord = chunk.map(() => [])
+    try {
+      const results = await retrieveKnowledgeSnippets(queries)
+      snippetsPerRecord = results.length === chunk.length ? results : chunk.map(() => [])
+    } catch (err) {
+      console.warn('[ticket-llm] 批量知识库检索失败，降级空片段:', err)
+    }
     const enriched = await Promise.all(
-      chunk.map(async (record) => {
+      chunk.map(async (record, j) => {
         try {
-          return await enrichRecordWithTicketLlm(record, settings)
+          return await enrichRecordWithTicketLlm(record, settings, {
+            productName: resolveProductName(record.productKey),
+            knowledgeSnippets: formatKnowledgeSnippetsForPrompt(snippetsPerRecord[j] || []),
+          })
         } catch (err) {
           console.warn('[ticket-llm] 单条增强失败:', err)
           return record

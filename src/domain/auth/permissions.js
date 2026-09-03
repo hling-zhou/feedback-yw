@@ -16,6 +16,7 @@
  *   | 'viewAudit'
  *   | 'manageMessageBottles'
  *   | 'manageRequirementSync'
+ *   | 'manageKnowledgeBase'
  * )} PermissionCode */
 
 export const ROLES = /** @type {const} */ (['admin', 'editor', 'partial_editor', 'viewer'])
@@ -50,6 +51,7 @@ export const ROLE_PERMISSIONS = {
     'viewAudit',
     'manageMessageBottles',
     'manageRequirementSync',
+    'manageKnowledgeBase',
   ],
   editor: [
     'view',
@@ -62,6 +64,7 @@ export const ROLE_PERMISSIONS = {
     'manageUsers',
     'deleteData',
     'editOrderVolumes',
+    'manageKnowledgeBase',
   ],
   partial_editor: ['view', 'viewAudit', 'editRecord', 'export'],
   viewer: ['view', 'viewAudit', 'export'],

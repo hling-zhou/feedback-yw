@@ -41,6 +41,8 @@ import { handlePasswordLogin } from './authLogin.js'
 import { registerStorageRoutes } from './routes/storage.js'
 import { registerActionRoutes } from './routes/actions.js'
 import { registerLlmRoutes } from './routes/llm.js'
+import { registerKnowledgeBaseRoutes } from './routes/knowledgeBase.js'
+import { seedKnowledgeBasesIfEmpty } from './knowledgeBaseSeed.js'
 import { registerAuditRoutes } from './routes/audit.js'
 import { registerMessageBottleRoutes } from './routes/messageBottles.js'
 import { registerTicketReviewRoutes } from './routes/ticketReviews.js'
@@ -75,6 +77,7 @@ registerAuthHooks(app)
 registerStorageRoutes(app)
 registerActionRoutes(app)
 registerLlmRoutes(app)
+registerKnowledgeBaseRoutes(app)
 registerAuditRoutes(app)
 registerMessageBottleRoutes(app)
 registerTicketReviewRoutes(app)
@@ -294,6 +297,8 @@ await seedAdminUser()
 if (listUsers().length === 0) {
   throw new Error('[auth] 未能创建初始管理员，请检查 ADMIN_INITIAL_PASSWORD 配置。')
 }
+
+await seedKnowledgeBasesIfEmpty()
 
 try {
   await app.listen({ port: PORT, host: HOST })

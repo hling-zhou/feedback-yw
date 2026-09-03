@@ -594,6 +594,17 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_product ON post_use_jira_items(product_name);
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_status ON post_use_jira_items(status);
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_updated ON post_use_jira_items(updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS knowledge_bases (
+      product_key TEXT PRIMARY KEY,
+      product_name TEXT NOT NULL DEFAULT '',
+      export_date TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL,
+      uploaded_by_user_id TEXT,
+      uploaded_by_username TEXT NOT NULL DEFAULT '',
+      uploaded_at TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0
+    );
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

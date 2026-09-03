@@ -101,4 +101,11 @@ describe('auth permissions', () => {
     expect(canUsePostUseCallbackList('partial_editor')).toBe(false)
     expect(canUsePostUseCallbackList('viewer')).toBe(false)
   })
+
+  it('manageKnowledgeBase is admin + 体验运营 only', () => {
+    expect(hasPermission('admin', 'manageKnowledgeBase')).toBe(true)
+    expect(hasPermission('editor', 'manageKnowledgeBase')).toBe(true)
+    expect(hasPermission('partial_editor', 'manageKnowledgeBase')).toBe(false)
+    expect(hasPermission('viewer', 'manageKnowledgeBase')).toBe(false)
+  })
 })

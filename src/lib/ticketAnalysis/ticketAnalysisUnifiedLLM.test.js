@@ -120,4 +120,52 @@ describe('ticketAnalysisUnifiedLLM', () => {
     expect(result.customerRequest).toBe(RULE.customerRequest)
     expect(result.partialFailures?.length).toBeGreaterThan(0)
   })
+
+  it('injects knowledgeSnippets and productName into prompt when provided', async () => {
+    vi.mocked(llmChatCompletion).mockResolvedValue({})
+    vi.mocked(getLlmCompletionText).mockReturnValue('{}')
+    vi.mocked(parseLlmMessageContent).mockReturnValue({
+      customerRequest: '请求',
+      painPoint: '痛点',
+      productOptimizations: ['建议'],
+      serviceOptimizations: [],
+    })
+
+    await extractTicketAnalysisUnifiedWithLLM(
+      { taggingText: '带宽超限', ruleFallback: RULE },
+      SETTINGS,
+      {
+        productName: '弹性公网IP',
+        knowledgeSnippets: '【eip】独享带宽\n订购流程',
+      },
+    )
+
+    const call = vi.mocked(llmChatCompletion).mock.calls[0]?.[1]
+    const userPrompt = String(call?.messages?.[1]?.content ?? '')
+    expect(userPrompt).toContain('产品：弹性公网IP')
+    expect(userPrompt).toContain('产品知识库参考')
+    expect(userPrompt).toContain('【eip】独享带宽')
+  })
+
+  it('omits knowledge section when snippets empty', async () => {
+    vi.mocked(llmChatCompletion).mockResolvedValue({})
+    vi.mocked(getLlmCompletionText).mockReturnValue('{}')
+    vi.mocked(parseLlmMessageContent).mockReturnValue({
+      customerRequest: '请求',
+      painPoint: '痛点',
+      productOptimizations: ['建议'],
+      serviceOptimizations: [],
+    })
+
+    await extractTicketAnalysisUnifiedWithLLM(
+      { taggingText: '带宽超限', ruleFallback: RULE },
+      SETTINGS,
+      { productName: '弹性公网IP', knowledgeSnippets: '' },
+    )
+
+    const call = vi.mocked(llmChatCompletion).mock.calls[0]?.[1]
+    const userPrompt = String(call?.messages?.[1]?.content ?? '')
+    expect(userPrompt).toContain('产品：弹性公网IP')
+    expect(userPrompt).not.toContain('产品知识库参考')
+  })
 })

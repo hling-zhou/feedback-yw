@@ -14,6 +14,7 @@ import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import RequirementTicketProgressPanel from '../components/admin/RequirementTicketProgressPanel.jsx'
 import ApiKeyPanel from '../components/admin/ApiKeyPanel.jsx'
+import KnowledgeBasePanel from '../components/admin/KnowledgeBasePanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -855,6 +856,8 @@ export default function Settings() {
             <RequirementTicketProgressPanel />
           </div>
         )}
+
+        {activeTab === 'knowledge_base' && can('manageKnowledgeBase') && <KnowledgeBasePanel />}
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles' | 'requirement_sync'} SettingsTabKey */
+/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles' | 'requirement_sync' | 'knowledge_base'} SettingsTabKey */
 
 export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'llm',
@@ -8,6 +8,7 @@ export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'audit',
   'bottles',
   'requirement_sync',
+  'knowledge_base',
 ])
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -19,6 +20,7 @@ export const SETTINGS_TAB_LABELS = {
   audit: '审计日志',
   bottles: '漂流瓶',
   requirement_sync: '需求工单进展同步',
+  knowledge_base: '产品知识库',
 }
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -33,6 +35,8 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
   requirement_sync:
     '维护外部需求工单进展与状态映射，管理外部系统 API Key；举措关联需求工单后，排期与状态由此同步展示。',
+  knowledge_base:
+    '上传/管理各产品的业务知识库，供工单自动分析的「优化建议」检索引用；同一产品上传即覆盖。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
@@ -51,6 +55,7 @@ export function getVisibleSettingsTabs(can) {
   if (can('viewAudit')) tabs.push('audit')
   if (can('view')) tabs.push('bottles')
   if (can('manageRequirementSync')) tabs.push('requirement_sync')
+  if (can('manageKnowledgeBase')) tabs.push('knowledge_base')
   return tabs
 }
 
