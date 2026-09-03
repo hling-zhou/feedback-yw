@@ -51,6 +51,51 @@ export function resolveJourneyDisplay(item, feedbackByTicketId) {
 }
 
 /**
+ * 遍历举措所有关联工单收集 problemType（去重）。
+ *
+ * @param {ActionItem} item
+ * @param {Map<string, ActionItemFeedbackLookup | FeedbackRecord>} [feedbackByTicketId]
+ * @returns {string[]}
+ */
+export function collectProblemTypesFromItem(item, feedbackByTicketId) {
+  const ids = (item?.linkedTicketIds || []).map((id) => String(id).trim()).filter(Boolean)
+  const seen = new Set()
+  for (const ticketId of ids) {
+    const record = lookupFeedback(feedbackByTicketId, ticketId)
+    const value = String(record?.problemType ?? '').trim()
+    if (value) seen.add(value)
+  }
+  // 兜底：无关联工单时回退快照
+  if (!seen.size) {
+    const snapshot = String(item?.problemTypeSnapshot ?? '').trim()
+    if (snapshot) seen.add(snapshot)
+  }
+  return [...seen]
+}
+
+/**
+ * 遍历举措所有关联工单收集 journeyL1（去重）。
+ *
+ * @param {ActionItem} item
+ * @param {Map<string, ActionItemFeedbackLookup | FeedbackRecord>} [feedbackByTicketId]
+ * @returns {string[]}
+ */
+export function collectJourneyL1FromItem(item, feedbackByTicketId) {
+  const ids = (item?.linkedTicketIds || []).map((id) => String(id).trim()).filter(Boolean)
+  const seen = new Set()
+  for (const ticketId of ids) {
+    const record = lookupFeedback(feedbackByTicketId, ticketId)
+    const value = String(record?.journeyL1 ?? '').trim()
+    if (value) seen.add(value)
+  }
+  if (!seen.size) {
+    const snapshot = String(item?.journeyL1Snapshot ?? '').trim()
+    if (snapshot) seen.add(snapshot)
+  }
+  return [...seen]
+}
+
+/**
  * @param {ActionItem} item
  * @param {string} problemType
  * @param {Map<string, ActionItemFeedbackLookup | FeedbackRecord>} [feedbackByTicketId]
@@ -58,7 +103,7 @@ export function resolveJourneyDisplay(item, feedbackByTicketId) {
 export function actionItemMatchesProblemTypeFilter(item, problemType, feedbackByTicketId) {
   const needle = String(problemType ?? '').trim()
   if (!needle) return true
-  return resolveProblemTypeDisplay(item, feedbackByTicketId) === needle
+  return collectProblemTypesFromItem(item, feedbackByTicketId).includes(needle)
 }
 
 /**
@@ -69,7 +114,7 @@ export function actionItemMatchesProblemTypeFilter(item, problemType, feedbackBy
 export function actionItemMatchesJourneyL1Filter(item, journeyL1, feedbackByTicketId) {
   const needle = String(journeyL1 ?? '').trim()
   if (!needle) return true
-  return resolveJourneyDisplay(item, feedbackByTicketId).journeyL1 === needle
+  return collectJourneyL1FromItem(item, feedbackByTicketId).includes(needle)
 }
 
 /**
@@ -80,9 +125,9 @@ export function buildActionItemProblemTypeFilterOptions(items, feedbackByTicketI
   /** @type {Map<string, number>} */
   const counts = new Map()
   for (const item of items) {
-    const value = resolveProblemTypeDisplay(item, feedbackByTicketId)
-    if (!value) continue
-    counts.set(value, (counts.get(value) || 0) + 1)
+    for (const value of collectProblemTypesFromItem(item, feedbackByTicketId)) {
+      counts.set(value, (counts.get(value) || 0) + 1)
+    }
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
@@ -97,9 +142,9 @@ export function buildActionItemJourneyL1FilterOptions(items, feedbackByTicketId)
   /** @type {Map<string, number>} */
   const counts = new Map()
   for (const item of items) {
-    const { journeyL1 } = resolveJourneyDisplay(item, feedbackByTicketId)
-    if (!journeyL1) continue
-    counts.set(journeyL1, (counts.get(journeyL1) || 0) + 1)
+    for (const value of collectJourneyL1FromItem(item, feedbackByTicketId)) {
+      counts.set(value, (counts.get(value) || 0) + 1)
+    }
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))

@@ -56,7 +56,6 @@ import {
   linkedTicketIdsInPeriod,
 } from '../domain/actionItemPeriodFilter.js'
 import { normalizeActionSchedule } from '../domain/actionSchedule.js'
-import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { formatSharePercent } from '../domain/ticketTodo.js'
 import {
   getActionItemStats,
@@ -100,6 +99,7 @@ import ActionItemRequirementLinkFields, {
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import PostUseJiraTab from './PostUseJiraTab.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
+import ProblemReductionTab from './ProblemReductionTab.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
@@ -116,7 +116,6 @@ import {
 import {
   buildActionItemJourneyL1FilterOptions,
   buildActionItemProblemTypeFilterOptions,
-  resolveJourneyDisplay,
 } from '../domain/actionItemDisplay.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
@@ -194,7 +193,9 @@ export default function Actions() {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
   const tab =
-    rawTab === 'product' || rawTab === 'post-use-jira' ? rawTab : 'ticket-todos'
+    rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction'
+      ? rawTab
+      : 'ticket-todos'
   return (
     <div className="space-y-4">
       <Tabs
@@ -210,6 +211,7 @@ export default function Actions() {
           { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
           { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
           { key: 'post-use-jira', label: '用后即评JIRA', children: <PostUseJiraTab /> },
+          { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
         ]}
       />
     </div>
@@ -969,63 +971,10 @@ function ProductActionsTab() {
       render: (text) => <CopyableEllipsisCell text={text} />,
     },
     {
-      title: '问题类型',
-      dataIndex: 'problemTypeSnapshot',
-      width: 120,
-    },
-    {
-      title: '用户旅程',
-      key: 'journey',
-      width: 160,
-      render: (_, record) => {
-        const { journeyL1, journeyL2 } = resolveJourneyDisplay(record, feedbackByTicketId)
-        if (!journeyL1 && !journeyL2) {
-          return <Typography.Text type="secondary">—</Typography.Text>
-        }
-        return (
-          <div>
-            <Typography.Text
-              type={!journeyL1 || journeyL1 === '未识别环节' ? 'warning' : undefined}
-            >
-              {journeyL1 || '待打标'}
-            </Typography.Text>
-            <Typography.Text type="secondary" className="block text-xs">
-              {journeyL2 || '-'}
-            </Typography.Text>
-          </div>
-        )
-      },
-    },
-    {
-      title: '来源',
-      key: 'sources',
-      width: 100,
-      render: (_, record) => {
-        const sources = record.linkedDataSources || []
-        if (!sources.length) return '—'
-        return (
-          <Space size={[4, 4]} wrap>
-            {sources.map((s) => (
-              <Tag key={s} className="!m-0">
-                {DATA_SOURCE_LABELS[s] || s}
-              </Tag>
-            ))}
-          </Space>
-        )
-      },
-    },
-    {
       title: '举措',
       dataIndex: 'content',
       ellipsis: true,
       width: 180,
-      render: (text) => <CopyableEllipsisCell text={text} />,
-    },
-    {
-      title: '举措详情',
-      dataIndex: 'detail',
-      ellipsis: true,
-      width: 140,
       render: (text) => <CopyableEllipsisCell text={text} />,
     },
     {
@@ -1129,17 +1078,19 @@ function ProductActionsTab() {
       ),
     },
     {
-      title: '最近更新时间',
-      key: 'updatedAt',
-      width: 168,
-      render: (_, record) => formatActionItemUpdatedAtDisplay(record),
-    },
-    {
-      title: '最近更新人员',
-      key: 'updatedBy',
-      width: 100,
-      ellipsis: true,
-      render: (_, record) => formatActionItemUpdatedByDisplay(record),
+      title: '最近更新',
+      key: 'updated',
+      width: 200,
+      render: (_, record) => (
+        <div className="truncate">
+          <Typography.Text className="text-xs">
+            {formatActionItemUpdatedAtDisplay(record)}
+          </Typography.Text>
+          <Typography.Text type="secondary" className="block text-xs">
+            {formatActionItemUpdatedByDisplay(record) || '—'}
+          </Typography.Text>
+        </div>
+      ),
     },
     {
       title: '操作',

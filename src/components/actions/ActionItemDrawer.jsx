@@ -26,6 +26,9 @@ import { resolveJourneyDisplay } from '../../domain/actionItemDisplay.js'
 import ActionItemRequirementLinkFields from './ActionItemRequirementLinkFields.jsx'
 import ActionItemStatusTag from '../tags/ActionItemStatusTag.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
+import ActionProblemScopePanel from './ActionProblemScopePanel.jsx'
+import { buildActionProblemScope } from '../../domain/actionProblemScope.js'
+import { useMemo } from 'react'
 
 /** @typedef {import('../../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -107,6 +110,10 @@ export default function ActionItemDrawer({
   const journey = item ? resolveJourneyDisplay(item, feedbackByTicketId) : null
   const sources = item?.linkedDataSources || []
   const linkedTicketCount = new Set(linkedTicketIds.map((id) => String(id).trim()).filter(Boolean)).size
+  const problemScope = useMemo(
+    () => (item ? buildActionProblemScope(item, feedbackByTicketId, productNameByKey) : null),
+    [item, feedbackByTicketId, productNameByKey],
+  )
 
   return (
     <Drawer
@@ -289,32 +296,60 @@ export default function ActionItemDrawer({
 
           <section className="space-y-3">
             <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-              问题上下文
+              关联问题{problemScope && problemScope.problems.length > 1 ? `（共 ${problemScope.problems.length} 类）` : ''}
             </Typography.Title>
-            <Space size={[6, 6]} wrap>
-              <Tag className="!m-0">{item.problemTypeSnapshot?.trim() || '问题类型：—'}</Tag>
-              <Tag className="!m-0">
-                {journey?.journeyL1 || '用户旅程：—'}
-                {journey?.journeyL2 ? ` / ${journey.journeyL2}` : ''}
-              </Tag>
-              {sources.map((source) => (
-                <Tag key={source} className="!m-0">
-                  {DATA_SOURCE_LABELS[source] || source}
+            {problemScope && problemScope.problems.some((p) => p.ticketCount > 0) ? (
+              <Space direction="vertical" size={6} className="w-full">
+                {problemScope.problems
+                  .filter((p) => p.ticketCount > 0)
+                  .map((p) => (
+                    <div key={p.key} className="rounded-md border border-ink-100 px-3 py-2">
+                      <Space size={6} wrap>
+                        <Typography.Text strong className="!text-sm">{p.productName}</Typography.Text>
+                        <Typography.Text type="secondary" className="!text-xs">
+                          {p.journeyL1}
+                          {p.journeyL2 && p.journeyL2 !== p.journeyL1 ? ` / ${p.journeyL2}` : ''}
+                        </Typography.Text>
+                        <Tag className="!m-0 !text-xs">{p.ticketCount} 单</Tag>
+                        {p.problemTypeLabel ? <Tag className="!m-0 !text-xs">{p.problemTypeLabel}</Tag> : null}
+                        {p.requestSceneLabel ? <Tag className="!m-0 !text-xs">{p.requestSceneLabel}</Tag> : null}
+                      </Space>
+                      {p.painPointSample ? (
+                        <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 !text-xs" ellipsis={{ rows: 2, tooltip: p.painPointSample }}>
+                          {p.painPointSample}
+                        </Typography.Paragraph>
+                      ) : null}
+                    </div>
+                  ))}
+              </Space>
+            ) : (
+              <Space size={[6, 6]} wrap>
+                <Tag className="!m-0">{item.problemTypeSnapshot?.trim() || '问题类型：—'}</Tag>
+                <Tag className="!m-0">
+                  {journey?.journeyL1 || '用户旅程：—'}
+                  {journey?.journeyL2 ? ` / ${journey.journeyL2}` : ''}
                 </Tag>
-              ))}
-              {!sources.length ? <Tag className="!m-0">来源：—</Tag> : null}
-            </Space>
-            <div>
-              <Typography.Text type="secondary" className="mb-1 block text-xs">
-                问题
-              </Typography.Text>
-              <Typography.Paragraph
-                className="!mb-0 text-sm text-ink-800"
-                ellipsis={{ rows: 3, tooltip: item.painPointSnapshot?.trim() || '—' }}
-              >
-                {item.painPointSnapshot?.trim() || '—'}
-              </Typography.Paragraph>
-            </div>
+                {sources.map((source) => (
+                  <Tag key={source} className="!m-0">
+                    {DATA_SOURCE_LABELS[source] || source}
+                  </Tag>
+                ))}
+                {!sources.length ? <Tag className="!m-0">来源：—</Tag> : null}
+              </Space>
+            )}
+            {item.painPointSnapshot?.trim() ? (
+              <div>
+                <Typography.Text type="secondary" className="mb-1 block text-xs">
+                  问题（举措快照）
+                </Typography.Text>
+                <Typography.Paragraph
+                  className="!mb-0 text-sm text-ink-800"
+                  ellipsis={{ rows: 3, tooltip: item.painPointSnapshot?.trim() || '—' }}
+                >
+                  {item.painPointSnapshot?.trim() || '—'}
+                </Typography.Paragraph>
+              </div>
+            ) : null}
             <Typography.Text type="secondary" className="block text-xs">
               首次提出 {item.firstProposedAt || '—'} · 最近更新{' '}
               {formatActionItemUpdatedByDisplay(item)} · {formatActionItemUpdatedAtDisplay(item)}
@@ -329,6 +364,17 @@ export default function ActionItemDrawer({
               ticketIds={linkedTicketIds}
               feedbackByTicketId={feedbackByTicketId}
               onOpenTicket={onOpenTicket}
+            />
+          </section>
+
+          <section className="space-y-3">
+            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+              压降验证
+            </Typography.Title>
+            <ActionProblemScopePanel
+              action={item}
+              feedbackByTicketId={feedbackByTicketId}
+              productNameByKey={productNameByKey}
             />
           </section>
         </div>

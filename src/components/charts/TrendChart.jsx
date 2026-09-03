@@ -20,7 +20,10 @@ import ChartTooltip from './ChartTooltip.jsx'
  * @param {boolean} [props.stacked] 仅 area 模式有效
  * @param {number} [props.height]
  * @param {boolean} [props.allowDecimals]
- * @param {{ y: number; label?: string; stroke?: string; strokeDasharray?: string } | null} [props.referenceLine]
+ * @param {{ y?: number; x?: string; label?: string; stroke?: string; strokeDasharray?: string } | null} [props.referenceLine]
+ *        y=水平基准线；x=X 轴某值处的垂直线（如实施月份）
+ * @param {{ x?: string; label?: string; stroke?: string; strokeDasharray?: string }[]} [props.referenceLines]
+ *        多条垂直参考线（如同一问题上多个举措的实施月份）
  */
 export default function TrendChart({
   data,
@@ -30,6 +33,7 @@ export default function TrendChart({
   height = 220,
   allowDecimals = false,
   referenceLine = null,
+  referenceLines = null,
 }) {
   if (!data?.length) {
     return <EmptyChart message="暂无趋势数据" height={height} />
@@ -39,9 +43,11 @@ export default function TrendChart({
     ? areas
     : [{ dataKey: 'count', name: '反馈数', stroke: '#4F46E5', fill: 'url(#trendFill)' }]
 
-  const ref =
-    referenceLine && Number.isFinite(referenceLine.y) ? (
+  const refs = []
+  if (referenceLine && Number.isFinite(referenceLine.y)) {
+    refs.push(
       <ReferenceLine
+        key="ref-y"
         y={referenceLine.y}
         stroke={referenceLine.stroke || '#F59E0B'}
         strokeDasharray={referenceLine.strokeDasharray || '6 4'}
@@ -51,8 +57,45 @@ export default function TrendChart({
           fill: '#B45309',
           fontSize: 11,
         }}
-      />
-    ) : null
+      />,
+    )
+  }
+  if (referenceLine && referenceLine.x != null && String(referenceLine.x) !== '') {
+    refs.push(
+      <ReferenceLine
+        key="ref-x"
+        x={String(referenceLine.x)}
+        stroke={referenceLine.stroke || '#F59E0B'}
+        strokeDasharray={referenceLine.strokeDasharray || '6 4'}
+        label={{
+          value: referenceLine.label || String(referenceLine.x),
+          position: 'insideTopRight',
+          fill: '#B45309',
+          fontSize: 11,
+        }}
+      />,
+    )
+  }
+  if (Array.isArray(referenceLines)) {
+    referenceLines.forEach((r, idx) => {
+      if (!r || r.x == null || String(r.x) === '') return
+      refs.push(
+        <ReferenceLine
+          key={`ref-x-${idx}-${r.x}`}
+          x={String(r.x)}
+          stroke={r.stroke || '#F59E0B'}
+          strokeDasharray={r.strokeDasharray || '6 4'}
+          label={{
+            value: r.label || String(r.x),
+            position: 'insideTopRight',
+            fill: '#B45309',
+            fontSize: 11,
+          }}
+        />,
+      )
+    })
+  }
+  const ref = refs.length ? refs : null
 
   if (variant === 'line') {
     return (
