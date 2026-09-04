@@ -80,10 +80,10 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
           {(problem.problemTypeLabel || problem.requestSceneLabel) && (
             <Space size={4} wrap>
               {problem.problemTypeLabel ? (
-                <Tag className="!m-0 !text-xs">{problem.problemTypeLabel}</Tag>
+                <Tag className="!m-0 !text-xs">问题类型 · {problem.problemTypeLabel}</Tag>
               ) : null}
               {problem.requestSceneLabel ? (
-                <Tag className="!m-0 !text-xs">{problem.requestSceneLabel}</Tag>
+                <Tag className="!m-0 !text-xs">请求场景 · {problem.requestSceneLabel}</Tag>
               ) : null}
             </Space>
           )}
@@ -95,6 +95,7 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
           <div className="rounded-lg bg-white p-2">
             <TrendChart
               variant="line"
+              xType="time"
               height={200}
               data={problem.monthlyTrend}
               areas={[
@@ -102,8 +103,8 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
                 { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
               ]}
               referenceLine={
-                scope.anchorMonth
-                  ? { x: scope.anchorMonth, label: '实施', stroke: '#F59E0B' }
+                scope.anchorDate
+                  ? { x: scope.anchorDate, label: `实施 ${scope.anchorDate}`, stroke: '#F59E0B' }
                   : null
               }
             />

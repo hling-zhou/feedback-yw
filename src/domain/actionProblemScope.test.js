@@ -150,8 +150,10 @@ describe('buildProblemCentricView', () => {
     expect(row.journeyL2).toBe('连接')
     expect(row.totalTicketCount).toBe(4)
     expect(row.actions).toHaveLength(2)
-    expect(row.actions.map((a) => a.actionId)).toEqual(['a1', 'a2']) // 按 scheduleAt 升序
+    expect(row.actions.map((a) => a.actionId)).toEqual(['a1', 'a2']) // 按实施日升序
+    expect(row.actions[0].anchorDate).toBe('2026-03-01')
     expect(row.actions[0].anchorMonth).toBe('2026-03')
+    expect(row.actions[1].anchorDate).toBe('2026-04-10')
     expect(row.actions[0].reduction).not.toBeNull()
     expect(row.overallTrend).toBe('flat') // 首末月均 1 单
   })

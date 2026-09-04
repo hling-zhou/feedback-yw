@@ -92,8 +92,9 @@ export default function ProblemReductionTab() {
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-          <Card size="small" className="!border-ink-100" styles={{ body: { padding: 0 } }}>
+        <div className="grid h-[calc(100dvh-13.5rem)] min-h-[360px] grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-100 bg-white max-lg:max-h-[min(46vh,360px)]">
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <List
               size="small"
               dataSource={filteredProblems}
@@ -121,7 +122,8 @@ export default function ProblemReductionTab() {
                 </List.Item>
               )}
             />
-          </Card>
+            </div>
+          </div>
 
           {selected ? <ProblemDetail row={selected} /> : null}
         </div>
@@ -137,10 +139,10 @@ function ProblemDetail({ row }) {
   const referenceLines = useMemo(
     () =>
       row.actions
-        .filter((a) => a.anchorMonth)
+        .filter((a) => a.anchorDate || a.anchorMonth)
         .map((a) => ({
-          x: a.anchorMonth,
-          label: a.content.length > 8 ? `${a.content.slice(0, 8)}…` : a.content,
+          x: a.anchorDate || a.anchorMonth,
+          label: `${a.anchorDate || a.anchorMonth} ${a.content.length > 8 ? `${a.content.slice(0, 8)}…` : a.content}`,
           stroke: '#F59E0B',
         })),
     [row.actions],
@@ -149,7 +151,8 @@ function ProblemDetail({ row }) {
   return (
     <Card
       size="small"
-      className="!border-ink-100"
+      className="flex h-full min-h-0 flex-col overflow-hidden !border-ink-100 [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:overflow-y-auto"
+      styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto' } }}
       title={
         <Space size={6} wrap>
           <Typography.Text strong>{row.productName}</Typography.Text>
@@ -158,9 +161,13 @@ function ProblemDetail({ row }) {
             {row.journeyL2 && row.journeyL2 !== row.journeyL1 ? ` / ${row.journeyL2}` : ''}
           </Typography.Text>
           {(row.problemTypeLabel || row.requestSceneLabel) && (
-            <Space size={4}>
-              {row.problemTypeLabel ? <Tag className="!m-0 !text-xs">{row.problemTypeLabel}</Tag> : null}
-              {row.requestSceneLabel ? <Tag className="!m-0 !text-xs">{row.requestSceneLabel}</Tag> : null}
+            <Space size={4} wrap>
+              {row.problemTypeLabel ? (
+                <Tag className="!m-0 !text-xs">问题类型 · {row.problemTypeLabel}</Tag>
+              ) : null}
+              {row.requestSceneLabel ? (
+                <Tag className="!m-0 !text-xs">请求场景 · {row.requestSceneLabel}</Tag>
+              ) : null}
             </Space>
           )}
         </Space>
@@ -175,10 +182,11 @@ function ProblemDetail({ row }) {
 
         <div className="rounded-lg bg-white p-2">
           <Typography.Text type="secondary" className="mb-1 block text-xs">
-            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=各举措实施月
+            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=各举措实施日
           </Typography.Text>
           <TrendChart
             variant="line"
+            xType="time"
             height={240}
             data={row.monthlyTrend}
             areas={[
@@ -219,7 +227,7 @@ function ActionTimelineRow({ action }) {
         <Tag className="!m-0 !text-xs">{ACTION_ITEM_STATUS_LABELS[action.status] || action.status}</Tag>
       </div>
       <Typography.Text type="secondary" className="!text-xs block">
-        实施：{action.scheduleAt || '—'}（{action.anchorMonth || '—'}）
+        实施：{action.scheduleAt || action.anchorDate || '—'}
       </Typography.Text>
       {r && r.sufficient && r.changePct !== null ? (
         <Typography.Text className="!text-xs">

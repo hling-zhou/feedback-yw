@@ -229,17 +229,18 @@ export function buildProblemCentricView(actions, feedbacks, productNameByKey) {
     for (const idx of actionIdxs) {
       const action = actionList[idx]
       if (!action) continue
-      const { anchorMonth } = resolveActionAnchor(action)
+      const { anchorDate, anchorMonth } = resolveActionAnchor(action)
       actionRows.push({
         actionId: String(action.id ?? ''),
         content: String(action.content ?? ''),
         scheduleAt: String(action.scheduleAt ?? ''),
         status: String(action.status ?? ''),
+        anchorDate,
         anchorMonth,
         reduction: computeReduction(trend, anchorMonth),
       })
     }
-    actionRows.sort((a, b) => (a.anchorMonth || '').localeCompare(b.anchorMonth || ''))
+    actionRows.sort((a, b) => (a.anchorDate || a.anchorMonth || '').localeCompare(b.anchorDate || b.anchorMonth || ''))
 
     const firstCount = trend.length ? Number(trend[0].count) || 0 : 0
     const lastCount = trend.length ? Number(trend[trend.length - 1].count) || 0 : 0
