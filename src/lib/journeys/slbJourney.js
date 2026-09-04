@@ -73,6 +73,12 @@ export const SLB_USER_JOURNEY = [
         ],
       },
       {
+        id: 'provision-permission',
+        label: '灰度与订购权限',
+        description: '灰度开通、订购权限、规格访问权限申请',
+        keywords: ['灰度', '灰度权限', '订购权限', '开通权限', '申请权限'],
+      },
+      {
         id: 'provision-onboard',
         label: '产品上架与交付',
         description: '规格上架、安装交付、合规扫描',

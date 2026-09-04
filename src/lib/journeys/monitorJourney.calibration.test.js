@@ -27,7 +27,7 @@ describe('MONITOR_USER_JOURNEY calibration', () => {
   it('has 5 L1 and 15 L2 nodes', () => {
     expect(MONITOR_USER_JOURNEY).toHaveLength(5)
     const l2Count = MONITOR_USER_JOURNEY.reduce((n, l1) => n + (l1.children?.length || 0), 0)
-    expect(l2Count).toBe(15)
+    expect(l2Count).toBe(16)
     expect(MONITOR_USER_JOURNEY.map((j) => j.id)).toEqual([
       'discover',
       'access',

@@ -148,14 +148,24 @@ function isQuotaHowToConsult(text) {
  * @param {string} text
  * @param {string[]} keywords
  */
+/** 放开限制：配额/权限/售罄等。裸「带宽」不算，避免升降配被收进配额。 */
+const QUOTA_LIMIT_ASK_RE = /配额|上限|售罄|轻载|灰度|8:1|8：1|IP数量|上架/
+
 function matchesQuota(text, keywords) {
   if (isQuotaHowToConsult(text)) return false
   if (/解除[^。，；\n]{0,8}售罄|解售罄/.test(text)) return true
-  if (hasApplicationIntent(text) && /配额|权限|售罄|轻载|灰度|8:1|带宽|IP数量|上架/.test(text)) {
+  if (/配额不足|配额已满|配额超限/.test(text)) return true
+  if (/订购权限|开通权限|大带宽权限/.test(text) && !/如何|怎么|怎样/.test(text)) {
+    return true
+  }
+  if (hasApplicationIntent(text) && QUOTA_LIMIT_ASK_RE.test(text)) {
     return true
   }
   if (hasConsultIntent(text) && /到期|有效期|进度|什么时间/.test(text)) return false
-  if (matchesAnyKeyword(text, keywords)) return true
+  const quotaKeywords = (keywords || []).filter(
+    (kw) => kw !== '扩容带宽' && kw !== '带宽提升',
+  )
+  if (matchesAnyKeyword(text, quotaKeywords)) return true
   if (hasConsultIntent(text) && !OPERATION_FAILURE_RE.test(text)) return false
   return false
 }

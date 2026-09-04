@@ -24,10 +24,10 @@ function loadCcTicketsFromDb() {
 }
 
 describe('CC_USER_JOURNEY calibration', () => {
-  it('has 6 L1 and 13 L2 nodes', () => {
+  it('has 6 L1 and 14 L2 nodes', () => {
     expect(CC_USER_JOURNEY).toHaveLength(6)
     const l2Count = CC_USER_JOURNEY.reduce((n, l1) => n + (l1.children?.length || 0), 0)
-    expect(l2Count).toBe(13)
+    expect(l2Count).toBe(14)
     expect(CC_USER_JOURNEY.map((j) => j.id)).toEqual([
       'discover',
       'provision',

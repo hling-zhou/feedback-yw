@@ -1,7 +1,7 @@
 import { VPC_USER_JOURNEY, VPC_PRODUCT_MATCH } from '../journeys/vpcJourney.js'
 
 /** 实单校准版本；递增后 migrate 会覆盖托管库中的 VPC 旅程 */
-export const VPC_JOURNEY_CALIBRATION_VERSION = 2
+export const VPC_JOURNEY_CALIBRATION_VERSION = 4
 
 /**
  * 为托管标签库注入 VPC 内置用户旅程（新建或覆盖未配置的空模板）。

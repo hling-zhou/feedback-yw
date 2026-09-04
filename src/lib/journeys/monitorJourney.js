@@ -54,7 +54,7 @@ export const MONITOR_USER_JOURNEY = [
       {
         id: 'access-quota',
         label: '配额与权限申请',
-        description: '转储任务配额、告警/图表数量上限、DDH 监控模块、Kafka 转储灰度、RAM 权限',
+        description: '转储任务配额、告警/图表数量上限',
         keywords: [
           '转储任务',
           '转储任务产品数量配额',
@@ -62,15 +62,25 @@ export const MONITOR_USER_JOURNEY = [
           '提升配额',
           '图表数量配额',
           '批量添加200个',
+          '申请至50个',
+          '提高到50',
+        ],
+      },
+      {
+        id: 'access-permission',
+        label: '灰度与订购权限',
+        description: 'Kafka 转储灰度、DDH 监控模块、RAM / API 权限申请',
+        keywords: [
           'kafka灰度',
           '转存到kafka',
+          '灰度',
           'DDH的CPU',
           'DDH集群',
           '宿主机）模块',
           'ram账号添加权限',
           'API接口权限',
-          '申请至50个',
-          '提高到50',
+          '订购权限',
+          '开通权限',
         ],
       },
       {

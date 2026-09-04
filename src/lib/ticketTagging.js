@@ -19,21 +19,108 @@ export { UNKNOWN_L1 as JOURNEY_UNKNOWN_L1, UNKNOWN_L2 as JOURNEY_UNKNOWN_L2 }
  * @typedef {{ journeyL1: string; journeyL2: string; score: number }} JourneyTextMatch
  */
 
+const LIMIT_UNLOCK_PROBLEM_TYPE = '配额与权限申请'
+
+/** 数量/上限类放开限制 */
+const QUANTITY_UNLOCK_RE = /配额|上限|IP数量|规格申请/
+
+/** 灰度/订购权限类放开限制（不含裸「权限」，避免安全组等误伤） */
+const PERMISSION_UNLOCK_RE =
+  /灰度|订购权限|开通权限|上架|轻载|8:1|8：1|大带宽权限|解售罄|解除[^。，；\n]{0,8}售罄/
+
+const UNLOCK_APPLY_RE = /申请|请提升|请开通|请帮忙|解售罄|灰度申请/
+
 /**
  * @param {import('./productTaxonomy.js').JourneyL1} l1
  * @param {{ id?: string; label?: string; description?: string; keywords?: string[] }} l2
  */
-function journeyNodeMentionsQuota(l1, l2) {
-  return /配额/.test(`${l1.label || ''}${l2.label || ''}${(l2.keywords || []).join('')}`)
+function isQuantityQuotaNode(l1, l2) {
+  if (/quota/i.test(l2.id || '')) return true
+  return /配额/.test(l2.label || '')
 }
 
 /**
- * 「带宽配额」是配额申请，不是带宽升降配：配额节点加权，避免裸「带宽」抢走。
+ * @param {import('./productTaxonomy.js').JourneyL1} l1
+ * @param {{ id?: string; label?: string; description?: string; keywords?: string[] }} l2
+ */
+function isPermissionGrayNode(l1, l2) {
+  if (/permission|onboard/i.test(l2.id || '')) return true
+  return /灰度|上架/.test(l2.label || '')
+}
+
+/**
+ * 产品上的「放开限制」落点：配额节点、灰度/订购权限，以及云组网「订购权限」等别名。
+ * @param {import('./productTaxonomy.js').JourneyL1} l1
+ * @param {{ id?: string; label?: string; description?: string; keywords?: string[] }} l2
+ */
+function isLimitUnlockFamilyNode(l1, l2) {
+  if (isQuantityQuotaNode(l1, l2) || isPermissionGrayNode(l1, l2)) return true
+  return /订购权限|权限申请|权限及配额/.test(l2.label || '')
+}
+
+/**
+ * @param {{ id?: string; label?: string; keywords?: string[] }} l2
+ */
+function isBandwidthChangeNode(l2) {
+  if (/升降配|调整带宽/.test(l2.label || '')) return true
+  return (l2.keywords || []).some((kw) => kw === '带宽' || kw === '调整带宽' || kw === '升降配')
+}
+
+/**
+ * @param {{ label?: string; keywords?: string[] }} l2
+ */
+function isAzSelectNode(l2) {
+  if (/可用区|子网选择/.test(l2.label || '')) return true
+  return (l2.keywords || []).some(
+    (kw) => kw === '灰掉' || kw === '可用区' || kw === '子网无法选择',
+  )
+}
+
+/**
+ * @param {import('./productTaxonomy.js').JourneyL1} l1
+ * @param {{ id?: string; label?: string }} l2
+ */
+function isCreateOrderNode(l1, l2) {
+  if (isLimitUnlockFamilyNode(l1, l2)) return false
+  return /创建|申购|订购/.test(l2.label || '')
+}
+
+/**
+ * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
+ */
+function productHasSplitUnlockNodes(journeys) {
+  let quantity = false
+  let permission = false
+  for (const l1 of journeys || []) {
+    for (const l2 of l1.children || []) {
+      if (isQuantityQuotaNode(l1, l2)) quantity = true
+      if (isPermissionGrayNode(l1, l2)) permission = true
+    }
+  }
+  return quantity && permission
+}
+
+/**
+ * @param {string} text
+ * @returns {'quantity' | 'permission' | 'both' | 'unknown'}
+ */
+function resolveLimitUnlockFlavor(text) {
+  const quantity = QUANTITY_UNLOCK_RE.test(text || '')
+  const permission = PERMISSION_UNLOCK_RE.test(text || '')
+  if (quantity && permission) return 'both'
+  if (quantity) return 'quantity'
+  if (permission) return 'permission'
+  return 'unknown'
+}
+
+/**
+ * 客户在申请放开限制（配额/售罄/灰度/订购权限），不是单纯升降配。
  * @param {string} text
  * @param {string} [problemType]
  */
-function isQuotaJourneyIntent(text, problemType) {
-  return /配额/.test(text || '') || /配额/.test(String(problemType || ''))
+function isLimitUnlockJourneyIntent(text, problemType) {
+  if (String(problemType || '') === LIMIT_UNLOCK_PROBLEM_TYPE) return true
+  return QUANTITY_UNLOCK_RE.test(text || '') || PERMISSION_UNLOCK_RE.test(text || '')
 }
 
 /**
@@ -49,7 +136,9 @@ export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey, opts 
   const title = (text.match(/工单标题[：:]([^\n]+)/) || [])[1] || ''
   const titleLower = title.toLowerCase()
   const corpus = titleLower + lower
-  const quotaIntent = isQuotaJourneyIntent(corpus, opts.problemType)
+  const unlockIntent = isLimitUnlockJourneyIntent(corpus, opts.problemType)
+  const unlockFlavor = resolveLimitUnlockFlavor(corpus)
+  const splitUnlock = productHasSplitUnlockNodes(journeys)
 
   let bestL1 = UNKNOWN_L1
   let bestL2 = UNKNOWN_L2
@@ -67,13 +156,26 @@ export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey, opts 
         if (lower.includes(t)) score += 1
       }
       if (l1.description && lower.includes(l1.description.slice(0, 6))) score += 1
-      if (quotaIntent && journeyNodeMentionsQuota(l1, l2)) score += 6
-      if (
-        quotaIntent &&
-        !journeyNodeMentionsQuota(l1, l2) &&
-        (l2.keywords || []).some((kw) => kw === '带宽' || kw === '调整带宽')
+      if (unlockIntent) {
+        const family = isLimitUnlockFamilyNode(l1, l2)
+        const quantityNode = isQuantityQuotaNode(l1, l2)
+        const permissionNode = isPermissionGrayNode(l1, l2)
+        if (splitUnlock) {
+          if (unlockFlavor === 'permission' && permissionNode) score += 8
+          else if (unlockFlavor === 'quantity' && quantityNode && !permissionNode) score += 8
+          else if ((unlockFlavor === 'both' || unlockFlavor === 'unknown') && family) score += 6
+        } else if (family) {
+          score += 8
+        }
+        if (isBandwidthChangeNode(l2)) score -= 3
+        if (isAzSelectNode(l2) && UNLOCK_APPLY_RE.test(corpus)) score -= 8
+        if (isCreateOrderNode(l1, l2)) score -= 3
+      } else if (
+        isBandwidthChangeNode(l2) &&
+        /带宽/.test(corpus) &&
+        /调整|提升|升降配|扩容|降配/.test(corpus)
       ) {
-        score -= 3
+        score += 4
       }
       if (score > bestScore) {
         bestScore = score

@@ -298,6 +298,7 @@ npm test -- --run src/lib/ticketAnalysis/v2TicketExamples.test.js
 
 ## 10. 相关文档
 
+- [TICKET-FIELD-GENERATION-RULES.md](./TICKET-FIELD-GENERATION-RULES.md) — 请求内容 / 痛点 / 请求场景 / 问题类型 / 用户旅程生成规则总览
 - [从单条工单提取客户请求内容挖掘需求痛点.md](../data/从单条工单提取客户请求内容挖掘需求痛点.md) — 业务规范 V2  
 - [请求场景标签体系及打标规则.md](../data/请求场景标签体系及打标规则.md) — 请求场景 V2.0 业务规则  
 - [问题类型自动化分类（问题类型分类与判定规则）.md](../data/问题类型自动化分类（问题类型分类与判定规则）.md) — 问题类型 V2.0  

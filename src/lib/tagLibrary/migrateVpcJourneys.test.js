@@ -38,7 +38,7 @@ describe('migrateVpcJourneysInSnapshot', () => {
           match: VPC_PRODUCT_MATCH,
           journeys: structuredClone(VPC_USER_JOURNEY),
           journeyConfigured: true,
-          journeyCalibrationVersion: 2,
+          journeyCalibrationVersion: 4,
         },
       },
       sharedProblemTypes: [],

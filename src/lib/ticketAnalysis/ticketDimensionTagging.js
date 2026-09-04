@@ -109,12 +109,8 @@ export function tagTicketDimensions(opts) {
       problemType,
     })
     if (!isUnrecognizedTag(quotaJourney.journeyL1)) {
-      const quotaHit = /配额/.test(`${quotaJourney.journeyL1}${quotaJourney.journeyL2}`)
-      const currentHit = /配额/.test(`${journeyL1}${journeyL2}`)
-      if (quotaHit && (isUnrecognizedTag(journeyL1) || !currentHit)) {
-        journeyL1 = normalizeTagLabel(quotaJourney.journeyL1, 'journeyL1')
-        journeyL2 = normalizeTagLabel(quotaJourney.journeyL2, 'journeyL2')
-      }
+      journeyL1 = normalizeTagLabel(quotaJourney.journeyL1, 'journeyL1')
+      journeyL2 = normalizeTagLabel(quotaJourney.journeyL2, 'journeyL2')
     }
   }
 

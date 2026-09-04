@@ -77,7 +77,58 @@ describe('tagTicketDimensions (P2a)', () => {
 
     expect(dims.problemType).toBe('配额与权限申请')
     expect(dims.journeyL1).toMatch(/开通与申领|产品订改续/)
-    expect(dims.journeyL2).toMatch(/配额/)
-    expect(dims.journeyL2).not.toMatch(/升降配|变更其他/)
+    expect(dims.journeyL2).toMatch(/配额|权限及配额/)
+    expect(dims.journeyL2).not.toMatch(/升降配|变更其他|灰度/)
+  })
+
+  it('does not classify plain bandwidth change as quota', () => {
+    const tax = getTaxonomy('弹性公网IP', 'eip')
+    const dims = tagTicketDimensions({
+      text: '申请调整带宽到100M',
+      input: { customerRequest: '申请调整带宽到100M' },
+      taxonomy: tax,
+      taxonomyKey: 'eip',
+    })
+    expect(dims.problemType).not.toBe('配额与权限申请')
+    expect(dims.journeyL2).toBe('带宽升降配')
+  })
+
+  it('pins VPC gray apply to permission even when az words are present', () => {
+    const tax = getTaxonomy('虚拟私有云', 'vpc')
+    const req = '灰度申请，子网灰掉选不了华东苏州'
+    const dims = tagTicketDimensions({
+      text: req,
+      input: { customerRequest: req },
+      taxonomy: tax,
+      taxonomyKey: 'vpc',
+    })
+    expect(dims.problemType).toBe('配额与权限申请')
+    expect(dims.journeyL2).toBe('灰度与订购权限')
+  })
+
+  it('maps CC order permission to 灰度与订购权限', () => {
+    const tax = getTaxonomy('云组网', 'cc')
+    const req = '申请提升订购权限至8G，接入带宽'
+    const dims = tagTicketDimensions({
+      text: req,
+      input: { customerRequest: req },
+      taxonomy: tax,
+      taxonomyKey: 'cc',
+    })
+    expect(dims.problemType).toBe('配额与权限申请')
+    expect(dims.journeyL2).toBe('灰度与订购权限')
+  })
+
+  it('maps VPN gray permission to 灰度与订购权限', () => {
+    const tax = getTaxonomy('融合VPN', 'vpn')
+    const req = '申请开通SSL VPN，灰度权限'
+    const dims = tagTicketDimensions({
+      text: req,
+      input: { customerRequest: req },
+      taxonomy: tax,
+      taxonomyKey: 'vpn',
+    })
+    expect(dims.problemType).toBe('配额与权限申请')
+    expect(dims.journeyL2).toBe('灰度与订购权限')
   })
 })
