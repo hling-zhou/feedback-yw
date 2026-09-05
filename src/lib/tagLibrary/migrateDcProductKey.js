@@ -6,6 +6,9 @@ import { normalizeRecordTaxonomyKeys } from '../taxonomyKeyAliases.js'
 
 const LEGACY_DC_KEYS = new Set(['ecc', 'yunzx', 'yunzhuanxian'])
 
+/** 实单校准版本；递增后 migrate 会覆盖托管库中的云专线旅程 */
+export const DC_JOURNEY_CALIBRATION_VERSION = 1
+
 /**
  * 将托管标签库中的云专线产品 key 从 ecc 等旧值迁移为 dc，并注入内置旅程。
  * @param {import('./taxonomyManageModel.js').TaxonomyManagedSnapshot} snapshot
@@ -28,6 +31,7 @@ export function migrateDcProductKeyInSnapshot(snapshot) {
         journeys: structuredClone(DC_USER_JOURNEY),
         journeyConfigured: true,
         catalogProvisioned: false,
+        journeyCalibrationVersion: DC_JOURNEY_CALIBRATION_VERSION,
       }
       changed = true
     }
@@ -38,11 +42,15 @@ export function migrateDcProductKeyInSnapshot(snapshot) {
 
   const dc = snapshot.products.dc
   if (dc) {
-    const needsJourneys = !dc.journeyConfigured || !(dc.journeys?.length)
+    const needsJourneys =
+      !dc.journeyConfigured ||
+      !(dc.journeys?.length) ||
+      (dc.journeyCalibrationVersion || 0) < DC_JOURNEY_CALIBRATION_VERSION
     if (needsJourneys) {
       dc.journeys = structuredClone(DC_USER_JOURNEY)
       dc.journeyConfigured = true
       dc.catalogProvisioned = false
+      dc.journeyCalibrationVersion = DC_JOURNEY_CALIBRATION_VERSION
       changed = true
     }
     const mergedMatch = [...new Set([...(dc.match || []), ...DC_PRODUCT_MATCH])]

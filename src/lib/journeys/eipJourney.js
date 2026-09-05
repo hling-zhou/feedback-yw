@@ -28,7 +28,7 @@ export const EIP_USER_JOURNEY = [
         id: 'discover-billing',
         label: '计费模式咨询',
         description: '按带宽/按流量、包年包月、共享带宽、折扣券、账单项解释',
-        keywords: ['计费', '折扣', '账单', '按量', '包年', '共享带宽', '扣费规则'],
+        keywords: ['计费', '折扣', '账单', '按量', '包年', '共享带宽', '扣费规则', '出账', '收取'],
       },
     ],
   },
@@ -47,7 +47,7 @@ export const EIP_USER_JOURNEY = [
         id: 'provision-quota',
         label: '配额与数量',
         description: '公网 IP / 带宽数量配额不足、提升配额、配额上限',
-        keywords: ['配额', '配额不足', '提升配额', '上限', 'IP数量', '带宽配额'],
+        keywords: ['配额', '配额不足', '配额不够', '配额没有增加', '提升配额', '上限', 'IP数量', '带宽配额'],
       },
       {
         id: 'provision-permission',
@@ -62,6 +62,8 @@ export const EIP_USER_JOURNEY = [
           '解售罄',
           '订购权限',
           '开通权限',
+          '控制台看不见',
+          '看不见IP',
         ],
       },
     ],
@@ -94,13 +96,28 @@ export const EIP_USER_JOURNEY = [
   {
     id: 'operate',
     label: '业务使用与连通',
-    description: '业务已绑定 EIP 后的日常访问：公网连通性、外网访问、远程连接、跨云访问、质量与稳定性',
+    description:
+      '已开通并用起来之后的报障与使用：单台不通、质量劣化、冻结停用，以及区域性大网导致的访问中断。EIP 不另设「故障与应急」',
     children: [
       {
         id: 'operate-access',
         label: '公网访问不通',
-        description: '无法访问外网/特定网站、IP 无法访问、curl/ping 失败、外网不通',
-        keywords: ['无法访问', '不通', '外网', '百度', 'IP无法访问', '访问不了', '连不上'],
+        description: '无法访问外网/特定网站、IP 无法访问、curl/ping 失败、外网不通；含区域性/大面积导致的访问中断',
+        keywords: [
+          '无法访问',
+          '不通',
+          '外网',
+          '百度',
+          'IP无法访问',
+          '访问不了',
+          '连不上',
+          '时通时断',
+          '打不开',
+          '大面积',
+          '区域性',
+          '业务中断',
+          '宕机',
+        ],
       },
       {
         id: 'operate-remote',
@@ -112,7 +129,7 @@ export const EIP_USER_JOURNEY = [
         id: 'operate-quality',
         label: '网络质量与丢包',
         description: '延迟高、丢包、波动、卡顿、PING 不通、网络不稳定',
-        keywords: ['丢包', '波动', '延迟', '不稳定', 'PING', '卡顿', '质量', '网络波动'],
+        keywords: ['丢包', '波动', '延迟', '不稳定', 'PING', '卡顿', '慢', '质量', '网络波动'],
       },
       {
         id: 'operate-traffic',
@@ -120,24 +137,11 @@ export const EIP_USER_JOURNEY = [
         description: '流量查询、监控数据、某时段流量核实、计费流量争议',
         keywords: ['流量', '监控', '查询流量', '时段', '流量是否', '统计'],
       },
-    ],
-  },
-  {
-    id: 'incident',
-    label: '故障与应急',
-    description: '业务受影响的中断事件、区域性网络故障、需紧急排查与恢复',
-    children: [
       {
-        id: 'incident-outage',
-        label: '业务中断/不可用',
-        description: '业务中断、大面积不可用、影响客户业务、故障时段明确',
-        keywords: ['中断', '业务影响', '不可用', '宕机', '故障', '应急'],
-      },
-      {
-        id: 'incident-investigate',
-        label: '协查与根因定位',
-        description: '后台协查、抓包、链路排查、根因未明、无法复现、区域代提单',
-        keywords: ['协查', '排查', '定位', '根因', '抓包', '区域代提', '无法复现', '协助查询'],
+        id: 'operate-suspend',
+        label: '资源停用与冻结',
+        description: '已开通且仍在使用的 EIP 被冻结/停用（客户不是来退订，也不是来问计费规则）',
+        keywords: ['冻结', '被冻结', '停用', '被停用', '订单冻结'],
       },
     ],
   },
@@ -188,7 +192,7 @@ export const EIP_USER_JOURNEY = [
         id: 'service-complaint',
         label: '投诉与服务',
         description: '服务态度、响应慢、回访要求、升级投诉',
-        keywords: ['投诉', '客服', '态度', '回访', '金牌', '不满'],
+        keywords: ['投诉', '客服态度', '响应慢', '回访', '服务态度'],
       },
       {
         id: 'service-process',
@@ -198,6 +202,17 @@ export const EIP_USER_JOURNEY = [
       },
     ],
   },
+]
+
+export const EIP_PRODUCT_MATCH = [
+  '弹性公网',
+  '公网IP',
+  '公网 IP',
+  'EIP',
+  'eip',
+  '弹性ip',
+  '移动IP',
+  'IPv6带宽',
 ]
 
 /** 请求节点服务类型 → 旅程一级默认映射 */

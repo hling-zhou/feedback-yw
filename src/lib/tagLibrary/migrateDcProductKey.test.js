@@ -26,6 +26,24 @@ describe('migrateDcProductKey', () => {
     expect(snapshot.products.dc.journeys).toHaveLength(DC_USER_JOURNEY.length)
   })
 
+  it('replaces stale dc journeys that still have 故障与应急', () => {
+    const snapshot = {
+      products: {
+        dc: {
+          key: 'dc',
+          name: '云专线',
+          match: ['云专线'],
+          journeys: [{ id: 'incident', label: '故障与应急', children: [] }],
+          journeyConfigured: true,
+        },
+      },
+      sharedProblemTypes: [],
+    }
+    expect(migrateDcProductKeyInSnapshot(snapshot)).toBe(true)
+    expect(snapshot.products.dc.journeys).toHaveLength(DC_USER_JOURNEY.length)
+    expect(snapshot.products.dc.journeys.some((j) => j.id === 'incident')).toBe(false)
+  })
+
   it('migrates record productKey and taxonomyKey', () => {
     const record = { productKey: 'ecc', taxonomyKey: 'yunzx' }
     expect(migrateDcProductKeyOnRecord(record)).toBe(true)

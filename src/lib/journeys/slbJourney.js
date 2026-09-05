@@ -168,12 +168,13 @@ export const SLB_USER_JOURNEY = [
   {
     id: 'operate',
     label: '业务访问与质量',
-    description: '访问不通、慢响应与超时',
+    description:
+      '已开通并用起来之后的报障：访问不通、错误码、慢响应，以及区域性导致的访问中断。SLB 不另设「故障与应急」',
     children: [
       {
         id: 'operate-unavailable',
-        label: '访问不通与错误码',
-        description: '502/503/504、连接失败',
+        label: '访问不通',
+        description: 'VIP/业务访问不了、连接失败；含区域性/大面积导致的访问中断。502/503/504 只是不通的常见表现，不是单独环节',
         keywords: [
           '不通',
           '无法访问',
@@ -183,6 +184,10 @@ export const SLB_USER_JOURNEY = [
           '连接失败',
           '访问不了',
           '访问异常',
+          '大面积',
+          '区域性',
+          '业务中断',
+          '宕机',
         ],
       },
       {
@@ -190,25 +195,6 @@ export const SLB_USER_JOURNEY = [
         label: '慢响应与超时',
         description: '延迟高、超时',
         keywords: ['慢', '超时', '延迟', '响应慢', '卡顿'],
-      },
-    ],
-  },
-  {
-    id: 'incident',
-    label: '故障与应急',
-    description: '业务中断、协查定位',
-    children: [
-      {
-        id: 'incident-outage',
-        label: '业务中断',
-        description: '大面积不可用、紧急验证',
-        keywords: ['中断', '不可用', '业务影响', '紧急', '非常紧急'],
-      },
-      {
-        id: 'incident-investigate',
-        label: '协查与根因',
-        description: '后台核实、抓包定位',
-        keywords: ['协查', '排查', '根因', '抓包', '协助核实', '定位'],
       },
     ],
   },
@@ -270,9 +256,9 @@ export const SLB_NODE_SERVICE_MAP = {
   产品使用: 'configure',
   业务方案支撑: 'discover',
   资源申请与开通: 'provision',
-  报障与恢复: 'incident',
-  故障报修: 'incident',
-  报障: 'incident',
+  报障与恢复: 'operate',
+  故障报修: 'operate',
+  报障: 'operate',
   费用与账务: 'discover',
   进度查询与协同: 'service',
   其他: 'service',

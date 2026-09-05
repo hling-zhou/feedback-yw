@@ -10,6 +10,7 @@ public/config/taxonomy/打标配置.backup-*.xlsx
 public/config/product-catalog/产品规格配置.backup-*.xlsx
 /data/
 backup/
+.workbuddy/
 
 # Local-only docs (not versioned)
 docs/BACKUP-BEFORE-RELEASE.md

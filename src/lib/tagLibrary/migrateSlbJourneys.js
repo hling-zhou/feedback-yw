@@ -3,7 +3,7 @@ import { SLB_USER_JOURNEY, SLB_PRODUCT_MATCH } from '../journeys/slbJourney.js'
 const LEGACY_SLB_KEYS = new Set(['SLB'])
 
 /** 实单校准版本；递增后 migrate 会覆盖托管库中的 SLB 旅程 */
-export const SLB_JOURNEY_CALIBRATION_VERSION = 1
+export const SLB_JOURNEY_CALIBRATION_VERSION = 2
 
 /**
  * 将托管标签库中的 SLB 旧 key 迁移为 slb，并注入内置旅程。

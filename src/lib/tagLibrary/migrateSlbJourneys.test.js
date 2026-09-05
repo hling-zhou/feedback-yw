@@ -41,4 +41,23 @@ describe('migrateSlbJourneysInSnapshot', () => {
     expect(snapshot.products.slb.journeyConfigured).toBe(true)
     expect(snapshot.products.slb.journeys).toHaveLength(SLB_USER_JOURNEY.length)
   })
+
+  it('upgrades slb when calibration version is stale', () => {
+    const snapshot = {
+      products: {
+        slb: {
+          key: 'slb',
+          name: '弹性负载均衡',
+          match: ['弹性负载均衡'],
+          journeys: [{ id: 'old', label: '旧', children: [] }],
+          journeyConfigured: true,
+          journeyCalibrationVersion: 1,
+        },
+      },
+      sharedProblemTypes: [],
+    }
+    expect(migrateSlbJourneysInSnapshot(snapshot)).toBe(true)
+    expect(snapshot.products.slb.journeys).toHaveLength(SLB_USER_JOURNEY.length)
+    expect(snapshot.products.slb.journeyCalibrationVersion).toBe(2)
+  })
 })

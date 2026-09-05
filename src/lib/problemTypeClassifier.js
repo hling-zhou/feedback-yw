@@ -126,6 +126,15 @@ function matchesPerformance(text, keywords) {
  * @param {string} text
  * @param {string[]} keywords
  */
+function matchesAvailability(text, keywords) {
+  if (matchesAnyKeyword(text, keywords)) return true
+  // 资源被冻结且要排查/恢复：客户感知是不可用，不是来问账单
+  if (/被冻结|订单冻结/.test(text) && /排查|协助|原因|恢复|异常|加急/.test(text)) {
+    return true
+  }
+  return false
+}
+
 function matchesBilling(text, keywords) {
   if (matchesAnyKeyword(text, keywords)) return true
   // 欠费恢复后业务异常（§6.2 / §7.3）
@@ -226,6 +235,8 @@ function matchesConsult(text, keywords) {
 function matchesRule(text, rule) {
   const keywords = rule.keywords || []
   switch (rule.label) {
+    case '可用性/连通性故障':
+      return matchesAvailability(text, keywords)
     case '性能问题':
       return matchesPerformance(text, keywords)
     case '计费与账单':

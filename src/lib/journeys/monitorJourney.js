@@ -3,7 +3,7 @@
  *
  * 校准依据：本系统 64 条 productKey=monitor 工单（2026-04～05 投诉/咨询）
  * 业务约束：注册移动云账号即可使用，无独立开通订购与资费咨询环节；
- * 运行观测与故障报障合并为 operate；协查/故障报告由 service 兜底。
+ * 运行观测与故障报障合并为 operate；服务环节只留催办与文档，不承接协查/排查。
  *
  * @typedef {{ id: string; label: string; description: string; keywords: string[] }} JourneyL2
  * @typedef {{ id: string; label: string; description: string; children: JourneyL2[] }} JourneyL1
@@ -280,24 +280,21 @@ export const MONITOR_USER_JOURNEY = [
   {
     id: 'service',
     label: '服务与流程',
-    description: '催办进度、协查跟进、故障报告、文档与操作指导',
+    description: '催办进度、文档与操作指导；监控数据/告警异常优先走运行环节',
     children: [
       {
         id: 'service-progress',
         label: '工单进度与催办',
-        description: '催办、需求单跟进、重复回复投诉、协查跟进、故障/排查报告',
+        description: '催办、需求单跟进、重复回复投诉；不是协查或排障入口',
         keywords: [
           '催',
           '进度',
           '需求单',
           '不关闭本工单',
-          '故障报告',
-          '排查报告',
           '拉群处理',
           '投诉工单',
           '复读机',
           '协助处理',
-          '协查',
         ],
       },
       {

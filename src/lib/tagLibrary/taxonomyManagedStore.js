@@ -30,7 +30,7 @@ async function persistManagedSnapshotIfNeeded(adapter, snapshot, changed) {
 export { META_KEY_TAXONOMY_MANAGED }
 
 /**
- * 修复托管标签库中的内置用户旅程（vpc/slb/dc），并与产品目录对齐后写回。
+ * 修复托管标签库中的内置用户旅程（eip/vpc/slb/dc 等），并与产品目录对齐后写回。
  * @param {{ getMeta: (k: string) => Promise<unknown>; putMeta: (k: string, v: unknown) => Promise<void> }} adapter
  */
 export async function repairBuiltinTaxonomyJourneys(adapter) {

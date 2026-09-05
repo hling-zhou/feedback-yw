@@ -89,7 +89,13 @@ function matchesResourceApplication(text) {
   ) {
     return true
   }
-  if (/退订|释放/.test(text) && !hasConsultIntent(text)) return true
+  if (/退订|释放/.test(text) && !hasConsultIntent(text)) {
+    const stripped = text.replace(
+      /(?:未退订|没有退订|非退订)(?!成功|掉|完)|(?:未释放|没有释放)(?!成功|掉|完)/g,
+      '',
+    )
+    if (/退订|释放/.test(stripped)) return true
+  }
   if (/提升|扩容/.test(text) && /配额|带宽|IP/.test(text) && /申请|请/.test(text)) return true
 
   return false

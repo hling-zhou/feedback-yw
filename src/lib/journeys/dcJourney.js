@@ -1,7 +1,7 @@
 /**
  * 云专线（DC）用户旅程 — 基于实单 TOP 场景收束
  *
- * 设计依据：72 条云专线工单文本分析（开通/资源池/路由VPC/协查为主，纯故障占比低）
+ * 设计依据：72 条云专线工单文本分析（开通/资源池/路由VPC为主；报障并入运行，不单设应急档）
  *
  * @typedef {{ id: string; label: string; description: string; keywords: string[] }} JourneyL2
  * @typedef {{ id: string; label: string; description: string; children: JourneyL2[] }} JourneyL1
@@ -75,6 +75,8 @@ export const DC_USER_JOURNEY = [
           '安装交付',
           '汇聚专线',
           '订购权限',
+          '下单',
+          '接入节点',
         ],
       },
       {
@@ -106,6 +108,9 @@ export const DC_USER_JOURNEY = [
           '苏州',
           '郑州',
           '选不了',
+          '改不了',
+          '地域改不了',
+          '下单地域',
           'VPC子网无法选择',
         ],
       },
@@ -154,12 +159,13 @@ export const DC_USER_JOURNEY = [
   {
     id: 'operate',
     label: '运行与质量',
-    description: '连通性、时延慢、丢包质量、带宽监控',
+    description:
+      '已开通并用起来之后的报障：单条不通、时延丢包、带宽监控，以及区域性导致的中断。云专线不另设「故障与应急」',
     children: [
       {
         id: 'operate-connect',
         label: '连通性异常',
-        description: '不通、无法访问、ping 不通、访问云主机失败',
+        description: '不通、无法访问、ping 不通、访问云主机失败；含区域性/大面积导致的中断',
         keywords: [
           '不通',
           '无法访问',
@@ -169,6 +175,10 @@ export const DC_USER_JOURNEY = [
           '无法连通',
           '经常不通',
           '访问云主机',
+          '大面积',
+          '区域性',
+          '业务中断',
+          '宕机',
         ],
       },
       {
@@ -223,25 +233,6 @@ export const DC_USER_JOURNEY = [
         label: '业务迁移与双专线',
         description: '资源池迁移、两条专线并存、退订旧线',
         keywords: ['迁移', '业务迁移', '两条专线', '同时存在', '退订杭州', '资源池迁移'],
-      },
-    ],
-  },
-  {
-    id: 'incident',
-    label: '故障与应急',
-    description: '业务中断、协查根因定位',
-    children: [
-      {
-        id: 'incident-outage',
-        label: '业务中断',
-        description: '中断、大面积不可用、应急',
-        keywords: ['中断', '业务影响', '不可用', '大面积', '应急'],
-      },
-      {
-        id: 'incident-investigate',
-        label: '协查与根因',
-        description: '协查、后台核实、抓包定位',
-        keywords: ['协查', '排查', '根因', '抓包', '协助核实', '后台', '定位'],
       },
     ],
   },
@@ -313,9 +304,9 @@ export const DC_NODE_SERVICE_MAP = {
   产品使用: 'operate',
   业务方案支撑: 'discover',
   资源申请与开通: 'provision',
-  报障与恢复: 'incident',
-  故障报修: 'incident',
-  报障: 'incident',
+  报障与恢复: 'operate',
+  故障报修: 'operate',
+  报障: 'operate',
   费用与账务: 'discover',
   进度查询与协同: 'service',
   其他: 'service',
