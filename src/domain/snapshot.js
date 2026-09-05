@@ -48,3 +48,21 @@ export function sourceSnapshotId(dataSourceType, insightPeriodId) {
 export function overviewSnapshotId(insightPeriodId) {
   return `overview:${insightPeriodId}`
 }
+
+/**
+ * 将快照 generatedAt（ISO/UTC）格式化为本地时间，避免页面直接截断 UTC 字符串后看起来偏几个小时。
+ * @param {string | null | undefined} generatedAt
+ */
+export function formatSnapshotGeneratedAt(generatedAt) {
+  if (!generatedAt) return ''
+  const date = new Date(generatedAt)
+  if (Number.isNaN(date.getTime())) return String(generatedAt)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}

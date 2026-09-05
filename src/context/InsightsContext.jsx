@@ -516,10 +516,11 @@ export function InsightsProvider({ children }) {
   )
 
   const reloadSnapshots = useCallback(
-    async (periodId = currentPeriodId) => {
-      if (!storageReady || snapshotRebuildInProgressRef.current) return
+    async (periodId = currentPeriodId, options = {}) => {
+      const force = Boolean(options.force)
+      if (!storageReady || (!force && snapshotRebuildInProgressRef.current)) return
       const loaded = await loadSnapshotsForPeriod(adapter, periodId)
-      applySnapshotState(loaded, snapshotsStale)
+      applySnapshotState(loaded, options.stale ?? snapshotsStale)
     },
     [adapter, currentPeriodId, storageReady, applySnapshotState, snapshotsStale],
   )
@@ -861,9 +862,17 @@ export function InsightsProvider({ children }) {
             setSnapshotRebuilding(formatInsightRebuildProgress(runningJob) || '重建中…')
           })
           if (updateUi && period.id === currentPeriodId) {
-            await reloadSnapshots(currentPeriodId)
+            await reloadSnapshots(currentPeriodId, { force: true, stale: false })
             setSnapshotsStale(false)
             setSnapshotStaleReason(null)
+            try {
+              if (typeof adapter.getDataRevision === 'function') {
+                const rev = await adapter.getDataRevision()
+                dataRevisionRef.current = rev.revision
+              }
+            } catch {
+              /* 版本号同步失败不影响已加载的新快照 */
+            }
           } else if (period.id !== currentPeriodId) {
             setSnapshotsStale(true)
             setSnapshotStaleReason('data')

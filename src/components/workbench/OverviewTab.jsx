@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Alert, Card, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
+import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { buildImportUrl } from '../../lib/importRoute.js'
@@ -105,7 +106,7 @@ export default function OverviewTab({
   }, [snapshot.sourceSummaries, sourceSnapshots, feedbacks, currentPeriod, previousPeriod])
 
   const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
-  const generatedAtLabel = snapshot.generatedAt?.slice(0, 16).replace('T', ' ')
+  const generatedAtLabel = formatSnapshotGeneratedAt(snapshot.generatedAt)
 
   return (
     <div className="space-y-6">

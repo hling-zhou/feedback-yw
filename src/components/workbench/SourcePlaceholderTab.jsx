@@ -1,6 +1,7 @@
 import { Alert, Card, Statistic, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { isStubPipeline } from '../../analysis/registry.js'
+import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
 import { buildImportUrl } from '../../lib/importRoute.js'
 
 /**
@@ -42,7 +43,7 @@ export default function SourcePlaceholderTab({ sourceLabel, dataSourceType, snap
         </Typography.Paragraph>
         {count > 0 && snapshot?.generatedAt && (
           <Typography.Text type="secondary" className="mt-2 block text-xs">
-            最近快照：{snapshot.generatedAt.slice(0, 16).replace('T', ' ')}
+            最近快照：{formatSnapshotGeneratedAt(snapshot.generatedAt)}
             {pipelineNotImplemented ? '（占位快照，无专项指标）' : ''}
           </Typography.Text>
         )}
