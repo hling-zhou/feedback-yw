@@ -64,7 +64,7 @@ export default function ProblemReductionTab() {
   )
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-[360px] flex-col gap-4 lg:h-[calc(100dvh-9.5rem)]">
       <PageHeader
         desc="以问题为中心：查看某类问题在较长时间内的工单量变化，以及该问题上先后多个举措的压降情况。"
         action={
@@ -92,7 +92,7 @@ export default function ProblemReductionTab() {
           />
         </Card>
       ) : (
-        <div className="grid h-[calc(100dvh-13.5rem)] min-h-[360px] grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
           <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-100 bg-white max-lg:max-h-[min(46vh,360px)]">
             <div className="min-h-0 flex-1 overflow-y-auto">
             <List
@@ -125,7 +125,11 @@ export default function ProblemReductionTab() {
             </div>
           </div>
 
-          {selected ? <ProblemDetail row={selected} /> : null}
+          {selected ? (
+            <div className="min-h-0 h-full">
+              <ProblemDetail row={selected} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -152,7 +156,7 @@ function ProblemDetail({ row }) {
     <Card
       size="small"
       className="flex h-full min-h-0 flex-col overflow-hidden !border-ink-100 [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:overflow-y-auto"
-      styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto' } }}
+      styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' } }}
       title={
         <Space size={6} wrap>
           <Typography.Text strong>{row.productName}</Typography.Text>

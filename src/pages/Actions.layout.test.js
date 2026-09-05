@@ -50,3 +50,13 @@ describe('Actions page tabs', () => {
     expect(source).toContain("title: '状态'")
   })
 })
+
+describe('ProblemReductionTab height', () => {
+  const source = fs.readFileSync(new URL('./ProblemReductionTab.jsx', import.meta.url), 'utf8')
+
+  it('fills remaining viewport after chrome instead of a short magic grid', () => {
+    expect(source).toContain('lg:h-[calc(100dvh-9.5rem)]')
+    expect(source).toContain('min-h-0 flex-1')
+    expect(source).not.toContain('h-[calc(100dvh-13.5rem)]')
+  })
+})
