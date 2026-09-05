@@ -11,6 +11,7 @@ import {
 } from './requestSceneClassifier.js'
 import { migrateRequestSceneLabel } from './tagLibrary/migrateSharedTags.js'
 import { getManualTagFields, preserveManualTags } from './manualTagFields.js'
+import { attachLastAutoTags } from './learning/lastAutoTags.js'
 import {
   buildDimensionTaggingTextForRecord,
   buildFullTaggingTextForRecord,
@@ -109,7 +110,15 @@ export async function retagRecordsSharedDimensionsAfterTicketLlm(
       problemType = resolveProblemTypeWithPeerFallback(corpus, fullPeer, problemRules)
     }
 
-    const next = { ...record, requestScene, problemType }
+    const next = attachLastAutoTags(
+      { ...record, requestScene, problemType },
+      {
+        requestScene,
+        problemType,
+        journeyL1: record.lastAutoTags?.journeyL1,
+        journeyL2: record.lastAutoTags?.journeyL2,
+      },
+    )
 
     captureRequestSceneCandidateIfNeeded({
       requestScene,

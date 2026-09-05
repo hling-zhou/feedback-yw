@@ -177,6 +177,7 @@ export function preserveManualTags(original, processed, options = {}) {
   const out = {
     ...processed,
     manualTagFields: manual,
+    lastAutoTags: processed.lastAutoTags || original.lastAutoTags,
   }
 
   if (set.has('requestScene')) {

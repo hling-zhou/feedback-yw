@@ -440,9 +440,10 @@ function HandlingOriginalTextModal({
   const [selectionBubble, setSelectionBubble] = useState(
     /** @type {{ top: number; left: number } | null} */ (null),
   )
+  const copyHostRef = useRef(/** @type {HTMLDivElement | null} */ (null))
 
   const handleCopy = async () => {
-    const ok = await copyTextToClipboard(text)
+    const ok = await copyTextToClipboard(text, { container: copyHostRef.current })
     if (ok) message.success('已复制全文')
     else message.error('复制失败，请手动选择复制')
   }
@@ -619,7 +620,7 @@ function HandlingOriginalTextModal({
   }, [activeSelection, appendHighlightSpans, clearSelectionUi])
 
   const handleCopyExcerpt = async () => {
-    const ok = await copyTextToClipboard(excerpt)
+    const ok = await copyTextToClipboard(excerpt, { container: copyHostRef.current })
     if (ok) message.success('已复制摘录')
     else message.error('复制失败，请手动选择复制')
   }
@@ -812,7 +813,7 @@ function HandlingOriginalTextModal({
       }}
     >
       {toolbar}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+      <div ref={copyHostRef} className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         <div
           ref={leftPaneRef}
           className="flex min-h-0 min-w-0 flex-[2] flex-col"

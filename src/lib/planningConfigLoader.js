@@ -27,6 +27,8 @@ const DEFAULT_SIGNAL_WEIGHTS = {
 let playbookCache = null
 /** @type {PlanningSignalWeightsConfig | null} */
 let weightsCache = null
+/** @type {PlanningPlaybookConfig} */
+let playbookOverlayCache = { version: 0, journeys: {}, problemTypes: {}, products: {} }
 
 /**
  * @param {string} path
@@ -42,12 +44,58 @@ export async function loadPlanningConfig() {
     fetchJsonConfig('/config/planning/playbook.json'),
     fetchJsonConfig('/config/planning/signal-weights.json'),
   ])
-  playbookCache = playbook && typeof playbook === 'object' ? playbook : { version: 0, journeys: {}, problemTypes: {} }
+  const base = playbook && typeof playbook === 'object' ? playbook : { version: 0, journeys: {}, problemTypes: {} }
+  playbookCache = mergeOverlayIntoPlaybook(base, playbookOverlayCache)
   weightsCache =
     weights && typeof weights === 'object'
       ? weights
       : { version: 0, weights: DEFAULT_SIGNAL_WEIGHTS }
   return { playbook: playbookCache, weights: weightsCache }
+}
+
+/**
+ * @param {PlanningPlaybookConfig} overlay
+ */
+export function setPlaybookOverlayCache(overlay) {
+  playbookOverlayCache = overlay && typeof overlay === 'object'
+    ? overlay
+    : { version: 0, journeys: {}, problemTypes: {}, products: {} }
+  if (playbookCache) {
+    playbookCache = mergeOverlayIntoPlaybook(playbookCache, playbookOverlayCache)
+  }
+}
+
+/**
+ * @param {PlanningPlaybookConfig} base
+ * @param {PlanningPlaybookConfig} overlay
+ */
+function mergeOverlayIntoPlaybook(base, overlay) {
+  if (!overlay) return base
+  const unique = (a, b) => [...new Set([...(a || []), ...(b || [])].map((x) => String(x).trim()).filter(Boolean))]
+  const out = {
+    version: Math.max(Number(base?.version) || 0, Number(overlay?.version) || 0),
+    journeys: { ...(base?.journeys || {}) },
+    problemTypes: { ...(base?.problemTypes || {}) },
+    products: structuredClone(base?.products || {}),
+  }
+  for (const [key, lines] of Object.entries(overlay.journeys || {})) {
+    out.journeys[key] = unique(out.journeys[key], lines)
+  }
+  for (const [key, lines] of Object.entries(overlay.problemTypes || {})) {
+    out.problemTypes[key] = unique(out.problemTypes[key], lines)
+  }
+  for (const [product, bucket] of Object.entries(overlay.products || {})) {
+    if (!out.products[product]) out.products[product] = { journeys: {}, problemTypes: {} }
+    if (!out.products[product].journeys) out.products[product].journeys = {}
+    if (!out.products[product].problemTypes) out.products[product].problemTypes = {}
+    for (const [key, lines] of Object.entries(bucket?.journeys || {})) {
+      out.products[product].journeys[key] = unique(out.products[product].journeys[key], lines)
+    }
+    for (const [key, lines] of Object.entries(bucket?.problemTypes || {})) {
+      out.products[product].problemTypes[key] = unique(out.products[product].problemTypes[key], lines)
+    }
+  }
+  return out
 }
 
 export function getPlanningConfigVersions() {

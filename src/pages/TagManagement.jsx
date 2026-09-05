@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
 import CustomTagsPanel from '../components/tagManagement/CustomTagsPanel.jsx'
 import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx'
+import TagCorrectionReviewPanel from '../components/tagManagement/TagCorrectionReviewPanel.jsx'
 import PostUseKeyCustomersPanel from '../components/tagManagement/PostUseKeyCustomersPanel.jsx'
 import ProductConfigurationCenter from '../components/tagManagement/ProductConfigurationCenter.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -17,6 +18,7 @@ const TAB_KEYS = {
   journey: 'journey',
   keyCustomers: 'key_customers',
   review: 'review',
+  correction: 'correction',
 }
 
 export default function TagManagement() {
@@ -85,6 +87,11 @@ export default function TagManagement() {
         ),
         children: <LlmTagReviewPanel readOnly={readOnly} />,
       },
+      {
+        key: TAB_KEYS.correction,
+        label: '改标学习',
+        children: <TagCorrectionReviewPanel readOnly={readOnly} />,
+      },
     ],
     [pendingCount, productCatalogMeta, readOnly],
   )
@@ -93,7 +100,7 @@ export default function TagManagement() {
     <div>
       <PageHeader
         title="对象与标签"
-        desc="产品配置、通用请求场景与问题类型、分产品用户旅程、重点客户名单，以及 LLM 提议标签复核"
+        desc="产品配置、通用请求场景与问题类型、分产品用户旅程、重点客户名单、LLM 提议标签复核，以及改标学习"
       />
       {readOnly && (
         <Alert

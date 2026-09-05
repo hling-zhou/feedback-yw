@@ -27,6 +27,8 @@ describe('pipeline plaintext import fields', () => {
     expect(out.sourceColumns?.['问题原因']).toContain('10.10.10.10')
     expect(out.rawText).not.toContain('[IP已脱敏]')
     expect(JSON.stringify(out.sourceColumns || {})).not.toContain('[IP已脱敏]')
+    expect(out.lastAutoTags?.requestScene).toBe(out.requestScene)
+    expect(out.lastAutoTags?.problemType).toBe(out.problemType)
   })
 
   it('reprocessFeedbackRecord keeps plaintext imported content', () => {

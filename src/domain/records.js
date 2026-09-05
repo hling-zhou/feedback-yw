@@ -73,6 +73,7 @@
  *   note?: string
  *   listeningReviewed?: boolean
  *   followUpSatisfaction?: import('./followUpSatisfaction.js').FollowUpSatisfaction
+ *   lastAutoTags?: { requestScene?: string; problemType?: string; journeyL1?: string; journeyL2?: string; taggedAt?: string }
  * }} TicketRecord
  */
 

@@ -20,6 +20,11 @@ const META_KEYS_TO_MIGRATE = [
   'product_order_volumes_v1',
   'topic_analysis_reports_v1',
   'topic_analysis_runs_v1',
+  'tag_correction_events_v1',
+  'tag_correction_rules_v1',
+  'tag_correction_replay_v1',
+  'planning_playbook_overrides',
+  'playbook_promotion_state_v1',
 ]
 
 /**

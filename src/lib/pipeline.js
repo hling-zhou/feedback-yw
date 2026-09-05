@@ -16,6 +16,7 @@ import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { normalizeTicketId, normalizeCreatedAt } from './desensitize.js'
 import { buildTaggingTextFromFields } from './taggingText.js'
 import { preserveManualTags, applyForceRetagOverrides } from './manualTagFields.js'
+import { attachLastAutoTags } from './learning/lastAutoTags.js'
 import { assignComplaintCauseFieldsForImport } from '../domain/complaintCause.js'
 import { normalizeCustomerTier, CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/customerTier.js'
 
@@ -76,7 +77,7 @@ export function processRow(row, useRegex = true, settings = null) {
   const sourceColumns = buildSourceColumns(row)
   const complaintCauseFields = assignComplaintCauseFieldsForImport(row, dataSourceType)
 
-  return {
+  return attachLastAutoTags({
     id: recordId,
     ...importMeta,
     sourceColumns,
@@ -117,7 +118,7 @@ export function processRow(row, useRegex = true, settings = null) {
     themes: themesFromJourney(tags),
     status: 'open',
     importedAt: importMeta.importedAt || new Date().toISOString(),
-  }
+  }, { overlayHits: tags.overlayHits })
 }
 
 export function processRows(rows, useRegex = true, settings = null) {

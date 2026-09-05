@@ -27,7 +27,7 @@ import {
 import { fetchAllRecordPages } from '../lib/recordLoader.js'
 import { reprocessCustomerQuoteForRecord, reprocessFeedbackRecord } from '../lib/pipeline.js'
 import { mergeManualTagFieldsOnUserEdit, applyForceRetagOverrides } from '../lib/manualTagFields.js'
-import { mergeFeedbacksInto } from '../lib/ticketImportMerge.js'
+import { mergeFeedbacksInto, ticketImportDuplicateKey } from '../lib/ticketImportMerge.js'
 import { unlinkActionItemsForForceRetag } from '../lib/forceRetagActionUnlink.js'
 import {
   mergeEstablishedActionLibraryForRecords,
@@ -117,6 +117,9 @@ import {
 } from '../lib/tagCandidates.js'
 import { polishPlanningRecommendationsWithLLM } from '../lib/overviewConclusionsLLM.js'
 import { loadPlanningConfig } from '../lib/planningConfigLoader.js'
+import { buildCorrectionEventsFromEdit } from '../lib/learning/tagCorrectionCapture.js'
+import { appendCorrectionEvents } from '../lib/learning/tagCorrectionStore.js'
+import { hydrateLearningCaches, replayCorrectionsIfNeeded } from '../lib/learning/hydrateLearning.js'
 import {
   META_KEY_OVERRIDES,
   META_KEY_TAG_VERSION,
@@ -426,6 +429,7 @@ export function InsightsProvider({ children }) {
       // 记录加载与推荐反馈补水并行，不阻塞 periodsLoading（已提前结束）
       await Promise.all([
         hydrateRecommendationFeedbackFromServer(adapter),
+        hydrateLearningCaches(adapter),
         (async () => {
           try {
             await loadRecordsForPeriodId(period.id)
@@ -437,6 +441,9 @@ export function InsightsProvider({ children }) {
           }
         })(),
       ])
+      void replayCorrectionsIfNeeded(adapter, feedbacksRef.current).catch((err) => {
+        console.warn('[learning] 历史改标回放失败', err)
+      })
       if (typeof adapter.getDataRevision === 'function') {
         try {
           const rev = await adapter.getDataRevision()
@@ -642,6 +649,7 @@ export function InsightsProvider({ children }) {
         await reloadSnapshots(currentPeriodId)
         await reloadTagCandidates()
         await applyTaxonomyOverridesFromStorage()
+        await hydrateLearningCaches(adapter)
         if (notify) {
           message.info('已同步其他用户的最新数据')
         }
@@ -1334,6 +1342,7 @@ export function InsightsProvider({ children }) {
         loadManagedTaxonomy(adapter),
         loadManagedProductCatalog(adapter),
         loadPlanningConfig(),
+        hydrateLearningCaches(adapter),
       ])
       const catalog = catalogManaged || initProductCatalogFromBuiltin()
       setProductCatalogMeta(catalog)
@@ -1602,7 +1611,7 @@ export function InsightsProvider({ children }) {
         for (const [dataSourceType, ticketIds] of idsBySource) {
           const existingRows = await adapter.listRecordsByTicketIds(dataSourceType, ticketIds)
           for (const row of existingRows || []) {
-            const key = duplicateKey(row)
+            const key = ticketImportDuplicateKey(row)
             if (key) existingByTicketKey.set(key, row)
           }
         }
@@ -1668,7 +1677,7 @@ export function InsightsProvider({ children }) {
     /**
      * @param {string} id
      * @param {Partial<import('../lib/types.js').FeedbackRecord>} patch
-     * @param {import('../domain/recordRevision.js').PutRecordOptions & { mergeBase?: import('../lib/types.js').FeedbackRecord }} [options]
+     * @param {import('../domain/recordRevision.js').PutRecordOptions & { mergeBase?: import('../lib/types.js').FeedbackRecord; skipTagCorrectionCapture?: boolean }} [options]
      */
     async (id, patch, options = {}) => {
       let existing =
@@ -1687,6 +1696,16 @@ export function InsightsProvider({ children }) {
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
       const merged = { ...existing, ...patch, manualTagFields }
+      if (!options.skipTagCorrectionCapture) {
+        const correctionEvents = buildCorrectionEventsFromEdit(existing, patch, {
+          actor: recordWriteActor,
+        })
+        if (correctionEvents.length && storageReady) {
+          void appendCorrectionEvents(adapter, correctionEvents).catch((err) => {
+            console.warn('[learning] 采集改标事件失败', err)
+          })
+        }
+      }
       // 是否听音：一旦为 true，全局不可再取消（含其他用户）
       merged.listeningReviewed =
         Boolean(existing.listeningReviewed) || Boolean(merged.listeningReviewed)

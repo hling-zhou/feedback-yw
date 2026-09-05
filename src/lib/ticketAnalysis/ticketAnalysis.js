@@ -283,6 +283,7 @@ function buildTicketAnalysisResult(input, core, enriched) {
     productKey: taxonomy.key || taxonomyKey,
     requestScene: dims.requestScene,
     problemType: dims.problemType,
+    overlayHits: dims.overlayHits || [],
     journeyL1: dims.journeyL1,
     journeyL2: dims.journeyL2,
     customerRequest,

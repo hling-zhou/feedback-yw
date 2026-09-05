@@ -89,6 +89,12 @@ describe('ticketAnalysisSources', () => {
     it('rule/manual dimensions have no llm state', () => {
       expect(getRuleManualDimensionSource({}, 'requestScene')).toBe('rule')
       expect(
+        getRuleManualDimensionSource(
+          { lastAutoTags: { overlayHits: ['requestScene'] } },
+          'requestScene',
+        ),
+      ).toBe('learned')
+      expect(
         getRuleManualDimensionSource({ manualTagFields: ['sentiment'] }, 'sentiment'),
       ).toBe('manual')
     })

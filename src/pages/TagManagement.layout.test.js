@@ -9,4 +9,10 @@ describe('TagManagement tabs', () => {
     expect(source).toContain("label: '重点客户'")
     expect(source).toContain('<PostUseKeyCustomersPanel readOnly={readOnly} />')
   })
+
+  it('includes the tag correction learning tab', () => {
+    expect(source).toContain("correction: 'correction'")
+    expect(source).toContain("label: '改标学习'")
+    expect(source).toContain('<TagCorrectionReviewPanel readOnly={readOnly} />')
+  })
 })

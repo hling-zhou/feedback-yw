@@ -13,6 +13,7 @@ import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { buildTaggingTextForRecord } from './taggingText.js'
 import { resolveJourneyTaggingText } from './ticketAnalysis/dimensionTaggingText.js'
 import { evaluateJourneyGatingBatch } from './journeyMatchConfidence.js'
+import { attachLastAutoTags } from './learning/lastAutoTags.js'
 
 const UNKNOWN_L1 = '未识别环节'
 const UNKNOWN_L2 = '未识别子环节'
@@ -392,13 +393,13 @@ export async function enrichRecordsWithJourneys(records, settings, onProgress) {
         problemType: r.problemType,
       })
       if (!local.journeyL1 || local.journeyL1 === UNKNOWN_L1) return r
-      return {
+      return attachLastAutoTags({
         ...r,
         productKey: r.productKey || key,
         journeyL1: local.journeyL1,
         journeyL2: local.journeyL2,
         journeySource: /** @type {'rule'} */ ('rule'),
-      }
+      })
     })
   }
 
@@ -407,18 +408,20 @@ export async function enrichRecordsWithJourneys(records, settings, onProgress) {
     ? await matchJourneyHybridBatch(texts, taxonomyKeys, settings, onProgress, records)
     : await matchJourneySemanticBatch(texts, taxonomyKeys, settings, onProgress, records)
 
-  return records.map((r, i) => ({
-    ...r,
-    productKey: r.productKey || taxonomyKeys[i],
-    journeyL1: journeyResults[i]?.journeyL1 || r.journeyL1,
-    journeyL2: journeyResults[i]?.journeyL2 || r.journeyL2,
-    ...(journeyResults[i]?.journeySource
-      ? { journeySource: journeyResults[i].journeySource }
-      : {}),
-    ...(journeyResults[i]?.journeyMatchScore != null
-      ? { journeyMatchScore: journeyResults[i].journeyMatchScore }
-      : {}),
-  }))
+  return records.map((r, i) =>
+    attachLastAutoTags({
+      ...r,
+      productKey: r.productKey || taxonomyKeys[i],
+      journeyL1: journeyResults[i]?.journeyL1 || r.journeyL1,
+      journeyL2: journeyResults[i]?.journeyL2 || r.journeyL2,
+      ...(journeyResults[i]?.journeySource
+        ? { journeySource: journeyResults[i].journeySource }
+        : {}),
+      ...(journeyResults[i]?.journeyMatchScore != null
+        ? { journeyMatchScore: journeyResults[i].journeyMatchScore }
+        : {}),
+    }),
+  )
 }
 
 /**

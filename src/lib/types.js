@@ -63,6 +63,7 @@
  * @property {string} [note]
  * @property {boolean} [listeningReviewed] - 是否听音（人工维护，再导入保留）
  * @property {('requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview')[]} [manualTagFields] - 人工维护维度；见 fieldRegistry.js
+ * @property {{ requestScene?: string; problemType?: string; journeyL1?: string; journeyL2?: string; taggedAt?: string }} [lastAutoTags] - 最近一次系统打标快照，改标学习对照用
  * @property {string} [importMonth] - 数据月份，格式 YYYY-MM，用于按月导入后的历史趋势分析
  * @property {boolean} [outOfPeriodWarning]
  * @property {import('../domain/followUpSatisfaction.js').FollowUpSatisfaction} [followUpSatisfaction] - 满意度回访补全（投诉/咨询工单）

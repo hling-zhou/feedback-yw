@@ -9,11 +9,13 @@ describe('Actions page tabs', () => {
     expect(source).toContain("label: '产品举措与进展'")
     expect(source).toContain("label: '用后即评JIRA'")
     expect(source).toContain("label: '问题压降'")
-    expect(source).toContain("rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction'")
+    expect(source).toContain("label: 'Playbook 沉淀'")
+    expect(source).toContain("rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction' || rawTab === 'playbook'")
     expect(source).toContain('<TicketTodoTab />')
     expect(source).toContain('<PostUseJiraTab />')
     expect(source).toContain('<ProductActionsTab />')
     expect(source).toContain('<ProblemReductionTab />')
+    expect(source).toContain('<PlaybookPromotionPanel />')
     expect(source).not.toContain('title="产品举措与进展"')
     expect(source).toContain('[&_.ant-tabs-tab]:text-xl')
     expect(source).toContain('[&_.ant-tabs-tab]:font-bold')
@@ -25,6 +27,9 @@ describe('Actions page tabs', () => {
     )
     expect(source.indexOf("label: '用后即评JIRA'")).toBeLessThan(
       source.indexOf("label: '问题压降'"),
+    )
+    expect(source.indexOf("label: '问题压降'")).toBeLessThan(
+      source.indexOf("label: 'Playbook 沉淀'"),
     )
   })
 

@@ -10,6 +10,7 @@ export const TICKET_ANALYSIS_SOURCE_LABELS = {
   llm: '大模型',
   manual: '人工',
   import: '人工',
+  learned: '学习规则',
 }
 
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
@@ -232,6 +233,12 @@ export function getJourneyDisplaySource(record) {
  */
 export function getRuleManualDimensionSource(record, dimension) {
   if (getManualTagFields(record).includes(dimension)) return 'manual'
+  if (
+    (dimension === 'requestScene' || dimension === 'problemType') &&
+    record?.lastAutoTags?.overlayHits?.includes(dimension)
+  ) {
+    return 'learned'
+  }
   return 'rule'
 }
 

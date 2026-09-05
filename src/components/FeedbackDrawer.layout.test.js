@@ -63,6 +63,8 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain("can('deleteData')")
     expect(src).toContain('HandlingOriginalTextModal')
     expect(src).toContain('放大查看')
+    expect(src).toContain('复制全文')
+    expect(src).toContain('container: copyHostRef.current')
   })
 
   it('uses rating-specific title, anchors, and journey-only classification', () => {

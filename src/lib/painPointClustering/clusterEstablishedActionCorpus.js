@@ -110,7 +110,7 @@ export function aggregateEstablishedActionsFromRecords(records, options = {}) {
   const minCount = options.minCount ?? CLUSTER_ESTABLISHED_ACTION_MIN_TICKETS
   const minDistinctMonths = options.minDistinctMonths ?? PLAYBOOK_PROMOTION_MIN_DISTINCT_MONTHS
 
-  /** @type {Map<string, { text: string; count: number; months: Set<string>; product: string; journeyL2: string; problemType: string }>} */
+  /** @type {Map<string, { text: string; count: number; months: Set<string>; product: string; productKey: string; journeyL2: string; problemType: string }>} */
   const map = new Map()
 
   for (const record of records || []) {
@@ -118,6 +118,7 @@ export function aggregateEstablishedActionsFromRecords(records, options = {}) {
     if (!raw) continue
     const month = monthKeyFromDate(record.createdAt || record.updatedAt)
     const product = String(record.productSpec || record.product || '').trim()
+    const productKey = String(record.productKey || '').trim()
     const journeyL2 = String(record.journeyL2 || '').trim()
     const problemType = String(record.problemType || '').trim()
 
@@ -125,17 +126,19 @@ export function aggregateEstablishedActionsFromRecords(records, options = {}) {
       if (!isUsableEstablishedActionText(line)) continue
       const normalized = normalizeEstablishedForProductAction(line)
       if (!normalized || normalized.length < 12) continue
-      const scopeKey = [product, journeyL2, problemType, normalizeEstablishedActionKey(normalized)].join('\0')
+      const scopeKey = [productKey || product, journeyL2, problemType, normalizeEstablishedActionKey(normalized)].join('\0')
       const prev = map.get(scopeKey)
       if (prev) {
         prev.count += 1
         if (month) prev.months.add(month)
+        if (productKey && !prev.productKey) prev.productKey = productKey
       } else {
         map.set(scopeKey, {
           text: normalized,
           count: 1,
           months: new Set(month ? [month] : []),
           product,
+          productKey,
           journeyL2,
           problemType,
         })
@@ -146,11 +149,12 @@ export function aggregateEstablishedActionsFromRecords(records, options = {}) {
   return [...map.values()]
     .filter((row) => row.count >= minCount && row.months.size >= minDistinctMonths)
     .sort((a, b) => b.count - a.count || b.months.size - a.months.size)
-    .map(({ text, count, months, product, journeyL2, problemType }) => ({
+    .map(({ text, count, months, product, productKey, journeyL2, problemType }) => ({
       text,
       count,
       distinctMonths: months.size,
       product,
+      productKey,
       journeyL2,
       problemType,
     }))

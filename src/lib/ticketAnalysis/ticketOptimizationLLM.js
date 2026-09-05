@@ -5,6 +5,7 @@ import {
   parseLlmMessageContent,
 } from '../llmClient.js'
 import { isGenericMeasure } from '../journeyOptimizationLLM.js'
+import { getConfiguredJourneyTips, getConfiguredProblemTypeTips } from '../planningConfigLoader.js'
 
 /**
  * @param {unknown} value
@@ -68,8 +69,18 @@ export async function extractTicketOptimizationsWithLLM(input, settings, extras 
     ? `\n\n工单正文：\n${text}`
     : '\n\n（已提供需求痛点与维度上下文，无需工单全文）'
 
+  const playbookTips = [
+    ...getConfiguredJourneyTips(merged.journeyL2, merged.productName),
+    ...getConfiguredJourneyTips(merged.journeyL2, merged.productKey),
+    ...getConfiguredProblemTypeTips(merged.problemType, merged.productName),
+    ...getConfiguredProblemTypeTips(merged.problemType, merged.productKey),
+  ].filter((line, i, arr) => line && arr.indexOf(line) === i).slice(0, 4)
+  const playbookBlock = playbookTips.length
+    ? `\n已沉淀的产品优化话术（可参考语气与方向，勿照抄编号）：\n${playbookTips.join('\n')}\n`
+    : ''
+
   const userPrompt = `产品：${merged.productName || '未标注'}
-${merged.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据其中与工单相关的规则/特性；跨产品痛点可综合多产品知识库）：\n${merged.knowledgeSnippets}\n` : ''}
+${merged.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据其中与工单相关的规则/特性；跨产品痛点可综合多产品知识库）：\n${merged.knowledgeSnippets}\n` : ''}${playbookBlock}
 需求痛点：${painPoint || '未提取'}
 问题类型：${merged.problemType || '未分类'}
 请求场景：${merged.requestScene || '未分类'}

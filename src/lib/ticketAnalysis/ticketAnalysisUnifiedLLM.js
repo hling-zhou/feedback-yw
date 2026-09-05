@@ -17,6 +17,7 @@ import {
   isValidUnifiedOptimization,
   joinUnifiedOptimizationFields,
 } from './validateUnifiedOptimization.js'
+import { getConfiguredJourneyTips, getConfiguredProblemTypeTips } from '../planningConfigLoader.js'
 
 /**
  * @typedef {'customerRequest' | 'painPoint' | 'optimization'} TicketAnalysisPartialFailure
@@ -64,6 +65,18 @@ export function resolveTicketLlmMode(settings) {
 /**
  * @param {TicketAnalysisUnifiedInput} input
  */
+function buildPlaybookBlock(input) {
+  const tips = [
+    ...getConfiguredJourneyTips(input.journeyL2, input.productName),
+    ...getConfiguredProblemTypeTips(input.problemType, input.productName),
+  ].filter((line, i, arr) => line && arr.indexOf(line) === i).slice(0, 4)
+  if (!tips.length) return ''
+  return `\n已沉淀的产品优化话术（可参考语气与方向，勿照抄编号）：\n${tips.join('\n')}\n`
+}
+
+/**
+ * @param {TicketAnalysisUnifiedInput} input
+ */
 function buildUnifiedUserPrompt(input) {
   const taggingText = (input.taggingText || '').slice(0, 4000)
   const candidatesBlock = (input.candidates || [])
@@ -82,7 +95,7 @@ ${candidatesBlock || '（无）'}
 - painPoint: ${input.ruleFallback.painPoint || '（空）'}
 
 产品：${input.productName || '未标注'}
-${input.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据其中与工单相关的规则/特性；跨产品痛点可综合多产品知识库）：\n${input.knowledgeSnippets}\n` : ''}
+${input.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据其中与工单相关的规则/特性；跨产品痛点可综合多产品知识库）：\n${input.knowledgeSnippets}\n` : ''}${buildPlaybookBlock(input)}
 维度（优化建议参考）：
 - 问题类型：${input.problemType || '未分类'}
 - 请求场景：${input.requestScene || '未分类'}

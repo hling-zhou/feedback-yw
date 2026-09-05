@@ -14,7 +14,14 @@ import {
  */
 export default function TicketAnalysisSourceTag({ source, title }) {
   const displaySource = source === 'import' ? 'manual' : source
-  const color = displaySource === 'llm' ? 'purple' : displaySource === 'manual' ? 'gold' : 'default'
+  const color =
+    displaySource === 'llm'
+      ? 'purple'
+      : displaySource === 'manual'
+        ? 'gold'
+        : displaySource === 'learned'
+          ? 'cyan'
+          : 'default'
   const label =
     displaySource === 'manual'
       ? getOptimizationSourceLabel('manual')

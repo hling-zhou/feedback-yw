@@ -100,6 +100,7 @@ import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import PostUseJiraTab from './PostUseJiraTab.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
 import ProblemReductionTab from './ProblemReductionTab.jsx'
+import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
   actionItemFiltersToListQuery,
@@ -193,7 +194,7 @@ export default function Actions() {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
   const tab =
-    rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction'
+    rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction' || rawTab === 'playbook'
       ? rawTab
       : 'ticket-todos'
   return (
@@ -212,6 +213,7 @@ export default function Actions() {
           { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
           { key: 'post-use-jira', label: '用后即评JIRA', children: <PostUseJiraTab /> },
           { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
+          { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
         ]}
       />
     </div>

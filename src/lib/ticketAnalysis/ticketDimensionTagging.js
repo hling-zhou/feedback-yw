@@ -1,6 +1,10 @@
 import { resolveProblemTypeWithPeerFallback, resolveRequestSceneFromConfig } from '../dimensionTagging.js'
 import { PROBLEM_TYPE_OTHER } from '../problemTypeClassifier.js'
-import { matchJourneyByDescription } from '../ticketTagging.js'
+import {
+  isEmptyJourneyAsk,
+  matchJourneyByDescription,
+  stripJourneyTaggingNoise,
+} from '../ticketTagging.js'
 import { finalizeCorpusFuzzy } from './ticketAnalysisCorpus.js'
 import {
   buildDimensionTaggingLayers,
@@ -16,6 +20,7 @@ import {
   matchProblemTypeFromPath,
   matchRequestSceneFromPath,
 } from './pathTagging.js'
+import { applyCorrectionOverlay } from '../learning/tagCorrectionRules.js'
 
 /**
  * 「其他」为有效分类结果；仅决策树未命中（或无法识别）时启用路径兜底
@@ -61,8 +66,26 @@ function matchSceneAndJourneyFromText(text, taxonomy, taxonomyKey, opts = {}) {
     journey: matchJourneyByDescription(text, taxonomy.journeys, taxonomyKey, {
       useRequestNode: false,
       problemType: opts.problemType,
+      requestScene: opts.requestScene,
     }),
   }
+}
+
+/**
+ * 旅程只吃客户请求/痛点；空模板不回退处理意见。
+ * @param {Object} [input]
+ * @param {string} [fallbackText]
+ */
+function resolveJourneyAskText(input, fallbackText) {
+  const request = stripJourneyTaggingNoise(input?.customerRequest || '')
+  if (request && !isEmptyJourneyAsk(request)) return request
+  const pain = stripJourneyTaggingNoise(input?.painPoint || input?.problemSummary || '')
+  if (pain && !isEmptyJourneyAsk(pain)) return pain
+  if (input?.customerRequest != null || input?.painPoint != null) {
+    if (isEmptyJourneyAsk(request) || !request) return ''
+  }
+  const fallback = stripJourneyTaggingNoise(fallbackText || '')
+  return isEmptyJourneyAsk(fallback) ? '' : fallback
 }
 
 /**
@@ -96,17 +119,29 @@ export function tagTicketDimensions(opts) {
       : layers?.secondaryText || ''
     : layers?.secondaryText || ''
   const taggingCorpus = requestCorpus || layers?.fullText || text
+  const journeyAskText = resolveJourneyAskText(input, hasExtractedRequest ? requestCorpus : primaryText)
+  const emptyJourneyAsk = !journeyAskText
 
   const primary = matchSceneAndJourneyFromText(primaryText, taxonomy, taxonomyKey)
   let requestScene = normalizeTagLabel(primary.requestScene, 'dimension')
   let problemType = resolveProblemTypeForTicket(input, text, taxonomy.problemTypes)
-  let journeyL1 = normalizeTagLabel(primary.journey.journeyL1, 'journeyL1')
-  let journeyL2 = normalizeTagLabel(primary.journey.journeyL2, 'journeyL2')
-
-  if (problemType === '配额与权限申请') {
-    const quotaJourney = matchJourneyByDescription(primaryText, taxonomy.journeys, taxonomyKey, {
+  let journeyL1 = TAG_UNRECOGNIZED
+  let journeyL2 = TAG_UNRECOGNIZED
+  if (!emptyJourneyAsk) {
+    const fromAsk = matchJourneyByDescription(journeyAskText, taxonomy.journeys, taxonomyKey, {
       useRequestNode: false,
       problemType,
+      requestScene,
+    })
+    journeyL1 = normalizeTagLabel(fromAsk.journeyL1, 'journeyL1')
+    journeyL2 = normalizeTagLabel(fromAsk.journeyL2, 'journeyL2')
+  }
+
+  if (!emptyJourneyAsk && problemType === '配额与权限申请') {
+    const quotaJourney = matchJourneyByDescription(journeyAskText, taxonomy.journeys, taxonomyKey, {
+      useRequestNode: false,
+      problemType,
+      requestScene,
     })
     if (!isUnrecognizedTag(quotaJourney.journeyL1)) {
       journeyL1 = normalizeTagLabel(quotaJourney.journeyL1, 'journeyL1')
@@ -131,10 +166,6 @@ export function tagTicketDimensions(opts) {
       if (!isProblemTypeClassifierMiss(fromHandling)) {
         problemType = fromHandling
       }
-    }
-    if (isUnrecognizedTag(journeyL1) && !isUnrecognizedTag(secondary.journey.journeyL1)) {
-      journeyL1 = normalizeTagLabel(secondary.journey.journeyL1, 'journeyL1')
-      journeyL2 = normalizeTagLabel(secondary.journey.journeyL2, 'journeyL2')
     }
   }
 
@@ -169,13 +200,13 @@ export function tagTicketDimensions(opts) {
     if (isProblemTypeClassifierMiss(problemType) && pathProblem) {
       problemType = normalizeTagLabel(pathProblem, 'dimension')
     }
-    if (!corpus.fuzzy && isUnrecognizedTag(journeyL1) && pathJourney) {
+    if (!emptyJourneyAsk && !corpus.fuzzy && isUnrecognizedTag(journeyL1) && pathJourney) {
       journeyL1 = normalizeTagLabel(pathJourney.journeyL1, 'journeyL1')
       journeyL2 = normalizeTagLabel(pathJourney.journeyL2, 'journeyL2')
     }
   }
 
-  if (corpus.fuzzy) {
+  if (corpus.fuzzy || emptyJourneyAsk) {
     journeyL1 = TAG_UNRECOGNIZED
     journeyL2 = TAG_UNRECOGNIZED
   } else if (settings.useRequestNodeForJourney === true && isUnrecognizedTag(journeyL1)) {
@@ -188,10 +219,22 @@ export function tagTicketDimensions(opts) {
     }
   }
 
-  return {
+  const dims = {
     requestScene,
     problemType,
     journeyL1,
     journeyL2,
+  }
+  if (settings.skipCorrectionOverlay) return dims
+
+  const overlaid = applyCorrectionOverlay(dims, taggingCorpus || text, {
+    productKey: taxonomyKey,
+  })
+  return {
+    requestScene: overlaid.requestScene,
+    problemType: overlaid.problemType,
+    journeyL1: overlaid.journeyL1,
+    journeyL2: overlaid.journeyL2,
+    overlayHits: overlaid.overlayHits,
   }
 }
