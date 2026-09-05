@@ -18,7 +18,7 @@ import {
 } from './customTopic.js'
 import { collectTopicEvidence } from './collectEvidence.js'
 import { buildTopicBrief } from './buildBrief.js'
-import { polishTopicBriefWithLlm } from './llmBrief.js'
+import { polishTopicAnalysisWithLlm, polishTopicBriefWithLlm } from './llmBrief.js'
 import { polishRecommendationsWithLlm } from './llmRecommend.js'
 import { interpretCustomTopic } from './interpretTopic.js'
 import { parseTopicSearchQuery } from './matchQuery.js'
@@ -36,6 +36,7 @@ import {
 import { generateTopicReportBrief } from './generateReport.js'
 import { runTopicReportJob } from './generateJob.js'
 import { buildTopicMarkdown } from './markdown.js'
+import { buildTopicAnalysisChapters, ensureTopicAnalysis } from './buildTopicAnalysisChapters.js'
 import {
   buildRollingMonthPeriod,
   loadRecordsForTopicPeriod,
@@ -55,6 +56,9 @@ export {
   collectTopicEvidence,
   buildTopicBrief,
   polishTopicBriefWithLlm,
+  polishTopicAnalysisWithLlm,
+  buildTopicAnalysisChapters,
+  ensureTopicAnalysis,
   polishRecommendationsWithLlm,
   interpretCustomTopic,
   parseTopicSearchQuery,

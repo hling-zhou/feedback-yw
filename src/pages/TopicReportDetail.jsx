@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Alert, Button, Popconfirm, Space, Spin, Tag, Typography, Upload } from 'antd'
-import { DeleteOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { CopyOutlined, DeleteOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { copyTextToClipboard } from '../lib/clipboard.js'
+import { buildTopicMarkdown } from '../lib/topicAnalysis/markdown.js'
 import { PageHeader } from './Dashboard.shared.jsx'
 import TopicBriefView from '../components/topicAnalysis/TopicBriefView.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
@@ -112,6 +114,13 @@ export default function TopicReportDetail() {
     else message.warning('未找到该工单记录')
   }, [feedbacks, message])
 
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!report?.brief) return
+    const ok = await copyTextToClipboard(buildTopicMarkdown(report.brief))
+    if (ok) message.success('已复制 Markdown')
+    else message.error('复制失败')
+  }, [message, report])
+
   const handleDelete = useCallback(async () => {
     if (!adapter || !report || !canDeleteTopicReport(report, user)) {
       message.warning('无权删除该报告')
@@ -167,6 +176,13 @@ export default function TopicReportDetail() {
             <Upload accept={SUPPLEMENT_ACCEPT} showUploadList={false} disabled={generating || deleting} beforeUpload={handleImport}>
               <Button icon={<UploadOutlined />} disabled={generating || deleting}>提供补充材料</Button>
             </Upload>
+            <Button
+              icon={<CopyOutlined />}
+              disabled={generating || deleting || !report.brief}
+              onClick={() => void handleCopyMarkdown()}
+            >
+              复制 Markdown
+            </Button>
             <Button
               icon={<ReloadOutlined />}
               disabled={generating || deleting}

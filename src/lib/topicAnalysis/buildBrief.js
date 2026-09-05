@@ -1,6 +1,7 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { TOPIC_ANALYSIS_DEMO, TOPIC_TYPE_LABELS } from './constants.js'
 import { buildTopicDecision } from './buildDecision.js'
+import { buildTopicAnalysisChapters } from './buildTopicAnalysisChapters.js'
 
 /**
  * @param {object} evidence
@@ -91,7 +92,7 @@ export function buildTopicBrief(input) {
     }
   }
 
-  return {
+  const brief = {
     demo: TOPIC_ANALYSIS_DEMO,
     generatedAt: input.generatedAt || new Date().toISOString(),
     topic: {
@@ -120,6 +121,11 @@ export function buildTopicBrief(input) {
     sources: evidence.sources || [],
     visits: evidence.visits || [],
     evidenceIds: evidence.evidenceIds || [],
+    signalPack: evidence.signalPack || {},
+  }
+  return {
+    ...brief,
+    analysis: buildTopicAnalysisChapters(brief),
   }
 }
 

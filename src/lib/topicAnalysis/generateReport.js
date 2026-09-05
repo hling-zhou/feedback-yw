@@ -2,7 +2,7 @@ import { listActionItems } from '../actionItemClient.js'
 import { loadVisitRecords } from '../postUseRating/visitRecords.js'
 import { collectTopicEvidence } from './collectEvidence.js'
 import { buildTopicBrief } from './buildBrief.js'
-import { polishTopicBriefWithLlm } from './llmBrief.js'
+import { polishTopicAnalysisWithLlm, polishTopicBriefWithLlm } from './llmBrief.js'
 import { qualifyTopicEvidenceWithLlm } from './llmQualify.js'
 
 /**
@@ -81,6 +81,11 @@ export async function generateTopicReportBrief(input) {
     }
   } catch {
     // keep rule brief
+  }
+  try {
+    brief = await polishTopicAnalysisWithLlm(brief, input.settings)
+  } catch {
+    // keep rule chapters
   }
   return brief
 }

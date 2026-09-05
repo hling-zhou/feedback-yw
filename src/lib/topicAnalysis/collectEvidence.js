@@ -16,6 +16,7 @@ import { blobMatchesTopicQuery, parseTopicMatchInput, formatTopicMatchLayers } f
 import { buildFeedbacksTicketFilterHref } from '../feedbackFilters.js'
 import {
   analyzeTopicGroup,
+  isHighSeverityRecord,
   isNegativeRecord,
   recordJourneyL2Key,
   recordMonthKey,
@@ -168,7 +169,66 @@ function buildSignalPack({ matched, topic, actionItems, period }) {
     },
     quoteClusters: quoteClusters(matched).slice(0, 5),
     splitSuggested,
+    painFragments: painFragments(matched),
+    rootCauses: rootCauseRows(matched),
+    highSeverity: matched.filter(isHighSeverityRecord).length,
+    crossTabs: {
+      problemByJourney: crossTab(matched, recordProblemKey, recordJourneyL2Key),
+      problemByPool: crossTab(matched, recordProblemKey, (record) => compactText(record.resourcePool)),
+      problemBySpec: crossTab(matched, recordProblemKey, (record) => compactText(record.productSpec)),
+    },
   }
+}
+
+const SKIP_CAUSE_RE = /待分析|未识别|无法识别|^无$|^—$|^-$/
+
+function painFragments(records) {
+  const counts = new Map()
+  for (const record of records) {
+    const text = compactText(record.painPoint || record.problemSummary)
+    if (!text || text.length < 4 || SKIP_CAUSE_RE.test(text)) continue
+    const short = text.slice(0, 24)
+    counts.set(short, (counts.get(short) || 0) + 1)
+    for (const token of text.match(/[\u4e00-\u9fff]{4,8}/g) || []) {
+      counts.set(token, (counts.get(token) || 0) + 1)
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .filter((row) => row.count >= 2 || row.name.length >= 8)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'))
+    .slice(0, 6)
+}
+
+function rootCauseRows(records) {
+  const counts = new Map()
+  for (const record of records) {
+    for (const raw of [record.rootCauseReview, record.rootCause]) {
+      const text = compactText(raw).slice(0, 40)
+      if (!text || SKIP_CAUSE_RE.test(text)) continue
+      counts.set(text, (counts.get(text) || 0) + 1)
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'))
+    .slice(0, 5)
+}
+
+function crossTab(records, keyA, keyB) {
+  const counts = new Map()
+  for (const record of records) {
+    const a = compactText(keyA(record))
+    const b = compactText(keyB(record))
+    if (!a || !b || SKIP_CAUSE_RE.test(a) || SKIP_CAUSE_RE.test(b)) continue
+    const key = `${a}\0${b}`
+    const prev = counts.get(key)
+    if (prev) prev.count += 1
+    else counts.set(key, { a, b, count: 1 })
+  }
+  return [...counts.values()]
+    .sort((x, y) => y.count - x.count || x.a.localeCompare(y.a, 'zh-CN'))
+    .slice(0, 8)
 }
 
 /**

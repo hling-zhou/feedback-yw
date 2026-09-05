@@ -343,11 +343,14 @@ describe('topicAnalysis', () => {
     })
     expect(brief.demo).toBe(true)
     expect(brief.sources.length).toBeGreaterThan(0)
+    expect(brief.signalPack.sample.total).toBe(2)
+    expect(brief.analysis.quantitative.sourceMix.length).toBeGreaterThan(0)
     expect(brief.supplementItems[0].text).toContain('扩容')
     const md = buildTopicMarkdown(brief)
     expect(md).toContain('带宽限速')
     expect(md).toContain('信息源')
     expect(md).toContain('补充材料')
+    expect(md).toContain('为什么发生')
   })
 
   it('builds a low-confidence observation for sparse evidence', () => {
