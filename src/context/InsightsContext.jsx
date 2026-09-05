@@ -2274,6 +2274,7 @@ export function InsightsProvider({ children }) {
     async (targetRecords, reportProgress, options = {}) => {
       let list = targetRecords?.length ? targetRecords : feedbacksRef.current
       if (!list.length) return null
+      const progress = (text) => reportProgress?.(text)
 
       // list 投影裁剪了大文本字段；retag 需要全量语料，缺 rawText 时按周期拉全量再按 id 还原
       if (list.some((r) => !('rawText' in r))) {
@@ -2298,7 +2299,6 @@ export function InsightsProvider({ children }) {
       const painPointBefore = new Map(
         list.map((record) => [record.id, (record.painPoint || '').trim()]),
       )
-      const progress = (text) => reportProgress?.(text)
       const ticketLlmOnly = scope === 'needs_ticket_llm'
       const journeyLlmOnly = scope === 'needs_journey_llm'
 
