@@ -21,6 +21,7 @@ import {
   formatTicketTodoDateTime,
   getTicketTodoResolution,
   isTicketTodoOpen,
+  normalizeTicketTodoAssignees,
 } from '../../domain/ticketTodo.js'
 import {
   getEstablishedActionDetailDisplay,
@@ -49,6 +50,7 @@ import TicketTodoStatusTag from '../tags/TicketTodoStatusTag.jsx'
  *   text: string
  *   assigneeUserId: string
  *   assigneeUsername: string
+ *   assignees: { userId: string; username: string }[]
  *   processMode: 'establish_action' | 'no_action'
  *   establishedAction: string
  *   establishedActionDetail: string
@@ -76,8 +78,7 @@ export default function TicketTodoDrawer({
 }) {
   const processing = Boolean(canProcess && row && isTicketTodoOpen(row))
   const [text, setText] = useState('')
-  const [assigneeUserId, setAssigneeUserId] = useState('')
-  const [assigneeUsername, setAssigneeUsername] = useState('')
+  const [assignees, setAssignees] = useState(/** @type {{ userId: string; username: string }[]} */ ([]))
   const [processMode, setProcessMode] = useState(TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION)
   const [actionId, setActionId] = useState('')
   const [establishedAction, setEstablishedAction] = useState('')
@@ -90,8 +91,7 @@ export default function TicketTodoDrawer({
   useEffect(() => {
     if (!open || !row) return
     setText(row.text || '')
-    setAssigneeUserId(row.assigneeUserId || '')
-    setAssigneeUsername(row.assigneeUsername || '')
+    setAssignees(normalizeTicketTodoAssignees(row))
     setProcessNote(row.processNote || '')
     setMarkProcessed(true)
     setProcessMode(TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION)
@@ -121,17 +121,21 @@ export default function TicketTodoDrawer({
     )
   }, [processing, row])
 
-  const ticketIds = row?.ticketId ? [row.ticketId] : []
+  const ticketIds = row
+    ? [...new Set((row.linkedTicketIds?.length ? row.linkedTicketIds : [row.ticketId]).filter(Boolean))]
+    : []
   const sourceLabel = DATA_SOURCE_LABELS[row?.dataSourceType] || row?.dataSourceType || '—'
   const viewResolution = row ? getTicketTodoResolution(row) : 'open'
   const showViewAction = viewResolution === 'converted_to_action'
   const showViewNote = viewResolution === 'processed_without_action'
 
   const handleSave = () => {
+    const first = assignees[0]
     void onSave({
       text,
-      assigneeUserId,
-      assigneeUsername,
+      assigneeUserId: first?.userId || '',
+      assigneeUsername: first?.username || '',
+      assignees,
       processMode,
       establishedAction,
       establishedActionDetail,
@@ -190,17 +194,21 @@ export default function TicketTodoDrawer({
                 <Form.Item label="负责人" className="!mb-0">
                   <Select
                     className="w-full"
+                    mode="multiple"
                     placeholder="负责人"
                     showSearch
                     optionFilterProp="label"
                     allowClear
                     disabled={saving || !assigneeOptions.length}
-                    value={assigneeUserId || undefined}
+                    value={assignees.map((item) => item.userId)}
                     options={assigneeOptions}
-                    onChange={(value) => {
-                      const option = assigneeOptions.find((item) => item.value === value)
-                      setAssigneeUserId(value || '')
-                      setAssigneeUsername(option?.label || '')
+                    onChange={(values) => {
+                      setAssignees(
+                        (values || []).map((userId) => {
+                          const option = assigneeOptions.find((item) => item.value === userId)
+                          return { userId, username: option?.label || userId }
+                        }),
+                      )
                     }}
                   />
                 </Form.Item>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyTicketTodoResolutionToItem,
+  buildTicketTodoIncomingRef,
   buildTicketTodoSavePatch,
   computeSharePercent,
   createEmptyTicketTodoItem,
@@ -10,12 +11,17 @@ import {
   getTicketTodoResolution,
   hasOpenTicketTodos,
   hasOpenTicketTodosAssignedTo,
+  linkTicketToTodoItem,
   lockTicketTodoResolution,
   markOpenTicketTodosConvertedWhenEstablishingAction,
+  normalizeTicketTodoAssignees,
+  normalizeTicketTodoIncoming,
   normalizeTicketTodoInput,
+  normalizeTicketTodoLinkedTicketIds,
   resolveTicketTodoProcessResolution,
   shouldPersistEstablishedActionOnProcess,
   ticketTodoItemsEqual,
+  unlinkTicketFromTodoItem,
 } from './ticketTodo.js'
 import { matchesTodoStatusFilter } from '../lib/feedbackFilters.js'
 
@@ -350,4 +356,87 @@ describe('ticketTodo', () => {
     )
     expect(facets.hasUnassigned).toBe(true)
   })
+
+  it('lifts scalar assignee into assignees and formats multiple names', () => {
+    const items = normalizeTicketTodoInput([
+      { id: 'a', text: '跟进', assigneeUserId: 'u1', assigneeUsername: '张三' },
+      {
+        id: 'b',
+        text: '多人',
+        assignees: [
+          { userId: 'u1', username: '张三' },
+          { userId: 'u2', username: '李四' },
+        ],
+      },
+    ])
+    expect(normalizeTicketTodoAssignees(items[0])).toEqual([{ userId: 'u1', username: '张三' }])
+    expect(getOpenTicketTodoSummary({ ticketTodo: { items } })).toBe('张三：跟进；张三、李四：多人')
+    expect(hasOpenTicketTodosAssignedTo({ ticketTodo: { items } }, 'u2')).toBe(true)
+  })
+
+  it('keeps host ticket in linkedTicketIds and treats incoming as open todos', () => {
+    const item = { id: 'a', text: '复盘', linkedTicketIds: ['C-2'] }
+    expect(normalizeTicketTodoLinkedTicketIds(item, 'C-1')).toEqual(['C-1', 'C-2'])
+    const linked = linkTicketToTodoItem(item, 'C-1', 'C-3')
+    expect(linked.linkedTicketIds).toEqual(['C-1', 'C-2', 'C-3'])
+    expect(unlinkTicketFromTodoItem(linked, 'C-1', 'C-1').linkedTicketIds).toEqual([
+      'C-1',
+      'C-2',
+      'C-3',
+    ])
+    expect(unlinkTicketFromTodoItem(linked, 'C-1', 'C-2').linkedTicketIds).toEqual(['C-1', 'C-3'])
+
+    const incoming = normalizeTicketTodoIncoming([
+      {
+        hostRecordId: 'r-host',
+        hostTicketId: 'C-1',
+        itemId: 'a',
+        text: '复盘',
+        resolution: 'open',
+        assignees: [{ userId: 'me', username: '我' }],
+        linkedTicketIds: ['C-1', 'C-9'],
+      },
+    ])
+    const linkedTicket = { ticketId: 'C-9', ticketTodoIncoming: incoming }
+    expect(hasOpenTicketTodos(linkedTicket)).toBe(true)
+    expect(hasOpenTicketTodosAssignedTo(linkedTicket, 'me')).toBe(true)
+    expect(matchesTodoStatusFilter(linkedTicket, 'my_open', { userId: 'me' })).toBe(true)
+    expect(getOpenTicketTodoSummary(linkedTicket)).toBe('我：复盘')
+    expect(buildTicketTodoIncomingRef({ id: 'r-host', ticketId: 'C-1' }, itemsWithHost())).toMatchObject({
+      hostRecordId: 'r-host',
+      hostTicketId: 'C-1',
+      itemId: 'a',
+    })
+
+    const flattened = flattenTicketTodosFromRecord({
+      id: 'r-host',
+      ticketId: 'C-1',
+      dataSourceType: 'complaint_ticket',
+      ticketTodo: {
+        items: [{ id: 'a', text: '复盘', linkedTicketIds: ['C-1', 'C-9'] }],
+      },
+    })
+    expect(flattened[0].linkedTicketIds).toEqual(['C-1', 'C-9'])
+  })
+
+  it('stamps linkedTicketIds onto new host items when saving', () => {
+    const patch = buildTicketTodoSavePatch(
+      { ticketId: 'C-1', ticketTodo: { items: [] } },
+      [{ id: 'n1', text: '新待办', done: false, assignees: [{ userId: 'u1', username: '甲' }] }],
+      { userId: 'u1', username: '甲' },
+    )
+    expect(patch.ticketTodo?.items[0].linkedTicketIds).toEqual(['C-1'])
+    expect(patch.ticketTodo?.items[0].assignees).toEqual([{ userId: 'u1', username: '甲' }])
+    expect(patch.ticketTodo?.items[0].assigneeUserId).toBe('u1')
+  })
 })
+
+function itemsWithHost() {
+  return {
+    id: 'a',
+    text: '复盘',
+    resolution: 'open',
+    assignees: [{ userId: 'me', username: '我' }],
+    linkedTicketIds: ['C-1', 'C-9'],
+  }
+}

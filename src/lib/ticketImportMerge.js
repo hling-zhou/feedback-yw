@@ -95,6 +95,7 @@ export function preserveUserEditedTicketFields(existing, processed) {
     note: existing.note,
     status: existing.status ?? processed.status,
     ticketTodo: existing.ticketTodo,
+    ticketTodoIncoming: existing.ticketTodoIncoming,
     listeningReviewed: Boolean(existing.listeningReviewed) || Boolean(processed.listeningReviewed),
     establishedAction: existing.establishedAction,
     establishedActionDetail: existing.establishedActionDetail,

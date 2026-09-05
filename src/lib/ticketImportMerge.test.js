@@ -27,6 +27,17 @@ const existing = {
   note: '用户备注',
   status: 'in_progress',
   ticketTodo: { items: [{ id: 'td-1', text: '跟进', done: false }] },
+  ticketTodoIncoming: [
+    {
+      hostRecordId: 'rec-host',
+      hostTicketId: 'T-9',
+      itemId: 'td-x',
+      text: '挂过来的待办',
+      resolution: 'open',
+      assignees: [{ userId: 'u1', username: '张三' }],
+      linkedTicketIds: ['T-9', 'T-1'],
+    },
+  ],
   listeningReviewed: true,
   establishedAction: '确立举措A',
   establishedActionDetail: '详情',
@@ -91,6 +102,7 @@ describe('ticketImportMerge', () => {
     expect(merged.note).toBe('用户备注')
     expect(merged.status).toBe('in_progress')
     expect(merged.ticketTodo).toEqual(existing.ticketTodo)
+    expect(merged.ticketTodoIncoming).toEqual(existing.ticketTodoIncoming)
     expect(merged.listeningReviewed).toBe(true)
     expect(merged.establishedAction).toBe('确立举措A')
     expect(merged.actionId).toBe('act-1')

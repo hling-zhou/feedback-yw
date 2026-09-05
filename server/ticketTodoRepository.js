@@ -123,14 +123,24 @@ function filterTicketTodoRows(query, rows) {
   if (uniqueAssignees.length) {
     const set = new Set(uniqueAssignees)
     filtered = filtered.filter((row) => {
-      if (!row.assigneeUserId) return set.has(TICKET_TODO_UNASSIGNED_ASSIGNEE)
-      return set.has(row.assigneeUserId)
+      const ids = Array.isArray(row.assignees) && row.assignees.length
+        ? row.assignees.map((person) => person.userId).filter(Boolean)
+        : row.assigneeUserId
+          ? [row.assigneeUserId]
+          : []
+      if (!ids.length) return set.has(TICKET_TODO_UNASSIGNED_ASSIGNEE)
+      return ids.some((id) => set.has(id))
     })
   }
 
   if (query.ticketId?.trim()) {
     const tid = query.ticketId.trim()
-    filtered = filtered.filter((row) => row.ticketId === tid)
+    filtered = filtered.filter((row) => {
+      const linked = Array.isArray(row.linkedTicketIds) && row.linkedTicketIds.length
+        ? row.linkedTicketIds
+        : [row.ticketId]
+      return linked.includes(tid)
+    })
   }
 
   if (query.search?.trim()) {

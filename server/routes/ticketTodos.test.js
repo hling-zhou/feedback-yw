@@ -123,6 +123,28 @@ describeTicketTodos('ticket todos API', () => {
         },
       }),
     )
+    storageRepository.putRecord(
+      makeTicket({
+        id: 'rec-todo-linked',
+        ticketId: 'C-300',
+        productKey: 'slb',
+        product: '负载均衡',
+        ticketTodo: {
+          items: [
+            {
+              id: 'td-multi',
+              text: '多人多单',
+              done: false,
+              assignees: [
+                { userId: 'u1', username: '张三' },
+                { userId: 'u8', username: '钱七' },
+              ],
+              linkedTicketIds: ['C-300', 'C-301'],
+            },
+          ],
+        },
+      }),
+    )
   })
 
   afterAll(async () => {
@@ -140,10 +162,11 @@ describeTicketTodos('ticket todos API', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
-    expect(body.total).toBe(3)
+    expect(body.total).toBe(4)
     expect(body.items.map((row) => row.ticketTodoItemId).sort()).toEqual([
       'td-convert',
       'td-done',
+      'td-multi',
       'td-open',
     ])
     expect(body.items.find((row) => row.ticketTodoItemId === 'td-done').resolution).toBe(
@@ -159,6 +182,24 @@ describeTicketTodos('ticket todos API', () => {
     })
     expect(JSON.parse(unassigned.body).total).toBe(2)
 
+    const byLinkedTicket = await app.inject({
+      method: 'GET',
+      url: '/api/ticket-todos?ticketId=C-301',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(byLinkedTicket.body).items.map((row) => row.ticketTodoItemId)).toEqual([
+      'td-multi',
+    ])
+
+    const bySecondAssignee = await app.inject({
+      method: 'GET',
+      url: '/api/ticket-todos?assigneeUserIds=u8',
+      headers: authHeader('viewer'),
+    })
+    expect(JSON.parse(bySecondAssignee.body).items.map((row) => row.ticketTodoItemId)).toEqual([
+      'td-multi',
+    ])
+
     const stats = await app.inject({
       method: 'GET',
       url: '/api/ticket-todos/stats',
@@ -166,15 +207,18 @@ describeTicketTodos('ticket todos API', () => {
     })
     expect(stats.statusCode).toBe(200)
     const body = JSON.parse(stats.body)
-    expect(body.counts.open).toBe(1)
+    expect(body.counts.open).toBe(2)
     expect(body.counts.converted_to_action).toBe(1)
     expect(body.counts.processed_without_action).toBe(1)
-    expect(body.conversionRate).toBe(33.3)
+    expect(body.conversionRate).toBe(25)
     expect(body.byProduct.length).toBeGreaterThanOrEqual(2)
     expect(body.facets.hasUnassigned).toBe(true)
-    expect(body.facets.products.map((item) => item.productKey).sort()).toEqual(['eip', 'vpc'])
+    expect(body.facets.products.map((item) => item.productKey).sort()).toEqual(['eip', 'slb', 'vpc'])
     expect(body.facets.assignees).toEqual(
-      expect.arrayContaining([{ userId: 'u1', username: '张三' }]),
+      expect.arrayContaining([
+        { userId: 'u1', username: '张三' },
+        { userId: 'u8', username: '钱七' },
+      ]),
     )
   })
 })

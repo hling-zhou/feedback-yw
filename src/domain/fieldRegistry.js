@@ -299,7 +299,7 @@ const FIELD_DEFINITIONS = [
   {
     fieldKey: 'ticketTodoOpenSummary',
     displayName: '未完成待办',
-    recordPaths: ['ticketTodo'],
+    recordPaths: ['ticketTodo', 'ticketTodoIncoming'],
     exportable: true,
     exportOrder: 19,
     importable: true,

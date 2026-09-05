@@ -65,6 +65,22 @@ describe('isFeedbackDrawerFormDirty', () => {
       }),
     ).toBe(true)
     expect(
+      isFeedbackDrawerFormDirty(baseRecord, {
+        ...baseForm,
+        ticketTodoIncoming: [
+          {
+            hostRecordId: 'host',
+            hostTicketId: 'C-1',
+            itemId: 't1',
+            text: '挂入',
+            resolution: 'open',
+            assignees: [],
+            linkedTicketIds: ['C-1'],
+          },
+        ],
+      }),
+    ).toBe(true)
+    expect(
       isFeedbackDrawerFormDirty(
         { ...baseRecord, listeningReviewed: false },
         { ...baseForm, listeningReviewed: true },

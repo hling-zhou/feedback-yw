@@ -26,6 +26,7 @@ import {
   TICKET_TODO_PROCESS_MODE,
   TICKET_TODO_RESOLUTIONS,
   TICKET_TODO_RESOLUTION_LABELS,
+  applyTicketTodoAssigneeScalars,
   applyTicketTodoResolutionToItem,
   buildTicketTodoSavePatch,
   createEmptyTicketTodoResolutionCounts,
@@ -34,11 +35,17 @@ import {
   formatTicketTodoDateTime,
   getTicketTodoDraftItems,
   isTicketTodoOpen,
+  normalizeTicketTodoAssignees,
+  normalizeTicketTodoLinkedTicketIds,
   resolveTicketTodoProcessResolution,
   shouldPersistEstablishedActionOnProcess,
 } from '../domain/ticketTodo.js'
 import { TICKET_TODO_RESOLUTION_CHART_COLORS } from '../components/tags/TicketTodoStatusTag.jsx'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
+import {
+  persistEstablishedActionOnLinkedTickets,
+  syncTicketTodoIncoming,
+} from '../lib/ticketTodoIncomingSync.js'
 import { getTicketTodoStats, listTicketTodos } from '../lib/ticketTodoClient.js'
 import {
   buildTicketTodoAssigneeFilterOptions,
@@ -62,7 +69,7 @@ const FILTER_STATUS_OPTIONS = TICKET_TODO_RESOLUTIONS.map((value) => ({
 export default function TicketTodoTab() {
   const { user, can } = useAuth()
   const canEdit = can('editRecord')
-  const { feedbacks, updateFeedback } = useInsights()
+  const { feedbacks, updateFeedback, adapter } = useInsights()
   const [items, setItems] = useState(/** @type {TicketTodoRow[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -291,15 +298,23 @@ export default function TicketTodoTab() {
           linkedFromLibrary: payload.linkedFromLibrary,
         })
       }
-      const draftItems = getTicketTodoDraftItems(record).map((item) => {
-        if (item.id !== editing.ticketTodoItemId) return item
-        return applyTicketTodoResolutionToItem(
-          {
-            ...item,
-            text: payload.text,
+      const previousItems = getTicketTodoDraftItems(record)
+      const assignees = Array.isArray(payload.assignees)
+        ? payload.assignees
+        : normalizeTicketTodoAssignees({
             assigneeUserId: payload.assigneeUserId,
             assigneeUsername: payload.assigneeUsername,
-          },
+          })
+      const draftItems = previousItems.map((item) => {
+        if (item.id !== editing.ticketTodoItemId) return item
+        return applyTicketTodoResolutionToItem(
+          applyTicketTodoAssigneeScalars(
+            {
+              ...item,
+              text: payload.text,
+            },
+            assignees,
+          ),
           resolution,
           {
             processNote:
@@ -318,10 +333,29 @@ export default function TicketTodoTab() {
       const mergedPatch = { ...actionPatch, ...todoPatch }
       if (Object.keys(mergedPatch).length) {
         const merged = await updateFeedback(record.id, mergedPatch, { mergeBase: record })
+        await syncTicketTodoIncoming({
+          hostRecord: { ...record, ...merged },
+          previousItems,
+          nextItems: draftItems,
+          feedbacks,
+          adapter,
+          updateFeedback,
+        })
         if (merged?.actionId?.trim()) {
           await syncFirstTicketSnapshotsForRecord(merged)
           if (!payload.linkedFromLibrary) {
             await syncLinkedTicketsForActionIds([merged.actionId], feedbacks, updateFeedback)
+          }
+          const savedItem = draftItems.find((item) => item.id === editing.ticketTodoItemId)
+          if (savedItem && resolution === 'converted_to_action') {
+            await persistEstablishedActionOnLinkedTickets({
+              actionId: merged.actionId,
+              hostRecord: { ...record, ...merged },
+              linkedTicketIds: normalizeTicketTodoLinkedTicketIds(savedItem, record.ticketId),
+              feedbacks,
+              adapter,
+              updateFeedback,
+            })
           }
         }
       }
@@ -346,15 +380,22 @@ export default function TicketTodoTab() {
     }
     setDeletingId(row.id)
     try {
-      const draftItems = getTicketTodoDraftItems(record).filter(
-        (item) => item.id !== row.ticketTodoItemId,
-      )
+      const previousItems = getTicketTodoDraftItems(record)
+      const draftItems = previousItems.filter((item) => item.id !== row.ticketTodoItemId)
       const patch = buildTicketTodoSavePatch(record, draftItems, {
         userId: user.id,
         username: user.username || user.id,
       })
       if (Object.keys(patch).length) {
-        await updateFeedback(record.id, patch, { mergeBase: record })
+        const merged = await updateFeedback(record.id, patch, { mergeBase: record })
+        await syncTicketTodoIncoming({
+          hostRecord: { ...record, ...merged },
+          previousItems,
+          nextItems: draftItems,
+          feedbacks,
+          adapter,
+          updateFeedback,
+        })
       }
       message.success('已删除待办')
       if (editing?.id === row.id) closeEdit()
@@ -403,7 +444,13 @@ export default function TicketTodoTab() {
         >
           <LinkedTicketsCell
             title="关联工单"
-            ticketIds={record.ticketId ? [record.ticketId] : []}
+            ticketIds={
+              record.linkedTicketIds?.length
+                ? record.linkedTicketIds
+                : record.ticketId
+                  ? [record.ticketId]
+                  : []
+            }
             feedbackByTicketId={feedbackByTicketId}
             onOpenTicket={openFeedbackByTicketId}
           />
@@ -413,7 +460,7 @@ export default function TicketTodoTab() {
     {
       title: '负责人',
       dataIndex: 'assigneeUsername',
-      width: 100,
+      width: 140,
       render: (_, record) => formatTicketTodoAssigneeLabel(record),
     },
     {

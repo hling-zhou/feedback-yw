@@ -9,6 +9,23 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  */
 
 /**
+ * @typedef {Object} TicketTodoAssignee
+ * @property {string} userId
+ * @property {string} username
+ */
+
+/**
+ * @typedef {Object} TicketTodoIncomingRef
+ * @property {string} hostRecordId
+ * @property {string} hostTicketId
+ * @property {string} itemId
+ * @property {string} text
+ * @property {TicketTodoResolution} resolution
+ * @property {TicketTodoAssignee[]} assignees
+ * @property {string[]} linkedTicketIds
+ */
+
+/**
  * @typedef {Object} TicketTodoItem
  * @property {string} id
  * @property {string} text
@@ -16,6 +33,8 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @property {TicketTodoResolution} resolution
  * @property {string} [assigneeUserId]
  * @property {string} [assigneeUsername]
+ * @property {TicketTodoAssignee[]} [assignees]
+ * @property {string[]} [linkedTicketIds]
  * @property {string} [processNote]
  * @property {string} [linkedActionId]
  * @property {string} [createdAt]
@@ -47,6 +66,8 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @property {TicketTodoResolution} resolution
  * @property {string} assigneeUserId
  * @property {string} assigneeUsername
+ * @property {TicketTodoAssignee[]} [assignees]
+ * @property {string[]} [linkedTicketIds]
  * @property {string} createdAt
  * @property {string} updatedAt
  * @property {RecordUpdatedBy} [updatedBy]
@@ -58,6 +79,8 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
 export const TICKET_TODO_TEXT_MAX_LENGTH = 200
 export const TICKET_TODO_PROCESS_NOTE_MAX_LENGTH = 500
 export const TICKET_TODO_UNASSIGNED_ASSIGNEE = '__unassigned__'
+export const TICKET_TODO_ASSIGNEE_MAX = 20
+export const TICKET_TODO_LINKED_TICKET_MAX = 500
 
 /** @type {TicketTodoResolution[]} */
 export const TICKET_TODO_RESOLUTIONS = [
@@ -93,6 +116,201 @@ export const TICKET_TODO_SOURCE_TYPES = /** @type {const} */ ([
  */
 function norm(value) {
   return String(value ?? '').trim()
+}
+
+/**
+ * @param {unknown} entry
+ * @returns {TicketTodoAssignee[]}
+ */
+export function normalizeTicketTodoAssignees(entry) {
+  const raw = entry && typeof entry === 'object' ? /** @type {Record<string, unknown>} */ (entry) : {}
+  /** @type {TicketTodoAssignee[]} */
+  const out = []
+  const seen = new Set()
+  const list = Array.isArray(raw.assignees) ? raw.assignees : null
+  if (list?.length) {
+    for (const row of list) {
+      if (!row || typeof row !== 'object') continue
+      const userId = norm(/** @type {{ userId?: string }} */ (row).userId)
+      if (!userId || seen.has(userId)) continue
+      seen.add(userId)
+      out.push({
+        userId,
+        username: norm(/** @type {{ username?: string }} */ (row).username) || userId,
+      })
+      if (out.length >= TICKET_TODO_ASSIGNEE_MAX) break
+    }
+    return out
+  }
+  const userId = norm(raw.assigneeUserId)
+  if (userId) {
+    out.push({
+      userId,
+      username: norm(raw.assigneeUsername) || userId,
+    })
+  }
+  return out
+}
+
+/**
+ * @param {TicketTodoAssignee[]} assignees
+ */
+export function ticketTodoAssigneesKey(assignees) {
+  return (assignees || [])
+    .map((item) => item.userId)
+    .filter(Boolean)
+    .sort()
+    .join('\n')
+}
+
+/**
+ * @param {unknown} item
+ * @param {TicketTodoAssignee[]} assignees
+ */
+export function applyTicketTodoAssigneeScalars(item, assignees) {
+  const first = assignees[0]
+  return {
+    ...item,
+    assignees,
+    assigneeUserId: first?.userId || '',
+    assigneeUsername: first?.username || '',
+  }
+}
+
+/**
+ * @param {unknown} entry
+ * @param {string} [hostTicketId]
+ * @returns {string[]}
+ */
+export function normalizeTicketTodoLinkedTicketIds(entry, hostTicketId) {
+  const host = norm(hostTicketId)
+  const raw =
+    entry && typeof entry === 'object' && Array.isArray(/** @type {{ linkedTicketIds?: unknown }} */ (entry).linkedTicketIds)
+      ? /** @type {{ linkedTicketIds: unknown[] }} */ (entry).linkedTicketIds
+      : []
+  /** @type {string[]} */
+  const ids = []
+  const seen = new Set()
+  if (host) {
+    ids.push(host)
+    seen.add(host)
+  }
+  for (const value of raw) {
+    const tid = norm(value)
+    if (!tid || seen.has(tid)) continue
+    seen.add(tid)
+    ids.push(tid)
+    if (ids.length >= TICKET_TODO_LINKED_TICKET_MAX) break
+  }
+  return ids
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {TicketTodoIncomingRef[]}
+ */
+export function normalizeTicketTodoIncoming(raw) {
+  if (!Array.isArray(raw)) return []
+  /** @type {TicketTodoIncomingRef[]} */
+  const out = []
+  const seen = new Set()
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const hostRecordId = norm(/** @type {{ hostRecordId?: string }} */ (entry).hostRecordId)
+    const itemId = norm(/** @type {{ itemId?: string }} */ (entry).itemId)
+    const text = norm(/** @type {{ text?: string }} */ (entry).text).slice(0, TICKET_TODO_TEXT_MAX_LENGTH)
+    if (!hostRecordId || !itemId || !text) continue
+    const key = `${hostRecordId}::${itemId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const hostTicketId = norm(/** @type {{ hostTicketId?: string }} */ (entry).hostTicketId)
+    const assignees = normalizeTicketTodoAssignees(entry)
+    out.push({
+      hostRecordId,
+      hostTicketId,
+      itemId,
+      text,
+      resolution: getTicketTodoResolution(entry),
+      assignees,
+      linkedTicketIds: normalizeTicketTodoLinkedTicketIds(entry, hostTicketId),
+    })
+  }
+  return out
+}
+
+/**
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+export function ticketTodoIncomingEqual(a, b) {
+  const left = normalizeTicketTodoIncoming(a)
+  const right = normalizeTicketTodoIncoming(b)
+  if (left.length !== right.length) return false
+  const keyOf = (row) => `${row.hostRecordId}::${row.itemId}`
+  const sort = (rows) => [...rows].sort((p, q) => keyOf(p).localeCompare(keyOf(q)))
+  const L = sort(left)
+  const R = sort(right)
+  for (let i = 0; i < L.length; i += 1) {
+    if (keyOf(L[i]) !== keyOf(R[i])) return false
+    if (L[i].text !== R[i].text) return false
+    if (L[i].resolution !== R[i].resolution) return false
+    if (ticketTodoAssigneesKey(L[i].assignees) !== ticketTodoAssigneesKey(R[i].assignees)) return false
+  }
+  return true
+}
+
+/**
+ * @param {FeedbackRecord} hostRecord
+ * @param {TicketTodoItem} item
+ * @returns {TicketTodoIncomingRef}
+ */
+export function buildTicketTodoIncomingRef(hostRecord, item) {
+  const assignees = normalizeTicketTodoAssignees(item)
+  return {
+    hostRecordId: norm(hostRecord.id),
+    hostTicketId: norm(hostRecord.ticketId),
+    itemId: item.id,
+    text: item.text,
+    resolution: getTicketTodoResolution(item),
+    assignees,
+    linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, hostRecord.ticketId),
+  }
+}
+
+/**
+ * @param {TicketTodoItem} item
+ * @param {string} hostTicketId
+ * @param {string} ticketId
+ */
+export function linkTicketToTodoItem(item, hostTicketId, ticketId) {
+  const linkedTicketIds = normalizeTicketTodoLinkedTicketIds(
+    { linkedTicketIds: [...normalizeTicketTodoLinkedTicketIds(item, hostTicketId), ticketId] },
+    hostTicketId,
+  )
+  return { ...item, linkedTicketIds }
+}
+
+/**
+ * @param {TicketTodoItem} item
+ * @param {string} hostTicketId
+ * @param {string} ticketId
+ */
+export function unlinkTicketFromTodoItem(item, hostTicketId, ticketId) {
+  const host = norm(hostTicketId)
+  const tid = norm(ticketId)
+  if (!tid || tid === host) return item
+  const linkedTicketIds = normalizeTicketTodoLinkedTicketIds(item, host).filter((id) => id !== tid)
+  return { ...item, linkedTicketIds }
+}
+
+/**
+ * @param {TicketTodoItem | TicketTodoIncomingRef | null | undefined} item
+ * @param {string} userId
+ */
+export function ticketTodoItemAssignedTo(item, userId) {
+  const uid = norm(userId)
+  if (!uid) return false
+  return normalizeTicketTodoAssignees(item).some((row) => row.userId === uid)
 }
 
 /**
@@ -288,13 +506,20 @@ function normalizeTicketTodoItem(entry) {
   )
   const linkedActionId = norm(/** @type {{ linkedActionId?: string }} */ (entry).linkedActionId)
   const resolution = getTicketTodoResolution(entry)
+  const assignees = normalizeTicketTodoAssignees(entry)
+  const first = assignees[0]
+  const linkedTicketIds = Array.isArray(/** @type {{ linkedTicketIds?: unknown }} */ (entry).linkedTicketIds)
+    ? normalizeTicketTodoLinkedTicketIds(entry)
+    : []
   return {
     id,
     text,
     resolution,
     done: ticketTodoResolutionImpliesDone(resolution),
-    assigneeUserId: norm(/** @type {{ assigneeUserId?: string }} */ (entry).assigneeUserId),
-    assigneeUsername: norm(/** @type {{ assigneeUsername?: string }} */ (entry).assigneeUsername),
+    assignees,
+    assigneeUserId: first?.userId || '',
+    assigneeUsername: first?.username || '',
+    ...(linkedTicketIds.length ? { linkedTicketIds } : {}),
     ...(processNote ? { processNote } : {}),
     ...(linkedActionId ? { linkedActionId } : {}),
     ...(createdAt ? { createdAt } : {}),
@@ -336,7 +561,10 @@ function todoItemContentEqual(a, b) {
     a.text === b.text &&
     a.done === b.done &&
     getTicketTodoResolution(a) === getTicketTodoResolution(b) &&
-    norm(a.assigneeUserId) === norm(b.assigneeUserId) &&
+    ticketTodoAssigneesKey(normalizeTicketTodoAssignees(a)) ===
+      ticketTodoAssigneesKey(normalizeTicketTodoAssignees(b)) &&
+    normalizeTicketTodoLinkedTicketIds(a).join('\n') ===
+      normalizeTicketTodoLinkedTicketIds(b).join('\n') &&
     norm(a.processNote) === norm(b.processNote) &&
     norm(a.linkedActionId) === norm(b.linkedActionId)
   )
@@ -360,7 +588,10 @@ export function ticketTodoItemsEqual(a, b) {
  * @param {FeedbackRecord | null | undefined} record
  */
 export function hasOpenTicketTodos(record) {
-  return normalizeTicketTodoInput(record?.ticketTodo?.items).some((item) => isTicketTodoOpen(item))
+  if (normalizeTicketTodoInput(record?.ticketTodo?.items).some((item) => isTicketTodoOpen(item))) {
+    return true
+  }
+  return normalizeTicketTodoIncoming(record?.ticketTodoIncoming).some((item) => isTicketTodoOpen(item))
 }
 
 /**
@@ -370,8 +601,15 @@ export function hasOpenTicketTodos(record) {
 export function hasOpenTicketTodosAssignedTo(record, userId) {
   const uid = norm(userId)
   if (!uid) return false
-  return normalizeTicketTodoInput(record?.ticketTodo?.items).some(
-    (item) => isTicketTodoOpen(item) && norm(item.assigneeUserId) === uid,
+  if (
+    normalizeTicketTodoInput(record?.ticketTodo?.items).some(
+      (item) => isTicketTodoOpen(item) && ticketTodoItemAssignedTo(item, uid),
+    )
+  ) {
+    return true
+  }
+  return normalizeTicketTodoIncoming(record?.ticketTodoIncoming).some(
+    (item) => isTicketTodoOpen(item) && ticketTodoItemAssignedTo(item, uid),
   )
 }
 
@@ -379,13 +617,13 @@ export function hasOpenTicketTodosAssignedTo(record, userId) {
  * @param {FeedbackRecord | null | undefined} record
  */
 export function getOpenTicketTodoSummary(record) {
-  return normalizeTicketTodoInput(record?.ticketTodo?.items)
+  const local = normalizeTicketTodoInput(record?.ticketTodo?.items)
     .filter((item) => isTicketTodoOpen(item))
-    .map((item) => {
-      const owner = item.assigneeUsername || '未指定'
-      return `${owner}：${item.text}`
-    })
-    .join('；')
+    .map((item) => `${formatTicketTodoAssigneeLabel(item)}：${item.text}`)
+  const incoming = normalizeTicketTodoIncoming(record?.ticketTodoIncoming)
+    .filter((item) => isTicketTodoOpen(item))
+    .map((item) => `${formatTicketTodoAssigneeLabel(item)}：${item.text}`)
+  return [...local, ...incoming].join('；')
 }
 
 /**
@@ -397,6 +635,7 @@ export function createEmptyTicketTodoItem() {
     text: '',
     done: false,
     resolution: 'open',
+    assignees: [],
     assigneeUserId: '',
     assigneeUsername: '',
   }
@@ -408,7 +647,7 @@ export function createEmptyTicketTodoItem() {
  * @param {RecordUpdatedBy} actor
  * @param {string} now
  */
-function mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now) {
+function mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now, hostTicketId) {
   const currentById = new Map(currentItems.map((item) => [item.id, item]))
   /** @type {TicketTodoItem[]} */
   const next = []
@@ -425,25 +664,32 @@ function mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now) {
     )
     const linkedActionId = norm(draft.linkedActionId || prev?.linkedActionId)
     const createdAt = prev?.createdAt || now
-    const candidate = {
-      id: draft.id || randomId(),
-      text,
-      resolution: draftResolution,
-      done: ticketTodoResolutionImpliesDone(draftResolution),
-      assigneeUserId: norm(draft.assigneeUserId),
-      assigneeUsername: norm(draft.assigneeUsername),
-      ...(processNote ? { processNote } : {}),
-      ...(linkedActionId ? { linkedActionId } : {}),
-      createdAt,
-    }
-    const changed =
-      !prev ||
-      prev.text !== candidate.text ||
-      prev.done !== candidate.done ||
-      getTicketTodoResolution(prev) !== candidate.resolution ||
-      norm(prev.assigneeUserId) !== candidate.assigneeUserId ||
-      norm(prev.processNote) !== processNote ||
-      norm(prev.linkedActionId) !== linkedActionId
+    const assignees = normalizeTicketTodoAssignees(
+      Array.isArray(draft.assignees) || norm(draft.assigneeUserId) ? draft : prev,
+    )
+    const linkedTicketIds = normalizeTicketTodoLinkedTicketIds(
+      {
+        linkedTicketIds:
+          Array.isArray(draft.linkedTicketIds) && draft.linkedTicketIds.length
+            ? draft.linkedTicketIds
+            : prev?.linkedTicketIds,
+      },
+      hostTicketId,
+    )
+    const candidate = applyTicketTodoAssigneeScalars(
+      {
+        id: draft.id || randomId(),
+        text,
+        resolution: draftResolution,
+        done: ticketTodoResolutionImpliesDone(draftResolution),
+        linkedTicketIds,
+        ...(processNote ? { processNote } : {}),
+        ...(linkedActionId ? { linkedActionId } : {}),
+        createdAt,
+      },
+      assignees,
+    )
+    const changed = !prev || !todoItemContentEqual(prev, candidate)
 
     if (changed) {
       next.push({
@@ -478,7 +724,13 @@ export function buildTicketTodoSavePatch(record, draftItems, actor) {
   }
   const currentItems = normalizeTicketTodoInput(record?.ticketTodo?.items)
   const now = new Date().toISOString()
-  const nextItems = mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now)
+  const nextItems = mergeTicketTodoItemsForSave(
+    draftItems,
+    currentItems,
+    actor,
+    now,
+    record?.ticketId,
+  )
 
   if (ticketTodoItemsEqual(nextItems, currentItems)) {
     return {}
@@ -500,7 +752,10 @@ export function buildTicketTodoSavePatch(record, draftItems, actor) {
  * @param {TicketTodoItem | null | undefined} item
  */
 export function formatTicketTodoAssigneeLabel(item) {
-  return item?.assigneeUsername?.trim() || item?.assigneeUserId?.trim() || '未指定'
+  const names = normalizeTicketTodoAssignees(item)
+    .map((row) => row.username || row.userId)
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未指定'
 }
 
 /**
@@ -555,29 +810,36 @@ export function flattenTicketTodosFromRecord(record, productNameByKey) {
     productNameByKey,
   )
   const painPoint = norm(record.painPoint) || norm(record.problemSummary)
-  return items.map((item) => ({
-    id: `${record.id}::${item.id}`,
-    recordId: record.id,
-    ticketId: norm(record.ticketId),
-    ticketTodoItemId: item.id,
-    dataSourceType: record.dataSourceType || 'complaint_ticket',
-    productKey,
-    productName,
-    painPoint,
-    problemType: norm(record.problemType),
-    journeyL1: norm(record.journeyL1),
-    journeyL2: norm(record.journeyL2),
-    text: item.text,
-    resolution: getTicketTodoResolution(item),
-    assigneeUserId: norm(item.assigneeUserId),
-    assigneeUsername: norm(item.assigneeUsername),
-    createdAt: resolveTicketTodoCreatedAt(item, record),
-    updatedAt: item.updatedAt || '',
-    updatedBy: item.updatedBy,
-    processNote: item.processNote || '',
-    linkedActionId: item.linkedActionId || '',
-    record,
-  }))
+  const hostTicketId = norm(record.ticketId)
+  return items.map((item) => {
+    const assignees = normalizeTicketTodoAssignees(item)
+    const first = assignees[0]
+    return {
+      id: `${record.id}::${item.id}`,
+      recordId: record.id,
+      ticketId: hostTicketId,
+      ticketTodoItemId: item.id,
+      dataSourceType: record.dataSourceType || 'complaint_ticket',
+      productKey,
+      productName,
+      painPoint,
+      problemType: norm(record.problemType),
+      journeyL1: norm(record.journeyL1),
+      journeyL2: norm(record.journeyL2),
+      text: item.text,
+      resolution: getTicketTodoResolution(item),
+      assignees,
+      assigneeUserId: first?.userId || '',
+      assigneeUsername: first?.username || '',
+      linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, hostTicketId),
+      createdAt: resolveTicketTodoCreatedAt(item, record),
+      updatedAt: item.updatedAt || '',
+      updatedBy: item.updatedBy,
+      processNote: item.processNote || '',
+      linkedActionId: item.linkedActionId || '',
+      record,
+    }
+  })
 }
 
 /**
@@ -657,16 +919,18 @@ export function collectTicketTodoFacets(rows) {
         productName: row.productName?.trim() || productKey,
       })
     }
-    const userId = row.assigneeUserId?.trim()
-    if (!userId) {
+    const people = normalizeTicketTodoAssignees(row)
+    if (!people.length) {
       hasUnassigned = true
       continue
     }
-    if (!assignees.has(userId)) {
-      assignees.set(userId, {
-        userId,
-        username: row.assigneeUsername?.trim() || userId,
-      })
+    for (const person of people) {
+      if (!assignees.has(person.userId)) {
+        assignees.set(person.userId, {
+          userId: person.userId,
+          username: person.username || person.userId,
+        })
+      }
     }
   }
   return {

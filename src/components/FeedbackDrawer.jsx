@@ -118,6 +118,7 @@ import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
 import {
+  applyTicketTodoAssigneeScalars,
   applyTicketTodoResolutionToItem,
   buildTicketTodoSavePatch,
   createEmptyTicketTodoItem,
@@ -126,11 +127,20 @@ import {
   getTicketTodoResolution,
   isTicketTodoOpen,
   markOpenTicketTodosConvertedWhenEstablishingAction,
+  normalizeTicketTodoAssignees,
+  normalizeTicketTodoIncoming,
+  normalizeTicketTodoLinkedTicketIds,
   TICKET_TODO_MANUAL_RESOLUTION_SELECT_OPTIONS,
   TICKET_TODO_RESOLUTION_SELECT_OPTIONS,
   TICKET_TODO_TEXT_MAX_LENGTH,
 } from '../domain/ticketTodo.js'
 import TicketTodoStatusTag from './tags/TicketTodoStatusTag.jsx'
+import TicketTodoSelect from './TicketTodoSelect.jsx'
+import {
+  persistEstablishedActionOnLinkedTickets,
+  persistTicketTodoLinkChange,
+  syncTicketTodoIncoming,
+} from '../lib/ticketTodoIncomingSync.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
 import {
@@ -977,6 +987,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [complaintCauseReviewTouched, setComplaintCauseReviewTouched] = useState(false)
   const [complaintCauseReviewEnabled, setComplaintCauseReviewEnabled] = useState(false)
   const [ticketTodoItems, setTicketTodoItems] = useState(/** @type {import('../domain/ticketTodo.js').TicketTodoItem[]} */ ([]))
+  const [ticketTodoIncoming, setTicketTodoIncoming] = useState(
+    /** @type {import('../domain/ticketTodo.js').TicketTodoIncomingRef[]} */ ([]),
+  )
   const [todoAssigneeOptions, setTodoAssigneeOptions] = useState(
     /** @type {{ value: string; label: string; team?: string }[]} */ ([]),
   )
@@ -1087,6 +1100,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     setComplaintCauseReviewTouched(false)
     setComplaintCauseReviewEnabled(isCompleteComplaintCauseReview(record))
     setTicketTodoItems(getTicketTodoDraftItems(record))
+    setTicketTodoIncoming(normalizeTicketTodoIncoming(record.ticketTodoIncoming))
   }, [])
 
   useEffect(() => {
@@ -1243,6 +1257,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       complaintCauseL3Review,
       complaintCauseReviewReason,
       ticketTodoItems,
+      ticketTodoIncoming,
     }),
     [
       note,
@@ -1267,6 +1282,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       complaintCauseL3Review,
       complaintCauseReviewReason,
       ticketTodoItems,
+      ticketTodoIncoming,
     ],
   )
 
@@ -1434,17 +1450,92 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         user?.id ? { userId: user.id, username: user.username || user.id } : null,
       ),
     )
+    const actor = user?.id ? { userId: user.id, username: user.username || user.id } : null
+    const previousIncoming = normalizeTicketTodoIncoming(feedback.ticketTodoIncoming)
+    const nextIncoming = normalizeTicketTodoIncoming(ticketTodoIncoming)
+    const previousIncomingKeys = new Set(previousIncoming.map((row) => `${row.hostRecordId}::${row.itemId}`))
+    const nextIncomingKeys = new Set(nextIncoming.map((row) => `${row.hostRecordId}::${row.itemId}`))
+    if (actor) {
+      for (const row of nextIncoming) {
+        if (previousIncomingKeys.has(`${row.hostRecordId}::${row.itemId}`)) continue
+        const host =
+          feedbacks.find((item) => item.id === row.hostRecordId) ||
+          (await adapter.getRecord?.(row.hostRecordId))
+        if (!host) throw new Error('未找到待办所在工单，无法关联')
+        await persistTicketTodoLinkChange({
+          hostRecord: host,
+          itemId: row.itemId,
+          ticketId: feedback.ticketId,
+          mode: 'link',
+          actor,
+          feedbacks,
+          adapter,
+          updateFeedback,
+        })
+      }
+      for (const row of previousIncoming) {
+        if (nextIncomingKeys.has(`${row.hostRecordId}::${row.itemId}`)) continue
+        const host =
+          feedbacks.find((item) => item.id === row.hostRecordId) ||
+          (await adapter.getRecord?.(row.hostRecordId))
+        if (!host) continue
+        await persistTicketTodoLinkChange({
+          hostRecord: host,
+          itemId: row.itemId,
+          ticketId: feedback.ticketId,
+          mode: 'unlink',
+          actor,
+          feedbacks,
+          adapter,
+          updateFeedback,
+        })
+      }
+    }
+    const previousHostItems = getTicketTodoDraftItems(feedback)
+    let mergeBase = saveOptions.mergeBase || feedback
+    if (typeof adapter.getRecord === 'function') {
+      try {
+        const latest = await adapter.getRecord(feedback.id)
+        if (latest) {
+          mergeBase = saveOptions.mergeBase
+            ? { ...saveOptions.mergeBase, ticketTodoIncoming: latest.ticketTodoIncoming }
+            : latest
+        }
+      } catch {
+        /* 用抽屉内记录继续保存 */
+      }
+    }
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
-      mergeBase: saveOptions.mergeBase,
+      mergeBase,
       skipConflictCheck: saveOptions.skipConflictCheck,
       forceOverwrite: saveOptions.forceOverwrite,
     })
     const merged = { ...feedback, ...saved }
+    const nextHostItems = getTicketTodoDraftItems(merged)
+    await syncTicketTodoIncoming({
+      hostRecord: merged,
+      previousItems: previousHostItems,
+      nextItems: nextHostItems,
+      feedbacks,
+      adapter,
+      updateFeedback,
+    })
     if (merged.actionId?.trim()) {
       await syncFirstTicketSnapshotsForRecord(merged)
       if (!linkedFromLibrary) {
         await syncLinkedTicketsForActionIds([merged.actionId], feedbacks, updateFeedback)
+      }
+      for (const item of nextHostItems) {
+        if (getTicketTodoResolution(item) !== 'converted_to_action') continue
+        await persistEstablishedActionOnLinkedTickets({
+          actionId: item.linkedActionId || merged.actionId,
+          hostRecord: merged,
+          linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, merged.ticketId),
+          feedbacks,
+          adapter,
+          updateFeedback,
+        })
       }
     }
     baseRevisionRef.current = getRecordRevision(saved)
@@ -2136,9 +2227,38 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           >
             {canEdit ? (
               <div className="space-y-3">
+                {ticketTodoIncoming.map((row) => (
+                  <div key={`${row.hostRecordId}::${row.itemId}`} className="rounded-md border border-ink-100 bg-ink-50/50 p-2">
+                    <div className="flex items-start gap-2">
+                      <TicketTodoStatusTag className="mt-0.5" resolution={row.resolution} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm">{row.text}</div>
+                        <Typography.Text type="secondary" className="mt-1 block text-xs">
+                          来自工单 {row.hostTicketId || '—'} · 负责人：{formatTicketTodoAssigneeLabel(row)}
+                        </Typography.Text>
+                      </div>
+                      <Button
+                        type="link"
+                        size="small"
+                        disabled={saving}
+                        onClick={() =>
+                          setTicketTodoIncoming((prev) =>
+                            prev.filter(
+                              (item) =>
+                                !(item.hostRecordId === row.hostRecordId && item.itemId === row.itemId),
+                            ),
+                          )
+                        }
+                      >
+                        取消关联
+                      </Button>
+                    </div>
+                  </div>
+                ))}
                 {ticketTodoItems.map((item, index) => {
                   const openItem = isTicketTodoOpen(item)
                   const itemDisabled = saving || !openItem
+                  const assigneeIds = normalizeTicketTodoAssignees(item).map((person) => person.userId)
                   return (
                   <div key={item.id} className="rounded-md border border-ink-100 p-2">
                     <div className="flex items-center gap-2">
@@ -2174,25 +2294,26 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         }}
                       />
                       <Select
-                        className="w-[160px] shrink-0"
+                        className="min-w-[200px] max-w-[280px] shrink-0"
+                        mode="multiple"
                         placeholder="负责人"
                         showSearch
                         optionFilterProp="label"
                         allowClear
+                        maxTagCount="responsive"
                         disabled={itemDisabled || !todoAssigneeOptions.length}
-                        value={item.assigneeUserId || undefined}
+                        value={assigneeIds}
                         options={todoAssigneeOptions.map((option) => ({
                           value: option.value,
                           label: option.label,
                         }))}
-                        onChange={(assigneeUserId) => {
-                          const option = todoAssigneeOptions.find((o) => o.value === assigneeUserId)
+                        onChange={(values) => {
+                          const assignees = (values || []).map((userId) => {
+                            const option = todoAssigneeOptions.find((o) => o.value === userId)
+                            return { userId, username: option?.label || userId }
+                          })
                           const next = [...ticketTodoItems]
-                          next[index] = {
-                            ...item,
-                            assigneeUserId: assigneeUserId || '',
-                            assigneeUsername: option?.label || '',
-                          }
+                          next[index] = applyTicketTodoAssigneeScalars(item, assignees)
                           setTicketTodoItems(next)
                         }}
                       />
@@ -2209,6 +2330,35 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   </div>
                   )
                 })}
+                <TicketTodoSelect
+                  productKey={feedback.productKey || feedback.taxonomyKey}
+                  currentTicketId={feedback.ticketId}
+                  currentRecordId={feedback.id}
+                  disabled={saving}
+                  onSelect={(row) => {
+                    const key = `${row.recordId}::${row.ticketTodoItemId}`
+                    setTicketTodoIncoming((prev) => {
+                      if (prev.some((item) => `${item.hostRecordId}::${item.itemId}` === key)) {
+                        return prev
+                      }
+                      return [
+                        ...prev,
+                        {
+                          hostRecordId: row.recordId,
+                          hostTicketId: row.ticketId,
+                          itemId: row.ticketTodoItemId,
+                          text: row.text,
+                          resolution: getTicketTodoResolution(row),
+                          assignees: normalizeTicketTodoAssignees(row),
+                          linkedTicketIds: [
+                            ...normalizeTicketTodoLinkedTicketIds(row, row.ticketId),
+                            feedback.ticketId,
+                          ].filter(Boolean),
+                        },
+                      ]
+                    })
+                  }}
+                />
                 <Button
                   type="dashed"
                   block
@@ -2221,8 +2371,21 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   添加待办
                 </Button>
               </div>
-            ) : ticketTodoItems.length ? (
+            ) : ticketTodoItems.length || ticketTodoIncoming.length ? (
               <ul className="mb-0 list-none space-y-2 pl-0">
+                {ticketTodoIncoming.map((row) => (
+                  <li key={`${row.hostRecordId}::${row.itemId}`} className="rounded-md border border-ink-100 p-2 text-sm">
+                    <div className="flex items-start gap-2">
+                      <TicketTodoStatusTag className="mt-0.5" resolution={row.resolution} />
+                      <span className={!isTicketTodoOpen(row) ? 'text-ink-400' : undefined}>
+                        {row.text}
+                      </span>
+                    </div>
+                    <Typography.Text type="secondary" className="mt-1 block pl-6 text-xs">
+                      来自工单 {row.hostTicketId || '—'} · 负责人：{formatTicketTodoAssigneeLabel(row)}
+                    </Typography.Text>
+                  </li>
+                ))}
                 {ticketTodoItems.map((item) => (
                   <li key={item.id} className="rounded-md border border-ink-100 p-2 text-sm">
                     <div className="flex items-start gap-2">
