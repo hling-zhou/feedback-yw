@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Modal, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -120,6 +120,16 @@ import {
   downloadPostUseCustomerVisitExcel,
 } from '../lib/postUseRating/customerVisitExport.js'
 
+/** 列表「自定义显示列」可切换的列（默认隐藏，用户可勾选显示） */
+const FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS = [
+  { key: 'requestScene', label: '请求场景' },
+  { key: 'problemType', label: '问题类型' },
+  { key: 'journeyL1', label: '用户旅程' },
+  { key: 'resourcePool', label: '资源池' },
+]
+/** 默认不显示的列 dataIndex */
+const DEFAULT_HIDDEN_COLUMNS = ['requestScene', 'problemType', 'journeyL1', 'resourcePool']
+
 export default function Feedbacks() {
   const {
     feedbacks,
@@ -141,6 +151,7 @@ export default function Feedbacks() {
   const { remoteBannerText } = useSharedBackgroundTaskBlock()
   const [journeyBusy, setJourneyBusy] = useState(false)
   const [view, setView] = useState('table')
+  const [hiddenColumns, setHiddenColumns] = useState(() => new Set(DEFAULT_HIDDEN_COLUMNS))
   const [filters, setFilters] = useState(createEmptyFeedbackFilters)
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
   const [importCustomerRestoreOpen, setImportCustomerRestoreOpen] = useState(false)
@@ -1064,6 +1075,34 @@ export default function Feedbacks() {
                 ]}
                 onChange={setView}
               />
+              {view === 'table' && !isCustomerVisitLane ? (
+                <Popover
+                  trigger="click"
+                  title="自定义显示列"
+                  content={
+                    <div className="flex flex-col gap-2">
+                      {FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS.map((opt) => (
+                        <Checkbox
+                          key={opt.key}
+                          checked={!hiddenColumns.has(opt.key)}
+                          onChange={(e) => {
+                            setHiddenColumns((prev) => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.delete(opt.key)
+                              else next.add(opt.key)
+                              return next
+                            })
+                          }}
+                        >
+                          {opt.label}
+                        </Checkbox>
+                      ))}
+                    </div>
+                  }
+                >
+                  <Button icon={<SettingOutlined />}>自定义显示列</Button>
+                </Popover>
+              ) : null}
               <Button
                 className="ml-auto"
                 icon={<ReloadOutlined />}
@@ -1094,6 +1133,7 @@ export default function Feedbacks() {
             reviewEnabled={reviewEnabled}
             doneRecordIds={doneRecordIds}
             dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
+            hiddenColumns={hiddenColumns}
           />
         ) : (
           <CardGrid

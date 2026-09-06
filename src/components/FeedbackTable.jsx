@@ -290,6 +290,19 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
   ]
 }
 
+/**
+ * 按隐藏列集合过滤可见列。hiddenColumns 中的 dataIndex 对应列将被移除。
+ * @param {Array<{dataIndex?: string}>} columns
+ * @param {Set<string> | string[] | undefined} hiddenColumns
+ * @returns {Array<{dataIndex?: string}>}
+ */
+export function filterVisibleColumns(columns, hiddenColumns) {
+  if (!hiddenColumns) return columns
+  const hidden = hiddenColumns instanceof Set ? hiddenColumns : new Set(hiddenColumns)
+  if (hidden.size === 0) return columns
+  return columns.filter((col) => !hidden.has(col.dataIndex))
+}
+
 export default function FeedbackTable({
   items,
   onSelect,
@@ -297,6 +310,8 @@ export default function FeedbackTable({
   doneRecordIds = /** @type {ReadonlySet<string>} */ (new Set()),
   /** 数据来源筛选；为 post_use_rating 时使用评价专用列 */
   dataSource = '',
+  /** 需要隐藏的列 dataIndex 集合（默认不展示的列）；如 requestScene/problemType/journeyL1/resourcePool */
+  hiddenColumns,
 }) {
   if (items.length === 0) {
     return (
@@ -315,16 +330,18 @@ export default function FeedbackTable({
     dataSource === 'post_use_rating' ||
     (items.length > 0 && items.every((fb) => recordSourceType(fb) === 'post_use_rating'))
 
-  const columns = postUseView
+  const allColumns = postUseView
     ? buildPostUseColumns()
     : buildTicketColumns(reviewEnabled, doneRecordIds)
+  const columns = filterVisibleColumns(allColumns, hiddenColumns)
+  const scrollX = columns.reduce((sum, col) => sum + (col.width || 140), 0)
 
   return (
     <Table
       rowKey="id"
       columns={columns}
       dataSource={items}
-      scroll={{ x: postUseView ? 1100 : reviewEnabled ? 1648 : 1560 }}
+      scroll={{ x: scrollX }}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),
