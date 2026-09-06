@@ -305,31 +305,39 @@ function mergeSimilarAndTop(items, limit = 5, threshold = 0.4) {
 }
 
 /**
- * 将代表性痛点改写为洞察摘要句式（V2 行动建议标题）
+ * v2.4 洞察摘要：优先用「问题原因」作类名，格式「因 {问题原因} 导致的问题（N 条工单…）」；
+ * 无问题原因时回退痛点句。若该成因本期新增或环比激增（≥2 倍且 ≥3 条），追加突发标注。
  * @param {OverviewRecommendation} rec
  * @param {FeedbackRecord[]} pool
  * @param {string} representativePain
  */
 export function buildInsightExecutiveSummary(rec, pool, representativePain) {
-  let pain =
-    getInsightPainText({ painPoint: representativePain }) ||
-    refineStoredInsightPain(representativePain) ||
-    getInsightPainText({ painPoint: rec.generationMeta?.representativePain }) ||
-    refineStoredInsightPain(rec.generationMeta?.representativePain) ||
-    refineStoredInsightPain(rec.summary || rec.text || '')
-  if (!pain && pool.length) {
-    pain = pickInsightRepresentativePain(pool)
+  const cause = (rec?.generationMeta?.representativeCause || '').trim()
+  let title = ''
+  if (cause) {
+    title = truncateSentence(cause, 60)
+  } else {
+    let pain =
+      getInsightPainText({ painPoint: representativePain }) ||
+      refineStoredInsightPain(representativePain) ||
+      getInsightPainText({ painPoint: rec.generationMeta?.representativePain }) ||
+      refineStoredInsightPain(rec.generationMeta?.representativePain) ||
+      refineStoredInsightPain(rec.summary || rec.text || '')
+    if (!pain && pool.length) {
+      pain = pickInsightRepresentativePain(pool)
+    }
+    if (!pain) return ''
+    title = truncateSentence(
+      extractDemandClause(pain) || pain.split(/[。；\n]/)[0]?.trim() || pain,
+      72,
+    )
   }
-  if (!pain) return ''
+  if (!title) return ''
 
-  const painBrief = truncateSentence(
-    extractDemandClause(pain) || pain.split(/[。；\n]/)[0]?.trim() || pain,
-    72,
-  )
   const ticketCount = rec.evidenceBundle?.ticketCount ?? pool.length
   const sharePct = rec.evidenceBundle?.sharePct
 
-  let line = painBrief
+  let line = cause ? `因 ${title} 导致的问题` : title
   if (ticketCount > 0) {
     line += `（${ticketCount} 条工单`
     if (sharePct != null && sharePct >= 5) {
@@ -338,7 +346,67 @@ export function buildInsightExecutiveSummary(rec, pool, representativePain) {
     line += '）'
   }
 
+  // v2.4：突发集中化标注（本期新增 / 环比激增）
+  const spike = formatCauseSpikeSuffix(rec)
+  if (spike) line += spike
+
   return truncateSentence(line, MAX_SUMMARY_LEN)
+}
+
+/**
+ * 突发集中化标注：本期新增或环比激增（≥2 倍且 ≥3 条）时返回后缀。
+ * 依赖 rec.periodCompare（由 attachRecommendationPeriodCompare 注入）。
+ * @param {OverviewRecommendation} rec
+ * @returns {string}
+ */
+export function formatCauseSpikeSuffix(rec) {
+  const cmp = rec?.periodCompare
+  if (!cmp) return ''
+  const currentCount =
+    rec?.sections?.painClusterScores?.ticketCount
+    ?? rec?.evidenceBundle?.ticketCount
+    ?? rec?.evidenceRecordIds?.length
+    ?? 0
+  if (cmp.lifecycle === 'new' || cmp.change === 'new') {
+    return '（本期新增）'
+  }
+  if (cmp.lifecycle === 'growing' && currentCount >= 3) {
+    const prevCount = currentCount - (cmp.deltaCount || 0)
+    if (prevCount > 0 && currentCount / prevCount >= 2) {
+      return `（环比 ${Math.round((currentCount / prevCount) * 10) / 10} 倍）`
+    }
+    if (prevCount <= 0 && currentCount >= 3) {
+      return '（本期新增）'
+    }
+  }
+  return ''
+}
+
+/**
+ * v2.4：在 attachRecommendationPeriodCompare 之后，为有「问题原因」类名且突发（新增/激增）的建议
+ * 追加突发标注到 summary/text/executiveSummary。需传入 records 以重建摘要。
+ * @param {OverviewRecommendation[]} recommendations
+ * @param {FeedbackRecord[]} allRecords
+ */
+export function applyCauseSpikeHighlight(recommendations, allRecords = []) {
+  if (!recommendations?.length) return recommendations
+  const byId = new Map(allRecords.map((r) => [r.id, r]))
+  return recommendations.map((rec) => {
+    const cause = rec?.generationMeta?.representativeCause?.trim()
+    if (!cause) return rec
+    const spike = formatCauseSpikeSuffix(rec)
+    if (!spike) return rec
+    const pool = (rec.evidenceRecordIds || []).map((id) => byId.get(id)).filter(Boolean)
+    // 重建摘要以包含突发标注（periodCompare 现已可用）
+    const rebuilt = buildInsightExecutiveSummary(rec, pool, rec.generationMeta?.representativePain)
+    if (!rebuilt) return rec
+    return {
+      ...rec,
+      summary: rebuilt,
+      text: rebuilt,
+      sections: rec.sections ? { ...rec.sections, executiveSummary: rebuilt } : rec.sections,
+    }
+  })
 }
 
 /**
@@ -503,6 +571,8 @@ function buildClusterRootCauseStructured(rec, pool) {
     rec.text ||
     ''
   ).trim()
+  // v2.4：问题原因类名（簇内痛点表象仅作证据，不再当类名）
+  const causeLabel = (rec.generationMeta?.representativeCause || '').trim()
   const painClustersRaw = topPainPoints(pool, CLUSTER_PAIN_DISPLAY_LIMIT)
   const painClusters = buildPainClustersForDisplay(
     painClustersRaw,
@@ -512,11 +582,12 @@ function buildClusterRootCauseStructured(rec, pool) {
   )
   const businessImpact = buildBusinessImpactText(rec, pool)
 
-  if (!painClusters.length && !businessImpact) {
+  if (!causeLabel && !painClusters.length && !businessImpact) {
     return undefined
   }
 
   return {
+    causeLabel: causeLabel || undefined,
     painClusters: painClusters.length ? painClusters : undefined,
     businessImpact,
   }

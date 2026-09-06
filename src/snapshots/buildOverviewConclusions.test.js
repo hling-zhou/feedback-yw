@@ -89,7 +89,7 @@ describe('buildOverviewConclusions', () => {
     expect(conclusions.executiveSummary).toBe('')
     expect(conclusions.highlights).toHaveLength(0)
     expect(conclusions.recommendations.length).toBeGreaterThan(0)
-    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_3')
+    expect(conclusions.recommendationsMeta?.recommendationEngine).toBe('pain_cluster_v2_4')
     expect(
       (conclusions.recommendationsMeta?.overviewFusedCount || 0)
         + (conclusions.recommendationsMeta?.formalClusterCount || 0)

@@ -136,7 +136,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
         ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-        recommendationEngine: 'pain_cluster_v2_3',
+        recommendationEngine: 'pain_cluster_v2_4',
         legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
         generatedRecommendationCount: 0,
@@ -175,7 +175,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
       recommendationsMeta: {
         ...conclusions.recommendationsMeta,
         ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-        recommendationEngine: 'pain_cluster_v2_3',
+        recommendationEngine: 'pain_cluster_v2_4',
         legacyFallback: false,
         rehydratedAt: new Date().toISOString(),
         generatedRecommendationCount: 0,
@@ -196,7 +196,7 @@ export function rehydrateOverviewRecommendations(conclusions, ticketRecords, set
     recommendationsMeta: {
       ...conclusions.recommendationsMeta,
       ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
-      recommendationEngine: 'pain_cluster_v2_3',
+      recommendationEngine: 'pain_cluster_v2_4',
       legacyFallback: false,
       rehydratedAt: new Date().toISOString(),
       generatedRecommendationCount: raw.length,

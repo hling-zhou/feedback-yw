@@ -1,9 +1,10 @@
-import { pickRepresentativePainPoint } from './clusterLabel.js'
+import { pickRepresentativePainPoint, pickRepresentativeCauseLabel } from './clusterLabel.js'
 import { buildClusterFingerprintV2, CLUSTER_FINGERPRINT_V2 } from './clusterFingerprintV2.js'
 import {
   normalizeClusteringPainText,
   pickInsightRepresentativePain,
 } from './clusteringCorpus.js'
+import { getClusteringCauseText, pickRepresentativeCause } from './clusteringCause.js'
 import { DATA_SOURCE_SHORT_LABEL } from './constants.js'
 import { resolveClusterProfile } from './resolveClusterProfile.js'
 import { runMultiProductClusteringPipeline } from './runProductClusteringPipeline.js'
@@ -135,12 +136,6 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
   if (!records.length) return null
 
   const rawLabel = cluster.representativePainPoint || cluster.label || ''
-  const label =
-    pickInsightRepresentativePain(records) ||
-    normalizeClusteringPainText(rawLabel) ||
-    pickRepresentativePainPoint(records) ||
-    rawLabel.trim() ||
-    '未命名痛点群组'
   const painClusterScores = buildPainClusterScoreMeta(cluster, records)
   const clusterTicketIds = [...new Set(records.map((record) => String(record.ticketId || '').trim()).filter(Boolean))]
   const topL2 = records.reduce(
@@ -164,6 +159,21 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
     /** @type {Map<string, number>} */ (new Map()),
   )
   const dominantProblemType = [...problemTypeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  // v2.4：类名优先多数「问题原因」短语，不再用单票痛点当类名
+  const realCause = cluster.representativeCause || pickRepresentativeCause(records)
+  const causeLabel =
+    realCause ||
+    pickRepresentativeCauseLabel(records, {
+      problemType: dominantProblemType,
+      journeyL2: dominantJ2,
+    })
+  const label =
+    causeLabel ||
+    pickInsightRepresentativePain(records) ||
+    normalizeClusteringPainText(rawLabel) ||
+    pickRepresentativePainPoint(records) ||
+    rawLabel.trim() ||
+    '未命名问题群组'
   const stableKey = buildPainClusterStableKey({
     product: cluster.product,
     representativePain: label,
@@ -202,6 +212,7 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
       selectedReason: `痛点聚类 V2：优先级 ${painClusterScores.priorityScore} 分（排名 ${cluster.rank}/${cluster.totalFinal}），影响广度 ${painClusterScores.breadthScore} 分，业务危害度 ${painClusterScores.harmScore} 分。`,
       score: cluster.priorityScore,
       representativePain: label,
+      representativeCause: realCause || '',
       fingerprintVersion: CLUSTER_FINGERPRINT_V2,
       fingerprintV2,
       scoreModelVersion: profile.scoreModelVersion,
@@ -210,7 +221,11 @@ export function scoredFinalClusterToRecommendation(cluster, allRecords, settings
   }
 
   const attached = attachPlanningRecommendationSections(stub, records)
-  const insightSummary = buildInsightExecutiveSummary(stub, records, label)
+  // buildInsightExecutiveSummary 第三参为「痛点」：有真因时用真因，无真因时回退此痛点
+  const summaryAnchor = realCause
+    ? label
+    : cluster.representativePainPoint || pickRepresentativePainPoint(records) || label
+  const insightSummary = buildInsightExecutiveSummary(stub, records, summaryAnchor)
   const fallbackSummary = insightSummary || attached.sections?.executiveSummary || label
   /** @type {PlanningRecommendationSections} */
   let sections = {

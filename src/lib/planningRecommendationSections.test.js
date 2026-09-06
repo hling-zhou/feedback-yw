@@ -398,4 +398,84 @@ describe('planningRecommendationSections', () => {
     expect(filtered).toHaveLength(1)
     expect(filtered[0].text).toMatch(/账单/)
   })
+
+  it('buildInsightExecutiveSummary uses 问题原因 format when cause present (v2.4)', () => {
+    const pool = [makeRecord(), makeRecord({ id: randomId() })]
+    const rec = {
+      id: 'rec-cause',
+      priority: 'high',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      evidenceBundle: { ticketCount: 5, sharePct: 12 },
+      generationMeta: { representativeCause: '安全组未放行 22 端口' },
+    }
+    const summary = buildInsightExecutiveSummary(rec, pool, '安全组未放行 22 端口')
+    expect(summary).toMatch(/因 安全组未放行 22 端口 导致的问题/)
+    expect(summary).toMatch(/5 条工单/)
+    expect(summary).toMatch(/占该产品 12%/)
+  })
+
+  it('buildInsightExecutiveSummary falls back to pain text when no cause (v2.4)', () => {
+    const pool = [makeRecord(), makeRecord({ id: randomId() })]
+    const rec = {
+      id: 'rec-nocause',
+      priority: 'high',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      evidenceBundle: { ticketCount: 2 },
+      generationMeta: { representativeCause: '' },
+    }
+    const summary = buildInsightExecutiveSummary(rec, pool, '安全组未放行特定端口导致业务访问中断。')
+    expect(summary).toMatch(/安全组未放行/)
+    expect(summary).not.toMatch(/因 .* 导致的问题/)
+  })
+
+  it('buildInsightExecutiveSummary appends 本期新增 spike for new cause (v2.4)', () => {
+    const pool = [makeRecord(), makeRecord({ id: randomId() })]
+    const rec = {
+      id: 'rec-spike-new',
+      priority: 'high',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      evidenceBundle: { ticketCount: 4, sharePct: 10 },
+      generationMeta: { representativeCause: '异网访问拥塞' },
+      periodCompare: { change: 'new', lifecycle: 'new', deltaCount: 4, deltaSharePct: 10 },
+    }
+    const summary = buildInsightExecutiveSummary(rec, pool, '异网访问拥塞')
+    expect(summary).toMatch(/本期新增/)
+  })
+
+  it('buildInsightExecutiveSummary appends 环比 spike for surging cause (v2.4)', () => {
+    const pool = [makeRecord(), makeRecord({ id: randomId() }), makeRecord({ id: randomId() }), makeRecord({ id: randomId() })]
+    const rec = {
+      id: 'rec-spike-grow',
+      priority: 'high',
+      category: 'product',
+      signalType: 'pain_cluster_v2',
+      evidenceBundle: { ticketCount: 8, sharePct: 20 },
+      generationMeta: { representativeCause: '带宽超限' },
+      periodCompare: { change: 'persist', lifecycle: 'growing', deltaCount: 6, deltaSharePct: 15 },
+      sections: { painClusterScores: { ticketCount: 8 } },
+    }
+    const summary = buildInsightExecutiveSummary(rec, pool, '带宽超限')
+    expect(summary).toMatch(/环比 \d+(\.\d+)? 倍/)
+  })
+
+  it('clusterRootCause carries causeLabel when cause present (v2.4)', () => {
+    const pool = [makeRecord(), makeRecord({ id: randomId() })]
+    const sections = buildPlanningRecommendationSections(
+      {
+        id: 'rec-cause-sec',
+        priority: 'high',
+        category: 'product',
+        signalType: 'pain_cluster_v2',
+        summary: '因 安全组未放行 22 端口 导致的问题（2 条工单）',
+        text: '因 安全组未放行 22 端口 导致的问题（2 条工单）',
+        evidenceBundle: { ticketCount: 2 },
+        generationMeta: { representativeCause: '安全组未放行 22 端口' },
+      },
+      pool,
+    )
+    expect(sections.clusterRootCause?.causeLabel).toBe('安全组未放行 22 端口')
+  })
 })

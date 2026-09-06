@@ -113,8 +113,16 @@ export default function PlanningRecommendationSectionsView({ sections }) {
 
       {hasCluster && (
         <SectionBlock title={PLANNING_SECTION_LABELS.clusterRootCause}>
+          {cluster.causeLabel ? (
+            <div className="mb-2 text-sm leading-relaxed text-gray-700">
+              <Typography.Text className="text-[11px] font-medium text-gray-600">
+                问题原因类名：
+              </Typography.Text>{' '}
+              <span className="font-medium">{cluster.causeLabel}</span>
+            </div>
+          ) : null}
           {cluster.painClusters?.length ? (
-            <SubBlock title={`${CLUSTER_SUB_LABELS.painClusters} Top ${cluster.painClusters.length}`}>
+            <SubBlock title={`簇内不同表象 Top ${cluster.painClusters.length}（非类名，仅作证据）`}>
               <ul className="mb-0 list-none space-y-1.5 pl-0 text-sm leading-relaxed text-gray-700">
                 {cluster.painClusters.map((p) => {
                   const sharePct =
@@ -135,7 +143,7 @@ export default function PlanningRecommendationSectionsView({ sections }) {
                     </span>
                     {p.isRepresentative ? (
                       <Tag bordered={false} color="processing" className="!text-[10px]">
-                        代表痛点
+                        代表表象
                       </Tag>
                     ) : null}
                   </li>

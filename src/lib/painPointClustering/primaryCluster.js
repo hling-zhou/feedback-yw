@@ -5,6 +5,7 @@ import { buildNormalizedPainText } from './normalizeSemanticTokens.js'
 import { normalizePainPointKey } from './normalizePainPoint.js'
 import { resolveClusterProfile } from './resolveClusterProfile.js'
 import { resolveClusterThresholds } from './thresholdStrategy.js'
+import { getClusteringCauseKey, pickRepresentativeCause } from './clusteringCause.js'
 import {
   buildPrimaryClusterLabel,
   getRecordDataSourceType,
@@ -21,6 +22,8 @@ import {
  * @property {string} journeyL1
  * @property {string} label
  * @property {string} representativePainPoint
+ * @property {string} representativeCause 问题原因代表句（v2.4）
+ * @property {string} causeKey 问题原因归一化键（v2.4，空表示无可用原因）
  * @property {string} problemType
  * @property {string[]} recordIds
  * @property {number} ticketCount
@@ -42,6 +45,92 @@ export function primaryGroupKey(product, dataSourceType, journeyL1) {
  *   profile?: ReturnType<typeof resolveClusterProfile>
  * }} ClusteringPipelineOptions
  */
+
+/**
+ * v2.4：按「问题原因」对一次聚类组做因主分组。
+ * - 有问题原因的工单按 causeKey 分桶，每桶 ≥ minSize 自成一簇（问题原因为主，不再依赖痛点 Jaccard）
+ * - 桶 < minSize：归 isolated（退回高危及单例路径，不进二次合并）
+ * - 无问题原因的工单：退回痛点 Jaccard 层次聚类（痛点为辅）
+ * 同一痛点簇内不同问题原因天然被拆开（不同 causeKey 进不同桶）。
+ * @param {import('../types.js').FeedbackRecord[]} groupRecords 同一 (product, ds, L1) 组
+ * @param {string} product
+ * @param {import('../../domain/enums.js').DataSourceType} dataSourceType
+ * @param {string} journeyL1
+ * @param {number} minSize
+ * @param {ReturnType<typeof resolveClusterProfile>} profile
+ * @param {ClusteringPipelineOptions} pipelineOptions
+ * @returns {{ clusters: import('../types.js').FeedbackRecord[][]; isolated: import('../types.js').FeedbackRecord[] }}
+ */
+function clusterGroupByCausePrimary(groupRecords, product, dataSourceType, journeyL1, minSize, profile, pipelineOptions) {
+  /** @type {Map<string, import('../types.js').FeedbackRecord[]>} */
+  const byCause = new Map()
+  /** @type {import('../types.js').FeedbackRecord[]} */
+  const noCause = []
+  for (const r of groupRecords) {
+    const key = getClusteringCauseKey(r)
+    if (!key) {
+      noCause.push(r)
+    } else if (byCause.has(key)) {
+      byCause.get(key).push(r)
+    } else {
+      byCause.set(key, [r])
+    }
+  }
+
+  /** @type {import('../types.js').FeedbackRecord[][]} */
+  const clusters = []
+  /** @type {import('../types.js').FeedbackRecord[]} */
+  const isolated = []
+
+  // 问题原因为主：同因同簇（不依赖痛点相似度）
+  for (const group of byCause.values()) {
+    if (group.length >= minSize) clusters.push(group)
+    else isolated.push(...group)
+  }
+
+  // 无问题原因：退回痛点 Jaccard（痛点为辅）
+  if (noCause.length) {
+    const thresholds = resolveClusterThresholds({
+      profile,
+      records: noCause,
+      product,
+      stage: 'primary',
+    })
+    const { clusters: painClusters, isolated: painIsolated } = clusterByJaccard(
+      noCause,
+      getRecordPainPoint,
+      thresholds.threshold || PRIMARY_CLUSTER_THRESHOLD,
+      minSize,
+      {
+        ...pipelineOptions,
+        minSharedTokens: pipelineOptions.minSharedTokens ?? thresholds.minSharedTokens,
+        buildNormalizedText: (text, item) => item.normalizedPainText || buildNormalizedPainText(text),
+        getTokenSet: (text, item, normalizedPainText) =>
+          normalizedPainText.semanticTokens || buildNormalizedPainText(text).semanticTokens,
+        getPairSimilarity: (left, right) =>
+          computeClusterSimilarity(left.normalizedPainText, right.normalizedPainText, {
+            left: {
+              product,
+              journeyL1,
+              dataSourceType,
+              problemType: majorityProblemType(left.members),
+            },
+            right: {
+              product,
+              journeyL1,
+              dataSourceType,
+              problemType: majorityProblemType(right.members),
+            },
+            profile,
+          }),
+      },
+    )
+    clusters.push(...painClusters)
+    isolated.push(...painIsolated)
+  }
+
+  return { clusters, isolated }
+}
 
 /**
  * @param {import('../types.js').FeedbackRecord[]} records
@@ -84,45 +173,24 @@ export function runPrimaryClustering(records, product, pipelineOptions = {}) {
       )
     }
 
-    const thresholds = resolveClusterThresholds({
-      profile,
-      records: groupRecords,
-      product,
-      stage: 'primary',
-    })
-    const { clusters, isolated } = clusterByJaccard(
+    // v2.4：问题原因为主、痛点为辅。同因同簇（不依赖痛点措辞），异因天然拆开；无因退回痛点 Jaccard。
+    const { clusters, isolated } = clusterGroupByCausePrimary(
       groupRecords,
-      getRecordPainPoint,
-      thresholds.threshold || PRIMARY_CLUSTER_THRESHOLD,
+      prod,
+      /** @type {import('../../domain/enums.js').DataSourceType} */ (dataSourceType),
+      journeyL1,
       PRIMARY_MIN_CLUSTER_SIZE,
-      {
-        ...pipelineOptions,
-        minSharedTokens: pipelineOptions.minSharedTokens ?? thresholds.minSharedTokens,
-        buildNormalizedText: (text, item) => item.normalizedPainText || buildNormalizedPainText(text),
-        getTokenSet: (text, item, normalizedPainText) =>
-          normalizedPainText.semanticTokens || buildNormalizedPainText(text).semanticTokens,
-        getPairSimilarity: (left, right) =>
-          computeClusterSimilarity(left.normalizedPainText, right.normalizedPainText, {
-            left: {
-              product,
-              journeyL1,
-              dataSourceType,
-              problemType: majorityProblemType(left.members),
-            },
-            right: {
-              product,
-              journeyL1,
-              dataSourceType,
-              problemType: majorityProblemType(right.members),
-            },
-            profile,
-          }),
-      },
+      profile,
+      pipelineOptions,
     )
     isolatedRecords.push(...isolated)
 
     for (const clusterRecords of clusters) {
       const representativePainPoint = pickRepresentativePainPoint(clusterRecords)
+      const representativeCause = pickRepresentativeCause(clusterRecords)
+      const causeKey = representativeCause
+        ? getClusteringCauseKey({ rootCause: representativeCause })
+        : ''
       const problemType = majorityProblemType(clusterRecords)
       const id = `primary-${product}-${dataSourceType}-${journeyL1}-${clusterSeq}`
       clusterSeq += 1
@@ -142,6 +210,8 @@ export function runPrimaryClustering(records, product, pipelineOptions = {}) {
           representativePainPoint,
         }),
         representativePainPoint,
+        representativeCause,
+        causeKey,
         problemType,
         recordIds: clusterRecords.map((r) => r.id),
         ticketCount: clusterRecords.length,

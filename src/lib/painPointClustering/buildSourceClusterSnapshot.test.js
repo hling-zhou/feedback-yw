@@ -18,7 +18,7 @@ function makeRecord(overrides = {}) {
 describe('buildSourcePainPointClusterSnapshot', () => {
   it('returns empty snapshot for no records', () => {
     const snap = buildSourcePainPointClusterSnapshot([])
-    expect(snap.clusteringVersion).toBe('v2.3')
+    expect(snap.clusteringVersion).toBe('v2.4')
     expect(snap.products).toEqual({})
   })
 

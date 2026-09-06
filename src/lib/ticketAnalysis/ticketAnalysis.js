@@ -15,6 +15,7 @@ import {
 import { extractCustomerRequestWithLLM } from './customerRequestLLM.js'
 import { extractPainPoint } from './painPointExtract.js'
 import { extractPainPointWithLLM } from './painPointLLM.js'
+import { extractRootCauseWithLLM } from './rootCauseLLM.js'
 import { tagTicketDimensions } from './ticketDimensionTagging.js'
 import { extractTicketOptimizations } from './ticketOptimizationExtract.js'
 import { extractTicketOptimizationsWithLLM } from './ticketOptimizationLLM.js'
@@ -114,17 +115,20 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
   } = core
   let customerRequestSource = /** @type {'rule' | 'llm'} */ ('rule')
   let painPointSource = /** @type {'rule' | 'llm'} */ ('rule')
+  let rootCauseSource = /** @type {'rule' | 'llm'} */ ('rule')
   let optimizationSource = /** @type {'rule' | 'llm'} */ ('rule')
 
   if (!canUseSemanticMatch(settings)) {
     return {
       customerRequest,
       painPoint,
+      rootCause,
       optimizations,
       sentiment,
       urgencyLevel,
       customerRequestSource,
       painPointSource,
+      rootCauseSource,
       optimizationSource,
     }
   }
@@ -159,6 +163,7 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
     return {
       customerRequest: unified.customerRequest,
       painPoint: unified.painPoint,
+      rootCause: unified.rootCause,
       optimizations: {
         optimizationProduct: unified.optimizationProduct,
         optimizationService: unified.optimizationService,
@@ -168,6 +173,7 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
       urgencyLevel: sentimentResult.urgencyLevel,
       customerRequestSource: unified.customerRequestSource,
       painPointSource: unified.painPointSource,
+      rootCauseSource: unified.rootCauseSource,
       optimizationSource: unified.optimizationSource,
     }
   }
@@ -205,6 +211,24 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
     }
   } catch (err) {
     console.warn('[analyzeTicketAsync] 痛点 LLM 失败，使用规则结果:', err)
+  }
+
+  try {
+    const llmRootCause = await extractRootCauseWithLLM(
+      {
+        taggingText: corpus.taggingText,
+        handlingText: input.handlingText,
+        rootCause,
+        painPoint,
+      },
+      settings,
+    )
+    if (llmRootCause) {
+      rootCause = llmRootCause
+      rootCauseSource = 'llm'
+    }
+  } catch (err) {
+    console.warn('[analyzeTicketAsync] 问题原因 LLM 失败，保留规则/导入值:', err)
   }
 
   const validated = validateTicketAnalysisPair(
@@ -252,11 +276,13 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
   return {
     customerRequest,
     painPoint,
+    rootCause,
     optimizations,
     sentiment,
     urgencyLevel,
     customerRequestSource,
     painPointSource,
+    rootCauseSource,
     optimizationSource,
   }
 }
@@ -271,6 +297,8 @@ function buildTicketAnalysisResult(input, core, enriched) {
   const {
     customerRequest = core.customerRequest,
     painPoint = core.painPoint,
+    rootCause: enrichedRootCause = rootCause,
+    rootCauseSource = 'rule',
     optimizations = core.optimizations,
     sentiment = core.sentiment,
     urgencyLevel = core.urgencyLevel,
@@ -292,7 +320,8 @@ function buildTicketAnalysisResult(input, core, enriched) {
     problemSummary: painPoint,
     painPointSource,
     solutionSummary,
-    rootCause: rootCause || '待分析',
+    rootCause: enrichedRootCause || rootCause || '待分析',
+    rootCauseSource,
     optimizationProduct: optimizations.optimizationProduct,
     optimizationService: optimizations.optimizationService,
     optimizationSuggestion: optimizations.optimizationSuggestion,

@@ -44,6 +44,7 @@ describe('ticketAnalysisUnifiedLLM', () => {
     vi.mocked(parseLlmMessageContent).mockReturnValue({
       customerRequest: '多台云主机公网 IP 在晚高峰访问延迟高、页面卡顿。',
       painPoint: '晚高峰公网链路拥塞导致访问延迟高。',
+      rootCause: '晚高峰异网访问拥塞',
       productOptimizations: ['控制台增加公网质量诊断与链路拥塞预警看板'],
       serviceOptimizations: [],
     })
@@ -61,9 +62,11 @@ describe('ticketAnalysisUnifiedLLM', () => {
 
     expect(result.customerRequestSource).toBe('llm')
     expect(result.painPointSource).toBe('llm')
+    expect(result.rootCauseSource).toBe('llm')
+    expect(result.rootCause).toBe('晚高峰异网访问拥塞')
     expect(result.optimizationSource).toBe('llm')
     expect(result.optimizationProduct).toContain('诊断')
-    expect(llmChatCompletion).toHaveBeenCalledTimes(1)
+    expect(llmChatCompletion).toHaveBeenCalledTimes(2)
     expect(result.optimizationRetry).toBeFalsy()
   })
 
@@ -71,13 +74,18 @@ describe('ticketAnalysisUnifiedLLM', () => {
     vi.mocked(llmChatCompletion)
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
     vi.mocked(getLlmCompletionText).mockReturnValue('{}')
     vi.mocked(parseLlmMessageContent)
       .mockReturnValueOnce({
         customerRequest: '申请提升公网 IP 全局配额上限。',
         painPoint: '默认配额过低导致批量创建失败。',
+        rootCause: '默认配额上限过低',
         productOptimizations: [],
         serviceOptimizations: [],
+      })
+      .mockReturnValueOnce({
+        rootCause: '默认配额上限过低',
       })
       .mockReturnValueOnce({
         productOptimizations: ['配额中心支持按产品批量申请与审批进度可视化'],
@@ -94,11 +102,12 @@ describe('ticketAnalysisUnifiedLLM', () => {
 
     expect(result.customerRequestSource).toBe('llm')
     expect(result.painPointSource).toBe('llm')
+    expect(result.rootCauseSource).toBe('llm')
     expect(result.optimizationSource).toBe('llm')
     expect(result.optimizationRetry).toBe(true)
-    expect(llmChatCompletion).toHaveBeenCalledTimes(2)
-    const secondCall = vi.mocked(llmChatCompletion).mock.calls[1]?.[1]
-    expect(secondCall?.messages?.[1]?.content).not.toContain('详细内容：配额不足')
+    expect(llmChatCompletion).toHaveBeenCalledTimes(3)
+    const thirdCall = vi.mocked(llmChatCompletion).mock.calls[2]?.[1]
+    expect(thirdCall?.messages?.[1]?.content).not.toContain('详细内容：配额不足')
   })
 
   it('falls back to rule when unified fails entirely', async () => {

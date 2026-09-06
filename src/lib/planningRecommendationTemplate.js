@@ -3,7 +3,6 @@ import {
   FINAL_CLUSTER_TOP_N,
   LOW_VALUE_PROBLEM_TYPES,
   PRIMARY_CLUSTER_THRESHOLD,
-  SECONDARY_CLUSTER_THRESHOLD,
 } from './painPointClustering/constants.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendationScope} OverviewRecommendationScope */
@@ -497,7 +496,7 @@ export function buildPlanningRecommendationsHelpSections() {
       paragraphs: [
         '在洞察工作台点击「生成 / 刷新洞察」后，基于当前洞察周期内的投诉单与咨询单工单写入周期快照。',
         '导入数据、修改标签或批量重新打标后，需再次刷新洞察，行动建议才会与最新工单分布一致。',
-        '聚类语料优先使用「需求痛点挖掘」；为空或过短时会 fallback 到「客户请求内容」。',
+        '聚类语料优先使用「问题原因」（rootCause，由工单 LLM 在导入/重打标时写入）；为空时回退到「需求痛点挖掘」，再回退到「客户请求内容」。',
       ],
     },
     {
@@ -509,13 +508,18 @@ export function buildPlanningRecommendationsHelpSections() {
       ],
     },
     {
-      title: '痛点聚类（每产品 Top 10）',
+      title: '问题原因聚类（每产品 Top 10，v2.4）',
       items: [
-        '按产品分别处理周期内全部投诉/咨询工单，每个产品取优先级最高的最多 10 个「最终痛点群组」各生成 1 条行动建议。',
-        `一次聚类：按「产品 + 数据来源 + 一级用户旅程」分组，对组内 painPoint 做 Jaccard 层次聚类（阈值 ${PRIMARY_CLUSTER_THRESHOLD}，簇 ≥2 条工单）。`,
+        '按产品分别处理周期内全部投诉/咨询工单，每个产品取优先级最高的最多 10 个「最终问题群组」各生成 1 条行动建议。',
+        '聚类按「问题原因」分组，不按痛点措辞：问题原因指导致表象的配置/组件/流程状态，不是客户感受或责任归属。',
+        '问题原因由工单 LLM 在导入/重打标时写入 rootCause 字段（覆盖系统字段，不改人工复核与导入列快照）；快照重建不再单独跑根因 LLM。',
+        '投诉原因树的一级、二级（组织归责，如「云能问题」「产品原因」）不参与聚类，最多用三级（如「安全策略」「硬件问题」）。',
+        `一次聚类：按「产品 + 数据来源 + 一级用户旅程」分组，组内按问题原因为主、痛点为辅做 Jaccard 层次聚类（阈值 ${PRIMARY_CLUSTER_THRESHOLD}，簇 ≥2 条工单）；同一痛点簇内不同问题原因会被拆开。`,
         `剔除低价值一次群组：问题类型为「${lowValueTypes}」的群组不参与二次聚类（可在数据覆盖说明中备注剔除数量）。`,
-        `二次聚类：跨来源、跨一级环节合并一次群组代表性文本（阈值 ${SECONDARY_CLUSTER_THRESHOLD}），得到产品级最终痛点群组。`,
+        `二次聚类：只按问题原因合并（同因跨来源、跨一级环节合并；异因不合并；无原因的群组不跨 L1 合并），得到产品级最终问题群组。`,
+        `类名取簇内多数「问题原因」短语；无自由文本时用多数三级原因；都没有时用问题类型 + 旅程二级，不再用单条痛点原文当类名。`,
         `各产品按综合优先级排序，取 Top ${FINAL_CLUSTER_TOP_N}；展示时按产品配额分配条数（大单量产品 3～8 条，小产品至少 1 条），合计不超过 ${maxItems} 条。`,
+        '若某问题原因本期新增或环比激增（≥2 倍且 ≥3 条），摘要会追加「本期新增 / 环比 X 倍」以标注突发集中化问题。',
         '来源 Tab 旅程区展示一次聚类结果；洞察概览行动建议使用二次聚类（最终群组）结果。',
       ],
     },

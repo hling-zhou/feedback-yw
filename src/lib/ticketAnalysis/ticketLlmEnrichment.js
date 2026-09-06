@@ -8,6 +8,7 @@ import { extractCustomerRequestWithLLM } from './customerRequestLLM.js'
 import { extractPainPoint } from './painPointExtract.js'
 import { extractTicketOptimizations } from './ticketOptimizationExtract.js'
 import { extractPainPointWithLLM } from './painPointLLM.js'
+import { extractRootCauseWithLLM } from './rootCauseLLM.js'
 import { extractTicketOptimizationsWithLLM } from './ticketOptimizationLLM.js'
 import {
   extractTicketAnalysisUnifiedWithLLM,
@@ -102,7 +103,7 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras =
     candidates,
     ruleCustomerRequest,
     rulePainPoint,
-    rootCause,
+    rootCause: ruleRootCause,
     solutionSummary,
     journeyL2,
     ruleOptimizations,
@@ -114,6 +115,8 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras =
     record.customerRequestSource === 'llm' ? 'llm' : 'rule'
   let painPoint = record.painPoint?.trim() || rulePainPoint
   let painPointSource = record.painPointSource === 'llm' ? 'llm' : 'rule'
+  let rootCause = record.rootCause?.trim() || ruleRootCause
+  let rootCauseSource = record.rootCauseSource === 'llm' ? 'llm' : 'rule'
   let optimizationProduct =
     record.optimizationProduct?.trim() || ruleOptimizations.optimizationProduct
   let optimizationService =
@@ -153,6 +156,24 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras =
     }
   } catch (err) {
     console.warn('[ticket-llm] 痛点挖掘失败，保留规则结果:', err)
+  }
+
+  try {
+    const llmRootCause = await extractRootCauseWithLLM(
+      {
+        taggingText: corpus.taggingText,
+        handlingText: input.handlingText,
+        rootCause,
+        painPoint,
+      },
+      settings,
+    )
+    if (llmRootCause) {
+      rootCause = llmRootCause
+      rootCauseSource = 'llm'
+    }
+  } catch (err) {
+    console.warn('[ticket-llm] 问题原因 LLM 失败，保留规则/导入值:', err)
   }
 
   const validated = validateTicketAnalysisPair(
@@ -201,6 +222,8 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras =
     painPoint,
     problemSummary: painPoint,
     painPointSource,
+    rootCause,
+    rootCauseSource,
     optimizationProduct,
     optimizationService,
     optimizationSuggestion,
@@ -263,6 +286,8 @@ async function enrichRecordWithTicketLlmUnified(record, settings, ctx, extras = 
     painPoint: unified.painPoint,
     problemSummary: unified.painPoint,
     painPointSource: unified.painPointSource,
+    rootCause: unified.rootCause,
+    rootCauseSource: unified.rootCauseSource,
     optimizationProduct: unified.optimizationProduct,
     optimizationService: unified.optimizationService,
     optimizationSuggestion: unified.optimizationSuggestion,

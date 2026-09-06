@@ -98,7 +98,8 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @typedef {Object} PlanningClusterRootCause
  * @property {string} [contextNote] - 分析范围/环节说明
  * @property {string[]} [dataMetrics] - 数据表现
- * @property {PlanningPainCluster[]} [painClusters] - 痛点聚类
+ * @property {string} [causeLabel] - 问题原因类名（v2.4，类名优先于此处的痛点表象）
+ * @property {PlanningPainCluster[]} [painClusters] - 痛点聚类（簇内不同表象，非类名）
  * @property {PlanningRootCauseItem[]} [rootCauses] - 根因聚类
  * @property {string} [businessImpact] - 业务影响
  */
@@ -175,7 +176,7 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  * @property {string} [ruleVersion]
  * @property {string} [playbookVersion]
  * @property {string} [signalWeightsVersion]
- * @property {'pain_cluster_v2' | 'pain_cluster_v2_1' | 'pain_cluster_v2_2' | 'pain_cluster_v2_3' | 'legacy_planning'} [recommendationEngine]
+ * @property {'pain_cluster_v2' | 'pain_cluster_v2_1' | 'pain_cluster_v2_2' | 'pain_cluster_v2_3' | 'pain_cluster_v2_4' | 'legacy_planning'} [recommendationEngine]
  * @property {boolean} [legacyFallback]
  * @property {string} [previousPeriodId]
  * @property {number} [generatedRecommendationCount]

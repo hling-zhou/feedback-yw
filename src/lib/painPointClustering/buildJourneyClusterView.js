@@ -1,5 +1,5 @@
 import { CLUSTERING_VERSION, DATA_SOURCE_SHORT_LABEL } from './constants.js'
-import { getRecordDataSourceType, getRecordPainPoint } from './clusterLabel.js'
+import { getRecordDataSourceType, getRecordPainPoint, pickRepresentativeCauseLabel } from './clusterLabel.js'
 import { runPrimaryClustering } from './primaryCluster.js'
 
 /** @typedef {import('./primaryCluster.js').PrimaryPainCluster} PrimaryPainCluster */
@@ -65,17 +65,27 @@ function mapPrimaryClustersToGroupViews(groupsForL1, scoped, journeyL2) {
   return groupsForL1.map((c) => {
     let recordIds = c.recordIds
     let ticketCount = c.ticketCount
+    let scopedRecords = scoped.filter((r) => c.recordIds.includes(r.id))
     if (journeyL2) {
-      const l2Records = scoped.filter(
-        (r) => c.recordIds.includes(r.id) && r.journeyL2?.trim() === journeyL2,
+      const l2Records = scopedRecords.filter(
+        (r) => r.journeyL2?.trim() === journeyL2,
       )
       recordIds = l2Records.map((r) => r.id)
       ticketCount = recordIds.length
+      scopedRecords = l2Records
     }
+    // v2.4：旅程图聚类组代表改为多数问题原因短语，与类名规则一致
+    const representativePainPoint =
+      c.representativeCause ||
+      pickRepresentativeCauseLabel(scopedRecords, {
+        problemType: c.problemType,
+        journeyL2,
+      }) ||
+      c.representativePainPoint
     return {
       id: c.id,
       label: c.label,
-      representativePainPoint: c.representativePainPoint,
+      representativePainPoint,
       problemType: c.problemType,
       ticketCount,
       recordIds,

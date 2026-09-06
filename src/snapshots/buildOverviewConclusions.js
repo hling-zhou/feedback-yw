@@ -18,7 +18,9 @@ import { CLUSTERING_VERSION } from '../lib/painPointClustering/constants.js'
 import { buildOverviewFusedRecommendations } from '../lib/painPointClustering/overviewClusterFusion.js'
 import { resolveClusterProfile } from '../lib/painPointClustering/resolveClusterProfile.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
+import { applyCauseSpikeHighlight } from '../lib/planningRecommendationSections.js'
 import { getPlanningConfigVersions } from '../lib/planningConfigLoader.js'
+import { causeCoverageRate } from '../lib/painPointClustering/clusteringCause.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from './rehydrateOverviewRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewConclusions} OverviewConclusions */
@@ -166,6 +168,17 @@ export function buildOverviewConclusions({
   const exclusionNote = formatClusteringExclusionNote(pipelineResults)
   if (exclusionNote) dataCoverageNotes.push(exclusionNote)
 
+  // v2.4：问题原因覆盖说明——缺少问题原因占比高时提示按问题类型回退
+  const causeCoveragePct = ticketRecords.length
+    ? Math.round(causeCoverageRate(ticketRecords) * 100)
+    : 100
+  const missingCausePct = 100 - causeCoveragePct
+  if (missingCausePct >= 30) {
+    dataCoverageNotes.push(
+      `${missingCausePct}% 工单缺少问题原因，已按问题类型回退聚类（建议对存量工单批量重打标并勾选工单 LLM 以补全问题原因）。`,
+    )
+  }
+
   if (
     !recommendationsWithFallbacks.length &&
     !dataCoverageNotes.includes(OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE)
@@ -176,10 +189,11 @@ export function buildOverviewConclusions({
   const limitedRecommendations = limitPlanningRecommendations(recommendationsWithFallbacks, {
     ticketRecords,
   })
-  const { recommendations, removedFromPreviousCount } = attachRecommendationPeriodCompare(
+  const { recommendations: compared, removedFromPreviousCount } = attachRecommendationPeriodCompare(
     limitedRecommendations,
     previousRecommendations,
   )
+  const recommendations = applyCauseSpikeHighlight(compared, ticketRecords)
   const configVersions = getPlanningConfigVersions()
 
   if (negativeTicketPct >= 30) {
@@ -202,7 +216,7 @@ export function buildOverviewConclusions({
       ruleVersion: `pain-cluster-${CLUSTERING_VERSION}`,
       playbookVersion: configVersions.playbookVersion,
       signalWeightsVersion: configVersions.signalWeightsVersion,
-      recommendationEngine: 'pain_cluster_v2_3',
+      recommendationEngine: 'pain_cluster_v2_4',
       legacyFallback: false,
       previousPeriodId: previousPeriodId || undefined,
       generatedRecommendationCount: rawRecommendations.length,

@@ -161,8 +161,9 @@ describe('painPointClustering/primaryCluster', () => {
 })
 
 describe('painPointClustering/secondaryCluster', () => {
-  it('merges similar primary clusters across sources', () => {
+  it('merges similar primary clusters across sources by same cause (v2.4)', () => {
     const pain = '带宽超限导致网速很慢无法正常使用'
+    const cause = '带宽超限'
     const primary = [
       {
         id: 'p1',
@@ -171,6 +172,8 @@ describe('painPointClustering/secondaryCluster', () => {
         journeyL1: '使用运维',
         label: '云专线-投诉-使用运维-' + pain,
         representativePainPoint: pain,
+        representativeCause: cause,
+        causeKey: cause,
         problemType: '性能问题',
         recordIds: ['r1', 'r2'],
         ticketCount: 2,
@@ -182,15 +185,51 @@ describe('painPointClustering/secondaryCluster', () => {
         journeyL1: '配置部署',
         label: '云专线-咨询-配置部署-' + pain,
         representativePainPoint: pain + '咨询反馈',
+        representativeCause: cause,
+        causeKey: cause,
         problemType: '性能问题',
         recordIds: ['r3', 'r4'],
         ticketCount: 2,
       },
     ]
     const finals = runSecondaryClustering(primary, '云专线')
-    expect(finals.length).toBeGreaterThanOrEqual(1)
-    expect(finals[0].primaryGroups.length).toBeGreaterThanOrEqual(1)
+    expect(finals.length).toBe(1)
+    expect(finals[0].primaryGroups.length).toBe(2)
     expect(finals[0].ticketCount).toBe(4)
+  })
+
+  it('does not merge across sources when causes differ (v2.4)', () => {
+    const pain = '公网不通'
+    const primary = [
+      {
+        id: 'p1',
+        product: '云专线',
+        dataSourceType: 'complaint_ticket',
+        journeyL1: '使用运维',
+        label: 'L1',
+        representativePainPoint: pain,
+        representativeCause: '安全组未放行端口',
+        causeKey: '安全组未放行端口',
+        problemType: '配置与操作',
+        recordIds: ['r1', 'r2'],
+        ticketCount: 2,
+      },
+      {
+        id: 'p2',
+        product: '云专线',
+        dataSourceType: 'consultation_ticket',
+        journeyL1: '配置部署',
+        label: 'L2',
+        representativePainPoint: pain,
+        representativeCause: '弹性公网 IP 未绑定',
+        causeKey: '弹性公网ip未绑定',
+        problemType: '配置与操作',
+        recordIds: ['r3', 'r4'],
+        ticketCount: 2,
+      },
+    ]
+    const finals = runSecondaryClustering(primary, '云专线')
+    expect(finals.length).toBe(2)
   })
 })
 
@@ -268,7 +307,7 @@ describe('painPointClustering/runProductClusteringPipeline', () => {
       }),
     ]
     const result = runProductClusteringPipeline(records, product)
-    expect(result.clusteringVersion).toBe('v2.3')
+    expect(result.clusteringVersion).toBe('v2.4')
     expect(result.productTotalTickets).toBe(4)
     expect(result.excludedPrimaryClusterCount).toBeGreaterThanOrEqual(1)
     expect(result.excludedPrimaryTicketCount).toBe(2)
@@ -507,22 +546,32 @@ describe('P0: runSecondaryClustering 边界', () => {
     expect(runSecondaryClustering([], '产品')).toEqual([])
   })
 
-  it('跨 L1 环节合并', () => {
+  it('跨 L1 环节合并：同因才合并、异因不合并（v2.4）', () => {
     const pain = '安全组规则未放行导致端口不通'
+    const cause = '安全组未放行端口'
     const primary = [
-      { id: 'p1', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '配置与部署', label: 'L1', representativePainPoint: pain, problemType: '配置与操作', recordIds: ['r1', 'r2'], ticketCount: 2 },
-      { id: 'p2', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '使用运维', label: 'L2', representativePainPoint: pain, problemType: '配置与操作', recordIds: ['r3', 'r4'], ticketCount: 2 },
+      { id: 'p1', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '配置与部署', label: 'L1', representativePainPoint: pain, representativeCause: cause, causeKey: cause, problemType: '配置与操作', recordIds: ['r1', 'r2'], ticketCount: 2 },
+      { id: 'p2', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '使用运维', label: 'L2', representativePainPoint: pain, representativeCause: cause, causeKey: cause, problemType: '配置与操作', recordIds: ['r3', 'r4'], ticketCount: 2 },
     ]
     const finals = runSecondaryClustering(primary, 'EIP')
-    expect(finals.length).toBeGreaterThanOrEqual(1)
+    expect(finals.length).toBe(1)
     expect(finals[0].ticketCount).toBe(4)
+
+    // 异因不合并：相同痛点但不同问题原因应拆开
+    const diffCausePrimary = [
+      { id: 'p1', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '配置与部署', label: 'L1', representativePainPoint: pain, representativeCause: '安全组未放行端口', causeKey: '安全组未放行端口', problemType: '配置与操作', recordIds: ['r1', 'r2'], ticketCount: 2 },
+      { id: 'p2', product: 'EIP', dataSourceType: 'complaint_ticket', journeyL1: '使用运维', label: 'L2', representativePainPoint: pain, representativeCause: '弹性公网 IP 未绑定', causeKey: '弹性公网ip未绑定', problemType: '配置与操作', recordIds: ['r3', 'r4'], ticketCount: 2 },
+    ]
+    const diffFinals = runSecondaryClustering(diffCausePrimary, 'EIP')
+    expect(diffFinals.length).toBe(2)
   })
 
-  it('recordIds 去重', () => {
+  it('recordIds 去重（同因跨来源合并）', () => {
     const pain = '带宽超限导致性能下降'
+    const cause = '带宽超限'
     const primary = [
-      { id: 'p1', product: 'P', dataSourceType: 'complaint_ticket', journeyL1: 'L1', label: 'L1', representativePainPoint: pain, problemType: '性能问题', recordIds: ['r1', 'r2', 'r3'], ticketCount: 3 },
-      { id: 'p2', product: 'P', dataSourceType: 'consultation_ticket', journeyL1: 'L2', label: 'L2', representativePainPoint: pain + '问题', problemType: '性能问题', recordIds: ['r2', 'r3', 'r4'], ticketCount: 3 },
+      { id: 'p1', product: 'P', dataSourceType: 'complaint_ticket', journeyL1: 'L1', label: 'L1', representativePainPoint: pain, representativeCause: cause, causeKey: cause, problemType: '性能问题', recordIds: ['r1', 'r2', 'r3'], ticketCount: 3 },
+      { id: 'p2', product: 'P', dataSourceType: 'consultation_ticket', journeyL1: 'L2', label: 'L2', representativePainPoint: pain + '问题', representativeCause: cause, causeKey: cause, problemType: '性能问题', recordIds: ['r2', 'r3', 'r4'], ticketCount: 3 },
     ]
     const finals = runSecondaryClustering(primary, 'P')
     expect([...finals[0].recordIds].sort()).toEqual(['r1', 'r2', 'r3', 'r4'])
@@ -772,8 +821,8 @@ describe('P2: clusterLabel 辅助函数', () => {
   })
 
   it('buildFinalClusterLabel 空 label → 回退 pickRepresentativePainPoint', () => {
-    expect(buildFinalClusterLabel('', [])).toBe('未命名痛点群组')
-    expect(buildFinalClusterLabel('  ', [])).toBe('未命名痛点群组')
+    expect(buildFinalClusterLabel('', [])).toBe('未命名问题群组')
+    expect(buildFinalClusterLabel('  ', [])).toBe('未命名问题群组')
     expect(buildFinalClusterLabel('有效标签', [])).toBe('有效标签')
   })
 })

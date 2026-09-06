@@ -10,6 +10,7 @@ import {
 } from './customerRequestExtract.js'
 import { isValidLlmCustomerRequest } from './customerRequestLLM.js'
 import { isValidLlmPainPoint } from './painPointLLM.js'
+import { extractRootCauseWithLLM, isValidLlmRootCause, truncateRootCause } from './rootCauseLLM.js'
 import { truncatePainPoint, PAIN_POINT_HARD_MAX } from './painPointExtract.js'
 import { extractTicketOptimizationsWithLLM } from './ticketOptimizationLLM.js'
 import { validateTicketAnalysisPair } from './validateTicketAnalysisPair.js'
@@ -43,11 +44,13 @@ import { getConfiguredJourneyTips, getConfiguredProblemTypeTips } from '../plann
  * @typedef {Object} TicketAnalysisUnifiedResult
  * @property {string} customerRequest
  * @property {string} painPoint
+ * @property {string} rootCause
  * @property {string} optimizationProduct
  * @property {string} optimizationService
  * @property {string} optimizationSuggestion
  * @property {'rule' | 'llm'} customerRequestSource
  * @property {'rule' | 'llm'} painPointSource
+ * @property {'rule' | 'llm'} rootCauseSource
  * @property {'rule' | 'llm'} optimizationSource
  * @property {TicketAnalysisPartialFailure[]} [partialFailures]
  * @property {boolean} [optimizationRetry]
@@ -143,10 +146,12 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings, extra
 
   let customerRequest = rule.customerRequest
   let painPoint = rule.painPoint
+  let rootCause = input.rootCause?.trim() || ''
   let optimizationProduct = rule.optimizationProduct
   let optimizationService = rule.optimizationService
   let customerRequestSource = /** @type {'rule' | 'llm'} */ ('rule')
   let painPointSource = /** @type {'rule' | 'llm'} */ ('rule')
+  let rootCauseSource = /** @type {'rule' | 'llm'} */ ('rule')
   let optimizationSource = /** @type {'rule' | 'llm'} */ ('rule')
   let optimizationRetry = false
 
@@ -158,11 +163,13 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings, extra
     return {
       customerRequest: validated.customerRequest,
       painPoint: validated.painPoint,
+      rootCause,
       optimizationProduct,
       optimizationService,
       optimizationSuggestion,
       customerRequestSource,
       painPointSource,
+      rootCauseSource,
       optimizationSource,
     }
   }
@@ -218,6 +225,24 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings, extra
   customerRequest = validated.customerRequest
   painPoint = validated.painPoint
 
+  try {
+    const llmRootCause = await extractRootCauseWithLLM(
+      {
+        taggingText: input.taggingText,
+        handlingText: input.handlingText,
+        rootCause,
+        painPoint,
+      },
+      settings,
+    )
+    if (llmRootCause && isValidLlmRootCause(llmRootCause)) {
+      rootCause = truncateRootCause(llmRootCause)
+      rootCauseSource = 'llm'
+    }
+  } catch (err) {
+    console.warn('[ticket-llm-unified] 问题原因 LLM 失败，保留规则/导入值:', err)
+  }
+
   let optimizationSuggestion = [optimizationProduct, optimizationService].filter(Boolean).join('\n')
 
   if (optimizationSource !== 'llm' && canUseSemanticMatch(settings)) {
@@ -253,11 +278,13 @@ export async function extractTicketAnalysisUnifiedWithLLM(input, settings, extra
   return {
     customerRequest,
     painPoint,
+    rootCause,
     optimizationProduct,
     optimizationService,
     optimizationSuggestion,
     customerRequestSource,
     painPointSource,
+    rootCauseSource,
     optimizationSource,
     ...(partialFailures.length ? { partialFailures } : {}),
     ...(optimizationRetry ? { optimizationRetry: true } : {}),
