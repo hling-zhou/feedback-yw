@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords, pickRepresentativeCustomerRequest, CUSTOMER_REQUEST_DISPERSED } from './ticketStoryModel.js'
+import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords, pickRepresentativeCustomerRequest, resolveJourneyComparisonWindow, CUSTOMER_REQUEST_DISPERSED } from './ticketStoryModel.js'
 
 const record = (id, overrides = {}) => ({
   id,
@@ -108,7 +108,7 @@ describe('ticket story model', () => {
       },
       periodEndMonth: '2026-06',
     })
-    expect(model.trendsAndChanges.previousPeriodLabel).toBe('上月')
+    expect(model.trendsAndChanges.previousPeriodLabel).toBe('2026年5月')
     expect(model.trendsAndChanges.currentPeriodLabel).toBe('本月')
     expect(model.trendsAndChanges.changes[0].change).toBe('持续')
     expect(model.trendsAndChanges.changes[0].journeyL1).toBe('使用')
@@ -138,13 +138,13 @@ describe('ticket story model', () => {
       },
       periodEndMonth: '2026-06',
     })
-    expect(model.trendsAndChanges.previousPeriodLabel).toBe('上一季度')
-    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本季度')
+    expect(model.trendsAndChanges.previousPeriodLabel).toBe('2026年3月')
+    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本期月均')
     expect(model.trendsAndChanges.changes[0]).toMatchObject({
       journeyL1: '使用',
-      previousCount: 1,
-      currentCount: 2,
-      change: '增长',
+      previousCount: 0,
+      currentCount: 0.7,
+      change: '新增',
     })
   })
 
@@ -357,17 +357,18 @@ describe('ticket story model', () => {
     expect(model.impactAndEvidence.records[0].id).toBe('1')
   })
 
-  it('uses product taxonomy lifecycle order and keeps disappeared stages', () => {
+  it('uses product taxonomy lifecycle order and keeps disappeared current-catalog stages', () => {
     const records = [
-      record('1', { importMonth: '2026-05', journeyL1: '故障与应急', journeyL2: '业务中断/不可用' }),
+      record('1', { importMonth: '2026-05', journeyL1: '开通与申领', journeyL2: '创建/申购 EIP' }),
       record('2', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
       record('3', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('retired', { importMonth: '2026-06', journeyL1: '故障与应急', journeyL2: '业务中断/不可用' }),
     ]
     const model = buildTicketStoryModel({
       sourceType: 'complaint_ticket',
       records: records.filter((item) => item.importMonth === '2026-06'),
-      comparisonRecords: records,
-      trendRecords: records,
+      comparisonRecords: records.filter((item) => item.journeyL1 !== '故障与应急'),
+      trendRecords: records.filter((item) => item.journeyL1 !== '故障与应急'),
       selectedProduct: '弹性公网IP',
       period: {
         id: 'period:month:2026-06',
@@ -384,8 +385,9 @@ describe('ticket story model', () => {
     expect(model.overview.metrics.volumeDelta).toBe(1)
     expect(model.drivers.journeyStages[0].journeyL1).toBe('认知与选型')
     expect(model.drivers.journeyStages[0].empty).toBe(true)
+    expect(model.drivers.journeyStages.map((stage) => stage.journeyL1)).not.toContain('故障与应急')
     const operate = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '业务使用与连通')
-    const incident = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '故障与应急')
+    const provision = model.drivers.journeyStages.find((stage) => stage.journeyL1 === '开通与申领')
     expect(operate).toMatchObject({
       currentCount: 2,
       previousCount: 0,
@@ -397,7 +399,7 @@ describe('ticket story model', () => {
       consultationCount: 0,
       isFrictionPeak: true,
     })
-    expect(incident).toMatchObject({ currentCount: 0, previousCount: 1, change: '消失' })
+    expect(provision).toMatchObject({ currentCount: 0, previousCount: 1, change: '消失' })
     expect(model.drivers.journeyChangeHighlights.map((item) => item.change)).toEqual(['新增', '消失'])
     expect(model.conclusions.find((item) => item.key === 'change')?.value).toBe('业务使用与连通')
   })
@@ -595,5 +597,61 @@ describe('ticket story model', () => {
       record('2', { customerRequest: '公网IP无法访问外网' }),
       record('3', { customerRequest: '偶发连不上' }),
     ])).toBe('公网IP无法访问外网')
+  })
+
+  it('averages multi-month journey volume against the month before the range', () => {
+    const quarter = {
+      id: 'period:quarter:2026-Q2',
+      label: '2026年Q2',
+      startDate: '2026-04-01',
+      endDate: '2026-06-30',
+      granularity: 'quarter',
+      anchorYear: 2026,
+      anchorQuarter: 2,
+    }
+    const window = resolveJourneyComparisonWindow(quarter)
+    expect(window).toMatchObject({
+      currentMonths: ['2026-04', '2026-05', '2026-06'],
+      previousMonths: ['2026-03'],
+      useMonthlyAverage: true,
+      previousLabel: '2026年3月',
+      currentLabel: '本期月均',
+    })
+
+    const currentRecords = [
+      record('a1', { importMonth: '2026-04', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('a2', { importMonth: '2026-04', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('a3', { importMonth: '2026-04', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('b1', { importMonth: '2026-05', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('c1', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('c2', { importMonth: '2026-06', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('old', { importMonth: '2026-06', journeyL1: '故障与应急', journeyL2: '业务中断/不可用' }),
+    ]
+    const previousRecords = [
+      record('p1', { importMonth: '2026-03', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('p2', { importMonth: '2026-03', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+    ]
+    const model = buildJourneyStages({
+      currentRecords,
+      previousRecords,
+      hasPreviousPeriod: true,
+      selectedProduct: '弹性公网IP',
+      sourceFilter: 'all',
+      useMonthlyAverage: true,
+      currentMonthCount: 3,
+    })
+    const operate = model.stages.find((stage) => stage.journeyL1 === '业务使用与连通')
+    expect(operate).toMatchObject({
+      currentCount: 2,
+      previousCount: 2,
+      change: '持续',
+      complaintCount: 2,
+    })
+    expect(operate.children.find((child) => child.l2 === '公网访问不通')).toMatchObject({
+      count: 2,
+      previousCount: 2,
+    })
+    expect(model.stages.map((stage) => stage.journeyL1)).not.toContain('故障与应急')
+    expect(model.stages.every((stage) => stage.fromTaxonomy)).toBe(true)
   })
 })

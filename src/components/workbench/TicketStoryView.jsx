@@ -191,7 +191,14 @@ function DriverEmptyState({ state, fallbackOnly = false }) {
   )
 }
 
-export default function TicketStoryView({ model, creatingInsightId, onCreateAction, onOpenFeedback }) {
+export default function TicketStoryView({
+  model,
+  creatingInsightId,
+  onCreateAction,
+  onOpenFeedback,
+  products = [],
+  onProductChange,
+}) {
   const { scope, overview, trendsAndChanges, drivers, impactAndEvidence, actionsAndRecovery, quality } = model
   const complaint = scope.sourceType === 'complaint_ticket'
   const metrics = overview.metrics
@@ -384,6 +391,8 @@ export default function TicketStoryView({ model, creatingInsightId, onCreateActi
           selectedProduct={scope.selectedProduct}
           previousPeriodLabel={previousPeriodLabel}
           currentPeriodLabel={currentPeriodLabel}
+          products={products}
+          onProductChange={onProductChange}
         />
       </Card>
 

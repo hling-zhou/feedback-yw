@@ -57,6 +57,7 @@ import {
   defaultMonthPeriodSpecFromMonths,
   insightPeriodFromSpec,
   normalizeInsightPeriod,
+  periodIdFromSpec,
   periodSpecFromImportMonth,
   resolveInsightPeriod,
   selectionFromPeriod,
@@ -111,6 +112,7 @@ import {
   formatInsightRebuildProgress,
   formatInsightRebuildSuccessMessage,
 } from '../lib/insightRebuildClient.js'
+import { resolveJourneyComparisonWindow } from '../lib/ticketStoryModel.js'
 import {
   compactDuplicateTagCandidates,
   upsertPendingTagCandidate,
@@ -300,6 +302,20 @@ export function InsightsProvider({ children }) {
     [adapter, mergeRecordsIntoCache, storageReady],
   )
 
+  const loadRecordsForJourneyComparison = useCallback(
+    async (period) => {
+      if (!period) return
+      await loadRecordsForPeriodId(period.id)
+      const previousMonth = resolveJourneyComparisonWindow(period).previousMonths[0]
+      if (!previousMonth) return
+      const [year, month] = previousMonth.split('-').map(Number)
+      await loadRecordsForPeriodId(
+        periodIdFromSpec(buildPeriodSpec({ granularity: 'month', year, month })),
+      )
+    },
+    [loadRecordsForPeriodId],
+  )
+
   const reloadPeriods = useCallback(async () => {
     setPeriodsLoading(true)
     try {
@@ -432,7 +448,7 @@ export function InsightsProvider({ children }) {
         hydrateLearningCaches(adapter),
         (async () => {
           try {
-            await loadRecordsForPeriodId(period.id)
+            await loadRecordsForJourneyComparison(period)
           } finally {
             if (apiMode) {
               setFeedbacksHydrated(true)
@@ -457,7 +473,7 @@ export function InsightsProvider({ children }) {
       console.error('[storage] 加载共享数据失败', err)
       setPeriodsLoading(false)
     }
-  }, [adapter, loadRecordsForPeriodId])
+  }, [adapter, loadRecordsForJourneyComparison])
 
   useEffect(() => {
     reloadPeriods()
@@ -1245,7 +1261,7 @@ export function InsightsProvider({ children }) {
           toMonth: spec.customToMonth,
         })
         await adapter.putMeta(META_CURRENT_PERIOD, period.id)
-        await loadRecordsForPeriodId(period.id)
+        await loadRecordsForJourneyComparison(period)
         await reloadSnapshots(period.id)
         const inPeriod = filterRecordsForScope(feedbacksRef.current, period)
         const loaded = await loadSnapshotsForPeriod(adapter, period.id)
@@ -1258,7 +1274,7 @@ export function InsightsProvider({ children }) {
         console.error('selectInsightPeriod failed', err)
       }
     },
-    [adapter, loadRecordsForPeriodId, reloadSnapshots, scheduleSnapshotRebuild],
+    [adapter, loadRecordsForJourneyComparison, reloadSnapshots, scheduleSnapshotRebuild],
   )
 
   const reloadProductCatalog = useCallback(async () => {

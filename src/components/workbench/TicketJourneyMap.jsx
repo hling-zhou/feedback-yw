@@ -310,6 +310,8 @@ export default function TicketJourneyMap({
   selectedProduct,
   previousPeriodLabel = '上期',
   currentPeriodLabel = '本期',
+  products = [],
+  onProductChange,
 }) {
   const [selectedKey, setSelectedKey] = useState('')
   const maxCount = Math.max(0, ...stages.map((stage) => stage.currentCount || 0))
@@ -317,11 +319,38 @@ export default function TicketJourneyMap({
   const productSelected = isJourneyProductSelected(selectedProduct)
   const resolvedLayout = productSelected && layout !== 'empty' ? 'lifecycle' : 'empty'
   const stacked = sourceFilter === 'all'
+  const productOptions = (products || [])
+    .map((item) => ({
+      value: item.name,
+      label: item.count != null ? `${item.name} (${item.count})` : item.name,
+    }))
+    .filter((item) => item.value)
 
   return (
     <div className="space-y-3">
       {resolvedLayout === 'empty' ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={JOURNEY_EMPTY_HINT} />
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <div className="mx-auto max-w-xl space-y-3">
+              <Typography.Text type="secondary">{JOURNEY_EMPTY_HINT}</Typography.Text>
+              {typeof onProductChange === 'function' && productOptions.length ? (
+                <div className="flex flex-wrap justify-center gap-2">
+                  {productOptions.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      className="rounded-full border border-ink-200 bg-white px-3 py-1 text-xs text-ink-700 hover:border-indigo-300 hover:text-indigo-700"
+                      onClick={() => onProductChange(item.value)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          }
+        />
       ) : (
         <>
           <Typography.Text type="secondary" className="text-xs">

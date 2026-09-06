@@ -9,6 +9,9 @@ describe('OverviewTab journey map', () => {
     expect(map).toContain('全部反馈')
     expect(map).toContain('投诉仅含客户体验类')
     expect(map).toContain('sourceFilter')
+    expect(map).toContain('resolveJourneyComparisonWindow')
+    expect(map).toContain('useMonthlyAverage')
+    expect(map).toContain('多月按月均')
   })
 
   it('mounts the single-product experience trend panel after 行动建议', () => {

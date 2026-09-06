@@ -20,6 +20,20 @@ describe('TicketJourneyMap', () => {
     expect(html).not.toContain('体验断点')
   })
 
+  it('offers the same product picker in the empty state', () => {
+    const html = renderMap(
+      <TicketJourneyMap
+        layout="empty"
+        selectedProduct=""
+        products={[{ name: '弹性公网IP', count: 4 }, { name: '云主机', count: 2 }]}
+        onProductChange={() => {}}
+      />,
+    )
+    expect(html).toContain(JOURNEY_EMPTY_HINT)
+    expect(html).toContain('弹性公网IP (4)')
+    expect(html).toContain('云主机 (2)')
+  })
+
   it('draws stacked complaint/consultation bars and mixed evidence without a locked source', () => {
     const html = renderMap(
       <TicketJourneyMap

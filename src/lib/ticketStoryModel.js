@@ -58,6 +58,44 @@ export function periodComparisonColumnLabels(granularity) {
 }
 
 /**
+ * @param {string | null | undefined} ym
+ */
+export function formatYearMonthLabel(ym) {
+  const normalized = normalizeYearMonth(ym)
+  if (!normalized) return ''
+  const [year, month] = normalized.split('-')
+  return `${year}年${Number(month)}月`
+}
+
+/**
+ * 旅程图对比窗口：多月范围按月均绘制，对比范围为开始月的上一个月。
+ * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
+ */
+export function resolveJourneyComparisonWindow(period) {
+  const currentMonths = monthsForInsightPeriod(period)
+  const previousMonth = currentMonths[0] ? shiftYearMonth(currentMonths[0], -1) : null
+  const useMonthlyAverage = currentMonths.length > 1
+  return {
+    currentMonths,
+    previousMonths: previousMonth ? [previousMonth] : [],
+    useMonthlyAverage,
+    previousLabel: previousMonth ? formatYearMonthLabel(previousMonth) : '上月',
+    currentLabel: useMonthlyAverage ? '本期月均' : period?.granularity === 'month' ? '本月' : '本期',
+  }
+}
+
+/**
+ * @param {number} total
+ * @param {number} monthCount
+ * @param {boolean} useMonthlyAverage
+ */
+export function averageJourneyMetric(total, monthCount, useMonthlyAverage) {
+  const n = Number(total) || 0
+  if (!useMonthlyAverage || !monthCount || monthCount <= 1) return n
+  return Math.round((n / monthCount) * 10) / 10
+}
+
+/**
  * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
  * @returns {string[]}
  */
@@ -267,12 +305,15 @@ function collectJourneyStageStats(records) {
   return map
 }
 
-function listLifecycleJourneyL1(productName) {
+function listLifecycleJourney(productName) {
   if (!productName) return []
   return (getTaxonomy(productName)?.journeys || [])
     .map((item) => ({
       label: String(item.label || '').trim(),
       description: String(item.description || '').trim(),
+      children: (item.children || [])
+        .map((child) => String(child.label || '').trim())
+        .filter(Boolean),
     }))
     .filter((item) => item.label)
 }
@@ -293,6 +334,8 @@ export function buildJourneyStages({
   hasPreviousPeriod = false,
   selectedProduct = '',
   sourceFilter = 'all',
+  useMonthlyAverage = false,
+  currentMonthCount = 1,
 } = {}) {
   const filteredCurrent = filterRecordsByJourneySource(currentRecords, sourceFilter)
   const filteredPrevious = hasPreviousPeriod
@@ -300,11 +343,12 @@ export function buildJourneyStages({
     : []
   const currentStats = collectJourneyStageStats(filteredCurrent)
   const previousStats = collectJourneyStageStats(filteredPrevious)
-  const lifecycle = listLifecycleJourneyL1(selectedProduct)
+  const lifecycle = listLifecycleJourney(selectedProduct)
   const descriptionByLabel = new Map(lifecycle.map((item) => [item.label, item.description]))
+  const allowedL2ByL1 = new Map(lifecycle.map((item) => [item.label, new Set(item.children)]))
   const productSelected = isJourneyProductSelected(selectedProduct)
   const layout = productSelected ? 'lifecycle' : 'empty'
-  const observed = new Set([...currentStats.keys(), ...previousStats.keys()])
+  const monthCount = Math.max(1, Number(currentMonthCount) || 1)
   const ordered = []
   const seen = new Set()
   for (const item of lifecycle) {
@@ -312,47 +356,56 @@ export function buildJourneyStages({
     seen.add(item.label)
     ordered.push(item.label)
   }
-  const extras = [...observed].filter((label) => !seen.has(label))
-  extras.sort((a, b) => {
-    if (a === '未识别环节') return 1
-    if (b === '未识别环节') return -1
-    return displayCountForFilter(currentStats.get(b), sourceFilter) - displayCountForFilter(currentStats.get(a), sourceFilter)
-      || a.localeCompare(b, 'zh')
-  })
-  ordered.push(...extras)
+  if (!productSelected) {
+    const extras = [...new Set([...currentStats.keys(), ...previousStats.keys()])]
+      .filter((label) => !seen.has(label))
+    extras.sort((a, b) => {
+      if (a === '未识别环节') return 1
+      if (b === '未识别环节') return -1
+      return displayCountForFilter(currentStats.get(b), sourceFilter)
+        - displayCountForFilter(currentStats.get(a), sourceFilter)
+        || a.localeCompare(b, 'zh')
+    })
+    ordered.push(...extras)
+  }
 
   const total = filteredCurrent.length
   const stages = ordered.map((journeyL1) => {
     const now = currentStats.get(journeyL1)
     const before = previousStats.get(journeyL1)
-    const currentCount = displayCountForFilter(now, sourceFilter)
+    const rawCurrent = displayCountForFilter(now, sourceFilter)
     const previousCount = displayCountForFilter(before, sourceFilter)
+    const currentCount = averageJourneyMetric(rawCurrent, monthCount, useMonthlyAverage)
     const change = classifyJourneyChange(previousCount, currentCount, hasPreviousPeriod)
+    const allowedL2 = allowedL2ByL1.get(journeyL1)
     const l2Keys = new Set([...(now?.l2.keys() || []), ...(before?.l2.keys() || [])])
-    const children = [...l2Keys].map((l2) => {
-      const childNow = now?.l2.get(l2)
-      const childBefore = before?.l2.get(l2)
-      const childCurrent = childNow?.count || 0
-      const childPrevious = childBefore?.count || 0
-      return {
-        l2,
-        count: childCurrent,
-        previousCount: childPrevious,
-        change: classifyJourneyChange(childPrevious, childCurrent, hasPreviousPeriod),
-        ticketIds: [...new Set(childNow?.ticketIds || [])],
-      }
-    }).sort((a, b) => b.count - a.count || a.l2.localeCompare(b.l2, 'zh'))
+    const children = [...l2Keys]
+      .filter((l2) => !allowedL2 || allowedL2.has(l2))
+      .map((l2) => {
+        const childNow = now?.l2.get(l2)
+        const childBefore = before?.l2.get(l2)
+        const childCurrent = averageJourneyMetric(childNow?.count || 0, monthCount, useMonthlyAverage)
+        const childPrevious = childBefore?.count || 0
+        return {
+          l2,
+          count: childCurrent,
+          previousCount: childPrevious,
+          change: classifyJourneyChange(childPrevious, childCurrent, hasPreviousPeriod),
+          ticketIds: [...new Set(childNow?.ticketIds || [])],
+        }
+      })
+      .sort((a, b) => b.count - a.count || a.l2.localeCompare(b.l2, 'zh'))
     const topL2 = children.find((child) => child.count > 0 && child.l2 !== '未识别子环节')?.l2 || ''
     const topPain = topCountedEntries(now?.pains || new Map(), 1)[0]?.[0] || ''
     const actionLabel = topL2 || topPain || ''
-    const complaintCount = now?.complaintCount || 0
-    const consultationCount = now?.consultationCount || 0
-    const negativeCount = now?.negativeCount || 0
+    const complaintCount = averageJourneyMetric(now?.complaintCount || 0, monthCount, useMonthlyAverage)
+    const consultationCount = averageJourneyMetric(now?.consultationCount || 0, monthCount, useMonthlyAverage)
+    const negativeCount = averageJourneyMetric(now?.negativeCount || 0, monthCount, useMonthlyAverage)
     return {
       key: journeyL1,
       journeyL1,
       count: currentCount,
-      sharePct: pct(currentCount, total),
+      sharePct: pct(rawCurrent, total),
       previousCount,
       currentCount,
       delta: hasPreviousPeriod ? currentCount - previousCount : null,
@@ -425,17 +478,19 @@ export function buildJourneyStages({
  * @param {import('./types.js').FeedbackRecord[]} feedbacks
  * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
  */
-export function collectOverviewJourneyRecords(feedbacks, period) {
-  if (!period) return []
-  const months = monthsForInsightPeriod(period)
-  if (!months.length) return []
-  const inPeriod = (feedbacks || []).filter((record) => months.includes(monthOf(record)))
+export function collectOverviewJourneyRecordsForMonths(feedbacks, months) {
+  const inPeriod = recordsInMonths(feedbacks, months)
   return inPeriod.filter((record) => {
     const kind = recordSourceKind(record)
     if (kind === 'consultation') return true
     if (kind === 'complaint') return isCustomerExperienceComplaint(record)
     return false
   })
+}
+
+export function collectOverviewJourneyRecords(feedbacks, period) {
+  if (!period) return []
+  return collectOverviewJourneyRecordsForMonths(feedbacks, monthsForInsightPeriod(period))
 }
 
 function consultationOpportunity(record) {
@@ -568,6 +623,7 @@ export function buildTicketStoryModel(input) {
   const currentPeriodMonths = monthsForInsightPeriod(normalizedPeriod)
   const previousPeriod = resolvePreviousInsightPeriod(normalizedPeriod)
   const previousPeriodMonths = monthsForInsightPeriod(previousPeriod)
+  const journeyWindow = resolveJourneyComparisonWindow(normalizedPeriod)
   const changeSourceRecords = comparisonRecords || trendRecords
   const total = records.length
   const negativeRecords = records.filter((record) => isNegativeSentiment(record.sentiment))
@@ -577,14 +633,18 @@ export function buildTicketStoryModel(input) {
   const unresolvedRecords = followUpRecords.filter((record) => record.followUpSatisfaction?.problemResolved === 'unresolved')
   const scopedActions = selectedProduct ? actions.filter((action) => action.productName === selectedProduct) : actions
   const actionRows = recommendationRows(recommendations, records, scopedActions, sourceType)
-  const hasPreviousPeriod = previousPeriodMonths.length > 0 && currentPeriodMonths.length > 0
-  const previousPeriodRecords = hasPreviousPeriod ? recordsInMonths(changeSourceRecords, previousPeriodMonths) : []
+  const hasPreviousPeriod = journeyWindow.previousMonths.length > 0 && journeyWindow.currentMonths.length > 0
+  const previousPeriodRecords = hasPreviousPeriod
+    ? recordsInMonths(changeSourceRecords, journeyWindow.previousMonths)
+    : []
   const journeyModel = buildJourneyStages({
     currentRecords: records,
     previousRecords: previousPeriodRecords,
     hasPreviousPeriod,
     selectedProduct,
     sourceFilter: sourceType === 'consultation_ticket' ? 'consultation' : 'complaint',
+    useMonthlyAverage: journeyWindow.useMonthlyAverage,
+    currentMonthCount: journeyWindow.currentMonths.length,
   })
   const endMonth = normalizeYearMonth(periodEndMonth) || currentPeriodMonths.at(-1) || trendMonths.at(-1) || ''
   const momPreviousMonth = endMonth ? shiftYearMonth(endMonth, -1) : ''
@@ -771,9 +831,9 @@ export function buildTicketStoryModel(input) {
       changes: journeyModel.changeRows,
       highlights: journeyModel.highlights,
       currentMonth: currentPeriodMonths.at(-1) || '',
-      previousMonth: previousPeriodMonths.at(-1) || '',
-      previousPeriodLabel: comparisonLabels.previous,
-      currentPeriodLabel: comparisonLabels.current,
+      previousMonth: journeyWindow.previousMonths[0] || previousPeriodMonths.at(-1) || '',
+      previousPeriodLabel: journeyWindow.previousLabel || comparisonLabels.previous,
+      currentPeriodLabel: journeyWindow.currentLabel || comparisonLabels.current,
     },
     drivers,
     impactAndEvidence: {

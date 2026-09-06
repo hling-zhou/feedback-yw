@@ -4,11 +4,9 @@ import { listProducts } from '../../lib/productTaxonomy.js'
 import { filterFeedbacks } from '../../lib/productAnalytics.js'
 import {
   buildJourneyStages,
-  collectOverviewJourneyRecords,
-  monthsForInsightPeriod,
-  periodComparisonColumnLabels,
+  collectOverviewJourneyRecordsForMonths,
+  resolveJourneyComparisonWindow,
 } from '../../lib/ticketStoryModel.js'
-import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import TicketJourneyMap from './TicketJourneyMap.jsx'
 
 const SOURCE_OPTIONS = [
@@ -19,22 +17,20 @@ const SOURCE_OPTIONS = [
 
 /**
  * 综合概述总旅程图：本地产品选择 + 来源切换，不写入快照。
+ * 多月范围按当前旅程环节取月均，并与范围开始月的上一个月对比。
  */
 export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = null }) {
   const [product, setProduct] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
-  const previousPeriod = useMemo(
-    () => resolvePreviousInsightPeriod(currentPeriod),
-    [currentPeriod],
-  )
+  const comparison = useMemo(() => resolveJourneyComparisonWindow(currentPeriod), [currentPeriod])
   const currentRecords = useMemo(
-    () => collectOverviewJourneyRecords(feedbacks, currentPeriod),
-    [feedbacks, currentPeriod],
+    () => collectOverviewJourneyRecordsForMonths(feedbacks, comparison.currentMonths),
+    [feedbacks, comparison.currentMonths],
   )
-  const previousRecords = useMemo(() => {
-    if (!previousPeriod || !monthsForInsightPeriod(previousPeriod).length) return []
-    return collectOverviewJourneyRecords(feedbacks, previousPeriod)
-  }, [feedbacks, previousPeriod])
+  const previousRecords = useMemo(
+    () => collectOverviewJourneyRecordsForMonths(feedbacks, comparison.previousMonths),
+    [feedbacks, comparison.previousMonths],
+  )
   const products = useMemo(() => listProducts(currentRecords), [currentRecords])
 
   useEffect(() => {
@@ -43,20 +39,19 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
     }
   }, [product, products])
 
-  const comparisonLabels = periodComparisonColumnLabels(currentPeriod?.granularity)
   const journeyModel = useMemo(() => {
     const current = product ? filterFeedbacks(currentRecords, { product }) : currentRecords
     const previous = product ? filterFeedbacks(previousRecords, { product }) : previousRecords
-    const currentMonths = monthsForInsightPeriod(currentPeriod)
-    const previousMonths = monthsForInsightPeriod(previousPeriod)
     return buildJourneyStages({
       currentRecords: current,
       previousRecords: previous,
-      hasPreviousPeriod: currentMonths.length > 0 && previousMonths.length > 0,
+      hasPreviousPeriod: comparison.previousMonths.length > 0 && comparison.currentMonths.length > 0,
       selectedProduct: product,
       sourceFilter,
+      useMonthlyAverage: comparison.useMonthlyAverage,
+      currentMonthCount: comparison.currentMonths.length,
     })
-  }, [currentRecords, previousRecords, currentPeriod, previousPeriod, product, sourceFilter])
+  }, [currentRecords, previousRecords, comparison, product, sourceFilter])
 
   return (
     <Card
@@ -64,6 +59,7 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
       extra={
         <Typography.Text type="secondary" className="text-xs">
           投诉仅含客户体验类
+          {comparison.useMonthlyAverage ? ` · 多月按月均，对比${comparison.previousLabel}` : ''}
         </Typography.Text>
       }
     >
@@ -94,8 +90,10 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
         highlights={journeyModel.highlights}
         sourceFilter={sourceFilter}
         selectedProduct={product}
-        previousPeriodLabel={comparisonLabels.previous}
-        currentPeriodLabel={comparisonLabels.current}
+        previousPeriodLabel={comparison.previousLabel}
+        currentPeriodLabel={comparison.currentLabel}
+        products={products}
+        onProductChange={setProduct}
       />
     </Card>
   )
