@@ -7,6 +7,7 @@ import {
   EMPTY_FILTER_TOKEN,
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
+  PROBLEM_CAUSE_SOURCE_FILTER_OPTIONS,
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
@@ -28,6 +29,7 @@ import {
  * @property {string} dataSource
  * @property {string} product
  * @property {string} problemType
+ * @property {import('./feedbackFilters.js').ProblemCauseSourceFilterValue | ''} problemCauseSource
  * @property {string} complaintCauseL1
  * @property {string} journeyL1
  * @property {string} resourcePool
@@ -56,6 +58,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'dataSource',
   'product',
   'problemType',
+  'problemCauseSource',
   'complaintCauseL1',
   'journeyL1',
   'resourcePool',
@@ -84,7 +87,14 @@ export const FEEDBACK_FILTER_GROUPS = [
   },
   {
     label: '打标维度',
-    keys: ['problemType', 'complaintCauseL1', 'journeyL1', 'resourcePool', 'requestScene'],
+    keys: [
+      'problemType',
+      'problemCauseSource',
+      'complaintCauseL1',
+      'journeyL1',
+      'resourcePool',
+      'requestScene',
+    ],
   },
   {
     label: '会议跟进',
@@ -136,6 +146,7 @@ export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */
   'todoStatus',
   'listeningReviewed',
   'myReview',
+  'problemCauseSource',
 ])
 
 /** 客服部回访 Tab 复合筛选 */
@@ -153,6 +164,7 @@ export const FEEDBACK_FILTER_LABELS = {
   dataSource: '数据来源',
   product: '产品',
   problemType: '问题类型',
+  problemCauseSource: '问题原因',
   complaintCauseL1: '投诉原因（终判）',
   journeyL1: '用户旅程',
   resourcePool: '资源池',
@@ -179,6 +191,7 @@ export function createEmptyFeedbackFilters() {
     dataSource: '',
     product: '',
     problemType: '',
+    problemCauseSource: '',
     complaintCauseL1: '',
     journeyL1: '',
     resourcePool: '',
@@ -228,6 +241,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'ratingScore':
     case 'channel':
     case 'commentKeyword':
+    case 'problemCauseSource':
       return Boolean(String(values[key] ?? '').trim())
     default:
       return false
@@ -247,6 +261,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (isFeedbackFilterActive(values, 'ticketDateFrom')) keys.push('ticketDateFrom')
   if (values.dataSource) keys.push('dataSource')
   if (values.problemType) keys.push('problemType')
+  if (values.problemCauseSource) keys.push('problemCauseSource')
   if (values.complaintCauseL1) keys.push('complaintCauseL1')
   if (values.journeyL1) keys.push('journeyL1')
   if (values.resourcePool) keys.push('resourcePool')
@@ -316,6 +331,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return values.problemType === EMPTY_FILTER_TOKEN ? '未分类' : values.problemType
     case 'requestScene':
       return values.requestScene === EMPTY_FILTER_TOKEN ? '未分类' : values.requestScene
+    case 'problemCauseSource':
+      return (
+        PROBLEM_CAUSE_SOURCE_FILTER_OPTIONS.find((item) => item.value === values.problemCauseSource)?.label ||
+        values.problemCauseSource
+      )
     case 'ticketLlm':
       return TICKET_LLM_FILTER_OPTIONS.find((item) => item.value === values.ticketLlm)?.label || values.ticketLlm
     case 'followUp':
@@ -460,6 +480,7 @@ export function feedbackFiltersToUrlPatch(filters) {
   return {
     product: filters.product,
     problemType: filters.problemType,
+    problemCauseSource: filters.problemCauseSource,
     complaintCauseL1: filters.complaintCauseL1,
     journeyL1: filters.journeyL1,
     requestScene: filters.requestScene,

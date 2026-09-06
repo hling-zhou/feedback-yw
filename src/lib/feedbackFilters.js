@@ -4,6 +4,7 @@
  */
 
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { parseMyReviewFilterParam } from '../domain/userTicketReview.js'
 import {
   DISSATISFIED_REASON_PART_KEYS,
@@ -22,6 +23,7 @@ import { hasOpenTicketTodos, hasOpenTicketTodosAssignedTo } from '../domain/tick
 /** @typedef {'has' | 'none' | '10' | 'non10'} FollowUpFilterValue */
 /** @typedef {'resolved' | 'unresolved'} FollowUpResolvedFilterValue */
 /** @typedef {'has_open' | 'no_open' | 'my_open'} TodoStatusFilterValue */
+/** @typedef {'auto' | 'manual'} ProblemCauseSourceFilterValue */
 
 /** URL 参数：匹配字段为空（图表「未分类」下钻） */
 export const EMPTY_FILTER_TOKEN = '__empty__'
@@ -56,6 +58,15 @@ export const LISTENING_REVIEWED_FILTER_OPTIONS = [
   { label: '是', value: 'yes' },
   { label: '否', value: 'no' },
 ]
+
+/** 反馈库「问题原因」筛选：按来源区分人工复核 / 自动生成 */
+export const PROBLEM_CAUSE_SOURCE_FILTER_OPTIONS = [
+  { label: '全部来源', value: '' },
+  { label: '自动', value: 'auto' },
+  { label: '人工', value: 'manual' },
+]
+
+const PROBLEM_CAUSE_SOURCE_VALUES = new Set(['auto', 'manual'])
 
 const FOLLOW_UP_FILTER_VALUES = new Set(['has', 'none', '10', 'non10'])
 const FOLLOW_UP_RESOLVED_VALUES = new Set(['resolved', 'unresolved'])
@@ -141,6 +152,18 @@ export function parseListeningReviewedFilterParam(raw) {
 }
 
 /**
+ * @param {string | null | undefined} raw
+ * @returns {ProblemCauseSourceFilterValue | ''}
+ */
+export function parseProblemCauseSourceParam(raw) {
+  const value = raw?.trim()
+  if (!value) return ''
+  return PROBLEM_CAUSE_SOURCE_VALUES.has(value)
+    ? /** @type {ProblemCauseSourceFilterValue} */ (value)
+    : ''
+}
+
+/**
  * @param {FeedbackRecord | null | undefined} record
  * @param {ListeningReviewedFilterValue} listeningReviewed
  */
@@ -149,6 +172,21 @@ export function matchesListeningReviewedFilter(record, listeningReviewed = '') {
   const listened = Boolean(record?.listeningReviewed)
   if (listeningReviewed === 'yes') return listened
   if (listeningReviewed === 'no') return !listened
+  return true
+}
+
+/**
+ * 反馈库「问题原因」筛选：按来源（自动 / 人工）过滤。
+ * 与列表「问题原因」列同源（getProblemCauseDisplay）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {ProblemCauseSourceFilterValue | ''} value
+ */
+export function matchesProblemCauseSourceFilter(record, value = '') {
+  if (!value) return true
+  const tag = getProblemCauseDisplay(record).tag
+  if (value === 'auto') return tag === '自动'
+  if (value === 'manual') return tag === '人工'
   return true
 }
 
@@ -303,6 +341,7 @@ export function parseFeedbackSearchParams(searchParams) {
     ratingScore: searchParams.get('ratingScore')?.trim() || '',
     channel: searchParams.get('channel')?.trim() || '',
     commentKeyword: searchParams.get('commentKeyword')?.trim() || '',
+    problemCauseSource: parseProblemCauseSourceParam(searchParams.get('problemCauseSource')),
   }
 }
 
@@ -332,6 +371,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'ratingScore',
     'channel',
     'commentKeyword',
+    'problemCauseSource',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue
@@ -436,6 +476,7 @@ export function buildFeedbacksUrl(params = {}) {
     'ratingScore',
     'channel',
     'commentKeyword',
+    'problemCauseSource',
   ]
   for (const key of stringFields) {
     const value = params[key]?.trim()

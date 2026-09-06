@@ -10,9 +10,11 @@ import {
   matchesCustomerNamesFilter,
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
+  matchesProblemCauseSourceFilter,
   parseFeedbackFollowUpSearchParams,
   parseCustomerNamesParam,
   parseFeedbackSearchParams,
+  parseProblemCauseSourceParam,
   patchFeedbackFollowUpSearchParams,
   patchFeedbackSearchParams,
   matchesHandlingKeywordFilter,
@@ -244,5 +246,46 @@ describe('feedbackFilters', () => {
     expect(matchesOptionalTextFilter('报障', EMPTY_FILTER_TOKEN)).toBe(false)
     expect(drillDownFieldParam('未分类')).toBe(EMPTY_FILTER_TOKEN)
     expect(drillDownFieldParam('报障')).toBe('报障')
+  })
+
+  it('parseProblemCauseSourceParam accepts auto/manual only', () => {
+    expect(parseProblemCauseSourceParam('auto')).toBe('auto')
+    expect(parseProblemCauseSourceParam('manual')).toBe('manual')
+    expect(parseProblemCauseSourceParam('')).toBe('')
+    expect(parseProblemCauseSourceParam('bogus')).toBe('')
+  })
+
+  it('matchesProblemCauseSourceFilter matches manual/auto root cause source', () => {
+    const manual = { rootCauseReview: '人工复核根因' }
+    const auto = { rootCause: '自动根因' }
+    const none = {}
+    expect(matchesProblemCauseSourceFilter(manual, '')).toBe(true)
+    expect(matchesProblemCauseSourceFilter(manual, 'manual')).toBe(true)
+    expect(matchesProblemCauseSourceFilter(manual, 'auto')).toBe(false)
+    expect(matchesProblemCauseSourceFilter(auto, 'auto')).toBe(true)
+    expect(matchesProblemCauseSourceFilter(auto, 'manual')).toBe(false)
+    expect(matchesProblemCauseSourceFilter(none, 'auto')).toBe(false)
+    expect(matchesProblemCauseSourceFilter(none, 'manual')).toBe(false)
+  })
+
+  it('parseFeedbackSearchParams includes problemCauseSource', () => {
+    const parsed = parseFeedbackSearchParams(new URLSearchParams('problemCauseSource=manual'))
+    expect(parsed.problemCauseSource).toBe('manual')
+    expect(parseFeedbackSearchParams(new URLSearchParams('problemCauseSource=bad')).problemCauseSource).toBe('')
+  })
+
+  it('patchFeedbackSearchParams round-trips problemCauseSource', () => {
+    const next = patchFeedbackSearchParams(new URLSearchParams(), { problemCauseSource: 'auto' })
+    expect(next.get('problemCauseSource')).toBe('auto')
+    const cleared = patchFeedbackSearchParams(new URLSearchParams('problemCauseSource=auto'), {
+      problemCauseSource: '',
+    })
+    expect(cleared.has('problemCauseSource')).toBe(false)
+  })
+
+  it('buildFeedbacksUrl serializes problemCauseSource', () => {
+    expect(buildFeedbacksUrl({ problemCauseSource: 'manual' })).toBe(
+      '/feedbacks?problemCauseSource=manual',
+    )
   })
 })

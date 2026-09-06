@@ -34,6 +34,14 @@ describe('feedbackFilterEditors data source scope', () => {
     })
   })
 
+  it('lists 问题原因 source options (auto/manual)', () => {
+    const options = listEnumOptionsForFilterKey('problemCauseSource', createEmptyFeedbackFilters(), {}, true)
+    expect(options).toEqual([
+      { label: '自动', value: 'auto' },
+      { label: '人工', value: 'manual' },
+    ])
+  })
+
   it('lists rating and channel options from the provided catalog', () => {
     const rating = listEnumOptionsForFilterKey(
       'ratingScore',

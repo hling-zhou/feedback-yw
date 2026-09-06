@@ -3,6 +3,7 @@ import {
   countActiveFeedbackFilters,
   createEmptyFeedbackFilters,
   FEEDBACK_FILTER_CHIP_VALUE_MAX_LEN,
+  FEEDBACK_FILTER_LABELS,
   FEEDBACK_POST_USE_COMPOSITE_KEYS,
   FEEDBACK_TICKET_COMPOSITE_KEYS,
   formatFeedbackFilterChipLabel,
@@ -46,6 +47,18 @@ describe('feedbackFilterModel', () => {
     expect(isFeedbackFilterActive(values, 'product')).toBe(true)
     expect(isFeedbackFilterActive(values, 'customerNames')).toBe(true)
     expect(isFeedbackFilterActive(values, 'handlingKeyword')).toBe(true)
+  })
+
+  it('problemCauseSource is active, labeled and present in ticket composite keys', () => {
+    const values = { ...createEmptyFeedbackFilters(), problemCauseSource: 'manual' }
+    expect(isFeedbackFilterActive(values, 'problemCauseSource')).toBe(true)
+    expect(isFeedbackFilterActive({ ...values, problemCauseSource: '' }, 'problemCauseSource')).toBe(false)
+    expect(listActiveFeedbackFilterChipKeys(values)).toEqual(['problemCauseSource'])
+    expect(formatFeedbackFilterChipLabel('problemCauseSource', values)).toBe('人工')
+    expect(formatFeedbackFilterChipLabel('problemCauseSource', { ...values, problemCauseSource: 'auto' })).toBe('自动')
+    expect(FEEDBACK_TICKET_COMPOSITE_KEYS).toContain('problemCauseSource')
+    expect(FEEDBACK_FILTER_LABELS.problemCauseSource).toBe('问题原因')
+    expect(createEmptyFeedbackFilters().problemCauseSource).toBe('')
   })
 
   it('formats post-use rating, channel and comment chips', () => {

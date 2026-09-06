@@ -4,6 +4,7 @@ import {
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
   LISTENING_REVIEWED_FILTER_OPTIONS,
+  PROBLEM_CAUSE_SOURCE_FILTER_OPTIONS,
   TODO_STATUS_FILTER_OPTIONS,
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
@@ -28,6 +29,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   journeyL1: 'enum',
   resourcePool: 'enum',
   requestScene: 'enum',
+  problemCauseSource: 'enum',
   ticketLlm: 'enum',
   followUp: 'enum',
   followUpResolved: 'enum',
@@ -150,6 +152,8 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       return (options.resourcePools || []).map((item) => ({ label: item.name, value: item.name }))
     case 'requestScene':
       return (options.requestScenes || []).map((item) => ({ label: item.name, value: item.name }))
+    case 'problemCauseSource':
+      return PROBLEM_CAUSE_SOURCE_FILTER_OPTIONS.filter((item) => item.value)
     case 'ticketLlm':
       return TICKET_LLM_FILTER_OPTIONS.filter((item) => item.value).map((item) => ({
         label: item.label,

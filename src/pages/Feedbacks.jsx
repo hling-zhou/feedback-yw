@@ -69,6 +69,7 @@ import {
   matchesHandlingKeywordFilter,
   matchesListeningReviewedFilter,
   matchesOptionalTextFilter,
+  matchesProblemCauseSourceFilter,
   matchesTodoStatusFilter,
   parseFeedbackSearchParams,
   patchFeedbackSearchParams,
@@ -589,6 +590,12 @@ export default function Feedbacks() {
       if (!matchesPostUseRatingFilter(fb, filters.ratingScore)) return false
       if (!matchesPostUseChannelFilter(fb, filters.channel)) return false
       if (!matchesCustomerNamesFilter(fb, filters.customerNames)) return false
+      if (
+        filters.problemCauseSource &&
+        !matchesProblemCauseSourceFilter(fb, filters.problemCauseSource)
+      ) {
+        return false
+      }
       return true
     })
   }, [
