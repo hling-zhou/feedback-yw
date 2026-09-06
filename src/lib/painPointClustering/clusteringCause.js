@@ -91,20 +91,55 @@ export function stripOrgBlamePath(text) {
 }
 
 /**
+ * 导入列/复核文本是否像投诉原因终判树（含一/二级或「L1 / L2 / L3」路径）。
+ * 详情页人工复核不得把这类文本预填进去；聚类最多抽末段三级。
+ * @param {string} text
+ */
+export function isComplaintCauseTreeText(text) {
+  const t = (text || '').trim()
+  if (!t) return false
+  if (ORG_BLAME_L1_LABELS.has(t) || ORG_BLAME_L2_LABELS.has(t)) return true
+  const segments = t.split(TREE_PATH_SEP_RE).map((s) => s.trim()).filter(Boolean)
+  if (segments.length < 2) return false
+  return segments.some((s) => ORG_BLAME_L1_LABELS.has(s) || ORG_BLAME_L2_LABELS.has(s))
+}
+
+/**
+ * 清洗后仍可用于聚类的问题原因：剥掉一/二级路径，丢弃占位与纯归责。
+ * @param {string} text
+ */
+export function getUsableCauseText(text) {
+  const stripped = stripOrgBlamePath(text)
+  if (!stripped || isOrganizationalCauseText(stripped)) return ''
+  return stripped
+}
+
+/**
+ * 导入列「问题原因」能否预填/回退为人工复核：真实机制句可以；终判树不行。
+ * @param {string} text
+ */
+export function sanitizeImportProblemCauseForReview(text) {
+  const raw = (text || '').trim()
+  if (!raw || isComplaintCauseTreeText(raw)) return ''
+  return getUsableCauseText(raw)
+}
+
+/**
  * 取工单的「问题原因」聚类文本（已剥组织归责）。
- * 优先级：rootCauseReview（非归责树）→ 可判定的 rootCause → complaintCauseL3Final → 空
+ * 优先级：rootCauseReview（剥树后仍可用）→ 可判定的 rootCause → complaintCauseL3Final → 空
+ * 人工复核若只是导入列终判树，不当「最可信」——抽不出 L3 就回退自动根因。
  * @param {FeedbackRecord} record
  */
 export function getClusteringCauseText(record) {
-  // 1. 人工复核问题原因（最可信）
-  const review = (record?.rootCauseReview || '').trim()
-  if (review && !isOrganizationalCauseText(review)) return review
+  // 1. 人工复核问题原因（最可信，但仍要剥终判树）
+  const review = getUsableCauseText(record?.rootCauseReview)
+  if (review) return review
 
   // 2. 系统 rootCause（规则/导入/LLM），剥掉一/二级路径
   const rawRootCause = (record?.rootCause || '').trim()
   if (rawRootCause && rawRootCause !== '待分析') {
-    const stripped = stripOrgBlamePath(rawRootCause)
-    if (stripped && !isOrganizationalCauseText(stripped)) return stripped
+    const stripped = getUsableCauseText(rawRootCause)
+    if (stripped) return stripped
   }
 
   // 3. 投诉原因三级（最多用三级）

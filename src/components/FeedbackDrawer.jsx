@@ -107,7 +107,8 @@ import {
 import {
   getAutoRootCauseDisplay,
   getRootCauseReviewDraftDisplay,
-  isRootCauseReviewManuallyMaintained,
+  getRootCauseReviewEditorHint,
+  getRootCauseReviewEditorPlaceholder,
   normalizeRootCauseReviewInput,
   ROOT_CAUSE_REVIEW_MAX_LENGTH,
   shouldIncludeRootCauseReviewInSave,
@@ -2001,13 +2002,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   人工复核
                 </Typography.Text>
                 <Typography.Text type="secondary" className="block text-xs">
-                  {isRootCauseReviewManuallyMaintained(feedback)
-                    ? '已人工复核；重新打标默认保留此维度。'
-                    : '默认展示导入列「问题原因」；编辑并保存后将作为人工复核值写入。'}
+                  {getRootCauseReviewEditorHint(feedback)}
                 </Typography.Text>
                 <Input.TextArea
                   rows={3}
-                  placeholder="默认展示导入列「问题原因」"
+                  placeholder={getRootCauseReviewEditorPlaceholder(feedback)}
                   maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
                   showCount
                   value={rootCauseReview}

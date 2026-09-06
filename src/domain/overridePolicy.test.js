@@ -73,6 +73,14 @@ describe('overridePolicy', () => {
     expect(out.complaintCauseL1Final).toBe('性能类')
   })
 
+  it('FORCE_ALL_HUMAN does not persist complaint-cause tree as rootCauseReview', () => {
+    const out = applyForceAllHumanOverrides({
+      ...baseRecord,
+      sourceColumns: { 问题原因: '云能问题 / 产品原因 / 计算部原因' },
+    })
+    expect(out.rootCauseReview).toBe('')
+  })
+
   it('FORCE_ALL_HUMAN preserves followUpSatisfaction enrichment', () => {
     const out = applyForceAllHumanOverrides({
       ...baseRecord,

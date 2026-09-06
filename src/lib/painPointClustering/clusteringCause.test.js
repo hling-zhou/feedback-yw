@@ -3,8 +3,11 @@ import {
   causesCompatible,
   getClusteringCauseText,
   getClusteringCauseKey,
+  getUsableCauseText,
+  isComplaintCauseTreeText,
   isOrganizationalCauseText,
   pickRepresentativeCause,
+  sanitizeImportProblemCauseForReview,
   stripOrgBlamePath,
 } from './clusteringCause.js'
 
@@ -84,6 +87,67 @@ describe('getClusteringCauseText', () => {
 
   it('skips 待分析 placeholder', () => {
     expect(getClusteringCauseText(rec({ rootCause: '待分析' }))).toBe('')
+  })
+
+  it('strips review that is a final-judgment tree and keeps the mechanism tail', () => {
+    expect(
+      getClusteringCauseText(
+        rec({
+          rootCauseReview: '云能问题 / 产品原因 / 安全组未放行 22 端口',
+          rootCause: '带宽超限',
+        }),
+      ),
+    ).toBe('安全组未放行 22 端口')
+  })
+
+  it('ignores L1/L2-only review and falls back to LLM rootCause', () => {
+    expect(
+      getClusteringCauseText(
+        rec({
+          rootCauseReview: '云能问题 / 产品原因',
+          rootCause: '安全组未放行 22 端口',
+        }),
+      ),
+    ).toBe('安全组未放行 22 端口')
+  })
+
+  it('does not treat unsaved import column as review', () => {
+    expect(
+      getClusteringCauseText(
+        rec({
+          sourceColumns: { 问题原因: '云能问题 / 产品原因 / 计算部原因' },
+          rootCause: '安全组未放行 22 端口',
+        }),
+      ),
+    ).toBe('安全组未放行 22 端口')
+  })
+
+  it('keeps L3 from stored tree review when no better auto cause', () => {
+    expect(
+      getClusteringCauseText(rec({ rootCauseReview: '云能问题 / 产品原因 / 计算部原因' })),
+    ).toBe('计算部原因')
+  })
+})
+
+describe('isComplaintCauseTreeText', () => {
+  it('flags L1/L2 and tree paths', () => {
+    expect(isComplaintCauseTreeText('云能问题')).toBe(true)
+    expect(isComplaintCauseTreeText('产品原因')).toBe(true)
+    expect(isComplaintCauseTreeText('云能问题 / 产品原因 / 计算部原因')).toBe(true)
+    expect(isComplaintCauseTreeText('云能问题 / 产品原因 / 安全组未放行 22 端口')).toBe(true)
+  })
+
+  it('accepts bare mechanism sentences', () => {
+    expect(isComplaintCauseTreeText('安全组未放行 22 端口')).toBe(false)
+    expect(isComplaintCauseTreeText('磁盘使用率 100%')).toBe(false)
+  })
+})
+
+describe('sanitizeImportProblemCauseForReview', () => {
+  it('keeps mechanism, drops tree paths', () => {
+    expect(sanitizeImportProblemCauseForReview('安全组未放行')).toBe('安全组未放行')
+    expect(sanitizeImportProblemCauseForReview('云能问题 / 产品原因 / 计算部原因')).toBe('')
+    expect(getUsableCauseText('云能问题 / 产品原因 / 计算部原因')).toBe('计算部原因')
   })
 })
 

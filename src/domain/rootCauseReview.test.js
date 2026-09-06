@@ -3,7 +3,10 @@ import {
   getAutoRootCauseDisplay,
   getEffectiveRootCauseReview,
   getRootCauseReviewDraftDisplay,
+  getRootCauseReviewEditorHint,
+  getRootCauseReviewEditorPlaceholder,
   hasManualRootCauseReview,
+  isRootCauseReviewFallbackPolluted,
   isRootCauseReviewManuallyMaintained,
   normalizeRootCauseReviewInput,
   ROOT_CAUSE_REVIEW_MAX_LENGTH,
@@ -119,5 +122,33 @@ describe('rootCauseReview', () => {
         rootCause: '云能问题/产品原因/计算部原因',
       }),
     ).toBe('')
+  })
+
+  it('does not prefill draft when import 问题原因 is a complaint-cause tree', () => {
+    const record = {
+      sourceColumns: { 问题原因: '云能问题 / 产品原因 / 计算部原因' },
+      rootCause: '安全组未放行',
+    }
+    expect(isRootCauseReviewFallbackPolluted(record)).toBe(true)
+    expect(getRootCauseReviewDraftDisplay(record)).toBe('')
+    expect(getEffectiveRootCauseReview(record)).toBe('')
+    expect(getRootCauseReviewEditorPlaceholder(record)).toContain('留空使用自动生成')
+    expect(getRootCauseReviewEditorHint(record)).toContain('投诉原因终判路径')
+  })
+
+  it('still prefills draft when import 问题原因 is a real mechanism', () => {
+    const record = { sourceColumns: { 问题原因: '安全组未放行' } }
+    expect(isRootCauseReviewFallbackPolluted(record)).toBe(false)
+    expect(getRootCauseReviewDraftDisplay(record)).toBe('安全组未放行')
+    expect(getRootCauseReviewEditorHint(record)).toContain('默认展示导入列')
+  })
+
+  it('shows stored review even if it looks like a tree', () => {
+    const record = {
+      rootCauseReview: '云能问题 / 产品原因 / 计算部原因',
+      sourceColumns: { 问题原因: '云能问题 / 产品原因 / 计算部原因' },
+    }
+    expect(getRootCauseReviewDraftDisplay(record)).toBe('云能问题 / 产品原因 / 计算部原因')
+    expect(getRootCauseReviewEditorHint(record)).toContain('已人工复核')
   })
 })
