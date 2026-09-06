@@ -51,7 +51,7 @@ function buildValidRow(overrides = {}) {
     设计师优化建议: '',
     受理内容: '',
     处理意见: '处理',
-    根因排查: '',
+    问题原因: '',
   }
   return { ...row, ...overrides }
 }
@@ -83,11 +83,11 @@ describe('importAnalysis', () => {
   })
 
   it('matchImportAnalysisHeaders reports missing required columns', () => {
-    const partial = HEADERS.filter((h) => h !== '工单号*' && h !== '根因排查')
+    const partial = HEADERS.filter((h) => h !== '工单号*' && h !== '问题原因')
     const match = matchImportAnalysisHeaders(partial)
     expect(match.ok).toBe(false)
     expect(match.missingHeaders).toContain('工单号')
-    expect(match.missingHeaders).not.toContain('根因排查')
+    expect(match.missingHeaders).not.toContain('问题原因')
   })
 
   it('validateImportSentimentRaw and urgency enums', () => {

@@ -10,7 +10,6 @@ import {
   applyFollowUpSatisfactionPatch,
   parseFollowUpSatisfactionDisplay,
 } from './followUpSatisfaction.js'
-import { sanitizeImportProblemCauseForReview } from '../lib/painPointClustering/clusteringCause.js'
 import {
   getImportColumns,
   getImportManualDimensions,
@@ -76,15 +75,12 @@ export function isForceOverridePolicy(policy) {
 }
 
 /**
- * 强制覆盖：清空人工标记与确立举措等；根因排查回退未污染的导入列「问题原因」。
+ * 强制覆盖：清空人工标记与确立举措等；根因排查（问题原因）一并清空，由打标流水线重新生成自动根因。
  *
  * @param {FeedbackRecord} record
  * @returns {FeedbackRecord}
  */
 export function applyForceAllHumanOverrides(record) {
-  const rootCauseReview = sanitizeImportProblemCauseForReview(
-    resolveRootCauseReviewFallback(record),
-  )
   return {
     ...record,
     manualTagFields: [],
@@ -97,7 +93,8 @@ export function applyForceAllHumanOverrides(record) {
     actionSchedule: '',
     productGroupOptimization: '',
     designerOptimization: '',
-    rootCauseReview,
+    // 不再回退导入列「问题原因」：强制重打标即清空人工复核，自动根因由流水线重新生成
+    rootCauseReview: '',
   }
 }
 

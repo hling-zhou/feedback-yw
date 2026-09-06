@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { normalizeSentiment, getUrgencyLevel, SENTIMENT_LABELS, URGENCY_LABELS } from './sentiment.js'
 import { getExportColumns, readFieldValue } from '../domain/fieldRegistry.js'
-import { getEffectiveRootCauseReview } from '../domain/rootCauseReview.js'
+import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
 import {
   extractAcceptanceTextFromFields,
@@ -17,11 +17,11 @@ import {
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
-/** 当前分析结果导出列版本（Field Registry v3，含回访满意度） */
-export const EXPORT_ANALYSIS_VERSION = 3
+/** 当前分析结果导出列版本（Field Registry v4，问题原因列替代原根因排查） */
+export const EXPORT_ANALYSIS_VERSION = 4
 
 /**
- * v3 导出表头（Field Registry 列序）。
+ * v4 导出表头（Field Registry 列序）。
  * @param {{ dataSourceType?: import('../domain/enums.js').DataSourceType }} [options]
  * @returns {string[]}
  */
@@ -86,7 +86,7 @@ function exportRegistryFieldValue(record, field) {
     case 'handlingOpinion':
       return extractHandlingTextFromFields(taggingFields)
     case 'rootCauseReview':
-      return getEffectiveRootCauseReview(record)
+      return getProblemCauseDisplay(record).value
     case 'customerTypeName':
       return getSourceColumnValue(record, '客户类型名称')
     case 'groupName':

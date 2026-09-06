@@ -70,20 +70,20 @@ describe('export v2 UAT fixtures (P1-4 / P1-5)', () => {
       }
     })
 
-    it('rootCauseReview falls back to 问题原因 column only', () => {
+    it('问题原因 derives from auto rootCause when no manual review', () => {
       const c03 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-03')
-      expect(recordToExportRowV2(c03)['根因排查']).toBe('磁盘使用率 100%')
+      expect(recordToExportRowV2(c03)['问题原因']).toBe('磁盘满')
 
       const c04 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-04')
-      expect(recordToExportRowV2(c04)['根因排查']).toBe('')
+      expect(recordToExportRowV2(c04)['问题原因']).toBe('AccessKey 轮换未同步')
 
       const c08 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-08')
-      expect(recordToExportRowV2(c08)['根因排查']).toBe('')
+      expect(recordToExportRowV2(c08)['问题原因']).toBe('')
     })
 
     it('stored rootCauseReview takes precedence', () => {
       const c01 = EXPORT_V2_UAT_COMPLAINT_SAMPLES.find((r) => r.id === 'uat-c-01')
-      expect(recordToExportRowV2(c01)['根因排查']).toBe('安全组未放行 22 端口')
+      expect(recordToExportRowV2(c01)['问题原因']).toBe('安全组未放行 22 端口')
     })
 
     it('legacy manualReviewOptimization maps to 确立举措 when establishedAction empty', () => {
@@ -111,7 +111,7 @@ describe('export v2 UAT fixtures (P1-4 / P1-5)', () => {
       expect(imported.optimizationProduct).toBe(exportRow['产品技术优化'])
       expect(imported.establishedAction).toBe(exportRow['确立举措'])
       expect(imported.actionSchedule).toBe(exportRow['排期'])
-      expect(imported.rootCauseReview).toBe(exportRow['根因排查'])
+      expect(imported.rootCauseReview).toBe(exportRow['问题原因'])
       expect(imported.customerRequestSource).toBe('import')
     })
 

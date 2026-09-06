@@ -117,7 +117,7 @@ describe('manualTagFields', () => {
     expect(cleared.establishedAction).toBe('')
     expect(cleared.actionId).toBe('')
     expect(cleared.actionSchedule).toBe('')
-    expect(cleared.rootCauseReview).toBe('列根因')
+    expect(cleared.rootCauseReview).toBe('')
   })
 
   it('preserveManualTags skips restore when stale manualTagFields but LLM wrote llm source', () => {

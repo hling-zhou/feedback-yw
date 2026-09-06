@@ -37,8 +37,8 @@ const baseRecord = {
 }
 
 describe('ticketAnalysisExport v3', () => {
-  it('EXPORT_ANALYSIS_VERSION is 3', () => {
-    expect(EXPORT_ANALYSIS_VERSION).toBe(3)
+  it('EXPORT_ANALYSIS_VERSION is 4', () => {
+    expect(EXPORT_ANALYSIS_VERSION).toBe(4)
   })
 
   it('getExportV3Headers returns registry columns including customer profile fields', () => {
@@ -47,6 +47,7 @@ describe('ticketAnalysisExport v3', () => {
       '产品名称',
       '客户请求内容',
       '需求痛点',
+      '问题原因',
       '请求场景',
       '问题类型',
       '用户旅程一级',
@@ -64,7 +65,6 @@ describe('ticketAnalysisExport v3', () => {
       '未完成待办',
       '受理内容',
       '处理意见',
-      '根因排查',
       '客户类型名称',
       '集团名称',
       '集团客户编码',
@@ -91,7 +91,7 @@ describe('ticketAnalysisExport v3', () => {
     expect(row['设计师优化建议']).toBe('')
     expect(row['受理内容']).toContain('客户报障')
     expect(row['处理意见']).toBe('已协助排查并放行端口')
-    expect(row['根因排查']).toBe('列快照根因')
+    expect(row['问题原因']).toBe('安全组未放行')
     expect(row).not.toHaveProperty('投诉原因（终判）')
     expect(row).not.toHaveProperty('客户请求来源')
     expect(row).not.toHaveProperty('根因（人工复核）')
@@ -170,16 +170,17 @@ describe('ticketAnalysisExport v3', () => {
     expect(row['服务流程改进']).toBe('')
     expect(row['确立举措']).toBe('')
     expect(row['是否加急']).toBe('')
-    expect(row['根因排查']).toBe('')
+    expect(row['问题原因']).toBe('')
   })
 
-  it('rootCauseReview stored value takes precedence over fallback', () => {
+  it('rootCauseReview stored value takes precedence over auto rootCause', () => {
     expect(
       recordToExportRowV3({
         ...baseRecord,
         rootCauseReview: '人工根因排查',
+        rootCause: '结构化',
         sourceColumns: { 问题原因: '列根因' },
-      })['根因排查'],
+      })['问题原因'],
     ).toBe('人工根因排查')
   })
 

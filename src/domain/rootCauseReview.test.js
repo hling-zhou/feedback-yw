@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   getAutoRootCauseDisplay,
   getEffectiveRootCauseReview,
+  getProblemCauseDisplay,
   getRootCauseReviewDraftDisplay,
   getRootCauseReviewEditorHint,
   getRootCauseReviewEditorPlaceholder,
+  getRootCauseReviewImportSuggestion,
   hasManualRootCauseReview,
   isRootCauseReviewFallbackPolluted,
   isRootCauseReviewManuallyMaintained,
@@ -46,12 +48,13 @@ describe('rootCauseReview', () => {
     expect(hasManualRootCauseReview({ rootCause: 'x' })).toBe(false)
   })
 
-  it('getRootCauseReviewDraftDisplay shows effective default when not manually maintained', () => {
+  it('getRootCauseReviewDraftDisplay empty when not manually maintained (import not prefilled)', () => {
     const record = {
       sourceColumns: { 问题原因: '列根因' },
       rootCause: '结构化',
     }
-    expect(getRootCauseReviewDraftDisplay(record)).toBe('列根因')
+    expect(getRootCauseReviewDraftDisplay(record)).toBe('')
+    expect(getRootCauseReviewImportSuggestion(record)).toBe('列根因')
   })
 
   it('getRootCauseReviewDraftDisplay shows stored value when manually maintained', () => {
@@ -136,11 +139,12 @@ describe('rootCauseReview', () => {
     expect(getRootCauseReviewEditorHint(record)).toContain('投诉原因终判路径')
   })
 
-  it('still prefills draft when import 问题原因 is a real mechanism', () => {
+  it('does not prefill draft for real mechanism; only import suggestion shows it', () => {
     const record = { sourceColumns: { 问题原因: '安全组未放行' } }
     expect(isRootCauseReviewFallbackPolluted(record)).toBe(false)
-    expect(getRootCauseReviewDraftDisplay(record)).toBe('安全组未放行')
-    expect(getRootCauseReviewEditorHint(record)).toContain('默认展示导入列')
+    expect(getRootCauseReviewDraftDisplay(record)).toBe('')
+    expect(getRootCauseReviewImportSuggestion(record)).toBe('安全组未放行')
+    expect(getRootCauseReviewEditorHint(record)).not.toContain('默认展示导入列')
   })
 
   it('shows stored review even if it looks like a tree', () => {
@@ -150,5 +154,29 @@ describe('rootCauseReview', () => {
     }
     expect(getRootCauseReviewDraftDisplay(record)).toBe('云能问题 / 产品原因 / 计算部原因')
     expect(getRootCauseReviewEditorHint(record)).toContain('已人工复核')
+  })
+
+  it('getProblemCauseDisplay prefers manual review (人工)', () => {
+    expect(getProblemCauseDisplay({ rootCauseReview: '人工复核', rootCause: '自动' })).toEqual({
+      value: '人工复核',
+      tag: '人工',
+    })
+  })
+
+  it('getProblemCauseDisplay falls back to auto rootCause (自动)', () => {
+    expect(getProblemCauseDisplay({ rootCause: '自动生成根因' })).toEqual({
+      value: '自动生成根因',
+      tag: '自动',
+    })
+  })
+
+  it('getProblemCauseDisplay empty when neither present', () => {
+    expect(getProblemCauseDisplay({})).toEqual({ value: '', tag: null })
+  })
+
+  it('getProblemCauseDisplay never uses import 问题原因 column', () => {
+    expect(
+      getProblemCauseDisplay({ sourceColumns: { 问题原因: '导入脏数据' }, rootCause: '' }).value,
+    ).toBe('')
   })
 })

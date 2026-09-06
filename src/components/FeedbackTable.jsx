@@ -4,13 +4,13 @@ import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
-import SentimentBadge from './SentimentBadge.jsx'
 import {
   getDisplayCustomerRequest,
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
+import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { extractTicketActualDate } from '../domain/ticketActualDate.js'
 import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
 
@@ -215,12 +215,6 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
       render: (_, fb) => <Tag color="blue">{fb.requestScene || '未分类'}</Tag>,
     },
     {
-      title: '用户情绪',
-      dataIndex: 'sentiment',
-      width: 96,
-      render: (_, fb) => <SentimentBadge record={fb} />,
-    },
-    {
       title: '问题类型',
       dataIndex: 'problemType',
       width: 150,
@@ -255,6 +249,23 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
           {getDisplayPainPoint(fb) || '—'}
         </Typography.Paragraph>
       ),
+    },
+    {
+      title: '问题原因',
+      dataIndex: 'rootCauseReview',
+      width: 170,
+      render: (_, fb) => {
+        const { value, tag } = getProblemCauseDisplay(fb)
+        if (!value) return '—'
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
+              {value}
+            </Typography.Paragraph>
+            {tag ? <Tag color={tag === '人工' ? 'purple' : 'blue'}>{tag}</Tag> : null}
+          </div>
+        )
+      },
     },
     {
       title: '确立举措',

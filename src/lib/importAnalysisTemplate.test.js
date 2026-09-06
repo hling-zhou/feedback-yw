@@ -36,7 +36,7 @@ describe('importAnalysisTemplate', () => {
     expect(required).not.toContain('确立举措')
     expect(required).toContain('产品名称')
     expect(required).toContain('工单号')
-    expect(required).not.toContain('根因排查')
+    expect(required).not.toContain('问题原因')
     expect(required).not.toContain('受理内容')
     expect(required).not.toContain('是否加急')
     expect(required).not.toContain('回访满意度')

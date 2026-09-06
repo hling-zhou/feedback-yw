@@ -67,7 +67,7 @@ describe('overridePolicy', () => {
     expect(out.productGroupOptimization).toBe('')
     expect(out.designerOptimization).toBe('')
     expect(out.manualReviewRootCause).toBe('')
-    expect(out.rootCauseReview).toBe('列快照根因')
+    expect(out.rootCauseReview).toBe('')
     expect(out.note).toBe('备注保留')
     expect(out.rawText).toBe('受理原文')
     expect(out.complaintCauseL1Final).toBe('性能类')
@@ -98,7 +98,7 @@ describe('overridePolicy', () => {
   it('applyOverridePolicy FORCE delegates to force helper', () => {
     const out = applyOverridePolicy(baseRecord, OVERRIDE_POLICY.FORCE_ALL_HUMAN)
     expect(out.manualTagFields).toEqual([])
-    expect(out.rootCauseReview).toBe('列快照根因')
+    expect(out.rootCauseReview).toBe('')
   })
 
   it('RESPECT_MANUAL returns record unchanged', () => {
@@ -138,7 +138,7 @@ describe('overridePolicy', () => {
       设计师优化建议: '新设计师建议',
       受理内容: '新受理',
       处理意见: '新处理',
-      根因排查: '新根因排查',
+      问题原因: '新根因排查',
     })
 
     expect(out.ticketId).toBe('T-100')
@@ -189,7 +189,7 @@ describe('overridePolicy', () => {
         设计师优化建议: '',
         受理内容: '',
         处理意见: '',
-        根因排查: '',
+        问题原因: '',
       },
     )
     expect(out.followUpSatisfaction?.score).toBe(10)
@@ -217,7 +217,7 @@ describe('overridePolicy', () => {
       设计师优化建议: '',
       受理内容: 'j',
       处理意见: 'k',
-      根因排查: 'l',
+      问题原因: 'l',
     })
     expect(out.actionSchedule).toBe('')
   })

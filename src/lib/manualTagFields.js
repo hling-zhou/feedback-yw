@@ -28,7 +28,7 @@ export const MANUAL_TAG_DIMENSION_LABELS = {
   optimization: '优化建议',
   customerRequest: '客户请求',
   painPoint: '需求痛点',
-  rootCauseReview: '根因排查',
+  rootCauseReview: '问题原因',
   complaintCauseReview: '投诉原因（终判）复核',
 }
 

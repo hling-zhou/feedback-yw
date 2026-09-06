@@ -109,6 +109,8 @@ import {
   getRootCauseReviewDraftDisplay,
   getRootCauseReviewEditorHint,
   getRootCauseReviewEditorPlaceholder,
+  getRootCauseReviewImportSuggestion,
+  isRootCauseReviewManuallyMaintained,
   normalizeRootCauseReviewInput,
   ROOT_CAUSE_REVIEW_MAX_LENGTH,
   shouldIncludeRootCauseReviewInSave,
@@ -2013,6 +2015,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 <Typography.Text type="secondary" className="block text-xs">
                   {getRootCauseReviewEditorHint(feedback)}
                 </Typography.Text>
+                {!isRootCauseReviewManuallyMaintained(feedback) &&
+                getRootCauseReviewImportSuggestion(feedback) ? (
+                  <div className="rounded border border-dashed border-ink-200 bg-ink-50 px-2 py-1 text-xs text-secondary">
+                    <span className="font-medium">导入原文（只读建议）：</span>
+                    {getRootCauseReviewImportSuggestion(feedback)}
+                  </div>
+                ) : null}
                 <Input.TextArea
                   rows={3}
                   placeholder={getRootCauseReviewEditorPlaceholder(feedback)}

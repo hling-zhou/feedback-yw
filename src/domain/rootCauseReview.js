@@ -21,6 +21,21 @@ export function getAutoRootCauseDisplay(record) {
 }
 
 /**
+ * 列表 / 导出「问题原因」统一取值：人工复核(人工) → 自动生成(自动)。
+ * 不再回退导入列「问题原因」（避免脏数据被误标为人工复核）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ * @returns {{ value: string, tag: '人工' | '自动' | null }}
+ */
+export function getProblemCauseDisplay(record) {
+  const manual = record?.rootCauseReview?.trim()
+  if (manual) return { value: manual, tag: '人工' }
+  const auto = getAutoRootCauseDisplay(record)
+  if (auto) return { value: auto, tag: '自动' }
+  return { value: '', tag: null }
+}
+
+/**
  * 工单详情/导出可读的有效根因排查（人工复核）：优先已存值，否则回退未污染的导入列「问题原因」。
  *
  * @param {FeedbackRecord | null | undefined} record
@@ -67,7 +82,7 @@ export function getRootCauseReviewEditorHint(record) {
   if (isRootCauseReviewFallbackPolluted(record)) {
     return '导入列「问题原因」是投诉原因终判路径，未写入人工复核，聚类也不会把它当问题原因。请填写可核对的配置/组件/流程状态；留空则使用上方「根因（自动）」。'
   }
-  return '默认展示导入列「问题原因」；编辑并保存后将作为人工复核值写入。'
+  return '可填写人工复核的问题原因并保存（将标记为人工资护维度）；导入列「问题原因」仅作只读建议，不会自动写入。'
 }
 
 /**
@@ -81,7 +96,7 @@ export function getRootCauseReviewEditorPlaceholder(record) {
   ) {
     return '请填写可核对的问题原因，或留空使用自动生成'
   }
-  return '默认展示导入列「问题原因」'
+  return '请输入人工复核的问题原因，或留空使用上方自动生成'
 }
 
 /**
@@ -117,6 +132,17 @@ export function getRootCauseReviewDraftDisplay(record) {
   if (isRootCauseReviewManuallyMaintained(record)) {
     return record?.rootCauseReview?.trim() ?? ''
   }
+  // 未人工维护时不再预填导入列「问题原因」，避免脏数据被误存为人工复核
+  return ''
+}
+
+/**
+ * 详情页「人工复核」只读建议：导入列「问题原因」经污染过滤后的原文。
+ * 仅作建议展示，不写入 rootCauseReview（除非用户主动复制并保存）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function getRootCauseReviewImportSuggestion(record) {
   return sanitizeRootCauseReviewFallback(record)
 }
 

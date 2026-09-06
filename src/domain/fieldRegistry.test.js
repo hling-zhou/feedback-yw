@@ -18,6 +18,7 @@ const EXPECTED_V2_HEADERS = [
   '产品名称',
   '客户请求内容',
   '需求痛点',
+  '问题原因',
   '请求场景',
   '问题类型',
   '用户旅程一级',
@@ -35,7 +36,6 @@ const EXPECTED_V2_HEADERS = [
   '未完成待办',
   '受理内容',
   '处理意见',
-  '根因排查',
   '客户类型名称',
   '集团名称',
   '集团客户编码',
@@ -67,7 +67,7 @@ describe('fieldRegistry', () => {
     expect(required).not.toContain('排期')
     expect(required).not.toContain('确立举措')
     expect(required).toContain('处理意见')
-    expect(required).not.toContain('根因排查')
+    expect(required).not.toContain('问题原因')
     expect(required).not.toContain('受理内容')
     expect(required).not.toContain('是否加急')
     expect(required).not.toContain('产品技术优化')
@@ -110,7 +110,7 @@ describe('fieldRegistry', () => {
 
   it('follow-up fields apply to complaint and consultation only', () => {
     const followUp = getFieldByKey('followUpSatisfaction')
-    expect(followUp?.exportOrder).toBe(11)
+    expect(followUp?.exportOrder).toBe(12)
     expect(isFieldApplicable(followUp, 'complaint_ticket')).toBe(true)
     expect(isFieldApplicable(followUp, 'consultation_ticket')).toBe(true)
     expect(isFieldApplicable(followUp, 'post_use_rating')).toBe(false)

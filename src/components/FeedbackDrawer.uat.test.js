@@ -13,7 +13,7 @@ import {
   getPainPointDraftDisplay,
 } from '../domain/ticketAnalysisManualFields.js'
 import {
-  getEffectiveRootCauseReview,
+  getProblemCauseDisplay,
   getRootCauseReviewDraftDisplay,
   shouldIncludeRootCauseReviewInSave,
 } from '../domain/rootCauseReview.js'
@@ -145,7 +145,7 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
         expect(row['需求痛点']).toBe(saved.painPoint || saved.problemSummary || '')
         expect(row['确立举措']).toBe(getEstablishedActionDisplay(saved))
         expect(row['排期']).toBe(saved.actionSchedule || '')
-        expect(row['根因排查']).toBe(getEffectiveRootCauseReview(saved))
+        expect(row['问题原因']).toBe(getProblemCauseDisplay(saved).value)
       },
     )
   })
@@ -154,13 +154,13 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
     it('uat-c-01: stored rootCauseReview exports directly', () => {
       const record = DETAIL_DRAWER_UAT_COMPLAINT_SAMPLES[0]
       expect(getRootCauseReviewDraftDisplay(record)).toBe('安全组未放行 22 端口')
-      expect(recordToExportRowV2(record)['根因排查']).toBe('安全组未放行 22 端口')
+      expect(recordToExportRowV2(record)['问题原因']).toBe('安全组未放行 22 端口')
     })
 
-    it('uat-c-03: root cause draft falls back without manual rootCauseReview', () => {
+    it('uat-c-03: draft empty when no manual review; export uses auto rootCause', () => {
       const record = DETAIL_DRAWER_UAT_COMPLAINT_SAMPLES[2]
-      expect(getRootCauseReviewDraftDisplay(record)).toBe('磁盘使用率 100%')
-      expect(recordToExportRowV2(record)['根因排查']).toBe('磁盘使用率 100%')
+      expect(getRootCauseReviewDraftDisplay(record)).toBe('')
+      expect(recordToExportRowV2(record)['问题原因']).toBe('磁盘满')
     })
 
     it('uat-c-02: legacy manualReviewOptimization reads as 确立举措 without changing auto optimization source', () => {
