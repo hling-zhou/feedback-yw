@@ -1980,7 +1980,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               <Typography.Text strong className="text-xs">
                 自动生成
               </Typography.Text>
-              <AutoRootCauseTag />
+              <AutoRootCauseTag record={feedback} />
             </div>
             <Descriptions
               column={1}

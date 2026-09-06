@@ -278,6 +278,16 @@ export function getAutoOptimizationSource(record) {
   return normalizeTicketAnalysisFieldSource(record?.optimizationSource)
 }
 
+/**
+ * 根因排查 · 自动生成来源（规则/大模型）：读 rootCauseSource，与痛点/优化建议一致。
+ *
+ * @param {import('../types.js').FeedbackRecord} record
+ * @returns {'rule' | 'llm' | 'manual'}
+ */
+export function getRootCauseSource(record) {
+  return normalizeTicketAnalysisFieldSource(record?.rootCauseSource)
+}
+
 /** @deprecated 同 getAutoOptimizationSource；优化建议不参与 LLM 状态筛选 */
 export function getOptimizationSource(record) {
   return getAutoOptimizationSource(record)

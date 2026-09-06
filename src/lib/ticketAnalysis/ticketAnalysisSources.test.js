@@ -8,6 +8,7 @@ import {
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
+  getRootCauseSource,
   getJourneyDisplaySource,
   getRuleManualDimensionSource,
   getTicketAnalysisSourceLabel,
@@ -28,6 +29,9 @@ describe('ticketAnalysisSources', () => {
     expect(getCustomerRequestSource({ customerRequestSource: 'llm' })).toBe('llm')
     expect(getCustomerRequestSource({})).toBe('rule')
     expect(getAutoOptimizationSource({ optimizationSource: 'llm' })).toBe('llm')
+    expect(getRootCauseSource({ rootCauseSource: 'llm' })).toBe('llm')
+    expect(getRootCauseSource({})).toBe('rule')
+    expect(getRootCauseSource({ rootCauseSource: 'import' })).toBe('manual')
   })
 
   it('labels optimization source for UI', () => {

@@ -5,6 +5,7 @@ import {
   getOptimizationSourceLabel,
   getPainPointSource,
   getCustomerRequestSource,
+  getRootCauseSource,
   getRuleManualDimensionSource,
   getTicketAnalysisSourceLabel,
 } from '../../lib/ticketAnalysis/ticketAnalysisSources.js'
@@ -91,11 +92,11 @@ export function AutoOptimizationSourceTag({ record }) {
 }
 
 /** 根因排查 · 自动生成（rootCause，重新打标时更新） */
-export function AutoRootCauseTag() {
-  return (
-    <TicketAnalysisSourceTag
-      source="rule"
-      title="根因（自动）来自打标规则 extractRootCause；重新打标时会更新"
-    />
-  )
+export function AutoRootCauseTag({ record } = {}) {
+  const source = getRootCauseSource(record)
+  const title =
+    source === 'llm'
+      ? '根因（自动）来自工单 LLM（extractRootCauseWithLLM）；重新打标时会更新'
+      : '根因（自动）来自打标规则 extractRootCause；重新打标时会更新'
+  return <TicketAnalysisSourceTag source={source} title={title} />
 }
