@@ -96,12 +96,12 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
         out,
         llmSettings,
         onProgress,
-        '客户请求、需求痛点与优化建议',
+        '客户请求、需求痛点、问题原因与优化建议',
         () =>
           enrichRecordsWithTicketLlm(out, llmSettings, (done, total) => {
-            onProgress?.('客户请求、需求痛点与优化建议', done, total)
+            onProgress?.('客户请求、需求痛点、问题原因与优化建议', done, total)
           }),
-        '客户请求/痛点/优化建议 LLM 增强',
+        '客户请求/痛点/问题原因/优化建议 LLM 增强',
         warnings,
       )
       Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, out))
@@ -159,7 +159,7 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
 
   if (!canUseSemanticMatch(llmSettings)) {
     warnings.push(
-      '未配置大模型 API Key：已完成关键词/解释本地打标；客户请求、需求痛点与优化建议仍为规则初标结果。请在设置填写 Key 或配置服务端 LLM_API_KEY 后重新打标。',
+      '未配置大模型 API Key：已完成关键词/解释本地打标；客户请求、需求痛点、问题原因与优化建议仍为规则初标结果。请在设置填写 Key 或配置服务端 LLM_API_KEY 后重新打标。',
     )
   } else {
     const journeyPending = countJourneyPendingAfterImport(out, llmSettings)

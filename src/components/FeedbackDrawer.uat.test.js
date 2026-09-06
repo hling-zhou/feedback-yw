@@ -113,6 +113,9 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
       expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*自动生成/)
       expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*getAutoRootCauseDisplay\(feedback\)/)
       expect(drawerSrc).toMatch(
+        /getRecordRevision\(cachedFeedback\) > getRecordRevision\(fullFeedback\)/,
+      )
+      expect(drawerSrc).toMatch(
         /title="根因排查"[\s\S]*?\{canEdit \? \([\s\S]*rootCauseReview/,
       )
     })

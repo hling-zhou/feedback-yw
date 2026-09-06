@@ -298,7 +298,7 @@ async function enrichRecordWithTicketLlmUnified(record, settings, ctx, extras = 
 }
 
 /**
- * 对已有初标记录用 LLM 增强客户请求、痛点与单条优化建议（不覆盖四维标签）
+ * 对已有初标记录用 LLM 增强客户请求、痛点、问题原因与单条优化建议（不覆盖四维标签）
  * @param {import('../types.js').FeedbackRecord} record
  * @param {import('../storage.js').AppSettings} settings
  * @param {{ knowledgeSnippets?: string; productName?: string }} [extras]

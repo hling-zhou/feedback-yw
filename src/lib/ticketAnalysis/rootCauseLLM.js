@@ -23,6 +23,20 @@ const TREE_PATH_RE =
   /^(?:云能问题|产品原因|运维原因|计算部原因|客户体验类|客户原因)(?:\s*\/\s*(?:云能问题|产品原因|运维原因|计算部原因|客户体验类|客户原因|硬件问题|安全策略|性能问题|功能缺陷|配置问题|操作问题|流程问题|服务问题))*$/
 
 /**
+ * 从 LLM JSON 取问题原因。模型常按提示词中文回 `问题原因`/`根因`，不能只认 rootCause。
+ * @param {Record<string, unknown> | null | undefined} parsed
+ * @returns {string}
+ */
+export function pickLlmRootCauseField(parsed) {
+  if (!parsed || typeof parsed !== 'object') return ''
+  for (const key of ['rootCause', '问题原因', '根因', 'cause']) {
+    const value = parsed[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+/**
  * 是否为可用的 LLM 问题原因文本
  * @param {string} text
  */
@@ -132,7 +146,11 @@ ${taggingText}
   })
 
   const parsed = parseLlmMessageContent(getLlmCompletionText(data))
-  const raw = typeof parsed.rootCause === 'string' ? parsed.rootCause.trim() : ''
-  if (!isValidLlmRootCause(raw)) return ''
-  return truncateRootCause(raw)
+  const raw = pickLlmRootCauseField(parsed)
+  if (!raw) return ''
+  // 先清洗（去前缀、取首句、截断），再校验：避免带「问题原因：」前缀或稍长的有效成因
+  // 被长度校验误杀，导致 LLM 已返回但 rootCause 不更新（页面仍显示旧值）。
+  const cleaned = truncateRootCause(raw)
+  if (!isValidLlmRootCause(cleaned)) return ''
+  return cleaned
 }

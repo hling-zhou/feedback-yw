@@ -77,7 +77,7 @@ export const TICKET_LLM_REMAIN_RULE_LOG_HINT =
  */
 export function formatTicketLlmRemainRuleMessage(failedCount) {
   if (!failedCount || failedCount <= 0) return ''
-  return `打标已完成，但 ${failedCount} 条工单的客户请求/需求痛点仍为「规则」来源（LLM 调用失败或返回空）。${TICKET_LLM_REMAIN_RULE_LOG_HINT}`
+  return `打标已完成，但 ${failedCount} 条工单的客户请求/需求痛点/问题原因仍为「规则」来源（LLM 调用失败或返回空）。${TICKET_LLM_REMAIN_RULE_LOG_HINT}`
 }
 
 /**

@@ -17,7 +17,7 @@ export const MOBILE_CLOUD_TICKET_PRESET = {
   id: 'mobile-cloud-ticket',
   name: '移动云投诉工单',
   description:
-    '以「处理意见」为主进行四维打标（请求场景、问题类型、用户旅程、用户情绪），并生成客户请求内容、需求痛点挖掘与优化建议（规则初标，导入后 LLM 增强）；受理内容用于抽取客户原话',
+    '以「处理意见」为主进行四维打标（请求场景、问题类型、用户旅程、用户情绪），并生成客户请求内容、需求痛点挖掘、问题原因与优化建议（规则初标，导入后 LLM 一次写出）；受理内容用于抽取客户原话',
   dataSourceTypes: ['complaint_ticket'],
   columnMap: {
     ticketId: '工单流水号',

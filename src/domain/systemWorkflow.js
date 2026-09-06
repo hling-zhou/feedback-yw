@@ -27,7 +27,7 @@ export const SYSTEM_USAGE_WORKFLOW = [
   {
     step: 2,
     title: '自动分析与打标',
-    description: '系统提取客户请求、需求痛点等，并完成规则或大模型打标',
+    description: '系统提取客户请求、需求痛点、问题原因等，并完成规则或大模型打标',
     modules: [],
     automatic: true,
   },

@@ -2123,7 +2123,7 @@ export default function Import({ embedded = false }) {
             ) : (
               <>
             <Typography.Text type="secondary" className="mt-1 block text-xs">
-              下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、四维、优化建议），再依次增强：请求场景与问题类型（本地）→ 客户请求/需求痛点/优化建议（配置 API Key 时 LLM）→ 请求场景与问题类型（LLM 语料，默认开）→ 用户旅程 → 用户情绪。
+              下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、问题原因、四维、优化建议），再依次增强：请求场景与问题类型（本地）→ 客户请求/需求痛点/问题原因/优化建议（配置 API Key 时 LLM，一次写出）→ 请求场景与问题类型（LLM 语料，默认开）→ 用户旅程 → 用户情绪。
             </Typography.Text>
             <Alert
               className="mt-2"

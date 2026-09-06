@@ -106,7 +106,7 @@ async function runLlmTaggingStages(records, llmSettings, total, onProgress, opti
           enriched,
           llmSettings,
           (done) => {
-            onProgress?.(done, total, '客户请求/痛点/优化建议')
+            onProgress?.(done, total, '客户请求/痛点/问题原因/优化建议')
           },
           { onBatchPersist: options.onTicketLlmBatchPersist },
         )
@@ -153,7 +153,7 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
         enriched,
         llmSettings,
         (done) => {
-          onProgress?.(done, total, '客户请求/痛点/优化建议')
+          onProgress?.(done, total, '客户请求/痛点/问题原因/优化建议')
         },
         { onBatchPersist: options.onTicketLlmBatchPersist },
       )

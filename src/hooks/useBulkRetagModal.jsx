@@ -186,7 +186,7 @@ export function useBulkRetagModal({ filteredRecords }) {
         content: (
           <div className="pt-1">
             <Typography.Paragraph type="secondary" className="!mb-3">
-              将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。用户情绪以客户请求内容、需求痛点为准。默认保留工单详情中人工保存过的标签维度。
+              将重新执行四维打标（请求场景、问题类型、用户旅程、用户情绪）。工单 LLM 一并写入客户请求、需求痛点、问题原因与优化建议。以「处理意见」为主，并结合「受理内容」「追加信息」；匹配不到已配置标签时会调用大模型生成并写入待复核列表。用户情绪以客户请求内容、需求痛点为准。默认保留工单详情中人工保存过的标签维度。
             </Typography.Paragraph>
             <Radio.Group
               defaultValue={selectedScope}
@@ -221,7 +221,7 @@ export function useBulkRetagModal({ filteredRecords }) {
               工单 LLM 成功后重打请求场景与问题类型
             </Checkbox>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-              默认与团队设置一致。仅对 ticket LLM 成功写入客户请求或痛点的工单生效；不勾选则保留规则初标结果。
+              默认与团队设置一致。仅对 ticket LLM 成功写入客户请求、痛点或问题原因的工单生效；不勾选则保留规则初标结果。
             </Typography.Paragraph>
             <Checkbox
               className="!mt-3"
@@ -232,7 +232,7 @@ export function useBulkRetagModal({ filteredRecords }) {
               强制覆盖全部人工内容
             </Checkbox>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
-              勾选后将：清空人工维护标记与本工单的确立举措、排期、产品组/设计师优化建议（不删除举措库中其他工单共用的举措）；根因排查人工复核回退为导入列「问题原因」（终判树不回退）；覆盖请求场景、问题类型、用户旅程、用户情绪、加急；若本次含工单 LLM，客户请求与需求痛点一并重算；自动优化建议（规则/大模型）可随 LLM 重算。不修改受理/处理原文、备注、跟进状态、投诉原因（终判）及终判人工复核等。补打/补打旅程与全量重打规则一致。
+              勾选后将：清空人工维护标记与本工单的确立举措、排期、产品组/设计师优化建议（不删除举措库中其他工单共用的举措）；根因排查人工复核回退为导入列「问题原因」（终判树不回退）；覆盖请求场景、问题类型、用户旅程、用户情绪、加急；若本次含工单 LLM，客户请求、需求痛点、问题原因（根因排查·自动生成）与自动优化建议一并重算。不修改受理/处理原文、备注、跟进状态、投诉原因（终判）及终判人工复核等。补打/补打旅程与全量重打规则一致。
             </Typography.Paragraph>
             <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
               {RETAG_BACKGROUND_RUN_HINT}。打标完成前请勿同时执行数据导入。

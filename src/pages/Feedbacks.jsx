@@ -804,7 +804,7 @@ export default function Feedbacks() {
                   className="inline-flex flex-wrap items-center gap-2"
                   title="客户请求或痛点仍为规则/人工/导入打标；多为导入时未配置 API Key 或额度不足"
                 >
-                  <span>{needsTicketLlmCount} 条客户请求/痛点待 LLM</span>
+                  <span>{needsTicketLlmCount} 条客户请求/痛点/问题原因待 LLM</span>
                   <PermissionGate permission="retag">
                     <Button
                       size="small"

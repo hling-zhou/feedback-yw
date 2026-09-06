@@ -66,7 +66,7 @@ describe('ticketAnalysisUnifiedLLM', () => {
     expect(result.rootCause).toBe('晚高峰异网访问拥塞')
     expect(result.optimizationSource).toBe('llm')
     expect(result.optimizationProduct).toContain('诊断')
-    expect(llmChatCompletion).toHaveBeenCalledTimes(2)
+    expect(llmChatCompletion).toHaveBeenCalledTimes(1)
     expect(result.optimizationRetry).toBeFalsy()
   })
 
@@ -83,9 +83,6 @@ describe('ticketAnalysisUnifiedLLM', () => {
         rootCause: '默认配额上限过低',
         productOptimizations: [],
         serviceOptimizations: [],
-      })
-      .mockReturnValueOnce({
-        rootCause: '默认配额上限过低',
       })
       .mockReturnValueOnce({
         productOptimizations: ['配额中心支持按产品批量申请与审批进度可视化'],
@@ -105,8 +102,8 @@ describe('ticketAnalysisUnifiedLLM', () => {
     expect(result.rootCauseSource).toBe('llm')
     expect(result.optimizationSource).toBe('llm')
     expect(result.optimizationRetry).toBe(true)
-    expect(llmChatCompletion).toHaveBeenCalledTimes(3)
-    const thirdCall = vi.mocked(llmChatCompletion).mock.calls[2]?.[1]
+    expect(llmChatCompletion).toHaveBeenCalledTimes(2)
+    const thirdCall = vi.mocked(llmChatCompletion).mock.calls[1]?.[1]
     expect(thirdCall?.messages?.[1]?.content).not.toContain('详细内容：配额不足')
   })
 
@@ -151,9 +148,13 @@ describe('ticketAnalysisUnifiedLLM', () => {
 
     const call = vi.mocked(llmChatCompletion).mock.calls[0]?.[1]
     const userPrompt = String(call?.messages?.[1]?.content ?? '')
+    const systemPrompt = String(call?.messages?.[0]?.content ?? '')
     expect(userPrompt).toContain('产品：弹性公网IP')
     expect(userPrompt).toContain('产品知识库参考')
     expect(userPrompt).toContain('【eip】独享带宽')
+    expect(userPrompt).toContain('"rootCause"')
+    expect(systemPrompt).toContain('步骤 3 — 问题原因')
+    expect(systemPrompt).toContain('四项提取')
   })
 
   it('omits knowledge section when snippets empty', async () => {

@@ -953,7 +953,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       cancelled = true
     }
   }, [selected?.id, needsHydration, adapter])
-  const feedback = fullFeedback ?? cachedFeedback
+  // 重新打标后 context 里的记录可能比抽屉首次拉到的全量快照新；
+  // 若仍优先 fullFeedback，根因（自动）会继续显示打标前的「待分析」。
+  const feedback = useMemo(() => {
+    if (!cachedFeedback) return fullFeedback
+    if (!fullFeedback) return cachedFeedback
+    if (getRecordRevision(cachedFeedback) > getRecordRevision(fullFeedback)) {
+      return { ...fullFeedback, ...cachedFeedback }
+    }
+    return fullFeedback
+  }, [cachedFeedback, fullFeedback])
   const isPostUseLibrary = isPostUseRatingLibraryRecord(feedback)
   const isPostUseNon10 = isPostUseNon10LibraryRecord(feedback)
   const canDeleteTicket = can('deleteData') && !isPostUseLibrary

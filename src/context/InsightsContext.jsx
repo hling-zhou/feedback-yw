@@ -2196,8 +2196,17 @@ export function InsightsProvider({ children }) {
   const reprocessOne = useCallback(
     async (id) => {
       if (reprocessingRef.current) return
-      const fb = feedbacksRef.current.find((f) => f.id === id)
+      let fb = feedbacksRef.current.find((f) => f.id === id)
       if (!fb) return
+      // list 投影没有 rawText/handlingText；单条重新打标必须用全量语料，否则问题原因 LLM 看不到处理意见
+      if (!('rawText' in fb) || !('handlingText' in fb)) {
+        try {
+          const full = await adapter.getRecord(id)
+          if (full) fb = full
+        } catch (err) {
+          console.warn('[retag] 单条全量记录加载失败，回退使用缓存', err)
+        }
+      }
 
       setReprocessing(true)
       reprocessingRef.current = true

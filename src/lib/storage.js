@@ -22,7 +22,7 @@ function hasLocalStorage() {
 
 /**
  * @typedef {'unified' | 'split2' | 'separate'} TicketLlmMode
- * unified=客户请求/痛点/优化合并 1 次 LLM | separate=三次独立调用（回滚）| split2=待实现
+ * unified=客户请求/痛点/问题原因/优化合并 1 次 LLM | separate=分步独立调用（回滚）| split2=待实现
  */
 
 /**
