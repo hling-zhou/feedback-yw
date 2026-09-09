@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Empty, Tag, Typography } from 'antd'
+import { Button, Empty, Table, Tag, Typography } from 'antd'
 import { JOURNEY_EMPTY_HINT, isJourneyProductSelected } from '../../lib/ticketStoryModel.js'
 
 const changeColors = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
@@ -59,6 +59,35 @@ function LegendSwatch({ color, className = '' }) {
   )
 }
 
+/** 环比箭头 + 颜色 */
+function DeltaIndicator({ change, delta }) {
+  if (!change) {
+    return <span className="text-xs text-ink-400">—</span>
+  }
+  const isUp = change === '新增' || change === '增长'
+  const isDown = change === '缓解' || change === '消失'
+  const isFlat = change === '持续'
+  const color = isUp ? 'text-red-600' : isDown ? 'text-emerald-600' : isFlat ? 'text-amber-600' : 'text-ink-500'
+  const arrow = isUp ? '▲' : isDown ? '▼' : isFlat ? '▬' : '·'
+  const deltaStr = Number.isFinite(delta) && delta !== 0 ? ` ${delta > 0 ? '+' : ''}${delta}` : ''
+  return (
+    <span className={`text-xs font-medium ${color}`}>
+      {arrow} {change}{deltaStr}
+    </span>
+  )
+}
+
+/** KPI 小卡片 */
+function KpiCell({ label, value, sub, className = '' }) {
+  return (
+    <div className={`rounded border border-ink-100 bg-white px-2 py-1.5 ${className}`}>
+      <div className="text-[10px] leading-tight text-ink-400">{label}</div>
+      <div className="text-base font-semibold leading-tight text-ink-800">{value}</div>
+      {sub ? <div className="text-[10px] leading-tight text-ink-400">{sub}</div> : null}
+    </div>
+  )
+}
+
 function StageDetail({
   stage,
   sourceType,
@@ -75,47 +104,118 @@ function StageDetail({
     journeyL1: stage.journeyL1,
   })
   const showEvidence = Boolean(stage.currentCount || stage.previousCount || stage.ticketIds?.length)
+
+  const hasComparison = stage.delta != null && stage.change != null
+  const negativePct = stage.negativePct ?? 0
+  const negativeCount = stage.negativeCount ?? 0
+
+  const activeChildren = (stage.children || []).filter((c) => c.count > 0 || c.previousCount > 0)
+
+  // 二级旅程表格列
+  const l2Columns = [
+    { title: '二级环节', dataIndex: 'l2', key: 'l2', ellipsis: true },
+    { title: '本期', dataIndex: 'count', key: 'count', width: 70, align: 'center',
+      render: (v) => v ?? 0 },
+    { title: '上期', dataIndex: 'previousCount', key: 'previousCount', width: 70, align: 'center',
+      render: (v) => v ?? 0 },
+    { title: '变化', dataIndex: 'change', key: 'change', width: 80, align: 'center',
+      render: (v) => v ? <Tag color={changeColors[v]} className="!m-0 !text-[10px]">{v}</Tag> : <span className="text-xs text-ink-300">—</span> },
+  ]
+  const l2Data = activeChildren.map((c) => ({ ...c, key: c.l2 }))
+
   return (
-    <div className="mt-3 space-y-2 border-t border-ink-100 pt-3">
-      <Typography.Text type="secondary" className="text-xs">
-        {stage.delta == null && !stage.change
-          ? `本期 ${stage.currentCount}${stage.sharePct ? ` · 占 ${stage.sharePct}%` : ''}`
-          : `${previousPeriodLabel} ${stage.previousCount} → ${currentPeriodLabel} ${stage.currentCount}${stage.sharePct ? ` · 本期占 ${stage.sharePct}%` : ''}`}
-      </Typography.Text>
+    <div className="mt-3 border-t border-ink-100 pt-3">
+      {/* ① KPI 数字行 */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <KpiCell
+          label={`${currentPeriodLabel} 量`}
+          value={stage.currentCount ?? 0}
+          sub={stage.sharePct ? `占 ${stage.sharePct}%` : undefined}
+        />
+        {hasComparison ? (
+          <KpiCell
+            label={`${previousPeriodLabel} 量`}
+            value={stage.previousCount ?? 0}
+          />
+        ) : (
+          <KpiCell label="上期量" value="—" />
+        )}
+        {hasComparison ? (
+          <KpiCell
+            label="环比"
+            value={<DeltaIndicator change={stage.change} delta={stage.delta} />}
+            className="flex flex-col justify-center"
+          />
+        ) : (
+          <KpiCell label="环比" value="—" />
+        )}
+        <KpiCell
+          label="负向占比"
+          value={negativePct ? `${negativePct}%` : '—'}
+          sub={negativeCount ? `${negativeCount}/${stage.currentCount ?? 0} 单` : undefined}
+          className={negativePct >= 50 ? 'border-red-200 bg-red-50' : ''}
+        />
+      </div>
+
+      {/* 来源构成（仅 mixed） */}
       {mixed ? (
-        <Typography.Text type="secondary" className="text-xs">
-          来源构成：投诉 {stage.complaintCount || 0} · 咨询 {stage.consultationCount || 0}
-        </Typography.Text>
-      ) : null}
-      {stage.children?.filter((child) => child.count > 0 || child.previousCount > 0).length ? (
-        <ul className="space-y-1">
-          {stage.children.filter((child) => child.count > 0 || child.previousCount > 0).slice(0, 6).map((child) => (
-            <li key={child.l2} className="flex items-center justify-between gap-2 text-xs text-ink-600">
-              <span>{child.l2}</span>
-              <span className="shrink-0 text-ink-400">
-                {child.previousCount}→{child.count}
-                {child.change ? ` · ${child.change}` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Typography.Text type="secondary" className="text-xs">该环节暂无二级旅程明细</Typography.Text>
-      )}
-      {stage.topProblemTypes?.length ? (
-        <div className="flex flex-wrap gap-1">
-          {stage.topProblemTypes.map((item) => (
-            <Tag key={item.name}>{item.name} {item.count}</Tag>
-          ))}
+        <div className="mt-2 flex items-center gap-3 text-xs text-ink-500">
+          <span className="inline-flex items-center gap-1">
+            <LegendSwatch color={COMPLAINT_BAR} />
+            投诉 {stage.complaintCount || 0}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <LegendSwatch color={CONSULTATION_BAR} />
+            咨询 {stage.consultationCount || 0}
+          </span>
         </div>
       ) : null}
+
+      {/* ② 二级旅程明细表格 */}
+      {l2Data.length > 0 ? (
+        <div className="mt-3">
+          <Typography.Text className="mb-1 block text-xs font-medium text-ink-600">
+            二级旅程明细
+          </Typography.Text>
+          <Table
+            size="small"
+            columns={l2Columns}
+            dataSource={l2Data}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
+        </div>
+      ) : (
+        <Typography.Text type="secondary" className="mt-2 block text-xs">
+          该环节暂无二级旅程明细
+        </Typography.Text>
+      )}
+
+      {/* ③ 主要问题类型 */}
+      {stage.topProblemTypes?.length ? (
+        <div className="mt-3">
+          <Typography.Text className="mb-1 block text-xs font-medium text-ink-600">
+            该环节高频问题类型
+          </Typography.Text>
+          <div className="flex flex-wrap gap-1.5">
+            {stage.topProblemTypes.map((item) => (
+              <Tag key={item.name} className="!text-xs">
+                {item.name} · {item.count}单
+              </Tag>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* 查看证据 */}
       {showEvidence ? (
-        <Link
-          to={evidenceTo}
-          className="inline-block text-xs text-indigo-600 hover:underline"
-        >
-          查看证据
-        </Link>
+        <div className="mt-3 flex justify-end">
+          <Link to={evidenceTo}>
+            <Button type="primary" size="small" ghost>
+              查看证据工单 →
+            </Button>
+          </Link>
+        </div>
       ) : null}
     </div>
   )
