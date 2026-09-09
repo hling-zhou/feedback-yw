@@ -17,11 +17,13 @@ const SERIES_COLORS = {
 
 /**
  * 单产品体验趋势：标准化叠加图（看相关性）+ 原值表（读绝对值）。
+ * 时间窗口锚定到当前选中月份（近 12 个月）。
  *
  * @param {Object} props
  * @param {FeedbackRecord[]} [props.feedbacks]
+ * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
  */
-export default function ProductExperienceTrendPanel({ feedbacks = [] }) {
+export default function ProductExperienceTrendPanel({ feedbacks = [], currentPeriod = null }) {
   const catalogProducts = useMemo(() => getCatalogProducts(), [])
   const productOptions = useMemo(
     () => listProducts(feedbacks).map((p) => ({ value: p.name, label: p.name })),
@@ -36,9 +38,20 @@ export default function ProductExperienceTrendPanel({ feedbacks = [] }) {
   const productName =
     selected || focusNames.find((n) => productOptions.some((o) => o.value === n)) || focusNames[0] || productOptions[0]?.value || ''
 
+  const endMonth = useMemo(() => {
+    if (!currentPeriod) return ''
+    // month 粒度：anchorYear + anchorMonth → YYYY-MM
+    if (currentPeriod.granularity === 'month' && currentPeriod.anchorYear && currentPeriod.anchorMonth) {
+      return `${currentPeriod.anchorYear}-${String(currentPeriod.anchorMonth).padStart(2, '0')}`
+    }
+    // 其他粒度兜底：取 endDate 的 YYYY-MM
+    if (currentPeriod.endDate) return currentPeriod.endDate.slice(0, 7)
+    return ''
+  }, [currentPeriod])
+
   const trend = useMemo(
-    () => buildProductExperienceTrend(feedbacks, productName, { limit: 12 }),
-    [feedbacks, productName],
+    () => buildProductExperienceTrend(feedbacks, productName, { limit: 12, endMonth }),
+    [feedbacks, productName, endMonth],
   )
 
   const chartData = useMemo(

@@ -142,7 +142,7 @@ export default function OverviewTab({
         feedbacks={feedbacks}
       />
 
-      <ProductExperienceTrendPanel feedbacks={feedbacks} />
+      <ProductExperienceTrendPanel feedbacks={feedbacks} currentPeriod={currentPeriod} />
 
       <OverviewJourneyMap feedbacks={feedbacks} currentPeriod={currentPeriod} />
 

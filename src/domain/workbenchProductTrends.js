@@ -218,9 +218,11 @@ const METRICS = [
 /**
  * 构建单产品体验趋势：4 个指标的月度原值 + 归一值，月份对齐，供叠加图与原值表共用。
  *
+ * 默认取数据中最新 limit 个月；若指定 endMonth 则取以该月为终点的前 limit 个月。
+ *
  * @param {FeedbackRecord[]} feedbacks
  * @param {string} productName
- * @param {{ limit?: number }} [options]
+ * @param {{ limit?: number; endMonth?: string }} [options]
  * @returns {{
  *   months: string[];
  *   series: { key: string; name: string; unit: string; raw: Record<string, number | null>; normalized: Record<string, number | null>; range: { min: number | null; max: number | null } }[];
@@ -229,6 +231,7 @@ const METRICS = [
  */
 export function buildProductExperienceTrend(feedbacks, productName, options = {}) {
   const limit = options.limit || 12
+  const endMonth = options.endMonth || ''
   const product = String(productName ?? '').trim()
   const isProduct = (/** @type {FeedbackRecord} */ r) => recordProductName(r) === product
 
@@ -255,7 +258,13 @@ export function buildProductExperienceTrend(feedbacks, productName, options = {}
 
   const allMonths = new Set()
   for (const m of Object.values(rawMaps)) for (const k of m.keys()) allMonths.add(k)
-  const months = [...allMonths].sort().slice(-limit)
+  let months = [...allMonths].sort()
+  if (endMonth) {
+    // 以 endMonth 为终点，取前 limit 个月（含 endMonth）
+    months = months.filter((m) => m <= endMonth).slice(-limit)
+  } else {
+    months = months.slice(-limit)
+  }
 
   const series = METRICS.map((metric) => {
     const rawMap = rawMaps[metric.key]
