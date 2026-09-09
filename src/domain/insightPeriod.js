@@ -618,6 +618,45 @@ export function formatPeriodSubtitle(period) {
 }
 
 /**
+ * 将任意粒度的洞察周期归一化为其**最后一个月**的月粒度 spec。
+ *
+ * - month → 直接返回等价月 spec
+ * - custom → 取 customToMonth 所在月
+ * - quarter / year → 取 endDate 所在月
+ * - 无法推断 → 当前自然月
+ *
+ * 用于"洞察工作台仅月粒度"场景：当全局 currentPeriod 被其他模块设为季/年/自定义时，
+ * 工作台自动收敛到最后一个月，保证月粒度口径一致。
+ *
+ * @param {InsightPeriod | null | undefined} period
+ * @returns {ReturnType<typeof buildPeriodSpec>}
+ */
+export function toLastMonthSpec(period) {
+  if (!period) return currentPeriodSpec('month')
+  const p = normalizeInsightPeriod(period)
+
+  // 已是月粒度
+  if (p.granularity === 'month' && p.anchorYear && p.anchorMonth) {
+    return buildPeriodSpec({ granularity: 'month', year: p.anchorYear, month: p.anchorMonth })
+  }
+
+  // custom → customToMonth
+  if (p.granularity === 'custom' && p.customToMonth) {
+    const [y, m] = p.customToMonth.split('-').map(Number)
+    if (y && m) return buildPeriodSpec({ granularity: 'month', year: y, month: m })
+  }
+
+  // quarter / year → endDate 所在月
+  if (p.endDate) {
+    const ym = p.endDate.slice(0, 7)
+    const [y, m] = ym.split('-').map(Number)
+    if (y && m) return buildPeriodSpec({ granularity: 'month', year: y, month: m })
+  }
+
+  return currentPeriodSpec('month')
+}
+
+/**
  * @param {string} importMonth YYYY-MM
  */
 export function periodSpecFromImportMonth(importMonth) {

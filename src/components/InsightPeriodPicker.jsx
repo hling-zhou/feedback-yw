@@ -16,7 +16,7 @@ import {
   shiftYearMonth,
 } from '../domain/insightPeriod.js'
 
-const GRANULARITY_OPTIONS = PERIOD_GRANULARITIES.map((g) => ({
+const ALL_GRANULARITY_OPTIONS = PERIOD_GRANULARITIES.map((g) => ({
   value: g,
   label: PERIOD_GRANULARITY_LABELS[g],
 }))
@@ -37,6 +37,7 @@ function defaultCustomRange() {
  *   value?: string | null
  *   onChange?: (insightPeriodId: string | null, period: import('../domain/insightPeriod.js').InsightPeriod | null) => void
  *   allowEmpty?: boolean
+ *   granularities?: PeriodGranularity[]
  * }} [props]
  */
 export default function InsightPeriodPicker({
@@ -46,9 +47,21 @@ export default function InsightPeriodPicker({
   value,
   onChange,
   allowEmpty = false,
+  granularities,
 }) {
   const controlled = typeof onChange === 'function'
   const { currentPeriod, periodsLoading, selectInsightPeriod, feedbacks, periods } = useInsights()
+
+  // 可选粒度列表（默认全部 4 种；传 granularities 时只展示指定粒度）
+  const allowedGranularities = useMemo(
+    () => (granularities?.length ? granularities : PERIOD_GRANULARITIES),
+    [granularities],
+  )
+  const granularityOptions = useMemo(
+    () => ALL_GRANULARITY_OPTIONS.filter((opt) => allowedGranularities.includes(opt.value)),
+    [allowedGranularities],
+  )
+  const singleGranularity = granularityOptions.length <= 1
 
   const activePeriod = useMemo(() => {
     if (!controlled) return currentPeriod
@@ -141,6 +154,7 @@ export default function InsightPeriodPicker({
       )}
       {periodEnabled && (
       <Space wrap align={compact ? 'center' : 'start'} size="middle">
+        {!singleGranularity && (
         <div>
           {!compact && (
             <Typography.Text strong className="mb-1 block text-xs">
@@ -150,7 +164,7 @@ export default function InsightPeriodPicker({
           <Segmented
             disabled={periodsLoading}
             value={granularity}
-            options={GRANULARITY_OPTIONS}
+            options={granularityOptions}
             onChange={(g) => {
               if (g === 'custom') {
                 const defaults = defaultCustomRange()
@@ -170,6 +184,7 @@ export default function InsightPeriodPicker({
             }}
           />
         </div>
+        )}
 
         {granularity === 'month' && (
           <div>

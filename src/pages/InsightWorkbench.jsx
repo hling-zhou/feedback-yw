@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -13,6 +13,7 @@ import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { toLastMonthSpec } from '../domain/insightPeriod.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
@@ -42,6 +43,7 @@ export default function InsightWorkbench() {
   const {
     feedbacks,
     currentPeriod,
+    selectInsightPeriod,
     sourceSnapshots,
     overviewSnapshot,
     snapshotsStale,
@@ -96,6 +98,21 @@ export default function InsightWorkbench() {
       setActiveTab(tab)
     }
   }, [searchParams])
+
+  // 工作台仅月粒度：当全局 currentPeriod 非月粒度时自动归一化到最后一个月
+  const lastMismatchIdRef = useRef(null)
+  useEffect(() => {
+    if (!currentPeriod) return
+    if (currentPeriod.granularity === 'month') {
+      lastMismatchIdRef.current = null
+      return
+    }
+    // 避免与正在进行的 selectInsightPeriod 循环冲突
+    if (lastMismatchIdRef.current === currentPeriod.id) return
+    lastMismatchIdRef.current = currentPeriod.id
+    const spec = toLastMonthSpec(currentPeriod)
+    selectInsightPeriod(spec)
+  }, [currentPeriod, selectInsightPeriod])
 
   useEffect(() => {
     if (!isTicketSource(activeTab)) {
@@ -237,11 +254,11 @@ export default function InsightWorkbench() {
     <div id="insight-workbench-root">
       <PageHeader
         title="洞察工作台"
-        desc="按洞察周期（数据时间）筛选并查看多来源快照；同一份导入数据可切换不同月/季/年周期"
+        desc="按洞察周期（数据月份）筛选并查看多来源快照"
       />
 
       <div className="page-toolbar page-toolbar-nowrap !items-center !justify-between gap-2">
-        <InsightPeriodPicker compact showHint={false} className="min-w-0 flex-1" />
+        <InsightPeriodPicker compact showHint={false} className="min-w-0 flex-1" granularities={['month']} />
         <Space className="mb-0 shrink-0" wrap size="small">
           <RebuildInsightsButton
             loading={Boolean(snapshotRebuilding)}

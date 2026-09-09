@@ -35,6 +35,7 @@ import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { toLastMonthSpec } from '../domain/insightPeriod.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import {
   parseAnalysisSearchParams,
@@ -79,7 +80,7 @@ function buildAnalysisTabs(dataSource) {
 }
 
 export default function Themes() {
-  const { feedbacks, totalRecordCount, retagSession, importSession, settings } = useFeedbacks()
+  const { feedbacks, totalRecordCount, retagSession, importSession, settings, selectInsightPeriod } = useFeedbacks()
   const { rebuildBlocked, rebuildBlockedTip } = useSharedBackgroundTaskBlock()
   const { period: currentPeriod, periodFeedbacks, periodCount } = usePeriodScope()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -127,6 +128,20 @@ export default function Themes() {
     observer.observe(chrome)
     return () => observer.disconnect()
   }, [hasFeedbackData])
+
+  // 工作台分析仅月粒度：当全局 currentPeriod 非月粒度时自动归一化到最后一个月
+  const lastMismatchIdRef = useRef(null)
+  useEffect(() => {
+    if (!currentPeriod) return
+    if (currentPeriod.granularity === 'month') {
+      lastMismatchIdRef.current = null
+      return
+    }
+    if (lastMismatchIdRef.current === currentPeriod.id) return
+    lastMismatchIdRef.current = currentPeriod.id
+    const spec = toLastMonthSpec(currentPeriod)
+    selectInsightPeriod(spec)
+  }, [currentPeriod, selectInsightPeriod])
 
   const backgroundTaskActive = retagSession.active || importSession.active || rebuildBlocked
   const backgroundTaskTip = retagSession.active
@@ -444,7 +459,7 @@ export default function Themes() {
       <div>
         <AnalysisPageHeader desc="按请求场景、问题类型、用户旅程、情绪与高频词聚合；周期与工作台保持一致" />
         <div className="page-toolbar">
-          <InsightPeriodPicker compact showHint={false} />
+          <InsightPeriodPicker compact showHint={false} granularities={['month']} />
         </div>
         <Card className="page-section">
           <Empty description="暂无数据">
@@ -472,7 +487,7 @@ export default function Themes() {
       />
 
       <div className="page-toolbar flex flex-wrap items-center gap-2">
-        <InsightPeriodPicker compact showHint={false} className="shrink-0" />
+        <InsightPeriodPicker compact showHint={false} className="shrink-0" granularities={['month']} />
         <WorkbenchScopeCompositeFilter
           preset="analysis"
           className="min-w-0 flex-1"
