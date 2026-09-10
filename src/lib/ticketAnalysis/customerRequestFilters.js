@@ -36,7 +36,7 @@ const INTERNAL_INSTRUCTION_SNIPPETS = [
 ]
 
 const CUSTOMER_VOICE_LEAD_RE =
-  /^(?:\d+[、.．]\s*)?(?:【)?(?:客户反馈|用户反馈|客户表示|用户表示|客户补充|客户原话|客户咨询|客户问题|客户需求)(?:】)?[：:，,\s]*/
+  /^(?:\d+[、.．]\s*)?(?:【)?(?:客户反馈|用户反馈|客户表示|用户表示|客户补充|客户原话|客户咨询|客户问题|客户需求|客户来电|客户致电|客户报称|客户声称|客户称|客户问|客户反映)(?:】)?[：:，,\s]*/
 
 const CUSTOMER_DEMAND_HINT =
   /(?:无法|不能|报错|失败|希望|需要|咨询|申请|加急|投诉|故障|不通|异常|打不开|慢|丢包|绑定|开通|退订|升降配|请问|如何|怎么|为什么|帮忙|排查|转移|放开|端口|变更|查询|进度|解售罄|配额)/
@@ -112,8 +112,8 @@ export function isCustomerDemandLike(text) {
   if (isPlatformOutcomeContent(t)) return false
   if (isProductOnlyProblemLabel(t)) return true
   if (CUSTOMER_DEMAND_HINT.test(t)) return true
-  if (/客户|用户/.test(t) && t.length <= 120) return true
-  return t.length >= 4 && t.length <= 120
+  if (/客户|用户/.test(t) && t.length <= 200) return true
+  return t.length >= 4 && t.length <= 200
 }
 
 /**

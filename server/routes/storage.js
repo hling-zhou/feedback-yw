@@ -438,6 +438,85 @@ export function registerStorageRoutes(app) {
     },
   )
 
+  // M7: 异主体闸门前置到落盘前——在 enrichment 与 addFeedbacks 之间跑
+  app.post(
+    '/api/storage/records/pre-disk-gate',
+    { config: { rawBody: true } },
+    async (request, reply) => {
+      if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+      const records = Array.isArray(request.body) ? request.body : request.body?.records || []
+      if (!records.length) {
+        return { ok: true, records: [], warnings: [], gateReport: null }
+      }
+
+      const { execFileSync } = await import('child_process')
+      const fs = await import('fs')
+      const path = await import('path')
+      const os = await import('os')
+
+      const tmpDir = os.tmpdir()
+      const inputFile = path.join(tmpDir, `ticket-gate-input-${Date.now()}.json`)
+      const distDir = path.resolve(process.cwd(), 'dist')
+      if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true })
+
+      // 写临时 JSON
+      fs.writeFileSync(inputFile, JSON.stringify(records))
+
+      const NODE = process.env.NODE_BIN || process.execPath
+      const SCRIPT_DIR = path.resolve(process.cwd(), 'scripts')
+      const loopScript = path.join(SCRIPT_DIR, 'ticket-gate-loop.cjs')
+
+      let gateExitCode = 0
+      let gateOutput = ''
+      let gateReport = null
+
+      try {
+        gateOutput = execFileSync(NODE, [loopScript, '--input', inputFile], {
+          encoding: 'utf8',
+          env: { ...process.env, GATE_MAX_ATTEMPTS: '3' },
+          timeout: 300000,
+          maxBuffer: 200 * 1024 * 1024,
+        })
+        gateExitCode = 0
+      } catch (err) {
+        gateExitCode = err.status ?? 1
+        gateOutput = (err.stdout || '') + (err.stderr || '')
+      }
+
+      // 读 gate report
+      const reportPath = path.join(distDir, 'ticket-gate-report.json')
+      if (fs.existsSync(reportPath)) {
+        gateReport = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+      }
+
+      // 读 gated records（Fixer 已修改的）
+      const gatedPath = path.join(distDir, 'ticket-records-gated.json')
+      let gatedRecords = records
+      if (fs.existsSync(gatedPath)) {
+        gatedRecords = JSON.parse(fs.readFileSync(gatedPath, 'utf8'))
+      }
+
+      // 清理临时文件
+      try { fs.unlinkSync(inputFile) } catch {}
+
+      const warnings = []
+      if (gateReport) {
+        const s = gateReport.summary
+        warnings.push(`异主体闸门: OK=${s.ok} WARN=${s.warn} FAIL=${s.fail} (${s.failRate})`)
+        if (gateExitCode !== 0) {
+          warnings.push(`${gateReport.failures?.length || 0} 条工单标签验证未通过，已标 manual_review`)
+        }
+      }
+
+      return {
+        ok: true,
+        records: gatedRecords,
+        warnings,
+        gateReport,
+      }
+    },
+  )
+
   app.post(
     '/api/storage/records/batch',
     { schema: { body: recordsBatchBodySchema } },

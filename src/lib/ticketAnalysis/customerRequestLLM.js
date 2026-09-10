@@ -54,7 +54,7 @@ export async function extractCustomerRequestWithLLM(input, settings) {
 6. 必须基于工单事实，严禁臆测。
 7. 不得写入「解决方案」「处理意见」「问题原因」等字段内容，不得描述平台处理结论（如「客户未提供信息」「离线处理」「待补充」）。
 8. 只描述客户想做什么、遇到什么问题；平台侧回单/协办/归档口径一律删除。
-9. 输出 ≤80 字，必要时最长 ${CUSTOMER_REQUEST_HARD_MAX} 字。
+9. 精简言之有物，最长 ${CUSTOMER_REQUEST_HARD_MAX} 字。
 10. 只返回 JSON：{"customerRequest":"..."}`
 
   const userPrompt = `规则层候选（按出现顺序）：

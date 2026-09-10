@@ -26,7 +26,7 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
   /**
    * @param {Object[]} rows
    * @param {AnalysisContext} ctx
-   * @param {{ insightPeriod?: import('../../domain/insightPeriod.js').InsightPeriod }} [opts]
+   * @param {{ insightPeriod?: import('../../domain/insightPeriod.js').InsightPeriod, onProgress?: (done: number, total: number) => void }} [opts]
    */
   async analyze(rows, ctx, opts = {}) {
     const collector = new ArtifactCollector(randomId(), false)
@@ -42,11 +42,13 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
     const failures = []
     const useRegex = ctx.settings?.useRegex ?? true
     const period = opts.insightPeriod
+    const onProgress = opts.onProgress
+    const PROGRESS_INTERVAL = 4
 
     for (let i = 0; i < rows.length; i++) {
       try {
         const row = rows[i]
-        const legacy = processRow(row, useRegex, ctx.settings)
+        const legacy = await processRow(row, useRegex, ctx.settings)
         if (!legacy) {
           failures.push({
             rowIndex: i,
@@ -80,6 +82,10 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
         })
 
         records.push(record)
+
+        if (onProgress && (i + 1) % PROGRESS_INTERVAL === 0) {
+          onProgress(i + 1, rows.length)
+        }
       } catch (err) {
         failures.push({
           rowIndex: i,
@@ -88,6 +94,8 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
         })
       }
     }
+
+    if (onProgress) onProgress(rows.length, rows.length)
 
     return { records, failures, collector }
   }

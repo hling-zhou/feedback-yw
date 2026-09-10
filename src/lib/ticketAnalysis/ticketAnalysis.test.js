@@ -34,8 +34,8 @@ const EXAMPLE2_TEXT = [
 const LLM_SETTINGS = { llmServerConfigured: true, ticketLlmMode: 'separate' }
 
 describe('analyzeTicket (P0 rules)', () => {
-  it('example1: port blocked with urgent customer quote', () => {
-    const result = analyzeTicket({
+  it('example1: port blocked with urgent customer quote', async () => {
+    const result = await analyzeTicket({
       rawText: EXAMPLE1_TEXT,
       handlingText: EXAMPLE1_TEXT,
       customerQuote: '业务急着上线，端口一直不通，麻烦尽快放开。',
@@ -53,8 +53,8 @@ describe('analyzeTicket (P0 rules)', () => {
     expect(result.optimizationProduct).toMatch(/安全组|端口|检测/)
   })
 
-  it('example2: fuzzy content uses path fallback', () => {
-    const result = analyzeTicket({
+  it('example2: fuzzy content uses path fallback', async () => {
+    const result = await analyzeTicket({
       rawText: EXAMPLE2_TEXT,
       handlingText: EXAMPLE2_TEXT,
       product: '云专线',
@@ -70,19 +70,19 @@ describe('analyzeTicket (P0 rules)', () => {
     expect(result.urgencyLevel).toBe('none')
   })
 
-  it('truncateCustomerRequest respects hard max 120', () => {
-    const long = '这是一段很长的客户反馈'.repeat(10)
-    expect(truncateCustomerRequest(long).length).toBeLessThanOrEqual(120)
+  it('truncateCustomerRequest respects hard max 200', () => {
+    const long = '这是一段很长的客户反馈'.repeat(20)
+    expect(truncateCustomerRequest(long).length).toBeLessThanOrEqual(200)
   })
 
-  it('problem type uses extracted customerRequest/painPoint before handling noise', () => {
+  it('problem type uses extracted customerRequest/painPoint before handling noise', async () => {
     const text = [
       '详细内容：首处理&应用组：已指导客户完成EIP绑定操作，绑定流程正常。',
       '协办&计费组：核对账单扣费无误，建议客户查看账单明细。',
       '客户原话：无法退订共享带宽，请帮忙处理。',
     ].join('\n')
 
-    const result = analyzeTicket({
+    const result = await analyzeTicket({
       rawText: text,
       handlingText: text,
       customerQuote: '无法退订共享带宽，请帮忙处理。',
@@ -169,7 +169,7 @@ describe('analyzeTicketAsync (P1 LLM)', () => {
   })
 
   it('falls back to rule output when LLM unavailable', async () => {
-    const ruleOnly = analyzeTicket({
+    const ruleOnly = await analyzeTicket({
       rawText: EXAMPLE1_TEXT,
       handlingText: EXAMPLE1_TEXT,
       customerQuote: '业务急着上线，端口一直不通，麻烦尽快放开。',
@@ -201,7 +201,7 @@ describe('analyzeTicketAsync (P1 LLM)', () => {
     vi.mocked(extractPainPointWithLLM).mockRejectedValue(new Error('network'))
     vi.mocked(extractTicketOptimizationsWithLLM).mockRejectedValue(new Error('network'))
 
-    const ruleOnly = analyzeTicket({
+    const ruleOnly = await analyzeTicket({
       rawText: EXAMPLE1_TEXT,
       handlingText: EXAMPLE1_TEXT,
       customerQuote: '业务急着上线，端口一直不通，麻烦尽快放开。',

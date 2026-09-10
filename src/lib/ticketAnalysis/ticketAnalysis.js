@@ -16,7 +16,7 @@ import { extractCustomerRequestWithLLM } from './customerRequestLLM.js'
 import { extractPainPoint } from './painPointExtract.js'
 import { extractPainPointWithLLM } from './painPointLLM.js'
 import { extractRootCauseWithLLM } from './rootCauseLLM.js'
-import { tagTicketDimensions } from './ticketDimensionTagging.js'
+import { tagTicketDimensions, tagTicketDimensionsAsync } from './ticketDimensionTagging.js'
 import { extractTicketOptimizations } from './ticketOptimizationExtract.js'
 import { extractTicketOptimizationsWithLLM } from './ticketOptimizationLLM.js'
 import {
@@ -30,8 +30,9 @@ import { validateTicketAnalysisPair } from './validateTicketAnalysisPair.js'
  * @param {Object} input
  * @param {import('../storage.js').AppSettings | null} [settings]
  * @param {ReturnType<typeof buildTicketAnalysisCorpus>} corpus
+ * @param {{ tagger?: typeof tagTicketDimensions | typeof tagTicketDimensionsAsync }} [taggerOpts]
  */
-function analyzeTicketCore(input, settings, corpus) {
+async function analyzeTicketCore(input, settings, corpus, taggerOpts = {}) {
   const taxonomyKey = input.productKey?.trim() || resolveProductKey(input.product?.trim() || '')
   const taxonomy = getTaxonomy(input.product, taxonomyKey)
 
@@ -56,13 +57,15 @@ function analyzeTicketCore(input, settings, corpus) {
     problemSummary: painPoint,
   }
 
-  const dims = tagTicketDimensions({
+  const tagger = taggerOpts.tagger || tagTicketDimensions
+  const dims = await tagger({
     text: corpus.taggingText,
     input: taggingInput,
     taxonomy,
     taxonomyKey,
     settings: {
       useRequestNodeForJourney: settings?.useRequestNodeForJourney !== false,
+      ...(settings || {}),
     },
   })
 
@@ -70,14 +73,17 @@ function analyzeTicketCore(input, settings, corpus) {
     buildSentimentAnalysisText({ customerRequest, painPoint }),
   )
 
-  const optimizations = extractTicketOptimizations({
-    text: corpus.taggingText,
-    solutionSummary,
-    rootCause,
-    journeyL2: dims.journeyL2,
-    painPoint,
-    fuzzy: corpus.fuzzy,
-  })
+  // M3: manual_review 工单跳过 optimization 提取——journey 未验证不可信
+  const optimizations = dims.tagStatus === 'manual_review'
+    ? { optimizationProduct: '', optimizationService: '', optimizationSuggestion: '' }
+    : extractTicketOptimizations({
+        text: corpus.taggingText,
+        solutionSummary,
+        rootCause,
+        journeyL2: dims.journeyL2,
+        painPoint,
+        fuzzy: corpus.fuzzy,
+      })
 
   return {
     corpus,
@@ -314,6 +320,8 @@ function buildTicketAnalysisResult(input, core, enriched) {
     overlayHits: dims.overlayHits || [],
     journeyL1: dims.journeyL1,
     journeyL2: dims.journeyL2,
+    tagStatus: dims.tagStatus || 'ok',
+    tagIssues: dims.tagIssues || [],
     customerRequest,
     customerRequestSource,
     painPoint,
@@ -333,13 +341,14 @@ function buildTicketAnalysisResult(input, core, enriched) {
 }
 
 /**
- * 单条工单分析（规则版）
+ * 单条工单分析（规则版，同步语义但内部 await）
  * @param {Object} input
  * @param {import('../storage.js').AppSettings | null} [settings]
+ * @param {{ tagger?: typeof tagTicketDimensions | typeof tagTicketDimensionsAsync }} [taggerOpts]
  */
-export function analyzeTicket(input, settings = null) {
+export async function analyzeTicket(input, settings = null, taggerOpts = {}) {
   const corpus = buildTicketAnalysisCorpus(input)
-  const core = analyzeTicketCore(input, settings, corpus)
+  const core = await analyzeTicketCore(input, settings, corpus, taggerOpts)
   return buildTicketAnalysisResult(input, core, {
     painPoint: core.painPoint,
     optimizations: core.optimizations,
@@ -350,13 +359,14 @@ export function analyzeTicket(input, settings = null) {
 }
 
 /**
- * 单条工单分析（规则初标 + LLM 增强客户请求、痛点与优化建议）
+ * 单条工单分析（规则初标 + 完整闸门重试闭环 + LLM 增强客户请求、痛点与优化建议）
+ * 使用 tagTicketDimensionsAsync：L0/L1/L2 闸门失败 → 重试（含 LLM 介入）→ 仍失败标 manual_review
  * @param {Object} input
  * @param {import('../storage.js').AppSettings | null} [settings]
  */
 export async function analyzeTicketAsync(input, settings = null) {
   const corpus = buildTicketAnalysisCorpus(input)
-  const core = analyzeTicketCore(input, settings, corpus)
+  const core = await analyzeTicketCore(input, settings, corpus, { tagger: tagTicketDimensionsAsync })
   const enriched = await enrichTicketAnalysisWithLlm(input, core, settings)
   return buildTicketAnalysisResult(input, core, enriched)
 }

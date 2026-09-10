@@ -2216,7 +2216,7 @@ export function InsightsProvider({ children }) {
           ...settings,
           ...(await resolveSettingsForLlm(settings)),
         })
-        const retagged = reprocessFeedbackRecord(fb, llmSettings)
+        const retagged = await reprocessFeedbackRecord(fb, llmSettings)
         const [updated] = await reprocessAllThemesAndSentiment([retagged], llmSettings)
         const withMeta = applyRecordWriteMetadata(
           { ...updated, id: fb.id },
@@ -2397,7 +2397,7 @@ export function InsightsProvider({ children }) {
           const chunk = list.slice(i, i + batchSize)
           for (const fb of chunk) {
             retagged.push(
-              reprocessFeedbackRecord(fb, llmSettings, {
+              await reprocessFeedbackRecord(fb, llmSettings, {
                 forceOverrideManualTags: options.forceOverrideManualTags === true,
               }),
             )
@@ -2624,6 +2624,7 @@ export function InsightsProvider({ children }) {
       const startedAt = new Date().toISOString()
       const { records, failures, collector } = await pipeline.analyze(rows, ctx, {
         insightPeriod: period || undefined,
+        onProgress: meta.onAnalyzeProgress,
       })
 
       const status =

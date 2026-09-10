@@ -7,6 +7,8 @@ import { enrichRecordsWithTicketLlm } from './ticketAnalysis/ticketLlmEnrichment
 import { resolveSettingsForLlm } from './llmClient.js'
 import { canUseSemanticMatch } from './themeSemantic.js'
 import { llmStageOrderAfterShared, resolveTaggingPipelineOrder } from './taggingPipeline.js'
+import { validateL0, validateL1 } from './ticketAnalysis/dimensionValidation.js'
+import { extractIntent } from './ticketAnalysis/intentExtractor.js'
 import {
   buildEnrichmentRetagWarnings,
   computeJourneyEnrichmentDelta,
@@ -29,6 +31,72 @@ import {
  */
 function errMessage(err) {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * M5: LLM 增强 customerRequest 后重验 L0 闸门
+ * 如果 LLM 重写了 CR，用新的 CR 重跑 validateL0；失败标 manual_review
+ *
+ * @param {import('./types.js').FeedbackRecord[]} records  含 before 快照
+ * @param {import('./types.js').FeedbackRecord[]} before   LLM 前快照
+ * @returns {{ revalidated: number, downgraded: number }}
+ */
+function revalidateL0AfterLlm(records, before) {
+  let revalidated = 0
+  let downgraded = 0
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]
+    const prev = before[i]
+    if (!prev) continue
+    const oldCR = (prev.customerRequest || '').trim()
+    const newCR = (rec.customerRequest || '').trim()
+    // CR 没变 → 不需要重验
+    if (oldCR === newCR) continue
+    // 只对 tagStatus=ok 的工单重验（manual_review 的已跳过 LLM 增强）
+    if (rec.tagStatus === 'manual_review') continue
+    revalidated++
+    const intent = extractIntent(newCR)
+    const l0 = validateL0({ customerRequest: newCR, confidence: intent.confidence, action: intent.action })
+    if (!l0.pass) {
+      rec.tagStatus = 'manual_review'
+      rec.tagIssues = [...(rec.tagIssues || []), `M5: LLM 增强 CR 后 L0 复验失败 (${l0.issues.join('; ')})`]
+      downgraded++
+    }
+  }
+  return { revalidated, downgraded }
+}
+
+/**
+ * M6: LLM 语料维度重打后重验 L1 闸门
+ * 如果 LLM 重打改了 scene/type，重跑 validateL1；失败标 manual_review
+ *
+ * @param {import('./types.js').FeedbackRecord[]} records  含 before 快照
+ * @param {import('./types.js').FeedbackRecord[]} before   重打前快照
+ * @returns {{ revalidated: number, downgraded: number }}
+ */
+function revalidateL1AfterRetag(records, before) {
+  let revalidated = 0
+  let downgraded = 0
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]
+    const prev = before[i]
+    if (!prev) continue
+    const oldScene = (prev.requestScene || '').trim()
+    const newScene = (rec.requestScene || '').trim()
+    const oldType = (prev.problemType || '').trim()
+    const newType = (rec.problemType || '').trim()
+    // scene/type 都没变 → 不需要重验
+    if (oldScene === newScene && oldType === newType) continue
+    if (rec.tagStatus === 'manual_review') continue
+    revalidated++
+    const l1 = validateL1({ requestScene: newScene, problemType: newType, confidence: 'high' })
+    if (!l1.pass) {
+      rec.tagStatus = 'manual_review'
+      rec.tagIssues = [...(rec.tagIssues || []), `M6: LLM 重打维度后 L1 复验失败 (${l1.issues.join('; ')})`]
+      downgraded++
+    }
+  }
+  return { revalidated, downgraded }
 }
 
 /**
@@ -57,6 +125,15 @@ async function runImportStage(records, settings, onProgress, label, run, warnPre
  * 顺序由 `taggingPipelineOrder` 控制（默认 ticket_first：工单 LLM 先于旅程 LLM）。
  * 各步骤独立容错，避免 LLM/网络异常导致整批导入失败。
  *
+ * **闸门联动（2026-09-10）**：
+ * tagStatus='manual_review' 的工单跳过所有 LLM 增强——不在错误标签上叠 LLM。
+ * 等人工修正标签后再手动触发 LLM 重打。
+ * manual_review 工单保留规则初标结果，情绪分析照常跑（不依赖标签）。
+ *
+ * **M5/M6 复验（2026-09-10）**：
+ * M5: ticketLlm 增强 CR 后，对 CR 变了的记录重跑 validateL0；失败标 manual_review
+ * M6: retagDimensions 重打 scene/type 后，对变了的记录重跑 validateL1；失败标 manual_review
+ *
  * @param {import('./types.js').FeedbackRecord[]} records
  * @param {import('./storage.js').AppSettings} settings
  * @param {(label: string, done?: number, total?: number) => void} [onProgress]
@@ -76,13 +153,25 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
   let out = records
   const pipelineOrder = resolveTaggingPipelineOrder(llmSettings)
 
-  out = await runImportStage(
-    out,
+  // 分离 manual_review 工单：跳过 LLM 增强，只跑情绪分析
+  const needsReview = out.filter((r) => r.tagStatus === 'manual_review')
+  const enrichable = out.filter((r) => r.tagStatus !== 'manual_review')
+
+  if (needsReview.length) {
+    warnings.push(`${needsReview.length} 条工单闸门验证未通过（manual_review），跳过 LLM 增强，需人工修正标签后手动重打`)
+  }
+
+  // 只对 enrichable 跑 LLM 增强
+  let enriched = enrichable
+  const totalEnrichable = enriched.length
+
+  enriched = await runImportStage(
+    enriched,
     llmSettings,
     onProgress,
     '请求场景与问题类型',
     () =>
-      enrichRecordsWithSharedDimensions(out, llmSettings, (done, total) => {
+      enrichRecordsWithSharedDimensions(enriched, llmSettings, (done, total) => {
         onProgress?.('请求场景与问题类型', done, total)
       }),
     '请求场景/问题类型打标',
@@ -91,43 +180,57 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
 
   for (const stage of llmStageOrderAfterShared(pipelineOrder)) {
     if (stage === 'ticketLlm') {
-      const beforeTicket = out.map((r) => ({ ...r }))
-      out = await runImportStage(
-        out,
+      const beforeTicket = enriched.map((r) => ({ ...r }))
+      enriched = await runImportStage(
+        enriched,
         llmSettings,
         onProgress,
         '客户请求、需求痛点、问题原因与优化建议',
         () =>
-          enrichRecordsWithTicketLlm(out, llmSettings, (done, total) => {
+          enrichRecordsWithTicketLlm(enriched, llmSettings, (done, total) => {
             onProgress?.('客户请求、需求痛点、问题原因与优化建议', done, total)
           }),
         '客户请求/痛点/问题原因/优化建议 LLM 增强',
         warnings,
       )
-      Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, out))
-      out = await runImportStage(
-        out,
+      Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, enriched))
+
+      // M5: LLM 增强 CR 后重验 L0 闸门
+      const m5 = revalidateL0AfterLlm(enriched, beforeTicket)
+      if (m5.downgraded > 0) {
+        warnings.push(`M5: LLM 增强 CR 后 L0 复验失败 ${m5.downgraded}/${m5.revalidated} 条，已降级 manual_review`)
+      }
+
+      const beforeRetag = enriched.map((r) => ({ ...r }))
+      enriched = await runImportStage(
+        enriched,
         llmSettings,
         onProgress,
         '请求场景与问题类型（LLM 语料）',
         () =>
-          retagRecordsSharedDimensionsAfterTicketLlm(out, llmSettings, (done, total) => {
+          retagRecordsSharedDimensionsAfterTicketLlm(enriched, llmSettings, (done, total) => {
             onProgress?.('请求场景与问题类型（LLM 语料）', done, total)
           }),
         'LLM 语料维度重打',
         warnings,
       )
+
+      // M6: LLM 重打维度后重验 L1 闸门
+      const m6 = revalidateL1AfterRetag(enriched, beforeRetag)
+      if (m6.downgraded > 0) {
+        warnings.push(`M6: LLM 重打维度后 L1 复验失败 ${m6.downgraded}/${m6.revalidated} 条，已降级 manual_review`)
+      }
       continue
     }
 
-    const beforeJourney = out.map((r) => ({ ...r }))
-    out = await runImportStage(
-      out,
+    const beforeJourney = enriched.map((r) => ({ ...r }))
+    enriched = await runImportStage(
+      enriched,
       llmSettings,
       onProgress,
       '用户旅程',
       async () => {
-        const journeyOut = await enrichRecordsWithJourneys(out, llmSettings, (done, total) => {
+        const journeyOut = await enrichRecordsWithJourneys(enriched, llmSettings, (done, total) => {
           onProgress?.('用户旅程', done, total)
         })
         return journeyOut.map((r) => ({ ...r, themes: themesFromJourney(r) }))
@@ -135,8 +238,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       '用户旅程打标',
       warnings,
     )
-    Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, out, llmSettings))
+    Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, enriched, llmSettings))
   }
+
+  // 合并：enriched + needsReview（后者只跑情绪分析）
+  out = [...enriched, ...needsReview]
 
   try {
     onProgress?.('用户情绪', records.length, records.length)

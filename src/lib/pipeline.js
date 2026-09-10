@@ -2,6 +2,7 @@ import { extractFromRaw } from './extract.js'
 import { analyzeTicketSentiment } from './sentiment.js'
 import { buildSentimentAnalysisText } from './sentimentAnalysisText.js'
 import { analyzeTicket } from './ticketAnalysis/ticketAnalysis.js'
+import { tagTicketDimensionsAsync } from './ticketAnalysis/ticketDimensionTagging.js'
 import { themesFromJourney } from './applyThemes.js'
 import { getTaxonomy } from './productTaxonomy.js'
 import { randomId } from './randomId.js'
@@ -24,8 +25,9 @@ import { normalizeCustomerTier, CUSTOMER_TIER_SOURCE_COLUMN } from '../domain/cu
  * @param {Object} row
  * @param {boolean} useRegex
  * @param {import('./storage.js').AppSettings | null} [settings]
+ * @returns {Promise<Object|null>}
  */
-export function processRow(row, useRegex = true, settings = null) {
+export async function processRow(row, useRegex = true, settings = null) {
   const rawText = row.rawText?.trim() || ''
   const handlingText = row.handlingText?.trim() || ''
   const taggingText = buildTaggingTextFromFields({
@@ -43,7 +45,7 @@ export function processRow(row, useRegex = true, settings = null) {
 
   const taxonomyKey = resolved.taxonomyKey || resolved.productKey
 
-  const tags = analyzeTicket(
+  const tags = await analyzeTicket(
     {
       rawText,
       handlingText,
@@ -56,6 +58,7 @@ export function processRow(row, useRegex = true, settings = null) {
       sourceColumns: row.sourceColumns,
     },
     settings,
+    { tagger: tagTicketDimensionsAsync },
   )
 
   const recordId = randomId()
@@ -106,6 +109,8 @@ export function processRow(row, useRegex = true, settings = null) {
     problemType: tags.problemType,
     journeyL1: tags.journeyL1,
     journeyL2: tags.journeyL2,
+    tagStatus: tags.tagStatus || 'ok',
+    tagIssues: tags.tagIssues || [],
     problemSummary: tags.problemSummary,
     solutionSummary: tags.solutionSummary,
     rootCause: tags.rootCause,
@@ -121,11 +126,50 @@ export function processRow(row, useRegex = true, settings = null) {
   }, { overlayHits: tags.overlayHits })
 }
 
-export function processRows(rows, useRegex = true, settings = null) {
-  return rows
-    .filter((r) => (r.handlingText || r.rawText)?.trim())
-    .map((r) => processRow(r, useRegex, settings))
-    .filter(Boolean)
+/**
+ * 流式落盘：每 4 条工单批量写入一次，不必等整批走完。
+ * manual_review 工单也落盘（带 tagStatus 标记），下游 LLM 增强自动跳过。
+ *
+ * @param {Object[]} rows
+ * @param {boolean} [useRegex]
+ * @param {import('./storage.js').AppSettings | null} [settings]
+ * @param {{ batchSize?: number, onBatchWritten?: (written: number, total: number) => void, putRecords?: (records: Object[]) => void }} [streamOpts]
+ * @returns {Promise<Object[]>}
+ */
+export async function processRows(rows, useRegex = true, settings = null, streamOpts = {}) {
+  const BATCH_SIZE = streamOpts.batchSize || 4
+  const putFn = streamOpts.putRecords || null
+  const onBatch = streamOpts.onBatchWritten || null
+
+  const results = []
+  let batch = []
+  let written = 0
+  const total = rows.length
+
+  for (const row of rows) {
+    if (!(row.handlingText || row.rawText)?.trim()) continue
+
+    const processed = await processRow(row, useRegex, settings)
+    if (!processed) continue
+
+    results.push(processed)
+    batch.push(processed)
+    written++
+
+    if (batch.length >= BATCH_SIZE) {
+      if (putFn) putFn(batch)
+      if (onBatch) onBatch(written, total)
+      batch = []
+    }
+  }
+
+  // 写入剩余
+  if (batch.length) {
+    if (putFn) putFn(batch)
+    if (onBatch) onBatch(written, total)
+  }
+
+  return results
 }
 
 /**
@@ -133,11 +177,12 @@ export function processRows(rows, useRegex = true, settings = null) {
  * @param {import('./types.js').FeedbackRecord} fb
  * @param {import('./storage.js').AppSettings | null} [settings]
  * @param {{ forceOverrideManualTags?: boolean }} [options]
+ * @returns {Promise<Object>}
  */
-export function reprocessFeedbackRecord(fb, settings = null, options = {}) {
+export async function reprocessFeedbackRecord(fb, settings = null, options = {}) {
   const useRegex = settings?.useRegex ?? true
   const source = options.forceOverrideManualTags ? applyForceRetagOverrides(fb) : fb
-  const processed = processRow(
+  const processed = await processRow(
     {
       rawText: source.rawText,
       handlingText: source.handlingText,

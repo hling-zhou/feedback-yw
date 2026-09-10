@@ -20,8 +20,7 @@ import {
 } from './customerRequestFilters.js'
 import { stripInternalWorkflowPrefix } from './workflowTextCleanup.js'
 
-export const CUSTOMER_REQUEST_DEFAULT_MAX = 80
-export const CUSTOMER_REQUEST_HARD_MAX = 120
+export const CUSTOMER_REQUEST_HARD_MAX = 200
 
 const CORRECTION_RE =
   /之前说的不对|刚才说.*其实是|更正[：:,，]|补充说明[：:,，]|其实是(?!.*已解决)|不是.*而是/
@@ -37,7 +36,8 @@ const SEVERITY_PERF_RE = /(?:慢|卡顿|延迟|丢包|时通时断|不稳定)/
 const SEVERITY_CONSULT_RE = /(?:咨询|如何|怎么|请问|申请|查询|开通|解售罄|配额|进度)/
 
 /**
- * 截取 1～3 句，默认 80 字、最长 120 字
+ * 截取 1～5 句，最长 200 字。
+ * 去冗余：合并重复表述、去除尾部平台话术残留、去除连续标点。
  * @param {string} text
  * @param {number} [hardMax]
  */
@@ -47,6 +47,12 @@ export function truncateCustomerRequest(text, hardMax = CUSTOMER_REQUEST_HARD_MA
 
   t = t.replace(/^["「『]|["」』]$/g, '').trim()
 
+  // 去冗余：合并连续标点
+  t = t.replace(/[，,]{2,}/g, '，').replace(/[。；;]{2,}/g, '。')
+  // 去冗余：去除尾部平台话术残留
+  t = t.replace(/(?:，|,)?(?:解决方案|处理意见|根因|归档意见|回复内容|预处理|协助请求)[：:][\s\S]*$/i, '').trim()
+  t = t.replace(/(?:，|,)?(?:联系时间|##资源ID|产品名称|受理渠道|产品UUID)[：:\s][\s\S]*$/i, '').trim()
+
   const sentences = t.split(/(?<=[。！？!?；;])\s*/).filter(Boolean)
   /** @type {string[]} */
   let picked = []
@@ -54,8 +60,15 @@ export function truncateCustomerRequest(text, hardMax = CUSTOMER_REQUEST_HARD_MA
   for (const s of sentences.length ? sentences : [t]) {
     const part = s.trim()
     if (!part) continue
-    if (picked.length >= 3) break
+    if (picked.length >= 5) break
     if (len + part.length > hardMax && picked.length) break
+    // 去冗余：跳过与已选内容高度重复的句子
+    const isDup = picked.some((p) => {
+      const shorter = p.length < part.length ? p : part
+      const longer = p.length < part.length ? part : p
+      return longer.includes(shorter) && shorter.length >= 8
+    })
+    if (isDup) continue
     picked.push(part)
     len += part.length
   }
@@ -177,7 +190,7 @@ const WORKFLOW_NUMBERED_DEMAND_RE =
   /(?:^|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=\d+[、.．]\s*(?:【?(?:问题原因|产品|目前进展|预处理|协助|解决方案|处理人|是否验证|回单)|产品UUID|预处理|协助请求)|$)/i
 
 const WORKFLOW_CUSTOMER_PROBLEM_INLINE_RE =
-  /(?:^|\n|\d+[、.．]\s*)【?客户(?:问题|需求)】?\s*[：:]\s*([\s\S]*?)(?=(?:^|\n|\d+[、.．]\s*)【?(?:问题原因|解决方案|处理意见|目前进展|协助|预处理|产品UUID)|$)/i
+  /(?:^|\n|\d+[、.．]\s*)【?(?:客户(?:问题|需求|来电|致电|报称|称|问|反映)|400客户问题|400客户来电)】?\s*[：:]\s*([\s\S]*?)(?=(?:^|\n|\d+[、.．]\s*)【?(?:问题原因|解决方案|处理意见|目前进展|协助|预处理|产品UUID)|$)/i
 
 /**
  * 从受理/咨询正文直接抽取客户问题（segments 为空时的 fallback）
@@ -191,7 +204,7 @@ function extractCustomerRequestFromAcceptance(fields) {
   for (const block of parseLabelValueBlocks(acceptance)) {
     if (!block.label) continue
     const label = block.label.replace(/[（(].*[）)]/g, '').trim()
-    if (!/^(?:客户问题|客户需求|详细内容|问题描述|咨询内容|客户反馈|受理内容|问题现象|故障现象|客户原话|用户问题|工单标题)$/.test(label)) {
+    if (!/^(?:客户问题|客户需求|详细内容|问题描述|咨询内容|客户反馈|受理内容|问题现象|故障现象|客户原话|用户问题|工单标题|400客户问题)$/.test(label)) {
       continue
     }
     const body = cleanCustomerRequestPhrase(trimInlinePlatformFieldSuffix(block.text))
@@ -234,7 +247,7 @@ function extractCustomerRequestFromAcceptance(fields) {
 }
 
 const WORKFLOW_CUSTOMER_REACTION_RE =
-  /客户反应[，,]\s*([\s\S]{8,400}?)(?=(?:，|,)?(?:36\.\*|uuid\s*[：:]|联系时间|##资源ID|产品名称|受理渠道)|$)/i
+  /客户(?:反应|反映|来电|致电|报称|声称|称|问)[，,]?\s*([\s\S]{8,400}?)(?=(?:，|,)?(?:36\.\*|uuid\s*[：:]|联系时间|##资源ID|产品名称|受理渠道)|$)/i
 
 /** 平台回单/客服口径模板，非客户诉求 */
 const CUSTOMER_SERVICE_REPLY_RE =
@@ -368,7 +381,7 @@ export function extractLifecycleCustomerPhrases(corpus) {
   for (const block of blocks) {
     const body = stripInternalWorkflowPrefix(block)
     const voice = body.match(
-      /客户(?:反馈|表示|补充|咨询|原话|反应)[：:，,]?\s*([^。；;\n]{2,200})/,
+      /客户(?:反馈|表示|补充|咨询|原话|反应|来电|致电|报称|声称|称|问|反映)[：:，,]?\s*([^。；;\n]{2,200})/,
     )
     if (voice?.[1]) {
       add(voice[1])
@@ -388,7 +401,7 @@ export function extractLifecycleCustomerPhrases(corpus) {
   const detail = corpus.match(/详细内容[：:]([^\n|]{2,400})/)
   if (detail?.[1]) {
     for (const part of detail[1].split(LEGACY_WORKFLOW_BLOCK_SPLIT_RE)) {
-      const voice = part.match(/客户(?:反馈|表示|补充|反应)[：:，,]?\s*([^。；;\n]{2,200})/)
+      const voice = part.match(/客户(?:反馈|表示|补充|反应|来电|致电|报称|称|问|反映)[：:，,]?\s*([^。；;\n]{2,200})/)
       if (voice?.[1]) add(voice[1])
     }
   }
@@ -403,7 +416,7 @@ export function scoreCustomerRequestCandidate(candidate) {
   const t = candidate.text
   if (!t) return -1
 
-  let score = Math.min(t.length, 80)
+  let score = Math.min(t.length, 200)
 
   if (SEVERITY_FAULT_RE.test(t)) score += 40
   else if (SEVERITY_PERF_RE.test(t)) score += 25

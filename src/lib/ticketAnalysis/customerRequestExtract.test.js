@@ -70,9 +70,9 @@ describe('customerRequestExtract lifecycle rules', () => {
     expect(best).toMatch(/专线不通/)
   })
 
-  it('truncateCustomerRequest respects hard max 120', () => {
-    const long = '这是一段很长的客户反馈'.repeat(10)
-    expect(truncateCustomerRequest(long).length).toBeLessThanOrEqual(120)
+  it('truncateCustomerRequest respects hard max 200', () => {
+    const long = '这是一段很长的客户反馈'.repeat(20)
+    expect(truncateCustomerRequest(long).length).toBeLessThanOrEqual(200)
   })
 
   it('collectCustomerRequestCandidates excludes platform handling text', () => {

@@ -1303,7 +1303,12 @@ export default function Import({ embedded = false }) {
       let enrichmentStats
 
       if (ticketSource) {
-        const result = await runPipeline(dataSourceType, rowsToAnalyze, batchMeta)
+        const result = await runPipeline(dataSourceType, rowsToAnalyze, {
+          ...batchMeta,
+          onAnalyzeProgress: (done, total) => {
+            reportProgress(`正在规则打标 (${done}/${total})…`)
+          },
+        })
         run = result.run
         failures = result.failures
         records = result.records
@@ -1333,8 +1338,35 @@ export default function Import({ embedded = false }) {
         records = enriched.records
         taggingWarnings = enriched.warnings
         enrichmentStats = enriched.enrichmentStats
+
+        // M7: 异主体闸门前置到落盘前
+        if (ticketSource) {
+          reportProgress(`正在异主体复核 (${records.length} 条)…`)
+          try {
+            const gateRes = await fetch('/api/storage/records/pre-disk-gate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(records),
+            })
+            if (gateRes.ok) {
+              const gateData = await gateRes.json()
+              records = gateData.records || records
+              if (gateData.warnings?.length) {
+                taggingWarnings = [...(taggingWarnings || []), ...gateData.warnings]
+              }
+            }
+          } catch (gateErr) {
+            console.warn('[import] 异主体闸门失败，跳过:', gateErr)
+            taggingWarnings = [...(taggingWarnings || []), '异主体闸门执行失败，已跳过']
+          }
+        }
       } else {
-        const result = await runPipeline(dataSourceType, rowsToAnalyze, batchMeta)
+        const result = await runPipeline(dataSourceType, rowsToAnalyze, {
+          ...batchMeta,
+          onAnalyzeProgress: (done, total) => {
+            reportProgress(`正在规则打标 (${done}/${total})…`)
+          },
+        })
         run = result.run
         failures = result.failures
         records = result.records.map((r) => ({

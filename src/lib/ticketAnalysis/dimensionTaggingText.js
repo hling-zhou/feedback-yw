@@ -4,6 +4,7 @@ import {
   extractHandlingTextFromFields,
 } from '../taggingText.js'
 import { stripTaggingNoise } from './workflowTextCleanup.js'
+import { extractVerifiedSupplementSignals } from './handlingSignalExtract.js'
 
 /**
  * @param {Object} input
@@ -40,6 +41,10 @@ export function buildDimensionTaggingLayers(input) {
 /**
  * 维度打标语料：优先 customerRequest + painPoint；无则回退受理/追加/处理意见
  *
+ * 当 CR + painPoint 有值时，额外从处理意见中提取经质量筛选+交叉验证后的
+ * 补全信号（工单标题/请求节点中存在但 CR 缺失、且处理意见结论方向一致的），
+ * 追加到分类语料末尾——不改 customerRequest 字段本身，只补全分类器可见的语料。
+ *
  * @param {Object} input
  * @param {string} [input.customerRequest]
  * @param {string} [input.painPoint]
@@ -57,7 +62,16 @@ export function buildDimensionTaggingText(input = {}) {
 
   if (request) parts.push(request)
   if (pain && pain !== request) parts.push(pain)
-  if (parts.length) return parts.join('\n')
+  if (parts.length) {
+    // 处理意见质量筛选 → 结论方向 → 与结构信号交叉验证 → 追加可信信号
+    const supplement = extractVerifiedSupplementSignals({
+      rawText: input.rawText,
+      handlingText: input.handlingText,
+      customerRequest: request,
+    })
+    if (supplement) parts.push(`[结构信号] ${supplement}`)
+    return parts.join('\n')
+  }
 
   const layers = buildDimensionTaggingLayers(input)
   return (
