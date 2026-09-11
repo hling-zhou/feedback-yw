@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { processRow, reprocessFeedbackRecord } from './pipeline.js'
 
 describe('pipeline plaintext import fields', () => {
-  it('processRow preserves plaintext IPs in imported fields and sourceColumns', () => {
+  it('processRow preserves plaintext IPs in imported fields and sourceColumns', async () => {
     const row = {
       dataSourceType: 'complaint_ticket',
       rawText: '客户反馈服务器 192.168.1.10 无法访问，白名单需要放通 10.0.0.5:8085。',
@@ -15,7 +15,7 @@ describe('pipeline plaintext import fields', () => {
       ticketId: '20260804100000X123456789',
     }
 
-    const out = processRow(row, true, { useRegex: true })
+    const out = await processRow(row, true, { useRegex: true })
 
     expect(out).not.toBeNull()
     expect(out.rawText).toContain('192.168.1.10')
@@ -31,7 +31,7 @@ describe('pipeline plaintext import fields', () => {
     expect(out.lastAutoTags?.problemType).toBe(out.problemType)
   })
 
-  it('reprocessFeedbackRecord keeps plaintext imported content', () => {
+  it('reprocessFeedbackRecord keeps plaintext imported content', async () => {
     const fb = {
       id: 'r1',
       dataSourceType: 'complaint_ticket',
@@ -61,7 +61,7 @@ describe('pipeline plaintext import fields', () => {
       },
     }
 
-    const out = reprocessFeedbackRecord(fb, { useRegex: true })
+    const out = await reprocessFeedbackRecord(fb, { useRegex: true })
 
     expect(out.rawText).toContain('192.168.2.20')
     expect(out.handlingText).toContain('10.2.2.2')
