@@ -46,6 +46,10 @@ function isResourceOpFailure(text) {
   )
 }
 
+/** 配额申请场景标志词——出现时即使语料含故障泛词也不应判为报障 */
+const QUOTA_CONTEXT_RE =
+  /提升配额|带宽配额|配额到期|配额恢复|扩容配额|增加配额|增加IP|轻载IP|灰度|解除8:1|配额.*有效期|有效期.*配额|到期.*恢复.*原|恢复.*原值|恢复.*原配/
+
 /**
  * @param {string} text
  */
@@ -54,6 +58,8 @@ function matchesFault(text) {
     return false
   }
   if (isResourceOpFailure(text)) return false
+  // 配额申请场景排除：配额工单痛点常含「恢复原值」等词，不应触发报障
+  if (QUOTA_CONTEXT_RE.test(text)) return false
 
   return (
     /不通|掉线|中断|报错|崩溃|封堵|攻击|卡顿|慢|排查原因|抓包|解封|恢复|重启|无法访问|连接失败|超时|丢包|宕机|异常|故障|不可用|502|503|报障/.test(
@@ -80,6 +86,14 @@ function matchesResourceApplication(text) {
     return false
   }
 
+  // 纯咨询意图（了解流程/是否可以/想问）但不含操作执行词时不匹配
+  if (
+    /是否可以|能不能|想问|想了解|了解一下/.test(text) &&
+    !/请帮忙|请提升|请扩容|请开通|帮我.*申请|帮忙.*提升|申请提升|申请扩容|请.*开通权限/.test(text) &&
+    !isResourceOpFailure(text)
+  ) {
+    return false
+  }
   if (isResourceOpFailure(text)) return true
   if (/解除[^。，；\n]{0,8}售罄|解售罄/.test(text)) return true
   if (
@@ -163,7 +177,9 @@ function matchesProductInfo(text) {
  * @param {string} text
  */
 function matchesSolution(text) {
-  return /方案|架构|选型|迁移|割接|落地|组网|规划|设计|跨区域|容灾|高可用|如何实现.*架构/.test(text)
+  // 排除处理意见模板中的"解决方案"前缀——不是客户在做方案咨询
+  const stripped = text.replace(/解决方案[：:]/g, '')
+  return /方案|架构|选型|迁移|割接|落地|组网|规划|设计|跨区域|容灾|高可用|如何实现.*架构/.test(stripped)
 }
 
 /**

@@ -126,7 +126,14 @@ function matchesPerformance(text, keywords) {
  * @param {string} text
  * @param {string[]} keywords
  */
+/** 配额申请场景标志——出现时即使语料含「中断/异常」等词也不应判为可用性故障 */
+const QUOTA_CONTEXT_RE =
+  /提升配额|带宽配额|配额到期|配额恢复|扩容配额|增加配额|增加IP|轻载IP|灰度|解除8:1|配额.*有效期|有效期.*配额|到期.*恢复.*原|恢复.*原值|恢复.*原配|申请.*提升.*至|提升.*至.*M|申请延长有效期|配额不足|配额超限|配额已满/
+
 function matchesAvailability(text, keywords) {
+  // 配额申请场景排除：配额工单痛点常含「可能导致业务中断」等假设性表述，
+  // 不应触发可用性故障匹配（决策树中可用性优先于配额，会截断正确分类）
+  if (QUOTA_CONTEXT_RE.test(text)) return false
   if (matchesAnyKeyword(text, keywords)) return true
   // 资源被冻结且要排查/恢复：客户感知是不可用，不是来问账单
   if (/被冻结|订单冻结/.test(text) && /排查|协助|原因|恢复|异常|加急/.test(text)) {
