@@ -91,7 +91,7 @@ export async function rebuildSourceSnapshot({
       )?.planningConclusions?.recommendations || []
   }
 
-  let snapshot = buildSourceSnapshot({
+  let snapshot = await buildSourceSnapshot({
     insightPeriodId,
     dataSourceType,
     records,
@@ -213,7 +213,7 @@ export async function markPeriodSnapshotsRebuilding(adapter, insightPeriodId) {
       await adapter.putSnapshot({ ...snap, status: 'rebuilding' })
     } else {
       await adapter.putSnapshot({
-        ...buildSourceSnapshot({
+        ...await buildSourceSnapshot({
           insightPeriodId,
           dataSourceType: type,
           records: [],
@@ -242,7 +242,7 @@ export async function markPeriodSnapshotsStale(adapter, insightPeriodId) {
     if (snap && snap.status === 'ready') {
       await adapter.putSnapshot({ ...snap, status: 'stale' })
     } else if (!snap) {
-      const empty = buildSourceSnapshot({
+      const empty = await buildSourceSnapshot({
         insightPeriodId,
         dataSourceType: type,
         records: [],

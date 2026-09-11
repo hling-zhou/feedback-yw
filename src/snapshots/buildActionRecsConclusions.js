@@ -1,11 +1,19 @@
-import { createRequire } from 'module'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { mapEngineResult, mapGateReport } from '../lib/actionRecsMapper.js'
 import { enrichWithInventory } from '../lib/actionRecsInventory.js'
 import { attachRecommendationPeriodCompare } from '../lib/planningRecommendationCompare.js'
 
-const require = createRequire(import.meta.url)
-const { runLoop } = require('../../scripts/lib/actionRecsEngine.cjs')
+// 引擎 .cjs 仅在服务端快照构建时加载，通过 dynamic import 避免被 Vite 静态分析拉入浏览器 bundle
+let _runLoop = null
+async function getRunLoop() {
+  if (_runLoop) return _runLoop
+  // Vite external 配置使 'module' 在浏览器构建时被跳过，仅服务端/测试环境可用
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const mod = require('../../scripts/lib/actionRecsEngine.cjs')
+  _runLoop = mod.runLoop
+  return _runLoop
+}
 
 /** @typedef {import('../domain/overviewConclusions.js').ActionRecsConclusions} ActionRecsConclusions */
 /** @typedef {import('../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult */
@@ -39,9 +47,9 @@ function periodMonthKey(period) {
  * @param {ActionRecsResult[]} [params.previousRecommendations]
  * @param {string} [params.previousPeriodId]
  * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
- * @returns {ActionRecsConclusions}
+ * @returns {Promise<ActionRecsConclusions>}
  */
-export function buildActionRecsConclusions({
+export async function buildActionRecsConclusions({
   period,
   dataSourceType,
   records,
@@ -82,6 +90,7 @@ export function buildActionRecsConclusions({
   }
 
   // 运行三方闭环（runEngine → runGate → [FAIL → runFixer → 重跑] → 最多 maxRounds 轮）
+  const runLoop = await getRunLoop()
   const loop = runLoop(records, { maxRounds })
 
   // 映射引擎结果为 ActionRecsResult[]

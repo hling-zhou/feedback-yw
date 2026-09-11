@@ -6,16 +6,6 @@
  * 前端可消费的 ActionRecsResult[]，存入快照 planningConclusions.recommendations。
  */
 
-import { createHash } from 'crypto'
-
-/**
- * @typedef {import('../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult
- * @typedef {import('../domain/overviewConclusions.js').ActionRecsScale} ActionRecsScale
- * @typedef {import('../domain/overviewConclusions.js').ActionRecsProblemSummary} ActionRecsProblemSummary
- * @typedef {import('../domain/overviewConclusions.js').ActionRecsCustomerVoice} ActionRecsCustomerVoice
- * @typedef {import('../domain/overviewConclusions.js').ActionRecsTier} ActionRecsTier
- */
-
 /**
  * @param {string} product
  * @param {string} fam
@@ -23,9 +13,14 @@ import { createHash } from 'crypto'
  * @returns {string} 稳定 id（product + fam + sub 的短哈希）
  */
 function hashId(product, fam, sub) {
-  const h = createHash('md5')
-  h.update(`${product}::${fam}::${sub}`)
-  return 'ar_' + h.digest('hex').slice(0, 12)
+  // djb2 hash — 纯 JS 实现，不依赖 Node crypto，浏览器兼容
+  const str = `${product}::${fam}::${sub}`
+  let hash = 5381
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i)
+    hash = hash & 0xffffffff
+  }
+  return 'ar_' + (hash >>> 0).toString(16).padStart(8, '0').slice(0, 12)
 }
 
 /**

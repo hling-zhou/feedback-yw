@@ -171,7 +171,7 @@ describe('followUpSatisfaction integration', () => {
     expect(params.followUp).toBe('non10')
   })
 
-  it('post_use_rating snapshot embeds followUpSatisfactionMetrics after import', () => {
+  it('post_use_rating snapshot embeds followUpSatisfactionMetrics after import', async () => {
     const importResult = processFollowUpSatisfactionImportRows(
       [makeImportRow({ [COLS.score]: '10', [COLS.problemResolved]: '是' })],
       [ticket()],
@@ -179,7 +179,7 @@ describe('followUpSatisfaction integration', () => {
     )
     const enriched = importResult.updatedRecords[0]
 
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: 'p1',
       dataSourceType: 'post_use_rating',
       records: [],
@@ -212,7 +212,7 @@ describe('followUpSatisfaction integration', () => {
     expect(result.updatedRecords[0].outOfPeriodWarning).toBe(true)
   })
 
-  it('follow-up snapshot metrics respect insight period scope on ticket records', () => {
+  it('follow-up snapshot metrics respect insight period scope on ticket records', async () => {
     const period = createInsightPeriod(
       {
         label: '2026-05',
@@ -251,7 +251,7 @@ describe('followUpSatisfaction integration', () => {
       ...filterRecordsForScope(allTickets, period, 'consultation_ticket'),
     ]
 
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: period.id,
       dataSourceType: 'post_use_rating',
       records: [],

@@ -36,7 +36,7 @@ import { buildActionRecsConclusions } from './buildActionRecsConclusions.js'
  * @param {OverviewRecommendation[]} [params.previousRecommendations]
  * @param {string} [params.previousPeriodId]
  */
-export function buildSourceSnapshot({
+export async function buildSourceSnapshot({
   insightPeriodId,
   dataSourceType,
   records,
@@ -63,7 +63,7 @@ export function buildSourceSnapshot({
       : undefined
 
   const planningConclusions = ticket
-    ? buildActionRecsConclusions({
+    ? await buildActionRecsConclusions({
         period: period || {
           id: insightPeriodId,
           label: insightPeriodId,

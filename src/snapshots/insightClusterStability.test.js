@@ -27,7 +27,7 @@ function makeRecord(overrides = {}) {
 }
 
 describe('insight cluster stability (Phase E spot check)', () => {
-  it('同 pain + 同 journeyL1：rule/llm 旅程来源不影响聚类簇数（变化 <10%）', () => {
+  it('同 pain + 同 journeyL1：rule/llm 旅程来源不影响聚类簇数（变化 <10%）', async () => {
     const period = createInsightPeriod({
       label: '2025-06',
       granularity: 'month',
@@ -55,12 +55,12 @@ describe('insight cluster stability (Phase E spot check)', () => {
       journeyMatchScore: undefined,
     }))
 
-    const snapRule = buildSourceSnapshot({
+    const snapRule = await buildSourceSnapshot({
       insightPeriodId: period.id,
       dataSourceType: 'complaint_ticket',
       records: ruleJourney,
     })
-    const snapLlm = buildSourceSnapshot({
+    const snapLlm = await buildSourceSnapshot({
       insightPeriodId: period.id,
       dataSourceType: 'complaint_ticket',
       records: llmJourney,

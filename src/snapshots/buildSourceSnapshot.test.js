@@ -48,9 +48,9 @@ describe('buildSourceSnapshot', () => {
     },
   ]
 
-  it('builds snapshot with summary and recordIds', () => {
+  it('builds snapshot with summary and recordIds', async () => {
     const scoped = filterRecordsForScope(records, periodMay, 'complaint_ticket')
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: 'p-may',
       dataSourceType: 'complaint_ticket',
       records: scoped,
@@ -63,7 +63,7 @@ describe('buildSourceSnapshot', () => {
     expect(snap.aggregates.painPointClustering?.products).toEqual({})
   })
 
-  it('stores primary pain point clusters for ticket sources', () => {
+  it('stores primary pain point clusters for ticket sources', async () => {
     const pain = '账单金额计算错误导致多扣费用无法退订'
     const clustered = [
       {
@@ -108,7 +108,7 @@ describe('buildSourceSnapshot', () => {
       },
     ]
     const scoped = filterRecordsForScope(clustered, periodMay, 'complaint_ticket')
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: 'p-may',
       dataSourceType: 'complaint_ticket',
       records: scoped,
@@ -126,7 +126,7 @@ describe('buildSourceSnapshot', () => {
     expect(jun[0].id).toBe('2')
   })
 
-  it('embeds followUpSatisfactionMetrics on post_use_rating snapshot from ticket enrichments', () => {
+  it('embeds followUpSatisfactionMetrics on post_use_rating snapshot from ticket enrichments', async () => {
     const ticketRecords = [
       {
         id: 't-fu-1',
@@ -144,7 +144,7 @@ describe('buildSourceSnapshot', () => {
         },
       },
     ]
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: 'p-may',
       dataSourceType: 'post_use_rating',
       records: [],
@@ -156,9 +156,9 @@ describe('buildSourceSnapshot', () => {
     ])
   })
 
-  it('does not embed followUpSatisfactionMetrics on complaint_ticket snapshot', () => {
+  it('does not embed followUpSatisfactionMetrics on complaint_ticket snapshot', async () => {
     const scoped = filterRecordsForScope(records, periodMay, 'complaint_ticket')
-    const snap = buildSourceSnapshot({
+    const snap = await buildSourceSnapshot({
       insightPeriodId: 'p-may',
       dataSourceType: 'complaint_ticket',
       records: scoped,

@@ -50,7 +50,7 @@ describe('resolveSnapshotRecords', () => {
     ).toBe(true)
   })
 
-  it('post_use_rating tab has content when only follow-up ticket enrichments exist', () => {
+  it('post_use_rating tab has content when only follow-up ticket enrichments exist', async () => {
     const period = {
       id: 'period:month:2026-04',
       granularity: 'month',
@@ -73,7 +73,7 @@ describe('resolveSnapshotRecords', () => {
         },
       },
     ]
-    const snapshot = buildSourceSnapshot({
+    const snapshot = await buildSourceSnapshot({
       insightPeriodId: period.id,
       dataSourceType: 'post_use_rating',
       records: [],
