@@ -3,7 +3,7 @@ import { Card, Empty, Select, Space, Table, Tag, Typography } from 'antd'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildProductExperienceTrend } from '../../domain/workbenchProductTrends.js'
 import { listProducts } from '../../lib/productTaxonomy.js'
-import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
+import { getEnabledProducts } from '../../lib/productCatalogLoader.js'
 import { getPostUseFocusTrackedNames } from '../../lib/productCatalog/postUseRatingProducts.js'
 
 /** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -24,14 +24,18 @@ const SERIES_COLORS = {
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
  */
 export default function ProductExperienceTrendPanel({ feedbacks = [], currentPeriod = null }) {
-  const catalogProducts = useMemo(() => getCatalogProducts(), [])
+  const enabledProducts = useMemo(() => getEnabledProducts(), [])
+  const enabledNames = useMemo(() => new Set(enabledProducts.map((p) => p.name)), [enabledProducts])
   const productOptions = useMemo(
-    () => listProducts(feedbacks).map((p) => ({ value: p.name, label: p.name })),
-    [feedbacks],
+    () =>
+      listProducts(feedbacks)
+        .filter((p) => enabledNames.has(p.name))
+        .map((p) => ({ value: p.name, label: p.name })),
+    [feedbacks, enabledNames],
   )
   const focusNames = useMemo(
-    () => getPostUseFocusTrackedNames(catalogProducts),
-    [catalogProducts],
+    () => getPostUseFocusTrackedNames(enabledProducts),
+    [enabledProducts],
   )
 
   const [selected, setSelected] = useState('')
