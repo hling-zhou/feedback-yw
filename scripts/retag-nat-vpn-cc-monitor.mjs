@@ -54,6 +54,7 @@ console.log('[env] .env loaded')
 console.log('='.repeat(60))
 console.log('  全量重新打标：NAT网关 / 融合VPN / 云组网 / 云监控')
 console.log('  模式: ' + (DRY_RUN ? 'DRY RUN (不写回)' : 'WRITE (写回 DB)'))
+console.log('  步骤: 规则打标+闸门 → LLM增强+M5/M6 → M7异主体闸门 → 写回DB')
 console.log('='.repeat(60))
 
 // Main execution
@@ -191,6 +192,26 @@ async function main() {
     console.log('\n[5/5] 所有记录均为 manual_review，跳过 LLM 增强')
   } else {
     console.log('\n[5/5] LLM 未配置，跳过 LLM 增强')
+  }
+
+  // Step 7: M7 异主体闸门（与导入流程 pre-disk-gate 一致）
+  // 在 LLM 增强之后、写回 DB 之前，跑 ticket-gate-loop.cjs 验证异主体一致性
+  // 底层逻辑与 server/routes/storage.js 的 pre-disk-gate 端点完全相同：
+  //   1) 写 records 到临时 JSON 文件
+  //   2) execFileSync 跑 ticket-gate-loop.cjs --input <文件>
+  //   3) 读回 dist/ticket-records-gated.json（Fixer 修正后的 records）
+  //   4) 读回 dist/ticket-gate-report.json（闸门报告）
+  console.log('\n[6/6] M7 异主体闸门验证...')
+  try {
+    const gateResult = runPreDiskGate(finalRecords)
+    if (gateResult.records) {
+      finalRecords = gateResult.records
+      for (const w of gateResult.warnings) {
+        console.log('  ' + w)
+      }
+    }
+  } catch (e) {
+    console.log('  M7 闸门执行失败: ' + e.message + '，使用增强后结果继续')
   }
 
   // Summary: before vs after
@@ -422,6 +443,70 @@ function patchFetchForLlm(llmConfig) {
 // === Need to handle require() in ESM ===
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
+
+// === Helper: M7 异主体闸门（复刻 pre-disk-gate 端点逻辑） ===
+function runPreDiskGate(records) {
+  const os = require('os')
+  const tmpDir = os.tmpdir()
+  const inputFile = path.join(tmpDir, `ticket-gate-input-${Date.now()}.json`)
+  const distDir = path.resolve(PROJECT_ROOT, 'dist')
+  if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true })
+
+  // 1. 写临时 JSON
+  fs.writeFileSync(inputFile, JSON.stringify(records))
+
+  // 2. 跑 ticket-gate-loop.cjs --input
+  const NODE = process.env.NODE_BIN || process.execPath
+  const loopScript = path.join(PROJECT_ROOT, 'scripts', 'ticket-gate-loop.cjs')
+  let gateExitCode = 0
+  let gateOutput = ''
+
+  try {
+    gateOutput = require('child_process').execFileSync(NODE, [loopScript, '--input', inputFile], {
+      encoding: 'utf8',
+      env: { ...process.env, GATE_MAX_ATTEMPTS: '3' },
+      timeout: 300000,
+      maxBuffer: 200 * 1024 * 1024,
+    })
+    gateExitCode = 0
+  } catch (err) {
+    gateExitCode = err.status ?? 1
+    gateOutput = (err.stdout || '') + (err.stderr || '')
+  }
+
+  // 3. 读回 gated records
+  const gatedPath = path.join(distDir, 'ticket-records-gated.json')
+  let gatedRecords = records
+  if (fs.existsSync(gatedPath)) {
+    gatedRecords = JSON.parse(fs.readFileSync(gatedPath, 'utf8'))
+  }
+
+  // 4. 读回 gate report
+  const reportPath = path.join(distDir, 'ticket-gate-report.json')
+  let gateReport = null
+  if (fs.existsSync(reportPath)) {
+    gateReport = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+  }
+
+  // 5. 清理临时文件
+  try { fs.unlinkSync(inputFile) } catch {}
+
+  // 6. 构建 warnings
+  const warnings = []
+  if (gateReport) {
+    const s = gateReport.summary
+    warnings.push(`异主体闸门: OK=${s.ok} WARN=${s.warn} FAIL=${s.fail} (${s.failRate})`)
+    if (gateExitCode !== 0) {
+      warnings.push(`${gateReport.failures?.length || 0} 条工单标签验证未通过，已标 manual_review`)
+    }
+  }
+
+  if (gateOutput) {
+    console.log('  ' + gateOutput.trim().split('\n').join('\n  '))
+  }
+
+  return { records: gatedRecords, warnings, gateReport }
+}
 
 main().catch(err => {
   console.error('Fatal error:', err)
