@@ -6,7 +6,6 @@ import { getComparableMetrics } from '../metrics/registry.js'
 import { monthlyTrend, monthlyTrendByProduct } from '../lib/analytics.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import { filterRecordsForScope } from './recordScope.js'
-import { buildOverviewConclusions } from './buildOverviewConclusions.js'
 import { previousPeriodIdFromPeriod, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../lib/sourceOverviewMetrics.js'
 
@@ -25,9 +24,9 @@ import { computeMaxMomGrowthProductForSource } from '../lib/sourceOverviewMetric
  * @param {Partial<Record<import('../domain/enums.js').DataSourceType, InsightSnapshot>>} [params.sourceSnapshots]
  * @param {OrderVolumeRow[]} [params.orderVolumes]
  * @param {'ready' | 'stale'} [params.status]
- * @param {import('../domain/overviewConclusions.js').OverviewRecommendation[]} [params.previousRecommendations]
- * @param {string} [params.previousPeriodId]
  * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
+ * @param {import('../domain/overviewConclusions.js').ActionRecsResult[]} [params.mergedRecommendations]
+ * @param {object | null} [params.mergedGateReport]
  */
 export function buildOverviewSnapshot({
   insightPeriodId,
@@ -36,12 +35,10 @@ export function buildOverviewSnapshot({
   sourceSnapshots = {},
   orderVolumes = [],
   status = 'ready',
-  previousRecommendations = [],
-  previousPeriodId: previousPeriodIdParam,
   settings = null,
+  mergedRecommendations = [],
+  mergedGateReport = null,
 }) {
-  const previousPeriodId =
-    previousPeriodIdParam ?? (period ? previousPeriodIdFromPeriod(period) : null)
   const previousPeriod = resolvePreviousInsightPeriod(period)
   const versions = defaultAnalysisVersions()
   /** @type {OverviewSnapshot['sourceSummaries']} */
@@ -102,16 +99,24 @@ export function buildOverviewSnapshot({
     totalRecords,
   }
 
-  const conclusions = buildOverviewConclusions({
-    period,
-    feedbacks,
-    sourceSnapshots,
-    crossSourceMetrics: crossSourceMetricsFinal,
-    orderVolumes,
-    previousRecommendations,
-    previousPeriodId: previousPeriodId || undefined,
-    settings,
-  })
+  // 新方案：概览 conclusions 从 source 快照合并 recommendations，不再调 V2 引擎
+  const conclusions = {
+    generatedAt: new Date().toISOString(),
+    source: 'rule',
+    sampleSize: totalRecords,
+    periodLabel: period?.label || '当前周期',
+    insufficientData: totalRecords < 3,
+    executiveSummary: '',
+    dataCoverageNotes: [],
+    highlights: [],
+    recommendations: mergedRecommendations,
+    recommendationsMeta: {
+      recommendationEngine: 'action_recs_v1',
+      mergedFrom: 'source_snapshots',
+      cappedCount: mergedRecommendations.length,
+    },
+    gateReport: mergedGateReport || undefined,
+  }
 
   return {
     id: overviewSnapshotId(insightPeriodId),

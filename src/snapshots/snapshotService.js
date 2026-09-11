@@ -146,12 +146,18 @@ export async function rebuildOverviewSnapshot({
 }) {
   const orderVolumes = await listOrderVolumes(adapter)
   const previousPeriodId = previousPeriodIdFromPeriod(period)
-  const existingOverview = await adapter.getSnapshot(overviewSnapshotId(period.id))
-  let previousRecommendations = []
-  if (previousPeriodId) {
-    const prevOverview = await adapter.getSnapshot(overviewSnapshotId(previousPeriodId))
-    previousRecommendations = prevOverview?.conclusions?.recommendations || []
-  }
+
+  // 选项 A：概览快照从 source 快照合并 recommendations，不重跑引擎
+  const complaintRecs =
+    sourceSnapshots.complaint_ticket?.aggregates?.planningConclusions?.recommendations || []
+  const consultationRecs =
+    sourceSnapshots.consultation_ticket?.aggregates?.planningConclusions?.recommendations || []
+  const mergedRecommendations = [...complaintRecs, ...consultationRecs]
+
+  // 合并门禁报告（取投诉+咨询中最差的轮次状态）
+  const complaintGate = sourceSnapshots.complaint_ticket?.aggregates?.planningConclusions?.gateReport
+  const consultationGate = sourceSnapshots.consultation_ticket?.aggregates?.planningConclusions?.gateReport
+  const mergedGateReport = mergeGateReports(complaintGate, consultationGate)
 
   let snapshot = buildOverviewSnapshot({
     insightPeriodId: period.id,
@@ -160,23 +166,35 @@ export async function rebuildOverviewSnapshot({
     sourceSnapshots,
     orderVolumes,
     status: 'ready',
-    previousRecommendations,
-    previousPeriodId: previousPeriodId || undefined,
     settings,
+    // 传入合并后的 recommendations，buildOverviewSnapshot 不再调 buildOverviewConclusions 跑 V2
+    mergedRecommendations,
+    mergedGateReport,
   })
 
-  if (existingOverview?.conclusions?.recommendationsLlm) {
-    snapshot = {
-      ...snapshot,
-      conclusions: {
-        ...snapshot.conclusions,
-        recommendationsLlm: existingOverview.conclusions.recommendationsLlm,
-      },
-    }
-  }
+  // 移除旧的 recommendationsLlm 保留逻辑（新引擎不使用 LLM 润色）
 
   await adapter.putSnapshot(snapshot)
   return snapshot
+}
+
+/**
+ * 合并投诉和咨询的门禁报告，取最差状态。
+ * @param {object|null} a
+ * @param {object|null} b
+ * @returns {object|null}
+ */
+function mergeGateReports(a, b) {
+  if (!a && !b) return null
+  if (!a) return b
+  if (!b) return a
+  return {
+    rounds: Math.max(a.rounds || 0, b.rounds || 0),
+    passed: a.passed && b.passed,
+    failureCount: (a.failureCount || 0) + (b.failureCount || 0),
+    escalated: a.escalated || b.escalated,
+    failures: [...(a.failures || []), ...(b.failures || [])].slice(0, 10),
+  }
 }
 
 /**
@@ -242,7 +260,7 @@ export async function markPeriodSnapshotsStale(adapter, insightPeriodId) {
  * @param {StorageAdapter} adapter
  * @param {InsightPeriod} period
  * @param {FeedbackRecord[]} feedbacks
- * @param {(source: DataSourceType | 'overview', done: number, total: number) => void} [onProgress]
+ * @param {(source: DataSourceType | 'overview', done: number, total: number, detail?: { engineRounds?: number, enginePassed?: boolean, engineEscalated?: boolean }) => void} [onProgress]
  * @param {AppSettings | null} [settings]
  */
 export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress, settings = null) {
@@ -264,7 +282,13 @@ export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress
     })
     sourceSnapshots[type] = snap
     done += 1
-    onProgress?.(type, done, total)
+    // 透传引擎轮次信息
+    const gate = snap?.aggregates?.planningConclusions?.gateReport
+    onProgress?.(type, done, total, gate ? {
+      engineRounds: gate.rounds,
+      enginePassed: gate.passed,
+      engineEscalated: gate.escalated,
+    } : undefined)
     await yieldToMainThread()
   }
 
@@ -278,7 +302,12 @@ export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress
     settings,
   })
   done += 1
-  onProgress?.('overview', done, total)
+  const overviewGate = overview?.conclusions?.gateReport
+  onProgress?.('overview', done, total, overviewGate ? {
+    engineRounds: overviewGate.rounds,
+    enginePassed: overviewGate.passed,
+    engineEscalated: overviewGate.escalated,
+  } : undefined)
 
   return { sourceSnapshots, overviewSnapshot: overview }
 }

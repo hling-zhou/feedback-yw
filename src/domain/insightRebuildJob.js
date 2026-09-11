@@ -13,6 +13,9 @@ export const INSIGHT_REBUILD_JOB_STATUSES = /** @type {const} */ ([
  * @property {number} done
  * @property {number} total
  * @property {string | null} [stage]
+ * @property {number} [engineRounds]    - 三方闭环跑了多少轮
+ * @property {boolean} [enginePassed]  - 门禁是否通过
+ * @property {boolean} [engineEscalated] - 是否升级人工复核
  */
 
 /**

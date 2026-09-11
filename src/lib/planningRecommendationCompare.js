@@ -1,4 +1,8 @@
-import { recommendationAxisKey, recommendationStableCompareKey } from './planningRecommendations.js'
+import {
+  recommendationAxisKey,
+  recommendationStableCompareKey,
+  isActionRecsResult,
+} from './planningRecommendations.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 /** @typedef {import('../domain/overviewConclusions.js').RecommendationPeriodCompare} RecommendationPeriodCompare */
@@ -9,6 +13,14 @@ const PRIORITY_RANK = { high: 3, medium: 2, low: 1 }
  * @param {OverviewRecommendation} rec
  */
 export function recommendationCompareKey(rec) {
+  // New engine recs: prefer stableKey → id → tier+product+summary
+  if (isActionRecsResult(rec)) {
+    return rec.stableKey || rec.id || [
+      rec.tier,
+      rec.scope?.product,
+      rec.summary,
+    ].filter(Boolean).join(':')
+  }
   return recommendationStableCompareKey(rec) || `${rec.signalType || ''}:${recommendationAxisKey(rec)}`
 }
 
@@ -27,22 +39,23 @@ function deriveLifecycle(currentRec, previousRec) {
   if (!previousRec) return 'new'
   const currentScore = currentRec?.generationMeta?.score ?? 0
   const previousScore = previousRec?.generationMeta?.score ?? 0
-  const currentCount =
-    currentRec?.sections?.painClusterScores?.ticketCount
-    ?? currentRec?.evidenceBundle?.ticketCount
-    ?? currentRec?.evidenceRecordIds?.length
-    ?? 0
-  const previousCount =
-    previousRec?.sections?.painClusterScores?.ticketCount
-    ?? previousRec?.evidenceBundle?.ticketCount
-    ?? previousRec?.evidenceRecordIds?.length
-    ?? 0
+  // New engine recs use scale.ticketCount
+  const ticketCountOf = (rec) =>
+    isActionRecsResult(rec)
+      ? (rec?.scale?.ticketCount ?? 0)
+      : (rec?.sections?.painClusterScores?.ticketCount
+        ?? rec?.evidenceBundle?.ticketCount
+        ?? rec?.evidenceRecordIds?.length
+        ?? 0)
+  const currentCount = ticketCountOf(currentRec)
+  const previousCount = ticketCountOf(previousRec)
   if (currentScore > previousScore + 0.35 || currentCount > previousCount) return 'growing'
   if (currentScore < previousScore - 0.35 || currentCount < previousCount) return 'easing'
   return 'persistent'
 }
 
 function sharePctOf(rec) {
+  if (isActionRecsResult(rec)) return rec?.scale?.moMPct ?? 0
   return rec?.sections?.painClusterScores?.sharePct ?? rec?.evidenceBundle?.sharePct ?? 0
 }
 
@@ -69,10 +82,12 @@ export function attachRecommendationPeriodCompare(current, previous = []) {
           change: 'new',
           lifecycle: 'new',
           deltaCount:
-            rec?.sections?.painClusterScores?.ticketCount
-            ?? rec?.evidenceBundle?.ticketCount
-            ?? rec?.evidenceRecordIds?.length
-            ?? 0,
+            isActionRecsResult(rec)
+              ? (rec?.scale?.ticketCount ?? 0)
+              : (rec?.sections?.painClusterScores?.ticketCount
+                ?? rec?.evidenceBundle?.ticketCount
+                ?? rec?.evidenceRecordIds?.length
+                ?? 0),
           deltaSharePct: sharePctOf(rec),
         }),
       }
@@ -86,14 +101,16 @@ export function attachRecommendationPeriodCompare(current, previous = []) {
         previousPriority: prev.priority,
         lifecycle: deriveLifecycle(rec, prev),
         deltaCount:
-          (rec?.sections?.painClusterScores?.ticketCount
+          (isActionRecsResult(rec) ? (rec?.scale?.ticketCount ?? 0) :
+            (rec?.sections?.painClusterScores?.ticketCount
             ?? rec?.evidenceBundle?.ticketCount
             ?? rec?.evidenceRecordIds?.length
-            ?? 0)
-          - (prev?.sections?.painClusterScores?.ticketCount
+            ?? 0))
+          - (isActionRecsResult(prev) ? (prev?.scale?.ticketCount ?? 0) :
+            (prev?.sections?.painClusterScores?.ticketCount
             ?? prev?.evidenceBundle?.ticketCount
             ?? prev?.evidenceRecordIds?.length
-            ?? 0),
+            ?? 0)),
         deltaSharePct: Number((sharePctOf(rec) - sharePctOf(prev)).toFixed(1)),
       },
     }

@@ -117,7 +117,7 @@ import {
   compactDuplicateTagCandidates,
   upsertPendingTagCandidate,
 } from '../lib/tagCandidates.js'
-import { polishPlanningRecommendationsWithLLM } from '../lib/overviewConclusionsLLM.js'
+// overviewConclusionsLLM removed — new engine does not use LLM polish
 import { loadPlanningConfig } from '../lib/planningConfigLoader.js'
 import { buildCorrectionEventsFromEdit } from '../lib/learning/tagCorrectionCapture.js'
 import { appendCorrectionEvents } from '../lib/learning/tagCorrectionStore.js'
@@ -1196,23 +1196,7 @@ export function InsightsProvider({ children }) {
     }
   }, [currentPeriod, executeSnapshotRebuild, message])
 
-  const polishPlanningRecommendations = useCallback(async () => {
-    if (!currentPeriod || !overviewSnapshot?.conclusions) {
-      throw new Error('请先生成洞察快照')
-    }
-    const polished = await polishPlanningRecommendationsWithLLM(
-      overviewSnapshot.conclusions,
-      settings,
-    )
-    const updated = {
-      ...overviewSnapshot,
-      conclusions: polished,
-      generatedAt: new Date().toISOString(),
-    }
-    await adapter.putSnapshot(updated)
-    setOverviewSnapshot(updated)
-    return polished
-  }, [adapter, currentPeriod, overviewSnapshot, settings])
+  // polishPlanningRecommendations removed — new engine does not use LLM polish
 
   const setCurrentPeriodId = useCallback(
     async (id) => {
@@ -2760,7 +2744,6 @@ export function InsightsProvider({ children }) {
       rebuildSourceSnapshot,
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
-      polishPlanningRecommendations,
       markSnapshotsStale,
       tagCandidates,
       tagCandidatesLoading,
@@ -2851,7 +2834,6 @@ export function InsightsProvider({ children }) {
       rebuildSourceSnapshot,
       rebuildAllSnapshots,
       rebuildSnapshotsForImportMonth,
-      polishPlanningRecommendations,
       markSnapshotsStale,
       tagCandidates,
       tagCandidatesLoading,

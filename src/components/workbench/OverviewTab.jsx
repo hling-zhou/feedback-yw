@@ -15,7 +15,7 @@ import {
 } from '../../lib/wanTouRatio.js'
 import { buildWanTouProductTableColumns } from './WanTouRatioCells.jsx'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
-import PlanningRecommendationsPanel from './PlanningRecommendationsPanel.jsx'
+import ActionRecsPanel from './ActionRecsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import OverviewJourneyMap from './OverviewJourneyMap.jsx'
 import ProductExperienceTrendPanel from './ProductExperienceTrendPanel.jsx'
@@ -137,9 +137,10 @@ export default function OverviewTab({
         />
       )}
 
-      <PlanningRecommendationsPanel
-        conclusions={displayConclusions}
-        feedbacks={feedbacks}
+      <ActionRecsPanel
+        sourceFilter="all"
+        snapshot={snapshot}
+        records={feedbacks}
       />
 
       <ProductExperienceTrendPanel feedbacks={feedbacks} currentPeriod={currentPeriod} />

@@ -19,7 +19,7 @@ describe('OverviewTab journey map', () => {
     expect(overview).toContain('ProductExperienceTrendPanel')
     expect(overview).toContain('<ProductExperienceTrendPanel feedbacks={feedbacks} />')
     // 顺序：行动建议之后、用户旅程之前
-    expect(overview.indexOf('<PlanningRecommendationsPanel')).toBeLessThan(
+    expect(overview.indexOf('<ActionRecsPanel')).toBeLessThan(
       overview.indexOf('<ProductExperienceTrendPanel'),
     )
     expect(overview.indexOf('<ProductExperienceTrendPanel')).toBeLessThan(

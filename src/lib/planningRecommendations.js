@@ -92,11 +92,23 @@ export function isFallbackReferenceSignal(signalType) {
 }
 
 /**
+ * Check if a rec is an ActionRecsResult (new engine) with a valid tier.
+ * @param {OverviewRecommendation | null | undefined} rec
+ * @returns {boolean}
+ */
+export function isActionRecsResult(rec) {
+  return Boolean(rec?.tier) && rec?.tier !== 'unloc'
+}
+
+/**
  * @param {OverviewRecommendation | null | undefined} rec
  * @returns {boolean}
  */
 export function isFormalPainClusterRecommendation(rec) {
-  return isFormalPainClusterSignal(rec?.signalType)
+  if (isFormalPainClusterSignal(rec?.signalType)) return true
+  // New engine recs with a real tier are formal clusters
+  if (isActionRecsResult(rec)) return true
+  return false
 }
 
 /**

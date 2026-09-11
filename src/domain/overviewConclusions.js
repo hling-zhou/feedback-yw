@@ -222,3 +222,74 @@ export const PLANNING_RECOMMENDATIONS_ANCHOR_ID = 'planning-recommendations'
  */
 
 export {}
+
+// =========================================================================
+// ActionRecsResult — 新引擎产物类型（扩展 OverviewRecommendation）
+// =========================================================================
+
+/**
+ * @typedef {'structural' | 'change' | 'sharp' | 'iteration' | 'tail' | 'cross' | 'unloc'} ActionRecsTier
+ */
+
+/**
+ * @typedef {Object} ActionRecsScale
+ * @property {number} ticketCount        - N 单（mkItem.n）
+ * @property {number} complaintCount     - 投诉工单数 c
+ * @property {number} consultationCount  - 咨询工单数 q
+ * @property {number} complaintRate       - 投诉率 cr（c/n*100）
+ * @property {number} urgentRate          - 加急率（u/n*100）
+ * @property {number} [moMPct]            - 环比 %（mkItem.mom）
+ * @property {number} [moMAbs]            - 环比绝对（mkItem.dAbs）
+ */
+
+/**
+ * @typedef {Object} ActionRecsProblemSummary
+ * @property {string} pain  - 需求痛点 topSentence（mkItem.pain），客户视角
+ * @property {string} root  - 问题原因 topSentence（mkItem.root），根因视角
+ */
+
+/**
+ * @typedef {Object} ActionRecsCustomerVoice
+ * @property {string} verbatim   - 客户原声（voiceOf：客户请求内容/受理内容/处理意见）
+ * @property {string} painText   - [痛点摘要]（与 problemSummary.pain 同源）
+ * @property {string} rootText   - [复核根因]（与 problemSummary.root 同源）
+ */
+
+/**
+ * @typedef {Object} ActionRecsLayerAItem
+ * @property {string} text
+ * @property {number} freq
+ */
+
+/**
+ * @typedef {'open' | 'done' | 'stopped' | 'none'} ActionRecsInventoryStatus
+ */
+
+/**
+ * @typedef {Object} ActionRecsGateReport
+ * @property {number} rounds         - 闭环跑了多少轮
+ * @property {boolean} passed        - 门禁是否通过
+ * @property {number} failureCount   - 失败项数
+ * @property {boolean} escalated      - 是否升级人工
+ * @property {string[]} [failures]    - 失败项摘要（最多 10 条）
+ */
+
+/**
+ * @typedef {OverviewRecommendation & {
+ *   tier: ActionRecsTier,
+ *   scale: ActionRecsScale,
+ *   problemSummary: ActionRecsProblemSummary,
+ *   recommendation: string,
+ *   customerVoice: ActionRecsCustomerVoice,
+ *   actionsLayerA: ActionRecsLayerAItem[],
+ *   inventoryStatus: ActionRecsInventoryStatus,
+ * }} ActionRecsResult
+ */
+
+/**
+ * @typedef {OverviewConclusions & {
+ *   gateReport?: ActionRecsGateReport,
+ * }} ActionRecsConclusions
+ */
+
+export {}

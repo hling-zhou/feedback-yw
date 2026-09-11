@@ -16,7 +16,7 @@ import {
   buildFollowUpSatisfactionMetrics,
   extractFollowUpTicketRecords,
 } from '../lib/followUpSatisfactionAnalytics.js'
-import { buildSourcePlanningConclusions } from './buildSourcePlanningConclusions.js'
+import { buildActionRecsConclusions } from './buildActionRecsConclusions.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -63,7 +63,7 @@ export function buildSourceSnapshot({
       : undefined
 
   const planningConclusions = ticket
-    ? buildSourcePlanningConclusions({
+    ? buildActionRecsConclusions({
         period: period || {
           id: insightPeriodId,
           label: insightPeriodId,

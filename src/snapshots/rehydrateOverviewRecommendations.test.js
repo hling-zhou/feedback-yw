@@ -53,6 +53,12 @@ describe('rehydrateOverviewRecommendations', () => {
         recommendationsMeta: { recommendationEngine: 'pain_cluster_v2', legacyFallback: true },
       }),
     ).toBe(true)
+    // New engine does not need rehydration
+    expect(
+      needsOverviewRecommendationsRehydrate({
+        recommendationsMeta: { recommendationEngine: 'action_recs_v1' },
+      }),
+    ).toBe(false)
   })
 
   it('rehydrates old snapshot conclusions with cluster recommendations', () => {

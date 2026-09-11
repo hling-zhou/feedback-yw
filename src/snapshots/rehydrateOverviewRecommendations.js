@@ -36,6 +36,8 @@ export function needsOverviewRecommendationsRehydrate(conclusions) {
   const meta = conclusions.recommendationsMeta
   const engine = meta?.recommendationEngine
   if (!engine) return true
+  // New engine (action_recs_v1) does not need rehydration
+  if (String(engine).startsWith('action_recs')) return false
   if (!String(engine).startsWith('pain_cluster_v2')) return true
   if (meta?.legacyFallback === true) return true
   return false

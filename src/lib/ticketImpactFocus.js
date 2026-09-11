@@ -9,6 +9,7 @@ import {
 import {
   isFallbackReferenceRecommendation,
   isFormalPainClusterRecommendation,
+  isActionRecsResult,
 } from './planningRecommendations.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
@@ -27,6 +28,14 @@ function themeIdOf(recommendation) {
   if (stableKey) return stableKey
   const id = String(recommendation?.id || '').trim()
   if (id) return id
+  // New engine recs: use tier + product + summary as fallback
+  if (isActionRecsResult(recommendation)) {
+    return [
+      recommendation?.tier,
+      recommendation?.scope?.product,
+      themeLabelOf(recommendation),
+    ].map((value) => String(value || '').trim()).join(':')
+  }
   return [
     recommendation?.signalType,
     recommendation?.scope?.product,
@@ -37,6 +46,7 @@ function themeIdOf(recommendation) {
 }
 
 function themeTypeOf(recommendation) {
+  if (isActionRecsResult(recommendation)) return 'formal_cluster'
   return isFormalPainClusterRecommendation(recommendation) ? 'formal_cluster' : 'fallback_reference'
 }
 
@@ -57,6 +67,16 @@ function jaccard(a, b) {
 }
 
 function buildThemeMatchText(recommendation) {
+  // New engine recs: use summary (fam·sub) + problemSummary + scope
+  if (isActionRecsResult(recommendation)) {
+    return [
+      themeLabelOf(recommendation),
+      recommendation?.problemSummary?.pain,
+      recommendation?.problemSummary?.root,
+      recommendation?.recommendation,
+      recommendation?.scope?.product,
+    ].filter(Boolean).join(' ')
+  }
   return [
     themeLabelOf(recommendation),
     recommendation?.scope?.problemType,
@@ -191,9 +211,11 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
   }
 
   const desiredEvidence = Number(
-    recommendation?.sections?.painClusterScores?.ticketCount
-      ?? recommendation?.evidenceBundle?.ticketCount
-      ?? 1,
+    isActionRecsResult(recommendation)
+      ? recommendation?.scale?.ticketCount
+      : (recommendation?.sections?.painClusterScores?.ticketCount
+        ?? recommendation?.evidenceBundle?.ticketCount
+        ?? 1)
   )
   const minimumEvidence = Math.min(2, Number.isFinite(desiredEvidence) ? Math.max(1, desiredEvidence) : 1)
 
@@ -210,9 +232,11 @@ function buildImpactThemeLink(recommendation, recordById, impactRecords) {
   const riskScore = computeRiskScore(impactSignals, rows.length, themeTypeOf(recommendation))
   const clusterTicketIds = resolveClusterTicketIds(recommendation, recordById)
   const ticketCount = clusterTicketIds.length || Number(
-    recommendation?.sections?.painClusterScores?.ticketCount
-      ?? recommendation?.evidenceBundle?.ticketCount
-      ?? (recommendation?.evidenceRecordIds || []).length,
+    isActionRecsResult(recommendation)
+      ? recommendation?.scale?.ticketCount
+      : (recommendation?.sections?.painClusterScores?.ticketCount
+        ?? recommendation?.evidenceBundle?.ticketCount
+        ?? (recommendation?.evidenceRecordIds || []).length)
   )
 
   return {

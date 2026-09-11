@@ -7,6 +7,7 @@ import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { isJourneyProductSelected, ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import TicketJourneyMap from './TicketJourneyMap.jsx'
+import ActionRecsPanel from './ActionRecsPanel.jsx'
 import {
   FEEDBACK_TICKET_ID_URL_LIMIT,
   formatClusterEvidenceLinkLabel,
@@ -193,6 +194,7 @@ function DriverEmptyState({ state, fallbackOnly = false }) {
 
 export default function TicketStoryView({
   model,
+  snapshot,
   creatingInsightId,
   onCreateAction,
   onOpenFeedback,
@@ -396,61 +398,16 @@ export default function TicketStoryView({
         />
       </Card>
 
-      <SectionHeading title="原因与用户需求" summary="以痛点聚类解释用户遇到了什么、为何值得改善" id="ticket-drivers" />
+      <SectionHeading title="原因与用户需求" summary="以行动建议解释用户遇到了什么、为何值得改善" id="ticket-drivers" />
+      <ActionRecsPanel
+        sourceFilter={complaint ? 'complaint_ticket' : 'consultation_ticket'}
+        snapshot={snapshot}
+        records={model.records || []}
+        showEffectTable={true}
+      />
       {!complaint ? (
         <Card size="small" title="咨询优化机会">
           <ThemeBarChart data={drivers.opportunities.map((row) => ({ label: row.name, count: row.count, negative: 0 }))} />
-        </Card>
-      ) : null}
-      <Card size="small" title="正式痛点聚类（V2）">
-        {formalClusters.length ? (
-          <LimitedTable
-            size="small"
-            rowKey="id"
-            dataSource={formalClusters}
-            scroll={{ x: 1100 }}
-            columns={[
-              { title: '改善优先级', dataIndex: 'priority', fixed: 'left', width: 104, render: (value) => <Tag color={priorityColors[value]}>{value === 'high' ? '高' : value === 'medium' ? '中' : '低'}</Tag> },
-              { title: '产品', dataIndex: 'product', width: 150 },
-              { title: '用户需求/痛点', dataIndex: 'pain', width: 240, ellipsis: true },
-              { title: <Tooltip title="簇内最高频客户请求原文；过于分散时显示「请求表述分散」">客户请求摘要</Tooltip>, dataIndex: 'customerRequest', width: 220, ellipsis: true },
-              { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
-              { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
-              { title: '广度分', dataIndex: 'breadthScore', width: 76 },
-              ...(complaint
-                ? [
-                    { title: '严重度', dataIndex: 'severity', width: 76 },
-                    { title: 'P90情绪', dataIndex: 'emotion', width: 88 },
-                  ]
-                : [
-                    { title: '重复率', dataIndex: 'repeatRate', width: 88, render: (value) => formatRatePct(value) },
-                    { title: '可转自助率', dataIndex: 'selfServiceRate', width: 100, render: (value) => formatRatePct(value) },
-                  ]),
-              { title: '改善优先分', dataIndex: 'priorityScore', width: 104, render: (value) => typeof value === 'number' ? value.toFixed(2) : value },
-              { title: '依据', dataIndex: 'basis', width: 240, ellipsis: true },
-            ]}
-          />
-        ) : (
-          <DriverEmptyState state={driversEmptyState} fallbackOnly={fallbackReferences.length > 0} />
-        )}
-      </Card>
-      {fallbackReferences.length ? (
-        <Card size="small" title="小样本参考项">
-          <LimitedTable
-            size="small"
-            rowKey="id"
-            dataSource={fallbackReferences}
-            scroll={{ x: 960 }}
-            columns={[
-              { title: '类型', width: 110, render: () => <Tag color="warning">推断型</Tag> },
-              { title: '产品', dataIndex: 'product', width: 150 },
-              { title: '参考主题', dataIndex: 'pain', width: 260, ellipsis: true },
-              { title: <Tooltip title="簇内最高频客户请求原文；过于分散时显示「请求表述分散」">客户请求摘要</Tooltip>, dataIndex: 'customerRequest', width: 220, ellipsis: true },
-              { title: '反馈数', dataIndex: 'ticketCount', width: 82 },
-              { title: '产品内占比', dataIndex: 'sharePct', width: 96, render: (value) => `${Number(value || 0).toFixed(1)}%` },
-              { title: '依据', dataIndex: 'basis', width: 260, ellipsis: true },
-            ]}
-          />
         </Card>
       ) : null}
 

@@ -132,7 +132,7 @@ async function runInsightRebuildJob(jobId) {
       adapter,
       period,
       records,
-      (source, done, total) => {
+      (source, done, total, detail) => {
         const current = storageRepository.getInsightRebuildJob(jobId)
         if (!current || current.status !== 'running') return
         updateJob(current, {
@@ -140,6 +140,9 @@ async function runInsightRebuildJob(jobId) {
             done,
             total,
             stage: String(source),
+            engineRounds: detail?.engineRounds,
+            enginePassed: detail?.enginePassed,
+            engineEscalated: detail?.engineEscalated,
           },
         })
       },

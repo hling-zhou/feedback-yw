@@ -231,6 +231,7 @@ export default function TicketDashboardView({
       {model.scope.qualityWarningCount ? <Alert type="warning" showIcon title={`当前范围有 ${model.scope.qualityWarningCount} 项数据质量或快照问题`} action={<Button type="link" href="#ticket-appendix">查看附录</Button>} /> : null}
       <TicketStoryView
         model={model}
+        snapshot={snapshot}
         creatingInsightId={creatingInsightId}
         onCreateAction={(row) => void createAction(row)}
         onOpenFeedback={onOpenFeedback}
