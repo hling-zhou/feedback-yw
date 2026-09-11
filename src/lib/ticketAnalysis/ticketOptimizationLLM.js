@@ -93,7 +93,7 @@ ${merged.knowledgeSnippets ? `\n产品知识库参考（优化建议优先依据
 
   const data = await llmChatCompletion(settings, {
     temperature: 0.35,
-    max_tokens: 768,
+    max_tokens: 2048,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
