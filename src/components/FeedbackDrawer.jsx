@@ -4,7 +4,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Cascader,
   Collapse,
   Checkbox,
@@ -18,8 +17,7 @@ import {
   Select,
   Switch,
   Tooltip,
-  Typography,
-} from 'antd'
+  Typography } from 'antd'
 import { ExpandOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../constants/appLayout.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -31,8 +29,7 @@ import { RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import { formatManualTagFieldsHint } from '../lib/manualTagFields.js'
 import {
   getDisplayCustomerRequest,
-  getDisplayPainPoint,
-} from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+  getDisplayPainPoint } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
 import { getSentimentDisplayLabel } from '../lib/sentiment.js'
 import { TAG_UNRECOGNIZED } from '../lib/ticketAnalysis/tagLabels.js'
 import { normalizeSentiment, normalizeUrgencyLevel, SENTIMENT_LABELS } from '../lib/sentiment.js'
@@ -44,19 +41,16 @@ import {
   CustomerRequestSourceTag,
   JourneySourceTag,
   PainPointSourceTag,
-  RuleManualDimensionSourceTag,
-} from './tags/TicketAnalysisSourceTag.jsx'
+  RuleManualDimensionSourceTag } from './tags/TicketAnalysisSourceTag.jsx'
 import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   isPostUseRatingLibraryRecord,
-  isPostUseNon10LibraryRecord,
-} from '../domain/postUseRatingImport.js'
+  isPostUseNon10LibraryRecord } from '../domain/postUseRatingImport.js'
 import { enrichPostUseJourneyRecord } from '../lib/postUseRating/enrichPostUseJourney.js'
 import {
-  extractHandlingOriginalTextForRecord,
-} from '../lib/taggingText.js'
+  extractHandlingOriginalTextForRecord } from '../lib/taggingText.js'
 import {
   buildCustomerRequestSavePatch,
   buildPainPointSavePatch,
@@ -65,30 +59,24 @@ import {
   getPainPointDraftDisplay,
   normalizeManualCustomerRequest,
   normalizeManualPainPoint,
-  PAIN_POINT_MANUAL_MAX_LENGTH,
-} from '../domain/ticketAnalysisManualFields.js'
+  PAIN_POINT_MANUAL_MAX_LENGTH } from '../domain/ticketAnalysisManualFields.js'
 import {
-  getActionScheduleDisplay,
-} from '../domain/actionSchedule.js'
+  getActionScheduleDisplay } from '../domain/actionSchedule.js'
 import {
   getEstablishedActionDisplay,
-  getEstablishedActionDetailDisplay,
-} from '../domain/establishedAction.js'
+  getEstablishedActionDetailDisplay } from '../domain/establishedAction.js'
 import EstablishedActionFields, {
-  getActionItemDisplayScheduleAt,
-} from './actions/EstablishedActionFields.jsx'
+  getActionItemDisplayScheduleAt } from './actions/EstablishedActionFields.jsx'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
 import { getActionItem } from '../lib/actionItemClient.js'
 import {
   buildDetailOptimizationSavePatch,
   DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH,
-  hasDetailOptimizationContent,
-} from '../domain/detailOptimizationFields.js'
+  hasDetailOptimizationContent } from '../domain/detailOptimizationFields.js'
 import {
   EMPTY_COMPLAINT_CAUSE_LABEL,
   getComplaintCauseL1Final,
-  isComplaintTicket,
-} from '../domain/complaintCause.js'
+  isComplaintTicket } from '../domain/complaintCause.js'
 import {
   COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH,
   clearComplaintCauseReviewFields,
@@ -96,14 +84,12 @@ import {
   isCompleteComplaintCauseReview,
   isComplaintCauseReviewManuallyMaintained,
   normalizeComplaintCauseReviewInput,
-  shouldIncludeComplaintCauseReviewInSave,
-} from '../domain/complaintCauseReview.js'
+  shouldIncludeComplaintCauseReviewInSave } from '../domain/complaintCauseReview.js'
 import { getComplaintCauseCascaderOptions } from '../domain/complaintCauseTaxonomy.js'
 import { isFollowUpEnrichableRecord } from '../lib/feedbackFilters.js'
 import {
   getFollowUpDissatisfiedReasonsDisplay,
-  getFollowUpSatisfactionDisplay,
-} from '../lib/ticketDetailDisplay.js'
+  getFollowUpSatisfactionDisplay } from '../lib/ticketDetailDisplay.js'
 import {
   getAutoRootCauseDisplay,
   getRootCauseReviewDraftDisplay,
@@ -113,8 +99,7 @@ import {
   isRootCauseReviewManuallyMaintained,
   normalizeRootCauseReviewInput,
   ROOT_CAUSE_REVIEW_MAX_LENGTH,
-  shouldIncludeRootCauseReviewInSave,
-} from '../domain/rootCauseReview.js'
+  shouldIncludeRootCauseReviewInSave } from '../domain/rootCauseReview.js'
 import RecordConflictModal from './RecordConflictModal.jsx'
 import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
@@ -135,15 +120,13 @@ import {
   normalizeTicketTodoLinkedTicketIds,
   TICKET_TODO_MANUAL_RESOLUTION_SELECT_OPTIONS,
   TICKET_TODO_RESOLUTION_SELECT_OPTIONS,
-  TICKET_TODO_TEXT_MAX_LENGTH,
-} from '../domain/ticketTodo.js'
+  TICKET_TODO_TEXT_MAX_LENGTH } from '../domain/ticketTodo.js'
 import TicketTodoStatusTag from './tags/TicketTodoStatusTag.jsx'
 import TicketTodoSelect from './TicketTodoSelect.jsx'
 import {
   persistEstablishedActionOnLinkedTickets,
   persistTicketTodoLinkChange,
-  syncTicketTodoIncoming,
-} from '../lib/ticketTodoIncomingSync.js'
+  syncTicketTodoIncoming } from '../lib/ticketTodoIncomingSync.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
 import {
@@ -154,12 +137,10 @@ import {
   phaseIdsMatchingKeyword,
   segmentHandlingOriginalText,
   shouldUseStructuredHandlingDisplay,
-  splitTextWithManualHighlights,
-} from '../lib/handlingOriginalDisplay.js'
+  splitTextWithManualHighlights } from '../lib/handlingOriginalDisplay.js'
 import {
   hasSeenHandlingExpandWhatsNew,
-  markHandlingExpandWhatsNewSeen,
-} from '../lib/whatsNew.js'
+  markHandlingExpandWhatsNewSeen } from '../lib/whatsNew.js'
 import { randomId } from '../lib/randomId.js'
 
 const RETAG_DEFAULT_TIP =
@@ -356,8 +337,7 @@ function readHandlingTextSelection(scope) {
 function HandlingOriginalSegmentBlock({ item, keyword, index, groupId, manualRanges }) {
   const bodyProps = {
     'data-handling-group-id': groupId,
-    'data-handling-item-index': String(index),
-  }
+    'data-handling-item-index': String(index) }
   if (item.kind === 'field') {
     return (
       <div className="space-y-1">
@@ -440,8 +420,7 @@ function HandlingOriginalTextModal({
   ticketId,
   text,
   showWhatsNew = false,
-  onDismissWhatsNew,
-}) {
+  onDismissWhatsNew }) {
   const bodyScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const leftPaneRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const [locateKeyword, setLocateKeyword] = useState('')
@@ -589,8 +568,7 @@ function HandlingOriginalTextModal({
         groupId: span.groupId,
         itemIndex: span.itemIndex,
         start: span.start,
-        end: span.end,
-      })),
+        end: span.end })),
     ])
   }, [])
 
@@ -676,8 +654,7 @@ function HandlingOriginalTextModal({
                 <Typography.Text type="secondary">（无正文）</Typography.Text>
               )}
             </div>
-          ),
-        }
+          ) }
       }),
     [groups, hitCountById, locateKeyword, rangesByItemKey],
   )
@@ -821,9 +798,7 @@ function HandlingOriginalTextModal({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          paddingTop: 12,
-        },
-      }}
+          paddingTop: 12 } }}
     >
       {toolbar}
       <div ref={copyHostRef} className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
@@ -915,15 +890,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     retagSession,
     importSession,
     sharedBackgroundTask,
-    reprocessing,
-  } = useFeedbacks()
+    reprocessing } = useFeedbacks()
   const { can, user } = useAuth()
   const {
     enabled: reviewEnabled,
     isReviewDone,
     markReviewDone,
-    clearReview,
-  } = useUserTicketReviews()
+    clearReview } = useUserTicketReviews()
   const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
@@ -1053,8 +1026,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           (/** @type {{ id: string; username: string; team?: string }} */ u) => ({
             value: u.id,
             label: u.username,
-            team: u.team,
-          }),
+            team: u.team }),
         )
         setTodoAssigneeOptions(options)
       } catch {
@@ -1167,8 +1139,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         retagActive: retagSession.active,
         importActive: importSession.active,
         reprocessingActive: reprocessing,
-        sharedBackgroundTask,
-      })
+        sharedBackgroundTask })
     ) {
       baseRevisionRef.current = latestRevision
       setRemoteStale(false)
@@ -1230,8 +1201,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       const patch = enrichPostUseJourneyRecord(feedback)
       const saved = await updateFeedback(feedback.id, patch, {
         expectedRevision: baseRevisionRef.current,
-        mergeBase: feedback,
-      })
+        mergeBase: feedback })
       setJourneyL1(patch.journeyL1)
       setJourneyL2(patch.journeyL2)
       if (saved) {
@@ -1269,8 +1239,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       complaintCauseL3Review,
       complaintCauseReviewReason,
       ticketTodoItems,
-      ticketTodoIncoming,
-    }),
+      ticketTodoIncoming }),
     [
       note,
       listeningReviewed,
@@ -1358,10 +1327,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       ...buildPainPointSavePatch(feedback, painPoint),
       ...buildDetailOptimizationSavePatch({
         productGroupOptimization,
-        designerOptimization,
-      }),
-      ...journey,
-    }
+        designerOptimization }),
+      ...journey }
   }
 
   const buildDraftRecord = () => {
@@ -1370,8 +1337,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     if (shouldIncludeRootCauseReviewInSave(feedback, rootCauseReviewTouched)) {
       draft = {
         ...draft,
-        rootCauseReview: normalizeRootCauseReviewInput(rootCauseReview),
-      }
+        rootCauseReview: normalizeRootCauseReviewInput(rootCauseReview) }
     }
     if (shouldIncludeComplaintCauseReviewInSave(feedback, complaintCauseReviewTouched)) {
       if (complaintCauseReviewEnabled) {
@@ -1381,9 +1347,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             l1: complaintCauseL1Review,
             l2: complaintCauseL2Review,
             l3: complaintCauseL3Review,
-            reason: complaintCauseReviewReason,
-          }),
-        }
+            reason: complaintCauseReviewReason }) }
       } else {
         draft = { ...draft, ...clearComplaintCauseReviewFields() }
       }
@@ -1420,8 +1384,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           l1: complaintCauseL1Review,
           l2: complaintCauseL2Review,
           l3: complaintCauseL3Review,
-          reason: complaintCauseReviewReason,
-        })
+          reason: complaintCauseReviewReason })
         if (!isCompleteComplaintCauseReview(causePatch)) {
           throw new Error('发起复核需选择完整的一/二/三级投诉原因并填写申请原因')
         }
@@ -1438,8 +1401,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       detail: establishedActionDetail,
       scheduleAt: actionSchedule,
       actionId,
-      linkedFromLibrary,
-    })
+      linkedFromLibrary })
     Object.assign(patch, actionPatch)
     const nextActionId = String(actionPatch.actionId ?? actionId ?? '').trim()
     if ('actionId' in actionPatch) {
@@ -1452,8 +1414,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         markOpenTicketTodosConvertedWhenEstablishingAction(ticketTodoItems, {
           hadAction,
           nowHasAction: Boolean(String(establishedAction || '').trim() || nextActionId),
-          linkedActionId: nextActionId,
-        }).map((item) => {
+          linkedActionId: nextActionId }).map((item) => {
           if (getTicketTodoResolution(item) !== 'converted_to_action' || item.linkedActionId?.trim()) {
             return item
           }
@@ -1482,8 +1443,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           actor,
           feedbacks,
           adapter,
-          updateFeedback,
-        })
+          updateFeedback })
       }
       for (const row of previousIncoming) {
         if (nextIncomingKeys.has(`${row.hostRecordId}::${row.itemId}`)) continue
@@ -1499,8 +1459,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           actor,
           feedbacks,
           adapter,
-          updateFeedback,
-        })
+          updateFeedback })
       }
     }
     const previousHostItems = getTicketTodoDraftItems(feedback)
@@ -1521,8 +1480,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase,
       skipConflictCheck: saveOptions.skipConflictCheck,
-      forceOverwrite: saveOptions.forceOverwrite,
-    })
+      forceOverwrite: saveOptions.forceOverwrite })
     const merged = { ...feedback, ...saved }
     const nextHostItems = getTicketTodoDraftItems(merged)
     await syncTicketTodoIncoming({
@@ -1531,8 +1489,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       nextItems: nextHostItems,
       feedbacks,
       adapter,
-      updateFeedback,
-    })
+      updateFeedback })
     if (merged.actionId?.trim()) {
       await syncFirstTicketSnapshotsForRecord(merged)
       if (!linkedFromLibrary) {
@@ -1546,8 +1503,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, merged.ticketId),
           feedbacks,
           adapter,
-          updateFeedback,
-        })
+          updateFeedback })
       }
     }
     baseRevisionRef.current = getRecordRevision(saved)
@@ -1615,8 +1571,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       await finalizeSave(patch, {
         expectedRevision: conflictRevision,
         mergeBase: conflictServerRecord,
-        forceOverwrite: true,
-      })
+        forceOverwrite: true })
       setConflictOpen(false)
     } catch (err) {
       const again = toRecordConflictError(err)
@@ -1672,10 +1627,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       onClose={handleRequestClose}
       closable={{ placement: 'end' }}
       destroyOnClose
+      zIndex={1010}
       styles={{
         section: { overflow: 'hidden' },
-        body: { overflowX: 'hidden', overflowY: 'auto' },
-      }}
+        body: { overflowX: 'hidden', overflowY: 'auto' } }}
       footer={
         reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1700,17 +1655,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 听音
               </Checkbox>
             ) : null}
+            {canDeleteTicket && (
+              <Button
+                danger
+                className="min-w-[4.5rem]"
+                disabled={!feedback?.id || deleting}
+                onClick={() => setDeleteOpen(true)}
+              >
+                删除
+              </Button>
+            )}
             <div className="ml-auto flex shrink-0 gap-2">
-              {canDeleteTicket && (
-                <Button
-                  danger
-                  className="min-w-[4.5rem]"
-                  disabled={!feedback?.id || deleting}
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  删除
-                </Button>
-              )}
               {isPostUseNon10 && (
                 <Button
                   className="min-w-[5.5rem]"
@@ -1756,7 +1711,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         ) : null
       }
     >
-      <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+      <div className="min-w-0 max-w-full drawer-space-y overflow-x-hidden">
         {remoteStale ? (
           <Alert
             type="warning"
@@ -1778,11 +1733,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         ) : null}
 
         {isPostUseLibrary ? (
-          <div id="rating-detail-content" className="scroll-mt-2 space-y-3">
-            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-              用后即评
-            </Typography.Title>
-            <Card size="small" title="评价摘要">
+          <div id="rating-detail-content" className="scroll-mt-2 drawer-section-gap">
+            <div className="section-title">用后即评</div>
+            <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">评价摘要</span></div>
               <Descriptions size="small" column={1} bordered>
                 <Descriptions.Item label="渠道">
                   {feedback.channel === 'sms'
@@ -1814,9 +1767,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     .join(' / ') || '待补全'}
                 </Descriptions.Item>
               </Descriptions>
-            </Card>
+            </div>
             {feedback.customerVisit ? (
-              <Card size="small" title="客服部回访">
+              <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">客服部回访</span></div>
                 <Descriptions size="small" column={1} bordered>
                   <Descriptions.Item label="客户名称">
                     {feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
@@ -1843,23 +1796,18 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     </Typography.Paragraph>
                   </Descriptions.Item>
                 </Descriptions>
-              </Card>
+              </div>
             ) : null}
           </div>
         ) : null}
 
         {/* 1 · 工单内容 */}
         {!isPostUseLibrary ? (
-        <div id="ticket-detail-content" className="scroll-mt-2 space-y-3">
-          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-            工单内容
-          </Typography.Title>
+        <div id="ticket-detail-content" className="scroll-mt-2 drawer-section-gap">
+          <div className="section-title">工单内容</div>
 
-          <Card
-            title="处理意见（工单原文）"
-            size="small"
-            extra={
-              handlingOriginalText ? (
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">处理意见（工单原文）</span><div>
+              {handlingOriginalText ? (
                 <Badge
                   count={showHandlingWhatsNew ? '新' : 0}
                   size="small"
@@ -1876,41 +1824,36 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     放大查看
                   </Button>
                 </Badge>
-              ) : null
-            }
-          >
+              ) : null}
+            </div></div>
             <Typography.Paragraph className="!mb-0 line-clamp-3 overflow-hidden whitespace-pre-wrap">
               {handlingOriginalText || '—'}
             </Typography.Paragraph>
             <Typography.Text type="secondary" className="mt-2 block text-xs">
               默认预览约 3 行，完整内容请点右上角「放大查看」。优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
             </Typography.Text>
-          </Card>
+          </div>
 
           {isFollowUpEnrichableRecord(feedback) ? (
             <>
-              <Card title="回访满意度" size="small">
+              <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">回访满意度</span></div>
                 <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   来自满意度回访导入，只读
                 </Typography.Text>
-              </Card>
-              <Card
-                title={
+              </div>
+              <div className="page-card-sm !bg-ink-50/50"><div className="page-card-header"><span className="page-card-title">
                   <span className="inline-flex flex-wrap items-center gap-2">
                     <span className="shrink-0">不满意原因</span>
                     <Typography.Text type="secondary" className="text-xs font-normal">
                       来自满意度回访汇总
                     </Typography.Text>
                   </span>
-                }
-                size="small"
-                className="!bg-ink-50/50"
-              >
+                </span></div>
                 <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
                   {getFollowUpDissatisfiedReasonsDisplay(feedback)}
                 </Typography.Paragraph>
-              </Card>
+              </div>
             </>
           ) : null}
         </div>
@@ -1919,24 +1862,21 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         {/* 2 · 工单分析 */}
         <div
           id={isPostUseLibrary ? 'rating-detail-analysis' : 'ticket-detail-analysis'}
-          className="scroll-mt-2 space-y-3"
+          className="scroll-mt-2 drawer-section-gap"
         >
-          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+          <div className="section-title">
             {isPostUseLibrary ? '评价分析' : '工单分析'}
-          </Typography.Title>
+          </div>
 
-          <Card
-            title={
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">客户请求内容</span>
                 <Typography.Text type="secondary" className="text-xs font-normal">
-                  工单全流程中客户核心诉求的精炼摘要（≤80 字，最长 120）。
+                  工单全流程中客户核心诉求的精炼摘要（≤120 字，最长 200）。
                 </Typography.Text>
                 <CustomerRequestSourceTag record={feedback} />
               </span>
-            }
-            size="small"
-          >
+            </span></div>
             {canEdit ? (
               <Input.TextArea
                 rows={2}
@@ -1955,20 +1895,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 {getDisplayCustomerRequest(feedback) || '—'}
               </Typography.Paragraph>
             )}
-          </Card>
+          </div>
 
-          <Card
-            title={
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">需求痛点挖掘</span>
                 <Typography.Text type="secondary" className="text-xs font-normal">
-                  从客户表述中提炼最核心的未满足诉求或问题本质（≤60 字，最长 80）。
+                  从客户表述中提炼最核心的未满足诉求或问题本质（≤120 字，最长 200）。
                 </Typography.Text>
                 <PainPointSourceTag record={feedback} />
               </span>
-            }
-            size="small"
-          >
+            </span></div>
             {canEdit ? (
               <Input.TextArea
                 rows={2}
@@ -1985,263 +1922,246 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 {getDisplayPainPoint(feedback) || '—'}
               </Typography.Paragraph>
             )}
-          </Card>
+          </div>
 
-          <Card title="根因排查" size="small">
-            <div className="mb-2 inline-flex flex-wrap items-center gap-2">
-              <Typography.Text strong className="text-xs">
-                自动生成
-              </Typography.Text>
-              <AutoRootCauseTag record={feedback} />
-            </div>
-            <Descriptions
-              column={1}
-              size="small"
-              bordered
-              items={[
-                {
-                  key: 'auto',
-                  label: '根因（自动）',
-                  children: getAutoRootCauseDisplay(feedback) || '—',
-                },
-              ]}
-            />
-
-            {canEdit ? (
-              <div className="mt-4 space-y-3">
-                <Typography.Text strong className="block text-xs">
-                  人工复核
-                </Typography.Text>
-                <Typography.Text type="secondary" className="block text-xs">
-                  {getRootCauseReviewEditorHint(feedback)}
-                </Typography.Text>
-                {!isRootCauseReviewManuallyMaintained(feedback) &&
-                getRootCauseReviewImportSuggestion(feedback) ? (
-                  <div className="rounded border border-dashed border-ink-200 bg-ink-50 px-2 py-1 text-xs text-secondary">
-                    <span className="font-medium">导入原文（只读建议）：</span>
-                    {getRootCauseReviewImportSuggestion(feedback)}
-                  </div>
-                ) : null}
-                <Input.TextArea
-                  rows={3}
-                  placeholder={getRootCauseReviewEditorPlaceholder(feedback)}
-                  maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
-                  showCount
-                  value={rootCauseReview}
-                  onChange={(e) => {
-                    setRootCauseReviewTouched(true)
-                    setRootCauseReview(
-                      e.target.value.slice(0, ROOT_CAUSE_REVIEW_MAX_LENGTH),
-                    )
-                  }}
-                />
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">根因排查</span></div>
+            <div className="sub-section-box">
+              <div className="sub-section-label">
+                <span>自动生成</span>
+                <AutoRootCauseTag record={feedback} />
               </div>
-            ) : (
               <Descriptions
-                className="mt-4"
                 column={1}
                 size="small"
                 bordered
-                title="人工复核"
                 items={[
                   {
-                    key: 'manual',
-                    label: '根因排查',
-                    children: getRootCauseReviewDraftDisplay(feedback) || '—',
-                  },
+                    key: 'auto',
+                    label: '根因（自动）',
+                    children: getAutoRootCauseDisplay(feedback) || '—' },
                 ]}
               />
-            )}
-          </Card>
 
-          <Card title="优化建议" size="small">
-            <div className="mb-2 inline-flex flex-wrap items-center gap-2">
-              <Typography.Text strong className="text-xs">
-                自动生成
-              </Typography.Text>
-              <AutoOptimizationSourceTag record={feedback} />
-            </div>
-            <Descriptions
-              column={1}
-              size="small"
-              bordered
-              items={[
-                {
-                  key: 'product',
-                  label: '产品/技术优化（自动）',
-                  children: feedback.optimizationProduct?.trim() || '—',
-                },
-                ...(optimizationServiceText
-                  ? [
-                      {
-                        key: 'service',
-                        label: '服务/流程改进（自动）',
-                        children: optimizationServiceText,
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-
-            {canEdit ? (
-              <div className="mt-4 space-y-4">
-                {!isPostUseLibrary ? <div className="space-y-3">
-                  <Typography.Text strong className="block text-xs">
-                    人工复核
-                  </Typography.Text>
-                  <Form layout="vertical">
-                    <Form.Item label="产品组优化建议" className="!mb-3">
-                      <Input.TextArea
-                        rows={2}
-                        placeholder="默认为空"
-                        maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                        showCount
-                        value={productGroupOptimization}
-                        onChange={(e) => {
-                          setProductGroupOptimization(
-                            e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                          )
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item label="设计师优化建议" className="!mb-0">
-                      <Input.TextArea
-                        rows={2}
-                        placeholder="默认为空"
-                        maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
-                        showCount
-                        value={designerOptimization}
-                        onChange={(e) => {
-                          setDesignerOptimization(
-                            e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
-                          )
-                        }}
-                      />
-                    </Form.Item>
-                  </Form>
-                </div> : null}
-
-                <div className="space-y-3">
-                  <Typography.Text strong className="text-xs">
-                    确立举措
-                  </Typography.Text>
-                  <EstablishedActionFields
-                    productKey={feedback.productKey || feedback.taxonomyKey}
-                    actionId={actionId}
-                    establishedAction={establishedAction}
-                    establishedActionDetail={establishedActionDetail}
-                    actionSchedule={actionSchedule}
-                    linkedFromLibrary={linkedFromLibrary}
-                    disabled={saving}
-                    onSelect={(item) => {
-                      setActionId(item.id)
-                      setEstablishedAction(item.content)
-                      setEstablishedActionDetail(item.detail || '')
-                      setActionSchedule(getActionItemDisplayScheduleAt(item))
-                      setLinkedFromLibrary(true)
-                    }}
-                    onClear={() => {
-                      setActionId('')
-                      setEstablishedAction('')
-                      setEstablishedActionDetail('')
-                      setActionSchedule('')
-                      setLinkedFromLibrary(false)
-                    }}
-                    onContentChange={setEstablishedAction}
-                    onDetailChange={setEstablishedActionDetail}
-                    onScheduleChange={setActionSchedule}
-                  />
-                </div>
-              </div>
-            ) : (
-              <>
-                {!isPostUseLibrary && hasDetailOptimizationContent(feedback) && (
+              <div className="mt-3">
+                <div className="sub-section-label">人工复核</div>
+                {canEdit ? (
+                  <>
+                    <Typography.Text type="secondary" className="block text-xs">
+                      {getRootCauseReviewEditorHint(feedback)}
+                    </Typography.Text>
+                    {!isRootCauseReviewManuallyMaintained(feedback) &&
+                    getRootCauseReviewImportSuggestion(feedback) ? (
+                      <div className="rounded border border-dashed border-ink-200 bg-ink-50 px-2 py-1 text-xs text-secondary">
+                        <span className="font-medium">导入原文（只读建议）：</span>
+                        {getRootCauseReviewImportSuggestion(feedback)}
+                      </div>
+                    ) : null}
+                    <Input.TextArea
+                      rows={3}
+                      placeholder={getRootCauseReviewEditorPlaceholder(feedback)}
+                      maxLength={ROOT_CAUSE_REVIEW_MAX_LENGTH}
+                      showCount
+                      value={rootCauseReview}
+                      onChange={(e) => {
+                        setRootCauseReviewTouched(true)
+                        setRootCauseReview(
+                          e.target.value.slice(0, ROOT_CAUSE_REVIEW_MAX_LENGTH),
+                        )
+                      }}
+                    />
+                  </>
+                ) : (
                   <Descriptions
-                    className="mt-4"
                     column={1}
                     size="small"
                     bordered
-                    title="人工复核"
                     items={[
-                      ...(feedback.productGroupOptimization?.trim()
-                        ? [
-                            {
-                              key: 'productGroup',
-                              label: '产品组优化建议',
-                              children: feedback.productGroupOptimization.trim(),
-                            },
-                          ]
-                        : []),
-                      ...(feedback.designerOptimization?.trim()
-                        ? [
-                            {
-                              key: 'designer',
-                              label: '设计师优化建议',
-                              children: feedback.designerOptimization.trim(),
-                            },
-                          ]
-                        : []),
+                      {
+                        key: 'manual',
+                        label: '根因排查',
+                        children: getRootCauseReviewDraftDisplay(feedback) || '—' },
                     ]}
                   />
                 )}
-                {(getEstablishedActionDisplay(feedback) ||
-                  getEstablishedActionDetailDisplay(feedback) ||
-                  feedback.actionSchedule?.trim()) && (
-                  <div className="mt-4 space-y-2">
-                    <Typography.Text strong className="text-xs">
-                      确立举措
-                    </Typography.Text>
-                    <Descriptions
-                      column={1}
-                      size="small"
-                      bordered
-                      items={[
+              </div>
+            </div>
+          </div>
+
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">优化建议</span></div>
+            <div className="sub-section-box">
+              <div className="sub-section-label">
+                <span>自动生成</span>
+                <AutoOptimizationSourceTag record={feedback} />
+              </div>
+              <Descriptions
+                column={1}
+                size="small"
+                bordered
+                items={[
+                  {
+                    key: 'product',
+                    label: '产品/技术优化（自动）',
+                    children: feedback.optimizationProduct?.trim() || '—' },
+                  ...(optimizationServiceText
+                    ? [
                         {
-                          key: 'content',
-                          label: '举措内容',
-                          children: getEstablishedActionDisplay(feedback) || '—',
-                        },
-                        {
-                          key: 'schedule',
-                          label: '排期',
-                          children: getActionScheduleDisplay(feedback.actionSchedule),
-                        },
-                      ]}
+                          key: 'service',
+                          label: '服务/流程改进（自动）',
+                          children: optimizationServiceText },
+                      ]
+                    : []),
+                ]}
+              />
+
+              {canEdit ? (
+                <div className="mt-3 flex flex-col gap-3">
+                  {!isPostUseLibrary ? (
+                    <div>
+                      <div className="sub-section-label">人工复核</div>
+                      <Form layout="vertical">
+                        <Form.Item label="产品组优化建议" className="!mb-3">
+                          <Input.TextArea
+                            rows={2}
+                            placeholder="默认为空"
+                            maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                            showCount
+                            value={productGroupOptimization}
+                            onChange={(e) => {
+                              setProductGroupOptimization(
+                                e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                              )
+                            }}
+                          />
+                        </Form.Item>
+                        <Form.Item label="设计师优化建议" className="!mb-0">
+                          <Input.TextArea
+                            rows={2}
+                            placeholder="默认为空"
+                            maxLength={DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH}
+                            showCount
+                            value={designerOptimization}
+                            onChange={(e) => {
+                              setDesignerOptimization(
+                                e.target.value.slice(0, DETAIL_OPTIMIZATION_TEXT_MAX_LENGTH),
+                              )
+                            }}
+                          />
+                        </Form.Item>
+                      </Form>
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <div className="sub-section-label">确立举措</div>
+                    <EstablishedActionFields
+                      productKey={feedback.productKey || feedback.taxonomyKey}
+                      actionId={actionId}
+                      establishedAction={establishedAction}
+                      establishedActionDetail={establishedActionDetail}
+                      actionSchedule={actionSchedule}
+                      linkedFromLibrary={linkedFromLibrary}
+                      disabled={saving}
+                      onSelect={(item) => {
+                        setActionId(item.id)
+                        setEstablishedAction(item.content)
+                        setEstablishedActionDetail(item.detail || '')
+                        setActionSchedule(getActionItemDisplayScheduleAt(item))
+                        setLinkedFromLibrary(true)
+                      }}
+                      onClear={() => {
+                        setActionId('')
+                        setEstablishedAction('')
+                        setEstablishedActionDetail('')
+                        setActionSchedule('')
+                        setLinkedFromLibrary(false)
+                      }}
+                      onContentChange={setEstablishedAction}
+                      onDetailChange={setEstablishedActionDetail}
+                      onScheduleChange={setActionSchedule}
                     />
-                    {getEstablishedActionDetailDisplay(feedback) ? (
-                      <Collapse
-                        ghost
-                        className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {!isPostUseLibrary && hasDetailOptimizationContent(feedback) && (
+                    <div className="mt-4">
+                      <div className="sub-section-label">人工复核</div>
+                      <Descriptions
+                        column={1}
+                        size="small"
+                        bordered
                         items={[
-                          {
-                            key: 'detail',
-                            label: '举措详情',
-                            children: (
-                              <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                                {getEstablishedActionDetailDisplay(feedback)}
-                              </Typography.Paragraph>
-                            ),
-                          },
+                          ...(feedback.productGroupOptimization?.trim()
+                            ? [
+                                {
+                                  key: 'productGroup',
+                                  label: '产品组优化建议',
+                                  children: feedback.productGroupOptimization.trim() },
+                              ]
+                            : []),
+                          ...(feedback.designerOptimization?.trim()
+                            ? [
+                                {
+                                  key: 'designer',
+                                  label: '设计师优化建议',
+                                  children: feedback.designerOptimization.trim() },
+                              ]
+                            : []),
                         ]}
                       />
-                    ) : null}
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
+                    </div>
+                  )}
+                  {(getEstablishedActionDisplay(feedback) ||
+                    getEstablishedActionDetailDisplay(feedback) ||
+                    feedback.actionSchedule?.trim()) && (
+                    <div className="mt-4">
+                      <div className="sub-section-label">确立举措</div>
+                      <Descriptions
+                        column={1}
+                        size="small"
+                        bordered
+                        items={[
+                          {
+                            key: 'content',
+                            label: '举措内容',
+                            children: getEstablishedActionDisplay(feedback) || '—' },
+                          {
+                            key: 'schedule',
+                            label: '排期',
+                            children: getActionScheduleDisplay(feedback.actionSchedule) },
+                        ]}
+                      />
+                      {getEstablishedActionDetailDisplay(feedback) ? (
+                        <Collapse
+                          ghost
+                          className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                          items={[
+                            {
+                              key: 'detail',
+                              label: '举措详情',
+                              children: (
+                                <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                                  {getEstablishedActionDetailDisplay(feedback)}
+                                </Typography.Paragraph>
+                              ) },
+                          ]}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
 
-          <Card
-            title={
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">会议待办</span>
                 <Typography.Text type="secondary" className="text-xs font-normal">
                   客诉复盘后的跟进事项，与「确立举措」分开维护
                 </Typography.Text>
               </span>
-            }
-            size="small"
-          >
+            </span></div>
             {canEdit ? (
               <div className="space-y-3">
                 {ticketTodoIncoming.map((row) => (
@@ -2278,9 +2198,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   const assigneeIds = normalizeTicketTodoAssignees(item).map((person) => person.userId)
                   return (
                   <div key={item.id} className="rounded-md border border-ink-100 p-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Select
-                        className="w-[168px] shrink-0"
+                        className="w-[140px] shrink-0"
                         value={getTicketTodoResolution(item)}
                         disabled={saving || !openItem}
                         options={
@@ -2295,23 +2215,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                           setTicketTodoItems(next)
                         }}
                       />
-                      <Input
-                        className="min-w-0 flex-1"
-                        placeholder="输入待办内容"
-                        maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
-                        value={item.text}
-                        disabled={itemDisabled}
-                        onChange={(event) => {
-                          const next = [...ticketTodoItems]
-                          next[index] = {
-                            ...item,
-                            text: event.target.value.slice(0, TICKET_TODO_TEXT_MAX_LENGTH),
-                          }
-                          setTicketTodoItems(next)
-                        }}
-                      />
                       <Select
-                        className="min-w-[200px] max-w-[280px] shrink-0"
+                        className="min-w-[180px] max-w-[280px] shrink-0"
                         mode="multiple"
                         placeholder="负责人"
                         showSearch
@@ -2322,8 +2227,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         value={assigneeIds}
                         options={todoAssigneeOptions.map((option) => ({
                           value: option.value,
-                          label: option.label,
-                        }))}
+                          label: option.label }))}
                         onChange={(values) => {
                           const assignees = (values || []).map((userId) => {
                             const option = todoAssigneeOptions.find((o) => o.value === userId)
@@ -2344,6 +2248,21 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         }}
                       />
                     </div>
+                    <Input.TextArea
+                      className="mt-2"
+                      autoSize={{ minRows: 1, maxRows: 3 }}
+                      placeholder="输入待办内容"
+                      maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
+                      value={item.text}
+                      disabled={itemDisabled}
+                      onChange={(event) => {
+                        const next = [...ticketTodoItems]
+                        next[index] = {
+                          ...item,
+                          text: event.target.value.slice(0, TICKET_TODO_TEXT_MAX_LENGTH) }
+                        setTicketTodoItems(next)
+                      }}
+                    />
                   </div>
                   )
                 })}
@@ -2370,8 +2289,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                           linkedTicketIds: [
                             ...normalizeTicketTodoLinkedTicketIds(row, row.ticketId),
                             feedback.ticketId,
-                          ].filter(Boolean),
-                        },
+                          ].filter(Boolean) },
                       ]
                     })
                   }}
@@ -2420,9 +2338,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             ) : (
               <Typography.Text type="secondary">—</Typography.Text>
             )}
-          </Card>
+          </div>
 
-          <Card title="备注" size="small">
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">备注</span></div>
             {canEdit ? (
               <Input.TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
             ) : (
@@ -2430,19 +2348,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 {note?.trim() || '—'}
               </Typography.Paragraph>
             )}
-          </Card>
+          </div>
         </div>
 
         {/* 3 · 工单分类 */}
         <div
           id={isPostUseLibrary ? 'rating-detail-classification' : 'ticket-detail-classification'}
-          className="scroll-mt-2 space-y-3"
+          className="scroll-mt-2 drawer-section-gap"
         >
-          <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
+          <div className="section-title">
             {isPostUseLibrary ? '评价分类' : '工单分类'}
-          </Typography.Title>
+          </div>
 
-          <Card size="small">
+          <div className="page-card-sm">
           {isPostUseLibrary ? (
             canEdit ? (
               <Form layout="vertical">
@@ -2465,13 +2383,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                           const definition = resolveTagDefinition({
                             dimension: 'journey',
                             journeyL1: journey.label,
-                            taxonomy,
-                          })
+                            taxonomy })
                           return {
                             label: journey.label,
                             value: journey.label,
-                            title: definition.body,
-                          }
+                            title: definition.body }
                         }),
                       ]}
                       onChange={(value) => {
@@ -2492,13 +2408,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                             dimension: 'journey',
                             journeyL1,
                             journeyL2: child.label,
-                            taxonomy,
-                          })
+                            taxonomy })
                           return {
                             label: child.label,
                             value: child.label,
-                            title: definition.body,
-                          }
+                            title: definition.body }
                         }),
                       ]}
                       onChange={setJourneyL2}
@@ -2580,8 +2494,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         const def = resolveTagDefinition({
                           dimension: 'journey',
                           journeyL1: j.label,
-                          taxonomy,
-                        })
+                          taxonomy })
                         return { label: j.label, value: j.label, title: def.body }
                       }),
                     ]}
@@ -2611,8 +2524,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                           dimension: 'journey',
                           journeyL1,
                           journeyL2: c.label,
-                          taxonomy,
-                        })
+                          taxonomy })
                         return { label: c.label, value: c.label, title: def.body }
                       }),
                     ]}
@@ -2670,11 +2582,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           )}
 
           {isComplaintTicket(feedback) ? (
-            <>
-              <Divider className="!my-4" />
-              <Typography.Text strong className="mb-2 block text-sm">
-                投诉原因（终判）
-              </Typography.Text>
+            <div className="sub-section-divider" />
+          ) : null}
+          {isComplaintTicket(feedback) ? (
+            <div className="sub-section-box">
+              <div className="sub-section-label">投诉原因（终判）</div>
               <Descriptions column={1} size="small" bordered className="!mb-3">
                 <Descriptions.Item label="一级（终判）">
                   {getComplaintCauseL1Final(feedback) || EMPTY_COMPLAINT_CAUSE_LABEL}
@@ -2773,9 +2685,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   </Descriptions.Item>
                 </Descriptions>
               )}
-            </>
+            </div>
           ) : null}
-          </Card>
+          </div>
         </div>
       </div>
       <RecordConflictModal

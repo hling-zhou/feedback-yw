@@ -110,13 +110,13 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
         /shrink-0">需求痛点挖掘<[\s\S]*?\{canEdit \? \([\s\S]*?Input\.TextArea/,
       )
       expect(drawerSrc).toMatch(/canEdit \? \([\s\S]*确立举措/)
-      expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*自动生成/)
-      expect(drawerSrc).toMatch(/title="根因排查"[\s\S]*getAutoRootCauseDisplay\(feedback\)/)
+      expect(drawerSrc).toMatch(/page-card-title">根因排查<\/span>[\s\S]*自动生成/)
+      expect(drawerSrc).toMatch(/page-card-title">根因排查<\/span>[\s\S]*getAutoRootCauseDisplay\(feedback\)/)
       expect(drawerSrc).toMatch(
         /getRecordRevision\(cachedFeedback\) > getRecordRevision\(fullFeedback\)/,
       )
       expect(drawerSrc).toMatch(
-        /title="根因排查"[\s\S]*?\{canEdit \? \([\s\S]*rootCauseReview/,
+        /page-card-title">根因排查<\/span>[\s\S]*?\{canEdit \? \([\s\S]*rootCauseReview/,
       )
     })
 
@@ -128,7 +128,7 @@ describe('FeedbackDrawer UAT (P2-7)', () => {
         /shrink-0">需求痛点挖掘<[\s\S]*?\{canEdit \? \([\s\S]*?\) : \([\s\S]*getDisplayPainPoint\(feedback\)/,
       )
       expect(drawerSrc).toMatch(
-        /title="根因排查"[\s\S]*getRootCauseReviewDraftDisplay\(feedback\)/,
+        /page-card-title">根因排查<\/span>[\s\S]*getRootCauseReviewDraftDisplay\(feedback\)/,
       )
     })
   })

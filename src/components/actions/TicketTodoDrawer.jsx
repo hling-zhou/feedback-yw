@@ -175,203 +175,227 @@ export default function TicketTodoDrawer({
       }
     >
       {row ? (
-        <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
-          <section>
-            {processing ? (
-              <Form layout="vertical" className="!mb-0">
-                <Form.Item label="待办" className="!mb-3">
-                  <Input.TextArea
-                    rows={3}
-                    maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
-                    showCount
-                    value={text}
-                    disabled={saving}
-                    onChange={(event) =>
-                      setText(event.target.value.slice(0, TICKET_TODO_TEXT_MAX_LENGTH))
-                    }
-                  />
-                </Form.Item>
-                <Form.Item label="负责人" className="!mb-0">
-                  <Select
-                    className="w-full"
-                    mode="multiple"
-                    placeholder="负责人"
-                    showSearch
-                    optionFilterProp="label"
-                    allowClear
-                    disabled={saving || !assigneeOptions.length}
-                    value={assignees.map((item) => item.userId)}
-                    options={assigneeOptions}
-                    onChange={(values) => {
-                      setAssignees(
-                        (values || []).map((userId) => {
-                          const option = assigneeOptions.find((item) => item.value === userId)
-                          return { userId, username: option?.label || userId }
-                        }),
-                      )
-                    }}
-                  />
-                </Form.Item>
-              </Form>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <Typography.Text type="secondary" className="mb-1 block text-xs">
-                    待办
-                  </Typography.Text>
-                  <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                    {row.text || '—'}
-                  </Typography.Paragraph>
-                </div>
-                <div>
-                  <Typography.Text type="secondary" className="mb-1 block text-xs">
-                    负责人
-                  </Typography.Text>
-                  <Typography.Text className="text-sm">
-                    {formatTicketTodoAssigneeLabel(row)}
-                  </Typography.Text>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-              处理
-            </Typography.Title>
-            {processing ? (
-              <div className="space-y-3">
-                <Radio.Group
-                  value={processMode}
-                  disabled={saving}
-                  onChange={(event) => setProcessMode(event.target.value)}
-                >
-                  <Radio value={TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION}>制定举措</Radio>
-                  <Radio value={TICKET_TODO_PROCESS_MODE.NO_ACTION}>无举措</Radio>
-                </Radio.Group>
-                {processMode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION ? (
-                  <EstablishedActionFields
-                    productKey={record?.productKey || row.productKey}
-                    actionId={actionId}
-                    establishedAction={establishedAction}
-                    establishedActionDetail={establishedActionDetail}
-                    actionSchedule={actionSchedule}
-                    linkedFromLibrary={linkedFromLibrary}
-                    disabled={saving}
-                    onSelect={(item) => {
-                      setActionId(item.id)
-                      setEstablishedAction(item.content)
-                      setEstablishedActionDetail(item.detail || '')
-                      setActionSchedule(getActionItemDisplayScheduleAt(item))
-                      setLinkedFromLibrary(true)
-                    }}
-                    onClear={() => {
-                      setActionId('')
-                      setEstablishedAction('')
-                      setEstablishedActionDetail('')
-                      setActionSchedule('')
-                      setLinkedFromLibrary(false)
-                    }}
-                    onContentChange={setEstablishedAction}
-                    onDetailChange={setEstablishedActionDetail}
-                    onScheduleChange={setActionSchedule}
-                  />
-                ) : (
-                  <div className="space-y-3">
+        <div className="min-w-0 max-w-full drawer-space-y overflow-x-hidden">
+          {/* ── 分区 1：待办信息 ── */}
+          <div className="drawer-section-gap">
+            <div className="section-title">待办信息</div>
+            <div className="page-card-sm">
+              {processing ? (
+                <Form layout="vertical" className="!mb-0">
+                  <Form.Item label="待办" className="!mb-3">
                     <Input.TextArea
                       rows={3}
-                      placeholder="直接反馈一段话（备注）"
-                      maxLength={TICKET_TODO_PROCESS_NOTE_MAX_LENGTH}
+                      maxLength={TICKET_TODO_TEXT_MAX_LENGTH}
                       showCount
-                      value={processNote}
+                      value={text}
                       disabled={saving}
                       onChange={(event) =>
-                        setProcessNote(event.target.value.slice(0, TICKET_TODO_PROCESS_NOTE_MAX_LENGTH))
+                        setText(event.target.value.slice(0, TICKET_TODO_TEXT_MAX_LENGTH))
                       }
                     />
-                    <Checkbox
-                      checked={markProcessed}
-                      disabled={saving}
-                      onChange={(event) => setMarkProcessed(event.target.checked)}
-                    >
-                      标记为已处理
-                    </Checkbox>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {showViewAction ? (
-                  <div className="space-y-1">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                      {getEstablishedActionDisplay(record) || '—'}
-                    </Typography.Paragraph>
-                    {getEstablishedActionDetailDisplay(record) ? (
-                      <Typography.Paragraph type="secondary" className="!mb-0 whitespace-pre-wrap text-xs">
-                        {getEstablishedActionDetailDisplay(record)}
-                      </Typography.Paragraph>
-                    ) : null}
-                    <Typography.Text type="secondary" className="block text-xs">
-                      排期：{getActionScheduleDisplay(record?.actionSchedule)}
-                    </Typography.Text>
-                  </div>
-                ) : null}
-                {showViewNote && !showViewAction ? (
+                  </Form.Item>
+                  <Form.Item label="负责人" className="!mb-0">
+                    <Select
+                      className="w-full"
+                      mode="multiple"
+                      placeholder="负责人"
+                      showSearch
+                      optionFilterProp="label"
+                      allowClear
+                      disabled={saving || !assigneeOptions.length}
+                      value={assignees.map((item) => item.userId)}
+                      options={assigneeOptions}
+                      onChange={(values) => {
+                        setAssignees(
+                          (values || []).map((userId) => {
+                            const option = assigneeOptions.find((item) => item.value === userId)
+                            return { userId, username: option?.label || userId }
+                          }),
+                        )
+                      }}
+                    />
+                  </Form.Item>
+                </Form>
+              ) : (
+                <div className="space-y-3">
                   <div>
                     <Typography.Text type="secondary" className="mb-1 block text-xs">
-                      处理备注
+                      待办
                     </Typography.Text>
                     <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                      {row.processNote || '—'}
+                      {row.text || '—'}
                     </Typography.Paragraph>
                   </div>
-                ) : null}
-                {!showViewAction && !showViewNote ? (
-                  <Typography.Text type="secondary">—</Typography.Text>
-                ) : null}
-              </div>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-              问题上下文
-            </Typography.Title>
-            <Space size={[6, 6]} wrap>
-              <Tag className="!m-0">{row.problemType || '问题类型：—'}</Tag>
-              <Tag className="!m-0">
-                {row.journeyL1 || '用户旅程：—'}
-                {row.journeyL2 ? ` / ${row.journeyL2}` : ''}
-              </Tag>
-              <Tag className="!m-0">{sourceLabel}</Tag>
-            </Space>
-            <div>
-              <Typography.Text type="secondary" className="mb-1 block text-xs">
-                问题
-              </Typography.Text>
-              <Typography.Paragraph
-                className="!mb-0 text-sm text-ink-800"
-                ellipsis={{ rows: 3, tooltip: row.painPoint || '—' }}
-              >
-                {row.painPoint || '—'}
-              </Typography.Paragraph>
+                  <div>
+                    <Typography.Text type="secondary" className="mb-1 block text-xs">
+                      负责人
+                    </Typography.Text>
+                    <Typography.Text className="text-sm">
+                      {formatTicketTodoAssigneeLabel(row)}
+                    </Typography.Text>
+                  </div>
+                </div>
+              )}
             </div>
-            <Typography.Text type="secondary" className="block text-xs">
-              提出时间 {formatTicketTodoDateTime(row.createdAt) || '—'}
-              {row.updatedAt ? ` · 最近更新 ${formatTicketTodoDateTime(row.updatedAt)}` : ''}
-            </Typography.Text>
-          </section>
+          </div>
 
-          <section className="space-y-3">
-            <Typography.Title level={5} className="!mb-0 !text-sm !font-semibold">
-              关联反馈（{ticketIds.length}）
-            </Typography.Title>
-            <LinkedTicketsInlineList
-              ticketIds={ticketIds}
-              feedbackByTicketId={feedbackByTicketId}
-              onOpenTicket={onOpenTicket}
-            />
-          </section>
+          {/* ── 分区 2：处理 ── */}
+          <div className="drawer-section-gap">
+            <div className="section-title">处理</div>
+            <div className="page-card-sm">
+              {processing ? (
+                <div className="space-y-3">
+                  <Radio.Group
+                    value={processMode}
+                    disabled={saving}
+                    onChange={(event) => setProcessMode(event.target.value)}
+                  >
+                    <Radio value={TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION}>制定举措</Radio>
+                    <Radio value={TICKET_TODO_PROCESS_MODE.NO_ACTION}>无举措</Radio>
+                  </Radio.Group>
+                  {processMode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION ? (
+                    <div className="sub-section-box">
+                      <div className="sub-section-label">
+                        <span>制定举措</span>
+                      </div>
+                      <EstablishedActionFields
+                        productKey={record?.productKey || row.productKey}
+                        actionId={actionId}
+                        establishedAction={establishedAction}
+                        establishedActionDetail={establishedActionDetail}
+                        actionSchedule={actionSchedule}
+                        linkedFromLibrary={linkedFromLibrary}
+                        disabled={saving}
+                        onSelect={(item) => {
+                          setActionId(item.id)
+                          setEstablishedAction(item.content)
+                          setEstablishedActionDetail(item.detail || '')
+                          setActionSchedule(getActionItemDisplayScheduleAt(item))
+                          setLinkedFromLibrary(true)
+                        }}
+                        onClear={() => {
+                          setActionId('')
+                          setEstablishedAction('')
+                          setEstablishedActionDetail('')
+                          setActionSchedule('')
+                          setLinkedFromLibrary(false)
+                        }}
+                        onContentChange={setEstablishedAction}
+                        onDetailChange={setEstablishedActionDetail}
+                        onScheduleChange={setActionSchedule}
+                      />
+                    </div>
+                  ) : (
+                    <div className="sub-section-box">
+                      <div className="sub-section-label">
+                        <span>无举措</span>
+                      </div>
+                      <div className="space-y-3">
+                        <Input.TextArea
+                          rows={3}
+                          placeholder="直接反馈一段话（备注）"
+                          maxLength={TICKET_TODO_PROCESS_NOTE_MAX_LENGTH}
+                          showCount
+                          value={processNote}
+                          disabled={saving}
+                          onChange={(event) =>
+                            setProcessNote(event.target.value.slice(0, TICKET_TODO_PROCESS_NOTE_MAX_LENGTH))
+                          }
+                        />
+                        <Checkbox
+                          checked={markProcessed}
+                          disabled={saving}
+                          onChange={(event) => setMarkProcessed(event.target.checked)}
+                        >
+                          标记为已处理
+                        </Checkbox>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {showViewAction ? (
+                    <div className="sub-section-box">
+                      <div className="sub-section-label">
+                        <span>已制定举措</span>
+                      </div>
+                      <div className="space-y-1">
+                        <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                          {getEstablishedActionDisplay(record) || '—'}
+                        </Typography.Paragraph>
+                        {getEstablishedActionDetailDisplay(record) ? (
+                          <Typography.Paragraph type="secondary" className="!mb-0 whitespace-pre-wrap text-xs">
+                            {getEstablishedActionDetailDisplay(record)}
+                          </Typography.Paragraph>
+                        ) : null}
+                        <Typography.Text type="secondary" className="block text-xs">
+                          排期：{getActionScheduleDisplay(record?.actionSchedule)}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                  ) : null}
+                  {showViewNote && !showViewAction ? (
+                    <div className="sub-section-box">
+                      <div className="sub-section-label">
+                        <span>处理备注</span>
+                      </div>
+                      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                        {row.processNote || '—'}
+                      </Typography.Paragraph>
+                    </div>
+                  ) : null}
+                  {!showViewAction && !showViewNote ? (
+                    <Typography.Text type="secondary">—</Typography.Text>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── 分区 3：问题上下文 ── */}
+          <div className="drawer-section-gap">
+            <div className="section-title">问题上下文</div>
+            <div className="page-card-sm">
+              <div className="space-y-3">
+                <Space size={[6, 6]} wrap>
+                  <Tag className="!m-0">{row.problemType || '问题类型：—'}</Tag>
+                  <Tag className="!m-0">
+                    {row.journeyL1 || '用户旅程：—'}
+                    {row.journeyL2 ? ` / ${row.journeyL2}` : ''}
+                  </Tag>
+                  <Tag className="!m-0">{sourceLabel}</Tag>
+                </Space>
+                <div>
+                  <Typography.Text type="secondary" className="mb-1 block text-xs">
+                    问题
+                  </Typography.Text>
+                  <Typography.Paragraph
+                    className="!mb-0 text-sm text-ink-800"
+                    ellipsis={{ rows: 3, tooltip: row.painPoint || '—' }}
+                  >
+                    {row.painPoint || '—'}
+                  </Typography.Paragraph>
+                </div>
+                <Typography.Text type="secondary" className="block text-xs">
+                  提出时间 {formatTicketTodoDateTime(row.createdAt) || '—'}
+                  {row.updatedAt ? ` · 最近更新 ${formatTicketTodoDateTime(row.updatedAt)}` : ''}
+                </Typography.Text>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 分区 4：关联反馈 ── */}
+          <div className="drawer-section-gap">
+            <div className="section-title">关联反馈（{ticketIds.length}）</div>
+            <div className="page-card-sm">
+              <LinkedTicketsInlineList
+                ticketIds={ticketIds}
+                feedbackByTicketId={feedbackByTicketId}
+                onOpenTicket={onOpenTicket}
+              />
+            </div>
+          </div>
         </div>
       ) : null}
     </Drawer>

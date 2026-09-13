@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Card, Table, Typography } from 'antd'
+import { Alert, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
@@ -56,9 +56,9 @@ export default function OverviewTab({
 
   if (!snapshot) {
     return (
-      <Card>
+      <div className="page-card">
         <Typography.Text type="secondary">请先生成洞察快照。</Typography.Text>
-      </Card>
+      </div>
     )
   }
 
@@ -141,6 +141,7 @@ export default function OverviewTab({
         sourceFilter="all"
         snapshot={snapshot}
         records={feedbacks}
+        onOpenFeedback={onOpenFeedback}
       />
 
       <ProductExperienceTrendPanel feedbacks={feedbacks} currentPeriod={currentPeriod} />
@@ -148,15 +149,11 @@ export default function OverviewTab({
       <OverviewJourneyMap feedbacks={feedbacks} currentPeriod={currentPeriod} />
 
       {wanTouRows.length > 0 && (
-        <Card
-          title="各产品万投比（投诉工单）"
-          extra={
+        <div className="page-card"><div className="page-card-header"><span className="page-card-title">各产品万投比（投诉工单）</span><div>{
             <Typography.Text type="secondary" className="text-xs">
               {currentPeriod?.label || '当前周期'} · 月粒度=当月；年粒度=12月月均
             </Typography.Text>
-          }
-        >
-          <div className="rounded-lg bg-white">
+          }</div></div>
           <Table
             size="small"
             pagination={false}
@@ -165,7 +162,6 @@ export default function OverviewTab({
             dataSource={wanTouRows}
             columns={buildWanTouProductTableColumns()}
           />
-          </div>
           <Typography.Text type="secondary" className="mt-2 block text-xs">
             分母与目标值请在 <Link to="/settings">设置</Link> 中维护产品月订单数、万投比目标值。
             {wanTouRows.some((row) => row.missingOrderMonths?.length) ? (
@@ -175,11 +171,11 @@ export default function OverviewTab({
               </>
             ) : null}
           </Typography.Text>
-        </Card>
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="各数据来源概览" className="min-w-0 overflow-hidden">
+        <div className="page-card min-w-0 overflow-hidden"><div className="page-card-header"><span className="page-card-title">各数据来源概览</span></div>
           <Table
             size="small"
             tableLayout="fixed"
@@ -257,10 +253,10 @@ export default function OverviewTab({
               },
             ]}
           />
-        </Card>
+        </div>
 
         {trendByProduct.data?.length > 0 ? (
-          <Card title="跨源月度趋势（工单类合计）" className="min-w-0">
+          <div className="page-card min-w-0"><div className="page-card-header"><span className="page-card-title">跨源月度趋势（工单类合计）</span></div>
             <div className="rounded-lg bg-white p-2">
               <TrendChart
                 data={trendByProduct.data}
@@ -272,23 +268,23 @@ export default function OverviewTab({
             <Typography.Text type="secondary" className="mt-2 block text-xs">
               投诉与咨询工单按月合计，按产品堆叠；用后即评/调研等指标请见各分源 Tab。
             </Typography.Text>
-          </Card>
+          </div>
         ) : (
-          <Card title="跨源月度趋势（工单类合计）" className="min-w-0">
+          <div className="page-card min-w-0"><div className="page-card-header"><span className="page-card-title">跨源月度趋势（工单类合计）</span></div>
             <Typography.Text type="secondary" className="text-sm">
               当前周期暂无月度趋势数据。
             </Typography.Text>
-          </Card>
+          </div>
         )}
       </div>
 
-      <Card>
+      <div className="page-card">
         <Typography.Text type="secondary" className="text-xs">
           无数据？<Link to={buildImportUrl()}>去导入</Link>
           {' · '}
           <Link to="/feedbacks">反馈库</Link>
         </Typography.Text>
-      </Card>
+      </div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
-import { Drawer, Table, Tag, Typography, Divider, Empty } from 'antd'
+import { Drawer, Table, Tag, Typography, Divider, Empty, Button } from 'antd'
 
 /** @typedef {import('../../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult */
+/** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
 
 const STATUS_LABELS = {
   pending_evaluation: { label: '待评估', color: 'gold' },
@@ -18,10 +19,11 @@ const STATUS_LABELS = {
  * @param {ActionRecsResult | null} props.rec
  * @param {boolean} props.open
  * @param {() => void} props.onClose
- * @param {import('../../lib/types.js').FeedbackRecord[]} [props.records] - 用于工单详情展示
+ * @param {FeedbackRecord[]} [props.records] - 用于工单详情展示
  * @param {boolean} [props.showEffectTable=false] - 投诉/咨询 tab 专用：是否展示效果验证表
+ * @param {(record: FeedbackRecord) => void} [props.onOpenFeedback] - 点击工单号时触发，叠加工单详情抽屉
  */
-export default function ProblemDetailDrawer({ rec, open, onClose, records = [], showEffectTable = false }) {
+export default function ProblemDetailDrawer({ rec, open, onClose, records = [], showEffectTable = false, onOpenFeedback }) {
   if (!rec) return null
 
   const problemSummary = rec.problemSummary || {}
@@ -44,6 +46,7 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
       width={640}
       open={open}
       onClose={onClose}
+      zIndex={1000}
     >
       {/* 定性描述区 */}
       <div className="mb-4">
@@ -147,7 +150,22 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
             pagination={{ pageSize: 10, showSizeChanger: false }}
             scroll={{ x: 400 }}
             columns={[
-              { title: '工单号', dataIndex: 'ticketId', width: 120, ellipsis: true },
+              {
+                title: '工单号',
+                dataIndex: 'ticketId',
+                width: 120,
+                ellipsis: true,
+                render: (value, row) => (
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!px-0"
+                    onClick={() => onOpenFeedback?.(row)}
+                  >
+                    {value || row.id}
+                  </Button>
+                ),
+              },
               { title: '产品', dataIndex: 'productName', width: 100, ellipsis: true },
               { title: '问题类型', dataIndex: 'problemType', width: 100, ellipsis: true },
               { title: '需求痛点', dataIndex: 'painPoint', ellipsis: true },

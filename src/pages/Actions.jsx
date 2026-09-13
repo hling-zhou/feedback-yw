@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
-  Card,
   DatePicker,
   Dropdown,
   Form,
@@ -361,6 +360,9 @@ function ProductActionsTab() {
         message.warning('未在库中找到该工单，请稍后刷新或确认工单号')
         return
       }
+      // 关闭举措详情抽屉，避免两个 Drawer 叠加遮挡
+      setEditOpen(false)
+      setEditing(null)
       setSelectedDirect(record)
     },
     [feedbackByTicketId, setSelectedDirect],
@@ -1155,7 +1157,7 @@ function ProductActionsTab() {
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。点击行可打开举措详情。"
         hint={ACTIONS_PAGE_SUBTITLE_HINT}
@@ -1204,42 +1206,42 @@ function ProductActionsTab() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-ink-800">周期筛选</span>
-          <InsightPeriodPicker
-            compact
-            showHint={periodFilterActive}
-            allowEmpty
-            value={insightPeriodId}
-            onChange={(id, period) => {
-              setInsightPeriodId(id)
-              setSelectedPeriod(period)
-              setPage(1)
-            }}
-          />
-          {!periodFilterActive ? (
-            <Typography.Text type="secondary" className="text-xs">
-              当前显示全部举措（不限周期）
-            </Typography.Text>
-          ) : null}
+      <div className="page-card">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-ink-800">周期筛选</span>
+            <InsightPeriodPicker
+              compact
+              showHint={periodFilterActive}
+              allowEmpty
+              value={insightPeriodId}
+              onChange={(id, period) => {
+                setInsightPeriodId(id)
+                setSelectedPeriod(period)
+                setPage(1)
+              }}
+            />
+            {!periodFilterActive ? (
+              <Typography.Text type="secondary" className="text-xs">
+                当前显示全部举措（不限周期）
+              </Typography.Text>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-ink-800">首次提出时间</span>
+            <DatePicker.RangePicker
+              size="small"
+              placeholder={['起', '止']}
+              value={dateRange}
+              onChange={(v) => {
+                setDateRange(v)
+                setPage(1)
+              }}
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-ink-800">首次提出时间</span>
-          <DatePicker.RangePicker
-            size="small"
-            placeholder={['起', '止']}
-            value={dateRange}
-            onChange={(v) => {
-              setDateRange(v)
-              setPage(1)
-            }}
-          />
-        </div>
-      </div>
 
-      <Card size="small" className="!border-ink-100" styles={{ body: { overflow: 'visible' } }}>
-        <div className="space-y-3">
+        <div className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2">
             {ACTION_ITEM_STATUSES.map((status) => (
               <div
@@ -1267,56 +1269,56 @@ function ProductActionsTab() {
             <ActionItemProductStatusChart data={statsByProduct} rateLabel="完成率" />
           </div>
         </div>
-      </Card>
 
-      <div
-        ref={stickyChromeRef}
-        className="page-section-sm page-sticky-chrome flex w-full flex-wrap items-start gap-2"
-      >
-        <ActionItemCompositeFilter
-          className="min-w-0 flex-1"
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          onClearFilters={handleClearFilters}
-          options={{
-            productOptions,
-            statusOptions: FILTER_STATUS_OPTIONS,
-            problemTypeOptions,
-            journeyL1Options,
-            productNameByKey,
-          }}
-        />
-        <Button
-          icon={<ReloadOutlined />}
-          loading={listRefreshing}
-          onClick={() => void handleRefreshList()}
+        <div
+          ref={stickyChromeRef}
+          className="mt-3 flex w-full flex-wrap items-start gap-2"
         >
-          刷新
-        </Button>
+          <ActionItemCompositeFilter
+            className="min-w-0 flex-1"
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            onClearFilters={handleClearFilters}
+            options={{
+              productOptions,
+              statusOptions: FILTER_STATUS_OPTIONS,
+              problemTypeOptions,
+              journeyL1Options,
+              productNameByKey,
+            }}
+          />
+          <Button
+            icon={<ReloadOutlined />}
+            loading={listRefreshing}
+            onClick={() => void handleRefreshList()}
+          >
+            刷新
+          </Button>
+        </div>
+        <div className="mt-3">
+          <Table
+            rowKey="id"
+            size="small"
+            loading={loading}
+            columns={columns}
+            dataSource={items}
+            sticky={{ offsetHeader: stickyChromeHeight }}
+            scroll={{ x: 1960 }}
+            onRow={(record) => ({
+              onClick: () => openEdit(record),
+              className: 'cursor-pointer',
+            })}
+            pagination={{
+              current: page,
+              pageSize: PAGE_SIZE,
+              total,
+              showSizeChanger: false,
+              showTotal: (t) => `共 ${t} 条`,
+              onChange: (p) => setPage(p),
+            }}
+          />
+        </div>
       </div>
-      <Card size="small" className="page-section-sm !border-ink-100">
-        <Table
-          rowKey="id"
-          size="small"
-          loading={loading}
-          columns={columns}
-          dataSource={items}
-          sticky={{ offsetHeader: stickyChromeHeight }}
-          scroll={{ x: 1960 }}
-          onRow={(record) => ({
-            onClick: () => openEdit(record),
-            className: 'cursor-pointer',
-          })}
-          pagination={{
-            current: page,
-            pageSize: PAGE_SIZE,
-            total,
-            showSizeChanger: false,
-            showTotal: (t) => `共 ${t} 条`,
-            onChange: (p) => setPage(p),
-          }}
-        />
-      </Card>
 
       <Modal
         title="添加举措"

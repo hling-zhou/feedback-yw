@@ -107,7 +107,7 @@ export default function AppShell() {
         width={APP_SIDER_WIDTH}
         collapsedWidth={APP_SIDER_COLLAPSED_WIDTH}
         theme="light"
-        className="app-shell-sider border-r border-ink-200 !bg-white"
+        className="app-shell-sider !bg-white"
       >
         <div className="flex h-full min-h-0 flex-col">
           <div
