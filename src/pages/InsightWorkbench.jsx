@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
+import { Alert, Button, Empty, Space, Spin, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import OverviewTab from '../components/workbench/OverviewTab.jsx'
@@ -301,13 +301,13 @@ export default function InsightWorkbench() {
       )}
 
       {!hasAnyData && !snapshotRebuilding && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Empty description="当前周期尚无反馈数据">
             <Link to={buildImportUrl({ source: activeTab === TAB_OVERVIEW ? undefined : activeTab })}>
               <Button type="primary">导入数据</Button>
             </Link>
           </Empty>
-        </Card>
+        </div>
       )}
 
       {(hasAnyData || snapshotRebuilding || overviewDisplay) && (
