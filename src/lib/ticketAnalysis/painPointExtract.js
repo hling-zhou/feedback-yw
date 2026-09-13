@@ -1,7 +1,7 @@
 import { isMeaninglessTicketPlaceholderText } from '../taggingText.js'
 
-export const PAIN_POINT_DEFAULT_MAX = 60
-export const PAIN_POINT_HARD_MAX = 80
+export const PAIN_POINT_DEFAULT_MAX = 120
+export const PAIN_POINT_HARD_MAX = 200
 
 const LEADING_PHRASE_RE =
   /^(?:用户(?:希望|建议|反馈|要求|反映|咨询)|客户(?:希望|建议|反馈|要求|反映)|请(?:帮忙|协助)|希望|建议)/

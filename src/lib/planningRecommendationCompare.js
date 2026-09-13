@@ -75,42 +75,57 @@ export function attachRecommendationPeriodCompare(current, previous = []) {
     const key = recommendationCompareKey(rec)
     currentKeys.add(key)
     const prev = prevByKey.get(key)
+
+    /** 上一周期工单数 */
+    const prevCount = prev
+      ? (isActionRecsResult(prev)
+        ? (prev?.scale?.ticketCount ?? 0)
+        : (prev?.sections?.painClusterScores?.ticketCount
+          ?? prev?.evidenceBundle?.ticketCount
+          ?? prev?.evidenceRecordIds?.length
+          ?? 0))
+      : 0
+    /** 本周期工单数 */
+    const curCount = isActionRecsResult(rec)
+      ? (rec?.scale?.ticketCount ?? 0)
+      : (rec?.sections?.painClusterScores?.ticketCount
+        ?? rec?.evidenceBundle?.ticketCount
+        ?? rec?.evidenceRecordIds?.length
+        ?? 0)
+
+    // 真实环比：有上月数据时用 (cur - prev) / prev * 100 计算
+    let realMoMPct = isActionRecsResult(rec) ? (rec?.scale?.moMPct ?? null) : null
+    if (prev && prevCount > 0 && curCount !== prevCount) {
+      realMoMPct = Number((((curCount - prevCount) / prevCount) * 100).toFixed(1))
+    } else if (prev && prevCount > 0 && curCount === prevCount) {
+      realMoMPct = 0
+    }
+
+    /** 如果是 ActionRecsResult 且算出了真实环比，写回 scale.moMPct */
+    const patchedRec = isActionRecsResult(rec) && realMoMPct !== null && realMoMPct !== undefined
+      ? { ...rec, scale: { ...rec.scale, moMPct: realMoMPct, moMAbs: curCount - prevCount } }
+      : rec
+
     if (!prev) {
       return {
-        ...rec,
+        ...patchedRec,
         periodCompare: /** @type {RecommendationPeriodCompare} */ ({
           change: 'new',
           lifecycle: 'new',
-          deltaCount:
-            isActionRecsResult(rec)
-              ? (rec?.scale?.ticketCount ?? 0)
-              : (rec?.sections?.painClusterScores?.ticketCount
-                ?? rec?.evidenceBundle?.ticketCount
-                ?? rec?.evidenceRecordIds?.length
-                ?? 0),
+          deltaCount: curCount,
           deltaSharePct: sharePctOf(rec),
         }),
       }
     }
     const change = comparePriorityChange(rec.priority, prev.priority)
     return {
-      ...rec,
+      ...patchedRec,
       periodCompare: {
         change,
         previousId: prev.id,
         previousPriority: prev.priority,
         lifecycle: deriveLifecycle(rec, prev),
-        deltaCount:
-          (isActionRecsResult(rec) ? (rec?.scale?.ticketCount ?? 0) :
-            (rec?.sections?.painClusterScores?.ticketCount
-            ?? rec?.evidenceBundle?.ticketCount
-            ?? rec?.evidenceRecordIds?.length
-            ?? 0))
-          - (isActionRecsResult(prev) ? (prev?.scale?.ticketCount ?? 0) :
-            (prev?.sections?.painClusterScores?.ticketCount
-            ?? prev?.evidenceBundle?.ticketCount
-            ?? prev?.evidenceRecordIds?.length
-            ?? 0)),
+        deltaCount: curCount - prevCount,
         deltaSharePct: Number((sharePctOf(rec) - sharePctOf(prev)).toFixed(1)),
       },
     }

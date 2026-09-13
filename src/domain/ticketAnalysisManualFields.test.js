@@ -37,14 +37,14 @@ const base = {
 }
 
 describe('ticketAnalysisManualFields', () => {
-  it('normalizeManualCustomerRequest caps at 120 chars', () => {
+  it('normalizeManualCustomerRequest caps at CUSTOMER_REQUEST_MANUAL_MAX_LENGTH chars', () => {
     expect(normalizeManualCustomerRequest('  abc  ')).toBe('abc')
     expect(normalizeManualCustomerRequest('x'.repeat(CUSTOMER_REQUEST_MANUAL_MAX_LENGTH + 5)).length).toBe(
       CUSTOMER_REQUEST_MANUAL_MAX_LENGTH,
     )
   })
 
-  it('normalizeManualPainPoint caps at 80 chars', () => {
+  it('normalizeManualPainPoint caps at PAIN_POINT_MANUAL_MAX_LENGTH chars', () => {
     expect(normalizeManualPainPoint('x'.repeat(PAIN_POINT_MANUAL_MAX_LENGTH + 3)).length).toBe(
       PAIN_POINT_MANUAL_MAX_LENGTH,
     )

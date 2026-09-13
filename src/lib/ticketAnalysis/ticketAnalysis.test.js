@@ -45,7 +45,7 @@ describe('analyzeTicket (P0 rules)', () => {
 
     expect(result.customerRequest.length).toBeLessThanOrEqual(120)
     expect(result.customerRequest).toMatch(/端口|不通/)
-    expect(result.painPoint.length).toBeLessThanOrEqual(80)
+    expect(result.painPoint.length).toBeLessThanOrEqual(200)
     expect(result.customerRequestSource).toBe('rule')
     expect(result.painPointSource).toBe('rule')
     expect(result.optimizationSource).toBe('rule')

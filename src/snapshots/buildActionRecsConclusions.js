@@ -94,7 +94,7 @@ export async function buildActionRecsConclusions({
   const loop = runLoop(records, { maxRounds })
 
   // 映射引擎结果为 ActionRecsResult[]
-  const recommendations = mapEngineResult(loop.result, dataSourceType, records)
+  const recommendations = mapEngineResult(loop.result, dataSourceType)
 
   // 环比标注：与上一周期按 stableKey 匹配，注入 periodCompare
   if (previousRecommendations.length > 0) {

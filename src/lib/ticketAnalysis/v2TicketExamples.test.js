@@ -139,7 +139,7 @@ describe('V2 ticket examples — LLM golden validation', () => {
       )
       assertLlmGoldenSimilarity(validated.painPoint, example.expectedPainPoint)
       expect(validated.painPoint).not.toMatch(/^用户希望/)
-      expect(validated.painPoint.length).toBeLessThanOrEqual(80)
+      expect(validated.painPoint.length).toBeLessThanOrEqual(200)
     },
   )
 })

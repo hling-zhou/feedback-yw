@@ -147,12 +147,13 @@ export async function rebuildOverviewSnapshot({
   const orderVolumes = await listOrderVolumes(adapter)
   const previousPeriodId = previousPeriodIdFromPeriod(period)
 
-  // 选项 A：概览快照从 source 快照合并 recommendations，不重跑引擎
+  // 概览快照按问题（stableKey = product+fam+sub 的哈希）合并投诉+咨询
+  // 同一问题在投诉快照和咨询快照中各有一个 item，合并后 c/q 保持各自真实值
   const complaintRecs =
     sourceSnapshots.complaint_ticket?.aggregates?.planningConclusions?.recommendations || []
   const consultationRecs =
     sourceSnapshots.consultation_ticket?.aggregates?.planningConclusions?.recommendations || []
-  const mergedRecommendations = [...complaintRecs, ...consultationRecs]
+  const mergedRecommendations = mergeRecommendationsByProblem(complaintRecs, consultationRecs)
 
   // 合并门禁报告（取投诉+咨询中最差的轮次状态）
   const complaintGate = sourceSnapshots.complaint_ticket?.aggregates?.planningConclusions?.gateReport
@@ -195,6 +196,69 @@ function mergeGateReports(a, b) {
     escalated: a.escalated || b.escalated,
     failures: [...(a.failures || []), ...(b.failures || [])].slice(0, 10),
   }
+}
+
+/**
+ * 按问题（stableKey = product+fam+sub 的哈希）合并投诉和咨询的 recommendations。
+ * 同一问题在投诉快照中 c=X,q=0，在咨询快照中 c=0,q=Y，合并后 c=X,q=Y。
+ * 单独的 source 快照不受影响——只有概览 tab 走此合并。
+ * @param {object[]} complaintRecs
+ * @param {object[]} consultationRecs
+ * @returns {object[]}
+ */
+function mergeRecommendationsByProblem(complaintRecs, consultationRecs) {
+  if (!complaintRecs.length && !consultationRecs.length) return []
+  if (!complaintRecs.length) return consultationRecs
+  if (!consultationRecs.length) return complaintRecs
+
+  const merged = []
+  const consultationByKey = new Map()
+  for (const rec of consultationRecs) {
+    consultationByKey.set(rec.stableKey || rec.id, rec)
+  }
+
+  // 投诉侧的每个 item：检查咨询侧是否有同 key 的 item
+  for (const rec of complaintRecs) {
+    const key = rec.stableKey || rec.id
+    const matched = consultationByKey.get(key)
+    if (matched) {
+      const complaintN = rec.scale?.ticketCount || 0
+      const consultationN = matched.scale?.ticketCount || 0
+      const totalCount = complaintN + consultationN
+      const complaintCount = rec.scale?.complaintCount || 0
+      const consultationCount = matched.scale?.consultationCount || 0
+      // 合并：c 取投诉侧，q 取咨询侧，n 取两者之和
+      merged.push({
+        ...rec,
+        scale: {
+          ...rec.scale,
+          ticketCount: totalCount,
+          complaintCount,
+          consultationCount,
+          // 投诉率基于合并后的总量重算
+          complaintRate: totalCount > 0 ? (complaintCount / totalCount * 100) : 0,
+          // 环比优先取投诉侧（投诉侧有值则用投诉侧，否则取咨询侧）
+          moMPct: rec.scale?.moMPct !== undefined ? rec.scale.moMPct : matched.scale?.moMPct,
+          moMAbs: rec.scale?.moMAbs !== undefined ? rec.scale.moMAbs : matched.scale?.moMAbs,
+        },
+        evidenceTicketIds: [
+          ...(rec.evidenceTicketIds || []),
+          ...(matched.evidenceTicketIds || []),
+        ],
+        sourceGroup: 'cross_source',
+      })
+      consultationByKey.delete(key)
+    } else {
+      merged.push(rec)
+    }
+  }
+
+  // 咨询侧未被匹配的 item（投诉侧无对应问题）
+  for (const rec of consultationByKey.values()) {
+    merged.push(rec)
+  }
+
+  return merged
 }
 
 /**
