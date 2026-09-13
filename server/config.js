@@ -14,7 +14,7 @@ const FORBIDDEN_ADMIN_PASSWORDS = new Set(['admin123', 'password', '123456', 'ad
 const MIN_ADMIN_INITIAL_PASSWORD_LENGTH = 12
 
 /** 开发环境未配置 CORS_ORIGINS 时的默认前端地址 */
-const DEFAULT_DEV_CORS_ORIGINS = ['http://127.0.0.1:5175', 'http://localhost:5175']
+const DEFAULT_DEV_CORS_ORIGINS = ['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5175', 'http://localhost:5175']
 
 /**
  * 解析并校验 JWT 签名密钥（无默认值，禁止已知弱密钥）

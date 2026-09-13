@@ -16,3 +16,14 @@ backup/
 docs/BACKUP-BEFORE-RELEASE.md
 docs/BUILTIN-JOURNEY-ROLLOUT.md
 docs/ACTION-ITEM-REQUIREMENT-TICKET.md
+
+# Auto-generated reports (rebuilt every pipeline run, not source files)
+docs/行动建议-*-验证.md
+docs/行动建议-EIP-*.md
+docs/L2自动细分-提案.md
+docs/四产品-分层分类总览.md
+
+# PoC scripts and reports (evaluation only, not for production)
+scripts/poc-*.cjs
+scripts/poc-*.py
+docs/poc-*.md
