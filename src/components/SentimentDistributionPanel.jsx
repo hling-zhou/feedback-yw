@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card, Typography } from 'antd'
+import { Typography } from 'antd'
 import SentimentChart from './charts/SentimentChart.jsx'
 import { sentimentStats } from '../lib/analytics.js'
 
@@ -43,17 +43,17 @@ export default function SentimentDistributionPanel({
   const stats = useMemo(() => sentimentStats(items), [items])
 
   return (
-    <Card
-      className={className}
-      title={<Typography.Text strong>{title}</Typography.Text>}
-      extra={
-        subtitle ? (
-          <Typography.Text type="secondary" className="text-xs">
-            {subtitle}
-          </Typography.Text>
-        ) : null
-      }
-    >
+    <div className={`page-card ${className ?? ''}`}>
+      <div className="page-card-header">
+        <span className="page-card-title"><Typography.Text strong>{title}</Typography.Text></span>
+        <div>
+          {subtitle ? (
+            <Typography.Text type="secondary" className="text-xs">
+              {subtitle}
+            </Typography.Text>
+          ) : null}
+        </div>
+      </div>
       {stats.total === 0 ? (
         <Typography.Text type="secondary">暂无数据</Typography.Text>
       ) : (
@@ -80,6 +80,6 @@ export default function SentimentDistributionPanel({
           <SentimentChart data={stats.distribution} total={stats.total} />
         </>
       )}
-    </Card>
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Button, Card, Empty, Tag, Typography } from 'antd'
+import { Button, Empty, Tag, Typography } from 'antd'
 import SimpleList from './ui/SimpleList.jsx'
 import { topCommonOptimizations } from '../lib/productAnalytics.js'
 
@@ -10,7 +10,7 @@ export default function ProductDrillDown({ items, journeyL1, journeyL2, onClose 
   const solutions = topCommonOptimizations(items, journeyL1, journeyL2)
 
   return (
-    <Card>
+    <div className="page-card">
       <div className="flex items-start justify-between gap-2">
         <div>
           <Typography.Title level={5} className="!mb-0">
@@ -96,6 +96,6 @@ export default function ProductDrillDown({ items, journeyL1, journeyL2, onClose 
           打开反馈库
         </Button>
       </Link>
-    </Card>
+    </div>
   )
 }

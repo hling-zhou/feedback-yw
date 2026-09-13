@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
 import { CopyOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
@@ -18,8 +18,7 @@ const STATUS_META = {
   approved: { color: 'green', text: '已采纳' },
   rejected: { color: 'default', text: '已拒绝' },
   needs_tree_patch: { color: 'purple', text: '建议补决策树' },
-  tree_patched: { color: 'blue', text: '已补决策树' },
-}
+  tree_patched: { color: 'blue', text: '已补决策树' } }
 
 /**
  * @param {{ readOnly?: boolean }} props
@@ -73,8 +72,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
     const result = await upsertCorrectionRule(adapter, rules, row, {
       status,
       keywords,
-      ...extra,
-    })
+      ...extra })
     setRules(result.rules)
     await reloadTaxonomy()
     await refresh()
@@ -85,8 +83,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
       title: '维度',
       dataIndex: 'dimension',
       width: 100,
-      render: (v) => TAG_CORRECTION_DIMENSION_LABELS[v] || v,
-    },
+      render: (v) => TAG_CORRECTION_DIMENSION_LABELS[v] || v },
     {
       title: '系统 → 人工',
       key: 'pair',
@@ -96,14 +93,12 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
           <Typography.Text type="secondary"> → </Typography.Text>
           <Typography.Text strong>{row.toLabel}</Typography.Text>
         </span>
-      ),
-    },
+      ) },
     {
       title: '证据',
       key: 'evidence',
       width: 110,
-      render: (_, row) => `${row.evidenceCount} 单 / ${row.distinctMonths || 0} 月`,
-    },
+      render: (_, row) => `${row.evidenceCount} 单 / ${row.distinctMonths || 0} 月` },
     {
       title: '关键词',
       dataIndex: 'keywords',
@@ -117,8 +112,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
             onChange={(e) => setKeywordDraft((prev) => ({ ...prev, [row.id]: e.target.value }))}
             placeholder="逗号分隔"
           />
-        ),
-    },
+        ) },
     {
       title: '状态',
       dataIndex: 'status',
@@ -126,8 +120,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
       render: (v) => {
         const meta = STATUS_META[v] || STATUS_META.pending
         return <Tag color={meta.color}>{meta.text}</Tag>
-      },
-    },
+      } },
     {
       title: '操作',
       key: 'actions',
@@ -180,8 +173,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
               </Button>
             )}
           </Space>
-        ),
-    },
+        ) },
   ]
 
   return (
@@ -198,7 +190,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
           </ul>
         }
       />
-      <Card className="mt-4">
+      <div className="page-card mt-4">
         <Space wrap className="mb-4">
           <Select
             value={statusFilter}
@@ -258,10 +250,9 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
                   </div>
                 ))}
               </div>
-            ),
-          }}
+            ) }}
         />
-      </Card>
+      </div>
       <Modal
         title="开发需求（可编辑后复制）"
         open={specOpen}

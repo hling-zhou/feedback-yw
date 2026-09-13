@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Modal, Space, Table, Tag, Typography, Upload } from 'antd'
+import { Alert, Button, Modal, Space, Table, Tag, Typography, Upload } from 'antd'
 import { BookOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import {
   deleteKnowledgeBase,
   listKnowledgeBases,
-  uploadKnowledgeBase,
-} from '../../lib/knowledgeBaseClient.js'
+  uploadKnowledgeBase } from '../../lib/knowledgeBaseClient.js'
 
 /** @typedef {import('../../lib/knowledgeBaseClient.js').KnowledgeBaseSummary} KnowledgeBaseSummary */
 
@@ -81,8 +80,7 @@ export default function KnowledgeBasePanel() {
           content: `产品「${existed.productName || existed.productKey}」已有知识库，上传将覆盖。继续？`,
           okText: '覆盖上传',
           cancelText: '取消',
-          onOk: () => proceed(),
-        })
+          onOk: () => proceed() })
       } else {
         await proceed()
       }
@@ -107,8 +105,7 @@ export default function KnowledgeBasePanel() {
         } catch (err) {
           message.error(err instanceof Error ? err.message : '删除失败')
         }
-      },
-    })
+      } })
   }
 
   const columns = useMemo(
@@ -123,28 +120,24 @@ export default function KnowledgeBasePanel() {
               {record.productKey}
             </Typography.Text>
           </Space>
-        ),
-      },
+        ) },
       { title: '导出日期', dataIndex: 'exportDate', width: 120, render: (v) => v || '—' },
       {
         title: '上传人',
         dataIndex: 'uploadedByUsername',
         width: 120,
-        render: (v) => v || '—',
-      },
+        render: (v) => v || '—' },
       {
         title: '上传时间',
         dataIndex: 'uploadedAt',
         width: 168,
-        render: formatDateTime,
-      },
+        render: formatDateTime },
       {
         title: '大小',
         dataIndex: 'sizeBytes',
         width: 100,
         align: 'right',
-        render: formatSize,
-      },
+        render: formatSize },
       {
         title: '操作',
         key: 'actions',
@@ -158,28 +151,24 @@ export default function KnowledgeBasePanel() {
           >
             删除
           </Button>
-        ),
-      },
+        ) },
     ],
     [loadItems, message],
   )
 
   return (
-    <Card
-      title={
+    <div className="page-card"><div className="page-card-header"><span className="page-card-title">
         <span className="inline-flex items-center gap-2">
           <BookOutlined />
           产品业务知识库
         </span>
-      }
-      extra={
+      </span><div>
         <Upload accept=".json,application/json" showUploadList={false} beforeUpload={(file) => void handleUpload(file)}>
           <Button type="primary" icon={<UploadOutlined />} loading={uploading}>
             上传知识库
           </Button>
         </Upload>
-      }
-    >
+      </div></div>
       <Typography.Text type="secondary" className="mb-3 block text-xs">
         上传各产品的业务知识库 JSON（含 <Typography.Text code>productLine</Typography.Text>、
         <Typography.Text code>details</Typography.Text>）。工单自动分析的「优化建议」会检索引用其中相关规则/特性；
@@ -203,6 +192,6 @@ export default function KnowledgeBasePanel() {
           scroll={{ x: 720 }}
         />
       )}
-    </Card>
+    </div>
   )
 }

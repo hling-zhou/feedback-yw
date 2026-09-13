@@ -1,4 +1,4 @@
-import { Card, Tag, Typography } from 'antd'
+import { Tag, Typography } from 'antd'
 import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
@@ -40,12 +40,7 @@ export default function ProblemCard({ rec, onClick }) {
   const customerVoice = rec.customerVoice || {}
 
   return (
-    <Card
-      size="small"
-      className={`cursor-pointer transition-shadow hover:shadow-md ${tier.borderClass}`}
-      onClick={() => onClick?.(rec)}
-      styles={{ body: { padding: '12px 16px' } }}
-    >
+    <div className={`page-card-sm cursor-pointer transition-shadow hover:shadow-md ${tier.borderClass}`} onClick={() => onClick?.(rec)}>
       {/* 第一行：标题 + tier 标签 */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <Typography.Text strong className="text-sm">
@@ -109,6 +104,6 @@ export default function ProblemCard({ rec, onClick }) {
           </Typography.Text>
         )}
       </div>
-    </Card>
+    </div>
   )
 }

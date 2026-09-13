@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -133,6 +133,7 @@ const DEFAULT_HIDDEN_COLUMNS = ['requestScene', 'problemType', 'journeyL1', 'res
 export default function Feedbacks() {
   const {
     feedbacks,
+    feedbacksLoading,
     retagSession,
     importSession,
     currentPeriodId,
@@ -940,17 +941,8 @@ export default function Feedbacks() {
         </div>
       )}
 
-      <div
-        className={`page-sticky-chrome ${
-          needsTicketLlmCount > 0 ||
-          needsJourneyLlmCount > 0 ||
-          missingTags > 0 ||
-          filters.ticketIds.length > 0 ||
-          ticketIdSetKey
-            ? 'page-section-sm'
-            : 'page-section'
-        }`}
-      >
+      <div className="page-card">
+        <div className="flex flex-wrap items-start gap-2 pb-3 mb-3">
         {isCustomerVisitLane ? (
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -1116,12 +1108,12 @@ export default function Feedbacks() {
         />
         </div>
         )}
-      </div>
+        </div>
 
-      <div className="page-section-sm">
-        {periodsLoading || (isCustomerVisitLane && customerVisitLoading) ? (
+      <div className="mt-3">
+        {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
           <div className="flex justify-center py-16">
-            <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : '加载数据周期…'} />
+            <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : periodsLoading ? '加载数据周期…' : '加载反馈数据…'} />
           </div>
         ) : isCustomerVisitLane ? (
           <CustomerVisitTable rows={customerVisitTableRows} />
@@ -1143,6 +1135,7 @@ export default function Feedbacks() {
             postUseMode={isPostUseLane}
           />
         )}
+      </div>
       </div>
 
       {!isCustomerVisitLane ? (
@@ -1276,10 +1269,9 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
           const product = fb.productName || fb.product || '—'
           const snippet = fb.rawText || fb.commentText || fb.lowScoreReason || '—'
           return (
-            <Card
+            <div
               key={fb.id}
-              hoverable
-              className="cursor-pointer"
+              className="page-card cursor-pointer"
               onClick={() => onSelect(fb)}
             >
               <div className="flex flex-wrap gap-1.5">
@@ -1297,14 +1289,13 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
               <Typography.Text type="secondary" className="mt-3 block text-[10px]">
                 {fb.importMonth || '未知月份'} · {fb.customerName || fb.customerCode || '—'}
               </Typography.Text>
-            </Card>
+            </div>
           )
         }
         return (
-        <Card
+        <div
           key={fb.id}
-          hoverable
-          className="cursor-pointer"
+          className="page-card cursor-pointer"
           onClick={() => onSelect(fb)}
         >
           <div className="flex flex-wrap gap-1.5">
@@ -1341,7 +1332,7 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
             {fb.productSpec && fb.productSpec !== fb.product ? ` / ${fb.productSpec}` : ''} ·{' '}
             {fb.resourcePool || '—'}
           </Typography.Text>
-        </Card>
+        </div>
         )
       })}
     </div>

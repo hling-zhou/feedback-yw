@@ -2,15 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Input,
   Modal,
   Space,
   Table,
   Tag,
-  Typography,
-} from 'antd'
+  Typography } from 'antd'
 import { CopyOutlined, KeyOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { API_KEY_SCOPE_LABELS, API_KEY_SCOPES } from '../../domain/apiKey.js'
@@ -20,8 +18,7 @@ import { createApiKey, listApiKeys, revokeApiKey } from '../../lib/apiKeyClient.
 
 const SCOPE_OPTIONS = API_KEY_SCOPES.map((scope) => ({
   value: scope,
-  label: API_KEY_SCOPE_LABELS[scope],
-}))
+  label: API_KEY_SCOPE_LABELS[scope] }))
 
 function formatDateTime(value) {
   if (!value) return '—'
@@ -66,35 +63,30 @@ export default function ApiKeyPanel() {
         title: 'Key 前缀',
         dataIndex: 'keyPrefix',
         width: 160,
-        render: (value) => <Typography.Text code>{value}…</Typography.Text>,
-      },
+        render: (value) => <Typography.Text code>{value}…</Typography.Text> },
       {
         title: '权限',
         dataIndex: 'scopes',
         render: (value) =>
           (value || []).map((scope) => (
             <Tag key={scope}>{API_KEY_SCOPE_LABELS[scope] || scope}</Tag>
-          )),
-      },
+          )) },
       {
         title: '状态',
         dataIndex: 'status',
         width: 90,
         render: (value) =>
-          value === 'active' ? <Tag color="green">有效</Tag> : <Tag>已吊销</Tag>,
-      },
+          value === 'active' ? <Tag color="green">有效</Tag> : <Tag>已吊销</Tag> },
       {
         title: '最近使用',
         dataIndex: 'lastUsedAt',
         width: 168,
-        render: formatDateTime,
-      },
+        render: formatDateTime },
       {
         title: '创建时间',
         dataIndex: 'createdAt',
         width: 168,
-        render: formatDateTime,
-      },
+        render: formatDateTime },
       {
         title: '操作',
         key: 'actions',
@@ -115,16 +107,14 @@ export default function ApiKeyPanel() {
                     await revokeApiKey(record.id)
                     message.success('API Key 已吊销')
                     await loadItems()
-                  },
-                })
+                  } })
               }}
             >
               吊销
             </Button>
           ) : (
             '—'
-          ),
-      },
+          ) },
     ],
     [loadItems, message],
   )
@@ -170,14 +160,12 @@ export default function ApiKeyPanel() {
 
   return (
     <>
-      <Card
-        title={
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">
           <span className="inline-flex items-center gap-2">
             <KeyOutlined />
             外部系统 API Key
           </span>
-        }
-        extra={
+        </span><div>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -188,8 +176,7 @@ export default function ApiKeyPanel() {
           >
             新建 Key
           </Button>
-        }
-      >
+        </div></div>
         <Typography.Text type="secondary" className="mb-3 block text-xs">
           供外部系统调用导入接口。Key 仅在创建时显示一次，请妥善保存。请求时使用
           {' '}
@@ -209,7 +196,7 @@ export default function ApiKeyPanel() {
           dataSource={items}
           scroll={{ x: 960 }}
         />
-      </Card>
+      </div>
 
       <Modal
         title={createdSecret ? 'API Key 已创建' : '新建 API Key'}

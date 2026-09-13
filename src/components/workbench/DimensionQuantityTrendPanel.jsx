@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Collapse, Select, Space, Typography } from 'antd'
+import { Collapse, Select, Space, Typography } from 'antd'
 import TrendChart from '../charts/TrendChart.jsx'
 import { monthlyTrend } from '../../lib/analytics.js'
 import { resolveTrendMonthWindow } from '../../lib/workbenchTrendWindow.js'
@@ -161,7 +161,7 @@ export default function DimensionQuantityTrendPanel({
                 趋势窗 {window.startMonth}～{window.endMonth}
               </Typography.Text>
               {selectedValue ? (
-                <Card size="small" title={`${DIMENSION_OPTIONS.find((d) => d.value === dimension)?.label || ''} · ${selectedValue}`}>
+                <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{`${DIMENSION_OPTIONS.find((d) => d.value === dimension)?.label || ''} · ${selectedValue}`}</span></div>
                   <div className="rounded-lg bg-white p-2">
                     <TrendChart
                       variant="line"
@@ -172,7 +172,7 @@ export default function DimensionQuantityTrendPanel({
                       ]}
                     />
                   </div>
-                </Card>
+                </div>
               ) : (
                 <Typography.Text type="secondary" className="text-sm">
                   选择维度与取值后，可查看该类型在趋势窗内的数量变化。

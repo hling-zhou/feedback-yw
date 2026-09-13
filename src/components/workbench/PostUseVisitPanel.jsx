@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Card, Table } from 'antd'
+import { Button, Table } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import {
@@ -40,17 +40,13 @@ export default function PostUseVisitPanel({ period }) {
       : visitMonths[0] || '—'
 
   return (
-    <Card
-      size="small"
-      title={`客服部回访（${monthLabel}）`}
-      extra={
+    <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{`客服部回访（${monthLabel}）`}</span><div>{
         <Link to={buildImportUrl({ source: 'post_use_rating', subType: 'customer_visit' })}>
           <Button type="primary" size="small" icon={<UploadOutlined />}>
             前往数据导入
           </Button>
         </Link>
-      }
-    >
+      }</div></div>
       <Table
         size="small"
         rowKey="id"
@@ -67,6 +63,6 @@ export default function PostUseVisitPanel({ period }) {
         ]}
         locale={{ emptyText: '暂无回访记录，请通过数据导入关联用后即评明细' }}
       />
-    </Card>
+    </div>
   )
 }

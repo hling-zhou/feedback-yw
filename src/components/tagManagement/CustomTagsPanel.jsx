@@ -445,15 +445,16 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
   ]
 
   return (
-    <div>
+    <div className="space-y-4">
       <Alert
         type="info"
         showIcon
-        className="!mb-4"
+        className="!mb-0"
         title={meta.title}
         description={`${meta.description} 保存后写入共享库（auth.db，其他用户约 5 秒内自动同步）。生产环境将自动生成 Excel/JSON 磁盘备份；批量维护请使用「导入 Excel」。`}
       />
 
+      <div className="page-card">
       <Space wrap className="mb-4">
         {!readOnly && (
           <>
@@ -547,6 +548,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
           />
         </>
       )}
+      </div>
 
       {!readOnly && (
         <Modal

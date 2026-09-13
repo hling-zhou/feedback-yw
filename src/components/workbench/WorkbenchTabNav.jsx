@@ -11,7 +11,7 @@ import { Button, Space } from 'antd'
  */
 export default function WorkbenchTabNav({ activeKey, onChange, items, className = '' }) {
   return (
-    <div className={`border-b border-ink-200 pb-3 ${className}`.trim()}>
+    <div className={`border-b border-ink-100 pb-3 ${className}`.trim()}>
       <Space wrap size={[4, 8]} className="min-w-0">
         {items.map((item) => {
           const selected = activeKey === item.key

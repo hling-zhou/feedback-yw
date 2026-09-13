@@ -28,13 +28,25 @@
     background: #f9fafb !important;
   }
 
-  .app-shell-sider {
+  .app-shell-sider,
+  .app-shell-sider.ant-layout-sider,
+  .ant-layout-sider.app-shell-sider {
     position: fixed !important;
     left: 0;
     top: 0;
     z-index: 30;
     height: 100vh !important;
     overflow: hidden;
+    border: none !important;
+    border-inline-end: 0 !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* antd Menu (inline + light) 的根元素自带 borderInlineEnd，需要强制去掉 */
+  .app-shell-sider .ant-menu.ant-menu-root.ant-menu-inline.ant-menu-light {
+    border-inline-end: 0 !important;
+    border-right: 0 !important;
   }
 
   .app-shell-main {
@@ -178,6 +190,80 @@
   /** 纵向堆叠 gap（替代 gap-4） */
   .page-stack {
     @apply flex flex-col gap-3;
+  }
+
+  /** 页面内容卡片：白色背景 + 圆角8px + 内边距 */
+  .page-card {
+    @apply rounded-lg bg-white p-4;
+  }
+
+  /** 页面内容卡片（紧凑内边距，用于统计/小表等） */
+  .page-card-sm {
+    @apply rounded-lg bg-white p-3;
+  }
+
+  /** 详情抽屉专用间距：分区之间 20px */
+  .drawer-space-y {
+    @apply flex flex-col;
+    gap: 20px;
+  }
+
+  /** 详情抽屉专用间距：分区标题与卡片之间 10px */
+  .drawer-section-gap {
+    @apply flex flex-col;
+    gap: 10px;
+  }
+
+  /** 详情抽屉内卡片覆盖：padding 8px、margin 0 */
+  .drawer-space-y .page-card-sm,
+  .drawer-section-gap .page-card-sm {
+    @apply p-2 m-0;
+  }
+
+  /** 嵌套在白色容器内时需要描边区分模块（如抽屉、tab 内容区） */
+  .page-card-bordered {
+    @apply border border-ink-100;
+  }
+
+  /** 指标卡：嵌套在白色卡片内的浅灰色背景指标区块 */
+  .metric-card {
+    @apply rounded-lg bg-ink-50/60 p-3;
+  }
+
+  /** 卡片间距：灰色背景上堆叠多个 page-card */
+  .page-card-stack {
+    @apply flex flex-col gap-3;
+  }
+
+  /** 卡片标题行 */
+  .page-card-header {
+    @apply mb-2 flex items-center justify-between gap-2;
+  }
+
+  /** 卡片标题 */
+  .page-card-title {
+    @apply text-sm font-medium text-ink-800;
+  }
+
+  /** 分区标题（比卡片标题高一级，用于抽屉/页面内的大分区分组） */
+  .section-title {
+    @apply rounded-lg bg-brand-50 px-3 py-2 text-base font-semibold text-ink-900;
+  }
+
+  /** 卡片内子模块标签：用于卡片内部区分"自动生成"/"人工复核"等子区块 */
+  .sub-section-label {
+    @apply mb-2 flex items-center gap-2 text-xs font-semibold text-ink-600;
+  }
+
+  /** 卡片内子模块分隔线：用于同一卡片内多个子区块之间的视觉分隔 */
+  .sub-section-divider {
+    @apply my-3 border-t border-ink-100;
+  }
+
+  /** 卡片内子模块容器：给子区块加浅蓝灰背景以区分层次 */
+  .sub-section-box {
+    @apply rounded-md p-3;
+    background: #f3f5fa;
   }
 
   /** 工具栏：周期选择 + 操作按钮行 */

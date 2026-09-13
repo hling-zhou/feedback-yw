@@ -2,39 +2,33 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Input,
   Select,
   Space,
   Table,
   Typography,
-  Upload,
-} from 'antd'
+  Upload } from 'antd'
 import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import {
   ACTION_ITEM_STATUSES,
-  ACTION_ITEM_STATUS_LABELS,
-} from '../../domain/actionItem.js'
+  ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import {
   importRequirementTicketProgress,
   listRequirementStatusMappings,
   listRequirementTicketProgress,
-  saveRequirementStatusMappings,
-} from '../../lib/requirementTicketProgressClient.js'
+  saveRequirementStatusMappings } from '../../lib/requirementTicketProgressClient.js'
 import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
 import {
   buildRequirementProgressTemplateBuffer,
-  parseRequirementProgressWorkbook,
-} from '../../lib/requirementTicketProgressImport.js'
+  parseRequirementProgressWorkbook } from '../../lib/requirementTicketProgressImport.js'
 
 /** @typedef {import('../../domain/requirementTicketProgress.js').RequirementTicketProgressRow} RequirementTicketProgressRow */
 /** @typedef {import('../../domain/requirementTicketProgress.js').RequirementStatusMappingRow} RequirementStatusMappingRow */
 
 const STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((status) => ({
   value: status,
-  label: ACTION_ITEM_STATUS_LABELS[status],
-}))
+  label: ACTION_ITEM_STATUS_LABELS[status] }))
 
 const PROGRESS_PAGE_SIZE = 50
 
@@ -43,8 +37,7 @@ function createEmptyMappingRow() {
     key: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     workflowStatus: '',
     mapsToActionStatus: /** @type {import('../../domain/actionItem.js').ActionItemStatus} */ ('in_progress'),
-    sortOrder: 0,
-  }
+    sortOrder: 0 }
 }
 
 export default function RequirementTicketProgressPanel() {
@@ -71,8 +64,7 @@ export default function RequirementTicketProgressPanel() {
       setMappingRows(
         items.map((item, index) => ({
           ...item,
-          key: item.workflowStatus || `row-${index}`,
-        })),
+          key: item.workflowStatus || `row-${index}` })),
       )
     } catch (err) {
       setMappingRows([])
@@ -91,8 +83,7 @@ export default function RequirementTicketProgressPanel() {
           product: productFilter.trim() || undefined,
           workflowStatus: statusFilter.trim() || undefined,
           limit: PROGRESS_PAGE_SIZE,
-          offset: (page - 1) * PROGRESS_PAGE_SIZE,
-        })
+          offset: (page - 1) * PROGRESS_PAGE_SIZE })
         setProgressItems(data.items)
         setProgressTotal(data.total)
       } catch (err) {
@@ -142,8 +133,7 @@ export default function RequirementTicketProgressPanel() {
               )
             }
           />
-        ),
-      },
+        ) },
       {
         title: '映射为举措状态',
         dataIndex: 'mapsToActionStatus',
@@ -161,8 +151,7 @@ export default function RequirementTicketProgressPanel() {
               )
             }
           />
-        ),
-      },
+        ) },
       {
         title: '操作',
         key: 'actions',
@@ -175,8 +164,7 @@ export default function RequirementTicketProgressPanel() {
           >
             删除
           </Button>
-        ),
-      },
+        ) },
     ],
     [],
   )
@@ -190,8 +178,7 @@ export default function RequirementTicketProgressPanel() {
       title: '最近更新',
       dataIndex: 'updatedAt',
       width: 168,
-      render: (value) => (value ? new Date(value).toLocaleString('zh-CN') : '—'),
-    },
+      render: (value) => (value ? new Date(value).toLocaleString('zh-CN') : '—') },
   ]
 
   const saveMappings = async () => {
@@ -201,8 +188,7 @@ export default function RequirementTicketProgressPanel() {
         .map((row, index) => ({
           workflowStatus: row.workflowStatus.trim(),
           mapsToActionStatus: row.mapsToActionStatus,
-          sortOrder: index,
-        }))
+          sortOrder: index }))
         .filter((row) => row.workflowStatus)
       const seen = new Map()
       for (let index = 0; index < items.length; index += 1) {
@@ -218,8 +204,7 @@ export default function RequirementTicketProgressPanel() {
       setMappingRows(
         (result.items || []).map((item, index) => ({
           ...item,
-          key: item.workflowStatus || `row-${index}`,
-        })),
+          key: item.workflowStatus || `row-${index}` })),
       )
       message.success('状态映射已保存')
     } catch (err) {
@@ -263,8 +248,7 @@ export default function RequirementTicketProgressPanel() {
   const downloadTemplate = () => {
     const buffer = buildRequirementProgressTemplateBuffer()
     const blob = new Blob([buffer], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -281,9 +265,7 @@ export default function RequirementTicketProgressPanel() {
         message="举措关联需求工单后，列表排期与状态由此模块同步展示（举措与排期表：工单号、涉及产品、计划完成时间、操作状态）；不在本次导入清单中的历史工单不会被删除。额外列将忽略。"
       />
 
-      <Card
-        title="状态映射配置"
-        extra={
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">状态映射配置</span><div>
           <Space>
             <Button icon={<PlusOutlined />} onClick={() => setMappingRows((prev) => [...prev, createEmptyMappingRow()])}>
               新增映射
@@ -297,8 +279,7 @@ export default function RequirementTicketProgressPanel() {
               保存映射
             </Button>
           </Space>
-        }
-      >
+        </div></div>
         <Typography.Text type="secondary" className="mb-3 block text-xs">
           多个不同的操作状态可以映射到同一举措状态（例如「开发中」「联调中」「测试中」均映射为「进行中」）。
           同一操作状态名称不能重复配置；未配置映射的操作状态在举措列表显示为「未映射」。
@@ -311,9 +292,9 @@ export default function RequirementTicketProgressPanel() {
           columns={mappingColumns}
           dataSource={mappingRows}
         />
-      </Card>
+      </div>
 
-      <Card title="进展数据">
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">进展数据</span></div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <Space wrap>
             <Input
@@ -368,10 +349,9 @@ export default function RequirementTicketProgressPanel() {
             total: progressTotal,
             showSizeChanger: false,
             showTotal: (total) => `共 ${total} 条`,
-            onChange: (page) => handleProgressPageChange(page),
-          }}
+            onChange: (page) => handleProgressPageChange(page) }}
         />
-      </Card>
+      </div>
     </div>
   )
 }

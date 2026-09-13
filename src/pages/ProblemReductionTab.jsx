@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Empty, List, Select, Space, Tag, Typography, message } from 'antd'
+import { Empty, List, Select, Space, Tag, Typography, message } from 'antd'
 import TrendChart from '../components/charts/TrendChart.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { listActionItems } from '../lib/actionItemClient.js'
@@ -85,15 +85,15 @@ export default function ProblemReductionTab() {
       />
 
       {!filteredProblems.length ? (
-        <Card size="small" className="!border-ink-100">
+        <div className="page-card-sm">
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={loading ? '加载中…' : '暂无关联举措的问题'}
           />
-        </Card>
+        </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ink-100 bg-white max-lg:max-h-[min(46vh,360px)]">
+          <div className="flex min-h-0 flex-col overflow-hidden page-card-sm max-lg:max-h-[min(46vh,360px)]">
             <div className="min-h-0 flex-1 overflow-y-auto">
             <List
               size="small"
@@ -153,11 +153,8 @@ function ProblemDetail({ row }) {
   )
 
   return (
-    <Card
-      size="small"
-      className="flex h-full min-h-0 flex-col overflow-hidden !border-ink-100 [&_.ant-card-body]:min-h-0 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:overflow-y-auto"
-      styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' } }}
-      title={
+    <div className="page-card-sm flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="page-card-header"><span className="page-card-title">
         <Space size={6} wrap>
           <Typography.Text strong>{row.productName}</Typography.Text>
           <Typography.Text type="secondary" className="!text-xs">
@@ -175,9 +172,8 @@ function ProblemDetail({ row }) {
             </Space>
           )}
         </Space>
-      }
-    >
-      <div className="space-y-4">
+      </span></div>
+      <div className="space-y-4" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {row.painPointSample ? (
           <Typography.Paragraph type="secondary" className="!mb-0 !text-xs" ellipsis={{ rows: 2, tooltip: row.painPointSample }}>
             痛点样本：{row.painPointSample}
@@ -215,7 +211,7 @@ function ProblemDetail({ row }) {
           关联趋势，非因果
         </Typography.Text>
       </div>
-    </Card>
+    </div>
   )
 }
 

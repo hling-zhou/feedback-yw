@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, Collapse, Empty, Tag, Typography } from 'antd'
+import { Collapse, Empty, Tag, Typography } from 'antd'
 import { RightOutlined } from '@ant-design/icons'
 import SimpleList from './ui/SimpleList.jsx'
 import SentimentBadge from './SentimentBadge.jsx'
@@ -44,7 +44,7 @@ export default function InsightFeedbackList({
   const hasMore = items.length > previewLimit
 
   return (
-    <Card className="min-h-[320px]">
+    <div className="page-card min-h-[320px]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <Typography.Title level={5} className="!mb-0">
@@ -116,7 +116,7 @@ export default function InsightFeedbackList({
           />
         )}
       </div>
-    </Card>
+    </div>
   )
 }
 

@@ -258,32 +258,33 @@ export default function Users() {
           </Space>
         }
       />
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Input
-          allowClear
-          prefix={<SearchOutlined className="text-ink-400" />}
-          placeholder="按用户名搜索"
-          value={usernameQuery}
-          onChange={(e) => setUsernameQuery(e.target.value)}
-          className="max-w-xs"
+      <div className="page-card mt-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <Input
+            allowClear
+            prefix={<SearchOutlined className="text-ink-400" />}
+            placeholder="按用户名搜索"
+            value={usernameQuery}
+            onChange={(e) => setUsernameQuery(e.target.value)}
+            className="max-w-xs"
+          />
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadUsers()}>
+            刷新
+          </Button>
+          {usernameQuery.trim() ? (
+            <Typography.Text type="secondary" className="text-sm">
+              共 {filteredUsers.length} / {users.length} 人
+            </Typography.Text>
+          ) : null}
+        </div>
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filteredUsers}
+          pagination={{ pageSize: 10 }}
         />
-        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadUsers()}>
-          刷新
-        </Button>
-        {usernameQuery.trim() ? (
-          <Typography.Text type="secondary" className="text-sm">
-            共 {filteredUsers.length} / {users.length} 人
-          </Typography.Text>
-        ) : null}
       </div>
-      <Table
-        className="mt-4"
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={filteredUsers}
-        pagination={{ pageSize: 10 }}
-      />
 
 
       <Modal

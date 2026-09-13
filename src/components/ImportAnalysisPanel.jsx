@@ -1,5 +1,5 @@
 import { DownloadOutlined, InboxOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Modal, Table, Tag, Typography, Upload, message } from 'antd'
+import { Alert, Button, Modal, Table, Tag, Typography, Upload, message } from 'antd'
 import { useCallback, useState } from 'react'
 import { ImportProgressAlert } from './TaggingProgressAlert.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -8,8 +8,7 @@ import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBl
 import { parseAndValidateImportAnalysisSheet } from '../lib/importAnalysis.js'
 import {
   downloadImportAnalysisTemplate,
-  getImportAnalysisTemplateHeaders,
-} from '../lib/importAnalysisTemplate.js'
+  getImportAnalysisTemplateHeaders } from '../lib/importAnalysisTemplate.js'
 import { validateImportFile, validateRowCount } from '../lib/importUtils.js'
 import { parseUploadFile } from '../lib/parseFile.js'
 
@@ -19,8 +18,7 @@ const columnRows = getImportColumns().map((field, index) => ({
   key: field.fieldKey,
   order: index + 1,
   name: field.displayName,
-  required: field.importRequired !== false && field.fieldKey !== 'actionSchedule',
-}))
+  required: field.importRequired !== false && field.fieldKey !== 'actionSchedule' }))
 
 /**
  * @param {{
@@ -38,8 +36,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
     importAnalysisResults,
     storageReady,
     reprocessing,
-    importSession,
-  } = useInsights()
+    importSession } = useInsights()
   const { importBlocked, importBlockedTip, remoteBannerText, retagBlockedTip } =
     useSharedBackgroundTaskBlock()
 
@@ -91,11 +88,9 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
             requiredHeaders: [],
             missingHeaders: [],
             matchedHeaders: [],
-            extraHeaders: [],
-          },
+            extraHeaders: [] },
           validRows: [],
-          rowErrors: [],
-        })
+          rowErrors: [] })
         return Upload.LIST_IGNORE
       }
 
@@ -122,11 +117,9 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           requiredHeaders: [],
           missingHeaders: [],
           matchedHeaders: [],
-          extraHeaders: [],
-        },
+          extraHeaders: [] },
         validRows: [],
-        rowErrors: [],
-      })
+        rowErrors: [] })
     } finally {
       setParsing(false)
     }
@@ -177,8 +170,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           setApplying(false)
           setApplyProgress('')
         }
-      },
-    })
+      } })
   }, [blocked, importAnalysisResults, onImportComplete, validation])
 
   const canApply =
@@ -371,7 +363,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
         </div>
       ) : (
         <>
-          <Card title="模板与列说明">
+          <div className="page-card"><div className="page-card-header"><span className="page-card-title">模板与列说明</span></div>
             <Typography.Paragraph className="!mb-3 text-sm text-ink-700">
               表头共 {TEMPLATE_COLUMN_COUNT} 列，与
               <Typography.Text code>导出分析结果 v3</Typography.Text>
@@ -398,13 +390,12 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
                   dataIndex: 'required',
                   width: 72,
                   render: (required) =>
-                    required ? <Tag color="red">必填</Tag> : <Tag>可空</Tag>,
-                },
+                    required ? <Tag color="red">必填</Tag> : <Tag>可空</Tag> },
               ]}
             />
-          </Card>
+          </div>
 
-          <Card title="上传分析结果">{uploadBlock}</Card>
+          <div className="page-card"><div className="page-card-header"><span className="page-card-title">上传分析结果</span></div>{uploadBlock}</div>
         </>
       )}
     </div>

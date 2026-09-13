@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Card, Input, Space, Typography } from 'antd'
+import { Button, Input, Space, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
@@ -53,7 +53,7 @@ export default function PostUseKeyCustomersPanel({ readOnly = false }) {
   return (
     <>
       <div className={`space-y-4 ${dirty ? 'pb-20' : ''}`}>
-        <Card title="用后即评重点客户名单">
+        <div className="page-card"><div className="page-card-header"><span className="page-card-title">用后即评重点客户名单</span></div>
           <Typography.Text type="secondary" className="mb-3 block text-xs">
             用于“建议回访/溯源清单”中的重点客户识别。一行一个客户关键词，系统按客户名称包含匹配：
             名单关键词包含客户名，或客户名包含名单关键词，均视为命中。修改后需要点击保存才会生效。
@@ -71,7 +71,7 @@ export default function PostUseKeyCustomersPanel({ readOnly = false }) {
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             保存后可前往 <Link to="/workbench?tab=post_use_rating">洞察工作台 → 用后即评</Link> 查看结果。
           </Typography.Text>
-        </Card>
+        </div>
       </div>
 
       {dirty ? (

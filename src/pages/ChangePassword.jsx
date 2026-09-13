@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
+import { Alert, Button, Form, Input, Typography, message } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext.jsx'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
@@ -47,7 +47,7 @@ export default function ChangePassword() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink-50 px-5 py-10">
-      <Card className="w-full max-w-md shadow-card" styles={{ body: { padding: 32 } }}>
+      <div className="page-card w-full max-w-md shadow-card" style={{ padding: 32 }}>
         <Typography.Title level={2} className="!mb-0 !text-2xl">
           修改密码
         </Typography.Title>
@@ -156,7 +156,7 @@ export default function ChangePassword() {
             </Link>
           )}
         </div>
-      </Card>
+      </div>
     </main>
   )
 }

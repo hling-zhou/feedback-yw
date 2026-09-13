@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Input,
   Modal,
   Select,
@@ -10,16 +9,14 @@ import {
   Table,
   Tabs,
   Tag,
-  Typography,
-} from 'antd'
+  Typography } from 'antd'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import {
   CopyOutlined,
   DownloadOutlined,
   FileExcelOutlined,
   FileTextOutlined,
-  MergeCellsOutlined,
-} from '@ant-design/icons'
+  MergeCellsOutlined } from '@ant-design/icons'
 import Papa from 'papaparse'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
@@ -30,16 +27,14 @@ import {
   exportCandidatesToCsv,
   getTagCandidateTarget,
   groupTagCandidates,
-  countPendingDuplicateCandidates,
-} from '../../lib/tagCandidates.js'
+  countPendingDuplicateCandidates } from '../../lib/tagCandidates.js'
 import { getTagLibraryVersion } from '../../lib/taxonomyLoader.js'
 
 const STATUS_LABELS = {
   pending: { color: 'orange', text: '待复核' },
   approved: { color: 'green', text: '已采纳' },
   rejected: { color: 'default', text: '已拒绝' },
-  merged: { color: 'blue', text: '已合并到服务端' },
-}
+  merged: { color: 'blue', text: '已合并到服务端' } }
 
 function buildColumns({ onApprove, onReject, readOnly }) {
   const cols = [
@@ -54,8 +49,7 @@ function buildColumns({ onApprove, onReject, readOnly }) {
             {buildTagCandidateReviewHint(row)}
           </Typography.Text>
         </div>
-      ),
-    },
+      ) },
     {
       title: '写入位置',
       key: 'target',
@@ -72,8 +66,7 @@ function buildColumns({ onApprove, onReject, readOnly }) {
             </Typography.Text>
           </div>
         )
-      },
-    },
+      } },
     {
       title: '标签释义',
       key: 'tagMeaning',
@@ -87,13 +80,11 @@ function buildColumns({ onApprove, onReject, readOnly }) {
             {text}
           </Typography.Paragraph>
         )
-      },
-    },
+      } },
     {
       title: '次数',
       dataIndex: 'occurrenceCount',
-      width: 64,
-    },
+      width: 64 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -101,8 +92,7 @@ function buildColumns({ onApprove, onReject, readOnly }) {
       render: (s) => {
         const meta = STATUS_LABELS[s] || { text: s, color: 'default' }
         return <Tag color={meta.color}>{meta.text}</Tag>
-      },
-    },
+      } },
   ]
   if (!readOnly) {
     cols.push({
@@ -118,8 +108,7 @@ function buildColumns({ onApprove, onReject, readOnly }) {
               拒绝
             </Button>
           </Space>
-        ) : null,
-    })
+        ) : null })
   }
   return cols
 }
@@ -138,8 +127,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
     rejectTagCandidates,
     markSnapshotsStale,
     exportTaxonomyPatch,
-    markTagCandidatesMerged,
-  } = useInsights()
+    markTagCandidatesMerged } = useInsights()
 
   const [statusFilter, setStatusFilter] = useState('pending')
   const [activeGroupKey, setActiveGroupKey] = useState('problem_type')
@@ -189,9 +177,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
         selectedRowKeys,
         onChange: (keys) => setSelectedRowKeys(keys.map(String)),
         getCheckboxProps: (record) => ({
-          disabled: record.status !== 'pending',
-        }),
-      }
+          disabled: record.status !== 'pending' }) }
 
   const pendingCount = tagCandidates.filter((c) => c.status === 'pending').length
   const approvedCount = tagCandidates.filter((c) => c.status === 'approved').length
@@ -208,8 +194,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
           setApproving(row)
           setReviewNote('')
         },
-        onReject: (id) => rejectTagCandidate(id),
-      }),
+        onReject: (id) => rejectTagCandidate(id) }),
     [readOnly, rejectTagCandidate],
   )
 
@@ -258,8 +243,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
         rowSelection={rowSelection}
         pagination={{ pageSize: 20 }}
       />
-    ),
-  }))
+    ) }))
 
   const approvingTarget = approving ? getTagCandidateTarget(approving) : null
 
@@ -287,7 +271,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
         }
       />
 
-      <Card className="mt-4" size="small" title="合并到服务端配置">
+      <div className="page-card-sm mt-4"><div className="page-card-header"><span className="page-card-title">合并到服务端配置</span></div>
         <Space wrap>
           <Button
             icon={<FileExcelOutlined />}
@@ -322,9 +306,9 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
             </Button>
           )}
         </Space>
-      </Card>
+      </div>
 
-      <Card className="mt-6">
+      <div className="page-card mt-6">
         <Space wrap className="mb-4">
           <Select
             className="min-w-[140px]"
@@ -406,8 +390,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
                       } finally {
                         setBatchProcessing(false)
                       }
-                    },
-                  })
+                    } })
                 }}
               >
                 批量拒绝（{selectedPendingIds.length}）
@@ -421,7 +404,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
         ) : (
           <Typography.Text type="secondary">当前筛选下暂无候选标签</Typography.Text>
         )}
-      </Card>
+      </div>
 
       {!readOnly && (
         <Modal

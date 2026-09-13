@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
-  Card,
   Divider,
   InputNumber,
   Select,
   Space,
   Table,
-  Typography,
-} from 'antd'
+  Typography } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getEnabledProducts } from '../lib/productCatalog.js'
 import { monthsInYear } from '../lib/wanTouRatio.js'
@@ -37,8 +35,7 @@ function pickMetricsBaseline({ productKey, year, months, orderVolumes, wanTouTar
   return {
     wanTouTarget: targetRow?.wanTouTarget ?? null,
     cxWanTouTarget: targetRow?.customerExperienceWanTouTarget ?? null,
-    orderDraft,
-  }
+    orderDraft }
 }
 
 /**
@@ -88,8 +85,7 @@ function ProductWanTouMetricsTabContent({
   wanTouTargets,
   onSaveWanTouTarget,
   onSaveOrderVolume,
-  loading,
-}) {
+  loading }) {
   const message = useAppMessage()
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
@@ -128,8 +124,7 @@ function ProductWanTouMetricsTabContent({
         productKey,
         year,
         wanTouTarget,
-        customerExperienceWanTouTarget: cxWanTouTarget,
-      })
+        customerExperienceWanTouTarget: cxWanTouTarget })
       for (const month of months) {
         const count = orderDraft[month]
         if (count == null || count === '') continue
@@ -174,8 +169,7 @@ function ProductWanTouMetricsTabContent({
           value={orderDraft[month] ?? null}
           onChange={(value) => setOrderDraft((draft) => ({ ...draft, [month]: value }))}
         />
-      ),
-    },
+      ) },
   ]
 
   return (
@@ -270,8 +264,7 @@ export default function ProductWanTouMetricsPanel({
   wanTouTargets,
   onSaveOrderVolume,
   onSaveWanTouTarget,
-  loading = false,
-}) {
+  loading = false }) {
   const products = useMemo(() => getEnabledProducts(), [])
   const [activeProductKey, setActiveProductKey] = useState(() => products[0]?.key || '')
 
@@ -291,20 +284,16 @@ export default function ProductWanTouMetricsPanel({
 
   if (!products.length) {
     return (
-      <Card>
+      <div className="page-card">
         <Typography.Text type="secondary">暂无已启用产品，请先在产品目录中配置。</Typography.Text>
-      </Card>
+      </div>
     )
   }
 
   return (
     <div className="space-y-4">
       <Alert type="info" showIcon title={METRICS_HINT_TITLE} description={METRICS_HINT_DESCRIPTION} />
-      <Card
-        tabList={tabList}
-        activeTabKey={activeProductKey || products[0]?.key}
-        onTabChange={setActiveProductKey}
-      >
+      <div className="page-card">
         {activeProduct ? (
           <ProductWanTouMetricsTabContent
             key={activeProduct.key}
@@ -317,7 +306,7 @@ export default function ProductWanTouMetricsPanel({
             loading={loading}
           />
         ) : null}
-      </Card>
+      </div>
     </div>
   )
 }

@@ -32,8 +32,8 @@ export default function ProductConfigurationCenter({ catalogMeta, readOnly = fal
   )
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="page-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <Typography.Text type="secondary" className="text-sm">
           产品配置 · {viewLabel}
         </Typography.Text>

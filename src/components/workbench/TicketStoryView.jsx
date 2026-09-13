@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { ArrowRightOutlined, CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
@@ -21,9 +21,9 @@ const impactSignalColors = { 高价值客户: 'gold', 负向情绪: 'red', 紧�
 
 function SectionHeading({ title, summary, id }) {
   return (
-    <div id={id} className="pt-2">
-      <Typography.Title level={4} className="!mb-0 !text-base">{title}</Typography.Title>
-      {summary ? <Typography.Text type="secondary" className="text-xs">{summary}</Typography.Text> : null}
+    <div id={id} className="page-card-header">
+      <span className="page-card-title">{title}</span>
+      {summary ? <span className="text-xs text-ink-500">{summary}</span> : null}
     </div>
   )
 }
@@ -233,21 +233,24 @@ export default function TicketStoryView({
         : null
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div className="page-card">
       <SectionHeading title="综合结论" summary="先回答整体状态、首要风险或机会、主要变化和行动缺口" id="ticket-conclusions" />
       <Row gutter={[12, 12]}>
         {model.conclusions.map((item) => (
           <Col xs={24} md={12} xl={6} key={item.key}>
-            <Card size="small" className="h-full">
+            <div className="metric-card h-full">
               <Typography.Text type="secondary" className="text-xs">{item.label}</Typography.Text>
-              <Typography.Title level={5} className="!mb-1 !mt-2 !text-sm">{item.value}</Typography.Title>
+              <div className="mb-1 mt-2 text-sm font-semibold text-ink-900">{item.value}</div>
               <Typography.Text type="secondary" className="text-xs">{item.detail}</Typography.Text>
               <div className="mt-2"><Typography.Link href={item.target} className="text-xs">查看依据 <ArrowRightOutlined /></Typography.Link></div>
-            </Card>
+            </div>
           </Col>
         ))}
       </Row>
+      </div>
 
+      <div className="page-card">
       <SectionHeading
         title={complaint ? '规模与体验现状' : '负担与机会现状'}
         summary={complaint
@@ -255,8 +258,8 @@ export default function TicketStoryView({
           : '看咨询负担、可转为自助的机会，以及仍需跟进的紧急单。'}
         id="ticket-status"
       />
-      <Card size="small" className="overflow-hidden">
-        <div className="grid divide-y divide-ink-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+      <div className="metric-card overflow-hidden">
+        <div className="grid divide-y divide-ink-200 md:grid-cols-3 md:divide-x md:divide-y-0">
           <StatusGroup label={complaint ? '规模' : '负担'}>
             <StatusMetric
               label="工单量"
@@ -310,9 +313,9 @@ export default function TicketStoryView({
             ) : null}
           </StatusGroup>
         </div>
-      </Card>
+      </div>
       {productSelected && productRow ? (
-        <Card size="small">
+        <div className="metric-card mt-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span className="font-medium text-ink-800">{productRow.product}</span>
             {productRow.smallSample ? <Tag>参考</Tag> : null}
@@ -332,9 +335,10 @@ export default function TicketStoryView({
               举措 {productRow.actionStatus || '待创建'}
             </Typography.Text>
           </div>
-        </Card>
+        </div>
       ) : (
-        <Card size="small" title="产品总览">
+        <div className="mt-3">
+          <div className="page-card-header"><span className="page-card-title">产品总览</span></div>
           <Table
             size="small"
             rowKey="product"
@@ -357,33 +361,38 @@ export default function TicketStoryView({
               { title: '举措状态', dataIndex: 'actionStatus', width: 100 },
             ]}
           />
-        </Card>
+        </div>
       )}
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="趋势与变化" summary="判断规模是在增长、持续还是缓解；环节变化见下方用户旅程" id="ticket-trends" />
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={12}>
-          <Card size="small" title="工单量趋势" className="h-full">
-            <TrendChart height={260} variant="line" data={trendsAndChanges.volumeTrend} areas={[{ dataKey: 'count', name: '工单量', stroke: '#4F46E5' }, { dataKey: 'negative', name: '负向工单', stroke: '#EF4444' }]} />
-          </Card>
+          <div className="page-card-header"><span className="page-card-title">工单量趋势</span></div>
+          <TrendChart height={260} variant="line" data={trendsAndChanges.volumeTrend} areas={[{ dataKey: 'count', name: '工单量', stroke: '#4F46E5' }, { dataKey: 'negative', name: '负向工单', stroke: '#EF4444' }]} />
         </Col>
         <Col xs={24} xl={12}>
           {complaint ? (
-            <Card size="small" title="客户体验类万投比趋势" className="h-full">
+            <>
+            <div className="page-card-header"><span className="page-card-title">客户体验类万投比趋势</span></div>
               {overview.wanTou.productKey ? (
                 <TrendChart height={260} variant="line" allowDecimals data={overview.wanTou.trend} areas={[{ dataKey: 'ratio', name: '万投比', stroke: '#0D9488' }]} referenceLine={overview.wanTou.evaluation?.target != null ? { y: overview.wanTou.evaluation.target, label: `目标 ${overview.wanTou.evaluation.target}` } : null} />
               ) : <Alert type="info" showIcon title="选择具体产品后查看万投比及目标差距" />}
-            </Card>
+            </>
           ) : (
-            <Card size="small" title="负向占比趋势" className="h-full">
+            <>
+            <div className="page-card-header"><span className="page-card-title">负向占比趋势</span></div>
               <TrendChart height={260} variant="line" allowDecimals data={trendsAndChanges.volumeTrend} areas={[{ dataKey: 'negativePct', name: '负向占比（%）', stroke: '#DC2626' }]} />
-            </Card>
+            </>
           )}
         </Col>
       </Row>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="问题发生位置" summary="沿一级用户旅程查看问题卡在哪一站，以及比上期更好还是更差" id="ticket-location" />
-      <Card size="small" title="用户旅程">
+      <div className="page-card-header"><span className="page-card-title">用户旅程</span></div>
         <TicketJourneyMap
           layout={journeyLayout}
           stages={journeyStages}
@@ -396,29 +405,35 @@ export default function TicketStoryView({
           products={products}
           onProductChange={onProductChange}
         />
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="原因与用户需求" summary="以行动建议解释用户遇到了什么、为何值得改善" id="ticket-drivers" />
       <ActionRecsPanel
         sourceFilter={complaint ? 'complaint_ticket' : 'consultation_ticket'}
         snapshot={snapshot}
         records={model.records || []}
         showEffectTable={true}
+        onOpenFeedback={onOpenFeedback}
       />
       {!complaint ? (
-        <Card size="small" title="咨询优化机会">
+        <div className="mt-3">
+          <div className="page-card-header"><span className="page-card-title">咨询优化机会</span></div>
           <ThemeBarChart data={drivers.opportunities.map((row) => ({ label: row.name, count: row.count, negative: 0 }))} />
-        </Card>
+        </div>
       ) : null}
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="影响与证据" summary="围绕上游主题解释为什么这些问题现在需要重点关注" id="ticket-evidence" />
+      <div className="page-card-header"><span className="page-card-title">影响信号</span></div>
       <Space size={[8, 8]} wrap>
         <Tag color="gold">高价值客户 {impactAndEvidence.highValueCount}</Tag>
         <Tag color="red">强负向 {impactAndEvidence.strongNegativeCount}</Tag>
         <Tag color="volcano">紧急催办 {impactAndEvidence.urgentCount}</Tag>
         <Tag color="purple">回访未解决 {impactAndEvidence.unresolvedCount}</Tag>
       </Space>
-      <Card size="small" title="重点关注">
+      <div className="page-card-header mt-3"><span className="page-card-title">重点关注</span></div>
         {impactSummary?.status === 'empty' ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={impactSummary?.executiveSummary || '当前范围暂无重点关注主题'} />
         ) : (
@@ -448,7 +463,7 @@ export default function TicketStoryView({
               <Row gutter={[12, 12]}>
                 {impactSummary.focusItems.map((item) => (
                   <Col xs={24} md={12} key={item.themeId}>
-                    <Card size="small" className="h-full">
+                    <div className="metric-card h-full">
                       <Space size={[6, 6]} wrap>
                         <Tag color={impactRiskColors[item.riskLevel] || 'default'}>
                           {item.riskLevel === 'high' ? '高风险' : item.riskLevel === 'medium' ? '中风险' : '低风险'}
@@ -460,9 +475,9 @@ export default function TicketStoryView({
                           </Tag>
                         ))}
                       </Space>
-                      <Typography.Title level={5} className="!mb-2 !mt-3 !text-sm">
+                      <div className="mb-2 mt-3 text-sm font-semibold text-ink-900">
                         {item.themeLabel}
-                      </Typography.Title>
+                      </div>
                       <Typography.Paragraph className="!mb-2 text-xs">
                         {item.summary}
                       </Typography.Paragraph>
@@ -471,16 +486,16 @@ export default function TicketStoryView({
                           查看该主题证据 <ArrowRightOutlined />
                         </Typography.Link>
                       ) : null}
-                    </Card>
+                    </div>
                   </Col>
                 ))}
               </Row>
             ) : null}
           </div>
         )}
-      </Card>
       {impactThemeLinks.length ? (
-        <Card size="small" title="主题证据">
+        <div className="mt-3">
+          <div className="page-card-header"><span className="page-card-title">主题证据</span></div>
           <div className="space-y-5">
             {impactThemeLinks.map((link, index) => {
               const clusterTicketIds = clusterTicketIdsOf(link)
@@ -494,9 +509,9 @@ export default function TicketStoryView({
               >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Typography.Title level={5} className="!mb-0 !text-sm">
+                    <span className="text-sm font-semibold text-ink-900">
                       {displayThemeLabel(link.themeLabel)}
-                    </Typography.Title>
+                    </span>
                     <Tag color={impactRiskColors[link.riskLevel] || 'default'}>
                       {link.riskLevel === 'high' ? '高风险' : link.riskLevel === 'medium' ? '中风险' : '低风险'}
                     </Tag>
@@ -561,12 +576,10 @@ export default function TicketStoryView({
               )
             })}
           </div>
-        </Card>
+        </div>
       ) : impactSummary?.status === 'evidence_only' ? (
-        <Card
-          size="small"
-          title="高风险信号证据"
-          extra={(
+        <div className="mt-3">
+          <div className="page-card-header"><span className="page-card-title">高风险信号证据</span><div>{(
             <Button
               type="link"
               size="small"
@@ -574,8 +587,7 @@ export default function TicketStoryView({
             >
               在反馈库查看
             </Button>
-          )}
-        >
+          )}</div></div>
           <LimitedTable
             className="ticket-evidence-table"
             size="small"
@@ -586,11 +598,13 @@ export default function TicketStoryView({
             scroll={{ x: 1200 }}
             columns={evidenceTicketColumns({ complaint, onOpenFeedback })}
           />
-        </Card>
+        </div>
       ) : null}
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="行动与效果验证" summary="将问题转成举措，并用后续周期数据判断是否真正改善" id="ticket-actions" />
-      <Card size="small" title="问题与行动">
+      <div className="page-card-header"><span className="page-card-title">问题与行动</span></div>
         <LimitedTable
           size="small"
           rowKey="id"
@@ -607,8 +621,7 @@ export default function TicketStoryView({
             { title: '操作', fixed: 'right', width: 108, render: (_, row) => row.action ? <Button type="link" size="small" href="/actions">查看举措</Button> : <Button type="link" size="small" icon={<PlusOutlined />} loading={creatingInsightId === row.insightId} onClick={() => onCreateAction?.(row)}>创建举措</Button> },
           ]}
         />
-      </Card>
-      <Card size="small" title="效果验证">
+      <div className="page-card-header mt-3"><span className="page-card-title">效果验证</span></div>
         <LimitedTable
           size="small"
           rowKey="id"
@@ -622,8 +635,9 @@ export default function TicketStoryView({
           ]}
         />
         {actionsAndRecovery.notImproved ? <Alert className="mt-3" type="warning" showIcon title={`${actionsAndRecovery.notImproved} 项举措已完成但问题未改善`} /> : null}
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="分析附录" id="ticket-appendix" />
       <Collapse items={[{
         key: 'quality',
@@ -642,6 +656,7 @@ export default function TicketStoryView({
           </div>
         ),
       }]} />
+      </div>
     </div>
   )
 }

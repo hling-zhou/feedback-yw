@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card, Typography } from 'antd'
+import { Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import TrendChart from '../charts/TrendChart.jsx'
 import {
@@ -60,15 +60,12 @@ export default function CxWanTouTrendChart({
   }, [productKey, wanTouTargets, window.baselineYear])
 
   return (
-    <Card
-      title={<Typography.Text strong>客户体验类万投比趋势</Typography.Text>}
-      extra={
+    <div className="page-card"><div className="page-card-header"><span className="page-card-title">{<Typography.Text strong>客户体验类万投比趋势</Typography.Text>}</span><div>{
         <Typography.Text type="secondary" className="text-xs">
           {window.startMonth}～{window.endMonth}
           {baselineTarget != null ? ` · 基准 ${window.baselineYear}年目标 ${baselineTarget}` : ''}
         </Typography.Text>
-      }
-    >
+      }</div></div>
       {!productName ? (
         <Typography.Text type="secondary" className="text-sm">
           请先选择具体产品以查看客户体验类万投比趋势与目标基准线。
@@ -107,6 +104,6 @@ export default function CxWanTouTrendChart({
           ) : null}
         </>
       )}
-    </Card>
+    </div>
   )
 }

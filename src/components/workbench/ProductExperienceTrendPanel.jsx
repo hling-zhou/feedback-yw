@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Empty, Select, Space, Table, Tag, Typography } from 'antd'
+import { Empty, Select, Space, Table, Tag, Typography } from 'antd'
 import TrendChart from '../charts/TrendChart.jsx'
 import { buildProductExperienceTrend } from '../../domain/workbenchProductTrends.js'
 import { listProducts } from '../../lib/productTaxonomy.js'
@@ -123,10 +123,7 @@ export default function ProductExperienceTrendPanel({ feedbacks = [], currentPer
   )
 
   return (
-    <Card
-      size="small"
-      className="!border-ink-100"
-      title={
+    <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{
         <Space size={8} wrap>
           <Typography.Text strong>单产品体验趋势</Typography.Text>
           <Select
@@ -139,8 +136,7 @@ export default function ProductExperienceTrendPanel({ feedbacks = [], currentPer
             className="min-w-[180px]"
           />
         </Space>
-      }
-    >
+      }</span></div>
       {!productName || !trend.hasAnyData ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -178,6 +174,6 @@ export default function ProductExperienceTrendPanel({ feedbacks = [], currentPer
           />
         </div>
       )}
-    </Card>
+    </div>
   )
 }

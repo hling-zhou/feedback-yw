@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Select, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Select, Space, Tag, Typography, message } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { workbenchTicketRecords } from '../../snapshots/recordScope.js'
 import { filterFeedbacks } from '../../lib/productAnalytics.js'
@@ -204,19 +204,19 @@ export default function TicketDashboardView({
 
   if (!periodRecords.length) {
     return (
-      <Card>
+      <div className="page-card">
         <Typography.Text type="secondary">
           {complaintOnlyCx
             ? `当前周期内暂无「客户体验类」${sourceLabel}数据，请先导入或调整周期。`
             : `当前周期内暂无「${sourceLabel}」数据，请先导入。`}
         </Typography.Text>
-      </Card>
+      </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      <Card size="small" title={`${sourceLabel}综合分析`}>
+      <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{`${sourceLabel}综合分析`}</span></div>
         <Space size={[8, 8]} wrap>
           <Typography.Text strong>产品</Typography.Text>
           <Select showSearch optionFilterProp="label" className="min-w-[220px]" value={product} options={[{ value: '', label: `全部产品 (${periodRecords.length})` }, ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))]} onChange={setProduct} />
@@ -227,7 +227,7 @@ export default function TicketDashboardView({
           <Tag color={model.scope.qualityWarningCount ? 'gold' : 'green'}>{model.scope.qualityStatus}</Tag>
           <Tag>聚类 {model.scope.clusteringVersion}</Tag>
         </Space>
-      </Card>
+      </div>
       {model.scope.qualityWarningCount ? <Alert type="warning" showIcon title={`当前范围有 ${model.scope.qualityWarningCount} 项数据质量或快照问题`} action={<Button type="link" href="#ticket-appendix">查看附录</Button>} /> : null}
       <TicketStoryView
         model={model}

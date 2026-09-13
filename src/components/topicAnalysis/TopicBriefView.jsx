@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Collapse, Tag, Typography } from 'antd'
+import { Button, Collapse, Tag, Typography } from 'antd'
 import { Link, useNavigate } from 'react-router-dom'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { resolveClusterFeedbacksNavigation } from '../../lib/feedbackTicketIdSet.js'
@@ -9,8 +9,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recha
 const PRIORITY_STYLES = {
   P0: 'bg-red-600 text-white',
   P1: 'bg-amber-100 text-amber-950',
-  P2: 'bg-ink-100 text-ink-700',
-}
+  P2: 'bg-ink-100 text-ink-700' }
 
 const REC_TYPE_LABELS = {
   collect: '补证据',
@@ -18,8 +17,7 @@ const REC_TYPE_LABELS = {
   follow_up: '跟进库存',
   investigate: '核查',
   observe: '观察',
-  expectation_gap: '预期落差',
-}
+  expectation_gap: '预期落差' }
 
 const CHAPTERS = [
   { id: 'conclusion', label: '结论' },
@@ -245,7 +243,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
 
   if (!brief) return null
   if (!decision) {
-    return <Card><Typography.Text type="secondary">该报告为旧版结构，请按系统数据重算后查看决策简报。</Typography.Text></Card>
+    return <div className="page-card"><Typography.Text type="secondary">该报告为旧版结构，请按系统数据重算后查看决策简报。</Typography.Text></div>
   }
   const { urgency, action, qualitative, attribution, metrics } = decision
   const analysis = resolved.analysis || {}
@@ -255,8 +253,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
   const recommendations = analysis.recommendations || []
   const monthData = Object.entries(quantitative.monthCounts || metrics.monthCounts || {}).map(([month, count]) => ({
     month: month.slice(5),
-    count,
-  }))
+    count }))
   const sourceMix = quantitative.sourceMix || Object.entries(resolved.scope?.countsBySource || {}).map(([name, count]) => ({ name, count }))
   const libraryCount = (resolved.sources || []).filter((row) => row.ticketId).length
   const leftoverVisits = (qualitativeChapter.visits || []).slice(3)
@@ -278,7 +275,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
   return (
     <div className="space-y-8">
       <section id="conclusion" className="scroll-mt-20 space-y-3">
-        <Card className="overflow-hidden !p-0" styles={{ body: { padding: 0 } }}>
+        <div className="overflow-hidden !p-0">
           <div className="grid md:grid-cols-4">
             <div className={`min-h-40 p-5 ${PRIORITY_STYLES[urgency.level] || PRIORITY_STYLES.P2}`}>
               <div className="text-4xl font-bold">{urgency.level}</div>
@@ -299,7 +296,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
               ))}
             </div>
           </div>
-        </Card>
+        </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 px-0.5 text-xs text-ink-500" data-testid="source-mix">
           <span>{metrics.total} 条</span>
@@ -324,7 +321,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
         </div>
       </section>
 
-      <nav aria-label="报告章节" className="page-sticky-chrome flex flex-wrap gap-x-4 gap-y-1 border-y border-ink-100 text-sm">
+      <nav aria-label="报告章节" className="page-sticky-chrome flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {CHAPTERS.map((item) => (
           <a
             key={item.id}
@@ -396,8 +393,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
                     </div>
                   ))}
                 </div>
-              ),
-            }]}
+              ) }]}
           />
         ) : null}
       </Chapter>
@@ -455,8 +451,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
                     <div key={gap} className="text-ink-500">{gap}</div>
                   ))}
                 </div>
-              ),
-            }]}
+              ) }]}
           />
         ) : null}
       </Chapter>
@@ -508,8 +503,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
                     <GroupedCrossTable key={table.key} table={table} />
                   ))}
                 </div>
-              ),
-            }]}
+              ) }]}
           />
         ) : null}
       </Chapter>
@@ -594,8 +588,7 @@ export default function TopicBriefView({ brief, onTicketClick }) {
                   </table>
                 </div>
               </div>
-            ),
-          }]}
+            ) }]}
         />
       </section>
     </div>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
-  Card,
   Popconfirm,
   Space,
   Table,
@@ -538,7 +537,7 @@ export default function TicketTodoTab() {
         </div>
       </div>
 
-      <Card size="small" className="!border-ink-100" styles={{ body: { overflow: 'visible' } }}>
+      <div className="page-card-sm overflow-visible">
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {TICKET_TODO_RESOLUTIONS.map((status) => (
@@ -574,7 +573,7 @@ export default function TicketTodoTab() {
             />
           </div>
         </div>
-      </Card>
+      </div>
 
       <div
         ref={stickyChromeRef}
@@ -602,7 +601,7 @@ export default function TicketTodoTab() {
         </Button>
       </div>
 
-      <Card size="small" className="page-section-sm !border-ink-100">
+      <div className="page-card-sm page-section-sm">
         <Table
           rowKey="id"
           size="small"
@@ -624,7 +623,7 @@ export default function TicketTodoTab() {
             onChange: (p) => setPage(p),
           }}
         />
-      </Card>
+      </div>
 
       <TicketTodoDrawer
         row={editing}

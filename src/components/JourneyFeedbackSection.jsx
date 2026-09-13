@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, Col, Collapse, Empty, Row, Tag, Typography, Alert } from 'antd'
+import { Col, Collapse, Empty, Row, Tag, Typography, Alert } from 'antd'
 import JourneyFlowChart from './charts/JourneyFlowChart.jsx'
 import JourneyViz from './charts/JourneyViz.jsx'
 import { buildJourneyInsights, journeyChartData } from '../lib/journeyInsights.js'
@@ -149,24 +149,27 @@ export default function JourneyFeedbackSection({
 
   if (!items.length) {
     return (
-      <Card title="按旅程环节聚合反馈">
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">按旅程环节聚合反馈</span>
+        </div>
         <Empty description="当前筛选下暂无数据" />
-      </Card>
+      </div>
     )
   }
 
   return (
-    <Card
-      title={
-        <span>
-          按旅程环节聚合反馈
-          <Typography.Text type="secondary" className="ml-2 text-xs font-normal">
-            按一级旅程展示需求痛点聚类 / 高频痛点（非 LLM 优化举措）
-          </Typography.Text>
+    <div className="page-card overflow-hidden">
+      <div className="page-card-header">
+        <span className="page-card-title">
+          <span>
+            按旅程环节聚合反馈
+            <Typography.Text type="secondary" className="ml-2 text-xs font-normal">
+              按一级旅程展示需求痛点聚类 / 高频痛点（非 LLM 优化举措）
+            </Typography.Text>
+          </span>
         </span>
-      }
-      styles={{ body: { maxHeight: 'min(70vh, 640px)', overflow: 'hidden' } }}
-    >
+      </div>
       <div className="max-h-[min(70vh,608px)] overflow-y-auto pr-1 lg:overflow-hidden">
         <Row gutter={[24, 24]} className="lg:items-start">
           <Col xs={24} lg={10} className="lg:max-h-[min(70vh,608px)] lg:overflow-y-auto lg:pr-1">
@@ -239,7 +242,7 @@ export default function JourneyFeedbackSection({
                 </div>
               </div>
 
-              <Card size="small" className="!border-brand-200 !bg-brand-50/30">
+              <div className="page-card-sm !border-brand-200 !bg-brand-50/30">
                 {clusteringFrequencyFallback && (
                   <Alert
                     type="info"
@@ -353,12 +356,12 @@ export default function JourneyFeedbackSection({
                     ]}
                   />
                 )}
-              </Card>
+              </div>
             </div>
           )}
         </Col>
         </Row>
       </div>
-    </Card>
+    </div>
   )
 }

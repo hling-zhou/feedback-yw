@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, Descriptions, Modal, Table, Typography } from 'antd'
+import { Button, Descriptions, Modal, Table, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { apiFetch } from '../../lib/apiClient.js'
 
@@ -50,8 +50,7 @@ export const AUDIT_ACTION_LABELS = {
   'post_use_jira.update': '更新用后内部提单',
   'post_use_jira.delete': '删除用后内部提单',
   'post_use_jira.batch_delete': '批量删除用后内部提单',
-  'post_use_callback_decisions.replace': '更新回访跟进决策',
-}
+  'post_use_callback_decisions.replace': '更新回访跟进决策' }
 
 /**
  * @param {Record<string, unknown>} detail
@@ -119,15 +118,13 @@ export default function AuditLogPanel() {
       title: '时间',
       dataIndex: 'createdAt',
       width: 168,
-      render: (v) => (v ? new Date(v).toLocaleString('zh-CN') : '—'),
-    },
+      render: (v) => (v ? new Date(v).toLocaleString('zh-CN') : '—') },
     { title: '操作者', dataIndex: 'username', width: 100 },
     {
       title: '操作',
       dataIndex: 'action',
       width: 160,
-      render: (action) => AUDIT_ACTION_LABELS[action] || action,
-    },
+      render: (action) => AUDIT_ACTION_LABELS[action] || action },
     {
       title: '详情',
       dataIndex: 'detail',
@@ -139,23 +136,19 @@ export default function AuditLogPanel() {
             查看
           </Button>
         </div>
-      ),
-    },
+      ) },
   ]
 
   return (
     <>
-      <Card
-        className="mt-6"
-        title={
+      <div className="page-card mt-6"><div className="page-card-header"><span className="page-card-title">
           <div className="flex flex-wrap items-center gap-2">
             <span>操作审计（最近 7 天）</span>
             <Button icon={<ReloadOutlined />} loading={loading} size="small" onClick={() => void load()}>
               刷新
             </Button>
           </div>
-        }
-      >
+        </span></div>
         <Typography.Text type="secondary" className="mb-3 block text-xs">
           记录导入、清空、配置发布与用户变更等系统操作。
         </Typography.Text>
@@ -167,7 +160,7 @@ export default function AuditLogPanel() {
           dataSource={entries}
           pagination={{ pageSize: 10, showSizeChanger: false }}
         />
-      </Card>
+      </div>
 
       <Modal
         title="审计详情"

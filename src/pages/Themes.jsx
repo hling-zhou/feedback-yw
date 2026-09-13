@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Space, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Button, Empty, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useFeedbacks } from '../context/FeedbackContext.jsx'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
@@ -80,7 +80,7 @@ function buildAnalysisTabs(dataSource) {
 }
 
 export default function Themes() {
-  const { feedbacks, totalRecordCount, retagSession, importSession, settings, selectInsightPeriod } = useFeedbacks()
+  const { feedbacks, feedbacksLoading, totalRecordCount, retagSession, importSession, settings, selectInsightPeriod } = useFeedbacks()
   const { rebuildBlocked, rebuildBlockedTip } = useSharedBackgroundTaskBlock()
   const { period: currentPeriod, periodFeedbacks, periodCount } = usePeriodScope()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -454,6 +454,20 @@ export default function Themes() {
     })
   }
 
+  if (feedbacksLoading) {
+    return (
+      <div>
+        <AnalysisPageHeader desc="按请求场景、问题类型、用户旅程、情绪与高频词聚合；周期与工作台保持一致" />
+        <div className="page-toolbar">
+          <InsightPeriodPicker compact showHint={false} granularities={['month']} />
+        </div>
+        <div className="flex justify-center py-16">
+          <Spin tip="加载反馈数据…" />
+        </div>
+      </div>
+    )
+  }
+
   if (!hasFeedbackData) {
     return (
       <div>
@@ -461,13 +475,13 @@ export default function Themes() {
         <div className="page-toolbar">
           <InsightPeriodPicker compact showHint={false} granularities={['month']} />
         </div>
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Empty description="暂无数据">
             <Link to={buildImportUrl({ source: dataSource })}>
               <Button type="primary">去导入</Button>
             </Link>
           </Empty>
-        </Card>
+        </div>
       </div>
     )
   }
@@ -547,22 +561,20 @@ export default function Themes() {
 
       {(tab === 'request' || tab === 'problem' || tab === 'complaint_cause') && (
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <Card
-            className="page-sticky-aside"
-            title={
+          <div className="page-card page-sticky-aside">
+            <div className="page-card-header"><span className="page-card-title">{
               tab === 'request'
                 ? '请求场景分布'
                 : tab === 'complaint_cause'
                   ? '投诉原因（终判）分布'
                   : '问题类型（打标）分布'
-            }
-          >
+            }</span></div>
             <ThemeBarChart
               data={chartData}
               activeLabel={expanded}
               onBarClick={handleBarClick}
             />
-          </Card>
+          </div>
 
           <InsightFeedbackList
             key={detailListKey}
@@ -584,7 +596,7 @@ export default function Themes() {
 
       {tab === 'journey' && (
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <Card title="用户旅程分布">
+          <div className="page-card"><div className="page-card-header"><span className="page-card-title">用户旅程分布</span></div>
             <Typography.Text type="secondary" className="text-xs">
               基于用户旅程打标（一级 / 二级环节；列表中的旅程标签即二级环节名）
             </Typography.Text>
@@ -628,7 +640,7 @@ export default function Themes() {
                 ))
               )}
             </div>
-          </Card>
+          </div>
 
           <InsightFeedbackList
             key={detailListKey}
@@ -658,7 +670,7 @@ export default function Themes() {
       )}
 
       {tab === 'keywords' && (
-        <Card className="page-section" title="客户原话高频词">
+        <div className="page-card page-section"><div className="page-card-header"><span className="page-card-title">客户原话高频词</span></div>
             <Typography.Text type="secondary" className="text-xs">
               从问题摘要与客户原话提取；词越大出现越频繁
               {canUseSemanticMatch(settings)
@@ -668,7 +680,7 @@ export default function Themes() {
           <Spin spinning={keywordsLoading} className="mt-3 block">
             <KeywordWordCloud words={keywords} />
           </Spin>
-        </Card>
+        </div>
       )}
 
       <FeedbackDrawer

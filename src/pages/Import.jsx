@@ -4,7 +4,6 @@ import { InboxOutlined } from '@ant-design/icons'
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Input,
   List,
@@ -1499,7 +1498,7 @@ export default function Import({ embedded = false }) {
       )}
 
       {step === 0 && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Typography.Title level={5} className="!mb-4">
             数据来源与数据时间
           </Typography.Title>
@@ -1577,11 +1576,11 @@ export default function Import({ embedded = false }) {
               下一步：上传文件
             </Button>
           </div>
-        </Card>
+        </div>
       )}
 
       {step === 1 && channelBundleImport && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <PostUseChannelBundleImport
             phase="upload"
             importBusy={importBusy || channelPreviewBusy}
@@ -1666,11 +1665,11 @@ export default function Import({ embedded = false }) {
               </Button>
             </Space>
           </div>
-        </Card>
+        </div>
       )}
 
       {step === 2 && channelBundleImport && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <PostUseChannelBundleImport
             phase="preview"
             importBusy={importBusy}
@@ -1699,11 +1698,11 @@ export default function Import({ embedded = false }) {
               </Button>
             </Space>
           </div>
-        </Card>
+        </div>
       )}
 
       {step === 1 && !channelBundleImport && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Alert
             className="mb-4"
             type="info"
@@ -1838,7 +1837,7 @@ export default function Import({ embedded = false }) {
               </a>
             )}
           </div>
-        </Card>
+        </div>
       )}
 
       {step >= 2 && step <= 3 && (
@@ -1852,7 +1851,7 @@ export default function Import({ embedded = false }) {
             />
           )}
           {uploadFiles.length === 1 && sheetNames.length > 1 && (
-            <Card>
+            <div className="page-card">
               <Typography.Text strong className="text-sm">
                 选择工作表（当前 {rows.length} 行）
               </Typography.Text>
@@ -1863,7 +1862,7 @@ export default function Import({ embedded = false }) {
                 onChange={onSheetChange}
                 disabled={importBusy}
               />
-            </Card>
+            </div>
           )}
           {activePreset && (
             <Alert
@@ -1878,7 +1877,7 @@ export default function Import({ embedded = false }) {
 
       {step === 2 && !channelBundleImport && (
         <div className="page-section space-y-5">
-          <Card>
+          <div className="page-card">
             <Typography.Title level={5} className="!mb-0">
               列映射
             </Typography.Title>
@@ -2048,7 +2047,7 @@ export default function Import({ embedded = false }) {
             )}
               </>
             )}
-          </Card>
+          </div>
           <Space>
             <Button onClick={() => setStep(1)}>上一步</Button>
             <Button
@@ -2064,7 +2063,7 @@ export default function Import({ embedded = false }) {
 
       {step === 3 && !channelBundleImport && (
         <div className="page-section space-y-5">
-          <Card>
+          <div className="page-card">
             <Typography.Title level={5} className="!mb-0">
               预览确认
             </Typography.Title>
@@ -2191,7 +2190,7 @@ export default function Import({ embedded = false }) {
             />
               </>
             )}
-          </Card>
+          </div>
           <Space>
             <Button onClick={() => setStep(2)}>上一步</Button>
             {followUpImport ? (
@@ -2239,7 +2238,7 @@ export default function Import({ embedded = false }) {
       )}
 
       {step === 4 && channelBundleResult && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Result
             status="success"
             title="用后即评双文件导入完成"
@@ -2287,11 +2286,11 @@ export default function Import({ embedded = false }) {
           <Typography.Text type="secondary" className="block text-center text-xs">
             数据月份 {normalizeImportMonth(importMonth)} · 对内体验分与投诉回访满意度已可在工作台查看
           </Typography.Text>
-        </Card>
+        </div>
       )}
 
       {step === 4 && followUpImportResult && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Result
             status={followUpImportResult.summary.updatedRecordCount > 0 ? 'success' : 'warning'}
             title="满意度回访导入完成"
@@ -2335,11 +2334,11 @@ export default function Import({ embedded = false }) {
           <Typography.Text type="secondary" className="block text-center text-xs">
             数据月份 {followUpImportResult.dataMonth} · 已补全投诉/咨询工单回访字段
           </Typography.Text>
-        </Card>
+        </div>
       )}
 
       {step === 4 && customerVisitImportResult && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Result
             status={
               customerVisitImportResult.dry.visitMetaCount > 0 ||
@@ -2411,11 +2410,11 @@ export default function Import({ embedded = false }) {
               ? '，并已挂接到匹配的评价明细'
               : ''}
           </Typography.Text>
-        </Card>
+        </div>
       )}
 
       {step === 4 && importResult && (
-        <Card className="page-section">
+        <div className="page-card page-section">
           <Result
             status={
               importResult.run.status === 'succeeded'
@@ -2542,7 +2541,7 @@ export default function Import({ embedded = false }) {
               description={`工作台左侧选择「咨询工单」Tab 查看图表。导入时已自动刷新 ${importResult.dataMonth} 洞察快照；若周期与工作台不一致，请切换周期后查看。反馈库中已有 ${importResult.records.length} 条咨询工单。`}
             />
           )}
-        </Card>
+        </div>
       )}
       <Modal
         open={passwordPrompt.open}

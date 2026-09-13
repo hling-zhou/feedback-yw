@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Card, Checkbox, Input, Modal, Radio, Select, Space, Typography, Upload } from 'antd'
+import { Alert, Button, Checkbox, Input, Modal, Radio, Select, Space, Typography, Upload } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -15,6 +15,8 @@ import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import RequirementTicketProgressPanel from '../components/admin/RequirementTicketProgressPanel.jsx'
 import ApiKeyPanel from '../components/admin/ApiKeyPanel.jsx'
 import KnowledgeBasePanel from '../components/admin/KnowledgeBasePanel.jsx'
+import PipelineCopilotPanel from '../components/admin/PipelineCopilotPanel.jsx'
+import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -338,7 +340,8 @@ function AnalysisSettingsPanel({ settings, onSave }) {
   return (
     <>
       <div className={`space-y-6 ${dirty ? 'pb-20' : ''}`}>
-        <Card title="维度打标">
+        <div className="page-card">
+          <div className="page-card-header"><span className="page-card-title">维度打标</span></div>
           <Checkbox
             checked={draft.retagDimensionsAfterTicketLlm}
             onChange={(e) =>
@@ -350,9 +353,10 @@ function AnalysisSettingsPanel({ settings, onSave }) {
           <Typography.Text type="secondary" className="mt-2 block text-xs">
             默认开启。仅对本次 ticket LLM 成功写入客户请求或痛点的工单生效；尊重工单详情中人工保存的标签维度。
           </Typography.Text>
-        </Card>
+        </div>
 
-        <Card title="旅程打标">
+        <div className="page-card">
+          <div className="page-card-header"><span className="page-card-title">旅程打标</span></div>
           <Checkbox
             checked={draft.useRequestNodeForJourney}
             onChange={(e) =>
@@ -364,9 +368,10 @@ function AnalysisSettingsPanel({ settings, onSave }) {
           <Typography.Text type="secondary" className="mt-2 block text-xs">
             团队共享设置，保存后其他用户约 5 秒内同步。
           </Typography.Text>
-        </Card>
+        </div>
 
-        <Card title="用户旅程匹配方式">
+        <div className="page-card">
+          <div className="page-card-header"><span className="page-card-title">用户旅程匹配方式</span></div>
           <Typography.Text type="secondary" className="mb-3 block text-xs">
             旅程环节在{' '}
             <Link to="/tags?tab=journey">对象与标签 → 用户旅程</Link>{' '}
@@ -393,9 +398,10 @@ function AnalysisSettingsPanel({ settings, onSave }) {
               ))}
             </Space>
           </Radio.Group>
-        </Card>
+        </div>
 
-        <Card title="单条工单优化建议（导入/重打标）">
+        <div className="page-card">
+          <div className="page-card-header"><span className="page-card-title">单条工单优化建议（导入/重打标）</span></div>
           <Typography.Text type="secondary" className="mb-3 block text-xs">
             控制导入与批量重打标时，是否为每条工单生成「产品/服务优化建议」（LLM 或规则）。
             洞察概览 V2 行动建议不走此开关：刷新洞察后由痛点聚类 + 工单优化字段聚合 + Playbook
@@ -421,7 +427,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
               </Radio>
             </Space>
           </Radio.Group>
-        </Card>
+        </div>
       </div>
 
       {dirty ? (
@@ -630,7 +636,7 @@ export default function Settings() {
 
       <div
         className={`mt-4 ${
-          activeTab === 'bottles' || activeTab === 'requirement_sync'
+          activeTab === 'bottles' || activeTab === 'requirement_sync' || activeTab === 'knowledge_base' || activeTab === 'curated_taxonomy'
             ? ''
             : activeTab === 'metrics'
               ? 'max-w-4xl'
@@ -640,9 +646,10 @@ export default function Settings() {
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
-          <Card title="大模型配置（团队）">
+          <div className="page-card">
+            <div className="page-card-header"><span className="page-card-title">大模型配置（团队）</span></div>
             <LlmSettingsPanel onServerStatusChange={setPersonalSettings} />
-          </Card>
+          </div>
         )}
 
         {activeTab === 'analysis' && canManageTeamSettings && (
@@ -662,7 +669,8 @@ export default function Settings() {
         {activeTab === 'data' && (
           <div className="space-y-6">
             {canExportData && (
-              <Card title="导出数据">
+              <div className="page-card">
+                <div className="page-card-header"><span className="page-card-title">导出数据</span></div>
                 <Typography.Text type="secondary" className="text-xs">
                   当前共 {totalRecordCount || feedbacks.length} 条反馈。Excel 为工单分析 v2 列（按导入月份分 Sheet）；JSON
                   备份含 schema 版本与完整记录。
@@ -684,11 +692,12 @@ export default function Settings() {
                     导出 JSON 备份
                   </Button>
                 </Space>
-              </Card>
+              </div>
             )}
 
             {canManageTeamSettings && (
-              <Card title="导入备份">
+              <div className="page-card">
+                <div className="page-card-header"><span className="page-card-title">导入备份</span></div>
                 <Typography.Text type="secondary" className="text-xs">
                   从 JSON 备份恢复（将覆盖当前数据）。支持 v1 信封或旧版纯数组格式。
                 </Typography.Text>
@@ -704,11 +713,12 @@ export default function Settings() {
                     <Button>选择 JSON 文件</Button>
                   </Upload>
                 </div>
-              </Card>
+              </div>
             )}
 
             {canDeleteData && (
-              <Card title={<span className="text-red-700">危险操作</span>} className="border-red-200">
+              <div className="page-card border-red-200">
+                <div className="page-card-header"><span className="page-card-title text-red-700">危险操作</span></div>
                 <Typography.Text type="secondary" className="block text-xs">
                   清空已导入的反馈、洞察快照、分析记录与待复核标签。按条件清空须同时选择
                   <strong> 洞察周期 + 数据来源</strong>
@@ -841,7 +851,7 @@ export default function Settings() {
                     </Button>
                   </Space>
                 </div>
-              </Card>
+              </div>
             )}
           </div>
         )}
@@ -858,6 +868,10 @@ export default function Settings() {
         )}
 
         {activeTab === 'knowledge_base' && can('manageKnowledgeBase') && <KnowledgeBasePanel />}
+
+        {activeTab === 'pipeline' && can('manageTeamSettings') && <PipelineCopilotPanel />}
+
+        {activeTab === 'curated_taxonomy' && can('manageTeamSettings') && <CuratedTaxonomyPanel />}
       </div>
     </div>
   )

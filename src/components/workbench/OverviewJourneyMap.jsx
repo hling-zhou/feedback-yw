@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Select, Segmented, Space, Typography } from 'antd'
+import { Select, Segmented, Space, Typography } from 'antd'
 import { listProducts } from '../../lib/productTaxonomy.js'
 import { filterFeedbacks } from '../../lib/productAnalytics.js'
 import {
@@ -54,15 +54,12 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
   }, [currentRecords, previousRecords, comparison, product, sourceFilter])
 
   return (
-    <Card
-      title="用户旅程"
-      extra={
+    <div className="page-card"><div className="page-card-header"><span className="page-card-title">用户旅程</span><div>{
         <Typography.Text type="secondary" className="text-xs">
           投诉仅含客户体验类
           {comparison.useMonthlyAverage ? ` · 多月按月均，对比${comparison.previousLabel}` : ''}
         </Typography.Text>
-      }
-    >
+      }</div></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Space size={8} wrap>
           <Typography.Text strong>产品</Typography.Text>
@@ -95,6 +92,6 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
         products={products}
         onProductChange={setProduct}
       />
-    </Card>
+    </div>
   )
 }

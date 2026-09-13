@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Card, Table, Tooltip, Typography } from 'antd'
+import { Alert, Table, Tooltip, Typography } from 'antd'
 import { ArrowDownOutlined, ArrowUpOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
@@ -139,23 +139,18 @@ export default function WanTouRatioPanel({
 
   if (multiProduct) {
     return (
-      <Card
-        size="small"
-        styles={{ body: { padding: '12px 16px' } }}
-        title={
+      <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{
           <span className="text-sm font-medium text-ink-700">
             万投比
             <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；体验类万投比仅统计投诉原因一级（终判）= 客户体验类">
               <QuestionCircleOutlined className="ml-1.5 text-ink-400" />
             </Tooltip>
           </span>
-        }
-        extra={
+        }</span><div>{
           <Typography.Text type="secondary" className="text-xs">
             全部产品 · {period?.label || '当前周期'}
           </Typography.Text>
-        }
-      >
+        }</div></div>
         <div>
           <Table
             size="small"
@@ -169,7 +164,7 @@ export default function WanTouRatioPanel({
         <Typography.Text type="secondary" className="mt-2 block text-xs">
           分母与目标值请在 <Link to="/settings">设置</Link> 中维护产品月订单数、万投比目标值。
         </Typography.Text>
-      </Card>
+      </div>
     )
   }
 
@@ -192,24 +187,19 @@ export default function WanTouRatioPanel({
           : 'secondary'
 
   return (
-    <Card
-      size="small"
-      styles={{ body: { padding: '12px 16px' } }}
-      title={
+    <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{
         <span className="text-sm font-medium text-ink-700">
           万投比
           <Tooltip title="投诉工单数 ÷ 产品订单数 × 10000；体验类万投比仅统计投诉原因一级（终判）= 客户体验类">
             <QuestionCircleOutlined className="ml-1.5 text-ink-400" />
           </Tooltip>
         </span>
-      }
-      extra={
+      }</span><div>{
         <Typography.Text type="secondary" className="text-xs">
           {summary.granularityLabel}
           {summary.annualTargets?.year ? ` · ${summary.annualTargets.year} 年目标` : ''}
         </Typography.Text>
-      }
-    >
+      }</div></div>
       {!productKey && (
         <Alert
           type="warning"
@@ -306,6 +296,6 @@ export default function WanTouRatioPanel({
           </Link>
         </Typography.Text>
       ) : null}
-    </Card>
+    </div>
   )
 }

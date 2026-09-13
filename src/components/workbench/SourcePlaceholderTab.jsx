@@ -1,4 +1,4 @@
-import { Alert, Card, Statistic, Typography } from 'antd'
+import { Alert, Statistic, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { isStubPipeline } from '../../analysis/registry.js'
 import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
@@ -34,7 +34,7 @@ export default function SourcePlaceholderTab({ sourceLabel, dataSourceType, snap
         />
       )}
 
-      <Card>
+      <div className="page-card">
         <Statistic title={`${sourceLabel}（当前周期）`} value={count} suffix="条" />
         <Typography.Paragraph type="secondary" className="!mb-0 mt-4 text-sm">
           {pipelineNotImplemented
@@ -47,7 +47,7 @@ export default function SourcePlaceholderTab({ sourceLabel, dataSourceType, snap
             {pipelineNotImplemented ? '（占位快照，无专项指标）' : ''}
           </Typography.Text>
         )}
-      </Card>
+      </div>
 
       <Link to={buildImportUrl({ source: dataSourceType })} className="text-brand-600 text-sm">
         导入 {sourceLabel} 数据

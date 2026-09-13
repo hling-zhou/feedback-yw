@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Empty, Space, Typography } from 'antd'
+import { Alert, Button, Empty, Space, Typography } from 'antd'
 import { countBySourceInScope } from '../../hooks/usePeriodScope.js'
 import { recordSourceType } from '../../snapshots/recordScope.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
@@ -42,7 +42,7 @@ export default function WorkbenchSourceEmpty({
       ].sort()
 
   return (
-    <Card>
+    <div className="page-card">
       <Empty description={`当前周期内暂无「${sourceLabel}」快照数据`}>
         <Space orientation="vertical" size="middle" className="mt-2">
           {totalInDb > 0 && inPeriod === 0 && (
@@ -86,6 +86,6 @@ export default function WorkbenchSourceEmpty({
           已导入月份：{months.join('、') || '—'} · 当前周期：{currentPeriod?.label || '—'}
         </Typography.Text>
       )}
-    </Card>
+    </div>
   )
 }

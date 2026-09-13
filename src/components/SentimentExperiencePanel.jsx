@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Segmented, Table, Tabs, Typography } from 'antd'
+import { Segmented, Table, Tabs, Typography } from 'antd'
 import HeatmapTableCell, { HeatmapLegend } from './HeatmapTableCell.jsx'
 import {
   buildSentimentJourneyProblemCrossTab,
@@ -275,31 +275,31 @@ export default function SentimentExperiencePanel({
   )
 
   return (
-    <Card
-      className={className}
-      title={<Typography.Text strong>体验断点分析</Typography.Text>}
-      extra={
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <Segmented
-            size="small"
-            value={heatmapEnabled ? 'heatmap' : 'plain'}
-            onChange={(value) => setHeatmapEnabled(value === 'heatmap')}
-            options={[
-              { label: '热力', value: 'heatmap' },
-              { label: '数值', value: 'plain' },
-            ]}
-          />
-          <Typography.Text type="secondary" className="text-xs">
-            {items.length} 条 · 情绪 × 旅程 × 问题类型
-          </Typography.Text>
+    <div className={`page-card ${className ?? ''}`}>
+      <div className="page-card-header">
+        <span className="page-card-title">体验断点分析</span>
+        <div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Segmented
+              size="small"
+              value={heatmapEnabled ? 'heatmap' : 'plain'}
+              onChange={(value) => setHeatmapEnabled(value === 'heatmap')}
+              options={[
+                { label: '热力', value: 'heatmap' },
+                { label: '数值', value: 'plain' },
+              ]}
+            />
+            <Typography.Text type="secondary" className="text-xs">
+              {items.length} 条 · 情绪 × 旅程 × 问题类型
+            </Typography.Text>
+          </div>
         </div>
-      }
-    >
+      </div>
       <Typography.Text type="secondary" className="mb-3 block text-xs">
         「加急」对应焦急/催办类表述；负面情绪含轻度不满、不满与强烈不满。高加急且高负面旅程往往指向流程或服务断点，而非单纯技术故障。
       </Typography.Text>
 
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
-    </Card>
+    </div>
   )
 }

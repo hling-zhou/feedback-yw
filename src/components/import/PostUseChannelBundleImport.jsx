@@ -1,4 +1,4 @@
-import { Alert, Card, Descriptions, Typography, Upload } from 'antd'
+import { Alert, Descriptions, Typography, Upload } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import { MAX_IMPORT_FILES } from '../../lib/importBatchFiles.js'
 import { displayImportFileName } from '../../lib/importFilePassword.js'
@@ -12,8 +12,7 @@ function toUploadItem(file, prefix, index) {
   return {
     uid: `${prefix}-${index}-${file.name}-${file.size}-${file.lastModified}`,
     name: displayImportFileName(file.name),
-    status: /** @type {const} */ ('done'),
-  }
+    status: /** @type {const} */ ('done') }
 }
 
 /**
@@ -41,8 +40,7 @@ export default function PostUseChannelBundleImport({
   onAddSmsFile,
   onAddWebFile,
   onSmsFilesChange,
-  onWebFilesChange,
-}) {
+  onWebFilesChange }) {
   const smsNames = smsFiles.map((file) => displayImportFileName(file.name)).join('、') || '—'
   const webNames = webFiles.map((file) => displayImportFileName(file.name)).join('、') || '—'
 
@@ -60,7 +58,7 @@ export default function PostUseChannelBundleImport({
           }
         />
         {preview ? (
-          <Card size="small" title="预览摘要">
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">预览摘要</span></div>
             <Descriptions column={2} size="small">
               <Descriptions.Item label="短信有效">{preview.merged.counts.sms}</Descriptions.Item>
               <Descriptions.Item label="控制台评分">{preview.merged.counts.console}</Descriptions.Item>
@@ -78,7 +76,7 @@ export default function PostUseChannelBundleImport({
             <Typography.Text type="secondary" className="text-xs">
               对内体验分=短信+控制台；对外月报口径仍为三渠道混算。投诉回访满意度单独统计。
             </Typography.Text>
-          </Card>
+          </div>
         ) : (
           <Alert type="warning" showIcon title="尚未解析预览，请返回上一步重新解析" />
         )}
@@ -95,7 +93,7 @@ export default function PostUseChannelBundleImport({
         description={`短信渠道按表头列「调研结果状态」识别；官网评分类 / 选项类按「产品名」、投诉处理-电话回访按「回访工单编号」识别。各支持最多 ${MAX_IMPORT_FILES} 个文件，将按渠道合并解析。选好文件后进入「预览确认」核对条数与口径。加密文件可把密码写在文件名中，格式为 名称#密码.xlsx。`}
       />
       <div className="grid gap-4 md:grid-cols-2">
-        <Card size="small" title={`短信渠道.xls（${smsFiles.length}/${MAX_IMPORT_FILES}）`}>
+        <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">`短信渠道.xls（${smsFiles.length}/${MAX_IMPORT_FILES}）`</span></div>
           <Upload.Dragger
             accept=".xls,.xlsx"
             multiple
@@ -115,8 +113,8 @@ export default function PostUseChannelBundleImport({
             </p>
             <p className="ant-upload-text">点击或拖拽短信渠道文件（可多选）</p>
           </Upload.Dragger>
-        </Card>
-        <Card size="small" title={`官网渠道.xls（${webFiles.length}/${MAX_IMPORT_FILES}）`}>
+        </div>
+        <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">`官网渠道.xls（${webFiles.length}/${MAX_IMPORT_FILES}）`</span></div>
           <Upload.Dragger
             accept=".xls,.xlsx"
             multiple
@@ -136,7 +134,7 @@ export default function PostUseChannelBundleImport({
             </p>
             <p className="ant-upload-text">点击或拖拽官网渠道文件（可多选）</p>
           </Upload.Dragger>
-        </Card>
+        </div>
       </div>
     </div>
   )

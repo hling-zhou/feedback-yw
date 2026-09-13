@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
-  Card,
   Empty,
   Form,
   Input,
@@ -475,37 +474,39 @@ export default function TopicAnalysis() {
                   const mine = isOwnTopicActor(report.createdBy, user)
                   const canDelete = canDeleteTopicReport(report, user)
                   return (
-                  <Card
+                  <div
                     key={report.id}
-                    size="small"
-                    title={report.title}
-                    extra={(
-                      <Space size={8}>
-                        {canDelete ? (
-                          <Popconfirm
-                            title="确定删除该专题报告？"
-                            description="删除后无法恢复。"
-                            okText="删除"
-                            okButtonProps={{ danger: true }}
-                            cancelText="取消"
-                            onConfirm={() => void handleDeleteReport(report)}
-                          >
-                            <Button
-                              type="link"
-                              size="small"
-                              danger
-                              className="!px-0"
-                              icon={<DeleteOutlined />}
-                              loading={deletingId === report.id}
-                            >
-                              删除
-                            </Button>
-                          </Popconfirm>
-                        ) : null}
-                        <Link to={`/topics/${report.id}`}>{status === 'generating' ? '查看进度' : '进入详情'}</Link>
-                      </Space>
-                    )}
+                    className="page-card-sm"
                   >
+                    <div className="page-card-header">
+                      <span className="page-card-title">{report.title}</span>
+                      <div>
+                        <Space size={8}>
+                          {canDelete ? (
+                            <Popconfirm
+                              title="确定删除该专题报告？"
+                              description="删除后无法恢复。"
+                              okText="删除"
+                              okButtonProps={{ danger: true }}
+                              cancelText="取消"
+                              onConfirm={() => void handleDeleteReport(report)}
+                            >
+                              <Button
+                                type="link"
+                                size="small"
+                                danger
+                                className="!px-0"
+                                icon={<DeleteOutlined />}
+                                loading={deletingId === report.id}
+                              >
+                                删除
+                              </Button>
+                            </Popconfirm>
+                          ) : null}
+                          <Link to={`/topics/${report.id}`}>{status === 'generating' ? '查看进度' : '进入详情'}</Link>
+                        </Space>
+                      </div>
+                    </div>
                     <Space wrap size={4}>
                       <Tag>{TOPIC_TYPE_LABELS[report.type] || report.type}</Tag>
                       <Tag>{TOPIC_ORIGIN_LABELS[report.origin] || report.origin}</Tag>
@@ -528,7 +529,7 @@ export default function TopicAnalysis() {
                         更新于 {(report.updatedAt || '').slice(0, 16).replace('T', ' ')}
                       </Typography.Text>
                     )}
-                  </Card>
+                  </div>
                   )
                 })}
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Card, Collapse, Descriptions, Modal, Space, Table, Typography, Upload, message } from 'antd'
+import { Alert, Button, Collapse, Descriptions, Modal, Space, Table, Typography, Upload, message } from 'antd'
 import { DownloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { buildMonthlyReportPreviewModel } from '../../lib/postUseRating/monthlyReportPreview.js'
 import {
@@ -162,10 +162,7 @@ export default function PostUseMonthlyReportPreview(props) {
   }
 
   return (
-    <Card
-      size="small"
-      title={model.title}
-      extra={
+    <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{model.title}</span><div>{
         <Space>
           <Upload
             accept=".docx"
@@ -190,8 +187,7 @@ export default function PostUseMonthlyReportPreview(props) {
             生成 Word 月报
           </Button>
         </Space>
-      }
-    >
+      }</div></div>
       <Alert
         className="mb-3"
         type="info"
@@ -232,7 +228,7 @@ export default function PostUseMonthlyReportPreview(props) {
         />
       ) : null}
       {model.reviewChecklist?.length ? (
-        <Card size="small" title="本次导出前建议复核" className="mb-3">
+        <div className="page-card-sm mb-3"><div className="page-card-header"><span className="page-card-title">本次导出前建议复核</span></div>
           <div className="space-y-3">
             {model.reviewChecklist.map((item) => (
               <div key={item.id || `${item.section}-${item.title}`}>
@@ -248,7 +244,7 @@ export default function PostUseMonthlyReportPreview(props) {
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       ) : null}
       <Descriptions size="small" column={2} bordered className="mb-4">
         <Descriptions.Item label="云网产品数">{model.overview.productCount}</Descriptions.Item>
@@ -452,7 +448,7 @@ export default function PostUseMonthlyReportPreview(props) {
               <Descriptions.Item label="导入时间">{importedRevision.importedAt}</Descriptions.Item>
             </Descriptions>
             {(importedRevision.learnedEntries || []).length ? (
-              <Card size="small" title="学到的经验">
+              <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">学到的经验</span></div>
                 <div className="space-y-3">
                   {importedRevision.learnedEntries.map((item) => (
                     <div key={item.id}>
@@ -466,7 +462,7 @@ export default function PostUseMonthlyReportPreview(props) {
                     </div>
                   ))}
                 </div>
-              </Card>
+              </div>
             ) : (
               <Alert
                 type="info"
@@ -478,6 +474,6 @@ export default function PostUseMonthlyReportPreview(props) {
           </div>
         ) : null}
       </Modal>
-    </Card>
+    </div>
   )
 }

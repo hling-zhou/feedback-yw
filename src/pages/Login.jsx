@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
-import { Button, Card, Form, Input, Typography, message } from 'antd'
+import { Button, Form, Input, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import SystemUsageWorkflow from '../components/login/SystemUsageWorkflow.jsx'
 
@@ -86,7 +86,7 @@ export default function Login() {
               </Typography.Paragraph>
               <SystemUsageWorkflow variant="compact" className="!bg-white !shadow-card" />
             </div>
-            <Card className="shadow-card" styles={{ body: { padding: 32 } }}>
+            <div className="page-card shadow-card" style={{ padding: 32 }}>
               <Typography.Title level={2} className="!mb-0 !text-2xl">
                 登录
               </Typography.Title>
@@ -147,7 +147,7 @@ export default function Login() {
               <p className="mt-4 text-center text-xs text-ink-400">
                 还没有账号？请联系管理员在「用户管理」中开通
               </p>
-            </Card>
+            </div>
           </div>
         </section>
       </div>

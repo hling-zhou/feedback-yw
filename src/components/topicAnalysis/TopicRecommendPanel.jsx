@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Button, Card, Empty, Segmented, Space, Spin, Tag, Typography } from 'antd'
+import { Button, Empty, Segmented, Space, Spin, Tag, Typography } from 'antd'
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { TOPIC_TYPE_LABELS, topicReportStatus } from '../../lib/topicAnalysis/constants.js'
 
@@ -25,8 +25,7 @@ export default function TopicRecommendPanel({
   onTypeFilter,
   onAdopt,
   llmPolishing,
-  llmPolished,
-}) {
+  llmPolished }) {
   const visible = typeFilter === 'all' ? cards : cards.filter((card) => card.type === typeFilter)
 
   return (
@@ -56,13 +55,12 @@ export default function TopicRecommendPanel({
               || (card.mergeIds || []).includes(item.sourceRecommendationId)
             ))
             return (
-              <Card key={card.id} size="small" title={(
+              <div className="page-card-sm"><div className="page-card-header"><div>
                 <Space wrap>
                   <Tag>{card.typeLabel}</Tag>
-                  <span>{card.title}</span>
+                  <span className="text-base font-semibold text-ink-900">{card.title}</span>
                 </Space>
-              )}
-              >
+              </div></div>
                 {(card.scenarioLabels || []).length ? (
                   <Space wrap size={4} className="mb-2">
                     {card.scenarioLabels.map((label) => (
@@ -102,7 +100,7 @@ export default function TopicRecommendPanel({
                     </Button>
                   )}
                 </div>
-              </Card>
+              </div>
             )
           })}
         </div>

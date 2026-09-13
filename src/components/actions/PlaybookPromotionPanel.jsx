@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, Input, Modal, Space, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Input, Modal, Space, Table, Tag, Typography } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import {
   listPlaybookPromotionCandidates,
   loadPlaybookPromotionState,
   playbookCandidateKey,
-  savePlaybookPromotionState,
-} from '../../lib/learning/playbookPromotion.js'
+  savePlaybookPromotionState } from '../../lib/learning/playbookPromotion.js'
 import {
   loadPlaybookOverrides,
   mergePlaybookCandidateIntoOverlay,
-  savePlaybookOverrides,
-} from '../../lib/learning/playbookOverrides.js'
+  savePlaybookOverrides } from '../../lib/learning/playbookOverrides.js'
 import { setPlaybookOverlayCache } from '../../lib/planningConfigLoader.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
 
@@ -59,8 +57,7 @@ export default function PlaybookPromotionPanel() {
     const key = playbookCandidateKey(row)
     const nextState = {
       rejectedKeys: state.rejectedKeys,
-      approvedKeys: [...new Set([...(state.approvedKeys || []), key])],
-    }
+      approvedKeys: [...new Set([...(state.approvedKeys || []), key])] }
     await savePlaybookPromotionState(adapter, nextState)
     setState(nextState)
     markSnapshotsStale?.()
@@ -72,8 +69,7 @@ export default function PlaybookPromotionPanel() {
     const key = playbookCandidateKey(row)
     const nextState = {
       approvedKeys: state.approvedKeys,
-      rejectedKeys: [...new Set([...(state.rejectedKeys || []), key])],
-    }
+      rejectedKeys: [...new Set([...(state.rejectedKeys || []), key])] }
     await savePlaybookPromotionState(adapter, nextState)
     setState(nextState)
     await refresh()
@@ -82,7 +78,7 @@ export default function PlaybookPromotionPanel() {
   return (
     <div className="space-y-4">
       <PageIntro />
-      <Card>
+      <div className="page-card">
         <Space className="mb-4">
           <Button onClick={refresh} loading={loading}>
             刷新候选
@@ -101,8 +97,7 @@ export default function PlaybookPromotionPanel() {
             {
               title: '确立举措',
               dataIndex: 'text',
-              render: (v) => <Typography.Paragraph className="mb-0" ellipsis={{ rows: 2 }}>{v}</Typography.Paragraph>,
-            },
+              render: (v) => <Typography.Paragraph className="mb-0" ellipsis={{ rows: 2 }}>{v}</Typography.Paragraph> },
             {
               title: '频次',
               key: 'freq',
@@ -112,8 +107,7 @@ export default function PlaybookPromotionPanel() {
                   {row.count} 单
                   <Tag className="ml-1">{row.distinctMonths} 月</Tag>
                 </span>
-              ),
-            },
+              ) },
             {
               title: '操作',
               key: 'actions',
@@ -134,11 +128,10 @@ export default function PlaybookPromotionPanel() {
                     拒绝
                   </Button>
                 </Space>
-              ),
-            },
+              ) },
           ]}
         />
-      </Card>
+      </div>
       <Modal
         title="编辑后写入 Playbook"
         open={Boolean(editing)}

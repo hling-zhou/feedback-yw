@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Card, Space, Tag, Typography, message } from 'antd'
+import { Button, Space, Tag, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
 import { loadPostUseTrend } from '../../lib/postUseRating/trendStore.js'
@@ -133,7 +133,7 @@ export default function PostUseRatingDashboardView() {
 
   return (
     <div className="space-y-4">
-      <Card size="small">
+      <div className="page-card-sm">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-3">
             <Typography.Title level={4} className="!mb-0">
@@ -157,7 +157,7 @@ export default function PostUseRatingDashboardView() {
             {reportMonth ? <Tag color="green">月报 {reportMonth}</Tag> : null}
           </Space>
         </div>
-      </Card>
+      </div>
 
       <PostUseStoryView
         model={storyModel}

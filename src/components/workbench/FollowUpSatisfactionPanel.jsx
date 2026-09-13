@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Select, Table, Typography } from 'antd'
+import { Alert, Button, Select, Table, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import KeywordWordCloud from '../charts/KeywordWordCloud.jsx'
@@ -110,7 +110,7 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
   if (!followUpTickets.length) {
     if (channelMetrics?.totalSample > 0) {
       return (
-        <Card title="回访满意度（渠道口径）">
+        <div className="page-card"><div className="page-card-header"><span className="page-card-title">回访满意度（渠道口径）</span></div>
           <Alert
             className="!mb-4"
             type="warning"
@@ -146,15 +146,15 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
               },
             ]}
           />
-        </Card>
+        </div>
       )
     }
     return (
-      <Card title="回访满意度">
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">回访满意度</span></div>
         <Typography.Text type="secondary">
           当前周期内暂无投诉回访评分样本。
         </Typography.Text>
-      </Card>
+      </div>
     )
   }
 
@@ -165,20 +165,18 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Typography.Title level={5} className="!mb-0">
-          回访满意度
-        </Typography.Title>
-        <Select
-          className="min-w-[12rem]"
-          value={productKey}
-          options={productOptions}
-          onChange={setProductKey}
-          aria-label="回访满意度产品筛选"
-        />
-      </div>
-
-      <Typography.Text type="secondary" className="block text-xs">
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">回访满意度</span>
+          <Select
+            className="min-w-[12rem]"
+            value={productKey}
+            options={productOptions}
+            onChange={setProductKey}
+            aria-label="回访满意度产品筛选"
+          />
+        </div>
+        <Typography.Text type="secondary" className="block text-xs">
         基于周期内投诉/咨询工单的回访补全数据；有效回访 {metrics.scoredCount} 条
         {selectedProductName ? ` · ${selectedProductName}` : ''}
         {' · '}
@@ -186,10 +184,9 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
           查看工单
         </Link>
       </Typography.Text>
+      </div>
 
-      <Card
-        title="10 分满意率 · 月度趋势"
-        extra={
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">10 分满意率 · 月度趋势</span><div>{
           <Button
             type="link"
             size="small"
@@ -198,16 +195,13 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
           >
             导出 Excel
           </Button>
-        }
-      >
-        <div className="rounded-lg bg-white p-2">
+        }</div></div>
+        <div className="p-2">
           <FollowUpTenPointRateChart data={trend.chartData} lines={trend.lines} />
         </div>
-      </Card>
+      </div>
 
-      <Card
-        title="非 10 分 · 得分分布"
-        extra={
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">非 10 分 · 得分分布</span><div>{
           <Button
             type="link"
             size="small"
@@ -218,12 +212,11 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
           >
             导出 Excel
           </Button>
-        }
-      >
-        <div className="rounded-lg bg-white p-2">
+        }</div></div>
+        <div className="p-2">
           <FollowUpScoreDistributionChart rows={metrics.scoreDistributionByProduct} />
         </div>
-      </Card>
+      </div>
 
       <div
         className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-ink-100 bg-white px-4 py-3"
@@ -268,8 +261,8 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
       </div>
 
       <div className="grid items-stretch gap-4 lg:grid-cols-2">
-        <Card title="非 10 分 · 请求场景">
-          <div className="rounded-lg bg-white p-2">
+        <div className="page-card"><div className="page-card-header"><span className="page-card-title">非 10 分 · 请求场景</span></div>
+          <div className="p-2">
             <ThemeBarChart
               data={requestSceneChart}
               showNegativePct={false}
@@ -281,9 +274,9 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
               }
             />
           </div>
-        </Card>
-        <Card title="非 10 分 · 问题类型">
-          <div className="rounded-lg bg-white p-2">
+        </div>
+        <div className="page-card"><div className="page-card-header"><span className="page-card-title">非 10 分 · 问题类型</span></div>
+          <div className="p-2">
             <ThemeBarChart
               data={problemTypeChart}
               showNegativePct={false}
@@ -295,21 +288,21 @@ export default function FollowUpSatisfactionPanel({ ticketRecords, channelMetric
               }
             />
           </div>
-        </Card>
+        </div>
       </div>
 
-      <Card title="非 10 分 · 不满意原因">
+      <div className="page-card"><div className="page-card-header"><span className="page-card-title">非 10 分 · 不满意原因</span></div>
         <Typography.Text type="secondary" className="mb-2 block text-xs">
           汇总非 10 分工单中填写的不满意原因原文；已自动过滤「无」「暂无」等占位值
         </Typography.Text>
-        <div className="rounded-lg bg-white p-2">
+        <div className="p-2">
           <KeywordWordCloud
             words={reasonWordCloud}
             ariaLabel="不满意原因词云"
             emptyDescription="暂无不满意原因文本"
           />
         </div>
-      </Card>
+      </div>
     </div>
   )
 }

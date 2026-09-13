@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
@@ -28,11 +28,9 @@ function downloadCsv(text, name) {
 
 function SectionHeading({ title, summary, id }) {
   return (
-    <div id={id} className="pt-2">
-      <div className="min-w-0">
-        <Typography.Title level={4} className="!mb-0 !text-base">{title}</Typography.Title>
-        {summary ? <Typography.Text type="secondary" className="text-xs">{summary}</Typography.Text> : null}
-      </div>
+    <div id={id} className="page-card-header">
+      <span className="page-card-title">{title}</span>
+      {summary ? <span className="text-xs text-ink-500">{summary}</span> : null}
     </div>
   )
 }
@@ -84,35 +82,38 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
   const callbackDownloadDisabledReason = '当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录'
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div className="page-card">
       <SectionHeading title="综合结论" summary="先回答所选范围内的整体表现、首要风险、主要变化和行动缺口" id="post-use-conclusions" />
       <Row gutter={[12, 12]}>
         {model.conclusions.map((item) => (
           <Col xs={24} md={12} xl={6} key={item.key}>
-            <Card size="small" className="h-full">
+            <div className="metric-card h-full">
               <Typography.Text type="secondary" className="text-xs">{item.label}</Typography.Text>
-              <Typography.Title level={5} className="!mb-1 !mt-2 !text-sm">{item.value}</Typography.Title>
+              <div className="mb-1 mt-2 text-sm font-semibold text-ink-900">{item.value}</div>
               <Typography.Text type="secondary" className="text-xs">{item.detail}</Typography.Text>
               <div className="mt-2"><Typography.Link href={item.target} className="text-xs">查看依据 <ArrowRightOutlined /></Typography.Link></div>
-            </Card>
+            </div>
           </Col>
         ))}
       </Row>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="体验现状" summary="统一查看体验评分、投诉回访满意度及产品状态" id="post-use-status" />
       <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="体验均分" value={exp.avgScore} precision={2} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="体验样本" value={exp.totalSample} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="投诉回访样本" value={sat.totalSample} /></Card></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="体验均分" value={exp.avgScore} precision={2} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="体验样本" value={exp.totalSample} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="投诉回访样本" value={sat.totalSample} /></div></Col>
       </Row>
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="云网均分（三渠道）" value={yw?.avgScore} precision={2} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="云网样本量" value={yw?.totalSample} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="公司样本量" value={company?.totalSample} /></Card></Col>
+      <Row gutter={[12, 12]} className="mt-3">
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="云网均分（三渠道）" value={yw?.avgScore} precision={2} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="云网样本量" value={yw?.totalSample} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司样本量" value={company?.totalSample} /></div></Col>
       </Row>
-      <Card size="small" title="产品体验总览">
+      <div className="page-card-header mt-3"><span className="page-card-title">产品体验总览</span></div>
         <Table
           size="small"
           rowKey="productName"
@@ -131,7 +132,6 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '客服部回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
           ]}
         />
-      </Card>
       <Collapse
         items={[
           {
@@ -158,21 +158,21 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           },
         ]}
       />
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="趋势与变化" summary="判断体验是在改善、恶化还是持续" id="post-use-trends" />
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={12}>
-          <Card size="small" title="重点产品体验均分趋势" className="h-full">
+          <div className="page-card-header"><span className="page-card-title">重点产品体验均分趋势</span></div>
             {trendsAndChanges.scoreTrend.data.length ? <TrendChart variant="line" allowDecimals height={260} data={trendsAndChanges.scoreTrend.data} areas={trendsAndChanges.scoreTrend.areas} referenceLine={{ y: 9, label: '关注线 9' }} /> : <Alert type="info" showIcon title="当前范围暂无体验趋势" />}
-          </Card>
         </Col>
         <Col xs={24} xl={12}>
-          <Card size="small" title="重点产品投诉回访满意度趋势" className="h-full">
+          <div className="page-card-header"><span className="page-card-title">重点产品投诉回访满意度趋势</span></div>
             {trendsAndChanges.satisfactionTrend.data.length ? <TrendChart variant="line" allowDecimals height={260} data={trendsAndChanges.satisfactionTrend.data} areas={trendsAndChanges.satisfactionTrend.areas} referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }} /> : <Alert type="info" showIcon title="当前范围暂无满意度趋势" />}
-          </Card>
         </Col>
       </Row>
-      <Card size="small" title="问题变化">
+      <div className="page-card-header mt-3"><span className="page-card-title">问题变化</span></div>
         <LimitedTable
           size="small"
           rowKey={(row) => `${row.productName}-${row.issue}`}
@@ -186,10 +186,11 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '当前范围', dataIndex: 'currentCount', width: 88 },
           ]}
         />
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="原因与用户需求" summary="从发生位置继续下钻到用户真正需要的改善" id="post-use-drivers" />
-      <Card size="small" title="评价触发场景 × 用户旅程">
+      <div className="page-card-header"><span className="page-card-title">评价触发场景 × 用户旅程</span></div>
         <LimitedTable
           size="small"
           rowKey={(row) => `${row.productName}-${row.originalScene}-${row.journey}`}
@@ -203,8 +204,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '非10分', dataIndex: 'nonTenCount', width: 82 },
           ]}
         />
-      </Card>
-      <Card size="small" title="用户需求改善优先级">
+      <div className="page-card-header mt-3"><span className="page-card-title">用户需求改善优先级</span></div>
         <LimitedTable
           size="small"
           rowKey={(row) => `${row.productName}-${row.need}`}
@@ -220,12 +220,11 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '判定依据', dataIndex: 'explanation' },
           ]}
         />
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="客户与证据" summary="识别受影响客户，并合并反馈原因与客服部回访结论" id="post-use-customers" />
-      <Card
-        size="small"
-        extra={
+      <div className="page-card-header"><div>{
           canOpenCallbackList ? (
           <Tooltip title={callbackDownloadDisabled ? callbackDownloadDisabledReason : ''}>
             <span>
@@ -246,8 +245,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             </span>
           </Tooltip>
           ) : null
-        }
-      >
+        }</div></div>
         <LimitedTable
           size="small"
           rowKey={(row) => row.customerCode || `${row.customerName}-${row.products.join(',')}`}
@@ -273,8 +271,10 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '回访结论', dataIndex: 'visitConclusion', width: 180, ellipsis: true },
           ]}
         />
-      </Card>
-      <Card size="small" title="高频低分原因">
+      </div>
+
+      <div className="page-card">
+      <div className="page-card-header"><span className="page-card-title">高频低分原因</span></div>
         <LimitedTable
           size="small"
           rowKey={(row) => row.id}
@@ -291,15 +291,17 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '客户标识', dataIndex: 'customerTag', width: 88, render: (value) => value ? <Tag color="red">{value}</Tag> : '—' },
           ]}
         />
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="行动" summary="先识别触发推进的风险信号，再把上游主题转成可落地举措" id="post-use-actions" />
       {actionsAndRecovery.triggerGroups?.length ? (
-        <Card size="small" title="行动触发摘要">
+        <div className="mt-3">
+          <div className="page-card-header"><span className="page-card-title">行动触发摘要</span></div>
           <Row gutter={[12, 12]}>
             {actionsAndRecovery.triggerGroups.map((row) => (
               <Col xs={24} md={12} xl={8} key={row.productName}>
-                <Card size="small" className="h-full bg-ink-50/50">
+                <div className="metric-card h-full">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <Typography.Text strong>{row.productName}</Typography.Text>
                     <Tag color={actionPriorityColor[row.priority] || 'default'}>{row.priority}</Tag>
@@ -331,13 +333,13 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
                       </Typography.Paragraph>
                     ) : null}
                   </div>
-                </Card>
+                </div>
               </Col>
             ))}
           </Row>
-        </Card>
+        </div>
       ) : null}
-      <Card size="small" title="主题级行动建议">
+      <div className="page-card-header mt-3"><span className="page-card-title">主题级行动建议</span></div>
         <LimitedTable
           size="small"
           rowKey="id"
@@ -401,10 +403,10 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             },
           ]}
         />
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="效果验证" summary="举措完成不等于体验恢复" id="post-use-recovery" />
-      <Card size="small">
         <LimitedTable
           size="small"
           rowKey="id"
@@ -418,8 +420,9 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           ]}
         />
         {actionsAndRecovery.notRecovered ? <Alert className="mt-3" type="warning" showIcon title={`${actionsAndRecovery.notRecovered} 项举措已完成但体验未恢复`} /> : null}
-      </Card>
+      </div>
 
+      <div className="page-card">
       <SectionHeading title="分析附录" id="post-use-appendix" />
       <Collapse
         items={[
@@ -443,6 +446,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           },
         ]}
       />
+      </div>
       <PostUseCallbackProcessModal
         open={callbackProcessOpen}
         onClose={() => setCallbackProcessOpen(false)}

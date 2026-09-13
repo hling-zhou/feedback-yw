@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Card, Space, Table, Tabs, Tag, Typography, message } from 'antd'
+import { Alert, Button, Space, Table, Tabs, Tag, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { buildPostUseInsightBundle } from '../../lib/postUseRating/insights.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
@@ -85,11 +85,7 @@ export default function PostUseInsightPanel({ records, allRecords, visits = [], 
   ] : []
 
   return (
-    <Card
-      size="small"
-      title="产品体验与用户需求洞察"
-      extra={<Button size="small" icon={<ReloadOutlined />} loading={recomputing} onClick={recompute}>重算当前周期</Button>}
-    >
+    <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">产品体验与用户需求洞察</span><div>{<Button size="small" icon={<ReloadOutlined />} loading={recomputing} onClick={recompute}>重算当前周期</Button>}</div></div>
       <Tabs
         items={[
           { key: 'products', label: '产品体验', children: <Table size="small" rowKey="productName" scroll={{ x: 760 }} pagination={{ pageSize: 10 }} columns={productColumns} dataSource={bundle.products} /> },
@@ -124,6 +120,6 @@ export default function PostUseInsightPanel({ records, allRecords, visits = [], 
           </> : <Alert type="info" showIcon title="当前周期暂无质量快照" description="重新导入该月份双文件后会生成；历史数据仍可正常分析。"/> },
         ]}
       />
-    </Card>
+    </div>
   )
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
-import { Alert, Badge, Tabs } from 'antd'
+import { Alert, Badge } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
+import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import CustomTagsPanel from '../components/tagManagement/CustomTagsPanel.jsx'
 import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx'
 import TagCorrectionReviewPanel from '../components/tagManagement/TagCorrectionReviewPanel.jsx'
@@ -48,32 +49,22 @@ export default function TagManagement() {
       {
         key: TAB_KEYS.products,
         label: '产品配置',
-        children: (
-          <ProductConfigurationCenter
-            readOnly={readOnly}
-            catalogMeta={productCatalogMeta}
-          />
-        ),
       },
       {
         key: TAB_KEYS.requestScene,
         label: '请求场景（通用）',
-        children: <CustomTagsPanel tagKind="request_scene" readOnly={readOnly} />,
       },
       {
         key: TAB_KEYS.problemType,
         label: '问题类型（通用）',
-        children: <CustomTagsPanel tagKind="problem_type" readOnly={readOnly} />,
       },
       {
         key: TAB_KEYS.journey,
         label: '用户旅程',
-        children: <CustomTagsPanel tagKind="journey" readOnly={readOnly} />,
       },
       {
         key: TAB_KEYS.keyCustomers,
         label: '重点客户',
-        children: <PostUseKeyCustomersPanel readOnly={readOnly} />,
       },
       {
         key: TAB_KEYS.review,
@@ -85,16 +76,35 @@ export default function TagManagement() {
             ) : null}
           </span>
         ),
-        children: <LlmTagReviewPanel readOnly={readOnly} />,
       },
       {
         key: TAB_KEYS.correction,
         label: '改标学习',
-        children: <TagCorrectionReviewPanel readOnly={readOnly} />,
       },
     ],
-    [pendingCount, productCatalogMeta, readOnly],
+    [pendingCount],
   )
+
+  const renderTabContent = (key) => {
+    switch (key) {
+      case TAB_KEYS.products:
+        return <ProductConfigurationCenter readOnly={readOnly} catalogMeta={productCatalogMeta} />
+      case TAB_KEYS.requestScene:
+        return <CustomTagsPanel tagKind="request_scene" readOnly={readOnly} />
+      case TAB_KEYS.problemType:
+        return <CustomTagsPanel tagKind="problem_type" readOnly={readOnly} />
+      case TAB_KEYS.journey:
+        return <CustomTagsPanel tagKind="journey" readOnly={readOnly} />
+      case TAB_KEYS.keyCustomers:
+        return <PostUseKeyCustomersPanel readOnly={readOnly} />
+      case TAB_KEYS.review:
+        return <LlmTagReviewPanel readOnly={readOnly} />
+      case TAB_KEYS.correction:
+        return <TagCorrectionReviewPanel readOnly={readOnly} />
+      default:
+        return null
+    }
+  }
 
   return (
     <div>
@@ -111,9 +121,10 @@ export default function TagManagement() {
           description="查看者角色可浏览对象与标签配置，但不能新增、修改或导入。"
         />
       )}
-      <Tabs
+      <WorkbenchTabNav
         className="mt-4"
         activeKey={tab}
+        items={items}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
           next.set('tab', key)
@@ -121,8 +132,10 @@ export default function TagManagement() {
           if (key !== TAB_KEYS.products) next.delete('productView')
           setSearchParams(next)
         }}
-        items={items}
       />
+      <div className="mt-4">
+        {renderTabContent(tab)}
+      </div>
     </div>
   )
 }
