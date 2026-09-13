@@ -1134,9 +1134,9 @@ function mkItem(famName, subName, rs, autoInfo, crossCut) {
   let mom = null;
   const dAbs = cur - prev;
   if (prev > 0) mom = (cur - prev) / prev * 100;
-  else if (cur > 0) mom = 100;
   return {
     fam: famName, sub: subName, n, prev, cur, c, q, u, cr, mom, dAbs, crossCut: !!crossCut,
+    ticketIds: rs.map(r => get(r, '工单号')).filter(Boolean),
     voice: rs.map(voiceOf).find(x => x),
     pain: topSentence(rs, '需求痛点'),
     root: topSentence(rs, '问题原因'),
@@ -1190,7 +1190,7 @@ function analyze(rows, tax, T, B, thr, prodName) {
   }
 
   for (const it of items) {
-    if (it.sub === '（未定位·无根因模板）') { it.tier = 'unloc'; it.highHarm = false; continue; }
+    if (it.sub === '（未定位·无根因模板）') { it.tier = 'tail'; it.highHarm = false; continue; }
     if (it.crossCut) { it.tier = 'cross'; it.highHarm = false; continue; }
     let tier = 'tail';
     if (it.n >= thr.S) tier = 'structural';
@@ -1258,7 +1258,7 @@ function runEngine(records, opts = {}) {
     const res = analyze(rows, tax, T, B, thr, p);
     for (const pr of res.proposals) allProposals.push({ product: p, ...pr });
     const tierCount = {};
-    for (const i of res.items) if (i.tier !== 'unloc') tierCount[i.tier] = (tierCount[i.tier] || 0) + 1;
+    for (const i of res.items) tierCount[i.tier] = (tierCount[i.tier] || 0) + 1;
     summary.push({
       p, T, B, thr, unclassified: res.unclassified, diagN: res.diagN, tierCount,
       nSub: res.items.length, splitLog: res.splitLog, otherThreshold: res.otherThreshold,
@@ -1309,7 +1309,7 @@ function runGate(engineResult, opts = {}) {
   }
   // 5) 出处标注检查：items 中有 pain/root 标注的占比 ≥ 80% 才 PASS
   for (const s of summary) {
-    const items = (s.items || []).filter(i => i.tier !== 'unloc');
+    const items = s.items || [];
     const withAnnotation = items.filter(i => i.pain || i.root);
     const rate = items.length ? withAnnotation.length / items.length * 100 : 100;
     push(`出处标注·${s.p}`, rate >= 80, `${rate.toFixed(0)}%（阈值 ≥80%）${rate < 80 ? `：${items.length - withAnnotation.length} 项缺标注` : ''}`);
