@@ -28,7 +28,6 @@
     "@fontsource/noto-sans-sc": "^5.2.9",
     "@nlpjs/lang-zh": "^5.0.0-alpha.5",
     "@nlpjs/nlp": "^5.0.0-alpha.5",
-    "@rollup/rollup-darwin-x64": "^4.63.1",
     "antd": "^6.4.2",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^9.6.0",
