@@ -1,0 +1,397 @@
+{
+  "弹性公网IP": {
+    "families": [
+      {
+        "key": "netlink",
+        "name": "网络链路质量",
+        "addSubs": [
+          {
+            "key": "disc_netlink_异网_0",
+            "name": "异网",
+            "re": "异网"
+          },
+          {
+            "key": "disc_netlink_稳定性_1",
+            "name": "稳定性",
+            "re": "稳定性"
+          },
+          {
+            "key": "disc_netlink_质量_2",
+            "name": "质量",
+            "re": "质量"
+          }
+        ]
+      },
+      {
+        "key": "connect",
+        "name": "公网连通与路由",
+        "addSubs": [
+          {
+            "key": "disc_connect_正常_0",
+            "name": "正常",
+            "re": "正常"
+          },
+          {
+            "key": "disc_connect_判断_1",
+            "name": "判断",
+            "re": "判断"
+          },
+          {
+            "key": "disc_connect_自行_2",
+            "name": "自行",
+            "re": "自行"
+          },
+          {
+            "key": "disc_connect_测试_1",
+            "name": "测试",
+            "re": "测试"
+          }
+        ]
+      },
+      {
+        "key": "bwscale",
+        "name": "带宽容量与升降配",
+        "addSubs": [
+          {
+            "key": "disc_bwscale_稳定性_0",
+            "name": "稳定性",
+            "re": "稳定性"
+          },
+          {
+            "key": "disc_bwscale_高峰期_1",
+            "name": "高峰期",
+            "re": "高峰期"
+          },
+          {
+            "key": "disc_bwscale_得到_2",
+            "name": "得到",
+            "re": "得到"
+          },
+          {
+            "key": "disc_bwscale_现有_2",
+            "name": "现有",
+            "re": "现有"
+          },
+          {
+            "key": "disc_bwscale_增长_3",
+            "name": "增长",
+            "re": "增长"
+          }
+        ]
+      },
+      {
+        "key": "quota_apply",
+        "name": "配额申请与提升",
+        "addSubs": [
+          {
+            "key": "disc_quota_apply_临时_0",
+            "name": "临时",
+            "re": "临时"
+          }
+        ]
+      },
+      {
+        "key": "billing",
+        "name": "计费与账单",
+        "addSubs": [
+          {
+            "key": "disc_billing_按量_0",
+            "name": "按量",
+            "re": "按量"
+          },
+          {
+            "key": "disc_billing_订单_1",
+            "name": "订单",
+            "re": "订单"
+          },
+          {
+            "key": "disc_billing_包年_2",
+            "name": "包年",
+            "re": "包年"
+          },
+          {
+            "key": "disc_billing_规则_3",
+            "name": "规则",
+            "re": "规则"
+          }
+        ]
+      },
+      {
+        "key": "gray",
+        "name": "灰度与订购权限",
+        "addSubs": [
+          {
+            "key": "disc_gray_开放_0",
+            "name": "开放",
+            "re": "开放"
+          }
+        ]
+      },
+      {
+        "key": "security",
+        "name": "安全封堵与管控",
+        "addSubs": [
+          {
+            "key": "disc_security_安全策略_0",
+            "name": "安全策略",
+            "re": "安全策略"
+          },
+          {
+            "key": "disc_security_触发_1",
+            "name": "触发",
+            "re": "触发"
+          },
+          {
+            "key": "disc_security_发起_2",
+            "name": "发起",
+            "re": "发起"
+          }
+        ]
+      },
+      {
+        "key": "monitor",
+        "name": "流量监控与诊断",
+        "addSubs": [
+          {
+            "key": "disc_monitor_自行_0",
+            "name": "自行",
+            "re": "自行"
+          },
+          {
+            "key": "disc_monitor_分析_1",
+            "name": "分析",
+            "re": "分析"
+          },
+          {
+            "key": "disc_monitor_复现_1",
+            "name": "复现",
+            "re": "复现"
+          }
+        ]
+      },
+      {
+        "key": "cap",
+        "name": "容量与资源售罄",
+        "addSubs": [
+          {
+            "key": "disc_cap_杭州_0",
+            "name": "杭州",
+            "re": "杭州"
+          },
+          {
+            "key": "disc_cap_宁夏_1",
+            "name": "宁夏",
+            "re": "宁夏"
+          },
+          {
+            "key": "disc_cap_中卫_2",
+            "name": "中卫",
+            "re": "中卫"
+          }
+        ]
+      }
+    ]
+  },
+  "云专线": {
+    "families": [
+      {
+        "key": "link_quality",
+        "name": "链路质量",
+        "addSubs": [
+          {
+            "key": "disc_link_quality_连通性_0",
+            "name": "连通性",
+            "re": "连通性"
+          },
+          {
+            "key": "disc_link_quality_测试_1",
+            "name": "测试",
+            "re": "测试"
+          },
+          {
+            "key": "disc_link_quality_互联_2",
+            "name": "互联",
+            "re": "互联"
+          },
+          {
+            "key": "disc_link_quality_地址_3",
+            "name": "地址",
+            "re": "地址"
+          }
+        ]
+      },
+      {
+        "key": "provision",
+        "name": "开通与订购",
+        "addSubs": [
+          {
+            "key": "disc_provision_效率_0",
+            "name": "效率",
+            "re": "效率"
+          }
+        ]
+      },
+      {
+        "key": "renew",
+        "name": "续订与变更",
+        "addSubs": [
+          {
+            "key": "disc_renew_依赖_0",
+            "name": "依赖",
+            "re": "依赖"
+          },
+          {
+            "key": "disc_renew_指导_1",
+            "name": "指导",
+            "re": "指导"
+          },
+          {
+            "key": "disc_renew_完成_2",
+            "name": "完成",
+            "re": "完成"
+          },
+          {
+            "key": "disc_renew_转包_3",
+            "name": "转包",
+            "re": "转包"
+          }
+        ]
+      }
+    ]
+  },
+  "虚拟私有云": {
+    "families": [
+      {
+        "key": "sg",
+        "name": "安全组与ACL",
+        "addSubs": [
+          {
+            "key": "disc_sg_组未放通_0",
+            "name": "组未放通",
+            "re": "组未放通"
+          },
+          {
+            "key": "disc_sg_流量_1",
+            "name": "流量",
+            "re": "流量"
+          },
+          {
+            "key": "disc_sg_正常_2",
+            "name": "正常",
+            "re": "正常"
+          }
+        ]
+      },
+      {
+        "key": "subnet_route",
+        "name": "子网与路由",
+        "addSubs": [
+          {
+            "key": "disc_subnet_route_双栈_0",
+            "name": "双栈",
+            "re": "双栈"
+          },
+          {
+            "key": "disc_subnet_route_防火墙_1",
+            "name": "防火墙",
+            "re": "防火墙"
+          }
+        ]
+      },
+      {
+        "key": "quota",
+        "name": "配额与扩容",
+        "addSubs": [
+          {
+            "key": "disc_quota_扩展_0",
+            "name": "扩展",
+            "re": "扩展"
+          },
+          {
+            "key": "disc_quota_低于_1",
+            "name": "低于",
+            "re": "低于"
+          },
+          {
+            "key": "disc_quota_默认值_2",
+            "name": "默认值",
+            "re": "默认值"
+          }
+        ]
+      },
+      {
+        "key": "provision",
+        "name": "开通与订购",
+        "addSubs": [
+          {
+            "key": "disc_provision_介入_0",
+            "name": "介入",
+            "re": "介入"
+          },
+          {
+            "key": "disc_provision_自行_1",
+            "name": "自行",
+            "re": "自行"
+          }
+        ]
+      },
+      {
+        "key": "diag",
+        "name": "网络诊断与性能",
+        "addSubs": [
+          {
+            "key": "disc_diag_抢占_0",
+            "name": "抢占",
+            "re": "抢占"
+          },
+          {
+            "key": "disc_diag_恢复_1",
+            "name": "恢复",
+            "re": "恢复"
+          },
+          {
+            "key": "disc_diag_正常_2",
+            "name": "正常",
+            "re": "正常"
+          }
+        ]
+      }
+    ]
+  },
+  "弹性负载均衡": {
+    "families": [
+      {
+        "key": "quota",
+        "name": "规格与配额",
+        "addSubs": [
+          {
+            "key": "disc_quota_自助_0",
+            "name": "自助",
+            "re": "自助"
+          },
+          {
+            "key": "disc_quota_依赖_1",
+            "name": "依赖",
+            "re": "依赖"
+          },
+          {
+            "key": "disc_quota_透明_2",
+            "name": "透明",
+            "re": "透明"
+          }
+        ]
+      },
+      {
+        "key": "provision",
+        "name": "开通与配置",
+        "addSubs": [
+          {
+            "key": "disc_provision_开启_0",
+            "name": "开启",
+            "re": "开启"
+          }
+        ]
+      }
+    ]
+  }
+}
