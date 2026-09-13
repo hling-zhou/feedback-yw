@@ -918,4 +918,91 @@ export function registerStorageRoutes(app) {
       }
     },
   )
+
+  // ---- 规则生产副驾流水线 ----
+
+  let pipelineJob = null
+
+  app.post('/api/storage/pipeline/run', { preHandler: requirePermission('manageTeamSettings') }, async (request, reply) => {
+    if (pipelineJob && pipelineJob.status === 'running') {
+      reply.code(409).send({ error: '流水线正在运行中，请等待完成' })
+      return
+    }
+
+    const { spawn } = await import('child_process')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const body = /** @type {{ batch?: string; products?: string; noApply?: boolean; noGate?: boolean }} */ (request.body || {})
+    const SCRIPT_DIR = path.resolve(process.cwd(), 'scripts')
+    const scriptPath = path.join(SCRIPT_DIR, 'run-pipeline.sh')
+
+    if (!fs.existsSync(scriptPath)) {
+      reply.code(500).send({ error: 'run-pipeline.sh 不存在' })
+      return
+    }
+
+    const args = [scriptPath]
+    if (body.batch) args.push('--batch', body.batch)
+    if (body.products) args.push('--products', body.products)
+    if (body.noApply) args.push('--no-apply')
+    if (body.noGate) args.push('--no-gate')
+
+    const jobId = `pipeline-${Date.now()}`
+    const startedAt = new Date().toISOString()
+    pipelineJob = { id: jobId, status: 'running', startedAt, triggeredBy: request.user?.username || 'unknown' }
+
+    const child = spawn('bash', args, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let logTail = ''
+    child.stdout.on('data', (chunk) => {
+      const text = chunk.toString()
+      logTail = (logTail + text).slice(-8000)
+    })
+    child.stderr.on('data', (chunk) => {
+      logTail = (logTail + chunk.toString()).slice(-8000)
+    })
+
+    child.on('close', (code) => {
+      const finishedAt = new Date().toISOString()
+      const summaryPath = path.resolve(process.cwd(), 'dist', 'pipeline-summary.json')
+      let summary = null
+      try {
+        if (fs.existsSync(summaryPath)) {
+          summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
+        }
+      } catch {}
+      pipelineJob = {
+        ...pipelineJob,
+        status: code === 0 ? 'succeeded' : 'failed',
+        exitCode: code,
+        finishedAt,
+        summary,
+        logTail,
+      }
+    })
+
+    child.on('error', (err) => {
+      pipelineJob = {
+        ...pipelineJob,
+        status: 'failed',
+        error: err.message,
+        finishedAt: new Date().toISOString(),
+      }
+    })
+
+    logAuditFromRequest(request, 'storage.pipeline_run', {
+      jobId, batch: body.batch, products: body.products,
+    })
+
+    return { jobId, status: 'running', startedAt }
+  })
+
+  app.get('/api/storage/pipeline/status', { preHandler: requirePermission('view') }, async () => {
+    return pipelineJob || { status: 'idle' }
+  })
 }
