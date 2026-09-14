@@ -6,8 +6,8 @@ import { WarningOutlined } from '@ant-design/icons'
 const FIX_HINT_LABELS = {
   add_coverage: '需补充分类法正则或子议题，扩大覆盖面',
   restrict_overbroad: '需收紧过宽正则边界，减少误吸收',
-  demote_tier: '样本不足的项需降级到长尾层',
-  recross: '横切项需单独归类，不混入五层',
+  demote_tier: '样本不足的项需降级到零散长尾层',
+  recross: '共性项需单独归类，不混入五层',
   annotate: '需补充〔痛点摘要〕/〔复核根因〕标注',
   adjust_boundary: '需调整家族排除规则(exclude)，防止误归属',
   restrict_term: '需收紧泛词/种子词，减少跨家族误吸',

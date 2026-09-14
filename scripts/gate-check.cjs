@@ -6,7 +6,7 @@
  * 若与 Producer 自报数不一致 → 触发"完整性"失败（三方互相校验的抓手）。
  *
  * 两层检查：
- *   层 1（完整性+率）：独立重算未归类率/待确认率、小而锐、横切项、出处标注
+ *   层 1（完整性+率）：独立重算未归类率/待确认率、少数高发、共性项、出处标注
  *   层 2（分类准确性，借鉴 ticket-intel eval harness）：
  *     A 独立再分类（全量）：对每张 classified 工单，用 family 正则独立打分，
  *       断言 Producer 指派家族 = 门禁 top-1（或在 top-3 且领先 #2 ≤1 hit 的 margin 内）。
@@ -124,12 +124,12 @@ function main() {
     push(`待确认率·${s.p}`, pendRate < MAX_PEND, `${pendRate.toFixed(1)}%（阈值 <${MAX_PEND}%）${s.derived ? ' [派生草稿·待确认]' : ''}`);
 
     const badSharp = (s.items || []).filter(i => i.tier === 'sharp' && i.n < 3);
-    push(`小而锐样本·${s.p}`, badSharp.length === 0,
+    push(`少数高发样本·${s.p}`, badSharp.length === 0,
       badSharp.length ? `${badSharp.length} 项 n<3：${badSharp.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3');
 
     const TIERS5 = ['structural', 'change', 'sharp', 'iteration', 'tail'];
     const badCross = (s.items || []).filter(i => i.crossCut && TIERS5.includes(i.tier));
-    push(`横切项单列·${s.p}`, badCross.length === 0, badCross.length ? `${badCross.length} 个横切项混入 5 层` : '横切项已单列');
+    push(`共性项单列·${s.p}`, badCross.length === 0, badCross.length ? `${badCross.length} 个共性项混入 5 层` : '共性项已单列');
 
     let txt = '';
     try { txt = fs.readFileSync(path.join(DOCS, `行动建议-${s.p}-验证.md`), 'utf8'); } catch { /* noop */ }

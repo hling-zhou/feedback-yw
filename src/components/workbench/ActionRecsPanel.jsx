@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Select, Space, Button, Dropdown, Empty, Typography, Alert, Segmented } from 'antd'
+import { Select, Space, Button, Dropdown, Empty, Typography, Alert, Segmented, Tooltip } from 'antd'
 import { DownloadOutlined, ExportOutlined, WarningOutlined, AppstoreOutlined, TableOutlined } from '@ant-design/icons'
 import ProblemCard from './ProblemCard.jsx'
 import ProblemDetailDrawer from './ProblemDetailDrawer.jsx'
@@ -14,12 +14,22 @@ import { exportActionRecsXlsx } from '../../lib/actionReportExcel.js'
 
 const TIER_ORDER = ['structural', 'change', 'sharp', 'iteration', 'tail', 'cross']
 const TIER_LABELS = {
-  structural: '长期结构性',
-  change: '本月异动',
-  sharp: '小而锐',
-  iteration: '常规迭代',
-  tail: '平稳长尾',
-  cross: '横切关注',
+  structural: '持续高频',
+  change: '环比突增',
+  sharp: '少数高发',
+  iteration: '常规优化',
+  tail: '零散长尾',
+  cross: '共性关注',
+}
+
+/** hover tooltip 文案：判定条件说明 */
+const TIER_TOOLTIPS = {
+  structural: '样本量 ≥ S（S = max(10, 10%×总量）），即持续高频的老问题',
+  change: '环比变化绝对值 ≥ Δ（Δ = clamp(5%×总量, 3~12)）且环比百分比 ≥ 50%，即本月突然增多或骤减',
+  sharp: '不属于以上两层，集中度 ≥ H（H = clamp(1.5×基线, 17~100)）且样本 ≥ 3，即量不大但高度集中',
+  iteration: '不属于以上，样本量 ≥ L（L = clamp(1%×总量, 3~10)），即有一定量但不算高频',
+  tail: '样本量 < L，即零散问题',
+  cross: '跨多个产品出现的共性关注项',
 }
 
 /**
@@ -72,7 +82,11 @@ export default function ActionRecsPanel({
       .filter((tier) => (tierGroups[tier] || []).length > 0)
       .map((tier) => ({
         key: tier,
-        label: `${TIER_LABELS[tier] || tier} (${tierGroups[tier].length})`,
+        label: (
+          <Tooltip title={TIER_TOOLTIPS[tier] || ''} placement="bottom">
+            <span>{`${TIER_LABELS[tier] || tier} (${tierGroups[tier].length})`}</span>
+          </Tooltip>
+        ),
       }))
   }, [tierGroups])
 

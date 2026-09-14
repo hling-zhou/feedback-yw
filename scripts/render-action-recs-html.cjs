@@ -14,11 +14,11 @@ const lines = md.split(/\r?\n/);
 
 // 分段：顶层 ## 标题 划层
 const TIER_META = {
-  '长期结构性': { key: 'structural', color: '#2563eb', label: '长期结构性' },
-  '本月异动': { key: 'change', color: '#ea580c', label: '本月异动' },
-  '小而锐': { key: 'sharp', color: '#dc2626', label: '小而锐·高害' },
-  '常规迭代池': { key: 'iteration', color: '#0891b2', label: '常规迭代池' },
-  '平稳长尾': { key: 'tail', color: '#64748b', label: '平稳长尾' },
+  '持续高频': { key: 'structural', color: '#2563eb', label: '持续高频' },
+  '环比突增': { key: 'change', color: '#ea580c', label: '环比突增' },
+  '少数高发': { key: 'sharp', color: '#dc2626', label: '少数高发·高害' },
+  '常规优化池': { key: 'iteration', color: '#0891b2', label: '常规优化池' },
+  '零散长尾': { key: 'tail', color: '#64748b', label: '零散长尾' },
 };
 
 let meta = { title: '', scope: [], notes: [] };
@@ -91,7 +91,7 @@ for (let i = 0; i < lines.length; i++) {
     else if (L.startsWith('- 收敛说明')) curItem.note = L.replace(/^- 收敛说明[：:]?/, '').trim();
     continue;
   }
-  // 迭代池/长尾 的列表项
+  // 常规优化/零散长尾 的列表项
   if (tier && tier.list !== undefined && L.startsWith('- ') && !L.startsWith('- 规模') && !L.startsWith('- **') && !L.startsWith('- 〔')) {
     const body = L.slice(2).trim();
     const mm = body.match(/^(.+?)[：:](.+)$/);

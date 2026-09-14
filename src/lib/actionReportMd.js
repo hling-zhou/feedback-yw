@@ -19,11 +19,11 @@ export function exportActionRecsMd(recs, gateReport = null) {
   lines.push(``)
 
   const TIER_LABELS = {
-    structural: '一、长期结构性',
-    change: '二、本月异动',
-    sharp: '三、小而锐',
-    iteration: '四、常规迭代',
-    tail: '五、平稳长尾',
+    structural: '一、持续高频',
+    change: '二、环比突增',
+    sharp: '三、少数高发',
+    iteration: '四、常规优化',
+    tail: '五、零散长尾',
   }
 
   const TIER_ORDER = ['structural', 'change', 'sharp', 'iteration', 'tail']

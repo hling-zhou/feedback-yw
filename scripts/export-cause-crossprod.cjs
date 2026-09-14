@@ -26,7 +26,7 @@ const SUPER = {
   CFG:  { name: '配置 / 控制台 / 规格', en: 'Config & Console', desc: '安全组ACL、子网路由、证书、功能限制、对象存储访问' },
   SEC:  { name: '安全封堵与管控', en: 'Security', desc: '安全封堵、访问控制、攻击防护' },
   DIAG: { name: '监控 / 诊断 / 自助定位', en: 'Monitoring & Diagnosis', desc: '监控指标、日志诊断、自助定位能力' },
-  DOC:  { name: '文档 / 自助能力缺口（横切·非缺陷）', en: 'Docs & Self-service', desc: '文档/API不清晰、支持体验、用户概念误解——横切项，单列不计入缺陷根因' },
+  DOC:  { name: '文档 / 自助能力缺口（共性·非缺陷）', en: 'Docs & Self-service', desc: '文档/API不清晰、支持体验、用户概念误解——共性项，单列不计入缺陷根因' },
 };
 
 // 家族 key → 主轴。覆盖 JSON 中出现的全部 key。
@@ -133,14 +133,14 @@ for (const cat of sortedCats) {
   for (const p of PRODS) {
     const cell = grid[cat][p];
     if (cell.n === 0) { html += `<td style="background:#f7f8fa;color:#c2c7d0">—</td>`; continue; }
-    const famsTxt = cell.fams.map(f => `${f.name}${f.cross ? '·横切' : ''}(${f.n})`).join('、');
+    const famsTxt = cell.fams.map(f => `${f.name}${f.cross ? '·共性' : ''}(${f.n})`).join('、');
     html += `<td style="${bg(cell.n, cell.fams.some(f => f.cross))}"><span class="cnt">${cell.n}</span><div class="fams">${famsTxt}</div></td>`;
   }
   html += `<td style="font-weight:700">${catTotals[cat]}</td>`;
   html += `<td>${'●'.repeat(cov)}<span class="dash">${'○'.repeat(4 - cov)}</span> ${cov}/4</td></tr>`;
 }
 html += `</tbody></table>`;
-html += `<div class="legend">热力深度 = 该单元格量相对全局最大单元格（${maxCell} 单）的强度；<span> </span><span style="background:rgba(37,99,235,.55)"></span>蓝=缺陷根因家族，<span style="background:rgba(217,119,6,.55)"></span>橙=横切·非缺陷（文档/自助缺口）。</div>`;
+html += `<div class="legend">热力深度 = 该单元格量相对全局最大单元格（${maxCell} 单）的强度；<span> </span><span style="background:rgba(37,99,235,.55)"></span>蓝=缺陷根因家族，<span style="background:rgba(217,119,6,.55)"></span>橙=共性·非缺陷（文档/自助缺口）。</div>`;
 html += `<div class="note">覆盖产品数：●=该产品有此根因家族，○=无。可一眼看出哪些根因是四产品共性、哪些是单产品特有。</div></div>`;
 
 // ---- Section 2: 完整家族清单（家族级矩阵）----
@@ -172,7 +172,7 @@ for (const cat of sortedCats) {
     html += `</tr>`;
   }
 }
-html += `</tbody></table><div class="note">⚑ = 横切项（非缺陷根因，文档/自助能力缺口），单列不计入缺陷原因家族。</div></div>`;
+html += `</tbody></table><div class="note">⚑ = 共性项（非缺陷根因，文档/自助能力缺口），单列不计入缺陷原因家族。</div></div>`;
 
 // ---- Section 3: 洞察 ----
 // 计算跨产品共性
@@ -202,7 +202,7 @@ if (uniqueCats.length) {
 }
 const crossCats = sortedCats.filter(c => PRODS.some(p => grid[c][p].fams.some(f => f.cross)));
 if (crossCats.length) {
-  html += `<li><span class="tag">横切·非缺陷</span>${crossCats.map(c => SUPER[c].name).join('、')} 在部分产品表现为「文档/自助能力缺口」横切项（用户概念误解、文档/API 不清晰），不计入缺陷根因，但量不小，建议作为统一的教育/自助诊断动作主线。</li>`;
+  html += `<li><span class="tag">共性·非缺陷</span>${crossCats.map(c => SUPER[c].name).join('、')} 在部分产品表现为「文档/自助能力缺口」共性项（用户概念误解、文档/API 不清晰），不计入缺陷根因，但量不小，建议作为统一的教育/自助诊断动作主线。</li>`;
 }
 html += `</ul></div>`;
 

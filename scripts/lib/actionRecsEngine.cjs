@@ -1221,7 +1221,7 @@ function thresholds(T, B) {
   return { H, S, L, delta };
 }
 
-const TIER_LABEL = { structural: '长期结构性', change: '本月异动', sharp: '小而锐', iteration: '常规迭代', tail: '长尾' };
+const TIER_LABEL = { structural: '持续高频', change: '环比突增', sharp: '少数高发', iteration: '常规优化', tail: '零散长尾' };
 
 // =========================================================================
 // runEngine：引擎入口（替代 runPipeline，接收 records 而非全局 d）
@@ -1316,19 +1316,19 @@ function runGate(engineResult, opts = {}) {
     }
     push(`待确认率·${s.p}`, rate < MAX_PEND, `${rate.toFixed(1)}%（阈值 <${MAX_PEND}%）${s.derived ? ' [派生草稿·待确认]' : ''}`, null, rate < MAX_PEND ? null : pendRows);
   }
-  // 3) 小而锐最小样本
+  // 3) 少数高发最小样本
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.tier === 'sharp' && i.n < 3);
     const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
-    push(`小而锐样本·${s.p}`, bad.length === 0,
+    push(`少数高发样本·${s.p}`, bad.length === 0,
       bad.length ? `${bad.length} 项 n<3：${bad.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3', null, ev);
   }
-  // 4) 横切项单列
+  // 4) 共性项单列
   const TIERS5 = ['structural', 'change', 'sharp', 'iteration', 'tail'];
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.crossCut && TIERS5.includes(i.tier));
     const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
-    push(`横切项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个横切项混入 5 层` : '横切项已单列', null, ev);
+    push(`共性项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个共性项混入 5 层` : '共性项已单列', null, ev);
   }
   // 5) 出处标注检查：items 中有 pain/root 标注的占比 ≥ 80% 才 PASS
   for (const s of summary) {
@@ -1356,8 +1356,8 @@ function runFixer(gateReport, engineResult, taxMap) {
   let applied = false;
 
   for (const f of (gateReport.fails || [])) {
-    // 小而锐样本不足 → 降级 sharp→tail（n<3 不可信）
-    if (f.name.startsWith('小而锐样本')) {
+    // 少数高发样本不足 → 降级 sharp→tail（n<3 不可信）
+    if (f.name.startsWith('少数高发样本')) {
       const prodName = f.name.split('·')[1]?.trim();
       const s = engineResult.summary.find(s => s.p === prodName);
       if (s) {
@@ -1371,8 +1371,8 @@ function runFixer(gateReport, engineResult, taxMap) {
       }
       continue;
     }
-    // 横切项混入 → 改 tier 为 'cross'
-    if (f.name.startsWith('横切项单列')) {
+    // 共性项混入 → 改 tier 为 'cross'
+    if (f.name.startsWith('共性项单列')) {
       const prodName = f.name.split('·')[1]?.trim();
       const s = engineResult.summary.find(s => s.p === prodName);
       if (s) {

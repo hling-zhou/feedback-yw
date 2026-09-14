@@ -412,7 +412,7 @@ const EIP_CAUSE_TAX = { '弹性公网IP': { families: [
  *            计费与折扣 / 权限资源池监控 / 服务流程与支持体验
  *   · VPC：原"权限/订购/退订/删除"旅程家族经核查是"改名复制"旧动作桶，已重派——
  *          真流程原因→「权限与灰度自助开通/退订指引」；拆出的"控制台资源可见性/订单状态误报"→「控制台资源可见性与订单状态」；
- *          纯咨询的"计费与概念误解"→降级为横切「文档与自助能力缺口」(crossCut，不并列缺陷原因家族)；
+ *          纯咨询的"计费与概念误解"→降级为共性「文档与自助能力缺口」(crossCut，不并列缺陷原因家族)；
  *          其余(安全组/内网连通/子网路由/对等连接/配额/公网对象存储)以根因归并
  *   · ELB：证书配置 / 转发连通 / 监控指标 / 计费与资源订购 / 诊断日志 / 功能限制 /
  *          安全防护 / 配额冻结 / 文档API（原文已基本原因化，仅统一命名）
@@ -514,7 +514,7 @@ const VPC_CAUSE_TAX = { '虚拟私有云': { families: [
       { key: 'console_vis', name: '控制台资源可见性', re: /控制台无法查询|登录账号错误|资源置为不可见|资源可见性/ },
       { key: 'order_alarm', name: '订单状态/告警误报', re: /清退|误判为异常|订单.*异常|告警.*误报/ },
     ] },
-  // 降级为横切项：计费/概念/文档疑虑属"文档与自助能力缺口"，不是产品缺陷根因，不并列进原因家族
+  // 降级为共性项：计费/概念/文档疑虑属"文档与自助能力缺口"，不是产品缺陷根因，不并列进原因家族
   { key: 'doc_self', name: '文档与自助能力缺口（计费/概念澄清）', crossCut: true,
     re: /计费模式|计费规则|费用|概念|VPC.*定义|误解|意外费用|自动购买.*计费|计费.*疑虑|资源创建来源|路由优先级.*文档|文档.*未明确|不清晰.*VPC/,
     subs: [
@@ -1646,7 +1646,7 @@ function thresholds(T, B) {
   return { H, S, L, delta };
 }
 
-const TIER_LABEL = { structural: '长期结构性', change: '本月异动', sharp: '小而锐', iteration: '常规迭代', tail: '长尾' };
+const TIER_LABEL = { structural: '持续高频', change: '环比突增', sharp: '少数高发', iteration: '常规优化', tail: '零散长尾' };
 
 function md(prod, T, B, thr, res, causeFirst, curated) {
   const { items, unclassified, diagN, splitLog, otherThreshold } = res;
@@ -1661,7 +1661,7 @@ function md(prod, T, B, thr, res, causeFirst, curated) {
   else if (causeFirst) L.push('> ｜ **本产品已启用「原因优先」分类法（家族 + 子议题两级均按原因重派）**：按问题原因派生主题聚类，家族以根因归并、消除同根因跨家族撞车；把原"创建/申购、退订/释放、绑定/解绑、到期冻结、订购/退订/删除"等旅程/动作家族重派为流程/机制原因家族。分类轴=问题原因，无根因样板行回退需求痛点。');
   L.push('');
   const crossN = items.filter(i => i.crossCut).reduce((a, i) => a + i.n, 0);
-  L.push(`> **结论**：结构性 ${struct.length} 类、本月异动 ${chg.length} 类、小而锐 ${sharp.length} 类、常规迭代池 ${iter.length} 类、长尾 ${tail.length} 类；未归类率 ${(unclassified / T * 100).toFixed(1)}%${res.pending ? `；**待确认 ${res.pending} 单（${(res.pending / T * 100).toFixed(1)}%）：证据不足（无根因且仅命中单个泛词）或家族间竞争激烈，已自动隔离、不进入上述 5 层信号**` : ''}。横切洞察：约 ${(diagN / T * 100).toFixed(0)}% 工单提及"缺乏自助诊断/定位能力"，建议作为统一动作主线${crossN ? `；横切项（非缺陷·文档/自助缺口）${crossN} 单，单列不计入缺陷原因家族` : ''}。`);
+  L.push(`> **结论**：持续高频 ${struct.length} 类、环比突增 ${chg.length} 类、少数高发 ${sharp.length} 类、常规优化池 ${iter.length} 类、零散长尾 ${tail.length} 类；未归类率 ${(unclassified / T * 100).toFixed(1)}%${res.pending ? `；**待确认 ${res.pending} 单（${(res.pending / T * 100).toFixed(1)}%）：证据不足（无根因且仅命中单个泛词）或家族间竞争激烈，已自动隔离、不进入上述 5 层信号**` : ''}。共性洞察：约 ${(diagN / T * 100).toFixed(0)}% 工单提及"缺乏自助诊断/定位能力"，建议作为统一动作主线${crossN ? `；共性项（非缺陷·文档/自助缺口）${crossN} 单，单列不计入缺陷原因家族` : ''}。`);
   L.push('');
   L.push('> **字段出处（勿混）**：真声=客户原话(客户请求内容/受理内容/处理意见)；〔痛点摘要〕=需求痛点；〔复核根因〕=问题原因；建议=人工收敛产出。');
   L.push('');
@@ -1669,7 +1669,7 @@ function md(prod, T, B, thr, res, causeFirst, curated) {
   const card = (it) => {
     const mom = it.mom === null ? '—' : `${it.mom >= 0 ? '+' : ''}${it.mom.toFixed(0)}%`;
     const dur = `规模：${it.n} 单 ｜ 环比 ${mom}(7→8: ${it.jul}→${it.aug}) ｜ 投诉率 ${it.cr.toFixed(0)}%（投诉 ${it.c} / 咨询 ${it.q}）${it.u ? ` ｜ 加急 ${it.u}` : ''}`;
-    let s = `### ${it.fam} · ${it.sub} 〔${TIER_LABEL[it.tier]}${it.highHarm ? ' · 高害' : ''}${it.crossCut ? ' · 横切·非缺陷' : ''}〕\n`;
+    let s = `### ${it.fam} · ${it.sub} 〔${TIER_LABEL[it.tier]}${it.highHarm ? ' · 高害' : ''}${it.crossCut ? ' · 共性·非缺陷' : ''}〕\n`;
     s += `- ${dur}\n`;
     if (it.voice) s += `- **真声（${it.voice.f}）**：「${it.voice.v}」\n`;
     if (it.pain) s += `- 〔痛点摘要〕：${it.pain}\n`;
@@ -1686,25 +1686,25 @@ function md(prod, T, B, thr, res, causeFirst, curated) {
     return s;
   };
 
-  L.push(`## 一、长期结构性（量≥${thr.S}）`);
-  if (struct.length) struct.forEach(i => L.push(card(i))); else L.push('（小型产品无达结构性门槛的单项，属正常）');
+  L.push(`## 一、持续高频（量≥${thr.S}）`);
+  if (struct.length) struct.forEach(i => L.push(card(i))); else L.push('（小型产品无达持续高频门槛的单项，属正常）');
   L.push('');
-  L.push(`## 二、本月异动（|环比|≥50% 且 |Δ|≥${thr.delta}单）`);
+  L.push(`## 二、环比突增（|环比|≥50% 且 |Δ|≥${thr.delta}单）`);
   if (chg.length) chg.forEach(i => L.push(card(i))); else L.push('（本月无达阈异动）');
   L.push('');
-  L.push(`## 三、小而锐（投诉率≥${thr.H}%）`);
+  L.push(`## 三、少数高发（投诉率≥${thr.H}%）`);
   if (sharp.length) sharp.forEach(i => L.push(card(i))); else L.push('（无达阈高害小项）');
   L.push('');
   const brief = (i) => `- ${i.fam}·${i.sub}：${i.n}单/投诉${i.cr.toFixed(0)}%${i.highHarm ? '（⚠高害信号·需确认）' : ''}${i.auto ? ` ｜⚙自动细分(集中度${(i.auto.conc * 100).toFixed(0)}%，待人工确认)` : ''}`;
-  L.push('## 四、常规迭代池（量在长尾门槛~结构性间、低害）');
+  L.push('## 四、常规优化池（量在零散长尾~持续高频间、低害）');
   if (iter.length) iter.forEach(i => L.push(brief(i))); else L.push('（无）');
   L.push('');
-  L.push(`## 五、平稳长尾（量<${thr.L}、低害，仅监控）`);
+  L.push(`## 五、零散长尾（量<${thr.L}、低害，仅监控）`);
   if (tail.length) tail.forEach(i => L.push(brief(i))); else L.push('（无）');
   L.push('');
 
-  // ---- 横切项（非产品缺陷根因）----
-  L.push('## 六、横切项（非产品缺陷根因 · 文档/自助能力缺口）');
+  // ---- 共性项（非产品缺陷根因）----
+  L.push('## 六、共性项（非产品缺陷根因 · 文档/自助能力缺口）');
   if (cross.length) {
     L.push('> 以下按「文档与自助能力缺口」单列，不作为产品缺陷原因家族参与上述 5 层排序；其建议动作=补文档/自助查询，而非修代码。');
     cross.forEach(i => L.push(card(i)));
@@ -1734,9 +1734,9 @@ function md(prod, T, B, thr, res, causeFirst, curated) {
   L.push('');
 
   L.push('## 附 C：口径与方法');
-  L.push(`- 阈值（相对化）：高害 H≥${thr.H}% ｜ 结构性 S≥${thr.S}单 ｜ 长尾 L<${thr.L}单 ｜ 异动Δ≥${thr.delta}单。`);
+  L.push(`- 阈值（相对化）：高害 H≥${thr.H}% ｜ 持续高频 S≥${thr.S}单 ｜ 零散长尾 L<${thr.L}单 ｜ 环比突增Δ≥${thr.delta}单。`);
   L.push(`- 分类覆盖：归类 ${T - unclassified}/${T}，未归类 ${unclassified} 单(${(unclassified / T * 100).toFixed(1)}%)。`);
-  L.push(`- 横切诊断洞察：${diagN}/${T} 单(${(diagN / T * 100).toFixed(0)}%)提及缺乏自助诊断/定位能力。`);
+  L.push(`- 共性诊断洞察：${diagN}/${T} 单(${(diagN / T * 100).toFixed(0)}%)提及缺乏自助诊断/定位能力。`);
   L.push('- 局限：仅 2 月数据，环比双判据为初版；**建议一律为待人工收敛占位**，不得直接采信 LLM 素材。');
   L.push('');
 
@@ -2063,7 +2063,7 @@ if (process.env.EXPORT_JSON) {
   L.push('');
   L.push('## 一、总览');
   L.push('');
-  L.push('| 产品 | 工单量 | 投诉基线 B | 未归类率 | L1 家族 | L2 子议题 | 结构性 | 异动 | 小而锐 | 迭代池 | 长尾 |');
+  L.push('| 产品 | 工单量 | 投诉基线 B | 未归类率 | L1 家族 | L2 子议题 | 持续高频 | 环比突增 | 少数高发 | 常规优化 | 零散长尾 |');
   L.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
   for (const s of summary) {
     const t = s.tierCount;
@@ -2072,7 +2072,7 @@ if (process.env.EXPORT_JSON) {
   L.push('');
   L.push('## 二、分类明细（L1 家族 → L2 子议题）');
   L.push('');
-  L.push('分层含义：**结构性**=量大且持续 ｜ **异动**=环比突变 ｜ **小而锐**=量小但投诉率高 ｜ **迭代池**=中等量低害 ｜ **长尾**=量小低害仅监控。');
+  L.push('分层含义：**持续高频**=量大且持续 ｜ **环比突增**=环比突变 ｜ **少数高发**=量小但投诉率高 ｜ **常规优化**=中等量低害 ｜ **零散长尾**=量小低害仅监控。');
   L.push('');
   for (const s of summary) {
     L.push(`### ${s.p}（${s.T} 单，B=${s.B}% ｜ 阈值 H≥${s.thr.H}% S≥${s.thr.S} L<${s.thr.L} Δ≥${s.thr.delta}）`);
@@ -2139,7 +2139,7 @@ for (const s of summary) {
  *   · 修根因 = 只改「分类机制自身的知识资产」（CAUSE_TAX_MAP 家族/子议题正则、autoSplit 提案、新产品派生草稿），
  *     绝不写回 records 任何字段（问题原因等只读）。
  *   · 失败项分两类：① 数据级（解析·*，如缺工单号/月份覆盖不足）→ 机制修不了 → 立即升级人工；
- *     ② 机制可自愈（未归类/待确认/小而锐等）→ 把本期 autoSplit 提案正则补进对应 curated 家族 → 复跑。
+ *     ② 机制可自愈（未归类/待确认/少数高发等）→ 把本期 autoSplit 提案正则补进对应 curated 家族 → 复跑。
  *   · 有上限（GATE_MAX_ATTEMPTS 默认 3）、每轮打印"修了什么"（fixLog）；达上限或无新补丁可应用 → 升级人工，不发布。
  *   · 新产品（无 curated 分类法）派生草稿后，门禁据此判 FAIL·待确认 → 不自动注册 → 升级人工审核后注册。
  * ========================================================================= */
@@ -2179,17 +2179,17 @@ function runGate(summary) {
     const rate = s.pending / s.T * 100;
     push(`待确认率·${s.p}`, rate < MAX_PEND, `${rate.toFixed(1)}%（阈值 <${MAX_PEND}%）${s.derived ? ' [派生草稿·待确认]' : ''}`);
   }
-  // 4) 小而锐最小样本 n>=3
+  // 4) 少数高发最小样本 n>=3
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.tier === 'sharp' && i.n < 3);
-    push(`小而锐样本·${s.p}`, bad.length === 0,
+    push(`少数高发样本·${s.p}`, bad.length === 0,
       bad.length ? `${bad.length} 项 n<3：${bad.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3');
   }
-  // 5) 横切项必须单列，不得混入 5 层
+  // 5) 共性项必须单列，不得混入 5 层
   const TIERS5 = ['structural', 'change', 'sharp', 'iteration', 'tail'];
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.crossCut && TIERS5.includes(i.tier));
-    push(`横切项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个横切项混入 5 层` : '横切项已单列');
+    push(`共性项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个共性项混入 5 层` : '共性项已单列');
   }
   // 6) 出处标注：分析层字段须显式标注，不得裸引冒充客户原话
   for (const s of summary) {
@@ -2292,7 +2292,7 @@ function runAdaptiveLoop() {
     const derivedProds = summary.filter(s => s.derived).map(s => s.p);
     console.log('[ESCALATE] 门禁未通过，需人工介入（不发布）。门禁只拦不修——以下为「需人工修根因」清单：');
     for (const f of lastGate.fails) {
-      const prod = (f.name.split('·')[1] || '').replace(/^未归类率|待确认率|小而锐样本|横切项单列|出处标注/, '').trim();
+      const prod = (f.name.split('·')[1] || '').replace(/^未归类率|待确认率|少数高发样本|共性项单列|出处标注/, '').trim();
       if (f.name.startsWith('解析')) {
         console.log(`   [数据级] ${f.name}: ${f.detail} → 查源数据/入库质量，机制无法自动修`);
       } else if (derivedProds.includes(prod)) {

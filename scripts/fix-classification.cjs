@@ -5,7 +5,7 @@
  * 独立判断"失败能否用分类法修复"，能修则做【外科式最小改动】并写入：
  *   scripts/taxonomy-overrides.json  —— 机器增量（基线 + 此增量 = 生效分类法；删此文件即回滚）
  *   docs/变更日志-YYYY-MM-DD.md      —— 每条改动 before/after + 门禁信号 + 证据工单（可审计、非黑箱）
- * 不能修的（派生草稿/阈值/横切/出处/解析，或证据不足）→ 标 needs_human，由编排器升级人工。
+ * 不能修的（派生草稿/阈值/共性/出处/解析，或证据不足）→ 标 needs_human，由编排器升级人工。
  *
  * 修复策略（仅两类可证、可外科式 + 两类准确性修订）：
  *   A add_coverage       ：未归类率 FAIL → 在未归类工单文本里挖高频未覆盖短语，作为新子议题补进最相关家族。
@@ -234,7 +234,7 @@ function main() {
       // 但这本质是"调整分类边界"——安全起见，仅标 needs_human 并附证据工单供人工审核
       needsHuman.push({ ...f, reason: '排除失效：工单命中指派家族的 exclude 正则但未被 Producer 拦截。需人工复核 exclude 正则是否在引擎中正确编译/加载，以及是否需要补充 exclude 条件' });
     } else {
-      needsHuman.push({ ...f, reason: '非分类法可修类（阈值/横切/出处/解析）' });
+      needsHuman.push({ ...f, reason: '非分类法可修类（阈值/共性/出处/解析）' });
     }
   }
 

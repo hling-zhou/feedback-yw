@@ -182,7 +182,7 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
                   return <Tag color={cfg.color} className="!text-xs">{cfg.label}</Tag>
                 },
               },
-              { title: '产品', dataIndex: 'productName', width: 100, ellipsis: true },
+              { title: '产品', dataIndex: 'product', width: 100, ellipsis: true, render: (val, row) => val || row.productName || '—' },
               { title: '问题类型', dataIndex: 'problemType', width: 100, ellipsis: true },
               { title: '需求痛点', dataIndex: 'painPoint', ellipsis: true },
             ]}

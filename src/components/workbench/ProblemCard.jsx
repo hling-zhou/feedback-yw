@@ -9,14 +9,14 @@ import {
 /** @typedef {import('../../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult */
 
 const TIER_CONFIG = {
-  structural: { label: '长期结构性', color: '#f5222d', borderClass: 'border-l-4 border-l-red-500 bg-red-50/30' },
-  change:     { label: '本月异动',   color: '#fa8c16', borderClass: 'border-l-4 border-l-orange-400 bg-orange-50/20' },
-  sharp:      { label: '小而锐',     color: '#fa541c', borderClass: 'border-l-4 border-l-orange-500 bg-orange-50/20' },
-  iteration:  { label: '常规迭代',   color: '#1677ff', borderClass: 'border-l-4 border-l-blue-300 bg-blue-50/20' },
-  tail:       { label: '平稳长尾',   color: '#8c8c8c', borderClass: 'border-l-4 border-l-gray-300 bg-gray-50/30' },
+  structural: { label: '持续高频', color: '#f5222d', borderClass: 'border-l-4 border-l-red-500 bg-red-50/30' },
+  change:     { label: '环比突增',   color: '#fa8c16', borderClass: 'border-l-4 border-l-orange-400 bg-orange-50/20' },
+  sharp:      { label: '少数高发',     color: '#fa541c', borderClass: 'border-l-4 border-l-orange-500 bg-orange-50/20' },
+  iteration:  { label: '常规优化',   color: '#1677ff', borderClass: 'border-l-4 border-l-blue-300 bg-blue-50/20' },
+  tail:       { label: '零散长尾',   color: '#8c8c8c', borderClass: 'border-l-4 border-l-gray-300 bg-gray-50/30' },
   unloc:      { label: '未定位',     color: '#d9d9d9', borderClass: 'border-l-4 border-l-gray-200' },
-  cross:     { label: '横切关注',   color: '#722ed1', borderClass: 'border-l-4 border-l-purple-400 bg-purple-50/20' },
-  crossCut:  { label: '横切关注',   color: '#722ed1', borderClass: 'border-l-4 border-l-purple-400 bg-purple-50/20' },
+  cross:     { label: '共性关注',   color: '#722ed1', borderClass: 'border-l-4 border-l-purple-400 bg-purple-50/20' },
+  crossCut:  { label: '共性关注',   color: '#722ed1', borderClass: 'border-l-4 border-l-purple-400 bg-purple-50/20' },
 }
 
 const INVENTORY_CONFIG = {

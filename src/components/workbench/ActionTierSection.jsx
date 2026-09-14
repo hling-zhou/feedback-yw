@@ -7,12 +7,12 @@ import ProblemCard from './ProblemCard.jsx'
 
 const TIER_ORDER = ['structural', 'change', 'sharp', 'iteration', 'tail', 'cross']
 const TIER_LABELS = {
-  structural: '长期结构性',
-  change: '本月异动',
-  sharp: '小而锐',
-  iteration: '常规迭代',
-  tail: '平稳长尾',
-  cross: '横切关注',
+  structural: '持续高频',
+  change: '环比突增',
+  sharp: '少数高发',
+  iteration: '常规优化',
+  tail: '零散长尾',
+  cross: '共性关注',
 }
 
 /**
