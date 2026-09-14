@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ===========================================================================
-# 规则生产副驾 · 部署环境运行脚本
+# 行动建议规则补充 · 部署环境运行脚本
 # ===========================================================================
 # 用法：
 #   ./scripts/run-pipeline.sh                     # 全量模式（取所有工单）
@@ -85,7 +85,7 @@ RUN_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 exec > >(tee "$LOG_FILE") 2>&1
 
 echo "======================================================"
-echo "  规则生产副驾 · 部署环境运行"
+echo "  行动建议规则补充 · 部署环境运行"
 echo "======================================================"
 echo "  时间:       $RUN_DATE"
 echo "  Node:       $NODE_BIN"
@@ -107,6 +107,67 @@ GATE_FAIL_COUNT=0
 GATE_FAIL_ITEMS=""
 GATE_STATUS="skipped"
 PIPELINE_STATUS="running"
+
+# ---- 结构化摘要 + 退出函数（提前定义，供任意失败分支调用）----
+_write_summary_and_exit() {
+  local exit_code=${1:-0}
+  PIPELINE_END=$(date +%s)
+  DURATION_SEC=$((PIPELINE_END - PIPELINE_START))
+  DURATION_MIN=$((DURATION_SEC / 60))
+  DURATION_STR="${DURATION_MIN}m$((DURATION_SEC % 60))s"
+  cat > "$SUMMARY_FILE" <<ENDJSON
+{
+  "runDate": "$RUN_DATE",
+  "durationSec": $DURATION_SEC,
+  "status": "$PIPELINE_STATUS",
+  "producer": "$PRODUCER_STATUS",
+  "evidenceRowsCount": $EVIDENCE_ROWS_COUNT,
+  "newWordCount": $NEW_WORD_COUNT,
+  "gate": {
+    "status": "$GATE_STATUS",
+    "passCount": $GATE_PASS_COUNT,
+    "failCount": $GATE_FAIL_COUNT
+  },
+  "config": {
+    "batch": "${FEEDBACK_BATCH:-(default dev)}",
+    "products": "${PRODUCTS:-(curated only)}",
+    "autoApply": $APPLY,
+    "runGate": $RUN_GATE
+  }
+}
+ENDJSON
+
+  echo ""
+  echo "======================================================"
+  echo "  流水线完成"
+  echo "======================================================"
+  echo "  状态:      $PIPELINE_STATUS"
+  echo "  耗时:      $DURATION_STR"
+  echo "  工单数:    $EVIDENCE_ROWS_COUNT"
+  echo "  新词数:    $NEW_WORD_COUNT"
+  echo "  门禁:      $GATE_STATUS ($GATE_PASS_COUNT PASS / $GATE_FAIL_COUNT FAIL)"
+  echo ""
+  echo "  日志:      $LOG_FILE"
+  echo "  摘要:      $SUMMARY_FILE"
+  echo "======================================================"
+
+  # ---- HTTP 回调 ----
+  if [[ -n "$WEBHOOK_URL" ]]; then
+    echo ""
+    echo "[webhook] POST 摘要到 $WEBHOOK_URL ..."
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X POST "$WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      -d @"$SUMMARY_FILE" 2>/dev/null || echo "000")
+    if [[ "$HTTP_CODE" =~ ^2 ]]; then
+      echo "[webhook] 回调成功 (HTTP $HTTP_CODE)"
+    else
+      echo "[webhook] 回调失败 (HTTP $HTTP_CODE)"
+    fi
+  fi
+
+  exit $exit_code
+}
 
 # ---- Step 1: Producer 生成 evidence-rows ----
 echo "[Step 1/4] Producer — 生成 evidence-rows..."
@@ -231,67 +292,5 @@ fi
 
 echo ""
 
-# ---- 计时结束 ----
-PIPELINE_END=$(date +%s)
-DURATION_SEC=$((PIPELINE_END - PIPELINE_START))
-DURATION_MIN=$((DURATION_SEC / 60))
-DURATION_STR="${DURATION_MIN}m$((DURATION_SEC % 60))s"
-
-# ---- 写结构化摘要 JSON ----
-_write_summary_and_exit() {
-  local exit_code=${1:-0}
-  cat > "$SUMMARY_FILE" <<ENDJSON
-{
-  "runDate": "$RUN_DATE",
-  "durationSec": $DURATION_SEC,
-  "status": "$PIPELINE_STATUS",
-  "producer": "$PRODUCER_STATUS",
-  "evidenceRowsCount": $EVIDENCE_ROWS_COUNT,
-  "newWordCount": $NEW_WORD_COUNT,
-  "gate": {
-    "status": "$GATE_STATUS",
-    "passCount": $GATE_PASS_COUNT,
-    "failCount": $GATE_FAIL_COUNT
-  },
-  "config": {
-    "batch": "${FEEDBACK_BATCH:-(default dev)}",
-    "products": "${PRODUCTS:-(curated only)}",
-    "autoApply": $APPLY,
-    "runGate": $RUN_GATE
-  }
-}
-ENDJSON
-
-  echo ""
-  echo "======================================================"
-  echo "  流水线完成"
-  echo "======================================================"
-  echo "  状态:      $PIPELINE_STATUS"
-  echo "  耗时:      $DURATION_STR"
-  echo "  工单数:    $EVIDENCE_ROWS_COUNT"
-  echo "  新词数:    $NEW_WORD_COUNT"
-  echo "  门禁:      $GATE_STATUS ($GATE_PASS_COUNT PASS / $GATE_FAIL_COUNT FAIL)"
-  echo ""
-  echo "  日志:      $LOG_FILE"
-  echo "  摘要:      $SUMMARY_FILE"
-  echo "======================================================"
-
-  # ---- HTTP 回调 ----
-  if [[ -n "$WEBHOOK_URL" ]]; then
-    echo ""
-    echo "[webhook] POST 摘要到 $WEBHOOK_URL ..."
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-      -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d @"$SUMMARY_FILE" 2>/dev/null || echo "000")
-    if [[ "$HTTP_CODE" =~ ^2 ]]; then
-      echo "[webhook] 回调成功 (HTTP $HTTP_CODE)"
-    else
-      echo "[webhook] 回调失败 (HTTP $HTTP_CODE)"
-    fi
-  fi
-
-  exit $exit_code
-}
-
+# ---- 正常结束：写摘要并退出 ----
 _write_summary_and_exit $([[ "$PIPELINE_STATUS" == "pass" ]] && echo 0 || echo 2)

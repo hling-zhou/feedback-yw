@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ===========================================================================
-# 行动建议 Copilot（规则生产副驾）· 一键部署脚本（Linux）
+# 行动建议规则补充 · 一键部署脚本（Linux）
 # ===========================================================================
 # 在线上 Linux 服务器上运行此脚本完成全部安装：
 #   bash scripts/deploy-pipeline.sh
@@ -19,7 +19,7 @@ set -euo pipefail
 # ===========================================================================
 
 echo "======================================================"
-echo "  行动建议 Copilot · 一键部署"
+echo "  行动建议规则补充 · 一键部署"
 echo "  $(date '+%Y-%m-%d %H:%M:%S')"
 echo "======================================================"
 echo ""
@@ -110,13 +110,16 @@ if command -v python3 &>/dev/null; then
     echo "  ✓ jieba 已安装"
   else
     echo "  ✗ jieba 未安装，正在安装..."
-    pip3 install jieba -q 2>&1 && echo "  ✓ jieba 安装完成" || {
-      # 尝试 --break-system-packages（PEP 668，Python 3.11+ on Linux）
-      pip3 install jieba -q --break-system-packages 2>&1 && echo "  ✓ jieba 安装完成 (--break-system-packages)" || {
-        echo "  ✗ jieba 安装失败，请手动运行: pip3 install jieba"
-        echo "    如果是 externally-managed-environment 错误: pip3 install --break-system-packages jieba"
-        ERRORS=$((ERRORS + 1))
-      }
+    # 依次尝试：pip3 install → --user → --break-system-packages（PEP 668）
+    pip3 install jieba -q 2>&1 && echo "  ✓ jieba 安装完成" || \
+    pip3 install --user jieba -q 2>&1 && echo "  ✓ jieba 安装完成 (--user)" || \
+    pip3 install --break-system-packages jieba -q 2>&1 && echo "  ✓ jieba 安装完成 (--break-system-packages)" || {
+      echo "  ✗ jieba 自动安装失败，请手动安装："
+      echo "    方式1: pip3 install jieba"
+      echo "    方式2(PEP 668): pip3 install --break-system-packages jieba"
+      echo "    方式3(虚拟环境): python3 -m venv venv && source venv/bin/activate && pip install jieba"
+      echo "    方式4(国内镜像): pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple jieba"
+      ERRORS=$((ERRORS + 1))
     }
   fi
 else
@@ -207,7 +210,7 @@ if [[ ! -f ".env" ]]; then
   else
     # 生成最小 .env
     cat > .env <<'EOF'
-# 行动建议 Copilot 最小配置
+# 行动建议规则补充 最小配置
 API_PORT=3001
 API_HOST=127.0.0.1
 # 数据库路径（默认在项目目录 server/data/auth.db，无需改）
@@ -258,7 +261,7 @@ echo "  流水线运行（CLI）:"
 echo "    全量:    bash scripts/run-pipeline.sh --batch '*' --products '*'"
 echo "    本期:    bash scripts/run-pipeline.sh"
 echo ""
-echo "  或在前端 Settings → 行动建议 Copilot 页面点击「运行流水线」"
+echo "  或在前端 Settings → 行动建议规则补充 页面点击「运行流水线」"
 echo ""
 echo "  生产环境建议用 PM2 或 systemd 守护进程:"
 echo "    npm i -g pm2"

@@ -1,4 +1,4 @@
-/* 规则生产副驾（Keyword Discovery）—— 定期跑新词发现补充 taxonomy + 混淆方向指导补 exclude。
+/* 行动建议规则补充（Keyword Discovery）—— 定期跑新词发现补充 taxonomy + 混淆方向指导补 exclude。
  *
  * 定位：独立工具脚本，不在 run-loop.cjs 的三方闭环内（不参与自动修复轮次）。
  * 它是"离线定期运行"的辅助工具，产出供 Fixer 和人工审核消费的候选清单。
@@ -393,7 +393,7 @@ function main() {
     : null;
 
   console.log('======================================================');
-  console.log('  规则生产副驾 · 关键词发现 + 混淆分析');
+  console.log('  行动建议规则补充 · 关键词发现 + 混淆分析');
   console.log('======================================================');
 
   const evidence = loadEvidence();

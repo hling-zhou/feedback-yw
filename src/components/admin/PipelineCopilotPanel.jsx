@@ -119,7 +119,7 @@ export default function PipelineCopilotPanel() {
   return (
     <div className="page-card"><div className="page-card-header"><span className="page-card-title">
         <Space>
-          <Title level={5} style={{ margin: 0 }}>规则生产副驾</Title>
+          <Title level={5} style={{ margin: 0 }}>行动建议规则补充</Title>
           <StatusTag status={job?.status || 'idle'} />
         </Space>
       </span><div>
@@ -184,7 +184,7 @@ export default function PipelineCopilotPanel() {
 
       {!isRunning && (!job || job.status === 'idle') && (
         <Paragraph type="secondary">
-          点击「运行流水线」执行规则生产副驾：Producer 生成 evidence-rows → keyword-discovery 发现新词 → --apply 写入 overrides → gate-check 门禁验证。
+          点击「运行流水线」执行行动建议规则补充：Producer 生成 evidence-rows → keyword-discovery 发现新词 → --apply 写入 overrides → gate-check 门禁验证。
           运行完成后结果将显示在下方。
         </Paragraph>
       )}

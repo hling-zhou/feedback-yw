@@ -23,7 +23,7 @@ export const SETTINGS_TAB_LABELS = {
   bottles: '漂流瓶',
   requirement_sync: '需求工单进展同步',
   knowledge_base: '产品知识库',
-  pipeline: '规则生产副驾',
+  pipeline: '行动建议规则补充',
   curated_taxonomy: '分类法管理',
 }
 
@@ -41,7 +41,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
     '维护外部需求工单进展与状态映射，管理外部系统 API Key；举措关联需求工单后，排期与状态由此同步展示。',
   knowledge_base:
     '上传/管理各产品的业务知识库，供工单自动分析的「优化建议」检索引用；同一产品上传即覆盖。',
-  pipeline: '运行规则生产副驾流水线：Producer 归因 → 新词发现 → 自动写入 → 门禁验证；跑完在页面查看结果。',
+  pipeline: '运行行动建议规则补充流水线：Producer 归因 → 新词发现 → 自动写入 → 门禁验证；跑完在页面查看结果。',
   curated_taxonomy:
     '查看/编辑各产品的行动建议分类法（curated JSON），管理 family 正则与子议题；保存后写入服务端，刷新洞察即生效。',
 }
