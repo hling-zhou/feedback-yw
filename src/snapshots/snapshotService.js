@@ -194,7 +194,7 @@ function mergeGateReports(a, b) {
     passed: a.passed && b.passed,
     failureCount: (a.failureCount || 0) + (b.failureCount || 0),
     escalated: a.escalated || b.escalated,
-    failures: [...(a.failures || []), ...(b.failures || [])].slice(0, 10),
+    failures: [...(a.failures || []), ...(b.failures || [])].slice(0, 20),
   }
 }
 

@@ -42,6 +42,8 @@ const TAB_OVERVIEW = 'overview'
 export default function InsightWorkbench() {
   const {
     feedbacks,
+    feedbacksLoading,
+    periodsLoading,
     currentPeriod,
     selectInsightPeriod,
     sourceSnapshots,
@@ -250,6 +252,9 @@ export default function InsightWorkbench() {
     (s) => (s?.summary?.recordCount ?? 0) > 0,
   )
 
+  // 首次加载：数据/快照尚未就绪，且正在加载中 → 显示加载态而非空态
+  const initialLoading = (feedbacksLoading || periodsLoading) && !hasAnyData && !snapshotRebuilding && !overviewDisplay
+
   return (
     <div id="insight-workbench-root">
       <PageHeader
@@ -300,7 +305,13 @@ export default function InsightWorkbench() {
         />
       )}
 
-      {!hasAnyData && !snapshotRebuilding && (
+      {initialLoading && (
+        <div className="page-card page-section flex items-center justify-center" style={{ minHeight: 200 }}>
+          <Spin tip="正在加载洞察数据…" />
+        </div>
+      )}
+
+      {!hasAnyData && !snapshotRebuilding && !initialLoading && (
         <div className="page-card page-section">
           <Empty description="当前周期尚无反馈数据">
             <Link to={buildImportUrl({ source: activeTab === TAB_OVERVIEW ? undefined : activeTab })}>

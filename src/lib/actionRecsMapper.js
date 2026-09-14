@@ -135,11 +135,29 @@ export function mapEngineResult(engineResult, dataSourceType) {
  */
 export function mapGateReport(loopResult) {
   const { gateReport, rounds, escalated } = loopResult
+  const inferFixHint = (name) => {
+    if (!name) return ''
+    if (name.startsWith('未归类率')) return 'add_coverage'
+    if (name.startsWith('待确认率')) return 'restrict_overbroad'
+    if (name.startsWith('小而锐')) return 'demote_tier'
+    if (name.startsWith('横切项')) return 'recross'
+    if (name.startsWith('出处标注')) return 'annotate'
+    if (name.startsWith('准确性') && name.includes('排除')) return 'adjust_boundary'
+    if (name.startsWith('准确性') && name.includes('误归属')) return 'restrict_term'
+    if (name.startsWith('准确性') && name.includes('泛词')) return 'restrict_term'
+    return ''
+  }
   return {
     rounds,
     passed: gateReport.passed,
     failureCount: gateReport.fails ? gateReport.fails.length : 0,
     escalated,
-    failures: gateReport.fails ? gateReport.fails.slice(0, 10).map(f => f.name) : [],
+    failures: gateReport.fails ? gateReport.fails.slice(0, 20).map(f => ({
+      name: f.name,
+      detail: f.detail || '',
+      level: f.level || 'FAIL',
+      fixHint: f.fixHint || inferFixHint(f.name),
+      evidence: (f.evidence || []).slice(0, 20),
+    })) : [],
   }
 }

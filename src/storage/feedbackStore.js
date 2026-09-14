@@ -27,6 +27,14 @@ export function normalizeFeedbackRecord(record) {
     dataSourceType: base.dataSourceType || 'complaint_ticket',
     recordStatus: base.recordStatus || 'analyzed',
   }
+  // fallback: 部分 import 批次未单独写入 ticketId 字段，工单号嵌在 id 中
+  // （如 taxdev-complaint_ticket-20260728105035X358106260）
+  if (!normalized.ticketId && normalized.id) {
+    const prefix = `taxdev-${normalized.dataSourceType || ''}-`
+    if (normalized.id.startsWith(prefix)) {
+      normalized.ticketId = normalized.id.slice(prefix.length)
+    }
+  }
   normalizeRecordTaxonomyKeys(normalized)
   migrateSharedTagsOnRecord(normalized)
   return normalized

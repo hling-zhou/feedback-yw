@@ -153,8 +153,8 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
               {
                 title: '工单号',
                 dataIndex: 'ticketId',
-                width: 120,
-                ellipsis: true,
+                width: 160,
+                ellipsis: false,
                 render: (value, row) => (
                   <Button
                     type="link"
@@ -162,9 +162,25 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
                     className="!px-0"
                     onClick={() => onOpenFeedback?.(row)}
                   >
-                    {value || row.id}
+                    <span style={{ wordBreak: 'break-all' }}>{value || row.id}</span>
                   </Button>
                 ),
+              },
+              {
+                title: '来源',
+                dataIndex: 'dataSourceType',
+                width: 70,
+                render: (val) => {
+                  const map = {
+                    complaint_ticket: { label: '投诉', color: 'red' },
+                    consultation_ticket: { label: '咨询', color: 'blue' },
+                    post_use_rating: { label: '用后即评', color: 'green' },
+                    user_survey: { label: '调研', color: 'purple' },
+                    other: { label: '其他', color: 'default' },
+                  }
+                  const cfg = map[val] || { label: val || '-', color: 'default' }
+                  return <Tag color={cfg.color} className="!text-xs">{cfg.label}</Tag>
+                },
               },
               { title: '产品', dataIndex: 'productName', width: 100, ellipsis: true },
               { title: '问题类型', dataIndex: 'problemType', width: 100, ellipsis: true },

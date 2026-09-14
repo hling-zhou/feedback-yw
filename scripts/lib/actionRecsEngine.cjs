@@ -36,7 +36,7 @@ const FIELD_ALIASES = {
   '处理意见': ['handlingText'],
   '产品技术优化': ['optimizationProduct'],
   '是否加急': ['urgencyLevel'],
-  '_src': ['source', 'dataSourceType'],
+  '_src': ['dataSourceType', 'source'],
   '_month': ['importMonth'],
   '_sheet': ['importSheetName'],
 };
@@ -1279,40 +1279,65 @@ function runEngine(records, opts = {}) {
 function runGate(engineResult, opts = {}) {
   opts = opts || {};
   const { summary } = engineResult;
+  const records = opts.records || [];
   const G = [];
-  const push = (name, ok, detail, level) => G.push({ name, ok, detail, level: level || (ok ? 'PASS' : 'FAIL') });
+  const push = (name, ok, detail, level, evidence) => G.push({ name, ok, detail, level: level || (ok ? 'PASS' : 'FAIL'), evidence: evidence || null });
 
   // 1) 未归类率
   const MAX_UNC = +(opts.maxUnclassified || 5);
   const MAX_PEND = +(opts.maxPending || 20);
   for (const s of summary) {
     const rate = s.unclassified / s.T * 100;
-    push(`未归类率·${s.p}`, rate < MAX_UNC, `${rate.toFixed(1)}%（阈值 <${MAX_UNC}%）${s.derived ? ' [派生草稿·待确认]' : ''}`);
+    // 提取未归类工单
+    const uncRows = [];
+    if (s.rowStatus) {
+      for (const [i, st] of Object.entries(s.rowStatus)) {
+        if (st.status === 'unclassified' && uncRows.length < 20) {
+          const r = records[+i];
+          if (r) uncRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
+        }
+      }
+    }
+    push(`未归类率·${s.p}`, rate < MAX_UNC, `${rate.toFixed(1)}%（阈值 <${MAX_UNC}%）${s.derived ? ' [派生草稿·待确认]' : ''}`, null, rate < MAX_UNC ? null : uncRows);
   }
   // 2) 待确认率
   for (const s of summary) {
     if (s.pending == null) continue;
     const rate = s.pending / s.T * 100;
-    push(`待确认率·${s.p}`, rate < MAX_PEND, `${rate.toFixed(1)}%（阈值 <${MAX_PEND}%）${s.derived ? ' [派生草稿·待确认]' : ''}`);
+    // 提取待确认工单
+    const pendRows = [];
+    if (s.rowStatus) {
+      for (const [i, st] of Object.entries(s.rowStatus)) {
+        if (st.status === 'pending' && pendRows.length < 20) {
+          const r = records[+i];
+          if (r) pendRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
+        }
+      }
+    }
+    push(`待确认率·${s.p}`, rate < MAX_PEND, `${rate.toFixed(1)}%（阈值 <${MAX_PEND}%）${s.derived ? ' [派生草稿·待确认]' : ''}`, null, rate < MAX_PEND ? null : pendRows);
   }
   // 3) 小而锐最小样本
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.tier === 'sharp' && i.n < 3);
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
     push(`小而锐样本·${s.p}`, bad.length === 0,
-      bad.length ? `${bad.length} 项 n<3：${bad.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3');
+      bad.length ? `${bad.length} 项 n<3：${bad.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3', null, ev);
   }
   // 4) 横切项单列
   const TIERS5 = ['structural', 'change', 'sharp', 'iteration', 'tail'];
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.crossCut && TIERS5.includes(i.tier));
-    push(`横切项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个横切项混入 5 层` : '横切项已单列');
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
+    push(`横切项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个横切项混入 5 层` : '横切项已单列', null, ev);
   }
   // 5) 出处标注检查：items 中有 pain/root 标注的占比 ≥ 80% 才 PASS
   for (const s of summary) {
     const items = s.items || [];
     const withAnnotation = items.filter(i => i.pain || i.root);
     const rate = items.length ? withAnnotation.length / items.length * 100 : 100;
-    push(`出处标注·${s.p}`, rate >= 80, `${rate.toFixed(0)}%（阈值 ≥80%）${rate < 80 ? `：${items.length - withAnnotation.length} 项缺标注` : ''}`);
+    const bad = items.filter(i => !i.pain && !i.root);
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 3).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
+    push(`出处标注·${s.p}`, rate >= 80, `${rate.toFixed(0)}%（阈值 ≥80%）${rate < 80 ? `：${items.length - withAnnotation.length} 项缺标注` : ''}`, null, ev);
   }
 
   const fails = G.filter(g => g.level === 'FAIL');
@@ -1390,7 +1415,7 @@ function runLoop(records, opts = {}) {
   for (let round = 1; round <= maxRounds; round++) {
     actualRounds = round;
     result = runEngine(records, { ...opts, overrides });
-    gateReport = runGate(result, opts);
+    gateReport = runGate(result, { ...opts, records });
 
     if (gateReport.passed) {
       loopLog.push(`[Round ${round}] PASS (${gateReport.G.length - gateReport.fails.length}/${gateReport.G.length})`);
@@ -1406,7 +1431,7 @@ function runLoop(records, opts = {}) {
     }
 
     // Fixer 做了 in-place tier 修改，立即重验 Gate（不重跑 engine）
-    gateReport = runGate(result, opts);
+    gateReport = runGate(result, { ...opts, records });
     loopLog.push(`[Round ${round}] Fixer 应用 ${fixResult.changelog.length} 项变更，重验`);
 
     if (gateReport.passed) {

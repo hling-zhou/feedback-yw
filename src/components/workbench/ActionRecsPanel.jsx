@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Select, Space, Button, Dropdown, Empty, Typography, Alert } from 'antd'
-import { DownloadOutlined, ExportOutlined } from '@ant-design/icons'
+import { Select, Space, Button, Dropdown, Empty, Typography, Alert, Segmented } from 'antd'
+import { DownloadOutlined, ExportOutlined, WarningOutlined, AppstoreOutlined, TableOutlined } from '@ant-design/icons'
 import ProblemCard from './ProblemCard.jsx'
 import ProblemDetailDrawer from './ProblemDetailDrawer.jsx'
+import GateDetailDrawer from './GateDetailDrawer.jsx'
+import CrossProductCompare from './CrossProductCompare.jsx'
 import WorkbenchTabNav from './WorkbenchTabNav.jsx'
 import { useActionRecommendations } from '../../lib/useActionRecommendations.js'
 import { exportActionRecsMd } from '../../lib/actionReportMd.js'
@@ -42,7 +44,9 @@ export default function ActionRecsPanel({
   const { recs, gateReport } = useActionRecommendations({ sourceFilter, snapshot })
   const [selectedRec, setSelectedRec] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [gateDrawerOpen, setGateDrawerOpen] = useState(false)
   const [productFilter, setProductFilter] = useState(productId || 'all')
+  const [viewMode, setViewMode] = useState('cards') // 'cards' | 'cross'
 
   // 产品筛选
   const filteredRecs = useMemo(() => {
@@ -113,9 +117,13 @@ export default function ActionRecsPanel({
           type="warning"
           showIcon
           message={`三方闭环 ${gateReport.rounds} 轮未通过门禁，已升级人工复核`}
-          description={gateReport.failures?.join('；')}
+          action={
+            <Button size="small" icon={<WarningOutlined />} onClick={() => setGateDrawerOpen(true)}>
+              查看详情
+            </Button>
+          }
+          description={`${gateReport.failureCount} 项检查未通过，点击"查看详情"查看具体原因、涉及工单及人工复核指引`}
           className="!mb-3"
-          banner
         />
       )}
 
@@ -138,21 +146,38 @@ export default function ActionRecsPanel({
               </Typography.Text>
             )}
           </Space>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'md', label: '导出 Markdown', icon: <DownloadOutlined /> },
-                { key: 'excel', label: '导出 Excel', icon: <ExportOutlined /> },
-              ],
-              onClick: ({ key }) => handleExport(key),
-            }}
-          >
-            <Button size="small" icon={<DownloadOutlined />}>导出</Button>
-          </Dropdown>
+          <Space size="small">
+            <Segmented
+              size="small"
+              value={viewMode}
+              onChange={(v) => setViewMode(v)}
+              options={[
+                { label: '卡片', value: 'cards', icon: <AppstoreOutlined /> },
+                { label: '跨产品对比', value: 'cross', icon: <TableOutlined /> },
+              ]}
+            />
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'md', label: '导出 Markdown', icon: <DownloadOutlined /> },
+                  { key: 'excel', label: '导出 Excel', icon: <ExportOutlined /> },
+                ],
+                onClick: ({ key }) => handleExport(key),
+              }}
+            >
+              <Button size="small" icon={<DownloadOutlined />}>导出</Button>
+            </Dropdown>
+          </Space>
         </div>
 
-        {/* 族分类 Tab + 卡片 */}
-        {hasRecs ? (
+        {/* 内容区：卡片视图 or 跨产品对比 */}
+        {viewMode === 'cross' ? (
+          <CrossProductCompare
+            recs={filteredRecs}
+            records={records}
+            onOpenFeedback={onOpenFeedback}
+          />
+        ) : hasRecs ? (
           <>
             <WorkbenchTabNav
               className="mb-4"
@@ -178,6 +203,15 @@ export default function ActionRecsPanel({
         onClose={() => setDrawerOpen(false)}
         records={records}
         showEffectTable={showEffectTable}
+        onOpenFeedback={onOpenFeedback}
+      />
+
+      {/* 门禁详情抽屉 */}
+      <GateDetailDrawer
+        gateReport={gateReport}
+        open={gateDrawerOpen}
+        onClose={() => setGateDrawerOpen(false)}
+        records={records}
         onOpenFeedback={onOpenFeedback}
       />
     </div>
