@@ -35,6 +35,7 @@ function filterRecords(records, query = {}, period = null) {
   return records.filter((r) => {
     if (query.tenantId && r.tenantId !== query.tenantId) return false
     if (query.dataSourceType && r.dataSourceType !== query.dataSourceType) return false
+    if (query.dataSourceTypes?.length && !query.dataSourceTypes.includes(r.dataSourceType)) return false
     if (query.importBatchId && r.importBatchId !== query.importBatchId) return false
     if (query.insightPeriodId) {
       if (normalized) {

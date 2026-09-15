@@ -46,6 +46,7 @@ export default function InsightWorkbench() {
     periodsLoading,
     currentPeriod,
     selectInsightPeriod,
+    loadPostUseRatingForPeriod,
     sourceSnapshots,
     overviewSnapshot,
     snapshotsStale,
@@ -121,6 +122,13 @@ export default function InsightWorkbench() {
       setTicketProduct('')
     }
   }, [activeTab])
+
+  // 用后即评 tab：按需加载 post_use_rating 数据（首屏不拉，切到 tab 时才加载）
+  useEffect(() => {
+    if (activeTab === 'post_use_rating' && currentPeriod?.id) {
+      void loadPostUseRatingForPeriod(currentPeriod.id)
+    }
+  }, [activeTab, currentPeriod, loadPostUseRatingForPeriod])
 
   const analysisContext = useMemo(() => {
     if (activeTab === TAB_OVERVIEW) return {}

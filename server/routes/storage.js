@@ -248,9 +248,13 @@ export function registerStorageRoutes(app) {
   )
 
   app.get('/api/storage/records', { preHandler: requirePermission('view') }, async (request) => {
-    const q = /** @type {import('../src/storage/adapter.js').RecordQuery & { fields?: string }} */ (request.query || {})
+    const q = /** @type {import('../src/storage/adapter.js').RecordQuery & { fields?: string; dataSourceTypes?: string }} */ (request.query || {})
     const fields = q.fields === 'list' ? 'list' : 'full'
-    return storageRepository.listRecords({ ...q, fields })
+    // dataSourceTypes: 逗号分隔的多类型过滤（如 ?dataSourceTypes=complaint_ticket,consultation_ticket）
+    const dataSourceTypes = typeof q.dataSourceTypes === 'string' && q.dataSourceTypes.trim()
+      ? q.dataSourceTypes.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined
+    return storageRepository.listRecords({ ...q, dataSourceTypes, fields })
   })
 
   app.get(

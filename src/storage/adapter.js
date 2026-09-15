@@ -17,6 +17,7 @@
  * @property {string} [tenantId]
  * @property {string} [insightPeriodId]
  * @property {DataSourceType} [dataSourceType]
+ * @property {DataSourceType[]} [dataSourceTypes] 多类型过滤（IN 查询），优先于 dataSourceType
  * @property {string} [importBatchId]
  * @property {number} [limit] 分页大小；不传则返回全部（慎用）
  * @property {number} [offset] 分页偏移，默认 0

@@ -61,6 +61,7 @@ export function createApiStorageAdapter() {
       if (query.tenantId) params.set('tenantId', query.tenantId)
       if (query.insightPeriodId) params.set('insightPeriodId', query.insightPeriodId)
       if (query.dataSourceType) params.set('dataSourceType', query.dataSourceType)
+      if (query.dataSourceTypes?.length) params.set('dataSourceTypes', query.dataSourceTypes.join(','))
       if (query.importBatchId) params.set('importBatchId', query.importBatchId)
       if (query.limit != null) params.set('limit', String(query.limit))
       if (query.offset != null) params.set('offset', String(query.offset))

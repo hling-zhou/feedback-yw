@@ -1463,19 +1463,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       }
     }
     const previousHostItems = getTicketTodoDraftItems(feedback)
-    let mergeBase = saveOptions.mergeBase || feedback
-    if (typeof adapter.getRecord === 'function') {
-      try {
-        const latest = await adapter.getRecord(feedback.id)
-        if (latest) {
-          mergeBase = saveOptions.mergeBase
-            ? { ...saveOptions.mergeBase, ticketTodoIncoming: latest.ticketTodoIncoming }
-            : latest
-        }
-      } catch {
-        /* 用抽屉内记录继续保存 */
-      }
-    }
+    const mergeBase = saveOptions.mergeBase || feedback
     const saved = await updateFeedback(feedback.id, patch, {
       expectedRevision: saveOptions.expectedRevision ?? baseRevisionRef.current,
       mergeBase,
@@ -1483,29 +1471,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       forceOverwrite: saveOptions.forceOverwrite })
     const merged = { ...feedback, ...saved }
     const nextHostItems = getTicketTodoDraftItems(merged)
-    await syncTicketTodoIncoming({
-      hostRecord: merged,
-      previousItems: previousHostItems,
-      nextItems: nextHostItems,
-      feedbacks,
-      adapter,
-      updateFeedback })
-    if (merged.actionId?.trim()) {
-      await syncFirstTicketSnapshotsForRecord(merged)
-      if (!linkedFromLibrary) {
-        await syncLinkedTicketsForActionIds([merged.actionId], feedbacks, updateFeedback)
-      }
-      for (const item of nextHostItems) {
-        if (getTicketTodoResolution(item) !== 'converted_to_action') continue
-        await persistEstablishedActionOnLinkedTickets({
-          actionId: item.linkedActionId || merged.actionId,
-          hostRecord: merged,
-          linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, merged.ticketId),
-          feedbacks,
-          adapter,
-          updateFeedback })
-      }
-    }
+
+    // 主 PATCH 已完成：更新 UI 状态、关闭抽屉，让用户立即得到反馈
     baseRevisionRef.current = getRecordRevision(saved)
     setRemoteStale(false)
     applyFeedbackToForm(merged)
@@ -1521,6 +1488,38 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     const label = feedback.ticketId ? `工单 ${feedback.ticketId}` : '工单'
     message.success(`${label} 已保存`)
     ;(onSavedClose ?? onClose)()
+
+    // 级联同步：后台异步执行，不阻塞 UI
+    // syncTicketTodoIncoming / syncFirstTicketSnapshots / syncLinkedTickets / persistEstablishedAction
+    void (async () => {
+      try {
+        await syncTicketTodoIncoming({
+          hostRecord: merged,
+          previousItems: previousHostItems,
+          nextItems: nextHostItems,
+          feedbacks,
+          adapter,
+          updateFeedback })
+        if (merged.actionId?.trim()) {
+          await syncFirstTicketSnapshotsForRecord(merged)
+          if (!linkedFromLibrary) {
+            await syncLinkedTicketsForActionIds([merged.actionId], feedbacks, updateFeedback)
+          }
+          for (const item of nextHostItems) {
+            if (getTicketTodoResolution(item) !== 'converted_to_action') continue
+            await persistEstablishedActionOnLinkedTickets({
+              actionId: item.linkedActionId || merged.actionId,
+              hostRecord: merged,
+              linkedTicketIds: normalizeTicketTodoLinkedTicketIds(item, merged.ticketId),
+              feedbacks,
+              adapter,
+              updateFeedback })
+          }
+        }
+      } catch (err) {
+        console.warn('[finalizeSave] 级联同步失败（主保存已完成）', err)
+      }
+    })()
   }
 
   const save = async (saveOptions = {}) => {

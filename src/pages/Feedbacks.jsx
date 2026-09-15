@@ -141,6 +141,7 @@ export default function Feedbacks() {
     periods,
     periodsLoading,
     selectInsightPeriod,
+    loadPostUseRatingForPeriod,
     settings,
     productCatalogMeta,
     syncSharedDataFromServer,
@@ -272,8 +273,14 @@ export default function Feedbacks() {
     }
   }, [importSession?.active, retagSession?.active, syncSharedDataFromServer, refreshCustomerVisitRecords])
 
+  // 用后即评 lane：按需加载 post_use_rating 数据（首屏不拉，切到 lane 时才加载）
   useEffect(() => {
-    if (skipUrlSyncRef.current) {
+    if (isPostUseLane && currentPeriodId) {
+      void loadPostUseRatingForPeriod(currentPeriodId)
+    }
+  }, [isPostUseLane, currentPeriodId, loadPostUseRatingForPeriod])
+
+  useEffect(() => {
       skipUrlSyncRef.current = false
       return
     }

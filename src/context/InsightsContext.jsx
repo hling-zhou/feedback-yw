@@ -190,6 +190,8 @@ export function InsightsProvider({ children }) {
   const reprocessingRef = useRef(false)
   /** @type {import('react').MutableRefObject<Set<string>>} */
   const loadedPeriodIdsRef = useRef(new Set())
+  /** post_use_rating 按需加载去重（同一周期只加载一次） */
+  const loadedPostUsePeriodIdsRef = useRef(new Set())
   /** @type {import('react').MutableRefObject<ReturnType<typeof setTimeout> | null>} */
   const snapshotRebuildTimerRef = useRef(null)
   /** @type {import('react').MutableRefObject<Promise<void>>} */
@@ -288,16 +290,52 @@ export function InsightsProvider({ children }) {
     async (periodId) => {
       if (!periodId || !storageReady || loadedPeriodIdsRef.current.has(periodId)) return
       // 首屏/周期切换用 list 投影裁剪大文本字段；抽屉/retag/update 按需拉全量单条
-      const records = await loadFeedbacksForPeriod(adapter, periodId, {
-        fields: isApiStorageAdapter(adapter) ? 'list' : 'full',
+      // API 模式只拉工单类型（~1400 条，~2MB，首屏必需），排除 post_use_rating（~25000 条，~35MB）
+      // post_use_rating 推迟到用户切到用后即评 lane / 工作台 tab 时才按需加载（loadPostUseRatingForPeriod）
+      const apiMode = isApiStorageAdapter(adapter)
+      const ticketRecords = await loadFeedbacksForPeriod(adapter, periodId, {
+        fields: apiMode ? 'list' : 'full',
+        ...(apiMode ? { dataSourceTypes: ['complaint_ticket', 'consultation_ticket'] } : {}),
       })
       loadedPeriodIdsRef.current.add(periodId)
-      mergeRecordsIntoCache(records)
+      mergeRecordsIntoCache(ticketRecords)
       feedbacksRef.current = [
         ...new Map(
-          [...feedbacksRef.current, ...records].map((fb) => [fb.id, fb]),
+          [...feedbacksRef.current, ...ticketRecords].map((fb) => [fb.id, fb]),
         ).values(),
       ]
+    },
+    [adapter, mergeRecordsIntoCache, storageReady],
+  )
+
+  /**
+   * 按需加载 post_use_rating 数据（用后即评 lane / 工作台 tab 切换时触发）。
+   * API 模式下首屏不拉 post_use_rating（~25000 条 / ~35MB），推迟到用户实际查看用后即评时才加载。
+   * 同一周期只加载一次（loadedPostUsePeriodIdsRef 去重）。
+   */
+  const loadPostUseRatingForPeriod = useCallback(
+    async (periodId) => {
+      if (!periodId || !storageReady) return
+      if (loadedPostUsePeriodIdsRef.current.has(periodId)) return
+      loadedPostUsePeriodIdsRef.current.add(periodId)
+      try {
+        const apiMode = isApiStorageAdapter(adapter)
+        if (!apiMode) return // 本机模式 feedbacks 已含全量，无需额外加载
+        const ratingRecords = await loadFeedbacksForPeriod(adapter, periodId, {
+          fields: 'list',
+          dataSourceTypes: ['post_use_rating'],
+        })
+        if (!ratingRecords.length) return
+        mergeRecordsIntoCache(ratingRecords)
+        feedbacksRef.current = [
+          ...new Map(
+            [...feedbacksRef.current, ...ratingRecords].map((fb) => [fb.id, fb]),
+          ).values(),
+        ]
+      } catch (err) {
+        loadedPostUsePeriodIdsRef.current.delete(periodId) // 失败后允许重试
+        console.warn('[storage] post_use_rating 按需加载失败', err)
+      }
     },
     [adapter, mergeRecordsIntoCache, storageReady],
   )
@@ -305,12 +343,17 @@ export function InsightsProvider({ children }) {
   const loadRecordsForJourneyComparison = useCallback(
     async (period) => {
       if (!period) return
+      // 当前月数据：首屏必需，同步等待
       await loadRecordsForPeriodId(period.id)
+      // 上月对比数据：后台异步加载，不阻塞首屏；数据就绪后 React 自动更新旅程图
       const previousMonth = resolveJourneyComparisonWindow(period).previousMonths[0]
       if (!previousMonth) return
       const [year, month] = previousMonth.split('-').map(Number)
-      await loadRecordsForPeriodId(
-        periodIdFromSpec(buildPeriodSpec({ granularity: 'month', year, month })),
+      const previousPeriodId = periodIdFromSpec(
+        buildPeriodSpec({ granularity: 'month', year, month }),
+      )
+      void loadRecordsForPeriodId(previousPeriodId).catch((err) =>
+        console.warn('[storage] 旅程对比上月数据加载失败', err),
       )
     },
     [loadRecordsForPeriodId],
@@ -351,6 +394,7 @@ export function InsightsProvider({ children }) {
 
       setFeedbacksLoading(true)
       loadedPeriodIdsRef.current = new Set()
+      loadedPostUsePeriodIdsRef.current = new Set()
       /** @type {import('../lib/types.js').FeedbackRecord[]} */
       let loadedRecords = []
       if (!apiMode) {
@@ -448,6 +492,8 @@ export function InsightsProvider({ children }) {
         hydrateLearningCaches(adapter),
         (async () => {
           try {
+            // loadRecordsForJourneyComparison 内部已拆分：
+            // 当前月 await（必需），上月数据后台异步加载（不阻塞首屏）
             await loadRecordsForJourneyComparison(period)
           } finally {
             if (apiMode) {
@@ -2138,6 +2184,7 @@ export function InsightsProvider({ children }) {
           setTotalRecordCount(0)
           setImportMonthSummary({ months: [], bySource: [], total: 0 })
           loadedPeriodIdsRef.current = new Set()
+      loadedPostUsePeriodIdsRef.current = new Set()
           setSourceSnapshots({})
           setOverviewSnapshot(null)
           setSnapshotsStale(false)
@@ -2150,6 +2197,7 @@ export function InsightsProvider({ children }) {
           )
           if (options.insightPeriodId) {
             loadedPeriodIdsRef.current.delete(options.insightPeriodId)
+            loadedPostUsePeriodIdsRef.current.delete(options.insightPeriodId)
           }
         }
         if (storageReady) {
@@ -2726,6 +2774,7 @@ export function InsightsProvider({ children }) {
       storageReady,
       setCurrentPeriodId,
       selectInsightPeriod,
+      loadPostUseRatingForPeriod,
       reloadPeriods,
       listPipelineDescriptors,
       createPipeline,
@@ -2821,6 +2870,7 @@ export function InsightsProvider({ children }) {
       storageReady,
       setCurrentPeriodId,
       selectInsightPeriod,
+      loadPostUseRatingForPeriod,
       reloadPeriods,
       runPipeline,
       adapter,

@@ -44,7 +44,16 @@ export function buildRecordsWhereClause(query, period) {
     parts.push('tenant_id = ?')
     params.push(query.tenantId)
   }
-  if (query.dataSourceType) {
+  if (query.dataSourceTypes && query.dataSourceTypes.length) {
+    const types = query.dataSourceTypes.filter(Boolean)
+    if (types.length === 1) {
+      parts.push('data_source_type = ?')
+      params.push(types[0])
+    } else if (types.length > 1) {
+      parts.push(`data_source_type IN (${types.map(() => '?').join(', ')})`)
+      params.push(...types)
+    }
+  } else if (query.dataSourceType) {
     parts.push('data_source_type = ?')
     params.push(query.dataSourceType)
   }
