@@ -713,8 +713,15 @@ export function InsightsProvider({ children }) {
           refreshImportMonthSummary(),
         ])
         loadedPeriodIdsRef.current = new Set(currentPeriodId ? [currentPeriodId] : [])
-        setFeedbacks(records)
-        feedbacksRef.current = records
+        // 保留已加载的 post_use_rating 记录，只更新工单记录（合并而非替换）
+        const postUseRecords = feedbacksRef.current.filter(
+          (fb) => fb.dataSourceType === 'post_use_rating',
+        )
+        const merged = [...records, ...postUseRecords.filter(
+          (pu) => !records.some((r) => r.id === pu.id),
+        )]
+        setFeedbacks(merged)
+        feedbacksRef.current = merged
         setTotalRecordCount(total)
         setFeedbacksHydrated(true)
         const list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
