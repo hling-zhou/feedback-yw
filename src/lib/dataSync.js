@@ -4,7 +4,7 @@ import { apiFetch } from './apiClient.js'
 export const DATA_SYNC_POLL_MS = 5000
 
 /**
- * @returns {Promise<{ revision: number; updatedAt: string | null }>}
+ * @returns {Promise<{ revision: number; recordsRevision: number; updatedAt: string | null }>}
  */
 export async function fetchDataRevision() {
   return apiFetch('/api/storage/revision')

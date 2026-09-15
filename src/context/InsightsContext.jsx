@@ -202,6 +202,8 @@ export function InsightsProvider({ children }) {
   const snapshotRebuildPendingRef = useRef(null)
   /** @type {import('react').MutableRefObject<number | null>} */
   const dataRevisionRef = useRef(null)
+  /** recordsRevision 的 ref 镜像，用于 tick 判断是否需要重拉记录 */
+  const recordsRevisionRef = useRef(null)
   /** 本浏览器是否持有服务端全局后台任务锁 */
   const ownedBackgroundTaskRef = useRef(false)
   /** @type {import('react').MutableRefObject<import('../lib/types.js').FeedbackRecord[]>} */
@@ -515,7 +517,7 @@ export function InsightsProvider({ children }) {
       if (typeof adapter.getDataRevision === 'function') {
         try {
           const rev = await adapter.getDataRevision()
-          dataRevisionRef.current = rev.revision
+          dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
         } catch {
           /* 轮询同步非关键路径 */
         }
@@ -702,8 +704,12 @@ export function InsightsProvider({ children }) {
       skipPersistRef.current = true
       setFeedbacksLoading(true)
       try {
+        // 与首屏加载策略一致：只拉工单类型，post_use_rating 按需加载
+        const ticketQuery = isApiStorageAdapter(adapter)
+          ? { dataSourceTypes: ['complaint_ticket', 'consultation_ticket'] }
+          : {}
         const [{ records, total }] = await Promise.all([
-          fetchAllRecordPages(adapter),
+          fetchAllRecordPages(adapter, ticketQuery),
           refreshImportMonthSummary(),
         ])
         loadedPeriodIdsRef.current = new Set(currentPeriodId ? [currentPeriodId] : [])
@@ -724,7 +730,7 @@ export function InsightsProvider({ children }) {
         }
         try {
           const rev = await fetchDataRevision()
-          dataRevisionRef.current = rev.revision
+          dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
         } catch {
           /* ignore */
         }
@@ -821,12 +827,16 @@ export function InsightsProvider({ children }) {
         return
       }
       try {
-        const { revision } = await fetchDataRevision()
+        const { revision, recordsRevision } = await fetchDataRevision()
         const prev = dataRevisionRef.current
-        if (prev != null && revision !== prev) {
+        const prevRecords = recordsRevisionRef.current
+        // 只有 recordsRevision 变化（记录增删改）才需要重拉记录列表
+        // revision 变但 recordsRevision 不变（如 snapshot rebuild / tag meta 变更）不需要重拉
+        if (prevRecords != null && recordsRevision !== prevRecords) {
           await syncSharedDataFromServer({ notify: true })
         }
         dataRevisionRef.current = revision
+        recordsRevisionRef.current = recordsRevision
         await refreshSharedBackgroundTask()
       } catch (err) {
         console.warn('[storage] 版本轮询失败', err)
@@ -936,7 +946,7 @@ export function InsightsProvider({ children }) {
             try {
               if (typeof adapter.getDataRevision === 'function') {
                 const rev = await adapter.getDataRevision()
-                dataRevisionRef.current = rev.revision
+                dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
               }
             } catch {
               /* 版本号同步失败不影响已加载的新快照 */
@@ -1712,10 +1722,10 @@ export function InsightsProvider({ children }) {
           })
           if (typeof adapter.getDataRevision === 'function') {
             const rev = await adapter.getDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           } else {
             const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           }
           void refreshImportMonthSummary()
         } finally {
@@ -1794,10 +1804,11 @@ export function InsightsProvider({ children }) {
         // 自己的写入不应触发 tick 全量同步：先置 null 让 400ms 窗口内的 tick 跳过，
         // 500ms 后（超过服务端 bump 延迟）再取 revision 写入 ref，确保拿到的是 bump 后的新值
         dataRevisionRef.current = null
+        recordsRevisionRef.current = null
         setTimeout(async () => {
           try {
             const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           } catch {
             // 拉取失败不设值，下次 tick 会自行设值
           }
@@ -1839,7 +1850,7 @@ export function InsightsProvider({ children }) {
         if (typeof adapter.getDataRevision === 'function') {
           try {
             const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           } catch {
             /* ignore */
           }
@@ -1958,10 +1969,10 @@ export function InsightsProvider({ children }) {
             }
             if (typeof adapter.getDataRevision === 'function') {
               const rev = await adapter.getDataRevision()
-              dataRevisionRef.current = rev.revision
+              dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
             } else {
               const rev = await fetchDataRevision()
-              dataRevisionRef.current = rev.revision
+              dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
             }
           } finally {
             skipPersistRef.current = false
@@ -2090,10 +2101,10 @@ export function InsightsProvider({ children }) {
             })
             if (typeof adapter.getDataRevision === 'function') {
               const rev = await adapter.getDataRevision()
-              dataRevisionRef.current = rev.revision
+              dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
             } else {
               const rev = await fetchDataRevision()
-              dataRevisionRef.current = rev.revision
+              dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
             }
           } finally {
             skipPersistRef.current = false
@@ -2153,7 +2164,7 @@ export function InsightsProvider({ children }) {
           if (isApiStorageAdapter(adapter)) {
             await adapter.replaceAllRecords(records)
             const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           } else {
             await persistFeedbacks(adapter, records)
           }
@@ -2275,7 +2286,7 @@ export function InsightsProvider({ children }) {
           setFeedbacks(feedbacksRef.current)
           if (typeof adapter.getDataRevision === 'function') {
             const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           }
         }
         if (currentPeriod) {
@@ -2321,7 +2332,7 @@ export function InsightsProvider({ children }) {
             })
             if (typeof adapter.getDataRevision === 'function') {
               const rev = await adapter.getDataRevision()
-              dataRevisionRef.current = rev.revision
+              dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
             }
           } finally {
             skipPersistRef.current = false
@@ -2411,7 +2422,7 @@ export function InsightsProvider({ children }) {
           mergePersistedChunk(chunk)
           if (typeof adapter.getDataRevision === 'function') {
             const rev = await adapter.getDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           }
         } finally {
           skipPersistRef.current = false
@@ -2483,7 +2494,7 @@ export function InsightsProvider({ children }) {
           await persistRecordUpdates(adapter, updatedSubset)
           if (typeof adapter.getDataRevision === 'function') {
             const rev = await adapter.getDataRevision()
-            dataRevisionRef.current = rev.revision
+            dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
           }
         } finally {
           skipPersistRef.current = false
