@@ -1791,14 +1791,9 @@ export function InsightsProvider({ children }) {
         const finalized = { ...updated, recordRevision }
         feedbacksRef.current = feedbacksRef.current.map((fb) => (fb.id === id ? finalized : fb))
         setFeedbacks(feedbacksRef.current)
-        if (typeof adapter.getDataRevision === 'function') {
-          try {
-            const rev = await fetchDataRevision()
-            dataRevisionRef.current = rev.revision
-          } catch {
-            /* ignore */
-          }
-        }
+        // 自己的写入不应触发 tick 全量同步：置 null 让 tick 跳过这次检测，
+        // tick 会重新设 dataRevisionRef 为 bump 后的最新值
+        dataRevisionRef.current = null
         return finalized
       }
       return updated
