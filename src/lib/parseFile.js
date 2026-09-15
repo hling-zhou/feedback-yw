@@ -444,7 +444,7 @@ const OPTIONAL_COLUMN_CANDIDATES = [
  * @param {string[]} headers
  * @param {Record<string, string>} map
  */
-function fillOptionalColumnCandidates(headers, map) {
+export function fillOptionalColumnCandidates(headers, map) {
   for (const { key, candidates } of OPTIONAL_COLUMN_CANDIDATES) {
     if (map[key]) continue
     const found = candidates.find((c) => headers.includes(c))

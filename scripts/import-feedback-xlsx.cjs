@@ -153,6 +153,26 @@ function main() {
 
       if (ticketId && existing.has(`${dataSourceType}|${ticketId}`)) { skipped++; continue; }
 
+      // sourceColumns 存原始中文列名→实际数据值（与 buildSourceColumns 格式一致，
+      // 供导出时 getSourceColumnValue 读取）。COL_TO_CANON 是映射表，不能存进去。
+      const sourceColumns = {};
+      for (const cn of Object.keys(COL_TO_CANON)) {
+        const v = o[cn] != null ? String(o[cn]).trim() : '';
+        if (v) sourceColumns[cn] = v;
+      }
+
+      const customerTierRaw = o['移动云客户服务等级'] || '';
+      // normalizeCustomerTier 与 src/domain/customerTier.js 保持一致逻辑
+      const tierRaw = customerTierRaw.trim();
+      let customerTier = undefined;
+      if (tierRaw) {
+        if (['金牌','银牌','铜牌','普通'].includes(tierRaw)) customerTier = tierRaw;
+        else if (/金牌|^金$|gold|vip/i.test(tierRaw)) customerTier = '金牌';
+        else if (/银牌|^银$|silver/i.test(tierRaw)) customerTier = '银牌';
+        else if (/铜牌|^铜$|bronze/i.test(tierRaw)) customerTier = '铜牌';
+        else if (/普通|一般|标准|standard|normal/i.test(tierRaw)) customerTier = '普通';
+      }
+
       const payload = {
         schemaVersion: 2,
         tenantId: TENANT,
@@ -184,7 +204,13 @@ function main() {
         urgencyLevel: o['是否加急'] || '',
         customerType: o['客户类型名称'] || '',
         customerGroup: o['集团名称'] || '',
-        sourceColumns: COL_TO_CANON,
+        customerGroupCode: o['集团客户编码'] || '',
+        customerProvince: o['集团所属省份'] || '',
+        customerCity: o['集团所属地市'] || '',
+        loginAccount: o['登录账号名称'] || '',
+        serviceLevel: customerTierRaw,
+        customerTier,
+        sourceColumns: Object.keys(sourceColumns).length > 0 ? sourceColumns : undefined,
         // 原始中文列原样保留（分析脚本直接读这些键）
         ...o,
       };

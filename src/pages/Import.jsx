@@ -29,6 +29,7 @@ import {
   parseUploadFile,
   applyColumnMap,
   applyDefaultTicketIdMapping,
+  fillOptionalColumnCandidates,
   buildMappingFromHeaders,
   IMPORT_PARSE_ERROR_CODES,
   PRIMARY_TICKET_ID_HEADERS,
@@ -634,6 +635,7 @@ export default function Import({ embedded = false }) {
     for (const key of Object.keys(map)) {
       if (!headers.includes(map[key])) delete map[key]
     }
+    fillOptionalColumnCandidates(headers, map)
     setColumnMap(applyDefaultTicketIdMapping(headers, map, dataSourceType))
     setRawTextMerge((preset.rawTextMerge || []).filter((c) => headers.includes(c)))
     setActivePreset(preset)
