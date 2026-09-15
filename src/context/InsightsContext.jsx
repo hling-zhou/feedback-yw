@@ -1791,9 +1791,17 @@ export function InsightsProvider({ children }) {
         const finalized = { ...updated, recordRevision }
         feedbacksRef.current = feedbacksRef.current.map((fb) => (fb.id === id ? finalized : fb))
         setFeedbacks(feedbacksRef.current)
-        // 自己的写入不应触发 tick 全量同步：置 null 让 tick 跳过这次检测，
-        // tick 会重新设 dataRevisionRef 为 bump 后的最新值
+        // 自己的写入不应触发 tick 全量同步：先置 null 让 400ms 窗口内的 tick 跳过，
+        // 500ms 后（超过服务端 bump 延迟）再取 revision 写入 ref，确保拿到的是 bump 后的新值
         dataRevisionRef.current = null
+        setTimeout(async () => {
+          try {
+            const rev = await fetchDataRevision()
+            dataRevisionRef.current = rev.revision
+          } catch {
+            // 拉取失败不设值，下次 tick 会自行设值
+          }
+        }, 500)
         return finalized
       }
       return updated
