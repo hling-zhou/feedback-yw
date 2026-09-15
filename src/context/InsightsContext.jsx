@@ -225,6 +225,12 @@ export function InsightsProvider({ children }) {
   const [currentPeriodId, setCurrentPeriodIdState] = useState(LEGACY_INSIGHT_PERIOD_ID)
   const [periodsLoading, setPeriodsLoading] = useState(true)
   const [storageReady, setStorageReady] = useState(false)
+  /** storageReady 的 ref 镜像，避免 loadRecordsForPeriodId 依赖 state 变化重建 */
+  const storageReadyRef = useRef(false)
+  const setStorageReadyBoth = useCallback((val) => {
+    storageReadyRef.current = val
+    setStorageReady(val)
+  }, [])
   const [sourceSnapshots, setSourceSnapshots] = useState(
     /** @type {Partial<Record<import('../domain/enums.js').DataSourceType, import('../domain/snapshot.js').InsightSnapshot>>} */ ({}),
   )
@@ -288,7 +294,7 @@ export function InsightsProvider({ children }) {
 
   const loadRecordsForPeriodId = useCallback(
     async (periodId) => {
-      if (!periodId || !storageReady || loadedPeriodIdsRef.current.has(periodId)) return
+      if (!periodId || !storageReadyRef.current || loadedPeriodIdsRef.current.has(periodId)) return
       // 首屏/周期切换用 list 投影裁剪大文本字段；抽屉/retag/update 按需拉全量单条
       // API 模式只拉工单类型（~1400 条，~2MB，首屏必需），排除 post_use_rating（~25000 条，~35MB）
       // post_use_rating 推迟到用户切到用后即评 lane / 工作台 tab 时才按需加载（loadPostUseRatingForPeriod）
@@ -305,7 +311,7 @@ export function InsightsProvider({ children }) {
         ).values(),
       ]
     },
-    [adapter, mergeRecordsIntoCache, storageReady],
+    [adapter, mergeRecordsIntoCache],
   )
 
   /**
@@ -315,7 +321,7 @@ export function InsightsProvider({ children }) {
    */
   const loadPostUseRatingForPeriod = useCallback(
     async (periodId) => {
-      if (!periodId || !storageReady) return
+      if (!periodId || !storageReadyRef.current) return
       if (loadedPostUsePeriodIdsRef.current.has(periodId)) return
       loadedPostUsePeriodIdsRef.current.add(periodId)
       try {
@@ -337,7 +343,7 @@ export function InsightsProvider({ children }) {
         console.warn('[storage] post_use_rating 按需加载失败', err)
       }
     },
-    [adapter, mergeRecordsIntoCache, storageReady],
+    [adapter, mergeRecordsIntoCache],
   )
 
   const loadRecordsForJourneyComparison = useCallback(
@@ -450,7 +456,7 @@ export function InsightsProvider({ children }) {
         return [...prev, period]
       })
       setCurrentPeriodIdState(period.id)
-      setStorageReady(true)
+      setStorageReadyBoth(true)
       // 周期已确定：提前结束 periodsLoading，让周期选择器与反馈库表格先渲染骨架/空态；
       // 记录加载由 feedbacksLoading 独立 gate，在后台流式完成。
       setPeriodsLoading(false)
