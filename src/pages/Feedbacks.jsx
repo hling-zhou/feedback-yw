@@ -281,6 +281,7 @@ export default function Feedbacks() {
   }, [isPostUseLane, currentPeriodId, loadPostUseRatingForPeriod])
 
   useEffect(() => {
+    if (skipUrlSyncRef.current) {
       skipUrlSyncRef.current = false
       return
     }
