@@ -1330,6 +1330,44 @@ function runGate(engineResult, opts = {}) {
   const G = [];
   const push = (name, ok, detail, level, evidence) => G.push({ name, ok, detail, level: level || (ok ? 'PASS' : 'FAIL'), evidence: evidence || null });
 
+  // 证据行统一构造：把「门禁时点」的产品与归类状态一并冻结进快照。
+  // 抽屉展示时若只用实时 DB 反查产品，快照生成后工单被改标就会出现
+  // 标题写「未归类率·弹性公网IP」而列表显示别的产品——标题与列表不同源。
+  // 冻结 product 后前端可与标题同源展示，并用 status/fam/sub 说明失败原因。
+  // rowStatus 里的 fam/sub 是分类法内部 key（如 netlink/loss），直接展示是英文。
+  // 回查该产品实际使用的分类法取中文展示名；非 scored 分支存的已是 name，
+  // 按 key 查不到时原样返回，两种情况都能正常展示。
+  const labelOf = (s, famKey, subKey) => {
+    if (!famKey && !subKey) return { fam: null, sub: null };
+    const fam = (s.taxUsed?.families || []).find((f) => f.key === famKey);
+    if (!fam) return { fam: famKey || null, sub: subKey || null };
+    const sub = (fam.subs || []).find((x) => x.key === subKey);
+    return {
+      fam: fam.name || famKey || null,
+      sub: sub ? (sub.name || subKey) : (subKey || null),
+    };
+  };
+  const evRow = (r, st, s) => {
+    const lab = labelOf(s, st?.fam, st?.sub);
+    return {
+      id: get(r, '工单号'),
+      text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80),
+      product: s.p || null,
+      status: st?.status || null,
+      fam: lab.fam,
+      sub: lab.sub,
+    };
+  };
+  // items 类证据（少数高发/共性项/出处标注）：已知家族与子项，标记为已归类
+  const itemEvRow = (id, fam, sub, product) => ({
+    id,
+    text: `${fam} / ${sub}`,
+    product: product || null,
+    status: 'classified',
+    fam: fam || null,
+    sub: sub || null,
+  });
+
   // 1) 未归类率
   const MAX_UNC = +(opts.maxUnclassified || 5);
   const MAX_PEND = +(opts.maxPending || 20);
@@ -1341,7 +1379,7 @@ function runGate(engineResult, opts = {}) {
       for (const [i, st] of Object.entries(s.rowStatus)) {
         if (st.status === 'unclassified' && uncRows.length < 20) {
           const r = s.rows[+i];
-          if (r) uncRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
+          if (r) uncRows.push(evRow(r, st, s));
         }
       }
     }
@@ -1357,7 +1395,7 @@ function runGate(engineResult, opts = {}) {
       for (const [i, st] of Object.entries(s.rowStatus)) {
         if (st.status === 'pending' && pendRows.length < 20) {
           const r = s.rows[+i];
-          if (r) pendRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
+          if (r) pendRows.push(evRow(r, st, s));
         }
       }
     }
@@ -1366,7 +1404,7 @@ function runGate(engineResult, opts = {}) {
   // 3) 少数高发最小样本
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.tier === 'sharp' && i.n < 3);
-    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => itemEvRow(id, i.fam, i.sub, s.p))) : null;
     push(`少数高发样本·${s.p}`, bad.length === 0,
       bad.length ? `${bad.length} 项 n<3：${bad.slice(0, 3).map(i => `${i.sub}(${i.n})`).join('、')}` : '均满足 n≥3', null, ev);
   }
@@ -1374,7 +1412,7 @@ function runGate(engineResult, opts = {}) {
   const TIERS5 = ['structural', 'change', 'sharp', 'iteration', 'tail'];
   for (const s of summary) {
     const bad = (s.items || []).filter(i => i.crossCut && TIERS5.includes(i.tier));
-    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 5).map(id => itemEvRow(id, i.fam, i.sub, s.p))) : null;
     push(`共性项单列·${s.p}`, bad.length === 0, bad.length ? `${bad.length} 个共性项混入 5 层` : '共性项已单列', null, ev);
   }
   // 5) 出处标注检查：items 中有 pain/root 标注的占比 ≥ 80% 才 PASS
@@ -1383,7 +1421,7 @@ function runGate(engineResult, opts = {}) {
     const withAnnotation = items.filter(i => i.pain || i.root);
     const rate = items.length ? withAnnotation.length / items.length * 100 : 100;
     const bad = items.filter(i => !i.pain && !i.root);
-    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 3).map(id => ({ id, text: `${i.fam} / ${i.sub}` }))) : null;
+    const ev = bad.length ? bad.flatMap(i => (i.ticketIds || []).slice(0, 3).map(id => itemEvRow(id, i.fam, i.sub, s.p))) : null;
     push(`出处标注·${s.p}`, rate >= 80, `${rate.toFixed(0)}%（阈值 ≥80%）${rate < 80 ? `：${items.length - withAnnotation.length} 项缺标注` : ''}`, null, ev);
   }
 

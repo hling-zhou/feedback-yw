@@ -160,7 +160,17 @@ export function mapGateReport(loopResult) {
       detail: f.detail || '',
       level: f.level || 'FAIL',
       fixHint: f.fixHint || inferFixHint(f.name),
-      evidence: (f.evidence || []).slice(0, 20),
+      // 只保留展示所需字段，避免把引擎内部的 rows 等大对象带进快照。
+      // product/status/fam/sub 为门禁时点冻结值；旧快照无这些字段时为 null，
+      // 前端回退到实时反查，行为与改动前一致。
+      evidence: (f.evidence || []).slice(0, 20).map((e) => ({
+        id: e?.id,
+        text: e?.text || '',
+        product: e?.product ?? null,
+        status: e?.status ?? null,
+        fam: e?.fam ?? null,
+        sub: e?.sub ?? null,
+      })),
     })) : [],
   }
 }

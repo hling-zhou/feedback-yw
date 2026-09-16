@@ -1,7 +1,17 @@
-import { Drawer, Typography, Tag, Table, Empty, Divider, Button, Space } from 'antd'
+import { Drawer, Typography, Tag, Table, Empty, Divider, Button, Space, Alert, Tooltip } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 
 /** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
+
+// 门禁时点的逐工单归类状态（由引擎在快照中冻结）
+const STATUS_LABELS = {
+  unclassified: { label: '未归类', color: 'red' },
+  pending: { label: '待确认', color: 'orange' },
+  classified: { label: '已归类', color: 'green' },
+  sub: { label: '已归类', color: 'green' },
+  unloc: { label: '未定位', color: 'orange' },
+  other: { label: '其他', color: 'default' },
+}
 
 const FIX_HINT_LABELS = {
   add_coverage: '需补充分类法正则或子议题，扩大覆盖面',
@@ -28,6 +38,27 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
 
   const failures = gateReport.failures || []
 
+  // 工单号 → 记录索引：表格逐行 render 与漂移统计都要按工单号取实时产品，
+  // 直接线性 find 在数千条工单下是 O(行×列×n)，这里建一次索引复用。
+  const byTicket = new Map()
+  for (const r of records) {
+    if (r.id && !byTicket.has(r.id)) byTicket.set(r.id, r)
+    if (r.ticketId && !byTicket.has(r.ticketId)) byTicket.set(r.ticketId, r)
+  }
+  const findRecord = (value) => byTicket.get(value) || null
+
+  // 门禁基于「快照生成时刻」的产品归属判定；此后工单若被重新打标，
+  // 实时产品会与门禁时点值漂移。统计漂移条数用于顶部提示。
+  const driftCount = failures.reduce((n, f) => {
+    for (const ev of f.evidence || []) {
+      if (!ev.product) continue
+      const rec = findRecord(ev.id)
+      const live = rec?.product || rec?.productName
+      if (live && live !== ev.product) n += 1
+    }
+    return n
+  }, 0)
+
   return (
     <Drawer
       title={
@@ -51,6 +82,17 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
           以下为每项失败检查的详细原因和涉及的工单，可点击工单号查看详情并手动修改打标。
         </Typography.Text>
       </div>
+
+      {/* 产品归属漂移提示：门禁时点 ≠ 当前值 */}
+      {driftCount > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          className="!mb-3"
+          message={`${driftCount} 条工单的产品归属已变更`}
+          description="门禁按快照生成时刻的产品归属判定；部分工单此后被重新打标。「产品」列展示门禁时点的归属（与上方检查项标题一致），标有「已改标」的行表示当前值已不同。如需按最新数据复核，请刷新洞察。"
+        />
+      )}
 
       {/* 逐项失败明细 */}
       <div className="drawer-space-y">
@@ -92,7 +134,7 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                     rowKey={(r) => r.id || r.text}
                     dataSource={f.evidence}
                     pagination={false}
-                    scroll={{ x: 480 }}
+                    scroll={{ x: 720 }}
                     columns={[
                       {
                         title: '工单号',
@@ -100,7 +142,7 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                         width: 160,
                         ellipsis: false,
                         render: (value, row) => {
-                          const record = records.find(r => r.id === value || r.ticketId === value)
+                          const record = findRecord(value)
                           const ticketId = record?.ticketId || value || row.id
                           if (record && onOpenFeedback) {
                             return (
@@ -116,7 +158,7 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                         title: '来源',
                         width: 70,
                         render: (_, row) => {
-                          const record = records.find(r => r.id === row.id || r.ticketId === row.id)
+                          const record = findRecord(row.id)
                           const dst = record?.dataSourceType
                           const map = {
                             complaint_ticket: { label: '投诉', color: 'red' },
@@ -132,10 +174,40 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                       },
                       {
                         title: '产品',
-                        width: 90,
+                        width: 110,
                         render: (_, row) => {
-                          const record = records.find(r => r.id === row.id || r.ticketId === row.id)
-                          return <span className="text-xs">{record?.product || record?.productName || '-'}</span>
+                          const record = findRecord(row.id)
+                          const live = record?.product || record?.productName || ''
+                          // 优先用快照冻结的门禁时点产品；旧快照无该字段时回退实时反查
+                          const gate = row.product || live || '-'
+                          const drifted = row.product && live && live !== row.product
+                          return (
+                            <div className="text-xs">
+                              <div style={{ wordBreak: 'break-all' }}>{gate}</div>
+                              {drifted && (
+                                <Tooltip title={`当前已改标为：${live}`}>
+                                  <Tag color="purple" className="!text-[10px] !m-0 !mt-0.5 !leading-4">已改标</Tag>
+                                </Tooltip>
+                              )}
+                            </div>
+                          )
+                        },
+                      },
+                      {
+                        title: '归类结果',
+                        width: 130,
+                        render: (_, row) => {
+                          const cfg = STATUS_LABELS[row.status]
+                          if (!cfg) return <span className="text-xs">-</span>
+                          const detail = [row.fam, row.sub].filter(Boolean).join(' / ')
+                          return (
+                            <div className="text-xs">
+                              <Tag color={cfg.color} className="!text-[10px] !m-0 !leading-4">{cfg.label}</Tag>
+                              {detail && (
+                                <div className="text-gray-500 mt-0.5" style={{ wordBreak: 'break-all' }}>{detail}</div>
+                              )}
+                            </div>
+                          )
                         },
                       },
                       {
