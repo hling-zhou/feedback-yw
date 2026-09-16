@@ -1971,12 +1971,12 @@ export default function Import({ embedded = false }) {
             )}
             <div className="page-section-sm page-grid-2">
               {STANDARD_FIELDS.filter((f) =>
-                ticketSource ? true : ['createdAt', 'productSpec', 'rawText', 'handlingText', 'ticketId', 'source'].includes(f.key),
+                f.dataSourceTypes?.includes(dataSourceType),
               ).map(({ key, label, required, hint }) => (
                 <div key={key}>
                   <Typography.Text strong className="mb-1 block text-xs">
                     {label}
-                    {required && ticketSource && <span className="text-red-500"> *</span>}
+                    {required && <span className="text-red-500"> *</span>}
                   </Typography.Text>
                   {hint && (
                     <Typography.Text type="secondary" className="mb-1 block text-[11px] leading-snug">
