@@ -21,6 +21,11 @@ function mergeCatalogProduct(a, b) {
     ...a,
     name: a.name?.trim() || b.name?.trim() || a.key,
     enabled: Boolean(a.enabled || b.enabled),
+    analysisPostUseRating: Boolean(a.analysisPostUseRating || b.analysisPostUseRating),
+    focusTracked: Boolean(
+      (a.analysisPostUseRating && a.focusTracked) ||
+        (b.analysisPostUseRating && b.focusTracked),
+    ),
     taxonomyKey: canonicalTaxonomyKey(a.taxonomyKey || a.key),
     acceptParentName: a.acceptParentName !== false && b.acceptParentName !== false,
     specs: [...specByName.values()],
@@ -52,6 +57,8 @@ export function migrateProductCatalogKeys(products) {
       key,
       name: String(raw.name || key).trim(),
       enabled: Boolean(raw.enabled),
+      analysisPostUseRating: Boolean(raw.analysisPostUseRating),
+      focusTracked: Boolean(raw.analysisPostUseRating && raw.focusTracked),
       taxonomyKey,
       acceptParentName: raw.acceptParentName !== false,
       specs: (raw.specs || [])

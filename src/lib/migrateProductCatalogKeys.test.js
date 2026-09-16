@@ -23,6 +23,17 @@ describe('migrateProductCatalogKeys', () => {
     expect(products[0].key).toBe('dc')
     expect(products[0].specs?.map((s) => s.name)).toEqual(['A', 'B'])
   })
+
+  it('preserves analysisPostUseRating and focusTracked', () => {
+    const { products } = migrateProductCatalogKeys([
+      { key: 'nat', name: 'NAT网关', enabled: true, analysisPostUseRating: true, focusTracked: true, taxonomyKey: 'nat', specs: [] },
+      { key: 'vpc', name: '虚拟私有云', enabled: true, analysisPostUseRating: false, focusTracked: false, taxonomyKey: 'vpc', specs: [] },
+    ])
+    expect(products[0].analysisPostUseRating).toBe(true)
+    expect(products[0].focusTracked).toBe(true)
+    expect(products[1].analysisPostUseRating).toBe(false)
+    expect(products[1].focusTracked).toBe(false)
+  })
 })
 
 describe('countCatalogRefsToTaxonomyKey', () => {
