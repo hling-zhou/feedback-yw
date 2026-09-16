@@ -25,7 +25,8 @@ function extractFamily(summary) {
 }
 
 /**
- * 跨产品对比矩阵 — 按问题家族聚合，横向对比各产品的工单分布。
+ * 跨产品对比矩阵 — 按「共性根因主轴」聚合，横向对比各产品的工单分布。
+ * 使用引擎输出的 superAxis/superAxisName 做跨产品归并（而非字面家族名匹配）。
  * 跨产品的共性问题高亮，支持点击行展开详情。
  *
  * @param {Object} props
@@ -37,46 +38,52 @@ export default function CrossProductCompare({ recs, records = [], onOpenFeedback
   const [selectedRec, setSelectedRec] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // 按问题家族 × 产品 聚合
+  // 按「共性主轴」× 产品 聚合
   const { matrix, families, products, crossFamilies } = useMemo(() => {
-    const famMap = new Map() // family -> [{ product, rec, count, c, q }]
+    const axisMap = new Map() // axisKey -> [{ product, rec, count, c, q }]
     const productSet = new Set()
 
     for (const rec of recs) {
-      const family = extractFamily(rec.summary || rec.text)
+      const axisKey = rec.superAxis || 'DOC'
+      const axisName = rec.superAxisName || '其他'
+      const family = rec.summary ? extractFamily(rec.summary) : '未分类'
       const product = rec.scope?.product || '未知'
       productSet.add(product)
 
-      if (!famMap.has(family)) famMap.set(family, [])
-      famMap.get(family).push({ product, rec, count: rec.scale?.ticketCount || 0, c: rec.scale?.complaintCount || 0, q: rec.scale?.consultationCount || 0 })
+      if (!axisMap.has(axisKey)) axisMap.set(axisKey, { axisName, items: [] })
+      axisMap.get(axisKey).items.push({ product, rec, count: rec.scale?.ticketCount || 0, c: rec.scale?.complaintCount || 0, q: rec.scale?.consultationCount || 0, family })
     }
 
-    // 聚合：family -> { products: { product -> { total, c, q, recs: [] } }, grandTotal, isCross }
-    const famAgg = []
-    for (const [family, items] of famMap.entries()) {
+    // 聚合：axis -> { products: { product -> { total, c, q, recs: [], fams: [] } }, grandTotal, isCross }
+    const axisAgg = []
+    for (const [axisKey, { axisName, items }] of axisMap.entries()) {
       const productAgg = {}
       let grandTotal = 0
       let grandC = 0
       let grandQ = 0
       const famRecs = []
+      const famSet = new Set()
 
       for (const item of items) {
         if (!productAgg[item.product]) {
-          productAgg[item.product] = { total: 0, c: 0, q: 0, recs: [] }
+          productAgg[item.product] = { total: 0, c: 0, q: 0, recs: [], fams: [] }
         }
         productAgg[item.product].total += item.count
         productAgg[item.product].c += item.c
         productAgg[item.product].q += item.q
         productAgg[item.product].recs.push(item.rec)
+        productAgg[item.product].fams.push(item.family)
         grandTotal += item.count
         grandC += item.c
         grandQ += item.q
         famRecs.push(item.rec)
+        famSet.add(item.family)
       }
 
-      famAgg.push({
-        key: family,
-        family,
+      axisAgg.push({
+        key: axisKey,
+        family: axisName,
+        origFamilies: [...famSet],
         products: productAgg,
         productCount: Object.keys(productAgg).length,
         grandTotal,
@@ -88,16 +95,16 @@ export default function CrossProductCompare({ recs, records = [], onOpenFeedback
     }
 
     // 排序：跨产品的在前，然后按工单总数降序
-    famAgg.sort((a, b) => {
+    axisAgg.sort((a, b) => {
       if (a.isCross !== b.isCross) return b.isCross ? 1 : -1
       return b.grandTotal - a.grandTotal
     })
 
-    const crossCount = famAgg.filter((f) => f.isCross).length
+    const crossCount = axisAgg.filter((f) => f.isCross).length
 
     return {
-      matrix: famAgg,
-      families: famAgg,
+      matrix: axisAgg,
+      families: axisAgg,
       products: [...productSet],
       crossFamilies: crossCount,
     }
@@ -122,14 +129,21 @@ export default function CrossProductCompare({ recs, records = [], onOpenFeedback
         ) : null,
     },
     {
-      title: '问题家族',
+      title: '共性主轴',
       dataIndex: 'family',
-      width: 200,
+      width: 220,
       fixed: 'left',
       render: (val, row) => (
-        <span className={row.isCross ? 'font-semibold text-orange-600' : ''}>
-          {val}
-        </span>
+        <div>
+          <span className={row.isCross ? 'font-semibold text-orange-600' : ''}>
+            {val}
+          </span>
+          {row.origFamilies?.length > 0 && (
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {row.origFamilies.join(' · ')}
+            </div>
+          )}
+        </div>
       ),
     },
     ...products.map((p) => ({
@@ -187,11 +201,26 @@ export default function CrossProductCompare({ recs, records = [], onOpenFeedback
           size="small"
           className="!px-0"
           onClick={() => {
-            // 选中该家族中工单数最多的一条 rec 作为详情入口
-            const top = row.recs.reduce((a, b) =>
-              ((b.scale?.ticketCount || 0) > (a.scale?.ticketCount || 0)) ? b : a,
-            row.recs[0])
-            setSelectedRec(top)
+            // 合并该家族下所有 rec 的 evidenceTicketIds，生成合成 rec 给详情抽屉
+            const allTicketIds = []
+            const seen = new Set()
+            for (const rec of row.recs) {
+              for (const id of (rec.evidenceTicketIds || [])) {
+                if (!seen.has(id)) { seen.add(id); allTicketIds.push(id) }
+              }
+            }
+            const mergedRec = {
+              ...row.recs[0],
+              summary: `${row.family}（${row.productCount}个产品·${row.grandTotal}单）`,
+              scope: { product: Object.keys(row.products).join(' / ') },
+              scale: {
+                ticketCount: row.grandTotal,
+                complaintCount: row.grandC,
+                consultationCount: row.grandQ,
+              },
+              evidenceTicketIds: allTicketIds,
+            }
+            setSelectedRec(mergedRec)
             setDrawerOpen(true)
           }}
         >
@@ -206,7 +235,7 @@ export default function CrossProductCompare({ recs, records = [], onOpenFeedback
       {/* 概要 */}
       <div className="mb-3 flex items-center gap-4 text-sm">
         <Typography.Text type="secondary">
-          共 {families.length} 个问题家族
+          共 {families.length} 个共性主轴
         </Typography.Text>
         <Tag color="orange" icon={<StarFilled />}>
           {crossFamilies} 个跨产品共性

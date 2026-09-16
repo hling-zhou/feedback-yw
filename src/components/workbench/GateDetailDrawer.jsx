@@ -92,7 +92,7 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                     rowKey={(r) => r.id || r.text}
                     dataSource={f.evidence}
                     pagination={false}
-                    scroll={{ x: 400 }}
+                    scroll={{ x: 480 }}
                     columns={[
                       {
                         title: '工单号',
@@ -128,6 +128,14 @@ export default function GateDetailDrawer({ gateReport, open, onClose, records = 
                           if (!dst) return <span>-</span>
                           const cfg = map[dst] || { label: dst, color: 'default' }
                           return <Tag color={cfg.color} className="!text-xs">{cfg.label}</Tag>
+                        },
+                      },
+                      {
+                        title: '产品',
+                        width: 90,
+                        render: (_, row) => {
+                          const record = records.find(r => r.id === row.id || r.ticketId === row.id)
+                          return <span className="text-xs">{record?.product || record?.productName || '-'}</span>
                         },
                       },
                       {

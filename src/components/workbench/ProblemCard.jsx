@@ -72,10 +72,12 @@ export default function ProblemCard({ rec, onClick }) {
       {/* 第三行：规模情况 */}
       <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
         <span>{scale.ticketCount || 0}单</span>
-        {scale.moMPct !== undefined && scale.moMPct !== 0 && (
+        {scale.moMPct !== undefined && scale.moMPct !== null ? (
           <span className={scale.moMPct > 0 ? 'text-red-500' : 'text-green-500'}>
             环比 {scale.moMPct > 0 ? '+' : ''}{scale.moMPct}%
           </span>
+        ) : (
+          <span className="text-gray-400">环比 —</span>
         )}
         <span>投诉率 {Number(scale.complaintRate || 0).toFixed(0)}%</span>
         <span>

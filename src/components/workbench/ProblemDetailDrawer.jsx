@@ -88,8 +88,10 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
           <span>咨询：{scale.consultationCount || 0}</span>
           <span>投诉率：{Number(scale.complaintRate || 0).toFixed(0)}%</span>
           <span>加急率：{Number(scale.urgentRate || 0).toFixed(0)}%</span>
-          {scale.moMPct !== undefined && (
+          {scale.moMPct !== undefined && scale.moMPct !== null ? (
             <span>环比：{scale.moMPct > 0 ? '+' : ''}{scale.moMPct}%</span>
+          ) : (
+            <span className="text-gray-400">环比：—</span>
           )}
         </div>
       </div>

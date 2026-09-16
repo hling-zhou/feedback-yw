@@ -547,6 +547,49 @@ const CAUSE_TAX_MAP = {
   '弹性负载均衡': ELB_CAUSE_TAX['弹性负载均衡'],
 };
 
+// =========================================================================
+// 共性根因主轴定义（从 export-cause-crossprod.cjs 同步）
+// 每个家族归属唯一主轴，映射在 FAM_TO_AXIS 中显式声明，可审计。
+// =========================================================================
+const SUPER_AXES = {
+  CAP:  { name: '配额 / 容量供给', desc: '资源不足、配额到期回收、带宽/资源交付受限' },
+  NET:  { name: '网络质量与连通', desc: '丢包/时延/抖动/中断/不可达/转发/路由/对等连通' },
+  BILL: { name: '计费与账单', desc: '费用、计费规则、误解与概念澄清' },
+  PROV: { name: '开通 / 订购 / 权限 / 灰度', desc: '开通交付、订购渠道、审批透明度、灰度权限、控制台可见性' },
+  LIFE: { name: '生命周期（退订/释放/到期冻结）', desc: '退订释放、资源到期冻结与续订' },
+  CFG:  { name: '配置 / 控制台 / 规格', desc: '安全组ACL、子网路由、证书、功能限制、对象存储访问' },
+  SEC:  { name: '安全封堵与管控', desc: '安全封堵、访问控制、攻击防护' },
+  DIAG: { name: '监控 / 诊断 / 自助定位', desc: '监控指标、日志诊断、自助定位能力' },
+  DOC:  { name: '文档 / 自助能力缺口（共性·非缺陷）', desc: '文档/API不清晰、支持体验、用户概念误解——共性项，单列不计入缺陷根因' },
+};
+
+// family key → 主轴 key。覆盖全部产品家族 key。
+const FAM_TO_AXIS = {
+  // EIP
+  quota_validity: 'CAP', cap: 'CAP', quota_apply: 'PROV',
+  netlink: 'NET', connect: 'NET', bw_quality: 'NET', sharebw: 'NET', bwscale: 'CAP',
+  bind: 'CFG', billing: 'BILL', security: 'SEC', unsub: 'LIFE', freeze: 'LIFE',
+  gray: 'PROV', provision: 'PROV', doc: 'DOC', monitor: 'DIAG',
+  // 云专线
+  link_quality: 'NET', bw_delivery: 'CAP', billing_ct: 'BILL',
+  renew: 'PROV', renew_flow: 'PROV', config: 'CFG', firewall: 'SEC',
+  routing: 'NET', support: 'DOC', perm_monitor: 'PROV',
+  // VPC
+  sg: 'CFG', peering: 'NET', netplan: 'NET', iconn: 'NET',
+  order_flow: 'PROV', quota: 'CAP', doc_self: 'DOC', pub: 'CFG', console_order: 'PROV',
+  // ELB
+  forward: 'NET', cert: 'CFG', health: 'DIAG', bw: 'CAP',
+  billing_res: 'BILL', provision_elb: 'PROV', security_elb: 'SEC',
+  mon: 'DIAG', func: 'CFG', api: 'DOC',
+};
+
+function lookupAxis(famKey) {
+  if (!famKey) return 'DOC';
+  const axis = FAM_TO_AXIS[famKey];
+  if (!axis) return 'DOC';
+  return axis;
+}
+
 // 加载 curated 分类法（从 JSON 文件，运行时加载）
 let _curatedMtime = 0;
 function loadCuratedAll(scriptDir) {
@@ -1119,7 +1162,7 @@ function classifyScored(rows, tax) {
 // mkItem + analyze + thresholds（从 validate-action-recs.cjs L1541-1646 原样移出）
 // =========================================================================
 
-function mkItem(famName, subName, rs, autoInfo, crossCut) {
+function mkItem(famName, subName, rs, autoInfo, crossCut, famKey) {
   const n = rs.length;
   // 动态推断本月/上月：取 rs 中出现最多的两个月份，降序为 cur/prev
   const months = [...new Set(rs.map(monthOf).filter(m => m && m !== '?'))].sort();
@@ -1134,8 +1177,11 @@ function mkItem(famName, subName, rs, autoInfo, crossCut) {
   let mom = null;
   const dAbs = cur - prev;
   if (prev > 0) mom = (cur - prev) / prev * 100;
+  const superAxis = lookupAxis(famKey);
   return {
     fam: famName, sub: subName, n, prev, cur, c, q, u, cr, mom, dAbs, crossCut: !!crossCut,
+    superAxis, superAxisName: (SUPER_AXES[superAxis] || SUPER_AXES.DOC).name,
+    famKey: famKey || '',
     ticketIds: rs.map(r => get(r, '工单号')).filter(Boolean),
     voice: rs.map(voiceOf).find(x => x),
     pain: topSentence(rs, '需求痛点'),
@@ -1161,15 +1207,15 @@ function analyze(rows, tax, T, B, thr, prodName) {
     const famRowsArr = [];
     for (const [, g] of fv.subs) famRowsArr.push(...g.rows);
     for (const [k, g] of fv.subs) {
-      if (k === '_unloc') { items.push(mkItem(fv.fam.name, '（未定位·无根因模板）', g.rows, null, fv.fam.crossCut)); unlocated += g.rows.length; continue; }
-      if (k !== '_') { items.push(mkItem(fv.fam.name, g.sub.name, g.rows, null, fv.fam.crossCut)); continue; }
+      if (k === '_unloc') { items.push(mkItem(fv.fam.name, '（未定位·无根因模板）', g.rows, null, fv.fam.crossCut, fv.fam.key)); unlocated += g.rows.length; continue; }
+      if (k !== '_') { items.push(mkItem(fv.fam.name, g.sub.name, g.rows, null, fv.fam.crossCut, fv.fam.key)); continue; }
       const N = g.rows.length;
       const famN = famRowsArr.length;
       const byShare = N >= 4 && N / Math.max(1, famN) >= 0.4;
       if (!(N >= otherThreshold || byShare)) {
-        items.push(mkItem(fv.fam.name, '（其他/通用）', g.rows, null, fv.fam.crossCut)); continue;
+        items.push(mkItem(fv.fam.name, '（其他/通用）', g.rows, null, fv.fam.crossCut, fv.fam.key)); continue;
       }
-      if (tax.curated) { items.push(mkItem(fv.fam.name, '（其他/通用）', g.rows, null, fv.fam.crossCut)); continue; }
+      if (tax.curated) { items.push(mkItem(fv.fam.name, '（其他/通用）', g.rows, null, fv.fam.crossCut, fv.fam.key)); continue; }
       const inBucket = new Set(g.rows);
       const rest = famRowsArr.filter(r => !inBucket.has(r));
       const sp = autoSplit(g.rows, rest, rows, fv.fam, prodName);
@@ -1182,10 +1228,10 @@ function analyze(rows, tax, T, B, thr, prodName) {
       });
       for (const c of sp.chosen) {
         const info = { phrase: c.phrase, df: c.df, conc: c.conc, N };
-        items.push(mkItem(fv.fam.name, c.phrase, c.rows, info, fv.fam.crossCut));
+        items.push(mkItem(fv.fam.name, c.phrase, c.rows, info, fv.fam.crossCut, fv.fam.key));
         proposals.push({ fam: fv.fam.name, sub: c.phrase, re: escapeRe(c.obj), df: c.df, conc: c.conc, bucketN: N });
       }
-      if (sp.leftover.length) items.push(mkItem(fv.fam.name, '（其他/通用）', sp.leftover, null, fv.fam.crossCut));
+      if (sp.leftover.length) items.push(mkItem(fv.fam.name, '（其他/通用）', sp.leftover, null, fv.fam.crossCut, fv.fam.key));
     }
   }
 
@@ -1266,6 +1312,7 @@ function runEngine(records, opts = {}) {
       taxUsed: tax, derived,
       pending: res.pending, pendingRows: res.pendingRows, confThr: res.confThr,
       matchStats: res.matchStats, scoredMode: res.scoredMode, rowStatus: res.rowStatus,
+      rows,
       assistCandidates: res.assistCandidates || [],
     });
   }
@@ -1288,12 +1335,12 @@ function runGate(engineResult, opts = {}) {
   const MAX_PEND = +(opts.maxPending || 20);
   for (const s of summary) {
     const rate = s.unclassified / s.T * 100;
-    // 提取未归类工单
+    // 提取未归类工单（rowStatus 索引对应 s.rows 子集，非全局 records）
     const uncRows = [];
-    if (s.rowStatus) {
+    if (s.rowStatus && s.rows) {
       for (const [i, st] of Object.entries(s.rowStatus)) {
         if (st.status === 'unclassified' && uncRows.length < 20) {
-          const r = records[+i];
+          const r = s.rows[+i];
           if (r) uncRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
         }
       }
@@ -1306,10 +1353,10 @@ function runGate(engineResult, opts = {}) {
     const rate = s.pending / s.T * 100;
     // 提取待确认工单
     const pendRows = [];
-    if (s.rowStatus) {
+    if (s.rowStatus && s.rows) {
       for (const [i, st] of Object.entries(s.rowStatus)) {
         if (st.status === 'pending' && pendRows.length < 20) {
-          const r = records[+i];
+          const r = s.rows[+i];
           if (r) pendRows.push({ id: get(r, '工单号'), text: (get(r, '问题原因') || get(r, '需求痛点') || '').slice(0, 80) });
         }
       }

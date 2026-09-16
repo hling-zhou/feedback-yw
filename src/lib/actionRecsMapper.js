@@ -86,6 +86,9 @@ export function toActionRecsResult(item, productSummary, dataSourceType) {
     customerVoice,
     actionsLayerA,
     inventoryStatus: 'none', // P2 由 actionRecsInventory 填充
+    superAxis: item.superAxis || '',
+    superAxisName: item.superAxisName || '',
+    famKey: item.famKey || '',
 
     // 兼容旧字段
     id,
