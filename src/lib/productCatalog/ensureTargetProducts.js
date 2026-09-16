@@ -97,14 +97,16 @@ function mergeCatalogProduct(a, b) {
 /**
  * 补全 dc/slb/vpc/eip 及用后即评 16 款（不覆盖已有配置，仅缺失字段/产品时合并）。
  * deletedKeys 中的种子产品 key 不会被强制补回或强制开启分析类型，尊重用户删除意图。
+ * disabledAnalysisKeys 中的种子产品 key 不会被强制开启 analysisPostUseRating/focusTracked，尊重用户关闭意图。
  * @param {CatalogProduct[]} products
- * @param {{ deletedKeys?: string[] }} [opts]
+ * @param {{ deletedKeys?: string[]; disabledAnalysisKeys?: string[] }} [opts]
  */
 export function ensureTargetProductsInCatalog(products, opts = {}) {
   // 与 resolveCatalogProduct 保持同一套归一化口径：key 比对不区分大小写与空格，
   // 否则线上填 `CC`、种子写 `cc` 会被判为两个产品，补一行出双份。
   const normKey = (value) => normalizeCatalogMatchText(value)
   const skipKeys = new Set((opts.deletedKeys || []).map(normKey).filter(Boolean))
+  const disableKeys = new Set((opts.disabledAnalysisKeys || []).map(normKey).filter(Boolean))
 
   if (!Array.isArray(products)) {
     const seeds = structuredClone(ALL_CATALOG_SEED_PRODUCTS).filter(
@@ -127,13 +129,21 @@ export function ensureTargetProductsInCatalog(products, opts = {}) {
       continue
     }
     const prev = byKey.get(seedKey)
+    const isDisabled = disableKeys.has(seedKey)
     const merged = mergeCatalogProduct(prev, seed)
-    // 对已有产品：若尚未设置用后即评开关且种子要求开启，则打开
-    if (seed.analysisPostUseRating && !prev.analysisPostUseRating) {
-      merged.analysisPostUseRating = true
-    }
-    if (seed.focusTracked && !prev.focusTracked) {
-      merged.focusTracked = true
+    // mergeCatalogProduct 用 OR 语义合并 analysisPostUseRating/focusTracked，
+    // 对于 disabledAnalysisKeys 中的种子产品，恢复 prev 的原始值（尊重用户关闭意图）
+    if (isDisabled) {
+      merged.analysisPostUseRating = Boolean(prev.analysisPostUseRating)
+      merged.focusTracked = Boolean(prev.focusTracked)
+    } else {
+      // 对已有产品：若尚未设置用后即评开关且种子要求开启，则打开
+      if (seed.analysisPostUseRating && !prev.analysisPostUseRating) {
+        merged.analysisPostUseRating = true
+      }
+      if (seed.focusTracked && !prev.focusTracked) {
+        merged.focusTracked = true
+      }
     }
     if (JSON.stringify(prev) !== JSON.stringify(merged)) {
       byKey.set(seedKey, merged)

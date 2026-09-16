@@ -63,6 +63,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
 
   const [products, setProducts] = useState([])
   const [deletedKeys, setDeletedKeys] = useState([])
+  const [disabledAnalysisKeys, setDisabledAnalysisKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -88,6 +89,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       const snap = await getManagedProductCatalogSnapshot()
       setProducts(snap.products || getCatalogProducts())
       setDeletedKeys(Array.isArray(snap.deletedKeys) ? snap.deletedKeys : [])
+      setDisabledAnalysisKeys(Array.isArray(snap.disabledAnalysisKeys) ? snap.disabledAnalysisKeys : [])
     } finally {
       setLoading(false)
     }
@@ -101,9 +103,13 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
     if (readOnly) return
     setSaving(true)
     try {
-      await saveManagedProductCatalog(next, { deletedKeys: opts.deletedKeys ?? deletedKeys })
+      await saveManagedProductCatalog(next, {
+        deletedKeys: opts.deletedKeys ?? deletedKeys,
+        disabledAnalysisKeys: opts.disabledAnalysisKeys ?? disabledAnalysisKeys,
+      })
       setProducts(next)
       if (Array.isArray(opts.deletedKeys)) setDeletedKeys(opts.deletedKeys)
+      if (Array.isArray(opts.disabledAnalysisKeys)) setDisabledAnalysisKeys(opts.disabledAnalysisKeys)
       message.success('已保存产品规格配置')
     } catch (e) {
       message.error(e.message || '保存失败')
@@ -165,7 +171,18 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       : [...products, nextProduct]
     // 若新增/编辑的是之前被删除的种子产品，从 deletedKeys 中移除
     const nextDeletedKeys = deletedKeys.filter((k) => k !== key)
-    await persist(next, { deletedKeys: nextDeletedKeys })
+    // 若种子产品的 analysisPostUseRating 被用户关闭，记入 disabledAnalysisKeys；
+    // 若重新开启，从 disabledAnalysisKeys 中移除
+    const seedKeys = new Set(ALL_CATALOG_SEED_PRODUCTS.map((p) => p.key))
+    const nextDisabledAnalysisKeys = seedKeys.has(key)
+      ? nextProduct.analysisPostUseRating
+        ? disabledAnalysisKeys.filter((k) => k !== key)
+        : [...new Set([...disabledAnalysisKeys, key])]
+      : disabledAnalysisKeys.filter((k) => k !== key)
+    await persist(next, {
+      deletedKeys: nextDeletedKeys,
+      disabledAnalysisKeys: nextDisabledAnalysisKeys,
+    })
     setProductModal(false)
   }
 
@@ -175,8 +192,10 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
     const nextDeletedKeys = isSeed
       ? [...new Set([...deletedKeys, productKey])]
       : deletedKeys.filter((k) => k !== productKey)
+    const nextDisabledAnalysisKeys = disabledAnalysisKeys.filter((k) => k !== productKey)
     await persist(products.filter((p) => p.key !== productKey), {
       deletedKeys: nextDeletedKeys,
+      disabledAnalysisKeys: nextDisabledAnalysisKeys,
     })
   }
 
@@ -243,9 +262,10 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   const handleMergeImport = async (incoming) => {
     const result = await importManagedProductCatalog(incoming)
     setProducts(result.products)
-    // 导入后重新加载 deletedKeys（store 层已更新）
+    // 导入后重新加载 deletedKeys/disabledAnalysisKeys（store 层已更新）
     const snap = await getManagedProductCatalogSnapshot()
     setDeletedKeys(Array.isArray(snap.deletedKeys) ? snap.deletedKeys : [])
+    setDisabledAnalysisKeys(Array.isArray(snap.disabledAnalysisKeys) ? snap.disabledAnalysisKeys : [])
     message.success(formatMergeCatalogResultMessage(result))
   }
 

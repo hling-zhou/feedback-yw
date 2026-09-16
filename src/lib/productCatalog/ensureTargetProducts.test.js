@@ -110,4 +110,48 @@ describe('ensureTargetProductsInCatalog', () => {
     expect(eip.analysisPostUseRating).toBe(false)
     expect(eip.focusTracked).toBe(false)
   })
+
+  it('respects disabledAnalysisKeys - does not force-enable analysisPostUseRating', () => {
+    const catalog = [
+      {
+        key: 'vpn',
+        name: '融合VPN',
+        enabled: true,
+        analysisPostUseRating: false,
+        focusTracked: false,
+        taxonomyKey: 'vpn',
+        acceptParentName: true,
+        specs: [],
+      },
+    ]
+    const result = ensureTargetProductsInCatalog(catalog, {
+      disabledAnalysisKeys: ['vpn'],
+    })
+    const vpn = result.products.find((p) => p.key === 'vpn')
+    expect(vpn).toBeTruthy()
+    expect(vpn.analysisPostUseRating).toBe(false)
+    expect(vpn.focusTracked).toBe(false)
+  })
+
+  it('respects disabledAnalysisKeys - re-enabling removes from disabledAnalysisKeys', () => {
+    const catalog = [
+      {
+        key: 'vpn',
+        name: '融合VPN',
+        enabled: true,
+        analysisPostUseRating: true,
+        focusTracked: false,
+        taxonomyKey: 'vpn',
+        acceptParentName: true,
+        specs: [],
+      },
+    ]
+    // vpn not in disabledAnalysisKeys → seed forces focusTracked true
+    const result = ensureTargetProductsInCatalog(catalog, {
+      disabledAnalysisKeys: [],
+    })
+    const vpn = result.products.find((p) => p.key === 'vpn')
+    expect(vpn.analysisPostUseRating).toBe(true)
+    expect(vpn.focusTracked).toBe(true)
+  })
 })

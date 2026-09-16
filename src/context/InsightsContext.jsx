@@ -1355,6 +1355,7 @@ export function InsightsProvider({ children }) {
       }))
       const state = await saveManagedProductCatalog(adapter, normalized, {
         deletedKeys: opts.deletedKeys || [],
+        disabledAnalysisKeys: opts.disabledAnalysisKeys || [],
       })
       setProductCatalogMeta(state)
       const taxSnap = await getOrInitManagedSnapshot(adapter)
