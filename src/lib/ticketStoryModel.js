@@ -846,6 +846,7 @@ export function buildTicketStoryModel(input) {
       themeLinks: groupedThemeLinks,
       summarySource: snapshotImpactFocus ? 'snapshot' : 'runtime_fallback',
     },
+    records,
     actionsAndRecovery: {
       rows: actionRows,
       recoveryRows,
