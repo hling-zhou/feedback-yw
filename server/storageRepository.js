@@ -54,13 +54,15 @@ function parseJson(text) {
   return JSON.parse(text)
 }
 
-/** fields=list 时剔除的大文本字段黑名单（仅在抽屉/retag/update 按需拉全量） */
+/** fields=list 时剔除的大文本字段黑名单（仅在抽屉/retag/update 按需拉全量）。
+ *  注意：sourceColumns 不在此列——它存的是中文列名→值的映射（每条 ~10 个 key、每个值几十字符），
+ *  导出分析结果时需要从中读取客户信息列（客户类型/集团名称/编码/省份/地市/登录账号/服务等级），
+ *  裁剪后首屏加载的数据将缺失这些列导致导出为空。 */
 const LIST_PROJECTION_OMITTED_FIELDS = [
   'rawText',
   'handlingText',
   'customerQuote',
   'responseText',
-  'sourceColumns',
 ]
 
 /**
