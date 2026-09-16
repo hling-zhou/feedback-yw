@@ -1,6 +1,7 @@
 /** @typedef {import('../productCatalogLoader.js').CatalogProduct} CatalogProduct */
 
 import { POST_USE_RATING_CATALOG_SEED_PRODUCTS } from './postUseRatingProducts.js'
+import { normalizeCatalogMatchText } from './resolveCatalogProduct.js'
 
 /**
  * 与 public/config/product-catalog/product-catalog.json 对齐的目标产品种子。
@@ -100,28 +101,32 @@ function mergeCatalogProduct(a, b) {
  * @param {{ deletedKeys?: string[] }} [opts]
  */
 export function ensureTargetProductsInCatalog(products, opts = {}) {
-  const skipKeys = new Set(opts.deletedKeys || [])
+  // 与 resolveCatalogProduct 保持同一套归一化口径：key 比对不区分大小写与空格，
+  // 否则线上填 `CC`、种子写 `cc` 会被判为两个产品，补一行出双份。
+  const normKey = (value) => normalizeCatalogMatchText(value)
+  const skipKeys = new Set((opts.deletedKeys || []).map(normKey).filter(Boolean))
 
   if (!Array.isArray(products)) {
     const seeds = structuredClone(ALL_CATALOG_SEED_PRODUCTS).filter(
-      (p) => !skipKeys.has(p.key),
+      (p) => !skipKeys.has(normKey(p.key)),
     )
     return { products: seeds, changed: true }
   }
 
   /** @type {Map<string, CatalogProduct>} */
-  const byKey = new Map(products.filter((p) => p?.key).map((p) => [p.key, structuredClone(p)]))
+  const byKey = new Map(products.filter((p) => p?.key).map((p) => [normKey(p.key), structuredClone(p)]))
   let changed = false
 
   for (const seed of ALL_CATALOG_SEED_PRODUCTS) {
-    if (skipKeys.has(seed.key)) continue
+    const seedKey = normKey(seed.key)
+    if (skipKeys.has(seedKey)) continue
 
-    if (!byKey.has(seed.key)) {
-      byKey.set(seed.key, structuredClone(seed))
+    if (!byKey.has(seedKey)) {
+      byKey.set(seedKey, structuredClone(seed))
       changed = true
       continue
     }
-    const prev = byKey.get(seed.key)
+    const prev = byKey.get(seedKey)
     const merged = mergeCatalogProduct(prev, seed)
     // 对已有产品：若尚未设置用后即评开关且种子要求开启，则打开
     if (seed.analysisPostUseRating && !prev.analysisPostUseRating) {
@@ -131,7 +136,7 @@ export function ensureTargetProductsInCatalog(products, opts = {}) {
       merged.focusTracked = true
     }
     if (JSON.stringify(prev) !== JSON.stringify(merged)) {
-      byKey.set(seed.key, merged)
+      byKey.set(seedKey, merged)
       changed = true
     }
   }

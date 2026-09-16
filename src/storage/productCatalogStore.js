@@ -4,7 +4,7 @@ import {
   mergeCatalogByKey,
   parseCatalogImportFile,
 } from '../lib/productCatalogManageModel.js'
-import { mergeSharedBandwidthIntoEipCatalog } from '../lib/productCatalog/sharedBandwidthSpec.js'
+import { applySpecMergeRules } from '../lib/productCatalog/specMergeRules.js'
 import { ensureTargetProductsInCatalog } from '../lib/productCatalog/ensureTargetProducts.js'
 import { migrateProductCatalogKeys } from '../lib/migrateProductCatalogKeys.js'
 import {
@@ -19,9 +19,8 @@ async function normalizeManagedCatalogProducts(products, opts = {}) {
   const { products: migrated, changed: keysChanged } = migrateProductCatalogKeys(products)
   const { products: withTargets, changed: targetsChanged } =
     ensureTargetProductsInCatalog(migrated, { deletedKeys: opts.deletedKeys })
-  const { products: merged, changed: bwChanged } =
-    mergeSharedBandwidthIntoEipCatalog(withTargets)
-  return { products: merged, changed: keysChanged || targetsChanged || bwChanged }
+  const { products: merged, changed: specsChanged } = applySpecMergeRules(withTargets)
+  return { products: merged, changed: keysChanged || targetsChanged || specsChanged }
 }
 
 /**

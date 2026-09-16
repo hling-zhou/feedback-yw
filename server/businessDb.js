@@ -3,6 +3,11 @@ import { recordIndexFields } from './recordIndex.js'
 import { migrateBuiltinJourneysInSnapshot } from '../src/lib/tagLibrary/migrateBuiltinJourneys.js'
 import { migrateProductCatalogKeys } from '../src/lib/migrateProductCatalogKeys.js'
 import {
+  mergeSharedBandwidthIntoEipCatalog,
+  SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY,
+  SHARED_BANDWIDTH_SPEC_NAME,
+} from '../src/lib/productCatalog/sharedBandwidthSpec.js'
+import {
   migrateSharedTagsInSnapshot,
   migrateSharedTagsOnRecord,
 } from '../src/lib/tagLibrary/migrateSharedTags.js'
@@ -17,8 +22,6 @@ const META_KEY_SHARED_TAGS_V2 = 'migrate_shared_tags_v2'
 const META_KEY_SHARED_TAGS_V3 = 'migrate_shared_tags_v3_problem_types_12'
 
 const LEGACY_DC_PRODUCT_KEYS = new Set(['ecc', 'yunzx', 'yunzhuanxian'])
-const SHARED_BANDWIDTH_LEGACY_KEY = '共享带宽'
-const SHARED_BANDWIDTH_SPEC_NAME = '弹性公网IP-共享带宽'
 
 function migrateLegacyDcProductKeys(db) {
   const done = db.prepare('SELECT value FROM meta WHERE key = ?').get(META_KEY_DC_PRODUCT_KEY_MIGRATION)
@@ -99,54 +102,29 @@ function migrateSharedBandwidthRecordPayload(record) {
   const product = record.product?.trim()
   const spec = record.productSpec?.trim()
 
-  if (pk === SHARED_BANDWIDTH_LEGACY_KEY || tk === SHARED_BANDWIDTH_LEGACY_KEY) {
+  if (pk === SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY || tk === SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY) {
     record.productKey = 'eip'
     record.taxonomyKey = 'eip'
     changed = true
   }
-  if (product === SHARED_BANDWIDTH_LEGACY_KEY) {
+  if (product === SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY) {
     record.product = '弹性公网IP'
     changed = true
   }
-  if (spec === SHARED_BANDWIDTH_LEGACY_KEY || (!spec && product === SHARED_BANDWIDTH_LEGACY_KEY)) {
+  if (spec === SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY || (!spec && product === SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY)) {
     record.productSpec = SHARED_BANDWIDTH_SPEC_NAME
     changed = true
   }
   return changed
 }
 
+/**
+ * 目录快照的「共享带宽 → EIP 规格」归并。
+ * 逻辑统一在 src/lib/productCatalog/specMergeRules.js 的规则引擎中，此处仅调用。
+ * @param {import('../src/lib/productCatalogLoader.js').CatalogProduct[]} products
+ */
 function migrateSharedBandwidthCatalogProducts(products) {
-  if (!Array.isArray(products)) return { products, changed: false }
-  const list = structuredClone(products)
-  const legacyIdx = list.findIndex((p) => p?.key === SHARED_BANDWIDTH_LEGACY_KEY)
-  const eipIdx = list.findIndex((p) => p?.key === 'eip')
-  if (eipIdx < 0) return { products: list, changed: false }
-
-  let changed = false
-  const eip = list[eipIdx]
-  const spec = {
-    name: SHARED_BANDWIDTH_SPEC_NAME,
-    match: [
-      '共享带宽',
-      '弹性公网IP-共享带宽',
-      '弹性公网 IP-共享带宽',
-      '弹性公网ip-共享带宽',
-      '弹性公网IP共享带宽',
-    ],
-  }
-  const hasSpec = (eip.specs || []).some(
-    (s) => s?.name === SHARED_BANDWIDTH_SPEC_NAME || s?.name === SHARED_BANDWIDTH_LEGACY_KEY,
-  )
-  if (!hasSpec) {
-    eip.specs = [...(eip.specs || []), spec]
-    changed = true
-  }
-  if (legacyIdx >= 0 && legacyIdx !== eipIdx) {
-    list.splice(legacyIdx, 1)
-    changed = true
-  }
-  if (changed) list[eipIdx] = eip
-  return { products: list, changed }
+  return mergeSharedBandwidthIntoEipCatalog(products)
 }
 
 function migrateSharedBandwidthToEipSpec(db) {
@@ -173,8 +151,8 @@ function migrateSharedBandwidthToEipSpec(db) {
     try {
       const snapshot = JSON.parse(metaRow.value)
       let metaChanged = false
-      if (metaKey === 'taxonomy_managed' && snapshot?.products?.[SHARED_BANDWIDTH_LEGACY_KEY]) {
-        delete snapshot.products[SHARED_BANDWIDTH_LEGACY_KEY]
+      if (metaKey === 'taxonomy_managed' && snapshot?.products?.[SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY]) {
+        delete snapshot.products[SHARED_BANDWIDTH_LEGACY_PRODUCT_KEY]
         metaChanged = true
       }
       if (metaKey === 'product_catalog_managed_v1' && snapshot?.products) {

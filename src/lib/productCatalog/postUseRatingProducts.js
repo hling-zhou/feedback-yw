@@ -3,9 +3,16 @@ import { canonicalizeRecordProduct, resolveCatalogProduct } from './resolveCatal
 /** @typedef {import('../productCatalogLoader.js').CatalogProduct} CatalogProduct */
 
 /**
- * PRD 云网 16 款产品（用后即评分析范围）。
- * 共享带宽使用 key `shared_bw`（避免被 mergeSharedBandwidthIntoEip 按 legacy key「共享带宽」删掉）。
+ * PRD 云网产品（用后即评分析范围）。
+ * 共享带宽使用 key `shared_bw`（避免被 specMergeRules 按 legacy key「共享带宽」删掉）。
  * 默认：已在工单目录中的产品保持 enabled；其余 enabled=false，仅开 analysisPostUseRating。
+ *
+ * 「产品降为规格」合并（2026-09-17）后共 13 款父产品：
+ * - 融合VPN(vpn) ← SSL VPN / IPSec VPN
+ * - 云组网(cc)   ← 云互联
+ * - 虚拟私有云(vpc) ← 对等连接 / 安全组
+ * - 场景化加速(sba) ← 场景化加速 / 数据快递
+ * 子产品不再作为独立条目存在，其规格定义见 specMergeRules.js。
  *
  * @type {CatalogProduct[]}
  */
@@ -51,14 +58,17 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     specs: [],
   },
   {
-    key: 'ssl_vpn',
-    name: 'SSL VPN',
-    enabled: false,
+    key: 'vpn',
+    name: '融合VPN',
+    enabled: true,
     analysisPostUseRating: true,
     focusTracked: false,
     taxonomyKey: 'vpn',
     acceptParentName: true,
-    specs: [{ name: 'SSL VPN', match: ['SSL VPN', 'SSLVPN', 'ssl vpn'] }],
+    specs: [
+      { name: 'SSL VPN', match: ['SSL VPN', 'SSLVPN', 'ssl vpn'] },
+      { name: 'IPSec VPN', match: ['IPSec VPN', 'IPSEC VPN', 'IPsec VPN'] },
+    ],
   },
   {
     key: 'vpc_endpoint',
@@ -81,26 +91,6 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     specs: [],
   },
   {
-    key: 'ipsec_vpn',
-    name: 'IPSec VPN',
-    enabled: false,
-    analysisPostUseRating: true,
-    focusTracked: false,
-    taxonomyKey: 'vpn',
-    acceptParentName: true,
-    specs: [{ name: 'IPSec VPN', match: ['IPSec VPN', 'IPSEC VPN', 'IPsec VPN'] }],
-  },
-  {
-    key: 'security_group',
-    name: '安全组',
-    enabled: false,
-    analysisPostUseRating: true,
-    focusTracked: false,
-    taxonomyKey: 'vpc',
-    acceptParentName: true,
-    specs: [{ name: '安全组', match: ['安全组'] }],
-  },
-  {
     key: 'vpc',
     name: '虚拟私有云',
     enabled: true,
@@ -108,27 +98,10 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     focusTracked: true,
     taxonomyKey: 'vpc',
     acceptParentName: true,
-    specs: [],
-  },
-  {
-    key: 'peering',
-    name: '对等连接',
-    enabled: false,
-    analysisPostUseRating: true,
-    focusTracked: false,
-    taxonomyKey: 'vpc',
-    acceptParentName: true,
-    specs: [{ name: '对等连接', match: ['对等连接'] }],
-  },
-  {
-    key: 'cloud_interconnect',
-    name: '云互联',
-    enabled: false,
-    analysisPostUseRating: true,
-    focusTracked: false,
-    taxonomyKey: 'cloud_interconnect',
-    acceptParentName: true,
-    specs: [{ name: '云互联', match: ['云互联'] }],
+    specs: [
+      { name: '对等连接', match: ['对等连接', 'VPC对等连接', 'VPC 对等连接'] },
+      { name: '安全组', match: ['安全组'] },
+    ],
   },
   {
     key: 'cc',
@@ -138,7 +111,10 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     focusTracked: false,
     taxonomyKey: 'cc',
     acceptParentName: true,
-    specs: [{ name: '云组网', match: ['云组网'] }],
+    specs: [
+      { name: '云组网', match: ['云组网'] },
+      { name: '云互联', match: ['云互联'] },
+    ],
   },
   {
     key: 'dc',
@@ -169,6 +145,19 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     taxonomyKey: 'nat',
     acceptParentName: true,
     specs: [{ name: 'NAT网关', match: ['NAT网关', 'NAT 网关', 'nat网关'] }],
+  },
+  {
+    key: 'sba',
+    name: '场景化加速',
+    enabled: true,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'sba',
+    acceptParentName: true,
+    specs: [
+      { name: '场景化加速', match: ['场景化加速'] },
+      { name: '数据快递', match: ['数据快递'] },
+    ],
   },
 ]
 
