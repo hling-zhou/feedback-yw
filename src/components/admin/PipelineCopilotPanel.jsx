@@ -72,8 +72,7 @@ export default function PipelineCopilotPanel() {
 
   const pollStatus = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/storage/pipeline/status')
-      const data = await res.json()
+      const data = await apiFetch('/api/storage/pipeline/status')
       setJob(data)
       if (data.status === 'running') {
         setRunning(true)
@@ -95,15 +94,9 @@ export default function PipelineCopilotPanel() {
     setRunning(true)
     setLoading(true)
     try {
-      const res = await apiFetch('/api/storage/pipeline/run', {
+      await apiFetch('/api/storage/pipeline/run', {
         method: 'POST',
         body: JSON.stringify({ batch: batchMode, products: '*' }) })
-      const data = await res.json()
-      if (!res.ok) {
-        message.error(data.error || '启动失败')
-        setRunning(false)
-        return
-      }
       message.success('流水线已启动')
       setTimeout(pollStatus, 1000)
     } catch (err) {
