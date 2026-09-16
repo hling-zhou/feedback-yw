@@ -77,4 +77,37 @@ describe('ensureTargetProductsInCatalog', () => {
     const second = ensureTargetProductsInCatalog(first.products)
     expect(second.changed).toBe(false)
   })
+
+  it('respects deletedKeys - does not re-add deleted seed products', () => {
+    const first = ensureTargetProductsInCatalog([])
+    expect(first.products.some((p) => p.key === 'vpc')).toBe(true)
+
+    const withoutVpc = first.products.filter((p) => p.key !== 'vpc')
+    const second = ensureTargetProductsInCatalog(withoutVpc, {
+      deletedKeys: ['vpc'],
+    })
+    expect(second.products.some((p) => p.key === 'vpc')).toBe(false)
+  })
+
+  it('respects deletedKeys - does not force-enable analysisPostUseRating', () => {
+    const catalog = [
+      {
+        key: 'eip',
+        name: '弹性公网IP',
+        enabled: true,
+        analysisPostUseRating: false,
+        focusTracked: false,
+        taxonomyKey: 'eip',
+        acceptParentName: true,
+        specs: [],
+      },
+    ]
+    const result = ensureTargetProductsInCatalog(catalog, {
+      deletedKeys: ['eip'],
+    })
+    const eip = result.products.find((p) => p.key === 'eip')
+    expect(eip).toBeTruthy()
+    expect(eip.analysisPostUseRating).toBe(false)
+    expect(eip.focusTracked).toBe(false)
+  })
 })

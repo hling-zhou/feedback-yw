@@ -38,6 +38,7 @@ import {
 } from '../lib/productCatalogManageModel.js'
 import { canonicalTaxonomyKey } from '../lib/taxonomyKeyAliases.js'
 import { parseProductCatalogWorkbook } from '../lib/productCatalogExcel.js'
+import { ALL_CATALOG_SEED_PRODUCTS } from '../lib/productCatalog/ensureTargetProducts.js'
 
 /**
  * @param {{
@@ -61,6 +62,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   } = useInsights()
 
   const [products, setProducts] = useState([])
+  const [deletedKeys, setDeletedKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -85,6 +87,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
     try {
       const snap = await getManagedProductCatalogSnapshot()
       setProducts(snap.products || getCatalogProducts())
+      setDeletedKeys(Array.isArray(snap.deletedKeys) ? snap.deletedKeys : [])
     } finally {
       setLoading(false)
     }
@@ -94,12 +97,13 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
     loadLocal()
   }, [loadLocal, catalogMeta?.loadedAt])
 
-  const persist = async (next) => {
+  const persist = async (next, opts = {}) => {
     if (readOnly) return
     setSaving(true)
     try {
-      await saveManagedProductCatalog(next)
+      await saveManagedProductCatalog(next, { deletedKeys: opts.deletedKeys ?? deletedKeys })
       setProducts(next)
+      if (Array.isArray(opts.deletedKeys)) setDeletedKeys(opts.deletedKeys)
       message.success('已保存产品规格配置')
     } catch (e) {
       message.error(e.message || '保存失败')
@@ -159,12 +163,21 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
     const next = editingProduct
       ? products.map((p) => (p.key === editingProduct.key ? nextProduct : p))
       : [...products, nextProduct]
-    await persist(next)
+    // 若新增/编辑的是之前被删除的种子产品，从 deletedKeys 中移除
+    const nextDeletedKeys = deletedKeys.filter((k) => k !== key)
+    await persist(next, { deletedKeys: nextDeletedKeys })
     setProductModal(false)
   }
 
   const deleteProduct = async (productKey) => {
-    await persist(products.filter((p) => p.key !== productKey))
+    const seedKeys = new Set(ALL_CATALOG_SEED_PRODUCTS.map((p) => p.key))
+    const isSeed = seedKeys.has(productKey)
+    const nextDeletedKeys = isSeed
+      ? [...new Set([...deletedKeys, productKey])]
+      : deletedKeys.filter((k) => k !== productKey)
+    await persist(products.filter((p) => p.key !== productKey), {
+      deletedKeys: nextDeletedKeys,
+    })
   }
 
   const openAddSpec = (productKey) => {
@@ -230,6 +243,9 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   const handleMergeImport = async (incoming) => {
     const result = await importManagedProductCatalog(incoming)
     setProducts(result.products)
+    // 导入后重新加载 deletedKeys（store 层已更新）
+    const snap = await getManagedProductCatalogSnapshot()
+    setDeletedKeys(Array.isArray(snap.deletedKeys) ? snap.deletedKeys : [])
     message.success(formatMergeCatalogResultMessage(result))
   }
 

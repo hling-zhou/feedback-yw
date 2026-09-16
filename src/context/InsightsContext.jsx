@@ -1348,12 +1348,14 @@ export function InsightsProvider({ children }) {
   }, [adapter])
 
   const saveManagedProductCatalogSnapshot = useCallback(
-    async (products) => {
+    async (products, opts = {}) => {
       const normalized = (products || []).map((p) => ({
         ...p,
         taxonomyKey: String(p.taxonomyKey || p.key || '').trim(),
       }))
-      const state = await saveManagedProductCatalog(adapter, normalized)
+      const state = await saveManagedProductCatalog(adapter, normalized, {
+        deletedKeys: opts.deletedKeys || [],
+      })
       setProductCatalogMeta(state)
       const taxSnap = await getOrInitManagedSnapshot(adapter)
       const synced = syncCatalogProductsToTaxonomy(taxSnap, normalized)

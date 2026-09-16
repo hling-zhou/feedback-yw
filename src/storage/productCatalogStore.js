@@ -15,10 +15,10 @@ import {
 
 export const META_KEY_PRODUCT_CATALOG_MANAGED = 'product_catalog_managed_v1'
 
-async function normalizeManagedCatalogProducts(products) {
+async function normalizeManagedCatalogProducts(products, opts = {}) {
   const { products: migrated, changed: keysChanged } = migrateProductCatalogKeys(products)
   const { products: withTargets, changed: targetsChanged } =
-    ensureTargetProductsInCatalog(migrated)
+    ensureTargetProductsInCatalog(migrated, { deletedKeys: opts.deletedKeys })
   const { products: merged, changed: bwChanged } =
     mergeSharedBandwidthIntoEipCatalog(withTargets)
   return { products: merged, changed: keysChanged || targetsChanged || bwChanged }
@@ -27,13 +27,15 @@ async function normalizeManagedCatalogProducts(products) {
 /**
  * @param {{ putMeta: (k: string, v: unknown) => Promise<void> }} adapter
  * @param {import('../lib/productCatalogLoader.js').CatalogProduct[]} products
+ * @param {string[]} [deletedKeys]
  */
-async function persistManagedCatalogIfChanged(adapter, products, changed) {
+async function persistManagedCatalogIfChanged(adapter, products, changed, deletedKeys = []) {
   if (!changed) return products
   const snap = {
     version: 1,
     updatedAt: new Date().toISOString(),
     products,
+    deletedKeys,
   }
   await adapter.putMeta(META_KEY_PRODUCT_CATALOG_MANAGED, snap)
   return products
@@ -54,8 +56,9 @@ export async function loadManagedProductCatalog(adapter) {
   const snap = await adapter.getMeta(META_KEY_PRODUCT_CATALOG_MANAGED)
   if (!snap?.products?.length) return null
   const normalized = normalizeCatalogProducts(snap.products)
-  const { products, changed } = await normalizeManagedCatalogProducts(normalized)
-  await persistManagedCatalogIfChanged(adapter, products, changed)
+  const deletedKeys = Array.isArray(snap.deletedKeys) ? snap.deletedKeys : []
+  const { products, changed } = await normalizeManagedCatalogProducts(normalized, { deletedKeys })
+  await persistManagedCatalogIfChanged(adapter, products, changed, deletedKeys)
   return applyCatalogProducts(products, {
     source: 'managed',
     configFile: '本机可编辑配置',
@@ -65,14 +68,17 @@ export async function loadManagedProductCatalog(adapter) {
 /**
  * @param {{ putMeta: (k: string, v: unknown) => Promise<void> }} adapter
  * @param {import('../lib/productCatalogLoader.js').CatalogProduct[]} products
+ * @param {{ deletedKeys?: string[] }} [opts]
  */
-export async function saveManagedProductCatalog(adapter, products) {
+export async function saveManagedProductCatalog(adapter, products, opts = {}) {
   const normalized = normalizeCatalogProducts(products)
   validateCatalogProducts(normalized)
+  const deletedKeys = Array.isArray(opts.deletedKeys) ? opts.deletedKeys : []
   const snap = {
     version: 1,
     updatedAt: new Date().toISOString(),
     products: normalized,
+    deletedKeys,
   }
   await adapter.putMeta(META_KEY_PRODUCT_CATALOG_MANAGED, snap)
   return applyCatalogProducts(normalized, {
@@ -90,12 +96,14 @@ export async function getOrInitManagedProductCatalogSnapshot(adapter) {
   const existing = await adapter.getMeta(META_KEY_PRODUCT_CATALOG_MANAGED)
   if (existing?.products?.length) {
     const normalized = normalizeCatalogProducts(existing.products)
-    const { products, changed } = await normalizeManagedCatalogProducts(normalized)
-    await persistManagedCatalogIfChanged(adapter, products, changed)
+    const deletedKeys = Array.isArray(existing.deletedKeys) ? existing.deletedKeys : []
+    const { products, changed } = await normalizeManagedCatalogProducts(normalized, { deletedKeys })
+    await persistManagedCatalogIfChanged(adapter, products, changed, deletedKeys)
     return /** @type {ProductCatalogManagedSnapshot} */ ({
       version: 1,
       updatedAt: new Date().toISOString(),
       products,
+      deletedKeys,
     })
   }
 
@@ -105,6 +113,7 @@ export async function getOrInitManagedProductCatalogSnapshot(adapter) {
     version: 1,
     updatedAt: new Date().toISOString(),
     products,
+    deletedKeys: [],
   }
   await adapter.putMeta(META_KEY_PRODUCT_CATALOG_MANAGED, snap)
   return snap
@@ -118,7 +127,13 @@ export async function getOrInitManagedProductCatalogSnapshot(adapter) {
 export async function importManagedProductCatalog(adapter, incoming, opts = {}) {
   const snap = await getOrInitManagedProductCatalogSnapshot(adapter)
   const { products, added, updated } = mergeCatalogByKey(snap.products, incoming, opts)
-  await saveManagedProductCatalog(adapter, products)
+  const prevDeletedKeys = Array.isArray(snap.deletedKeys) ? snap.deletedKeys : []
+  // 导入的产品 key 从 deletedKeys 中移除（用户主动重新导入 = 恢复种子产品）
+  const incomingKeys = new Set(
+    (Array.isArray(incoming) ? incoming : []).map((p) => String(p?.key || '').trim()).filter(Boolean),
+  )
+  const deletedKeys = prevDeletedKeys.filter((k) => !incomingKeys.has(k))
+  await saveManagedProductCatalog(adapter, products, { deletedKeys })
   return { products, added, updated }
 }
 

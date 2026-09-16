@@ -94,12 +94,19 @@ function mergeCatalogProduct(a, b) {
 }
 
 /**
- * 补全 dc/slb/vpc/eip 及用后即评 16 款（不覆盖已有配置，仅缺失字段/产品时合并）
+ * 补全 dc/slb/vpc/eip 及用后即评 16 款（不覆盖已有配置，仅缺失字段/产品时合并）。
+ * deletedKeys 中的种子产品 key 不会被强制补回或强制开启分析类型，尊重用户删除意图。
  * @param {CatalogProduct[]} products
+ * @param {{ deletedKeys?: string[] }} [opts]
  */
-export function ensureTargetProductsInCatalog(products) {
+export function ensureTargetProductsInCatalog(products, opts = {}) {
+  const skipKeys = new Set(opts.deletedKeys || [])
+
   if (!Array.isArray(products)) {
-    return { products: structuredClone(ALL_CATALOG_SEED_PRODUCTS), changed: true }
+    const seeds = structuredClone(ALL_CATALOG_SEED_PRODUCTS).filter(
+      (p) => !skipKeys.has(p.key),
+    )
+    return { products: seeds, changed: true }
   }
 
   /** @type {Map<string, CatalogProduct>} */
@@ -107,6 +114,8 @@ export function ensureTargetProductsInCatalog(products) {
   let changed = false
 
   for (const seed of ALL_CATALOG_SEED_PRODUCTS) {
+    if (skipKeys.has(seed.key)) continue
+
     if (!byKey.has(seed.key)) {
       byKey.set(seed.key, structuredClone(seed))
       changed = true
