@@ -7,14 +7,10 @@ import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { buildImportUrl } from '../../lib/importRoute.js'
 import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../../lib/sourceOverviewMetrics.js'
-import TrendChart from '../charts/TrendChart.jsx'
-import { buildStackedTrendAreas, monthlyTrendByProduct } from '../../lib/analytics.js'
-import { isTicketSource } from '../../lib/importUtils.js'
 import {
   buildWanTouByProducts,
 } from '../../lib/wanTouRatio.js'
 import { buildWanTouProductTableColumns } from './WanTouRatioCells.jsx'
-import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import ActionRecsPanel from './ActionRecsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import OverviewJourneyMap from './OverviewJourneyMap.jsx'
@@ -63,16 +59,6 @@ export default function OverviewTab({
   }
 
   const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
-
-  const ticketRecordsForTrend = DATA_SOURCE_TYPES.flatMap((type) =>
-    isTicketSource(type) ? filterRecordsForScope(feedbacks, currentPeriod, type) : [],
-  )
-  const trendByProductFromSnapshot = snapshot.crossSourceMetrics?.monthly_trend_by_product
-  const trendByProduct =
-    trendByProductFromSnapshot?.data?.length
-      ? trendByProductFromSnapshot
-      : monthlyTrendByProduct(ticketRecordsForTrend, { basis: 'importMonth', limit: 12 })
-  const trendChartAreas = buildStackedTrendAreas(trendByProduct.products || [])
 
   const wanTouRows = buildWanTouByProducts({
     period: currentPeriod,
@@ -174,8 +160,7 @@ export default function OverviewTab({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="page-card min-w-0 overflow-hidden"><div className="page-card-header"><span className="page-card-title">各数据来源概览</span></div>
+      <div className="page-card min-w-0 overflow-hidden"><div className="page-card-header"><span className="page-card-title">各数据来源概览</span></div>
           <Table
             size="small"
             tableLayout="fixed"
@@ -254,29 +239,6 @@ export default function OverviewTab({
             ]}
           />
         </div>
-
-        {trendByProduct.data?.length > 0 ? (
-          <div className="page-card min-w-0"><div className="page-card-header"><span className="page-card-title">跨源月度趋势（工单类合计）</span></div>
-            <div className="rounded-lg bg-white p-2">
-              <TrendChart
-                data={trendByProduct.data}
-                areas={trendChartAreas}
-                stacked
-                height={trendChartAreas.length > 6 ? 260 : 220}
-              />
-            </div>
-            <Typography.Text type="secondary" className="mt-2 block text-xs">
-              投诉与咨询工单按月合计，按产品堆叠；用后即评/调研等指标请见各分源 Tab。
-            </Typography.Text>
-          </div>
-        ) : (
-          <div className="page-card min-w-0"><div className="page-card-header"><span className="page-card-title">跨源月度趋势（工单类合计）</span></div>
-            <Typography.Text type="secondary" className="text-sm">
-              当前周期暂无月度趋势数据。
-            </Typography.Text>
-          </div>
-        )}
-      </div>
 
       <div className="page-card">
         <Typography.Text type="secondary" className="text-xs">
