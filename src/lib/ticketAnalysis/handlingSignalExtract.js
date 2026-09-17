@@ -10,6 +10,7 @@
  */
 
 import { stripTaggingNoise } from './workflowTextCleanup.js'
+import { parseRequestNodeSegments } from './pathSegments.js'
 
 // ── 处理意见质量分层 ──
 
@@ -167,9 +168,6 @@ export function extractHandlingConclusionSignals(handlingText) {
 
 // ── 结构信号候选提取 ──
 
-/** 解析请求节点/系统路径行 */
-const NODE_LINE_RE = /(?:请求节点|系统路径)[：:]\s*([^\n]+)/i
-
 /** 解析工单标题行 */
 const TITLE_LINE_RE = /工单标题[：:]\s*([^\n]+)/i
 
@@ -186,26 +184,16 @@ export function extractStructuralCandidates(rawText, handlingText) {
   const full = [rawText || '', handlingText || ''].join('\n')
 
   const titleMatch = full.match(TITLE_LINE_RE)
-  const nodeMatch = full.match(NODE_LINE_RE)
+  const { raw: rawNode, segments: rawNodeSegments } = parseRequestNodeSegments(full)
 
   let titleValue = ''
   let nodeSegments = []
 
-  // 解析请求节点分段
-  if (nodeMatch) {
-    const rawNode = nodeMatch[1].trim()
-    // 如果是"全局流转"默认值，不采信
-    if (!DEFAULT_NODE_RE.test(rawNode)) {
-      nodeSegments = rawNode
-        .split('--')
-        .map((s) => s.trim())
-        .filter((s) => s && !DEFAULT_NODE_RE.test(s) && s.length >= 2)
-      // 第二段经常糊入"工单标题：..."，截断
-      nodeSegments = nodeSegments.map((seg) => {
-        const cut = seg.search(/工单标题[：:]/i)
-        return cut >= 0 ? seg.slice(0, cut).trim() : seg
-      }).filter((s) => s.length >= 2)
-    }
+  // 解析请求节点分段（段值已在 parseRequestNodeSegments 内按模板字段名截断）
+  if (rawNode && !DEFAULT_NODE_RE.test(rawNode)) {
+    nodeSegments = rawNodeSegments.filter(
+      (s) => s && !DEFAULT_NODE_RE.test(s) && s.length >= 2,
+    )
   }
 
   // 解析工单标题值

@@ -5,7 +5,13 @@ import {
   pendingReviewTag,
   TAG_UNRECOGNIZED,
 } from './tagLabels.js'
-import { resolvePathDimensionSegments } from './pathSegments.js'
+import { resolvePathDimensionSegments, parseRequestNodeSegments } from './pathSegments.js'
+
+/**
+ * 路径段值长度上限：超过即视为被后续模板字段污染（截断词未覆盖的变体）。
+ * 此时不做精确匹配，直接交回正文打标，避免把整段原文当成标签写入。
+ */
+const MAX_PATH_SEGMENT_LEN = 30
 
 /**
  * @param {string} taxonomyKey
@@ -34,7 +40,7 @@ export function matchRequestSceneFromPath(segments, taxonomyKey, requestScenes) 
   if (!resolved) return null
 
   const seg = resolved.sceneSeg?.trim()
-  if (!seg) return null
+  if (!seg || seg.length > MAX_PATH_SEGMENT_LEN) return null
 
   const map = getRequestScenePathMap(taxonomyKey)
   const mapped = map[seg]
@@ -56,7 +62,7 @@ export function matchProblemTypeFromPath(segments, taxonomyKey, problemTypes) {
   if (!resolved) return null
 
   const seg = resolved.problemSeg?.trim()
-  if (!seg) return null
+  if (!seg || seg.length > MAX_PATH_SEGMENT_LEN) return null
 
   const labels = (problemTypes || []).map((p) => p.label)
   const exact = labels.find((l) => l === seg)
@@ -81,12 +87,7 @@ export function matchJourneyFromPath(text, journeys, taxonomyKey, pathSegments) 
 
   let segments = pathSegments
   if (!segments?.length) {
-    const m = (text || '').match(/(?:请求节点|系统路径)[：:]([^\n]+)/i)
-    if (!m) return null
-    segments = m[1]
-      .split('--')
-      .map((s) => s.trim())
-      .filter((s) => s && s !== 'undefined')
+    segments = parseRequestNodeSegments(text).segments
   }
 
   const resolved = resolvePathDimensionSegments(segments)

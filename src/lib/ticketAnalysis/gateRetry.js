@@ -38,6 +38,7 @@ import {
 } from './pathTagging.js'
 import { isUnrecognizedTag } from './tagLabels.js'
 import { resolveProblemTypeWithPeerFallback, resolveRequestSceneFromConfig } from '../dimensionTagging.js'
+import { parseRequestNodeSegments } from './pathSegments.js'
 
 /**
  * 最大重试轮次
@@ -60,11 +61,7 @@ const MAX_RETRY_ROUNDS = 1
  * @returns {string[]}
  */
 function extractPathSegments(text) {
-  const segs = (text.match(/(?:请求节点|系统路径)[：:]([^\n]+)/i) || [])[1]
-    ?.split('--')
-    .map((s) => s.trim())
-    .filter((s) => s && s !== 'undefined') || []
-  return segs
+  return parseRequestNodeSegments(text).segments
 }
 
 // ============================================================

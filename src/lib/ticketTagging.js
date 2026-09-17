@@ -5,6 +5,7 @@ import { isValidRootCause } from './journeyOptimizationLLM.js'
 import { matchSharedLabel, resolveProblemTypeFromConfig } from './dimensionTagging.js'
 import { isMeaninglessTicketPlaceholderText } from './taggingText.js'
 import { trimInlinePlatformFieldSuffix } from './ticketDetailDisplay.js'
+import { parseRequestNodeSegments } from './ticketAnalysis/pathSegments.js'
 
 const ROOT_CAUSE_KW = [
   '根因', '原因', '由于', '导致', '是因为', '经排查', '定位为', '问题在于',
@@ -34,8 +35,48 @@ const QUOTA_UNLOCK_ASK_RE = /申请提升|请提升|提升配额|配额不够|�
 
 /** 访问中断类，优先于「慢/卡顿」质量 */
 const ACCESS_BLOCK_RE = /打不开|无法访问|时通时断|不通|访问不了|连不上/
+
+/**
+ * 连通性（可达性）症状：不通 / ping 不通 / 互访 / 访问不了。
+ * 注意 ping 只收「失败」语义（ping 不通、无法 ping、ping 失败），
+ * 裸 ping 会命中「tcping 响应慢」「ping 测试超时」这类质量描述。
+ */
+const CONNECTIVITY_SYMPTOM_RE =
+  /不通|无法\s*ping|ping\s*(?:失败|无响应)|互访|无法访问|访问不了|打不开|连不上|时通时断|无法连通|不可达/
+
+/** 正文里的连通方向：公网/外网 vs 内网/同 VPC（corpus 已小写，须忽略大小写） */
+const OUTWARD_SIDE_RE = /公网|外网|上网|互联网|入网|出网|internet/i
+const INWARD_SIDE_RE = /内网|私网|同 ?vpc|同一 ?vpc|同网段|互访|主机间|子网间|vpc ?内|跨子网|跨 ?az/i
 const SLOW_ONLY_RE = /卡顿|(?:突然|非常|很)慢|加载慢|访问慢/
+/** 窄口径质量词，仅「访问中断优先于慢」的旧判据（prefersAccessOverQuality）继续使用 */
 const EXPLICIT_QUALITY_RE = /丢包|延迟|抖动|波动/
+const QUALITY_METRIC_RE = /丢包|延迟|时延|抖动|波动|不稳定|质量差/
+/** 被否定的质量词（不丢包 / 没有延迟 / 无抖动）：判定前先剥离，避免把否定当断言 */
+const NEGATED_QUALITY_RE =
+  /(?:不|没有|没|无|未|不存在)[^，。；,;]{0,4}(?:丢包|延迟|时延|抖动|波动)/g
+
+/**
+ * 剔除被否定的质量词。「不丢包也不延迟，就是访问不了」剥离后不再含质量词；
+ * 「不丢包，但延迟高」剥离后仍保留「延迟」，故仍算质量信号。
+ * @param {string} text
+ */
+function stripNegatedQualitySignals(text) {
+  return String(text || '').replace(NEGATED_QUALITY_RE, ' ')
+}
+
+/**
+ * 质量信号（硬口径）：度量词（丢包 / 延迟 / 时延 / 抖动 / 波动 / 不稳定 / 质量差）
+ * 或响应层超时（响应 / 请求 / 处理超时、裸「超时」）。
+ * 慢类体验词（卡顿 / 很慢）不计入：客户同时报「打不开」与「慢」时按既有规则
+ * （prefersAccessOverQuality）归访问中断，慢只作为加减分通道参与打分。
+ * 超时按层次区分：建连层（连接超时 / 建连超时 / 端口超时 / tcp 超时）属可达性失败，同样不计入。
+ * @param {string} text
+ */
+function hasExplicitQualitySignal(text) {
+  const t = stripNegatedQualitySignals(text)
+  if (QUALITY_METRIC_RE.test(t)) return true
+  return /(?<!连接|建连|端口|tcp|拨号)超时/i.test(t)
+}
 
 /** 专线开通/下单，压过连通性 */
 const DC_ORDER_ASK_RE = /下单|订购|申购|地域改不了|改不了地域|接入节点|下单地域/
@@ -253,6 +294,132 @@ function isQualityPreferNode(l2) {
   return /质量与丢包|丢包与链路|时延慢|网络质量/.test(l2.label || '')
 }
 
+/**
+ * 可达性节点：标签表述为「不通 / 互通 / 连通 / 出网入网 / 不可达」的运行类节点。
+ * 质量类节点（丢包、时延、带宽、监控）不算，避免互相顶替。
+ * @param {{ label?: string }} l2
+ */
+function isConnectivitySymptomNode(l2) {
+  if (isQualityPreferNode(l2)) return false
+  return /不通|互通|连通|不可达|出网|入网|访问异常/.test(l2.label || '')
+}
+
+/**
+ * 客户报的是「连通性症状」而非链路质量：不通 / ping 不通 / 互访 / 无法访问。
+ * 正文出现质量信号（度量词 / 慢类体验词 / 响应层超时）时不适用，避免把质量问题抢过来。
+ * @param {string} text
+ */
+function prefersConnectivityOverQuality(text) {
+  const t = text || ''
+  if (!CONNECTIVITY_SYMPTOM_RE.test(t)) return false
+  return !hasExplicitQualitySignal(t)
+}
+
+/**
+ * 连通方向：公网/外网 → outward，内网/同 VPC → inward，两侧都提或都没提 → any。
+ * @param {string} text
+ * @returns {'outward' | 'inward' | 'any'}
+ */
+function resolveConnectivitySide(text) {
+  const t = text || ''
+  const out = OUTWARD_SIDE_RE.test(t)
+  const inw = INWARD_SIDE_RE.test(t)
+  if (out && !inw) return 'outward'
+  if (inw && !out) return 'inward'
+  return 'any'
+}
+
+/**
+ * 节点自身的连通方向：出网/入网 → outward，内网/互通 → inward，其余 → any。
+ * @param {{ label?: string }} l2
+ * @returns {'outward' | 'inward' | 'any'}
+ */
+function nodeConnectivitySide(l2) {
+  const label = l2.label || ''
+  if (/出网|入网/.test(label)) return 'outward'
+  if (/内网|互通/.test(label)) return 'inward'
+  return 'any'
+}
+
+/**
+ * 连通节点是否与正文方向匹配：正文方向明确时，方向相反的节点不再加分。
+ * @param {{ label?: string }} l2
+ * @param {'outward' | 'inward' | 'any'} side
+ */
+function connectivitySideMatches(l2, side) {
+  if (side === 'any') return true
+  const nodeSide = nodeConnectivitySide(l2)
+  return nodeSide === 'any' || nodeSide === side
+}
+
+/**
+ * 链路质量类节点：丢包 / 时延 / 延迟 / 抖动 / 卡顿 / 超时等劣化描述。
+ * 比 isQualityPreferNode 宽松——覆盖「时延与链路质量」这类混排措辞；
+ * 流量、监控、带宽类节点不算（它们描述用量，不是链路劣化）。
+ * @param {{ label?: string }} l2
+ */
+function isLinkQualityNode(l2) {
+  const label = l2.label || ''
+  if (/流量|监控|带宽|利用率|统计/.test(label)) return false
+  return /质量|丢包|时延|延迟|抖动|卡顿|超时|响应慢/.test(label)
+}
+
+/**
+ * 客户报的是连通性症状（不通 / ping 不通 / 互访 / 访问不了）时，
+ * 若胜出节点是同 L1 的质量节点，改判给该 L1 下的连通节点。
+ * 只在「质量节点抢走连通症状」这一种情形生效，不影响其他 L1 的归属。
+ * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
+ * @param {string} l1Label
+ * @param {string} l2Label
+ * @param {string} corpus
+ * @returns {string | null} 改判后的 L2 标签
+ */
+function correctQualityWinnerToConnectivity(journeys, l1Label, l2Label, corpus) {
+  const l1 = (journeys || []).find((node) => node.label === l1Label)
+  const winner = (l1?.children || []).find((node) => node.label === l2Label)
+  if (!winner || !isLinkQualityNode(winner)) return null
+
+  const siblings = (l1.children || []).filter((node) => isConnectivitySymptomNode(node))
+  if (!siblings.length) return null
+
+  const side = resolveConnectivitySide(corpus)
+  const picked = siblings.find((node) => connectivitySideMatches(node, side)) || siblings[0]
+  return picked.label
+}
+
+/**
+ * 与上一条对称：客户同时报了连通症状与质量信号（混合表述）时，按质量归口 ——
+ * 若胜出节点是同 L1 的连通节点，改判给该 L1 的质量节点（成因词比结果词信息量大）。
+ * 同 L1 有多个质量节点时（如 dc 的「时延慢与卡顿」「丢包与链路质量」），
+ * 按各自关键词在正文里的命中数选最贴切的那个，全不命中则取定义顺序第一个。
+ * @param {import('./productTaxonomy.js').JourneyL1[]} journeys
+ * @param {string} l1Label
+ * @param {string} l2Label
+ * @param {string} corpus
+ * @returns {string | null} 改判后的 L2 标签
+ */
+function correctConnectivityWinnerToQuality(journeys, l1Label, l2Label, corpus) {
+  const l1 = (journeys || []).find((node) => node.label === l1Label)
+  const winner = (l1?.children || []).find((node) => node.label === l2Label)
+  if (!winner || !isConnectivitySymptomNode(winner)) return null
+
+  const text = String(corpus || '')
+  const candidates = (l1?.children || []).filter((node) => isLinkQualityNode(node))
+  if (!candidates.length) return null
+  let best = null
+  let bestHits = 0
+  for (const node of candidates) {
+    const hits = (node.keywords || []).filter(
+      (kw) => kw && text.includes(String(kw).toLowerCase()),
+    ).length
+    if (hits > bestHits) {
+      best = node
+      bestHits = hits
+    }
+  }
+  return (best || candidates[0]).label
+}
+
 function isDcProvisionFamily(l1) {
   return l1.id === 'provision' || /开通与交付/.test(l1.label || '')
 }
@@ -420,6 +587,16 @@ export function matchJourneyFromTextWithScore(text, journeys, taxonomyKey, opts 
     }
   }
 
+  if (bestScore > 0 && prefersConnectivityOverQuality(corpus)) {
+    const corrected = correctQualityWinnerToConnectivity(journeys, bestL1, bestL2, corpus)
+    if (corrected) bestL2 = corrected
+  }
+
+  if (bestScore > 0 && CONNECTIVITY_SYMPTOM_RE.test(corpus) && hasExplicitQualitySignal(corpus)) {
+    const toQualityLabel = correctConnectivityWinnerToQuality(journeys, bestL1, bestL2, corpus)
+    if (toQualityLabel) bestL2 = toQualityLabel
+  }
+
   if (taxonomyKey === 'eip' && bestScore === 0) {
     const eipHint = inferEipJourneyFromKeywords(corpus, journeys)
     if (eipHint) {
@@ -513,16 +690,10 @@ function inferEipJourneyFromKeywords(corpus, journeys) {
  * @param {string} taxonomyKey
  */
 function parseRequestNodeJourney(text, journeys, taxonomyKey) {
-  const m = text.match(/请求节点[：:]([^\n]+)/)
-  if (!m) return null
-
   const { serviceMap, issueMap } = getNodeMapsForProduct(taxonomyKey)
   if (!Object.keys(serviceMap).length && !Object.keys(issueMap).length) return null
 
-  const parts = m[1]
-    .split('--')
-    .map((s) => s.trim())
-    .filter((s) => s && s !== 'undefined')
+  const parts = parseRequestNodeSegments(text).segments
 
   if (parts.length < 2) return null
 

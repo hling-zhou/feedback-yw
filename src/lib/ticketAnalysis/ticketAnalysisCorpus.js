@@ -3,6 +3,7 @@ import {
   extractAppendTextFromFields,
   extractHandlingTextFromFields,
 } from '../taggingText.js'
+import { parseRequestNodeSegments } from './pathSegments.js'
 
 /**
  * @typedef {Object} TicketAnalysisCorpus
@@ -13,8 +14,6 @@ import {
  * @property {boolean} fuzzy 内容极度模糊，可启用路径兜底
  */
 
-const PATH_LINE_RE = /(?:请求节点|系统路径)[：:]\s*([^\n]+)/i
-
 const FUZZY_CONTENT_RE =
   /请排查|暂未回复|工单保留|待客户|信息不全|稍后提供|客户未回复|待补充|无实质|不涉及/
 
@@ -22,14 +21,7 @@ const FUZZY_CONTENT_RE =
  * @param {string} text
  */
 export function parseRequestPathSegments(text) {
-  const m = (text || '').match(PATH_LINE_RE)
-  if (!m) return { raw: '', segments: [] }
-  const raw = m[1].trim()
-  const segments = raw
-    .split('--')
-    .map((s) => s.trim())
-    .filter((s) => s && s !== 'undefined')
-  return { raw, segments }
+  return parseRequestNodeSegments(text)
 }
 
 /**

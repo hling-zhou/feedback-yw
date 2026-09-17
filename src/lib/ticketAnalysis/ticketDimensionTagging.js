@@ -6,6 +6,7 @@ import {
   stripJourneyTaggingNoise,
 } from '../ticketTagging.js'
 import { finalizeCorpusFuzzy } from './ticketAnalysisCorpus.js'
+import { parseRequestNodeSegments } from './pathSegments.js'
 import {
   buildDimensionTaggingLayers,
   buildDimensionTaggingText,
@@ -96,11 +97,7 @@ function resolveJourneyAskText(input, fallbackText) {
  * 核心打标逻辑（不含闸门验证与重试），被同步和异步两条路径共用
  */
 function tagCore({ text, input, taxonomy, taxonomyKey, settings }) {
-  const pathSegments =
-    (text.match(/(?:请求节点|系统路径)[：:]([^\n]+)/i) || [])[1]
-      ?.split('--')
-      .map((s) => s.trim())
-      .filter((s) => s && s !== 'undefined') || []
+  const pathSegments = parseRequestNodeSegments(text).segments
 
   const layers = input ? buildDimensionTaggingLayers(input) : null
   const requestCorpus = input ? buildDimensionTaggingText(input) : ''
