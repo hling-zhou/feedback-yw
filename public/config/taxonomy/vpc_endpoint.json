@@ -1,0 +1,12 @@
+{
+  "key": "vpc_endpoint",
+  "name": "VPC终端节点",
+  "match": [
+    "VPC终端节点",
+    "终端节点",
+    "vpc_endpoint",
+    "PrivateLink",
+    "私有连接"
+  ],
+  "journeys": []
+}

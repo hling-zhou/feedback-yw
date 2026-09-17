@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "description": "打标配置：各产品用户旅程；请求场景与问题类型全产品共用",
   "products": [
     "eip",
@@ -7,10 +7,19 @@
     "dc",
     "slb",
     "vpc",
+    "vpc_endpoint",
     "monitor",
     "cc",
     "nat",
-    "vpn"
+    "vpn",
+    "domain_reg",
+    "CloudDNS",
+    "privateDNS",
+    "cloud_port",
+    "gtm",
+    "sba",
+    "cmc",
+    "aipatrol"
   ],
   "sharedRequestScenes": [
     {

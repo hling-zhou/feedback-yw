@@ -7,7 +7,7 @@ import { canonicalizeRecordProduct, resolveCatalogProduct } from './resolveCatal
  * 共享带宽使用 key `shared_bw`（避免被 specMergeRules 按 legacy key「共享带宽」删掉）。
  * 默认：已在工单目录中的产品保持 enabled；其余 enabled=false，仅开 analysisPostUseRating。
  *
- * 「产品降为规格」合并（2026-09-17）后共 13 款父产品：
+ * 「产品降为规格」合并（2026-09-17）后共 18 款父产品：
  * - 融合VPN(vpn) ← SSL VPN / IPSec VPN
  * - 云组网(cc)   ← 云互联
  * - 虚拟私有云(vpc) ← 对等连接 / 安全组
@@ -76,7 +76,7 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
     enabled: false,
     analysisPostUseRating: true,
     focusTracked: false,
-    taxonomyKey: 'vpc',
+    taxonomyKey: 'vpc_endpoint',
     acceptParentName: true,
     specs: [{ name: 'VPC终端节点', match: ['VPC终端节点', 'VPC 终端节点', '终端节点'] }],
   },
@@ -158,6 +158,56 @@ export const POST_USE_RATING_CATALOG_SEED_PRODUCTS = [
       { name: '场景化加速', match: ['场景化加速'] },
       { name: '数据快递', match: ['数据快递'] },
     ],
+  },
+  {
+    key: 'CloudDNS',
+    name: '云解析',
+    enabled: false,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'CloudDNS',
+    acceptParentName: true,
+    specs: [{ name: '云解析', match: ['云解析', '云解析服务DNS', 'CloudDNS'] }],
+  },
+  {
+    key: 'privateDNS',
+    name: '内网DNS',
+    enabled: false,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'privateDNS',
+    acceptParentName: true,
+    specs: [{ name: '内网DNS', match: ['内网DNS', '内网DNS服务', 'PrivateDNS', '私有DNS', 'PDNS'] }],
+  },
+  {
+    key: 'gtm',
+    name: '全局流量管理',
+    enabled: false,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'gtm',
+    acceptParentName: true,
+    specs: [{ name: '全局流量管理', match: ['全局流量管理', 'GTM'] }],
+  },
+  {
+    key: 'cmc',
+    name: '云迁移中心',
+    enabled: false,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'cmc',
+    acceptParentName: true,
+    specs: [{ name: '云迁移中心', match: ['云迁移中心', '云迁移', 'CMC'] }],
+  },
+  {
+    key: 'aipatrol',
+    name: 'AI巡考服务',
+    enabled: false,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    taxonomyKey: 'aipatrol',
+    acceptParentName: true,
+    specs: [{ name: 'AI巡考服务', match: ['AI巡考', '巡考服务', '智能巡考', 'AIPatrol'] }],
   },
 ]
 

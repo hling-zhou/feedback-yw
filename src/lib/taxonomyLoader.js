@@ -33,6 +33,14 @@ import {
   VPC_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/vpcJourney.js'
 import {
+  VPC_ENDPOINT_USER_JOURNEY,
+  VPC_ENDPOINT_NODE_ISSUE_MAP,
+  VPC_ENDPOINT_NODE_SERVICE_MAP,
+  VPC_ENDPOINT_PRODUCT_MATCH,
+  VPC_ENDPOINT_REQUEST_SCENE_PATH_MAP,
+  VPC_ENDPOINT_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/vpcEndpointJourney.js'
+import {
   MONITOR_USER_JOURNEY,
   MONITOR_NODE_ISSUE_MAP,
   MONITOR_NODE_SERVICE_MAP,
@@ -64,6 +72,70 @@ import {
   VPN_REQUEST_SCENE_PATH_MAP,
   VPN_PROBLEM_TYPE_PATH_MAP,
 } from './journeys/vpnJourney.js'
+import {
+  DOMAIN_REG_USER_JOURNEY,
+  DOMAIN_REG_NODE_ISSUE_MAP,
+  DOMAIN_REG_NODE_SERVICE_MAP,
+  DOMAIN_REG_PRODUCT_MATCH,
+  DOMAIN_REG_REQUEST_SCENE_PATH_MAP,
+  DOMAIN_REG_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/domainRegJourney.js'
+import {
+  CLOUDDNS_USER_JOURNEY,
+  CLOUDDNS_NODE_ISSUE_MAP,
+  CLOUDDNS_NODE_SERVICE_MAP,
+  CLOUDDNS_PRODUCT_MATCH,
+  CLOUDDNS_REQUEST_SCENE_PATH_MAP,
+  CLOUDDNS_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/clouddnsJourney.js'
+import {
+  PRIVATE_DNS_USER_JOURNEY,
+  PRIVATE_DNS_NODE_ISSUE_MAP,
+  PRIVATE_DNS_NODE_SERVICE_MAP,
+  PRIVATE_DNS_PRODUCT_MATCH,
+  PRIVATE_DNS_REQUEST_SCENE_PATH_MAP,
+  PRIVATE_DNS_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/privateDnsJourney.js'
+import {
+  CLOUD_PORT_USER_JOURNEY,
+  CLOUD_PORT_NODE_ISSUE_MAP,
+  CLOUD_PORT_NODE_SERVICE_MAP,
+  CLOUD_PORT_PRODUCT_MATCH,
+  CLOUD_PORT_REQUEST_SCENE_PATH_MAP,
+  CLOUD_PORT_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/cloudPortJourney.js'
+import {
+  GTM_USER_JOURNEY,
+  GTM_NODE_ISSUE_MAP,
+  GTM_NODE_SERVICE_MAP,
+  GTM_PRODUCT_MATCH,
+  GTM_REQUEST_SCENE_PATH_MAP,
+  GTM_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/gtmJourney.js'
+import {
+  SBA_USER_JOURNEY,
+  SBA_NODE_ISSUE_MAP,
+  SBA_NODE_SERVICE_MAP,
+  SBA_PRODUCT_MATCH,
+  SBA_REQUEST_SCENE_PATH_MAP,
+  SBA_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/sbaJourney.js'
+import {
+  CMC_USER_JOURNEY,
+  CMC_NODE_ISSUE_MAP,
+  CMC_NODE_SERVICE_MAP,
+  CMC_PRODUCT_MATCH,
+  CMC_REQUEST_SCENE_PATH_MAP,
+  CMC_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/cmcJourney.js'
+import {
+  AIPATROL_USER_JOURNEY,
+  AIPATROL_NODE_ISSUE_MAP,
+  AIPATROL_NODE_SERVICE_MAP,
+  AIPATROL_PRODUCT_MATCH,
+  AIPATROL_REQUEST_SCENE_PATH_MAP,
+  AIPATROL_PROBLEM_TYPE_PATH_MAP,
+} from './journeys/aipatrolJourney.js'
 import { DEFAULT_THEME_RULES } from './themes.js'
 import { parseTaxonomyWorkbook } from './taxonomyExcel.js'
 import {
@@ -147,6 +219,19 @@ const BUILTIN_PRODUCTS = {
       problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
     },
   },
+  vpc_endpoint: {
+    key: 'vpc_endpoint',
+    name: 'VPC终端节点',
+    match: VPC_ENDPOINT_PRODUCT_MATCH,
+    journeys: VPC_ENDPOINT_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: VPC_ENDPOINT_NODE_SERVICE_MAP,
+      issueMap: VPC_ENDPOINT_NODE_ISSUE_MAP,
+      requestSceneMap: VPC_ENDPOINT_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: VPC_ENDPOINT_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
   monitor: {
     key: 'monitor',
     name: '云监控',
@@ -197,6 +282,110 @@ const BUILTIN_PRODUCTS = {
       issueMap: VPN_NODE_ISSUE_MAP,
       requestSceneMap: VPN_REQUEST_SCENE_PATH_MAP,
       problemTypePathMap: VPN_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  domain_reg: {
+    key: 'domain_reg',
+    name: '域名注册',
+    match: DOMAIN_REG_PRODUCT_MATCH,
+    journeys: DOMAIN_REG_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: DOMAIN_REG_NODE_SERVICE_MAP,
+      issueMap: DOMAIN_REG_NODE_ISSUE_MAP,
+      requestSceneMap: DOMAIN_REG_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: DOMAIN_REG_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  CloudDNS: {
+    key: 'CloudDNS',
+    name: '云解析',
+    match: CLOUDDNS_PRODUCT_MATCH,
+    journeys: CLOUDDNS_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: CLOUDDNS_NODE_SERVICE_MAP,
+      issueMap: CLOUDDNS_NODE_ISSUE_MAP,
+      requestSceneMap: CLOUDDNS_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: CLOUDDNS_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  privateDNS: {
+    key: 'privateDNS',
+    name: '内网DNS',
+    match: PRIVATE_DNS_PRODUCT_MATCH,
+    journeys: PRIVATE_DNS_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: PRIVATE_DNS_NODE_SERVICE_MAP,
+      issueMap: PRIVATE_DNS_NODE_ISSUE_MAP,
+      requestSceneMap: PRIVATE_DNS_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: PRIVATE_DNS_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  cloud_port: {
+    key: 'cloud_port',
+    name: '云端口',
+    match: CLOUD_PORT_PRODUCT_MATCH,
+    journeys: CLOUD_PORT_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: CLOUD_PORT_NODE_SERVICE_MAP,
+      issueMap: CLOUD_PORT_NODE_ISSUE_MAP,
+      requestSceneMap: CLOUD_PORT_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: CLOUD_PORT_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  gtm: {
+    key: 'gtm',
+    name: '全局流量管理',
+    match: GTM_PRODUCT_MATCH,
+    journeys: GTM_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: GTM_NODE_SERVICE_MAP,
+      issueMap: GTM_NODE_ISSUE_MAP,
+      requestSceneMap: GTM_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: GTM_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  sba: {
+    key: 'sba',
+    name: '场景化加速',
+    match: SBA_PRODUCT_MATCH,
+    journeys: SBA_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: SBA_NODE_SERVICE_MAP,
+      issueMap: SBA_NODE_ISSUE_MAP,
+      requestSceneMap: SBA_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: SBA_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  cmc: {
+    key: 'cmc',
+    name: '云迁移中心',
+    match: CMC_PRODUCT_MATCH,
+    journeys: CMC_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: CMC_NODE_SERVICE_MAP,
+      issueMap: CMC_NODE_ISSUE_MAP,
+      requestSceneMap: CMC_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: CMC_PROBLEM_TYPE_PATH_MAP,
+    },
+  },
+  aipatrol: {
+    key: 'aipatrol',
+    name: 'AI巡考服务',
+    match: AIPATROL_PRODUCT_MATCH,
+    journeys: AIPATROL_USER_JOURNEY,
+    themes: null,
+    nodeMaps: {
+      serviceMap: AIPATROL_NODE_SERVICE_MAP,
+      issueMap: AIPATROL_NODE_ISSUE_MAP,
+      requestSceneMap: AIPATROL_REQUEST_SCENE_PATH_MAP,
+      problemTypePathMap: AIPATROL_PROBLEM_TYPE_PATH_MAP,
     },
   },
   generic: {
@@ -315,6 +504,12 @@ const BUILTIN_NODE_MAPS = {
     issueMap: VPC_NODE_ISSUE_MAP,
     requestSceneMap: VPC_REQUEST_SCENE_PATH_MAP,
     problemTypePathMap: VPC_PROBLEM_TYPE_PATH_MAP,
+  },
+  vpc_endpoint: {
+    serviceMap: VPC_ENDPOINT_NODE_SERVICE_MAP,
+    issueMap: VPC_ENDPOINT_NODE_ISSUE_MAP,
+    requestSceneMap: VPC_ENDPOINT_REQUEST_SCENE_PATH_MAP,
+    problemTypePathMap: VPC_ENDPOINT_PROBLEM_TYPE_PATH_MAP,
   },
   monitor: {
     serviceMap: MONITOR_NODE_SERVICE_MAP,
@@ -493,11 +688,15 @@ export function resolveTaxonomyKey(productName, productKey) {
     return canonical
   }
   const p = (productName || '').toLowerCase()
-  for (const [key, tax] of Object.entries(cache.products)) {
-    if (key === 'generic') continue
-    if (tax.match?.some((m) => p.includes(String(m).toLowerCase()))) return key
-  }
-  return 'generic'
+  // 最长匹配优先：按 match 词长度降序遍历，防止 'vpc' 贪婪匹配 'VPC终端节点'
+  const candidates = Object.entries(cache.products)
+    .filter(([key]) => key !== 'generic')
+    .flatMap(([key, tax]) =>
+      (tax.match || []).map((m) => ({ key, m: String(m).toLowerCase() })),
+    )
+    .filter(({ m }) => p.includes(m))
+    .sort((a, b) => b.m.length - a.m.length)
+  return candidates.length ? candidates[0].key : 'generic'
 }
 
 /**
@@ -747,15 +946,8 @@ export function applyManagedTaxonomySnapshot(snapshot) {
       nodeMaps:
         data.nodeMaps ??
         prev?.nodeMaps ??
-        (key === 'dc'
-          ? { serviceMap: DC_NODE_SERVICE_MAP, issueMap: DC_NODE_ISSUE_MAP }
-          : key === 'eip'
-            ? { serviceMap: EIP_NODE_SERVICE_MAP, issueMap: EIP_NODE_ISSUE_MAP }
-            : key === 'slb'
-              ? { serviceMap: SLB_NODE_SERVICE_MAP, issueMap: SLB_NODE_ISSUE_MAP }
-              : key === 'vpc'
-                ? { serviceMap: VPC_NODE_SERVICE_MAP, issueMap: VPC_NODE_ISSUE_MAP }
-                : null),
+        BUILTIN_NODE_MAPS[key] ??
+        null,
     }
   }
   if (snapshot.sharedProblemTypes?.length) {
