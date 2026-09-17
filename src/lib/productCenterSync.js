@@ -76,14 +76,34 @@ export function markJourneyConfigured(snapshot, productKey) {
 
 import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { migrateBuiltinJourneysInSnapshot } from './tagLibrary/migrateBuiltinJourneys.js'
+import { sanitizeProductKey } from './productCatalog/keyHygiene.js'
 
-const PROTECTED_TAXONOMY_KEYS = new Set(['generic', 'eip', 'dc', 'slb', 'vpc'])
+const PROTECTED_TAXONOMY_KEYS = new Set([
+  'generic',
+  'eip',
+  'dc',
+  'slb',
+  'vpc',
+  'vpc_endpoint',
+])
 
 /** 内置旅程产品：目录同步时勿清空环节（由 migrateBuiltinJourneys 注入） */
-const BUILTIN_JOURNEY_TAXONOMY_KEYS = new Set(['eip', 'dc', 'slb', 'vpc'])
+const BUILTIN_JOURNEY_TAXONOMY_KEYS = new Set([
+  'eip',
+  'dc',
+  'slb',
+  'vpc',
+  'vpc_endpoint',
+])
 
 /**
- * 根据产品规格表同步旅程模板：自动创建、更新名称/匹配词、删除已无产品引用的模板
+ * 根据产品规格表同步旅程模板：自动创建、更新名称/匹配词、删除已无产品引用的模板。
+ *
+ * **显示名保护**：产品目录到旅程模板是多对一关系（例如 `shared_bw`（共享带宽）与
+ * `eip`（弹性公网IP）都归到 `eip` 模板）。模板的显示名只能由「自身 key 就等于模板 key」
+ * 的那条目录记录（owner）决定；兄弟记录（借道 taxonomyKey 归并过来的产品）只贡献
+ * 匹配词，绝不覆盖模板名 —— 否则会出现「弹性公网IP 的模板名被写成共享带宽」这类张冠李戴。
+ *
  * @param {TaxonomyManagedSnapshot} snapshot
  * @param {CatalogProduct[]} catalogProducts
  */
@@ -92,13 +112,19 @@ export function syncCatalogProductsToTaxonomy(snapshot, catalogProducts) {
   const genericJourneys = next.products.generic?.journeys
 
   for (const p of catalogProducts) {
-    const tKey = canonicalTaxonomyKey((p.taxonomyKey || p.key || '').trim())
+    const ownKey = sanitizeProductKey(p.key)
+    const tKey = canonicalTaxonomyKey(
+      sanitizeProductKey(p.taxonomyKey || p.key || '') || ownKey,
+    )
     if (!tKey) continue
 
-    const match = [p.name, p.key, tKey].filter(Boolean)
+    const match = [p.name, ownKey, tKey].filter(Boolean)
     if (next.products[tKey]) {
       next.products[tKey] = normalizeProvisionedTemplate(next.products[tKey], genericJourneys)
-      next.products[tKey].name = p.name?.trim() || tKey
+      // 仅 owner（产品自身 key 等于模板 key）可设显示名；兄弟记录只贡献匹配词
+      if (ownKey === tKey && p.name?.trim()) {
+        next.products[tKey].name = p.name.trim()
+      }
       next.products[tKey].match = match.length ? [...new Set(match)] : [tKey]
       if (
         !next.products[tKey].journeyConfigured &&
@@ -111,15 +137,17 @@ export function syncCatalogProductsToTaxonomy(snapshot, catalogProducts) {
 
     ensureTaxonomyProduct(next, {
       key: tKey,
-      name: p.name || tKey,
+      name: ownKey === tKey ? (p.name || tKey) : tKey,
       match,
     })
   }
 
   const referenced = new Set(
     catalogProducts.flatMap((p) => {
-      const catalogKey = (p.key || '').trim()
-      const taxKey = canonicalTaxonomyKey((p.taxonomyKey || p.key || '').trim())
+      const catalogKey = sanitizeProductKey(p.key)
+      const taxKey = canonicalTaxonomyKey(
+        sanitizeProductKey(p.taxonomyKey || p.key || '') || catalogKey,
+      )
       return [catalogKey, taxKey].filter(Boolean)
     }),
   )

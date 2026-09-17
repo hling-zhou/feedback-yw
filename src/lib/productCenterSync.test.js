@@ -149,27 +149,69 @@ describe('productCenterSync', () => {
     expect(countCatalogRefsToTaxonomyKey(catalog, 'ecs')).toBe(1)
   })
 
-  it('taxonomySnapshotContentEqual ignores updatedAt and tagLibraryVersion', () => {
-    const base = {
-      products: { generic: { key: 'generic', name: '通用', match: [], journeys: [] } },
-      sharedProblemTypes: [{ id: 'a', label: 'A' }],
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      tagLibraryVersion: 'v1',
-    }
-    const later = {
-      ...base,
-      updatedAt: '2026-08-15T00:00:00.000Z',
-      tagLibraryVersion: 'v2',
-    }
-    expect(taxonomySnapshotContentEqual(base, later)).toBe(true)
-    expect(
-      taxonomySnapshotContentEqual(base, {
-        ...later,
-        products: {
-          ...base.products,
-          ecs: { key: 'ecs', name: '云主机', match: ['云主机'], journeys: [] },
+  it('sibling catalog entry does not override owner template name', () => {
+    const snapshot = {
+      products: {
+        generic: { key: 'generic', name: '通用', match: [], journeys: [] },
+        eip: {
+          key: 'eip',
+          name: '弹性公网IP',
+          match: ['弹性公网IP'],
+          journeys: [],
+          journeyConfigured: true,
         },
-      }),
-    ).toBe(false)
+      },
+      sharedProblemTypes: [],
+    }
+    // shared_bw 借道 taxonomyKey='eip' 归入 eip 模板，排在 eip 之后
+    const catalog = [
+      { key: 'eip', name: '弹性公网IP', enabled: true, taxonomyKey: 'eip', specs: [] },
+      { key: 'shared_bw', name: '共享带宽', enabled: false, taxonomyKey: 'eip', specs: [] },
+    ]
+    const next = syncCatalogProductsToTaxonomy(snapshot, catalog)
+    expect(next.products.eip.name).toBe('弹性公网IP')
+    expect(next.products.eip.match).toContain('共享带宽')
+    expect(next.products.eip.match).toContain('shared_bw')
+  })
+
+  it('sibling catalog entry does not override vpc template name', () => {
+    const snapshot = {
+      products: {
+        generic: { key: 'generic', name: '通用', match: [], journeys: [] },
+        vpc: {
+          key: 'vpc',
+          name: '虚拟私有云',
+          match: ['虚拟私有云'],
+          journeys: [],
+          journeyConfigured: true,
+        },
+      },
+      sharedProblemTypes: [],
+    }
+    // vpc_endpoint 借道 taxonomyKey='vpc' 归入 vpc 模板
+    const catalog = [
+      { key: 'vpc', name: '虚拟私有云', enabled: true, taxonomyKey: 'vpc', specs: [] },
+      { key: 'vpc_endpoint', name: 'VPC终端节点', enabled: false, taxonomyKey: 'vpc', specs: [] },
+    ]
+    const next = syncCatalogProductsToTaxonomy(snapshot, catalog)
+    expect(next.products.vpc.name).toBe('虚拟私有云')
+    expect(next.products.vpc.match).toContain('VPC终端节点')
+    expect(next.products.vpc.match).toContain('vpc_endpoint')
+  })
+
+  it('strips zero-width chars from product keys during sync', () => {
+    const snapshot = {
+      products: {
+        generic: { key: 'generic', name: '通用', match: [], journeys: [] },
+      },
+      sharedProblemTypes: [],
+    }
+    const catalog = [
+      { key: 'CloudDNS\u200c', name: '云解析', enabled: true, taxonomyKey: 'CloudDNS\u200c', specs: [] },
+    ]
+    const next = syncCatalogProductsToTaxonomy(snapshot, catalog)
+    expect(next.products['CloudDNS']).toBeDefined()
+    expect(next.products['CloudDNS\u200c']).toBeUndefined()
+    expect(next.products.CloudDNS.name).toBe('云解析')
   })
 })

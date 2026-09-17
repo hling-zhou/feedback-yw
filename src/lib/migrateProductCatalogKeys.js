@@ -1,6 +1,22 @@
 import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
+import { stripInvisibleChars } from './productCatalog/keyHygiene.js'
 
 /** @typedef {import('./productCatalogLoader.js').CatalogProduct} CatalogProduct */
+
+/**
+ * 已知误配纠偏：目录 key → 该记录必须使用的 taxonomyKey。
+ *
+ * `vpc_endpoint`（VPC终端节点）历史上借道了 `vpc` 模板，导致每轮
+ * `syncCatalogProductsToTaxonomy` 都把兄弟项三元组 `['VPC终端节点','vpc_endpoint','vpc']`
+ * 写进 `vpc.match`，而 `resolveTaxonomyKey` 最长匹配等长时取先定义者，
+ * 「VPC终端节点」被判成 `vpc` —— 终端节点工单被归到「虚拟私有云」。
+ *
+ * 为什么不改种子：`mergeCatalogProduct` 是「已有值优先」，改 `postUseRatingProducts.js`
+ * 的种子覆盖不到库中已存在的记录，必须在此纠偏。纠正后条件不再成立，天然幂等。
+ */
+const REQUIRED_TAXONOMY_KEYS = {
+  vpc_endpoint: 'vpc_endpoint',
+}
 
 /**
  * @param {CatalogProduct} a
@@ -49,8 +65,12 @@ export function migrateProductCatalogKeys(products) {
     if (!raw?.key) continue
     const origKey = String(raw.key).trim()
     const origTax = String(raw.taxonomyKey || origKey).trim()
-    const key = canonicalTaxonomyKey(origKey)
-    const taxonomyKey = canonicalTaxonomyKey(origTax || origKey)
+    // 迁移路径剥离零宽字符（历史录入的 CloudDNS\u200C 等），录入路径由 validateProductKey 报错拦截
+    const key = canonicalTaxonomyKey(stripInvisibleChars(origKey))
+    const requiredTax = REQUIRED_TAXONOMY_KEYS[key]
+    const taxonomyKey = canonicalTaxonomyKey(
+      requiredTax || stripInvisibleChars(origTax || origKey),
+    )
     if (key !== origKey || taxonomyKey !== origTax) changed = true
 
     const normalized = {
