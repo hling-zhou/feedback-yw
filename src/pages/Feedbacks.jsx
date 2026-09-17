@@ -1140,6 +1140,7 @@ export default function Feedbacks() {
         </div>
         )}
       </div>
+      </div>
 
       <div className="page-section-sm">
         {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
