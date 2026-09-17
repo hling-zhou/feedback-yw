@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
@@ -163,6 +163,18 @@ export default function Feedbacks() {
   const [customerVisitLoading, setCustomerVisitLoading] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const skipUrlSyncRef = useRef(false)
+  const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const chrome = stickyChromeRef.current
+    if (!chrome) return undefined
+    const syncOffset = () => setStickyChromeHeight(chrome.offsetHeight)
+    syncOffset()
+    const observer = new ResizeObserver(syncOffset)
+    observer.observe(chrome)
+    return () => observer.disconnect()
+  }, [])
 
   const feedbackLane = useMemo(() => resolveFeedbackLane(searchParams), [searchParams])
   const isPostUseLane = feedbackLane === FEEDBACK_LANE_POST_USE
@@ -949,8 +961,19 @@ export default function Feedbacks() {
         </div>
       )}
 
-      <div className="page-card">
-        <div className="flex flex-wrap items-start gap-2 pb-3 mb-3">
+      <div
+        ref={stickyChromeRef}
+        className={`page-sticky-chrome ${
+          needsTicketLlmCount > 0 ||
+          needsJourneyLlmCount > 0 ||
+          missingTags > 0 ||
+          filters.ticketIds.length > 0 ||
+          ticketIdSetKey
+            ? 'page-section-sm'
+            : 'page-section'
+        }`}
+      >
+        <div className="flex flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -1116,9 +1139,9 @@ export default function Feedbacks() {
         />
         </div>
         )}
-        </div>
+      </div>
 
-      <div className="mt-3">
+      <div className="page-section-sm">
         {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
           <div className="flex justify-center py-16">
             <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : periodsLoading ? '加载数据周期…' : '加载反馈数据…'} />
@@ -1134,6 +1157,7 @@ export default function Feedbacks() {
             doneRecordIds={doneRecordIds}
             dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
             hiddenColumns={hiddenColumns}
+            stickyOffset={stickyChromeHeight}
           />
         ) : (
           <CardGrid
@@ -1143,7 +1167,6 @@ export default function Feedbacks() {
             postUseMode={isPostUseLane}
           />
         )}
-      </div>
       </div>
 
       {!isCustomerVisitLane ? (

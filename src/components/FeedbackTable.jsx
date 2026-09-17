@@ -11,7 +11,6 @@ import {
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
-import { extractTicketActualDate } from '../domain/ticketActualDate.js'
 import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
 
 /**
@@ -139,18 +138,9 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
       width: 180,
       fixed: 'left',
       render: (_, fb) => {
-        const ticketActualDate = extractTicketActualDate(fb.ticketId)
         return (
           <div>
             <Typography.Text strong>{fb.ticketId || '-'}</Typography.Text>
-            {ticketActualDate ? (
-              <Typography.Text type="secondary" className="block text-xs">
-                工单日期：{ticketActualDate}
-              </Typography.Text>
-            ) : null}
-            <Typography.Text type="secondary" className="block text-xs">
-              {fb.createdAt || '-'}
-            </Typography.Text>
             {fb.product && (
               <Typography.Text type="secondary" className="block text-xs">
                 {fb.product}
@@ -159,9 +149,6 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
                 )}
               </Typography.Text>
             )}
-            <Typography.Text type="secondary" className="block text-xs">
-              数据月份：{fb.importMonth || '未知月份'}
-            </Typography.Text>
           </div>
         )
       },
@@ -312,6 +299,8 @@ export default function FeedbackTable({
   dataSource = '',
   /** 需要隐藏的列 dataIndex 集合（默认不展示的列）；如 requestScene/problemType/journeyL1/resourcePool */
   hiddenColumns,
+  /** 表头吸顶偏移量（来自外层 sticky chrome 高度）；不传则不吸顶 */
+  stickyOffset = 0,
 }) {
   if (items.length === 0) {
     return (
@@ -335,6 +324,7 @@ export default function FeedbackTable({
     : buildTicketColumns(reviewEnabled, doneRecordIds)
   const columns = filterVisibleColumns(allColumns, hiddenColumns)
   const scrollX = columns.reduce((sum, col) => sum + (col.width || 140), 0)
+  const stickyProps = stickyOffset > 0 ? { sticky: { offsetHeader: stickyOffset } } : {}
 
   return (
     <Table
@@ -342,6 +332,7 @@ export default function FeedbackTable({
       columns={columns}
       dataSource={items}
       scroll={{ x: scrollX }}
+      {...stickyProps}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),
