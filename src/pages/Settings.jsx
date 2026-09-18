@@ -634,13 +634,16 @@ export default function Settings() {
         onChange={handleTabChange}
       />
 
+      {/* 宽度策略：默认撑满，仅窄表单类 tab 收窄。
+          此处刻意用「窄名单」而非「宽名单」——宽名单每新增一个含表格的 tab 都要记得登记，
+          漏配就会把表格压进 672px 窄容器（列被挤成竖排单字）。audit / pipeline 各踩过一次。 */}
       <div
         className={`mt-4 ${
-          activeTab === 'bottles' || activeTab === 'requirement_sync' || activeTab === 'knowledge_base' || activeTab === 'curated_taxonomy'
-            ? ''
+          activeTab === 'llm' || activeTab === 'analysis' || activeTab === 'data'
+            ? 'max-w-2xl'
             : activeTab === 'metrics'
               ? 'max-w-4xl'
-              : 'max-w-2xl'
+              : ''
         }`}
       >
         <SettingsTabIntro tab={activeTab} />
