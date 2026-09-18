@@ -2215,7 +2215,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         }}
                       />
                       <Select
-                        className="min-w-[180px] max-w-[280px] shrink-0"
+                        className="min-w-[200px] flex-1"
                         mode="multiple"
                         placeholder="负责人"
                         showSearch
