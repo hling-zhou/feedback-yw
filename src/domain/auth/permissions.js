@@ -74,7 +74,7 @@ export const ROLE_PERMISSIONS = {
 export const ROLE_HIDDEN_ROUTES = {
   admin: [],
   editor: [],
-  partial_editor: ['/import', '/users'],
+  partial_editor: ['/users'],
   viewer: ['/import', '/users'],
 }
 

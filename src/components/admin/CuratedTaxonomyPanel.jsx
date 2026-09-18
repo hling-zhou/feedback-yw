@@ -19,7 +19,7 @@ function formatDateTime(value) {
  * 行动建议分类法管理面板。
  * 列出各产品的 curated taxonomy JSON，支持查看 / 编辑 / 保存。
  */
-export default function CuratedTaxonomyPanel() {
+export default function CuratedTaxonomyPanel({ canEdit }) {
   const message = useAppMessage()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
@@ -178,7 +178,7 @@ export default function CuratedTaxonomyPanel() {
           <Button
             type="link"
             icon={<EditOutlined />}
-            disabled={!r.exists}
+            disabled={!canEdit || !r.exists}
             onClick={() => handleEdit(r.product)}
           >
             编辑
@@ -257,7 +257,7 @@ export default function CuratedTaxonomyPanel() {
                 type="primary"
                 icon={<SaveOutlined />}
                 loading={saving}
-                disabled={Boolean(jsonError) || !isDirty}
+                disabled={Boolean(jsonError) || !isDirty || !canEdit}
                 onClick={() => void handleSave()}
               >
                 保存
@@ -271,6 +271,7 @@ export default function CuratedTaxonomyPanel() {
             value={editContent}
             onChange={handleContentChange}
             autoSize={{ minRows: 20, maxRows: 35 }}
+            disabled={!canEdit}
             className="font-mono text-xs"
             spellCheck={false}
             style={{ fontFamily: 'monospace' }}

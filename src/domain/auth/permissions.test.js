@@ -72,7 +72,7 @@ describe('auth permissions', () => {
   })
 
   it('partial_editor hidden routes', () => {
-    expect(canAccessRoute('partial_editor', '/import')).toBe(false)
+    expect(canAccessRoute('partial_editor', '/import')).toBe(true)
     expect(canAccessRoute('partial_editor', '/users')).toBe(false)
     expect(canAccessRoute('partial_editor', '/feedbacks')).toBe(true)
     expect(canAccessRoute('partial_editor', '/tags')).toBe(true)

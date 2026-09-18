@@ -23,11 +23,18 @@ describe('settingsTabs', () => {
     const editor = getVisibleSettingsTabs((p) =>
       ['editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(p),
     )
-    // editor 不再有大模型 Tab（manageLlmConfig 仅 admin）
-    expect(editor).toEqual(['metrics', 'data', 'audit', 'bottles'])
+    // editor 现在也能看到 llm/analysis/requirement_sync/pipeline/curated_taxonomy（只读）
+    expect(editor).toEqual([
+      'llm', 'analysis', 'metrics', 'data', 'audit', 'bottles',
+      'requirement_sync', 'pipeline', 'curated_taxonomy',
+    ])
 
     const viewer = getVisibleSettingsTabs((p) => ['export', 'viewAudit', 'view'].includes(p))
-    expect(viewer).toEqual(['data', 'audit', 'bottles'])
+    // viewer 同样能看到只读 Tab
+    expect(viewer).toEqual([
+      'llm', 'analysis', 'data', 'audit', 'bottles',
+      'requirement_sync', 'pipeline', 'curated_taxonomy',
+    ])
   })
 
   it('resolveSettingsTab falls back to first visible tab', () => {

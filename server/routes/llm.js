@@ -24,9 +24,10 @@ export function registerLlmRoutes(app) {
   })
 
   /**
-   * 团队大模型配置（仅管理员）：返回脱敏后的 apiKey，用于设置页表单回显。
+   * 团队大模型配置：返回脱敏后的 apiKey，用于设置页表单回显。
+   * 所有人可读（含 apiKeyMasked 掩码），写入仅管理员。
    */
-  app.get('/api/llm/config', { preHandler: requirePermission('manageLlmConfig') }, async () => {
+  app.get('/api/llm/config', { preHandler: requirePermission('view') }, async () => {
     const status = getLlmConfigStatus()
     return {
       source: status.source,

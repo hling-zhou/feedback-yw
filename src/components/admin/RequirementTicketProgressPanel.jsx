@@ -40,7 +40,7 @@ function createEmptyMappingRow() {
     sortOrder: 0 }
 }
 
-export default function RequirementTicketProgressPanel() {
+export default function RequirementTicketProgressPanel({ canEdit }) {
   const message = useAppMessage()
   const [progressItems, setProgressItems] = useState(/** @type {RequirementTicketProgressRow[]} */ ([]))
   const [progressTotal, setProgressTotal] = useState(0)
@@ -125,6 +125,7 @@ export default function RequirementTicketProgressPanel() {
           <Input
             value={value}
             placeholder="如：开发中"
+            disabled={!canEdit}
             onChange={(e) =>
               setMappingRows((prev) =>
                 prev.map((row) =>
@@ -143,6 +144,7 @@ export default function RequirementTicketProgressPanel() {
             className="w-full"
             value={value}
             options={STATUS_OPTIONS}
+            disabled={!canEdit}
             onChange={(next) =>
               setMappingRows((prev) =>
                 prev.map((row) =>
@@ -160,6 +162,7 @@ export default function RequirementTicketProgressPanel() {
           <Button
             type="link"
             danger
+            disabled={!canEdit}
             onClick={() => setMappingRows((prev) => prev.filter((row) => row.key !== record.key))}
           >
             删除
@@ -267,13 +270,14 @@ export default function RequirementTicketProgressPanel() {
 
       <div className="page-card"><div className="page-card-header"><span className="page-card-title">状态映射配置</span><div>
           <Space>
-            <Button icon={<PlusOutlined />} onClick={() => setMappingRows((prev) => [...prev, createEmptyMappingRow()])}>
+            <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setMappingRows((prev) => [...prev, createEmptyMappingRow()])}>
               新增映射
             </Button>
             <Button
               type="primary"
               icon={<SaveOutlined />}
               loading={mappingSaving}
+              disabled={!canEdit}
               onClick={() => void saveMappings()}
             >
               保存映射
@@ -330,7 +334,7 @@ export default function RequirementTicketProgressPanel() {
               下载模板
             </Button>
             <Upload accept=".xlsx,.xls" showUploadList={false} beforeUpload={handleImportFile}>
-              <Button type="primary" icon={<UploadOutlined />} loading={importing}>
+              <Button type="primary" icon={<UploadOutlined />} loading={importing} disabled={!canEdit}>
                 导入 Excel
               </Button>
             </Upload>

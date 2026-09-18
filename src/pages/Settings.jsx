@@ -136,7 +136,7 @@ function pickAnalysisDraft(settings) {
  * @param {Object} props
  * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onServerStatusChange
  */
-function LlmSettingsPanel({ onServerStatusChange }) {
+function LlmSettingsPanel({ onServerStatusChange, canEdit }) {
   const message = useAppMessage()
   /** @type {import('react').Dispatch<any>} */
   // @ts-ignore — useState 联合类型推断过宽，运行时为对象
@@ -249,6 +249,7 @@ function LlmSettingsPanel({ onServerStatusChange }) {
           value={draft.apiKey}
           onChange={(e) => setDraft((prev) => ({ ...prev, apiKey: e.target.value }))}
           autoComplete="off"
+          disabled={!canEdit}
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -258,6 +259,7 @@ function LlmSettingsPanel({ onServerStatusChange }) {
             placeholder="https://api.siliconflow.cn/v1"
             value={draft.llmBaseUrl}
             onChange={(e) => setDraft((prev) => ({ ...prev, llmBaseUrl: e.target.value }))}
+            disabled={!canEdit}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             留空则回退环境变量 LLM_BASE_URL
@@ -269,13 +271,14 @@ function LlmSettingsPanel({ onServerStatusChange }) {
             placeholder="deepseek-ai/DeepSeek-V3.2"
             value={draft.llmModel}
             onChange={(e) => setDraft((prev) => ({ ...prev, llmModel: e.target.value }))}
+            disabled={!canEdit}
           />
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             留空则回退环境变量 LLM_MODEL
           </Typography.Text>
         </div>
       </div>
-      <Button type="primary" loading={saving} onClick={handleSave}>
+      <Button type="primary" loading={saving} onClick={handleSave} disabled={!canEdit}>
         保存大模型配置
       </Button>
     </div>
@@ -301,7 +304,7 @@ function isAnalysisDraftDirty(draft, settings) {
  * @param {import('../lib/storage.js').AppSettings} props.settings
  * @param {(patch: Partial<import('../lib/storage.js').AppSettings>) => void} props.onSave
  */
-function AnalysisSettingsPanel({ settings, onSave }) {
+function AnalysisSettingsPanel({ settings, onSave, canEdit }) {
   const message = useAppMessage()
   const [draft, setDraft] = useState(() => pickAnalysisDraft(settings))
   const [saving, setSaving] = useState(false)
@@ -347,6 +350,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
             onChange={(e) =>
               setDraft((prev) => ({ ...prev, retagDimensionsAfterTicketLlm: e.target.checked }))
             }
+            disabled={!canEdit}
           >
             工单 LLM 成功后，按 LLM 客户请求/痛点重打请求场景与问题类型
           </Checkbox>
@@ -362,6 +366,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
             onChange={(e) =>
               setDraft((prev) => ({ ...prev, useRequestNodeForJourney: e.target.checked }))
             }
+            disabled={!canEdit}
           >
             正文无法识别时，用「请求节点」作兜底
           </Checkbox>
@@ -382,6 +387,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
             className="w-full"
             value={draft.themeMatchMode}
             onChange={(e) => setDraft((prev) => ({ ...prev, themeMatchMode: e.target.value }))}
+            disabled={!canEdit}
           >
             <Space orientation="vertical" className="w-full" size={12}>
               {JOURNEY_MATCH_OPTIONS.map((opt) => (
@@ -411,6 +417,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
             className="w-full"
             value={draft.optimizationMode}
             onChange={(e) => setDraft((prev) => ({ ...prev, optimizationMode: e.target.value }))}
+            disabled={!canEdit}
           >
             <Space orientation="vertical" className="w-full" size={12}>
               <Radio value="llm" className="w-full rounded-lg border border-ink-200 p-3">
@@ -430,7 +437,7 @@ function AnalysisSettingsPanel({ settings, onSave }) {
         </div>
       </div>
 
-      {dirty ? (
+      {canEdit && dirty ? (
         <div className="page-sticky-footer">
           <div className="flex max-w-2xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4 lg:px-5">
             <Typography.Text type="secondary" className="text-sm">
@@ -651,12 +658,12 @@ export default function Settings() {
         {activeTab === 'llm' && (
           <div className="page-card">
             <div className="page-card-header"><span className="page-card-title">大模型配置（团队）</span></div>
-            <LlmSettingsPanel onServerStatusChange={setPersonalSettings} />
+            <LlmSettingsPanel onServerStatusChange={setPersonalSettings} canEdit={can('manageLlmConfig')} />
           </div>
         )}
 
-        {activeTab === 'analysis' && canManageTeamSettings && (
-          <AnalysisSettingsPanel settings={settings} onSave={setTeamSettings} />
+        {activeTab === 'analysis' && (
+          <AnalysisSettingsPanel settings={settings} onSave={setTeamSettings} canEdit={can('manageTeamSettings')} />
         )}
 
         {activeTab === 'metrics' && can('editOrderVolumes') && (
@@ -863,18 +870,18 @@ export default function Settings() {
 
         {activeTab === 'bottles' && can('view') && <MessageBottlePanel />}
 
-        {activeTab === 'requirement_sync' && can('manageRequirementSync') && (
+        {activeTab === 'requirement_sync' && (
           <div className="space-y-6">
-            <ApiKeyPanel />
-            <RequirementTicketProgressPanel />
+            <ApiKeyPanel canEdit={can('manageRequirementSync')} />
+            <RequirementTicketProgressPanel canEdit={can('manageRequirementSync')} />
           </div>
         )}
 
         {activeTab === 'knowledge_base' && can('manageKnowledgeBase') && <KnowledgeBasePanel />}
 
-        {activeTab === 'pipeline' && can('manageTeamSettings') && <PipelineCopilotPanel />}
+        {activeTab === 'pipeline' && <PipelineCopilotPanel canEdit={can('manageTeamSettings')} />}
 
-        {activeTab === 'curated_taxonomy' && can('manageTeamSettings') && <CuratedTaxonomyPanel />}
+        {activeTab === 'curated_taxonomy' && <CuratedTaxonomyPanel canEdit={can('manageTeamSettings')} />}
       </div>
     </div>
   )

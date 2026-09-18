@@ -11,6 +11,7 @@ import {
   Typography } from 'antd'
 import { CopyOutlined, KeyOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
+import { useAuth } from '../../context/AuthContext.jsx'
 import { API_KEY_SCOPE_LABELS, API_KEY_SCOPES } from '../../domain/apiKey.js'
 import { createApiKey, listApiKeys, revokeApiKey } from '../../lib/apiKeyClient.js'
 
@@ -26,7 +27,7 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
 }
 
-export default function ApiKeyPanel() {
+export default function ApiKeyPanel({ canEdit }) {
   const message = useAppMessage()
   const [items, setItems] = useState(/** @type {PublicApiKey[]} */ ([]))
   const [loading, setLoading] = useState(false)
@@ -96,6 +97,7 @@ export default function ApiKeyPanel() {
             <Button
               type="link"
               danger
+              disabled={!canEdit}
               onClick={() => {
                 Modal.confirm({
                   title: '吊销 API Key',
@@ -169,6 +171,7 @@ export default function ApiKeyPanel() {
           <Button
             type="primary"
             icon={<PlusOutlined />}
+            disabled={!canEdit}
             onClick={() => {
               resetCreateForm()
               setCreateOpen(true)

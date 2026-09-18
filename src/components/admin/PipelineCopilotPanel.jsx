@@ -62,7 +62,7 @@ function SummaryDisplay({ summary }) {
   )
 }
 
-export default function PipelineCopilotPanel() {
+export default function PipelineCopilotPanel({ canEdit }) {
   const message = useAppMessage()
   const [job, setJob] = useState(/** @type {any} */ (null))
   const [loading, setLoading] = useState(false)
@@ -117,7 +117,7 @@ export default function PipelineCopilotPanel() {
         </Space>
       </span><div>
         <Space>
-          <Radio.Group value={batchMode} onChange={(e) => setBatchMode(e.target.value)} disabled={isRunning}>
+          <Radio.Group value={batchMode} onChange={(e) => setBatchMode(e.target.value)} disabled={isRunning || !canEdit}>
             <Radio.Button value="*">全量</Radio.Button>
             <Radio.Button value="">本期</Radio.Button>
           </Radio.Group>
@@ -125,6 +125,7 @@ export default function PipelineCopilotPanel() {
             type="primary"
             icon={<PlayCircleOutlined />}
             loading={loading || isRunning}
+            disabled={!canEdit}
             onClick={handleRun}
           >
             运行流水线

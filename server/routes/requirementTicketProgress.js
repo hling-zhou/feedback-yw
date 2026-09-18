@@ -16,7 +16,7 @@ export function registerRequirementTicketProgressRoutes(app) {
   app.get(
     '/api/requirement-ticket-progress',
     {
-      preHandler: [requirePermission('view'), requireAdmin()],
+      preHandler: requirePermission('view'),
       schema: { querystring: requirementTicketProgressListQuerySchema },
     },
     async (request) => {
@@ -66,7 +66,7 @@ export function registerRequirementTicketProgressRoutes(app) {
   app.get(
     '/api/requirement-status-mapping',
     {
-      preHandler: [requirePermission('view'), requireAdmin()],
+      preHandler: requirePermission('view'),
     },
     async () => {
       return { items: requirementTicketProgressRepository.listStatusMappings() }

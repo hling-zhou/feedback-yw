@@ -10,7 +10,7 @@ export function registerApiKeyRoutes(app) {
   app.get(
     '/api/api-keys',
     {
-      preHandler: requirePermission('manageRequirementSync'),
+      preHandler: requirePermission('view'),
     },
     async () => {
       return { items: apiKeyRepository.listApiKeys() }
