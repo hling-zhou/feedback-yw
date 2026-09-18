@@ -13,7 +13,13 @@ import {
   Typography,
   message,
 } from 'antd'
-import { PlusOutlined, ReloadOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
+import {
+  DownloadOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  UploadOutlined,
+} from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
 import { apiFetch } from '../lib/apiClient.js'
@@ -21,8 +27,19 @@ import { ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { parseUserImportFile } from '../lib/userImport.js'
 import { downloadUserImportTemplate } from '../lib/userImportTemplate.js'
+import { downloadUserExport } from '../lib/userExport.js'
+import { POSITIONS, TEAMS } from '../domain/userProfile.js'
 
 const ROLE_OPTIONS = ROLES.map((r) => ({ label: ROLE_LABELS[r], value: r }))
+const POSITION_OPTIONS = POSITIONS.map((p) => ({ label: p, value: p }))
+const TEAM_OPTIONS = TEAMS.map((t) => ({ label: t, value: t }))
+
+/** 存量账号在岗位字段上线前没有值，筛选时用一个哨兵值代表「未设置」 */
+const POSITION_NONE = '__none__'
+const POSITION_FILTER_OPTIONS = [
+  { label: '未设置', value: POSITION_NONE },
+  ...POSITION_OPTIONS,
+]
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -38,12 +55,139 @@ export default function Users() {
     /** @type {ReturnType<typeof parseUserImportFile> | null} */ (null),
   )
   const [usernameQuery, setUsernameQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState(/** @type {string | undefined} */ (undefined))
+  const [positionFilter, setPositionFilter] = useState(/** @type {string | undefined} */ (undefined))
+  const [teamFilter, setTeamFilter] = useState(/** @type {string | undefined} */ (undefined))
+  const [selectedKeys, setSelectedKeys] = useState(/** @type {string[]} */ ([]))
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetForm] = Form.useForm()
+  const [batchSetOpen, setBatchSetOpen] = useState(false)
+  const [batchSetForm] = Form.useForm()
+  const [defaultPassword, setDefaultPassword] = useState('')
+
+  // 首次打开用户弹窗时拉取系统默认密码（仅展示给管理员，用于提示）
+  useEffect(() => {
+    if (defaultPassword) return
+    apiFetch('/api/users/default-password')
+      .then((data) => setDefaultPassword(data?.defaultPassword || ''))
+      .catch(() => {})
+  }, [defaultPassword])
 
   const filteredUsers = useMemo(() => {
     const q = usernameQuery.trim().toLowerCase()
-    if (!q) return users
-    return users.filter((u) => u.username?.toLowerCase().includes(q))
-  }, [users, usernameQuery])
+    return users.filter((u) => {
+      if (roleFilter && u.role !== roleFilter) return false
+      if (positionFilter) {
+        const current = u.position || POSITION_NONE
+        if (current !== positionFilter) return false
+      }
+      if (teamFilter && u.team !== teamFilter) return false
+      if (!q) return true
+      return u.username?.toLowerCase().includes(q)
+    })
+  }, [users, usernameQuery, roleFilter, positionFilter, teamFilter])
+
+  const clearFilters = () => {
+    setUsernameQuery('')
+    setRoleFilter(undefined)
+    setPositionFilter(undefined)
+    setTeamFilter(undefined)
+  }
+
+  const hasFilter =
+    Boolean(usernameQuery.trim()) || Boolean(roleFilter) || Boolean(positionFilter) || Boolean(teamFilter)
+
+  // 班组改为枚举后，库内可能残留迁移未覆盖的历史值；这类值仍要能出现在下拉里，
+  // 否则编辑该用户时下拉会显示空白，且无法改回合法值。筛选下拉同样要能看到它们，
+  // 否则这批存量账号在「按班组筛选」里根本选不出来。
+  const legacyTeams = useMemo(
+    () => [...new Set(users.map((u) => u.team).filter((t) => t && !TEAMS.includes(t)))],
+    [users],
+  )
+  const allTeamOptions = useMemo(
+    () => [...legacyTeams.map((t) => ({ label: `${t}（历史值，请改选）`, value: t })), ...TEAM_OPTIONS],
+    [legacyTeams],
+  )
+  const teamFilterOptions = useMemo(
+    () => [...legacyTeams.map((t) => ({ label: `${t}（历史值）`, value: t })), ...TEAM_OPTIONS],
+    [legacyTeams],
+  )
+
+  const expiredUsers = useMemo(
+    () => filteredUsers.filter((u) => u.passwordExpired),
+    [filteredUsers],
+  )
+
+  const selectedUsernames = useMemo(
+    () => users.filter((u) => selectedKeys.includes(u.id)).map((u) => u.username),
+    [users, selectedKeys],
+  )
+
+  const selectAllExpired = () => {
+    if (!expiredUsers.length) {
+      message.info('当前筛选结果中没有已过期账号')
+      return
+    }
+    setSelectedKeys(expiredUsers.map((u) => u.id))
+  }
+
+  const handleResetPasswords = async () => {
+    const values = await resetForm.validateFields()
+    try {
+      const result = await apiFetch('/api/users/reset-passwords', {
+        method: 'POST',
+        body: JSON.stringify({ ids: selectedKeys, password: values.password }),
+      })
+      const failed = result.errors?.length ?? 0
+      const pendingFirst = (result.reset ?? []).filter((item) => item.mustChangePassword).length
+      const usedDefault = (result.reset ?? []).filter((item) => item.usesDefaultPassword).length
+      message.success(
+        failed
+          ? `已重置 ${result.reset?.length ?? 0} 个账号，${failed} 个失败`
+          : pendingFirst
+            ? `已重置 ${result.reset?.length ?? 0} 个账号；其中 ${pendingFirst} 个从未登录过，仍会按「首次登录」要求改密，其余账号用新密码直接登录`
+            : usedDefault
+              ? `已重置 ${result.reset?.length ?? 0} 个账号为默认密码，这些账号首次登录时会看到默认密码提示`
+              : `已重置 ${result.reset?.length ?? 0} 个账号，这些账号用新密码登录后不强制改密`,
+      )
+      setResetOpen(false)
+      setSelectedKeys([])
+      loadUsers()
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '重置失败')
+    }
+  }
+
+  const handleBatchSetProfile = async () => {
+    const values = await batchSetForm.validateFields()
+    /** @type {{ position?: string; team?: string }} */
+    const patch = {}
+    if (values.position) patch.position = values.position
+    if (values.team) patch.team = values.team
+    if (!patch.position && !patch.team) {
+      message.warning('请至少选择要设置的岗位或班组')
+      return
+    }
+    let ok = 0
+    let fail = 0
+    for (const id of selectedKeys) {
+      try {
+        await apiFetch(`/api/users/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(patch),
+        })
+        ok += 1
+      } catch {
+        fail += 1
+      }
+    }
+    message.success(
+      fail ? `已更新 ${ok} 个账号，${fail} 个失败` : `已更新 ${ok} 个账号的岗位/班组`,
+    )
+    setBatchSetOpen(false)
+    setSelectedKeys([])
+    loadUsers()
+  }
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -64,7 +208,7 @@ export default function Users() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ role: 'viewer', status: 'active' })
+    form.setFieldsValue({ role: 'viewer', status: 'active', position: undefined, team: undefined })
     setModalOpen(true)
   }
 
@@ -72,7 +216,8 @@ export default function Users() {
     setEditing(record)
     form.setFieldsValue({
       username: record.username,
-      team: record.team,
+      position: record.position || undefined,
+      team: record.team || undefined,
       role: record.role,
       status: record.status,
       password: '',
@@ -85,6 +230,7 @@ export default function Users() {
     try {
       if (editing) {
         const body = {
+          position: values.position,
           team: values.team,
           role: values.role,
           status: values.status,
@@ -96,16 +242,23 @@ export default function Users() {
         })
         message.success('用户已更新')
       } else {
+        // 密码留空 → 后端使用系统统一初始密码，并把该账号标记为「仍在使用默认密码」
+        const payload = {
+          username: values.username,
+          position: values.position,
+          team: values.team,
+          role: values.role,
+        }
+        if (values.password?.trim()) payload.password = values.password
         await apiFetch('/api/users', {
           method: 'POST',
-          body: JSON.stringify({
-            username: values.username,
-            password: values.password,
-            team: values.team,
-            role: values.role,
-          }),
+          body: JSON.stringify(payload),
         })
-        message.success('用户已创建')
+        message.success(
+          values.password?.trim()
+            ? '用户已创建'
+            : `用户已创建，初始密码为系统默认密码${defaultPassword ? `（${defaultPassword}）` : ''}`,
+        )
       }
       setModalOpen(false)
       loadUsers()
@@ -173,7 +326,13 @@ export default function Users() {
 
   const columns = [
     { title: '用户名', dataIndex: 'username', width: 140 },
-    { title: '所属班组', dataIndex: 'team', width: 160 },
+    {
+      title: '岗位',
+      dataIndex: 'position',
+      width: 110,
+      render: (position) => (position ? <Tag>{position}</Tag> : <Tag color="default">未设置</Tag>),
+    },
+    { title: '所属班组', dataIndex: 'team', width: 200 },
     {
       title: '角色',
       dataIndex: 'role',
@@ -183,13 +342,22 @@ export default function Users() {
     {
       title: '密码更新',
       key: 'passwordChangedAt',
-      width: 120,
+      width: 130,
       render: (_, record) => {
         const text = record.passwordChangedAt?.slice(0, 10) || '—'
-        return record.passwordExpired ? (
-          <Tag color="red">{text} · 已过期</Tag>
-        ) : (
-          text
+        return (
+          <Space size={4} wrap={false}>
+            {record.passwordExpired ? (
+              <Tag color="red">{text} · 已过期</Tag>
+            ) : (
+              <span>{text}</span>
+            )}
+            {record.mustChangePassword ? (
+              <Tag color="orange" title="该账号创建后从未成功登录，首次登录须先修改密码">
+                待首次改密
+              </Tag>
+            ) : null}
+          </Space>
         )
       },
     },
@@ -236,7 +404,7 @@ export default function Users() {
     <div>
       <PageHeader
         title="用户管理"
-        desc="管理系统登录账号、角色与所属班组"
+        desc="管理系统登录账号、岗位、角色与所属班组"
         action={
           <Space wrap>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -244,6 +412,13 @@ export default function Users() {
             </Button>
             <Button icon={<UploadOutlined />} onClick={() => importInputRef.current?.click()}>
               批量导入
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!users.length}
+              onClick={() => downloadUserExport(users)}
+            >
+              导出
             </Button>
             <Button type="link" className="!px-1" onClick={downloadUserImportTemplate}>
               下载模板
@@ -268,10 +443,62 @@ export default function Users() {
             onChange={(e) => setUsernameQuery(e.target.value)}
             className="max-w-xs"
           />
+          <Select
+            allowClear
+            placeholder="按角色筛选"
+            options={ROLE_OPTIONS}
+            value={roleFilter}
+            onChange={(value) => setRoleFilter(value)}
+            className="w-44"
+          />
+          <Select
+            allowClear
+            placeholder="按岗位筛选"
+            options={POSITION_FILTER_OPTIONS}
+            value={positionFilter}
+            onChange={(value) => setPositionFilter(value)}
+            className="w-36"
+          />
+          <Select
+            allowClear
+            showSearch
+            placeholder="按班组筛选"
+            options={teamFilterOptions}
+            value={teamFilter}
+            onChange={(value) => setTeamFilter(value)}
+            className="w-56"
+            filterOption={(input, option) =>
+              String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+          />
+          {hasFilter ? (
+            <Button type="link" className="!px-1" onClick={clearFilters}>
+              重置筛选
+            </Button>
+          ) : null}
           <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadUsers()}>
             刷新
           </Button>
-          {usernameQuery.trim() ? (
+          <Button disabled={!expiredUsers.length} onClick={selectAllExpired}>
+            选中全部已过期{expiredUsers.length ? `（${expiredUsers.length}）` : ''}
+          </Button>
+          <Button
+            danger
+            disabled={!selectedKeys.length}
+            onClick={() => setResetOpen(true)}
+          >
+            批量重置密码{selectedKeys.length ? `（${selectedKeys.length}）` : ''}
+          </Button>
+          <Button
+            disabled={!selectedKeys.length}
+            onClick={() => {
+              batchSetForm.resetFields()
+              setBatchSetOpen(true)
+            }}
+          >
+            批量设置岗位/班组{selectedKeys.length ? `（${selectedKeys.length}）` : ''}
+          </Button>
+          {hasFilter ? (
             <Typography.Text type="secondary" className="text-sm">
               共 {filteredUsers.length} / {users.length} 人
             </Typography.Text>
@@ -283,6 +510,10 @@ export default function Users() {
           columns={columns}
           dataSource={filteredUsers}
           pagination={{ pageSize: 10 }}
+          rowSelection={{
+            selectedRowKeys: selectedKeys,
+            onChange: (keys) => setSelectedKeys(keys.map(String)),
+          }}
         />
       </div>
 
@@ -303,23 +534,37 @@ export default function Users() {
             <Input disabled={Boolean(editing)} placeholder="登录用户名" />
           </Form.Item>
           <Form.Item
-            label={editing ? '新密码（留空不改）' : '密码'}
+            label={editing ? '新密码（留空不改）' : '密码（留空用默认）'}
             name="password"
-            rules={
+            rules={editing ? [passwordPolicyFormRule()] : [passwordPolicyFormRule()]}
+            extra={
               editing
-                ? [passwordPolicyFormRule()]
-                : [{ required: true, message: '请输入密码' }, passwordPolicyFormRule()]
+                ? PASSWORD_POLICY_HINT
+                : `留空则使用系统统一初始密码${defaultPassword ? `（${defaultPassword}）` : ''}；${PASSWORD_POLICY_HINT}`
             }
-            extra={PASSWORD_POLICY_HINT}
           >
-            <Input.Password placeholder={editing ? '留空表示不修改' : '初始密码'} />
+            <Input.Password placeholder={editing ? '留空表示不修改' : '留空使用默认密码'} />
+          </Form.Item>
+          <Form.Item
+            label="岗位"
+            name="position"
+            rules={[{ required: true, message: '请选择岗位' }]}
+          >
+            <Select options={POSITION_OPTIONS} placeholder="请选择岗位" />
           </Form.Item>
           <Form.Item
             label="所属班组"
             name="team"
-            rules={[{ required: true, message: '请输入所属班组' }]}
+            rules={[{ required: true, message: '请选择所属班组' }]}
           >
-            <Input placeholder="例如：华东运营组" />
+            <Select
+              showSearch
+              options={allTeamOptions}
+              placeholder="请选择所属班组"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
           <Form.Item label="角色" name="role" rules={[{ required: true }]}>
             <Select options={ROLE_OPTIONS} />
@@ -338,6 +583,108 @@ export default function Users() {
         <Typography.Text type="secondary" className="text-xs">
           每个用户仅分配一个角色；数据权限不做班组隔离。
         </Typography.Text>
+      </Modal>
+
+      <Modal
+        title="批量重置密码"
+        open={resetOpen}
+        onCancel={() => setResetOpen(false)}
+        onOk={handleResetPasswords}
+        okText="确认重置"
+        destroyOnClose
+      >
+        <Alert
+          className="mt-4"
+          type="warning"
+          showIcon
+          message={`将对选中的 ${selectedKeys.length} 个账号设置同一个临时密码，这些账号当前的登录会话会失效，需用新密码重新登录。`}
+          description="是否须改密只看「该账号是否从未登录过」：从未登录的账号仍会按首次登录处理，已经登录过的账号用新密码直接登录，不会被拦去改密。请线下把临时密码告知本人。"
+        />
+        {selectedUsernames.length ? (
+          <Typography.Text type="secondary" className="mt-3 block text-xs">
+            已选账号：{selectedUsernames.join('、')}
+          </Typography.Text>
+        ) : null}
+        <Form form={resetForm} layout="vertical" className="mt-4">
+          <Form.Item
+            label="统一临时密码"
+            name="password"
+            rules={[{ required: true, message: '请输入临时密码' }, passwordPolicyFormRule()]}
+            extra={`所有选中账号将使用此密码。${defaultPassword ? `如填入 ${defaultPassword}，则这些账号会被标记为「仍在使用默认密码」，首次登录时界面会显示该密码提示。` : ''}${PASSWORD_POLICY_HINT}`}
+          >
+            <Input.Password placeholder={defaultPassword ? `留空不填会报错，可填默认密码 ${defaultPassword}` : '所有选中账号将使用此密码'} />
+          </Form.Item>
+          <Form.Item
+            label="确认临时密码"
+            name="confirmPassword"
+            dependencies={['password']}
+            rules={[
+              { required: true, message: '请再次输入临时密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) return Promise.resolve()
+                  return Promise.reject(new Error('两次输入的密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="再次输入以确认" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="批量设置岗位/班组"
+        open={batchSetOpen}
+        onCancel={() => setBatchSetOpen(false)}
+        onOk={handleBatchSetProfile}
+        okText="确认设置"
+        destroyOnClose
+      >
+        <Alert
+          className="mt-4"
+          type="info"
+          showIcon
+          message={`将对选中的 ${selectedKeys.length} 个账号批量设置岗位和/或班组。留空不设置该项。`}
+        />
+        {selectedUsernames.length ? (
+          <Typography.Text type="secondary" className="mt-3 block text-xs">
+            已选账号：{selectedUsernames.slice(0, 10).join('、')}
+            {selectedUsernames.length > 10 ? ` 等 ${selectedUsernames.length} 个` : ''}
+          </Typography.Text>
+        ) : null}
+        <Form form={batchSetForm} layout="vertical" className="mt-4">
+          <Form.Item
+            label="岗位"
+            name="position"
+            rules={[{ required: false }]}
+          >
+            <Select
+              allowClear
+              showSearch
+              options={POSITION_OPTIONS}
+              placeholder="选择要设置的岗位（留空不改）"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+          <Form.Item
+            label="所属班组"
+            name="team"
+            rules={[{ required: false }]}
+          >
+            <Select
+              allowClear
+              showSearch
+              options={allTeamOptions}
+              placeholder="选择要设置的班组（留空不改）"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal

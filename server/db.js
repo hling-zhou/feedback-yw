@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { initBusinessSchema } from './businessDb.js'
+import { TEAM_MIGRATION_MAP } from '../src/domain/userProfile.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.SERVER_DATA_DIR || path.join(__dirname, 'data')
@@ -50,7 +51,85 @@ function migrateUsersSchema(database) {
     database.exec(`ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0`)
   }
 
+  // 顺序要紧：migrateUserRoleConstraint 会以硬编码列清单重建 users 表，
+  // 在它之前新增的列会被重建过程丢弃，故加列必须排在其后。
   migrateUserRoleConstraint(database)
+  migrateMustChangePassword(database)
+  migratePositionAndTeamEnum(database)
+  migrateDefaultPasswordFlag(database)
+}
+
+/**
+ * 标记「该账号当前使用的仍是系统统一初始密码」。
+ * bcrypt 无法反比明文，只能靠这一列判断，用于首次登录改密页回显默认密码明文。
+ * 存量账号一律视为非默认密码（0），仅新建/重置时由应用逻辑写入。
+ *
+ * @param {import('better-sqlite3').Database} database
+ */
+function migrateDefaultPasswordFlag(database) {
+  const colNames = new Set(
+    database.prepare('PRAGMA table_info(users)').all().map((c) => c.name),
+  )
+  if (colNames.has('password_is_default')) return
+  database.exec(`ALTER TABLE users ADD COLUMN password_is_default INTEGER NOT NULL DEFAULT 0`)
+}
+
+/**
+ * 新增岗位字段，并把存量班组值迁到新枚举。
+ *
+ * 顺序要紧：migrateUserRoleConstraint 会以硬编码列清单重建 users 表，
+ * 在它之前新增的列会被重建过程丢弃，故本次加列必须排在其后。
+ *
+ * 幂等性：加列靠 PRAGMA 判断；班组改写靠「旧值 → 新值」定向 UPDATE，
+ * 改写后旧值不再存在，重复执行自然无操作，无需额外标记表。
+ *
+ * @param {import('better-sqlite3').Database} database
+ */
+function migratePositionAndTeamEnum(database) {
+  const colNames = new Set(
+    database.prepare('PRAGMA table_info(users)').all().map((c) => c.name),
+  )
+  if (!colNames.has('position')) {
+    database.exec(`ALTER TABLE users ADD COLUMN position TEXT NOT NULL DEFAULT ''`)
+  }
+
+  const update = database.prepare(`UPDATE users SET team = ? WHERE team = ?`)
+  for (const [legacy, mapped] of Object.entries(TEAM_MIGRATION_MAP)) {
+    if (legacy === mapped) continue
+    update.run(mapped, legacy)
+  }
+}
+
+/**
+ * 首次登录强制改密。仅在列首次建立时回填一次存量账号：
+ * 把「审计日志中查不到 auth.login 记录」的账号标记为须改密，即创建后从未成功登录过的账号。
+ * 回填只跑一次，避免改密后尚未重新登录的账号在下次启动时被重新标记。
+ *
+ * @param {import('better-sqlite3').Database} database
+ */
+function migrateMustChangePassword(database) {
+  const colNames = new Set(
+    database.prepare('PRAGMA table_info(users)').all().map((c) => c.name),
+  )
+  if (colNames.has('must_change_password')) return
+
+  database.exec(`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
+
+  const auditTable = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_log'")
+    .get()
+  if (!auditTable) return
+
+  database
+    .prepare(
+      `UPDATE users SET must_change_password = 1
+       WHERE NOT EXISTS (
+         SELECT 1 FROM audit_log
+         WHERE audit_log.action = 'auth.login'
+           AND (audit_log.user_id = users.id OR audit_log.username = users.username)
+       )`,
+    )
+    .run()
 }
 
 /** @param {import('better-sqlite3').Database} database */

@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { ROLE_LABEL_ALIASES, ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { validatePasswordPolicy } from '../domain/passwordPolicy.js'
+import { isKnownPosition, isKnownTeam, POSITIONS, TEAMS } from '../domain/userProfile.js'
 import { USER_IMPORT_SHEET_NAME } from './userImportTemplate.js'
 
 /** @typedef {import('../domain/auth/permissions.js').UserRole} UserRole */
@@ -21,6 +22,7 @@ export function normalizeUserImportHeader(header) {
   return String(header ?? '')
     .replace(/\*（必填）$/, '')
     .replace(/（必填）$/, '')
+    .replace(/（留空用默认）$/, '')
     .replace(/（可选）$/, '')
     .trim()
 }
@@ -52,19 +54,33 @@ function cellText(value) {
 function parseUserImportRow(row, rowNumber) {
   const username = cellText(row['用户名'])
   const password = cellText(row['密码'])
+  const position = cellText(row['岗位'])
   const team = cellText(row['所属班组'])
   const roleRaw = cellText(row['角色'])
 
-  if (!username && !password && !team && !roleRaw) {
+  if (!username && !password && !position && !team && !roleRaw) {
     return { skip: true }
   }
 
   /** @type {string[]} */
   const issues = []
   if (!username) issues.push('用户名为空')
-  if (!password) issues.push('密码为空')
+  if (!position) issues.push('岗位为空')
   if (!team) issues.push('所属班组为空')
   if (!roleRaw) issues.push('角色为空')
+
+  // 密码留空允许 → 使用系统统一初始密码
+  if (password) {
+    const policy = validatePasswordPolicy(password)
+    if (!policy.ok) issues.push(policy.message)
+  }
+
+  if (position && !isKnownPosition(position)) {
+    issues.push(`岗位「${position}」无效，可填：${POSITIONS.join('、')}`)
+  }
+  if (team && !isKnownTeam(team)) {
+    issues.push(`所属班组「${team}」无效，可填：${TEAMS.join('、')}`)
+  }
 
   const role = ROLE_BY_LABEL[roleRaw]
   if (roleRaw && !role) {
@@ -90,6 +106,7 @@ function parseUserImportRow(row, rowNumber) {
     item: {
       username,
       password,
+      position,
       team,
       role: /** @type {UserRole} */ (role),
     },
@@ -113,7 +130,7 @@ export function parseUserImportFile(buffer) {
     XLSX.utils.sheet_to_json(sheet, { defval: '' })
   )
 
-  /** @type {{ username: string; password: string; team: string; role: UserRole }[]} */
+  /** @type {{ username: string; password: string; position: string; team: string; role: UserRole }[]} */
   const rows = []
   /** @type {{ row: number; username: string; message: string }[]} */
   const errors = []

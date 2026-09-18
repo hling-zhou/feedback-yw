@@ -1,4 +1,5 @@
 import { validatePasswordPolicy } from '../src/domain/passwordPolicy.js'
+import { validateUserInitialPassword } from '../src/domain/userInitialPassword.js'
 
 /** @type {string | null} */
 let jwtSecretCache = null
@@ -87,6 +88,17 @@ export function resolveAdminInitialPassword() {
 export function assertAdminSeedConfig(hasUsers) {
   if (hasUsers) return
   resolveAdminInitialPassword()
+}
+
+/**
+ * 解析系统统一初始密码：新建/导入账号密码留空时使用。
+ * 未设置 USER_INITIAL_PASSWORD 则用内置默认密码；设置了但不合规直接抛错（不静默降级）。
+ * @returns {string}
+ */
+export function resolveUserInitialPassword() {
+  const result = validateUserInitialPassword(process.env.USER_INITIAL_PASSWORD)
+  if (!result.ok) throw new Error(result.message)
+  return result.password
 }
 
 /**

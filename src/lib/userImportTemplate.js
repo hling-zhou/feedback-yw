@@ -1,13 +1,15 @@
 import * as XLSX from 'xlsx'
 import { ROLE_LABELS, ROLES } from '../domain/auth/permissions.js'
 import { PASSWORD_POLICY_HINT } from '../domain/passwordPolicy.js'
+import { POSITIONS, TEAMS } from '../domain/userProfile.js'
 
 export const USER_IMPORT_SHEET_NAME = '用户列表'
 
 /** 导入模板表头 */
 export const USER_IMPORT_TEMPLATE_HEADERS = [
   '用户名*（必填）',
-  '密码*（必填）',
+  '密码（留空用默认）',
+  '岗位*（必填）',
   '所属班组*（必填）',
   '角色*（必填）',
 ]
@@ -15,8 +17,13 @@ export const USER_IMPORT_TEMPLATE_HEADERS = [
 const TEMPLATE_INSTRUCTIONS = [
   ['填写说明'],
   ['每行创建一个登录账号；用户名不可与已有账号重复。'],
-  [`密码须满足：${PASSWORD_POLICY_HINT}`],
+  ['密码留空则使用系统统一初始密码，由管理员线下告知本人；填写时须满足策略。'],
+  [`密码策略：${PASSWORD_POLICY_HINT}`],
+  [`岗位可填：${POSITIONS.join('、')}`],
+  ['所属班组可填：'],
+  ...TEAMS.map((t) => [`　· ${t}`]),
   [`角色可填：${ROLES.map((r) => ROLE_LABELS[r]).join('、')}`],
+  ['岗位与所属班组须与上述选项完全一致，否则该行会被跳过。'],
   ['导入时跳过校验失败的行，成功行仍会创建。'],
 ]
 

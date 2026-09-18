@@ -5,7 +5,10 @@ import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext.jsx'
 import { PASSWORD_POLICY_HINT, passwordPolicyFormRule } from '../domain/passwordPolicy.js'
 import { apiFetch } from '../lib/apiClient.js'
-import { PASSWORD_EXPIRED_MESSAGE } from '../domain/passwordExpiry.js'
+import {
+  PASSWORD_EXPIRED_MESSAGE,
+  PASSWORD_MUST_CHANGE_MESSAGE,
+} from '../domain/passwordExpiry.js'
 
 export default function ChangePassword() {
   const navigate = useNavigate()
@@ -13,14 +16,16 @@ export default function ChangePassword() {
   const [searchParams] = useSearchParams()
   const { user, logout, isAuthenticated } = useAuth()
   const [loading, setLoading] = useState(false)
-  const state = /** @type {{ username?: string; passwordChangedAt?: string; mode?: 'voluntary' | 'expired' } | null} */ (
+  const state = /** @type {{ username?: string; passwordChangedAt?: string; mode?: 'voluntary' | 'expired' | 'first'; defaultPassword?: string } | null} */ (
     location.state
   )
 
   const voluntary =
     searchParams.get('mode') === 'voluntary' || state?.mode === 'voluntary'
+  const mode = voluntary ? 'voluntary' : state?.mode === 'first' ? 'first' : 'expired'
   const fromApp = voluntary && isAuthenticated
   const lockedUsername = user?.username || state?.username || ''
+  const defaultPassword = state?.defaultPassword
 
   const handleSubmit = async (values) => {
     setLoading(true)
@@ -47,7 +52,7 @@ export default function ChangePassword() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink-50 px-5 py-10">
-      <div className="page-card w-full max-w-md shadow-card" style={{ padding: 32 }}>
+      <div className="page-card w-full shadow-card" style={{ padding: 32, maxWidth: '40vw' }}>
         <Typography.Title level={2} className="!mb-0 !text-2xl">
           修改密码
         </Typography.Title>
@@ -56,26 +61,46 @@ export default function ChangePassword() {
             ? fromApp
               ? '请输入当前密码并设置新密码。修改成功后需重新登录。'
               : '请输入用户名、当前密码并设置新密码。修改成功后需重新登录。'
-            : PASSWORD_EXPIRED_MESSAGE}
+            : mode === 'first'
+              ? PASSWORD_MUST_CHANGE_MESSAGE
+              : PASSWORD_EXPIRED_MESSAGE}
         </Typography.Paragraph>
 
         <Alert
           className="mt-4"
           type="warning"
           showIcon
-          message={voluntary ? '密码安全要求' : '密码定期变更策略'}
+          message={
+            voluntary
+              ? '密码安全要求'
+              : mode === 'first'
+                ? '首次登录须修改密码'
+                : '密码定期变更策略'
+          }
           description={
             voluntary
               ? `新密码须满足：${PASSWORD_POLICY_HINT}。`
-              : `账号密码使用满 3 个月须修改。新密码须满足：${PASSWORD_POLICY_HINT}。修改成功后请重新登录。`
+              : mode === 'first'
+                ? `为保障账号安全，首次登录须先把初始密码改为自己的密码。新密码须满足：${PASSWORD_POLICY_HINT}。修改成功后请重新登录。`
+                : `账号密码使用满 3 个月须修改。新密码须满足：${PASSWORD_POLICY_HINT}。修改成功后请重新登录。`
           }
         />
 
-        {state?.passwordChangedAt && !voluntary && (
+        {state?.passwordChangedAt && mode === 'expired' && (
           <Typography.Text type="secondary" className="mt-3 block text-xs">
             上次修改时间：{state.passwordChangedAt.slice(0, 10)}
           </Typography.Text>
         )}
+
+        {mode === 'first' && defaultPassword ? (
+          <Alert
+            className="mt-4"
+            type="info"
+            showIcon
+            message={`你的当前密码是系统统一初始密码：${defaultPassword}`}
+            description="请先用上述密码填写「当前密码」，再设置自己的新密码。修改成功后初始密码将不再有效。"
+          />
+        ) : null}
 
         <Form
           className="mt-6"
