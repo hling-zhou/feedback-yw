@@ -92,6 +92,79 @@ function formatAuditDetailJson(value) {
   }
 }
 
+/** @type {Record<string, string>} */
+const DETAIL_FIELD_LABELS = {
+  count: '条数',
+  recordsCleared: '清除记录数',
+  dataSourceType: '数据源类型',
+  importMonth: '导入月份',
+  importBatchId: '批次 ID',
+  skippedTicketConflicts: '跳过冲突数',
+  ticketId: '工单 ID',
+  recordId: '记录 ID',
+  actionId: '举措 ID',
+  reason: '原因',
+  appliedCount: '落地条数',
+  forceOverwrite: '强制覆盖',
+  fields: '变更字段',
+  username: '用户名',
+  userId: '用户 ID',
+  role: '角色',
+  status: '状态',
+  scope: '范围',
+  scopes: '权限范围',
+  apiKeyId: 'API Key ID',
+  apiKeyName: 'API Key 名称',
+  lockId: '锁 ID',
+  type: '类型',
+  created: '是否新建',
+  key: '配置键',
+  productCount: '产品数量',
+  baseUrlChanged: 'BaseURL 是否变更',
+  modelChanged: '模型是否变更',
+  apiKeyChanged: 'ApiKey 是否变更',
+  excelPath: 'Excel 路径',
+  insightPeriodId: '洞察周期 ID',
+  product: '产品',
+  excelWritten: '已写 Excel',
+  raw: '原始内容',
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function formatDetailValue(value) {
+  if (value == null) return '—'
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (Array.isArray(value)) return value.length ? value.join('、') : '—'
+  if (typeof value === 'object') {
+    try {
+      const s = JSON.stringify(value)
+      return s.length > 80 ? `${s.slice(0, 80)}…` : s
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
+}
+
+/**
+ * @param {Record<string, unknown>} detail
+ * @returns {{ label: string; value: string }[]}
+ */
+export function getDetailFields(detail) {
+  if (!detail || typeof detail !== 'object') return []
+  /** @type {{ label: string; value: string }[]} */
+  const result = []
+  for (const [key, value] of Object.entries(detail)) {
+    if (value == null) continue
+    const label = DETAIL_FIELD_LABELS[key] || key
+    result.push({ label, value: formatDetailValue(value) })
+  }
+  return result
+}
+
 export default function AuditLogPanel() {
   const [entries, setEntries] = useState(/** @type {AuditEntry[]} */ ([]))
   const [loading, setLoading] = useState(false)
@@ -119,16 +192,15 @@ export default function AuditLogPanel() {
       dataIndex: 'createdAt',
       width: 168,
       render: (v) => (v ? new Date(v).toLocaleString('zh-CN') : '—') },
-    { title: '操作者', dataIndex: 'username', width: 100 },
+    { title: '操作者', dataIndex: 'username', width: 120 },
     {
       title: '操作',
       dataIndex: 'action',
-      width: 160,
+      width: 170,
       render: (action) => AUDIT_ACTION_LABELS[action] || action },
     {
       title: '详情',
       dataIndex: 'detail',
-      ellipsis: true,
       render: (detail, record) => (
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate">{formatAuditDetailSummary(detail)}</span>
@@ -159,6 +231,7 @@ export default function AuditLogPanel() {
           columns={columns}
           dataSource={entries}
           pagination={{ pageSize: 10, showSizeChanger: false }}
+          scroll={{ x: 800 }}
         />
       </div>
 
@@ -192,6 +265,20 @@ export default function AuditLogPanel() {
                 <Typography.Text code>{detailEntry.action}</Typography.Text>
               </Descriptions.Item>
             </Descriptions>
+            {getDetailFields(detailEntry.detail).length > 0 && (
+              <div>
+                <Typography.Text type="secondary" className="mb-2 block text-xs">
+                  操作详情
+                </Typography.Text>
+                <Descriptions size="small" column={1} bordered>
+                  {getDetailFields(detailEntry.detail).map(({ label, value }) => (
+                    <Descriptions.Item key={label} label={label}>
+                      {value}
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </div>
+            )}
             <div>
               <Typography.Text type="secondary" className="mb-2 block text-xs">
                 完整 detail JSON
