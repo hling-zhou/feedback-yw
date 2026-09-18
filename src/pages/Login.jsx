@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from '@ant-design/icons'
-import { Button, Form, Input, Typography, message } from 'antd'
+import { Alert, Button, Form, Input, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
+import { PASSWORD_MUST_CHANGE_CODE } from '../domain/passwordExpiry.js'
+import { apiFetch } from '../lib/apiClient.js'
 import SystemUsageWorkflow from '../components/login/SystemUsageWorkflow.jsx'
 
 export default function Login() {
@@ -10,6 +12,21 @@ export default function Login() {
   const location = useLocation()
   const { login } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [defaultPassword, setDefaultPassword] = useState(null)
+  const [fetchingDefault, setFetchingDefault] = useState(false)
+
+  const handleShowDefaultPassword = async () => {
+    if (defaultPassword) return
+    setFetchingDefault(true)
+    try {
+      const data = await apiFetch('/api/auth/default-password')
+      setDefaultPassword(data.defaultPassword)
+    } catch {
+      message.error('获取默认密码失败，请检查 API 是否已启动')
+    } finally {
+      setFetchingDefault(false)
+    }
+  }
 
   const handleSubmit = async (values) => {
     setLoading(true)
@@ -19,8 +36,24 @@ export default function Login() {
       const from = location.state?.from || '/workbench'
       navigate(from, { replace: true })
     } catch (err) {
-      const data = err && typeof err === 'object' ? /** @type {{ code?: string; passwordChangedAt?: string }} */ (err).data : null
+      const data =
+        err && typeof err === 'object'
+          ? /** @type {{ code?: string; passwordChangedAt?: string; defaultPassword?: string }} */ (err)
+              .data
+          : null
       const code = data?.code ?? (err && typeof err === 'object' ? /** @type {{ code?: string }} */ (err).code : undefined)
+      if (code === PASSWORD_MUST_CHANGE_CODE) {
+        message.warning(err instanceof Error ? err.message : '首次登录请先修改密码')
+        navigate('/change-password', {
+          replace: true,
+          state: {
+            username: values.username,
+            mode: 'first',
+            defaultPassword: data?.defaultPassword,
+          },
+        })
+        return
+      }
       if (code === 'PASSWORD_EXPIRED') {
         message.warning(err instanceof Error ? err.message : '密码已过期，请先修改')
         navigate('/change-password', {
@@ -142,7 +175,26 @@ export default function Login() {
                 <Link to="/change-password?mode=voluntary" className="text-sm text-ink-500">
                   修改密码
                 </Link>
+                <span className="mx-2 text-ink-200">|</span>
+                <button
+                  type="button"
+                  onClick={handleShowDefaultPassword}
+                  className="text-sm text-brand-600 transition hover:text-brand-700"
+                  disabled={fetchingDefault}
+                >
+                  {fetchingDefault ? '查询中…' : '首次登录？'}
+                </button>
               </div>
+
+              {defaultPassword && (
+                <Alert
+                  className="mt-3"
+                  type="info"
+                  showIcon
+                  message={`系统统一初始密码：${defaultPassword}`}
+                  description="首次登录请先用上述密码登录，系统会引导你修改为自己的密码。修改后初始密码将不再有效。"
+                />
+              )}
 
               <p className="mt-4 text-center text-xs text-ink-400">
                 还没有账号？请联系管理员在「用户管理」中开通

@@ -37,7 +37,7 @@ export function registerAuthHooks(app) {
 
   app.addHook('preHandler', async (request, reply) => {
     const path = request.url.split('?')[0]
-    if (path === '/api/auth/login' || path === '/api/auth/change-password' || path === '/health') return
+    if (path === '/api/auth/login' || path === '/api/auth/change-password' || path === '/api/auth/default-password' || path === '/health') return
 
     if (!path.startsWith('/api/')) return
 

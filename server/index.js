@@ -5,6 +5,7 @@ import {
   assertProductionConfig,
   getCorsRegisterOptions,
   resolveCorsOrigins,
+  resolveUserInitialPassword,
 } from './config.js'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
@@ -20,6 +21,7 @@ import {
   updateUserBodySchema,
   updateUserParamsSchema,
   batchCreateUsersBodySchema,
+  resetPasswordsBodySchema,
 } from './schemas/userSchemas.js'
 
 assertJwtConfig()
@@ -34,6 +36,7 @@ import {
   seedAdminUser,
   toPublicUser,
   updateUser,
+  resetPasswords,
   invalidateUserSessions,
 } from './users.js'
 import { registerLoginRateLimitCleanup } from './loginRateLimit.js'
@@ -98,6 +101,10 @@ app.get('/health', async (_request, reply) => {
 })
 
 app.post('/api/auth/login', { schema: { body: loginBodySchema } }, handlePasswordLogin)
+
+app.get('/api/auth/default-password', async () => {
+  return { defaultPassword: resolveUserInitialPassword() }
+})
 
 app.post(
   '/api/auth/change-password',
@@ -168,6 +175,15 @@ app.get(
   },
 )
 
+app.get(
+  '/api/users/default-password',
+  { preHandler: requirePermission('manageUsers') },
+  async () => {
+    // 仅管理员可读：用于线下告知新账号本人，以及创建/重置时的默认值回填
+    return { defaultPassword: resolveUserInitialPassword() }
+  },
+)
+
 app.post(
   '/api/users',
   {
@@ -177,7 +193,8 @@ app.post(
   async (request, reply) => {
     const body = /** @type {{
       username: string
-      password: string
+      password?: string
+      position: string
       team: string
       role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
     }} */ (request.body)
@@ -186,6 +203,7 @@ app.post(
       const user = await createUser({
         username: body.username,
         password: body.password,
+        position: body.position,
         team: body.team,
         role: body.role,
       })
@@ -212,7 +230,8 @@ app.post(
     const body = /** @type {{
       users: {
         username: string
-        password: string
+        password?: string
+        position: string
         team: string
         role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       }[]
@@ -236,6 +255,30 @@ app.post(
   },
 )
 
+app.post(
+  '/api/users/reset-passwords',
+  {
+    preHandler: requirePermission('manageUsers'),
+    schema: { body: resetPasswordsBodySchema },
+  },
+  async (request, reply) => {
+    const body = /** @type {{ ids: string[]; password: string }} */ (request.body)
+
+    try {
+      const result = await resetPasswords(body.ids, body.password)
+      for (const item of result.reset) {
+        logAuditFromRequest(request, 'user.reset_password', {
+          userId: item.id,
+          username: item.username,
+        })
+      }
+      return result
+    } catch (err) {
+      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+    }
+  },
+)
+
 app.patch(
   '/api/users/:id',
   {
@@ -246,6 +289,7 @@ app.patch(
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {{
       team?: string
+      position?: string
       role?: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       status?: 'active' | 'disabled'
       password?: string
