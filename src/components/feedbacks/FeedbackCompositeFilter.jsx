@@ -38,6 +38,7 @@ export default function FeedbackCompositeFilter({
   showComplaintCauseFilter = true,
   showMyReviewFilter = false,
   options = {},
+  className = '',
 }) {
   const disableCtx = useMemo(
     () => ({
@@ -104,6 +105,7 @@ export default function FeedbackCompositeFilter({
       onClearFilters={onClearFilters}
       config={config}
       disableCtx={disableCtx}
+      className={className}
       emptyPlaceholder={options.emptyPlaceholder}
       options={{
         ...options,

@@ -46,29 +46,32 @@ export default function FeedbackFilterBar({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Typography.Text className="shrink-0 text-sm text-ink-600">产品</Typography.Text>
-        <Select
-          allowClear
-          placeholder="全部产品"
-          className="min-w-[180px]"
-          value={filters.product || undefined}
-          options={productOptions}
-          onChange={(value) => onProductChange(value || '')}
-        />
-        {filters.product ? (
-          <Typography.Text type="secondary" className="text-xs">
-            下方复合筛选选项已按所选产品收窄
-          </Typography.Text>
-        ) : null}
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Typography.Text className="shrink-0 text-sm text-ink-600">产品</Typography.Text>
+          <Select
+            allowClear
+            placeholder="全部产品"
+            className="min-w-[180px]"
+            value={filters.product || undefined}
+            options={productOptions}
+            onChange={(value) => onProductChange(value || '')}
+          />
+          {filters.product ? (
+            <Typography.Text type="secondary" className="text-xs">
+              下方复合筛选选项已按所选产品收窄
+            </Typography.Text>
+          ) : null}
+        </div>
         {actions ? (
-          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
             {actions}
           </div>
         ) : null}
       </div>
 
       <FeedbackCompositeFilter
+        className="w-full"
         filters={filters}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}

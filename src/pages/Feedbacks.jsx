@@ -1127,7 +1127,6 @@ export default function Feedbacks() {
                 </Popover>
               ) : null}
               <Button
-                className="ml-auto"
                 icon={<ReloadOutlined />}
                 loading={refreshing}
                 onClick={() => void handleRefresh()}

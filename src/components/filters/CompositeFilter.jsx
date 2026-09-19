@@ -246,7 +246,7 @@ export default function CompositeFilter({
     <div className={`relative ${className}`.trim()}>
       <div
         ref={barRef}
-        className="flex min-h-[40px] flex-wrap items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 shadow-sm"
+        className="flex w-full min-h-[40px] flex-wrap items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 shadow-sm"
       >
         {visibleChipKeys.map((key) => (
           <CompositeFilterChip
