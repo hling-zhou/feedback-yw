@@ -195,6 +195,7 @@ export async function executePostUseChannelImport(params) {
     importBatchName: `用后即评-${importMonth}`,
     importFileName: `${smsFileNames.join('+')}+${officialFileNames.join('+')}`,
     importedAt,
+    catalogProducts: getCatalogProducts(),
     },
   )
 

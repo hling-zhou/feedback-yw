@@ -1,6 +1,7 @@
 import { randomId } from '../randomId.js'
 import { SCHEMA_VERSION } from '../../domain/constants.js'
 import { buildPostUseEvidence } from './evidence.js'
+import { resolvePostUseRatingProduct } from '../productCatalog/postUseRatingProducts.js'
 
 /** @typedef {import('./parseChannels.js').NormalizedPostUseRow} NormalizedPostUseRow */
 
@@ -13,6 +14,7 @@ import { buildPostUseEvidence } from './evidence.js'
  *   importFileName?: string
  *   tenantId?: string
  *   importedAt?: string
+ *   catalogProducts?: import('../productCatalogLoader.js').CatalogProduct[]
  * }} meta
  */
 export function buildPostUseRatingRecord(row, meta) {
@@ -31,6 +33,14 @@ export function buildPostUseRatingRecord(row, meta) {
     importMonth: meta.importMonth,
     importBatchId: meta.importBatchId,
   })
+
+  const catalogProduct = resolvePostUseRatingProduct(
+    { productName: row.productName },
+    meta.catalogProducts,
+  )
+  const productKey = catalogProduct?.key || ''
+  const productName = catalogProduct?.name || row.productName
+
   return {
     id,
     schemaVersion: SCHEMA_VERSION,
@@ -42,8 +52,9 @@ export function buildPostUseRatingRecord(row, meta) {
     importBatchName: meta.importBatchName,
     importFileName: meta.importFileName,
     importMonth: meta.importMonth,
-    product: row.productName,
-    productName: row.productName,
+    product: productName,
+    productName,
+    productKey,
     ratingScore: Number.isFinite(row.score) ? row.score : undefined,
     commentText: row.rawComment || '',
     rawText: row.rawComment || row.lowScoreReason || '',
