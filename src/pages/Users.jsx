@@ -97,22 +97,7 @@ export default function Users() {
   const hasFilter =
     Boolean(usernameQuery.trim()) || Boolean(roleFilter) || Boolean(positionFilter) || Boolean(teamFilter)
 
-  // 班组改为枚举后，库内可能残留迁移未覆盖的历史值；这类值仍要能出现在下拉里，
-  // 否则编辑该用户时下拉会显示空白，且无法改回合法值。筛选下拉同样要能看到它们，
-  // 否则这批存量账号在「按班组筛选」里根本选不出来。
-  const legacyTeams = useMemo(
-    () => [...new Set(users.map((u) => u.team).filter((t) => t && !TEAMS.includes(t)))],
-    [users],
-  )
-  const allTeamOptions = useMemo(
-    () => [...legacyTeams.map((t) => ({ label: `${t}（历史值，请改选）`, value: t })), ...TEAM_OPTIONS],
-    [legacyTeams],
-  )
-  const teamFilterOptions = useMemo(
-    () => [...legacyTeams.map((t) => ({ label: `${t}（历史值）`, value: t })), ...TEAM_OPTIONS],
-    [legacyTeams],
-  )
-
+  // 班组下拉只显示枚举值，不再带出库内历史值。
   const expiredUsers = useMemo(
     () => filteredUsers.filter((u) => u.passwordExpired),
     [filteredUsers],
@@ -463,7 +448,7 @@ export default function Users() {
             allowClear
             showSearch
             placeholder="按班组筛选"
-            options={teamFilterOptions}
+            options={TEAM_OPTIONS}
             value={teamFilter}
             onChange={(value) => setTeamFilter(value)}
             className="w-56"
@@ -559,7 +544,7 @@ export default function Users() {
           >
             <Select
               showSearch
-              options={allTeamOptions}
+              options={TEAM_OPTIONS}
               placeholder="请选择所属班组"
               filterOption={(input, option) =>
                 String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -677,7 +662,7 @@ export default function Users() {
             <Select
               allowClear
               showSearch
-              options={allTeamOptions}
+              options={TEAM_OPTIONS}
               placeholder="选择要设置的班组（留空不改）"
               filterOption={(input, option) =>
                 String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
