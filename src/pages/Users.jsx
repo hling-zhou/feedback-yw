@@ -28,18 +28,10 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { parseUserImportFile } from '../lib/userImport.js'
 import { downloadUserImportTemplate } from '../lib/userImportTemplate.js'
 import { downloadUserExport } from '../lib/userExport.js'
-import { POSITIONS, TEAMS } from '../domain/userProfile.js'
+import { TEAMS } from '../domain/userProfile.js'
 
 const ROLE_OPTIONS = ROLES.map((r) => ({ label: ROLE_LABELS[r], value: r }))
-const POSITION_OPTIONS = POSITIONS.map((p) => ({ label: p, value: p }))
 const TEAM_OPTIONS = TEAMS.map((t) => ({ label: t, value: t }))
-
-/** 存量账号在岗位字段上线前没有值，筛选时用一个哨兵值代表「未设置」 */
-const POSITION_NONE = '__none__'
-const POSITION_FILTER_OPTIONS = [
-  { label: '未设置', value: POSITION_NONE },
-  ...POSITION_OPTIONS,
-]
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -56,7 +48,6 @@ export default function Users() {
   )
   const [usernameQuery, setUsernameQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState(/** @type {string | undefined} */ (undefined))
-  const [positionFilter, setPositionFilter] = useState(/** @type {string | undefined} */ (undefined))
   const [teamFilter, setTeamFilter] = useState(/** @type {string | undefined} */ (undefined))
   const [selectedKeys, setSelectedKeys] = useState(/** @type {string[]} */ ([]))
   const [resetOpen, setResetOpen] = useState(false)
@@ -77,25 +68,20 @@ export default function Users() {
     const q = usernameQuery.trim().toLowerCase()
     return users.filter((u) => {
       if (roleFilter && u.role !== roleFilter) return false
-      if (positionFilter) {
-        const current = u.position || POSITION_NONE
-        if (current !== positionFilter) return false
-      }
       if (teamFilter && u.team !== teamFilter) return false
       if (!q) return true
       return u.username?.toLowerCase().includes(q)
     })
-  }, [users, usernameQuery, roleFilter, positionFilter, teamFilter])
+  }, [users, usernameQuery, roleFilter, teamFilter])
 
   const clearFilters = () => {
     setUsernameQuery('')
     setRoleFilter(undefined)
-    setPositionFilter(undefined)
     setTeamFilter(undefined)
   }
 
   const hasFilter =
-    Boolean(usernameQuery.trim()) || Boolean(roleFilter) || Boolean(positionFilter) || Boolean(teamFilter)
+    Boolean(usernameQuery.trim()) || Boolean(roleFilter) || Boolean(teamFilter)
 
   // 班组下拉只显示枚举值，不再带出库内历史值。
   const expiredUsers = useMemo(
@@ -145,12 +131,11 @@ export default function Users() {
 
   const handleBatchSetProfile = async () => {
     const values = await batchSetForm.validateFields()
-    /** @type {{ position?: string; team?: string }} */
+    /** @type {{ team?: string }} */
     const patch = {}
-    if (values.position) patch.position = values.position
     if (values.team) patch.team = values.team
-    if (!patch.position && !patch.team) {
-      message.warning('请至少选择要设置的岗位或班组')
+    if (!patch.team) {
+      message.warning('请至少选择要设置的班组')
       return
     }
     let ok = 0
@@ -167,7 +152,7 @@ export default function Users() {
       }
     }
     message.success(
-      fail ? `已更新 ${ok} 个账号，${fail} 个失败` : `已更新 ${ok} 个账号的岗位/班组`,
+      fail ? `已更新 ${ok} 个账号，${fail} 个失败` : `已更新 ${ok} 个账号的班组`,
     )
     setBatchSetOpen(false)
     setSelectedKeys([])
@@ -193,7 +178,7 @@ export default function Users() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ role: 'viewer', status: 'active', position: undefined, team: undefined })
+    form.setFieldsValue({ role: 'viewer', status: 'active', team: undefined })
     setModalOpen(true)
   }
 
@@ -201,7 +186,6 @@ export default function Users() {
     setEditing(record)
     form.setFieldsValue({
       username: record.username,
-      position: record.position || undefined,
       team: record.team || undefined,
       role: record.role,
       status: record.status,
@@ -215,7 +199,6 @@ export default function Users() {
     try {
       if (editing) {
         const body = {
-          position: values.position,
           team: values.team,
           role: values.role,
           status: values.status,
@@ -230,7 +213,6 @@ export default function Users() {
         // 密码留空 → 后端使用系统统一初始密码，并把该账号标记为「仍在使用默认密码」
         const payload = {
           username: values.username,
-          position: values.position,
           team: values.team,
           role: values.role,
         }
@@ -293,12 +275,14 @@ export default function Users() {
         method: 'POST',
         body: JSON.stringify({ users: importPreview.rows }),
       })
+      const created = result.created?.length ?? 0
+      const updated = result.updated?.length ?? 0
       const failed = result.errors?.length ?? 0
-      message.success(
-        failed
-          ? `已创建 ${result.created?.length ?? 0} 个用户，${failed} 条失败`
-          : `已创建 ${result.created?.length ?? 0} 个用户`,
-      )
+      const parts = []
+      if (created) parts.push(`新建 ${created} 个`)
+      if (updated) parts.push(`更新 ${updated} 个`)
+      if (failed) parts.push(`${failed} 条失败`)
+      message.success(parts.length ? parts.join('，') : '未产生变更')
       setImportOpen(false)
       setImportPreview(null)
       loadUsers()
@@ -311,12 +295,6 @@ export default function Users() {
 
   const columns = [
     { title: '用户名', dataIndex: 'username', width: 140 },
-    {
-      title: '岗位',
-      dataIndex: 'position',
-      width: 110,
-      render: (position) => (position ? <Tag>{position}</Tag> : <Tag color="default">未设置</Tag>),
-    },
     { title: '所属班组', dataIndex: 'team', width: 200 },
     {
       title: '角色',
@@ -389,7 +367,7 @@ export default function Users() {
     <div>
       <PageHeader
         title="用户管理"
-        desc="管理系统登录账号、岗位、角色与所属班组"
+        desc="管理系统登录账号、角色与所属班组"
         action={
           <Space wrap>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -438,14 +416,6 @@ export default function Users() {
           />
           <Select
             allowClear
-            placeholder="按岗位筛选"
-            options={POSITION_FILTER_OPTIONS}
-            value={positionFilter}
-            onChange={(value) => setPositionFilter(value)}
-            className="w-36"
-          />
-          <Select
-            allowClear
             showSearch
             placeholder="按班组筛选"
             options={TEAM_OPTIONS}
@@ -481,7 +451,7 @@ export default function Users() {
               setBatchSetOpen(true)
             }}
           >
-            批量设置岗位/班组{selectedKeys.length ? `（${selectedKeys.length}）` : ''}
+            批量设置班组{selectedKeys.length ? `（${selectedKeys.length}）` : ''}
           </Button>
           {hasFilter ? (
             <Typography.Text type="secondary" className="text-sm">
@@ -529,13 +499,6 @@ export default function Users() {
             }
           >
             <Input.Password placeholder={editing ? '留空表示不修改' : '留空使用默认密码'} />
-          </Form.Item>
-          <Form.Item
-            label="岗位"
-            name="position"
-            rules={[{ required: true, message: '请选择岗位' }]}
-          >
-            <Select options={POSITION_OPTIONS} placeholder="请选择岗位" />
           </Form.Item>
           <Form.Item
             label="所属班组"
@@ -619,7 +582,7 @@ export default function Users() {
       </Modal>
 
       <Modal
-        title="批量设置岗位/班组"
+        title="批量设置班组"
         open={batchSetOpen}
         onCancel={() => setBatchSetOpen(false)}
         onOk={handleBatchSetProfile}
@@ -630,7 +593,7 @@ export default function Users() {
           className="mt-4"
           type="info"
           showIcon
-          message={`将对选中的 ${selectedKeys.length} 个账号批量设置岗位和/或班组。留空不设置该项。`}
+          message={`将对选中的 ${selectedKeys.length} 个账号批量设置班组。留空不设置。`}
         />
         {selectedUsernames.length ? (
           <Typography.Text type="secondary" className="mt-3 block text-xs">
@@ -639,21 +602,6 @@ export default function Users() {
           </Typography.Text>
         ) : null}
         <Form form={batchSetForm} layout="vertical" className="mt-4">
-          <Form.Item
-            label="岗位"
-            name="position"
-            rules={[{ required: false }]}
-          >
-            <Select
-              allowClear
-              showSearch
-              options={POSITION_OPTIONS}
-              placeholder="选择要设置的岗位（留空不改）"
-              filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-            />
-          </Form.Item>
           <Form.Item
             label="所属班组"
             name="team"
@@ -690,9 +638,9 @@ export default function Users() {
               type={importPreview.errors.length ? 'warning' : 'info'}
               showIcon
               className="mb-3"
-              message={`解析到 ${importPreview.rows.length} 个可创建用户${
+              message={`解析到 ${importPreview.rows.length} 条用户记录${
                 importPreview.errors.length ? `，${importPreview.errors.length} 行有误将跳过` : ''
-              }`}
+              }，同名用户将更新班组与角色（不改密码）`}
             />
             {importPreview.errors.length > 0 ? (
               <ul className="mb-0 max-h-40 list-disc overflow-y-auto pl-5 text-xs text-ink-600">

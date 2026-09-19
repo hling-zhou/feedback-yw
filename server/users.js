@@ -4,7 +4,7 @@ import { validatePasswordPolicy } from '../src/domain/passwordPolicy.js'
 import { resolveAdminInitialPassword, resolveUserInitialPassword } from './config.js'
 import { getDb } from './db.js'
 import { isPasswordExpired } from '../src/domain/passwordExpiry.js'
-import { isKnownPosition, isKnownTeam, POSITIONS, TEAMS } from '../src/domain/userProfile.js'
+import { isKnownTeam, TEAMS } from '../src/domain/userProfile.js'
 
 const BCRYPT_ROUNDS = 12
 
@@ -28,23 +28,12 @@ function assertTeam(team) {
 }
 
 /**
- * 岗位为必填枚举。
- *
- * @param {string} position
- */
-function assertPosition(position) {
-  if (!isKnownPosition(position)) {
-    throw new Error(`岗位「${position || '（空）'}」不在可选范围内，可填：${POSITIONS.join('、')}`)
-  }
-}
-
-/**
  * @typedef {Object} UserRow
  * @property {string} id
  * @property {string} username
  * @property {string} password_hash
  * @property {string} team
- * @property {string} [position]
+ * @property {string} [position]  // 已废弃，保留列但不使用
  * @property {'admin' | 'editor' | 'partial_editor' | 'viewer'} role
  * @property {'active' | 'disabled'} status
  * @property {string} created_at
@@ -65,7 +54,6 @@ export function toPublicUser(row, now = new Date()) {
     id: row.id,
     username: row.username,
     team: row.team,
-    position: row.position || '',
     role: row.role,
     status: row.status,
     createdAt: row.created_at,
@@ -184,7 +172,6 @@ function isDefaultPassword(password) {
  * @param {string} input.username
  * @param {string} [input.password] - 留空则使用系统统一初始密码
  * @param {string} input.team
- * @param {string} input.position
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} input.role
  */
 export async function createUser(input) {
@@ -193,7 +180,6 @@ export async function createUser(input) {
   if (findUserByUsername(username)) throw new Error('用户名已存在')
   const { password, isDefault } = resolvePasswordForCreation(input.password)
   assertTeam(input.team)
-  assertPosition(input.position)
 
   const now = new Date().toISOString()
   const id = randomId()
@@ -201,15 +187,14 @@ export async function createUser(input) {
   const db = getDb()
   db.prepare(
     `INSERT INTO users
-      (id, username, password_hash, team, position, role, status, created_at, updated_at,
+      (id, username, password_hash, team, role, status, created_at, updated_at,
        password_changed_at, session_version, must_change_password, password_is_default)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, 1, ?)`,
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, 1, ?)`,
   ).run(
     id,
     username,
     password_hash,
     input.team.trim(),
-    String(input.position ?? '').trim(),
     input.role,
     now,
     now,
@@ -225,7 +210,6 @@ export async function createUser(input) {
  * @param {string} id
  * @param {Object} patch
  * @param {string} [patch.team]
- * @param {string} [patch.position]
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} [patch.role]
  * @param {'active' | 'disabled'} [patch.status]
  * @param {string} [patch.password]
@@ -253,9 +237,6 @@ export async function updateUser(id, patch, actorId) {
   // 存量账号的班组可能是迁移未覆盖的历史值，仅在管理员显式改动时才校验，
   // 避免因历史脏数据导致「只改角色也保存不了」。
   if (patch.team !== undefined) assertTeam(patch.team)
-  const position =
-    patch.position !== undefined ? String(patch.position).trim() : row.position || ''
-  if (patch.position !== undefined) assertPosition(patch.position)
   const role = patch.role ?? row.role
   const status = patch.status ?? row.status
   let password_hash = row.password_hash
@@ -285,13 +266,12 @@ export async function updateUser(id, patch, actorId) {
 
   getDb()
     .prepare(
-      `UPDATE users SET team = ?, position = ?, role = ?, status = ?, password_hash = ?,
+      `UPDATE users SET team = ?, role = ?, status = ?, password_hash = ?,
         updated_at = ?, password_changed_at = ?, must_change_password = ?, password_is_default = ?,
         session_version = COALESCE(session_version, 0) + ? WHERE id = ?`,
     )
     .run(
       team,
-      position,
       role,
       status,
       password_hash,
@@ -394,30 +374,55 @@ export async function changeExpiredPassword(input) {
 }
 
 /**
+ * 导入时对同名用户做 upsert：已存在则只更新 team/role（不改密码、状态、改密标记、会话版本），
+ * 不存在则新建。admin 保护逻辑仍生效（不能把库里唯一活跃 admin 改成非 admin）。
+ *
  * @param {Object[]} items
  * @param {string} items[].username
  * @param {string} items[].password
  * @param {string} items[].team
- * @param {string} items[].position
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} items[].role
  */
 export async function batchCreateUsers(items) {
   /** @type {ReturnType<typeof toPublicUser>[]} */
   const created = []
+  /** @type {ReturnType<typeof toPublicUser>[]} */
+  const updated = []
   /** @type {{ row: number; username: string; message: string }[]} */
   const errors = []
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
     try {
-      const user = await createUser({
-        username: item.username,
-        password: item.password,
-        team: item.team,
-        position: item.position,
-        role: item.role,
-      })
-      created.push(user)
+      const existing = findUserByUsername(item.username)
+      if (existing) {
+        // 同名用户：只改 team/role，不动密码与状态
+        if (item.role && item.role !== 'admin' && existing.role === 'admin') {
+          const admins = countAdmins()
+          if (admins <= 1) throw new Error('至少保留一名活跃管理员')
+        }
+        assertTeam(item.team)
+        const now = new Date().toISOString()
+        // 角色变化时才 bump session_version，与 updateUser 保持一致
+        const roleChanged = item.role && item.role !== existing.role
+        getDb()
+          .prepare(
+            `UPDATE users SET team = ?, role = ?, updated_at = ?,
+              session_version = COALESCE(session_version, 0) + ? WHERE id = ?`,
+          )
+          .run(item.team.trim(), item.role, now, roleChanged ? 1 : 0, existing.id)
+        const refreshed = findUserById(existing.id)
+        if (!refreshed) throw new Error('更新失败')
+        updated.push(toPublicUser(refreshed))
+      } else {
+        const user = await createUser({
+          username: item.username,
+          password: item.password,
+          team: item.team,
+          role: item.role,
+        })
+        created.push(user)
+      }
     } catch (err) {
       errors.push({
         row: i + 1,
@@ -427,7 +432,7 @@ export async function batchCreateUsers(items) {
     }
   }
 
-  return { created, errors }
+  return { created, updated, errors }
 }
 
 /**
@@ -484,7 +489,6 @@ export async function seedAdminUser() {
     username: process.env.ADMIN_INITIAL_USERNAME?.trim() || 'admin',
     password,
     team: process.env.ADMIN_INITIAL_TEAM || '综合管理组',
-    position: process.env.ADMIN_INITIAL_POSITION || '运维',
     role: 'admin',
   })
   console.info(`[auth] 已创建初始管理员：${user.username}`)

@@ -1,13 +1,10 @@
 /**
- * 用户档案枚举：岗位（position）与所属班组（team）。
+ * 用户档案枚举：所属班组（team）。
  *
  * 前后端共用同一份定义（server 侧以 `../src/domain/*.js` 方式引用，
  * 与 passwordExpiry.js / passwordPolicy.js 的既有做法一致），
  * 避免出现「前端下拉与后端校验两套名单」的漂移。
  */
-
-/** 岗位枚举 */
-export const POSITIONS = ['产品经理', '设计师', '运维', '运营', '测试']
 
 /** 所属班组枚举 */
 export const TEAMS = [
@@ -41,14 +38,6 @@ export const TEAM_MIGRATION_MAP = {
   系统管理: '综合管理组',
   设计组: '设计支撑组',
   验证: '云网测试组',
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-export function isKnownPosition(value) {
-  return POSITIONS.includes(String(value ?? '').trim())
 }
 
 /**

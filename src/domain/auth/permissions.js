@@ -23,15 +23,20 @@ export const ROLES = /** @type {const} */ (['admin', 'editor', 'partial_editor',
 
 export const ROLE_LABELS = {
   admin: '管理员',
-  editor: '体验运营角色',
-  partial_editor: '工单分析角色',
+  editor: '编辑',
+  partial_editor: '部分编辑',
   viewer: '查看者',
 }
 
 /** 导入等场景兼容旧角色中文名 */
 export const ROLE_LABEL_ALIASES = {
   编辑者: 'editor',
+  体验运营角色: 'editor',
+  体验运行角色: 'editor',
+  编辑: 'editor',
   部分编辑者: 'partial_editor',
+  工单分析角色: 'partial_editor',
+  部分编辑: 'partial_editor',
 }
 
 /** @type {Record<UserRole, PermissionCode[]>} */

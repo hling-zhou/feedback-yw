@@ -10,8 +10,8 @@ import {
 
 describe('auth permissions', () => {
   it('displays business-facing role names', () => {
-    expect(ROLE_LABELS.editor).toBe('体验运营角色')
-    expect(ROLE_LABELS.partial_editor).toBe('工单分析角色')
+    expect(ROLE_LABELS.editor).toBe('编辑')
+    expect(ROLE_LABELS.partial_editor).toBe('部分编辑')
   })
 
   it('admin has all module permissions', () => {

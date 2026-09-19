@@ -194,7 +194,6 @@ app.post(
     const body = /** @type {{
       username: string
       password?: string
-      position: string
       team: string
       role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
     }} */ (request.body)
@@ -203,7 +202,6 @@ app.post(
       const user = await createUser({
         username: body.username,
         password: body.password,
-        position: body.position,
         team: body.team,
         role: body.role,
       })
@@ -231,7 +229,6 @@ app.post(
       users: {
         username: string
         password?: string
-        position: string
         team: string
         role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       }[]
@@ -247,7 +244,17 @@ app.post(
           source: 'batch_import',
         })
       }
-      reply.code(result.created.length ? 201 : 400)
+      for (const user of result.updated || []) {
+        logAuditFromRequest(request, 'user.update', {
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          source: 'batch_import',
+        })
+      }
+      const createdCount = result.created.length
+      const updatedCount = result.updated?.length ?? 0
+      reply.code(createdCount || updatedCount ? 201 : 400)
       return result
     } catch (err) {
       reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
@@ -289,7 +296,6 @@ app.patch(
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {{
       team?: string
-      position?: string
       role?: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       status?: 'active' | 'disabled'
       password?: string
