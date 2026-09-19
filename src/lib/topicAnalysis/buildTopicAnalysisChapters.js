@@ -1,4 +1,5 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import { TOPIC_SOURCE_LABELS } from './constants.js'
 
 const PATH_KEYS = new Set(['journeyL1', 'journeyL2', 'requestScene'])
 const CONFIG_KEYS = new Set(['resourcePool', 'productSpec'])
@@ -60,7 +61,7 @@ function concentrationNote(pack) {
 function buildQuantitative(brief, pack) {
   const metrics = brief.decision?.metrics || {}
   const countsBySource = Object.entries(brief.scope?.countsBySource || {}).map(([type, count]) => ({
-    name: DATA_SOURCE_LABELS[type] || type,
+    name: TOPIC_SOURCE_LABELS[type] || DATA_SOURCE_LABELS[type] || type,
     count,
   }))
   const inventory = pack.inventory || {}

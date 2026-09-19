@@ -14,6 +14,7 @@ import {
   MAX_TOPIC_RECOMMEND_CANDIDATES,
   MAX_TOPIC_RECOMMENDATIONS,
   TOPIC_SCENARIO_LABELS,
+  TOPIC_SOURCE_LABELS,
   TOPIC_TYPE_LABELS,
 } from './constants.js'
 import {
@@ -124,7 +125,7 @@ function quoteFromRecord(record) {
     ticketId,
     text: text.slice(0, 120),
     href: buildFeedbacksTicketFilterHref(ticketId),
-    sourceLabel: DATA_SOURCE_LABELS[recordSourceType(record)] || recordSourceType(record),
+    sourceLabel: TOPIC_SOURCE_LABELS[recordSourceType(record)] || DATA_SOURCE_LABELS[recordSourceType(record)] || recordSourceType(record),
   }
 }
 
@@ -279,7 +280,7 @@ export function analyzeTopicGroup(rows, window, topic, actionItems = []) {
 
 function sourceCoverageReason(records) {
   const labels = [...new Set((records || []).map(recordSourceType))]
-    .map((type) => DATA_SOURCE_LABELS[type] || type)
+    .map((type) => TOPIC_SOURCE_LABELS[type] || DATA_SOURCE_LABELS[type] || type)
   if (labels.length >= 2) return `跨 ${labels.join('、')}`
   if (labels.length === 1) return `来源为${labels[0]}`
   return ''
@@ -317,7 +318,7 @@ function decorateCard(card, rows, analysis, periodLabel) {
     sourceHint: periodLabel || '近9个月系统数据',
     sampleSize: count,
     sourceTypes: analysis.sourceTypes,
-    sourceTypeLabels: analysis.sourceTypes.map((type) => DATA_SOURCE_LABELS[type] || type),
+    sourceTypeLabels: analysis.sourceTypes.map((type) => TOPIC_SOURCE_LABELS[type] || DATA_SOURCE_LABELS[type] || type),
     countsBySource,
     evidenceQuotes: quotes,
     periodLabel: periodLabel || '近9个月',

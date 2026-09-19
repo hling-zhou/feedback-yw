@@ -426,7 +426,7 @@ export default function TopicAnalysis() {
         type="info"
         showIcon
         message="Beta 版"
-        description={`系统推荐固定使用近 9 个月（${rollingPeriod.label}），按近期 4 个月与更早 5 个月对比。新建专题时才选择周期，不会改工作台的洞察周期。`}
+        description={`系统推荐固定使用近 9 个月（${rollingPeriod.label}），按近期 4 个月与更早 5 个月对比——对比是指同一专题在两个时段的条数/负向占比是否有明显变化，用于识别「近期加重」或「近期收敛」的信号。用后即评 10 分且无负面反馈的记录跳过。新建专题时才选择周期，不会改工作台的洞察周期。`}
       />
 
       <Tabs

@@ -1,10 +1,10 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
-import { TOPIC_ANALYSIS_DEMO_LABEL, TOPIC_TYPE_LABELS } from './constants.js'
+import { TOPIC_ANALYSIS_DEMO_LABEL, TOPIC_SOURCE_LABELS, TOPIC_TYPE_LABELS } from './constants.js'
 import { ensureTopicAnalysis } from './buildTopicAnalysisChapters.js'
 
 function sourceCountLine(countsBySource = {}) {
   return Object.entries(countsBySource)
-    .map(([type, count]) => `${DATA_SOURCE_LABELS[type] || type} ${count}`)
+    .map(([type, count]) => `${TOPIC_SOURCE_LABELS[type] || DATA_SOURCE_LABELS[type] || type} ${count}`)
     .join('，')
 }
 

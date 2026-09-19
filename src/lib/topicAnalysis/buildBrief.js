@@ -1,5 +1,5 @@
 import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
-import { TOPIC_ANALYSIS_DEMO, TOPIC_TYPE_LABELS } from './constants.js'
+import { TOPIC_ANALYSIS_DEMO, TOPIC_SOURCE_LABELS, TOPIC_TYPE_LABELS } from './constants.js'
 import { buildTopicDecision } from './buildDecision.js'
 import { buildTopicAnalysisChapters } from './buildTopicAnalysisChapters.js'
 
@@ -38,7 +38,7 @@ function ruleJudgments(evidence) {
     const topProblem = evidence.problemTypes?.[0]
     const topProduct = evidence.products?.[0]
     const sourceBits = Object.entries(evidence.countsBySource || {}).map(
-      ([type, count]) => `${DATA_SOURCE_LABELS[type] || type} ${count} 条`,
+      ([type, count]) => `${TOPIC_SOURCE_LABELS[type] || DATA_SOURCE_LABELS[type] || type} ${count} 条`,
     )
     judgments.push({
       id: 'rule-scale',

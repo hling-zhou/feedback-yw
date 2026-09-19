@@ -1,13 +1,13 @@
 export const TOPIC_ANALYSIS_DEMO = true
 export const TOPIC_ANALYSIS_DEMO_LABEL = 'Beta 版'
 export const TOPIC_ANALYSIS_DEMO_NOTE =
-  '专题分析目前为 Beta 版本。系统推荐默认看近 9 个月（近期 4 个月 vs 更早 5 个月）投诉/咨询/用后即评，且只纳入「产品与规格」中至少开启一项分析的产品；用后即评不含 10 分且无负面反馈的记录。只有新建专题时才指定周期，自定义专题不套这条满分过滤。本地补充材料（Markdown / Word / PDF / Excel）可在报告详情中提供。客户身份按名称或编码精确匹配。'
+  '专题分析目前为 Beta 版本。系统推荐默认看近 9 个月（近期 4 个月 vs 更早 5 个月）投诉/咨询/用后即评，且只纳入「产品与规格」中至少开启一项分析的产品；用后即评 10 分且无负面反馈的记录跳过（也不计入数据来源统计），10 分但有负面反馈的仍纳入。只有新建专题时才指定周期，自定义专题不套这条满分过滤。本地补充材料（Markdown / Word / PDF / Excel）可在报告详情中提供。客户身份按名称或编码精确匹配。'
 
 export const META_KEY_TOPIC_ANALYSIS_RUNS = 'topic_analysis_runs_v1'
 export const META_KEY_TOPIC_ANALYSIS_REPORTS = 'topic_analysis_reports_v1'
 export const META_KEY_TOPIC_ANALYSIS_RECOMMEND_CACHE = 'topic_analysis_recommend_cache_v1'
-/** 打分 / 占位 / 二级旅程 / Top20 改版后 bump，旧缓存自动失效 */
-export const TOPIC_RECOMMEND_CACHE_VERSION = 1
+/** 打分 / 占位 / 二级旅程 / Top20 改版后 bump，旧缓存自动失效；用后即评满分过滤+来源标签改版后 bump */
+export const TOPIC_RECOMMEND_CACHE_VERSION = 2
 
 /** @typedef {'customer' | 'product_issue' | 'common_issue'} TopicType */
 
@@ -61,3 +61,15 @@ export function topicReportStatus(report) {
 }
 
 export const SUPPLEMENT_ACCEPT = '.md,.markdown,.txt,.docx,.pdf,.xlsx,.xls'
+
+/**
+ * 专题分析数据来源标签：用后即评显示为「用后即评（不含满分好评）」，
+ * 与推荐范围过滤逻辑（10 分且无负面反馈才跳过）保持口径一致。
+ */
+export const TOPIC_SOURCE_LABELS = {
+  complaint_ticket: '投诉工单',
+  consultation_ticket: '咨询工单',
+  post_use_rating: '用后即评（不含满分好评）',
+  user_survey: '用户调研',
+  other: '其他',
+}

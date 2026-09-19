@@ -9,7 +9,7 @@ export function postUseHasNegativeFeedback(record) {
 }
 
 /**
- * 推荐专题：丢掉用后即评「10 分且无负面反馈」的记录。投诉/咨询一律保留。
+ * 推荐专题：丢掉用后即评「10 分且无负面反馈」的记录；投诉/咨询一律保留。
  * @param {object} record
  */
 export function keepRecordForTopicRecommend(record) {

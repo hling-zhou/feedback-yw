@@ -2,6 +2,7 @@ import { DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import {
   MAX_TOPIC_QUOTES,
   MAX_TOPIC_SOURCES,
+  TOPIC_SOURCE_LABELS,
 } from './constants.js'
 import {
   customerMatchNote,
@@ -305,7 +306,7 @@ function quoteFromRecord(record) {
     recordId: String(record.id || ''),
     ticketId,
     sourceType,
-    sourceLabel: DATA_SOURCE_LABELS[sourceType] || sourceType,
+    sourceLabel: TOPIC_SOURCE_LABELS[sourceType] || DATA_SOURCE_LABELS[sourceType] || sourceType,
     product: String(record.product || record.productName || ''),
     customerName: identity.customerName,
     customerCode: identity.customerCode,
@@ -375,7 +376,7 @@ export function collectTopicEvidence(input) {
         id: String(record.id || ''),
         ticketId: String(record.ticketId || record.originalTicketId || ''),
         sourceType,
-        sourceLabel: DATA_SOURCE_LABELS[sourceType] || sourceType,
+        sourceLabel: TOPIC_SOURCE_LABELS[sourceType] || DATA_SOURCE_LABELS[sourceType] || sourceType,
         product,
         customerName: extractCustomerIdentity(record).customerName,
         customerCode: extractCustomerIdentity(record).customerCode,
