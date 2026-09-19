@@ -3,7 +3,8 @@ import { Alert, Button, Select, Space, Tag, Typography, message } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { workbenchTicketRecords } from '../../snapshots/recordScope.js'
 import { filterFeedbacks } from '../../lib/productAnalytics.js'
-import { listProducts } from '../../lib/productTaxonomy.js'
+import { listProducts, filterProductsByCatalog } from '../../lib/productTaxonomy.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from '../../lib/productCatalogLoader.js'
 import { filterRecordsByImportMonths, resolveTrendMonthWindow } from '../../lib/workbenchTrendWindow.js'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
@@ -87,7 +88,12 @@ export default function TicketDashboardView({
     const rows = workbenchTicketRecords(feedbacks, currentPeriod, snapshot)
     return complaintOnlyCx ? rows.filter(isCustomerExperienceComplaint) : rows
   }, [feedbacks, currentPeriod, snapshot, complaintOnlyCx])
-  const products = useMemo(() => listProducts(periodRecords), [periodRecords])
+  const enabledProducts = useMemo(() => getEnabledProducts(), [])
+  const catalogReady = useMemo(() => isManagedCatalogLoaded(), [])
+  const products = useMemo(
+    () => catalogReady ? filterProductsByCatalog(enabledProducts, listProducts(periodRecords)) : listProducts(periodRecords),
+    [periodRecords, enabledProducts, catalogReady],
+  )
   const sourceAllRecords = useMemo(() => {
     const rows = feedbacks.filter((record) => (record.dataSourceType || 'complaint_ticket') === sourceType)
     return complaintOnlyCx ? rows.filter(isCustomerExperienceComplaint) : rows

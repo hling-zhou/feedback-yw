@@ -599,6 +599,7 @@ function loadCuratedAll(scriptDir) {
     ['云专线', 'ct-taxonomy-curated.json'],
     ['虚拟私有云', 'vpc-taxonomy-curated.json'],
     ['弹性负载均衡', 'elb-taxonomy-curated.json'],
+    ['云监控', 'monitor-taxonomy-curated.json'],
   ];
   // 检查最新 mtime，文件没变则跳过（支持热重载）
   let newestMtime = 0;
@@ -1280,10 +1281,13 @@ function runEngine(records, opts = {}) {
   const TM = opts.taxMap || CAUSE_TAX_MAP;
   const SCOPE = opts.productScope;
   const prodsAll = [...new Set(records.map(r => get(r, '产品名称').replace(/\s/g, '')))].filter(Boolean);
+  // productScope 未传时，默认处理工单数据中出现的所有产品（有 curated 分类法的精确分类，
+  // 无 curated 的由 deriveDraftTax 自动推导草稿分类法）。
+  // 传入 '*' 等效；传入数组/逗号串则限定范围。
   const prods = SCOPE === '*' ? prodsAll
     : (Array.isArray(SCOPE) ? SCOPE
       : (typeof SCOPE === 'string' ? SCOPE.split(',').map(s => s.trim()).filter(Boolean)
-        : Object.keys(CAUSE_TAX_MAP).filter(p => prodsAll.includes(p))));
+        : prodsAll));
 
   const OV = opts.overrides || (opts.disableOverrides ? {} : loadOverrides());
   const summary = [];

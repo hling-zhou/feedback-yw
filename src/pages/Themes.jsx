@@ -16,7 +16,8 @@ import InsightFeedbackList, {
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import SentimentDistributionPanel from '../components/SentimentDistributionPanel.jsx'
-import { listProducts, listResourcePools } from '../lib/productTaxonomy.js'
+import { listProducts, listResourcePools, filterProductsByCatalog } from '../lib/productTaxonomy.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from '../lib/productCatalogLoader.js'
 import {
   aggregateComplaintCauseL1Insights,
   getComplaintCauseL1Display,
@@ -162,7 +163,12 @@ export default function Themes() {
     [periodFeedbacks, currentPeriod, dataSource],
   )
 
-  const products = useMemo(() => listProducts(sourceScopedFeedbacks), [sourceScopedFeedbacks])
+  const enabledProducts = useMemo(() => getEnabledProducts(), [])
+  const catalogReady = useMemo(() => isManagedCatalogLoaded(), [])
+  const products = useMemo(
+    () => catalogReady ? filterProductsByCatalog(enabledProducts, listProducts(sourceScopedFeedbacks)) : listProducts(sourceScopedFeedbacks),
+    [sourceScopedFeedbacks, enabledProducts, catalogReady],
+  )
   const pools = useMemo(
     () => listResourcePools(sourceScopedFeedbacks, product || undefined),
     [sourceScopedFeedbacks, product],

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Select, Segmented, Space, Typography } from 'antd'
-import { listProducts } from '../../lib/productTaxonomy.js'
+import { listProducts, filterProductsByCatalog } from '../../lib/productTaxonomy.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from '../../lib/productCatalogLoader.js'
 import { filterFeedbacks } from '../../lib/productAnalytics.js'
 import {
   buildJourneyStages,
@@ -31,7 +32,12 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
     () => collectOverviewJourneyRecordsForMonths(feedbacks, comparison.previousMonths),
     [feedbacks, comparison.previousMonths],
   )
-  const products = useMemo(() => listProducts(currentRecords), [currentRecords])
+  const enabledProducts = useMemo(() => getEnabledProducts(), [])
+  const catalogReady = useMemo(() => isManagedCatalogLoaded(), [])
+  const products = useMemo(
+    () => catalogReady ? filterProductsByCatalog(enabledProducts, listProducts(currentRecords)) : listProducts(currentRecords),
+    [currentRecords, enabledProducts, catalogReady],
+  )
 
   useEffect(() => {
     if (product && !products.some((item) => item.name === product)) {

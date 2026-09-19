@@ -1,4 +1,5 @@
-import { listProducts } from './productTaxonomy.js'
+import { listProducts, filterProductsByCatalog } from './productTaxonomy.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from './productCatalogLoader.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -10,9 +11,16 @@ import { filterRecordsForScope } from '../snapshots/recordScope.js'
  * @returns {Map<string, number>}
  */
 function productCountMap(records) {
+  const listed = listProducts(records)
+  if (!isManagedCatalogLoaded()) {
+    const map = new Map()
+    for (const row of listed) map.set(row.name, row.count)
+    return map
+  }
+  const catalog = getEnabledProducts()
   /** @type {Map<string, number>} */
   const map = new Map()
-  for (const row of listProducts(records)) {
+  for (const row of filterProductsByCatalog(catalog, listed)) {
     map.set(row.name, row.count)
   }
   return map

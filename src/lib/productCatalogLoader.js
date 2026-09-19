@@ -189,6 +189,15 @@ export function getEnabledProducts() {
 }
 
 /**
+ * 目录是否已从 managed（DB）加载。
+ * 内置默认（builtin）只有少量产品，不能作为过滤依据。
+ * @returns {boolean}
+ */
+export function isManagedCatalogLoaded() {
+  return cache.source === 'managed'
+}
+
+/**
  * @param {string} [productKey]
  * @returns {CatalogProduct | undefined}
  */

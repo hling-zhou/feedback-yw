@@ -38,6 +38,26 @@ export function listProducts(feedbacks) {
     .sort((a, b) => b.count - a.count)
 }
 
+/**
+ * 按产品目录过滤：只保留 enabled=true 的产品。
+ * 用于工作台 / 分析页的产品下拉，避免出现目录外产品（如云主机ECS、云电脑等）。
+ * 目录为空时回退为全量列表（避免配置未加载时筛空）。
+ *
+ * @param {import('./productCatalogLoader.js').CatalogProduct[] | null | undefined} catalog
+ * @param {{ name: string; count: number; key: string; specs: string[] }[]} listed
+ * @returns {{ name: string; count: number; key: string; specs: string[] }[]}
+ */
+export function filterProductsByCatalog(catalog, listed) {
+  if (!Array.isArray(catalog) || catalog.length === 0) return listed
+  const allow = new Set(
+    catalog
+      .filter((p) => p?.enabled)
+      .map((p) => String(p.name || '').trim())
+      .filter(Boolean),
+  )
+  return listed.filter((item) => allow.has(item.name))
+}
+
 export function listResourcePools(feedbacks, productFilter) {
   const map = new Map()
   for (const fb of feedbacks) {

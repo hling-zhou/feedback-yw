@@ -32,6 +32,7 @@ import { getSignalWeight } from './planningConfigLoader.js'
 import { attachPlanningRecommendationSections } from './planningRecommendationSections.js'
 import { buildRecommendationExportFullText } from './planningRecommendationDisplay.js'
 import { getEffectiveOptimization } from './ticketAnalysis/ticketOptimizationExtract.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from './productCatalogLoader.js'
 import { collectEffectiveOptimizationsFromRecords } from './ticketAnalysis/effectiveOptimizationCollect.js'
 
 /** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
@@ -748,12 +749,15 @@ export function dedupeSameProductPlanningRecommendations(list) {
  * @param {number} [minTickets]
  */
 export function listProductsForPlanningCoverage(ticketRecords, minTickets = MIN_PRODUCT_TICKETS_FOR_COVERAGE) {
-  return topValues(ticketRecords, 'product', 24)
+  const listed = topValues(ticketRecords, 'product', 24)
     .map((p) => p.text)
     .filter((name) => {
       const count = ticketRecords.filter((r) => r.product === name).length
       return name && count >= minTickets
     })
+  if (!isManagedCatalogLoaded()) return listed
+  const allow = new Set(getEnabledProducts().map((p) => String(p.name || '').trim()).filter(Boolean))
+  return listed.filter((name) => allow.has(name))
 }
 
 /**

@@ -9,7 +9,8 @@ import {
   journeyTree,
   aggregateFieldInsights,
 } from '../lib/productAnalytics.js'
-import { listProducts } from '../lib/productTaxonomy.js'
+import { listProducts, filterProductsByCatalog } from '../lib/productTaxonomy.js'
+import { getEnabledProducts, isManagedCatalogLoaded } from '../lib/productCatalogLoader.js'
 import { countComplaintCauseL1 } from '../domain/complaintCause.js'
 import { buildSourcePainPointClusterSnapshot } from '../lib/painPointClustering/buildSourceClusterSnapshot.js'
 import {
@@ -53,7 +54,9 @@ export async function buildSourceSnapshot({
 
   const stats = computeStats(records)
   const sentiment = ticket ? sentimentStats(records) : { total: records.length, distribution: [] }
-  const products = listProducts(records)
+  const products = isManagedCatalogLoaded()
+    ? filterProductsByCatalog(getEnabledProducts(), listProducts(records))
+    : listProducts(records)
   const trend = ticket ? monthlyTrend(records, { basis: 'importMonth', limit: 12 }) : []
 
   const followUpTickets = extractFollowUpTicketRecords(ticketRecordsForFollowUp)
