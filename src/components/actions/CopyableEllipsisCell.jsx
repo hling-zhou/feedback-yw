@@ -3,9 +3,9 @@ import { CopyOutlined } from '@ant-design/icons'
 import { copyTextToClipboard } from '../../lib/clipboard.js'
 
 /**
- * @param {{ text?: string | null; className?: string }} props
+ * @param {{ text?: string | null; className?: string; textClassName?: string }} props
  */
-export default function CopyableEllipsisCell({ text, className }) {
+export default function CopyableEllipsisCell({ text, className, textClassName }) {
   const value = text?.trim() || ''
   if (!value) return <Typography.Text type="secondary">—</Typography.Text>
 
@@ -19,7 +19,7 @@ export default function CopyableEllipsisCell({ text, className }) {
   return (
     <Tooltip title={value} getPopupContainer={() => document.body}>
       <span className={`inline-flex max-w-full items-center gap-1 ${className || ''}`}>
-        <Typography.Text className="min-w-0 flex-1" ellipsis>
+        <Typography.Text className={`min-w-0 flex-1 transition-colors ${textClassName || ''}`} ellipsis>
           {value}
         </Typography.Text>
         <CopyOutlined

@@ -422,20 +422,19 @@ export default function TicketTodoTab() {
     {
       title: '产品名称',
       dataIndex: 'productName',
-      width: 120,
+      width: 100,
       fixed: 'left',
       render: (value) => value || '—',
     },
     {
       title: '待办',
       dataIndex: 'text',
-      width: 260,
-      render: (value) => <CopyableEllipsisCell text={value} />,
+      render: (value) => <CopyableEllipsisCell text={value} textClassName="group-hover:text-brand-600" />,
     },
     {
       title: '关联工单',
       dataIndex: 'ticketId',
-      width: 140,
+      width: 130,
       render: (_, record) => (
         <div
           onClick={(event) => event.stopPropagation()}
@@ -459,13 +458,13 @@ export default function TicketTodoTab() {
     {
       title: '负责人',
       dataIndex: 'assigneeUsername',
-      width: 140,
+      width: 100,
       render: (_, record) => formatTicketTodoAssigneeLabel(record),
     },
     {
       title: '时间',
       key: 'time',
-      width: 160,
+      width: 130,
       render: (_, record) => {
         const created = formatTicketTodoDateTime(record.createdAt) || '—'
         const updated = record.updatedAt
@@ -482,13 +481,13 @@ export default function TicketTodoTab() {
     {
       title: '状态',
       dataIndex: 'resolution',
-      width: 120,
+      width: 90,
       render: (value) => <TicketTodoStatusTag resolution={value} />,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 60,
+      width: 56,
       fixed: 'right',
       render: (_, record) =>
         canEdit ? (
@@ -609,10 +608,10 @@ export default function TicketTodoTab() {
           columns={columns}
           dataSource={items}
           sticky={{ offsetHeader: stickyChromeHeight }}
-          scroll={{ x: 960 }}
+          scroll={{ x: 620 }}
           onRow={(record) => ({
             onClick: () => openRow(record),
-            className: 'cursor-pointer',
+            className: 'group cursor-pointer',
           })}
           pagination={{
             current: page,

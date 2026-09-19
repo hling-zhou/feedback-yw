@@ -179,7 +179,7 @@ export default function PostUseJiraTab() {
         rowKey="id"
         loading={loading}
         dataSource={items}
-        scroll={{ x: 1280 }}
+        scroll={{ x: 900 }}
         sticky={{ offsetHeader: stickyChromeHeight }}
         rowSelection={
           canEdit
@@ -199,19 +199,19 @@ export default function PostUseJiraTab() {
           onClick: () => openEdit(record),
         })}
         columns={[
-          { title: '数据月份', dataIndex: 'importMonth', width: 110 },
-          { title: '客户名称', dataIndex: 'customerName', width: 160, ellipsis: true },
-          { title: '客户编码', dataIndex: 'customerCode', width: 140, ellipsis: true },
-          { title: '产品名称', dataIndex: 'productName', width: 140, ellipsis: true },
+          { title: '数据月份', dataIndex: 'importMonth', width: 90 },
+          { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
+          { title: '客户编码', dataIndex: 'customerCode', width: 130, ellipsis: true },
+          { title: '产品名称', dataIndex: 'productName', width: 100, ellipsis: true },
           { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
-          { title: 'JIRA工单', dataIndex: 'jiraTicket', width: 140, ellipsis: true },
-          { title: '状态', dataIndex: 'status', width: 100 },
-          { title: '进展', dataIndex: 'progress', width: 180, ellipsis: true },
+          { title: 'JIRA工单', dataIndex: 'jiraTicket', width: 120, ellipsis: true },
+          { title: '状态', dataIndex: 'status', width: 90 },
+          { title: '进展', dataIndex: 'progress', width: 160, ellipsis: true },
           canEdit
             ? {
                 title: '操作',
                 key: 'actions',
-                width: 80,
+                width: 56,
                 render: (_value, row) => (
                   <Popconfirm
                     title="确定删除该记录？"

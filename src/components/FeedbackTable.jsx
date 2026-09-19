@@ -140,7 +140,7 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
       render: (_, fb) => {
         return (
           <div>
-            <Typography.Text strong>{fb.ticketId || '-'}</Typography.Text>
+            <Typography.Text strong className="transition-colors group-hover:text-brand-600">{fb.ticketId || '-'}</Typography.Text>
             {fb.product && (
               <Typography.Text type="secondary" className="block text-xs">
                 {fb.product}
@@ -336,7 +336,7 @@ export default function FeedbackTable({
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
       onRow={(record) => ({
         onClick: () => onSelect(record),
-        className: 'cursor-pointer',
+        className: 'group cursor-pointer',
       })}
     />
   )

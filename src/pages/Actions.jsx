@@ -962,7 +962,7 @@ function ProductActionsTab() {
     {
       title: '产品名称',
       dataIndex: 'productName',
-      width: 120,
+      width: 100,
       fixed: 'left',
       render: (_, record) => resolveActionItemProductDisplayName(record, productNameByKey) || '—',
     },
@@ -970,7 +970,6 @@ function ProductActionsTab() {
       title: '问题',
       dataIndex: 'painPointSnapshot',
       ellipsis: true,
-      width: 160,
       fixed: 'left',
       render: (text) => <CopyableEllipsisCell text={text} />,
     },
@@ -979,7 +978,7 @@ function ProductActionsTab() {
       dataIndex: 'content',
       ellipsis: true,
       width: 180,
-      render: (text) => <CopyableEllipsisCell text={text} />,
+      render: (text) => <CopyableEllipsisCell text={text} textClassName="group-hover:text-brand-600" />,
     },
     {
       title: (
@@ -996,7 +995,7 @@ function ProductActionsTab() {
         />
       ),
       key: 'linkedTickets',
-      width: 110,
+      width: 100,
       render: (_, record) => (
         <div onClick={(event) => event.stopPropagation()}>
           <LinkedTicketsCell
@@ -1012,7 +1011,7 @@ function ProductActionsTab() {
         <ColumnTitleWithHint title="需求工单" hint={REQUIREMENT_TICKET_HEADER_HINT} />
       ),
       key: 'linkedRequirementTickets',
-      width: 160,
+      width: 140,
       render: (_, record) => (
         <div onClick={(event) => event.stopPropagation()}>
           <RequirementTicketsCell
@@ -1025,7 +1024,7 @@ function ProductActionsTab() {
     {
       title: <ColumnTitleWithHint title="排期时间" hint={SCHEDULE_AT_HEADER_HINT} />,
       key: 'scheduleAt',
-      width: 120,
+      width: 110,
       render: (_, record) => {
         const linked = Boolean(record.requirementLinkMode)
         const scheduleText = linked
@@ -1052,7 +1051,7 @@ function ProductActionsTab() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 90,
+      width: 80,
       render: (status, record) => {
         if (record.requirementLinkMode) {
           if (!record.derivedStatus) {
@@ -1070,7 +1069,7 @@ function ProductActionsTab() {
     {
       title: '首次提出时间',
       dataIndex: 'firstProposedAt',
-      width: 120,
+      width: 110,
       render: (text, record) => (
         <span
           className={
@@ -1084,7 +1083,7 @@ function ProductActionsTab() {
     {
       title: '最近更新',
       key: 'updated',
-      width: 200,
+      width: 160,
       render: (_, record) => (
         <div className="truncate">
           <Typography.Text className="text-xs">
@@ -1099,7 +1098,7 @@ function ProductActionsTab() {
     {
       title: '操作',
       key: 'actions',
-      width: 112,
+      width: 96,
       fixed: 'right',
       render: (_, record) => {
         const locked = isActionItemLocked(record.status)
@@ -1303,11 +1302,11 @@ function ProductActionsTab() {
             columns={columns}
             dataSource={items}
             sticky={{ offsetHeader: stickyChromeHeight }}
-            scroll={{ x: 1960 }}
-            onRow={(record) => ({
-              onClick: () => openEdit(record),
-              className: 'cursor-pointer',
-            })}
+            scroll={{ x: 1100 }}
+          onRow={(record) => ({
+            onClick: () => openEdit(record),
+            className: 'group cursor-pointer',
+          })}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
