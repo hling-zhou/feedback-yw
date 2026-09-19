@@ -1272,7 +1272,7 @@ function ProductActionsTab() {
 
         <div
           ref={stickyChromeRef}
-          className="mt-3 flex w-full flex-wrap items-start gap-2"
+          className="page-sticky-chrome mt-3 flex w-full flex-wrap items-start gap-2"
         >
           <ActionItemCompositeFilter
             className="min-w-0 flex-1"

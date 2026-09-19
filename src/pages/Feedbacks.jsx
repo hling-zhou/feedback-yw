@@ -973,7 +973,7 @@ export default function Feedbacks() {
             : 'page-section'
         }`}
       >
-        <div className="flex flex-wrap items-start gap-2">
+        <div className="flex w-full flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">

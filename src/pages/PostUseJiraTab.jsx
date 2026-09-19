@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   Form,
@@ -38,6 +38,18 @@ export default function PostUseJiraTab() {
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
+  const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+  const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
+
+  useEffect(() => {
+    const chrome = stickyChromeRef.current
+    if (!chrome) return undefined
+    const syncOffset = () => setStickyChromeHeight(chrome.offsetHeight)
+    syncOffset()
+    const ro = new ResizeObserver(syncOffset)
+    ro.observe(chrome)
+    return () => ro.disconnect()
+  }, [])
 
   const query = useMemo(
     () => ({
@@ -122,40 +134,45 @@ export default function PostUseJiraTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Typography.Paragraph type="secondary" className="!mb-0">
-          从建议回访/溯源清单勾选部门内溯源后一键存档。仅可编辑 JIRA工单、状态、进展。
-        </Typography.Paragraph>
-        <Space wrap>
-          <Button icon={<ReloadOutlined />} onClick={() => void load()}>
-            刷新
-          </Button>
-          {canEdit ? (
-            <Popconfirm
-              title={`确定删除选中的 ${selectedRowKeys.length} 条？`}
-              disabled={!selectedRowKeys.length}
-              onConfirm={() => void removeSelected()}
-            >
-              <Button danger icon={<DeleteOutlined />} disabled={!selectedRowKeys.length}>
-                批量删除
-              </Button>
-            </Popconfirm>
-          ) : null}
-        </Space>
-      </div>
-      <div className="flex flex-wrap items-start gap-2">
-        <PostUseJiraCompositeFilter
-          className="min-w-0 flex-1"
-          filters={filters}
-          onFiltersChange={(next) => {
-            setFilters(next)
-            setPage(1)
-          }}
-          onClearFilters={() => {
-            setFilters(clearAllPostUseJiraFilters())
-            setPage(1)
-          }}
-        />
+      <div
+        ref={stickyChromeRef}
+        className="page-sticky-chrome space-y-2"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Typography.Paragraph type="secondary" className="!mb-0">
+            从建议回访/溯源清单勾选部门内溯源后一键存档。仅可编辑 JIRA工单、状态、进展。
+          </Typography.Paragraph>
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} onClick={() => void load()}>
+              刷新
+            </Button>
+            {canEdit ? (
+              <Popconfirm
+                title={`确定删除选中的 ${selectedRowKeys.length} 条？`}
+                disabled={!selectedRowKeys.length}
+                onConfirm={() => void removeSelected()}
+              >
+                <Button danger icon={<DeleteOutlined />} disabled={!selectedRowKeys.length}>
+                  批量删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        </div>
+        <div className="flex w-full flex-wrap items-start gap-2">
+          <PostUseJiraCompositeFilter
+            className="min-w-0 flex-1"
+            filters={filters}
+            onFiltersChange={(next) => {
+              setFilters(next)
+              setPage(1)
+            }}
+            onClearFilters={() => {
+              setFilters(clearAllPostUseJiraFilters())
+              setPage(1)
+            }}
+          />
+        </div>
       </div>
       <Table
         size="small"
@@ -163,6 +180,7 @@ export default function PostUseJiraTab() {
         loading={loading}
         dataSource={items}
         scroll={{ x: 1280 }}
+        sticky={{ offsetHeader: stickyChromeHeight }}
         rowSelection={
           canEdit
             ? {
