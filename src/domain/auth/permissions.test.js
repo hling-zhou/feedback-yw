@@ -32,11 +32,11 @@ describe('auth permissions', () => {
     expect(canAccessRoute('editor', '/users')).toBe(true)
   })
 
-  it('partial_editor can edit records but not import, retag, tags, users, or delete', () => {
+  it('partial_editor can import and edit records but not retag, tags, users, or delete', () => {
     expect(hasPermission('partial_editor', 'view')).toBe(true)
     expect(hasPermission('partial_editor', 'editRecord')).toBe(true)
     expect(hasPermission('partial_editor', 'export')).toBe(true)
-    expect(hasPermission('partial_editor', 'import')).toBe(false)
+    expect(hasPermission('partial_editor', 'import')).toBe(true)
     expect(hasPermission('partial_editor', 'retag')).toBe(false)
     expect(hasPermission('partial_editor', 'manageTags')).toBe(false)
     expect(hasPermission('partial_editor', 'manageUsers')).toBe(false)
@@ -62,7 +62,7 @@ describe('auth permissions', () => {
     expect(hasPermission('viewer', 'import')).toBe(false)
     expect(hasPermission('editor', 'import')).toBe(true)
     expect(hasPermission('admin', 'import')).toBe(true)
-    expect(hasPermission('partial_editor', 'import')).toBe(false)
+    expect(hasPermission('partial_editor', 'import')).toBe(true)
   })
 
   it('viewer hidden routes', () => {

@@ -66,7 +66,7 @@ export const ROLE_PERMISSIONS = {
     'editOrderVolumes',
     'manageKnowledgeBase',
   ],
-  partial_editor: ['view', 'viewAudit', 'editRecord', 'export'],
+  partial_editor: ['view', 'viewAudit', 'import', 'editRecord', 'export'],
   viewer: ['view', 'viewAudit', 'export'],
 }
 
