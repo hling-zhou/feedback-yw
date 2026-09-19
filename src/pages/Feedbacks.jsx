@@ -975,7 +975,7 @@ export default function Feedbacks() {
       >
         <div className="flex w-full flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">
               <FeedbackCompositeFilter
                 filters={filters}
@@ -1006,7 +1006,7 @@ export default function Feedbacks() {
             </div>
           </div>
         ) : (
-        <div className="space-y-2">
+        <div className="w-full space-y-2">
           {ticketIdSet ? (
             <Tag
               color="blue"
