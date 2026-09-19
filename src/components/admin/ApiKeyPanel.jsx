@@ -11,7 +11,6 @@ import {
   Typography } from 'antd'
 import { CopyOutlined, KeyOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
-import { useAuth } from '../../context/AuthContext.jsx'
 import { API_KEY_SCOPE_LABELS, API_KEY_SCOPES } from '../../domain/apiKey.js'
 import { createApiKey, listApiKeys, revokeApiKey } from '../../lib/apiKeyClient.js'
 

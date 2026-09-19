@@ -19,6 +19,7 @@ import {
 } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { readBackgroundTaskErrorMessage } from '../lib/backgroundTaskClient.js'
 import { ImportProgressAlert } from '../components/TaggingProgressAlert.jsx'
@@ -143,6 +144,7 @@ function isPasswordPromptError(err) {
 
 export default function Import({ embedded = false }) {
   const navigate = useNavigate()
+  const { can } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialSource = searchParams.get('source')
   const initialSubType = searchParams.get('subType')
@@ -1574,7 +1576,7 @@ export default function Import({ embedded = false }) {
             />
           )}
           <div className="page-section">
-            <Button type="primary" onClick={() => setStep(1)}>
+            <Button type="primary" disabled={!can('import')} onClick={() => setStep(1)}>
               下一步：上传文件
             </Button>
           </div>
@@ -2198,7 +2200,7 @@ export default function Import({ embedded = false }) {
             {followUpImport ? (
               <Button
                 type="primary"
-                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
                 loading={importBusy || followUpPreviewLoading}
                 onClick={confirmFollowUpImport}
               >
@@ -2211,7 +2213,7 @@ export default function Import({ embedded = false }) {
             ) : customerVisitImport ? (
               <Button
                 type="primary"
-                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
                 loading={importBusy || customerVisitPreviewLoading}
                 onClick={confirmCustomerVisitImport}
               >
@@ -2224,7 +2226,7 @@ export default function Import({ embedded = false }) {
             ) : (
               <Button
                 type="primary"
-                disabled={!canImport || !storageReady || importBlocked || importBusy}
+                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
                 loading={importBusy}
                 onClick={() => doImport(false)}
               >
