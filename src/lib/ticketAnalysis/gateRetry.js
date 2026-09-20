@@ -15,8 +15,8 @@
  *    R3: LLM 介入（调用 extractCustomerRequestWithLLM 重新提取）
  *  L1（requestScene × problemType 一致性）：
  *    R1: 回退旧分类器（不用 extractIntent，用独立 problemTypeClassifier/requestSceneClassifier）
- *    R2: 路径兜底（从请求节点/系统路径提取 scene+type）
- *    R3: LLM 介入（用 LLM 语料重打维度）
+ *    R2: （已停用）路径兜底——请求节点是用户选的类目，不应用于维度兜底
+ *    R3: LLM 介入（用 LLM 语料重打维度，只选不造）
  *  L2（journey 有效性）：
  *    R1: 路径兜底（从请求节点提取旅程）
  *    R2: 宽松匹配（useRequestNode=true 放宽旅程匹配）
@@ -32,8 +32,6 @@ import {
   matchJourneyByDescription,
 } from '../ticketTagging.js'
 import {
-  matchRequestSceneFromPath,
-  matchProblemTypeFromPath,
   matchJourneyFromPath,
 } from './pathTagging.js'
 import { isUnrecognizedTag } from './tagLabels.js'
@@ -173,25 +171,6 @@ function retryL1FallbackClassifier(input, text, taxonomy, taxonomyKey) {
   )
 
   return { requestScene, problemType }
-}
-
-/**
- * L1-R2: 路径兜底
- * 从请求节点/系统路径提取 scene + problemType
- */
-function retryL1PathFallback(text, taxonomy, taxonomyKey) {
-  const segments = extractPathSegments(text)
-  if (segments.length < 2) return null
-
-  const pathScene = matchRequestSceneFromPath(segments, taxonomyKey, taxonomy.requestScenes)
-  const pathProblem = matchProblemTypeFromPath(segments, taxonomyKey, taxonomy.problemTypes)
-
-  if (!pathScene && !pathProblem) return null
-
-  return {
-    requestScene: pathScene ? normalizeTagLabel(pathScene, 'dimension') : undefined,
-    problemType: pathProblem ? normalizeTagLabel(pathProblem, 'dimension') : undefined,
-  }
 }
 
 /**
@@ -381,26 +360,8 @@ export async function retryGate({
       }
     }
 
-    // R2: 路径兜底
-    const r2 = retryL1PathFallback(text, taxonomy, taxonomyKey)
-    if (r2) {
-      const merged = {
-        requestScene: r2.requestScene || currentDims.requestScene,
-        problemType: r2.problemType || currentDims.problemType,
-      }
-      const r2Check = validateL1(merged)
-      if (r2Check.pass) {
-        return {
-          pass: true,
-          dims: { ...currentDims, ...merged },
-          tagStatus: 'ok',
-          tagIssues: issues,
-          retryStrategy: 'L1-R2-path-fallback',
-        }
-      }
-    }
-
-    // R3: LLM 介入
+    // R2: 路径兜底（已停用——请求节点是用户选的类目，不应用于维度兜底）
+    // 直接进入 R3: LLM 介入（strictLabels 模式，只选不造）
     const r3 = await retryL1LLM(input, text, taxonomy, taxonomyKey, settings)
     if (r3) {
       const r3Check = validateL1(r3)
@@ -420,7 +381,7 @@ export async function retryGate({
       pass: false,
       dims: currentDims,
       tagStatus: 'manual_review',
-      tagIssues: [...issues, 'L1 重试后仍不通过（R1旧分类器+R2路径+R3 LLM）'],
+      tagIssues: [...issues, 'L1 重试后仍不通过（R1旧分类器+R3 LLM）'],
       retryStrategy: 'exhausted',
     }
   }

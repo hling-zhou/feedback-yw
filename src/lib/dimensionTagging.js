@@ -229,24 +229,72 @@ function resolveLocalRequestSceneLabel(record, text, rules) {
 }
 
 /**
- * 请求场景仅 config 关键词/说明匹配（与问题类型一致，永不调 LLM）。
+ * 请求场景：本地决策树优先；未命中默认值且 LLM 可用时，走 LLM 从标签库语义匹配（只选不造）。
  * @param {FeedbackRecord[]} records
  * @param {string[]} texts
  * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
- * @param {import('./storage.js').AppSettings} [_settings]
+ * @param {import('./storage.js').AppSettings} [settings]
  * @param {(done: number, total: number) => void} [onProgress]
  */
-export async function matchRequestScenesForRecords(records, texts, rules, _settings, onProgress) {
-  void _settings
-  onProgress?.(texts.length, texts.length)
-  return texts.map((text, i) => ({
-    label: resolveLocalRequestSceneLabel(records[i], texts[i], rules),
-    overflowOrigin: null,
-  }))
+export async function matchRequestScenesForRecords(records, texts, rules, settings, onProgress) {
+  const local = texts.map((text, i) => resolveLocalRequestSceneLabel(records[i], texts[i], rules))
+
+  if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings?.themeMatchMode)) {
+    onProgress?.(texts.length, texts.length)
+    return local.map((label) => ({ label, overflowOrigin: null }))
+  }
+
+  // 只对本地命中默认值的记录调 LLM——本地已命中非默认值的直接采用
+  const llmIndices = []
+  for (let i = 0; i < records.length; i++) {
+    if (local[i] === REQUEST_SCENE_DEFAULT) llmIndices.push(i)
+  }
+
+  if (!llmIndices.length) {
+    onProgress?.(texts.length, texts.length)
+    return local.map((label) => ({ label, overflowOrigin: null }))
+  }
+
+  const themeRules = toThemeRules(rules)
+  /** @type {{ label: string; overflowOrigin: 'llm' | 'local_overflow' | null }[]} */
+  const results = local.map((label) => ({ label, overflowOrigin: null }))
+
+  const BATCH = 8
+  for (let b = 0; b < llmIndices.length; b += BATCH) {
+    const idxBatch = llmIndices.slice(b, b + BATCH)
+    const chunk = idxBatch.map((i) => texts[i])
+    const localChunk = idxBatch.map((i) => local[i])
+    try {
+      const llmBatch = await matchSharedDimensionLlmBatch(
+        chunk,
+        themeRules,
+        settings,
+        localChunk,
+        { strictLabels: true },
+      )
+      idxBatch.forEach((i, j) => {
+        const llmLabel = llmBatch[j]?.[0] || REQUEST_SCENE_DEFAULT
+        const label = mergeSharedDimensionLabel(local[i], llmLabel, themeRules)
+        results[i] = {
+          label,
+          overflowOrigin: resolveThemeOverflowOrigin(label, local[i], llmLabel, themeRules),
+        }
+      })
+    } catch (err) {
+      console.warn('请求场景 LLM 打标失败，该批保留本地结果:', err)
+      idxBatch.forEach((i) => {
+        results[i] = { label: local[i], overflowOrigin: null }
+      })
+    }
+    onProgress?.(Math.min(b + BATCH, llmIndices.length), llmIndices.length)
+  }
+
+  return results
 }
 
 /**
- * 投诉/咨询工单：问题类型仅 config 关键词匹配（不调 LLM）；其余来源保持混合打标。
+ * 问题类型：本地决策树优先；未命中"其他"且 LLM 可用时，走 LLM 从标签库语义匹配（只选不造）。
+ * 投诉/咨询工单同样适用——本地关键词覆盖有上限，LLM 补充语义匹配能减少"其他"堆积。
  * @param {FeedbackRecord[]} records
  * @param {string[]} texts
  * @param {{ label: string; description?: string; keywords?: string[] }[]} rules
@@ -258,6 +306,7 @@ export async function matchProblemTypesForRecords(records, texts, rules, setting
 
   const themeRules = toThemeRules(rules)
   if (!canUseSemanticMatch(settings) || !usesLlmThemeMatch(settings?.themeMatchMode)) {
+    onProgress?.(records.length, records.length)
     return local.map((label) => ({ label, overflowOrigin: null }))
   }
 
@@ -267,15 +316,16 @@ export async function matchProblemTypesForRecords(records, texts, rules, setting
   const llmIndices = []
 
   for (let i = 0; i < records.length; i++) {
-    const ds = records[i].dataSourceType || 'complaint_ticket'
-    if (TICKET_LIKE_SOURCES.includes(ds)) {
-      // 投诉/咨询工单：问题类型仅来自标签库（关键词+说明），永不走 LLM，避免库外标签
-      continue
-    }
     const label = local[i]
-    if (!isInThemeLibrary(label, themeRules) || label === UNCLASSIFIED_PROBLEM) {
+    // 本地命中"其他"或不在标签库中时，触发 LLM 语义匹配
+    if (!isInThemeLibrary(label, themeRules) || label === UNCLASSIFIED_PROBLEM || label === PROBLEM_TYPE_OTHER) {
       llmIndices.push(i)
     }
+  }
+
+  if (!llmIndices.length) {
+    onProgress?.(records.length, records.length)
+    return results
   }
 
   const BATCH = 8
@@ -284,7 +334,13 @@ export async function matchProblemTypesForRecords(records, texts, rules, setting
     const chunk = idxBatch.map((i) => texts[i])
     const localChunk = idxBatch.map((i) => local[i])
     try {
-      const llmBatch = await matchSharedDimensionLlmBatch(chunk, themeRules, settings, localChunk)
+      const llmBatch = await matchSharedDimensionLlmBatch(
+        chunk,
+        themeRules,
+        settings,
+        localChunk,
+        { strictLabels: true },
+      )
       idxBatch.forEach((i, j) => {
         const llmLabel = llmBatch[j]?.[0] || UNCLASSIFIED_PROBLEM
         const label = mergeSharedDimensionLabel(local[i], llmLabel, themeRules)

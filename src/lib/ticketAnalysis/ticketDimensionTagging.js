@@ -19,8 +19,6 @@ import {
 import { REQUEST_SCENE_DEFAULT } from '../requestSceneClassifier.js'
 import {
   matchJourneyFromPath,
-  matchProblemTypeFromPath,
-  matchRequestSceneFromPath,
 } from './pathTagging.js'
 import { applyCorrectionOverlay } from '../learning/tagCorrectionRules.js'
 import { extractIntent, intentToRequestScene, intentToProblemType } from './intentExtractor.js'
@@ -195,22 +193,14 @@ function tagCore({ text, input, taxonomy, taxonomyKey, settings }) {
 
   const usePath =
     settings?.useRequestNodeForJourney !== false &&
-    (corpus.fuzzy ||
-      isUnrecognizedTag(requestScene) ||
-      isProblemTypeClassifierMiss(problemType) ||
-      isUnrecognizedTag(journeyL1))
+    (corpus.fuzzy || isUnrecognizedTag(journeyL1))
 
+  // 路径段仅用于旅程兜底（nodeMaps 精确映射，不产生 pendingReviewTag）；
+  // 请求场景和问题类型不从路径段值兜底——请求节点是用户提交工单时选的类目，
+  // 与实际问题和场景不一定对应，直接用会导致产品名混入维度标签。
   if (usePath && pathSegments.length >= 2) {
-    const pathScene = matchRequestSceneFromPath(pathSegments, taxonomyKey, taxonomy.requestScenes)
-    const pathProblem = matchProblemTypeFromPath(pathSegments, taxonomyKey, taxonomy.problemTypes)
     const pathJourney = matchJourneyFromPath(text, taxonomy.journeys, taxonomyKey, pathSegments)
 
-    if (isUnrecognizedTag(requestScene) && pathScene) {
-      requestScene = normalizeTagLabel(pathScene, 'dimension')
-    }
-    if (isProblemTypeClassifierMiss(problemType) && pathProblem) {
-      problemType = normalizeTagLabel(pathProblem, 'dimension')
-    }
     if (!emptyJourneyAsk && !corpus.fuzzy && isUnrecognizedTag(journeyL1) && pathJourney) {
       journeyL1 = normalizeTagLabel(pathJourney.journeyL1, 'journeyL1')
       journeyL2 = normalizeTagLabel(pathJourney.journeyL2, 'journeyL2')

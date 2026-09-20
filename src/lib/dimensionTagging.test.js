@@ -19,9 +19,11 @@ vi.mock('./themeSemantic.js', async (importOriginal) => {
     ...mod,
     canUseSemanticMatch: () => true,
     usesLlmThemeMatch: () => true,
-    matchSharedDimensionLlmBatch: vi.fn(async (texts) =>
-      texts.map(() => ['LLM建议类型']),
-    ),
+    // 模拟 strictLabels 模式：从传入的 rules 中取第一个标签返回（LLM 只选不造）
+    matchSharedDimensionLlmBatch: vi.fn(async (texts, rules, _config, _hints, _opts) => {
+      const label = rules?.[0]?.label || '未分类'
+      return texts.map(() => [label])
+    }),
   }
 })
 
@@ -55,7 +57,7 @@ describe('dimensionTagging', () => {
     )
   })
 
-  it('matchProblemTypesForRecords skips LLM when complaint ticket matches config from text', async () => {
+  it('matchProblemTypesForRecords skips LLM when local classifier hits', async () => {
     const { matchSharedDimensionLlmBatch } = await import('./themeSemantic.js')
     const records = [
       {
@@ -72,12 +74,14 @@ describe('dimensionTagging', () => {
       PROBLEM_TYPES_BUILTIN,
       { themeMatchMode: 'hybrid' },
     )
+    // 本地命中"性能问题"→不调 LLM
     expect(results[0].label).toBe('性能问题')
     expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
   })
 
-  it('matchProblemTypesForRecords never uses LLM for complaint tickets even when unmatched', async () => {
+  it('matchProblemTypesForRecords triggers LLM when local returns 其他', async () => {
     const { matchSharedDimensionLlmBatch } = await import('./themeSemantic.js')
+    matchSharedDimensionLlmBatch.mockClear()
     const records = [
       {
         id: '2',
@@ -93,12 +97,16 @@ describe('dimensionTagging', () => {
       PROBLEM_TYPES_BUILTIN,
       { themeMatchMode: 'hybrid' },
     )
-    expect(results[0].label).toBe('其他')
-    expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
+    // 本地返回"其他"→触发 LLM（strictLabels 模式，只选不造）
+    expect(matchSharedDimensionLlmBatch).toHaveBeenCalled()
+    // LLM mock 返回问题类型标签库第一个标签"可用性/连通性故障"→在标签库中
+    // mergeSharedDimensionLabel(local="其他", llm="可用性/连通性故障") → 采纳 LLM 结果
+    expect(results[0].label).toBe('可用性/连通性故障')
   })
 
-  it('matchRequestScenesForRecords skips LLM for complaint tickets', async () => {
+  it('matchRequestScenesForRecords triggers LLM when local returns default', async () => {
     const { matchSharedDimensionLlmBatch } = await import('./themeSemantic.js')
+    matchSharedDimensionLlmBatch.mockClear()
     const records = [
       {
         id: '1',
@@ -114,11 +122,16 @@ describe('dimensionTagging', () => {
       REQUEST_SCENES_BUILTIN,
       { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
     )
-    expect(results[0].label).toBe(REQUEST_SCENE_DEFAULT)
-    expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
+    // 本地返回默认值（产品信息咨询）→触发 LLM（strictLabels 模式，只选不造）
+    expect(matchSharedDimensionLlmBatch).toHaveBeenCalled()
+    // LLM mock 返回请求场景标签库第一个标签"报障与排错"→在标签库中
+    // mergeSharedDimensionLabel(local="产品信息咨询", llm="报障与排错") → 采纳 LLM 结果
+    expect(results[0].label).toBe('报障与排错')
   })
 
-  it('matchRequestScenesForRecords matches by keywords for complaint tickets', async () => {
+  it('matchRequestScenesForRecords skips LLM when local classifier hits', async () => {
+    const { matchSharedDimensionLlmBatch } = await import('./themeSemantic.js')
+    matchSharedDimensionLlmBatch.mockClear()
     const records = [
       {
         id: '1',
@@ -133,7 +146,9 @@ describe('dimensionTagging', () => {
       REQUEST_SCENES_BUILTIN,
       { themeMatchMode: 'hybrid', llmApiKey: 'sk-test' },
     )
+    // 本地命中"报障与排错"→不调 LLM
     expect(results[0].label).toBe(REQUEST_SCENE_FAULT)
+    expect(matchSharedDimensionLlmBatch).not.toHaveBeenCalled()
   })
 
   it('resolveProblemTypeWithPeerFallback applies §3 peer exclusion on full text', () => {

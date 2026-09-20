@@ -131,13 +131,14 @@ export async function matchSharedDimensionHybridBatch(
  * @param {ThemeRule[]} rules
  * @param {LlmConfig} config
  * @param {string[]} [localHints]
+ * @param {{ strictLabels?: boolean }} [opts] strictLabels=true 时约束 LLM 只能从列表中选，不允许建议新名称
  */
-export async function matchSharedDimensionLlmBatch(texts, rules, config, localHints = []) {
+export async function matchSharedDimensionLlmBatch(texts, rules, config, localHints = [], opts = {}) {
   const hints = localHints.map((h) => {
     const label = (h || '').trim()
     return label && label !== '未分类' ? [label] : []
   })
-  return callLlmClassifyBatch(texts, rules, config, hints)
+  return callLlmClassifyBatch(texts, rules, config, hints, { strictLabels: opts.strictLabels })
 }
 
 /**
@@ -337,14 +338,11 @@ async function callLlmClassify(text, rules, config) {
  * @param {string[]} texts
  * @param {ThemeRule[]} rules
  * @param {LlmConfig} config
- */
-/**
- * @param {string[]} texts
- * @param {ThemeRule[]} rules
- * @param {LlmConfig} config
  * @param {string[][]} [localHints] 混合模式下的本地初判
+ * @param {{ strictLabels?: boolean }} [opts] strictLabels=true 时约束 LLM 只能从列表中选，不允许建议新名称
  */
-async function callLlmClassifyBatch(texts, rules, config, localHints) {
+async function callLlmClassifyBatch(texts, rules, config, localHints, opts = {}) {
+  const strictLabels = opts.strictLabels === true
   const themeList = rules
     .filter((r) => r.label?.trim())
     .map((r) => ({
@@ -358,14 +356,14 @@ async function callLlmClassifyBatch(texts, rules, config, localHints) {
   const hasHints = localHints?.some((h) => h?.filter((t) => t !== '未分类').length)
   const hasRules = themeList.length > 0
 
+  // strictLabels 模式：LLM 只能从标签列表中选，不允许建议新名称
+  // 适用于投诉/咨询工单——避免把路径段值或产品名变成库外标签候选
   const systemPrompt = hasRules
     ? `你是用户反馈主题分类助手。根据每条反馈的语义，从给定主题列表中选择最匹配的主题（每条仅一个主标签）。
 只返回 JSON，不要其他文字。格式：{"results":[{"index":0,"themes":["主题A"]},...]}
 规则：
 - 优先从主题列表中选择 themes[0]
-- 若列表中无合适项，可建议一个新的简洁中文主题名作为 themes[0]，系统将收录为待复核标签
-- 建议的新名称应贴合工单语义，勿与列表中已有名称重复
-- 若无任何合适项且无法建议新名，themes 为 ["未分类"]
+${strictLabels ? `- 只能从主题列表中选择，不允许建议列表外的名称\n- 若列表中确实无合适项，themes 为 ["未分类"]` : `- 若列表中无合适项，可建议一个新的简洁中文主题名作为 themes[0]，系统将收录为待复核标签\n- 建议的新名称应贴合工单语义，勿与列表中已有名称重复\n- 若无任何合适项且无法建议新名，themes 为 ["未分类"]`}
 - 依据主题「解释」的语义含义判断，不要只做字面关键词匹配
 ${hasHints ? '- 若提供了「本地初判」，可采纳、补充或修正；以语义与工单证据为准' : ''}`
     : `你是用户反馈主题分类助手。当前尚未配置主题标签库（列表为空）。
@@ -380,7 +378,7 @@ ${hasHints ? '- 若提供「本地初判」且非「未分类」，可参考其�
     ? `主题列表（含解释）：
 ${themeList.map((t, i) => `${i + 1}. ${t.label}\n   解释：${t.description}\n   参考词：${t.keywords}`).join('\n')}
 
-优先从列表选择；若无合适项可建议新名称。允许值：${allowedLabels.join('、')}、未分类、或新建议名称
+${strictLabels ? `只能从列表中选择，不允许建议新名称。允许值：${allowedLabels.join('、')}、未分类` : `优先从列表选择；若无合适项可建议新名称。允许值：${allowedLabels.join('、')}、未分类、或新建议名称`}
 
 待分类反馈：
 ${texts
@@ -411,12 +409,18 @@ ${texts
   const parsed = parseLlmMessageContent(getLlmCompletionText(data))
   const items = parsed.results || parsed.items || []
 
+  const allowedSet = new Set(allowedLabels)
+
   return texts.map((_, i) => {
     const item = items.find((r) => r.index === i) || items[i]
     const themes = (item?.themes || [])
       .map((t) => String(t || '').trim())
       .filter(Boolean)
-    const primary = themes[0] || '未分类'
+    let primary = themes[0] || '未分类'
+    // strictLabels 模式：LLM 返回的库外标签一律降级为「未分类」，不让它流入标签候选
+    if (strictLabels && primary !== '未分类' && !allowedSet.has(primary)) {
+      primary = '未分类'
+    }
     return [primary]
   })
 }
