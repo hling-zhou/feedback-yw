@@ -21,6 +21,7 @@ import { DeleteOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
+import { useAppMessage } from '../hooks/useAppMessage.js'
 import { readBackgroundTaskErrorMessage } from '../lib/backgroundTaskClient.js'
 import { ImportProgressAlert } from '../components/TaggingProgressAlert.jsx'
 import InsightMonthPicker from '../components/InsightMonthPicker.jsx'
@@ -145,6 +146,7 @@ function isPasswordPromptError(err) {
 export default function Import({ embedded = false }) {
   const navigate = useNavigate()
   const { can } = useAuth()
+  const message = useAppMessage()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialSource = searchParams.get('source')
   const initialSubType = searchParams.get('subType')
@@ -1260,6 +1262,12 @@ export default function Import({ embedded = false }) {
       })
       reportProgress('正在准备分析…')
 
+      // 告知用户：导入已在后台开始，可切换页面，完成后会收到通知
+      message.info({
+        content: `导入已在后台开始（${dataMonth}，${inScope.length} 条）。可切换至其他页面，完成后将弹出通知。`,
+        duration: 6,
+      })
+
       const batchId = `${dataMonth}-${Date.now()}`
       const importedAt = new Date().toISOString()
       const fileLabel =
@@ -1431,23 +1439,26 @@ export default function Import({ embedded = false }) {
       })
       importFinishedNotified = true
 
-      setImportResult({
-        run,
-        records,
-        failures,
-        skipped: skipped.length,
-        dataMonth,
-        dataSourceType,
-        taggingWarnings,
-        enrichmentStats,
-        ingest: {
-          ...ingest,
-          updated: ingest.updated || 0,
-          skippedDuplicates: totalSkippedDuplicates,
-        },
-      })
-      clearUploadFilePasswords()
-      setStep(4)
+      // 离开页面后不再 set state——结果由全局 Toast 通知
+      if (importPageMountedRef.current) {
+        setImportResult({
+          run,
+          records,
+          failures,
+          skipped: skipped.length,
+          dataMonth,
+          dataSourceType,
+          taggingWarnings,
+          enrichmentStats,
+          ingest: {
+            ...ingest,
+            updated: ingest.updated || 0,
+            skippedDuplicates: totalSkippedDuplicates,
+          },
+        })
+        clearUploadFilePasswords()
+        setStep(4)
+      }
     } catch (e) {
       if (e?.code === 'DUPLICATE_RUN') {
         const ok = window.confirm(
@@ -1459,16 +1470,26 @@ export default function Import({ embedded = false }) {
           await doImport(true)
           return
         }
-        setError('已取消：相同文件近期已完成分析')
+        if (importPageMountedRef.current) {
+          setError('已取消：相同文件近期已完成分析')
+        }
       } else {
-        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+        const errMsg = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
+        // 离开页面后通过全局 Toast 通知错误
+        if (importPageMountedRef.current) {
+          setError(errMsg)
+        } else {
+          message.error(`导入失败：${errMsg}`, 10)
+        }
       }
     } finally {
       if (!importFinishedNotified) {
         endImportSession()
       }
-      setLoading(false)
-      setImportProgress('')
+      if (importPageMountedRef.current) {
+        setLoading(false)
+        setImportProgress('')
+      }
     }
   }
 
