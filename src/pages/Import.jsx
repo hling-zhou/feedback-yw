@@ -1327,20 +1327,30 @@ export default function Import({ embedded = false }) {
         }
 
         reportProgress(`正在增强打标 (0/${records.length})…`)
-        const enriched = await enrichTicketRecordsForImport(
-          records,
-          settings,
-          (label, done, total) => {
-            if (total != null && total > 0) {
-              reportProgress(`正在${label} (${done ?? 0}/${total})…`)
-            } else {
-              reportProgress(`正在${label}…`)
-            }
-          },
-        )
-        records = enriched.records
-        taggingWarnings = enriched.warnings
-        enrichmentStats = enriched.enrichmentStats
+        let enriched
+        try {
+          enriched = await enrichTicketRecordsForImport(
+            records,
+            settings,
+            (label, done, total) => {
+              if (total != null && total > 0) {
+                reportProgress(`正在${label} (${done ?? 0}/${total})…`)
+              } else {
+                reportProgress(`正在${label}…`)
+              }
+            },
+          )
+          records = enriched.records
+          taggingWarnings = enriched.warnings
+          enrichmentStats = enriched.enrichmentStats
+        } catch (enrichErr) {
+          // 增强阶段整体失败（LLM 挂起、网络中断、浏览器 tab 后台被中止等）
+          // 回退到规则初标结果继续写盘，不丢弃数据
+          console.error('[import] 增强打标阶段失败，回退规则初标:', enrichErr)
+          taggingWarnings = [
+            `增强打标阶段异常中断（${enrichErr.message || enrichErr}），已回退规则初标结果继续写入。可稍后手动重新打标。`,
+          ]
+        }
 
         // M7: 异主体闸门前置到落盘前
         if (ticketSource) {

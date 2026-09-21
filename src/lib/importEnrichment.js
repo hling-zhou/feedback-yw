@@ -193,12 +193,21 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
         '客户请求/痛点/问题原因/优化建议 LLM 增强',
         warnings,
       )
-      Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, enriched))
+
+      try {
+        Object.assign(enrichmentStats, computeTicketLlmEnrichmentDelta(beforeTicket, enriched))
+      } catch (err) {
+        console.warn('[import] ticketLlm 统计计算失败:', err)
+      }
 
       // M5: LLM 增强 CR 后重验 L0 闸门
-      const m5 = revalidateL0AfterLlm(enriched, beforeTicket)
-      if (m5.downgraded > 0) {
-        warnings.push(`M5: LLM 增强 CR 后 L0 复验失败 ${m5.downgraded}/${m5.revalidated} 条，已降级 manual_review`)
+      try {
+        const m5 = revalidateL0AfterLlm(enriched, beforeTicket)
+        if (m5.downgraded > 0) {
+          warnings.push(`M5: LLM 增强 CR 后 L0 复验失败 ${m5.downgraded}/${m5.revalidated} 条，已降级 manual_review`)
+        }
+      } catch (err) {
+        console.warn('[import] M5 L0 复验失败:', err)
       }
 
       const beforeRetag = enriched.map((r) => ({ ...r }))
@@ -216,9 +225,13 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       )
 
       // M6: LLM 重打维度后重验 L1 闸门
-      const m6 = revalidateL1AfterRetag(enriched, beforeRetag)
-      if (m6.downgraded > 0) {
-        warnings.push(`M6: LLM 重打维度后 L1 复验失败 ${m6.downgraded}/${m6.revalidated} 条，已降级 manual_review`)
+      try {
+        const m6 = revalidateL1AfterRetag(enriched, beforeRetag)
+        if (m6.downgraded > 0) {
+          warnings.push(`M6: LLM 重打维度后 L1 复验失败 ${m6.downgraded}/${m6.revalidated} 条，已降级 manual_review`)
+        }
+      } catch (err) {
+        console.warn('[import] M6 L1 复验失败:', err)
       }
       continue
     }
@@ -238,7 +251,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       '用户旅程打标',
       warnings,
     )
-    Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, enriched, llmSettings))
+    try {
+      Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, enriched, llmSettings))
+    } catch (err) {
+      console.warn('[import] journey 统计计算失败:', err)
+    }
   }
 
   // 合并：enriched + needsReview（后者只跑情绪分析）
@@ -261,16 +278,24 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
     warnings.push(`用户情绪：${errMessage(err)}`)
   }
 
-  enrichmentStats.optimizationRetryCount = countOptimizationRetries(out)
+  try {
+    enrichmentStats.optimizationRetryCount = countOptimizationRetries(out)
+  } catch (err) {
+    console.warn('[import] optimizationRetry 统计失败:', err)
+  }
 
   if (!canUseSemanticMatch(llmSettings)) {
     warnings.push(
       '未配置大模型 API Key：已完成关键词/解释本地打标；客户请求、需求痛点、问题原因与优化建议仍为规则初标结果。请在设置填写 Key 或配置服务端 LLM_API_KEY 后重新打标。',
     )
   } else {
-    const journeyPending = countJourneyPendingAfterImport(out, llmSettings)
-    for (const hint of buildEnrichmentRetagWarnings(enrichmentStats, journeyPending)) {
-      if (!warnings.includes(hint)) warnings.push(hint)
+    try {
+      const journeyPending = countJourneyPendingAfterImport(out, llmSettings)
+      for (const hint of buildEnrichmentRetagWarnings(enrichmentStats, journeyPending)) {
+        if (!warnings.includes(hint)) warnings.push(hint)
+      }
+    } catch (err) {
+      console.warn('[import] 增强统计警告构建失败:', err)
     }
   }
 
