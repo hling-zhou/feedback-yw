@@ -1,4 +1,4 @@
-import { requirePermission } from '../middleware.js'
+import { requireAdmin } from '../middleware.js'
 import { getUsageDb, getUsageStatsByMonth, getUsageMonths } from '../usageDb.js'
 import { randomId } from '../../src/lib/randomId.js'
 
@@ -70,16 +70,16 @@ export function registerUsageRoutes(app) {
     }
   })
 
-  // 查询端点：需要 viewAudit 权限
-  app.get('/api/usage/stats', { preHandler: requirePermission('viewAudit') }, async (request) => {
+  // 查询端点：仅管理员
+  app.get('/api/usage/stats', { preHandler: requireAdmin() }, async (request) => {
     const q = /** @type {{ month?: string }} */ (request.query || {})
     const month = q.month || undefined
     const rows = getUsageStatsByMonth(month)
     return { rows, month: month || 'current' }
   })
 
-  // 查询可用月份列表
-  app.get('/api/usage/months', { preHandler: requirePermission('viewAudit') }, async () => {
+  // 查询可用月份列表：仅管理员
+  app.get('/api/usage/months', { preHandler: requireAdmin() }, async () => {
     return { months: getUsageMonths() }
   })
 }

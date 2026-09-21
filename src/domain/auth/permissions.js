@@ -78,9 +78,9 @@ export const ROLE_PERMISSIONS = {
 /** @type {Record<UserRole, string[]>} */
 export const ROLE_HIDDEN_ROUTES = {
   admin: [],
-  editor: [],
-  partial_editor: ['/users'],
-  viewer: ['/import', '/users'],
+  editor: ['/operations'],
+  partial_editor: ['/users', '/operations'],
+  viewer: ['/import', '/users', '/operations'],
 }
 
 /**

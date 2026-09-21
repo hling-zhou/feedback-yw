@@ -68,14 +68,23 @@ describe('auth permissions', () => {
   it('viewer hidden routes', () => {
     expect(canAccessRoute('viewer', '/import')).toBe(false)
     expect(canAccessRoute('viewer', '/users')).toBe(false)
+    expect(canAccessRoute('viewer', '/operations')).toBe(false)
     expect(canAccessRoute('viewer', '/feedbacks')).toBe(true)
   })
 
   it('partial_editor hidden routes', () => {
     expect(canAccessRoute('partial_editor', '/import')).toBe(true)
     expect(canAccessRoute('partial_editor', '/users')).toBe(false)
+    expect(canAccessRoute('partial_editor', '/operations')).toBe(false)
     expect(canAccessRoute('partial_editor', '/feedbacks')).toBe(true)
     expect(canAccessRoute('partial_editor', '/tags')).toBe(true)
+  })
+
+  it('operations route is admin-only', () => {
+    expect(canAccessRoute('admin', '/operations')).toBe(true)
+    expect(canAccessRoute('editor', '/operations')).toBe(false)
+    expect(canAccessRoute('partial_editor', '/operations')).toBe(false)
+    expect(canAccessRoute('viewer', '/operations')).toBe(false)
   })
 
   it('bulk retag period_all is admin-only', () => {
