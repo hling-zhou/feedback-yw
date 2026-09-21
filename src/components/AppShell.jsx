@@ -11,6 +11,7 @@ import {
   LockOutlined,
   FlagOutlined,
   DeploymentUnitOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -30,6 +31,7 @@ import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
 import MessageBottleFab from './MessageBottleFab.jsx'
 import WhatsNewFab from './WhatsNewFab.jsx'
 import WhatsNewDrawer from './WhatsNewDrawer.jsx'
+import { useUsageTracking } from '../hooks/useUsageTracking.js'
 
 const ALL_NAV = [
   { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
@@ -39,6 +41,7 @@ const ALL_NAV = [
   { key: '/import', label: '数据导入', icon: <ImportOutlined /> },
   { key: '/tags', label: '对象与标签', icon: <TagOutlined /> },
   { key: '/users', label: '用户管理', icon: <TeamOutlined /> },
+  { key: '/operations', label: '运营分析', icon: <BarChartOutlined /> },
   { key: '/settings', label: '设置', icon: <SettingOutlined /> },
 ]
 
@@ -54,6 +57,7 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const selectedKey = resolveNavKey(location.pathname)
+  useUsageTracking(user)
   const [collapsed, setCollapsed] = useState(false)
   const [bottleOpen, setBottleOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)

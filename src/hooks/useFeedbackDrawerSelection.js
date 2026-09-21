@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { confirmDiscardFeedbackDrawerEdits } from '../lib/feedbackDrawerLeaveConfirm.js'
+import { trackUsage } from './useUsageTracking.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
 
@@ -49,6 +50,11 @@ export function useFeedbackDrawerSelection(initialSelected = null) {
       }
       setSelected(null)
       return
+    }
+
+    // 采集工单详情访问
+    if (next?.id && (!current || current.id !== next.id)) {
+      trackUsage('feedbacks_detail', { ticketId: next.ticketId || next.id })
     }
 
     if (!current || current.id === next.id) {

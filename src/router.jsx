@@ -15,6 +15,7 @@ import Users from './pages/Users.jsx'
 import Actions from './pages/Actions.jsx'
 import TopicAnalysis from './pages/TopicAnalysis.jsx'
 import TopicReportDetail from './pages/TopicReportDetail.jsx'
+import Operations from './pages/Operations.jsx'
 import Login from './pages/Login.jsx'
 import ChangePassword from './pages/ChangePassword.jsx'
 
@@ -56,6 +57,7 @@ const routes = [
           { path: 'settings', element: <Settings /> },
           { path: 'tags', element: <TagManagement /> },
           { path: 'users', element: <Users /> },
+          { path: 'operations', element: <Operations /> },
           { path: '*', element: <Navigate to="/workbench" replace /> },
         ],
       },

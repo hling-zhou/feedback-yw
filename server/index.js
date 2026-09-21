@@ -55,6 +55,8 @@ import { registerApiKeyRoutes } from './routes/apiKeys.js'
 import { registerPostUseJiraRoutes } from './routes/postUseJira.js'
 import { registerTicketTodoRoutes } from './routes/ticketTodos.js'
 import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
+import { registerUsageRoutes } from './routes/usage.js'
+import { archiveUsageStats } from './usageDb.js'
 import { buildHealthReport } from './health.js'
 import { logAuditFromRequest, logAudit } from './audit.js'
 
@@ -91,6 +93,10 @@ registerApiKeyRoutes(app)
 registerPostUseJiraRoutes(app)
 registerTicketTodoRoutes(app)
 registerCuratedTaxonomyRoutes(app)
+registerUsageRoutes(app)
+
+// 启动时归档上月运营数据
+archiveUsageStats()
 
 app.get('/health', async (_request, reply) => {
   const report = buildHealthReport()
