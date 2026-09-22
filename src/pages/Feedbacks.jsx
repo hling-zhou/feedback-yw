@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -15,6 +15,7 @@ import {
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import { TaggingProgressAlert } from '../components/TaggingProgressAlert.jsx'
+import TaskHistoryPanel from '../components/TaskHistoryPanel.jsx'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isImportMonthInPeriod, periodSpecFromImportMonth, resolveInsightPeriod } from '../domain/insightPeriod.js'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
@@ -159,6 +160,12 @@ export default function Feedbacks() {
   const [importCustomerRestoreOpen, setImportCustomerRestoreOpen] = useState(false)
   const [complaintCauseReviewOpen, setComplaintCauseReviewOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [progressAlertDismissed, setProgressAlertDismissed] = useState(false)
+  const [taskHistoryOpen, setTaskHistoryOpen] = useState(false)
+
+  useEffect(() => {
+    if (!retagSession.active) setProgressAlertDismissed(false)
+  }, [retagSession.active])
   const [customerVisitRecords, setCustomerVisitRecords] = useState([])
   const [customerVisitLoading, setCustomerVisitLoading] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -749,6 +756,14 @@ export default function Feedbacks() {
             { label: '客服部回访', value: FEEDBACK_LANE_CUSTOMER_VISITS },
           ]}
         />
+        <Button
+          icon={<UnorderedListOutlined />}
+          onClick={() => setTaskHistoryOpen(true)}
+          size="small"
+          className="!ml-auto"
+        >
+          打标任务
+        </Button>
       </div>
 
       {isPostUseLane && (
@@ -795,11 +810,12 @@ export default function Feedbacks() {
         />
       )}
 
-      {retagSession.active && (
+      {retagSession.active && !progressAlertDismissed && (
         <TaggingProgressAlert
           progress={retagSession.progress}
           total={retagSession.total}
           scopeLabel={formatBulkRetagScopeLabel(retagSession.scope)}
+          onClose={() => setProgressAlertDismissed(true)}
         />
       )}
 
@@ -845,20 +861,33 @@ export default function Feedbacks() {
                 >
                   <span>{needsTicketLlmCount} 条客户请求/痛点/问题原因待 LLM</span>
                   <PermissionGate permission="retag">
-                    <Button
-                      size="small"
-                      type="link"
-                      className="!px-0 !h-auto"
-                      loading={bulkRetagBusy}
-                      disabled={bulkRetagDisabled}
-                      title={bulkRetagDisabledTip}
-                      onClick={() => {
-                        applyTicketLlmFilter('needs_llm')
-                        startScopedBulkRetag('needs_ticket_llm')
-                      }}
-                    >
-                      补打
-                    </Button>
+                    {bulkRetagDisabled ? (
+                      <Tooltip title={bulkRetagDisabledTip}>
+                        <span className="inline-block">
+                          <Button
+                            size="small"
+                            type="link"
+                            className="!px-0 !h-auto"
+                            loading={bulkRetagBusy}
+                            disabled
+                          >
+                            补打
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="link"
+                        className="!px-0 !h-auto"
+                        onClick={() => {
+                          applyTicketLlmFilter('needs_llm')
+                          startScopedBulkRetag('needs_ticket_llm')
+                        }}
+                      >
+                        补打
+                      </Button>
+                    )}
                   </PermissionGate>
                 </span>
               )}
@@ -874,20 +903,33 @@ export default function Feedbacks() {
                 >
                   <span>{needsJourneyLlmCount} 条待 LLM（旅程）</span>
                   <PermissionGate permission="retag">
-                    <Button
-                      size="small"
-                      type="link"
-                      className="!px-0 !h-auto"
-                      loading={bulkRetagBusy}
-                      disabled={bulkRetagDisabled}
-                      title={bulkRetagDisabledTip}
-                      onClick={() => {
-                        applyTicketLlmFilter('needs_journey_llm')
-                        startScopedBulkRetag('needs_journey_llm')
-                      }}
-                    >
-                      补打旅程
-                    </Button>
+                    {bulkRetagDisabled ? (
+                      <Tooltip title={bulkRetagDisabledTip}>
+                        <span className="inline-block">
+                          <Button
+                            size="small"
+                            type="link"
+                            className="!px-0 !h-auto"
+                            loading={bulkRetagBusy}
+                            disabled
+                          >
+                            补打旅程
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="link"
+                        className="!px-0 !h-auto"
+                        onClick={() => {
+                          applyTicketLlmFilter('needs_journey_llm')
+                          startScopedBulkRetag('needs_journey_llm')
+                        }}
+                      >
+                        补打旅程
+                      </Button>
+                    )}
                   </PermissionGate>
                 </span>
               )}
@@ -911,16 +953,29 @@ export default function Feedbacks() {
                     导出未识别样本
                   </Button>
                   <PermissionGate permission="retag">
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={bulkRetagBusy}
-                      disabled={bulkRetagDisabled}
-                      title={bulkRetagDisabledTip}
-                      onClick={openBulkRetagModal}
-                    >
-                      批量重新打标
-                    </Button>
+                    {bulkRetagDisabled ? (
+                      <Tooltip title={bulkRetagDisabledTip}>
+                        <span className="inline-block">
+                          <Button
+                            size="small"
+                            type="primary"
+                            loading={bulkRetagBusy}
+                            disabled
+                          >
+                            批量重新打标
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={bulkRetagBusy}
+                        onClick={openBulkRetagModal}
+                      >
+                        批量重新打标
+                      </Button>
+                    )}
                   </PermissionGate>
                 </Space>
               }
@@ -1068,14 +1123,19 @@ export default function Feedbacks() {
               ) : null}
               {!isPostUseLane && (
                 <PermissionGate permission="retag">
-                  <Button
-                    disabled={bulkRetagDisabled}
-                    loading={bulkRetagBusy}
-                    title={bulkRetagDisabledTip}
-                    onClick={openBulkRetagModal}
-                  >
-                    批量重新打标
-                  </Button>
+                  {bulkRetagDisabled ? (
+                    <Tooltip title={bulkRetagDisabledTip}>
+                      <span className="inline-block">
+                        <Button disabled loading={bulkRetagBusy}>
+                          批量重新打标
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Button loading={bulkRetagBusy} onClick={openBulkRetagModal}>
+                      批量重新打标
+                    </Button>
+                  )}
                 </PermissionGate>
               )}
               {isPostUseLane && (
@@ -1210,6 +1270,11 @@ export default function Feedbacks() {
           onClose={() => setComplaintCauseReviewOpen(false)}
         />
       ) : null}
+
+      <TaskHistoryPanel
+        open={taskHistoryOpen}
+        onClose={() => setTaskHistoryOpen(false)}
+      />
     </div>
   )
 }
