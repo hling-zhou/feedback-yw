@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
+import { getStoredToken } from '../lib/apiClient.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -24,7 +25,9 @@ function resolveModule(pathname) {
 }
 
 /**
- * 发送页面访问记录到服务端。用 sendBeacon 不阻塞页面。
+ * 发送页面访问记录到服务端。
+ * 用 fetch + keepalive 替代 sendBeacon：既支持自定义 Authorization header，
+ * 又能在页面卸载时可靠发出（keepalive 等效于 sendBeacon 的不阻塞行为）。
  * @param {string} pathname
  * @param {{ username?: string; team?: string; role?: string } | null} userInfo
  */
@@ -43,11 +46,16 @@ function trackPageView(pathname, userInfo) {
       role: userInfo?.role,
     })
 
-    const url = `${API_BASE}/api/usage/track`
-    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob([payload], { type: 'application/json' })
-      navigator.sendBeacon(url, blob)
-    }
+    const headers = { 'Content-Type': 'application/json' }
+    const token = getStoredToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    fetch(`${API_BASE}/api/usage/track`, {
+      method: 'POST',
+      headers,
+      body: payload,
+      keepalive: true,
+    }).catch(() => { /* 采集失败不影响用户使用 */ })
   } catch {
     // 采集失败不影响用户使用
   }
@@ -61,11 +69,16 @@ function trackPageView(pathname, userInfo) {
 export function trackUsage(module, params) {
   try {
     const payload = JSON.stringify({ module, params: params ?? {} })
-    const url = `${API_BASE}/api/usage/track`
-    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob([payload], { type: 'application/json' })
-      navigator.sendBeacon(url, blob)
-    }
+    const headers = { 'Content-Type': 'application/json' }
+    const token = getStoredToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    fetch(`${API_BASE}/api/usage/track`, {
+      method: 'POST',
+      headers,
+      body: payload,
+      keepalive: true,
+    }).catch(() => { /* 静默失败 */ })
   } catch {
     // 静默失败
   }
