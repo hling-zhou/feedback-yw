@@ -1,5 +1,8 @@
 /**
  * 所有 LLM 请求经 API 服务端代理（POST /api/llm/chat），密钥仅存于服务端环境变量。
+ *
+ * 服务端进程内调用时通过 setLlmTransport / setLlmSettingsOverride 注入直连函数，
+ * 避免 in-process 时 apiFetch（依赖浏览器 sessionStorage / fetch）触发 ReferenceError。
  * @typedef {import('./storage.js').AppSettings} AppSettings
  */
 
@@ -9,6 +12,30 @@ const DEFAULT_BASE = 'https://api.openai.com/v1'
 
 /** @type {boolean | null} */
 let serverConfiguredCache = null
+
+/**
+ * 可插拔 transport —— 服务端注入后直接调用 forwardLlmChatCompletion，绕过 apiFetch。
+ * @typedef {(body: object) => Promise<unknown>} LlmTransportFn
+ */
+/** @type {LlmTransportFn | null} */
+let llmTransport = null
+
+/**
+ * 可插拔 settings 覆盖 —— 服务端注入后跳过 refreshLlmServerStatus（apiFetch 调 /api/llm/status）。
+ * @type {(Partial<AppSettings> & { llmServerConfigured?: boolean }) | null}
+ */
+let llmSettingsOverride = null
+
+/**
+ * 服务端调用：注入直连 transport + settings 覆盖。
+ * 传 null 重置回浏览器模式。
+ * @param {LlmTransportFn | null} transport
+ * @param {(Partial<AppSettings> & { llmServerConfigured?: boolean }) | null} [settingsOverride]
+ */
+export function setLlmTransport(transport, settingsOverride = null) {
+  llmTransport = transport
+  llmSettingsOverride = settingsOverride
+}
 
 /**
  * @param {string} [url]
@@ -22,6 +49,11 @@ export function normalizeLlmBaseUrl(url) {
 
 /** 从 API 刷新 LLM 是否已在服务端配置 */
 export async function refreshLlmServerStatus() {
+  // 服务端直连模式：跳过 apiFetch（/api/llm/status），直接用注入的覆盖值
+  if (llmSettingsOverride) {
+    serverConfiguredCache = Boolean(llmSettingsOverride.llmServerConfigured)
+    return serverConfiguredCache
+  }
   try {
     const data = await apiFetch('/api/llm/status')
     serverConfiguredCache = Boolean(data?.configured)
@@ -47,7 +79,8 @@ export function isLlmAvailable(settings) {
 }
 
 /**
- * 打标前合并本机设置与服务端 LLM 状态（避免首次 /status 失败导致 llmServerConfigured 一直为 false）
+ * 打标前合并本机设置与服务端 LLM 状态（避免首次 /status 失败导致 llmServerConfigured 一直为 false）。
+ * 服务端直连模式下用注入的覆盖值，不调 apiFetch。
  * @param {AppSettings} [settings]
  * @returns {Promise<AppSettings>}
  */
@@ -55,6 +88,7 @@ export async function resolveSettingsForLlm(settings = {}) {
   const serverConfigured = await refreshLlmServerStatus()
   return {
     ...settings,
+    ...(llmSettingsOverride || {}),
     llmServerConfigured: serverConfigured,
   }
 }
@@ -223,6 +257,11 @@ export async function llmChatCompletion(settings, body) {
   const model = resolvePayloadModel(settings)
   if (model) {
     payload.model = model
+  }
+
+  // 服务端直连模式：直接调 forwardLlmChatCompletion，不走 apiFetch
+  if (llmTransport) {
+    return /** @type {any} */ (await llmTransport(payload))
   }
 
   try {

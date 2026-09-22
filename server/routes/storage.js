@@ -521,6 +521,130 @@ export function registerStorageRoutes(app) {
     },
   )
 
+  // ─── 服务端打标端点（fire-and-forget + backgroundTaskLock 进度推送）──
+  app.post(
+    '/api/storage/records/enrich',
+    {
+      bodyLimit: 200 * 1024 * 1024,
+      config: { rawBody: true },
+    },
+    async (request, reply) => {
+      if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
+      const body = /** @type {{
+        mode: 'import' | 'bulk_retag' | 'single_retag'
+        records?: any[]
+        recordIds?: string[]
+        periodId?: string
+        settings?: Record<string, unknown>
+        retagOptions?: Record<string, unknown>
+      }} */ (request.body)
+
+      const mode = body.mode || 'import'
+      const records = Array.isArray(body.records) ? body.records : null
+      const recordIds = Array.isArray(body.recordIds) ? body.recordIds : null
+      if (!records?.length && !recordIds?.length) {
+        return reply.send({ ok: true, message: '无记录需要增强' })
+      }
+
+      const user = request.user
+      const userId = user?.id || 'system'
+      const username = user?.username || user?.id || 'system'
+
+      // 尝试获取锁
+      try {
+        acquireBackgroundTaskLock(mode === 'import' ? 'import' : 'retag', {
+          id: userId,
+          username,
+          progress: '正在准备增强打标…',
+        })
+      } catch (err) {
+        const e = /** @type {Error & { code?: string }} */ (err)
+        if (e.code === 'BACKGROUND_TASK_CONFLICT') {
+          return reply.code(409).send({ error: e.message, code: e.code })
+        }
+        throw err
+      }
+
+      // fire-and-forget：立即返回，后台异步执行
+      ;(async () => {
+        try {
+          // 动态 import 避免循环依赖
+          const { runEnrichment } = await import('../enrichRunner.js')
+
+          const result = await runEnrichment({
+            mode,
+            records: records || undefined,
+            recordIds: recordIds || undefined,
+            periodId: body.periodId,
+            settings: body.settings || {},
+            userId,
+            retagOptions: body.retagOptions || {},
+            onProgress: (label, done, total) => {
+              // 进度已由 enrichRunner 内部通过 touchBackgroundTaskLock 更新
+            },
+          })
+
+          // 写盘
+          let writeResult = null
+          try {
+            writeResult = storageRepository.putRecords(result.records, {
+              actor: { userId, username },
+            })
+          } catch (err) {
+            console.error('[enrich] 写盘失败:', err)
+          }
+
+          // bump revision
+          if (writeResult?.written > 0) {
+            bumpRecordsRevision()
+          }
+
+          // 写入完成结果到 lock.meta
+          try {
+            touchBackgroundTaskLock(userId, {
+              progress: '打标完成',
+              meta: {
+                result: {
+                  mode,
+                  total: result.records.length,
+                  warnings: result.warnings,
+                  stats: result.stats,
+                  writeResult,
+                },
+              },
+            })
+          } catch {
+            // lock 可能已被清理
+          }
+
+          // 审计日志
+          try {
+            await logAuditFromRequest(request, mode === 'import' ? 'storage.import_enrich' : 'storage.retag_enrich', {
+              mode,
+              recordCount: result.records.length,
+              warnings: result.warnings?.length || 0,
+            })
+          } catch {
+            // 审计失败不阻断
+          }
+        } catch (err) {
+          console.error('[enrich] 打标失败:', err)
+          try {
+            touchBackgroundTaskLock(userId, {
+              progress: '打标失败',
+              meta: { error: err instanceof Error ? err.message : String(err) },
+            })
+          } catch {
+            // lock 可能已被清理
+          }
+        }
+        // 不自动 release：前端轮询到 result/error 后调 DELETE /api/storage/background-task 释放
+      })()
+
+      return reply.send({ ok: true, message: '打标已在服务端后台开始' })
+    },
+  )
+
   app.post(
     '/api/storage/records/batch',
     { schema: { body: recordsBatchBodySchema } },

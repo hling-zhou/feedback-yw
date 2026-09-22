@@ -10,6 +10,32 @@ const EXCEL_CONFIG_FILE = '产品规格配置.xlsx'
 const JSON_CONFIG_FILE = 'product-catalog.json'
 
 /**
+ * 环境检测 + fs fallback：Node 进程内走 fs.readFileSync，浏览器走 fetch。
+ * @param {string} relativePath CONFIG_BASE 之后的路径
+ * @returns {Promise<{ ok: boolean; arrayBuffer?: () => Promise<ArrayBuffer>; json?: () => Promise<unknown> }>}
+ */
+async function fetchConfigFile(relativePath) {
+  if (typeof fetch === 'function' && typeof process === 'undefined') {
+    const res = await fetch(`${CONFIG_BASE}/${relativePath}?t=${Date.now()}`)
+    return res
+  }
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const filePath = path.join(process.cwd(), 'public', CONFIG_BASE, relativePath.split('?')[0])
+  try {
+    const buf = fs.readFileSync(filePath)
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    return {
+      ok: true,
+      arrayBuffer: async () => ab,
+      json: async () => JSON.parse(buf.toString('utf8')),
+    }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
  * @typedef {Object} ProductSpecDef
  * @property {string} name
  * @property {string[]} [match]
@@ -116,8 +142,7 @@ function normalizeCatalogJson(raw) {
 }
 
 async function loadFromExcel() {
-  const url = `${CONFIG_BASE}/${encodeURIComponent(EXCEL_CONFIG_FILE)}?t=${Date.now()}`
-  const res = await fetch(url)
+  const res = await fetchConfigFile(encodeURIComponent(EXCEL_CONFIG_FILE))
   if (!res.ok) return null
   const buffer = await res.arrayBuffer()
   const { products } = parseProductCatalogWorkbook(buffer)
@@ -126,13 +151,12 @@ async function loadFromExcel() {
 }
 
 async function loadFromJson() {
-  const path = `${CONFIG_BASE}/${JSON_CONFIG_FILE}`
-  const res = await fetch(`${path}?t=${Date.now()}`)
+  const res = await fetchConfigFile(JSON_CONFIG_FILE)
   if (!res.ok) return null
   const raw = await res.json()
   const products = normalizeCatalogJson(raw)
   if (!products?.length) return null
-  return { products, configFile: `${CONFIG_BASE}/${JSON_CONFIG_FILE}`.replace(/^\//, '') }
+  return { products, configFile: JSON_CONFIG_FILE }
 }
 
 /**

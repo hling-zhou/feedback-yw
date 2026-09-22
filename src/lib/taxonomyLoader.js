@@ -156,6 +156,37 @@ const EXCEL_CONFIG_FILE = '打标配置.xlsx'
 const SHARED_PROBLEM_TYPES_BUILTIN = PROBLEM_TYPES_BUILTIN
 const SHARED_REQUEST_SCENES_BUILTIN = REQUEST_SCENES_BUILTIN
 
+/**
+ * 环境检测 + fs fallback：Node 进程内 fetch 不可用（或 apiFetch 依赖浏览器），
+ * 直接用 fs.readFileSync 读 public/config/taxonomy/ 目录。
+ * 浏览器模式走原生 fetch。
+ * @param {string} relativePath CONFIG_BASE 之后的路径（如 'index.json'）
+ * @returns {Promise<{ ok: boolean; arrayBuffer?: ArrayBuffer; json?: () => Promise<unknown> }>}
+ */
+async function fetchConfigFile(relativePath) {
+  // 浏览器模式
+  if (typeof fetch === 'function' && typeof process === 'undefined') {
+    const res = await fetch(`${CONFIG_BASE}/${relativePath}?t=${Date.now()}`)
+    return res
+  }
+  // Node 模式：走 fs
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const projectRoot = process.cwd()
+  const filePath = path.join(projectRoot, 'public', CONFIG_BASE, relativePath.split('?')[0])
+  try {
+    const buf = fs.readFileSync(filePath)
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    return {
+      ok: true,
+      arrayBuffer: async () => ab,
+      json: async () => JSON.parse(buf.toString('utf8')),
+    }
+  } catch {
+    return { ok: false }
+  }
+}
+
 /** @type {Record<string, object>} */
 const BUILTIN_PRODUCTS = {
   eip: {
@@ -538,8 +569,7 @@ const BUILTIN_NODE_MAPS = {
 }
 
 async function loadFromExcel() {
-  const url = `${CONFIG_BASE}/${encodeURIComponent(EXCEL_CONFIG_FILE)}?t=${Date.now()}`
-  const res = await fetch(url)
+  const res = await fetchConfigFile(encodeURIComponent(EXCEL_CONFIG_FILE))
   if (!res.ok) return null
   const buffer = await res.arrayBuffer()
   const { products, sharedProblemTypes, sharedRequestScenes } = parseTaxonomyWorkbook(buffer)
@@ -557,7 +587,7 @@ async function loadFromExcel() {
 }
 
 async function loadFromJson() {
-  const indexRes = await fetch(`${CONFIG_BASE}/index.json?t=${Date.now()}`)
+  const indexRes = await fetchConfigFile('index.json')
   if (!indexRes.ok) return null
   const index = await indexRes.json()
   const keys = index.products || Object.keys(BUILTIN_PRODUCTS)
@@ -565,7 +595,7 @@ async function loadFromJson() {
 
   await Promise.all(
     keys.map(async (key) => {
-      const res = await fetch(`${CONFIG_BASE}/${key}.json?t=${Date.now()}`)
+      const res = await fetchConfigFile(`${key}.json`)
       if (!res.ok) return
       const raw = await res.json()
       const norm = normalizeProduct(raw)

@@ -3,12 +3,29 @@
  *
  * 优先用投诉产品 productKey 的知识库；若痛点文本中提到其他产品名/别名，
  * 补充该产品 productKey 一并检索。检索失败返回空，不阻断 LLM。
+ *
+ * 服务端进程内调用时通过 setKbTransport 注入直连函数，绕过 apiFetch。
  */
 
 import { apiFetch } from './apiClient.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 /** @typedef {{ title: string; content: string; productKey: string }} Snippet */
+
+/**
+ * 可插拔 transport —— 服务端注入后直接调用知识库检索底层函数，绕过 apiFetch。
+ * @typedef {(queries: { productKeys: string[]; text: string; tags: string[] }[]) => Promise<Snippet[][]>} KbTransportFn
+ */
+/** @type {KbTransportFn | null} */
+let kbTransport = null
+
+/**
+ * 服务端调用：注入直连 transport。传 null 重置回浏览器模式。
+ * @param {KbTransportFn | null} transport
+ */
+export function setKbTransport(transport) {
+  kbTransport = transport
+}
 
 /**
  * 收集一个目录产品的所有可匹配字符串（name + match + spec name/match）。
@@ -93,6 +110,16 @@ export function buildKnowledgeQuery(record, catalogProducts = []) {
  */
 export async function retrieveKnowledgeSnippets(queries) {
   if (!queries?.length) return []
+  // 服务端直连模式：不走 apiFetch
+  if (kbTransport) {
+    try {
+      const data = await kbTransport(queries)
+      return Array.isArray(data?.results) ? data.results : queries.map(() => [])
+    } catch (err) {
+      console.warn('[knowledge-base] 直连检索失败，降级为空片段:', err)
+      return queries.map(() => [])
+    }
+  }
   try {
     const data = /** @type {{ results: Snippet[][] }} */ (
       await apiFetch('/api/knowledge-base/retrieve', {
