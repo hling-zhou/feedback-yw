@@ -49,10 +49,14 @@ export default function Operations() {
         setMonths(ms)
         if (ms.length > 0 && !selectedMonth) {
           setSelectedMonth(ms[0])
+        } else {
+          // 没有月份数据，结束 loading 显示空态
+          setLoading(false)
         }
       })
       .catch(() => {
-        // 静默
+        // 月份加载失败也结束 loading，显示空态
+        setLoading(false)
       })
   }, [])
 
