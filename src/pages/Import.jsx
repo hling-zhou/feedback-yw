@@ -42,6 +42,7 @@ import {
   POST_USE_CUSTOMER_VISIT_PRESET,
 } from '../lib/columnPresets.js'
 import { enrichTicketRecordsForImport } from '../lib/importEnrichment.js'
+import { apiFetch } from '../lib/apiClient.js'
 import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.js'
 import { filterDuplicateImportRows } from '../lib/importDedupe.js'
 import {
@@ -154,6 +155,7 @@ export default function Import({ embedded = false }) {
   const appliedImportUrlRef = useRef(importUrlKey)
   const {
     addFeedbacks,
+    reloadAfterEnrich,
     adapter,
     beginImportSession,
     prepareSharedBackgroundTask,
@@ -1312,6 +1314,8 @@ export default function Import({ embedded = false }) {
       let taggingWarnings = []
       /** @type {import('../lib/importEnrichmentStats.js').ImportEnrichmentStats | undefined} */
       let enrichmentStats
+      /** @type {any} */
+      let enrichResult = null
 
       if (ticketSource) {
         const result = await runPipeline(dataSourceType, rowsToAnalyze, {
@@ -1334,53 +1338,80 @@ export default function Import({ embedded = false }) {
           )
         }
 
-        reportProgress(`正在增强打标 (0/${records.length})…`)
-        let enriched
-        try {
-          enriched = await enrichTicketRecordsForImport(
-            records,
-            settings,
-            (label, done, total) => {
-              if (total != null && total > 0) {
-                reportProgress(`正在${label} (${done ?? 0}/${total})…`)
-              } else {
-                reportProgress(`正在${label}…`)
-              }
-            },
-          )
-          records = enriched.records
-          taggingWarnings = enriched.warnings
-          enrichmentStats = enriched.enrichmentStats
-        } catch (enrichErr) {
-          // 增强阶段整体失败（LLM 挂起、网络中断、浏览器 tab 后台被中止等）
-          // 回退到规则初标结果继续写盘，不丢弃数据
-          console.error('[import] 增强打标阶段失败，回退规则初标:', enrichErr)
-          taggingWarnings = [
-            `增强打标阶段异常中断（${enrichErr.message || enrichErr}），已回退规则初标结果继续写入。可稍后手动重新打标。`,
-          ]
-        }
+        reportProgress(`正在提交服务端增强打标 (${records.length} 条)…`)
 
-        // M7: 异主体闸门前置到落盘前
-        if (ticketSource) {
-          reportProgress(`正在异主体复核 (${records.length} 条)…`)
-          try {
-            const gateRes = await fetch('/api/storage/records/pre-disk-gate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(records),
-            })
-            if (gateRes.ok) {
-              const gateData = await gateRes.json()
-              records = gateData.records || records
-              if (gateData.warnings?.length) {
-                taggingWarnings = [...(taggingWarnings || []), ...gateData.warnings]
+        // 调服务端 enrich 端点（fire-and-forget：立即返回，后台执行）
+        try {
+          const res = await apiFetch('/api/storage/records/enrich', {
+            method: 'POST',
+            body: JSON.stringify({
+              mode: 'import',
+              records,
+              settings,
+            }),
+          })
+
+          if (!res?.ok && res?.code === 'BACKGROUND_TASK_CONFLICT') {
+            throw new Error(res.error || '另一用户正在执行后台任务，请稍后再试')
+          }
+
+          // 轮询进度
+          enrichResult = await new Promise((resolve, reject) => {
+            const poll = async () => {
+              try {
+                const data = await apiFetch('/api/storage/background-task')
+                const lock = data?.lock
+                if (!lock) {
+                  // lock 消失——可能已完成并被别人释放，或者出错了
+                  reject(new Error('后台任务状态丢失，请检查导入结果或重新导入'))
+                  return
+                }
+                if (lock.meta?.error) {
+                  reject(new Error(lock.meta.error))
+                  return
+                }
+                if (lock.meta?.result) {
+                  resolve(lock.meta.result)
+                  return
+                }
+                // 更新进度文案
+                if (lock.progress && importPageMountedRef.current) {
+                  reportProgress(lock.progress + '…')
+                }
+                setTimeout(poll, 3000)
+              } catch (err) {
+                reject(err)
               }
             }
-          } catch (gateErr) {
-            console.warn('[import] 异主体闸门失败，跳过:', gateErr)
-            taggingWarnings = [...(taggingWarnings || []), '异主体闸门执行失败，已跳过']
+            setTimeout(poll, 2000)
+          })
+
+          // 释放锁
+          try {
+            await apiFetch('/api/storage/background-task', { method: 'DELETE' })
+          } catch {
+            // 释放失败不阻断
+          }
+
+          // 拿到结果
+          records = enrichResult.records || records
+          taggingWarnings = enrichResult.warnings || taggingWarnings
+          enrichmentStats = enrichResult.stats
+        } catch (enrichErr) {
+          // 增强阶段失败——回退规则初标结果继续写盘
+          console.error('[import] 服务端增强打标失败，回退规则初标:', enrichErr)
+          taggingWarnings = [
+            `增强打标阶段异常（${enrichErr.message || enrichErr}），已回退规则初标结果继续写入。可稍后手动重新打标。`,
+          ]
+          // 尝试释放锁
+          try {
+            await apiFetch('/api/storage/background-task', { method: 'DELETE' })
+          } catch {
+            // 忽略
           }
         }
+
+        // M7: 异主体闸门（服务端 enrich 端点已内含，这里不再重复调）
       } else {
         const result = await runPipeline(dataSourceType, rowsToAnalyze, {
           ...batchMeta,
@@ -1410,12 +1441,37 @@ export default function Import({ embedded = false }) {
         }
       }
 
-      reportProgress(`正在写入服务器 (0/${records.length})…`)
-      const ingest = await addFeedbacks(records, {
-        onUploadProgress: (uploaded, total) => {
-          reportProgress(`正在写入服务器 (${uploaded}/${total})…`)
-        },
-      })
+      // 写盘：ticketSource 且 enrich 成功时服务端已写盘；否则走 addFeedbacks
+      let ingest
+      let serverAlreadyWritten = false
+
+      if (ticketSource && enrichResult) {
+        // 服务端 enrich 端点已写盘
+        serverAlreadyWritten = true
+        reportProgress(`正在同步前端状态…`)
+        try {
+          await reloadAfterEnrich(dataMonth)
+        } catch (err) {
+          console.warn('[import] reloadAfterEnrich 失败，不影响写盘:', err)
+        }
+        // 从 enrich 结果拿统计
+        const wr = enrichResult.writeResult || {}
+        ingest = {
+          added: wr.written ?? records.length,
+          updated: 0,
+          skippedDuplicates: dedupeSkippedCount + (wr.skippedTicketConflicts || 0),
+          skippedTicketConflicts: wr.skippedTicketConflicts || 0,
+          totalAfter: 0,
+          analyzed: records.length,
+        }
+      } else {
+        reportProgress(`正在写入服务器 (0/${records.length})…`)
+        ingest = await addFeedbacks(records, {
+          onUploadProgress: (uploaded, total) => {
+            reportProgress(`正在写入服务器 (${uploaded}/${total})…`)
+          },
+        })
+      }
 
       try {
         reportProgress('正在生成该数据月份的洞察快照…')

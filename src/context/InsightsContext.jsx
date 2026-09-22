@@ -2,6 +2,7 @@ import { createContext, useContext, useCallback, useEffect, useMemo, useRef, use
 import { notification, Button } from 'antd'
 import { useAuth } from './AuthContext.jsx'
 import { refreshLlmServerStatus, resolveSettingsForLlm } from '../lib/llmClient.js'
+import { apiFetch } from '../lib/apiClient.js'
 import { loadSettings, saveSettings } from '../lib/storage.js'
 import {
   loadTeamAppSettings,
@@ -1754,6 +1755,29 @@ export function InsightsProvider({ children }) {
     [adapter, currentPeriodId, storageReady, refreshImportMonthSummary],
   )
 
+  /**
+   * 服务端 enrich 完成后，强制重新加载某 period 的 records 合并到内存。
+   * 绕过 loadRecordsForPeriodId 的去重守卫，确保拿到服务端最新数据。
+   * @param {string} periodId
+   */
+  const reloadAfterEnrich = useCallback(
+    async (periodId) => {
+      if (!periodId) return
+      loadedPeriodIdsRef.current.delete(periodId)
+      await loadRecordsForPeriodId(periodId)
+      try {
+        if (typeof adapter.getDataRevision === 'function') {
+          const rev = await adapter.getDataRevision()
+          dataRevisionRef.current = rev.revision
+          recordsRevisionRef.current = rev.recordsRevision
+        }
+      } catch {
+        // revision 刷新失败不阻断
+      }
+    },
+    [adapter, loadRecordsForPeriodId],
+  )
+
   const updateFeedback = useCallback(
     /**
      * @param {string} id
@@ -2569,26 +2593,118 @@ export function InsightsProvider({ children }) {
         meta: { scope, total: list.length },
       })
       beginRetagSession({ total: list.length, scope })
+
       try {
-        const result = await reprocessAllTagsCore(list, setRetagSessionProgress, {
-          scope,
-          forceOverrideManualTags,
-          retagDimensionsAfterTicketLlm,
+        // 调服务端 enrich 端点（fire-and-forget）
+        const recordIds = list.map((r) => r.id)
+        const res = await apiFetch('/api/storage/records/enrich', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: 'bulk_retag',
+            recordIds,
+            periodId: currentPeriodId,
+            settings,
+            retagOptions: {
+              scope,
+              forceOverrideManualTags,
+              retagDimensionsAfterTicketLlm,
+            },
+          }),
         })
+
+        if (!res?.ok && res?.code === 'BACKGROUND_TASK_CONFLICT') {
+          throw new Error(res.error || '另一用户正在执行后台任务，请稍后再试')
+        }
+
+        // 轮询进度
+        const enrichResult = await new Promise((resolve, reject) => {
+          const poll = async () => {
+            try {
+              const data = await apiFetch('/api/storage/background-task')
+              const lock = data?.lock
+              if (!lock) {
+                reject(new Error('后台任务状态丢失'))
+                return
+              }
+              if (lock.meta?.error) {
+                reject(new Error(lock.meta.error))
+                return
+              }
+              if (lock.meta?.result) {
+                resolve(lock.meta.result)
+                return
+              }
+              if (lock.progress) {
+                setRetagSessionProgress(lock.progress)
+              }
+              setTimeout(poll, 3000)
+            } catch (err) {
+              reject(err)
+            }
+          }
+          setTimeout(poll, 2000)
+        })
+
+        // 释放锁
+        try {
+          await apiFetch('/api/storage/background-task', { method: 'DELETE' })
+        } catch {
+          // 忽略
+        }
+
+        // 刷新前端状态
+        try {
+          await reloadAfterEnrich(currentPeriodId)
+        } catch (err) {
+          console.warn('[retag] reloadAfterEnrich 失败:', err)
+        }
+
+        // 重建快照
+        if (currentPeriod) {
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: feedbacksRef.current,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+
+        const stats = enrichResult?.stats || {}
+        const result = {
+          total: stats.total ?? enrichResult?.total ?? list.length,
+          scope,
+          beforeUnknown: stats.beforeUnknown ?? 0,
+          afterUnknown: stats.afterUnknown ?? 0,
+          summary: stats.summary || { count: 0, reasons: {}, samples: [] },
+          painPointDelta: stats.painPointDelta,
+          ticketLlmCompleted: stats.ticketLlmCompleted,
+          ticketLlmFailed: stats.ticketLlmFailed,
+        }
         if (result) notifyRetagFinished(result)
         return result
       } catch (err) {
         endRetagSession()
+        // 释放锁
+        try {
+          await apiFetch('/api/storage/background-task', { method: 'DELETE' })
+        } catch {
+          // 忽略
+        }
         throw err
       }
     },
     [
+      apiFetch,
       beginRetagSession,
+      currentPeriod,
+      currentPeriodId,
       endRetagSession,
       notifyRetagFinished,
       prepareSharedBackgroundTask,
-      reprocessAllTagsCore,
+      reloadAfterEnrich,
+      scheduleSnapshotRebuild,
       setRetagSessionProgress,
+      settings,
     ],
   )
 
@@ -2762,6 +2878,7 @@ export function InsightsProvider({ children }) {
       setPersonalSettings,
       setTeamSettings,
       addFeedbacks,
+      reloadAfterEnrich,
       setImportLock,
       importSession,
       beginImportSession,
@@ -2859,6 +2976,7 @@ export function InsightsProvider({ children }) {
       setPersonalSettings,
       setTeamSettings,
       addFeedbacks,
+      reloadAfterEnrich,
       setImportLock,
       importSession,
       beginImportSession,
