@@ -65,9 +65,6 @@ import {
 } from '../domain/insightPeriod.js'
 import { normalizeImportMonth } from '../lib/importUtils.js'
 import {
-  clearImportSessionMarker,
-  persistImportSessionMarker,
-  updateImportSessionMarkerProgress,
   IMPORT_ALREADY_IN_PROGRESS_TIP,
   IMPORT_ANALYSIS_SESSION_LABEL,
   IMPORT_ANALYSIS_BLOCKED_BY_RETAG_TIP,
@@ -824,6 +821,12 @@ export function InsightsProvider({ children }) {
 
     const tick = async () => {
       if (cancelled || document.visibilityState === 'hidden') return
+      // 锁进度需要持续刷新，即使在 retag/import 进行中也要更新 sharedBackgroundTask
+      try {
+        await refreshSharedBackgroundTask()
+      } catch (err) {
+        console.warn('[storage] 锁进度刷新失败', err)
+      }
       if (
         remoteSyncInProgressRef.current ||
         clearInProgressRef.current ||
@@ -1528,15 +1531,6 @@ export function InsightsProvider({ children }) {
         batchName: meta.batchName,
         kind: meta.kind || 'tickets',
       })
-      if (meta.dataMonth) {
-        persistImportSessionMarker({
-          startedAt: new Date().toISOString(),
-          dataMonth: meta.dataMonth,
-          batchName: meta.batchName,
-          progress,
-          dataSourceType: meta.dataSourceType,
-        })
-      }
     },
     [],
   )
@@ -1544,15 +1538,12 @@ export function InsightsProvider({ children }) {
   const setImportSessionProgress = useCallback(
     (progress) => {
       setImportSession((prev) => (prev.active ? { ...prev, progress } : prev))
-      updateImportSessionMarkerProgress(progress)
-      void touchSharedBackgroundTask({ progress })
     },
-    [touchSharedBackgroundTask],
+    [],
   )
 
   const endImportSession = useCallback(() => {
     importLockRef.current = false
-    clearImportSessionMarker()
     setImportSession({
       active: false,
       progress: '',
@@ -1607,9 +1598,8 @@ export function InsightsProvider({ children }) {
     (progress) => {
       setRetagSession((prev) => (prev.active ? { ...prev, progress } : prev))
       updateRetagSessionMarkerProgress(progress)
-      void touchSharedBackgroundTask({ progress })
     },
-    [touchSharedBackgroundTask],
+    [],
   )
 
   const endRetagSession = useCallback(() => {
@@ -2637,6 +2627,8 @@ export function InsightsProvider({ children }) {
               if (lock.progress) {
                 setRetagSessionProgress(lock.progress)
               }
+              // 同步更新 sharedBackgroundTask，让 TaskHistoryPanel 也能实时显示进度
+              setSharedBackgroundTask(lock)
               setTimeout(poll, 3000)
             } catch (err) {
               reject(err)
@@ -2651,6 +2643,8 @@ export function InsightsProvider({ children }) {
         } catch {
           // 忽略
         }
+        // 刷新 sharedBackgroundTask（让 TaskHistoryPanel 尽快反映锁已释放）
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
 
         // 刷新前端状态
         try {
@@ -2690,6 +2684,8 @@ export function InsightsProvider({ children }) {
         } catch {
           // 忽略
         }
+        // 刷新 sharedBackgroundTask（让 TaskHistoryPanel 尽快反映锁已释放）
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
         throw err
       }
     },
@@ -2702,6 +2698,7 @@ export function InsightsProvider({ children }) {
       notifyRetagFinished,
       prepareSharedBackgroundTask,
       reloadAfterEnrich,
+      refreshSharedBackgroundTask,
       scheduleSnapshotRebuild,
       setRetagSessionProgress,
       settings,
@@ -2888,8 +2885,10 @@ export function InsightsProvider({ children }) {
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
+      refreshSharedBackgroundTask,
       retagSession,
       sharedBackgroundTask,
+      setSharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
       removeFeedback,
@@ -2986,8 +2985,10 @@ export function InsightsProvider({ children }) {
       setImportSessionProgress,
       endImportSession,
       notifyImportFinished,
+      refreshSharedBackgroundTask,
       retagSession,
       sharedBackgroundTask,
+      setSharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
       removeFeedback,

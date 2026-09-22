@@ -14,6 +14,7 @@ import {
   Steps,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
 } from 'antd'
@@ -162,6 +163,8 @@ export default function Import({ embedded = false }) {
     setImportSessionProgress,
     endImportSession,
     notifyImportFinished,
+    refreshSharedBackgroundTask,
+    setSharedBackgroundTask,
     settings,
     setTeamSettings,
     reloadAllConfigs,
@@ -203,6 +206,11 @@ export default function Import({ embedded = false }) {
   const [columnMap, setColumnMap] = useState({})
   const [rawTextMerge, setRawTextMerge] = useState([])
   const [loading, setLoading] = useState(false)
+  const [importAlertDismissed, setImportAlertDismissed] = useState(false)
+
+  useEffect(() => {
+    if (!importSession.active) setImportAlertDismissed(false)
+  }, [importSession.active])
   const [importProgress, setImportProgress] = useState('')
   const [uploadFiles, setUploadFiles] = useState(/** @type {ParsedUploadFile[]} */ ([]))
   const [rowSources, setRowSources] = useState(
@@ -705,6 +713,17 @@ export default function Import({ embedded = false }) {
                 customerVisitPreview.matchedCount > 0),
           )
         : catalogPartition.inScope.length > 0
+
+  /** 确认导入按钮的禁用提示（优先级：无权限 > 存储未就绪 > 被锁 > 无数据） */
+  const importBtnDisabledTip = !can('import')
+    ? '当前角色无导入权限'
+    : !storageReady
+      ? '本地数据存储正在初始化，请稍候'
+      : importBlocked
+        ? (importBlockedTip || '当前有后台任务进行中，暂时无法导入')
+        : !canImport
+          ? '请先完成文件上传与列映射'
+          : undefined
 
   const canProceedFromColumnMapping = followUpImport
     ? activePreset?.id === SATISFACTION_CALLBACK_PRESET.id
@@ -1378,6 +1397,8 @@ export default function Import({ embedded = false }) {
                 if (lock.progress && importPageMountedRef.current) {
                   reportProgress(lock.progress + '…')
                 }
+                // 直接用已有 lock 更新 sharedBackgroundTask，不再发第二次 API 请求
+                setSharedBackgroundTask(lock)
                 setTimeout(poll, 3000)
               } catch (err) {
                 reject(err)
@@ -1409,6 +1430,8 @@ export default function Import({ embedded = false }) {
           } catch {
             // 忽略
           }
+          // 刷新 sharedBackgroundTask，让抽屉反映锁已释放
+          try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
         }
 
         // M7: 异主体闸门（服务端 enrich 端点已内含，这里不再重复调）
@@ -1572,10 +1595,11 @@ export default function Import({ embedded = false }) {
           description={importBlockedTip}
         />
       )}
-      {importSession.active && (
+      {importSession.active && !importAlertDismissed && (
         <ImportProgressAlert
           progress={importSession.progress || importProgress}
           dataMonth={importSession.dataMonth}
+          onClose={() => setImportAlertDismissed(true)}
         />
       )}
       {loading && !importSession.active && (
@@ -1584,7 +1608,7 @@ export default function Import({ embedded = false }) {
           type="info"
           showIcon
           title="数据导入进行中"
-          description="可切换至其他页面，导入会在后台继续；离开本页前会提示确认，完成后将收到全局通知。"
+          description="可切换至其他页面，导入会在后台继续；完成后将收到全局通知。可在「打标任务」面板查看进展。"
         />
       )}
 
@@ -1663,7 +1687,7 @@ export default function Import({ embedded = false }) {
             />
           )}
           <div className="page-section">
-            <Button type="primary" disabled={!can('import')} onClick={() => setStep(1)}>
+            <Button type="primary" disabled={!can('import') || importBlocked} onClick={() => setStep(1)}>
               下一步：上传文件
             </Button>
           </div>
@@ -1773,20 +1797,34 @@ export default function Import({ embedded = false }) {
               <Button onClick={() => setStep(1)} disabled={importBusy}>
                 上一步
               </Button>
-              <Button
-                type="primary"
-                loading={importBusy}
-                disabled={!channelPreview || !storageReady || importBlocked}
-                onClick={() =>
-                  void doChannelBundleImport({
-                    smsFiles: channelSmsFiles,
-                    webFiles: channelWebFiles,
-                    importMonth: normalizeImportMonth(importMonth),
-                  })
+              <Tooltip
+                title={
+                  !channelPreview
+                    ? '请先完成上一步解析预览'
+                    : !storageReady
+                      ? '本地数据存储正在初始化，请稍候'
+                      : importBlocked
+                        ? (importBlockedTip || '当前有后台任务进行中，暂时无法导入')
+                        : undefined
                 }
               >
-                {importBusy ? importProgress || '导入中…' : '确认导入'}
-              </Button>
+                <span className="inline-block">
+                  <Button
+                    type="primary"
+                    loading={importBusy}
+                    disabled={!channelPreview || !storageReady || importBlocked}
+                    onClick={() =>
+                      void doChannelBundleImport({
+                        smsFiles: channelSmsFiles,
+                        webFiles: channelWebFiles,
+                        importMonth: normalizeImportMonth(importMonth),
+                      })
+                    }
+                  >
+                    {importBusy ? importProgress || '导入中…' : '确认导入'}
+                  </Button>
+                </span>
+              </Tooltip>
             </Space>
           </div>
         </div>
@@ -2285,44 +2323,56 @@ export default function Import({ embedded = false }) {
           <Space>
             <Button onClick={() => setStep(2)}>上一步</Button>
             {followUpImport ? (
-              <Button
-                type="primary"
-                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
-                loading={importBusy || followUpPreviewLoading}
-                onClick={confirmFollowUpImport}
-              >
-                {importBusy
-                  ? importProgress || '导入中…'
-                  : followUpPreviewLoading
-                    ? '预览加载中…'
-                    : `确认导入回访 ${followUpPreview?.appliedRowCount ?? 0} 行`}
-              </Button>
+              <Tooltip title={importBtnDisabledTip}>
+                <span className="inline-block">
+                  <Button
+                    type="primary"
+                    disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
+                    loading={importBusy || followUpPreviewLoading}
+                    onClick={confirmFollowUpImport}
+                  >
+                    {importBusy
+                      ? importProgress || '导入中…'
+                      : followUpPreviewLoading
+                        ? '预览加载中…'
+                        : `确认导入回访 ${followUpPreview?.appliedRowCount ?? 0} 行`}
+                  </Button>
+                </span>
+              </Tooltip>
             ) : customerVisitImport ? (
-              <Button
-                type="primary"
-                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
-                loading={importBusy || customerVisitPreviewLoading}
-                onClick={confirmCustomerVisitImport}
-              >
-                {importBusy
-                  ? importProgress || '导入中…'
-                  : customerVisitPreviewLoading
-                    ? '预览加载中…'
-                    : `确认导入回访 ${customerVisitPreview?.visitMetaCount ?? 0} 条`}
-              </Button>
+              <Tooltip title={importBtnDisabledTip}>
+                <span className="inline-block">
+                  <Button
+                    type="primary"
+                    disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
+                    loading={importBusy || customerVisitPreviewLoading}
+                    onClick={confirmCustomerVisitImport}
+                  >
+                    {importBusy
+                      ? importProgress || '导入中…'
+                      : customerVisitPreviewLoading
+                        ? '预览加载中…'
+                        : `确认导入回访 ${customerVisitPreview?.visitMetaCount ?? 0} 条`}
+                  </Button>
+                </span>
+              </Tooltip>
             ) : (
-              <Button
-                type="primary"
-                disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
-                loading={importBusy}
-                onClick={() => doImport(false)}
-              >
-                {importBusy
-                  ? importProgress || '导入中…'
-                  : !storageReady
-                    ? '存储初始化中…'
-                    : `确认导入并打标 ${catalogPartition.stats.accepted} 条`}
-              </Button>
+              <Tooltip title={importBtnDisabledTip}>
+                <span className="inline-block">
+                  <Button
+                    type="primary"
+                    disabled={!can('import') || !canImport || !storageReady || importBlocked || importBusy}
+                    loading={importBusy}
+                    onClick={() => doImport(false)}
+                  >
+                    {importBusy
+                      ? importProgress || '导入中…'
+                      : !storageReady
+                        ? '存储初始化中…'
+                        : `确认导入并打标 ${catalogPartition.stats.accepted} 条`}
+                  </Button>
+                </span>
+              </Tooltip>
             )}
           </Space>
         </div>
