@@ -14,8 +14,20 @@
 
 export const META_KEY_BACKGROUND_TASK_LOCK = 'background_task_lock'
 
+/** 任务历史 meta key */
+export const META_KEY_BACKGROUND_TASK_HISTORY = 'background_task_history'
+
+/** 任务完成结果 meta key（独立于 lock，前端读取后清除） */
+export const META_KEY_BACKGROUND_TASK_RESULT = 'background_task_result'
+
+/** 取消标志 meta key（前端设 true，enrichRunner 循环检查） */
+export const META_KEY_BACKGROUND_TASK_CANCEL = 'background_task_cancel'
+
+/** 历史记录最大条数，超出淘汰最老的 */
+export const BACKGROUND_TASK_HISTORY_LIMIT = 50
+
 /** 无心跳超过此时间视为可抢占。需大于单次 LLM 批次最慢耗时，避免任务进行中被误释放。 */
-export const BACKGROUND_TASK_STALE_MS = 3 * 60 * 1000
+export const BACKGROUND_TASK_STALE_MS = 10 * 60 * 1000
 
 /** 最长占用时间，防止异常退出后永久占锁 */
 export const BACKGROUND_TASK_MAX_AGE_MS = 24 * 60 * 60 * 1000

@@ -19,7 +19,10 @@ import { forwardLlmChatCompletion } from './llmProxy.js'
 import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl } from './llmConfig.js'
 import { retrieveSnippets } from './knowledgeBaseLoader.js'
 import { storageRepository } from './storageRepository.js'
-import { touchBackgroundTaskLock } from './backgroundTaskLock.js'
+import { touchBackgroundTaskLock, isTaskCancelled } from './backgroundTaskLock.js'
+
+/** 流式写盘批次大小，与前端 pipeline.js 的 BATCH_SIZE 保持一致 */
+const FLUSH_BATCH_SIZE = 4
 import { loadManagedTaxonomy } from '../src/lib/tagLibrary/taxonomyManagedStore.js'
 import { loadManagedProductCatalog } from '../src/storage/productCatalogStore.js'
 import { listUnknownJourneyRecords, summarizeRetagPainPointChanges, summarizeUnknownJourneyRecords } from '../src/lib/journeyRetagSummary.js'
@@ -90,15 +93,21 @@ function createTaxonomyAdapter() {
  * @returns {Promise<{ records: import('../src/lib/types.js').FeedbackRecord[], warnings: string[], stats?: object, writeResult?: object }>}
  */
 export async function runEnrichment(opts) {
-  const { mode, settings: rawSettings, userId, onProgress, retagOptions = {} } = opts
+  const { mode, settings: rawSettings, userId, username, onProgress, retagOptions = {} } = opts
 
-  // 0. 刷新 taxonomy 缓存 + 产品目录（确保用最新标签库和产品目录）
+  // 1. 刷新 taxonomy 缓存 + 产品目录（确保用最新标签库和产品目录）
+  try {
+    touchBackgroundTaskLock(userId, { progress: '正在刷新标签库…' })
+  } catch { /* lock 可能已被释放 */ }
   try {
     const adapter = createTaxonomyAdapter()
     await loadManagedTaxonomy(adapter)
   } catch (err) {
     console.warn('[enrichRunner] taxonomy 刷新失败，用缓存:', err)
   }
+  try {
+    touchBackgroundTaskLock(userId, { progress: '正在刷新产品目录…' })
+  } catch { /* lock 可能已被释放 */ }
   try {
     const adapter = createTaxonomyAdapter()
     await loadManagedProductCatalog(adapter)
@@ -107,6 +116,7 @@ export async function runEnrichment(opts) {
   }
 
   // 2. 注入 transport
+  touchBackgroundTaskLock(userId, { progress: '正在注入 LLM/KB transport…' })
   const llmTransport = createLlmTransport()
   const kbTransport = createKbTransport()
   const serverConfigured = isLlmConfigured()
@@ -114,6 +124,7 @@ export async function runEnrichment(opts) {
   setKbTransport(kbTransport)
 
   // resolve settings（补 llmServerConfigured 等，供下游使用）
+  try { touchBackgroundTaskLock(userId, { progress: '正在加载 LLM 配置…' }) } catch { /* lock 可能已被释放 */ }
   const settings = await resolveSettingsForLlm(rawSettings)
 
   try {
@@ -141,6 +152,10 @@ export async function runEnrichment(opts) {
 
     if (mode === 'import') {
       // 导入模式：enrichTicketRecordsForImport
+      if (isTaskCancelled()) {
+        return { records, warnings: ['任务已被用户取消'], stats: { cancelled: true } }
+      }
+      try { touchBackgroundTaskLock(userId, { progress: '开始导入打标…' }) } catch { /* lock 可能已被释放 */ }
       const result = await enrichTicketRecordsForImport(records, settings, (label, done, total) => {
         onProgress?.(label, done, total)
         try {
@@ -151,6 +166,9 @@ export async function runEnrichment(opts) {
           // lock 可能已被释放，静默
         }
       })
+      if (isTaskCancelled()) {
+        return { records: result.records, warnings: [...(result.warnings || []), '任务已被用户取消'], stats: { ...result.enrichmentStats, cancelled: true } }
+      }
       return {
         records: result.records,
         warnings: result.warnings,
@@ -170,29 +188,49 @@ export async function runEnrichment(opts) {
       let retagged = records
 
       if (!skipRuleRetag) {
-        // 规则重打标
+        // 规则重打标（每 FLUSH_BATCH_SIZE 条流式写盘，与前端 pipeline.js 一致）
+        try { touchBackgroundTaskLock(userId, { progress: '开始规则重打标…' }) } catch { /* lock 可能已被释放 */ }
         retagged = []
+        let pendingBatch = []
         for (let i = 0; i < total; i++) {
+          if (isTaskCancelled()) {
+            // 取消时先 flush 剩余已处理的
+            if (pendingBatch.length) {
+              try { storageRepository.putRecords(pendingBatch, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] flush on cancel 失败:', err) }
+            }
+            const stats = { total, cancelled: true, processed: retagged.length }
+            return { records: retagged, warnings: ['任务已被用户取消'], stats }
+          }
           const rec = records[i]
           const processed = await reprocessFeedbackRecord(rec, settings, {
             forceOverrideManualTags: retagOptions.forceOverrideManualTags,
           })
           retagged.push(processed)
+          pendingBatch.push(processed)
 
-          if (i % 10 === 0 || i === total - 1) {
-            onProgress?.('规则重打标', i + 1, total)
-            try {
-              touchBackgroundTaskLock(userId, {
-                progress: `正在规则重打标 (${i + 1}/${total})`,
-              })
-            } catch {
-              // lock 可能已被释放
-            }
+          // 流式写盘
+          if (pendingBatch.length >= FLUSH_BATCH_SIZE) {
+            try { storageRepository.putRecords(pendingBatch, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] 流式写盘失败:', err) }
+            pendingBatch = []
           }
+
+          onProgress?.('规则重打标', i + 1, total)
+          try {
+            touchBackgroundTaskLock(userId, {
+              progress: `正在规则重打标 (${i + 1}/${total})`,
+            })
+          } catch {
+            // lock 可能已被释放
+          }
+        }
+        // flush 尾部残余
+        if (pendingBatch.length) {
+          try { storageRepository.putRecords(pendingBatch, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] 尾部 flush 失败:', err) }
         }
       }
 
       // LLM 增强 + 主题 + 情绪
+      try { touchBackgroundTaskLock(userId, { progress: '开始 LLM 增强…' }) } catch { /* lock 可能已被释放 */ }
       const enriched = await reprocessAllThemesAndSentiment(
         retagged,
         settings,
@@ -211,6 +249,9 @@ export async function runEnrichment(opts) {
           journeyLlmOnly: scope === 'needs_journey_llm',
           forceOverrideManualTags: retagOptions.forceOverrideManualTags,
           retagDimensionsAfterTicketLlm: retagOptions.retagDimensionsAfterTicketLlm,
+          onTicketLlmBatchPersist: (chunk) => {
+            try { storageRepository.putRecords(chunk, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] LLM 批次写盘失败:', err) }
+          },
         },
       )
 

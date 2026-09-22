@@ -1,11 +1,18 @@
 import { randomId } from '../src/lib/randomId.js'
 import {
   META_KEY_BACKGROUND_TASK_LOCK,
+  META_KEY_BACKGROUND_TASK_HISTORY,
+  META_KEY_BACKGROUND_TASK_RESULT,
+  META_KEY_BACKGROUND_TASK_CANCEL,
+  BACKGROUND_TASK_HISTORY_LIMIT,
   isBackgroundTaskLockActive,
   isBackgroundTaskLockHeldByUser,
   isBackgroundTaskLockStale,
 } from '../src/domain/backgroundTaskLock.js'
 import { storageRepository } from './storageRepository.js'
+
+// 重新导出供路由层使用
+export { isBackgroundTaskLockHeldByUser }
 
 /** @typedef {import('../src/domain/backgroundTaskLock.js').BackgroundTaskLock} BackgroundTaskLock */
 /** @typedef {import('../src/domain/backgroundTaskLock.js').BackgroundTaskType} BackgroundTaskType */
@@ -144,4 +151,76 @@ export function releaseBackgroundTaskLock(userId, options = {}) {
   }
   clearBackgroundTaskLock()
   return true
+}
+
+/**
+ * @typedef {Object} TaskHistoryEntry
+ * @property {string} id
+ * @property {BackgroundTaskType} type
+ * @property {string} source
+ * @property {string} [scope]
+ * @property {string} startedAt
+ * @property {string} endedAt
+ * @property {'success' | 'failed'} status
+ * @property {Record<string, unknown>} [summary]
+ * @property {string} [error]
+ * @property {string} [username]
+ */
+
+/**
+ * @returns {TaskHistoryEntry[]}
+ */
+export function getTaskHistory() {
+  const raw = storageRepository.getMeta(META_KEY_BACKGROUND_TASK_HISTORY)
+  if (!Array.isArray(raw)) return []
+  return raw
+}
+
+/**
+ * @param {TaskHistoryEntry} entry
+ */
+export function appendTaskHistory(entry) {
+  const history = getTaskHistory()
+  history.unshift(entry)
+  const trimmed = history.slice(0, BACKGROUND_TASK_HISTORY_LIMIT)
+  storageRepository.putMeta(META_KEY_BACKGROUND_TASK_HISTORY, trimmed)
+}
+
+// ─── 任务结果（独立于 lock，解决关页签后锁残留问题） ───
+
+/**
+ * @param {Record<string, unknown>} result
+ */
+export function setTaskResult(result) {
+  storageRepository.putMeta(META_KEY_BACKGROUND_TASK_RESULT, result)
+}
+
+/**
+ * @returns {Record<string, unknown> | null}
+ */
+export function getTaskResult() {
+  const raw = storageRepository.getMeta(META_KEY_BACKGROUND_TASK_RESULT)
+  if (!raw || typeof raw !== 'object') return null
+  return /** @type {Record<string, unknown>} */ (raw)
+}
+
+export function clearTaskResult() {
+  storageRepository.deleteMeta(META_KEY_BACKGROUND_TASK_RESULT)
+}
+
+// ─── 取消标志（协作式取消，方案 A：不写盘） ───
+
+/**
+ * @returns {boolean}
+ */
+export function isTaskCancelled() {
+  return Boolean(storageRepository.getMeta(META_KEY_BACKGROUND_TASK_CANCEL))
+}
+
+export function setTaskCancelled() {
+  storageRepository.putMeta(META_KEY_BACKGROUND_TASK_CANCEL, true)
+}
+
+export function clearTaskCancelled() {
+  storageRepository.deleteMeta(META_KEY_BACKGROUND_TASK_CANCEL)
 }

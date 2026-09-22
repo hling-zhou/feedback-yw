@@ -41,6 +41,14 @@ import {
   getBackgroundTaskLock,
   releaseBackgroundTaskLock,
   touchBackgroundTaskLock,
+  getTaskHistory,
+  appendTaskHistory,
+  setTaskResult,
+  getTaskResult,
+  clearTaskResult,
+  setTaskCancelled,
+  clearTaskCancelled,
+  isBackgroundTaskLockHeldByUser,
 } from '../backgroundTaskLock.js'
 
 const META_AUDIT_ACTIONS = {
@@ -114,6 +122,10 @@ export function registerStorageRoutes(app) {
 
   app.get('/api/storage/background-task', { preHandler: requirePermission('view') }, async () => {
     return { lock: getBackgroundTaskLock() }
+  })
+
+  app.get('/api/storage/background-task/history', { preHandler: requirePermission('view') }, async () => {
+    return { history: getTaskHistory() }
   })
 
   app.post(
@@ -212,6 +224,49 @@ export function registerStorageRoutes(app) {
       }
       throw err
     }
+  })
+
+  // 读取任务完成结果（前端读后清除，独立于锁）
+  app.get('/api/storage/background-task/result', async (request, reply) => {
+    if (!request.user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    const result = getTaskResult()
+    if (!result) {
+      reply.code(404).send({ error: '暂无任务结果' })
+      return
+    }
+    return { result }
+  })
+
+  // 清除任务结果（前端读完结果后调用）
+  app.delete('/api/storage/background-task/result', async (request, reply) => {
+    if (!request.user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    clearTaskResult()
+    return { ok: true }
+  })
+
+  // 取消进行中的任务（协作式取消，方案 A：不写盘）
+  app.post('/api/storage/background-task/cancel', async (request, reply) => {
+    if (!request.user?.id) {
+      reply.code(401).send({ error: '未登录' })
+      return
+    }
+    const lock = getBackgroundTaskLock()
+    if (!lock) {
+      reply.code(404).send({ error: '当前无进行中的后台任务' })
+      return
+    }
+    if (!isBackgroundTaskLockHeldByUser(lock, request.user.id)) {
+      reply.code(403).send({ error: '无权取消其他用户的后台任务' })
+      return
+    }
+    setTaskCancelled()
+    return { ok: true, message: '取消信号已发送，任务将在当前记录处理完后终止' }
   })
 
   app.get('/api/storage/periods', { preHandler: requirePermission('view') }, async () => {
@@ -551,12 +606,16 @@ export function registerStorageRoutes(app) {
       const username = user?.username || user?.id || 'system'
 
       // 尝试获取锁
+      const taskType = mode === 'import' ? 'import' : 'retag'
+      const sourceLabel = mode === 'import' ? '数据导入' : mode === 'single_retag' ? '单条重新打标' : '批量重新打标'
+      let acquiredLock = null
       try {
-        acquireBackgroundTaskLock(mode === 'import' ? 'import' : 'retag', {
+        const { lock } = acquireBackgroundTaskLock(taskType, {
           id: userId,
           username,
           progress: '正在准备增强打标…',
         })
+        acquiredLock = lock
       } catch (err) {
         const e = /** @type {Error & { code?: string }} */ (err)
         if (e.code === 'BACKGROUND_TASK_CONFLICT') {
@@ -578,20 +637,25 @@ export function registerStorageRoutes(app) {
             periodId: body.periodId,
             settings: body.settings || {},
             userId,
+            username,
             retagOptions: body.retagOptions || {},
             onProgress: (label, done, total) => {
               // 进度已由 enrichRunner 内部通过 touchBackgroundTaskLock 更新
             },
           })
 
-          // 写盘
+          const isCancelled = Boolean(result.stats?.cancelled)
+
+          // 写盘（取消时不写盘，方案 A）
           let writeResult = null
-          try {
-            writeResult = storageRepository.putRecords(result.records, {
-              actor: { userId, username },
-            })
-          } catch (err) {
-            console.error('[enrich] 写盘失败:', err)
+          if (!isCancelled) {
+            try {
+              writeResult = storageRepository.putRecords(result.records, {
+                actor: { userId, username },
+              })
+            } catch (err) {
+              console.error('[enrich] 写盘失败:', err)
+            }
           }
 
           // bump revision
@@ -599,22 +663,49 @@ export function registerStorageRoutes(app) {
             bumpRecordsRevision()
           }
 
-          // 写入完成结果到 lock.meta
+          // 构造完成结果
+          const taskResult = {
+            mode,
+            total: result.records.length,
+            warnings: result.warnings,
+            stats: result.stats,
+            writeResult,
+            status: isCancelled ? 'cancelled' : 'success',
+          }
+
+          // 写入完成结果到独立 key（前端读取后清除）
           try {
-            touchBackgroundTaskLock(userId, {
-              progress: '打标完成',
-              meta: {
-                result: {
-                  mode,
-                  total: result.records.length,
-                  warnings: result.warnings,
-                  stats: result.stats,
-                  writeResult,
-                },
-              },
-            })
+            setTaskResult(taskResult)
           } catch {
-            // lock 可能已被清理
+            // 结果写入失败不阻断
+          }
+
+          // 把 result 写到 lock.meta，让前端轮询能检测到任务完成并正常 resolve
+          try {
+            touchBackgroundTaskLock(userId, { meta: { result: taskResult } })
+          } catch {
+            // lock 可能已被释放，静默
+          }
+
+          // 写入任务历史
+          try {
+            appendTaskHistory({
+              id: acquiredLock?.id || 'unknown',
+              type: taskType,
+              source: sourceLabel,
+              scope: body.retagOptions?.scope,
+              startedAt: acquiredLock?.startedAt || new Date().toISOString(),
+              endedAt: new Date().toISOString(),
+              status: isCancelled ? 'cancelled' : 'success',
+              summary: {
+                total: result.records.length,
+                warnings: result.warnings?.length || 0,
+                stats: result.stats,
+              },
+              username,
+            })
+          } catch (err) {
+            console.warn('[enrich] 写入任务历史失败:', err)
           }
 
           // 审计日志
@@ -623,22 +714,54 @@ export function registerStorageRoutes(app) {
               mode,
               recordCount: result.records.length,
               warnings: result.warnings?.length || 0,
+              cancelled: isCancelled,
             })
           } catch {
             // 审计失败不阻断
           }
         } catch (err) {
           console.error('[enrich] 打标失败:', err)
+          const failResult = {
+            mode,
+            status: 'failed',
+            error: err instanceof Error ? err.message : String(err),
+          }
           try {
-            touchBackgroundTaskLock(userId, {
-              progress: '打标失败',
-              meta: { error: err instanceof Error ? err.message : String(err) },
+            setTaskResult(failResult)
+          } catch {
+            // 结果写入失败不阻断
+          }
+          // 把 error 写到 lock.meta，让前端轮询能检测到失败并 reject
+          try {
+            touchBackgroundTaskLock(userId, { meta: { result: failResult } })
+          } catch {
+            // lock 可能已被释放，静默
+          }
+          try {
+            appendTaskHistory({
+              id: acquiredLock?.id || 'unknown',
+              type: taskType,
+              source: sourceLabel,
+              scope: body.retagOptions?.scope,
+              startedAt: acquiredLock?.startedAt || new Date().toISOString(),
+              endedAt: new Date().toISOString(),
+              status: 'failed',
+              error: err instanceof Error ? err.message : String(err),
+              username,
             })
           } catch {
-            // lock 可能已被清理
+            // 历史写入失败不阻断
           }
         }
-        // 不自动 release：前端轮询到 result/error 后调 DELETE /api/storage/background-task 释放
+        // 任务结束自动释放锁（结果已写入独立 key，不再依赖前端 DELETE）
+        // 等待 1.5s 让前端 3s 轮询有机会拿到 lock.meta.result 并正常 resolve
+        await new Promise((r) => setTimeout(r, 1500))
+        try {
+          releaseBackgroundTaskLock(userId)
+          clearTaskCancelled()
+        } catch {
+          // lock 可能已被清理
+        }
       })()
 
       return reply.send({ ok: true, message: '打标已在服务端后台开始' })
