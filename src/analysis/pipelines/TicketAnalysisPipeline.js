@@ -26,7 +26,7 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
   /**
    * @param {Object[]} rows
    * @param {AnalysisContext} ctx
-   * @param {{ insightPeriod?: import('../../domain/insightPeriod.js').InsightPeriod, onProgress?: (done: number, total: number) => void }} [opts]
+   * @param {{ insightPeriod?: import('../../domain/insightPeriod.js').InsightPeriod, onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean }} [opts]
    */
   async analyze(rows, ctx, opts = {}) {
     const collector = new ArtifactCollector(randomId(), false)
@@ -43,9 +43,15 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
     const useRegex = ctx.settings?.useRegex ?? true
     const period = opts.insightPeriod
     const onProgress = opts.onProgress
+    const shouldCancel = opts.shouldCancel
     const PROGRESS_INTERVAL = 4
+    let cancelled = false
 
     for (let i = 0; i < rows.length; i++) {
+      if (shouldCancel?.()) {
+        cancelled = true
+        break
+      }
       try {
         const row = rows[i]
         const legacy = await processRow(row, useRegex, ctx.settings)
@@ -95,8 +101,8 @@ export class TicketAnalysisPipeline extends AnalysisPipeline {
       }
     }
 
-    if (onProgress) onProgress(rows.length, rows.length)
+    if (onProgress) onProgress(cancelled ? records.length : rows.length, rows.length)
 
-    return { records, failures, collector }
+    return { records, failures, collector, cancelled }
   }
 }

@@ -106,7 +106,9 @@ import {
   mergeParsedUploadFiles,
 } from '../lib/importBatchFiles.js'
 import { displayImportFileName, parseImportFileNamePassword } from '../lib/importFilePassword.js'
-import { IMPORT_ALREADY_IN_PROGRESS_TIP } from '../lib/importSession.js'
+import { isBackgroundTaskCancelRequested } from '../domain/backgroundTaskLock.js'
+
+const IMPORT_CANCELLED_CODE = 'IMPORT_CANCELLED'
 
 /** @typedef {import('../lib/importBatchFiles.js').ParsedUploadFile} ParsedUploadFile */
 
@@ -164,7 +166,7 @@ export default function Import({ embedded = false }) {
     endImportSession,
     notifyImportFinished,
     refreshSharedBackgroundTask,
-    setSharedBackgroundTask,
+    waitForBackgroundTask,
     settings,
     setTeamSettings,
     reloadAllConfigs,
@@ -172,14 +174,15 @@ export default function Import({ embedded = false }) {
     runPipeline,
     listPipelineDescriptors,
     rebuildSnapshotsForImportMonth,
+    ensurePeriodForImportMonth,
     storageReady,
     periodsLoading,
     periods,
     importSession,
     syncSharedDataFromServer,
     feedbacks,
+    sharedBackgroundTasks,
   } = useInsights()
-  const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock()
 
   const [dataSourceType, setDataSourceType] = useState(() => {
     if (initialSource && DATA_SOURCE_TYPES.includes(initialSource)) {
@@ -221,6 +224,10 @@ export default function Import({ embedded = false }) {
   const [selectedSheet, setSelectedSheet] = useState('')
   const [activePreset, setActivePreset] = useState(null)
   const [importMonth, setImportMonth] = useState(currentMonth)
+  const { importBlocked, importBlockedTip } = useSharedBackgroundTaskBlock({
+    dataMonth: importMonth,
+    dataSourceType,
+  })
   const [batchName, setBatchName] = useState(() =>
     defaultBatchName('complaint_ticket', currentMonth()),
   )
@@ -762,7 +769,34 @@ export default function Import({ embedded = false }) {
     )
   }
 
+  const importCancelRef = useRef(false)
+  const enrichSubmittedRef = useRef(false)
+  const hadBackgroundLockRef = useRef(false)
+
+  useEffect(() => {
+    if (!importSession.active) {
+      importCancelRef.current = false
+      enrichSubmittedRef.current = false
+      hadBackgroundLockRef.current = false
+      return
+    }
+    const clientTask = sharedBackgroundTasks.find((task) => task.meta?.phase === 'client')
+    if (clientTask) {
+      hadBackgroundLockRef.current = true
+      if (isBackgroundTaskCancelRequested(clientTask)) {
+        importCancelRef.current = true
+      }
+    } else if (hadBackgroundLockRef.current && !enrichSubmittedRef.current) {
+      importCancelRef.current = true
+    }
+  }, [importSession.active, sharedBackgroundTasks])
+
   const reportProgress = useCallback((text) => {
+    if (importCancelRef.current && !enrichSubmittedRef.current) {
+      const err = new Error('任务已取消')
+      err.code = IMPORT_CANCELLED_CODE
+      throw err
+    }
     setImportProgress(text)
     setImportSessionProgress(text)
   }, [setImportSessionProgress])
@@ -844,10 +878,7 @@ export default function Import({ embedded = false }) {
     setError('')
     let importFinishedNotified = false
     try {
-      if (importSession.active) {
-        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
-      }
-      if (importBlocked && !importSession.active) {
+      if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
       }
       if (!storageReady) {
@@ -1017,10 +1048,7 @@ export default function Import({ embedded = false }) {
     let sessionStarted = false
     let shouldSyncAfterImport = false
     try {
-      if (importSession.active) {
-        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
-      }
-      if (importBlocked && !importSession.active) {
+      if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
       }
       if (!storageReady) {
@@ -1112,10 +1140,7 @@ export default function Import({ embedded = false }) {
     setError('')
     let importFinishedNotified = false
     try {
-      if (importSession.active) {
-        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
-      }
-      if (importBlocked && !importSession.active) {
+      if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
       }
       if (!storageReady) {
@@ -1221,10 +1246,7 @@ export default function Import({ embedded = false }) {
     setError('')
     let importFinishedNotified = false
     try {
-      if (importSession.active) {
-        throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
-      }
-      if (importBlocked && !importSession.active) {
+      if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
       }
       if (!storageReady) {
@@ -1266,14 +1288,16 @@ export default function Import({ embedded = false }) {
         throw new Error('请选择有效的数据月份（YYYY-MM）')
       }
 
-      await prepareSharedBackgroundTask('import', {
-        progress: '正在准备分析…',
-        meta: {
-          dataMonth,
-          batchName: batchName?.trim() || defaultBatchName(dataSourceType, dataMonth),
-          dataSourceType,
-        },
-      })
+      if (!ticketSource) {
+        await prepareSharedBackgroundTask('import', {
+          progress: '正在准备分析…',
+          meta: {
+            dataMonth,
+            batchName: batchName?.trim() || defaultBatchName(dataSourceType, dataMonth),
+            dataSourceType,
+          },
+        })
+      }
 
       beginImportSession({
         progress: '正在准备分析…',
@@ -1324,10 +1348,11 @@ export default function Import({ embedded = false }) {
         }
       }
 
-      reportProgress(`正在规则初标 (0/${rowsToAnalyze.length})…`)
+      reportProgress('正在准备分析…')
+      const insightPeriod = await ensurePeriodForImportMonth(dataMonth)
 
       let records
-      let failures
+      let failures = []
       let run
       /** @type {string[]} */
       let taggingWarnings = []
@@ -1337,104 +1362,43 @@ export default function Import({ embedded = false }) {
       let enrichResult = null
 
       if (ticketSource) {
-        const result = await runPipeline(dataSourceType, rowsToAnalyze, {
-          ...batchMeta,
-          onAnalyzeProgress: (done, total) => {
-            reportProgress(`正在规则打标 (${done}/${total})…`)
-          },
+        const res = await apiFetch('/api/storage/records/enrich', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: 'import',
+            rows: rowsToAnalyze,
+            dataSourceType,
+            dataMonth,
+            batchMeta,
+            insightPeriod,
+            settings,
+          }),
         })
-        run = result.run
-        failures = result.failures
-        records = result.records
-
-        if (!records.length) {
-          const sample = failures
-            .slice(0, 3)
-            .map((f) => `第 ${f.rowIndex + 1} 行：${f.message}`)
-            .join('；')
-          throw new Error(
-            `分析未产生可导入记录（${failures.length} 行失败${sample ? `：${sample}` : ''}）。请检查产品目录、列映射与处理意见列。`,
-          )
+        if (!res?.taskId) {
+          throw new Error(res?.error || '后台打标任务未创建')
         }
-
-        reportProgress(`正在提交服务端增强打标 (${records.length} 条)…`)
-
-        // 调服务端 enrich 端点（fire-and-forget：立即返回，后台执行）
-        try {
-          const res = await apiFetch('/api/storage/records/enrich', {
-            method: 'POST',
-            body: JSON.stringify({
-              mode: 'import',
-              records,
-              settings,
-            }),
-          })
-
-          if (!res?.ok && res?.code === 'BACKGROUND_TASK_CONFLICT') {
-            throw new Error(res.error || '另一用户正在执行后台任务，请稍后再试')
-          }
-
-          // 轮询进度
-          enrichResult = await new Promise((resolve, reject) => {
-            const poll = async () => {
-              try {
-                const data = await apiFetch('/api/storage/background-task')
-                const lock = data?.lock
-                if (!lock) {
-                  // lock 消失——可能已完成并被别人释放，或者出错了
-                  reject(new Error('后台任务状态丢失，请检查导入结果或重新导入'))
-                  return
-                }
-                if (lock.meta?.error) {
-                  reject(new Error(lock.meta.error))
-                  return
-                }
-                if (lock.meta?.result) {
-                  resolve(lock.meta.result)
-                  return
-                }
-                // 更新进度文案
-                if (lock.progress && importPageMountedRef.current) {
-                  reportProgress(lock.progress + '…')
-                }
-                // 直接用已有 lock 更新 sharedBackgroundTask，不再发第二次 API 请求
-                setSharedBackgroundTask(lock)
-                setTimeout(poll, 3000)
-              } catch (err) {
-                reject(err)
-              }
-            }
-            setTimeout(poll, 2000)
-          })
-
-          // 释放锁
-          try {
-            await apiFetch('/api/storage/background-task', { method: 'DELETE' })
-          } catch {
-            // 释放失败不阻断
-          }
-
-          // 拿到结果
-          records = enrichResult.records || records
-          taggingWarnings = enrichResult.warnings || taggingWarnings
-          enrichmentStats = enrichResult.stats
-        } catch (enrichErr) {
-          // 增强阶段失败——回退规则初标结果继续写盘
-          console.error('[import] 服务端增强打标失败，回退规则初标:', enrichErr)
-          taggingWarnings = [
-            `增强打标阶段异常（${enrichErr.message || enrichErr}），已回退规则初标结果继续写入。可稍后手动重新打标。`,
-          ]
-          // 尝试释放锁
-          try {
-            await apiFetch('/api/storage/background-task', { method: 'DELETE' })
-          } catch {
-            // 忽略
-          }
-          // 刷新 sharedBackgroundTask，让抽屉反映锁已释放
-          try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        void refreshSharedBackgroundTask()
+        enrichResult = await waitForBackgroundTask(res.taskId)
+        if (enrichResult?.status === 'cancelled' || enrichResult?.stats?.cancelled) {
+          const err = new Error('任务已取消')
+          err.code = IMPORT_CANCELLED_CODE
+          throw err
         }
-
-        // M7: 异主体闸门（服务端 enrich 端点已内含，这里不再重复调）
+        if (enrichResult?.status === 'failed') {
+          throw new Error(enrichResult.error || '导入打标失败')
+        }
+        records = []
+        failures = enrichResult.failures || []
+        run = enrichResult.analysisRun || {
+          id: res.taskId,
+          status: failures.length ? 'partial_failed' : 'succeeded',
+          total: rowsToAnalyze.length,
+          failureCount: failures.length,
+        }
+        const produced = enrichResult.total ?? enrichResult.writeResult?.written ?? rowsToAnalyze.length
+        records = Array.from({ length: produced }, () => ({}))
+        taggingWarnings = enrichResult.warnings || []
+        enrichmentStats = enrichResult.stats
       } else {
         const result = await runPipeline(dataSourceType, rowsToAnalyze, {
           ...batchMeta,
@@ -1479,9 +1443,11 @@ export default function Import({ embedded = false }) {
         }
         // 从 enrich 结果拿统计
         const wr = enrichResult.writeResult || {}
+        const updatedCount = enrichResult.stats?.updated || 0
+        const writtenCount = wr.written ?? records.length
         ingest = {
-          added: wr.written ?? records.length,
-          updated: 0,
+          added: Math.max(0, writtenCount - updatedCount),
+          updated: updatedCount,
           skippedDuplicates: dedupeSkippedCount + (wr.skippedTicketConflicts || 0),
           skippedTicketConflicts: wr.skippedTicketConflicts || 0,
           totalAfter: 0,
@@ -1498,7 +1464,7 @@ export default function Import({ embedded = false }) {
 
       try {
         reportProgress('正在生成该数据月份的洞察快照…')
-        await rebuildSnapshotsForImportMonth(dataMonth, records)
+        await rebuildSnapshotsForImportMonth(dataMonth, ticketSource ? [] : records)
       } catch (snapErr) {
         console.warn('[import] snapshot rebuild after import:', snapErr)
       }
@@ -1539,7 +1505,13 @@ export default function Import({ embedded = false }) {
         setStep(4)
       }
     } catch (e) {
-      if (e?.code === 'DUPLICATE_RUN') {
+      if (e?.code === IMPORT_CANCELLED_CODE) {
+        if (importPageMountedRef.current) {
+          setError('已取消导入')
+        } else {
+          message.info('导入已取消')
+        }
+      } else if (e?.code === 'DUPLICATE_RUN') {
         const ok = window.confirm(
           uploadFiles.length > 1
             ? '24 小时内已导入过相同文件组合。是否仍要重新分析并导入？'
@@ -1572,7 +1544,7 @@ export default function Import({ embedded = false }) {
     }
   }
 
-  const importBusy = loading || importSession.active
+  const importBusy = loading || importBlocked
 
   return (
     <div>
@@ -2282,9 +2254,6 @@ export default function Import({ embedded = false }) {
               </>
             ) : (
               <>
-            <Typography.Text type="secondary" className="mt-1 block text-xs">
-              下方展示打标语料样例（最多 3 条）。确认导入后将先完成规则初标（客户请求、需求痛点、问题原因、四维、优化建议），再依次增强：请求场景与问题类型（本地）→ 客户请求/需求痛点/问题原因/优化建议（配置 API Key 时 LLM，一次写出）→ 请求场景与问题类型（LLM 语料，默认开）→ 用户旅程 → 用户情绪。
-            </Typography.Text>
             <Alert
               className="mt-2"
               type="info"

@@ -25,7 +25,7 @@ import {
  * @param {FeedbackRecord[]} options.filteredRecords 当前页筛选结果（洞察分析为 scoped，反馈库为 filtered）
  */
 export function useBulkRetagModal({ filteredRecords }) {
-  const { startBulkRetag, reprocessing, retagSession, settings } = useInsights()
+  const { startBulkRetag, reprocessing, retagSession, settings, currentPeriod } = useInsights()
   const { user } = useAuth()
   const { retagBlocked, retagBlockedTip } = useSharedBackgroundTaskBlock()
   const { periodFeedbacks, periodCount } = usePeriodScope()
@@ -68,7 +68,10 @@ export function useBulkRetagModal({ filteredRecords }) {
     [periodFeedbacks, filteredRecords, settings],
   )
 
-  const bulkRetagBusy = reprocessing || retagSession.active
+  const retagRuns = retagSession.runs?.length ? retagSession.runs : retagSession.active ? [retagSession] : []
+  const bulkRetagBusy =
+    retagRuns.some((run) => !run.periodId || run.periodId === currentPeriod?.id) ||
+    (reprocessing && !retagSession.active)
   const canOpenBulkRetag = periodCount > 0 || filteredCount > 0
   const bulkRetagDisabled = bulkRetagBusy || retagBlocked || !canOpenBulkRetag
   const bulkRetagDisabledTip = retagBlocked
@@ -134,6 +137,10 @@ export function useBulkRetagModal({ filteredRecords }) {
         retagDimensionsAfterTicketLlm:
           opts.retagDimensionsAfterTicketLlm ?? settings.retagDimensionsAfterTicketLlm !== false,
       }).catch((e) => {
+        if (e?.code === 'RETAG_CANCELLED') {
+          message.info('批量重新打标已取消')
+          return
+        }
         message.error(e?.message || '批量重新打标失败')
       })
     },

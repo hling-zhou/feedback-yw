@@ -9,9 +9,8 @@ import { formatTicketLlmRemainRuleMessage } from '../lib/importEnrichmentStats.j
 
 /**
  * 导入完成全局通知。
- * 注：导入已在服务端后台执行，刷新/关闭页面不会中断导入，
- * 旧的"离开确认 / beforeunload / 中断检测 Modal"均已移除，
- * 任务进展可在「打标任务」面板查看。
+ * 投诉/咨询的规则打标和 LLM 增强都在服务端任务里，刷新后继续。
+ * 进展以服务端任务列表为准，可在「打标任务」面板查看或取消。
  */
 export default function ImportSessionGuard() {
   const message = useAppMessage()

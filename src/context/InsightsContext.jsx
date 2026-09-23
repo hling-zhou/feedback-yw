@@ -79,10 +79,19 @@ import {
 } from '../lib/retagSession.js'
 import {
   acquireBackgroundTask,
-  fetchBackgroundTaskLock,
+  clearBackgroundTaskResult,
+  fetchBackgroundTaskState,
   releaseBackgroundTask,
   touchBackgroundTask,
 } from '../lib/backgroundTaskClient.js'
+import { shouldPublishBackgroundTaskProgress } from '../lib/backgroundTaskProgress.js'
+import {
+  BACKGROUND_TASK_PHASE_CLIENT,
+  backgroundTasksConflict,
+  importSessionConflicts,
+  isBackgroundTaskLockHeldByUser,
+  retagStartConflict,
+} from '../domain/backgroundTaskLock.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
 import { getRecordRevision, applyRecordWriteMetadata } from '../domain/recordRevision.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
@@ -166,6 +175,36 @@ function attachJourneyRules(settings) {
   }
 }
 
+/**
+ * @param {{ periodId?: string, periodStart?: string, periodEnd?: string, total?: number, scope?: string }[]} runs
+ * @param {string} [progress]
+ */
+function retagSessionFromRuns(runs, progress = '') {
+  if (!runs.length) {
+    return {
+      active: false,
+      progress: '',
+      total: 0,
+      scope: /** @type {import('../lib/retagSession.js').BulkRetagScope | 'all'} */ ('all'),
+      periodId: undefined,
+      periodStart: undefined,
+      periodEnd: undefined,
+      runs: [],
+    }
+  }
+  const latest = runs[runs.length - 1]
+  return {
+    active: true,
+    progress: progress || '正在准备…',
+    total: latest.total || 0,
+    scope: /** @type {import('../lib/retagSession.js').BulkRetagScope | 'all'} */ (latest.scope || 'all'),
+    periodId: latest.periodId,
+    periodStart: latest.periodStart,
+    periodEnd: latest.periodEnd,
+    runs,
+  }
+}
+
 export function InsightsProvider({ children }) {
   const message = useAppMessage()
   const { user } = useAuth()
@@ -184,6 +223,7 @@ export function InsightsProvider({ children }) {
   const remoteSyncInProgressRef = useRef(false)
   /** 导入进行中：阻止版本轮询用旧库覆盖刚写入的记录 */
   const importLockRef = useRef(false)
+  const importDepthRef = useRef(0)
   /** 批量重新打标进行中：避免轮询同步覆盖内存结果 */
   const reprocessingRef = useRef(false)
   /** @type {import('react').MutableRefObject<Set<string>>} */
@@ -204,6 +244,12 @@ export function InsightsProvider({ children }) {
   const recordsRevisionRef = useRef(null)
   /** 本浏览器是否持有服务端全局后台任务锁 */
   const ownedBackgroundTaskRef = useRef(false)
+  /** @type {import('react').MutableRefObject<Map<string, { resolve: (result: Record<string, unknown>) => void; reject: (err: Error) => void }>>} */
+  const taskWaitersRef = useRef(new Map())
+  const handledTaskResultIdsRef = useRef(new Set())
+  const pendingTaskResultsRef = useRef(new Map())
+  const tasksRef = useRef(/** @type {import('../domain/backgroundTaskLock.js').BackgroundTaskLock[]} */ ([]))
+  const lastPublishedLockProgressRef = useRef(/** @type {{ text?: string; at?: number } | null} */ (null))
   /** @type {import('react').MutableRefObject<import('../lib/types.js').FeedbackRecord[]>} */
   const feedbacksRef = useRef(/** @type {import('../lib/types.js').FeedbackRecord[]} */ ([]))
 
@@ -255,25 +301,33 @@ export function InsightsProvider({ children }) {
     /** @type {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} */ ([]),
   )
   const [wanTouTargetsLoading, setWanTouTargetsLoading] = useState(false)
-  /** @type {[{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; dataMonth?: string; batchName?: string; kind?: 'tickets' | 'analysis' }>>]} */
+  /** @type {[{ active: boolean; progress: string; dataMonth?: string; dataSourceType?: import('../domain/enums.js').DataSourceType; batchName?: string; kind?: 'tickets' | 'analysis' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; dataMonth?: string; dataSourceType?: import('../domain/enums.js').DataSourceType; batchName?: string; kind?: 'tickets' | 'analysis' }>>]} */
   const [importSession, setImportSession] = useState(() => ({
     active: false,
     progress: '',
     dataMonth: undefined,
+    dataSourceType: undefined,
     batchName: undefined,
     kind: undefined,
   }))
-  /** @type {[{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all' }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all' }>>]} */
+  const importSessionRef = useRef(importSession)
+  /** @type {[{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string }>>]} */
   const [retagSession, setRetagSession] = useState(() => ({
     active: false,
     progress: '',
     total: 0,
     scope: /** @type {import('../lib/retagSession.js').BulkRetagScope | 'all'} */ ('all'),
+    periodId: undefined,
+    periodStart: undefined,
+    periodEnd: undefined,
+    runs: [],
   }))
-  /** @type {[import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null, import('react').Dispatch<import('react').SetStateAction<import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null>>]} */
-  const [sharedBackgroundTask, setSharedBackgroundTask] = useState(
-    /** @type {import('../domain/backgroundTaskLock.js').BackgroundTaskLock | null} */ (null),
+  const retagSessionRef = useRef(retagSession)
+  /** @type {[import('../domain/backgroundTaskLock.js').BackgroundTaskLock[], import('react').Dispatch<import('react').SetStateAction<import('../domain/backgroundTaskLock.js').BackgroundTaskLock[]>>]} */
+  const [sharedBackgroundTasks, setSharedBackgroundTasks] = useState(
+    /** @type {import('../domain/backgroundTaskLock.js').BackgroundTaskLock[]} */ ([]),
   )
+  const sharedBackgroundTask = sharedBackgroundTasks[0] ?? null
   const currentPeriod = useMemo(
     () => periods.find((p) => p.id === currentPeriodId) ?? null,
     [periods, currentPeriodId],
@@ -761,29 +815,105 @@ export function InsightsProvider({ children }) {
 
   const refreshSharedBackgroundTask = useCallback(async () => {
     if (!storageReady || !isApiStorageAdapter(adapter)) {
-      setSharedBackgroundTask(null)
+      ownedBackgroundTaskRef.current = false
+      setSharedBackgroundTasks([])
       return null
     }
     try {
-      const lock = await fetchBackgroundTaskLock()
-      setSharedBackgroundTask(lock)
-      return lock
+      const { tasks, results } = await fetchBackgroundTaskState()
+      ownedBackgroundTaskRef.current = tasks.some(
+        (task) => task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id),
+      )
+      setSharedBackgroundTasks(tasks)
+      tasksRef.current = tasks
+      for (const result of results) {
+        const taskId = String(result.taskId || '')
+        if (!taskId || handledTaskResultIdsRef.current.has(taskId)) continue
+        handledTaskResultIdsRef.current.add(taskId)
+        const waiter = taskWaitersRef.current.get(taskId)
+        taskWaitersRef.current.delete(taskId)
+        if (waiter) {
+          if (result.status === 'cancelled') {
+            const err = new Error('任务已取消')
+            err.code = result.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED'
+            waiter.reject(err)
+          } else if (result.status === 'failed') {
+            waiter.reject(new Error(String(result.error || '后台任务失败')))
+          } else {
+            waiter.resolve(result)
+          }
+        } else {
+          pendingTaskResultsRef.current.set(taskId, result)
+          setTimeout(() => {
+            if (!pendingTaskResultsRef.current.has(taskId)) return
+            const pending = pendingTaskResultsRef.current.get(taskId)
+            pendingTaskResultsRef.current.delete(taskId)
+            if (pending?.status === 'success' && pending.mode === 'import' && pending.dataMonth) {
+              const updatedCount = pending.stats?.updated || 0
+              const writtenCount = pending.writeResult?.written ?? pending.total ?? 0
+              emit('ImportFinished', {
+                dataMonth: pending.dataMonth,
+                dataSourceType: pending.dataSourceType,
+                added: Math.max(0, writtenCount - updatedCount),
+                updated: updatedCount,
+                skippedDuplicates: pending.writeResult?.skippedTicketConflicts || 0,
+                failures: Array.isArray(pending.failures) ? pending.failures.length : 0,
+                ticketLlmFailed: pending.stats?.ticketLlmFailed || 0,
+              })
+              void syncSharedDataFromServer({ notify: false })
+            } else if (pending?.status === 'success') {
+              message.success('批量重新打标已完成')
+              void syncSharedDataFromServer({ notify: false })
+            } else if (pending?.status === 'cancelled') {
+              message.info('任务已取消')
+            } else if (pending?.status === 'failed') {
+              message.error(String(pending.error || '后台任务失败'))
+            }
+          }, 1500)
+        }
+        try { await clearBackgroundTaskResult(taskId) } catch { /* 忽略 */ }
+      }
+      return tasks
     } catch (err) {
       console.warn('[storage] 后台任务锁查询失败', err)
       return null
     }
-  }, [adapter, storageReady])
+  }, [adapter, message, storageReady, syncSharedDataFromServer, user?.id])
 
-  const releaseSharedBackgroundTask = useCallback(async () => {
-    if (!isApiStorageAdapter(adapter) || !ownedBackgroundTaskRef.current) return
-    ownedBackgroundTaskRef.current = false
+  const waitForBackgroundTask = useCallback((taskId) => {
+    const pending = pendingTaskResultsRef.current.get(taskId)
+    if (pending) {
+      pendingTaskResultsRef.current.delete(taskId)
+      if (pending.status === 'cancelled') {
+        const err = new Error('任务已取消')
+        err.code = pending.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED'
+        return Promise.reject(err)
+      }
+      if (pending.status === 'failed') {
+        return Promise.reject(new Error(String(pending.error || '后台任务失败')))
+      }
+      return Promise.resolve(pending)
+    }
+    return new Promise((resolve, reject) => {
+      taskWaitersRef.current.set(taskId, { resolve, reject })
+    })
+  }, [])
+
+  const releaseSharedBackgroundTask = useCallback(async (type) => {
+    const heldClient = (task) =>
+      task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id)
+    const clientTask = tasksRef.current.find((task) => heldClient(task) && (!type || task.type === type))
+    if (type && !clientTask) return
+    const remaining = tasksRef.current.some((task) => heldClient(task) && task.id !== clientTask?.id)
+    if (!remaining) ownedBackgroundTaskRef.current = false
+    if (!isApiStorageAdapter(adapter) || !clientTask) return
     try {
-      await releaseBackgroundTask()
+      await releaseBackgroundTask(clientTask.id)
     } catch (err) {
       console.warn('[storage] 释放后台任务锁失败', err)
     }
     await refreshSharedBackgroundTask()
-  }, [adapter, refreshSharedBackgroundTask])
+  }, [adapter, refreshSharedBackgroundTask, user?.id])
 
   const prepareSharedBackgroundTask = useCallback(
     /**
@@ -792,9 +922,13 @@ export function InsightsProvider({ children }) {
      */
     async (type, payload = {}) => {
       if (!isApiStorageAdapter(adapter)) return null
-      const { lock } = await acquireBackgroundTask(type, payload)
+      const meta = {
+        phase: BACKGROUND_TASK_PHASE_CLIENT,
+        ...(payload.meta || {}),
+      }
+      const { lock } = await acquireBackgroundTask(type, { ...payload, meta })
       ownedBackgroundTaskRef.current = true
-      setSharedBackgroundTask(lock)
+      setSharedBackgroundTasks((prev) => [...prev.filter((task) => task.id !== lock.id), lock])
       return lock
     },
     [adapter],
@@ -805,8 +939,10 @@ export function InsightsProvider({ children }) {
     async (patch) => {
       if (!isApiStorageAdapter(adapter) || !ownedBackgroundTaskRef.current) return
       try {
-        const lock = await touchBackgroundTask(patch)
-        setSharedBackgroundTask(lock)
+        const lock = await touchBackgroundTask({ ...patch, taskId: patch.taskId })
+        if (lock) {
+          setSharedBackgroundTasks((prev) => prev.map((task) => (task.id === lock.id ? lock : task)))
+        }
       } catch (err) {
         console.warn('[storage] 更新后台任务锁失败', err)
       }
@@ -1516,21 +1652,47 @@ export function InsightsProvider({ children }) {
   const beginImportSession = useCallback(
     /** @param {{ progress?: string; dataMonth?: string; batchName?: string; dataSourceType?: import('../domain/enums.js').DataSourceType; kind?: 'tickets' | 'analysis' }} [meta] */
     (meta = {}) => {
-      if (reprocessingRef.current) {
+      const retagRuns = retagSessionRef.current.runs?.length
+        ? retagSessionRef.current.runs
+        : retagSessionRef.current.active
+          ? [retagSessionRef.current]
+          : []
+      if (
+        retagRuns.some((run) =>
+          backgroundTasksConflict(
+            {
+              type: 'retag',
+              meta: {
+                periodId: run.periodId,
+                periodStart: run.periodStart,
+                periodEnd: run.periodEnd,
+              },
+            },
+            { type: 'import', meta },
+          ),
+        )
+      ) {
         throw new Error(RETAG_IMPORT_BLOCKED_TIP)
       }
-      if (importLockRef.current) {
+      if (importSessionConflicts(importSessionRef.current, meta)) {
         throw new Error(IMPORT_ALREADY_IN_PROGRESS_TIP)
       }
+      if (importDepthRef.current === 0 && importSessionRef.current.active) {
+        importDepthRef.current = 1
+      }
+      importDepthRef.current += 1
       importLockRef.current = true
       const progress = meta.progress || '正在准备…'
-      setImportSession({
+      const next = {
         active: true,
         progress,
         dataMonth: meta.dataMonth,
+        dataSourceType: meta.dataSourceType,
         batchName: meta.batchName,
         kind: meta.kind || 'tickets',
-      })
+      }
+      importSessionRef.current = next
+      setImportSession(next)
     },
     [],
   )
@@ -1538,20 +1700,35 @@ export function InsightsProvider({ children }) {
   const setImportSessionProgress = useCallback(
     (progress) => {
       setImportSession((prev) => (prev.active ? { ...prev, progress } : prev))
+      const clientTask = tasksRef.current.find(
+        (task) => task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id),
+      )
+      if (!clientTask) return
+      if (!shouldPublishBackgroundTaskProgress(lastPublishedLockProgressRef.current, progress)) return
+      lastPublishedLockProgressRef.current = { text: progress, at: Date.now() }
+      void touchSharedBackgroundTask({ taskId: clientTask.id, progress })
     },
-    [],
+    [touchSharedBackgroundTask, user?.id],
   )
 
   const endImportSession = useCallback(() => {
+    if (importDepthRef.current === 0 && importSessionRef.current.active) {
+      importDepthRef.current = 1
+    }
+    importDepthRef.current = Math.max(0, importDepthRef.current - 1)
+    if (importDepthRef.current > 0) return
     importLockRef.current = false
-    setImportSession({
+    const next = {
       active: false,
       progress: '',
       dataMonth: undefined,
+      dataSourceType: undefined,
       batchName: undefined,
       kind: undefined,
-    })
-    void releaseSharedBackgroundTask()
+    }
+    importSessionRef.current = next
+    setImportSession(next)
+    void releaseSharedBackgroundTask('import')
   }, [releaseSharedBackgroundTask])
 
   /**
@@ -1567,23 +1744,34 @@ export function InsightsProvider({ children }) {
   )
 
   const beginRetagSession = useCallback(
-    /** @param {{ total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all' }} meta */
+    /** @param {{ total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string }} meta */
     (meta) => {
-      if (importLockRef.current) {
-        throw new Error(RETAG_BLOCKED_BY_IMPORT_TIP)
-      }
-      if (reprocessingRef.current) {
+      const current = retagSessionRef.current
+      const runs = current.runs || []
+      if (reprocessingRef.current && runs.length === 0) {
         throw new Error(RETAG_IN_PROGRESS_TIP)
       }
+      const conflict = retagStartConflict(importSessionRef.current, current, meta)
+      if (conflict === 'import') throw new Error(RETAG_BLOCKED_BY_IMPORT_TIP)
+      if (conflict === 'retag') throw new Error(RETAG_IN_PROGRESS_TIP)
       reprocessingRef.current = true
       setReprocessing(true)
       const progress = '正在准备…'
-      setRetagSession({
-        active: true,
+      const next = retagSessionFromRuns(
+        [
+          ...runs,
+          {
+            periodId: meta.periodId,
+            periodStart: meta.periodStart,
+            periodEnd: meta.periodEnd,
+            total: meta.total,
+            scope: meta.scope || 'all',
+          },
+        ],
         progress,
-        total: meta.total,
-        scope: meta.scope || 'all',
-      })
+      )
+      retagSessionRef.current = next
+      setRetagSession(next)
       persistRetagSessionMarker({
         startedAt: new Date().toISOString(),
         total: meta.total,
@@ -1596,23 +1784,66 @@ export function InsightsProvider({ children }) {
 
   const setRetagSessionProgress = useCallback(
     (progress) => {
-      setRetagSession((prev) => (prev.active ? { ...prev, progress } : prev))
+      setRetagSession((prev) => {
+        if (!prev.active) return prev
+        const next = { ...prev, progress }
+        retagSessionRef.current = next
+        return next
+      })
       updateRetagSessionMarkerProgress(progress)
     },
     [],
   )
 
-  const endRetagSession = useCallback(() => {
+  useEffect(() => {
+    if (importSession.active) {
+      const task = sharedBackgroundTasks.find(
+        (item) => item.type === 'import' && item.meta?.dataMonth === importSession.dataMonth,
+      )
+      if (task?.progress && task.meta?.phase !== 'client' && task.progress !== importSession.progress) {
+        setImportSessionProgress(task.progress)
+      }
+    }
+    if (retagSession.active) {
+      const task = sharedBackgroundTasks.find(
+        (item) =>
+          item.type === 'retag' &&
+          (!retagSession.periodId || item.meta?.periodId === retagSession.periodId),
+      )
+      if (task?.progress) setRetagSessionProgress(task.progress)
+    }
+  }, [
+    importSession.active,
+    importSession.dataMonth,
+    importSession.progress,
+    retagSession.active,
+    retagSession.periodId,
+    setImportSessionProgress,
+    setRetagSessionProgress,
+    sharedBackgroundTasks,
+  ])
+
+  const endRetagSession = useCallback((periodId) => {
+    const current = retagSessionRef.current
+    const runs = current.runs || []
+    let nextRuns = runs
+    if (runs.length) {
+      const idx = periodId ? runs.findIndex((run) => run.periodId === periodId) : 0
+      nextRuns = idx >= 0 ? runs.filter((_, i) => i !== idx) : runs.slice(0, -1)
+    }
+    if (nextRuns.length > 0) {
+      const next = retagSessionFromRuns(nextRuns, current.progress)
+      retagSessionRef.current = next
+      setRetagSession(next)
+      return
+    }
     reprocessingRef.current = false
     setReprocessing(false)
     clearRetagSessionMarker()
-    setRetagSession({
-      active: false,
-      progress: '',
-      total: 0,
-      scope: 'all',
-    })
-    void releaseSharedBackgroundTask()
+    const next = retagSessionFromRuns([])
+    retagSessionRef.current = next
+    setRetagSession(next)
+    void releaseSharedBackgroundTask('retag')
   }, [releaseSharedBackgroundTask])
 
   /**
@@ -1625,8 +1856,8 @@ export function InsightsProvider({ children }) {
    * }} result
    */
   const notifyRetagFinished = useCallback(
-    (result) => {
-      endRetagSession()
+    (result, periodId) => {
+      endRetagSession(periodId)
       emit('RetagFinished', result)
       const shouldRefreshInsights = result.painPointDelta?.shouldPromptInsightRefresh === true
       const ticketLlmFailed = result.ticketLlmFailed ?? 0
@@ -2322,8 +2553,10 @@ export function InsightsProvider({ children }) {
           })
         }
       } finally {
-        reprocessingRef.current = false
-        setReprocessing(false)
+        if (!retagSessionRef.current.active) {
+          reprocessingRef.current = false
+          setReprocessing(false)
+        }
       }
     },
     [adapter, settings, storageReady, recordWriteActor, currentPeriod, scheduleSnapshotRebuild],
@@ -2373,8 +2606,10 @@ export function InsightsProvider({ children }) {
         }
         return updated.length
       } finally {
-        reprocessingRef.current = false
-        setReprocessing(false)
+        if (!retagSessionRef.current.active) {
+          reprocessingRef.current = false
+          setReprocessing(false)
+        }
       }
     },
     [adapter, settings, currentPeriod, scheduleSnapshotRebuild, storageReady],
@@ -2571,21 +2806,17 @@ export function InsightsProvider({ children }) {
       const { scope = 'period_all', records, forceOverrideManualTags = false, retagDimensionsAfterTicketLlm } = options
       const list = records?.length ? records : feedbacksRef.current
       if (!list.length) return null
-      if (importLockRef.current) {
-        throw new Error(RETAG_BLOCKED_BY_IMPORT_TIP)
-      }
-      if (reprocessingRef.current) {
-        throw new Error(RETAG_IN_PROGRESS_TIP)
-      }
+      const startedPeriodId = currentPeriod?.id
 
-      await prepareSharedBackgroundTask('retag', {
-        progress: '正在准备…',
-        meta: { scope, total: list.length },
+      beginRetagSession({
+        total: list.length,
+        scope,
+        periodId: startedPeriodId,
+        periodStart: currentPeriod?.startDate,
+        periodEnd: currentPeriod?.endDate,
       })
-      beginRetagSession({ total: list.length, scope })
 
       try {
-        // 调服务端 enrich 端点（fire-and-forget）
         const recordIds = list.map((r) => r.id)
         const res = await apiFetch('/api/storage/records/enrich', {
           method: 'POST',
@@ -2593,6 +2824,9 @@ export function InsightsProvider({ children }) {
             mode: 'bulk_retag',
             recordIds,
             periodId: currentPeriodId,
+            insightPeriod: currentPeriod
+              ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
+              : undefined,
             settings,
             retagOptions: {
               scope,
@@ -2605,55 +2839,18 @@ export function InsightsProvider({ children }) {
         if (!res?.ok && res?.code === 'BACKGROUND_TASK_CONFLICT') {
           throw new Error(res.error || '另一用户正在执行后台任务，请稍后再试')
         }
+        if (!res?.taskId) throw new Error('后台任务未创建')
 
-        // 轮询进度
-        const enrichResult = await new Promise((resolve, reject) => {
-          const poll = async () => {
-            try {
-              const data = await apiFetch('/api/storage/background-task')
-              const lock = data?.lock
-              if (!lock) {
-                reject(new Error('后台任务状态丢失'))
-                return
-              }
-              if (lock.meta?.error) {
-                reject(new Error(lock.meta.error))
-                return
-              }
-              if (lock.meta?.result) {
-                resolve(lock.meta.result)
-                return
-              }
-              if (lock.progress) {
-                setRetagSessionProgress(lock.progress)
-              }
-              // 同步更新 sharedBackgroundTask，让 TaskHistoryPanel 也能实时显示进度
-              setSharedBackgroundTask(lock)
-              setTimeout(poll, 3000)
-            } catch (err) {
-              reject(err)
-            }
-          }
-          setTimeout(poll, 2000)
-        })
-
-        // 释放锁
-        try {
-          await apiFetch('/api/storage/background-task', { method: 'DELETE' })
-        } catch {
-          // 忽略
-        }
-        // 刷新 sharedBackgroundTask（让 TaskHistoryPanel 尽快反映锁已释放）
+        void refreshSharedBackgroundTask()
+        const enrichResult = await waitForBackgroundTask(res.taskId)
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
 
-        // 刷新前端状态
         try {
           await reloadAfterEnrich(currentPeriodId)
         } catch (err) {
           console.warn('[retag] reloadAfterEnrich 失败:', err)
         }
 
-        // 重建快照
         if (currentPeriod) {
           scheduleSnapshotRebuild({
             period: currentPeriod,
@@ -2674,17 +2871,10 @@ export function InsightsProvider({ children }) {
           ticketLlmCompleted: stats.ticketLlmCompleted,
           ticketLlmFailed: stats.ticketLlmFailed,
         }
-        if (result) notifyRetagFinished(result)
+        if (result) notifyRetagFinished(result, startedPeriodId)
         return result
       } catch (err) {
-        endRetagSession()
-        // 释放锁
-        try {
-          await apiFetch('/api/storage/background-task', { method: 'DELETE' })
-        } catch {
-          // 忽略
-        }
-        // 刷新 sharedBackgroundTask（让 TaskHistoryPanel 尽快反映锁已释放）
+        endRetagSession(startedPeriodId)
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
         throw err
       }
@@ -2696,12 +2886,11 @@ export function InsightsProvider({ children }) {
       currentPeriodId,
       endRetagSession,
       notifyRetagFinished,
-      prepareSharedBackgroundTask,
       reloadAfterEnrich,
       refreshSharedBackgroundTask,
       scheduleSnapshotRebuild,
-      setRetagSessionProgress,
       settings,
+      waitForBackgroundTask,
     ],
   )
 
@@ -2886,9 +3075,10 @@ export function InsightsProvider({ children }) {
       endImportSession,
       notifyImportFinished,
       refreshSharedBackgroundTask,
+      waitForBackgroundTask,
       retagSession,
+      sharedBackgroundTasks,
       sharedBackgroundTask,
-      setSharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
       removeFeedback,
@@ -2928,6 +3118,7 @@ export function InsightsProvider({ children }) {
       getMetricsForSource,
       listMetricDescriptors,
       runPipeline,
+      ensurePeriodForImportMonth,
       adapter,
       sourceSnapshots,
       overviewSnapshot,
@@ -2986,9 +3177,10 @@ export function InsightsProvider({ children }) {
       endImportSession,
       notifyImportFinished,
       refreshSharedBackgroundTask,
+      waitForBackgroundTask,
       retagSession,
+      sharedBackgroundTasks,
       sharedBackgroundTask,
-      setSharedBackgroundTask,
       startBulkRetag,
       updateFeedback,
       removeFeedback,
@@ -3022,6 +3214,7 @@ export function InsightsProvider({ children }) {
       loadPostUseRatingForPeriod,
       reloadPeriods,
       runPipeline,
+      ensurePeriodForImportMonth,
       adapter,
       sourceSnapshots,
       overviewSnapshot,

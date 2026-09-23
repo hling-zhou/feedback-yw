@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Drawer, Table, Tag, Button, Space, Tooltip, Modal } from 'antd'
+import { Drawer, Table, Tag, Button, Tooltip, Modal } from 'antd'
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons'
 import { apiFetch } from '../lib/apiClient.js'
+import { cancelBackgroundTask } from '../lib/backgroundTaskClient.js'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { useAppMessage } from '../hooks/useAppMessage.js'
 import { backgroundTaskTypeLabel } from '../domain/backgroundTaskLock.js'
 
 /**
@@ -13,7 +15,7 @@ import { backgroundTaskTypeLabel } from '../domain/backgroundTaskLock.js'
  * @property {string} [scope]
  * @property {string} startedAt
  * @property {string} endedAt
- * @property {'success' | 'failed'} status
+ * @property {'success' | 'failed' | 'cancelled'} status
  * @property {Record<string, unknown>} [summary]
  * @property {string} [error]
  * @property {string} [username]
@@ -23,10 +25,11 @@ import { backgroundTaskTypeLabel } from '../domain/backgroundTaskLock.js'
  * @param {{ open: boolean; onClose: () => void }} props
  */
 export default function TaskHistoryPanel({ open, onClose }) {
-  const { sharedBackgroundTask: activeLock } = useInsights()
+  const { sharedBackgroundTasks, refreshSharedBackgroundTask } = useInsights()
+  const message = useAppMessage()
   const [history, setHistory] = useState(/** @type {TaskHistoryEntry[]} */ ([]))
   const [loading, setLoading] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
+  const [cancellingId, setCancellingId] = useState('')
 
   const loadHistory = useCallback(async () => {
     setLoading(true)
@@ -40,51 +43,51 @@ export default function TaskHistoryPanel({ open, onClose }) {
     }
   }, [])
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback((taskId) => {
     Modal.confirm({
       title: '确认取消任务',
-      content: '取消后已处理的记录不会写盘，数据保持取消前的状态。确定取消吗？',
+      content: '确定取消这个任务吗？导入取消后不会写盘；批量重打标会保留已经写盘的批次。',
       okText: '取消任务',
       okType: 'danger',
       cancelText: '不取消',
       onOk: async () => {
-        setCancelling(true)
+        setCancellingId(taskId)
         try {
-          await apiFetch('/api/storage/background-task/cancel', { method: 'POST' })
+          const res = await cancelBackgroundTask(taskId)
+          await refreshSharedBackgroundTask()
+          if (res?.finalized) {
+            message.success(res.message || '任务已取消')
+          } else {
+            message.success(res?.message || '已发送取消请求，任务将尽快停止')
+          }
+          void loadHistory()
         } catch (err) {
           console.error('[TaskHistoryPanel] 取消失败:', err)
+          message.error(err instanceof Error ? err.message : '取消失败')
         } finally {
-          setCancelling(false)
+          setCancellingId('')
         }
       },
     })
-  }, [])
+  }, [loadHistory, message, refreshSharedBackgroundTask])
 
-  // 抽屉打开时加载历史
+  const activeTaskIds = (sharedBackgroundTasks || []).map((task) => task.id).join(',')
+  // 打开抽屉，或进行中任务集合变化时刷新历史
   useEffect(() => {
     if (open) void loadHistory()
-  }, [open, loadHistory])
-
-  // 锁释放后（任务结束）刷新历史，让行从"进行中"变为历史记录
-  useEffect(() => {
-    if (open && !activeLock) {
-      void loadHistory()
-    }
-  }, [open, activeLock, loadHistory])
+  }, [open, activeTaskIds, loadHistory])
 
   const formatTime = (iso) => {
-    if (!iso) return '-'
-    try {
-      return new Date(iso).toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    } catch {
-      return iso
-    }
+    if (!iso || iso === '-') return '-'
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return '-'
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
   }
 
   const formatResult = (entry) => {
@@ -113,17 +116,19 @@ export default function TaskHistoryPanel({ open, onClose }) {
 
   // 构造表格数据：进行中任务在顶部，历史任务在下
   const dataSource = []
-  if (activeLock) {
-    dataSource.push({
-      key: `active-${activeLock.id}`,
-      id: activeLock.id,
-      source: backgroundTaskTypeLabel(activeLock.type),
-      startedAt: activeLock.startedAt,
-      endedAt: '-',
-      status: 'in_progress',
-      result: activeLock.progress || '进行中…',
-      username: activeLock.username,
-    })
+  if (sharedBackgroundTasks?.length) {
+    for (const activeLock of sharedBackgroundTasks) {
+      dataSource.push({
+        key: `active-${activeLock.id}`,
+        id: activeLock.id,
+        source: backgroundTaskTypeLabel(activeLock.type),
+        startedAt: activeLock.startedAt,
+        endedAt: '-',
+        status: 'in_progress',
+        result: activeLock.progress || '进行中…',
+        username: activeLock.username,
+      })
+    }
   }
   for (const entry of history) {
     dataSource.push({
@@ -175,27 +180,10 @@ export default function TaskHistoryPanel({ open, onClose }) {
       dataIndex: 'result',
       key: 'result',
       ellipsis: true,
-      render: (text, record) => (
-        <Space>
-          <Tooltip title={text}>
-            <span>{text}</span>
-          </Tooltip>
-          {record.status === 'in_progress' && (
-            <Tooltip title="取消任务（已处理的记录不会写盘）">
-              <Button
-                size="small"
-                type="link"
-                danger
-                icon={<StopOutlined />}
-                loading={cancelling}
-                onClick={handleCancel}
-                className="!px-1 !h-auto"
-              >
-                取消
-              </Button>
-            </Tooltip>
-          )}
-        </Space>
+      render: (text) => (
+        <Tooltip title={text}>
+          <span>{text}</span>
+        </Tooltip>
       ),
     },
     {
@@ -203,6 +191,27 @@ export default function TaskHistoryPanel({ open, onClose }) {
       dataIndex: 'username',
       key: 'username',
       width: 80,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 72,
+      render: (_, record) => {
+        if (record.status !== 'in_progress') return null
+        return (
+          <Button
+            size="small"
+            type="link"
+            danger
+            icon={<StopOutlined />}
+            loading={cancellingId === record.id}
+            onClick={() => handleCancel(record.id)}
+            className="!px-0 !h-auto"
+          >
+            取消
+          </Button>
+        )
+      },
     },
   ]
 
@@ -229,7 +238,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
         pagination={{ pageSize: 20, showSizeChanger: false }}
         size="small"
         loading={loading}
-        scroll={{ x: 520 }}
+        scroll={{ x: 640 }}
         locale={{ emptyText: '暂无打标任务记录' }}
       />
     </Drawer>

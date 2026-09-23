@@ -4,11 +4,21 @@ import { apiFetch } from './apiClient.js'
 /** @typedef {import('../domain/backgroundTaskLock.js').BackgroundTaskType} BackgroundTaskType */
 
 /**
+ * @returns {Promise<{ tasks: BackgroundTaskLock[]; results: Record<string, unknown>[] }>}
+ */
+export async function fetchBackgroundTaskState() {
+  const data = await apiFetch('/api/storage/background-task')
+  const tasks = Array.isArray(data?.tasks) ? data.tasks : data?.lock ? [data.lock] : []
+  const results = Array.isArray(data?.results) ? data.results : data?.result ? [data.result] : []
+  return { tasks, results }
+}
+
+/**
  * @returns {Promise<BackgroundTaskLock | null>}
  */
 export async function fetchBackgroundTaskLock() {
-  const data = await apiFetch('/api/storage/background-task')
-  return data.lock ?? null
+  const { tasks } = await fetchBackgroundTaskState()
+  return tasks[0] ?? null
 }
 
 /**
@@ -42,8 +52,40 @@ export async function touchBackgroundTask(patch = {}) {
 /**
  * @returns {Promise<void>}
  */
-export async function releaseBackgroundTask() {
-  await apiFetch('/api/storage/background-task', { method: 'DELETE' })
+export async function releaseBackgroundTask(taskId) {
+  const query = taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''
+  await apiFetch(`/api/storage/background-task${query}`, { method: 'DELETE' })
+}
+
+/**
+ * @param {string} taskId
+ */
+export async function cancelBackgroundTask(taskId) {
+  return apiFetch('/api/storage/background-task/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ taskId }),
+  })
+}
+
+/**
+ * @param {string} [taskId]
+ */
+export async function clearBackgroundTaskResult(taskId) {
+  const query = taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''
+  await apiFetch(`/api/storage/background-task/result${query}`, { method: 'DELETE' })
+}
+
+/**
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
+export async function fetchBackgroundTaskResult() {
+  try {
+    const data = await apiFetch('/api/storage/background-task/result')
+    return data?.results?.[0] ?? data?.result ?? null
+  } catch (err) {
+    if (/** @type {{ status?: number }} */ (err).status === 404) return null
+    throw err
+  }
 }
 
 /**

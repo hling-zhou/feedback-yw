@@ -16,10 +16,15 @@ import { enrichTicketRecordsForImport } from '../src/lib/importEnrichment.js'
 import { reprocessFeedbackRecord } from '../src/lib/pipeline.js'
 import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
 import { forwardLlmChatCompletion } from './llmProxy.js'
-import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl } from './llmConfig.js'
+import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from './llmConfig.js'
 import { retrieveSnippets } from './knowledgeBaseLoader.js'
 import { storageRepository } from './storageRepository.js'
-import { touchBackgroundTaskLock, isTaskCancelled } from './backgroundTaskLock.js'
+import { touchBackgroundTask, isTaskCancelled } from './backgroundTaskLock.js'
+import { createPipeline, getPipelineDescriptor } from '../src/analysis/registry.js'
+import { defaultAnalysisVersions } from '../src/lib/versioning.js'
+import { buildIdempotencyKey } from '../src/domain/analysisRun.js'
+import { DEFAULT_TENANT_ID } from '../src/domain/constants.js'
+import { mergeTicketImportOverExisting, ticketImportDuplicateKey } from '../src/lib/ticketImportMerge.js'
 
 /** 流式写盘批次大小，与前端 pipeline.js 的 BATCH_SIZE 保持一致 */
 const FLUSH_BATCH_SIZE = 4
@@ -29,15 +34,145 @@ import { listUnknownJourneyRecords, summarizeRetagPainPointChanges, summarizeUnk
 import { computeTicketLlmEnrichmentDelta } from '../src/lib/importEnrichmentStats.js'
 
 /**
+ * 投诉/咨询导入：在服务端跑规则打标。
+ * @param {object} opts
+ * @param {(progress: string) => void} touch
+ * @param {() => boolean} cancelled
+ */
+async function runImportRuleTagging(opts, touch, cancelled) {
+  const dataSourceType = opts.dataSourceType || 'complaint_ticket'
+  const pipeline = createPipeline(dataSourceType)
+  const desc = getPipelineDescriptor(dataSourceType)
+  const versions = defaultAnalysisVersions()
+  const period = opts.insightPeriod
+  const batch = opts.batchMeta || {}
+  const ctx = {
+    tenantId: DEFAULT_TENANT_ID,
+    insightPeriodId: period?.id,
+    dataSourceType,
+    importBatchId: batch.importBatchId,
+    importBatchName: batch.importBatchName,
+    fileSha256: batch.fileSha256,
+    settings: opts.settings || {},
+    pipelineVersion: desc?.pipelineVersion || versions.pipelineVersion,
+    tagLibraryVersion: versions.tagLibraryVersion,
+  }
+  const rows = opts.rows
+  touch(`正在规则打标 (0/${rows.length})`)
+  const analyzed = await pipeline.analyze(rows, ctx, {
+    insightPeriod: period || undefined,
+    shouldCancel: cancelled,
+    onProgress: (done, total) => touch(`正在规则打标 (${done}/${total})`),
+  })
+  return analyzed
+}
+
+/**
+ * 同工单号沿用原记录 id 再更新，保留人工字段。
+ * @param {import('../src/lib/types.js').FeedbackRecord[]} records
+ */
+function mergeImportedTicketRecords(records) {
+  /** @type {Map<string, import('../src/lib/types.js').FeedbackRecord>} */
+  const existingByKey = new Map()
+  /** @type {Map<string, string[]>} */
+  const idsBySource = new Map()
+  for (const record of records) {
+    const type = record.dataSourceType || 'complaint_ticket'
+    const ticketId = String(record.ticketId || '').trim()
+    if (!ticketId) continue
+    const list = idsBySource.get(type) || []
+    list.push(ticketId)
+    idsBySource.set(type, list)
+  }
+  for (const [dataSourceType, ticketIds] of idsBySource) {
+    const rows = storageRepository.listRecordsByTicketIds(dataSourceType, ticketIds)
+    for (const row of rows || []) {
+      const key = ticketImportDuplicateKey(row)
+      if (key) existingByKey.set(key, row)
+    }
+  }
+  let updated = 0
+  const merged = records.map((record) => {
+    const key = ticketImportDuplicateKey(record)
+    const existing = key ? existingByKey.get(key) : null
+    if (!existing) return record
+    updated += 1
+    return mergeTicketImportOverExisting(existing, record)
+  })
+  return { records: merged, updated }
+}
+
+/**
+ * @param {object} opts
+ * @param {import('../src/lib/types.js').FeedbackRecord[]} records
+ * @param {import('../src/domain/analysisRun.js').AnalysisRunFailure[]} failures
+ */
+function persistImportAnalysisRun(opts, records, failures) {
+  const dataSourceType = opts.dataSourceType || 'complaint_ticket'
+  const pipeline = createPipeline(dataSourceType)
+  const desc = getPipelineDescriptor(dataSourceType)
+  const versions = defaultAnalysisVersions()
+  const period = opts.insightPeriod
+  const batch = opts.batchMeta || {}
+  const ctx = {
+    tenantId: DEFAULT_TENANT_ID,
+    insightPeriodId: period?.id,
+    dataSourceType,
+    importBatchId: batch.importBatchId,
+    importBatchName: batch.importBatchName,
+    fileSha256: batch.fileSha256,
+    settings: opts.settings || {},
+    pipelineVersion: desc?.pipelineVersion || versions.pipelineVersion,
+    tagLibraryVersion: versions.tagLibraryVersion,
+  }
+  const total = (opts.rows || records).length
+  const status = failures.length === 0 ? 'succeeded' : records.length > 0 ? 'partial_failed' : 'failed'
+  const run = pipeline.buildRun(ctx, total, records.length, failures, status)
+  run.idempotencyKey = buildIdempotencyKey({
+    insightPeriodId: ctx.insightPeriodId,
+    dataSourceType,
+    importBatchId: batch.importBatchId,
+    fileSha256: batch.fileSha256,
+  })
+  pipeline.finalizeRun(run, records.map((record) => record.id))
+  try {
+    storageRepository.putAnalysisRun(run)
+    const collector = opts.analysis?.collector
+    if (collector) {
+      storageRepository.putArtifact(collector.buildRunArtifact())
+      for (const artifact of collector.recordArtifacts || []) {
+        storageRepository.putArtifact(artifact)
+      }
+    }
+  } catch (err) {
+    console.warn('[enrichRunner] 写入分析 run 失败:', err)
+  }
+  return run
+}
+
+/**
+ * 与 POST /api/llm/chat 对齐：模型、基址、密钥只来自库或环境变量。
+ * 调用方 settings 里的 llmModel / llmBaseUrl 不写入网关请求。
+ * @param {object} [body]
+ */
+export function buildInProcessLlmForwardArgs(body) {
+  const apiKey = resolveLlmApiKey()
+  const baseUrl = resolveLlmBaseUrl()
+  const model = resolveLlmModel()
+  const { baseUrl: _clientBase, model: _clientModel, apiKey: _clientKey, ...chatBody } = body || {}
+  return {
+    baseUrl,
+    apiKey,
+    body: { ...chatBody, model },
+  }
+}
+
+/**
  * 构建 LLM transport 函数：直接调 forwardLlmChatCompletion，不走 HTTP。
  * @returns {(body: object) => Promise<unknown>}
  */
-function createLlmTransport() {
-  return async (body) => {
-    const apiKey = resolveLlmApiKey()
-    const baseUrl = resolveLlmBaseUrl()
-    return forwardLlmChatCompletion({ baseUrl, apiKey, body })
-  }
+export function createLlmTransport() {
+  return async (body) => forwardLlmChatCompletion(buildInProcessLlmForwardArgs(body))
 }
 
 /**
@@ -88,17 +223,31 @@ function createTaxonomyAdapter() {
  * @param {string} [opts.periodId]  retag 模式按 period + ids 加载
  * @param {import('../src/lib/storage.js').AppSettings} opts.settings
  * @param {string} opts.userId
+ * @param {string} [opts.taskId]
+ * @param {Object[]} [opts.rows] import 模式的已映射行；有则先规则打标
+ * @param {string} [opts.dataSourceType]
+ * @param {object} [opts.batchMeta]
+ * @param {object} [opts.insightPeriod]
  * @param {(label: string, done?: number, total?: number) => void} [opts.onProgress]
  * @param {object} [opts.retagOptions]
  * @returns {Promise<{ records: import('../src/lib/types.js').FeedbackRecord[], warnings: string[], stats?: object, writeResult?: object }>}
  */
 export async function runEnrichment(opts) {
-  const { mode, settings: rawSettings, userId, username, onProgress, retagOptions = {} } = opts
+  const { mode, settings: rawSettings, userId, username, onProgress, retagOptions = {}, taskId } = opts
+  const cancelled = () => (taskId ? isTaskCancelled(taskId) : false)
+  const touch = (progress) => {
+    if (!taskId || cancelled()) return
+    try {
+      touchBackgroundTask(taskId, { progress })
+    } catch {
+      /* 任务可能已释放 */
+    }
+  }
 
   // 1. 刷新 taxonomy 缓存 + 产品目录（确保用最新标签库和产品目录）
   try {
-    touchBackgroundTaskLock(userId, { progress: '正在刷新标签库…' })
-  } catch { /* lock 可能已被释放 */ }
+    touch('正在刷新标签库…')
+  } catch { /* 任务可能已释放 */ }
   try {
     const adapter = createTaxonomyAdapter()
     await loadManagedTaxonomy(adapter)
@@ -106,7 +255,7 @@ export async function runEnrichment(opts) {
     console.warn('[enrichRunner] taxonomy 刷新失败，用缓存:', err)
   }
   try {
-    touchBackgroundTaskLock(userId, { progress: '正在刷新产品目录…' })
+    touch('正在刷新产品目录…')
   } catch { /* lock 可能已被释放 */ }
   try {
     const adapter = createTaxonomyAdapter()
@@ -116,7 +265,7 @@ export async function runEnrichment(opts) {
   }
 
   // 2. 注入 transport
-  touchBackgroundTaskLock(userId, { progress: '正在注入 LLM/KB transport…' })
+  touch('正在注入 LLM/KB transport…')
   const llmTransport = createLlmTransport()
   const kbTransport = createKbTransport()
   const serverConfigured = isLlmConfigured()
@@ -124,7 +273,7 @@ export async function runEnrichment(opts) {
   setKbTransport(kbTransport)
 
   // resolve settings（补 llmServerConfigured 等，供下游使用）
-  try { touchBackgroundTaskLock(userId, { progress: '正在加载 LLM 配置…' }) } catch { /* lock 可能已被释放 */ }
+  try { touch('正在加载 LLM 配置…') } catch { /* 任务可能已释放 */ }
   const settings = await resolveSettingsForLlm(rawSettings)
 
   try {
@@ -133,7 +282,7 @@ export async function runEnrichment(opts) {
     if (!records && (opts.recordIds?.length)) {
       onProgress?.('正在加载记录', 0, opts.recordIds.length)
       try {
-        touchBackgroundTaskLock(userId, { progress: '正在加载记录…' })
+        touch('正在加载记录…')
       } catch {
         // lock 可能已被释放
       }
@@ -146,33 +295,63 @@ export async function runEnrichment(opts) {
         }
       }
     }
+    if (!records && opts.rows?.length && mode === 'import') {
+      if (cancelled()) {
+        return { records: [], warnings: ['任务已被用户取消'], stats: { cancelled: true } }
+      }
+      const analyzed = await runImportRuleTagging(opts, touch, cancelled)
+      if (analyzed.cancelled) {
+        return {
+          records: analyzed.records,
+          warnings: ['任务已被用户取消'],
+          stats: { cancelled: true },
+          failures: analyzed.failures,
+        }
+      }
+      records = analyzed.records
+      opts.analysis = analyzed
+    }
     if (!records?.length) {
+      if (opts.analysis?.failures?.length) {
+        return {
+          records: [],
+          warnings: ['分析未产生可导入记录'],
+          failures: opts.analysis.failures,
+          stats: { failed: true },
+        }
+      }
       return { records: [], warnings: ['无记录需要处理'] }
     }
 
     if (mode === 'import') {
       // 导入模式：enrichTicketRecordsForImport
-      if (isTaskCancelled()) {
+      if (cancelled()) {
         return { records, warnings: ['任务已被用户取消'], stats: { cancelled: true } }
       }
-      try { touchBackgroundTaskLock(userId, { progress: '开始导入打标…' }) } catch { /* lock 可能已被释放 */ }
+      try { touch('开始导入打标…') } catch { /* 任务可能已释放 */ }
       const result = await enrichTicketRecordsForImport(records, settings, (label, done, total) => {
         onProgress?.(label, done, total)
         try {
-          touchBackgroundTaskLock(userId, {
-            progress: `${label}${done != null && total ? ` (${done}/${total})` : ''}`,
-          })
+          touch(`${label}${done != null && total ? ` (${done}/${total})` : ''}`)
         } catch {
           // lock 可能已被释放，静默
         }
-      })
-      if (isTaskCancelled()) {
-        return { records: result.records, warnings: [...(result.warnings || []), '任务已被用户取消'], stats: { ...result.enrichmentStats, cancelled: true } }
+      }, { shouldCancel: cancelled })
+      if (cancelled() || result.cancelled) {
+        return {
+          records: result.records,
+          warnings: result.warnings?.length ? result.warnings : ['任务已被用户取消'],
+          stats: { ...result.enrichmentStats, cancelled: true },
+        }
       }
+      const merged = mergeImportedTicketRecords(result.records)
+      const analysisRun = persistImportAnalysisRun(opts, merged.records, opts.analysis?.failures || [])
       return {
-        records: result.records,
+        records: merged.records,
         warnings: result.warnings,
-        stats: result.enrichmentStats,
+        stats: { ...result.enrichmentStats, updated: merged.updated },
+        failures: opts.analysis?.failures || [],
+        analysisRun,
       }
     }
 
@@ -189,11 +368,11 @@ export async function runEnrichment(opts) {
 
       if (!skipRuleRetag) {
         // 规则重打标（每 FLUSH_BATCH_SIZE 条流式写盘，与前端 pipeline.js 一致）
-        try { touchBackgroundTaskLock(userId, { progress: '开始规则重打标…' }) } catch { /* lock 可能已被释放 */ }
+        try { touch('开始规则重打标…') } catch { /* 任务可能已释放 */ }
         retagged = []
         let pendingBatch = []
         for (let i = 0; i < total; i++) {
-          if (isTaskCancelled()) {
+          if (cancelled()) {
             // 取消时先 flush 剩余已处理的
             if (pendingBatch.length) {
               try { storageRepository.putRecords(pendingBatch, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] flush on cancel 失败:', err) }
@@ -216,9 +395,7 @@ export async function runEnrichment(opts) {
 
           onProgress?.('规则重打标', i + 1, total)
           try {
-            touchBackgroundTaskLock(userId, {
-              progress: `正在规则重打标 (${i + 1}/${total})`,
-            })
+            touch(`正在规则重打标 (${i + 1}/${total})`)
           } catch {
             // lock 可能已被释放
           }
@@ -230,16 +407,14 @@ export async function runEnrichment(opts) {
       }
 
       // LLM 增强 + 主题 + 情绪
-      try { touchBackgroundTaskLock(userId, { progress: '开始 LLM 增强…' }) } catch { /* lock 可能已被释放 */ }
+      try { touch('开始 LLM 增强…') } catch { /* 任务可能已释放 */ }
       const enriched = await reprocessAllThemesAndSentiment(
         retagged,
         settings,
         (done, tot, label) => {
           onProgress?.(label || 'LLM 增强', done, tot)
           try {
-            touchBackgroundTaskLock(userId, {
-              progress: `正在${label || 'LLM 增强'} (${done}/${tot})`,
-            })
+            touch(`正在${label || 'LLM 增强'} (${done}/${tot})`)
           } catch {
             // lock 可能已被释放
           }
@@ -249,11 +424,15 @@ export async function runEnrichment(opts) {
           journeyLlmOnly: scope === 'needs_journey_llm',
           forceOverrideManualTags: retagOptions.forceOverrideManualTags,
           retagDimensionsAfterTicketLlm: retagOptions.retagDimensionsAfterTicketLlm,
+          shouldCancel: cancelled,
           onTicketLlmBatchPersist: (chunk) => {
             try { storageRepository.putRecords(chunk, { actor: { userId, username } }) } catch (err) { console.error('[enrichRunner] LLM 批次写盘失败:', err) }
           },
         },
       )
+      if (cancelled()) {
+        return { records: enriched, warnings: ['任务已被用户取消'], stats: { total, cancelled: true, processed: enriched.length } }
+      }
 
       // 统计
       const afterUnknownList = listUnknownJourneyRecords(enriched)

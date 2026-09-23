@@ -100,6 +100,7 @@ async function runLlmTaggingStages(records, llmSettings, total, onProgress, opti
     recordsNeedJourneyLlmProposal(records) || records.some(recordHasUnknownJourney)
 
   for (const stage of llmStageOrderAfterShared(pipelineOrder)) {
+    if (options.shouldCancel?.()) return enriched
     if (stage === 'ticketLlm') {
       if (canUseSemanticMatch(llmSettings)) {
         enriched = await enrichRecordsWithTicketLlm(
@@ -108,7 +109,7 @@ async function runLlmTaggingStages(records, llmSettings, total, onProgress, opti
           (done) => {
             onProgress?.(done, total, '客户请求/痛点/问题原因/优化建议')
           },
-          { onBatchPersist: options.onTicketLlmBatchPersist },
+          { onBatchPersist: options.onTicketLlmBatchPersist, shouldCancel: options.shouldCancel },
         )
         enriched = await runPostTicketLlmDimensionRetag(
           enriched,
@@ -155,8 +156,9 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
         (done) => {
           onProgress?.(done, total, '客户请求/痛点/问题原因/优化建议')
         },
-        { onBatchPersist: options.onTicketLlmBatchPersist },
+        { onBatchPersist: options.onTicketLlmBatchPersist, shouldCancel: options.shouldCancel },
       )
+      if (options.shouldCancel?.()) return enriched
       enriched = await runPostTicketLlmDimensionRetag(
         enriched,
         llmSettings,
@@ -169,6 +171,7 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
   }
 
   if (options.journeyLlmOnly) {
+    if (options.shouldCancel?.()) return records
     let enriched = records
     if (canUseSemanticMatch(llmSettings)) {
       enriched = await enrichRecordsWithJourneys(enriched, llmSettings, (done) => {
@@ -181,6 +184,7 @@ export async function reprocessAllThemesAndSentiment(records, settings, onProgre
   const pipelineOrder = resolveTaggingPipelineOrder(llmSettings, options)
 
   let enriched = records
+  if (options.shouldCancel?.()) return enriched
   enriched = await enrichRecordsWithSharedDimensions(enriched, llmSettings, (done) => {
     onProgress?.(done, total, '请求场景与问题类型')
   })

@@ -21,16 +21,18 @@ import { getRecordRevision } from './recordRevision.js'
  *   importActive?: boolean
  *   reprocessingActive?: boolean
  *   sharedBackgroundTask?: BackgroundTaskLock | null
+ *   sharedBackgroundTasks?: BackgroundTaskLock[]
  * }} [options]
  */
 export function shouldShowRemoteRecordStale(record, baseRevision, options = {}) {
   const latestRevision = getRecordRevision(record)
   if (latestRevision <= baseRevision) return false
 
-  const { userId, retagActive, importActive, reprocessingActive, sharedBackgroundTask } = options
+  const { userId, retagActive, importActive, reprocessingActive, sharedBackgroundTask, sharedBackgroundTasks } = options
+  const tasks = sharedBackgroundTasks || (sharedBackgroundTask ? [sharedBackgroundTask] : [])
 
   if (retagActive || importActive || reprocessingActive) return false
-  if (isBackgroundTaskLockHeldByUser(sharedBackgroundTask, userId)) return false
+  if (tasks.some((task) => isBackgroundTaskLockHeldByUser(task, userId))) return false
   if (userId && record?.updatedBy?.userId === userId) return false
 
   return true

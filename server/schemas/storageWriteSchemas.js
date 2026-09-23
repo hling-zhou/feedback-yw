@@ -31,6 +31,7 @@ export const backgroundTaskTouchBodySchema = {
   properties: {
     progress: { type: 'string', maxLength: 500 },
     meta: { type: 'object', additionalProperties: true },
+    taskId: { type: 'string', minLength: 1, maxLength: 128 },
   },
 }
 

@@ -11,6 +11,14 @@ export function isImportTaggingPhase(progress) {
 }
 
 /**
+ * 仍在浏览器端执行的导入阶段。刷新/关页会中断，服务端锁可能残留。
+ * @param {string | undefined} progress
+ */
+export function isClientSideImportPhase(progress) {
+  return /正在准备分析|规则初标|规则打标/.test(progress || '')
+}
+
+/**
  * @param {{ progress?: string; total?: number; dataMonth?: string; scopeLabel?: string; hint?: string }} opts
  */
 export function formatTaggingProgressDescription({ progress, total, dataMonth, scopeLabel, hint }) {

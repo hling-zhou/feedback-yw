@@ -343,6 +343,7 @@ export async function enrichRecordsWithTicketLlm(records, settings, onProgress, 
   const catalogProducts = getCatalogProducts()
 
   for (let i = 0; i < records.length; i += BATCH) {
+    if (options.shouldCancel?.()) return out
     const chunk = records.slice(i, i + BATCH)
     // 每批一次知识库检索，避免逐条往返
     const queries = chunk.map((record) => buildKnowledgeQuery(record, catalogProducts))

@@ -137,9 +137,10 @@ async function runImportStage(records, settings, onProgress, label, run, warnPre
  * @param {import('./types.js').FeedbackRecord[]} records
  * @param {import('./storage.js').AppSettings} settings
  * @param {(label: string, done?: number, total?: number) => void} [onProgress]
- * @returns {Promise<ImportEnrichmentResult>}
+ * @param {{ shouldCancel?: () => boolean }} [options]
+ * @returns {Promise<ImportEnrichmentResult & { cancelled?: boolean }>}
  */
-export async function enrichTicketRecordsForImport(records, settings, onProgress) {
+export async function enrichTicketRecordsForImport(records, settings, onProgress, options = {}) {
   if (!records.length) {
     return { records, warnings: [], enrichmentStats: createEmptyEnrichmentStats() }
   }
@@ -164,6 +165,11 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
   // 只对 enrichable 跑 LLM 增强
   let enriched = enrichable
   const totalEnrichable = enriched.length
+  const stop = () => Boolean(options.shouldCancel?.())
+
+  if (stop()) {
+    return { records: out, warnings: [...warnings, '任务已被用户取消'], enrichmentStats, cancelled: true }
+  }
 
   enriched = await runImportStage(
     enriched,
@@ -179,6 +185,14 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
   )
 
   for (const stage of llmStageOrderAfterShared(pipelineOrder)) {
+    if (stop()) {
+      return {
+        records: [...enriched, ...needsReview],
+        warnings: [...warnings, '任务已被用户取消'],
+        enrichmentStats,
+        cancelled: true,
+      }
+    }
     if (stage === 'ticketLlm') {
       const beforeTicket = enriched.map((r) => ({ ...r }))
       enriched = await runImportStage(
@@ -187,9 +201,14 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
         onProgress,
         '客户请求、需求痛点、问题原因与优化建议',
         () =>
-          enrichRecordsWithTicketLlm(enriched, llmSettings, (done, total) => {
-            onProgress?.('客户请求、需求痛点、问题原因与优化建议', done, total)
-          }),
+          enrichRecordsWithTicketLlm(
+            enriched,
+            llmSettings,
+            (done, total) => {
+              onProgress?.('客户请求、需求痛点、问题原因与优化建议', done, total)
+            },
+            { shouldCancel: options.shouldCancel },
+          ),
         '客户请求/痛点/问题原因/优化建议 LLM 增强',
         warnings,
       )
@@ -255,6 +274,15 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
       Object.assign(enrichmentStats, computeJourneyEnrichmentDelta(beforeJourney, enriched, llmSettings))
     } catch (err) {
       console.warn('[import] journey 统计计算失败:', err)
+    }
+  }
+
+  if (stop()) {
+    return {
+      records: [...enriched, ...needsReview],
+      warnings: [...warnings, '任务已被用户取消'],
+      enrichmentStats,
+      cancelled: true,
     }
   }
 

@@ -3,72 +3,139 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import {
   formatBackgroundTaskBlockedTip,
+  backgroundTasksConflict,
+  findConflictingBackgroundTask,
   formatBackgroundTaskRemoteBanner,
-  isBackgroundTaskLockActive,
+  importSessionConflicts,
+  retagStartConflict,
+  importMonthOverlapsPeriod,
   isBackgroundTaskLockHeldByUser,
+  isTicketImportSource,
 } from '../domain/backgroundTaskLock.js'
-import { RETAG_BLOCKED_BY_IMPORT_TIP, RETAG_IMPORT_BLOCKED_TIP, RETAG_IN_PROGRESS_TIP, RETAG_DETAIL_IN_PROGRESS_TIP } from '../lib/retagSession.js'
 import {
-  IMPORT_ALREADY_IN_PROGRESS_TIP,
-  DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP,
-  IMPORT_REBUILD_DISABLED_TIP,
-} from '../lib/importSession.js'
+  RETAG_BLOCKED_BY_IMPORT_TIP,
+  RETAG_IMPORT_BLOCKED_TIP,
+  RETAG_IN_PROGRESS_TIP,
+} from '../lib/retagSession.js'
+import { IMPORT_ALREADY_IN_PROGRESS_TIP } from '../lib/importSession.js'
 
 /**
  * 合并本机 session 与服务端全局锁，供导入 / 批量打标 / 刷新洞察等入口复用。
  */
-export function useSharedBackgroundTaskBlock() {
+/**
+ * @param {{ dataMonth?: string; dataSourceType?: string }} [options]
+ */
+export function useSharedBackgroundTaskBlock(options = {}) {
   const { user } = useAuth()
-  const { sharedBackgroundTask, importSession, retagSession } = useInsights()
+  const { sharedBackgroundTasks, importSession, retagSession, currentPeriod } = useInsights()
+  const { dataMonth, dataSourceType } = options
 
   return useMemo(() => {
+    const tasks = sharedBackgroundTasks || []
     const localImport = importSession.active
     const localRetag = retagSession.active
-    const remoteActive =
-      isBackgroundTaskLockActive(sharedBackgroundTask) &&
-      !isBackgroundTaskLockHeldByUser(sharedBackgroundTask, user?.id)
+    const localImportConflict = importSessionConflicts(importSession, { dataMonth, dataSourceType })
+    const incomingImport =
+      dataMonth && dataSourceType
+        ? { type: /** @type {const} */ ('import'), meta: { dataMonth, dataSourceType } }
+        : null
+    const importConflict = incomingImport ? findConflictingBackgroundTask(tasks, incomingImport) : null
+    const retagRuns = retagSession.runs?.length
+      ? retagSession.runs
+      : retagSession.active
+        ? [retagSession]
+        : []
+    const localRetagVsImport = Boolean(
+      incomingImport &&
+        retagRuns.some((run) =>
+          backgroundTasksConflict(
+            {
+              type: 'retag',
+              meta: {
+                periodId: run.periodId,
+                periodStart: run.periodStart,
+                periodEnd: run.periodEnd,
+              },
+            },
+            incomingImport,
+          ),
+        ),
+    )
+    const retagIncoming = currentPeriod
+      ? {
+          type: /** @type {const} */ ('retag'),
+          meta: {
+            periodId: currentPeriod.id,
+            periodStart: currentPeriod.startDate,
+            periodEnd: currentPeriod.endDate,
+          },
+        }
+      : null
+    const retagConflict = retagIncoming ? findConflictingBackgroundTask(tasks, retagIncoming) : null
 
-    const importBlocked = localImport || localRetag || remoteActive
-    const retagBlocked = localImport || remoteActive
-    const rebuildBlocked = localImport || localRetag || remoteActive
+    const importBlocked = Boolean(importConflict) || localImportConflict || Boolean(localRetagVsImport)
+    const localRetagStartConflict = retagStartConflict(importSession, retagSession, {
+      periodId: currentPeriod?.id,
+      periodStart: currentPeriod?.startDate,
+      periodEnd: currentPeriod?.endDate,
+    })
+    const retagBlocked = Boolean(retagConflict) || Boolean(localRetagStartConflict)
+    const rebuildBlocked = tasks.some((task) => {
+      if (task.type === 'retag') return task.meta?.periodId === currentPeriod?.id
+      return importMonthOverlapsPeriod(
+        /** @type {string} */ (task.meta?.dataMonth),
+        currentPeriod?.startDate,
+        currentPeriod?.endDate,
+      )
+    }) || localImport || localRetag
 
-    const remoteBlockedTip = remoteActive
-      ? formatBackgroundTaskBlockedTip(sharedBackgroundTask)
-      : undefined
-    const remoteBannerText = remoteActive
-      ? formatBackgroundTaskRemoteBanner(sharedBackgroundTask)
-      : undefined
+    const conflictTip = (task) =>
+      task ? formatBackgroundTaskBlockedTip(task) : undefined
+    const remoteBannerText = tasks
+      .filter((task) => !isBackgroundTaskLockHeldByUser(task, user?.id))
+      .map((task) => formatBackgroundTaskRemoteBanner(task))
+      .filter(Boolean)
+      .join('；') || undefined
+    const ownedTasks = tasks.filter((task) => isBackgroundTaskLockHeldByUser(task, user?.id))
 
-    const importBlockedTip = localImport
-      ? IMPORT_ALREADY_IN_PROGRESS_TIP
-      : localRetag
+    const importBlockedTip = importConflict
+      ? conflictTip(importConflict)
+      : localRetagVsImport
         ? RETAG_IMPORT_BLOCKED_TIP
-        : remoteBlockedTip
+        : localImportConflict
+          ? IMPORT_ALREADY_IN_PROGRESS_TIP
+          : undefined
 
-    const retagBlockedTip = localImport
-      ? RETAG_BLOCKED_BY_IMPORT_TIP
-      : localRetag
-        ? RETAG_IN_PROGRESS_TIP
-        : remoteBlockedTip
+    const retagBlockedTip = retagConflict
+      ? conflictTip(retagConflict)
+      : localRetagStartConflict === 'import'
+        ? RETAG_BLOCKED_BY_IMPORT_TIP
+        : localRetagStartConflict === 'retag'
+          ? RETAG_IN_PROGRESS_TIP
+          : undefined
 
-    const rebuildBlockedTip = localRetag
-      ? '批量重新打标进行中，请待打标完成后再刷新洞察'
-      : localImport
-        ? IMPORT_REBUILD_DISABLED_TIP
-        : remoteBlockedTip
+    const rebuildBlockedTip = rebuildBlocked
+      ? '当前周期有导入或重新打标进行中，请待完成后再刷新洞察'
+      : undefined
 
-    const detailSaveBlocked = importBlocked
-    const detailSaveBlockedTip = localImport
-      ? DETAIL_SAVE_BLOCKED_BY_IMPORT_TIP
-      : localRetag
-        ? RETAG_DETAIL_IN_PROGRESS_TIP
-        : remoteBlockedTip
+    const detailSaveBlocked = tasks.some(
+      (task) => task.type === 'retag' || (task.type === 'import' && isTicketImportSource(/** @type {string} */ (task.meta?.dataSourceType))),
+    ) || localImport || localRetag
+    const detailSaveBlockedTip = detailSaveBlocked
+      ? '导入或重新打标进行中，请待完成后再保存工单'
+      : undefined
 
     return {
       localImport,
       localRetag,
-      remoteActive,
-      sharedBackgroundTask,
+      remoteActive: tasks.some((task) => !isBackgroundTaskLockHeldByUser(task, user?.id)),
+      ownLockOrphan: false,
+      ownedBannerText: undefined,
+      ownedLockInterrupted: false,
+      ownedLockType: undefined,
+      ownedTasks,
+      sharedBackgroundTasks: tasks,
+      sharedBackgroundTask: tasks[0] ?? null,
       importBlocked,
       retagBlocked,
       rebuildBlocked,
@@ -79,5 +146,13 @@ export function useSharedBackgroundTaskBlock() {
       detailSaveBlockedTip,
       remoteBannerText,
     }
-  }, [sharedBackgroundTask, importSession.active, retagSession.active, user?.id])
+  }, [
+    currentPeriod,
+    dataMonth,
+    dataSourceType,
+    importSession,
+    retagSession,
+    sharedBackgroundTasks,
+    user?.id,
+  ])
 }

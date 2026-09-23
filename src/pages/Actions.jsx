@@ -223,7 +223,7 @@ function ProductActionsTab() {
   const { user, can } = useAuth()
   const canEditAction = can('editRecord')
   const isAdmin = user?.role === 'admin'
-  const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTask, reprocessing } =
+  const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTasks, reprocessing } =
     useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
@@ -661,7 +661,7 @@ function ProductActionsTab() {
         retagActive: retagSession.active,
         importActive: importSession.active,
         reprocessingActive: reprocessing,
-        sharedBackgroundTask,
+        sharedBackgroundTasks,
       })
     ) {
       baseRevisionRef.current = getActionItemRevision(latest)
@@ -677,7 +677,7 @@ function ProductActionsTab() {
     retagSession.active,
     importSession.active,
     reprocessing,
-    sharedBackgroundTask,
+    sharedBackgroundTasks,
   ])
 
   const handleEditStatusChange = (status) => {

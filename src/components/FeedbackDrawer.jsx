@@ -889,7 +889,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     reprocessOne,
     retagSession,
     importSession,
-    sharedBackgroundTask,
+    sharedBackgroundTasks,
     reprocessing } = useFeedbacks()
   const { can, user } = useAuth()
   const {
@@ -1139,7 +1139,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         retagActive: retagSession.active,
         importActive: importSession.active,
         reprocessingActive: reprocessing,
-        sharedBackgroundTask })
+        sharedBackgroundTasks })
     ) {
       baseRevisionRef.current = latestRevision
       setRemoteStale(false)
@@ -1153,7 +1153,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     importSession.active,
     retagSession.active,
     reprocessing,
-    sharedBackgroundTask,
+    sharedBackgroundTasks,
     user?.id,
   ])
 

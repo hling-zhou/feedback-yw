@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
 import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
+import { formatOwnedBackgroundTaskBanner } from '../domain/backgroundTaskLock.js'
 import {
   clearFeedbackTicketIdSet,
   formatClusterTicketSetChipLabel,
@@ -151,7 +152,7 @@ export default function Feedbacks() {
   } = useInsights()
   const { user } = useAuth()
   const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
-  const { remoteBannerText } = useSharedBackgroundTaskBlock()
+  const { remoteBannerText, ownedTasks } = useSharedBackgroundTaskBlock()
   const [journeyBusy, setJourneyBusy] = useState(false)
   const [view, setView] = useState('table')
   const [hiddenColumns, setHiddenColumns] = useState(() => new Set(DEFAULT_HIDDEN_COLUMNS))
@@ -783,7 +784,7 @@ export default function Feedbacks() {
         />
       )}
 
-      {importSession.active && (
+      {importSession.active && !ownedTasks?.some((task) => task.type === 'import') && (
         <Alert
           className="page-section-sm"
           type="warning"
@@ -800,7 +801,22 @@ export default function Feedbacks() {
         />
       )}
 
-      {remoteBannerText && !importSession.active && !retagSession.active && (
+      {ownedTasks?.length > 0 && (
+        <Alert
+          className="page-section-sm"
+          type="info"
+          showIcon
+          title="打标任务进行中"
+          description={
+            <span>
+              {ownedTasks.map((task) => formatOwnedBackgroundTaskBanner(task)).join('；')}
+              <span className="text-ink-500">。可在「打标任务」中查看执行结果或取消。</span>
+            </span>
+          }
+        />
+      )}
+
+      {remoteBannerText && (
         <Alert
           className="page-section-sm"
           type="info"
@@ -810,7 +826,7 @@ export default function Feedbacks() {
         />
       )}
 
-      {retagSession.active && !progressAlertDismissed && (
+      {retagSession.active && !progressAlertDismissed && !ownedTasks?.some((task) => task.type === 'retag') && (
         <TaggingProgressAlert
           progress={retagSession.progress}
           total={retagSession.total}
