@@ -143,7 +143,7 @@ function WorkflowModuleTags({ item, tone }) {
               : '!m-0 !border !border-brand-200 !bg-brand-50 !text-[11px] !font-medium !text-brand-700 !shadow-[0_1px_2px_rgba(79,70,229,0.08)]'
           }
         >
-          {mod.label}
+          {mod.badge ? `${mod.label} ${mod.badge}` : mod.label}
         </Tag>
       ))}
     </div>
