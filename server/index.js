@@ -57,6 +57,7 @@ import { registerTicketTodoRoutes } from './routes/ticketTodos.js'
 import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
 import { registerUsageRoutes } from './routes/usage.js'
 import { archiveUsageStats } from './usageDb.js'
+import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
 import { buildHealthReport } from './health.js'
 import { logAuditFromRequest, logAudit } from './audit.js'
 
@@ -349,6 +350,14 @@ app.get('/api/auth/permissions', async (request) => {
 })
 
 getDb()
+try {
+  const orphaned = releaseOrphanedServerBackgroundTasks()
+  if (orphaned.length) {
+    console.info(`[backgroundTask] 已清理 ${orphaned.length} 个因重启中断的打标任务`)
+  }
+} catch (err) {
+  console.warn('[backgroundTask] 清理重启中断的打标任务失败:', err)
+}
 const existingUsers = listUsers()
 assertAdminSeedConfig(existingUsers.length > 0)
 await seedAdminUser()

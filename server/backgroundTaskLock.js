@@ -7,6 +7,7 @@ import {
   META_KEY_BACKGROUND_TASK_RESULTS,
   BACKGROUND_TASK_HISTORY_LIMIT,
   BACKGROUND_TASK_PHASE_CLIENT,
+  BACKGROUND_TASK_PHASE_ENRICH,
   isBackgroundTaskLockActive,
   isBackgroundTaskLockHeldByUser,
   isBackgroundTaskLockStale,
@@ -279,13 +280,76 @@ export function getTaskResult() {
   return list[0] || null
 }
 
+/** 服务端任务续期间隔。须明显短于 BACKGROUND_TASK_STALE_MS。 */
+export const BACKGROUND_TASK_HEARTBEAT_MS = 60 * 1000
+
 /**
+ * 打标在本进程内执行时定时刷新 updatedAt。
+ * 进度回调可能停在一次很慢的模型调用上，锁仍应表示「进程还在跑」。
+ * @param {string} taskId
+ * @param {number} [intervalMs]
+ * @returns {() => void}
+ */
+export function startBackgroundTaskHeartbeat(taskId, intervalMs = BACKGROUND_TASK_HEARTBEAT_MS) {
+  if (!taskId) return () => {}
+  const timer = setInterval(() => {
+    try {
+      touchBackgroundTask(taskId)
+    } catch {
+      /* 锁已不在，执行器下次检查会停写 */
+    }
+  }, intervalMs)
+  if (typeof timer.unref === 'function') timer.unref()
+  return () => clearInterval(timer)
+}
+
+/**
+ * 这些阶段的任务只活在当前 Node 进程里，重启后不可能还在跑。
+ * @param {BackgroundTaskLock} task
+ */
+function isInProcessBackgroundTask(task) {
+  const phase = task.meta?.phase
+  return phase === 'server' || phase === BACKGROUND_TASK_PHASE_ENRICH
+}
+
+/**
+ * 启动时丢掉上一进程留下的服务端打标锁，避免空锁挡住新任务最多 24 小时。
+ * @returns {BackgroundTaskLock[]}
+ */
+export function releaseOrphanedServerBackgroundTasks() {
+  const tasks = readStoredTasks()
+  const orphaned = tasks.filter(isInProcessBackgroundTask)
+  if (!orphaned.length) return []
+  saveTasks(tasks.filter((task) => !isInProcessBackgroundTask(task)))
+  for (const task of orphaned) {
+    try {
+      appendTaskHistory({
+        id: task.id,
+        type: task.type,
+        source: backgroundTaskTypeLabel(task.type),
+        scope: typeof task.meta?.scope === 'string' ? task.meta.scope : undefined,
+        startedAt: task.startedAt,
+        endedAt: new Date().toISOString(),
+        status: 'failed',
+        error: '服务重启，打标任务已中断',
+        username: task.username,
+      })
+    } catch (err) {
+      console.warn('[backgroundTask] 写入重启中断历史失败:', err)
+    }
+  }
+  return orphaned
+}
+
+/**
+ * 锁已不在（过期、重启清理或被释放）时视为必须停写，避免继续覆盖后开的任务。
  * @param {string} taskId
  */
 export function isTaskCancelled(taskId) {
   if (!taskId) return false
   const task = getBackgroundTask(taskId)
-  return Boolean(task?.meta?.cancelled)
+  if (!task) return true
+  return Boolean(task.meta?.cancelled)
 }
 
 /**

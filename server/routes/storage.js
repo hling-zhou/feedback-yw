@@ -38,6 +38,8 @@ import {
 } from '../insightRebuildJob.js'
 import {
   acquireBackgroundTaskLock,
+  startBackgroundTaskHeartbeat,
+  isTaskCancelled,
   listBackgroundTasks,
   getBackgroundTaskLock,
   touchBackgroundTaskLock,
@@ -650,6 +652,7 @@ export function registerStorageRoutes(app) {
       }
 
       const taskId = acquiredLock.id
+      const stopHeartbeat = startBackgroundTaskHeartbeat(taskId)
       ;(async () => {
         try {
           const { runEnrichment } = await import('../enrichRunner.js')
@@ -669,7 +672,7 @@ export function registerStorageRoutes(app) {
             retagOptions: body.retagOptions || {},
           })
 
-          const isCancelled = Boolean(result.stats?.cancelled)
+          const isCancelled = Boolean(result.stats?.cancelled) || isTaskCancelled(taskId)
           const isFailed = Boolean(result.stats?.failed) || (!isCancelled && !result.records?.length && result.failures?.length)
           let writeResult = null
           if (!isCancelled && !isFailed && result.records?.length) {
@@ -751,6 +754,7 @@ export function registerStorageRoutes(app) {
             })
           } catch { /* 忽略 */ }
         }
+        stopHeartbeat()
         try { releaseBackgroundTask(taskId, userId) } catch { /* 任务可能已取消释放 */ }
       })()
 

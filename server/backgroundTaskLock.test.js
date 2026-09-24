@@ -181,4 +181,65 @@ describeLock('background task lock server', () => {
     expect(result.lock?.meta?.cancelled).toBe(true)
     expect(getBackgroundTaskLock()?.id).toBe(result.lock?.id)
   })
+
+  it('refreshes a server task lock without a progress update', async () => {
+    const { acquireBackgroundTaskLock, startBackgroundTaskHeartbeat, getBackgroundTask } = await import(
+      './backgroundTaskLock.js'
+    )
+    const { lock } = acquireBackgroundTaskLock('retag', {
+      id: 'user-1',
+      username: 'alice',
+      progress: '正在 LLM 增强 (1/10)',
+      meta: { phase: 'server', periodId: 'p-2026-03' },
+    })
+    const before = lock.updatedAt
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const stop = startBackgroundTaskHeartbeat(lock.id, 10)
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    stop()
+    const current = getBackgroundTask(lock.id)
+    expect(current?.progress).toBe('正在 LLM 增强 (1/10)')
+    expect(Date.parse(current.updatedAt)).toBeGreaterThan(Date.parse(before))
+  })
+
+  it('treats a missing lock as cancelled so the runner stops writing', async () => {
+    const { isTaskCancelled, acquireBackgroundTaskLock, releaseBackgroundTask } = await import(
+      './backgroundTaskLock.js'
+    )
+    expect(isTaskCancelled('missing-task')).toBe(true)
+    const { lock } = acquireBackgroundTaskLock('retag', {
+      id: 'user-1',
+      username: 'alice',
+      meta: { phase: 'server', periodId: 'p-2026-03' },
+    })
+    expect(isTaskCancelled(lock.id)).toBe(false)
+    releaseBackgroundTask(lock.id, 'user-1')
+    expect(isTaskCancelled(lock.id)).toBe(true)
+  })
+
+  it('drops in-process tagging locks after restart and keeps client locks', async () => {
+    const {
+      acquireBackgroundTaskLock,
+      listBackgroundTasks,
+      getTaskHistory,
+      releaseOrphanedServerBackgroundTasks,
+    } = await import('./backgroundTaskLock.js')
+    acquireBackgroundTaskLock('retag', {
+      id: 'user-1',
+      username: 'alice',
+      meta: { phase: 'server', periodId: 'p-2026-03' },
+    })
+    acquireBackgroundTaskLock('import', {
+      id: 'user-2',
+      username: 'bob',
+      meta: { phase: 'client', dataMonth: '2026-04', dataSourceType: 'post_use_rating' },
+    })
+    const dropped = releaseOrphanedServerBackgroundTasks()
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0].meta?.phase).toBe('server')
+    const remaining = listBackgroundTasks()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].meta?.phase).toBe('client')
+    expect(getTaskHistory()[0]?.error).toBe('服务重启，打标任务已中断')
+  })
 })

@@ -38,7 +38,7 @@ export const BACKGROUND_TASK_PHASE_ENRICH = 'enrich'
 /** 历史记录最大条数，超出淘汰最老的 */
 export const BACKGROUND_TASK_HISTORY_LIMIT = 50
 
-/** 无心跳超过此时间视为可抢占。需大于单次 LLM 批次最慢耗时，避免任务进行中被误释放。 */
+/** 无心跳超过此时间视为进程已退出、锁可释放。服务端任务自行续期，不依赖单次打标进度。 */
 export const BACKGROUND_TASK_STALE_MS = 10 * 60 * 1000
 
 /** 最长占用时间，防止异常退出后永久占锁 */
