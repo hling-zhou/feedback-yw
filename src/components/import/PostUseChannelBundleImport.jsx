@@ -1,5 +1,5 @@
-import { Alert, Descriptions, Typography, Upload } from 'antd'
-import { InboxOutlined } from '@ant-design/icons'
+import { Alert, Button, Descriptions, Typography, Upload } from 'antd'
+import { DeleteOutlined, InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { MAX_IMPORT_FILES } from '../../lib/importBatchFiles.js'
 import { displayImportFileName } from '../../lib/importFilePassword.js'
 
@@ -8,11 +8,46 @@ import { displayImportFileName } from '../../lib/importFilePassword.js'
  * @param {string} prefix
  * @param {number} index
  */
-function toUploadItem(file, prefix, index) {
-  return {
-    uid: `${prefix}-${index}-${file.name}-${file.size}-${file.lastModified}`,
-    name: displayImportFileName(file.name),
-    status: /** @type {const} */ ('done') }
+function fileKey(file, prefix, index) {
+  return `${prefix}-${index}-${file.name}-${file.size}-${file.lastModified}`
+}
+
+/**
+ * 文件名单独排在拖拽区下面。antd Upload 的列表在双栏里会叠到「下一步」按钮上。
+ *
+ * @param {{
+ *   files: File[]
+ *   prefix: string
+ *   disabled?: boolean
+ *   onRemove?: (index: number) => void
+ * }} props
+ */
+function SelectedFileList({ files, prefix, disabled = false, onRemove }) {
+  if (!files.length) return null
+  return (
+    <ul className="mt-3 space-y-1">
+      {files.map((file, index) => {
+        const name = displayImportFileName(file.name)
+        return (
+          <li key={fileKey(file, prefix, index)} className="flex min-w-0 items-center gap-2 text-sm">
+            <PaperClipOutlined className="shrink-0 text-ink-400" />
+            <span className="min-w-0 flex-1 truncate" title={name}>
+              {name}
+            </span>
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={disabled}
+              aria-label={`移除${name}`}
+              onClick={() => onRemove?.(index)}
+            />
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 /**
@@ -92,48 +127,66 @@ export default function PostUseChannelBundleImport({
         title="请上传短信渠道与官网渠道原始文件"
         description={`短信渠道按表头列「调研结果状态」识别；官网评分类 / 选项类按「产品名」、投诉处理-电话回访按「回访工单编号」识别。各支持最多 ${MAX_IMPORT_FILES} 个文件，将按渠道合并解析。选好文件后进入「预览确认」核对条数与口径。加密文件可把密码写在文件名中，格式为 名称#密码.xlsx。`}
       />
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">`短信渠道.xls（${smsFiles.length}/${MAX_IMPORT_FILES}）`</span></div>
+      <div className="grid items-start gap-4 md:grid-cols-2">
+        <div className="page-card-sm min-w-0">
+          <div className="page-card-header">
+            <span className="page-card-title">
+              短信渠道.xls（{smsFiles.length}/{MAX_IMPORT_FILES}）
+            </span>
+          </div>
           <Upload.Dragger
+            style={{ height: 'auto' }}
             accept=".xls,.xlsx"
             multiple
             maxCount={MAX_IMPORT_FILES}
+            showUploadList={false}
             disabled={importBusy || smsFiles.length >= MAX_IMPORT_FILES}
             beforeUpload={(file) => {
               onAddSmsFile?.(file)
               return false
             }}
-            onRemove={(item) => {
-              onSmsFilesChange?.(smsFiles.filter((_, index) => toUploadItem(smsFiles[index], 'sms', index).uid !== item.uid))
-            }}
-            fileList={smsFiles.map((file, index) => toUploadItem(file, 'sms', index))}
           >
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>
             <p className="ant-upload-text">点击或拖拽短信渠道文件（可多选）</p>
           </Upload.Dragger>
+          <SelectedFileList
+            files={smsFiles}
+            prefix="sms"
+            disabled={importBusy}
+            onRemove={(index) => onSmsFilesChange?.(smsFiles.filter((_, itemIndex) => itemIndex !== index))}
+          />
         </div>
-        <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">`官网渠道.xls（${webFiles.length}/${MAX_IMPORT_FILES}）`</span></div>
+        <div className="page-card-sm min-w-0">
+          <div className="page-card-header">
+            <span className="page-card-title">
+              官网渠道.xls（{webFiles.length}/{MAX_IMPORT_FILES}）
+            </span>
+          </div>
           <Upload.Dragger
+            style={{ height: 'auto' }}
             accept=".xls,.xlsx"
             multiple
             maxCount={MAX_IMPORT_FILES}
+            showUploadList={false}
             disabled={importBusy || webFiles.length >= MAX_IMPORT_FILES}
             beforeUpload={(file) => {
               onAddWebFile?.(file)
               return false
             }}
-            onRemove={(item) => {
-              onWebFilesChange?.(webFiles.filter((_, index) => toUploadItem(webFiles[index], 'web', index).uid !== item.uid))
-            }}
-            fileList={webFiles.map((file, index) => toUploadItem(file, 'web', index))}
           >
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>
             <p className="ant-upload-text">点击或拖拽官网渠道文件（可多选）</p>
           </Upload.Dragger>
+          <SelectedFileList
+            files={webFiles}
+            prefix="web"
+            disabled={importBusy}
+            onRemove={(index) => onWebFilesChange?.(webFiles.filter((_, itemIndex) => itemIndex !== index))}
+          />
         </div>
       </div>
     </div>
