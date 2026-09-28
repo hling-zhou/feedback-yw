@@ -108,7 +108,6 @@ import {
   POST_USE_LANE_HINT,
   filterFeedbackRecordsForLane,
   isPostUseRatingLibraryRecord,
-  isPostUseNon10LibraryRecord,
   resolveFeedbackLane,
 } from '../domain/postUseRatingImport.js'
 import {
@@ -418,11 +417,9 @@ export default function Feedbacks() {
     )
   }, [catalogProducts, isPostUseLane, periodFeedbacks])
 
-  const postUseNon10NeedingJourney = useMemo(() => {
+  const postUseNeedingJourney = useMemo(() => {
     if (!isPostUseLane) return []
-    return postUseAnalysisRecords.filter(
-      (fb) => isPostUseNon10LibraryRecord(fb) && needsPostUseJourney(fb, settings),
-    )
+    return postUseAnalysisRecords.filter((fb) => needsPostUseJourney(fb, settings))
   }, [isPostUseLane, postUseAnalysisRecords, settings])
 
   const legacyKeywordJourneys = useMemo(() => {
@@ -433,14 +430,12 @@ export default function Feedbacks() {
   const runPostUseJourneyEnrichment = useCallback(async (includeLegacyKeywordJourneys = false) => {
     if (postUseJourneyBlocked) return
     const targets = includeLegacyKeywordJourneys
-      ? postUseAnalysisRecords.filter(
-          (fb) =>
-            isPostUseNon10LibraryRecord(fb) &&
-            needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }),
+      ? postUseAnalysisRecords.filter((fb) =>
+          needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }),
         )
-      : postUseNon10NeedingJourney
+      : postUseNeedingJourney
     if (!targets.length) {
-      message.info('当前没有待补全旅程的非 10 分评价')
+      message.info('当前没有待补全旅程的评价')
       return
     }
     setJourneyBusy(true)
@@ -455,7 +450,7 @@ export default function Feedbacks() {
   }, [
     postUseAnalysisRecords,
     postUseJourneyBlocked,
-    postUseNon10NeedingJourney,
+    postUseNeedingJourney,
     settings,
     startPostUseJourneyEnrichment,
   ])
@@ -472,8 +467,8 @@ export default function Feedbacks() {
       content: (
         <div className="flex flex-col gap-3">
           <Typography.Paragraph className="!mb-0">
-            {postUseNon10NeedingJourney.length
-              ? `将补全 ${postUseNon10NeedingJourney.length} 条空的、未识别的，或规则分没过门闸的评价。`
+            {postUseNeedingJourney.length
+              ? `将补全 ${postUseNeedingJourney.length} 条空的、未识别的，或规则分没过门闸的评价。不看评分。`
               : '当前没有待补全的评价。'}
           </Typography.Paragraph>
           <Checkbox
@@ -494,7 +489,7 @@ export default function Feedbacks() {
   }, [
     legacyKeywordJourneys.length,
     postUseJourneyBlocked,
-    postUseNon10NeedingJourney.length,
+    postUseNeedingJourney.length,
     runPostUseJourneyEnrichment,
   ])
 
@@ -921,13 +916,13 @@ export default function Feedbacks() {
         />
       )}
 
-      {isPostUseLane && postUseNon10NeedingJourney.length > 0 && (
+      {isPostUseLane && postUseNeedingJourney.length > 0 && (
         <Alert
           className="page-section-sm"
           type="warning"
           showIcon
-          title={`有 ${postUseNon10NeedingJourney.length} 条非 10 分评价待补全用户旅程`}
-          description="仅补用户旅程字段，不走投诉/咨询统一批量打标。"
+          title={`有 ${postUseNeedingJourney.length} 条评价待补全用户旅程`}
+          description="只含已开启用后即评分析的产品，不看评分。仅补用户旅程，不走投诉/咨询打标。"
           action={
             <PermissionGate permission="retag">
               <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
@@ -1250,13 +1245,13 @@ export default function Feedbacks() {
                         loading={journeyBusy}
                         disabled={
                           postUseJourneyBlocked ||
-                          (!postUseNon10NeedingJourney.length && !legacyKeywordJourneys.length)
+                          (!postUseNeedingJourney.length && !legacyKeywordJourneys.length)
                         }
                         onClick={() => askPostUseJourneyEnrichment()}
                       >
-                        补全非10分旅程
-                        {postUseNon10NeedingJourney.length
-                          ? `（${postUseNon10NeedingJourney.length}）`
+                        补全用户旅程
+                        {postUseNeedingJourney.length
+                          ? `（${postUseNeedingJourney.length}）`
                           : ''}
                       </Button>
                     </span>

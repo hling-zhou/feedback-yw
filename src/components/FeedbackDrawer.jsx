@@ -46,8 +46,9 @@ import { renderDefinitionSelectOption } from './tags/DefinitionSelectOption.jsx'
 import { themesFromJourney } from '../lib/applyThemes.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
-  isPostUseRatingLibraryRecord,
-  isPostUseNon10LibraryRecord } from '../domain/postUseRatingImport.js'
+  isPostUseRatingLibraryRecord } from '../domain/postUseRatingImport.js'
+import { getCatalogProducts } from '../lib/productCatalogLoader.js'
+import { resolvePostUseRatingProduct } from '../lib/productCatalog/postUseRatingProducts.js'
 import {
   isLegacyPostUseKeywordJourney,
   needsPostUseJourney,
@@ -895,6 +896,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     sharedBackgroundTasks,
     settings,
     startPostUseJourneyEnrichment,
+    productCatalogMeta,
     reprocessing } = useFeedbacks()
   const { can, user } = useAuth()
   const {
@@ -945,7 +947,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     return fullFeedback
   }, [cachedFeedback, fullFeedback])
   const isPostUseLibrary = isPostUseRatingLibraryRecord(feedback)
-  const isPostUseNon10 = isPostUseNon10LibraryRecord(feedback)
+  const canEnrichPostUseJourney = useMemo(() => {
+    if (!isPostUseRatingLibraryRecord(feedback)) return false
+    return Boolean(resolvePostUseRatingProduct(feedback, getCatalogProducts()))
+  }, [feedback, productCatalogMeta?.loadedAt])
   const canDeleteTicket = can('deleteData') && !isPostUseLibrary
   const [journeyEnriching, setJourneyEnriching] = useState(false)
   const [note, setNote] = useState(feedback?.note || '')
@@ -1221,7 +1226,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   }
 
   const handleEnrichPostUseJourney = () => {
-    if (!feedback?.id || !isPostUseNon10 || postUseJourneyBlocked) return
+    if (!feedback?.id || !canEnrichPostUseJourney || postUseJourneyBlocked) return
     if (isLegacyPostUseKeywordJourney(feedback)) {
       Modal.confirm({
         title: '按产品模板重打这条旅程',
@@ -1657,7 +1662,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         section: { overflow: 'hidden' },
         body: { overflowX: 'hidden', overflowY: 'auto' } }}
       footer={
-        reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || (canRetag && isPostUseNon10) ? (
+        reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || (canRetag && canEnrichPostUseJourney) ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {reviewEnabled ? (
               <Checkbox
@@ -1691,7 +1696,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Button>
             )}
             <div className="ml-auto flex shrink-0 gap-2">
-              {canRetag && isPostUseNon10 && (
+              {canRetag && canEnrichPostUseJourney && (
                 <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
                   <span className="inline-block">
                     <Button

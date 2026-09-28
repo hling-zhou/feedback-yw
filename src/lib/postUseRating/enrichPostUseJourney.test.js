@@ -24,7 +24,7 @@ describe('enrichPostUseJourney', () => {
     })
   })
 
-  it('needsPostUseJourney only for non-10 library records still missing a confident journey', () => {
+  it('needsPostUseJourney for library records still missing a confident journey, including 10-point scores', () => {
     expect(
       needsPostUseJourney({
         dataSourceType: 'post_use_rating',
@@ -38,7 +38,13 @@ describe('enrichPostUseJourney', () => {
         channel: 'sms',
         ratingScore: 10,
       }),
-    ).toBe(false)
+    ).toBe(true)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'console',
+      }),
+    ).toBe(true)
     expect(
       needsPostUseJourney({
         dataSourceType: 'post_use_rating',
@@ -157,9 +163,16 @@ describe('enrichPostUseJourney', () => {
         ratingScore: 10,
         rawText: '账号权限',
       },
+      {
+        id: 'c',
+        dataSourceType: 'post_use_rating',
+        channel: 'callback',
+        ratingScore: 4,
+        rawText: '账号权限',
+      },
     ])
-    expect(batch).toHaveLength(1)
-    expect(batch[0].id).toBe('a')
+    expect(batch.map((item) => item.id)).toEqual(['a', 'b'])
     expect(batch[0].patch.journeyL1).toBe('账号')
+    expect(batch[1].patch.journeyL1).toBe('账号')
   })
 })

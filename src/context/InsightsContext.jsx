@@ -36,6 +36,8 @@ import {
 } from '../lib/establishedActionPersist.js'
 import { reprocessAllThemesAndSentiment } from '../lib/applyThemes.js'
 import { needsPostUseJourney } from '../lib/postUseRating/enrichPostUseJourney.js'
+import { getCatalogProducts } from '../lib/productCatalogLoader.js'
+import { resolvePostUseRatingProduct } from '../lib/productCatalog/postUseRatingProducts.js'
 import {
   formatBulkRetagResultMessage,
   listUnknownJourneyRecords,
@@ -2900,13 +2902,15 @@ export function InsightsProvider({ children }) {
   const startPostUseJourneyEnrichment = useCallback(
     async (records, options = {}) => {
       const includeLegacyKeywordJourneys = options.includeLegacyKeywordJourneys === true
+      const catalogProducts = getCatalogProducts()
       const list = (records || []).filter(
         (record) =>
           record?.id &&
-          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys }),
+          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys }) &&
+          resolvePostUseRatingProduct(record, catalogProducts),
       )
       if (!list.length) {
-        message.info('当前没有待补全的非 10 分评价')
+        message.info('当前没有待补全的评价')
         return null
       }
       const res = await apiFetch('/api/storage/records/enrich', {

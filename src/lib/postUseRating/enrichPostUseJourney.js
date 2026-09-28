@@ -1,9 +1,10 @@
 /**
- * 用后即评非 10 分旅程范围判断。
+ * 用后即评旅程范围判断。不看评分，只认反馈库里的用后即评记录。
+ * 产品是否开启用后即评分析由调用方用目录过滤。
  * 写入不再使用下面的六组通用关键词，改由产品旅程模板 + 门闸完成。
  */
 import {
-  isPostUseNon10LibraryRecord,
+  isPostUseRatingLibraryRecord,
 } from '../../domain/postUseRatingImport.js'
 import { recordHasUnknownJourney } from '../journeySemantic.js'
 import { resolveJourneyLlmSkipScoreThreshold } from '../journeyMatchConfidence.js'
@@ -58,14 +59,14 @@ export function matchPostUseJourneyFromText(text) {
  * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
  */
 export function isLegacyPostUseKeywordJourney(record) {
-  if (!isPostUseNon10LibraryRecord(record)) return false
+  if (!isPostUseRatingLibraryRecord(record)) return false
   if (getManualTagFields(record).includes('journey')) return false
   if (record?.journeySource !== POST_USE_JOURNEY_SOURCE) return false
   return !recordHasUnknownJourney(record)
 }
 
 /**
- * 是否还要补旅程：当前周期可见的非 10 分评价，且旅程为空、未识别，或规则分未过门闸。
+ * 是否还要补旅程：反馈库用后即评（不含回访），且旅程为空、未识别，或规则分未过门闸。不看评分。
  * 人工改过的旅程不覆盖。模型已经写出具体环节的也不再打；模型结果仍是「未识别环节」时还要再补。
  * 旧关键词写出的具体环节默认不重打，调用方显式要求时才纳入。
  * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
@@ -73,7 +74,7 @@ export function isLegacyPostUseKeywordJourney(record) {
  * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
  */
 export function needsPostUseJourney(record, settings, options = {}) {
-  if (!isPostUseNon10LibraryRecord(record)) return false
+  if (!isPostUseRatingLibraryRecord(record)) return false
   if (getManualTagFields(record).includes('journey')) return false
   if (recordHasUnknownJourney(record)) return true
   if (record?.journeySource === 'llm') return false

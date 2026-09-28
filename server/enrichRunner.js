@@ -17,6 +17,8 @@ import { reprocessFeedbackRecord } from '../src/lib/pipeline.js'
 import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
 import { enrichRecordsWithJourneys } from '../src/lib/journeySemantic.js'
 import { needsPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
+import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
+import { resolvePostUseRatingProduct } from '../src/lib/productCatalog/postUseRatingProducts.js'
 import { forwardLlmChatCompletion } from './llmProxy.js'
 import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from './llmConfig.js'
 import { retrieveSnippets } from './knowledgeBaseLoader.js'
@@ -359,8 +361,11 @@ export async function runEnrichment(opts) {
 
     if (mode === 'post_use_journey') {
       const includeLegacy = retagOptions.includeLegacyKeywordJourneys === true
-      const targets = records.filter((record) =>
-        needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }),
+      const catalogProducts = getCatalogProducts()
+      const targets = records.filter(
+        (record) =>
+          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }) &&
+          resolvePostUseRatingProduct(record, catalogProducts),
       )
       const total = targets.length
       /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
