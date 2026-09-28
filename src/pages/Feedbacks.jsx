@@ -106,6 +106,7 @@ import {
   FEEDBACK_LANE_TICKETS,
   FEEDBACK_LANE_CUSTOMER_VISITS,
   POST_USE_LANE_HINT,
+  filterFeedbackRecordsForLane,
   isPostUseRatingLibraryRecord,
   isPostUseNon10LibraryRecord,
   resolveFeedbackLane,
@@ -115,6 +116,7 @@ import {
   needsPostUseJourney,
 } from '../lib/postUseRating/enrichPostUseJourney.js'
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
+import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
 import { buildPostUseCallbackRecommendations } from '../lib/postUseRating/callbackRecommendations.js'
 import {
@@ -403,22 +405,35 @@ export default function Feedbacks() {
     }).length
   }, [periodFeedbacks, isPostUseLane, isCustomerVisitLane, customerVisitPeriodRecords.length])
 
+  const ticketPeriodFeedbacks = useMemo(
+    () => filterFeedbackRecordsForLane(periodFeedbacks, FEEDBACK_LANE_TICKETS),
+    [periodFeedbacks],
+  )
+
+  const postUseAnalysisRecords = useMemo(() => {
+    if (!isPostUseLane) return []
+    return scopePostUseRatingRecords(
+      periodFeedbacks.filter(isPostUseRatingLibraryRecord),
+      catalogProducts,
+    )
+  }, [catalogProducts, isPostUseLane, periodFeedbacks])
+
   const postUseNon10NeedingJourney = useMemo(() => {
     if (!isPostUseLane) return []
-    return periodFeedbacks.filter(
+    return postUseAnalysisRecords.filter(
       (fb) => isPostUseNon10LibraryRecord(fb) && needsPostUseJourney(fb, settings),
     )
-  }, [periodFeedbacks, isPostUseLane, settings])
+  }, [isPostUseLane, postUseAnalysisRecords, settings])
 
   const legacyKeywordJourneys = useMemo(() => {
     if (!isPostUseLane) return []
-    return periodFeedbacks.filter((fb) => isLegacyPostUseKeywordJourney(fb))
-  }, [periodFeedbacks, isPostUseLane])
+    return postUseAnalysisRecords.filter((fb) => isLegacyPostUseKeywordJourney(fb))
+  }, [isPostUseLane, postUseAnalysisRecords])
 
   const runPostUseJourneyEnrichment = useCallback(async (includeLegacyKeywordJourneys = false) => {
     if (postUseJourneyBlocked) return
     const targets = includeLegacyKeywordJourneys
-      ? periodFeedbacks.filter(
+      ? postUseAnalysisRecords.filter(
           (fb) =>
             isPostUseNon10LibraryRecord(fb) &&
             needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }),
@@ -438,7 +453,7 @@ export default function Feedbacks() {
       setJourneyBusy(false)
     }
   }, [
-    periodFeedbacks,
+    postUseAnalysisRecords,
     postUseJourneyBlocked,
     postUseNon10NeedingJourney,
     settings,
@@ -538,17 +553,17 @@ export default function Feedbacks() {
     [isPostUseLane, scopedFeedbacks],
   )
   const unknownJourneySummary = useMemo(
-    () => summarizeUnknownJourneyRecords(periodFeedbacks),
-    [periodFeedbacks],
+    () => summarizeUnknownJourneyRecords(ticketPeriodFeedbacks),
+    [ticketPeriodFeedbacks],
   )
   const missingTags = unknownJourneySummary.count
   const needsTicketLlmCount = useMemo(
-    () => countRecordsNeedingTicketLlmEnrichment(periodFeedbacks),
-    [periodFeedbacks],
+    () => countRecordsNeedingTicketLlmEnrichment(ticketPeriodFeedbacks),
+    [ticketPeriodFeedbacks],
   )
   const needsJourneyLlmCount = useMemo(
-    () => countRecordsNeedingJourneyLlmEnrichment(periodFeedbacks, settings),
-    [periodFeedbacks, settings],
+    () => countRecordsNeedingJourneyLlmEnrichment(ticketPeriodFeedbacks, settings),
+    [ticketPeriodFeedbacks, settings],
   )
 
   const unknownReasonHint = useMemo(() => {
@@ -754,7 +769,7 @@ export default function Feedbacks() {
   }
 
   const handleExportUnknownJourney = () => {
-    const ok = downloadUnknownJourneyCsv(periodFeedbacks, '未识别旅程样本.csv')
+    const ok = downloadUnknownJourneyCsv(ticketPeriodFeedbacks, '未识别旅程样本.csv')
     if (!ok) {
       message.info('当前没有未识别用户旅程的记录')
     }

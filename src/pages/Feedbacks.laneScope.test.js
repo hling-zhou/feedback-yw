@@ -15,10 +15,12 @@ describe('Feedbacks lane-scoped notices', () => {
 
   it('keeps ticket quality notices off the post-use lane', () => {
     expect(source).toContain('{!isPostUseLane &&')
-    expect(source).toContain('summarizeUnknownJourneyRecords(periodFeedbacks)')
-    expect(source).toContain('countRecordsNeedingTicketLlmEnrichment(periodFeedbacks)')
-    expect(source).toContain('countRecordsNeedingJourneyLlmEnrichment(periodFeedbacks, settings)')
-    expect(source).toContain("downloadUnknownJourneyCsv(periodFeedbacks, '未识别旅程样本.csv')")
+    expect(source).toContain('filterFeedbackRecordsForLane(periodFeedbacks, FEEDBACK_LANE_TICKETS)')
+    expect(source).toContain('summarizeUnknownJourneyRecords(ticketPeriodFeedbacks)')
+    expect(source).toContain('countRecordsNeedingTicketLlmEnrichment(ticketPeriodFeedbacks)')
+    expect(source).toContain('countRecordsNeedingJourneyLlmEnrichment(ticketPeriodFeedbacks, settings)')
+    expect(source).toContain("downloadUnknownJourneyCsv(ticketPeriodFeedbacks, '未识别旅程样本.csv')")
+    expect(source).toContain('scopePostUseRatingRecords(')
   })
 
   it('clears filters when switching between ticket and post-use lanes', () => {
