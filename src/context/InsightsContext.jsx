@@ -229,6 +229,8 @@ export function InsightsProvider({ children }) {
   const importDepthRef = useRef(0)
   /** 批量重新打标进行中：避免轮询同步覆盖内存结果 */
   const reprocessingRef = useRef(false)
+  /** 补全用户旅程进行中：与打标一样，避免轮询把列表换成全量加载 */
+  const postUseJourneyActiveRef = useRef(false)
   /** @type {import('react').MutableRefObject<Set<string>>} */
   const loadedPeriodIdsRef = useRef(new Set())
   /** post_use_rating 按需加载去重（同一周期只加载一次） */
@@ -974,6 +976,7 @@ export function InsightsProvider({ children }) {
         importLockRef.current ||
         reprocessingRef.current ||
         retagSession.active ||
+        postUseJourneyActiveRef.current ||
         snapshotRebuildInProgressRef.current
       ) {
         return
@@ -2913,51 +2916,66 @@ export function InsightsProvider({ children }) {
         message.info('当前没有待补全的评价')
         return null
       }
-      const res = await apiFetch('/api/storage/records/enrich', {
-        method: 'POST',
-        body: JSON.stringify({
-          mode: 'post_use_journey',
-          recordIds: list.map((record) => record.id),
-          periodId: currentPeriodId,
-          dataSourceType: 'post_use_rating',
-          insightPeriod: currentPeriod
-            ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
-            : undefined,
-          settings,
-          retagOptions: { includeLegacyKeywordJourneys },
-        }),
-      })
-      if (!res?.taskId) throw new Error('后台任务未创建')
-      void refreshSharedBackgroundTask()
+      postUseJourneyActiveRef.current = true
+      const reloadPostUseRatings = async () => {
+        if (!currentPeriodId) return
+        loadedPostUsePeriodIdsRef.current.delete(currentPeriodId)
+        await loadPostUseRatingForPeriod(currentPeriodId)
+      }
       try {
-        const enrichResult = await waitForBackgroundTask(res.taskId)
-        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        const res = await apiFetch('/api/storage/records/enrich', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: 'post_use_journey',
+            recordIds: list.map((record) => record.id),
+            periodId: currentPeriodId,
+            dataSourceType: 'post_use_rating',
+            insightPeriod: currentPeriod
+              ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
+              : undefined,
+            settings,
+            retagOptions: { includeLegacyKeywordJourneys },
+          }),
+        })
+        if (!res?.taskId) throw new Error('后台任务未创建')
+        void refreshSharedBackgroundTask()
         try {
-          await reloadAfterEnrich(currentPeriodId)
+          const enrichResult = await waitForBackgroundTask(res.taskId)
+          try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+          try {
+            await reloadPostUseRatings()
+            await reloadAfterEnrich(currentPeriodId)
+          } catch (err) {
+            console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
+          }
+          if (currentPeriod) {
+            scheduleSnapshotRebuild({
+              period: currentPeriod,
+              recordsForBuild: feedbacksRef.current,
+              reason: 'data',
+              debounceMs: 600,
+            })
+          }
+          message.success('补全用户旅程已完成')
+          return enrichResult
         } catch (err) {
-          console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
+          if (err?.code === 'RETAG_CANCELLED') {
+            try {
+              await reloadPostUseRatings()
+              await reloadAfterEnrich(currentPeriodId)
+            } catch { /* 忽略 */ }
+          }
+          try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+          throw err
         }
-        if (currentPeriod) {
-          scheduleSnapshotRebuild({
-            period: currentPeriod,
-            recordsForBuild: feedbacksRef.current,
-            reason: 'data',
-            debounceMs: 600,
-          })
-        }
-        message.success('补全用户旅程已完成')
-        return enrichResult
-      } catch (err) {
-        if (err?.code === 'RETAG_CANCELLED') {
-          try { await reloadAfterEnrich(currentPeriodId) } catch { /* 忽略 */ }
-        }
-        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
-        throw err
+      } finally {
+        postUseJourneyActiveRef.current = false
       }
     },
     [
       currentPeriod,
       currentPeriodId,
+      loadPostUseRatingForPeriod,
       message,
       reloadAfterEnrich,
       refreshSharedBackgroundTask,

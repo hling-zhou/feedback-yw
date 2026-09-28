@@ -294,6 +294,10 @@ export default function Feedbacks() {
       message.warning('批量重新打标进行中，请稍后再刷新')
       return
     }
+    if (ownedTasks?.some((task) => task.type === 'post_use_journey')) {
+      message.warning('补全用户旅程进行中，请待完成后再刷新')
+      return
+    }
     setRefreshing(true)
     try {
       await syncSharedDataFromServer({ notify: false })
@@ -304,7 +308,7 @@ export default function Feedbacks() {
     } finally {
       setRefreshing(false)
     }
-  }, [importSession?.active, retagSession?.active, syncSharedDataFromServer, refreshCustomerVisitRecords])
+  }, [importSession?.active, ownedTasks, retagSession?.active, syncSharedDataFromServer, refreshCustomerVisitRecords])
 
   // 用后即评 lane：按需加载 post_use_rating 数据（首屏不拉，切到 lane 时才加载）
   useEffect(() => {
