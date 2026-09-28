@@ -111,8 +111,8 @@ import {
   resolveFeedbackLane,
 } from '../domain/postUseRatingImport.js'
 import {
+  isLegacyPostUseKeywordJourney,
   needsPostUseJourney,
-  enrichPostUseJourneyBatch,
 } from '../lib/postUseRating/enrichPostUseJourney.js'
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
@@ -147,12 +147,13 @@ export default function Feedbacks() {
     settings,
     productCatalogMeta,
     syncSharedDataFromServer,
-    updateFeedback,
+    startPostUseJourneyEnrichment,
     adapter,
   } = useInsights()
   const { user } = useAuth()
   const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
-  const { remoteBannerText, ownedTasks } = useSharedBackgroundTaskBlock()
+  const { remoteBannerText, ownedTasks, postUseJourneyBlocked, postUseJourneyBlockedTip } =
+    useSharedBackgroundTaskBlock()
   const [journeyBusy, setJourneyBusy] = useState(false)
   const [view, setView] = useState('table')
   const [hiddenColumns, setHiddenColumns] = useState(() => new Set(DEFAULT_HIDDEN_COLUMNS))
@@ -186,6 +187,17 @@ export default function Feedbacks() {
 
   const feedbackLane = useMemo(() => resolveFeedbackLane(searchParams), [searchParams])
   const isPostUseLane = feedbackLane === FEEDBACK_LANE_POST_USE
+  const columnOptions = isPostUseLane
+    ? FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS.filter((opt) => opt.key === 'journeyL1')
+    : FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS
+  const tableHiddenColumns = useMemo(() => {
+    if (!isPostUseLane) return hiddenColumns
+    const next = new Set(hiddenColumns)
+    next.add('requestScene')
+    next.add('problemType')
+    next.add('resourcePool')
+    return next
+  }, [hiddenColumns, isPostUseLane])
   const isCustomerVisitLane = feedbackLane === FEEDBACK_LANE_CUSTOMER_VISITS
 
   const switchFeedbackLane = useCallback(
@@ -394,33 +406,82 @@ export default function Feedbacks() {
   const postUseNon10NeedingJourney = useMemo(() => {
     if (!isPostUseLane) return []
     return periodFeedbacks.filter(
-      (fb) => isPostUseNon10LibraryRecord(fb) && needsPostUseJourney(fb),
+      (fb) => isPostUseNon10LibraryRecord(fb) && needsPostUseJourney(fb, settings),
     )
+  }, [periodFeedbacks, isPostUseLane, settings])
+
+  const legacyKeywordJourneys = useMemo(() => {
+    if (!isPostUseLane) return []
+    return periodFeedbacks.filter((fb) => isLegacyPostUseKeywordJourney(fb))
   }, [periodFeedbacks, isPostUseLane])
 
-  const runPostUseJourneyEnrichment = useCallback(async () => {
-    const targets = postUseNon10NeedingJourney
+  const runPostUseJourneyEnrichment = useCallback(async (includeLegacyKeywordJourneys = false) => {
+    if (postUseJourneyBlocked) return
+    const targets = includeLegacyKeywordJourneys
+      ? periodFeedbacks.filter(
+          (fb) =>
+            isPostUseNon10LibraryRecord(fb) &&
+            needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }),
+        )
+      : postUseNon10NeedingJourney
     if (!targets.length) {
       message.info('当前没有待补全旅程的非 10 分评价')
       return
     }
     setJourneyBusy(true)
     try {
-      const patches = enrichPostUseJourneyBatch(targets)
-      let n = 0
-      for (const { id, patch } of patches) {
-        const rec = targets.find((r) => r.id === id)
-        if (!rec) continue
-        await updateFeedback(id, patch)
-        n += 1
-      }
-      message.success(`已为 ${n} 条非 10 分评价补全用户旅程`)
+      await startPostUseJourneyEnrichment(targets, { includeLegacyKeywordJourneys })
     } catch (e) {
-      message.error(e?.message || '旅程补全失败')
+      if (e?.code === 'RETAG_CANCELLED') message.info('任务已取消')
+      else message.error(e?.message || '旅程补全失败')
     } finally {
       setJourneyBusy(false)
     }
-  }, [postUseNon10NeedingJourney, updateFeedback])
+  }, [
+    periodFeedbacks,
+    postUseJourneyBlocked,
+    postUseNon10NeedingJourney,
+    settings,
+    startPostUseJourneyEnrichment,
+  ])
+
+  const askPostUseJourneyEnrichment = useCallback(() => {
+    if (postUseJourneyBlocked) return
+    if (!legacyKeywordJourneys.length) {
+      void runPostUseJourneyEnrichment(false)
+      return
+    }
+    let includeLegacy = false
+    Modal.confirm({
+      title: '补全用户旅程',
+      content: (
+        <div className="flex flex-col gap-3">
+          <Typography.Paragraph className="!mb-0">
+            {postUseNon10NeedingJourney.length
+              ? `将补全 ${postUseNon10NeedingJourney.length} 条空的、未识别的，或规则分没过门闸的评价。`
+              : '当前没有待补全的评价。'}
+          </Typography.Paragraph>
+          <Checkbox
+            onChange={(event) => {
+              includeLegacy = event.target.checked
+            }}
+          >
+            同时按产品模板重打已有的关键词旅程（{legacyKeywordJourneys.length} 条）
+          </Checkbox>
+        </div>
+      ),
+      okText: '开始补全',
+      cancelText: '取消',
+      onOk: () => {
+        void runPostUseJourneyEnrichment(includeLegacy)
+      },
+    })
+  }, [
+    legacyKeywordJourneys.length,
+    postUseJourneyBlocked,
+    postUseNon10NeedingJourney.length,
+    runPostUseJourneyEnrichment,
+  ])
 
   const filterOptionRecords = useMemo(
     () => libraryFilterOptionRecords(periodFeedbacks, feedbackLane),
@@ -853,9 +914,21 @@ export default function Feedbacks() {
           title={`有 ${postUseNon10NeedingJourney.length} 条非 10 分评价待补全用户旅程`}
           description="仅补用户旅程字段，不走投诉/咨询统一批量打标。"
           action={
-            <Button type="primary" size="small" loading={journeyBusy} onClick={() => void runPostUseJourneyEnrichment()}>
-              补全用户旅程
-            </Button>
+            <PermissionGate permission="retag">
+              <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
+                <span className="inline-block">
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={journeyBusy}
+                    disabled={postUseJourneyBlocked}
+                    onClick={() => askPostUseJourneyEnrichment()}
+                  >
+                    补全用户旅程
+                  </Button>
+                </span>
+              </Tooltip>
+            </PermissionGate>
           }
         />
       )}
@@ -1155,16 +1228,25 @@ export default function Feedbacks() {
                 </PermissionGate>
               )}
               {isPostUseLane && (
-                <Button
-                  loading={journeyBusy}
-                  disabled={!postUseNon10NeedingJourney.length}
-                  onClick={() => void runPostUseJourneyEnrichment()}
-                >
-                  补全非10分旅程
-                  {postUseNon10NeedingJourney.length
-                    ? `（${postUseNon10NeedingJourney.length}）`
-                    : ''}
-                </Button>
+                <PermissionGate permission="retag">
+                  <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
+                    <span className="inline-block">
+                      <Button
+                        loading={journeyBusy}
+                        disabled={
+                          postUseJourneyBlocked ||
+                          (!postUseNon10NeedingJourney.length && !legacyKeywordJourneys.length)
+                        }
+                        onClick={() => askPostUseJourneyEnrichment()}
+                      >
+                        补全非10分旅程
+                        {postUseNon10NeedingJourney.length
+                          ? `（${postUseNon10NeedingJourney.length}）`
+                          : ''}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </PermissionGate>
               )}
               <Segmented
                 value={view}
@@ -1180,7 +1262,7 @@ export default function Feedbacks() {
                   title="自定义显示列"
                   content={
                     <div className="flex flex-col gap-2">
-                      {FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS.map((opt) => (
+                      {columnOptions.map((opt) => (
                         <Checkbox
                           key={opt.key}
                           checked={!hiddenColumns.has(opt.key)}
@@ -1232,7 +1314,7 @@ export default function Feedbacks() {
             reviewEnabled={reviewEnabled}
             doneRecordIds={doneRecordIds}
             dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
-            hiddenColumns={hiddenColumns}
+            hiddenColumns={tableHiddenColumns}
             stickyOffset={stickyChromeHeight}
           />
         ) : (

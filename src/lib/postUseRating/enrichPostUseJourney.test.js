@@ -3,6 +3,7 @@ import {
   enrichPostUseJourneyBatch,
   enrichPostUseJourneyRecord,
   matchPostUseJourneyFromText,
+  isLegacyPostUseKeywordJourney,
   needsPostUseJourney,
   POST_USE_JOURNEY_UNKNOWN_L1,
 } from './enrichPostUseJourney.js'
@@ -23,7 +24,7 @@ describe('enrichPostUseJourney', () => {
     })
   })
 
-  it('needsPostUseJourney only for non-10 library records without journey', () => {
+  it('needsPostUseJourney only for non-10 library records still missing a confident journey', () => {
     expect(
       needsPostUseJourney({
         dataSourceType: 'post_use_rating',
@@ -52,6 +53,79 @@ describe('enrichPostUseJourney', () => {
         ratingScore: 7,
         journeyL1: '使用',
       }),
+    ).toBe(false)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '未识别环节',
+        journeySource: 'post_use_non10',
+      }),
+    ).toBe(true)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '开通',
+        journeySource: 'rule',
+        journeyMatchScore: 2,
+      }),
+    ).toBe(true)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '开通',
+        journeySource: 'rule',
+        journeyMatchScore: 3,
+      }),
+    ).toBe(false)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '开通',
+        journeySource: 'llm',
+      }),
+    ).toBe(false)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '未识别环节',
+        journeySource: 'llm',
+      }),
+    ).toBe(true)
+    expect(
+      needsPostUseJourney({
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        ratingScore: 6,
+        journeyL1: '',
+        manualTagFields: ['journey'],
+      }),
+    ).toBe(false)
+    const legacy = {
+      dataSourceType: 'post_use_rating',
+      channel: 'sms',
+      ratingScore: 6,
+      journeyL1: '使用',
+      journeySource: 'post_use_non10',
+    }
+    expect(isLegacyPostUseKeywordJourney(legacy)).toBe(true)
+    expect(needsPostUseJourney(legacy)).toBe(false)
+    expect(needsPostUseJourney(legacy, undefined, { includeLegacyKeywordJourneys: true })).toBe(true)
+    expect(
+      needsPostUseJourney(
+        { ...legacy, manualTagFields: ['journey'] },
+        undefined,
+        { includeLegacyKeywordJourneys: true },
+      ),
     ).toBe(false)
   })
 

@@ -1,6 +1,6 @@
 import { getTaxonomy, getTaxonomyForRecord } from './productTaxonomy.js'
 import { getProductByKey } from './taxonomyLoader.js'
-import { matchJourneyByDescription } from './ticketTagging.js'
+import { matchJourneyByDescription, matchJourneyFromTextWithScore } from './ticketTagging.js'
 import {
   getLlmCompletionText,
   llmChatCompletion,
@@ -14,6 +14,8 @@ import { buildTaggingTextForRecord } from './taggingText.js'
 import { resolveJourneyTaggingText } from './ticketAnalysis/dimensionTaggingText.js'
 import { evaluateJourneyGatingBatch } from './journeyMatchConfidence.js'
 import { attachLastAutoTags } from './learning/lastAutoTags.js'
+import { isPostUseRatingLibraryRecord } from '../domain/postUseRatingImport.js'
+import { buildPostUseJourneyTaggingText } from './postUseRating/journeyTaggingText.js'
 
 const UNKNOWN_L1 = '未识别环节'
 const UNKNOWN_L2 = '未识别子环节'
@@ -23,6 +25,24 @@ const UNKNOWN_L2 = '未识别子环节'
  */
 function journeyMatchOpts(settings) {
   return { useRequestNode: settings?.useRequestNodeForJourney === true }
+}
+
+/**
+ * 用后即评不用投诉咨询的问题类型，也不从工单正文解析请求节点。
+ * @param {import('./types.js').FeedbackRecord | undefined} record
+ * @param {import('./storage.js').AppSettings} settings
+ */
+function journeyMatchCallOpts(record, settings) {
+  if (isPostUseRatingLibraryRecord(record)) return { useRequestNode: false }
+  return { ...journeyMatchOpts(settings), problemType: record?.problemType }
+}
+
+/**
+ * @param {import('./types.js').FeedbackRecord} record
+ */
+function journeyCorpusForRecord(record) {
+  if (isPostUseRatingLibraryRecord(record)) return buildPostUseJourneyTaggingText(record)
+  return resolveJourneyTaggingText(record) || buildTaggingTextForRecord(record)
 }
 
 /**
@@ -262,10 +282,12 @@ export async function matchJourneySemantic(text, journeys, settings, taxonomyKey
 export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onProgress, records) {
   const localResults = texts.map((text, i) => {
     const key = taxonomyKeys[i] || 'generic'
-    return matchJourneyByDescription(text, journeysForKey(key), key, {
-      ...journeyMatchOpts(settings),
-      problemType: records?.[i]?.problemType,
-    })
+    return matchJourneyByDescription(
+      text,
+      journeysForKey(key),
+      key,
+      journeyMatchCallOpts(records?.[i], settings),
+    )
   })
 
   if (!canUseSemanticMatch(settings)) return localResults
@@ -377,33 +399,43 @@ export async function enrichRecordsWithJourneys(records, settings, onProgress) {
   const canLlm = canUseSemanticMatch(settings)
   const needsProposal = recordsNeedJourneyLlmProposal(records)
   const hasUnknown = records.some(recordHasUnknownJourney)
+  const postUseBatch =
+    records.length > 0 && records.every((record) => isPostUseRatingLibraryRecord(record))
+  // 用后即评只要配了模型就进入门闸，不跟着主题匹配模式走。关键词模式下，
+  // 投诉咨询不会因为「规则分不够」去调模型；这里必须调。
   const useLlmJourney =
-    canLlm && (usesLlmThemeMatch(mode) || needsProposal || hasUnknown)
+    canLlm && (postUseBatch || usesLlmThemeMatch(mode) || needsProposal || hasUnknown)
 
-  const texts = records.map((r) => resolveJourneyTaggingText(r) || buildTaggingTextForRecord(r))
+  const texts = records.map((r) => journeyCorpusForRecord(r))
   const taxonomyKeys = records.map((r) => recordTaxonomyKey(r))
 
   if (!useLlmJourney) {
     return records.map((r, i) => {
       onProgress?.(i + 1, records.length)
-      if (!recordHasUnknownJourney(r) && !recordsNeedJourneyLlmProposal([r])) return r
+      const postUse = isPostUseRatingLibraryRecord(r)
+      if (!postUse && !recordHasUnknownJourney(r) && !recordsNeedJourneyLlmProposal([r])) return r
       const key = taxonomyKeys[i] || 'generic'
-      const local = matchJourneyByDescription(texts[i], journeysForKey(key), key, {
-        ...journeyMatchOpts(settings),
-        problemType: r.problemType,
-      })
-      if (!local.journeyL1 || local.journeyL1 === UNKNOWN_L1) return r
+      const journeys = journeysForKey(key)
+      const matchOpts = journeyMatchCallOpts(r, settings)
+      const local = matchJourneyByDescription(texts[i], journeys, key, matchOpts)
+      if (!local.journeyL1 || local.journeyL1 === UNKNOWN_L1) {
+        if (!postUse) return r
+      }
+      const scored = postUse
+        ? matchJourneyFromTextWithScore(texts[i], journeys, key, matchOpts)
+        : null
       return attachLastAutoTags({
         ...r,
         productKey: r.productKey || key,
-        journeyL1: local.journeyL1,
-        journeyL2: local.journeyL2,
+        journeyL1: local.journeyL1 || r.journeyL1,
+        journeyL2: local.journeyL2 || r.journeyL2,
         journeySource: /** @type {'rule'} */ ('rule'),
+        ...(scored ? { journeyMatchScore: scored.score } : {}),
       })
     })
   }
 
-  const useHybrid = mode === 'hybrid' || needsProposal || hasUnknown
+  const useHybrid = postUseBatch || mode === 'hybrid' || needsProposal || hasUnknown
   const journeyResults = useHybrid
     ? await matchJourneyHybridBatch(texts, taxonomyKeys, settings, onProgress, records)
     : await matchJourneySemanticBatch(texts, taxonomyKeys, settings, onProgress, records)

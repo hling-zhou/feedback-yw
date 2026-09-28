@@ -595,9 +595,8 @@ export function registerStorageRoutes(app) {
       config: { rawBody: true },
     },
     async (request, reply) => {
-      if (!assertWritePermission(request, reply, ['import', 'editRecord'])) return
       const body = /** @type {{
-        mode: 'import' | 'bulk_retag' | 'single_retag'
+        mode: 'import' | 'bulk_retag' | 'single_retag' | 'post_use_journey'
         records?: any[]
         recordIds?: string[]
         rows?: any[]
@@ -611,6 +610,8 @@ export function registerStorageRoutes(app) {
       }} */ (request.body)
 
       const mode = body.mode || 'import'
+      const writePermissions = mode === 'post_use_journey' ? ['retag'] : ['import', 'editRecord']
+      if (!assertWritePermission(request, reply, writePermissions)) return
       const records = Array.isArray(body.records) ? body.records : null
       const recordIds = Array.isArray(body.recordIds) ? body.recordIds : null
       const rows = Array.isArray(body.rows) ? body.rows : null
@@ -622,15 +623,27 @@ export function registerStorageRoutes(app) {
       const userId = user?.id || 'system'
       const username = user?.username || user?.id || 'system'
 
-      const taskType = mode === 'import' ? 'import' : 'retag'
-      const sourceLabel = mode === 'import' ? '数据导入' : mode === 'single_retag' ? '单条重新打标' : '批量重新打标'
+      const taskType = mode === 'import' ? 'import' : mode === 'post_use_journey' ? 'post_use_journey' : 'retag'
+      const sourceLabel =
+        mode === 'import'
+          ? '数据导入'
+          : mode === 'post_use_journey'
+            ? '补全用户旅程'
+            : mode === 'single_retag'
+              ? '单条重新打标'
+              : '批量重新打标'
       const period = body.insightPeriod || {}
       let acquiredLock = null
       try {
         const { lock } = acquireBackgroundTaskLock(taskType, {
           id: userId,
           username,
-          progress: mode === 'import' ? '正在准备分析…' : '正在准备…',
+          progress:
+            mode === 'post_use_journey'
+              ? '正在补全用户旅程…'
+              : mode === 'import'
+                ? '正在准备分析…'
+                : '正在准备…',
           meta: {
             phase: 'server',
             dataMonth: body.dataMonth,

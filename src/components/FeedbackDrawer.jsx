@@ -48,7 +48,10 @@ import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   isPostUseRatingLibraryRecord,
   isPostUseNon10LibraryRecord } from '../domain/postUseRatingImport.js'
-import { enrichPostUseJourneyRecord } from '../lib/postUseRating/enrichPostUseJourney.js'
+import {
+  isLegacyPostUseKeywordJourney,
+  needsPostUseJourney,
+} from '../lib/postUseRating/enrichPostUseJourney.js'
 import {
   extractHandlingOriginalTextForRecord } from '../lib/taggingText.js'
 import {
@@ -890,6 +893,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     retagSession,
     importSession,
     sharedBackgroundTasks,
+    settings,
+    startPostUseJourneyEnrichment,
     reprocessing } = useFeedbacks()
   const { can, user } = useAuth()
   const {
@@ -897,7 +902,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     isReviewDone,
     markReviewDone,
     clearReview } = useUserTicketReviews()
-  const { detailSaveBlocked, detailSaveBlockedTip } = useSharedBackgroundTaskBlock()
+  const { detailSaveBlocked, detailSaveBlockedTip, postUseJourneyBlocked, postUseJourneyBlockedTip } =
+    useSharedBackgroundTaskBlock()
   const canEdit = can('editRecord')
   const canRetag = can('retag')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -1194,25 +1200,45 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     return [feedback.ticketId?.trim(), productText, source].filter(Boolean).join(' · ') || '—'
   }, [feedback])
 
-  const handleEnrichPostUseJourney = async () => {
-    if (!feedback?.id || !isPostUseNon10) return
+  const enrichPostUseJourney = async (includeLegacyKeywordJourneys = false) => {
+    if (!feedback?.id) return
     setJourneyEnriching(true)
     try {
-      const patch = enrichPostUseJourneyRecord(feedback)
-      const saved = await updateFeedback(feedback.id, patch, {
-        expectedRevision: baseRevisionRef.current,
-        mergeBase: feedback })
-      setJourneyL1(patch.journeyL1)
-      setJourneyL2(patch.journeyL2)
+      await startPostUseJourneyEnrichment([feedback], { includeLegacyKeywordJourneys })
+      const saved = await adapter.getRecord(feedback.id)
       if (saved) {
+        setJourneyL1(saved.journeyL1 || '')
+        setJourneyL2(saved.journeyL2 || '')
         baseRevisionRef.current = getRecordRevision(saved)
+        setFullFeedback(saved)
       }
-      message.success('已补全用户旅程')
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '旅程补全失败')
+      if (err?.code === 'RETAG_CANCELLED') message.info('任务已取消')
+      else message.error(err instanceof Error ? err.message : '旅程补全失败')
     } finally {
       setJourneyEnriching(false)
     }
+  }
+
+  const handleEnrichPostUseJourney = () => {
+    if (!feedback?.id || !isPostUseNon10 || postUseJourneyBlocked) return
+    if (isLegacyPostUseKeywordJourney(feedback)) {
+      Modal.confirm({
+        title: '按产品模板重打这条旅程',
+        content: `当前是关键词结果「${feedback.journeyL1 || '—'}」。确认后会按产品模板覆盖。`,
+        okText: '重打',
+        cancelText: '取消',
+        onOk: () => {
+          void enrichPostUseJourney(true)
+        },
+      })
+      return
+    }
+    if (!needsPostUseJourney(feedback, settings)) {
+      message.info('这条评价的用户旅程已补全')
+      return
+    }
+    void enrichPostUseJourney(false)
   }
 
   const drawerFormSnapshot = useMemo(
@@ -1631,7 +1657,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         section: { overflow: 'hidden' },
         body: { overflowX: 'hidden', overflowY: 'auto' } }}
       footer={
-        reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || isPostUseNon10 ? (
+        reviewEnabled || canEdit || canDeleteTicket || (canRetag && !isPostUseLibrary) || (canRetag && isPostUseNon10) ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {reviewEnabled ? (
               <Checkbox
@@ -1665,14 +1691,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Button>
             )}
             <div className="ml-auto flex shrink-0 gap-2">
-              {isPostUseNon10 && (
-                <Button
-                  className="min-w-[5.5rem]"
-                  loading={journeyEnriching}
-                  onClick={() => void handleEnrichPostUseJourney()}
-                >
-                  补全旅程
-                </Button>
+              {canRetag && isPostUseNon10 && (
+                <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
+                  <span className="inline-block">
+                    <Button
+                      className="min-w-[5.5rem]"
+                      loading={journeyEnriching}
+                      disabled={postUseJourneyBlocked}
+                      onClick={() => void handleEnrichPostUseJourney()}
+                    >
+                      补全用户旅程
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
               {canRetag && !isPostUseLibrary && (
                 <Tooltip title={retagTooltipTitle}>

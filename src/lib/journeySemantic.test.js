@@ -117,4 +117,29 @@ describe('journeySemantic', () => {
     expect(out[0].journeyL1).toMatch(/开通与申领|产品订改续/)
     expect(out[0].journeyL2).toMatch(/配额/)
   })
+
+  it('tags a post-use record from scene and customer answers when the free comment is empty', async () => {
+    const out = await enrichRecordsWithJourneys(
+      [
+        {
+          id: 'p1',
+          dataSourceType: 'post_use_rating',
+          channel: 'console',
+          ratingScore: 6,
+          product: '弹性公网IP',
+          productKey: 'eip',
+          rawText: '无',
+          commentText: '无',
+          customerQuote: '无',
+          scene: '资源创建后',
+          touchpointPageName: '弹性公网IP控制台',
+          feedbackReasonTexts: ['需要将西南-成都单资源池带宽配额提升至5120M。'],
+        },
+      ],
+      { themeMatchMode: 'keyword', useRequestNodeForJourney: false },
+    )
+    expect(out[0].journeyL2).toMatch(/配额/)
+    expect(out[0].journeySource).toBe('rule')
+    expect(out[0].journeyMatchScore).toEqual(expect.any(Number))
+  })
 })

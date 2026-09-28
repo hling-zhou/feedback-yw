@@ -46,7 +46,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
   const handleCancel = useCallback((taskId) => {
     Modal.confirm({
       title: '确认取消任务',
-      content: '确定取消这个任务吗？导入取消后不会写盘；批量重打标会保留已经写盘的批次。',
+      content: '确定取消这个任务吗？导入取消后不会写盘。批量重打标和补全用户旅程会保留已经写盘的批次，还没处理的会停止。',
       okText: '取消任务',
       okType: 'danger',
       cancelText: '不取消',

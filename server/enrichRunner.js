@@ -15,6 +15,8 @@ import { setKbTransport } from '../src/lib/knowledgeBaseClient.js'
 import { enrichTicketRecordsForImport } from '../src/lib/importEnrichment.js'
 import { reprocessFeedbackRecord } from '../src/lib/pipeline.js'
 import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
+import { enrichRecordsWithJourneys } from '../src/lib/journeySemantic.js'
+import { needsPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
 import { forwardLlmChatCompletion } from './llmProxy.js'
 import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from './llmConfig.js'
 import { retrieveSnippets } from './knowledgeBaseLoader.js'
@@ -353,6 +355,56 @@ export async function runEnrichment(opts) {
         failures: opts.analysis?.failures || [],
         analysisRun,
       }
+    }
+
+    if (mode === 'post_use_journey') {
+      const includeLegacy = retagOptions.includeLegacyKeywordJourneys === true
+      const targets = records.filter((record) =>
+        needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }),
+      )
+      const total = targets.length
+      /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
+      const written = []
+      const actor = { userId, username }
+      const stopCancelled = () => ({
+        records: written,
+        warnings: ['任务已被用户取消'],
+        stats: { total, cancelled: true, processed: written.length },
+      })
+      if (!total) {
+        touch('正在补全用户旅程 (0/0)')
+        return { records: [], warnings: [], stats: { total: 0, processed: 0 } }
+      }
+      for (let i = 0; i < targets.length; i += FLUSH_BATCH_SIZE) {
+        if (cancelled()) return stopCancelled()
+        const chunk = targets.slice(i, i + FLUSH_BATCH_SIZE)
+        let enriched
+        try {
+          enriched = await enrichRecordsWithJourneys(chunk, settings, (done) => {
+            if (cancelled()) {
+              const err = new Error('任务已被用户取消')
+              err.code = 'TASK_CANCELLED'
+              throw err
+            }
+            touch(`正在补全用户旅程 (${written.length + done}/${total})`)
+          })
+        } catch (err) {
+          if (cancelled() || /** @type {{ code?: string }} */ (err)?.code === 'TASK_CANCELLED') {
+            return stopCancelled()
+          }
+          throw err
+        }
+        if (cancelled()) return stopCancelled()
+        try {
+          storageRepository.putRecords(enriched, { actor })
+        } catch (err) {
+          console.error('[enrichRunner] 补全用户旅程写盘失败:', err)
+          throw err
+        }
+        written.push(...enriched)
+        touch(`正在补全用户旅程 (${written.length}/${total})`)
+      }
+      return { records: written, warnings: [], stats: { total, processed: written.length } }
     }
 
     if (mode === 'bulk_retag' || mode === 'single_retag') {

@@ -35,6 +35,7 @@ import {
   syncLinkedTicketsForActionIds,
 } from '../lib/establishedActionPersist.js'
 import { reprocessAllThemesAndSentiment } from '../lib/applyThemes.js'
+import { needsPostUseJourney } from '../lib/postUseRating/enrichPostUseJourney.js'
 import {
   formatBulkRetagResultMessage,
   listUnknownJourneyRecords,
@@ -862,7 +863,9 @@ export function InsightsProvider({ children }) {
               })
               void syncSharedDataFromServer({ notify: false })
             } else if (pending?.status === 'success') {
-              message.success('批量重新打标已完成')
+              message.success(
+                pending.mode === 'post_use_journey' ? '补全用户旅程已完成' : '批量重新打标已完成',
+              )
               void syncSharedDataFromServer({ notify: false })
             } else if (pending?.status === 'cancelled') {
               message.info('任务已取消')
@@ -2894,6 +2897,72 @@ export function InsightsProvider({ children }) {
     ],
   )
 
+  const startPostUseJourneyEnrichment = useCallback(
+    async (records, options = {}) => {
+      const includeLegacyKeywordJourneys = options.includeLegacyKeywordJourneys === true
+      const list = (records || []).filter(
+        (record) =>
+          record?.id &&
+          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys }),
+      )
+      if (!list.length) {
+        message.info('当前没有待补全的非 10 分评价')
+        return null
+      }
+      const res = await apiFetch('/api/storage/records/enrich', {
+        method: 'POST',
+        body: JSON.stringify({
+          mode: 'post_use_journey',
+          recordIds: list.map((record) => record.id),
+          periodId: currentPeriodId,
+          dataSourceType: 'post_use_rating',
+          insightPeriod: currentPeriod
+            ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
+            : undefined,
+          settings,
+          retagOptions: { includeLegacyKeywordJourneys },
+        }),
+      })
+      if (!res?.taskId) throw new Error('后台任务未创建')
+      void refreshSharedBackgroundTask()
+      try {
+        const enrichResult = await waitForBackgroundTask(res.taskId)
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        try {
+          await reloadAfterEnrich(currentPeriodId)
+        } catch (err) {
+          console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
+        }
+        if (currentPeriod) {
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: feedbacksRef.current,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+        message.success('补全用户旅程已完成')
+        return enrichResult
+      } catch (err) {
+        if (err?.code === 'RETAG_CANCELLED') {
+          try { await reloadAfterEnrich(currentPeriodId) } catch { /* 忽略 */ }
+        }
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        throw err
+      }
+    },
+    [
+      currentPeriod,
+      currentPeriodId,
+      message,
+      reloadAfterEnrich,
+      refreshSharedBackgroundTask,
+      scheduleSnapshotRebuild,
+      settings,
+      waitForBackgroundTask,
+    ],
+  )
+
   const reprocessAllTags = startBulkRetag
 
   /**
@@ -3080,6 +3149,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTasks,
       sharedBackgroundTask,
       startBulkRetag,
+      startPostUseJourneyEnrichment,
       updateFeedback,
       removeFeedback,
       ingestUpdatedRecords,
@@ -3182,6 +3252,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTasks,
       sharedBackgroundTask,
       startBulkRetag,
+      startPostUseJourneyEnrichment,
       updateFeedback,
       removeFeedback,
       ingestUpdatedRecords,

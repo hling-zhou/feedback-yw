@@ -1,4 +1,4 @@
-/** @typedef {'import' | 'retag'} BackgroundTaskType */
+/** @typedef {'import' | 'retag' | 'post_use_journey'} BackgroundTaskType */
 
 /**
  * @typedef {Object} BackgroundTaskLock
@@ -95,6 +95,9 @@ export function formatBackgroundTaskBlockedTip(lock) {
   if (lock.type === 'retag') {
     return `${who} 正在进行批量重新打标，请待完成后再试`
   }
+  if (lock.type === 'post_use_journey') {
+    return `${who} 正在补全用户旅程，请待完成后再试`
+  }
   return `${who} 正在执行后台任务，请稍后再试`
 }
 
@@ -119,6 +122,9 @@ export function formatBackgroundTaskRemoteBanner(lock) {
     if (progress) parts.push(progress)
     return parts.join(' · ')
   }
+  if (lock.type === 'post_use_journey') {
+    return progress ? `${who} · ${progress}` : `${who} 正在补全用户旅程`
+  }
   return progress ? `${who} · ${progress}` : `${who} 正在执行后台任务`
 }
 
@@ -137,6 +143,7 @@ export function formatOwnedBackgroundTaskBanner(lock) {
     const total = lock.meta?.total
     return total ? `${progress} · 共 ${total} 条` : progress
   }
+  if (lock.type === 'post_use_journey') return progress
   return progress
 }
 
@@ -166,6 +173,7 @@ export function isBackgroundTaskCancelRequested(lock) {
 export function backgroundTaskTypeLabel(type) {
   if (type === 'import') return '数据导入'
   if (type === 'retag') return '批量重新打标'
+  if (type === 'post_use_journey') return '补全用户旅程'
   return '后台任务'
 }
 
@@ -205,8 +213,21 @@ export function backgroundTasksConflict(existing, incoming) {
         a.meta.dataMonth === b.meta?.dataMonth,
     )
   }
-  if (a.type === 'retag' && b.type === 'retag') {
+  if (
+    (a.type === 'retag' || a.type === 'post_use_journey') &&
+    (b.type === 'retag' || b.type === 'post_use_journey')
+  ) {
     return Boolean(a.meta?.periodId && a.meta.periodId === b.meta?.periodId)
+  }
+  if (a.type === 'post_use_journey' || b.type === 'post_use_journey') {
+    const journeyTask = a.type === 'post_use_journey' ? a : b
+    const other = journeyTask === a ? b : a
+    if (other.type !== 'import' || other.meta?.dataSourceType !== 'post_use_rating') return false
+    return importMonthOverlapsPeriod(
+      /** @type {string} */ (other.meta?.dataMonth),
+      /** @type {string} */ (journeyTask.meta?.periodStart),
+      /** @type {string} */ (journeyTask.meta?.periodEnd),
+    )
   }
   const importTask = a.type === 'import' ? a : b
   const retagTask = a.type === 'retag' ? a : b

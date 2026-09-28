@@ -1,9 +1,13 @@
 /**
- * 用后即评非 10 分专用旅程补全（规则关键词，不走工单批量打标）
+ * 用后即评非 10 分旅程范围判断。
+ * 写入不再使用下面的六组通用关键词，改由产品旅程模板 + 门闸完成。
  */
 import {
   isPostUseNon10LibraryRecord,
 } from '../../domain/postUseRatingImport.js'
+import { recordHasUnknownJourney } from '../journeySemantic.js'
+import { resolveJourneyLlmSkipScoreThreshold } from '../journeyMatchConfidence.js'
+import { getManualTagFields } from '../manualTagFields.js'
 
 export const POST_USE_JOURNEY_UNKNOWN_L1 = '未识别环节'
 export const POST_USE_JOURNEY_UNKNOWN_L2 = '未识别子环节'
@@ -50,13 +54,36 @@ export function matchPostUseJourneyFromText(text) {
 }
 
 /**
- * 是否需要补旅程：library 非 10 分，且尚无有效旅程
+ * 旧的六组关键词已经写出具体环节。未识别的不算，人工改过的不算。
  * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
  */
-export function needsPostUseJourney(record) {
+export function isLegacyPostUseKeywordJourney(record) {
   if (!isPostUseNon10LibraryRecord(record)) return false
-  const l1 = String(record?.journeyL1 ?? '').trim()
-  return !l1 || l1 === POST_USE_JOURNEY_UNKNOWN_L1
+  if (getManualTagFields(record).includes('journey')) return false
+  if (record?.journeySource !== POST_USE_JOURNEY_SOURCE) return false
+  return !recordHasUnknownJourney(record)
+}
+
+/**
+ * 是否还要补旅程：当前周期可见的非 10 分评价，且旅程为空、未识别，或规则分未过门闸。
+ * 人工改过的旅程不覆盖。模型已经写出具体环节的也不再打；模型结果仍是「未识别环节」时还要再补。
+ * 旧关键词写出的具体环节默认不重打，调用方显式要求时才纳入。
+ * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
+ * @param {import('../storage.js').AppSettings} [settings]
+ * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+ */
+export function needsPostUseJourney(record, settings, options = {}) {
+  if (!isPostUseNon10LibraryRecord(record)) return false
+  if (getManualTagFields(record).includes('journey')) return false
+  if (recordHasUnknownJourney(record)) return true
+  if (record?.journeySource === 'llm') return false
+  if (record?.journeySource === 'rule') {
+    const score = Number(record?.journeyMatchScore)
+    if (!Number.isFinite(score)) return false
+    return score < resolveJourneyLlmSkipScoreThreshold(settings)
+  }
+  if (options.includeLegacyKeywordJourneys && isLegacyPostUseKeywordJourney(record)) return true
+  return false
 }
 
 /**

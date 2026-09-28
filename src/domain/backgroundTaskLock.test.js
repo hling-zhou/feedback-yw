@@ -15,6 +15,7 @@ import {
   isBackgroundTaskLockActive,
   isBackgroundTaskLockHeldByUser,
   isBackgroundTaskLockStale,
+  backgroundTaskTypeLabel,
 } from './backgroundTaskLock.js'
 
 const sampleLock = {
@@ -167,6 +168,51 @@ describe('backgroundTaskLock domain', () => {
     }
     expect(retagStartConflict({ active: false }, augustRetag, september)).toBe(null)
     expect(retagStartConflict({ active: false }, augustRetag, august)).toBe('retag')
+  })
+
+  it('lets post-use journey completion share the lock with ticket retag and post-use import', () => {
+    const september = {
+      periodId: '2026-09',
+      periodStart: '2026-09-01',
+      periodEnd: '2026-09-30',
+    }
+    const journey = {
+      ...sampleLock,
+      type: /** @type {const} */ ('post_use_journey'),
+      progress: '正在补全用户旅程 (2/8)',
+      meta: september,
+    }
+    expect(backgroundTasksConflict(journey, { type: 'retag', meta: september })).toBe(true)
+    expect(
+      backgroundTasksConflict(journey, {
+        type: 'retag',
+        meta: { periodId: '2026-08', periodStart: '2026-08-01', periodEnd: '2026-08-31' },
+      }),
+    ).toBe(false)
+    expect(
+      backgroundTasksConflict(journey, {
+        type: 'import',
+        meta: { dataMonth: '2026-09', dataSourceType: 'post_use_rating' },
+      }),
+    ).toBe(true)
+    expect(
+      backgroundTasksConflict(journey, {
+        type: 'import',
+        meta: { dataMonth: '2026-08', dataSourceType: 'post_use_rating' },
+      }),
+    ).toBe(false)
+    expect(
+      backgroundTasksConflict(journey, {
+        type: 'import',
+        meta: { dataMonth: '2026-09', dataSourceType: 'complaint_ticket' },
+      }),
+    ).toBe(false)
+    expect(backgroundTasksConflict(sampleLock, {
+      type: 'import',
+      meta: { dataMonth: '2026-03', dataSourceType: 'post_use_rating' },
+    })).toBe(false)
+    expect(formatOwnedBackgroundTaskBanner(journey)).toBe('正在补全用户旅程 (2/8)')
+    expect(backgroundTaskTypeLabel('post_use_journey')).toBe('补全用户旅程')
   })
 
   it('formats owned banner and detects enrich / cancel state', () => {

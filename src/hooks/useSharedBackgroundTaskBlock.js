@@ -72,6 +72,28 @@ export function useSharedBackgroundTaskBlock(options = {}) {
         }
       : null
     const retagConflict = retagIncoming ? findConflictingBackgroundTask(tasks, retagIncoming) : null
+    const journeyIncoming = currentPeriod
+      ? {
+          type: /** @type {const} */ ('post_use_journey'),
+          meta: {
+            periodId: currentPeriod.id,
+            periodStart: currentPeriod.startDate,
+            periodEnd: currentPeriod.endDate,
+            dataSourceType: 'post_use_rating',
+          },
+        }
+      : null
+    const postUseJourneyConflict = journeyIncoming
+      ? findConflictingBackgroundTask(tasks, journeyIncoming)
+      : null
+    const localPostUseImport =
+      importSession.active &&
+      importSession.dataSourceType === 'post_use_rating' &&
+      (
+        !importSession.dataMonth ||
+        !currentPeriod?.startDate ||
+        importMonthOverlapsPeriod(importSession.dataMonth, currentPeriod.startDate, currentPeriod.endDate)
+      )
 
     const importBlocked = Boolean(importConflict) || localImportConflict || Boolean(localRetagVsImport)
     const localRetagStartConflict = retagStartConflict(importSession, retagSession, {
@@ -114,6 +136,15 @@ export function useSharedBackgroundTaskBlock(options = {}) {
           ? RETAG_IN_PROGRESS_TIP
           : undefined
 
+    const postUseJourneyBlocked = Boolean(postUseJourneyConflict) || localRetag || Boolean(localPostUseImport)
+    const postUseJourneyBlockedTip = postUseJourneyConflict
+      ? conflictTip(postUseJourneyConflict)
+      : localRetag
+        ? RETAG_IN_PROGRESS_TIP
+        : localPostUseImport
+          ? '用后即评导入进行中，请待完成后再补全用户旅程'
+          : undefined
+
     const rebuildBlockedTip = rebuildBlocked
       ? '当前周期有导入或重新打标进行中，请待完成后再刷新洞察'
       : undefined
@@ -138,10 +169,12 @@ export function useSharedBackgroundTaskBlock(options = {}) {
       sharedBackgroundTask: tasks[0] ?? null,
       importBlocked,
       retagBlocked,
+      postUseJourneyBlocked,
       rebuildBlocked,
       detailSaveBlocked,
       importBlockedTip,
       retagBlockedTip,
+      postUseJourneyBlockedTip,
       rebuildBlockedTip,
       detailSaveBlockedTip,
       remoteBannerText,
