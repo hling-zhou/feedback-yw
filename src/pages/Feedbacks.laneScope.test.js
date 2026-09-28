@@ -21,6 +21,8 @@ describe('Feedbacks lane-scoped notices', () => {
     expect(source).toContain('countRecordsNeedingJourneyLlmEnrichment(ticketPeriodFeedbacks, settings)')
     expect(source).toContain("downloadUnknownJourneyCsv(ticketPeriodFeedbacks, '未识别旅程样本.csv')")
     expect(source).toContain('scopePostUseRatingRecords(')
+    expect(source).toContain('postUseLibraryIds.has(fb.id)')
+    expect(source).toContain('isPostUseLane ? postUseAnalysisRecords : periodFeedbacks')
   })
 
   it('clears filters when switching between ticket and post-use lanes', () => {

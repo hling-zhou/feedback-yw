@@ -25,7 +25,7 @@ export const FEEDBACK_LANE_DATA_SOURCES = {
 
 /** 用后即评满意度大类提示：不含已挂到投诉/咨询工单的回访 */
 export const POST_USE_LANE_HINT =
-  '不含已关联到投诉/咨询工单的投诉回访；请到「投诉咨询工单」查看回访满意度。'
+  '只列出已开启用后即评分析的产品。其余产品只参与公司满意度，不在此展示。不含已关联到投诉/咨询工单的投诉回访；请到「投诉咨询工单」查看回访满意度。'
 
 /**
  * @param {DataSourceType} dataSourceType

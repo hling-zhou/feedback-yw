@@ -396,18 +396,6 @@ export default function Feedbacks() {
     [filteredCustomerVisitRecords, callbackRecommendationPool],
   )
 
-  /** 周期内按大类可见条数（用后即评不含 callback） */
-  const laneVisiblePeriodCount = useMemo(() => {
-    if (isCustomerVisitLane) return customerVisitPeriodRecords.length
-    if (isPostUseLane) {
-      return periodFeedbacks.filter(isPostUseRatingLibraryRecord).length
-    }
-    return periodFeedbacks.filter((fb) => {
-      const t = recordSourceType(fb)
-      return t === 'complaint_ticket' || t === 'consultation_ticket'
-    }).length
-  }, [periodFeedbacks, isPostUseLane, isCustomerVisitLane, customerVisitPeriodRecords.length])
-
   const ticketPeriodFeedbacks = useMemo(
     () => filterFeedbackRecordsForLane(periodFeedbacks, FEEDBACK_LANE_TICKETS),
     [periodFeedbacks],
@@ -420,6 +408,27 @@ export default function Feedbacks() {
       catalogProducts,
     )
   }, [catalogProducts, isPostUseLane, periodFeedbacks])
+
+  const postUseLibraryIds = useMemo(
+    () => new Set(postUseAnalysisRecords.map((fb) => fb.id)),
+    [postUseAnalysisRecords],
+  )
+
+  /** 周期内按大类可见条数。用后即评只计分析范围内的产品，不含回访。 */
+  const laneVisiblePeriodCount = useMemo(() => {
+    if (isCustomerVisitLane) return customerVisitPeriodRecords.length
+    if (isPostUseLane) return postUseAnalysisRecords.length
+    return periodFeedbacks.filter((fb) => {
+      const t = recordSourceType(fb)
+      return t === 'complaint_ticket' || t === 'consultation_ticket'
+    }).length
+  }, [
+    periodFeedbacks,
+    isPostUseLane,
+    isCustomerVisitLane,
+    customerVisitPeriodRecords.length,
+    postUseAnalysisRecords.length,
+  ])
 
   const postUseNeedingJourney = useMemo(() => {
     if (!isPostUseLane) return []
@@ -498,8 +507,12 @@ export default function Feedbacks() {
   ])
 
   const filterOptionRecords = useMemo(
-    () => libraryFilterOptionRecords(periodFeedbacks, feedbackLane),
-    [feedbackLane, periodFeedbacks],
+    () =>
+      libraryFilterOptionRecords(
+        isPostUseLane ? postUseAnalysisRecords : periodFeedbacks,
+        feedbackLane,
+      ),
+    [feedbackLane, isPostUseLane, periodFeedbacks, postUseAnalysisRecords],
   )
 
   const handleProductChange = useCallback(
@@ -660,7 +673,7 @@ export default function Feedbacks() {
       }
       // 两大类分流
       if (isPostUseLane) {
-        if (!isPostUseRatingLibraryRecord(fb)) return false
+        if (!postUseLibraryIds.has(fb.id)) return false
       } else {
         const t = recordSourceType(fb)
         if (t !== 'complaint_ticket' && t !== 'consultation_ticket') return false
@@ -725,6 +738,7 @@ export default function Feedbacks() {
     user?.id,
     isPostUseLane,
     isCustomerVisitLane,
+    postUseLibraryIds,
   ])
 
   const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
