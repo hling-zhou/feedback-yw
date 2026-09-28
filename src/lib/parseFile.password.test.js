@@ -135,4 +135,26 @@ describe('parseFile password branches', () => {
     const result = await parseUploadFile(file)
     expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
   })
+
+  it('decrypts agile-encrypted xlsx when crypto.subtle is unavailable', async () => {
+    const { encryptWorkbook } = await import('ooxml-encryption')
+    const encrypted = await encryptWorkbook(new Uint8Array(buildWorkbookArrayBuffer()), 'abc123')
+    const file = new File([encrypted], '用后即评-6月#abc123.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const cryptoObj = globalThis.crypto
+    const descriptor = Object.getOwnPropertyDescriptor(cryptoObj, 'subtle')
+    Object.defineProperty(cryptoObj, 'subtle', {
+      configurable: true,
+      get: () => undefined,
+    })
+    try {
+      const { parseUploadFile } = await import('./parseFile.js')
+      const result = await parseUploadFile(file)
+      expect(result.rows).toEqual([{ 工单展示流水号: '20260001', 处理意见: '已处理' }])
+    } finally {
+      if (descriptor) Object.defineProperty(cryptoObj, 'subtle', descriptor)
+      else delete cryptoObj.subtle
+    }
+  })
 })

@@ -265,6 +265,17 @@ export async function resolveExcelReadBuffer(buffer, password) {
     if (code === 'invalidOleContainer' || code === 'missingOleStream') {
       return { buffer, password }
     }
+    const message = err instanceof Error ? err.message : ''
+    if (
+      message.includes('WebCrypto subtle API is unavailable') ||
+      message.includes('WebCrypto is unavailable')
+    ) {
+      throw createImportParseError(
+        IMPORT_PARSE_ERROR_CODES.PASSWORD_UNSUPPORTED,
+        '当前页面无法解密加密 Excel。请通过 https 或 localhost 打开后再导入，或先取消文件密码。',
+        err,
+      )
+    }
     throw err
   }
 }
