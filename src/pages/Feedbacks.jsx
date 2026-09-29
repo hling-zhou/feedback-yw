@@ -1342,22 +1342,26 @@ export default function Feedbacks() {
 
       <div className="page-section-sm">
         {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
-          <div className="flex justify-center py-16">
+          <div className="page-card flex justify-center py-16">
             <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : periodsLoading ? '加载数据周期…' : '加载反馈数据…'} />
           </div>
         ) : isCustomerVisitLane ? (
-          <CustomerVisitTable rows={customerVisitTableRows} />
+          <div className="page-card">
+            <CustomerVisitTable rows={customerVisitTableRows} />
+          </div>
         ) : view === 'table' ? (
-          <FeedbackTable
-            key={currentPeriodId || 'no-period'}
-            items={filtered}
-            onSelect={selectFeedback}
-            reviewEnabled={reviewEnabled}
-            doneRecordIds={doneRecordIds}
-            dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
-            hiddenColumns={tableHiddenColumns}
-            stickyOffset={stickyChromeHeight}
-          />
+          <div className="page-card">
+            <FeedbackTable
+              key={currentPeriodId || 'no-period'}
+              items={filtered}
+              onSelect={selectFeedback}
+              reviewEnabled={reviewEnabled}
+              doneRecordIds={doneRecordIds}
+              dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
+              hiddenColumns={tableHiddenColumns}
+              stickyOffset={stickyChromeHeight}
+            />
+          </div>
         ) : (
           <CardGrid
             key={currentPeriodId || 'no-period'}
