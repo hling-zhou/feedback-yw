@@ -297,7 +297,7 @@ export default function FeedbackTable({
   doneRecordIds = /** @type {ReadonlySet<string>} */ (new Set()),
   /** 数据来源筛选；为 post_use_rating 时使用评价专用列 */
   dataSource = '',
-  /** 需要隐藏的列 dataIndex 集合（默认不展示的列）；如 requestScene/problemType/journeyL1/resourcePool */
+  /** 用户选择不显示的列 dataIndex；空集合表示可切换列全部显示 */
   hiddenColumns,
   /** 表头吸顶偏移量（来自外层 sticky chrome 高度）；不传则不吸顶 */
   stickyOffset = 0,

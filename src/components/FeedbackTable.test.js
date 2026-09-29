@@ -19,7 +19,7 @@ describe('filterVisibleColumns', () => {
     expect(filterVisibleColumns(COLUMNS, [])).toHaveLength(5)
   })
 
-  it('hides the four default columns when given as a Set', () => {
+  it('hides columns listed in the set', () => {
     const hidden = new Set(['requestScene', 'problemType', 'journeyL1', 'resourcePool'])
     const visible = filterVisibleColumns(COLUMNS, hidden)
     expect(visible.map((c) => c.dataIndex)).toEqual(['ticketId'])

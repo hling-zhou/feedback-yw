@@ -121,15 +121,13 @@ import {
   downloadPostUseCustomerVisitExcel,
 } from '../lib/postUseRating/customerVisitExport.js'
 
-/** 列表「自定义显示列」可切换的列（默认隐藏，用户可勾选显示） */
-const FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS = [
+/** 列表「自定义显示列」可切换的列。默认全部显示，用户可取消勾选。 */
+const FEEDBACK_LIST_COLUMN_OPTIONS = [
   { key: 'requestScene', label: '请求场景' },
   { key: 'problemType', label: '问题类型' },
   { key: 'journeyL1', label: '用户旅程' },
   { key: 'resourcePool', label: '资源池' },
 ]
-/** 默认不显示的列 dataIndex */
-const DEFAULT_HIDDEN_COLUMNS = ['requestScene', 'problemType', 'journeyL1', 'resourcePool']
 
 export default function Feedbacks() {
   const {
@@ -155,7 +153,7 @@ export default function Feedbacks() {
     useSharedBackgroundTaskBlock()
   const [journeyBusy, setJourneyBusy] = useState(false)
   const [view, setView] = useState('table')
-  const [hiddenColumns, setHiddenColumns] = useState(() => new Set(DEFAULT_HIDDEN_COLUMNS))
+  const [hiddenColumns, setHiddenColumns] = useState(() => new Set())
   const [filters, setFilters] = useState(createEmptyFeedbackFilters)
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
   const [importCustomerRestoreOpen, setImportCustomerRestoreOpen] = useState(false)
@@ -187,8 +185,8 @@ export default function Feedbacks() {
   const feedbackLane = useMemo(() => resolveFeedbackLane(searchParams), [searchParams])
   const isPostUseLane = feedbackLane === FEEDBACK_LANE_POST_USE
   const columnOptions = isPostUseLane
-    ? FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS.filter((opt) => opt.key === 'journeyL1')
-    : FEEDBACK_LIST_HIDDEN_COLUMN_OPTIONS
+    ? FEEDBACK_LIST_COLUMN_OPTIONS.filter((opt) => opt.key === 'journeyL1')
+    : FEEDBACK_LIST_COLUMN_OPTIONS
   const tableHiddenColumns = useMemo(() => {
     if (!isPostUseLane) return hiddenColumns
     const next = new Set(hiddenColumns)
