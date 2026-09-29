@@ -36,6 +36,9 @@ const FIELD_ALIASES = {
   '处理意见': ['handlingText'],
   '产品技术优化': ['optimizationProduct'],
   '是否加急': ['urgencyLevel'],
+  '问题类型': ['problemType'],
+  '旅程一级': ['journeyL1'],
+  '旅程二级': ['journeyL2'],
   '_src': ['dataSourceType', 'source'],
   '_month': ['importMonth'],
   '_sheet': ['importSheetName'],
@@ -581,6 +584,9 @@ const FAM_TO_AXIS = {
   forward: 'NET', cert: 'CFG', health: 'DIAG', bw: 'CAP',
   billing_res: 'BILL', provision_elb: 'PROV', security_elb: 'SEC',
   mon: 'DIAG', func: 'CFG', api: 'DOC',
+  // 未预置产品的起步类目
+  draft_provision: 'PROV', draft_billing: 'BILL', draft_connect: 'NET',
+  draft_gap: 'CFG', draft_guide: 'DOC', draft_other: 'DOC',
 };
 
 function lookupAxis(famKey) {
@@ -921,35 +927,113 @@ function cloneTax(tax) {
 }
 
 // 派生草稿分类法（新产品无 curated 时）
-const PROBLEM_CUE_GLOBAL = /不支持|无法|不足|受限|超限|未留存|未释放|未提供|未达预期|缺失|无(入口|功能|自助)|需人工|人工审批|计划部审批|不透明|失败|异常|拒绝|冻结|不提供|不可见|限制|冷静期|保留期|瓶颈|不符|波动|不稳定|卡顿|不可行|未开放|无自助/;
+// 不用切词碎片当类目名。先按工单上已有的问题类型 / 旅程分桶，对不上再用统一起步类目。
+const PROBLEM_CUE_GLOBAL = /不支持|无法|不足|受限|超限|未留存|未释放|未提供|未达预期|缺失|无(入口|功能|自助)|需人工|人工审批|计划部审批|不透明|失败|异常|拒绝|冻结|不提供|不可见|限制|冷静期|保留期|瓶颈|不符|波动|不稳定|卡顿|不可行|未开放|无自助|不一致|审批/;
 
-function deriveDraftTax(product, rows) {
-  const S = '';
-  const texts = rows.map(r => [get(r, '问题原因'), get(r, '需求痛点')].filter(Boolean).join(S));
-  const cand = new Map();
-  const minDf = Math.max(2, Math.ceil(0.03 * rows.length));
-  for (const t of texts) {
-    for (let len = 3; len <= 10; len++) {
-      for (let i = 0; i + len <= t.length; i++) {
-        const q = t.slice(i, i + len);
-        if (q.indexOf(S) >= 0) continue;
-        if (!/^[一-龥]/.test(q) || !PROBLEM_CUE_GLOBAL.test(q)) continue;
-        const nonCue = q.replace(PROBLEM_CUE_GLOBAL, '');
-        if ((nonCue.match(/[一-龥]/g) || []).length < 2) continue;
-        if (/[的了和与或在是为无有未不此于对至向等中时后前内外上下该其之]$/.test(q)) continue;
-        cand.set(q, (cand.get(q) || 0) + 1);
-      }
+const DRAFT_TAG_PLACEHOLDER = /^(其他|其它|未识别|未识别环节|无|不涉及|待归类.*|通用|（其他\/通用）|（未定位.*）)$/;
+
+/** 未预置产品共用的起步类目。具体在前，较宽的功能缺口在后。 */
+const DRAFT_STARTER_FAMILIES = [
+  { key: 'draft_billing', name: '计费与续费', re: /续费|计费|账单|费用|冻结|到期|退订/ },
+  { key: 'draft_provision', name: '开通与权限', re: /开通|权限|灰度|审批|订购|授权|账号/ },
+  { key: 'draft_connect', name: '连通与配置', re: /连通|不通|中断|路由|丢包|时延|配置|安全组|绑定/ },
+  { key: 'draft_guide', name: '说明与指引', re: /文档|指引|说明不清|不透明|操作路径/ },
+  { key: 'draft_gap', name: '功能未开放', re: /未开放|不支持|无自助|无入口|功能缺失|功能未提供/ },
+];
+
+function hanCount(text) {
+  return (String(text || '').match(/[一-龥]/g) || []).length;
+}
+
+function concreteTag(value) {
+  const text = String(value || '').trim();
+  if (!text || DRAFT_TAG_PLACEHOLDER.test(text)) return '';
+  if (hanCount(text) < 2) return '';
+  return text;
+}
+
+/**
+ * 草稿短语能否单独成卡：至少 4 个汉字，且带问题线索。
+ * 续费、入口、未开这类碎片留在「其他/通用」。
+ * @param {string} phrase
+ */
+function isQualityDraftPhrase(phrase) {
+  const text = String(phrase || '').trim();
+  if (hanCount(text) < 4) return false;
+  if (/[的了和与或在是为无有未不此于对至向等中时后前内外上下该其之]$/.test(text)) return false;
+  return PROBLEM_CUE_GLOBAL.test(text);
+}
+
+/**
+ * 一组工单的卡片副标题：多数根因，否则多数痛点。切词碎片不出现在这里。
+ * @param {object[]} rows
+ */
+function representativeDraftSub(rows) {
+  const usable = (sentence) => {
+    const text = String(sentence || '').trim();
+    if (!text || BOILER_REASON.test(text)) return '';
+    if (hanCount(text) < 8) return '';
+    return text.slice(0, 40);
+  };
+  return usable(topSentence(rows, '问题原因')) || usable(topSentence(rows, '需求痛点')) || '';
+}
+
+/**
+ * @param {object} row
+ * @returns {{ key: string, name: string }}
+ */
+function draftBucketForRow(row) {
+  const problemType = concreteTag(get(row, '问题类型'));
+  const journeyL2 = concreteTag(get(row, '旅程二级'));
+  const journeyL1 = concreteTag(get(row, '旅程一级'));
+  if (problemType && hanCount(problemType) >= 4) return { key: 'pt:' + problemType, name: problemType };
+  if (journeyL2 && hanCount(journeyL2) >= 4) {
+    const name = journeyL1 ? `${journeyL1}·${journeyL2}` : journeyL2;
+    return { key: 'j:' + name, name };
+  }
+  const text = [get(row, '问题原因'), get(row, '需求痛点'), problemType, journeyL1, journeyL2].filter(Boolean).join('\n');
+  for (const fam of DRAFT_STARTER_FAMILIES) {
+    if (fam.re.test(text)) return { key: fam.key, name: fam.name };
+  }
+  return { key: 'draft_other', name: '待归类(草稿)' };
+}
+
+/**
+ * 未预置产品不走区分度打分：按标签和起步类目归桶，避免宽正则把工单打成待确认。
+ * @param {object[]} rows
+ */
+function classifyDraft(rows) {
+  const famMap = new Map();
+  const rowStatus = [];
+  for (const row of rows) {
+    const bucket = draftBucketForRow(row);
+    if (!famMap.has(bucket.key)) {
+      famMap.set(bucket.key, {
+        fam: { key: bucket.key, name: bucket.name, crossCut: false, subs: [] },
+        subs: new Map(),
+      });
     }
+    const entry = famMap.get(bucket.key);
+    const unlocated = isBoilerplateReason(row);
+    const subKey = unlocated ? '_unloc' : '_';
+    if (!entry.subs.has(subKey)) entry.subs.set(subKey, { sub: null, rows: [] });
+    entry.subs.get(subKey).rows.push(row);
+    rowStatus.push({ status: unlocated ? 'unloc' : 'other', fam: bucket.name, sub: null });
   }
-  const ranked = [...cand.entries()].filter(([, c]) => c >= minDf).sort((a, b) => b[1] - a[1]);
-  const chosen = [];
-  for (const [q, c] of ranked) {
-    if (chosen.length >= 10) break;
-    if (chosen.some(([q2]) => q2.includes(q) || q.includes(q2))) continue;
-    chosen.push([q, c]);
-  }
-  const families = chosen.map(([q], idx) => ({ key: 'draft_' + idx, name: q, re: new RegExp(q), subs: [] }));
-  if (!families.length) families.push({ key: 'draft_other', name: '待归类(草稿)', re: /.*/, subs: [] });
+  return {
+    famMap, unclassified: 0, rowStatus, pending: 0, pendingRows: [],
+    confThr: 0, stats: null, assistCandidates: [],
+  };
+}
+
+function deriveDraftTax(product) {
+  const families = DRAFT_STARTER_FAMILIES.map((fam) => ({
+    key: fam.key,
+    name: fam.name,
+    re: new RegExp(fam.re.source),
+    subs: [],
+  }));
+  families.push({ key: 'draft_other', name: '待归类(草稿)', re: /$^/, subs: [] });
   return { name: `${product}·派生草稿`, derived: true, families };
 }
 
@@ -1194,7 +1278,9 @@ function mkItem(famName, subName, rs, autoInfo, crossCut, famKey) {
 
 function analyze(rows, tax, T, B, thr, prodName) {
   const scoredMode = process.env.MATCH_MODE !== 'first';
-  const cls = scoredMode ? classifyScored(rows, tax) : classify(rows, tax);
+  const cls = tax.derived
+    ? classifyDraft(rows)
+    : (scoredMode ? classifyScored(rows, tax) : classify(rows, tax));
   const { famMap, unclassified } = cls;
   const pending = cls.pending || 0, pendingRows = cls.pendingRows || [], confThr = cls.confThr || 0;
   const matchStats = cls.stats || null;
@@ -1208,7 +1294,11 @@ function analyze(rows, tax, T, B, thr, prodName) {
     const famRowsArr = [];
     for (const [, g] of fv.subs) famRowsArr.push(...g.rows);
     for (const [k, g] of fv.subs) {
-      if (k === '_unloc') { items.push(mkItem(fv.fam.name, '（未定位·无根因模板）', g.rows, null, fv.fam.crossCut, fv.fam.key)); unlocated += g.rows.length; continue; }
+      if (k === '_unloc') {
+        items.push(mkItem(fv.fam.name, '（未定位·无根因模板）', g.rows, null, fv.fam.crossCut, fv.fam.key));
+        unlocated += g.rows.length;
+        continue;
+      }
       if (k !== '_') { items.push(mkItem(fv.fam.name, g.sub.name, g.rows, null, fv.fam.crossCut, fv.fam.key)); continue; }
       const N = g.rows.length;
       const famN = famRowsArr.length;
@@ -1220,20 +1310,43 @@ function analyze(rows, tax, T, B, thr, prodName) {
       const inBucket = new Set(g.rows);
       const rest = famRowsArr.filter(r => !inBucket.has(r));
       const sp = autoSplit(g.rows, rest, rows, fv.fam, prodName);
+      const accepted = [];
+      const rejectedRows = [];
+      for (const candidate of sp.chosen) {
+        const phrase = isQualityDraftPhrase(candidate.obj)
+          ? candidate.obj
+          : (isQualityDraftPhrase(candidate.phrase) ? candidate.phrase : '');
+        if (!phrase) {
+          rejectedRows.push(...candidate.rows);
+          continue;
+        }
+        accepted.push({ candidate, phrase });
+      }
+      const leftover = [...sp.leftover, ...rejectedRows];
       splitLog.push({
         fam: fv.fam.name, N, minDf: sp.minDf,
-        split: sp.chosen.map(c => ({ phrase: c.phrase, obj: c.obj, df: c.df, conc: c.conc })),
-        leftover: sp.leftover.length,
-        rej: sp.rej,
-        topCands: sp.cands.slice(0, 6).map(c => `${c.p}(df${c.df})`),
+        split: accepted.map(item => ({ phrase: item.phrase, obj: item.candidate.obj, df: item.candidate.df, conc: item.candidate.conc })),
+        leftover: leftover.length,
+        rej: { ...sp.rej, quality: sp.chosen.length - accepted.length },
+        topCands: sp.cands.slice(0, 6).map(c => `${c.phrase || c.p}(df${c.df})`),
       });
-      for (const c of sp.chosen) {
-        const info = { phrase: c.phrase, df: c.df, conc: c.conc, N };
-        items.push(mkItem(fv.fam.name, c.phrase, c.rows, info, fv.fam.crossCut, fv.fam.key));
-        proposals.push({ fam: fv.fam.name, sub: c.phrase, re: escapeRe(c.obj), df: c.df, conc: c.conc, bucketN: N });
+      for (const item of accepted) {
+        const info = { phrase: item.phrase, df: item.candidate.df, conc: item.candidate.conc, N };
+        items.push(mkItem(fv.fam.name, item.phrase, item.candidate.rows, info, fv.fam.crossCut, fv.fam.key));
+        // 只保留过质量线的子议题提案。不回写分类法，仍标为待确认。
+        proposals.push({
+          fam: fv.fam.name, sub: item.phrase, re: escapeRe(item.phrase),
+          df: item.candidate.df, conc: item.candidate.conc, bucketN: N, confirmRequired: true,
+        });
       }
-      if (sp.leftover.length) items.push(mkItem(fv.fam.name, '（其他/通用）', sp.leftover, null, fv.fam.crossCut, fv.fam.key));
+      if (leftover.length) {
+        items.push(mkItem(fv.fam.name, '（其他/通用）', leftover, null, fv.fam.crossCut, fv.fam.key));
+      }
     }
+  }
+
+  if (tax.derived) {
+    for (const it of items) it.categoryTitle = true;
   }
 
   for (const it of items) {
@@ -1579,6 +1692,11 @@ module.exports = {
   applyOverrides,
   cloneTax,
   deriveDraftTax,
+  draftBucketForRow,
+  isQualityDraftPhrase,
+  representativeDraftSub,
+  classifyDraft,
+  DRAFT_STARTER_FAMILIES,
   // 分类函数
   classify,
   classifyScored,
