@@ -430,7 +430,7 @@ export default function TopicAnalysis() {
       />
 
       <Tabs
-        className="[&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
+        className="[&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
         onChange={(value) => setSearchParams(value === 'reports' ? { tab: 'reports' } : {}, { replace: true })}
         items={[

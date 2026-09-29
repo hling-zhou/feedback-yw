@@ -17,9 +17,9 @@ describe('TagManagement tabs', () => {
   })
 
   it('uses the same underline tabs as the actions page', () => {
-    expect(source).toContain('[&_.ant-tabs-tab]:text-[16px]')
+    expect(source).toContain('[&_.ant-tabs-tab]:text-[14px]')
     expect(source).toContain('[&_.ant-tabs-tab]:font-bold')
-    expect(source).toContain('[&_.ant-tabs-tab-btn]:text-[16px]')
+    expect(source).toContain('[&_.ant-tabs-tab-btn]:text-[14px]')
     expect(source).not.toContain('WorkbenchTabNav')
   })
 })

@@ -74,7 +74,7 @@ export default function WorkbenchAnalysisNav({
 
   return (
     <Tabs
-      className="page-sticky-chrome mb-4 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
+      className="page-sticky-chrome mb-4 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
       activeKey={activeSourceTab}
       onChange={onSourceTabChange}
       items={sourceItems}

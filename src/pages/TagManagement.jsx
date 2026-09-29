@@ -121,7 +121,7 @@ export default function TagManagement() {
         />
       )}
       <Tabs
-        className="mt-4 [&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
+        className="mt-4 [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
