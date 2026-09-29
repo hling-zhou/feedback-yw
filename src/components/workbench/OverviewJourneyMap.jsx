@@ -17,11 +17,23 @@ const SOURCE_OPTIONS = [
 ]
 
 /**
- * 综合概述总旅程图：本地产品选择 + 来源切换，不写入快照。
+ * 综合概述总旅程图：产品与页面其他选择联动，来源仍在本图内切换，不写入快照。
  * 多月范围按当前旅程环节取月均，并与范围开始月的上一个月对比。
  */
-export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = null }) {
-  const [product, setProduct] = useState('')
+export default function OverviewJourneyMap({
+  feedbacks = [],
+  currentPeriod = null,
+  product: productProp,
+  onProductChange,
+}) {
+  const [productLocal, setProductLocal] = useState('')
+  const controlled = onProductChange != null
+  const product = controlled ? (productProp || '') : productLocal
+  const setProduct = (value) => {
+    const next = value || ''
+    if (controlled) onProductChange(next)
+    else setProductLocal(next)
+  }
   const [sourceFilter, setSourceFilter] = useState('all')
   const comparison = useMemo(() => resolveJourneyComparisonWindow(currentPeriod), [currentPeriod])
   const currentRecords = useMemo(
@@ -40,10 +52,11 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
   )
 
   useEffect(() => {
+    if (controlled) return
     if (product && !products.some((item) => item.name === product)) {
-      setProduct('')
+      setProductLocal('')
     }
-  }, [product, products])
+  }, [controlled, product, products])
 
   const journeyModel = useMemo(() => {
     const current = product ? filterFeedbacks(currentRecords, { product }) : currentRecords
@@ -76,7 +89,12 @@ export default function OverviewJourneyMap({ feedbacks = [], currentPeriod = nul
             className="min-w-[220px]"
             placeholder="选择一个产品"
             value={product || undefined}
-            options={products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))}
+            options={[
+              ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })),
+              ...(product && !products.some((item) => item.name === product)
+                ? [{ value: product, label: product }]
+                : []),
+            ]}
             onChange={(value) => setProduct(value || '')}
           />
           <Segmented

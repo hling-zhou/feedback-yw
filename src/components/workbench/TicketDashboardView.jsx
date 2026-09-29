@@ -113,11 +113,12 @@ export default function TicketDashboardView({
   }, [adapter, sourceType])
 
   useEffect(() => {
+    // 受控时产品属于工作台三页共用，本页选项里没有也不清掉，避免串页把选择抹掉。
+    if (controlled) return
     if (product && !products.some((item) => item.name === product)) {
-      if (controlled) onProductChange?.('')
-      else setProductLocal('')
+      setProductLocal('')
     }
-  }, [product, products, controlled, onProductChange])
+  }, [product, products, controlled])
 
   const setProduct = useCallback((value) => {
     if (controlled) onProductChange?.(value || '')
@@ -225,7 +226,7 @@ export default function TicketDashboardView({
       <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">{`${sourceLabel}综合分析`}</span></div>
         <Space size={[8, 8]} wrap>
           <Typography.Text strong>产品</Typography.Text>
-          <Select showSearch optionFilterProp="label" className="min-w-[220px]" value={product} options={[{ value: '', label: `全部产品 (${periodRecords.length})` }, ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))]} onChange={setProduct} />
+          <Select showSearch optionFilterProp="label" className="min-w-[220px]" value={product} options={[{ value: '', label: `全部产品 (${periodRecords.length})` }, ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })), ...(product && !products.some((item) => item.name === product) ? [{ value: product, label: product }] : [])]} onChange={setProduct} />
           <Tag color="blue">当前范围：{model.scope.periodLabel}</Tag>
           {complaintOnlyCx ? <Tag color="purple">仅客户体验类投诉</Tag> : null}
           <Tag>产品 {model.scope.productCount}</Tag>

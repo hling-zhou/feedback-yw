@@ -22,25 +22,41 @@ const SERIES_COLORS = {
  * @param {Object} props
  * @param {FeedbackRecord[]} [props.feedbacks]
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
+ * @param {string} [props.product] 与页面其他产品选择联动；空字符串表示全部产品
+ * @param {(product: string) => void} [props.onProductChange]
  */
-export default function ProductExperienceTrendPanel({ feedbacks = [], currentPeriod = null }) {
+export default function ProductExperienceTrendPanel({
+  feedbacks = [],
+  currentPeriod = null,
+  product: productProp,
+  onProductChange,
+}) {
   const enabledProducts = useMemo(() => getEnabledProducts(), [])
   const enabledNames = useMemo(() => new Set(enabledProducts.map((p) => p.name)), [enabledProducts])
-  const productOptions = useMemo(
-    () =>
-      listProducts(feedbacks)
-        .filter((p) => enabledNames.has(p.name))
-        .map((p) => ({ value: p.name, label: p.name })),
-    [feedbacks, enabledNames],
-  )
+  const productOptions = useMemo(() => {
+    const options = listProducts(feedbacks)
+      .filter((p) => enabledNames.has(p.name))
+      .map((p) => ({ value: p.name, label: p.name }))
+    if (productProp && !options.some((item) => item.value === productProp)) {
+      options.push({ value: productProp, label: productProp })
+    }
+    return options
+  }, [feedbacks, enabledNames, productProp])
   const focusNames = useMemo(
     () => getPostUseFocusTrackedNames(enabledProducts),
     [enabledProducts],
   )
 
   const [selected, setSelected] = useState('')
-  const productName =
-    selected || focusNames.find((n) => productOptions.some((o) => o.value === n)) || focusNames[0] || productOptions[0]?.value || ''
+  const controlled = onProductChange != null
+  const productName = controlled
+    ? (productProp || '')
+    : (selected || focusNames.find((n) => productOptions.some((o) => o.value === n)) || focusNames[0] || productOptions[0]?.value || '')
+  const setProduct = (value) => {
+    const next = value || ''
+    if (controlled) onProductChange(next)
+    else setSelected(next)
+  }
 
   const endMonth = useMemo(() => {
     if (!currentPeriod) return ''
@@ -128,11 +144,12 @@ export default function ProductExperienceTrendPanel({ feedbacks = [], currentPer
           <Typography.Text strong>单产品体验趋势</Typography.Text>
           <Select
             showSearch
+            allowClear={controlled}
             optionFilterProp="label"
-            placeholder="选择产品"
+            placeholder={controlled ? '全部产品' : '选择产品'}
             value={productName || undefined}
             options={productOptions}
-            onChange={setSelected}
+            onChange={(value) => setProduct(value || '')}
             className="min-w-[180px]"
           />
         </Space>
@@ -140,7 +157,7 @@ export default function ProductExperienceTrendPanel({ feedbacks = [], currentPer
       {!productName || !trend.hasAnyData ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={productName ? '该产品近 12 个月暂无数据' : '请选择产品'}
+          description={productName ? '该产品近 12 个月暂无数据' : '选择具体产品后查看体验趋势'}
           className="!my-6"
         />
       ) : (

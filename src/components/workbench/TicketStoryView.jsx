@@ -414,6 +414,8 @@ export default function TicketStoryView({
         snapshot={snapshot}
         records={model.records || []}
         showEffectTable={true}
+        productId={productSelected ? scope.selectedProduct : 'all'}
+        onProductChange={(value) => onProductChange?.(!value || value === 'all' ? '' : value)}
         onOpenFeedback={onOpenFeedback}
       />
       {!complaint ? (

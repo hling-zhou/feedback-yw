@@ -40,7 +40,8 @@ const TIER_TOOLTIPS = {
  * @param {Object} props.snapshot - 概览快照或 source 快照
  * @param {import('../../lib/types.js').FeedbackRecord[]} [props.records=[]] - 用于详情抽屉工单展示
  * @param {boolean} [props.showEffectTable=false] - 投诉/咨询 tab 专用
- * @param {string} [props.productId=null] - 产品筛选
+ * @param {string} [props.productId=null] - 产品筛选；传 onProductChange 时受控
+ * @param {(productId: string) => void} [props.onProductChange]
  * @param {(record: import('../../lib/types.js').FeedbackRecord) => void} [props.onOpenFeedback] - 点击工单号叠加工单详情抽屉
  */
 export default function ActionRecsPanel({
@@ -49,13 +50,19 @@ export default function ActionRecsPanel({
   records = [],
   showEffectTable = false,
   productId = null,
+  onProductChange,
   onOpenFeedback,
 }) {
   const { recs, gateReport } = useActionRecommendations({ sourceFilter, snapshot })
   const [selectedRec, setSelectedRec] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [gateDrawerOpen, setGateDrawerOpen] = useState(false)
-  const [productFilter, setProductFilter] = useState(productId || 'all')
+  const [productFilterLocal, setProductFilterLocal] = useState(productId || 'all')
+  const productFilter = onProductChange ? (productId || 'all') : productFilterLocal
+  const setProductFilter = (value) => {
+    if (onProductChange) onProductChange(value || 'all')
+    else setProductFilterLocal(value || 'all')
+  }
   const [viewMode, setViewMode] = useState('cards') // 'cards' | 'cross'
 
   // 产品筛选
@@ -98,8 +105,11 @@ export default function ActionRecsPanel({
   // 产品选项
   const productOptions = useMemo(() => {
     const products = [...new Set(recs.map((r) => r.scope?.product).filter(Boolean))]
+    if (productFilter !== 'all' && productFilter && !products.includes(productFilter)) {
+      products.push(productFilter)
+    }
     return [{ label: '全部产品', value: 'all' }, ...products.map((p) => ({ label: p, value: p }))]
-  }, [recs])
+  }, [recs, productFilter])
 
   const handleCardClick = (rec) => {
     setSelectedRec(rec)

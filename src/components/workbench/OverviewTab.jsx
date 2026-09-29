@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
@@ -30,6 +30,8 @@ import ProductExperienceTrendPanel from './ProductExperienceTrendPanel.jsx'
  * @param {boolean} [props.rebuildDisabled]
  * @param {import('../../lib/types.js').FeedbackRecord[]} [props.feedbacks]
  * @param {(feedback: import('../../lib/types.js').FeedbackRecord) => void} [props.onOpenFeedback]
+ * @param {string} [props.product] 与投诉、咨询页共用；空字符串表示全部产品
+ * @param {(product: string) => void} [props.onProductChange]
  */
 export default function OverviewTab({
   snapshot,
@@ -44,7 +46,18 @@ export default function OverviewTab({
   rebuildDisabled,
   feedbacks = [],
   onOpenFeedback,
+  product: productProp = '',
+  onProductChange,
 }) {
+  const [productLocal, setProductLocal] = useState('')
+  const controlled = onProductChange != null
+  const product = controlled ? (productProp || '') : productLocal
+  const setProduct = (value) => {
+    const next = !value || value === 'all' ? '' : value
+    if (controlled) onProductChange(next)
+    else setProductLocal(next)
+  }
+
   const { conclusions: displayConclusions, recommendationsPendingRefresh } = useMemo(
     () => prepareOverviewConclusionsForDisplay(snapshot?.conclusions),
     [snapshot?.conclusions],
@@ -127,12 +140,24 @@ export default function OverviewTab({
         sourceFilter="all"
         snapshot={snapshot}
         records={feedbacks}
+        productId={product || 'all'}
+        onProductChange={setProduct}
         onOpenFeedback={onOpenFeedback}
       />
 
-      <ProductExperienceTrendPanel feedbacks={feedbacks} currentPeriod={currentPeriod} />
+      <ProductExperienceTrendPanel
+        feedbacks={feedbacks}
+        currentPeriod={currentPeriod}
+        product={product}
+        onProductChange={setProduct}
+      />
 
-      <OverviewJourneyMap feedbacks={feedbacks} currentPeriod={currentPeriod} />
+      <OverviewJourneyMap
+        feedbacks={feedbacks}
+        currentPeriod={currentPeriod}
+        product={product}
+        onProductChange={setProduct}
+      />
 
       {wanTouRows.length > 0 && (
         <div className="page-card"><div className="page-card-header"><span className="page-card-title">各产品万投比（投诉工单）</span><div>{

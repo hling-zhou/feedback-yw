@@ -17,7 +17,8 @@ describe('OverviewTab journey map', () => {
   it('mounts the single-product experience trend panel after 行动建议', () => {
     const overview = fs.readFileSync(new URL('./OverviewTab.jsx', import.meta.url), 'utf8')
     expect(overview).toContain('ProductExperienceTrendPanel')
-    expect(overview).toContain('<ProductExperienceTrendPanel feedbacks={feedbacks} />')
+    expect(overview).toContain('product={product}')
+    expect(overview).toContain('onProductChange={setProduct}')
     // 顺序：行动建议之后、用户旅程之前
     expect(overview.indexOf('<ActionRecsPanel')).toBeLessThan(
       overview.indexOf('<ProductExperienceTrendPanel'),

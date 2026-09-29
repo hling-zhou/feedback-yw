@@ -79,7 +79,7 @@ export default function InsightWorkbench() {
     if (tab && (tab === TAB_OVERVIEW || DATA_SOURCE_TYPES.includes(tab))) return tab
     return TAB_OVERVIEW
   })
-  const [ticketProduct, setTicketProduct] = useState('')
+  const [selectedProduct, setSelectedProduct] = useState('')
   const [showTicketTabsWhatsNew, setShowTicketTabsWhatsNew] = useState(
     () => !hasSeenWorkbenchTicketTabsWhatsNew(),
   )
@@ -117,12 +117,6 @@ export default function InsightWorkbench() {
     selectInsightPeriod(spec)
   }, [currentPeriod, selectInsightPeriod])
 
-  useEffect(() => {
-    if (!isTicketSource(activeTab)) {
-      setTicketProduct('')
-    }
-  }, [activeTab])
-
   // 用后即评 tab：按需加载 post_use_rating 数据（首屏不拉，切到 tab 时才加载）
   useEffect(() => {
     if (activeTab === 'post_use_rating' && currentPeriod?.id) {
@@ -134,9 +128,9 @@ export default function InsightWorkbench() {
     if (activeTab === TAB_OVERVIEW) return {}
     return {
       source: activeTab,
-      product: isTicketSource(activeTab) ? ticketProduct || undefined : undefined,
+      product: isTicketSource(activeTab) ? selectedProduct || undefined : undefined,
     }
-  }, [activeTab, ticketProduct])
+  }, [activeTab, selectedProduct])
 
   const overviewDisplay = overviewSnapshot
   const showStaleBanner =
@@ -166,6 +160,8 @@ export default function InsightWorkbench() {
           rebuildDisabled={rebuildDisabled}
           feedbacks={feedbacks}
           onOpenFeedback={selectFeedback}
+          product={selectedProduct}
+          onProductChange={setSelectedProduct}
         />
       )
     }
@@ -179,8 +175,8 @@ export default function InsightWorkbench() {
           <TicketDashboardView
             snapshot={snap}
             sourceLabel={label}
-            product={ticketProduct}
-            onProductChange={setTicketProduct}
+            product={selectedProduct}
+            onProductChange={setSelectedProduct}
             showWhatsNew={showTicketTabsWhatsNew}
             onDismissWhatsNew={dismissTicketTabsWhatsNew}
             onOpenFeedback={selectFeedback}
@@ -250,7 +246,7 @@ export default function InsightWorkbench() {
     snapshotRebuilding,
     rebuildAllSnapshots,
     rebuildDisabled,
-    ticketProduct,
+    selectedProduct,
     showTicketTabsWhatsNew,
     dismissTicketTabsWhatsNew,
     selectFeedback,
