@@ -745,7 +745,10 @@ export function InsightsProvider({ children }) {
     }
   }, [adapter])
 
-  /** 其他用户写入共享库后，拉取最新反馈、快照与标签候选 */
+  /**
+   * 其他用户写入共享库后，拉取最新反馈、快照与标签候选。
+   * 不置 feedbacksLoading，列表留在原地换数据。
+   */
   const syncSharedDataFromServer = useCallback(
     async (opts = {}) => {
       const { notify = true } = opts
@@ -759,7 +762,6 @@ export function InsightsProvider({ children }) {
       }
       remoteSyncInProgressRef.current = true
       skipPersistRef.current = true
-      setFeedbacksLoading(true)
       try {
         // 与首屏加载策略一致：只拉工单类型，post_use_rating 按需加载
         const ticketQuery = isApiStorageAdapter(adapter)
@@ -801,7 +803,6 @@ export function InsightsProvider({ children }) {
       } catch (err) {
         console.warn('[storage] 远程同步失败', err)
       } finally {
-        setFeedbacksLoading(false)
         skipPersistRef.current = false
         remoteSyncInProgressRef.current = false
       }
@@ -988,7 +989,7 @@ export function InsightsProvider({ children }) {
         // 只有 recordsRevision 变化（记录增删改）才需要重拉记录列表
         // revision 变但 recordsRevision 不变（如 snapshot rebuild / tag meta 变更）不需要重拉
         if (prevRecords != null && recordsRevision !== prevRecords) {
-          await syncSharedDataFromServer({ notify: true })
+          await syncSharedDataFromServer({ notify: false })
         }
         dataRevisionRef.current = revision
         recordsRevisionRef.current = recordsRevision
