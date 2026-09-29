@@ -76,16 +76,15 @@ export function formatInsightRebuildButtonLabel(progress) {
 }
 
 /**
+ * 重建进行中的非阻断提示。页面继续展示当前快照，完成后由调用方换成新快照。
  * @param {string | null | undefined} progress
  * @param {{ serverJob?: boolean }} [options]
  */
 export function formatInsightRebuildSpinDescription(progress, options = {}) {
   const { serverJob = false } = options
   const detail = progress || '准备中…'
-  if (serverJob) {
-    return `服务端正在生成洞察快照：${detail}。完成后将自动刷新本页数据。`
-  }
-  return `正在根据最新数据生成洞察快照：${detail}，请稍候…`
+  const where = serverJob ? '服务端正在生成洞察快照' : '正在生成洞察快照'
+  return `${where}：${detail}。本页仍显示当前快照，完成后自动换成新的。`
 }
 
 /**

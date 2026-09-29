@@ -332,17 +332,20 @@ export default function InsightWorkbench() {
             onSourceTabChange={setActiveTab}
             showTicketTabsWhatsNew={showTicketTabsWhatsNew}
           />
-          <Spin
-            spinning={Boolean(snapshotRebuilding)}
-            description={formatInsightRebuildSpinDescription(snapshotRebuilding, {
-              serverJob: insightRebuildOnServer,
-            })}
-            className="block"
-          >
-            <div key={activeTab} data-workbench-tab={activeTab}>
-              {activeTabContent}
-            </div>
-          </Spin>
+          {snapshotRebuilding ? (
+            <Alert
+              className="mb-4"
+              type="info"
+              showIcon
+              title="洞察快照生成中"
+              description={formatInsightRebuildSpinDescription(snapshotRebuilding, {
+                serverJob: insightRebuildOnServer,
+              })}
+            />
+          ) : null}
+          <div key={activeTab} data-workbench-tab={activeTab}>
+            {activeTabContent}
+          </div>
         </div>
       )}
 
