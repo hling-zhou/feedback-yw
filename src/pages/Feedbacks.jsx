@@ -1147,8 +1147,7 @@ export default function Feedbacks() {
       )}
 
       <div
-        ref={stickyChromeRef}
-        className={`page-sticky-chrome ${
+        className={`page-card overflow-visible !pt-0 ${
           needsTicketLlmCount > 0 ||
           needsJourneyLlmCount > 0 ||
           missingTags > 0 ||
@@ -1157,6 +1156,10 @@ export default function Feedbacks() {
             ? 'page-section-sm'
             : 'page-section'
         }`}
+      >
+      <div
+        ref={stickyChromeRef}
+        className="sticky top-0 z-20 -mx-4 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
       >
         <div className="flex w-full flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
@@ -1340,17 +1343,13 @@ export default function Feedbacks() {
       </div>
       </div>
 
-      <div className="page-section-sm">
         {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
-          <div className="page-card flex justify-center py-16">
+          <div className="flex justify-center py-16">
             <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : periodsLoading ? '加载数据周期…' : '加载反馈数据…'} />
           </div>
         ) : isCustomerVisitLane ? (
-          <div className="page-card">
-            <CustomerVisitTable rows={customerVisitTableRows} />
-          </div>
+          <CustomerVisitTable rows={customerVisitTableRows} />
         ) : view === 'table' ? (
-          <div className="page-card">
             <FeedbackTable
               key={currentPeriodId || 'no-period'}
               items={filtered}
@@ -1361,7 +1360,6 @@ export default function Feedbacks() {
               hiddenColumns={tableHiddenColumns}
               stickyOffset={stickyChromeHeight}
             />
-          </div>
         ) : (
           <CardGrid
             key={currentPeriodId || 'no-period'}
@@ -1510,7 +1508,7 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
           return (
             <div
               key={fb.id}
-              className="page-card cursor-pointer"
+              className="page-card page-card-bordered cursor-pointer"
               onClick={() => onSelect(fb)}
             >
               <div className="flex flex-wrap gap-1.5">
@@ -1534,7 +1532,7 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
         return (
         <div
           key={fb.id}
-          className="page-card cursor-pointer"
+          className="page-card page-card-bordered cursor-pointer"
           onClick={() => onSelect(fb)}
         >
           <div className="flex flex-wrap gap-1.5">
