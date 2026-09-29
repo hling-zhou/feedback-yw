@@ -252,15 +252,15 @@ export default function TicketStoryView({
 
       <div className="page-card">
       <SectionHeading
-        title={complaint ? '规模与体验现状' : '负担与机会现状'}
+        title={complaint ? '规模与体验现状' : '规模与机会现状'}
         summary={complaint
           ? '投诉仅含客户体验类。看规模、体验质量和闭环风险。'
-          : '看咨询负担、可转为自助的机会，以及仍需跟进的紧急单。'}
+          : '看咨询规模、可转为自助的机会，以及仍需跟进的紧急单。'}
         id="ticket-status"
       />
       <div className="metric-card overflow-hidden">
         <div className="grid divide-y divide-ink-200 md:grid-cols-3 md:divide-x md:divide-y-0">
-          <StatusGroup label={complaint ? '规模' : '负担'}>
+          <StatusGroup label="规模">
             <StatusMetric
               label="工单量"
               value={metrics.total}

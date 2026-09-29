@@ -22,7 +22,7 @@ describe('TicketStoryView narrative hierarchy', () => {
     expect(source).toContain('复制工单号')
     expect(source).toContain('展开全部')
     expect(source).toContain('咨询优化机会')
-    expect(source).toContain('负担与机会现状')
+    expect(source).toContain('规模与机会现状')
     expect(source).toContain('主机会类型')
     expect(source).toContain('规模')
     expect(source).toContain('体验质量')
