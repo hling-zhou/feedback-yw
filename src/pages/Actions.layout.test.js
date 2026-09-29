@@ -17,7 +17,7 @@ describe('Actions page tabs', () => {
     expect(source).toContain('<ProblemReductionTab />')
     expect(source).toContain('<PlaybookPromotionPanel />')
     expect(source).not.toContain('title="产品举措与进展"')
-    expect(source).toContain('[&_.ant-tabs-tab]:text-xl')
+    expect(source).toContain('[&_.ant-tabs-tab]:text-[16px]')
     expect(source).toContain('[&_.ant-tabs-tab]:font-bold')
     expect(source.indexOf("label: '会议待办'")).toBeLessThan(
       source.indexOf("label: '产品举措与进展'"),

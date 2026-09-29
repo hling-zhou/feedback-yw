@@ -430,6 +430,7 @@ export default function TopicAnalysis() {
       />
 
       <Tabs
+        className="[&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
         onChange={(value) => setSearchParams(value === 'reports' ? { tab: 'reports' } : {}, { replace: true })}
         items={[
@@ -452,7 +453,7 @@ export default function TopicAnalysis() {
           },
           {
             key: 'reports',
-            label: `专题报告${visibleReports.length ? `（${visibleReports.length}）` : ''}`,
+            label: `专题报告${visibleReports.length ? `(${visibleReports.length})` : ''}`,
             children: reportsLoading && visibleReports.length === 0 ? (
               <div className="py-12 text-center"><Spin /></div>
             ) : visibleReports.length === 0 ? (

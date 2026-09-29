@@ -52,6 +52,7 @@ export const appTheme = {
       labelFontSize: 13,
     },
     Tabs: {
+      horizontalItemGutter: 4,
       horizontalItemPadding: '8px 12px',
       titleFontSize: 13,
     },

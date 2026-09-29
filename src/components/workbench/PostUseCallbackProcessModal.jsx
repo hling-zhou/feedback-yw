@@ -206,7 +206,7 @@ export default function PostUseCallbackProcessModal({
         items={[
           {
             key: 'questionnaire',
-            label: `官网问卷类建议回访（${recommendations.length}）`,
+            label: `官网问卷类建议回访(${recommendations.length})`,
             children: (
               <Table
                 size="small"
@@ -222,7 +222,7 @@ export default function PostUseCallbackProcessModal({
           },
           {
             key: 'callback',
-            label: `投诉回访非10分（${callbackNonTenRecords.length}）`,
+            label: `投诉回访非10分(${callbackNonTenRecords.length})`,
             children: (
               <Table
                 size="small"

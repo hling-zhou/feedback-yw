@@ -199,7 +199,7 @@ export default function Actions() {
   return (
     <div className="space-y-4">
       <Tabs
-        className="[&_.ant-tabs-tab]:text-xl [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-xl [&_.ant-tabs-tab-btn]:font-bold"
+        className="[&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)

@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { Badge } from 'antd'
+import { Badge, Tabs } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { isStubPipeline } from '../../analysis/registry.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
-import WorkbenchTabNav from './WorkbenchTabNav.jsx'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../../lib/productCatalog/postUseRatingProducts.js'
@@ -41,7 +40,7 @@ export default function WorkbenchAnalysisNav({
     ...DATA_SOURCE_TYPES.map((type) => {
       const base = DATA_SOURCE_LABELS[type]
       const preview =
-        isStubPipeline(type) && type !== 'post_use_rating' ? '（预览）' : ''
+        isStubPipeline(type) && type !== 'post_use_rating' ? '(预览)' : ''
       const count = sourceCounts[type]
       const name = `${base}${preview}`
       const text = count != null ? `${name} (${count})` : name
@@ -74,8 +73,8 @@ export default function WorkbenchAnalysisNav({
   ]
 
   return (
-    <WorkbenchTabNav
-      className="page-sticky-chrome mb-4"
+    <Tabs
+      className="page-sticky-chrome mb-4 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
       activeKey={activeSourceTab}
       onChange={onSourceTabChange}
       items={sourceItems}

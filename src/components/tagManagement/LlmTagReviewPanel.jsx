@@ -232,7 +232,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
 
   const tabItems = groups.map((g) => ({
     key: g.target.groupKey,
-    label: `${g.target.tabTitle}（${g.items.length}）`,
+    label: `${g.target.tabTitle}(${g.items.length})`,
     children: (
       <Table
         rowKey="id"

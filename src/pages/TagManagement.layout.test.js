@@ -15,4 +15,11 @@ describe('TagManagement tabs', () => {
     expect(source).toContain("label: '改标学习'")
     expect(source).toContain('<TagCorrectionReviewPanel readOnly={readOnly} />')
   })
+
+  it('uses the same underline tabs as the actions page', () => {
+    expect(source).toContain('[&_.ant-tabs-tab]:text-[16px]')
+    expect(source).toContain('[&_.ant-tabs-tab]:font-bold')
+    expect(source).toContain('[&_.ant-tabs-tab-btn]:text-[16px]')
+    expect(source).not.toContain('WorkbenchTabNav')
+  })
 })

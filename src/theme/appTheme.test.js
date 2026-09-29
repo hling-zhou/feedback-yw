@@ -7,4 +7,8 @@ describe('appTheme', () => {
     expect(appTheme.token?.colorLinkHover).toBeTruthy()
     expect(appTheme.token?.colorLinkActive).toBeTruthy()
   })
+
+  it('sets underline tab gutter to 4px', () => {
+    expect(appTheme.components?.Tabs?.horizontalItemGutter).toBe(4)
+  })
 })

@@ -1,8 +1,7 @@
 import { useEffect, useMemo } from 'react'
-import { Alert, Badge } from 'antd'
+import { Alert, Badge, Tabs } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from './Dashboard.shared.jsx'
-import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import CustomTagsPanel from '../components/tagManagement/CustomTagsPanel.jsx'
 import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx'
 import TagCorrectionReviewPanel from '../components/tagManagement/TagCorrectionReviewPanel.jsx'
@@ -52,11 +51,11 @@ export default function TagManagement() {
       },
       {
         key: TAB_KEYS.requestScene,
-        label: '请求场景（通用）',
+        label: '请求场景(通用)',
       },
       {
         key: TAB_KEYS.problemType,
-        label: '问题类型（通用）',
+        label: '问题类型(通用)',
       },
       {
         key: TAB_KEYS.journey,
@@ -121,10 +120,9 @@ export default function TagManagement() {
           description="查看者角色可浏览对象与标签配置，但不能新增、修改或导入。"
         />
       )}
-      <WorkbenchTabNav
-        className="mt-4"
+      <Tabs
+        className="mt-4 [&_.ant-tabs-tab]:text-[16px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[16px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={tab}
-        items={items}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
           next.set('tab', key)
@@ -132,10 +130,12 @@ export default function TagManagement() {
           if (key !== TAB_KEYS.products) next.delete('productView')
           setSearchParams(next)
         }}
+        items={items.map((item) => ({
+          key: item.key,
+          label: item.label,
+          children: item.key === tab ? renderTabContent(item.key) : null,
+        }))}
       />
-      <div className="mt-4">
-        {renderTabContent(tab)}
-      </div>
     </div>
   )
 }
