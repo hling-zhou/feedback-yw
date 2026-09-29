@@ -69,7 +69,7 @@ describe('未预置产品草稿分类', () => {
     })).name).toBe('迁移配置核对')
   })
 
-  it('卡片标题只保留类目名，完整句子留在痛点和根因', () => {
+  it('卡片标题是类目名加第一分句，完整句子留在痛点和根因', () => {
     const root = '客户无法在控制台找到授权码入口，导致迁移无法自助完成'
     const pain = '客户对操作路径存在困惑，且备案与迁移的关联说明不清晰'
     const rows = Array.from({ length: 6 }, (_, index) => ticket({
@@ -85,18 +85,25 @@ describe('未预置产品草稿分类', () => {
       painPoint: '续费流程不透明，客户无法自助完成续费申请',
       rootCause: '续费需先新建信息模版并等待审核，流程不透明导致续费延迟',
     }))
+    rows.push(ticket({
+      ticketId: 'unloc',
+      problemType: '功能未开放',
+      rootCause: '工单未定位到具体问题原因',
+      painPoint: '入口',
+    }))
 
     const { summary } = runEngine(rows, { disableOverrides: true, productScope: ['域名注册'] })
     const product = summary.find((item) => item.p === '域名注册')
     expect(product.derived).toBe(true)
     const cards = product.items.map((item) => toActionRecsResult(item, product, 'consultation_ticket'))
     const titles = cards.map((card) => card.summary)
-    expect(titles).toContain('配额与权限申请')
-    expect(titles).toContain('计费与续费')
-    expect(titles.some((title) => title.includes('·'))).toBe(false)
-    const quota = cards.find((card) => card.summary === '配额与权限申请')
+    expect(titles).toContain('配额与权限申请 · 客户无法在控制台找到授权码入口')
+    expect(titles).toContain('计费与续费 · 续费需先新建信息模版并等待审核')
+    expect(titles).toContain('功能未开放')
+    const quota = cards.find((card) => card.summary.startsWith('配额与权限申请'))
     expect(quota.problemSummary.root).toBe(root)
     expect(quota.problemSummary.pain).toBe(pain)
+    expect(quota.summary.endsWith('导致迁移无法自助完成')).toBe(false)
   })
 
   it('代表句跳过未定位套话', () => {

@@ -95,8 +95,8 @@ export function toActionRecsResult(item, productSummary, dataSourceType) {
     stableKey: id,
     priority: tierToPriority(item.tier),
     category: 'product',
-    text: item.categoryTitle ? (item.fam || '') : `${item.fam} · ${item.sub}`,
-    summary: item.categoryTitle ? (item.fam || '') : `${item.fam} · ${item.sub}`,
+    text: item.title || (item.categoryTitle ? (item.fam || '') : `${item.fam} · ${item.sub}`),
+    summary: item.title || (item.categoryTitle ? (item.fam || '') : `${item.fam} · ${item.sub}`),
     evidenceTicketIds: ticketIds,
     scope: {
       product: p,

@@ -978,6 +978,38 @@ function representativeDraftSub(rows) {
   return usable(topSentence(rows, '问题原因')) || usable(topSentence(rows, '需求痛点')) || '';
 }
 
+const GENERIC_DRAFT_SUB = new Set(['（其他/通用）', '（未定位·无根因模板）']);
+
+/**
+ * 标题里的具体问题：只取到逗号或句号，不在句子中间截断。
+ * 没有标点、又长过一句短标签时不用，避免把整段痛点塞进标题。
+ * @param {string} sentence
+ */
+function draftSpecificClause(sentence) {
+  const text = String(sentence || '').trim();
+  if (!text || BOILER_REASON.test(text)) return '';
+  const cut = text.search(/[，,。！；;\n]/);
+  const clause = (cut < 0 ? text : text.slice(0, cut)).trim();
+  if (cut < 0 && hanCount(clause) > 18) return '';
+  if (hanCount(clause) < 4) return '';
+  if (/[的了和与或在是为无有未不此于对至向等中时后前内外上下该其之]$/.test(clause)) return '';
+  return clause;
+}
+
+/**
+ * 草稿卡片标题：类目名加上这一组的具体问题。没有可用分句时只留类目名。
+ * @param {{ fam?: string, sub?: string, root?: string, pain?: string }} item
+ */
+function draftCardTitle(item) {
+  const fam = item.fam || '';
+  const sub = String(item.sub || '').trim();
+  let specific = '';
+  if (sub && !GENERIC_DRAFT_SUB.has(sub)) specific = sub;
+  else specific = draftSpecificClause(item.root) || draftSpecificClause(item.pain);
+  if (!specific || specific === fam) return fam;
+  return `${fam} · ${specific}`;
+}
+
 /**
  * @param {object} row
  * @returns {{ key: string, name: string }}
@@ -1346,7 +1378,7 @@ function analyze(rows, tax, T, B, thr, prodName) {
   }
 
   if (tax.derived) {
-    for (const it of items) it.categoryTitle = true;
+    for (const it of items) it.title = draftCardTitle(it);
   }
 
   for (const it of items) {
