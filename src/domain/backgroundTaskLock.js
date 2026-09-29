@@ -1,3 +1,5 @@
+import { DATA_SOURCE_LABELS } from './enums.js'
+
 /** @typedef {'import' | 'retag' | 'post_use_journey'} BackgroundTaskType */
 
 /**
@@ -102,30 +104,57 @@ export function formatBackgroundTaskBlockedTip(lock) {
 }
 
 /**
+ * 任务自己的数据月份。优先 dataMonth，否则从周期起日或周期 id 取 YYYY-MM。
+ * @param {Record<string, unknown> | null | undefined} meta
+ */
+export function backgroundTaskMonth(meta) {
+  const month = String(meta?.dataMonth || '').trim()
+  if (/^\d{4}-\d{2}/.test(month)) return month.slice(0, 7)
+  const start = String(meta?.periodStart || '').trim()
+  if (/^\d{4}-\d{2}/.test(start)) return start.slice(0, 7)
+  const periodId = String(meta?.periodId || '').trim()
+  if (/^\d{4}-\d{2}$/.test(periodId)) return periodId
+  return ''
+}
+
+/**
+ * 任务自己的数据类型，不跟当前页签走。
+ * @param {BackgroundTaskLock | { type?: string, meta?: Record<string, unknown> } | null | undefined} lock
+ */
+export function backgroundTaskSourceLabel(lock) {
+  const source = String(lock?.meta?.dataSourceType || '')
+  if (source && DATA_SOURCE_LABELS[/** @type {keyof typeof DATA_SOURCE_LABELS} */ (source)]) {
+    return DATA_SOURCE_LABELS[/** @type {keyof typeof DATA_SOURCE_LABELS} */ (source)]
+  }
+  if (lock?.type === 'post_use_journey') return DATA_SOURCE_LABELS.post_use_rating
+  if (lock?.type === 'retag') return '投诉咨询工单'
+  return ''
+}
+
+/**
+ * 月份 · 数据类型 · 任务进度。进度里已含任务名时不再重复。
+ * @param {BackgroundTaskLock | { type?: BackgroundTaskType, progress?: string, meta?: Record<string, unknown> } | null | undefined} lock
+ */
+export function formatBackgroundTaskProgressLine(lock) {
+  if (!lock) return ''
+  const action = backgroundTaskTypeLabel(/** @type {BackgroundTaskType} */ (lock.type))
+  const progress = String(lock.progress || '').trim()
+  const detail = progress
+    ? progress.includes(action)
+      ? progress
+      : `${action} · ${progress}`
+    : action
+  return [backgroundTaskMonth(lock.meta), backgroundTaskSourceLabel(lock), detail].filter(Boolean).join(' · ')
+}
+
+/**
  * @param {BackgroundTaskLock | null | undefined} lock
  */
 export function formatBackgroundTaskRemoteBanner(lock) {
   if (!lock) return ''
   const who = lock.username?.trim() || '其他用户'
-  const progress = lock.progress?.trim()
-  if (lock.type === 'import') {
-    const month = lock.meta?.dataMonth
-    const parts = [`${who} 正在导入数据`]
-    if (month) parts.push(`数据月份 ${month}`)
-    if (progress) parts.push(progress)
-    return parts.join(' · ')
-  }
-  if (lock.type === 'retag') {
-    const total = lock.meta?.total
-    const parts = [`${who} 正在批量重新打标`]
-    if (total) parts.push(`共 ${total} 条`)
-    if (progress) parts.push(progress)
-    return parts.join(' · ')
-  }
-  if (lock.type === 'post_use_journey') {
-    return progress ? `${who} · ${progress}` : `${who} 正在补全用户旅程`
-  }
-  return progress ? `${who} · ${progress}` : `${who} 正在执行后台任务`
+  const line = formatBackgroundTaskProgressLine(lock)
+  return line ? `${who} · ${line}` : `${who} 正在执行后台任务`
 }
 
 /**
@@ -134,17 +163,7 @@ export function formatBackgroundTaskRemoteBanner(lock) {
  */
 export function formatOwnedBackgroundTaskBanner(lock) {
   if (!lock) return ''
-  const progress = lock.progress?.trim() || '进行中…'
-  if (lock.type === 'import') {
-    const month = lock.meta?.dataMonth
-    return month ? `${progress} · 数据月份 ${month}` : progress
-  }
-  if (lock.type === 'retag') {
-    const total = lock.meta?.total
-    return total ? `${progress} · 共 ${total} 条` : progress
-  }
-  if (lock.type === 'post_use_journey') return progress
-  return progress
+  return formatBackgroundTaskProgressLine(lock)
 }
 
 /**

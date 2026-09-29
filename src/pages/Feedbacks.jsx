@@ -6,7 +6,6 @@ import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import { matchesMyReviewFilter } from '../domain/userTicketReview.js'
-import { formatBulkRetagScopeLabel } from '../lib/retagSession.js'
 import { formatOwnedBackgroundTaskBanner } from '../domain/backgroundTaskLock.js'
 import {
   clearFeedbackTicketIdSet,
@@ -15,7 +14,6 @@ import {
 } from '../lib/feedbackTicketIdSet.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
-import { TaggingProgressAlert } from '../components/TaggingProgressAlert.jsx'
 import TaskHistoryPanel from '../components/TaskHistoryPanel.jsx'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isImportMonthInPeriod, periodSpecFromImportMonth, resolveInsightPeriod } from '../domain/insightPeriod.js'
@@ -835,6 +833,74 @@ export default function Feedbacks() {
         }
       />
 
+      {importSession.active && !ownedTasks?.some((task) => task.type === 'import') && (
+        <Alert
+          className="page-section-sm"
+          type="warning"
+          showIcon
+          title="数据导入进行中"
+          description={
+            <span>
+              {formatOwnedBackgroundTaskBanner({
+                type: 'import',
+                progress: importSession.progress,
+                meta: {
+                  dataMonth: importSession.dataMonth,
+                  dataSourceType: importSession.dataSourceType,
+                },
+              })}
+              <span className="text-ink-500">。可在「打标任务」中查看执行结果或取消。</span>
+            </span>
+          }
+        />
+      )}
+
+      {ownedTasks?.length > 0 && (
+        <Alert
+          className="page-section-sm"
+          type="info"
+          showIcon
+          title="打标任务进行中"
+          description={
+            <span>
+              {ownedTasks.map((task) => formatOwnedBackgroundTaskBanner(task)).join('；')}
+              <span className="text-ink-500">。可在「打标任务」中查看执行结果或取消。</span>
+            </span>
+          }
+        />
+      )}
+
+      {remoteBannerText && (
+        <Alert
+          className="page-section-sm"
+          type="info"
+          showIcon
+          title="团队后台任务进行中"
+          description={remoteBannerText}
+        />
+      )}
+
+      {retagSession.active && !progressAlertDismissed && !ownedTasks?.some((task) => task.type === 'retag') && (
+        <Alert
+          className="page-section-sm"
+          type="info"
+          showIcon
+          closable
+          onClose={() => setProgressAlertDismissed(true)}
+          title="打标进行中"
+          description={
+            <span>
+              {formatOwnedBackgroundTaskBanner({
+                type: 'retag',
+                progress: retagSession.progress,
+                meta: { periodStart: retagSession.periodStart },
+              })}
+              <span className="text-ink-500">。可在「打标任务」中查看执行结果或取消。</span>
+            </span>
+          }
+        />
+      )}
+
       <div className="page-toolbar flex flex-wrap items-center gap-3">
         <InsightPeriodPicker />
         <Segmented
@@ -870,57 +936,6 @@ export default function Feedbacks() {
               </Button>
             </>
           }
-        />
-      )}
-
-      {importSession.active && !ownedTasks?.some((task) => task.type === 'import') && (
-        <Alert
-          className="page-section-sm"
-          type="warning"
-          showIcon
-          title="数据导入进行中"
-          description={
-            <span>
-              {importSession.progress || '正在处理…'}
-              {importSession.dataMonth ? (
-                <span className="text-ink-500"> · 数据月份 {importSession.dataMonth}</span>
-              ) : null}
-            </span>
-          }
-        />
-      )}
-
-      {ownedTasks?.length > 0 && (
-        <Alert
-          className="page-section-sm"
-          type="info"
-          showIcon
-          title="打标任务进行中"
-          description={
-            <span>
-              {ownedTasks.map((task) => formatOwnedBackgroundTaskBanner(task)).join('；')}
-              <span className="text-ink-500">。可在「打标任务」中查看执行结果或取消。</span>
-            </span>
-          }
-        />
-      )}
-
-      {remoteBannerText && (
-        <Alert
-          className="page-section-sm"
-          type="info"
-          showIcon
-          title="团队后台任务进行中"
-          description={remoteBannerText}
-        />
-      )}
-
-      {retagSession.active && !progressAlertDismissed && !ownedTasks?.some((task) => task.type === 'retag') && (
-        <TaggingProgressAlert
-          progress={retagSession.progress}
-          total={retagSession.total}
-          scopeLabel={formatBulkRetagScopeLabel(retagSession.scope)}
-          onClose={() => setProgressAlertDismissed(true)}
         />
       )}
 

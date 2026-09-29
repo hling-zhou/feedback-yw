@@ -211,7 +211,16 @@ describe('backgroundTaskLock domain', () => {
       type: 'import',
       meta: { dataMonth: '2026-03', dataSourceType: 'post_use_rating' },
     })).toBe(false)
-    expect(formatOwnedBackgroundTaskBanner(journey)).toBe('正在补全用户旅程 (2/8)')
+    expect(formatOwnedBackgroundTaskBanner(journey)).toBe(
+      '2026-09 · 用后即评 · 正在补全用户旅程 (2/8)',
+    )
+    expect(
+      formatOwnedBackgroundTaskBanner({
+        ...journey,
+        progress: '正在补全用户旅程 (12/40)',
+        meta: { dataMonth: '2026-08', dataSourceType: 'post_use_rating' },
+      }),
+    ).toBe('2026-08 · 用后即评 · 正在补全用户旅程 (12/40)')
     expect(backgroundTaskTypeLabel('post_use_journey')).toBe('补全用户旅程')
   })
 
@@ -223,7 +232,10 @@ describe('backgroundTaskLock domain', () => {
         progress: '正在规则打标 (12/300)…',
         meta: { dataMonth: '2026-08' },
       }),
-    ).toBe('正在规则打标 (12/300)… · 数据月份 2026-08')
+    ).toBe('2026-08 · 数据导入 · 正在规则打标 (12/300)…')
+    expect(formatBackgroundTaskRemoteBanner(sampleLock)).toBe(
+      'alice · 投诉咨询工单 · 批量重新打标 · LLM 增强 (3/10)',
+    )
     expect(isBackgroundTaskEnrichPhase({ ...sampleLock, meta: { phase: BACKGROUND_TASK_PHASE_ENRICH } })).toBe(
       true,
     )
