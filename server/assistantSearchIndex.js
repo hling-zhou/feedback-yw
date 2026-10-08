@@ -40,6 +40,11 @@ function buildSearchContent(record) {
 export function initSearchIndex() {
   const db = getDb()
   if (searchMode) return
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS records_search_ids (
+      record_id TEXT PRIMARY KEY
+    );
+  `)
   try {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS records_fts USING fts5(
@@ -108,6 +113,7 @@ export function upsertRecordIndex(record) {
          pain_point, customer_request, root_cause, raw_text, handling_text, comment_text)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(recordId, dataSourceType, importMonth, ...values)
+    markSearchIndexed(recordId)
   } else {
     const content = buildSearchContent(record)
     db.prepare(
@@ -118,7 +124,13 @@ export function upsertRecordIndex(record) {
          import_month = excluded.import_month,
          content = excluded.content`,
     ).run(recordId, dataSourceType, importMonth, content)
+    markSearchIndexed(recordId)
   }
+}
+
+/** @param {string} recordId */
+function markSearchIndexed(recordId) {
+  getDb().prepare('INSERT OR IGNORE INTO records_search_ids (record_id) VALUES (?)').run(recordId)
 }
 
 /**
@@ -144,6 +156,7 @@ export function deleteRecordIndex(recordId) {
   } else {
     db.prepare('DELETE FROM records_search WHERE record_id = ?').run(id)
   }
+  db.prepare('DELETE FROM records_search_ids WHERE record_id = ?').run(id)
 }
 
 /** 清空全部索引（与清空导入数据同步）。 */
@@ -155,6 +168,7 @@ export function clearRecordIndex() {
   } else {
     db.prepare('DELETE FROM records_search').run()
   }
+  db.prepare('DELETE FROM records_search_ids').run()
 }
 
 /**
@@ -288,45 +302,115 @@ export function searchRecords({ importMonth, dataSourceType, query, limit = 15 }
   return out
 }
 
-const BACKFILL_CHUNK = 200
+/** 每批只索引很少几条：FTS trigram 写入是同步的，批次过大时会堵住登录和读接口。 */
+const BACKFILL_CHUNK = 2
+const SEED_CHUNK = 1000
 
 /**
- * 启动后按 record id 幂等补齐索引。与导入并发时后写覆盖。
- * 分块 setImmediate，避免堵住启动。
+ * 启动后只补「尚未进入 records_search_ids」的记录。
+ * 已有 FTS/fallback 索引会先把 id 抄进进度表，避免每次重启把全库重新分词。
+ * 每批结束后 setImmediate，把事件循环让给登录和数据请求。
  */
 export function startSearchIndexBackfill() {
   if (!searchMode) return
-  setImmediate(() => backfillSearchIndexChunk(null))
+  setImmediate(() => {
+    try {
+      if (!hasUnindexedRecords()) {
+        console.info('[assistantSearchIndex] 检索索引已齐全，跳过补齐')
+        return
+      }
+      console.info('[assistantSearchIndex] 后台补齐检索索引')
+      seedSearchIdsChunk(0, () => backfillSearchIndexChunk(''))
+    } catch (err) {
+      console.warn(
+        `[assistantSearchIndex] 后台补齐失败: ${err instanceof Error ? err.message : err}`,
+      )
+    }
+  })
+}
+
+function hasUnindexedRecords() {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS ok FROM records r
+       WHERE NOT EXISTS (
+         SELECT 1 FROM records_search_ids s WHERE s.record_id = r.id
+       )
+       LIMIT 1`,
+    )
+    .get()
+  return Boolean(row)
 }
 
 /**
- * @param {string | null} afterId
+ * 把已经写进 FTS / fallback 表的 record_id 记入进度表，重启后不再重做分词。
+ * @param {number | string} afterCursor
+ * @param {() => void} done
+ */
+function seedSearchIdsChunk(afterCursor, done) {
+  const db = getDb()
+  const rows =
+    searchMode === 'fts'
+      ? db
+          .prepare(
+            `SELECT rowid AS cursor, record_id FROM records_fts
+             WHERE rowid > ? ORDER BY rowid LIMIT ?`,
+          )
+          .all(afterCursor, SEED_CHUNK)
+      : db
+          .prepare(
+            `SELECT record_id AS cursor, record_id FROM records_search
+             WHERE record_id > ? ORDER BY record_id LIMIT ?`,
+          )
+          .all(afterCursor, SEED_CHUNK)
+  if (!rows.length) {
+    done()
+    return
+  }
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO records_search_ids (record_id) VALUES (?)',
+  )
+  db.transaction((items) => {
+    for (const row of items) insert.run(row.record_id)
+  })(rows)
+  const next = rows[rows.length - 1].cursor
+  setImmediate(() => seedSearchIdsChunk(next, done))
+}
+
+/**
+ * @param {string} afterId
  */
 function backfillSearchIndexChunk(afterId) {
   try {
     const db = getDb()
-    const rows = afterId
-      ? db
-          .prepare(
-            'SELECT id, payload FROM records WHERE id > ? ORDER BY id LIMIT ?',
-          )
-          .all(afterId, BACKFILL_CHUNK)
-      : db.prepare('SELECT id, payload FROM records ORDER BY id LIMIT ?').all(BACKFILL_CHUNK)
-    if (!rows.length) return
+    const rows = db
+      .prepare(
+        `SELECT r.id, r.payload FROM records r
+         WHERE r.id > ?
+           AND NOT EXISTS (
+             SELECT 1 FROM records_search_ids s WHERE s.record_id = r.id
+           )
+         ORDER BY r.id
+         LIMIT ?`,
+      )
+      .all(afterId, BACKFILL_CHUNK)
+    if (!rows.length) {
+      console.info('[assistantSearchIndex] 检索索引补齐完成')
+      return
+    }
     const tx = db.transaction((items) => {
       for (const row of items) {
         try {
           upsertRecordIndex(JSON.parse(row.payload))
         } catch {
-          /* 单条损坏不阻断补齐 */
+          markSearchIndexed(String(row.id))
         }
       }
     })
     tx(rows)
     const lastId = String(rows[rows.length - 1]?.id || '')
-    if (lastId && rows.length === BACKFILL_CHUNK) {
-      setImmediate(() => backfillSearchIndexChunk(lastId))
-    }
+    if (!lastId) return
+    setImmediate(() => backfillSearchIndexChunk(lastId))
   } catch (err) {
     console.warn(
       `[assistantSearchIndex] 后台补齐失败: ${err instanceof Error ? err.message : err}`,
