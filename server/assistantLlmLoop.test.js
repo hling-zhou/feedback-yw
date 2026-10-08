@@ -21,6 +21,12 @@ function jsonResponse(body) {
   }
 }
 
+function completion(content) {
+  return jsonResponse({
+    choices: [{ message: { content } }],
+  })
+}
+
 describe('runAssistantLoop', () => {
   it('runs list_periods when the gateway body is the tool JSON from the screenshot', async () => {
     fetchMock
@@ -82,5 +88,26 @@ describe('runAssistantLoop', () => {
 
     expect(result.toolsUsed).toEqual(['list_periods'])
     expect(result.answer).toBe('ok')
+  })
+
+  it('asks for a final answer after four tool rounds', async () => {
+    const tool = '{"tool":"list_periods","args":{}}'
+    fetchMock
+      .mockResolvedValueOnce(completion(tool))
+      .mockResolvedValueOnce(completion(tool))
+      .mockResolvedValueOnce(completion(tool))
+      .mockResolvedValueOnce(completion(tool))
+      .mockResolvedValueOnce(completion('{"answer":"7月云专线投诉15件","citations":[],"links":[]}'))
+
+    const { runAssistantLoop } = await import('./assistantLlmLoop.js')
+    const result = await runAssistantLoop({
+      question: '7月云专线投诉量是多少？',
+      history: [],
+      insightPeriodId: '',
+    })
+
+    expect(result.answer).toBe('7月云专线投诉15件')
+    expect(result.toolsUsed).toEqual(['list_periods', 'list_periods', 'list_periods', 'list_periods'])
+    expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 })

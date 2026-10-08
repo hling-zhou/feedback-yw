@@ -267,6 +267,58 @@ function extractToolCallFallback(text) {
   return { tool: toolMatch[1], args }
 }
 
+/**
+ * 模型会把半截 JSON 和完整 JSON 粘在一起。从每个括号起再切一次，后面的完整对象才能被看见。
+ * @param {string} text
+ * @returns {string[]}
+ */
+function collectBalancedJsonSlices(text) {
+  /** @type {string[]} */
+  const slices = []
+  const source = String(text || '')
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]
+    if (ch !== '{' && ch !== '[') continue
+    const slice = extractBalancedJsonSlice(source.slice(i))
+    if (slice) slices.push(slice)
+  }
+  return slices
+}
+
+/**
+ * 多个对象时保留最后一条完整答案或工具调用。前面的半截对象丢掉。
+ * @param {unknown[]} values
+ */
+function pickAssistantPayload(values) {
+  const objects = values.filter((value) => value && typeof value === 'object' && !Array.isArray(value))
+  const answers = objects.filter((value) => {
+    const row = /** @type {Record<string, unknown>} */ (value)
+    return typeof row.answer === 'string' && row.answer.trim()
+  })
+  if (answers.length) return answers[answers.length - 1]
+  const tools = objects.filter((value) => typeof /** @type {Record<string, unknown>} */ (value).tool === 'string')
+  if (tools.length) return tools[tools.length - 1]
+  return objects.length ? objects[objects.length - 1] : null
+}
+
+/**
+ * @param {string} text
+ * @returns {{ answer: string, citations: [], links: [] } | null}
+ */
+function extractAnswerFallback(text) {
+  const re = /["“＂]answer["”＂]\s*[:：\uFF1A]\s*"((?:\\.|[^"\\])*)"/g
+  let match = re.exec(text)
+  /** @type {string | null} */
+  let best = null
+  while (match) {
+    const value = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    if (!best || value.length > best.length) best = value
+    match = re.exec(text)
+  }
+  if (!best || !best.trim()) return null
+  return { answer: best, citations: [], links: [] }
+}
+
 function parseJsonCandidate(candidate) {
   let value = JSON.parse(candidate)
   if (typeof value === 'string') {
@@ -294,15 +346,25 @@ export function parseLlmResponseBody(text) {
   }
 
   const candidates = looseJsonCandidates(text)
+  for (const slice of collectBalancedJsonSlices(text)) candidates.push(slice)
 
+  /** @type {unknown[]} */
+  const parsed = []
   let lastErr = null
   for (const candidate of candidates) {
+    if (!candidate) continue
     try {
-      return parseJsonCandidate(candidate)
+      parsed.push(parseJsonCandidate(candidate))
     } catch (err) {
       lastErr = err
     }
   }
+
+  const best = pickAssistantPayload(parsed)
+  if (best) return best
+
+  const answerFallback = extractAnswerFallback(text)
+  if (answerFallback) return answerFallback
 
   const toolFallback = extractToolCallFallback(text)
   if (toolFallback) return toolFallback

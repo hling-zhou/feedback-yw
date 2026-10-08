@@ -115,6 +115,16 @@ describe('parseLlmResponseBody', () => {
     })
   })
 
+  it('keeps the complete answer when a truncated JSON prefix is glued in front', () => {
+    const raw =
+      '{"answer":"202{"answer":"2026年7月云专线投诉量为15件（该月投诉工单总量为159件，云专线占比约9.4%）。","citations":[],"links":[{"kind":"feedbacks","params":{"source":"complaint_ticket"}}]}'
+    expect(parseLlmResponseBody(raw)).toEqual({
+      answer: '2026年7月云专线投诉量为15件（该月投诉工单总量为159件，云专线占比约9.4%）。',
+      citations: [],
+      links: [{ kind: 'feedbacks', params: { source: 'complaint_ticket' } }],
+    })
+  })
+
   it('reads content arrays', () => {
     expect(
       extractLlmAssistantText({
