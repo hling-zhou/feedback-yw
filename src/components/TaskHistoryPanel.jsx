@@ -106,6 +106,10 @@ export default function TaskHistoryPanel({ open, onClose }) {
     if (s.total != null) parts.push(`共 ${s.total} 条`)
     const stats = s.stats
     if (stats) {
+      if (stats.keptManual != null && stats.changed != null) {
+        parts.push(`更新情绪 ${stats.changed}`)
+        if (stats.keptManual) parts.push(`保留人工 ${stats.keptManual}`)
+      }
       if (stats.ticketLlmCompleted != null) parts.push(`LLM 完成 ${stats.ticketLlmCompleted}`)
       if (stats.ticketLlmFailed) parts.push(`失败 ${stats.ticketLlmFailed}`)
       if (stats.afterUnknown != null) parts.push(`未识别旅程 ${stats.afterUnknown}`)
@@ -121,7 +125,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
       dataSource.push({
         key: `active-${activeLock.id}`,
         id: activeLock.id,
-        source: backgroundTaskTypeLabel(activeLock.type),
+        source: activeLock.meta?.source || backgroundTaskTypeLabel(activeLock.type),
         startedAt: activeLock.startedAt,
         endedAt: '-',
         status: 'in_progress',
@@ -237,7 +241,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
         dataSource={dataSource}
         pagination={{ pageSize: 20, showSizeChanger: false }}
         size="small"
-        loading={loading}
+        loading={loading && dataSource.length === 0}
         scroll={{ x: 640 }}
         locale={{ emptyText: '暂无打标任务记录' }}
       />

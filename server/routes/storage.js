@@ -651,6 +651,7 @@ export function registerStorageRoutes(app) {
                   : '正在准备…',
           meta: {
             phase: 'server',
+            source: sourceLabel,
             dataMonth: body.dataMonth,
             dataSourceType: body.dataSourceType,
             periodId: body.periodId || period.id,
@@ -693,7 +694,7 @@ export function registerStorageRoutes(app) {
           const isCancelled = Boolean(result.stats?.cancelled) || isTaskCancelled(taskId)
           const isFailed = Boolean(result.stats?.failed) || (!isCancelled && !result.records?.length && result.failures?.length)
           let writeResult = null
-          if (!isCancelled && !isFailed && result.records?.length) {
+          if (!result.persisted && !isCancelled && !isFailed && result.records?.length) {
             try {
               writeResult = storageRepository.putRecords(result.records, {
                 actor: { userId, username },
@@ -707,7 +708,7 @@ export function registerStorageRoutes(app) {
           const taskResult = {
             taskId,
             mode,
-            total: result.records?.length || 0,
+            total: result.stats?.total ?? result.records?.length ?? 0,
             warnings: result.warnings,
             stats: result.stats,
             failures: result.failures,

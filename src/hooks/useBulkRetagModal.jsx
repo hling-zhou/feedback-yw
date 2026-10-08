@@ -328,12 +328,11 @@ export function useBulkRetagModal({ filteredRecords }) {
           message.warning('所选范围内没有可重打情绪的工单')
           return Promise.reject(new Error('empty scope'))
         }
-        return startSentimentRetag(records, {
+        void startSentimentRetag(records, {
           scope: scopeChoice.value,
           forceOverrideManualTags: forceOverrideChoice.value,
         }).catch((err) => {
           message.error(err instanceof Error ? err.message : '重打用户情绪失败')
-          return Promise.reject(err)
         })
       },
     })

@@ -238,32 +238,67 @@ function createTaxonomyAdapter() {
  * @param {object} [opts.retagOptions]
  * @returns {Promise<{ records: import('../src/lib/types.js').FeedbackRecord[], warnings: string[], stats?: object, writeResult?: object }>}
  */
+/** 让出事件循环，打标任务抽屉和进度轮询才能在计算过程中返回。 */
+function yieldToEventLoop() {
+  return new Promise((resolve) => {
+    setImmediate(resolve)
+  })
+}
+
 /**
  * 只重算情绪和加急。不刷新标签库、不调用大模型。
+ * 分批让出事件循环，避免整段同步计算堵住打标任务抽屉的加载请求。
  * @param {object} opts
  * @param {() => boolean} cancelled
  * @param {(progress: string) => void} touch
  */
 async function runSentimentRetag(opts, cancelled, touch) {
+  await yieldToEventLoop()
   const ids = opts.recordIds || []
   /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
   const records = []
   touch('正在加载工单…')
   for (let i = 0; i < ids.length; i += 1) {
+    if (i > 0 && i % 40 === 0) {
+      touch(`正在加载工单 (${i}/${ids.length})`)
+      await yieldToEventLoop()
+      if (cancelled()) {
+        return {
+          records: [],
+          persisted: true,
+          warnings: ['任务已被用户取消'],
+          stats: { total: ids.length, changed: 0, keptManual: 0, skipped: 0, cancelled: true, processed: i },
+        }
+      }
+    }
     const rec = storageRepository.getRecord(ids[i])
     if (rec) records.push(rec)
   }
   const total = records.length
   /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
-  const changedRecords = []
+  const pending = []
+  let changed = 0
   let keptManual = 0
   let skipped = 0
+  const actor = { userId: opts.userId, username: opts.username }
+  const flush = () => {
+    if (!pending.length) return
+    storageRepository.putRecords(pending, { actor })
+    pending.length = 0
+  }
   for (let i = 0; i < total; i += 1) {
-    if (cancelled()) {
-      return {
-        records: changedRecords,
-        warnings: ['任务已被用户取消'],
-        stats: { total, changed: changedRecords.length, keptManual, skipped, cancelled: true, processed: i },
+    if (i > 0 && i % 40 === 0) {
+      flush()
+      touch(`正在重打用户情绪 (${i}/${total})`)
+      opts.onProgress?.('用户情绪', i, total)
+      await yieldToEventLoop()
+      if (cancelled()) {
+        return {
+          records: [],
+          persisted: true,
+          warnings: ['任务已被用户取消'],
+          stats: { total, changed, keptManual, skipped, cancelled: true, processed: i },
+        }
       }
     }
     const result = retagRecordSentiment(records[i], {
@@ -271,16 +306,18 @@ async function runSentimentRetag(opts, cancelled, touch) {
     })
     if (result.skipped) skipped += 1
     else if (result.keptManual) keptManual += 1
-    if (result.changed) changedRecords.push(result.record)
-    if (i % 200 === 0 || i === total - 1) {
-      touch(`正在重打用户情绪 (${i + 1}/${total})`)
-      opts.onProgress?.('用户情绪', i + 1, total)
+    if (result.changed) {
+      pending.push(result.record)
+      changed += 1
     }
   }
+  flush()
+  touch(`正在重打用户情绪 (${total}/${total})`)
   return {
-    records: changedRecords,
+    records: [],
+    persisted: true,
     warnings: [],
-    stats: { total, changed: changedRecords.length, keptManual, skipped, processed: total },
+    stats: { total, changed, keptManual, skipped, processed: total },
   }
 }
 
