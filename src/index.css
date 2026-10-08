@@ -133,6 +133,25 @@
     @apply outline outline-2 outline-offset-1 outline-sky-700;
   }
 
+  .assistant-fab {
+    @apply grid place-items-center rounded-full text-white shadow-md transition;
+    width: 2.1rem;
+    height: 2.1rem;
+    @apply bg-indigo-600;
+  }
+
+  .assistant-fab__icon {
+    font-size: 0.95rem;
+  }
+
+  .assistant-fab:hover {
+    @apply bg-indigo-700 shadow-lg;
+  }
+
+  .assistant-fab:focus-visible {
+    @apply outline outline-2 outline-offset-1 outline-indigo-700;
+  }
+
   @media (max-width: 640px) {
     .app-float-actions {
       right: calc(1rem / 3);

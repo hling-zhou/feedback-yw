@@ -5,6 +5,7 @@ import { resolveAdminInitialPassword, resolveUserInitialPassword } from './confi
 import { getDb } from './db.js'
 import { isPasswordExpired } from '../src/domain/passwordExpiry.js'
 import { isKnownTeam, TEAMS } from '../src/domain/userProfile.js'
+import { assistantThreadRepository } from './assistantThreadRepository.js'
 
 const BCRYPT_ROUNDS = 12
 
@@ -298,6 +299,11 @@ export function deleteUser(id, actorId) {
   if (!row) throw new Error('用户不存在')
   if (row.role === 'admin' && countAdmins() <= 1) {
     throw new Error('至少保留一名管理员')
+  }
+  try {
+    assistantThreadRepository.deleteAllForUser(id)
+  } catch (err) {
+    console.warn(`[users] 删除助手会话失败: ${err instanceof Error ? err.message : err}`)
   }
   getDb().prepare('DELETE FROM users WHERE id = ?').run(id)
 }

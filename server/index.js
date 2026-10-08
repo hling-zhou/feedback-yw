@@ -56,6 +56,8 @@ import { registerPostUseJiraRoutes } from './routes/postUseJira.js'
 import { registerTicketTodoRoutes } from './routes/ticketTodos.js'
 import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
 import { registerUsageRoutes } from './routes/usage.js'
+import { registerAssistantRoutes } from './routes/assistant.js'
+import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
 import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
 import { buildHealthReport } from './health.js'
@@ -95,6 +97,11 @@ registerPostUseJiraRoutes(app)
 registerTicketTodoRoutes(app)
 registerCuratedTaxonomyRoutes(app)
 registerUsageRoutes(app)
+registerAssistantRoutes(app)
+
+// 初始化 AI 助手检索索引（FTS5 trigram 或 fallback），并后台幂等补齐存量记录
+initSearchIndex()
+startSearchIndexBackfill()
 
 // 启动时归档上月运营数据
 archiveUsageStats()

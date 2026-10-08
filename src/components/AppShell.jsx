@@ -31,6 +31,8 @@ import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
 import MessageBottleFab from './MessageBottleFab.jsx'
 import WhatsNewFab from './WhatsNewFab.jsx'
 import WhatsNewDrawer from './WhatsNewDrawer.jsx'
+import AssistantFab from './AssistantFab.jsx'
+import AssistantDrawer from './AssistantDrawer.jsx'
 import { useUsageTracking } from '../hooks/useUsageTracking.js'
 
 const ALL_NAV = [
@@ -62,6 +64,7 @@ export default function AppShell() {
   const [bottleOpen, setBottleOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [whatsNewUnread, setWhatsNewUnread] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -247,6 +250,7 @@ export default function AppShell() {
               onClick={() => setWhatsNewOpen(true)}
             />
             <MessageBottleFab onClick={() => setBottleOpen(true)} />
+            <AssistantFab onClick={() => setAssistantOpen(true)} />
           </div>
           <WhatsNewDrawer
             open={whatsNewOpen}
@@ -254,6 +258,11 @@ export default function AppShell() {
             onMarkedSeen={handleWhatsNewMarkedSeen}
           />
           <MessageBottleSubmitModal open={bottleOpen} onClose={() => setBottleOpen(false)} />
+          <AssistantDrawer
+            open={assistantOpen}
+            onClose={() => setAssistantOpen(false)}
+            currentPeriodId={period?.id || ''}
+          />
           <Outlet />
         </Layout.Content>
       </Layout>

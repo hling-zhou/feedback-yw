@@ -583,6 +583,26 @@ export function initBusinessSchema() {
       uploaded_at TEXT NOT NULL,
       size_bytes INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS assistant_threads (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_assistant_threads_user
+      ON assistant_threads (user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS assistant_messages (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_assistant_messages_thread
+      ON assistant_messages (thread_id, created_at ASC);
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

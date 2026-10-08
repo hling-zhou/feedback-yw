@@ -40,12 +40,13 @@ export function formatLlmUpstreamError(status, text) {
  * @param {string} opts.baseUrl
  * @param {string} opts.apiKey
  * @param {object} opts.body
+ * @param {number} [opts.timeoutMs] 单次上游请求超时（毫秒），不传则不限
  */
-export async function forwardLlmChatCompletion({ baseUrl, apiKey, body }) {
+export async function forwardLlmChatCompletion({ baseUrl, apiKey, body, timeoutMs }) {
   const base = normalizeLlmBaseUrl(baseUrl)
   const targetUrl = `${base}/chat/completions`
 
-  const post = async (payload) => {
+  const post = async (payload, signal) => {
     let res
     try {
       res = await fetch(targetUrl, {
@@ -55,8 +56,10 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body }) {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
+        signal,
       })
     } catch (err) {
+      if (err?.name === 'AbortError' || signal?.aborted) throw err
       const msg = err instanceof Error ? err.message : String(err)
       const isOpenAiTimeout =
         /ETIMEDOUT|ECONNREFUSED/.test(msg) && /openai\.com/i.test(base)
@@ -95,10 +98,28 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body }) {
 
   const payload = { max_tokens: 2048, ...body }
 
+  /** @type {AbortController | null} */
+  let controller = null
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null
+  const withTimeout = async () => {
+    if (timeoutMs && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      controller = new AbortController()
+      timer = setTimeout(() => controller.abort(), timeoutMs)
+      return post(payload, controller.signal)
+    }
+    return post(payload)
+  }
+
   try {
-    return await post(payload)
+    return await withTimeout()
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    if (controller?.signal?.aborted || err?.name === 'AbortError') {
+      const error = new Error(`LLM 请求超时（${timeoutMs}ms）`)
+      error.statusCode = 504
+      throw error
+    }
     const status = err.statusCode || 0
     const canRetry =
       payload.response_format &&
@@ -106,6 +127,8 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body }) {
       status >= 400
     if (!canRetry) throw err
     const { response_format: _rf, ...withoutJsonMode } = payload
-    return post(withoutJsonMode)
+    return await post(withoutJsonMode, controller?.signal)
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 }

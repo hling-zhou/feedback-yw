@@ -24,6 +24,11 @@ import {
   recordMatchesClearFilter,
   snapshotMatchesClearFilter,
 } from '../src/storage/clearImportedData.js'
+import {
+  clearRecordIndex,
+  deleteRecordIndex,
+  upsertRecordIndex,
+} from './assistantSearchIndex.js'
 
 /**
  * @param {import('../src/storage/adapter.js').RecordQuery} [query]
@@ -329,15 +334,19 @@ export const storageRepository = {
     })
     const idx = recordIndexFields(next)
     try {
-      db.prepare(RECORDS_UPSERT_SQL).run(
-        next.id,
-        stringifyJson(next),
-        idx.importMonth,
-        idx.dataSourceType,
-        idx.tenantId,
-        idx.importBatchId,
-        resolveTicketIdColumn(idx.ticketId, existing, existingRow?.ticket_id),
-      )
+      const write = db.transaction(() => {
+        db.prepare(RECORDS_UPSERT_SQL).run(
+          next.id,
+          stringifyJson(next),
+          idx.importMonth,
+          idx.dataSourceType,
+          idx.tenantId,
+          idx.importBatchId,
+          resolveTicketIdColumn(idx.ticketId, existing, existingRow?.ticket_id),
+        )
+        upsertRecordIndex(next)
+      })
+      write()
     } catch (err) {
       if (isTicketUniqueViolation(err)) throw toTicketIdConflictError(next)
       throw err
@@ -371,6 +380,7 @@ export const storageRepository = {
             idx.importBatchId,
             resolveTicketIdColumn(idx.ticketId, existing, row?.ticket_id),
           )
+          upsertRecordIndex(next)
           written += 1
         } catch (err) {
           if (isTicketUniqueViolation(err)) {
@@ -394,6 +404,7 @@ export const storageRepository = {
     let nulledTicketConflicts = 0
     const tx = db.transaction((items) => {
       db.prepare('DELETE FROM records').run()
+      clearRecordIndex()
       const stmt = db.prepare(
         `INSERT INTO records (id, payload, import_month, data_source_type, tenant_id, import_batch_id, ticket_id)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -421,6 +432,7 @@ export const storageRepository = {
           idx.importBatchId,
           ticketIdColumn,
         )
+        upsertRecordIndex(record)
       }
     })
     tx(records)
@@ -463,6 +475,7 @@ export const storageRepository = {
         DELETE FROM artifacts;
         DELETE FROM tag_candidates WHERE status = 'pending';
       `)
+      clearRecordIndex()
       bumpRecordsRevision()
       return result
     }
@@ -491,6 +504,7 @@ export const storageRepository = {
         db.prepare(`DELETE FROM records WHERE id IN (${placeholders})`).run(...chunk)
       }
       result.recordsDeleted = recordIds.length
+      for (const rid of recordIds) deleteRecordIndex(rid)
     }
 
     const deletedRecordIds = new Set(recordIds)
@@ -570,6 +584,7 @@ export const storageRepository = {
 
   deleteRecord(id) {
     getDb().prepare('DELETE FROM records WHERE id = ?').run(id)
+    deleteRecordIndex(id)
     bumpRecordsRevision()
   },
 
