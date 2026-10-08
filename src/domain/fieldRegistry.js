@@ -129,6 +129,18 @@ const FIELD_DEFINITIONS = [
     detailZone: 'B1',
   },
   {
+    fieldKey: 'customProblemCategory',
+    displayName: '问题分类（自定义）',
+    recordPaths: ['customProblemCategory'],
+    exportable: true,
+    exportOrder: 7.5,
+    importable: false,
+    manualDimension: null,
+    clusterRole: 'none',
+    applicableSources: ['complaint_ticket'],
+    detailZone: 'B1',
+  },
+  {
     fieldKey: 'journeyL1',
     displayName: '用户旅程一级',
     recordPaths: ['journeyL1'],

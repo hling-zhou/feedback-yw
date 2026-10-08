@@ -7,10 +7,11 @@ import {
 import { getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 describe('importAnalysisTemplate', () => {
-  it('template headers match export v3 30 columns with * on required', () => {
+  it('template headers match importable export columns with * on required', () => {
     const headers = getImportAnalysisTemplateHeaders()
-    const exportHeaders = getExportV3Headers()
+    const exportHeaders = getExportV3Headers().filter((name) => name !== '问题分类（自定义）')
     expect(headers).toHaveLength(30)
+    expect(getExportV3Headers()).toContain('问题分类（自定义）')
     expect(exportHeaders).toHaveLength(30)
     const required = new Set(getImportRequiredDisplayNames())
     expect(headers).toEqual(

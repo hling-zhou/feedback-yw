@@ -82,6 +82,10 @@ import {
   getComplaintCauseL1Final,
   isComplaintTicket } from '../domain/complaintCause.js'
 import {
+  CUSTOM_PROBLEM_CATEGORY_MAX_LENGTH,
+  normalizeCustomProblemCategory,
+} from '../domain/customProblemCategory.js'
+import {
   COMPLAINT_CAUSE_REVIEW_REASON_MAX_LENGTH,
   clearComplaintCauseReviewFields,
   getComplaintCauseReviewDraftDisplay,
@@ -963,6 +967,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   )
   const [requestScene, setRequestScene] = useState(feedback?.requestScene || '')
   const [problemType, setProblemType] = useState(feedback?.problemType || '')
+  const [customProblemCategory, setCustomProblemCategory] = useState(
+    () => normalizeCustomProblemCategory(feedback?.customProblemCategory),
+  )
   const [journeyL1, setJourneyL1] = useState(feedback?.journeyL1 || '')
   const [journeyL2, setJourneyL2] = useState(feedback?.journeyL2 || '')
   const [establishedAction, setEstablishedAction] = useState('')
@@ -1074,6 +1081,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     setUrgencyLevel(normalizeUrgencyLevel(record.urgencyLevel, record.sentiment))
     setRequestScene(record.requestScene || '')
     setProblemType(record.problemType || '')
+    setCustomProblemCategory(normalizeCustomProblemCategory(record.customProblemCategory))
     setJourneyL1(record.journeyL1 || '')
     setJourneyL2(record.journeyL2 || '')
     setEstablishedAction(getEstablishedActionDisplay(record))
@@ -1254,6 +1262,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       urgencyLevel,
       requestScene,
       problemType,
+      customProblemCategory,
       journeyL1,
       journeyL2,
       customerRequest,
@@ -1278,6 +1287,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       urgencyLevel,
       requestScene,
       problemType,
+      customProblemCategory,
       journeyL1,
       journeyL2,
       customerRequest,
@@ -1354,6 +1364,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       urgencyLevel,
       requestScene,
       problemType,
+      ...(isComplaintTicket(feedback)
+        ? { customProblemCategory: normalizeCustomProblemCategory(customProblemCategory) }
+        : {}),
       ...buildCustomerRequestSavePatch(feedback, customerRequest),
       ...buildPainPointSavePatch(feedback, painPoint),
       ...buildDetailOptimizationSavePatch({
@@ -2510,6 +2523,17 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   />
                 </Form.Item>
               </div>
+              {isComplaintTicket(feedback) ? (
+                <Form.Item label="问题分类（自定义）" className="!mb-3">
+                  <Input
+                    value={customProblemCategory}
+                    maxLength={CUSTOM_PROBLEM_CATEGORY_MAX_LENGTH}
+                    allowClear
+                    placeholder="手动填写"
+                    onChange={(event) => setCustomProblemCategory(event.target.value)}
+                  />
+                </Form.Item>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Form.Item
                   label={
@@ -2609,6 +2633,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               >
                 {problemType || TAG_UNRECOGNIZED}
               </Descriptions.Item>
+              {isComplaintTicket(feedback) ? (
+                <Descriptions.Item label="问题分类（自定义）">
+                  {customProblemCategory || '—'}
+                </Descriptions.Item>
+              ) : null}
               <Descriptions.Item label="用户旅程">{journeyDisplay}</Descriptions.Item>
               <Descriptions.Item label="用户情绪">
                 {getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel })}

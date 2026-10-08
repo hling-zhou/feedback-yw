@@ -12,6 +12,8 @@ import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
+import { isComplaintTicket } from '../domain/complaintCause.js'
+import { normalizeCustomProblemCategory } from '../domain/customProblemCategory.js'
 
 /**
  * @param {string | undefined} channel
@@ -211,6 +213,16 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
           {hasOpenTicketTodos(fb) ? <Tag color="orange">有待办</Tag> : null}
         </div>
       ),
+    },
+    {
+      title: '问题分类（自定义）',
+      dataIndex: 'customProblemCategory',
+      width: 160,
+      ellipsis: true,
+      render: (_, fb) => {
+        if (!isComplaintTicket(fb)) return '—'
+        return normalizeCustomProblemCategory(fb.customProblemCategory) || '—'
+      },
     },
     {
       title: '用户旅程',

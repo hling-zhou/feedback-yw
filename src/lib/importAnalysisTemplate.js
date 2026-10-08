@@ -2,14 +2,17 @@ import * as XLSX from 'xlsx'
 import { getExportColumns, getImportRequiredDisplayNames } from '../domain/fieldRegistry.js'
 
 /**
- * v3 导入分析结果表头（与导出 v3 列序一致共 30 列；必填列名带 *）。
+ * 导入分析结果表头（仅可导入列；必填列名带 *）。
+ * 投诉工单手填的「问题分类（自定义）」只出现在导出，不进入导入模板。
  * @returns {string[]}
  */
 export function getImportAnalysisTemplateHeaders() {
   const required = new Set(getImportRequiredDisplayNames())
-  return getExportColumns().map((field) =>
-    required.has(field.displayName) ? `${field.displayName}*` : field.displayName,
-  )
+  return getExportColumns()
+    .filter((field) => field.importable)
+    .map((field) =>
+      required.has(field.displayName) ? `${field.displayName}*` : field.displayName,
+    )
 }
 
 /**

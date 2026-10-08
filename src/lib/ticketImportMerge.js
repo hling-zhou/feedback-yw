@@ -116,6 +116,7 @@ export function preserveUserEditedTicketFields(existing, processed) {
       : processed.rootCauseReview,
     // 回访满意度通常来自独立导入，Excel 再导入不覆盖
     followUpSatisfaction: existing.followUpSatisfaction ?? processed.followUpSatisfaction,
+    customProblemCategory: existing.customProblemCategory,
   }
 }
 

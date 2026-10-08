@@ -125,6 +125,7 @@ import {
 const FEEDBACK_LIST_COLUMN_OPTIONS = [
   { key: 'requestScene', label: '请求场景' },
   { key: 'problemType', label: '问题类型' },
+  { key: 'customProblemCategory', label: '问题分类（自定义）' },
   { key: 'journeyL1', label: '用户旅程' },
   { key: 'resourcePool', label: '资源池' },
 ]
@@ -192,6 +193,7 @@ export default function Feedbacks() {
     const next = new Set(hiddenColumns)
     next.add('requestScene')
     next.add('problemType')
+    next.add('customProblemCategory')
     next.add('resourcePool')
     return next
   }, [hiddenColumns, isPostUseLane])

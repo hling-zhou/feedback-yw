@@ -21,6 +21,7 @@ const EXPECTED_V2_HEADERS = [
   '问题原因',
   '请求场景',
   '问题类型',
+  '问题分类（自定义）',
   '用户旅程一级',
   '用户旅程二级',
   '用户情绪',
@@ -47,9 +48,9 @@ const EXPECTED_V2_HEADERS = [
 ]
 
 describe('fieldRegistry', () => {
-  it('exports v2 column order matches design (30 columns)', () => {
+  it('exports v2 column order matches design (31 columns, including custom problem category)', () => {
     const cols = getExportColumns()
-    expect(cols).toHaveLength(30)
+    expect(cols).toHaveLength(31)
     expect(cols.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
   })
 
@@ -58,7 +59,9 @@ describe('fieldRegistry', () => {
     const exp = getExportColumns().filter((c) => c.importable)
     expect(imp).toHaveLength(30)
     expect(imp.map((c) => c.fieldKey)).toEqual(exp.map((c) => c.fieldKey))
-    expect(imp.map((c) => c.displayName)).toEqual(EXPECTED_V2_HEADERS)
+    expect(imp.map((c) => c.displayName)).toEqual(
+      EXPECTED_V2_HEADERS.filter((name) => name !== '问题分类（自定义）'),
+    )
   })
 
   it('import required excludes 排期 (R1) and optional manual/source columns', () => {
@@ -106,6 +109,11 @@ describe('fieldRegistry', () => {
     expect(isFieldApplicable(l1, 'consultation_ticket')).toBe(false)
     // 客户基础信息列对投诉/咨询均导出；complaintCause*Final 本身不进 exportable 集
     expect(getExportColumns({ dataSourceType: 'consultation_ticket' })).toHaveLength(30)
+    expect(getExportColumns({ dataSourceType: 'complaint_ticket' })).toHaveLength(31)
+    expect(getExportColumns({ dataSourceType: 'complaint_ticket' }).map((col) => col.fieldKey)).toContain(
+      'customProblemCategory',
+    )
+    expect(getFieldByKey('customProblemCategory')?.importable).toBe(false)
   })
 
   it('follow-up fields apply to complaint and consultation only', () => {

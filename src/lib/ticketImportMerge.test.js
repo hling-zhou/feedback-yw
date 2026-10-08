@@ -47,6 +47,7 @@ const existing = {
   designerOptimization: '设计',
   manualReviewOptimization: '人工优化',
   complaintCauseL1Final: '旧终判一级',
+  customProblemCategory: '开通失败',
   complaintCauseL2Review: '复核二级',
   complaintCauseL3Review: '复核三级',
   followUpSatisfaction: { followUpTicketId: 'FH-1', score: 8, followUpSuccessful: true },
@@ -72,7 +73,8 @@ const incoming = {
   problemSummary: '自动痛点',
   customerRequestSource: 'llm',
   painPointSource: 'llm',
-  complaintCauseL1Final: '客户体验类',
+    complaintCauseL1Final: '客户体验类',
+    customProblemCategory: '导入覆盖',
   complaintCauseL2Final: '新二级',
   note: '',
   status: 'open',
@@ -105,6 +107,7 @@ describe('ticketImportMerge', () => {
     expect(merged.ticketTodoIncoming).toEqual(existing.ticketTodoIncoming)
     expect(merged.listeningReviewed).toBe(true)
     expect(merged.establishedAction).toBe('确立举措A')
+    expect(merged.customProblemCategory).toBe('开通失败')
     expect(merged.actionId).toBe('act-1')
     expect(merged.followUpSatisfaction).toEqual(existing.followUpSatisfaction)
     expect(merged.manualTagFields).toEqual(existing.manualTagFields)

@@ -22,6 +22,7 @@ import {
   ticketTodoIncomingEqual,
   ticketTodoItemsEqual,
 } from './ticketTodo.js'
+import { normalizeCustomProblemCategory } from './customProblemCategory.js'
 
 /**
  * @param {unknown} value
@@ -38,6 +39,7 @@ function norm(value) {
  * @property {import('../lib/sentiment.js').UrgencyLevel} [urgencyLevel]
  * @property {string} [requestScene]
  * @property {string} [problemType]
+ * @property {string} [customProblemCategory]
  * @property {string} [journeyL1]
  * @property {string} [journeyL2]
  * @property {string} [customerRequest]
@@ -77,6 +79,12 @@ export function isFeedbackDrawerFormDirty(record, form) {
   }
   if (norm(form.requestScene) !== norm(record.requestScene)) return true
   if (norm(form.problemType) !== norm(record.problemType)) return true
+  if (
+    normalizeCustomProblemCategory(form.customProblemCategory)
+    !== normalizeCustomProblemCategory(record.customProblemCategory)
+  ) {
+    return true
+  }
   if (norm(form.journeyL1) !== norm(record.journeyL1)) return true
   if (norm(form.journeyL2) !== norm(record.journeyL2)) return true
 
@@ -173,6 +181,12 @@ export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
   }
   if (norm(a.requestScene) !== norm(b.requestScene)) return false
   if (norm(a.problemType) !== norm(b.problemType)) return false
+  if (
+    normalizeCustomProblemCategory(a.customProblemCategory)
+    !== normalizeCustomProblemCategory(b.customProblemCategory)
+  ) {
+    return false
+  }
   if (norm(a.journeyL1) !== norm(b.journeyL1)) return false
   if (norm(a.journeyL2) !== norm(b.journeyL2)) return false
   if (

@@ -23,6 +23,7 @@
  * @property {import('../domain/customerTier.js').CustomerTier} [customerTier] - 客户等级：金牌/银牌/铜牌/普通（导入列，不参与聚类评分）
  * @property {string} requestScene - 请求场景（用户角度，通用）
  * @property {string} problemType - 问题类型（配置打标，与工单终判投诉原因无关）
+ * @property {string} [customProblemCategory] - 问题分类（自定义），仅投诉工单手填
  * @property {string} [complaintCauseL1Final] - 投诉原因一级（终判），仅 complaint_ticket
  * @property {string} [complaintCauseL2Final] - 投诉原因二级（终判）
  * @property {string} [complaintCauseL3Final] - 投诉原因三级（终判）

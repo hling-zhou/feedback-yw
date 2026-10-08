@@ -21,18 +21,17 @@ const LEGACY_REMOVED_COLUMNS = [
   '客户原话',
 ]
 
-const REQUIRED_HEADERS = getExportV2Headers()
-
 /**
  * @param {import('../types.js').FeedbackRecord} record
  */
 function assertV2RowShape(record) {
+  const headers = getExportV2Headers({ dataSourceType: record.dataSourceType })
   const row = recordToExportRowV2(record)
-  expect(Object.keys(row)).toEqual(REQUIRED_HEADERS)
+  expect(Object.keys(row)).toEqual(headers)
   for (const legacy of LEGACY_REMOVED_COLUMNS) {
     expect(row).not.toHaveProperty(legacy)
   }
-  for (const header of REQUIRED_HEADERS) {
+  for (const header of headers) {
     expect(typeof row[header]).toBe('string')
   }
   return row

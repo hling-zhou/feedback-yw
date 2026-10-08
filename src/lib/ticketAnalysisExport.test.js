@@ -50,6 +50,7 @@ describe('ticketAnalysisExport v3', () => {
       '问题原因',
       '请求场景',
       '问题类型',
+      '问题分类（自定义）',
       '用户旅程一级',
       '用户旅程二级',
       '用户情绪',
@@ -92,6 +93,7 @@ describe('ticketAnalysisExport v3', () => {
     expect(row['受理内容']).toContain('客户报障')
     expect(row['处理意见']).toBe('已协助排查并放行端口')
     expect(row['问题原因']).toBe('安全组未放行')
+    expect(row['问题分类（自定义）']).toBe('')
     expect(row).not.toHaveProperty('投诉原因（终判）')
     expect(row).not.toHaveProperty('客户请求来源')
     expect(row).not.toHaveProperty('根因（人工复核）')
@@ -129,7 +131,8 @@ describe('ticketAnalysisExport v3', () => {
       problemType: '计费与账单',
       complaintCauseL1Final: '不应导出',
     })
-    expect(Object.keys(row)).toEqual(getExportV3Headers())
+    expect(Object.keys(row)).toEqual(getExportV3Headers({ dataSourceType: 'consultation_ticket' }))
+    expect(row).not.toHaveProperty('问题分类（自定义）')
     expect(row).not.toHaveProperty('投诉原因（终判）')
     expect(row['问题类型']).toBe('计费与账单')
   })
