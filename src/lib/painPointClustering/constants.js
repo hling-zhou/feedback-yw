@@ -50,6 +50,7 @@ export const EMOTION_BASE_SCORE = {
   mild_negative: 3,
   negative: 4,
   strong_negative: 5,
+  neutral_general: 1,
 }
 
 export const URGENCY_BONUS = 0.5

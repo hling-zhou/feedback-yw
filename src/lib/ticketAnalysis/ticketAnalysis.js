@@ -71,6 +71,7 @@ async function analyzeTicketCore(input, settings, corpus, taggerOpts = {}) {
 
   const { sentiment, urgencyLevel } = analyzeTicketSentiment(
     buildSentimentAnalysisText({ customerRequest, painPoint }),
+    { dataSourceType: input.dataSourceType },
   )
 
   // M3: manual_review 工单跳过 optimization 提取——journey 未验证不可信
@@ -165,6 +166,7 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
         customerRequest: unified.customerRequest,
         painPoint: unified.painPoint,
       }),
+      { dataSourceType: input.dataSourceType },
     )
     return {
       customerRequest: unified.customerRequest,
@@ -248,6 +250,7 @@ async function enrichTicketAnalysisWithLlm(input, core, settings) {
 
   const sentimentResult = analyzeTicketSentiment(
     buildSentimentAnalysisText({ customerRequest, painPoint }),
+    { dataSourceType: input.dataSourceType },
   )
   sentiment = sentimentResult.sentiment
   urgencyLevel = sentimentResult.urgencyLevel

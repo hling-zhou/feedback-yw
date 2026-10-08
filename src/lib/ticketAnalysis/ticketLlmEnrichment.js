@@ -47,6 +47,7 @@ export function recordToTicketAnalysisInput(record) {
     rootCauseCol: record.rootCause,
     solutionCol: record.responseText || record.solutionSummary,
     sourceColumns: record.sourceColumns,
+    dataSourceType: record.dataSourceType,
   }
 }
 
@@ -187,6 +188,7 @@ async function enrichRecordWithTicketLlmSeparate(record, settings, ctx, extras =
 
   const { sentiment, urgencyLevel } = analyzeTicketSentiment(
     buildSentimentAnalysisText({ customerRequest, painPoint }),
+    { dataSourceType: record.dataSourceType },
   )
 
   try {
@@ -277,6 +279,7 @@ async function enrichRecordWithTicketLlmUnified(record, settings, ctx, extras = 
       customerRequest: unified.customerRequest,
       painPoint: unified.painPoint,
     }),
+    { dataSourceType: record.dataSourceType },
   )
 
   return normalizeTicketRecordFields({

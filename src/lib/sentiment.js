@@ -1,4 +1,4 @@
-/** @typedef {'positive' | 'neutral_inquiry' | 'neutral_pending' | 'mild_negative' | 'negative' | 'strong_negative'} MainSentiment */
+/** @typedef {'positive' | 'neutral_inquiry' | 'neutral_pending' | 'mild_negative' | 'negative' | 'strong_negative' | 'neutral_general'} MainSentiment */
 /** @typedef {MainSentiment | 'urgent'} Sentiment */
 /** @typedef {'none' | 'high'} UrgencyLevel */
 
@@ -12,11 +12,17 @@ const STRONG_NEGATIVE = [
   '投诉到底', '要赔偿', '太差劲', '极其不满',
 ]
 
-/** 明确不满/失望（纯技术词见 COMPLAINT_CONTEXT / MILD_NEGATIVE） */
+/** 态度上的不满。丢包、中断、超时、错误、卡顿留给问题类型，不在这里升档。 */
 const NEGATIVE = [
-  '投诉', '不满', '差', '慢', '卡', '崩溃', '错误', 'bug',
-  '退款', '生气', '失望', '难用', '断网', '超时', '未解决', '中断', '丢包',
-  'bad', 'slow', 'broken', 'crash', 'fail', 'error', 'terrible', 'awful', 'frustrated',
+  '投诉', '不满', '生气', '失望', '难用', '退款', '很差', '差评',
+  'terrible', 'awful', 'frustrated',
+]
+
+const BOILERPLATE_THANKS = [
+  '感谢您的理解与支持',
+  '感谢您的理解',
+  '感谢您的支持',
+  '感谢理解与支持',
 ]
 
 const URGENT = [
@@ -38,7 +44,49 @@ const NEUTRAL_PENDING = [
   '暂时', '先这样', '后续再',
 ]
 
-const COMPLAINT_CONTEXT = /故障|无法|失败|异常|不可用|不通|绑定失败|退订/
+/**
+ * 投诉单用来判断「有没有态度」的词。现象词和咨询虚词不算。
+ * 「不满足」会在匹配前剔除，避免被当成「不满」。
+ */
+const ATTITUDE_PHRASES = [
+  ...STRONG_NEGATIVE,
+  ...NEGATIVE,
+  '满意', '感谢',
+]
+
+/**
+ * 去掉客服结束语和「不满足」，再做态度匹配。
+ * @param {string} text
+ */
+function prepareSentimentText(text) {
+  let next = String(text || '')
+  for (const phrase of BOILERPLATE_THANKS) {
+    next = next.split(phrase).join('')
+  }
+  return next.replace(/不满足/g, '')
+}
+
+/**
+ * 英文按词界匹配，避免打进资源 ID；中文仍按短语包含。
+ * @param {string} haystack
+ * @param {string} term
+ */
+function includesTerm(haystack, term) {
+  const needle = term.toLowerCase()
+  if (/[a-z]/i.test(needle)) {
+    return new RegExp(`\\b${needle}\\b`, 'i').test(haystack)
+  }
+  return haystack.toLowerCase().includes(needle)
+}
+
+/**
+ * @param {string} text
+ */
+function hasAttitudeWords(text) {
+  const prepared = prepareSentimentText(text)
+  if (!prepared.trim()) return false
+  return ATTITUDE_PHRASES.some((phrase) => includesTerm(prepared, phrase))
+}
 
 const LEGACY_MAP = {
   positive: 'positive',
@@ -102,9 +150,9 @@ export function analyzeUrgencyLevel(text) {
  * @returns {MainSentiment}
  */
 function analyzeMainSentiment(text) {
-  if (!text?.trim()) return 'neutral_inquiry'
+  const prepared = prepareSentimentText(text)
+  if (!prepared.trim()) return 'neutral_inquiry'
 
-  const lower = text.toLowerCase()
   /** @type {Record<string, number>} */
   const scores = {
     positive: 0,
@@ -117,7 +165,7 @@ function analyzeMainSentiment(text) {
 
   const bump = (key, words) => {
     for (const w of words) {
-      if (lower.includes(w.toLowerCase())) scores[key] += 1
+      if (includesTerm(prepared, w)) scores[key] += 1
     }
   }
 
@@ -128,10 +176,11 @@ function analyzeMainSentiment(text) {
   bump('neutral_inquiry', NEUTRAL_INQUIRY)
   bump('neutral_pending', NEUTRAL_PENDING)
 
+  const explicitThanksOrSatisfied = includesTerm(prepared, '满意') || includesTerm(prepared, '感谢')
   if (
-    scores.positive >= 2 &&
     scores.strong_negative === 0 &&
-    scores.positive > scores.negative + scores.mild_negative
+    scores.positive > scores.negative + scores.mild_negative &&
+    (explicitThanksOrSatisfied || scores.positive >= 2)
   ) {
     return 'positive'
   }
@@ -146,19 +195,22 @@ function analyzeMainSentiment(text) {
 
   const [topKey, topScore] = ranked[0]
   if (topScore > 0) return /** @type {MainSentiment} */ (topKey)
-
-  if (COMPLAINT_CONTEXT.test(text)) return 'mild_negative'
   return 'neutral_inquiry'
 }
 
 /**
  * @param {string} text
+ * @param {{ dataSourceType?: string }} [options]
  * @returns {{ sentiment: MainSentiment; urgencyLevel: UrgencyLevel }}
  */
-export function analyzeTicketSentiment(text) {
+export function analyzeTicketSentiment(text, options = {}) {
+  const urgencyLevel = analyzeUrgencyLevel(text)
+  if (options.dataSourceType === 'complaint_ticket' && !hasAttitudeWords(text)) {
+    return { sentiment: 'neutral_general', urgencyLevel }
+  }
   return {
     sentiment: analyzeMainSentiment(text),
-    urgencyLevel: analyzeUrgencyLevel(text),
+    urgencyLevel,
   }
 }
 
@@ -177,6 +229,7 @@ export const SENTIMENT_LABELS = {
   mild_negative: '轻度不满',
   negative: '不满',
   strong_negative: '强烈不满',
+  neutral_general: '中性',
 }
 
 export const URGENCY_LABELS = {
@@ -198,6 +251,8 @@ export const SENTIMENT_DESCRIPTIONS = {
     '明确表达不满、失望或投诉倾向，认为产品/服务未达预期或问题未解决。',
   strong_negative:
     '情绪激烈，强烈指责、威胁投诉或赔偿，不满程度显著高于一般负面反馈。',
+  neutral_general:
+    '投诉单没有满意、不满、愤怒等态度词，记为中性。不表示客户在咨询，也不表示客户在表达不满。',
 }
 
 export const URGENCY_DESCRIPTION =
@@ -210,6 +265,7 @@ export const SENTIMENT_COLORS = {
   mild_negative: 'bg-orange-50 text-orange-700 border-orange-200',
   negative: 'bg-red-50 text-red-600 border-red-200',
   strong_negative: 'bg-red-100 text-red-700 border-red-300',
+  neutral_general: 'bg-slate-100 text-slate-600 border-slate-200',
 }
 
 export const URGENCY_TAG_COLOR = 'magenta'
@@ -222,6 +278,7 @@ export const SENTIMENT_CHART_COLORS = {
   mild_negative: '#FB923C',
   negative: '#EF4444',
   strong_negative: '#DC2626',
+  neutral_general: '#64748B',
 }
 
 /** 统计展示顺序：负面优先 */
@@ -229,6 +286,7 @@ export const SENTIMENT_ORDER = [
   'strong_negative',
   'negative',
   'mild_negative',
+  'neutral_general',
   'neutral_inquiry',
   'neutral_pending',
   'positive',
@@ -242,20 +300,29 @@ export const SENTIMENT_DISPLAY_LABELS = {
   mild_negative: '轻度不满',
   negative: '不满',
   strong_negative: '强烈不满',
+  neutral_general: '中性',
 }
 
 /**
- * 工单详情展示用语（文档示例：焦急/平稳）
+ * 详情展示：主情绪保留，加急另写在后面，不用「焦急」替换主标签。
  * @param {{ sentiment?: string; urgencyLevel?: string }} [record]
  */
 export function getSentimentDisplayLabel(record) {
-  if (getUrgencyLevel(record) === 'high') return '焦急'
   const key = normalizeSentiment(record?.sentiment)
-  if (key === 'positive') return SENTIMENT_DISPLAY_LABELS.positive
-  if (key === 'mild_negative' || key === 'negative' || key === 'strong_negative') {
-    return SENTIMENT_LABELS[key]
+  let label
+  if (key === 'positive') label = SENTIMENT_DISPLAY_LABELS.positive
+  else if (
+    key === 'mild_negative' ||
+    key === 'negative' ||
+    key === 'strong_negative' ||
+    key === 'neutral_general'
+  ) {
+    label = SENTIMENT_LABELS[key]
+  } else {
+    label = SENTIMENT_DISPLAY_LABELS[key] || SENTIMENT_LABELS[key] || '平稳'
   }
-  return SENTIMENT_DISPLAY_LABELS[key] || SENTIMENT_LABELS[key] || '平稳'
+  if (getUrgencyLevel(record) === 'high') return `${label} · 加急`
+  return label
 }
 
 /** @type {Record<MainSentiment, string>} */
@@ -266,4 +333,5 @@ export const SENTIMENT_TAG_COLORS = {
   mild_negative: 'orange',
   negative: 'error',
   strong_negative: 'red',
+  neutral_general: 'default',
 }

@@ -15,7 +15,7 @@ export default function QuoteImportPreviewTable({
         打标语料预览（{rows.length} 条样例）
       </Typography.Text>
       <Typography.Text type="secondary" className="mt-1 block text-xs">
-        导入后将用大模型生成客户请求精炼摘要与需求痛点，并用于用户情绪分析。
+        导入后将用大模型生成客户请求精炼摘要与需求痛点。用户情绪按受理或咨询原话里的态度词判断，不用这段摘要。
       </Typography.Text>
       <Table
         className="mt-2"

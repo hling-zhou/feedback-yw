@@ -53,7 +53,9 @@ function finalizeThemesAndSentiment(enriched, originalById, total, onProgress, o
   return enriched.map((r, i) => {
     onProgress?.(i + 1, total, '用户情绪')
     const original = originalById.get(r.id) ?? r
-    const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r))
+    const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r), {
+      dataSourceType: r.dataSourceType,
+    })
     const next = {
       ...r,
       themes: themesFromJourney(r),

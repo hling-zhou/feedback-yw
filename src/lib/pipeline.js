@@ -259,7 +259,9 @@ export async function reprocessFeedbackRecord(fb, settings = null, options = {})
  */
 export function reprocessCustomerQuoteForRecord(fb, settings = null) {
   void settings
-  const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(fb))
+  const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(fb), {
+    dataSourceType: fb.dataSourceType,
+  })
   return {
     ...fb,
     customerQuote: fb.customerRequest?.trim() || fb.customerQuote || '',

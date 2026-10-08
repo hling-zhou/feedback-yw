@@ -292,7 +292,9 @@ export async function enrichTicketRecordsForImport(records, settings, onProgress
   try {
     onProgress?.('用户情绪', records.length, records.length)
     out = out.map((r) => {
-      const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r))
+      const { sentiment, urgencyLevel } = analyzeTicketSentiment(buildSentimentAnalysisText(r), {
+        dataSourceType: r.dataSourceType,
+      })
       return {
         ...r,
         customerQuote: r.customerRequest?.trim() || r.customerQuote || '',
