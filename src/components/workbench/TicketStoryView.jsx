@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { Alert, Button, Col, Empty, Collapse, Row, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
 import { ArrowRightOutlined, CopyOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
-import TrendChart from '../charts/TrendChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
+import ComboBarLineChart from '../charts/ComboBarLineChart.jsx'
+import CategoryCountBarChart from '../charts/CategoryCountBarChart.jsx'
+import {
+  exportComplaintVolumeWanTouXlsx,
+  exportConsultationTrendXlsx,
+  exportCustomProblemCategoryXlsx,
+} from '../../lib/ticketTrendTableExport.js'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
 import { isJourneyProductSelected, ticketQualityAnomaliesToCsv } from '../../lib/ticketStoryModel.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
@@ -123,6 +129,19 @@ function LimitedTable({ dataSource = [], limit = 10, expandLabel = '展开全部
   )
 }
 
+function TrendDownloadButton({ disabled, onClick }) {
+  return (
+    <Button type="link" size="small" icon={<DownloadOutlined />} disabled={disabled} onClick={onClick}>
+      下载数据表
+    </Button>
+  )
+}
+
+const VOLUME_BARS = [
+  { dataKey: 'count', name: '工单量', fill: '#4F46E5' },
+  { dataKey: 'negative', name: '负向工单', fill: '#EF4444' },
+]
+
 function downloadCsv(text, name) {
   const blob = new Blob([`\ufeff${text}`], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -217,6 +236,20 @@ export default function TicketStoryView({
   const previousPeriodLabel = trendsAndChanges.previousPeriodLabel || '上月'
   const currentPeriodLabel = trendsAndChanges.currentPeriodLabel || '本月'
   const productSelected = isJourneyProductSelected(scope.selectedProduct)
+  const complaintSeries = trendsAndChanges.complaintVolumeWanTou?.length
+    ? trendsAndChanges.complaintVolumeWanTou
+    : (trendsAndChanges.volumeTrend || []).map((row) => ({
+        date: row.date,
+        count: row.count,
+        negative: row.negative,
+        ratio: null,
+        orders: null,
+      }))
+  const showWanTouRatio = Boolean(trendsAndChanges.showWanTouRatio && overview.wanTou?.productKey)
+  const wanTouTarget = showWanTouRatio
+    ? (trendsAndChanges.wanTouTarget ?? overview.wanTou?.evaluation?.target ?? null)
+    : null
+  const categoryRows = trendsAndChanges.customProblemCategories || []
   const productRow = productSelected
     ? (overview.productOverview || []).find((row) => row.product === scope.selectedProduct) || overview.productOverview?.[0]
     : null
@@ -367,27 +400,62 @@ export default function TicketStoryView({
 
       <div className="page-card">
       <SectionHeading title="趋势与变化" summary="判断规模是在增长、持续还是缓解；环节变化见下方用户旅程" id="ticket-trends" />
-      <Row gutter={[12, 12]}>
-        <Col xs={24} xl={12}>
-          <div className="page-card-header"><span className="page-card-title">工单量趋势</span></div>
-          <TrendChart height={260} variant="line" data={trendsAndChanges.volumeTrend} areas={[{ dataKey: 'count', name: '工单量', stroke: '#4F46E5' }, { dataKey: 'negative', name: '负向工单', stroke: '#EF4444' }]} />
-        </Col>
-        <Col xs={24} xl={12}>
-          {complaint ? (
-            <>
-            <div className="page-card-header"><span className="page-card-title">客户体验类万投比趋势</span></div>
-              {overview.wanTou.productKey ? (
-                <TrendChart height={260} variant="line" allowDecimals data={overview.wanTou.trend} areas={[{ dataKey: 'ratio', name: '万投比', stroke: '#0D9488' }]} referenceLine={overview.wanTou.evaluation?.target != null ? { y: overview.wanTou.evaluation.target, label: `目标 ${overview.wanTou.evaluation.target}` } : null} />
-              ) : <Alert type="info" showIcon title="选择具体产品后查看万投比及目标差距" />}
-            </>
-          ) : (
-            <>
-            <div className="page-card-header"><span className="page-card-title">负向占比趋势</span></div>
-              <TrendChart height={260} variant="line" allowDecimals data={trendsAndChanges.volumeTrend} areas={[{ dataKey: 'negativePct', name: '负向占比（%）', stroke: '#DC2626' }]} />
-            </>
-          )}
-        </Col>
-      </Row>
+      {complaint ? (
+        <Row gutter={[12, 12]}>
+          <Col xs={24} xl={12}>
+            <div className="page-card-header">
+              <span className="page-card-title">客户体验类投诉工单量及万投比</span>
+              <TrendDownloadButton
+                disabled={!complaintSeries.length}
+                onClick={() => exportComplaintVolumeWanTouXlsx(complaintSeries, {
+                  includeRatio: showWanTouRatio,
+                  target: wanTouTarget,
+                  productName: scope.selectedProduct,
+                })}
+              />
+            </div>
+            <ComboBarLineChart
+              height={260}
+              data={complaintSeries}
+              bars={VOLUME_BARS}
+              line={showWanTouRatio ? { dataKey: 'ratio', name: '客户体验类万投比', stroke: '#0D9488' } : null}
+              referenceLine={wanTouTarget != null ? { y: wanTouTarget, label: `目标 ${wanTouTarget}` } : null}
+            />
+          </Col>
+          <Col xs={24} xl={12}>
+            <div className="page-card-header">
+              <span className="page-card-title">问题分类（自定义）</span>
+              {productSelected ? (
+                <TrendDownloadButton
+                  disabled={!categoryRows.length}
+                  onClick={() => exportCustomProblemCategoryXlsx(categoryRows, { productName: scope.selectedProduct })}
+                />
+              ) : null}
+            </div>
+            {productSelected ? (
+              <CategoryCountBarChart data={categoryRows} height={260} />
+            ) : (
+              <Alert type="info" showIcon title="选择具体产品后查看问题分类分布" />
+            )}
+          </Col>
+        </Row>
+      ) : (
+        <div>
+          <div className="page-card-header">
+            <span className="page-card-title">工单量及负向占比</span>
+            <TrendDownloadButton
+              disabled={!trendsAndChanges.volumeTrend?.length}
+              onClick={() => exportConsultationTrendXlsx(trendsAndChanges.volumeTrend, { productName: scope.selectedProduct })}
+            />
+          </div>
+          <ComboBarLineChart
+            height={260}
+            data={trendsAndChanges.volumeTrend}
+            bars={VOLUME_BARS}
+            line={{ dataKey: 'negativePct', name: '负向占比（%）', stroke: '#DC2626' }}
+          />
+        </div>
+      )}
       </div>
 
       <div className="page-card">

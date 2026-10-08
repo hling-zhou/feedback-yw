@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTicketStoryModel, buildJourneyStages, collectOverviewJourneyRecords, pickRepresentativeCustomerRequest, resolveJourneyComparisonWindow, CUSTOMER_REQUEST_DISPERSED } from './ticketStoryModel.js'
+import { buildTicketStoryModel, buildJourneyStages, buildComplaintVolumeWanTouSeries, buildCustomProblemCategoryDistribution, collectOverviewJourneyRecords, pickRepresentativeCustomerRequest, resolveJourneyComparisonWindow, CUSTOMER_REQUEST_DISPERSED } from './ticketStoryModel.js'
 
 const record = (id, overrides = {}) => ({
   id,
@@ -17,6 +17,25 @@ const record = (id, overrides = {}) => ({
 })
 
 describe('ticket story model', () => {
+  it('groups custom problem categories and omits wan-tou ratio until a product key exists', () => {
+    expect(buildCustomProblemCategoryDistribution([
+      { customProblemCategory: '  开通失败  ' },
+      { customProblemCategory: '开通失败' },
+      { customProblemCategory: '   ' },
+    ])).toEqual([
+      { name: '开通失败', count: 2, sharePct: 66.7 },
+      { name: '未填写', count: 1, sharePct: 33.3 },
+    ])
+    expect(buildComplaintVolumeWanTouSeries(
+      [{ date: '2026-06', count: 3, negative: 1 }],
+      { productKey: 'eip', trend: [{ date: '2026-06', ratio: 1.25, orders: 80 }] },
+    )).toEqual([{ date: '2026-06', count: 3, negative: 1, ratio: 1.25, orders: 80 }])
+    expect(buildComplaintVolumeWanTouSeries(
+      [{ date: '2026-06', count: 3, negative: 1 }],
+      { productKey: null, trend: [{ date: '2026-06', ratio: 1.25, orders: 80 }] },
+    )[0]).toMatchObject({ ratio: null, orders: null, count: 3 })
+  })
+
   it('builds a complaint story with evidence-only follow-up data', () => {
     const records = [
       record('1', { followUpSatisfaction: { score: 8, problemResolved: 'unresolved' }, customerTier: '金牌' }),
@@ -32,7 +51,7 @@ describe('ticket story model', () => {
       records, trendRecords: records, trendMonths: ['2026-05', '2026-06'], recommendations,
       snapshot: { status: 'ready', pipelineVersion: 'ticket-v1', aggregates: { painPointClustering: { clusteringVersion: 'v2.0' } } },
     })
-    expect(Object.keys(model)).toEqual(['scope', 'conclusions', 'overview', 'trendsAndChanges', 'drivers', 'impactAndEvidence', 'actionsAndRecovery', 'quality'])
+    expect(Object.keys(model)).toEqual(['scope', 'conclusions', 'overview', 'trendsAndChanges', 'drivers', 'impactAndEvidence', 'records', 'actionsAndRecovery', 'quality'])
     expect(model.overview.metrics).toMatchObject({ total: 2, negativeCount: 2, unresolvedCount: 1 })
     expect(model.drivers.clusters[0]).toMatchObject({ pain: '公网IP无法访问', priorityScore: 4.5 })
     expect(model.drivers.fallbackReferences).toEqual([])

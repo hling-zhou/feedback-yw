@@ -3,6 +3,7 @@ import { getTaxonomy } from './productTaxonomy.js'
 import { isNegativeSentiment, getUrgencyLevel } from './sentiment.js'
 import { getFollowUpScore } from '../domain/followUpSatisfaction.js'
 import { getComplaintCauseL1Display, isCustomerExperienceComplaint } from '../domain/complaintCause.js'
+import { customProblemCategoryLabel } from '../domain/customProblemCategory.js'
 import {
   listMonthsInclusive,
   normalizeInsightPeriod,
@@ -501,6 +502,44 @@ function consultationOpportunity(record) {
   return '信息透明'
 }
 
+/**
+ * 投诉趋势图序列。未解析到产品目录键时不带万投比。
+ *
+ * @param {{ date: string, count: number, negative: number }[]} volumeTrend
+ * @param {{ productKey?: string | null, trend?: { date: string, ratio: number | null, orders: number | null }[] }} [wanTou]
+ */
+export function buildComplaintVolumeWanTouSeries(volumeTrend, wanTou) {
+  const byMonth = new Map((wanTou?.trend || []).map((row) => [row.date, row]))
+  const includeRatio = Boolean(wanTou?.productKey)
+  return (volumeTrend || []).map((row) => {
+    const wan = byMonth.get(row.date)
+    return {
+      date: row.date,
+      count: row.count,
+      negative: row.negative,
+      ratio: includeRatio ? (wan?.ratio ?? null) : null,
+      orders: includeRatio ? (wan?.orders ?? null) : null,
+    }
+  })
+}
+
+/**
+ * 当前范围投诉工单按手填问题分类计数。空值归入「未填写」。
+ *
+ * @param {import('./types.js').FeedbackRecord[]} records
+ */
+export function buildCustomProblemCategoryDistribution(records) {
+  const map = new Map()
+  for (const record of records || []) {
+    const name = customProblemCategoryLabel(record?.customProblemCategory)
+    map.set(name, (map.get(name) || 0) + 1)
+  }
+  const total = records?.length || 0
+  return [...map.entries()]
+    .map(([name, count]) => ({ name, count, sharePct: pct(count, total) }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'))
+}
+
 function buildWanTou(records, trendRecords, months, productName, orderVolumes, wanTouTargets, baselineYear) {
   const productKey = resolveCatalogKeyFromProductName(productName)
   const trend = months.map((month) => {
@@ -828,6 +867,10 @@ export function buildTicketStoryModel(input) {
     },
     trendsAndChanges: {
       volumeTrend,
+      complaintVolumeWanTou: complaint ? buildComplaintVolumeWanTouSeries(volumeTrend, selectedWanTou) : [],
+      showWanTouRatio: Boolean(complaint && selectedWanTou.productKey),
+      wanTouTarget: complaint && selectedWanTou.productKey ? selectedWanTou.evaluation?.target ?? null : null,
+      customProblemCategories: complaint ? buildCustomProblemCategoryDistribution(records) : [],
       changes: journeyModel.changeRows,
       highlights: journeyModel.highlights,
       currentMonth: currentPeriodMonths.at(-1) || '',

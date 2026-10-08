@@ -7,6 +7,16 @@ vi.mock('../charts/TrendChart.jsx', () => ({
   default: ({ data = [] }) => <div data-testid="trend-chart">trend:{data.length}</div>,
 }))
 
+vi.mock('../charts/ComboBarLineChart.jsx', () => ({
+  default: ({ data = [], line }) => (
+    <div data-testid="combo-chart">{`combo:${data.length}:${line ? 'line' : 'bars'}`}</div>
+  ),
+}))
+
+vi.mock('../charts/CategoryCountBarChart.jsx', () => ({
+  default: ({ data = [] }) => <div data-testid="category-chart">{`cats:${data.length}`}</div>,
+}))
+
 vi.mock('../charts/ThemeBarChart.jsx', () => ({
   default: ({ data = [] }) => <div data-testid="theme-bar-chart">bars:{data.length}</div>,
 }))
@@ -195,6 +205,54 @@ function buildModel() {
 }
 
 describe('TicketStoryView render', () => {
+  it('shows complaint volume bars without wan-tou until a product is selected', () => {
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={buildModel()} creatingInsightId="" />,
+    )
+    expect(html).toContain('客户体验类投诉工单量及万投比')
+    expect(html).toContain('combo:1:bars')
+    expect(html).toContain('选择具体产品后查看问题分类分布')
+    expect(html).toContain('下载数据表')
+    expect(html).not.toContain('cats:')
+  })
+
+  it('shows wan-tou line and custom category bars for a selected product', () => {
+    const model = buildModel()
+    model.scope.selectedProduct = '弹性公网IP'
+    model.overview.wanTou = {
+      productKey: 'eip',
+      trend: [{ date: '2026-06', ratio: 1.2, orders: 10 }],
+      latest: null,
+      evaluation: { target: 0.5 },
+    }
+    model.trendsAndChanges.showWanTouRatio = true
+    model.trendsAndChanges.wanTouTarget = 0.5
+    model.trendsAndChanges.complaintVolumeWanTou = [
+      { date: '2026-06', count: 2, negative: 1, ratio: 1.2, orders: 10 },
+    ]
+    model.trendsAndChanges.customProblemCategories = [
+      { name: '开通失败', count: 2, sharePct: 100 },
+    ]
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+    expect(html).toContain('combo:1:line')
+    expect(html).toContain('cats:1')
+    expect(html).not.toContain('选择具体产品后查看问题分类分布')
+  })
+
+  it('merges consultation volume and negative share into one chart', () => {
+    const model = buildModel()
+    model.scope.sourceType = 'consultation_ticket'
+    model.scope.sourceLabel = '咨询工单'
+    const html = renderToStaticMarkup(
+      <TicketStoryView model={model} creatingInsightId="" />,
+    )
+    expect(html).toContain('工单量及负向占比')
+    expect(html).toContain('combo:1:line')
+    expect(html).not.toContain('客户体验类投诉工单量及万投比')
+  })
+
   it('renders formal cluster and fallback reference sections with distinct columns', () => {
     const html = renderToStaticMarkup(
       <TicketStoryView model={buildModel()} creatingInsightId="" />,
@@ -217,7 +275,10 @@ describe('TicketStoryView render', () => {
     expect(html).toContain('产品总览')
     expect(html).toContain('环比 +1')
     expect(html).not.toContain('投诉原因（终判）')
-    expect(html).not.toContain('客户体验类投诉')
+    expect(html).toContain('客户体验类投诉工单量及万投比')
+    expect(html).toContain('选择具体产品后查看问题分类分布')
+    expect(html).toContain('combo:1:bars')
+    expect(html).toContain('下载数据表')
   })
 
   it('prevents long fixed-left ticket ids from overflowing adjacent evidence columns', () => {
