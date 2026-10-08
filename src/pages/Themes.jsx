@@ -240,8 +240,13 @@ export default function Themes() {
     return items
   }, [analysisScoped, tab, expanded])
 
-  const { openBulkRetagModal, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
-    useBulkRetagModal({ filteredRecords: scoped })
+  const {
+    openBulkRetagModal,
+    openSentimentRetagModal,
+    bulkRetagBusy,
+    bulkRetagDisabled,
+    bulkRetagDisabledTip,
+  } = useBulkRetagModal({ filteredRecords: scoped })
 
   const requestAgg = useMemo(
     () => aggregateFieldInsights(analysisScoped, 'requestScene'),
@@ -555,6 +560,13 @@ export default function Themes() {
                   onClick={openBulkRetagModal}
                 >
                   批量重新打标
+                </Button>
+                <Button
+                  disabled={bulkRetagDisabled}
+                  loading={bulkRetagBusy}
+                  onClick={openSentimentRetagModal}
+                >
+                  只重打用户情绪
                 </Button>
               </span>
             </Tooltip>

@@ -2903,6 +2903,84 @@ export function InsightsProvider({ children }) {
     ],
   )
 
+  const startSentimentRetag = useCallback(
+    async (records, options = {}) => {
+      const list = (records || []).filter((record) => record?.id)
+      if (!list.length) {
+        message.info('当前没有可重打情绪的工单')
+        return null
+      }
+      const startedPeriodId = currentPeriod?.id
+      beginRetagSession({
+        total: list.length,
+        scope: options.scope || 'period_all',
+        periodId: startedPeriodId,
+        periodStart: currentPeriod?.startDate,
+        periodEnd: currentPeriod?.endDate,
+      })
+      try {
+        const res = await apiFetch('/api/storage/records/enrich', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: 'sentiment_retag',
+            recordIds: list.map((record) => record.id),
+            periodId: currentPeriodId,
+            insightPeriod: currentPeriod
+              ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
+              : undefined,
+            retagOptions: {
+              scope: options.scope || 'period_all',
+              forceOverrideManualTags: options.forceOverrideManualTags === true,
+            },
+          }),
+        })
+        if (!res?.taskId) throw new Error(res?.error || '后台任务未创建')
+        void refreshSharedBackgroundTask()
+        const enrichResult = await waitForBackgroundTask(res.taskId)
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        try {
+          await reloadAfterEnrich(currentPeriodId)
+        } catch (err) {
+          console.warn('[sentiment-retag] reloadAfterEnrich 失败:', err)
+        }
+        if (currentPeriod) {
+          scheduleSnapshotRebuild({
+            period: currentPeriod,
+            recordsForBuild: feedbacksRef.current,
+            reason: 'data',
+            debounceMs: 600,
+          })
+        }
+        endRetagSession(startedPeriodId)
+        const stats = enrichResult?.stats || {}
+        const changed = stats.changed ?? 0
+        const keptManual = stats.keptManual ?? 0
+        message.success(
+          `用户情绪已重算 ${stats.total ?? list.length} 条，更新 ${changed} 条${
+            keptManual ? `，${keptManual} 条人工情绪已保留` : ''
+          }`,
+        )
+        return enrichResult
+      } catch (err) {
+        endRetagSession(startedPeriodId)
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        throw err
+      }
+    },
+    [
+      apiFetch,
+      beginRetagSession,
+      currentPeriod,
+      currentPeriodId,
+      endRetagSession,
+      message,
+      reloadAfterEnrich,
+      refreshSharedBackgroundTask,
+      scheduleSnapshotRebuild,
+      waitForBackgroundTask,
+    ],
+  )
+
   const startPostUseJourneyEnrichment = useCallback(
     async (records, options = {}) => {
       const includeLegacyKeywordJourneys = options.includeLegacyKeywordJourneys === true
@@ -3172,6 +3250,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTasks,
       sharedBackgroundTask,
       startBulkRetag,
+      startSentimentRetag,
       startPostUseJourneyEnrichment,
       updateFeedback,
       removeFeedback,
@@ -3275,6 +3354,7 @@ export function InsightsProvider({ children }) {
       sharedBackgroundTasks,
       sharedBackgroundTask,
       startBulkRetag,
+      startSentimentRetag,
       startPostUseJourneyEnrichment,
       updateFeedback,
       removeFeedback,

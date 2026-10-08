@@ -6,6 +6,7 @@
  * - import:    enrichTicketRecordsForImport（导入 LLM 增强）
  * - bulk_retag: reprocessFeedbackRecord 循环 + reprocessAllThemesAndSentiment（批量重打标）
  * - single_retag: 同上，单条
+ * - sentiment_retag: 只重算用户情绪和加急，不跑其他标签和 LLM
  *
  * 进度通过 backgroundTaskLock.touch 更新，前端轮询 GET /api/storage/background-task。
  */
@@ -15,6 +16,7 @@ import { setKbTransport } from '../src/lib/knowledgeBaseClient.js'
 import { enrichTicketRecordsForImport } from '../src/lib/importEnrichment.js'
 import { reprocessFeedbackRecord } from '../src/lib/pipeline.js'
 import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
+import { retagRecordSentiment } from '../src/lib/sentimentRetag.js'
 import { enrichRecordsWithJourneys } from '../src/lib/journeySemantic.js'
 import { needsPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
 import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
@@ -236,6 +238,52 @@ function createTaxonomyAdapter() {
  * @param {object} [opts.retagOptions]
  * @returns {Promise<{ records: import('../src/lib/types.js').FeedbackRecord[], warnings: string[], stats?: object, writeResult?: object }>}
  */
+/**
+ * 只重算情绪和加急。不刷新标签库、不调用大模型。
+ * @param {object} opts
+ * @param {() => boolean} cancelled
+ * @param {(progress: string) => void} touch
+ */
+async function runSentimentRetag(opts, cancelled, touch) {
+  const ids = opts.recordIds || []
+  /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
+  const records = []
+  touch('正在加载工单…')
+  for (let i = 0; i < ids.length; i += 1) {
+    const rec = storageRepository.getRecord(ids[i])
+    if (rec) records.push(rec)
+  }
+  const total = records.length
+  /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
+  const changedRecords = []
+  let keptManual = 0
+  let skipped = 0
+  for (let i = 0; i < total; i += 1) {
+    if (cancelled()) {
+      return {
+        records: changedRecords,
+        warnings: ['任务已被用户取消'],
+        stats: { total, changed: changedRecords.length, keptManual, skipped, cancelled: true, processed: i },
+      }
+    }
+    const result = retagRecordSentiment(records[i], {
+      forceOverrideManualTags: opts.retagOptions?.forceOverrideManualTags === true,
+    })
+    if (result.skipped) skipped += 1
+    else if (result.keptManual) keptManual += 1
+    if (result.changed) changedRecords.push(result.record)
+    if (i % 200 === 0 || i === total - 1) {
+      touch(`正在重打用户情绪 (${i + 1}/${total})`)
+      opts.onProgress?.('用户情绪', i + 1, total)
+    }
+  }
+  return {
+    records: changedRecords,
+    warnings: [],
+    stats: { total, changed: changedRecords.length, keptManual, skipped, processed: total },
+  }
+}
+
 export async function runEnrichment(opts) {
   const { mode, settings: rawSettings, userId, username, onProgress, retagOptions = {}, taskId } = opts
   const cancelled = () => (taskId ? isTaskCancelled(taskId) : false)
@@ -246,6 +294,10 @@ export async function runEnrichment(opts) {
     } catch {
       /* 任务可能已释放 */
     }
+  }
+
+  if (mode === 'sentiment_retag') {
+    return runSentimentRetag(opts, cancelled, touch)
   }
 
   // 1. 刷新 taxonomy 缓存 + 产品目录（确保用最新标签库和产品目录）

@@ -6,6 +6,7 @@ import { canBulkRetagScope } from '../domain/auth/permissions.js'
 import { useSharedBackgroundTaskBlock } from './useSharedBackgroundTaskBlock.js'
 import { usePeriodScope } from './usePeriodScope.js'
 import { recordHasUnknownJourney } from '../lib/journeySemantic.js'
+import { isSentimentRetagTicket } from '../lib/sentimentRetag.js'
 import {
   recordNeedsJourneyLlmEnrichment,
   recordNeedsTicketLlmEnrichment,
@@ -25,7 +26,7 @@ import {
  * @param {FeedbackRecord[]} options.filteredRecords 当前页筛选结果（洞察分析为 scoped，反馈库为 filtered）
  */
 export function useBulkRetagModal({ filteredRecords }) {
-  const { startBulkRetag, reprocessing, retagSession, settings, currentPeriod } = useInsights()
+  const { startBulkRetag, startSentimentRetag, reprocessing, retagSession, settings, currentPeriod } = useInsights()
   const { user } = useAuth()
   const { retagBlocked, retagBlockedTip } = useSharedBackgroundTaskBlock()
   const { periodFeedbacks, periodCount } = usePeriodScope()
@@ -278,8 +279,69 @@ export function useBulkRetagModal({ filteredRecords }) {
     ],
   )
 
+  const openSentimentRetagModal = useCallback(() => {
+    if (!guardBulkRetagStart()) return
+    const periodTickets = periodFeedbacks.filter(isSentimentRetagTicket)
+    const filteredTickets = filteredRecords.filter(isSentimentRetagTicket)
+    const scopeChoice = { value: periodTickets.length ? 'period_all' : 'filtered' }
+    const forceOverrideChoice = { value: false }
+    Modal.confirm({
+      title: '只重打用户情绪',
+      width: 480,
+      content: (
+        <div className="pt-1">
+          <Typography.Paragraph type="secondary" className="!mb-3">
+            只按当前规则重算用户情绪和加急，不改请求场景、问题类型、用户旅程，也不调用大模型。
+          </Typography.Paragraph>
+          <Radio.Group
+            defaultValue={scopeChoice.value}
+            className="flex flex-col gap-2"
+            onChange={(e) => {
+              scopeChoice.value = e.target.value
+            }}
+          >
+            <Radio value="period_all" disabled={periodTickets.length === 0}>
+              当前洞察周期内全部工单（{periodTickets.length} 条）
+            </Radio>
+            <Radio value="filtered" disabled={filteredTickets.length === 0}>
+              仅当前筛选结果（{filteredTickets.length} 条）
+            </Radio>
+          </Radio.Group>
+          <Checkbox
+            className="!mt-3"
+            onChange={(e) => {
+              forceOverrideChoice.value = e.target.checked
+            }}
+          >
+            覆盖人工保存的情绪
+          </Checkbox>
+          <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 text-xs">
+            默认保留工单详情里人工保存过的用户情绪和加急。
+          </Typography.Paragraph>
+        </div>
+      ),
+      okText: '开始',
+      cancelText: '取消',
+      onOk: () => {
+        const records = scopeChoice.value === 'filtered' ? filteredTickets : periodTickets
+        if (!records.length) {
+          message.warning('所选范围内没有可重打情绪的工单')
+          return Promise.reject(new Error('empty scope'))
+        }
+        return startSentimentRetag(records, {
+          scope: scopeChoice.value,
+          forceOverrideManualTags: forceOverrideChoice.value,
+        }).catch((err) => {
+          message.error(err instanceof Error ? err.message : '重打用户情绪失败')
+          return Promise.reject(err)
+        })
+      },
+    })
+  }, [filteredRecords, guardBulkRetagStart, periodFeedbacks, startSentimentRetag])
+
   return {
     openBulkRetagModal,
+    openSentimentRetagModal,
     startScopedBulkRetag,
     bulkRetagBusy,
     bulkRetagDisabled,

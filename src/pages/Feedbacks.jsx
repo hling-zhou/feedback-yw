@@ -786,8 +786,14 @@ export default function Feedbacks() {
     }
   }
 
-  const { openBulkRetagModal, startScopedBulkRetag, bulkRetagBusy, bulkRetagDisabled, bulkRetagDisabledTip } =
-    useBulkRetagModal({ filteredRecords: filtered })
+  const {
+    openBulkRetagModal,
+    openSentimentRetagModal,
+    startScopedBulkRetag,
+    bulkRetagBusy,
+    bulkRetagDisabled,
+    bulkRetagDisabledTip,
+  } = useBulkRetagModal({ filteredRecords: filtered })
 
   const applyTicketLlmFilter = (value) => {
     handleFiltersChange(applyFeedbackFilterPatch('ticketLlm', { ticketLlm: value }, filters), {
@@ -1269,6 +1275,19 @@ export default function Feedbacks() {
                   ) : (
                     <Button loading={bulkRetagBusy} onClick={openBulkRetagModal}>
                       批量重新打标
+                    </Button>
+                  )}
+                  {bulkRetagDisabled ? (
+                    <Tooltip title={bulkRetagDisabledTip}>
+                      <span className="inline-block">
+                        <Button disabled loading={bulkRetagBusy}>
+                          只重打用户情绪
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Button loading={bulkRetagBusy} onClick={openSentimentRetagModal}>
+                      只重打用户情绪
                     </Button>
                   )}
                 </PermissionGate>
