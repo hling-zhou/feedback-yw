@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Drawer, Empty, Input, Segmented, Space, Tag, Timeline, Typography } from 'antd'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Drawer, Empty, Input, Segmented, Space, Spin, Tag, Timeline, Typography } from 'antd'
 import { WHATS_NEW_DRAWER_WIDTH } from '../constants/appLayout.js'
 import {
   WHATS_NEW_CATEGORY_LABELS,
@@ -7,7 +7,7 @@ import {
   groupWhatsNewItemsByMonth,
   markWhatsNewFeedSeen,
 } from '../domain/whatsNewFeed.js'
-import { fetchWhatsNewFeed } from '../lib/whatsNewFeedClient.js'
+import { fetchWhatsNewFeed, peekWhatsNewFeed } from '../lib/whatsNewFeedClient.js'
 
 /** @typedef {import('../domain/whatsNewFeed.js').WhatsNewCategory} WhatsNewCategory */
 /** @typedef {import('../domain/whatsNewFeed.js').WhatsNewFeed} WhatsNewFeed */
@@ -27,28 +27,33 @@ const CATEGORY_COLORS = {
  * }} props
  */
 export default function WhatsNewDrawer({ open, onClose, onMarkedSeen }) {
-  const [loading, setLoading] = useState(false)
+  const cached = peekWhatsNewFeed()
+  const [loading, setLoading] = useState(!cached)
   const [error, setError] = useState(/** @type {string | null} */ (null))
-  const [feed, setFeed] = useState(/** @type {WhatsNewFeed | null} */ (null))
+  const [feed, setFeed] = useState(/** @type {WhatsNewFeed | null} */ (cached))
   const [category, setCategory] = useState(/** @type {'all' | WhatsNewCategory} */ ('all'))
   const [keyword, setKeyword] = useState('')
+  const onMarkedSeenRef = useRef(onMarkedSeen)
+  onMarkedSeenRef.current = onMarkedSeen
 
   useEffect(() => {
     if (!open) return undefined
     let cancelled = false
-    setLoading(true)
+    const cachedNow = peekWhatsNewFeed()
+    if (cachedNow) setFeed(cachedNow)
+    if (!cachedNow?.items?.length) setLoading(true)
     setError(null)
     void fetchWhatsNewFeed()
       .then((data) => {
         if (cancelled) return
         setFeed(data)
         markWhatsNewFeedSeen(new Date().toISOString())
-        onMarkedSeen?.()
+        onMarkedSeenRef.current?.()
       })
       .catch((err) => {
         if (cancelled) return
         setError(err instanceof Error ? err.message : '加载失败')
-        setFeed({ generatedAt: '', source: 'git', items: [] })
+        if (!peekWhatsNewFeed()) setFeed({ generatedAt: '', source: 'git', items: [] })
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -56,7 +61,7 @@ export default function WhatsNewDrawer({ open, onClose, onMarkedSeen }) {
     return () => {
       cancelled = true
     }
-  }, [open, onMarkedSeen])
+  }, [open])
 
   const filtered = useMemo(() => {
     const items = feed?.items || []
@@ -110,9 +115,12 @@ export default function WhatsNewDrawer({ open, onClose, onMarkedSeen }) {
         />
       </Space>
 
-      {loading ? (
-        <Typography.Text type="secondary">加载中…</Typography.Text>
-      ) : error ? (
+      {loading && !(feed?.items?.length) ? (
+        <div className="flex items-center gap-2 py-8 text-ink-400">
+          <Spin size="small" />
+          <span>正在加载更新</span>
+        </div>
+      ) : error && !(feed?.items?.length) ? (
         <Typography.Text type="danger">{error}</Typography.Text>
       ) : months.length === 0 ? (
         <Empty description="暂无变更记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />

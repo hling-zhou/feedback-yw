@@ -1,4 +1,5 @@
 import { normalizeLlmBaseUrl } from './llmConfig.js'
+import { parseLlmResponseBody } from '../src/lib/llmClient.js'
 
 /**
  * @param {number} status
@@ -33,6 +34,26 @@ export function formatLlmUpstreamError(status, text) {
     return '无响应正文，请检查网络、API 地址与 Key'
   }
   return detail.slice(0, 400)
+}
+
+/**
+ * 部分网关直接返回工具/答案 JSON，或包在 data.choices 里。
+ * @param {unknown} value
+ */
+function coerceChatCompletion(value) {
+  if (!value || typeof value !== 'object') return value
+  const row = /** @type {Record<string, unknown>} */ (value)
+  if (Array.isArray(row.choices)) return row
+  const nested = row.data
+  if (nested && typeof nested === 'object' && Array.isArray(/** @type {{ choices?: unknown }} */ (nested).choices)) {
+    return nested
+  }
+  if (typeof row.tool === 'string' || typeof row.answer === 'string') {
+    return {
+      choices: [{ message: { role: 'assistant', content: JSON.stringify(row) } }],
+    }
+  }
+  return row
 }
 
 /**
@@ -88,11 +109,15 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body, timeoutM
     }
 
     try {
-      return JSON.parse(text)
+      return coerceChatCompletion(JSON.parse(text))
     } catch {
-      const error = new Error(`模型响应不是合法 JSON：${text.slice(0, 200)}`)
-      error.statusCode = 502
-      throw error
+      try {
+        return coerceChatCompletion(parseLlmResponseBody(text))
+      } catch {
+        const error = new Error(`模型响应不是合法 JSON：${text.slice(0, 200)}`)
+        error.statusCode = 502
+        throw error
+      }
     }
   }
 

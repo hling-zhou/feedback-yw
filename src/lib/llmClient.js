@@ -99,12 +99,42 @@ export async function resolveSettingsForLlm(settings = {}) {
  *
  * @param {unknown} message
  */
+/**
+ * @param {unknown} content
+ * @returns {string}
+ */
+function contentToText(content) {
+  if (typeof content === 'string') return content.trim()
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part
+        if (!part || typeof part !== 'object') return ''
+        const row = /** @type {Record<string, unknown>} */ (part)
+        if (typeof row.text === 'string') return row.text
+        if (typeof row.content === 'string') return row.content
+        if (row.tool || row.answer) return JSON.stringify(row)
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+  }
+  if (content && typeof content === 'object') {
+    const row = /** @type {Record<string, unknown>} */ (content)
+    if (typeof row.text === 'string' && row.text.trim()) return row.text.trim()
+    if (row.tool || row.answer) return JSON.stringify(row)
+  }
+  return ''
+}
+
 export function extractLlmAssistantText(message) {
   if (!message || typeof message !== 'object') return ''
-  const content = typeof message.content === 'string' ? message.content.trim() : ''
+  const content = contentToText(/** @type {{ content?: unknown }} */ (message).content)
   if (content) return content
-  const reasoning =
-    typeof message.reasoning_content === 'string' ? message.reasoning_content.trim() : ''
+  const reasoning = contentToText(
+    /** @type {{ reasoning_content?: unknown }} */ (message).reasoning_content,
+  )
   if (reasoning) return reasoning
   return ''
 }
@@ -114,7 +144,8 @@ export function extractLlmAssistantText(message) {
  * @returns {string}
  */
 export function getLlmCompletionText(data) {
-  const choice = data?.choices?.[0]
+  const root = data?.data?.choices ? data.data : data
+  const choice = root?.choices?.[0]
   const text = extractLlmAssistantText(choice?.message)
   if (text) return text
   if (typeof choice?.text === 'string' && choice.text.trim()) {
@@ -183,29 +214,98 @@ function extractBalancedJsonSlice(text) {
 }
 
 /**
+ * 网关或模型常把工具 JSON 包在思考标签、弯引号、BOM 里，严格 JSON.parse 会失败。
+ * @param {string} text
+ * @returns {string[]}
+ */
+function looseJsonCandidates(text) {
+  const cleaned = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+    .replace(/[\u201C\u201D\uFF02]/g, '"')
+    .replace(/[\u2018\u2019\uFF07]/g, "'")
+    .replace(/[\uFF5B｛]/g, '{')
+    .replace(/[\uFF5D｝]/g, '}')
+    .replace(/\uFF3B/g, '[')
+    .replace(/\uFF3D/g, ']')
+    .replace(/\uFF1A/g, ':')
+    .replace(/\uFF0C/g, ',')
+    .replace(/[\u00A0\u3000]/g, ' ')
+    .trim()
+  const noThink = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  const fenced = stripMarkdownJsonFence(noThink)
+  /** @type {string[]} */
+  const list = [cleaned, noThink, fenced]
+  const balanced = extractBalancedJsonSlice(fenced)
+  if (balanced) list.push(balanced)
+  for (const item of [...list]) {
+    const withoutTrailingComma = item.replace(/,\s*([}\]])/g, '$1')
+    if (withoutTrailingComma !== item) list.push(withoutTrailingComma)
+  }
+  return [...new Set(list.filter(Boolean))]
+}
+
+/**
+ * 正文里能认出工具名时，即使外层标点不规范也按工具调用处理。
+ * @param {string} text
+ * @returns {{ tool: string, args: Record<string, unknown> } | null}
+ */
+function extractToolCallFallback(text) {
+  const toolMatch = String(text || '').match(/["“＂]tool["”＂]\s*[:：\uFF1A]\s*["“＂]([A-Za-z0-9_]+)["”＂]/)
+  if (!toolMatch) return null
+  const argsMatch = String(text).match(/["“]args["”]\s*[:：]\s*(\{[\s\S]*?\})/)
+  /** @type {Record<string, unknown>} */
+  let args = {}
+  if (argsMatch) {
+    try {
+      const parsed = JSON.parse(argsMatch[1].replace(/,\s*([}\]])/g, '$1'))
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed
+    } catch {
+      args = {}
+    }
+  }
+  return { tool: toolMatch[1], args }
+}
+
+function parseJsonCandidate(candidate) {
+  let value = JSON.parse(candidate)
+  if (typeof value === 'string') {
+    const inner = value.trim()
+    if (inner.startsWith('{') || inner.startsWith('[')) {
+      try {
+        value = JSON.parse(inner)
+      } catch {
+        /* 保持字符串 */
+      }
+    }
+  }
+  return value
+}
+
+/**
  * @param {string} text
  */
 export function parseLlmResponseBody(text) {
   const trimmed = text.trimStart()
-  if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
+  if (/^<!doctype|^<html[\s>]/i.test(trimmed)) {
     throw new Error(
       '接口返回了 HTML 页面而非 JSON。请检查服务端 LLM_BASE_URL 是否为 OpenAI 兼容 API 基址（以 /v1 结尾）。',
     )
   }
 
-  const candidates = [text.trim(), stripMarkdownJsonFence(text)]
-  const balanced = extractBalancedJsonSlice(stripMarkdownJsonFence(text))
-  if (balanced) candidates.push(balanced)
+  const candidates = looseJsonCandidates(text)
 
   let lastErr = null
   for (const candidate of candidates) {
-    if (!candidate) continue
     try {
-      return JSON.parse(candidate)
+      return parseJsonCandidate(candidate)
     } catch (err) {
       lastErr = err
     }
   }
+
+  const toolFallback = extractToolCallFallback(text)
+  if (toolFallback) return toolFallback
 
   throw new Error(
     `模型响应不是合法 JSON：${text.slice(0, 200)}${text.length > 200 ? '…' : ''}${

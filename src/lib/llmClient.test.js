@@ -6,6 +6,7 @@ import {
   llmChatCompletion,
   normalizeLlmBaseUrl,
   parseLlmMessageContent,
+  parseLlmResponseBody,
   refreshLlmServerStatus,
   resolvePayloadModel,
 } from './llmClient.js'
@@ -77,6 +78,49 @@ describe('getLlmCompletionText', () => {
       ],
     })
     expect(text).toBe('你好')
+  })
+})
+
+describe('parseLlmResponseBody', () => {
+  it('parses a tool call exactly', () => {
+    expect(parseLlmResponseBody('{"tool":"list_periods","args":{}}')).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+  })
+
+  it('parses tool calls wrapped in smart quotes, BOM, or a think tag', () => {
+    expect(parseLlmResponseBody('\uFEFF<think>先查周期</think>\n{"tool":"list_periods","args":{}}')).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+    expect(parseLlmResponseBody('{"tool":"list_periods","args":{},}')).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+    expect(parseLlmResponseBody('{\u201Ctool\u201D:\u201Clist_periods\u201D,\u201Cargs\u201D:{}}')).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+    expect(parseLlmResponseBody('{\uFF02tool\uFF02:\uFF02list_periods\uFF02,\uFF02args\uFF02:{}}')).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+  })
+
+  it('unwraps a double-encoded JSON string', () => {
+    expect(parseLlmResponseBody(JSON.stringify('{"tool":"list_periods","args":{}}'))).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+  })
+
+  it('reads content arrays', () => {
+    expect(
+      extractLlmAssistantText({
+        content: [{ type: 'text', text: '{"tool":"list_periods","args":{}}' }],
+      }),
+    ).toBe('{"tool":"list_periods","args":{}}')
   })
 })
 

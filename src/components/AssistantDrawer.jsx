@@ -53,6 +53,7 @@ export default function AssistantDrawer({ open, onClose, currentPeriodId }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingThreads, setLoadingThreads] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const scrollRef = useRef(null)
 
@@ -126,16 +127,30 @@ export default function AssistantDrawer({ open, onClose, currentPeriodId }) {
   }, [])
 
   const handleDeleteThread = useCallback(async () => {
-    if (!currentThreadId) return
-    try {
-      await deleteAssistantThread(currentThreadId)
-      setThreads((prev) => prev.filter((t) => t.id !== currentThreadId))
-      setCurrentThreadId(null)
-      setMessages([])
-    } catch (err) {
-      antdMessage.error(err instanceof Error ? err.message : '删除会话失败')
+    if (!currentThreadId || deleting) {
+      if (!currentThreadId) antdMessage.info('当前没有可删除的会话')
+      return
     }
-  }, [currentThreadId])
+    const threadId = currentThreadId
+    const previousThreads = threads
+    const previousMessages = messages
+    setDeleting(true)
+    setError('')
+    setThreads((prev) => prev.filter((t) => t.id !== threadId))
+    setCurrentThreadId(null)
+    setMessages([])
+    try {
+      await deleteAssistantThread(threadId)
+      antdMessage.success('已删除当前会话')
+    } catch (err) {
+      setThreads(previousThreads)
+      setCurrentThreadId(threadId)
+      setMessages(previousMessages)
+      antdMessage.error(err instanceof Error ? err.message : '删除会话失败')
+    } finally {
+      setDeleting(false)
+    }
+  }, [currentThreadId, deleting, messages, threads])
 
   const handleSend = useCallback(
     async (questionText) => {
@@ -216,7 +231,7 @@ export default function AssistantDrawer({ open, onClose, currentPeriodId }) {
       }
       open={open}
       onClose={onClose}
-      width={420}
+      size={420}
       placement="right"
       mask={false}
       styles={{ body: { padding: 0 } }}
@@ -234,16 +249,18 @@ export default function AssistantDrawer({ open, onClose, currentPeriodId }) {
             onChange={(id) => setCurrentThreadId(id)}
             notFoundContent="暂无会话"
           />
-          <Tooltip title="新对话">
+          <Tooltip title="新对话" placement="bottomRight" autoAdjustOverflow={false}>
             <Button size="small" icon={<PlusOutlined />} onClick={handleNewThread} />
           </Tooltip>
-          <Tooltip title="删除当前会话">
+          <Tooltip title="删除当前会话" placement="bottomRight" autoAdjustOverflow={false}>
             <Button
               size="small"
               danger
               icon={<DeleteOutlined />}
-              onClick={handleDeleteThread}
-              disabled={!currentThreadId}
+              aria-label="删除当前会话"
+              loading={deleting}
+              onClick={() => void handleDeleteThread()}
+              disabled={!currentThreadId || deleting}
             />
           </Tooltip>
         </div>

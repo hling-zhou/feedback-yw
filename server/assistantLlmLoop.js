@@ -231,6 +231,30 @@ function sanitizeAnswer(parsed, seenRecordIds) {
 }
 
 /**
+ * 兼容模型把工具写成 name/arguments，或 args 仍是 JSON 字符串。
+ * @param {unknown} parsed
+ */
+function normalizeAssistantPayload(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed
+  const row = /** @type {Record<string, unknown>} */ (parsed)
+  if (typeof row.tool !== 'string' && typeof row.name === 'string') {
+    row.tool = row.name
+  }
+  if (typeof row.args === 'string') {
+    try {
+      const args = JSON.parse(row.args)
+      if (args && typeof args === 'object') row.args = args
+    } catch {
+      row.args = {}
+    }
+  }
+  if (row.args == null && row.arguments && typeof row.arguments === 'object') {
+    row.args = row.arguments
+  }
+  return row
+}
+
+/**
  * 运行整轮工具循环。
  * @param {{
  *   question: string
@@ -281,6 +305,8 @@ export async function runAssistantLoop({ question, history, insightPeriodId, pag
         throw err instanceof Error ? err : new Error(String(err))
       }
     }
+
+    parsed = normalizeAssistantPayload(parsed)
 
     // 工具调用？
     if (parsed && typeof parsed.tool === 'string') {

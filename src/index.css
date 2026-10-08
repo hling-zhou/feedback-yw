@@ -7,6 +7,8 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* 右侧浮层提示超出视口时，横向滚动条会反复出现，把整页顶得来回抖 */
+    overflow-x: clip;
   }
   body {
     @apply bg-ink-50 text-ink-800 font-sans;

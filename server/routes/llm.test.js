@@ -74,4 +74,39 @@ describe('forwardLlmChatCompletion', () => {
     const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1].body))
     expect(secondBody.response_format).toBeUndefined()
   })
+
+  it('wraps a raw tool JSON body as a chat completion', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => '{"tool":"list_periods","args":{}}',
+    })
+
+    const { forwardLlmChatCompletion } = await import('../llmProxy.js')
+    const data = await forwardLlmChatCompletion({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      body: { model: 'zhanlu/deepseek-v4-flash', messages: [] },
+    })
+
+    expect(JSON.parse(data.choices[0].message.content)).toEqual({
+      tool: 'list_periods',
+      args: {},
+    })
+  })
+
+  it('accepts a tool JSON body with trailing comma', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => '{"tool":"list_periods","args":{},}',
+    })
+
+    const { forwardLlmChatCompletion } = await import('../llmProxy.js')
+    const data = await forwardLlmChatCompletion({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      body: { model: 'zhanlu/deepseek-v4-flash', messages: [] },
+    })
+
+    expect(JSON.parse(data.choices[0].message.content).tool).toBe('list_periods')
+  })
 })
