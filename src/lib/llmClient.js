@@ -296,6 +296,12 @@ function pickAssistantPayload(values) {
     return typeof row.answer === 'string' && row.answer.trim()
   })
   if (answers.length) return answers[answers.length - 1]
+  // 一批工具：{"tools":[...]}
+  const batches = objects.filter((value) => {
+    const row = /** @type {Record<string, unknown>} */ (value)
+    return Array.isArray(row.tools) && row.tools.length
+  })
+  if (batches.length) return batches[batches.length - 1]
   const tools = objects.filter((value) => typeof /** @type {Record<string, unknown>} */ (value).tool === 'string')
   if (tools.length) return tools[tools.length - 1]
   return objects.length ? objects[objects.length - 1] : null

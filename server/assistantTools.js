@@ -9,7 +9,7 @@ import { storageRepository } from './storageRepository.js'
 import { actionItemRepository } from './actionItemRepository.js'
 import { ticketTodoRepository } from './ticketTodoRepository.js'
 import { postUseJiraRepository } from './postUseJiraRepository.js'
-import { searchRecords, sanitizeSearchQuery } from './assistantSearchIndex.js'
+import { searchRecords, searchRecordsRange, sanitizeSearchQuery } from './assistantSearchIndex.js'
 import { buildWanTouByProducts } from '../src/lib/wanTouRatio.js'
 import { listOrderVolumesSync } from './assistantOrderVolumeStore.js'
 import { listWanTouTargetsSync } from './assistantWanTouTargetStore.js'
@@ -158,12 +158,26 @@ function getSourceSnapshot({ insightPeriodId, dataSourceType }) {
   }
 
   // 痛点簇：去掉 recordIds / isolatedRecordIds，只留标签、条数、代表句
+  // 截断：产品按工单量取前 8 个，每个产品前 3 个簇，避免顶到 12000 字上限
   const clustering = aggregates.painPointClustering
   if (clustering && typeof clustering === 'object') {
+    /** @type {{ ticketCount?: number; primaryClusters?: unknown[] }[]} */
+    const productEntries = Object.entries(clustering.products || {})
+      .map(([productKey, group]) => ({
+        productKey,
+        group,
+        ticketCount: Array.isArray(group?.primaryClusters)
+          ? group.primaryClusters.reduce(
+              (sum, /** @type {Record<string, unknown>} */ c) => sum + toCount(c.ticketCount),
+              0,
+            )
+          : 0,
+      }))
+      .sort((a, b) => b.ticketCount - a.ticketCount)
+      .slice(0, 8)
     /** @type {Record<string, unknown>} */
     const products = {}
-    const cp = clustering.products || {}
-    for (const [productKey, group] of Object.entries(cp)) {
+    for (const { productKey, group } of productEntries) {
       const clusters = Array.isArray(group?.primaryClusters)
         ? group.primaryClusters
             .map((/** @type {Record<string, unknown>} */ c) => ({
@@ -174,7 +188,7 @@ function getSourceSnapshot({ insightPeriodId, dataSourceType }) {
               representativePainPoint: snippet(String(c.representativePainPoint || ''), 200),
               representativeCause: snippet(String(c.representativeCause || ''), 200),
             }))
-            .slice(0, MAX_LIST)
+            .slice(0, 3)
         : []
       products[productKey] = { clusters }
     }
@@ -348,14 +362,52 @@ function monthsCoveredByPeriod(insightPeriodId) {
   return listMonthsInclusive(period.startDate.slice(0, 7), period.endDate.slice(0, 7))
 }
 
-/** @param {{ importMonth?: string; dataSourceType?: string; query: string; insightPeriodId?: string }} args */
-function searchRecordsTool({ importMonth, dataSourceType, query, insightPeriodId }) {
+/** @param {{ importMonth?: string; year?: string | number; importMonthFrom?: string; importMonthTo?: string; dataSourceType?: string; query: string; insightPeriodId?: string }} args */
+function searchRecordsTool({ importMonth, year, importMonthFrom, importMonthTo, dataSourceType, query, insightPeriodId }) {
   const cleaned = sanitizeSearchQuery(query)
   if (cleaned.length < 3) {
     return {
       results: [],
+      total: 0,
       truncated: false,
       error: '检索词至少 3 个字符，请换更长的关键词',
+    }
+  }
+  // 范围检索（按年或起止月份）：一次查完，返回总数 + 最多 20 条
+  if (year != null && year !== '') {
+    const out = searchRecordsRange({ year, dataSourceType, query: cleaned, limit: 20 })
+    return {
+      total: out.total,
+      truncated: out.truncated,
+      needNarrowerScope: out.needNarrowerScope,
+      error: out.error,
+      results: out.results.map((r) => ({
+        recordId: r.recordId,
+        ticketId: r.ticketId,
+        product: r.product,
+        dataSourceType: r.dataSourceType,
+        importMonth: r.importMonth,
+        matchedField: r.matchedField,
+        snippet: snippet(r.snippet, SNIPPET_LIMIT),
+      })),
+    }
+  }
+  if (importMonthFrom || importMonthTo) {
+    const out = searchRecordsRange({ importMonthFrom, importMonthTo, dataSourceType, query: cleaned, limit: 20 })
+    return {
+      total: out.total,
+      truncated: out.truncated,
+      needNarrowerScope: out.needNarrowerScope,
+      error: out.error,
+      results: out.results.map((r) => ({
+        recordId: r.recordId,
+        ticketId: r.ticketId,
+        product: r.product,
+        dataSourceType: r.dataSourceType,
+        importMonth: r.importMonth,
+        matchedField: r.matchedField,
+        snippet: snippet(r.snippet, SNIPPET_LIMIT),
+      })),
     }
   }
   const month = String(importMonth || '').trim().slice(0, 7)
@@ -364,15 +416,19 @@ function searchRecordsTool({ importMonth, dataSourceType, query, insightPeriodId
     if (months.length > 3) {
       return {
         results: [],
+        total: 0,
+        truncated: false,
         needNarrowerScope: true,
         coveredMonths: months.length,
-        error: '周期覆盖超过 3 个月，请指定单个 importMonth（YYYY-MM），不要扫全库',
+        error: '周期覆盖超过 3 个月，请改用 year（YYYY）一次查全年，或指定单个 importMonth（YYYY-MM）',
       }
     }
     return {
       results: [],
+      total: 0,
+      truncated: false,
       needNarrowerScope: true,
-      error: 'search_records 一次只查一个月份，请传入 importMonth（YYYY-MM）',
+      error: 'search_records 一次只查一个月份，请传入 importMonth（YYYY-MM）或 year（YYYY）',
     }
   }
   const results = searchRecords({
@@ -382,6 +438,8 @@ function searchRecordsTool({ importMonth, dataSourceType, query, insightPeriodId
     limit: MAX_SEARCH,
   })
   return {
+    total: results.length,
+    truncated: false,
     results: results.map((r) => ({
       recordId: r.recordId,
       ticketId: r.ticketId,
@@ -391,7 +449,6 @@ function searchRecordsTool({ importMonth, dataSourceType, query, insightPeriodId
       matchedField: r.matchedField,
       snippet: snippet(r.snippet, SNIPPET_LIMIT),
     })),
-    truncated: false,
   }
 }
 
@@ -466,7 +523,7 @@ export const ASSISTANT_TOOLS = {
   search_records: {
     fn: searchRecordsTool,
     description:
-      '在指定月份（YYYY-MM）和来源内按关键词检索工单/评价原文，返回最多 15 条片段。一次只查一个月份；季/年/自定义周期若覆盖超过 3 个月，请先让用户改问具体月份，不要逐月扫全库。',
+      '按关键词检索工单/评价原文。支持三种范围：单月 importMonth（YYYY-MM，最多 15 条）、整年 year（YYYY，一次查完 12 个月，返回总数和最多 20 条）、起止月份 importMonthFrom/importMonthTo（YYYY-MM，最多 12 个月）。问"今年/全年"用 year，不要逐月调用。可按 dataSourceType 过滤来源。',
   },
   get_record: {
     fn: getRecord,

@@ -58,7 +58,7 @@ describe('assistantTools structure', () => {
     expect(result.error).toMatch(/3/)
   })
 
-  it('search_records requires a single importMonth', () => {
+  it('search_records requires a single importMonth or year', () => {
     const result = ASSISTANT_TOOLS.search_records.fn({
       dataSourceType: 'complaint_ticket',
       query: '网关超时',
@@ -74,6 +74,27 @@ describe('assistantTools structure', () => {
     })
     expect(result.needNarrowerScope).toBe(true)
     expect(result.coveredMonths).toBeGreaterThan(3)
+  })
+
+  it('search_records accepts a year and returns total + results', () => {
+    const result = ASSISTANT_TOOLS.search_records.fn({
+      year: '2026',
+      dataSourceType: 'complaint_ticket',
+      query: '体验账号',
+    })
+    expect(result.needNarrowerScope).toBeUndefined()
+    expect(result).toHaveProperty('total')
+    expect(Array.isArray(result.results)).toBe(true)
+  })
+
+  it('search_records rejects a range over 12 months', () => {
+    const result = ASSISTANT_TOOLS.search_records.fn({
+      importMonthFrom: '2025-01',
+      importMonthTo: '2026-06',
+      query: '体验账号',
+    })
+    expect(result.needNarrowerScope).toBe(true)
+    expect(result.results).toEqual([])
   })
 
   it('get_record returns missing for unknown record', () => {

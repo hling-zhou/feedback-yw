@@ -218,6 +218,70 @@ function locateMatch(record, needle) {
   return null
 }
 
+/** 校验 YYYY-MM 形式。 */
+function isValidMonth(value) {
+  return /^\d{4}-\d{2}$/.test(String(value || '').trim().slice(0, 7))
+}
+
+/** 把年份展开成起止月份；非法返回 null。 */
+function yearToRange(year) {
+  const y = Number(String(year || '').trim())
+  if (!Number.isInteger(y) || y < 2000 || y > 2999) return null
+  return { from: `${y}-01`, to: `${y}-12` }
+}
+
+/** 把任意起止月份归一化为 YYYY-MM；from>to 返回 null。 */
+function normalizeMonthRange(from, to) {
+  const f = String(from || '').trim().slice(0, 7)
+  const t = String(to || '').trim().slice(0, 7)
+  if (!isValidMonth(f) || !isValidMonth(t)) return null
+  if (f > t) return null
+  return { from: f, to: t }
+}
+
+/** 计算两个 YYYY-MM 之间相隔的月份数（含两端）。 */
+function monthSpanCount(from, to) {
+  const fromYear = Number(from.slice(0, 4))
+  const toYear = Number(to.slice(0, 4))
+  return (toYear - fromYear) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7))) + 1
+}
+
+/**
+ * 按 recordId 列表解析命中字段与片段。
+ * @param {string[]} recordIds
+ * @param {string} needle
+ * @returns {{ recordId: string; ticketId: string; product: string; dataSourceType: string; importMonth: string; matchedField: string; snippet: string }[]}
+ */
+function hydrateMatches(recordIds, needle) {
+  if (!recordIds.length) return []
+  const db = getDb()
+  /** @type {{ recordId: string; ticketId: string; product: string; dataSourceType: string; importMonth: string; matchedField: string; snippet: string }[]} */
+  const out = []
+  const getRecord = db.prepare('SELECT payload FROM records WHERE id = ?')
+  for (const recordId of recordIds) {
+    const row = getRecord.get(recordId)
+    if (!row?.payload) continue
+    /** @type {Record<string, unknown>} */
+    let record
+    try {
+      record = JSON.parse(row.payload)
+    } catch {
+      continue
+    }
+    const match = locateMatch(record, needle)
+    out.push({
+      recordId,
+      ticketId: String(record.ticketId ?? '').trim(),
+      product: String(record.product ?? '').trim(),
+      dataSourceType: String(record.dataSourceType ?? '').trim(),
+      importMonth: String(record.importMonth ?? '').trim(),
+      matchedField: match?.field || '内容',
+      snippet: match?.snippet || needle,
+    })
+  }
+  return out
+}
+
 /**
  * 按月份 + 来源检索记录。
  * @param {{
@@ -233,7 +297,7 @@ export function searchRecords({ importMonth, dataSourceType, query, limit = 15 }
   const needle = sanitizeSearchQuery(query)
   if (needle.length < 3) return []
   const month = String(importMonth || '').trim().slice(0, 7)
-  if (!/^\d{4}-\d{2}$/.test(month)) return []
+  if (!isValidMonth(month)) return []
   const source = String(dataSourceType || '').trim()
   const cap = Math.min(Math.max(Number(limit) || 15, 1), 15)
 
@@ -273,33 +337,82 @@ export function searchRecords({ importMonth, dataSourceType, query, limit = 15 }
     recordIds = rows.map((r) => String(r.record_id))
   }
 
-  if (!recordIds.length) return []
+  return hydrateMatches(recordIds, needle)
+}
 
-  /** @type {{ recordId: string; ticketId: string; product: string; dataSourceType: string; importMonth: string; matchedField: string; snippet: string }[]} */
-  const out = []
-  const getRecord = db.prepare('SELECT payload FROM records WHERE id = ?')
-  for (const recordId of recordIds) {
-    const row = getRecord.get(recordId)
-    if (!row?.payload) continue
-    /** @type {Record<string, unknown>} */
-    let record
-    try {
-      record = JSON.parse(row.payload)
-    } catch {
-      continue
-    }
-    const match = locateMatch(record, needle)
-    out.push({
-      recordId,
-      ticketId: String(record.ticketId ?? '').trim(),
-      product: String(record.product ?? '').trim(),
-      dataSourceType: String(record.dataSourceType ?? '').trim(),
-      importMonth: String(record.importMonth ?? '').trim(),
-      matchedField: match?.field || '内容',
-      snippet: match?.snippet || needle,
-    })
+/**
+ * 按月份范围 + 来源检索，返回命中总数和最多 limit 条片段。
+ * 范围最多 12 个月；超过返回 needNarrowerScope。
+ * @param {{
+ *   year?: string | number
+ *   importMonthFrom?: string
+ *   importMonthTo?: string
+ *   dataSourceType?: string
+ *   query: string
+ *   limit?: number
+ * }} params
+ * @returns {{ total: number; results: ReturnType<typeof hydrateMatches>; truncated: boolean; needNarrowerScope?: true; error?: string }}
+ */
+export function searchRecordsRange({ year, importMonthFrom, importMonthTo, dataSourceType, query, limit = 20 }) {
+  const needle = sanitizeSearchQuery(query)
+  if (needle.length < 3) {
+    return { total: 0, results: [], truncated: false, error: '检索词至少 3 个字符，请换更长的关键词' }
   }
-  return out
+  let range = null
+  if (year != null && year !== '') {
+    range = yearToRange(year)
+  } else if (importMonthFrom || importMonthTo) {
+    range = normalizeMonthRange(importMonthFrom, importMonthTo)
+  }
+  if (!range) {
+    return { total: 0, results: [], truncated: false, needNarrowerScope: true, error: '请传入 year（YYYY）或起止月份 importMonthFrom/importMonthTo（YYYY-MM）' }
+  }
+  if (monthSpanCount(range.from, range.to) > 12) {
+    return { total: 0, results: [], truncated: false, needNarrowerScope: true, error: '检索范围超过 12 个月，请缩小到一年以内' }
+  }
+  if (!searchMode) return { total: 0, results: [], truncated: false }
+  const source = String(dataSourceType || '').trim()
+  const cap = Math.min(Math.max(Number(limit) || 20, 1), 20)
+
+  const db = getDb()
+  /** @type {string[]} */
+  let recordIds = []
+  let total = 0
+
+  if (searchMode === 'fts') {
+    /** @type {string[]} */
+    const clauses = ['records_fts MATCH ?', 'import_month >= ?', 'import_month <= ?']
+    /** @type {unknown[]} */
+    const params = [toFtsPhrase(needle), range.from, range.to]
+    if (source) {
+      clauses.push('data_source_type = ?')
+      params.push(source)
+    }
+    const where = clauses.join(' AND ')
+    total = Number(db.prepare(`SELECT COUNT(*) AS n FROM records_fts WHERE ${where}`).get(...params).n || 0)
+    const rows = db
+      .prepare(`SELECT record_id FROM records_fts WHERE ${where} ORDER BY import_month DESC, rowid DESC LIMIT ?`)
+      .all(...params, cap)
+    recordIds = rows.map((r) => String(r.record_id))
+  } else {
+    /** @type {string[]} */
+    const clauses = ['content LIKE ?', 'import_month >= ?', 'import_month <= ?']
+    /** @type {unknown[]} */
+    const params = [`%${needle}%`, range.from, range.to]
+    if (source) {
+      clauses.push('data_source_type = ?')
+      params.push(source)
+    }
+    const where = clauses.join(' AND ')
+    total = Number(db.prepare(`SELECT COUNT(*) AS n FROM records_search WHERE ${where}`).get(...params).n || 0)
+    const rows = db
+      .prepare(`SELECT record_id FROM records_search WHERE ${where} ORDER BY import_month DESC, record_id DESC LIMIT ?`)
+      .all(...params, cap)
+    recordIds = rows.map((r) => String(r.record_id))
+  }
+
+  const results = hydrateMatches(recordIds, needle)
+  return { total, results, truncated: total > results.length }
 }
 
 /** 每批只索引很少几条：FTS trigram 写入是同步的，批次过大时会堵住登录和读接口。 */

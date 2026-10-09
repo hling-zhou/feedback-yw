@@ -90,11 +90,59 @@ describe('runAssistantLoop', () => {
     expect(result.answer).toBe('ok')
   })
 
-  it('asks for a final answer after four tool rounds', async () => {
+  it('answers in one model call when the period digest is enough', async () => {
+    fetchMock.mockResolvedValueOnce(
+      completion('{"answer":"本月投诉主要痛点是云专线带宽不足","citations":[],"links":[]}'),
+    )
+
+    const { runAssistantLoop } = await import('./assistantLlmLoop.js')
+    const result = await runAssistantLoop({
+      question: '本月投诉主要痛点是什么？',
+      history: [],
+      insightPeriodId: '',
+    })
+
+    expect(result.answer).toBe('本月投诉主要痛点是云专线带宽不足')
+    expect(result.toolsUsed).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // 系统提示里不再要求先调 list_periods
+    const firstCall = fetchMock.mock.calls[0]
+    const body = JSON.parse(firstCall[1].body)
+    const systemContent = body.messages[0].content
+    expect(systemContent).not.toMatch(/先用 list_periods/)
+  })
+
+  it('executes a batch of tools in one reply then answers on the next call', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        completion(
+          JSON.stringify({
+            tools: [
+              { tool: 'list_periods', args: {} },
+              { tool: 'get_wan_tou', args: { insightPeriodId: 'p1' } },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        completion('{"answer":"万投比如下","citations":[],"links":[]}'),
+      )
+
+    const { runAssistantLoop } = await import('./assistantLlmLoop.js')
+    const result = await runAssistantLoop({
+      question: '万投比和周期',
+      history: [],
+      insightPeriodId: 'p1',
+    })
+
+    expect(result.toolsUsed).toEqual(['list_periods', 'get_wan_tou'])
+    expect(result.answer).toBe('万投比如下')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops after 3 model calls when the model keeps requesting tools', async () => {
     const tool = '{"tool":"list_periods","args":{}}'
     fetchMock
-      .mockResolvedValueOnce(completion(tool))
-      .mockResolvedValueOnce(completion(tool))
       .mockResolvedValueOnce(completion(tool))
       .mockResolvedValueOnce(completion(tool))
       .mockResolvedValueOnce(completion('{"answer":"7月云专线投诉15件","citations":[],"links":[]}'))
@@ -107,7 +155,7 @@ describe('runAssistantLoop', () => {
     })
 
     expect(result.answer).toBe('7月云专线投诉15件')
-    expect(result.toolsUsed).toEqual(['list_periods', 'list_periods', 'list_periods', 'list_periods'])
-    expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(result.toolsUsed).toEqual(['list_periods', 'list_periods'])
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
