@@ -110,6 +110,37 @@ describe('runAssistantLoop', () => {
     const body = JSON.parse(firstCall[1].body)
     const systemContent = body.messages[0].content
     expect(systemContent).not.toMatch(/先用 list_periods/)
+    expect(systemContent).toMatch(/query「云专线」/)
+  })
+
+  it('retries with a JSON-only hint when the model writes reasoning instead of JSON', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        completion(
+          '1. 用户询问7月云专线投诉工单。这里query应该是什么？规则说用户原话中的完整词组…',
+        ),
+      )
+      .mockResolvedValueOnce(
+        completion(
+          '{"tool":"search_records","args":{"importMonth":"2026-07","dataSourceType":"complaint_ticket","query":"云专线"}}',
+        ),
+      )
+      .mockResolvedValueOnce(completion('{"answer":"已查到7月云专线投诉工单","citations":[],"links":[]}'))
+
+    const { runAssistantLoop } = await import('./assistantLlmLoop.js')
+    const result = await runAssistantLoop({
+      question: '检索7月云专线投诉工单',
+      history: [],
+      insightPeriodId: '',
+    })
+
+    expect(result.toolsUsed).toContain('search_records')
+    expect(result.answer).toBe('已查到7月云专线投诉工单')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const retryBody = JSON.parse(fetchMock.mock.calls[1][1].body)
+    const lastUser = retryBody.messages[retryBody.messages.length - 1]
+    expect(lastUser.role).toBe('user')
+    expect(lastUser.content).toMatch(/只输出一种 JSON/)
   })
 
   it('executes a batch of tools in one reply then answers on the next call', async () => {

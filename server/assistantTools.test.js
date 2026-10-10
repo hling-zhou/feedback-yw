@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ASSISTANT_TOOLS, ASSISTANT_TOOL_NAMES } from './assistantTools.js'
+import { deriveSearchQuery, resolveSearchQuery } from './assistantSearchIndex.js'
 
 describe('assistantTools structure', () => {
   it('exposes the expected tool set', () => {
@@ -58,6 +59,17 @@ describe('assistantTools structure', () => {
     expect(result.error).toMatch(/2/)
   })
 
+  it('search_records fills query from the user question when the model leaves it empty', () => {
+    const result = ASSISTANT_TOOLS.search_records.fn({
+      importMonth: '2026-07',
+      dataSourceType: 'complaint_ticket',
+      query: '',
+      userQuestion: '检索7月云专线投诉工单',
+    })
+    expect(result.error).toBeUndefined()
+    expect(Array.isArray(result.results)).toBe(true)
+  })
+
   it('search_records accepts a two-character Chinese keyword', () => {
     const result = ASSISTANT_TOOLS.search_records.fn({
       importMonth: '2026-08',
@@ -110,5 +122,24 @@ describe('assistantTools structure', () => {
   it('get_record returns missing for unknown record', () => {
     const result = ASSISTANT_TOOLS.get_record.fn({ recordId: 'no-such-record' })
     expect(result).toEqual({ status: 'missing' })
+  })
+})
+
+describe('deriveSearchQuery', () => {
+  it('keeps the product name from a July complaint question', () => {
+    expect(deriveSearchQuery('检索7月云专线投诉工单')).toBe('云专线')
+    expect(deriveSearchQuery('检索 7 月云专线投诉工单')).toBe('云专线')
+  })
+
+  it('keeps the phrase from an August experience-account question', () => {
+    expect(deriveSearchQuery('8月涉及体验账号的工单')).toBe('体验账号')
+  })
+
+  it('uses the derived phrase when the model copies the whole sentence into query', () => {
+    expect(resolveSearchQuery('7月云专线投诉工单', '检索7月云专线投诉工单')).toBe('云专线')
+  })
+
+  it('keeps a short keyword the model already got right', () => {
+    expect(resolveSearchQuery('云专线', '检索7月云专线投诉工单')).toBe('云专线')
   })
 })

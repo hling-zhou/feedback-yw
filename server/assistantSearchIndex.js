@@ -17,7 +17,7 @@ let searchMode = null
 export const MIN_SEARCH_QUERY_LENGTH = 2
 
 export const SEARCH_QUERY_TOO_SHORT =
-  '检索词至少 2 个字符，请把用户原话里的完整词组放入 query（例如「体验账号」），不要拆开'
+  '检索词至少 2 个字符。query 只放产品名或主题（例如「云专线」），不要把整句放进去，也不要拆成单字'
 
 const INDEXED_FIELDS = [
   { key: 'painPoint', column: 'pain_point', label: '痛点' },
@@ -194,6 +194,49 @@ export function sanitizeSearchQuery(query) {
     .replace(/[%_]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * 从用户原句或模型填的 query 里去掉时间、来源、动词，剩下产品名或主题。
+ * 「检索 7 月云专线投诉工单」→「云专线」；「8月涉及体验账号的工单」→「体验账号」。
+ * @param {string} text
+ */
+export function deriveSearchQuery(text) {
+  let s = String(text || '')
+  s = s.replace(/检索|查找|找出|捞取|帮我|请帮我|请问|查询|搜一下|看一下|有哪些|有没有|提到/g, ' ')
+  s = s.replace(/\d{4}\s*年\s*\d{1,2}\s*月/g, ' ')
+  s = s.replace(/\d{4}-\d{2}/g, ' ')
+  s = s.replace(/今年|本年|本月|上月|这个月|上个月/g, ' ')
+  s = s.replace(/\d{1,2}\s*月/g, ' ')
+  s = s.replace(/[一二三四五六七八九十]+月/g, ' ')
+  s = s.replace(/投诉咨询工单|投诉工单|咨询工单|用后即评/g, ' ')
+  s = s.replace(/工单/g, ' ')
+  s = s.replace(/投诉|咨询/g, ' ')
+  s = s.replace(/涉及|关于|当中|里面/g, ' ')
+  s = s.replace(/的/g, ' ')
+  return sanitizeSearchQuery(s)
+}
+
+function queryLooksLikeSentence(query) {
+  const q = String(query || '')
+  return /(?:\d{1,2}\s*月|\d{4}|今年|本月|上月|检索|找出|捞取|帮我|工单)/.test(q)
+}
+
+/**
+ * 模型填的 query 可用就用；空、过短或整句时，改从用户原句拆关键词。
+ * @param {string} query
+ * @param {string} [userQuestion]
+ */
+export function resolveSearchQuery(query, userQuestion) {
+  const fromArgs = sanitizeSearchQuery(query)
+  if (fromArgs.length >= MIN_SEARCH_QUERY_LENGTH && !queryLooksLikeSentence(fromArgs)) {
+    return fromArgs
+  }
+  const fromQuestion = deriveSearchQuery(userQuestion || '')
+  if (fromQuestion.length >= MIN_SEARCH_QUERY_LENGTH) return fromQuestion
+  const fromQuery = deriveSearchQuery(query)
+  if (fromQuery.length >= MIN_SEARCH_QUERY_LENGTH) return fromQuery
+  return fromArgs
 }
 
 function toFtsPhrase(query) {

@@ -13,6 +13,7 @@ import {
   searchRecords,
   searchRecordsRange,
   sanitizeSearchQuery,
+  resolveSearchQuery,
   MIN_SEARCH_QUERY_LENGTH,
   SEARCH_QUERY_TOO_SHORT,
 } from './assistantSearchIndex.js'
@@ -368,9 +369,9 @@ function monthsCoveredByPeriod(insightPeriodId) {
   return listMonthsInclusive(period.startDate.slice(0, 7), period.endDate.slice(0, 7))
 }
 
-/** @param {{ importMonth?: string; year?: string | number; importMonthFrom?: string; importMonthTo?: string; dataSourceType?: string; query: string; insightPeriodId?: string }} args */
-function searchRecordsTool({ importMonth, year, importMonthFrom, importMonthTo, dataSourceType, query, insightPeriodId }) {
-  const cleaned = sanitizeSearchQuery(query)
+/** @param {{ importMonth?: string; year?: string | number; importMonthFrom?: string; importMonthTo?: string; dataSourceType?: string; query: string; insightPeriodId?: string; userQuestion?: string }} args */
+function searchRecordsTool({ importMonth, year, importMonthFrom, importMonthTo, dataSourceType, query, insightPeriodId, userQuestion }) {
+  const cleaned = resolveSearchQuery(query, userQuestion)
   if (cleaned.length < MIN_SEARCH_QUERY_LENGTH) {
     return {
       results: [],
@@ -529,7 +530,7 @@ export const ASSISTANT_TOOLS = {
   search_records: {
     fn: searchRecordsTool,
     description:
-      '按关键词检索工单/评价原文。query 必须是用户原话里的完整词组（例如「体验账号」），不要拆成「体验」或「账号」；月份用 importMonth/year，不要写进 query。至少 2 个字符。支持三种范围：单月 importMonth（YYYY-MM，最多 15 条）、整年 year（YYYY，一次查完 12 个月，返回总数和最多 20 条）、起止月份 importMonthFrom/importMonthTo（YYYY-MM，最多 12 个月）。问"今年/全年"用 year，不要逐月调用。可按 dataSourceType 过滤来源。',
+      '按关键词检索工单/评价原文。拆法：时间→importMonth 或 year；投诉/咨询→dataSourceType；query 只放剩下的产品名或主题（「7月云专线投诉工单」→ importMonth=YYYY-07、dataSourceType=complaint_ticket、query=云专线）。不要把整句放进 query，也不要把词拆成单字。至少 2 个字符。支持三种范围：单月 importMonth（YYYY-MM，最多 15 条）、整年 year（YYYY，一次查完 12 个月，返回总数和最多 20 条）、起止月份 importMonthFrom/importMonthTo（YYYY-MM，最多 12 个月）。问"今年/全年"用 year，不要逐月调用。',
   },
   get_record: {
     fn: getRecord,
