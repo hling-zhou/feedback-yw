@@ -2,6 +2,7 @@
  * 用后即评固定原因清单（PRD §3.10 / task9 控制台 + 投诉回访）
  */
 import { normalizeEvidenceText } from './evidence.js'
+import { analyzeSentiment } from '../sentiment.js'
 
 /** 控制台评分类（18 项，含「其他」） */
 export const CONSOLE_REASON_TAXONOMY = [
@@ -45,8 +46,17 @@ export const FEEDBACK_REASON_PLACEHOLDERS = new Set([
 
 /** 整条反馈原因等于这些词时视为明显正面，不算负面反馈（仅 isSubstantiveFeedbackReason 使用） */
 const POSITIVE_FEEDBACK_REASONS = new Set([
-  '满意', '感谢', '好评', '很好', '不错', '赞',
+  '满意', '非常满意', '很满意', '挺满意', '比较满意',
+  '感谢', '好评', '很好', '挺好', '不错', '赞', '可以', '还行',
+  '好用', '很好用',
 ])
+
+/**
+ * 否定式正面词守卫：「不(太|很|甚|较)?满意/感谢/好用/好/赞/推荐/流畅/优秀」
+ * 这类文本 sentiment 会因正面词命中而误判为 positive，实际是负面，直接按实质负面处理。
+ * 「不错」不在其中——它是正面词，由 POSITIVE_FEEDBACK_REASONS / sentiment 正常剔除。
+ */
+const NEGATED_POSITIVE_RE = /不[太很甚较]?(满意|感谢|好用|好|赞|推荐|流畅|优秀)/
 
 const FIXED_REASON_LABELS = new Set(
   [...CONSOLE_REASON_TAXONOMY, ...CALLBACK_REASON_TAXONOMY].filter((label) => label !== '其他'),
@@ -68,6 +78,10 @@ export function isSubstantiveFeedbackReason(value) {
   const text = normalizeEvidenceText(value)
   if (!isValidCustomerText(text)) return false
   if (POSITIVE_FEEDBACK_REASONS.has(text)) return false
+  // 否定式正面词（如「不太满意」）按负面处理，不交给 sentiment（避免被误判为 positive）
+  if (NEGATED_POSITIVE_RE.test(text)) return true
+  // 长句正面兜底：sentiment 判为正面则不算负面反馈。
+  if (analyzeSentiment(text) === 'positive') return false
   return true
 }
 
