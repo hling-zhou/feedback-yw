@@ -13,6 +13,12 @@ import { getDb } from './db.js'
 /** @type {'fts' | 'fallback' | null} */
 let searchMode = null
 
+/** 挡住单字全库扫描；中文词通常两个字，低于 3 会把「体验」「超时」拒掉。 */
+export const MIN_SEARCH_QUERY_LENGTH = 2
+
+export const SEARCH_QUERY_TOO_SHORT =
+  '检索词至少 2 个字符，请把用户原话里的完整词组放入 query（例如「体验账号」），不要拆开'
+
 const INDEXED_FIELDS = [
   { key: 'painPoint', column: 'pain_point', label: '痛点' },
   { key: 'customerRequest', column: 'customer_request', label: '客户请求' },
@@ -295,7 +301,7 @@ function hydrateMatches(recordIds, needle) {
 export function searchRecords({ importMonth, dataSourceType, query, limit = 15 }) {
   if (!searchMode) return []
   const needle = sanitizeSearchQuery(query)
-  if (needle.length < 3) return []
+  if (needle.length < MIN_SEARCH_QUERY_LENGTH) return []
   const month = String(importMonth || '').trim().slice(0, 7)
   if (!isValidMonth(month)) return []
   const source = String(dataSourceType || '').trim()
@@ -355,8 +361,8 @@ export function searchRecords({ importMonth, dataSourceType, query, limit = 15 }
  */
 export function searchRecordsRange({ year, importMonthFrom, importMonthTo, dataSourceType, query, limit = 20 }) {
   const needle = sanitizeSearchQuery(query)
-  if (needle.length < 3) {
-    return { total: 0, results: [], truncated: false, error: '检索词至少 3 个字符，请换更长的关键词' }
+  if (needle.length < MIN_SEARCH_QUERY_LENGTH) {
+    return { total: 0, results: [], truncated: false, error: SEARCH_QUERY_TOO_SHORT }
   }
   let range = null
   if (year != null && year !== '') {

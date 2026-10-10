@@ -48,14 +48,24 @@ describe('assistantTools structure', () => {
     expect(result).toEqual({ status: 'missing' })
   })
 
-  it('search_records returns empty for short queries', () => {
+  it('search_records returns empty for single-character queries', () => {
     const result = ASSISTANT_TOOLS.search_records.fn({
       importMonth: '2026-08',
       dataSourceType: 'complaint_ticket',
       query: '超',
     })
     expect(result.results).toEqual([])
-    expect(result.error).toMatch(/3/)
+    expect(result.error).toMatch(/2/)
+  })
+
+  it('search_records accepts a two-character Chinese keyword', () => {
+    const result = ASSISTANT_TOOLS.search_records.fn({
+      importMonth: '2026-08',
+      dataSourceType: 'complaint_ticket',
+      query: '体验',
+    })
+    expect(result.error).toBeUndefined()
+    expect(Array.isArray(result.results)).toBe(true)
   })
 
   it('search_records requires a single importMonth or year', () => {

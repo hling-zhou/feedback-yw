@@ -183,6 +183,7 @@ function buildSystemPrompt(ctx) {
     '',
     '规则：',
     '- 禁止用循环代替查询条件：问"今年/全年"用 search_records 的 year 参数，不要逐月调用；不要按产品、按工单号逐条调用 get_record；',
+    '- search_records 的 query 用用户原话里的完整词组（例如「体验账号」），月份单独放 importMonth 或 year，不要把词组拆开，也不要漏填 query；',
     '- citations 里的 recordId 必须来自本轮 search_records 或 get_record 的返回；',
     '- links.kind 只能是 workbench / analysis / feedbacks / actions；',
     '- workbench.params.tab 可以是 overview / complaint_ticket / consultation_ticket / post_use_rating；',
