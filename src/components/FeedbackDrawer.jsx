@@ -1217,7 +1217,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     if (!feedback?.id) return
     setJourneyEnriching(true)
     try {
-      await startPostUseJourneyEnrichment([feedback], { includeLegacyKeywordJourneys })
+      await startPostUseJourneyEnrichment([feedback.id], { includeLegacyKeywordJourneys })
       const saved = await adapter.getRecord(feedback.id)
       if (saved) {
         setJourneyL1(saved.journeyL1 || '')

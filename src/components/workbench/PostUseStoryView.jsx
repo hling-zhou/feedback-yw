@@ -26,6 +26,22 @@ function downloadCsv(text, name) {
   URL.revokeObjectURL(url)
 }
 
+function StatusTrendChart({ pending, chart, emptyTitle, referenceLine, tooltipFormatter }) {
+  if (pending) return <Alert type="info" showIcon title="正在汇总各月评分…" />
+  if (!chart?.data?.length) return <Alert type="info" showIcon title={emptyTitle} />
+  return (
+    <TrendChart
+      variant="line"
+      allowDecimals
+      height={260}
+      data={chart.data}
+      areas={chart.areas}
+      referenceLine={referenceLine}
+      tooltipFormatter={tooltipFormatter}
+    />
+  )
+}
+
 function SectionHeading({ title, summary, id }) {
   return (
     <div id={id} className="page-card-header">
@@ -131,6 +147,36 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></div></Col>
         <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司样本量" value={company?.totalSample} /></div></Col>
       </Row>
+      <Row gutter={[12, 12]} className="mt-3">
+        <Col xs={24} lg={8}>
+          <div className="page-card-header"><span className="page-card-title">部门体验均分</span></div>
+          <StatusTrendChart
+            pending={metrics.statusTrends?.pending}
+            chart={metrics.statusTrends?.experience}
+            emptyTitle="暂无部门体验均分"
+            referenceLine={{ y: 9, label: '关注线 9' }}
+          />
+        </Col>
+        <Col xs={24} lg={8}>
+          <div className="page-card-header"><span className="page-card-title">部门投诉回访满意度</span></div>
+          <StatusTrendChart
+            pending={metrics.statusTrends?.pending}
+            chart={metrics.statusTrends?.satisfaction}
+            emptyTitle="暂无部门投诉回访满意度"
+            referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }}
+            tooltipFormatter={(value, name) => [value == null ? '—' : `${value}%`, name]}
+          />
+        </Col>
+        <Col xs={24} lg={8}>
+          <div className="page-card-header"><span className="page-card-title">部门与公司三渠道均分</span></div>
+          <StatusTrendChart
+            pending={metrics.statusTrends?.pending}
+            chart={metrics.statusTrends?.threeChannel}
+            emptyTitle="暂无三渠道均分"
+          />
+        </Col>
+      </Row>
+      <p className="mb-0 mt-2 text-xs text-ink-500">从最早有用后即评评分的月份至今，不随当前所选周期变化。</p>
       <div className="page-card-header mt-3"><span className="page-card-title">产品体验总览</span></div>
         <Table
           size="small"

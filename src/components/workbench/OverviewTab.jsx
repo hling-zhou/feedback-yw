@@ -15,6 +15,7 @@ import ActionRecsPanel from './ActionRecsPanel.jsx'
 import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import OverviewJourneyMap from './OverviewJourneyMap.jsx'
 import ProductExperienceTrendPanel from './ProductExperienceTrendPanel.jsx'
+import { hasWorkbenchAggregate } from '../../lib/workbenchStoredAggregates.js'
 
 /**
  * @param {Object} props
@@ -73,13 +74,16 @@ export default function OverviewTab({
 
   const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
 
-  const wanTouRows = buildWanTouByProducts({
-    period: currentPeriod,
-    records: complaintRecords,
-    orderVolumes,
-    wanTouTargets,
-    productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
-  })
+  const storedWorkbench = snapshot.workbench
+  const wanTouRows = hasWorkbenchAggregate(storedWorkbench) && Array.isArray(storedWorkbench.wanTouRows)
+    ? storedWorkbench.wanTouRows
+    : buildWanTouByProducts({
+        period: currentPeriod,
+        records: complaintRecords,
+        orderVolumes,
+        wanTouTargets,
+        productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
+      })
 
   const previousPeriod = useMemo(
     () => resolvePreviousInsightPeriod(currentPeriod),
@@ -150,6 +154,7 @@ export default function OverviewTab({
         currentPeriod={currentPeriod}
         product={product}
         onProductChange={setProduct}
+        storedTrends={storedWorkbench?.productExperienceTrend}
       />
 
       <OverviewJourneyMap
@@ -157,6 +162,7 @@ export default function OverviewTab({
         currentPeriod={currentPeriod}
         product={product}
         onProductChange={setProduct}
+        workbench={storedWorkbench}
       />
 
       {wanTouRows.length > 0 && (

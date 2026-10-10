@@ -10,7 +10,7 @@ import {
   aggregateFieldInsights,
 } from '../lib/productAnalytics.js'
 import { listProducts, filterProductsByCatalog } from '../lib/productTaxonomy.js'
-import { getEnabledProducts, isManagedCatalogLoaded } from '../lib/productCatalogLoader.js'
+import { getCatalogProducts, getEnabledProducts, isManagedCatalogLoaded } from '../lib/productCatalogLoader.js'
 import { countComplaintCauseL1 } from '../domain/complaintCause.js'
 import { buildSourcePainPointClusterSnapshot } from '../lib/painPointClustering/buildSourceClusterSnapshot.js'
 import {
@@ -18,6 +18,10 @@ import {
   extractFollowUpTicketRecords,
 } from '../lib/followUpSatisfactionAnalytics.js'
 import { buildActionRecsConclusions } from './buildActionRecsConclusions.js'
+import {
+  buildPostUseWorkbenchAggregate,
+  buildTicketWorkbenchAggregate,
+} from '../lib/workbenchStoredAggregates.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -36,6 +40,9 @@ import { buildActionRecsConclusions } from './buildActionRecsConclusions.js'
  * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
  * @param {OverviewRecommendation[]} [params.previousRecommendations]
  * @param {string} [params.previousPeriodId]
+ * @param {FeedbackRecord[]} [params.historyRecords] 趋势窗 + 上月，供工作台聚合
+ * @param {import('../storage/orderVolumeStore.js').OrderVolumeRow[]} [params.orderVolumes]
+ * @param {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} [params.wanTouTargets]
  */
 export async function buildSourceSnapshot({
   insightPeriodId,
@@ -47,6 +54,9 @@ export async function buildSourceSnapshot({
   settings = null,
   previousRecommendations = [],
   previousPeriodId,
+  historyRecords = [],
+  orderVolumes = [],
+  wanTouTargets = [],
 }) {
   const versions = defaultAnalysisVersions()
   const desc = getPipelineDescriptor(dataSourceType)
@@ -117,8 +127,27 @@ export async function buildSourceSnapshot({
       painPointClustering: ticket ? buildSourcePainPointClusterSnapshot(records) : undefined,
       followUpSatisfactionMetrics,
       planningConclusions,
+      workbench: ticket
+        ? buildTicketWorkbenchAggregate({
+            sourceType: dataSourceType,
+            period,
+            records,
+            historyRecords: historyRecords.length ? historyRecords : records,
+            orderVolumes,
+            wanTouTargets,
+          })
+        : dataSourceType === 'post_use_rating'
+          ? buildPostUseWorkbenchAggregate({
+              period,
+              records,
+              catalog: getCatalogProducts(),
+            })
+          : undefined,
     },
     recordIds: records.map((r) => r.id),
+  }
+  if (dataSourceType === 'post_use_rating' && snapshot.aggregates.workbench) {
+    snapshot.summary.analysisScopedCount = snapshot.aggregates.workbench.analysisScopedCount
   }
 
   return snapshot

@@ -7,6 +7,8 @@ describe('Feedbacks customer visit tab', () => {
   it('includes a read-only customer visit tab with composite search and export', () => {
     expect(source).toContain('FEEDBACK_LANE_CUSTOMER_VISITS')
     expect(source).toContain('客服部回访')
+    expect(source).toContain('feedback-lane-tabs')
+    expect(source).toContain("{ key: FEEDBACK_LANE_TICKETS, label: '投诉咨询工单' }")
     expect(source).toContain('FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS')
     expect(source).toContain('visitCustomerNameOptions')
     expect(source).toContain('buildPostUseCustomerVisitRows')

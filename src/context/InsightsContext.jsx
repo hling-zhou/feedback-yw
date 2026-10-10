@@ -35,9 +35,6 @@ import {
   syncLinkedTicketsForActionIds,
 } from '../lib/establishedActionPersist.js'
 import { reprocessAllThemesAndSentiment } from '../lib/applyThemes.js'
-import { needsPostUseJourney } from '../lib/postUseRating/enrichPostUseJourney.js'
-import { getCatalogProducts } from '../lib/productCatalogLoader.js'
-import { resolvePostUseRatingProduct } from '../lib/productCatalog/postUseRatingProducts.js'
 import {
   formatBulkRetagResultMessage,
   listUnknownJourneyRecords,
@@ -108,8 +105,11 @@ import {
   rebuildAllSnapshots as rebuildAllSnapshotsService,
   rebuildSourceSnapshot as rebuildSourceSnapshotService,
   markPeriodSnapshotsStale,
+  markPostUseDependentSnapshotsStale,
   overlayStaleStatus,
 } from '../snapshots/index.js'
+import { overviewSnapshotId } from '../domain/snapshot.js'
+import { hasWorkbenchAggregate } from '../lib/workbenchStoredAggregates.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { applyImportAnalysisToRecords } from '../lib/importAnalysis.js'
 import { applyCustomerRestoreToRecords } from '../lib/customerRestore/customerRestoreImport.js'
@@ -265,6 +265,27 @@ export function InsightsProvider({ children }) {
   const [importMonthSummary, setImportMonthSummary] = useState(null)
   const [feedbacksHydrated, setFeedbacksHydrated] = useState(false)
   const [feedbacksLoading, setFeedbacksLoading] = useState(true)
+  /** 正在拉取的用后即评周期；只挡住当前正在看的那个周期 */
+  const [postUseRatingLoadingPeriodId, setPostUseRatingLoadingPeriodId] = useState(
+    /** @type {string | null} */ (null),
+  )
+  /** 用后即评已结束加载（成功或失败）的周期。未列入时界面直接显示加载态，不等 effect 下一帧 */
+  const [postUseSettledPeriodIds, setPostUseSettledPeriodIds] = useState(/** @type {string[]} */ ([]))
+  const [postUseCacheGeneration, setPostUseCacheGeneration] = useState(0)
+  const postUseCacheGenerationRef = useRef(0)
+  const settlePostUsePeriod = useCallback((periodId, generation) => {
+    if (!periodId || postUseCacheGenerationRef.current !== generation) return
+    setPostUseSettledPeriodIds((prev) => (prev.includes(periodId) ? prev : [...prev, periodId]))
+  }, [])
+  const feedbacksLoadSeqRef = useRef(0)
+  const beginFeedbacksLoading = useCallback(() => {
+    const seq = ++feedbacksLoadSeqRef.current
+    setFeedbacksLoading(true)
+    return seq
+  }, [])
+  const endFeedbacksLoading = useCallback((seq) => {
+    if (seq && feedbacksLoadSeqRef.current === seq) setFeedbacksLoading(false)
+  }, [])
   const [settings, setSettingsState] = useState(() => attachJourneyRules(loadSettings()))
   const [reprocessing, setReprocessing] = useState(false)
   const [taxonomyMeta, setTaxonomyMeta] = useState(null)
@@ -288,6 +309,25 @@ export function InsightsProvider({ children }) {
   const [overviewSnapshot, setOverviewSnapshot] = useState(
     /** @type {import('../domain/snapshot.js').OverviewSnapshot | null} */ (null),
   )
+  /** 当前已应用到界面上的快照周期；与 currentPeriodId 不一致时工作台保持加载态 */
+  const snapshotPeriodRef = useRef(/** @type {string | null} */ (null))
+  const snapshotLoadSeqRef = useRef(0)
+  const [snapshotsPending, setSnapshotsPending] = useState(true)
+  const beginSnapshotLoad = useCallback((periodId) => {
+    if (!periodId || snapshotPeriodRef.current === periodId) return 0
+    const seq = ++snapshotLoadSeqRef.current
+    setSnapshotsPending(true)
+    return seq
+  }, [])
+  const endSnapshotLoad = useCallback((periodId, seq, { applied = false, clear = false } = {}) => {
+    if (!seq || snapshotLoadSeqRef.current !== seq) return
+    if (applied) snapshotPeriodRef.current = periodId
+    if (clear) {
+      setSourceSnapshots({})
+      setOverviewSnapshot(null)
+    }
+    setSnapshotsPending(false)
+  }, [])
   const [snapshotsStale, setSnapshotsStale] = useState(false)
   /** @type {'data' | 'period' | null} */
   const [snapshotStaleReason, setSnapshotStaleReason] = useState(/** @type {'data' | 'period' | null} */ (null))
@@ -337,6 +377,18 @@ export function InsightsProvider({ children }) {
     () => periods.find((p) => p.id === currentPeriodId) ?? null,
     [periods, currentPeriodId],
   )
+  /**
+   * 用后即评「待补全用户旅程」计数：来自服务端 /api/storage/records/post-use-journey/pending-count，
+   * 与 enrichRunner 同口径，避免前端内存缓存漂移导致横幅数量与实际补打数不一致。
+   * count 用于横幅/按钮显示，recordIds 作为补全 targets。
+   * @type {[{ count: number; recordIds: string[]; periodId: string | null; loading: boolean }, import('react').Dispatch<import('react').SetStateAction<{ count: number; recordIds: string[]; periodId: string | null; loading: boolean }>>]}
+   */
+  const [postUseJourneyPending, setPostUseJourneyPending] = useState({
+    count: 0,
+    recordIds: [],
+    periodId: null,
+    loading: false,
+  })
 
   useEffect(() => {
     feedbacksRef.current = feedbacks
@@ -382,27 +434,37 @@ export function InsightsProvider({ children }) {
     async (periodId) => {
       if (!periodId || !storageReadyRef.current) return
       if (loadedPostUsePeriodIdsRef.current.has(periodId)) return
+      const generation = postUseCacheGenerationRef.current
+      const apiMode = isApiStorageAdapter(adapter)
+      if (!apiMode) {
+        loadedPostUsePeriodIdsRef.current.add(periodId)
+        settlePostUsePeriod(periodId, generation)
+        return // 本机模式 feedbacks 已含全量，无需额外加载
+      }
       loadedPostUsePeriodIdsRef.current.add(periodId)
+      setPostUseRatingLoadingPeriodId(periodId)
       try {
-        const apiMode = isApiStorageAdapter(adapter)
-        if (!apiMode) return // 本机模式 feedbacks 已含全量，无需额外加载
         const ratingRecords = await loadFeedbacksForPeriod(adapter, periodId, {
           fields: 'list',
           dataSourceTypes: ['post_use_rating'],
         })
-        if (!ratingRecords.length) return
-        mergeRecordsIntoCache(ratingRecords)
-        feedbacksRef.current = [
-          ...new Map(
-            [...feedbacksRef.current, ...ratingRecords].map((fb) => [fb.id, fb]),
-          ).values(),
-        ]
+        if (ratingRecords.length) {
+          mergeRecordsIntoCache(ratingRecords)
+          feedbacksRef.current = [
+            ...new Map(
+              [...feedbacksRef.current, ...ratingRecords].map((fb) => [fb.id, fb]),
+            ).values(),
+          ]
+        }
       } catch (err) {
         loadedPostUsePeriodIdsRef.current.delete(periodId) // 失败后允许重试
         console.warn('[storage] post_use_rating 按需加载失败', err)
+      } finally {
+        settlePostUsePeriod(periodId, generation)
+        setPostUseRatingLoadingPeriodId((current) => (current === periodId ? null : current))
       }
     },
-    [adapter, mergeRecordsIntoCache],
+    [adapter, mergeRecordsIntoCache, settlePostUsePeriod],
   )
 
   const loadRecordsForJourneyComparison = useCallback(
@@ -410,6 +472,14 @@ export function InsightsProvider({ children }) {
       if (!period) return
       // 当前月数据：首屏必需，同步等待
       await loadRecordsForPeriodId(period.id)
+      if (typeof adapter.getSnapshot === 'function') {
+        try {
+          const snap = await adapter.getSnapshot(overviewSnapshotId(period.id))
+          if (hasWorkbenchAggregate(snap?.workbench)) return
+        } catch {
+          /* 快照缺失时仍拉上月，保证旅程可对比 */
+        }
+      }
       // 上月对比数据：后台异步加载，不阻塞首屏；数据就绪后 React 自动更新旅程图
       const previousMonth = resolveJourneyComparisonWindow(period).previousMonths[0]
       if (!previousMonth) return
@@ -421,11 +491,12 @@ export function InsightsProvider({ children }) {
         console.warn('[storage] 旅程对比上月数据加载失败', err),
       )
     },
-    [loadRecordsForPeriodId],
+    [adapter, loadRecordsForPeriodId],
   )
 
   const reloadPeriods = useCallback(async () => {
     setPeriodsLoading(true)
+    const loadSeq = beginFeedbacksLoading()
     try {
       const migration = await migrateLocalToApiIfNeeded(adapter)
       if (migration.migrated) {
@@ -457,9 +528,11 @@ export function InsightsProvider({ children }) {
       let list = rawPeriodList.map(normalizeInsightPeriod)
       if (monthSummary) setImportMonthSummary(monthSummary)
 
-      setFeedbacksLoading(true)
       loadedPeriodIdsRef.current = new Set()
       loadedPostUsePeriodIdsRef.current = new Set()
+      postUseCacheGenerationRef.current += 1
+      setPostUseCacheGeneration(postUseCacheGenerationRef.current)
+      setPostUseSettledPeriodIds([])
       /** @type {import('../lib/types.js').FeedbackRecord[]} */
       let loadedRecords = []
       if (!apiMode) {
@@ -471,7 +544,7 @@ export function InsightsProvider({ children }) {
           setTotalRecordCount(page.total)
           setFeedbacksHydrated(true)
         } finally {
-          setFeedbacksLoading(false)
+          endFeedbacksLoading(loadSeq)
         }
       } else {
         setFeedbacks([])
@@ -563,7 +636,7 @@ export function InsightsProvider({ children }) {
           } finally {
             if (apiMode) {
               setFeedbacksHydrated(true)
-              setFeedbacksLoading(false)
+              endFeedbacksLoading(loadSeq)
             }
           }
         })(),
@@ -583,8 +656,9 @@ export function InsightsProvider({ children }) {
     } catch (err) {
       console.error('[storage] 加载共享数据失败', err)
       setPeriodsLoading(false)
+      endFeedbacksLoading(loadSeq)
     }
-  }, [adapter, loadRecordsForJourneyComparison])
+  }, [adapter, beginFeedbacksLoading, endFeedbacksLoading, loadRecordsForJourneyComparison])
 
   useEffect(() => {
     reloadPeriods()
@@ -644,12 +718,32 @@ export function InsightsProvider({ children }) {
 
   const reloadSnapshots = useCallback(
     async (periodId = currentPeriodId, options = {}) => {
+      const seq = beginSnapshotLoad(periodId)
       const force = Boolean(options.force)
-      if (!storageReady || (!force && snapshotRebuildInProgressRef.current)) return
-      const loaded = await loadSnapshotsForPeriod(adapter, periodId)
-      applySnapshotState(loaded, options.stale ?? snapshotsStale)
+      if (!storageReady || (!force && snapshotRebuildInProgressRef.current)) {
+        endSnapshotLoad(periodId, seq, { applied: false })
+        return
+      }
+      try {
+        const loaded = await loadSnapshotsForPeriod(adapter, periodId)
+        if (seq && snapshotLoadSeqRef.current !== seq) return
+        applySnapshotState(loaded, options.stale ?? snapshotsStale)
+        if (seq) endSnapshotLoad(periodId, seq, { applied: true })
+        else snapshotPeriodRef.current = periodId
+      } catch (err) {
+        endSnapshotLoad(periodId, seq, { applied: false, clear: seq !== 0 })
+        throw err
+      }
     },
-    [adapter, currentPeriodId, storageReady, applySnapshotState, snapshotsStale],
+    [
+      adapter,
+      applySnapshotState,
+      beginSnapshotLoad,
+      currentPeriodId,
+      endSnapshotLoad,
+      snapshotsStale,
+      storageReady,
+    ],
   )
 
   const reloadTagCandidates = useCallback(async () => {
@@ -1128,6 +1222,8 @@ export function InsightsProvider({ children }) {
         if (updateUi && period.id === currentPeriodId) {
           setSourceSnapshots(result.sourceSnapshots)
           setOverviewSnapshot(result.overviewSnapshot)
+          snapshotPeriodRef.current = period.id
+          setSnapshotsPending(false)
           setSnapshotsStale(false)
           setSnapshotStaleReason(null)
         } else if (period.id !== currentPeriodId) {
@@ -1448,6 +1544,9 @@ export function InsightsProvider({ children }) {
         }
         return [...prev, period]
       })
+      const recordsCached = loadedPeriodIdsRef.current.has(period.id)
+      const loadSeq = recordsCached ? 0 : beginFeedbacksLoading()
+      const snapSeq = beginSnapshotLoad(period.id)
       try {
         try {
           await adapter.putInsightPeriod(period)
@@ -1474,9 +1573,24 @@ export function InsightsProvider({ children }) {
         }
       } catch (err) {
         console.error('selectInsightPeriod failed', err)
+      } finally {
+        if (loadSeq) endFeedbacksLoading(loadSeq)
+        // 快照请求若已成功落到这个周期，不要用这次切换的序号把它清掉
+        if (snapshotPeriodRef.current !== period.id) {
+          endSnapshotLoad(period.id, snapSeq, { applied: false })
+        }
       }
     },
-    [adapter, loadRecordsForJourneyComparison, reloadSnapshots, scheduleSnapshotRebuild],
+    [
+      adapter,
+      beginFeedbacksLoading,
+      beginSnapshotLoad,
+      endFeedbacksLoading,
+      endSnapshotLoad,
+      loadRecordsForJourneyComparison,
+      reloadSnapshots,
+      scheduleSnapshotRebuild,
+    ],
   )
 
   const reloadProductCatalog = useCallback(async () => {
@@ -1511,9 +1625,15 @@ export function InsightsProvider({ children }) {
       const synced = syncCatalogProductsToTaxonomy(taxSnap, normalized)
       const taxState = await saveManagedTaxonomy(adapter, synced)
       setTaxonomyMeta(taxState)
+      await markPostUseDependentSnapshotsStale(adapter)
+      setSnapshotsStale(true)
+      setSnapshotStaleReason('data')
+      if (storageReady && currentPeriodId) {
+        await reloadSnapshots(currentPeriodId)
+      }
       return normalized
     },
-    [adapter],
+    [adapter, currentPeriodId, reloadSnapshots, storageReady],
   )
 
   const syncProductCatalogToTaxonomy = useCallback(async () => {
@@ -2468,7 +2588,10 @@ export function InsightsProvider({ children }) {
           setTotalRecordCount(0)
           setImportMonthSummary({ months: [], bySource: [], total: 0 })
           loadedPeriodIdsRef.current = new Set()
-      loadedPostUsePeriodIdsRef.current = new Set()
+          loadedPostUsePeriodIdsRef.current = new Set()
+          postUseCacheGenerationRef.current += 1
+          setPostUseCacheGeneration(postUseCacheGenerationRef.current)
+          setPostUseSettledPeriodIds([])
           setSourceSnapshots({})
           setOverviewSnapshot(null)
           setSnapshotsStale(false)
@@ -2981,17 +3104,42 @@ export function InsightsProvider({ children }) {
     ],
   )
 
+  /**
+   * 拉取服务端「待补全用户旅程」计数（count + recordIds）。
+   * 与 enrichRunner 同口径，横幅/按钮显示 count，补全时发 recordIds。
+   * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+   */
+  const fetchPostUseJourneyPendingCount = useCallback(
+    async (options = {}) => {
+      const periodId = currentPeriodId || ''
+      if (!isApiStorageAdapter(adapter)) {
+        setPostUseJourneyPending((prev) => ({ ...prev, periodId, loading: false }))
+        return
+      }
+      setPostUseJourneyPending((prev) => ({ ...prev, loading: true }))
+      try {
+        const params = new URLSearchParams()
+        if (periodId) params.set('periodId', periodId)
+        if (options.includeLegacyKeywordJourneys) params.set('includeLegacyKeywordJourneys', 'true')
+        const res = await apiFetch(
+          `/api/storage/records/post-use-journey/pending-count${params.toString() ? `?${params.toString()}` : ''}`,
+        )
+        const count = Number.isFinite(res?.count) ? Number(res.count) : 0
+        const recordIds = Array.isArray(res?.recordIds) ? res.recordIds.filter((id) => typeof id === 'string' && id) : []
+        setPostUseJourneyPending({ count, recordIds, periodId, loading: false })
+      } catch (err) {
+        console.warn('[post-use-journey] 拉取待补全计数失败:', err)
+        setPostUseJourneyPending((prev) => ({ ...prev, loading: false }))
+      }
+    },
+    [adapter, currentPeriodId],
+  )
+
   const startPostUseJourneyEnrichment = useCallback(
-    async (records, options = {}) => {
+    async (recordIds, options = {}) => {
       const includeLegacyKeywordJourneys = options.includeLegacyKeywordJourneys === true
-      const catalogProducts = getCatalogProducts()
-      const list = (records || []).filter(
-        (record) =>
-          record?.id &&
-          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys }) &&
-          resolvePostUseRatingProduct(record, catalogProducts),
-      )
-      if (!list.length) {
+      const ids = (recordIds || []).filter((id) => typeof id === 'string' && id)
+      if (!ids.length) {
         message.info('当前没有待补全的评价')
         return null
       }
@@ -3006,7 +3154,7 @@ export function InsightsProvider({ children }) {
           method: 'POST',
           body: JSON.stringify({
             mode: 'post_use_journey',
-            recordIds: list.map((record) => record.id),
+            recordIds: ids,
             periodId: currentPeriodId,
             dataSourceType: 'post_use_rating',
             insightPeriod: currentPeriod
@@ -3027,6 +3175,8 @@ export function InsightsProvider({ children }) {
           } catch (err) {
             console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
           }
+          // 刷新服务端待补全计数，横幅显示剩余数
+          try { await fetchPostUseJourneyPendingCount({ includeLegacyKeywordJourneys }) } catch { /* 忽略 */ }
           if (currentPeriod) {
             scheduleSnapshotRebuild({
               period: currentPeriod,
@@ -3054,6 +3204,7 @@ export function InsightsProvider({ children }) {
     [
       currentPeriod,
       currentPeriodId,
+      fetchPostUseJourneyPendingCount,
       loadPostUseRatingForPeriod,
       message,
       reloadAfterEnrich,
@@ -3223,12 +3374,22 @@ export function InsightsProvider({ children }) {
     [ensurePeriodForImportMonth, currentPeriodId, executeSnapshotRebuild],
   )
 
+  const snapshotsLoading = storageReady && snapshotsPending
+  const postUseRatingOnDemand = isApiStorageAdapter(adapter)
+  const postUseRatingLoading =
+    postUseRatingLoadingPeriodId != null && postUseRatingLoadingPeriodId === currentPeriodId
+
   const value = useMemo(
     () => ({
       feedbacks,
       totalRecordCount,
       importMonthSummary,
       feedbacksLoading,
+      postUseRatingLoading,
+      postUseRatingOnDemand,
+      postUseSettledPeriodIds,
+      postUseCacheGeneration,
+      snapshotsLoading,
       settings,
       setSettings,
       setPersonalSettings,
@@ -3252,6 +3413,8 @@ export function InsightsProvider({ children }) {
       startBulkRetag,
       startSentimentRetag,
       startPostUseJourneyEnrichment,
+      fetchPostUseJourneyPendingCount,
+      postUseJourneyPending,
       updateFeedback,
       removeFeedback,
       ingestUpdatedRecords,
@@ -3333,6 +3496,11 @@ export function InsightsProvider({ children }) {
       totalRecordCount,
       importMonthSummary,
       feedbacksLoading,
+      postUseRatingLoading,
+      postUseRatingOnDemand,
+      postUseSettledPeriodIds,
+      postUseCacheGeneration,
+      snapshotsLoading,
       settings,
       setSettings,
       setPersonalSettings,
@@ -3356,6 +3524,8 @@ export function InsightsProvider({ children }) {
       startBulkRetag,
       startSentimentRetag,
       startPostUseJourneyEnrichment,
+      fetchPostUseJourneyPendingCount,
+      postUseJourneyPending,
       updateFeedback,
       removeFeedback,
       ingestUpdatedRecords,

@@ -1,7 +1,7 @@
 import { shiftYearMonth } from '../../domain/insightPeriod.js'
 import { computeExternalMixedMetrics } from './metrics.js'
 import { buildMonthlyReportPreviewModel } from './monthlyReportPreview.js'
-import { postUseRecordsToScoredRows } from './storyModel.js'
+import { postUseRecordsToScoredRows } from './scoredRows.js'
 import {
   buildCustomerQuoteRegistry,
   pickFeaturedVoiceQuotes,

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Space, Tag, Typography, message } from 'antd'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Space, Spin, Tag, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import FeedbackDrawer from '../FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../../hooks/useFeedbackDrawerSelection.js'
@@ -19,17 +19,38 @@ import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
 import { postUseVisitMonthsForPeriod } from '../../lib/postUseRating/periodScope.js'
 import { loadPostUsePeriodQuality } from '../../lib/postUseRating/qualityStore.js'
 import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
+import { normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../../lib/postUseRating/statusTrends.js'
+import {
+  applyPostUseWorkbenchAggregate,
+  postUseWorkbenchMatchesCatalog,
+} from '../../lib/workbenchStoredAggregates.js'
 
 /**
  * 用后即评工作台：线上综合分析；单月可打开独立 HTML 月报。
  */
 export default function PostUseRatingDashboardView() {
-  const { feedbacks, currentPeriod, adapter, settings } = useInsights()
+  const {
+    feedbacks,
+    currentPeriod,
+    adapter,
+    settings,
+    postUseRatingOnDemand,
+    postUseSettledPeriodIds,
+    sourceSnapshots,
+  } = useInsights()
+  const [extrasReady, setExtrasReady] = useState(false)
   const [visits, setVisits] = useState([])
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
   const [quality, setQuality] = useState(null)
+  const [remoteStatusTrends, setRemoteStatusTrends] = useState(null)
+  const [statusTrendsPending, setStatusTrendsPending] = useState(false)
+  const hasRemoteStatusTrendsRef = useRef(false)
   const [creatingSignalKey, setCreatingSignalKey] = useState('')
+  const postUseCount = useMemo(
+    () => (feedbacks || []).filter((record) => record.dataSourceType === 'post_use_rating').length,
+    [feedbacks],
+  )
   const items = useMemo(
     () => filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating'),
     [feedbacks, currentPeriod],
@@ -38,7 +59,10 @@ export default function PostUseRatingDashboardView() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!adapter) return
+      if (!adapter) {
+        if (!cancelled) setExtrasReady(true)
+        return
+      }
       try {
         const [v, actionsRes, trend, qualityStore] = await Promise.all([
           loadVisitRecords(adapter),
@@ -54,12 +78,38 @@ export default function PostUseRatingDashboardView() {
         }
       } catch {
         /* ignore */
+      } finally {
+        if (!cancelled) setExtrasReady(true)
       }
     })()
     return () => {
       cancelled = true
     }
   }, [adapter, feedbacks])
+
+  useEffect(() => {
+    if (!adapter || typeof adapter.listPostUseStatusTrends !== 'function') {
+      setStatusTrendsPending(false)
+      return undefined
+    }
+    let cancelled = false
+    if (!hasRemoteStatusTrendsRef.current) setStatusTrendsPending(true)
+    ;(async () => {
+      try {
+        const trends = normalizeDepartmentStatusTrends(await adapter.listPostUseStatusTrends())
+        if (!cancelled) {
+          hasRemoteStatusTrendsRef.current = true
+          setRemoteStatusTrends(trends)
+          setStatusTrendsPending(false)
+        }
+      } catch {
+        if (!cancelled) setStatusTrendsPending(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [adapter, postUseCount])
 
   const catalog = useMemo(() => getCatalogProducts(), [feedbacks])
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
@@ -150,20 +200,47 @@ export default function PostUseRatingDashboardView() {
   const reportMonth = reportMonthSafe(currentPeriod)
   const qualityMonth = reportMonth || [...new Set(scopedItems.map((r) => r.importMonth).filter(Boolean))].sort().at(-1) || ''
   const periodQuality = quality?.periods?.[qualityMonth] || null
-  const storyModel = useMemo(() => buildPostUseStoryModel({
-    records: scopedItems,
-    allRecords: allScopedItems,
-    companyRecords: items,
-    visits: scopedVisits,
-    productNames,
-    focusNames,
-    actions: actionItems,
-    trend: trendSnap,
-    quality: periodQuality,
-    period: currentPeriod,
-    settings,
-    ticketRecords,
-  }), [scopedItems, allScopedItems, items, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords])
+  const useRemoteCompany = Array.isArray(remoteStatusTrends?.companyMetrics)
+  const remoteCompanyMetrics = useMemo(
+    () => (useRemoteCompany ? rollupCompanyMetrics(remoteStatusTrends.companyMetrics, currentPeriod) : null),
+    [useRemoteCompany, remoteStatusTrends, currentPeriod],
+  )
+  const storedWorkbench = sourceSnapshots.post_use_rating?.aggregates?.workbench
+  const catalogMatchesStored = postUseWorkbenchMatchesCatalog(storedWorkbench, catalog)
+  const storyModel = useMemo(() => {
+    const live = buildPostUseStoryModel({
+      records: scopedItems,
+      allRecords: allScopedItems,
+      companyRecords: useRemoteCompany ? undefined : items,
+      companyMetrics: remoteCompanyMetrics,
+      companyMetricsPending: Boolean(statusTrendsPending && !useRemoteCompany),
+      visits: scopedVisits,
+      productNames,
+      focusNames,
+      actions: actionItems,
+      trend: trendSnap,
+      quality: periodQuality,
+      period: currentPeriod,
+      settings,
+      ticketRecords,
+      statusTrends: remoteStatusTrends,
+      statusTrendsPending: Boolean(statusTrendsPending && !remoteStatusTrends),
+    })
+    return catalogMatchesStored ? applyPostUseWorkbenchAggregate(live, storedWorkbench) : live
+  }, [scopedItems, allScopedItems, items, useRemoteCompany, remoteCompanyMetrics, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords, remoteStatusTrends, statusTrendsPending, catalogMatchesStored, storedWorkbench])
+
+  const ratingsPending =
+    postUseRatingOnDemand &&
+    Boolean(currentPeriod?.id) &&
+    !postUseSettledPeriodIds.includes(currentPeriod.id)
+
+  if (ratingsPending || !extrasReady) {
+    return (
+      <div className="page-card flex min-h-[280px] items-center justify-center">
+        <Spin size="large" description="正在加载用后即评…" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">

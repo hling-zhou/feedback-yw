@@ -19,6 +19,8 @@ describe('OverviewTab journey map', () => {
     expect(overview).toContain('ProductExperienceTrendPanel')
     expect(overview).toContain('product={product}')
     expect(overview).toContain('onProductChange={setProduct}')
+    expect(overview).toContain('storedTrends={storedWorkbench?.productExperienceTrend}')
+    expect(overview).toContain('workbench={storedWorkbench}')
     // 顺序：行动建议之后、用户旅程之前
     expect(overview.indexOf('<ActionRecsPanel')).toBeLessThan(
       overview.indexOf('<ProductExperienceTrendPanel'),

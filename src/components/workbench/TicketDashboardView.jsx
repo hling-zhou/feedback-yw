@@ -9,6 +9,7 @@ import { filterRecordsByImportMonths, resolveTrendMonthWindow } from '../../lib/
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { OVERVIEW_RECOMMENDATIONS_EMPTY_NOTE } from '../../snapshots/rehydrateOverviewRecommendations.js'
 import { buildTicketStoryModel } from '../../lib/ticketStoryModel.js'
+import { applyTicketWorkbenchAggregate } from '../../lib/workbenchStoredAggregates.js'
 import { createActionItem, listActionItems } from '../../lib/actionItemClient.js'
 import { isCustomerExperienceComplaint } from '../../domain/complaintCause.js'
 import TicketStoryView from './TicketStoryView.jsx'
@@ -180,6 +181,10 @@ export default function TicketDashboardView({
     periodEndMonth: String(currentPeriod?.endDate || '').slice(0, 7),
     driversEmptyState,
   }), [sourceType, sourceLabel, currentPeriod, records, trendRecords, comparisonRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState])
+  const storedModel = useMemo(
+    () => applyTicketWorkbenchAggregate(model, snapshot?.aggregates?.workbench, product),
+    [model, snapshot?.aggregates?.workbench, product],
+  )
 
   const createAction = async (row) => {
     setCreatingInsightId(row.insightId)
@@ -227,17 +232,17 @@ export default function TicketDashboardView({
         <Space size={[8, 8]} wrap>
           <Typography.Text strong>产品</Typography.Text>
           <Select showSearch optionFilterProp="label" className="min-w-[220px]" value={product} options={[{ value: '', label: `全部产品 (${periodRecords.length})` }, ...products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` })), ...(product && !products.some((item) => item.name === product) ? [{ value: product, label: product }] : [])]} onChange={setProduct} />
-          <Tag color="blue">当前范围：{model.scope.periodLabel}</Tag>
+          <Tag color="blue">当前范围：{storedModel.scope.periodLabel}</Tag>
           {complaintOnlyCx ? <Tag color="purple">仅客户体验类投诉</Tag> : null}
-          <Tag>产品 {model.scope.productCount}</Tag>
-          <Tag>有效工单 {model.scope.total}</Tag>
-          <Tag color={model.scope.qualityWarningCount ? 'gold' : 'green'}>{model.scope.qualityStatus}</Tag>
-          <Tag>聚类 {model.scope.clusteringVersion}</Tag>
+          <Tag>产品 {storedModel.scope.productCount}</Tag>
+          <Tag>有效工单 {storedModel.scope.total}</Tag>
+          <Tag color={storedModel.scope.qualityWarningCount ? 'gold' : 'green'}>{storedModel.scope.qualityStatus}</Tag>
+          <Tag>聚类 {storedModel.scope.clusteringVersion}</Tag>
         </Space>
       </div>
-      {model.scope.qualityWarningCount ? <Alert type="warning" showIcon title={`当前范围有 ${model.scope.qualityWarningCount} 项数据质量或快照问题`} action={<Button type="link" href="#ticket-appendix">查看附录</Button>} /> : null}
+      {storedModel.scope.qualityWarningCount ? <Alert type="warning" showIcon title={`当前范围有 ${storedModel.scope.qualityWarningCount} 项数据质量或快照问题`} action={<Button type="link" href="#ticket-appendix">查看附录</Button>} /> : null}
       <TicketStoryView
-        model={model}
+        model={storedModel}
         snapshot={snapshot}
         creatingInsightId={creatingInsightId}
         onCreateAction={(row) => void createAction(row)}

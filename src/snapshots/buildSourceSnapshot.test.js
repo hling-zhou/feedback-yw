@@ -166,4 +166,32 @@ describe('buildSourceSnapshot', () => {
     })
     expect(snap.aggregates.followUpSatisfactionMetrics).toBeUndefined()
   })
+
+  it('embeds ticket workbench aggregates for KPI and journey reuse', async () => {
+    const cxRecords = records.map((row) => ({
+      ...row,
+      complaintCauseL1Final: '客户体验类',
+    }))
+    const scoped = filterRecordsForScope(cxRecords, periodMay, 'complaint_ticket')
+    const snap = await buildSourceSnapshot({
+      insightPeriodId: 'p-may',
+      dataSourceType: 'complaint_ticket',
+      records: scoped,
+      period: periodMay,
+      historyRecords: cxRecords,
+    })
+    expect(snap.aggregates.workbench?.all?.metrics?.total).toBe(1)
+    expect(snap.aggregates.workbench?.all?.journey).toBeTruthy()
+  })
+
+  it('embeds post-use analysisScopedCount on the snapshot summary', async () => {
+    const snap = await buildSourceSnapshot({
+      insightPeriodId: 'p-may',
+      dataSourceType: 'post_use_rating',
+      records: [],
+      period: periodMay,
+    })
+    expect(snap.aggregates.workbench).toBeTruthy()
+    expect(snap.summary.analysisScopedCount).toBe(0)
+  })
 })

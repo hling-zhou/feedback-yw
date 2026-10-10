@@ -61,7 +61,12 @@ export function buildRecordsWhereClause(query, period) {
     parts.push('import_batch_id = ?')
     params.push(query.importBatchId)
   }
-  if (period) {
+  const from = typeof query.importMonthFrom === 'string' ? query.importMonthFrom.slice(0, 7) : ''
+  const to = typeof query.importMonthTo === 'string' ? query.importMonthTo.slice(0, 7) : ''
+  if (/^\d{4}-\d{2}$/.test(from) && /^\d{4}-\d{2}$/.test(to)) {
+    parts.push('import_month >= ? AND import_month <= ?')
+    params.push(from, to)
+  } else if (period) {
     const { startMonth, endMonth } = importMonthRangeForPeriod(period)
     parts.push('import_month >= ? AND import_month <= ?')
     params.push(startMonth, endMonth)

@@ -93,6 +93,9 @@ describeJob('insight rebuild server job', () => {
     const overview = snapshots.find((s) => s.id?.startsWith('overview:'))
     expect(overview?.status).toBe('ready')
     expect(overview?.conclusions?.sampleSize).toBeGreaterThanOrEqual(0)
+    const complaint = snapshots.find((s) => s.dataSourceType === 'complaint_ticket')
+    expect(complaint?.aggregates?.workbench?.all).toBeTruthy()
+    expect(overview?.workbench?.journey).toBeTruthy()
   })
 
   it('findActiveInsightRebuildJob returns queued job for dedupe', async () => {

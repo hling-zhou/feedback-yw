@@ -63,6 +63,8 @@ export function createApiStorageAdapter() {
       if (query.dataSourceType) params.set('dataSourceType', query.dataSourceType)
       if (query.dataSourceTypes?.length) params.set('dataSourceTypes', query.dataSourceTypes.join(','))
       if (query.importBatchId) params.set('importBatchId', query.importBatchId)
+      if (query.importMonthFrom) params.set('importMonthFrom', query.importMonthFrom)
+      if (query.importMonthTo) params.set('importMonthTo', query.importMonthTo)
       if (query.limit != null) params.set('limit', String(query.limit))
       if (query.offset != null) params.set('offset', String(query.offset))
       if (query.fields) params.set('fields', query.fields)
@@ -108,6 +110,10 @@ export function createApiStorageAdapter() {
         bySource: Array.isArray(data.bySource) ? data.bySource : [],
         total: data.total ?? 0,
       }
+    },
+
+    async listPostUseStatusTrends() {
+      return storageFetch('/records/post-use-status-trends')
     },
 
     async putRecord(record, options = {}) {

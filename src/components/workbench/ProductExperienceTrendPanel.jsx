@@ -30,18 +30,27 @@ export default function ProductExperienceTrendPanel({
   currentPeriod = null,
   product: productProp,
   onProductChange,
+  storedTrends = null,
 }) {
   const enabledProducts = useMemo(() => getEnabledProducts(), [])
   const enabledNames = useMemo(() => new Set(enabledProducts.map((p) => p.name)), [enabledProducts])
   const productOptions = useMemo(() => {
+    const seen = new Set()
     const options = listProducts(feedbacks)
       .filter((p) => enabledNames.has(p.name))
       .map((p) => ({ value: p.name, label: p.name }))
+    for (const item of options) seen.add(item.value)
+    for (const name of Object.keys(storedTrends || {})) {
+      if (!name || seen.has(name)) continue
+      if (enabledNames.size && !enabledNames.has(name)) continue
+      options.push({ value: name, label: name })
+      seen.add(name)
+    }
     if (productProp && !options.some((item) => item.value === productProp)) {
       options.push({ value: productProp, label: productProp })
     }
     return options
-  }, [feedbacks, enabledNames, productProp])
+  }, [feedbacks, enabledNames, productProp, storedTrends])
   const focusNames = useMemo(
     () => getPostUseFocusTrackedNames(enabledProducts),
     [enabledProducts],
@@ -69,10 +78,11 @@ export default function ProductExperienceTrendPanel({
     return ''
   }, [currentPeriod])
 
-  const trend = useMemo(
-    () => buildProductExperienceTrend(feedbacks, productName, { limit: 12, endMonth }),
-    [feedbacks, productName, endMonth],
-  )
+  const trend = useMemo(() => {
+    const stored = productName && storedTrends?.[productName]
+    if (stored && Array.isArray(stored.months)) return stored
+    return buildProductExperienceTrend(feedbacks, productName, { limit: 12, endMonth })
+  }, [feedbacks, productName, endMonth, storedTrends])
 
   const chartData = useMemo(
     () =>

@@ -29,6 +29,13 @@ import {
   deleteRecordIndex,
   upsertRecordIndex,
 } from './assistantSearchIndex.js'
+import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
+import {
+  POST_USE_RATING_CATALOG_SEED_PRODUCTS,
+  getPostUseRatingProductNames,
+  scopePostUseRatingRecords,
+} from '../src/lib/productCatalog/postUseRatingProducts.js'
+import { buildDepartmentStatusTrends } from '../src/lib/postUseRating/statusTrends.js'
 
 /**
  * @param {import('../src/storage/adapter.js').RecordQuery} [query]
@@ -307,6 +314,58 @@ export const storageRepository = {
       .map(([importMonth, count]) => ({ importMonth, count }))
       .sort((a, b) => (a.importMonth < b.importMonth ? -1 : 1))
     return { months, bySource, total }
+  },
+
+  /**
+   * 用后即评体验现状趋势：服务端按月聚合，避免把全部明细下发到浏览器。
+   * @returns {ReturnType<typeof buildDepartmentStatusTrends>}
+   */
+  listPostUseStatusTrends() {
+    const db = getDb()
+    /** @type {object[]} */
+    let records = []
+    try {
+      const rows = db
+        .prepare(
+          `SELECT
+             import_month AS importMonth,
+             json_extract(payload, '$.dataSourceType') AS dataSourceType,
+             json_extract(payload, '$.ratingScore') AS ratingScore,
+             json_extract(payload, '$.channel') AS channel,
+             json_extract(payload, '$.sourceSubType') AS sourceSubType,
+             json_extract(payload, '$.productName') AS productName,
+             json_extract(payload, '$.product') AS product,
+             json_extract(payload, '$.createdAt') AS createdAt
+           FROM records
+           WHERE data_source_type = 'post_use_rating'`,
+        )
+        .all()
+      records = rows.map((row) => ({
+        dataSourceType: row.dataSourceType || 'post_use_rating',
+        ratingScore: row.ratingScore == null || row.ratingScore === '' ? null : Number(row.ratingScore),
+        channel: row.channel || '',
+        sourceSubType: row.sourceSubType || '',
+        productName: row.productName || '',
+        product: row.product || '',
+        importMonth: row.importMonth || '',
+        createdAt: row.createdAt || '',
+      }))
+    } catch {
+      records = db
+        .prepare(`SELECT payload FROM records WHERE data_source_type = 'post_use_rating'`)
+        .all()
+        .map((row) => parseJson(row.payload))
+    }
+    const catalog = getCatalogProducts()
+    const products = Array.isArray(catalog) && catalog.some((product) => product?.analysisPostUseRating)
+      ? catalog
+      : POST_USE_RATING_CATALOG_SEED_PRODUCTS
+    const productNames = getPostUseRatingProductNames(products)
+    return buildDepartmentStatusTrends({
+      departmentRecords: scopePostUseRatingRecords(records, products),
+      companyRecords: records,
+      productNames,
+    })
   },
 
   putRecord(record, options = {}) {

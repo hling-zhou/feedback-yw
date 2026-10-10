@@ -17,31 +17,10 @@ import {
   buildFocusScoreTrendChartModel,
 } from './trendStore.js'
 import { filterPostUseTrendForPeriod } from './periodScope.js'
+import { postUseRecordsToScoredRows } from './scoredRows.js'
+import { buildDepartmentStatusTrends, pendingDepartmentStatusTrends } from './statusTrends.js'
 
-/** @param {object[]} records */
-function isOptionScoreRecord(record) {
-  const channel = String(record?.channel || '').trim()
-  const sourceSubType = String(record?.sourceSubType || '').trim()
-  return channel === 'option' || sourceSubType === 'web_option'
-}
-
-export function postUseRecordsToScoredRows(records) {
-  return (records || [])
-    .filter((record) => record.dataSourceType === 'post_use_rating' && record.ratingScore != null)
-    .filter((record) => !isOptionScoreRecord(record))
-    .map((record) => ({
-      id: record.id,
-      channel: record.channel || (record.sourceSubType === 'sms_survey' ? 'sms' : record.sourceSubType === 'satisfaction_callback' ? 'callback' : 'console'),
-      productName: record.productName || record.product || '',
-      score: Number(record.ratingScore),
-      customerName: record.customerName || '',
-      customerCode: record.customerCode || '',
-      answeredAt: record.createdAt || '',
-      originalTicketId: record.originalTicketId || '',
-      lowScoreReason: record.lowScoreReason || '',
-    }))
-    .filter((row) => Number.isFinite(row.score) && row.productName)
-}
+export { postUseRecordsToScoredRows }
 
 /**
  * Single presentation model for the online story and its monthly report projection.
@@ -61,6 +40,13 @@ export function buildPostUseStoryModel(input) {
     period = null,
     settings = null,
     ticketRecords = [],
+    statusHistoryRecords,
+    statusHistoryCompanyRecords,
+    statusTrends: providedStatusTrends,
+    statusTrendsPending = false,
+    companyMetrics,
+    companyMetricsPending = false,
+    nowMonth,
   } = input
   const scoredRows = postUseRecordsToScoredRows(records)
   const companyScoredRows = companyRecords
@@ -72,6 +58,18 @@ export function buildPostUseStoryModel(input) {
     productNames,
     companyRows: companyScoredRows,
   })
+  if (companyMetricsPending) {
+    external.company = { productCount: 0, totalSample: 0, avgScore: null, byProduct: [] }
+  } else if (companyMetrics) {
+    const totalSample = Number(companyMetrics.totalSample) || 0
+    const avgScore = Number(companyMetrics.avgScore)
+    external.company = {
+      productCount: Number(companyMetrics.productCount) || 0,
+      totalSample,
+      avgScore: totalSample > 0 && Number.isFinite(avgScore) ? avgScore : null,
+      byProduct: [],
+    }
+  }
   const monthlyScoreTable = buildMonthlyScoreTable(scoredRows, { productNames })
   const nonTenDistributionProducts = monthlyScoreTable
     .filter((row) => row.avgScore !== 10 || row.hasNonTenScore)
@@ -272,6 +270,16 @@ export function buildPostUseStoryModel(input) {
   const satisfactionTrend = filteredTrend
     ? buildFocusSatisfactionTrendChartModel(filteredTrend, focusNames)
     : { data: [], areas: [] }
+  const statusTrends = providedStatusTrends
+    ? providedStatusTrends
+    : statusTrendsPending
+      ? pendingDepartmentStatusTrends()
+      : buildDepartmentStatusTrends({
+        departmentRecords: statusHistoryRecords ?? allRecords,
+        companyRecords: statusHistoryCompanyRecords ?? companyRecords ?? allRecords,
+        productNames,
+        nowMonth,
+      })
 
   const critical = productOverview.find((product) => product.stateCode === 'critical')
     || productOverview.find((product) => product.stateCode === 'watch')
@@ -316,6 +324,7 @@ export function buildPostUseStoryModel(input) {
       monthlyScoreTable,
       scoreDistribution,
       nonTenDistributionProducts,
+      statusTrends,
     },
     productOverview,
     trendsAndChanges: { scoreTrend, satisfactionTrend, changes },

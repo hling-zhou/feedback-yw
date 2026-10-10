@@ -8,6 +8,7 @@ import { isTicketSource } from '../lib/importUtils.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { previousPeriodIdFromPeriod, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../lib/sourceOverviewMetrics.js'
+import { buildOverviewWorkbenchAggregate } from '../lib/workbenchStoredAggregates.js'
 
 /** @typedef {import('../storage/orderVolumeStore.js').OrderVolumeRow} OrderVolumeRow */
 
@@ -27,6 +28,7 @@ import { computeMaxMomGrowthProductForSource } from '../lib/sourceOverviewMetric
  * @param {import('../lib/storage.js').AppSettings | null} [params.settings]
  * @param {import('../domain/overviewConclusions.js').ActionRecsResult[]} [params.mergedRecommendations]
  * @param {object | null} [params.mergedGateReport]
+ * @param {import('../storage/wanTouTargetStore.js').WanTouTargetRow[]} [params.wanTouTargets]
  */
 export function buildOverviewSnapshot({
   insightPeriodId,
@@ -38,6 +40,7 @@ export function buildOverviewSnapshot({
   settings = null,
   mergedRecommendations = [],
   mergedGateReport = null,
+  wanTouTargets = [],
 }) {
   const previousPeriod = resolvePreviousInsightPeriod(period)
   const versions = defaultAnalysisVersions()
@@ -128,5 +131,12 @@ export function buildOverviewSnapshot({
     sourceSummaries,
     crossSourceMetrics: crossSourceMetricsFinal,
     conclusions,
+    workbench: buildOverviewWorkbenchAggregate({
+      period,
+      feedbacks,
+      sourceSnapshots,
+      orderVolumes,
+      wanTouTargets,
+    }),
   }
 }

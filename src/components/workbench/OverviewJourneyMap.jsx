@@ -9,6 +9,7 @@ import {
   resolveJourneyComparisonWindow,
 } from '../../lib/ticketStoryModel.js'
 import TicketJourneyMap from './TicketJourneyMap.jsx'
+import { hasWorkbenchAggregate, pickOverviewJourney } from '../../lib/workbenchStoredAggregates.js'
 
 const SOURCE_OPTIONS = [
   { label: '全部反馈', value: 'all' },
@@ -25,6 +26,7 @@ export default function OverviewJourneyMap({
   currentPeriod = null,
   product: productProp,
   onProductChange,
+  workbench = null,
 }) {
   const [productLocal, setProductLocal] = useState('')
   const controlled = onProductChange != null
@@ -59,6 +61,10 @@ export default function OverviewJourneyMap({
   }, [controlled, product, products])
 
   const journeyModel = useMemo(() => {
+    if (hasWorkbenchAggregate(workbench)) {
+      const stored = pickOverviewJourney(workbench, sourceFilter, product)
+      if (stored) return stored
+    }
     const current = product ? filterFeedbacks(currentRecords, { product }) : currentRecords
     const previous = product ? filterFeedbacks(previousRecords, { product }) : previousRecords
     return buildJourneyStages({
@@ -70,7 +76,7 @@ export default function OverviewJourneyMap({
       useMonthlyAverage: comparison.useMonthlyAverage,
       currentMonthCount: comparison.currentMonths.length,
     })
-  }, [currentRecords, previousRecords, comparison, product, sourceFilter])
+  }, [workbench, currentRecords, previousRecords, comparison, product, sourceFilter])
 
   return (
     <div className="page-card"><div className="page-card-header"><span className="page-card-title">用户旅程</span><div>{

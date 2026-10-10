@@ -29,7 +29,7 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(source).toContain('dataSource={drivers.customers}')
     expect(source).toContain("title: '客户特征'")
     expect(source).toContain("title: '反馈原因'")
-    expect(source).toContain('title="高频低分原因"')
+    expect(source).toContain('page-card-title">高频低分原因')
     expect(source).toContain('当前范围内暂无命中 高频低分原因规则 的记录')
     expect(source).toContain('const highFreqRows = drivers.highFrequencyLowScoreReasons || []')
     expect(source).toContain('dataSource={highFreqRows}')
@@ -50,9 +50,22 @@ describe('PostUseStoryView narrative hierarchy', () => {
   it('keeps only score distribution as an online detail panel', () => {
     expect(source).not.toContain("label: '整体得分情况'")
     expect(source).toContain("label: '得分分布详情'")
-    expect(source).toContain('title="产品体验总览"')
+    expect(source).toContain('page-card-title">产品体验总览')
     expect(source).not.toContain('title="月报口径产品得分表"')
     expect(source).not.toContain('title="非10分产品评分分布"')
+  })
+
+  it('shows department and company status trends from the first scored month through now', () => {
+    const statusStart = source.indexOf('id="post-use-status"')
+    const trendsStart = source.indexOf('id="post-use-trends"')
+    const statusSection = source.slice(statusStart, trendsStart)
+    expect(statusSection).toContain('部门体验均分')
+    expect(statusSection).toContain('部门投诉回访满意度')
+    expect(statusSection).toContain('部门与公司三渠道均分')
+    expect(statusSection).toContain('从最早有用后即评评分的月份至今，不随当前所选周期变化。')
+    expect(statusSection).toContain('metrics.statusTrends?.experience')
+    expect(statusSection).toContain('metrics.statusTrends?.satisfaction')
+    expect(statusSection).toContain('metrics.statusTrends?.threeChannel')
   })
 
   it('shows internal experience KPIs plus the three-channel yunwang vs company pair', () => {

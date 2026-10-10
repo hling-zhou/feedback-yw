@@ -44,9 +44,11 @@ export default function InsightWorkbench() {
     feedbacks,
     feedbacksLoading,
     periodsLoading,
+    snapshotsLoading,
     currentPeriod,
     selectInsightPeriod,
     loadPostUseRatingForPeriod,
+    postUseCacheGeneration,
     sourceSnapshots,
     overviewSnapshot,
     snapshotsStale,
@@ -122,7 +124,7 @@ export default function InsightWorkbench() {
     if (activeTab === 'post_use_rating' && currentPeriod?.id) {
       void loadPostUseRatingForPeriod(currentPeriod.id)
     }
-  }, [activeTab, currentPeriod, loadPostUseRatingForPeriod])
+  }, [activeTab, currentPeriod, loadPostUseRatingForPeriod, postUseCacheGeneration])
 
   const analysisContext = useMemo(() => {
     if (activeTab === TAB_OVERVIEW) return {}
@@ -256,8 +258,8 @@ export default function InsightWorkbench() {
     (s) => (s?.summary?.recordCount ?? 0) > 0,
   )
 
-  // 首次加载：数据/快照尚未就绪，且正在加载中 → 显示加载态而非空态
-  const initialLoading = (feedbacksLoading || periodsLoading) && !hasAnyData && !snapshotRebuilding && !overviewDisplay
+  // 周期记录或快照还在加载时显示加载态，避免先闪出空态或上一周期的内容
+  const dataLoading = (feedbacksLoading || periodsLoading || snapshotsLoading) && !snapshotRebuilding
 
   return (
     <div id="insight-workbench-root">
@@ -309,13 +311,13 @@ export default function InsightWorkbench() {
         />
       )}
 
-      {initialLoading && (
-        <div className="page-card page-section flex items-center justify-center" style={{ minHeight: 200 }}>
-          <Spin tip="正在加载洞察数据…" />
+      {dataLoading && (
+        <div className="page-card page-section flex min-h-[320px] items-center justify-center">
+          <Spin size="large" description="正在加载洞察数据…" />
         </div>
       )}
 
-      {!hasAnyData && !snapshotRebuilding && !initialLoading && (
+      {!hasAnyData && !snapshotRebuilding && !dataLoading && (
         <div className="page-card page-section">
           <Empty description="当前周期尚无反馈数据">
             <Link to={buildImportUrl({ source: activeTab === TAB_OVERVIEW ? undefined : activeTab })}>
@@ -325,7 +327,7 @@ export default function InsightWorkbench() {
         </div>
       )}
 
-      {(hasAnyData || snapshotRebuilding || overviewDisplay) && (
+      {!dataLoading && (hasAnyData || snapshotRebuilding || overviewDisplay) && (
         <div className="page-section">
           <WorkbenchAnalysisNav
             activeSourceTab={activeTab}

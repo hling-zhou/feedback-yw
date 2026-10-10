@@ -33,6 +33,7 @@
  * @property {Record<DataSourceType, Record<string, unknown>>} sourceSummaries
  * @property {Record<string, unknown>} crossSourceMetrics
  * @property {OverviewConclusions} [conclusions]
+ * @property {Record<string, unknown>} [workbench] 综合概述可落库聚合（旅程 / 万投比 / 体验趋势）
  * @property {string} [errorSummary]
  */
 

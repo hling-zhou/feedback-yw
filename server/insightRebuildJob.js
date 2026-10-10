@@ -11,6 +11,8 @@ import {
 import { createRepositoryStorageAdapter } from './repositoryStorageAdapter.js'
 import { storageRepository } from './storageRepository.js'
 import { isLlmConfigured } from './llmConfig.js'
+import { resolveWorkbenchHistoryMonthRange } from '../src/lib/workbenchStoredAggregates.js'
+import { loadManagedProductCatalog } from '../src/storage/productCatalogStore.js'
 
 /** @typedef {import('../src/domain/insightRebuildJob.js').InsightRebuildJob} InsightRebuildJob */
 
@@ -122,10 +124,22 @@ async function runInsightRebuildJob(jobId) {
 
   try {
     await markPeriodSnapshotsRebuilding(adapter, job.insightPeriodId)
+    try {
+      await loadManagedProductCatalog(adapter)
+    } catch (err) {
+      console.warn('[insight-rebuild] 产品目录刷新失败，用缓存:', err)
+    }
 
-    const { records } = storageRepository.listRecords({
-      insightPeriodId: job.insightPeriodId,
-    })
+    const range = resolveWorkbenchHistoryMonthRange(period)
+    const { records } = range.startMonth && range.endMonth
+      ? storageRepository.listRecords({
+          importMonthFrom: range.startMonth,
+          importMonthTo: range.endMonth,
+          fields: 'list',
+        })
+      : storageRepository.listRecords({
+          insightPeriodId: job.insightPeriodId,
+        })
     const settings = loadRebuildSettings()
 
     await rebuildAllSnapshots(

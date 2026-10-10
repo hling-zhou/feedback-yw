@@ -321,6 +321,26 @@ async function runSentimentRetag(opts, cancelled, touch) {
   }
 }
 
+/**
+ * 用后即评「待补全用户旅程」目标过滤：与 enrichment 用同一套口径，
+ * 供计数接口（GET /api/storage/records/post-use-journey/pending-count）和
+ * runEnrichment 的 post_use_journey 分支复用，避免前端缓存与服务端漂移。
+ *
+ * @param {import('../src/lib/types.js').FeedbackRecord[]} records
+ * @param {import('../src/lib/storage.js').AppSettings} settings
+ * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+ * @returns {import('../src/lib/types.js').FeedbackRecord[]}
+ */
+export function resolvePostUseJourneyTargets(records, settings, options = {}) {
+  const includeLegacy = options.includeLegacyKeywordJourneys === true
+  const catalogProducts = options.catalogProducts ?? getCatalogProducts()
+  return (records || []).filter(
+    (record) =>
+      needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }) &&
+      resolvePostUseRatingProduct(record, catalogProducts),
+  )
+}
+
 export async function runEnrichment(opts) {
   const { mode, settings: rawSettings, userId, username, onProgress, retagOptions = {}, taskId } = opts
   const cancelled = () => (taskId ? isTaskCancelled(taskId) : false)
@@ -450,12 +470,9 @@ export async function runEnrichment(opts) {
 
     if (mode === 'post_use_journey') {
       const includeLegacy = retagOptions.includeLegacyKeywordJourneys === true
-      const catalogProducts = getCatalogProducts()
-      const targets = records.filter(
-        (record) =>
-          needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }) &&
-          resolvePostUseRatingProduct(record, catalogProducts),
-      )
+      const targets = resolvePostUseJourneyTargets(records, settings, {
+        includeLegacyKeywordJourneys: includeLegacy,
+      })
       const total = targets.length
       /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
       const written = []

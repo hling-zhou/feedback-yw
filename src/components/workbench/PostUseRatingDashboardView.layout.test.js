@@ -15,4 +15,14 @@ describe('PostUseRatingDashboardView report availability', () => {
     expect(source).not.toContain("activeViewMode === 'report'")
     expect(source).not.toContain('PostUseMonthlyReportPreview')
   })
+
+  it('uses server company metrics instead of period detail records', () => {
+    expect(source).toContain('rollupCompanyMetrics')
+    expect(source).toContain('companyRecords: useRemoteCompany ? undefined : items')
+  })
+
+  it('overlays stored workbench KPIs when the catalog version matches', () => {
+    expect(source).toContain('applyPostUseWorkbenchAggregate')
+    expect(source).toContain('postUseWorkbenchMatchesCatalog')
+  })
 })

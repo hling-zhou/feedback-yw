@@ -31,6 +31,11 @@ import { scheduleConfigAutoPublish } from '../autoPublishConfig.js'
 import { getTaxonomyPublishStatus, publishTaxonomyToFiles } from '../taxonomyPublish.js'
 import { readTaxonomyManagedMetaHydrated } from '../taxonomyMetaHygiene.js'
 import { listChangedObjectKeys, listChangedRecordFields } from '../../src/domain/recordAuditDiff.js'
+import { loadTeamAppSettings } from '../../src/lib/appSettingsPersist.js'
+import { loadManagedTaxonomy } from '../../src/lib/tagLibrary/taxonomyManagedStore.js'
+import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
+import { resolveSettingsForLlm } from '../../src/lib/llmClient.js'
+import { isPostUseRatingLibraryRecord } from '../../src/domain/postUseRatingImport.js'
 import {
   enqueueInsightRebuild,
   getInsightRebuildJob,
@@ -323,6 +328,62 @@ export function registerStorageRoutes(app) {
     return storageRepository.listRecords({ ...q, dataSourceTypes, fields })
   })
 
+  // 用后即评「待补全用户旅程」计数：服务端按与 enrichRunner 同口径计算 count + recordIds，
+  // 供前端横幅显示，避免前端内存缓存与服务端 DB 状态漂移导致数量不一致。
+  app.get(
+    '/api/storage/records/post-use-journey/pending-count',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      const q = /** @type {{ periodId?: string; includeLegacyKeywordJourneys?: string }} */ (request.query || {})
+      const periodId = typeof q.periodId === 'string' ? q.periodId.trim() : ''
+      const includeLegacyKeywordJourneys = q.includeLegacyKeywordJourneys === 'true'
+
+      // 刷新标签库 + 产品目录（与 enrichRunner 一致），确保 resolvePostUseRatingProduct 用最新目录
+      const taxonomyAdapter = {
+        getMeta: (key) => storageRepository.getMeta(key),
+        putMeta: (key, value) => storageRepository.putMeta(key, value),
+      }
+      try { await loadManagedTaxonomy(taxonomyAdapter) } catch (err) {
+        console.warn('[post-use-journey-count] taxonomy 刷新失败，用缓存:', err)
+      }
+      try { await loadManagedProductCatalog(taxonomyAdapter) } catch (err) {
+        console.warn('[post-use-journey-count] 产品目录刷新失败，用缓存:', err)
+      }
+
+      // 读取共享团队设置并 resolve（补 llmServerConfigured 等，供 needsPostUseJourney 的门闸阈值用）
+      let settings = {}
+      try {
+        const teamPartial = await loadTeamAppSettings({
+          getMeta: (key) => Promise.resolve(storageRepository.getMeta(key)),
+          putMeta: (key, value) => Promise.resolve(storageRepository.putMeta(key, value)),
+        })
+        settings = await resolveSettingsForLlm(teamPartial)
+      } catch (err) {
+        console.warn('[post-use-journey-count] settings 加载失败，用默认:', err)
+      }
+
+      // 按 period + post_use_rating 取记录（list 投影即可，旅程字段不在裁剪黑名单里）
+      const listResult = storageRepository.listRecords({
+        insightPeriodId: periodId || undefined,
+        dataSourceType: 'post_use_rating',
+        fields: 'list',
+      })
+      const records = listResult.records.filter(isPostUseRatingLibraryRecord)
+
+      const { resolvePostUseJourneyTargets } = await import('../enrichRunner.js')
+      const { getCatalogProducts } = await import('../../src/lib/productCatalogLoader.js')
+      const targets = resolvePostUseJourneyTargets(records, settings, {
+        includeLegacyKeywordJourneys,
+        catalogProducts: getCatalogProducts(),
+      })
+      return {
+        count: targets.length,
+        recordIds: targets.map((r) => r.id).filter(Boolean),
+      }
+    },
+  )
+
+
   app.get(
     '/api/storage/records/ticket-ids',
     { preHandler: requirePermission('view') },
@@ -353,6 +414,12 @@ export function registerStorageRoutes(app) {
       const q = /** @type {{ tenantId?: string } } */ (request.query || {})
       return storageRepository.listImportMonthSummary({ tenantId: q.tenantId })
     },
+  )
+
+  app.get(
+    '/api/storage/records/post-use-status-trends',
+    { preHandler: requirePermission('view') },
+    async () => storageRepository.listPostUseStatusTrends(),
   )
 
   app.get(

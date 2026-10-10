@@ -4,7 +4,7 @@
  * 4 个指标（取值范围不同，归一到 0–100 后同图看相关性）：
  * - 投诉数量（complaint_ticket 月度工单数）
  * - 咨询数量（consultation_ticket 月度工单数）
- * - 用后即评得分（post_use_rating 评分记录 ratingScore 月度均分，0–10）
+ * - 用后即评-体验评分（不含投诉回访；sms + console 的 ratingScore 月度均分，0–10）
  * - 投诉回访满意度（工单 followUpSatisfaction.score 的 10 分率，0–100%）
  *
  * 统一按"产品名"分组（fb.product / productName），与产品选择器对齐。
@@ -211,7 +211,7 @@ function tenPointRateByMonth(records, basis = 'importMonth') {
 const METRICS = [
   { key: 'complaint', name: '投诉数量', unit: '单' },
   { key: 'consultation', name: '咨询数量', unit: '单' },
-  { key: 'postUseScore', name: '用后即评得分', unit: '分' },
+  { key: 'postUseScore', name: '用后即评-体验评分（不含投诉回访）', unit: '分' },
   { key: 'satisfaction', name: '回访满意度', unit: '%' },
 ]
 

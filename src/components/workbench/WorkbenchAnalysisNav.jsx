@@ -30,8 +30,15 @@ export default function WorkbenchAnalysisNav({
       const n = sourceSnapshots[type]?.summary?.recordCount
       if (n != null) counts[type] = n
     }
-    const records = filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating')
-    counts.post_use_rating = scopePostUseRatingRecords(records, getCatalogProducts()).length
+    const storedPostUseCount =
+      sourceSnapshots.post_use_rating?.summary?.analysisScopedCount ??
+      sourceSnapshots.post_use_rating?.aggregates?.workbench?.analysisScopedCount
+    if (storedPostUseCount != null) {
+      counts.post_use_rating = storedPostUseCount
+    } else {
+      const records = filterRecordsForScope(feedbacks, currentPeriod, 'post_use_rating')
+      counts.post_use_rating = scopePostUseRatingRecords(records, getCatalogProducts()).length
+    }
     return counts
   }, [sourceSnapshots, feedbacks, currentPeriod])
 

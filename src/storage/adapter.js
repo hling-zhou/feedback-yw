@@ -19,6 +19,8 @@
  * @property {DataSourceType} [dataSourceType]
  * @property {DataSourceType[]} [dataSourceTypes] 多类型过滤（IN 查询），优先于 dataSourceType
  * @property {string} [importBatchId]
+ * @property {string} [importMonthFrom] YYYY-MM，与 importMonthTo 一起按导入月范围过滤（优先于周期）
+ * @property {string} [importMonthTo]
  * @property {number} [limit] 分页大小；不传则返回全部（慎用）
  * @property {number} [offset] 分页偏移，默认 0
  * @property {'list' | 'full'} [fields] payload 投影：list 剔除大文本字段，full/默认原样
@@ -42,6 +44,7 @@
  * @property {(dataSourceType?: string) => Promise<string[]>} [listExistingTicketIds] 该数据类型下全部已有工单号
  * @property {(dataSourceType: string, ticketIds: string[]) => Promise<InsightRecord[]>} [listRecordsByTicketIds] 按工单号批量取记录（导入覆盖合并）
  * @property {() => Promise<{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number }>} [listImportMonthSummary] 首屏默认周期推断：按导入月份×数据源聚合记录数
+ * @property {() => Promise<{ pending?: boolean; experience: { data: object[]; areas: object[] }; satisfaction: { data: object[]; areas: object[] }; threeChannel: { data: object[]; areas: object[] }; companyMetrics?: Array<{ date: string; avgScore: number | null; totalSample: number; productCount: number; scoreSum: number }> }>} [listPostUseStatusTrends] 用后即评体验现状跨月趋势与公司口径（服务端聚合）
  * @property {() => Promise<{ records: number; snapshots: number; tagCandidates: number }>} [getStorageStats]
  * @property {(record: InsightRecord, options?: import('../domain/recordRevision.js').PutRecordOptions) => Promise<{ recordRevision?: number } | void>} putRecord
  * @property {(records: InsightRecord[]) => Promise<void>} putRecords

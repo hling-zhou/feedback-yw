@@ -38,6 +38,15 @@ describe('buildRecordsWhereClause', () => {
     expect(where).toContain('import_month >= ?')
     expect(params).toEqual(['2025-01', '2025-03'])
   })
+
+  it('uses importMonthFrom/To even without a period', () => {
+    const { where, params } = buildRecordsWhereClause(
+      { importMonthFrom: '2025-12', importMonthTo: '2026-12' },
+      null,
+    )
+    expect(where).toContain('import_month >= ?')
+    expect(params).toEqual(['2025-12', '2026-12'])
+  })
 })
 
 describe('parseRecordPagination', () => {

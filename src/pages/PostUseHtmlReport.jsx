@@ -18,6 +18,7 @@ import { loadPostUseTrend } from '../lib/postUseRating/trendStore.js'
 import { loadPostUsePeriodQuality } from '../lib/postUseRating/qualityStore.js'
 import { postUseVisitMonthsForPeriod } from '../lib/postUseRating/periodScope.js'
 import { buildPostUseStoryModel } from '../lib/postUseRating/storyModel.js'
+import { normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../lib/postUseRating/statusTrends.js'
 import { buildHtmlMonthlyReportModel } from '../lib/postUseRating/htmlReportModel.js'
 import { loadHtmlReportOverlay, saveHtmlReportOverlay } from '../lib/postUseRating/htmlReportOverlay.js'
 import {
@@ -45,6 +46,7 @@ export default function PostUseHtmlReport() {
   const [quality, setQuality] = useState(null)
   const [learnings, setLearnings] = useState([])
   const [overlay, setOverlay] = useState(null)
+  const [remoteStatusTrends, setRemoteStatusTrends] = useState(null)
   const [sideLoading, setSideLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -69,13 +71,16 @@ export default function PostUseHtmlReport() {
       }
       setSideLoading(true)
       try {
-        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap] = await Promise.all([
+        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap, statusTrends] = await Promise.all([
           loadVisitRecords(adapter),
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
           loadHtmlReportOverlay(adapter, reportMonth).catch(() => null),
           loadMonthlyReportLearnings(adapter).catch(() => []),
+          typeof adapter.listPostUseStatusTrends === 'function'
+            ? adapter.listPostUseStatusTrends().then(normalizeDepartmentStatusTrends).catch(() => null)
+            : Promise.resolve(null),
         ])
         if (!cancelled) {
           setVisits(v)
@@ -84,6 +89,7 @@ export default function PostUseHtmlReport() {
           setQuality(qualityStore)
           setOverlay(overlaySnap)
           setLearnings(learningSnap)
+          setRemoteStatusTrends(statusTrends)
         }
       } catch {
         if (!cancelled) setOverlay(null)
@@ -140,12 +146,18 @@ export default function PostUseHtmlReport() {
   }, [trendSnap, reportMonth])
   const periodQuality = quality?.periods?.[reportMonth] || null
 
+  const useRemoteCompany = Array.isArray(remoteStatusTrends?.companyMetrics)
+  const remoteCompanyMetrics = useMemo(
+    () => (useRemoteCompany ? rollupCompanyMetrics(remoteStatusTrends.companyMetrics, reportPeriod) : null),
+    [useRemoteCompany, remoteStatusTrends, reportPeriod],
+  )
   const storyModel = useMemo(() => {
     if (!reportPeriod) return null
     return buildPostUseStoryModel({
       records: scopedItems,
       allRecords: allScopedItems,
-      companyRecords: items,
+      companyRecords: useRemoteCompany ? undefined : items,
+      companyMetrics: remoteCompanyMetrics,
       visits: scopedVisits,
       productNames,
       focusNames,
@@ -155,12 +167,15 @@ export default function PostUseHtmlReport() {
       period: reportPeriod,
       settings,
       ticketRecords,
+      statusTrends: remoteStatusTrends || undefined,
     })
   }, [
     reportPeriod,
     scopedItems,
     allScopedItems,
     items,
+    useRemoteCompany,
+    remoteCompanyMetrics,
     scopedVisits,
     productNames,
     focusNames,
@@ -169,6 +184,7 @@ export default function PostUseHtmlReport() {
     periodQuality,
     settings,
     ticketRecords,
+    remoteStatusTrends,
   ])
 
   const model = useMemo(() => {

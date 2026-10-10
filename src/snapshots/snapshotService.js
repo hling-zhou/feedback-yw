@@ -5,6 +5,7 @@ import { buildOverviewSnapshot } from './buildOverviewSnapshot.js'
 import { previousPeriodIdFromPeriod } from '../domain/insightPeriod.js'
 import { filterRecordsForScope } from './recordScope.js'
 import { listOrderVolumes } from '../storage/orderVolumeStore.js'
+import { listWanTouTargets } from '../storage/wanTouTargetStore.js'
 import { yieldToMainThread } from '../lib/yieldToMainThread.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import { buildImpactFocusSummaries } from '../lib/ticketImpactFocus.js'
@@ -75,6 +76,13 @@ export async function rebuildSourceSnapshot({
 }) {
   const insightPeriodId = period.id
   const records = filterRecordsForScope(feedbacks, period, dataSourceType)
+  const historyRecords = (feedbacks || []).filter(
+    (record) => (record.dataSourceType || 'complaint_ticket') === dataSourceType,
+  )
+  const [orderVolumes, wanTouTargets] = await Promise.all([
+    listOrderVolumes(adapter),
+    listWanTouTargets(adapter),
+  ])
   const ticketRecordsForFollowUp = [
     ...filterRecordsForScope(feedbacks, period, 'complaint_ticket'),
     ...filterRecordsForScope(feedbacks, period, 'consultation_ticket'),
@@ -101,6 +109,9 @@ export async function rebuildSourceSnapshot({
     settings,
     previousRecommendations,
     previousPeriodId: previousPeriodId || undefined,
+    historyRecords,
+    orderVolumes,
+    wanTouTargets,
   })
 
   if (isTicketSource(dataSourceType)) {
@@ -145,6 +156,7 @@ export async function rebuildOverviewSnapshot({
   settings = null,
 }) {
   const orderVolumes = await listOrderVolumes(adapter)
+  const wanTouTargets = await listWanTouTargets(adapter)
   const previousPeriodId = previousPeriodIdFromPeriod(period)
 
   // 概览快照按问题（stableKey = product+fam+sub 的哈希）合并投诉+咨询
@@ -171,6 +183,7 @@ export async function rebuildOverviewSnapshot({
     // 传入合并后的 recommendations，buildOverviewSnapshot 不再调 buildOverviewConclusions 跑 V2
     mergedRecommendations,
     mergedGateReport,
+    wanTouTargets,
   })
 
   // 移除旧的 recommendationsLlm 保留逻辑（新引擎不使用 LLM 润色）
@@ -317,6 +330,25 @@ export async function markPeriodSnapshotsStale(adapter, insightPeriodId) {
   }
   if (overviewSnapshot) {
     await adapter.putSnapshot({ ...overviewSnapshot, status: 'stale' })
+  }
+}
+
+/**
+ * 产品目录分析开关变化后，用后即评 KPI / 概述体验趋势立方失效。
+ * @param {StorageAdapter} adapter
+ */
+export async function markPostUseDependentSnapshotsStale(adapter) {
+  const periods = await adapter.listInsightPeriods()
+  for (const period of periods || []) {
+    if (!period?.id) continue
+    const { sourceSnapshots, overviewSnapshot } = await loadSnapshotsForPeriod(adapter, period.id)
+    const postUse = sourceSnapshots.post_use_rating
+    if (postUse?.status === 'ready') {
+      await adapter.putSnapshot({ ...postUse, status: 'stale' })
+    }
+    if (overviewSnapshot?.status === 'ready') {
+      await adapter.putSnapshot({ ...overviewSnapshot, status: 'stale' })
+    }
   }
 }
 

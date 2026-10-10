@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -29,6 +29,7 @@ import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
 import FeedbackCompositeFilter from '../components/feedbacks/FeedbackCompositeFilter.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
+import { apiFetch } from '../lib/apiClient.js'
 import { listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
 import {
@@ -134,6 +135,9 @@ export default function Feedbacks() {
   const {
     feedbacks,
     feedbacksLoading,
+    postUseRatingOnDemand,
+    postUseSettledPeriodIds,
+    postUseCacheGeneration,
     retagSession,
     importSession,
     currentPeriodId,
@@ -146,6 +150,8 @@ export default function Feedbacks() {
     productCatalogMeta,
     syncSharedDataFromServer,
     startPostUseJourneyEnrichment,
+    fetchPostUseJourneyPendingCount,
+    postUseJourneyPending,
     adapter,
   } = useInsights()
   const { user } = useAuth()
@@ -198,13 +204,35 @@ export default function Feedbacks() {
     return next
   }, [hiddenColumns, isPostUseLane])
   const isCustomerVisitLane = feedbackLane === FEEDBACK_LANE_CUSTOMER_VISITS
+  const postUseListLoading =
+    isPostUseLane &&
+    postUseRatingOnDemand &&
+    Boolean(currentPeriodId) &&
+    !postUseSettledPeriodIds.includes(currentPeriodId)
+  const libraryLoading =
+    periodsLoading ||
+    feedbacksLoading ||
+    (isCustomerVisitLane && customerVisitLoading) ||
+    postUseListLoading
+  const libraryLoadingTip =
+    isCustomerVisitLane && customerVisitLoading
+      ? '加载客服部回访…'
+      : periodsLoading
+        ? '加载数据周期…'
+        : feedbacksLoading
+          ? '加载反馈数据…'
+          : '加载用后即评…'
 
   const switchFeedbackLane = useCallback(
-    (lane) => {
+    (lane, overrides = {}) => {
       // 两大类 Tab 筛选相互独立：切换时清空，避免条件串到另一 Tab
       const cleared = clearAllFeedbackFilters()
       if (lane === FEEDBACK_LANE_POST_USE) {
         cleared.dataSource = 'post_use_rating'
+      }
+      // 切换后可附加筛选（如从用后即评跳到工单时自动筛「有回访」）
+      for (const [key, value] of Object.entries(overrides)) {
+        if (value !== undefined && value !== null) cleared[key] = value
       }
       setFilters(cleared)
       skipUrlSyncRef.current = true
@@ -313,7 +341,14 @@ export default function Feedbacks() {
     if (isPostUseLane && currentPeriodId) {
       void loadPostUseRatingForPeriod(currentPeriodId)
     }
-  }, [isPostUseLane, currentPeriodId, loadPostUseRatingForPeriod])
+  }, [isPostUseLane, currentPeriodId, loadPostUseRatingForPeriod, postUseCacheGeneration])
+
+  // 用后即评 lane：拉取服务端「待补全用户旅程」计数，横幅/按钮显示用
+  useEffect(() => {
+    if (isPostUseLane) {
+      void fetchPostUseJourneyPendingCount()
+    }
+  }, [isPostUseLane, currentPeriodId, fetchPostUseJourneyPendingCount])
 
   useEffect(() => {
     if (skipUrlSyncRef.current) {
@@ -428,30 +463,52 @@ export default function Feedbacks() {
     postUseAnalysisRecords.length,
   ])
 
-  const postUseNeedingJourney = useMemo(() => {
-    if (!isPostUseLane) return []
-    return postUseAnalysisRecords.filter((fb) => needsPostUseJourney(fb, settings))
-  }, [isPostUseLane, postUseAnalysisRecords, settings])
-
   const legacyKeywordJourneys = useMemo(() => {
     if (!isPostUseLane) return []
     return postUseAnalysisRecords.filter((fb) => isLegacyPostUseKeywordJourney(fb))
   }, [isPostUseLane, postUseAnalysisRecords])
 
+  // 列表「待打标」与按钮同源：服务端计数失败或尚未返回时，用当前已加载记录兜底
+  const localPostUseJourneyTargets = useMemo(() => {
+    if (!isPostUseLane) return []
+    return postUseAnalysisRecords.filter((fb) => needsPostUseJourney(fb, settings))
+  }, [isPostUseLane, postUseAnalysisRecords, settings])
+  const pendingJourneyRecordIds = postUseJourneyPending.recordIds.length
+    ? postUseJourneyPending.recordIds
+    : localPostUseJourneyTargets.map((fb) => fb.id).filter(Boolean)
+  const pendingJourneyCount = postUseJourneyPending.recordIds.length
+    ? postUseJourneyPending.count
+    : localPostUseJourneyTargets.length
+
   const runPostUseJourneyEnrichment = useCallback(async (includeLegacyKeywordJourneys = false) => {
     if (postUseJourneyBlocked) return
-    const targets = includeLegacyKeywordJourneys
-      ? postUseAnalysisRecords.filter((fb) =>
-          needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }),
+    // 用服务端计数口径的 recordIds 作为补全 targets，与横幅显示数同源
+    let recordIds = pendingJourneyRecordIds
+    if (includeLegacyKeywordJourneys) {
+      // legacy 口径与默认不同，单独拉一次服务端计数
+      try {
+        const params = new URLSearchParams()
+        if (currentPeriodId) params.set('periodId', currentPeriodId)
+        params.set('includeLegacyKeywordJourneys', 'true')
+        const res = await apiFetch(
+          `/api/storage/records/post-use-journey/pending-count?${params.toString()}`,
         )
-      : postUseNeedingJourney
-    if (!targets.length) {
+        recordIds = Array.isArray(res?.recordIds) ? res.recordIds.filter((id) => typeof id === 'string' && id) : []
+      } catch (err) {
+        console.warn('[post-use-journey] 拉取 legacy 待补全计数失败:', err)
+        recordIds = postUseAnalysisRecords
+          .filter((fb) => needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }))
+          .map((fb) => fb.id)
+          .filter(Boolean)
+      }
+    }
+    if (!recordIds.length) {
       message.info('当前没有待补全旅程的评价')
       return
     }
     setJourneyBusy(true)
     try {
-      await startPostUseJourneyEnrichment(targets, { includeLegacyKeywordJourneys })
+      await startPostUseJourneyEnrichment(recordIds, { includeLegacyKeywordJourneys })
     } catch (e) {
       if (e?.code === 'RETAG_CANCELLED') message.info('任务已取消')
       else message.error(e?.message || '旅程补全失败')
@@ -459,9 +516,10 @@ export default function Feedbacks() {
       setJourneyBusy(false)
     }
   }, [
+    currentPeriodId,
     postUseAnalysisRecords,
     postUseJourneyBlocked,
-    postUseNeedingJourney,
+    pendingJourneyRecordIds,
     settings,
     startPostUseJourneyEnrichment,
   ])
@@ -478,8 +536,8 @@ export default function Feedbacks() {
       content: (
         <div className="flex flex-col gap-3">
           <Typography.Paragraph className="!mb-0">
-            {postUseNeedingJourney.length
-              ? `将补全 ${postUseNeedingJourney.length} 条空的、未识别的，或规则分没过门闸的评价。不看评分。`
+            {pendingJourneyCount
+              ? `将补全 ${pendingJourneyCount} 条空的、未识别的，或规则分没过门闸的评价。不看评分。`
               : '当前没有待补全的评价。'}
           </Typography.Paragraph>
           <Checkbox
@@ -500,7 +558,7 @@ export default function Feedbacks() {
   }, [
     legacyKeywordJourneys.length,
     postUseJourneyBlocked,
-    postUseNeedingJourney.length,
+    pendingJourneyCount,
     runPostUseJourneyEnrichment,
   ])
 
@@ -806,6 +864,9 @@ export default function Feedbacks() {
       <PageHeader
         title="反馈库"
         desc={
+          libraryLoading ? (
+            libraryLoadingTip
+          ) : (
           <>
             库内 {laneTotalInDb} 条 · 本大类周期内 {laneVisiblePeriodCount} 条 · 当前筛选{' '}
             {isCustomerVisitLane ? customerVisitTableRows.length : filtered.length}{' '}
@@ -836,6 +897,7 @@ export default function Feedbacks() {
               </>
             ) : null}
           </>
+          )
         }
       />
 
@@ -907,26 +969,28 @@ export default function Feedbacks() {
         />
       )}
 
-      <div className="page-toolbar flex flex-wrap items-center gap-3">
+      <div className="page-toolbar">
         <InsightPeriodPicker />
-        <Segmented
-          value={feedbackLane}
-          onChange={(v) => switchFeedbackLane(String(v))}
-          options={[
-            { label: '投诉咨询工单', value: FEEDBACK_LANE_TICKETS },
-            { label: '用后即评满意度', value: FEEDBACK_LANE_POST_USE },
-            { label: '客服部回访', value: FEEDBACK_LANE_CUSTOMER_VISITS },
-          ]}
-        />
-        <Button
-          icon={<UnorderedListOutlined />}
-          onClick={() => setTaskHistoryOpen(true)}
-          size="small"
-          className="!ml-auto"
-        >
-          打标任务
-        </Button>
       </div>
+      <Tabs
+        className="feedback-lane-tabs page-sticky-chrome mb-4 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
+        activeKey={feedbackLane}
+        onChange={(key) => switchFeedbackLane(String(key))}
+        tabBarExtraContent={
+          <Button
+            icon={<UnorderedListOutlined />}
+            onClick={() => setTaskHistoryOpen(true)}
+            size="small"
+          >
+            打标任务
+          </Button>
+        }
+        items={[
+          { key: FEEDBACK_LANE_TICKETS, label: '投诉咨询工单' },
+          { key: FEEDBACK_LANE_POST_USE, label: '用后即评满意度' },
+          { key: FEEDBACK_LANE_CUSTOMER_VISITS, label: '客服部回访' },
+        ]}
+      />
 
       {isPostUseLane && (
         <Alert
@@ -937,7 +1001,7 @@ export default function Feedbacks() {
           description={
             <>
               {POST_USE_LANE_HINT}{' '}
-              <Button type="link" className="!px-0" onClick={() => switchFeedbackLane(FEEDBACK_LANE_TICKETS)}>
+              <Button type="link" className="!px-0" onClick={() => switchFeedbackLane(FEEDBACK_LANE_TICKETS, { followUp: 'has' })}>
                 切换到投诉咨询工单
               </Button>
             </>
@@ -955,12 +1019,12 @@ export default function Feedbacks() {
         />
       )}
 
-      {isPostUseLane && postUseNeedingJourney.length > 0 && (
+      {isPostUseLane && pendingJourneyCount > 0 && (
         <Alert
           className="page-section-sm"
           type="warning"
           showIcon
-          title={`有 ${postUseNeedingJourney.length} 条评价待补全用户旅程`}
+          title={`有 ${pendingJourneyCount} 条评价待补全用户旅程`}
           description="只含已开启用后即评分析的产品，不看评分。仅补用户旅程，不走投诉/咨询打标。"
           action={
             <PermissionGate permission="retag">
@@ -1300,13 +1364,13 @@ export default function Feedbacks() {
                         loading={journeyBusy}
                         disabled={
                           postUseJourneyBlocked ||
-                          (!postUseNeedingJourney.length && !legacyKeywordJourneys.length)
+                          (!pendingJourneyCount && !legacyKeywordJourneys.length)
                         }
                         onClick={() => askPostUseJourneyEnrichment()}
                       >
                         补全用户旅程
-                        {postUseNeedingJourney.length
-                          ? `（${postUseNeedingJourney.length}）`
+                        {pendingJourneyCount
+                          ? `（${pendingJourneyCount}）`
                           : ''}
                       </Button>
                     </span>
@@ -1364,9 +1428,9 @@ export default function Feedbacks() {
       </div>
       </div>
 
-        {periodsLoading || feedbacksLoading || (isCustomerVisitLane && customerVisitLoading) ? (
-          <div className="flex justify-center py-16">
-            <Spin tip={isCustomerVisitLane ? '加载客服部回访…' : periodsLoading ? '加载数据周期…' : '加载反馈数据…'} />
+        {libraryLoading ? (
+          <div className="flex min-h-[320px] items-center justify-center py-16">
+            <Spin size="large" description={libraryLoadingTip} />
           </div>
         ) : isCustomerVisitLane ? (
           <CustomerVisitTable rows={customerVisitTableRows} />

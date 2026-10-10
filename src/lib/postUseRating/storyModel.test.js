@@ -920,4 +920,46 @@ describe('post-use story model', () => {
     expect(model.metrics.external.company.avgScore).toBe(9)
     expect(model.metrics.external.company.productCount).toBe(2)
   })
+
+  it('prefers server company metrics over browser detail records', () => {
+    const yunwangRecords = [
+      {
+        id: 'yw1',
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 10,
+        channel: 'sms',
+      },
+    ]
+    const model = buildPostUseStoryModel({
+      records: yunwangRecords,
+      allRecords: yunwangRecords,
+      companyRecords: yunwangRecords,
+      companyMetrics: { avgScore: 9.79, totalSample: 13567, productCount: 89 },
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.metrics.external.yunwang.totalSample).toBe(1)
+    expect(model.metrics.external.company.avgScore).toBe(9.79)
+    expect(model.metrics.external.company.totalSample).toBe(13567)
+    expect(model.metrics.external.company.productCount).toBe(89)
+  })
+
+  it('does not treat yunwang details as company while server company metrics are pending', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        {
+          id: 'yw1',
+          dataSourceType: 'post_use_rating',
+          productName: '弹性公网IP',
+          ratingScore: 10,
+          channel: 'sms',
+        },
+      ],
+      productNames: ['弹性公网IP'],
+      companyMetricsPending: true,
+    })
+    expect(model.metrics.external.yunwang.avgScore).toBe(10)
+    expect(model.metrics.external.company.avgScore).toBeNull()
+    expect(model.metrics.external.company.totalSample).toBe(0)
+  })
 })
