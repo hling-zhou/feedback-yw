@@ -85,7 +85,7 @@ describe('post-use insight models', () => {
     expect(bundle.customers[0]).toMatchObject({ nonTenCount: 1, visitEvidenceCount: 1, visitConclusion: '需求接纳' })
   })
 
-  it('builds high-frequency low-score reason rows from console records per LD 3.8', () => {
+  it('builds high-frequency low-score reason rows grouped by reason then product per LD 3.8', () => {
     const reasons = buildHighFrequencyLowScoreReasonRows([
       row('c1', { channel: 'console', ratingScore: 6, customerName: '中国铁塔华北', customerCode: 'K1', lowScoreReason: '不应命中', commentText: '无', rawText: '不应命中', feedbackReasonTexts: ['功能有缺失'] }),
       row('c2', { channel: 'console', ratingScore: 5, customerName: '客户B', customerCode: 'C2', lowScoreReason: '不应命中', rawText: '不应命中', feedbackReasonTexts: ['功能有缺失'] }),
@@ -101,18 +101,28 @@ describe('post-use insight models', () => {
     expect(reasons).toEqual(expect.arrayContaining([
       expect.objectContaining({
         lowScoreFeedback: '功能有缺失',
+        reasonAvgScore: 5.5,
+        productName: '弹性公网IP',
+        score: 5.5,
         feedbackCount: 2,
-        customerName: '中国铁塔华北',
+        customerNameText: '中国铁塔华北；客户B',
         customerTag: '重点',
       }),
       expect.objectContaining({
         lowScoreFeedback: '内容/帮助说明不易懂',
+        reasonAvgScore: 6,
+        productName: '弹性公网IP',
+        score: 6,
         feedbackCount: 1,
-        customerName: '客户D',
+        customerNameText: '客户D',
+        customerTag: '',
       }),
     ]))
-    expect(reasons.some((item) => item.customerName === '客户E')).toBe(false)
-    expect(reasons.some((item) => item.customerName === '客户F')).toBe(false)
+    // 不再有 customerCode 字段
+    expect(reasons.every((item) => item.customerCode === undefined)).toBe(true)
+    // sms 渠道与 >=7 分记录不进表
+    expect(reasons.some((item) => item.customerNameText === '客户E')).toBe(false)
+    expect(reasons.some((item) => item.customerNameText === '客户F')).toBe(false)
   })
 
   it('uses only customer-answer fields for high-frequency low-score reasons', () => {
@@ -134,8 +144,12 @@ describe('post-use insight models', () => {
 
     expect(reasons).toEqual([
       expect.objectContaining({
-        customerName: '中国铁塔华东',
+        customerNameText: '中国铁塔华东',
         lowScoreFeedback: '客户回答A',
+        score: 6,
+        reasonAvgScore: 6,
+        feedbackCount: 1,
+        customerTag: '重点',
       }),
     ])
   })

@@ -52,6 +52,24 @@ function LimitedTable({ dataSource, limit = 10, ...props }) {
   )
 }
 
+/**
+ * 计算相邻同 key 行的 rowSpan：每组首行返回该组连续行数，后续行返回 0。
+ * 用于 Ant Design Table 的 render 返回 { children, props: { rowSpan } } 实现纵向合并。
+ * @param {object[]} rows
+ * @param {string} keyField
+ * @returns {number[]}
+ */
+function buildRowSpanMap(rows, keyField) {
+  const spans = new Array(rows.length).fill(0)
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0 && rows[i][keyField] === rows[i - 1][keyField]) continue
+    let span = 1
+    for (let j = i + 1; j < rows.length && rows[j][keyField] === rows[i][keyField]; j++) span += 1
+    spans[i] = span
+  }
+  return spans
+}
+
 function customerFeedbackHref(customerName) {
   const name = String(customerName || '').trim()
   if (!name || name === '匿名客户') return ''
@@ -275,22 +293,47 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
 
       <div className="page-card">
       <div className="page-card-header"><span className="page-card-title">高频低分原因</span></div>
-        <LimitedTable
+        {(() => {
+          const highFreqRows = drivers.highFrequencyLowScoreReasons || []
+          const reasonSpan = buildRowSpanMap(highFreqRows, 'lowScoreFeedback')
+          return (
+            <LimitedTable
           size="small"
           rowKey={(row) => row.id}
-          dataSource={drivers.highFrequencyLowScoreReasons || []}
+          dataSource={highFreqRows}
           scroll={{ x: 980 }}
           locale={{ emptyText: '当前范围内暂无命中 高频低分原因规则 的记录' }}
           columns={[
-            { title: '低分反馈', dataIndex: 'lowScoreFeedback', width: 260, ellipsis: true },
+            {
+              title: '低分反馈',
+              dataIndex: 'lowScoreFeedback',
+              width: 260,
+              ellipsis: true,
+              render: (value, _row, index) => {
+                const span = reasonSpan[index]
+                if (span === 0) return { children: value, props: { rowSpan: 0 } }
+                return { children: value, props: { rowSpan: span } }
+              },
+            },
+            {
+              title: '均分',
+              dataIndex: 'reasonAvgScore',
+              width: 88,
+              render: (value, _row, index) => {
+                const span = reasonSpan[index]
+                if (span === 0) return { children: '', props: { rowSpan: 0 } }
+                return { children: value == null ? '—' : value, props: { rowSpan: span } }
+              },
+            },
             { title: '产品名', dataIndex: 'productName', width: 145 },
-            { title: '得分', dataIndex: 'score', width: 76 },
+            { title: '得分', dataIndex: 'score', width: 76, render: (value) => value == null ? '—' : value },
             { title: '低分反馈次数', dataIndex: 'feedbackCount', width: 108 },
-            { title: '集团客户名称', dataIndex: 'customerName', width: 180, ellipsis: true },
-            { title: '集团客户编码', dataIndex: 'customerCode', width: 140, render: (value) => value || '—' },
+            { title: '集团客户名称', dataIndex: 'customerNameText', ellipsis: true },
             { title: '客户标识', dataIndex: 'customerTag', width: 88, render: (value) => value ? <Tag color="red">{value}</Tag> : '—' },
           ]}
-        />
+            />
+          )
+        })()}
       </div>
 
       <div className="page-card">

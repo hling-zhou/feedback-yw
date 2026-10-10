@@ -39,7 +39,14 @@ export const CALLBACK_REASON_TAXONOMY = [
 export const REASON_TAXONOMY_EXCLUDE = new Set(['其他', '业务使用完毕', '空白'])
 
 /** 反馈原因占位词：不算实质负面，也不进入高频低分原因 / 客户原话 */
-export const FEEDBACK_REASON_PLACEHOLDERS = new Set(['无', '无/不涉及', '/', '业务使用完毕', '其他'])
+export const FEEDBACK_REASON_PLACEHOLDERS = new Set([
+  '无', '无/不涉及', '/', '业务使用完毕', '业务使用完毕无后续使用需求', '其他',
+])
+
+/** 整条反馈原因等于这些词时视为明显正面，不算负面反馈（仅 isSubstantiveFeedbackReason 使用） */
+const POSITIVE_FEEDBACK_REASONS = new Set([
+  '满意', '感谢', '好评', '很好', '不错', '赞',
+])
 
 const FIXED_REASON_LABELS = new Set(
   [...CONSOLE_REASON_TAXONOMY, ...CALLBACK_REASON_TAXONOMY].filter((label) => label !== '其他'),
@@ -58,7 +65,10 @@ export function isValidCustomerText(value) {
 
 /** @param {unknown} value */
 export function isSubstantiveFeedbackReason(value) {
-  return isValidCustomerText(value)
+  const text = normalizeEvidenceText(value)
+  if (!isValidCustomerText(text)) return false
+  if (POSITIVE_FEEDBACK_REASONS.has(text)) return false
+  return true
 }
 
 /**

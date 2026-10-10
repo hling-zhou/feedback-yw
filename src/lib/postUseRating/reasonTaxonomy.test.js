@@ -10,7 +10,9 @@ import {
 describe('substantive feedback reason', () => {
   it('rejects the shared placeholder set, nan, numeric scores, and latin-only tokens', () => {
     expect([...FEEDBACK_REASON_PLACEHOLDERS]).toEqual(
-      expect.arrayContaining(['无', '无/不涉及', '/', '业务使用完毕', '其他']),
+      expect.arrayContaining([
+        '无', '无/不涉及', '/', '业务使用完毕', '业务使用完毕无后续使用需求', '其他',
+      ]),
     )
     for (const text of FEEDBACK_REASON_PLACEHOLDERS) {
       expect(isSubstantiveFeedbackReason(text)).toBe(false)
@@ -22,9 +24,18 @@ describe('substantive feedback reason', () => {
     expect(isSubstantiveFeedbackReason('')).toBe(false)
   })
 
+  it('excludes obvious positive words from substantive feedback but still treats them as valid customer text', () => {
+    for (const text of ['满意', '感谢', '好评', '很好', '不错', '赞']) {
+      expect(isSubstantiveFeedbackReason(text)).toBe(false)
+      expect(isValidCustomerText(text)).toBe(true)
+    }
+  })
+
   it('accepts taxonomy labels and free-text complaints', () => {
     expect(isSubstantiveFeedbackReason('功能有缺失')).toBe(true)
     expect(isSubstantiveFeedbackReason('完全是垃圾，网都上不了')).toBe(true)
+    // 含「满意」但整条非纯正面词，仍算实质负面
+    expect(isSubstantiveFeedbackReason('不太满意')).toBe(true)
   })
 
   it('splits multi-select cells then classifies option vs quote', () => {

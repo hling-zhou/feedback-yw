@@ -31,7 +31,8 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(source).toContain("title: '反馈原因'")
     expect(source).toContain('title="高频低分原因"')
     expect(source).toContain('当前范围内暂无命中 高频低分原因规则 的记录')
-    expect(source).toContain("dataSource={drivers.highFrequencyLowScoreReasons || []}")
+    expect(source).toContain('const highFreqRows = drivers.highFrequencyLowScoreReasons || []')
+    expect(source).toContain('dataSource={highFreqRows}')
   })
 
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {

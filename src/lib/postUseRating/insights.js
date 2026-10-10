@@ -254,6 +254,14 @@ export function buildCustomerInsights(records, visits = []) {
 /**
  * 3.8 高频低分原因登记：官网评分类、云网产品、得分<7，取首个有效反馈；
  * 保留 Top5 高频原因或重点客户记录。
+ *
+ * 输出按「原因 → 产品」两级聚合：每行 = 一个 (原因, 产品) 组合，同一原因的多行在
+ * UI 层用 rowSpan 合并「低分反馈」「均分」两列。
+ * - `score` = 该 (原因,产品) 下所有 <7 分低分记录的均分（每行独立）。
+ * - `reasonAvgScore` = 该原因下所有低分记录的整体均分（按原因合并单元格）。
+ * - `feedbackCount` = 该 (原因,产品) 下去重客户数。
+ * - `customerNameText` = 该 (原因,产品) 下客户名分号拼接（去重，按首次出现顺序）。
+ * - `customerTag` = 该 (原因,产品) 下任一客户命中重点名单则标「重点」，否则空。
  * @param {object[]} records
  * @param {{ keyCustomers?: string[]; productNames?: string[] }} [options]
  */
@@ -273,8 +281,7 @@ export function buildHighFrequencyLowScoreReasonRows(records, options = {}) {
         id: String(record.id || ''),
         productName: String(record.productName || record.product || '').trim(),
         score,
-        customerName: String(record.customerName || '').trim(),
-        customerCode: String(record.customerCode || '').trim(),
+        customerName: String(record.customerName || '').trim() || '匿名客户',
         reason: pickHighFrequencyLowScoreReason(record),
         isKeyCustomer: isKeyCustomerName(record.customerName, keyCustomers),
       }
@@ -282,6 +289,7 @@ export function buildHighFrequencyLowScoreReasonRows(records, options = {}) {
     .filter((record) => Number.isFinite(record.score) && record.score < HIGH_FREQUENCY_LOW_SCORE_THRESHOLD)
     .filter((record) => record.reason)
 
+  // 原因频次（按记录数），用于取 Top5 原因
   const reasonCount = new Map()
   for (const record of scoped) {
     reasonCount.set(record.reason, (reasonCount.get(record.reason) || 0) + 1)
@@ -293,24 +301,56 @@ export function buildHighFrequencyLowScoreReasonRows(records, options = {}) {
       .map(([reason]) => reason),
   )
 
-  return scoped
-    .filter((record) => topFiveReasons.has(record.reason) || record.isKeyCustomer)
-    .map((record) => ({
-      id: record.id || [record.productName, record.customerCode || record.customerName, record.reason, record.score].join('\u0000'),
-      lowScoreFeedback: record.reason,
+  const kept = scoped.filter((record) => topFiveReasons.has(record.reason) || record.isKeyCustomer)
+
+  // 原因级均分（该原因下所有低分记录的整体均分）
+  const reasonScores = new Map()
+  for (const record of kept) {
+    const arr = reasonScores.get(record.reason) || []
+    arr.push(record.score)
+    reasonScores.set(record.reason, arr)
+  }
+  const reasonAvgScore = new Map()
+  for (const [reason, scores] of reasonScores) {
+    reasonAvgScore.set(reason, avg(scores))
+  }
+
+  // 按 (原因, 产品) 分桶，客户去重
+  const groups = new Map() // key: `${reason}\u0000${productName}`
+  for (const record of kept) {
+    const key = `${record.reason}\u0000${record.productName}`
+    const g = groups.get(key) || {
+      reason: record.reason,
       productName: record.productName,
-      score: record.score,
-      feedbackCount: reasonCount.get(record.reason) || 0,
-      customerName: record.customerName || '匿名客户',
-      customerCode: record.customerCode,
-      customerTag: record.isKeyCustomer ? '重点' : '',
-    }))
-    .sort((a, b) =>
-      Number(b.feedbackCount) - Number(a.feedbackCount)
-      || Number(Boolean(b.customerTag)) - Number(Boolean(a.customerTag))
-      || Number(a.score) - Number(b.score)
-      || a.productName.localeCompare(b.productName, 'zh')
-      || a.customerName.localeCompare(b.customerName, 'zh'))
+      customerNames: [],
+      customerSet: new Set(),
+      scores: [],
+      isAnyKeyCustomer: false,
+    }
+    if (!g.customerSet.has(record.customerName)) {
+      g.customerSet.add(record.customerName)
+      g.customerNames.push(record.customerName)
+    }
+    g.scores.push(record.score)
+    g.isAnyKeyCustomer = g.isAnyKeyCustomer || record.isKeyCustomer
+    groups.set(key, g)
+  }
+
+  return [...groups.values()].map((g) => ({
+    id: `${g.reason}\u0000${g.productName}`,
+    lowScoreFeedback: g.reason,
+    reasonAvgScore: reasonAvgScore.get(g.reason),
+    productName: g.productName,
+    score: avg(g.scores),
+    feedbackCount: g.customerSet.size,
+    customerNameText: g.customerNames.join('；'),
+    customerTag: g.isAnyKeyCustomer ? '重点' : '',
+  })).sort((a, b) =>
+    a.lowScoreFeedback.localeCompare(b.lowScoreFeedback, 'zh')
+    || Number(b.feedbackCount) - Number(a.feedbackCount)
+    || Number(Boolean(b.customerTag)) - Number(Boolean(a.customerTag))
+    || Number(a.score) - Number(b.score)
+    || a.productName.localeCompare(b.productName, 'zh'))
 }
 
 /** @param {object[]} records */
