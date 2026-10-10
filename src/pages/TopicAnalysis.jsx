@@ -93,10 +93,15 @@ export default function TopicAnalysis() {
   const rollingPeriod = useMemo(() => buildRollingMonthPeriod(), [])
   const [records, setRecords] = useState([])
   const [recordsLoading, setRecordsLoading] = useState(true)
+  const [recommendRefreshing, setRecommendRefreshing] = useState(false)
   const [reports, setReports] = useState([])
   const [reportsLoading, setReportsLoading] = useState(true)
   const recordsRef = useRef([])
   recordsRef.current = records
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  const recommendRunRef = useRef(0)
+  const recommendMountedRef = useRef(true)
   const [typeFilter, setTypeFilter] = useState('all')
   const [adoptingId, setAdoptingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
@@ -127,95 +132,118 @@ export default function TopicAnalysis() {
     return () => { cancelled = true }
   }, [adapter, storageReady, message])
 
-  useEffect(() => {
-    if (!adapter || !storageReady) return undefined
-    let cancelled = false
-    setRecordsLoading(true)
-    setLlmPolishing(false)
-    setLlmPolished(false)
-
+  const runRecommend = useCallback(async ({ force = false } = {}) => {
+    if (!adapter || !storageReady) return
+    const runId = ++recommendRunRef.current
+    const isCurrent = () => recommendRunRef.current === runId
+    const canSet = () => isCurrent() && recommendMountedRef.current
     const toMonth = rollingPeriod.customToMonth || rollingPeriod.endDate?.slice(0, 7) || ''
     const periodLabel = rollingPeriod.label
+    const key = buildRecommendCacheKey({ toMonth })
 
-    const overlayAndSet = (nextCards, items) => {
-      setCards(applyUnresolvedOverlay(topRecommendCards(nextCards), items))
+    if (force) {
+      if (canSet()) {
+        setRecommendRefreshing(true)
+        setLlmPolishing(false)
+      }
+    } else if (canSet()) {
+      setRecordsLoading(true)
+      setLlmPolishing(false)
+      setLlmPolished(false)
     }
 
-    void (async () => {
-      try {
-        const [actionResult, revision, cached] = await Promise.all([
-          listActionItems({ statuses: 'pending_evaluation,in_progress,suspended', limit: 80 }).catch(() => ({ items: [] })),
-          typeof adapter.getDataRevision === 'function'
-            ? adapter.getDataRevision().catch(() => ({ recordsRevision: 0 }))
-            : Promise.resolve({ recordsRevision: 0 }),
-          loadRecommendCache(adapter).catch(() => null),
-        ])
-        if (cancelled) return
-        const items = actionResult?.items || []
-        const key = buildRecommendCacheKey({
-          recordsRevision: revision?.recordsRevision,
-          toMonth,
-        })
-        if (recommendCacheMatches(cached, key)) {
+    const overlayAndSet = (nextCards, items) => {
+      if (canSet()) setCards(applyUnresolvedOverlay(topRecommendCards(nextCards), items))
+    }
+
+    try {
+      const [actionResult, cached] = await Promise.all([
+        listActionItems({ statuses: 'pending_evaluation,in_progress,suspended', limit: 80 }).catch(() => ({ items: [] })),
+        loadRecommendCache(adapter).catch(() => null),
+      ])
+      if (!isCurrent()) return
+      const items = actionResult?.items || []
+      if (!force && recommendCacheMatches(cached, key)) {
+        if (canSet()) {
           setRecords([])
           overlayAndSet(cached.cards, items)
           setLlmPolished(Boolean(cached.llmPolished))
           setLlmPolishing(false)
           setRecordsLoading(false)
-          return
+          setRecommendRefreshing(false)
         }
+        return
+      }
 
-        const nextRecords = await loadRecordsForTopicPeriod(adapter, rollingPeriod)
-        if (cancelled) return
-        setRecords(nextRecords)
-        const candidates = recommendTopics({
-          records: nextRecords,
-          actionItems: [],
-          periodLabel,
-          toMonth,
-        })
-        overlayAndSet(candidates, items)
-        setRecordsLoading(false)
+      const nextRecords = await loadRecordsForTopicPeriod(adapter, rollingPeriod)
+      if (!isCurrent()) return
+      if (canSet()) setRecords(nextRecords)
+      const candidates = recommendTopics({
+        records: nextRecords,
+        actionItems: [],
+        periodLabel,
+        toMonth,
+      })
+      overlayAndSet(candidates, items)
+      if (canSet()) setRecordsLoading(false)
+      await saveRecommendCache(adapter, {
+        key,
+        toMonth,
+        llmPolished: false,
+        cards: candidates,
+      }).catch(() => {})
+      if (!isCurrent()) return
 
-        let polished = topRecommendCards(candidates)
-        let didLlm = false
-        if (candidates.length && isLlmAvailable(settings)) {
-          setLlmPolishing(true)
-          try {
-            const next = await polishRecommendationsWithLlm(candidates, settings)
-            if (!cancelled && next?.length) {
-              polished = next
-              didLlm = true
-              overlayAndSet(next, items)
-              setLlmPolished(true)
-            }
-          } catch {
-            /* 保留规则卡 */
+      let polished = topRecommendCards(candidates)
+      let didLlm = false
+      if (candidates.length && isLlmAvailable(settingsRef.current)) {
+        if (canSet()) setLlmPolishing(true)
+        try {
+          const next = await polishRecommendationsWithLlm(candidates, settingsRef.current)
+          if (isCurrent() && next?.length) {
+            polished = next
+            didLlm = true
+            overlayAndSet(next, items)
+            if (canSet()) setLlmPolished(true)
           }
-          if (!cancelled) setLlmPolishing(false)
+        } catch {
+          /* 保留规则卡 */
         }
+        if (canSet()) setLlmPolishing(false)
+      }
 
-        if (!cancelled) {
-          await saveRecommendCache(adapter, {
-            key,
-            recordsRevision: revision?.recordsRevision,
-            toMonth,
-            llmPolished: didLlm,
-            cards: polished,
-          }).catch(() => {})
+      if (!isCurrent()) return
+      await saveRecommendCache(adapter, {
+        key,
+        toMonth,
+        llmPolished: didLlm,
+        cards: polished,
+      }).catch(() => {})
+    } catch (err) {
+      if (!isCurrent()) return
+      if (canSet()) {
+        if (!force) {
+          setRecords([])
+          setCards([])
         }
-      } catch (err) {
-        if (cancelled) return
-        setRecords([])
-        setCards([])
         message.error(topicRequestErrorMessage(err, '专题推荐数据加载失败'))
-        setRecordsLoading(false)
         setLlmPolishing(false)
       }
-    })()
+    } finally {
+      if (canSet()) {
+        setRecordsLoading(false)
+        setRecommendRefreshing(false)
+      }
+    }
+  }, [adapter, message, rollingPeriod, storageReady])
 
-    return () => { cancelled = true }
-  }, [adapter, storageReady, rollingPeriod, settings, message])
+  useEffect(() => {
+    recommendMountedRef.current = true
+    void runRecommend({ force: false })
+    return () => {
+      recommendMountedRef.current = false
+    }
+  }, [runRecommend])
 
   const generatingKey = reports
     .filter((item) => topicReportStatus(item) === 'generating')
@@ -441,11 +469,13 @@ export default function TopicAnalysis() {
               <TopicRecommendPanel
                 cards={cards}
                 reports={reports}
-                loading={recordsLoading}
+                loading={recordsLoading && cards.length === 0}
+                refreshing={recommendRefreshing}
                 adoptingId={adoptingId}
                 typeFilter={typeFilter}
                 onTypeFilter={setTypeFilter}
                 onAdopt={handleAdopt}
+                onRefresh={() => void runRecommend({ force: true })}
                 llmPolishing={llmPolishing}
                 llmPolished={llmPolished}
               />

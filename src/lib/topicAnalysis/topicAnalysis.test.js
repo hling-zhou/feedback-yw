@@ -253,6 +253,23 @@ describe('topicAnalysis', () => {
     expect(scoped.map((row) => row.id)).toEqual(['in'])
   })
 
+  it('lists only the rolling month range with list projection', async () => {
+    const period = buildRollingMonthPeriod(9, new Date('2026-10-10T00:00:00'))
+    /** @type {object[]} */
+    const queries = []
+    const adapter = {
+      init: async () => {},
+      listRecords: async (query) => {
+        queries.push(query)
+        return { records: [], total: 0 }
+      },
+    }
+    await loadRecordsForTopicPeriod(adapter, period, { products: [] })
+    expect(queries[0].fields).toBe('list')
+    expect(queries[0].importMonthFrom).toBe('2026-02')
+    expect(queries[0].importMonthTo).toBe('2026-10')
+  })
+
   it('keeps 10-score post-use praise in the period loader for custom topics', async () => {
     const period = buildRollingMonthPeriod(6, new Date('2026-08-14T00:00:00'))
     const adapter = {

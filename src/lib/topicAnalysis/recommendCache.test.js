@@ -10,13 +10,16 @@ import {
 } from './recommendCache.js'
 
 describe('recommendCache', () => {
-  it('matches only the same rule version, recordsRevision and month', () => {
+  it('matches only the same rule version and calendar month, ignoring recordsRevision', () => {
     const key = buildRecommendCacheKey({ recordsRevision: 4, toMonth: '2026-08' })
-    expect(key).toBe(`${TOPIC_RECOMMEND_CACHE_VERSION}:4:2026-08`)
+    expect(key).toBe(`${TOPIC_RECOMMEND_CACHE_VERSION}:2026-08`)
     expect(recommendCacheMatches({ key, cards: [{ id: 'a' }] }, key)).toBe(true)
     expect(recommendCacheMatches({ key, cards: [{ id: 'a' }] }, buildRecommendCacheKey({
       recordsRevision: 5,
       toMonth: '2026-08',
+    }))).toBe(true)
+    expect(recommendCacheMatches({ key, cards: [{ id: 'a' }] }, buildRecommendCacheKey({
+      toMonth: '2026-09',
     }))).toBe(false)
     expect(recommendCacheMatches({ key, cards: [] }, key)).toBe(false)
   })

@@ -6,8 +6,8 @@ export const TOPIC_ANALYSIS_DEMO_NOTE =
 export const META_KEY_TOPIC_ANALYSIS_RUNS = 'topic_analysis_runs_v1'
 export const META_KEY_TOPIC_ANALYSIS_REPORTS = 'topic_analysis_reports_v1'
 export const META_KEY_TOPIC_ANALYSIS_RECOMMEND_CACHE = 'topic_analysis_recommend_cache_v1'
-/** 打分 / 占位 / 二级旅程 / Top20 改版后 bump，旧缓存自动失效；用后即评满分过滤+来源标签改版后 bump */
-export const TOPIC_RECOMMEND_CACHE_VERSION = 2
+/** 打分 / 占位 / 二级旅程 / Top20 / 满分过滤改版后 bump；3 起缓存键只含截止月，不再跟 recordsRevision */
+export const TOPIC_RECOMMEND_CACHE_VERSION = 3
 
 /** @typedef {'customer' | 'product_issue' | 'common_issue'} TopicType */
 

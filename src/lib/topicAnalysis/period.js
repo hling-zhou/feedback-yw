@@ -90,7 +90,12 @@ export function periodFromSnapshot(snapshot) {
  */
 export async function loadRecordsForTopicPeriod(adapter, period, options = {}) {
   if (!adapter) return []
-  const all = await listAllFeedbacks(adapter)
+  const fromMonth = period?.customFromMonth || period?.startDate?.slice(0, 7) || ''
+  const toMonth = period?.customToMonth || period?.endDate?.slice(0, 7) || ''
+  const all = await listAllFeedbacks(adapter, {
+    fields: 'list',
+    ...(fromMonth && toMonth ? { importMonthFrom: fromMonth, importMonthTo: toMonth } : {}),
+  })
   const inPeriod = filterRecordsForScope(all, period)
   const products = options.products ?? getCatalogProducts()
   return scopeTopicAnalysisRecords(inPeriod, products)

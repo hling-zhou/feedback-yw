@@ -8,10 +8,12 @@ import { TOPIC_TYPE_LABELS, topicReportStatus } from '../../lib/topicAnalysis/co
  *   cards: object[],
  *   reports: object[],
  *   loading?: boolean,
+ *   refreshing?: boolean,
  *   adoptingId?: string | null,
  *   typeFilter: string,
  *   onTypeFilter: (value: string) => void,
  *   onAdopt: (card: object) => void,
+ *   onRefresh?: () => void,
  *   llmPolishing?: boolean,
  *   llmPolished?: boolean,
  * }} props
@@ -20,10 +22,12 @@ export default function TopicRecommendPanel({
   cards,
   reports,
   loading,
+  refreshing,
   adoptingId,
   typeFilter,
   onTypeFilter,
   onAdopt,
+  onRefresh,
   llmPolishing,
   llmPolished }) {
   const visible = typeFilter === 'all' ? cards : cards.filter((card) => card.type === typeFilter)
@@ -33,15 +37,28 @@ export default function TopicRecommendPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Typography.Text type="secondary">
           近 9 个月投诉/咨询/用后即评综合推荐，无需选择周期。
+          {refreshing ? ' 正在刷新推荐…' : null}
           {llmPolishing ? ' 正在用 AI 精炼理由…' : null}
-          {llmPolished && !llmPolishing ? ' 理由已经 AI 精炼。' : null}
+          {llmPolished && !llmPolishing && !refreshing ? ' 理由已经 AI 精炼。' : null}
         </Typography.Text>
-        <Segmented
-          size="small"
-          value={typeFilter}
-          onChange={onTypeFilter}
-          options={[{ label: '全部', value: 'all' }, ...Object.entries(TOPIC_TYPE_LABELS).map(([value, label]) => ({ label, value }))]}
-        />
+        <Space size={8} wrap>
+          {onRefresh ? (
+            <Button
+              size="small"
+              loading={Boolean(refreshing)}
+              disabled={Boolean(loading) || Boolean(refreshing)}
+              onClick={onRefresh}
+            >
+              刷新推荐
+            </Button>
+          ) : null}
+          <Segmented
+            size="small"
+            value={typeFilter}
+            onChange={onTypeFilter}
+            options={[{ label: '全部', value: 'all' }, ...Object.entries(TOPIC_TYPE_LABELS).map(([value, label]) => ({ label, value }))]}
+          />
+        </Space>
       </div>
       {loading ? (
         <Spin />

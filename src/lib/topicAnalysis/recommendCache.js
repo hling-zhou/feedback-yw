@@ -5,13 +5,13 @@ import {
 import { compactRecommendCardsForCache } from './recommendTopics.js'
 
 /**
- * @param {{ recordsRevision?: number, toMonth?: string, version?: number }} input
+ * 自动失效只跟算法版本 + 推荐窗截止月（自然换月）。导入/改工单不废缓存。
+ * @param {{ toMonth?: string, version?: number }} input
  */
 export function buildRecommendCacheKey(input = {}) {
   const version = input.version ?? TOPIC_RECOMMEND_CACHE_VERSION
-  const recordsRevision = Number(input.recordsRevision) || 0
   const toMonth = String(input.toMonth || '')
-  return `${version}:${recordsRevision}:${toMonth}`
+  return `${version}:${toMonth}`
 }
 
 /**
