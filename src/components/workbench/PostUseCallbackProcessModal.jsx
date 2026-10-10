@@ -112,6 +112,30 @@ export default function PostUseCallbackProcessModal({
     }
   }
 
+  // 按客户批量勾选：一次 API 调用持久化同一客户下所有产品的 itemKey
+  const persistDecisionsBatch = async (itemKeys, sourceType, patch) => {
+    const items = itemKeys.map((itemKey) => ({
+      ...decisionOf(decisions, itemKey),
+      ...patch,
+      sourceType,
+      itemKey,
+    }))
+    setDecisions((prev) => {
+      const map = new Map(prev)
+      for (const item of items) map.set(item.itemKey, item)
+      return map
+    })
+    if (!canEdit) return
+    setSavingKey(items[0]?.itemKey || '')
+    try {
+      await upsertPostUseCallbackDecisions(items)
+    } catch (error) {
+      message.error(error?.message || '保存勾选失败')
+    } finally {
+      setSavingKey('')
+    }
+  }
+
   const flagColumn = (flag, title) => ({
     title,
     dataIndex: flag,
@@ -128,20 +152,102 @@ export default function PostUseCallbackProcessModal({
     ),
   })
 
+  // 官网问卷类按客户聚合：同一客户的多产品分行展示，客户级列合并单元格。
+  // 行内顺序：先按客户（customerCode || customerName），再按产品名，保证同客户相邻以便 rowSpan。
+  const questionnaireRows = useMemo(() => {
+    const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
+    return [...(recommendations || [])].sort(
+      (a, b) =>
+        keyOf(a).localeCompare(keyOf(b), 'zh')
+        || String(a.productName || '').localeCompare(String(b.productName || ''), 'zh'),
+    )
+  }, [recommendations])
+
+  // 每个客户分组的 rowSpan（首行=组内行数，后续行=0）与该组的 itemKey 列表
+  const { questionnaireSpan, questionnaireGroupKeys } = useMemo(() => {
+    const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
+    const spans = new Array(questionnaireRows.length).fill(0)
+    /** @type {Record<number, string[]>} index → 该客户分组所有 itemKey */
+    const groupKeys = {}
+    for (let i = 0; i < questionnaireRows.length; i++) {
+      if (i > 0 && keyOf(questionnaireRows[i]) === keyOf(questionnaireRows[i - 1])) continue
+      let span = 1
+      const keys = []
+      for (let j = i; j < questionnaireRows.length && keyOf(questionnaireRows[j]) === keyOf(questionnaireRows[i]); j++) {
+        span += i === j ? 0 : 1
+        if (questionnaireRows[j].itemKey) keys.push(questionnaireRows[j].itemKey)
+      }
+      spans[i] = span
+      groupKeys[i] = keys
+    }
+    return { questionnaireSpan: spans, questionnaireGroupKeys: groupKeys }
+  }, [questionnaireRows])
+
+  const mergedCell = (value, index, render) => {
+    const span = questionnaireSpan[index]
+    if (span === 0) return { children: '', props: { rowSpan: 0 } }
+    return { children: render ? render(value) : value, props: { rowSpan: span } }
+  }
+
+  const mergedFlagColumn = (flag, title) => ({
+    title,
+    width: 108,
+    fixed: 'right',
+    render: (_value, _row, index) => {
+      const span = questionnaireSpan[index]
+      if (span === 0) return { children: '', props: { rowSpan: 0 } }
+      const keys = questionnaireGroupKeys[index] || []
+      const checkedList = keys.map((k) => Boolean(decisionOf(decisions, k)[flag]))
+      const allChecked = checkedList.length > 0 && checkedList.every(Boolean)
+      const someChecked = checkedList.some(Boolean)
+      return {
+        children: (
+          <Checkbox
+            checked={allChecked}
+            indeterminate={!allChecked && someChecked}
+            disabled={!canEdit || savingKey === (keys[0] || '')}
+            onChange={(event) =>
+              persistDecisionsBatch(keys, 'questionnaire', { [flag]: event.target.checked })
+            }
+          />
+        ),
+        props: { rowSpan: span },
+      }
+    },
+  })
+
   const questionnaireColumns = [
     { title: '数据月份', dataIndex: 'importMonths', width: 110, render: (value) => (value || []).filter(Boolean).join('、') },
-    { title: '客户名称', dataIndex: 'customerName', width: 160, ellipsis: true },
-    { title: '客户编码', dataIndex: 'customerCode', width: 140, ellipsis: true },
+    {
+      title: '客户名称',
+      dataIndex: 'customerName',
+      width: 160,
+      ellipsis: true,
+      render: (value, _row, index) => mergedCell(value, index),
+    },
+    {
+      title: '客户编码',
+      dataIndex: 'customerCode',
+      width: 140,
+      ellipsis: true,
+      render: (value, _row, index) => mergedCell(value || '—', index),
+    },
     { title: '产品名称', dataIndex: 'productName', width: 140, ellipsis: true },
-    { title: '建议触发类型', dataIndex: 'triggerType', width: 150, ellipsis: true },
+    {
+      title: '建议触发类型',
+      dataIndex: 'triggerType',
+      width: 150,
+      ellipsis: true,
+      render: (value, _row, index) => mergedCell(value || '—', index),
+    },
     { title: '7分以下总次数', dataIndex: 'lowScoreLt7Count', width: 120 },
     { title: '7分以下分布', dataIndex: 'scoreBreakdown', width: 240, ellipsis: true },
     { title: '最近反馈时间', dataIndex: 'latestFeedbackAt', width: 170, ellipsis: true },
     { title: '涉及渠道', dataIndex: 'channels', width: 160, render: (value) => (value || []).join('；') },
     { title: '反馈原因', dataIndex: 'feedbackReasonSummary', width: 220, ellipsis: true },
     { title: '建议回访原因', dataIndex: 'recommendedReason', width: 260, ellipsis: true },
-    flagColumn('needCustomerVisit', '客服回访'),
-    flagColumn('needInternalTrace', '部门内溯源'),
+    mergedFlagColumn('needCustomerVisit', '客服回访'),
+    mergedFlagColumn('needInternalTrace', '部门内溯源'),
   ]
 
   const callbackColumns = [
@@ -229,7 +335,7 @@ export default function PostUseCallbackProcessModal({
                 loading={loading}
                 pagination={{ pageSize: 8 }}
                 scroll={{ x: 2100 }}
-                dataSource={recommendations}
+                dataSource={questionnaireRows}
                 columns={questionnaireColumns}
                 locale={{ emptyText: '当前范围内暂无官网问卷类建议回访记录' }}
               />
