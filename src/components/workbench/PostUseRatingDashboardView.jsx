@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Space, Tag, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
+import FeedbackDrawer from '../FeedbackDrawer.jsx'
+import { useFeedbackDrawerSelection } from '../../hooks/useFeedbackDrawerSelection.js'
+import { normalizeTicketId } from '../../lib/desensitize.js'
 import { loadVisitRecords } from '../../lib/postUseRating/visitRecords.js'
 import { loadPostUseTrend } from '../../lib/postUseRating/trendStore.js'
 import { listActionItems } from '../../lib/actionItemClient.js'
@@ -70,6 +73,37 @@ export default function PostUseRatingDashboardView() {
           record.dataSourceType === 'consultation_ticket',
       ),
     [feedbacks],
+  )
+  const {
+    selected,
+    selectFeedback,
+    requestCloseDrawer,
+    closeDrawer,
+    onDrawerDirtyChange,
+  } = useFeedbackDrawerSelection()
+  // 原工单编号 → 工单记录的查找表（ticketId 与 id 双索引），用于点击原工单号打开详情抽屉
+  const ticketLookup = useMemo(() => {
+    const map = new Map()
+    for (const record of ticketRecords) {
+      const tid = normalizeTicketId(record.ticketId)
+      if (tid) map.set(tid, record)
+      const rid = String(record.id || '').trim()
+      if (rid) map.set(rid, record)
+    }
+    return map
+  }, [ticketRecords])
+  const openTicketByOriginalId = useCallback(
+    (originalTicketId) => {
+      if (!originalTicketId) return
+      const norm = normalizeTicketId(originalTicketId)
+      const ticket = (norm && ticketLookup.get(norm)) || ticketLookup.get(originalTicketId)
+      if (ticket) {
+        selectFeedback(ticket)
+      } else {
+        message.info(`未找到原工单 ${originalTicketId} 对应的工单记录，请确认该工单已导入`)
+      }
+    },
+    [ticketLookup, selectFeedback],
   )
   const scopedVisits = useMemo(() => {
     const months = new Set(postUseVisitMonthsForPeriod(currentPeriod))
@@ -163,6 +197,13 @@ export default function PostUseRatingDashboardView() {
         model={storyModel}
         creatingSignalKey={creatingSignalKey}
         onCreateAction={(signal) => void createActionFromSignal(signal)}
+        onOpenTicket={openTicketByOriginalId}
+      />
+      <FeedbackDrawer
+        feedback={selected}
+        onClose={requestCloseDrawer}
+        onSavedClose={closeDrawer}
+        onDirtyChange={onDrawerDirtyChange}
       />
     </div>
   )

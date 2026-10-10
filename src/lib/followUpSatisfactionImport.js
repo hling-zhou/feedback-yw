@@ -47,6 +47,8 @@ import {
 export function buildTicketRecordIndex(records) {
   /** @type {Map<string, FeedbackRecord>} */
   const byTicketId = new Map()
+  /** @type {Map<string, FeedbackRecord>} */
+  const byId = new Map()
 
   for (const record of records) {
     const ticketId = normalizeTicketId(record.ticketId)
@@ -54,17 +56,17 @@ export function buildTicketRecordIndex(records) {
     const existing = byTicketId.get(ticketId)
     if (!existing) {
       byTicketId.set(ticketId, record)
-      continue
-    }
-    if (
+    } else if (
       existing.dataSourceType === 'consultation_ticket' &&
       record.dataSourceType === 'complaint_ticket'
     ) {
       byTicketId.set(ticketId, record)
     }
+    const rid = String(record.id || '').trim()
+    if (rid && !byId.has(rid)) byId.set(rid, record)
   }
 
-  return { byTicketId }
+  return { byTicketId, byId }
 }
 
 /**

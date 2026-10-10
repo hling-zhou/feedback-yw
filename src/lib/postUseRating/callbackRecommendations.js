@@ -389,7 +389,7 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
  */
 export function buildPostUseCallbackNonTenRecords(records, opts = {}) {
   const productNames = resolveProductNames(opts.productNames)
-  const { byTicketId } = buildTicketRecordIndex(opts.ticketRecords || [])
+  const { byTicketId, byId } = buildTicketRecordIndex(opts.ticketRecords || [])
   return (records || [])
     .filter((record) => isPostUseRatingRecord(record))
     .filter((record) => normalizeChannel(record) === 'callback')
@@ -398,7 +398,7 @@ export function buildPostUseCallbackNonTenRecords(records, opts = {}) {
       const score = Number(record.ratingScore)
       const originalTicketId = normalizeText(record.originalTicketId)
       const ticket = originalTicketId
-        ? byTicketId.get(normalizeTicketId(originalTicketId) || originalTicketId)
+        ? (byTicketId.get(normalizeTicketId(originalTicketId) || originalTicketId) || byId.get(originalTicketId))
         : null
       const mapped = {
         id: String(record.id || record.originalTicketId || `${record.customerName || ''}-${record.productName || record.product || ''}`),

@@ -26,6 +26,7 @@ function decisionOf(map, itemKey) {
  * @param {object[]} props.recommendations
  * @param {object[]} props.callbackNonTenRecords
  * @param {string} [props.scopeLabel]
+ * @param {(originalTicketId: string) => void} [props.onOpenTicket]
  */
 export default function PostUseCallbackProcessModal({
   open,
@@ -33,6 +34,7 @@ export default function PostUseCallbackProcessModal({
   recommendations = [],
   callbackNonTenRecords = [],
   scopeLabel = '当前范围',
+  onOpenTicket,
 }) {
   const { user } = useAuth()
   const canEdit = canUsePostUseCallbackList(user?.role)
@@ -144,7 +146,20 @@ export default function PostUseCallbackProcessModal({
 
   const callbackColumns = [
     { title: '具体投诉产品', dataIndex: 'productName', width: 140, ellipsis: true },
-    { title: '原工单编号', dataIndex: 'originalTicketId', width: 150, ellipsis: true },
+    {
+      title: '原工单编号',
+      dataIndex: 'originalTicketId',
+      width: 180,
+      render: (value) => {
+        if (!value) return '—'
+        if (!onOpenTicket) return value
+        return (
+          <Button type="link" size="small" className="!px-0" onClick={() => onOpenTicket(value)}>
+            {value}
+          </Button>
+        )
+      },
+    },
     { title: '投诉整体服务评价', dataIndex: 'score', width: 140 },
     { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
     { title: '集团客户编码', dataIndex: 'customerCode', width: 140, ellipsis: true },

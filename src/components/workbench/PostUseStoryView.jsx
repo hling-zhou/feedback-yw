@@ -80,7 +80,7 @@ function customerFeedbackHref(customerName) {
   })
 }
 
-export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction }) {
+export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket }) {
   const [callbackProcessOpen, setCallbackProcessOpen] = useState(false)
   const { user } = useAuth()
   const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
@@ -496,6 +496,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         recommendations={callbackRecommendations}
         callbackNonTenRecords={callbackNonTenRecords}
         scopeLabel={model.scope.periodLabel}
+        onOpenTicket={onOpenTicket}
       />
     </div>
   )
