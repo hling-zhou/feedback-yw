@@ -61,6 +61,12 @@ export function filterVisitsByMonth(records, visitMonth) {
   return records.filter((r) => (r.importMonth || r.visitMonth) === visitMonth)
 }
 
+export function filterVisitsByMonths(records, months) {
+  const monthSet = new Set(months || [])
+  if (!monthSet.size) return []
+  return (records || []).filter((record) => monthSet.has(record.importMonth || record.visitMonth))
+}
+
 /**
  * 月报与线上当前月份使用同一数据范围。
  * @param {string} reportMonth YYYY-MM

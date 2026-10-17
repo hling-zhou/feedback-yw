@@ -98,6 +98,7 @@ describe('PostUseStoryView customer visits', () => {
     expect(html).not.toContain('云网均分（三渠道）')
     expect(html).toContain('低于公司均分 0.3')
     expect(html).toContain('较上月高 0.3')
+    expect(html).toContain('flex flex-wrap items-baseline gap-x-3')
     expect(html).toContain('9 分以下产品数')
     expect(html).toContain('投诉回访不达标产品数')
     expect(html).toContain('云电脑')

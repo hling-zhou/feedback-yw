@@ -4,7 +4,7 @@ import { Alert, Button, Space, Spin, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { SCHEMA_VERSION } from '../domain/constants.js'
-import { resolveInsightPeriod, shiftYearMonth } from '../domain/insightPeriod.js'
+import { resolveInsightPeriod, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import {
   getPostUseFocusTrackedNames,
@@ -16,7 +16,7 @@ import { listActionItems } from '../lib/actionItemClient.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
 import { loadPostUseTrend } from '../lib/postUseRating/trendStore.js'
 import { loadPostUsePeriodQuality } from '../lib/postUseRating/qualityStore.js'
-import { postUseVisitMonthsForPeriod } from '../lib/postUseRating/periodScope.js'
+import { postUsePeriodMonths, postUseVisitMonthsForPeriod } from '../lib/postUseRating/periodScope.js'
 import { buildPostUseStoryModel } from '../lib/postUseRating/storyModel.js'
 import { clipDepartmentStatusTrends, normalizeDepartmentStatusTrends } from '../lib/postUseRating/statusTrends.js'
 import { buildHtmlMonthlyReportModel } from '../lib/postUseRating/htmlReportModel.js'
@@ -33,7 +33,20 @@ import PostUseHtmlReportDocument, {
 import './PostUseHtmlReport.css'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const QUARTER_RE = /^\d{4}-Q[1-4]$/
 const WORKBENCH_HREF = '/workbench?tab=post_use_rating'
+
+function resolveReportRoute(param) {
+  if (MONTH_RE.test(param || '')) {
+    const periodId = `period:month:${param}`
+    return { key: param, kind: 'month', periodId, period: resolveInsightPeriod(periodId, null, SCHEMA_VERSION) }
+  }
+  if (QUARTER_RE.test(param || '')) {
+    const periodId = `period:quarter:${param}`
+    return { key: param, kind: 'quarter', periodId, period: resolveInsightPeriod(periodId, null, SCHEMA_VERSION) }
+  }
+  return null
+}
 
 export default function PostUseHtmlReport() {
   const { month } = useParams()
@@ -66,24 +79,28 @@ export default function PostUseHtmlReport() {
   const [statusTrends, setStatusTrends] = useState(null)
   const [hiddenSectionIds, setHiddenSectionIds] = useState([])
 
-  const reportMonth = MONTH_RE.test(month || '') ? month : ''
-  const reportPeriodId = reportMonth ? `period:month:${reportMonth}` : ''
-  const reportPeriod = useMemo(
-    () => (reportMonth ? resolveInsightPeriod(reportPeriodId, null, SCHEMA_VERSION) : null),
-    [reportMonth, reportPeriodId],
-  )
+  const route = useMemo(() => resolveReportRoute(month), [month])
+  const reportKey = route?.key || ''
+  const reportKind = route?.kind || ''
+  const reportPeriod = route?.period || null
+  const loadMonthIds = useMemo(() => {
+    if (!reportPeriod) return []
+    const months = new Set(postUsePeriodMonths(reportPeriod))
+    const previous = resolvePreviousInsightPeriod(reportPeriod)
+    for (const item of postUsePeriodMonths(previous)) months.add(item)
+    return [...months].map((item) => `period:month:${item}`)
+  }, [reportPeriod])
 
   useEffect(() => {
-    if (!storageReady || !reportPeriodId) return undefined
-    void loadPostUseRatingForPeriod(reportPeriodId)
-    const previousMonth = shiftYearMonth(reportMonth, -1)
-    if (previousMonth) void loadPostUseRatingForPeriod(`period:month:${previousMonth}`)
-  }, [storageReady, reportPeriodId, reportMonth, loadPostUseRatingForPeriod, postUseCacheGeneration])
+    if (!storageReady || !loadMonthIds.length) return undefined
+    for (const periodId of loadMonthIds) void loadPostUseRatingForPeriod(periodId)
+    return undefined
+  }, [storageReady, loadMonthIds, loadPostUseRatingForPeriod, postUseCacheGeneration])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!adapter || !reportMonth) {
+      if (!adapter || !reportKey) {
         setSideLoading(false)
         return
       }
@@ -94,7 +111,7 @@ export default function PostUseHtmlReport() {
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
-          loadHtmlReportOverlay(adapter, reportMonth).catch(() => null),
+          loadHtmlReportOverlay(adapter, reportKey).catch(() => null),
           loadMonthlyReportLearnings(adapter).catch(() => []),
         ])
         if (!cancelled) {
@@ -114,10 +131,15 @@ export default function PostUseHtmlReport() {
     return () => {
       cancelled = true
     }
-  }, [adapter, reportMonth])
+  }, [adapter, reportKey])
+
+  const endMonth = useMemo(
+    () => (reportPeriod ? postUsePeriodMonths(reportPeriod).at(-1) || '' : ''),
+    [reportPeriod],
+  )
 
   useEffect(() => {
-    if (!adapter || typeof adapter.listPostUseStatusTrends !== 'function' || !reportMonth) {
+    if (!adapter || typeof adapter.listPostUseStatusTrends !== 'function' || !endMonth) {
       setStatusTrends(null)
       return undefined
     }
@@ -126,7 +148,7 @@ export default function PostUseHtmlReport() {
       try {
         const trends = clipDepartmentStatusTrends(
           normalizeDepartmentStatusTrends(await adapter.listPostUseStatusTrends()),
-          reportMonth,
+          endMonth,
         )
         if (!cancelled) setStatusTrends(trends)
       } catch {
@@ -136,7 +158,7 @@ export default function PostUseHtmlReport() {
     return () => {
       cancelled = true
     }
-  }, [adapter, reportMonth])
+  }, [adapter, endMonth])
 
   const catalog = useMemo(() => getCatalogProducts(), [feedbacks, productCatalogMeta])
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
@@ -169,18 +191,28 @@ export default function PostUseHtmlReport() {
     ),
     [feedbacks, catalog],
   )
+  const periodMonths = useMemo(
+    () => (reportPeriod ? postUsePeriodMonths(reportPeriod) : []),
+    [reportPeriod],
+  )
   const monthReasons = useMemo(() => {
-    if (!trendSnap || !reportMonth) return []
-    return (trendSnap.reasons || [])
-      .filter((row) => row.month === reportMonth)
-      .map((row) => ({
+    if (!trendSnap || !periodMonths.length) return []
+    const monthSet = new Set(periodMonths)
+    const grouped = new Map()
+    for (const row of trendSnap.reasons || []) {
+      if (!monthSet.has(row.month)) continue
+      const key = `${row.reason || ''}\0${row.channel || ''}`
+      const current = grouped.get(key) || {
         reason: row.reason,
-        count: row.count,
+        count: 0,
         ...(row.channel != null && row.channel !== '' ? { channel: row.channel } : {}),
-      }))
-      .sort((a, b) => b.count - a.count)
-  }, [trendSnap, reportMonth])
-  const periodQuality = quality?.periods?.[reportMonth] || null
+      }
+      current.count += Number(row.count) || 0
+      grouped.set(key, current)
+    }
+    return [...grouped.values()].sort((a, b) => b.count - a.count)
+  }, [trendSnap, periodMonths])
+  const periodQuality = quality?.periods?.[endMonth] || null
 
   const storyModel = useMemo(() => {
     if (!reportPeriod) return null
@@ -198,7 +230,7 @@ export default function PostUseHtmlReport() {
       settings,
       ticketRecords,
       statusTrends,
-      nowMonth: reportMonth,
+      nowMonth: endMonth,
     })
   }, [
     reportPeriod,
@@ -214,13 +246,14 @@ export default function PostUseHtmlReport() {
     settings,
     ticketRecords,
     statusTrends,
-    reportMonth,
+    endMonth,
   ])
 
   const model = useMemo(() => {
-    if (!reportMonth || !storyModel) return null
+    if (!reportKey || !storyModel) return null
     return buildHtmlMonthlyReportModel({
-      reportMonth,
+      reportMonth: reportKey,
+      reportPeriod,
       storyModel,
       records: scopedItems,
       allRecords: allScopedItems,
@@ -234,7 +267,7 @@ export default function PostUseHtmlReport() {
       statusTrends,
       trend: trendSnap,
     })
-  }, [reportMonth, storyModel, scopedItems, allScopedItems, productNames, visits, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
+  }, [reportKey, reportPeriod, storyModel, scopedItems, allScopedItems, productNames, visits, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
 
   useEffect(() => {
     if (!model) return
@@ -265,8 +298,7 @@ export default function PostUseHtmlReport() {
 
   const ratingsPending =
     postUseRatingOnDemand &&
-    Boolean(reportPeriodId) &&
-    !postUseSettledPeriodIds.includes(reportPeriodId)
+    loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
   const loading = !storageReady || sideLoading || ratingsPending
 
   const onIssueChange = (key, field, value) => {
@@ -306,7 +338,7 @@ export default function PostUseHtmlReport() {
     setSaving(true)
     try {
       const saved = await saveHtmlReportOverlay(adapter, {
-        month: reportMonth,
+        month: reportKey,
         updatedBy: user?.username || user?.id || '',
         dataFingerprint: model.dataFingerprint,
         hiddenSectionIds,
@@ -318,7 +350,7 @@ export default function PostUseHtmlReport() {
         },
       })
       setOverlay(saved)
-      message.success('已保存本月叙述')
+      message.success(reportKind === 'quarter' ? '已保存本季叙述' : '已保存本月叙述')
     } catch (error) {
       message.error(error?.message || '保存失败')
     } finally {
@@ -339,7 +371,7 @@ export default function PostUseHtmlReport() {
         hiddenSectionIds,
         exportedAt: new Date().toISOString(),
       })
-      downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportMonth))
+      downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportKey, model.copy?.filenamePrefix))
       message.success('已导出离线 HTML，可用浏览器直接打开')
     } catch (error) {
       message.error(error?.message || '导出失败')
@@ -349,19 +381,19 @@ export default function PostUseHtmlReport() {
   }
 
   let body = null
-  if (!reportMonth) {
+  if (!route) {
     body = (
       <Alert
         type="error"
         showIcon
-        message="月份格式无效"
-        description="请使用 YYYY-MM，例如 2026-06。"
+        message="报告周期无效"
+        description="请使用 YYYY-MM 或 YYYY-Qq，例如 2026-06、2026-Q2。"
       />
     )
   } else if (loading) {
     body = (
       <div className="flex justify-center py-24">
-        <Spin size="large" tip="正在加载月报…" />
+        <Spin size="large" tip={reportKind === 'quarter' ? '正在加载季报…' : '正在加载月报…'} />
       </div>
     )
   } else if (!storyModel?.scoredRows?.length) {
@@ -369,8 +401,8 @@ export default function PostUseHtmlReport() {
       <Alert
         type="warning"
         showIcon
-        message={`${reportMonth} 没有有效评分`}
-        description="当月无评分时不生成空稿。请返回工作台确认数据范围与产品目录。"
+        message={`${reportKey} 没有有效评分`}
+        description={reportKind === 'quarter' ? '当季无评分时不生成空稿。请返回工作台确认数据范围与产品目录。' : '当月无评分时不生成空稿。请返回工作台确认数据范围与产品目录。'}
       />
     )
   } else if (model) {
@@ -396,12 +428,13 @@ export default function PostUseHtmlReport() {
       <header className="post-use-html-report-toolbar">
         <Space wrap>
           <Link to={WORKBENCH_HREF}>返回工作台</Link>
-          <Typography.Text strong>用后即评月报 {reportMonth || month || ''}</Typography.Text>
+          <Typography.Text strong>{reportKind === 'quarter' ? '用后即评季报' : '用后即评月报'} {reportKey || month || ''}</Typography.Text>
         </Space>
         <Space wrap>
           {model ? (
             <ReportSectionToggles
               hiddenSectionIds={hiddenSectionIds}
+              showPreviousVisits={model.showPreviousVisits !== false}
               onToggleSection={onToggleSection}
             />
           ) : null}

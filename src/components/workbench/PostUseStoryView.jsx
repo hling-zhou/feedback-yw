@@ -78,7 +78,7 @@ function comparisonClass(tone) {
 function ScoreComparisonLines({ comparison }) {
   if (!comparison?.vsCompanyLabel && !comparison?.momLabel) return null
   return (
-    <div className="mt-1 space-y-0.5 text-xs leading-5">
+    <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs leading-5">
       <div className={comparisonClass(comparison.vsCompanyTone)}>{comparison.vsCompanyLabel}</div>
       <div className={comparisonClass(comparison.momTone)}>{comparison.momLabel}</div>
     </div>

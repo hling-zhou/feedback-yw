@@ -224,7 +224,69 @@ describe('html monthly report model', () => {
     expect(model.kpis.companyAvg).toBe(storyModel.metrics.external.company.avgScore)
     expect(model.kpis.productCount).toBeGreaterThan(0)
     expect(model.productCards[0].productName).toBe('弹性公网IP')
+    expect(model.productCards[0].comparisons.mixedAvg.label).toMatch(/^较上月高 /)
+    expect(model.productCards[0].comparisons.experienceScore.label).toMatch(/^较上月高 /)
+    expect(model.productCards[0].comparisons.mixedSample).toMatchObject({ label: '较上月多 1', tone: 'flat' })
+    expect(model.productCards[0].comparisons.lowScoreCount).toMatchObject({ label: '较上月持平', tone: 'flat' })
+    expect(model.productCards[0].comparisons.satisfactionRate).toMatchObject({ label: '暂无上月对比', tone: 'na' })
     expect(model.judgment).toContain('本期暂无客服部回访结果')
+  })
+
+  it('rolls a quarter up against the previous quarter and omits the visit supplement', () => {
+    const quarter = {
+      id: 'period:quarter:2026-Q2',
+      label: '2026年Q2',
+      startDate: '2026-04-01',
+      endDate: '2026-06-30',
+      granularity: 'quarter',
+      anchorYear: 2026,
+      anchorQuarter: 2,
+    }
+    const current = Array.from({ length: 10 }, (_, index) => ({
+      id: `q2-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 9,
+      channel: 'sms',
+      importMonth: index < 5 ? '2026-04' : '2026-06',
+    }))
+    const previous = Array.from({ length: 10 }, (_, index) => ({
+      id: `q1-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 8,
+      channel: 'sms',
+      importMonth: '2026-03',
+    }))
+    const storyModel = buildPostUseStoryModel({
+      records: current,
+      allRecords: [...previous, ...current],
+      productNames: ['弹性公网IP'],
+      period: quarter,
+      nowMonth: '2026-06',
+    })
+    const model = buildHtmlMonthlyReportModel({
+      reportMonth: '2026-Q2',
+      reportPeriod: quarter,
+      storyModel,
+      records: current,
+      allRecords: [...previous, ...current],
+      productNames: ['弹性公网IP'],
+      visits: [{
+        id: 'vq',
+        importMonth: '2026-05',
+        productName: '弹性公网IP',
+        customerName: '客户甲',
+        visitResult: '已回访',
+      }],
+    })
+    expect(model.title).toBe('用后即评季报（2026年Q2）')
+    expect(model.showPreviousVisits).toBe(false)
+    expect(model.previousVisits).toEqual([])
+    expect(model.copy.overviewTitle).toBe('本季概述')
+    expect(model.kpis.momLabel).toMatch(/^较上季度高 /)
+    expect(model.productCards[0].comparisons.mixedAvg.label).toMatch(/^较上季度高 /)
+    expect(model.productCards[0].visitNarratives[0]).toContain('经客服部回访，核实为「已回访」')
   })
 
   it('writes current-month visit evidence as a locked sentence', () => {

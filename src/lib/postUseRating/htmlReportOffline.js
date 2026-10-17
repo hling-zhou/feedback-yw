@@ -35,7 +35,7 @@ function kpiHints(kpis) {
   if (!lines.length) return ''
   const companyClass = kpis?.vsCompanyTone ? `hint--${kpis.vsCompanyTone}` : ''
   const momClass = kpis?.momTone ? `hint--${kpis.momTone}` : ''
-  return `<div class="hints">
+  return `<div class="hints hints--inline">
     ${kpis.vsCompanyLabel ? `<div class="${companyClass}">${escapeHtml(kpis.vsCompanyLabel)}</div>` : ''}
     ${kpis.momLabel ? `<div class="${momClass}">${escapeHtml(kpis.momLabel)}</div>` : ''}
   </div>`
@@ -153,10 +153,12 @@ h1 { font-size: 24px; margin: 0 0 8px; }
 h2 { font-size: 18px; margin: 32px 0 12px; }
 h3 { font-size: 15px; margin: 0 0 8px; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin: 16px 0 20px; }
+.kpis--product { grid-template-columns: repeat(5, minmax(0,1fr)); }
 .kpi { border: 1px solid #e5e7eb; padding: 12px 14px; }
 .kpi .label { font-size: 12px; color: #6b7280; }
 .kpi .value { margin-top: 4px; font-size: 22px; font-weight: 650; }
 .kpi .hints { margin-top: 6px; font-size: 12px; line-height: 1.45; color: #6b7280; }
+.kpi .hints--inline { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; row-gap: 2px; }
 .kpi .hint--up { color: #166534; }
 .kpi .hint--down { color: #991b1b; }
 .kpi.warn { border-color: #f0b4b4; background: #fff7f7; }
@@ -219,6 +221,13 @@ function issueHtml(issue, narrative, index) {
   </section>`
 }
 
+function productMetricCard(label, value, comparison) {
+  const hint = comparison?.label
+    ? `<div class="hints"><div class="hint hint--${escapeHtml(comparison.tone || 'na')}">${escapeHtml(comparison.label)}</div></div>`
+    : ''
+  return `<div class="kpi"><div class="label">${escapeHtml(label)}</div><div class="value">${value}</div>${hint}</div>`
+}
+
 function productCardHtml(card, preview, issueNarratives) {
   const issue = card.issue
   const narrative = issue ? issueNarratives[issue.key] || {} : {}
@@ -227,7 +236,13 @@ function productCardHtml(card, preview, issueNarratives) {
   const evidence = issue ? issueHtml(issue, narrative, 0) : '<p class="muted">本产品本月没有单列问题条。</p>'
   return `<section class="issue">
     <h3>${text(card.productName)}</h3>
-    <p>体验得分 ${escapeHtml(formatScore(card.experienceScore))} · 投诉回访满意度 ${card.satisfactionRate == null ? '—' : `${card.satisfactionRate}%`} · 三渠道均分 ${escapeHtml(formatScore(card.mixedAvg))} · 样本 ${card.mixedSample || 0} · 3分以下 ${card.lowScoreCount || 0}</p>
+    <div class="kpis kpis--product">
+      ${productMetricCard('产品体验得分', escapeHtml(formatScore(card.experienceScore)), card.comparisons?.experienceScore)}
+      ${productMetricCard('投诉回访满意度', card.satisfactionRate == null ? '—' : `${escapeHtml(String(card.satisfactionRate))}%`, card.comparisons?.satisfactionRate)}
+      ${productMetricCard('均分（三渠道）', escapeHtml(formatScore(card.mixedAvg)), card.comparisons?.mixedAvg)}
+      ${productMetricCard('样本数（三渠道）', escapeHtml(String(card.mixedSample ?? 0)), card.comparisons?.mixedSample)}
+      ${productMetricCard('3 分以下样本数', escapeHtml(String(card.lowScoreCount ?? 0)), card.comparisons?.lowScoreCount)}
+    </div>
     <h4>得分分布</h4>
     ${tableHtml(['样本', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1'], distribution.map((row) => [row.sampleSize, row['10'], row['9'], row['8'], row['7'], row['6'], row['5'], row['4'], row['3'], row['2'], row['1']]))}
     <h4>场景与旅程</h4>
@@ -259,6 +274,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   const todoNote = input.todoNote ?? model.todoNote ?? ''
   const issueNarratives = input.issueNarratives || {}
   const exportedAt = input.exportedAt || new Date().toISOString()
+  const copy = model.copy || {}
   const kpis = model.kpis || {}
   const charts = model.charts || {}
   const preview = model.preview || {}
@@ -283,8 +299,8 @@ export function buildOfflineMonthlyReportHtml(input) {
     ? ''
     : `<h2>待办事情及进展</h2>
       <div class="kpis">
-        <div class="kpi"><div class="label">本月提出</div><div class="value">${todo.proposedCount || 0}</div></div>
-        <div class="kpi"><div class="label">本月关闭</div><div class="value">${todo.closedCount || 0}</div></div>
+        <div class="kpi"><div class="label">${escapeHtml(copy.todoProposed || '本月提出')}</div><div class="value">${todo.proposedCount || 0}</div></div>
+        <div class="kpi"><div class="label">${escapeHtml(copy.todoClosed || '本月关闭')}</div><div class="value">${todo.closedCount || 0}</div></div>
         <div class="kpi ${todo.notRecoveredCount ? 'warn' : ''}"><div class="label">已完成未恢复</div><div class="value">${todo.notRecoveredCount || 0}</div></div>
         <div class="kpi"><div class="label">建议回访/溯源</div><div class="value">${todo.callbackCount || 0}</div></div>
       </div>
@@ -302,7 +318,7 @@ export function buildOfflineMonthlyReportHtml(input) {
       remark: saved.remark ?? row.remark,
     }
   })
-  const previousVisitsHtml = hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
+  const previousVisitsHtml = model.showPreviousVisits === false || hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
     ? ''
     : `<h2>上期客服部回访结果补充</h2>${visitRows.length ? tableHtml(
       ['客户', '客服部回访记录', '回访结果内部评估/回应', '备注'],
@@ -347,7 +363,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   <article class="page">
     <p class="banner">离线快照 · 导出于 ${escapeHtml(exportedAt)} · 不依赖系统登录，图表为导出时锁定画面</p>
     <h1>${text(model.title)}</h1>
-    <h2>本月概述</h2>
+    <h2>${escapeHtml(copy.overviewTitle || '本月概述')}</h2>
     <p class="narrative">${pre(judgment)}</p>
     <div class="kpis">
       <div class="kpi"><div class="label">涉及产品数</div><div class="value">${kpis.productCount ?? 0}</div><div class="hints">总样本量 ${kpis.totalSample ?? 0}</div></div>
@@ -368,8 +384,8 @@ export function buildOfflineMonthlyReportHtml(input) {
 </html>`
 }
 
-export function offlineMonthlyReportFilename(reportMonth) {
-  return `用后即评月报-${reportMonth || 'unknown'}.html`
+export function offlineMonthlyReportFilename(reportMonth, prefix = '用后即评月报') {
+  return `${prefix}-${reportMonth || 'unknown'}.html`
 }
 
 /**

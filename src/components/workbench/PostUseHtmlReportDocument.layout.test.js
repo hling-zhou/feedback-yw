@@ -19,7 +19,8 @@ describe('HTML monthly report route and page', () => {
   it('loads the report month post-use records before rendering empty state', () => {
     expect(page).toContain('loadPostUseRatingForPeriod')
     expect(page).toContain('postUseSettledPeriodIds')
-    expect(page).toContain('period:month:${reportMonth}')
+    expect(page).toContain('period:month:${item}')
+    expect(page).toContain('period:quarter:')
     expect(page).toContain('productCatalogMeta')
     expect(page).not.toContain('feedbacksLoading')
     expect(page).toContain('listPostUseStatusTrends')
@@ -50,6 +51,7 @@ describe('HTML monthly report route and page', () => {
 
   it('renders overview, products, todo, previous visits and appendix in reading order', () => {
     expect(document).toContain('report-module')
+    expect(document).toContain('post-use-html-report-kpis--product')
     expect(document).toContain('本月概述')
     expect(document).toContain('分产品情况')
     expect(document).toContain('问题与证据')

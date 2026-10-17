@@ -7,7 +7,7 @@ import {
   computeInternalSatisfactionMetrics,
   computeScoreDistribution,
 } from './metrics.js'
-import { filterVisitsByMonth, visitMonthForReport } from './visitRecords.js'
+import { filterVisitsByMonths, visitMonthForReport } from './visitRecords.js'
 import { filterActionsForMonthlyReport } from './actionSignals.js'
 
 const REVIEW_SECTION_LABELS = {
@@ -27,6 +27,16 @@ const REVIEW_SECTION_LABELS = {
  *   lastSeenAt?: string
  * }>} learnings
  */
+function uniqueActions(items) {
+  const seen = new Set()
+  return (items || []).filter((item) => {
+    const key = String(item?.id || `${item?.productName || ''}-${item?.content || ''}`)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function buildReviewChecklist(learnings) {
   const sectionOrder = ['2.1', '2.3', '3.1']
   const normalized = (learnings || [])
@@ -78,6 +88,7 @@ function buildReviewChecklist(learnings) {
 export function buildMonthlyReportPreviewModel(input) {
   const {
     reportMonth,
+    periodMonths,
     scoredRows,
     productNames,
     visits = [],
@@ -91,8 +102,9 @@ export function buildMonthlyReportPreviewModel(input) {
   const external = storyModel?.metrics?.external || computeExternalMixedMetrics(scoredRows, { productNames })
   const sat = storyModel?.metrics?.satisfaction || computeInternalSatisfactionMetrics(scoredRows, { productNames })
   const onlineInsights = storyModel?.insightBundle || insightBundle
+  const months = (periodMonths?.length ? periodMonths : [reportMonth]).filter((month) => /^\d{4}-\d{2}$/.test(String(month || '')))
   const visitMonth = visitMonthForReport(reportMonth)
-  const monthVisits = filterVisitsByMonth(visits, visitMonth)
+  const monthVisits = filterVisitsByMonths(visits, months.length ? months : [visitMonth])
   const monthlyScoreTable = storyModel?.metrics?.monthlyScoreTable
     || buildMonthlyScoreTable(scoredRows, { productNames })
   const nonTenDistributionProducts = storyModel?.metrics?.nonTenDistributionProducts
@@ -117,16 +129,17 @@ export function buildMonthlyReportPreviewModel(input) {
       1: 0,
     }),
   }))
-  const proposed = filterActionsForMonthlyReport(actionItems, {
-    reportMonth,
+  const actionMonths = months.length ? months : [reportMonth]
+  const proposed = uniqueActions(actionMonths.flatMap((month) => filterActionsForMonthlyReport(actionItems, {
+    reportMonth: month,
     productNames,
     mode: 'this_month_proposed',
-  })
-  const closed = filterActionsForMonthlyReport(actionItems, {
-    reportMonth,
+  })))
+  const closed = uniqueActions(actionMonths.flatMap((month) => filterActionsForMonthlyReport(actionItems, {
+    reportMonth: month,
     productNames,
     mode: 'closed_in_month',
-  })
+  })))
 
   const yw = external.yunwang
   const notQualified = sat.byProduct.filter((p) => p.belowBaseline)

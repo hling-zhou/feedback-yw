@@ -45,6 +45,10 @@
   margin: 16px 0 20px;
 }
 
+.post-use-html-report-kpis--product {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .report-product-layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
@@ -105,6 +109,14 @@
   font-size: 12px;
   line-height: 1.45;
   color: #6b7280;
+}
+
+.post-use-html-report-kpi-hints--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
 }
 
 .post-use-html-report-kpi-hints .hint--up {

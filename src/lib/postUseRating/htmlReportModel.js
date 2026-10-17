@@ -1,9 +1,15 @@
-import { shiftYearMonth } from '../../domain/insightPeriod.js'
-import { POST_USE_CRITICAL_LOW_SCORE, computeExternalMixedMetrics } from './metrics.js'
+import { resolvePreviousInsightPeriod, shiftYearMonth } from '../../domain/insightPeriod.js'
+import { postUsePeriodMonths } from './periodScope.js'
+import {
+  POST_USE_CRITICAL_LOW_SCORE,
+  computeExternalMixedMetrics,
+  computeInternalExperienceMetrics,
+  computeInternalSatisfactionMetrics,
+} from './metrics.js'
 import { buildYunwangScoreContext } from './scoreContext.js'
 import { buildMonthlyReportPreviewModel } from './monthlyReportPreview.js'
 import { postUseRecordsToScoredRows } from './storyModel.js'
-import { filterVisitsByMonth } from './visitRecords.js'
+import { filterVisitsByMonth, filterVisitsByMonths } from './visitRecords.js'
 import { buildFocusScoreTrendChartModel } from './trendStore.js'
 import {
   buildCustomerQuoteRegistry,
@@ -145,16 +151,79 @@ function recordImportMonth(record) {
   return String(record?.importMonth || record?.createdAt || '').slice(0, 7)
 }
 
-function previousYunwangMetrics(allRecords, reportMonth, productNames) {
-  const previousMonth = shiftYearMonth(reportMonth, -1)
-  if (!previousMonth) return { previousMonth: null, previousAvg: null, previousSample: 0 }
-  const prevRows = postUseRecordsToScoredRows(
-    (allRecords || []).filter((record) => recordImportMonth(record) === previousMonth),
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100
+}
+
+function metricPeriodComparison(current, previous, kind, prefix = '较上月') {
+  const missing = { label: `暂无${String(prefix).replace(/^较/, '')}对比`, tone: 'na' }
+  const currentNum = Number(current)
+  const previousNum = Number(previous)
+  if (!Number.isFinite(currentNum) || previous == null || !Number.isFinite(previousNum)) return missing
+  const delta = kind === 'score' || kind === 'rate' ? round2(currentNum - previousNum) : currentNum - previousNum
+  if (delta === 0) return { label: `${prefix}持平`, tone: 'flat' }
+  const higher = delta > 0
+  const abs = String(Math.abs(delta))
+  if (kind === 'lowCount') {
+    return { label: higher ? `${prefix}多 ${abs}` : `${prefix}少 ${abs}`, tone: higher ? 'down' : 'up' }
+  }
+  if (kind === 'count') {
+    return { label: higher ? `${prefix}多 ${abs}` : `${prefix}少 ${abs}`, tone: 'flat' }
+  }
+  if (kind === 'rate') {
+    return {
+      label: higher ? `${prefix}高 ${abs} 个百分点` : `${prefix}低 ${abs} 个百分点`,
+      tone: higher ? 'up' : 'down',
+    }
+  }
+  return { label: higher ? `${prefix}高 ${abs}` : `${prefix}低 ${abs}`, tone: higher ? 'up' : 'down' }
+}
+
+function indexByProductName(rows) {
+  return new Map((rows || []).map((row) => [row.productName, row]))
+}
+
+function scoredRowsInMonths(allRecords, months) {
+  const monthSet = new Set(months || [])
+  if (!monthSet.size) return []
+  return postUseRecordsToScoredRows(
+    (allRecords || []).filter((record) => monthSet.has(recordImportMonth(record))),
   )
-  if (!prevRows.length) return { previousMonth, previousAvg: null, previousSample: 0 }
+}
+
+function previousProductMetrics(allRecords, months, productNames) {
+  const byProduct = new Map()
+  const prevRows = scoredRowsInMonths(allRecords, months)
+  if (!prevRows.length) return byProduct
+  const opts = productNames?.length ? { productNames } : {}
+  const mixed = indexByProductName(computeExternalMixedMetrics(prevRows, opts).yunwang.byProduct)
+  const experience = indexByProductName(computeInternalExperienceMetrics(prevRows, opts).byProduct)
+  const satisfaction = indexByProductName(computeInternalSatisfactionMetrics(prevRows, opts).byProduct)
+  for (const name of new Set([...mixed.keys(), ...experience.keys(), ...satisfaction.keys()])) {
+    const mixedRow = mixed.get(name)
+    const exp = experience.get(name)
+    const sat = satisfaction.get(name)
+    byProduct.set(name, {
+      experienceScore: exp?.sampleSize ? exp.avgScore : null,
+      satisfactionRate: sat?.sampleSize ? sat.rate : null,
+      mixedAvg: mixedRow?.sampleSize ? mixedRow.avgScore : null,
+      mixedSample: mixedRow?.sampleSize || null,
+      lowScoreCount: mixedRow?.sampleSize
+        ? (mixedRow.scores || []).filter((score) => Number(score) <= POST_USE_CRITICAL_LOW_SCORE).length
+        : null,
+    })
+  }
+  return byProduct
+}
+
+function previousYunwangMetrics(allRecords, months, productNames) {
+  const previousMonths = months || []
+  if (!previousMonths.length) return { previousMonth: null, previousAvg: null, previousSample: 0 }
+  const prevRows = scoredRowsInMonths(allRecords, previousMonths)
+  if (!prevRows.length) return { previousMonth: previousMonths[0], previousAvg: null, previousSample: 0 }
   const yunwang = computeExternalMixedMetrics(prevRows, { productNames }).yunwang
   return {
-    previousMonth,
+    previousMonth: previousMonths[0],
     previousAvg: yunwang.totalSample ? yunwang.avgScore : null,
     previousSample: yunwang.totalSample || 0,
   }
@@ -363,8 +432,9 @@ function feedbackForVisit(visit, storyModel, records) {
  * @param {object} storyModel
  * @param {object[]} records
  */
-export function buildProductVisitNarratives(visits, reportMonth, productName, storyModel, records) {
-  const rows = filterVisitsByMonth(visits, reportMonth)
+export function buildProductVisitNarratives(visits, reportMonth, productName, storyModel, records, periodMonths) {
+  const months = periodMonths?.length ? periodMonths : [reportMonth]
+  const rows = filterVisitsByMonths(visits, months)
     .filter((visit) => String(visit?.productName || '').trim() === productName)
   if (!rows.length) return ['本期该产品暂无客服部回访记录']
   return rows.map((visit, index) => {
@@ -379,7 +449,7 @@ export function buildProductVisitNarratives(visits, reportMonth, productName, st
   })
 }
 
-export function buildProductScoreTrendWithCompany(trendSnap, productName, companyRows) {
+export function buildProductScoreTrendWithCompany(trendSnap, productName, companyRows, endMonth = '') {
   const product = buildFocusScoreTrendChartModel(trendSnap || { scores: [] }, [productName], 'internal_experience')
   const byDate = new Map()
   for (const row of product.data || []) {
@@ -392,8 +462,9 @@ export function buildProductScoreTrendWithCompany(trendSnap, productName, compan
     current.company = row.company ?? null
     byDate.set(date, current)
   }
+  const end = String(endMonth || '')
   return {
-    data: [...byDate.keys()].sort().map((date) => byDate.get(date)),
+    data: [...byDate.keys()].sort().filter((date) => !end || date <= end).map((date) => byDate.get(date)),
     areas: [
       { dataKey: 'product', name: productName, stroke: '#2563EB' },
       { dataKey: 'company', name: '公司均分（三渠道）', stroke: '#D97706' },
@@ -401,7 +472,22 @@ export function buildProductScoreTrendWithCompany(trendSnap, productName, compan
   }
 }
 
-function buildProductCards({ storyModel, issues, visits, reportMonth, records, trend, companyRows }) {
+function buildProductCards({
+  storyModel,
+  issues,
+  visits,
+  reportMonth,
+  periodMonths,
+  previousMonths,
+  comparisonPrefix,
+  records,
+  allRecords,
+  productNames,
+  trend,
+  companyRows,
+  endMonth,
+}) {
+  const previousByProduct = previousProductMetrics(allRecords, previousMonths, productNames)
   const yunwang = storyModel?.metrics?.external?.yunwang?.byProduct || []
   const experience = new Map((storyModel?.metrics?.internalExperience?.byProduct || []).map((row) => [row.productName, row]))
   const satisfaction = new Map((storyModel?.metrics?.satisfaction?.byProduct || []).map((row) => [row.productName, row]))
@@ -415,21 +501,32 @@ function buildProductCards({ storyModel, issues, visits, reportMonth, records, t
     .map((row) => {
       const exp = experience.get(row.productName)
       const sat = satisfaction.get(row.productName)
+      const prev = previousByProduct.get(row.productName) || {}
       const belowNine = Number(row.avgScore) < 9
       const callbackUnqualified = unqualified.has(row.productName)
+      const experienceScore = exp?.sampleSize ? exp.avgScore : null
+      const satisfactionRate = sat?.sampleSize ? sat.rate : null
+      const lowScoreCount = (row.scores || []).filter((score) => Number(score) <= POST_USE_CRITICAL_LOW_SCORE).length
       return {
         productName: row.productName,
-        experienceScore: exp?.avgScore ?? null,
-        satisfactionRate: sat?.rate ?? null,
+        experienceScore,
+        satisfactionRate,
         mixedAvg: row.avgScore,
         mixedSample: row.sampleSize,
-        lowScoreCount: (row.scores || []).filter((score) => Number(score) <= POST_USE_CRITICAL_LOW_SCORE).length,
+        lowScoreCount,
+        comparisons: {
+          experienceScore: metricPeriodComparison(experienceScore, prev.experienceScore ?? null, 'score', comparisonPrefix),
+          satisfactionRate: metricPeriodComparison(satisfactionRate, prev.satisfactionRate ?? null, 'rate', comparisonPrefix),
+          mixedAvg: metricPeriodComparison(row.avgScore, prev.mixedAvg ?? null, 'score', comparisonPrefix),
+          mixedSample: metricPeriodComparison(row.sampleSize, prev.mixedSample ?? null, 'count', comparisonPrefix),
+          lowScoreCount: metricPeriodComparison(lowScoreCount, prev.lowScoreCount ?? null, 'lowCount', comparisonPrefix),
+        },
         belowNine,
         callbackUnqualified,
         priority: belowNine || callbackUnqualified ? 0 : 1,
         issue: issueByProduct.get(row.productName) || null,
-        visitNarratives: buildProductVisitNarratives(visits, reportMonth, row.productName, storyModel, records),
-        scoreTrend: buildProductScoreTrendWithCompany(trend, row.productName, companyRows),
+        visitNarratives: buildProductVisitNarratives(visits, reportMonth, row.productName, storyModel, records, periodMonths),
+        scoreTrend: buildProductScoreTrendWithCompany(trend, row.productName, companyRows, endMonth),
       }
     })
     .sort((a, b) => a.priority - b.priority || Number(a.mixedAvg) - Number(b.mixedAvg) || a.productName.localeCompare(b.productName, 'zh'))
@@ -448,6 +545,45 @@ export function buildPreviousVisitRows(visits, reportMonth) {
   }))
 }
 
+function reportFrame(reportMonth, reportPeriod) {
+  const quarter = reportPeriod?.granularity === 'quarter'
+  const periodMonths = quarter ? postUsePeriodMonths(reportPeriod) : [reportMonth]
+  const previousPeriod = quarter ? resolvePreviousInsightPeriod(reportPeriod) : null
+  const previousMonths = quarter
+    ? postUsePeriodMonths(previousPeriod)
+    : [shiftYearMonth(reportMonth, -1)].filter(Boolean)
+  return {
+    quarter,
+    periodMonths,
+    previousMonths,
+    endMonth: periodMonths[periodMonths.length - 1] || reportMonth,
+    comparisonPrefix: quarter ? '较上季度' : '较上月',
+    showPreviousVisits: !quarter,
+    title: quarter ? `用后即评季报（${reportPeriod.label || reportMonth}）` : '',
+    copy: quarter
+      ? {
+          overviewTitle: '本季概述',
+          overviewPlaceholder: '结合综合结论写清当季整体表现，不要改指标数字。',
+          todoProposed: '本季提出',
+          todoClosed: '本季关闭',
+          todoLead: '读者离开前应能回答：这季先办哪 3 件事。',
+          todoEmpty: '本季建议回访清单为空，完整客户明细见附录。',
+          todoPlaceholder: '补充本季要办备注：先办哪 3 件事。',
+          filenamePrefix: '用后即评季报',
+        }
+      : {
+          overviewTitle: '本月概述',
+          overviewPlaceholder: '结合综合结论写清当月整体表现，不要改指标数字。',
+          todoProposed: '本月提出',
+          todoClosed: '本月关闭',
+          todoLead: '读者离开前应能回答：这月先办哪 3 件事。',
+          todoEmpty: '本月建议回访清单为空，完整客户明细见附录。',
+          todoPlaceholder: '补充本月要办备注：先办哪 3 件事。',
+          filenamePrefix: '用后即评月报',
+        },
+  }
+}
+
 function callbackTodoHighlights(recommendations) {
   return (recommendations || []).slice(0, 3).map((item) => ({
     customerName: item.customerName || item.customerCode || '未标注客户',
@@ -459,6 +595,7 @@ function callbackTodoHighlights(recommendations) {
 /**
  * @param {{
  *   reportMonth: string
+ *   reportPeriod?: object
  *   storyModel: object
  *   records: object[]
  *   allRecords?: object[]
@@ -475,6 +612,7 @@ function callbackTodoHighlights(recommendations) {
 export function buildHtmlMonthlyReportModel(input) {
   const {
     reportMonth,
+    reportPeriod = null,
     storyModel,
     records = [],
     allRecords = [],
@@ -487,11 +625,13 @@ export function buildHtmlMonthlyReportModel(input) {
     statusTrends = null,
     trend = null,
   } = input
+  const frame = reportFrame(reportMonth, reportPeriod)
   const productNames = input.productNames?.length
     ? input.productNames
     : storyModel?.productOverview?.map((item) => item.productName) || []
   const preview = buildMonthlyReportPreviewModel({
-    reportMonth,
+    reportMonth: frame.endMonth,
+    periodMonths: frame.periodMonths,
     scoredRows: storyModel?.scoredRows || [],
     productNames,
     visits,
@@ -507,33 +647,41 @@ export function buildHtmlMonthlyReportModel(input) {
   const voice = summarizeQuotePolarity(quoteRegistry)
   const featuredVoice = pickFeaturedVoiceQuotes(quoteRegistry)
   const scoreBands = aggregateScoreBands(preview.scoreDistributionTable)
-  const currentVisits = filterVisitsByMonth(visits, reportMonth)
+  const currentVisits = filterVisitsByMonths(visits, frame.periodMonths)
   const visitNote = currentVisits.length
     ? `本期客服部回访 ${currentVisits.length} 条，见各产品问题与证据。`
     : '本期暂无客服部回访结果。'
   const judgmentDraft = draftJudgmentFromConclusions(storyModel?.conclusions || [], issues, voice, visitNote)
   const companyRows = statusTrends?.combined?.data || storyModel?.metrics?.statusTrends?.combined?.data || []
+  const scopedRecords = allRecords.length ? allRecords : records
   const productCards = buildProductCards({
     storyModel,
     issues: [...issues, ...overflow],
     visits,
-    reportMonth,
+    reportMonth: frame.endMonth,
+    periodMonths: frame.periodMonths,
+    previousMonths: frame.previousMonths,
+    comparisonPrefix: frame.comparisonPrefix,
     records,
+    allRecords: scopedRecords,
+    productNames,
     trend,
     companyRows,
+    endMonth: frame.endMonth,
   })
-  const previousVisits = buildPreviousVisitRows(visits, reportMonth)
+  const previousVisits = frame.showPreviousVisits ? buildPreviousVisitRows(visits, reportMonth) : []
   const belowNineNames = (storyModel?.metrics?.external?.yunwang?.byProduct || [])
     .filter((row) => Number(row.avgScore) < 9)
     .map((row) => row.productName)
   const callbackUnqualifiedNames = (preview.satisfaction?.notQualified || []).map((row) => row.productName)
-  const previous = previousYunwangMetrics(allRecords.length ? allRecords : records, reportMonth, productNames)
+  const previous = previousYunwangMetrics(scopedRecords, frame.previousMonths, productNames)
   const scoreContext = buildYunwangScoreContext({
     avgScore: preview.overview?.avgScore,
     companyAvg: preview.overview?.companyAvg,
     companySample: preview.overview?.companySample,
     previousAvg: previous.previousAvg,
     previousSample: previous.previousSample,
+    momPrefix: frame.comparisonPrefix,
   })
   const kpis = {
     productCount: preview.overview?.productCount ?? storyModel?.metrics?.external?.yunwang?.productCount ?? 0,
@@ -558,7 +706,9 @@ export function buildHtmlMonthlyReportModel(input) {
   })
   const base = {
     reportMonth,
-    title: preview.title,
+    showPreviousVisits: frame.showPreviousVisits,
+    copy: frame.copy,
+    title: frame.title || preview.title,
     kpis,
     voice,
     featuredVoice,

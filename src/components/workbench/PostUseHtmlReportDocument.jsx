@@ -18,10 +18,19 @@ function formatScore(value) {
   return Number.isFinite(num) ? String(num) : String(value)
 }
 
+function PeriodHint({ comparison }) {
+  if (!comparison?.label) return null
+  return (
+    <div className="post-use-html-report-kpi-hints">
+      <div className={`hint hint--${comparison.tone || 'na'}`}>{comparison.label}</div>
+    </div>
+  )
+}
+
 function YunwangScoreHints({ kpis }) {
   if (!kpis?.vsCompanyLabel && !kpis?.momLabel) return null
   return (
-    <div className="post-use-html-report-kpi-hints">
+    <div className="post-use-html-report-kpi-hints post-use-html-report-kpi-hints--inline">
       {kpis.vsCompanyLabel ? (
         <div className={`hint hint--${kpis.vsCompanyTone || 'flat'}`}>{kpis.vsCompanyLabel}</div>
       ) : null}
@@ -158,12 +167,32 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
   return (
     <section className={`report-product-detail${active ? ' is-active' : ''}`}>
       <h3>{card.productName}</h3>
-      <div className="post-use-html-report-kpis">
-        <div className="post-use-html-report-kpi"><div className="label">产品体验得分</div><div className="value">{formatScore(card.experienceScore)}</div></div>
-        <div className="post-use-html-report-kpi"><div className="label">投诉回访满意度</div><div className="value">{card.satisfactionRate == null ? '—' : `${card.satisfactionRate}%`}</div></div>
-        <div className="post-use-html-report-kpi"><div className="label">均分（三渠道）</div><div className="value">{formatScore(card.mixedAvg)}</div></div>
-        <div className="post-use-html-report-kpi"><div className="label">样本数（三渠道）</div><div className="value">{card.mixedSample}</div></div>
-        <div className="post-use-html-report-kpi"><div className="label">3 分以下样本数</div><div className="value">{card.lowScoreCount}</div></div>
+      <div className="post-use-html-report-kpis post-use-html-report-kpis--product">
+        <div className="post-use-html-report-kpi">
+          <div className="label">产品体验得分</div>
+          <div className="value">{formatScore(card.experienceScore)}</div>
+          <PeriodHint comparison={card.comparisons?.experienceScore} />
+        </div>
+        <div className="post-use-html-report-kpi">
+          <div className="label">投诉回访满意度</div>
+          <div className="value">{card.satisfactionRate == null ? '—' : `${card.satisfactionRate}%`}</div>
+          <PeriodHint comparison={card.comparisons?.satisfactionRate} />
+        </div>
+        <div className="post-use-html-report-kpi">
+          <div className="label">均分（三渠道）</div>
+          <div className="value">{formatScore(card.mixedAvg)}</div>
+          <PeriodHint comparison={card.comparisons?.mixedAvg} />
+        </div>
+        <div className="post-use-html-report-kpi">
+          <div className="label">样本数（三渠道）</div>
+          <div className="value">{card.mixedSample}</div>
+          <PeriodHint comparison={card.comparisons?.mixedSample} />
+        </div>
+        <div className="post-use-html-report-kpi">
+          <div className="label">3 分以下样本数</div>
+          <div className="value">{card.lowScoreCount}</div>
+          <PeriodHint comparison={card.comparisons?.lowScoreCount} />
+        </div>
       </div>
       <Typography.Text type="secondary">得分分布</Typography.Text>
       <Table size="small" pagination={false} rowKey="productName" dataSource={distribution} columns={distributionColumns} locale={{ emptyText: '暂无得分分布' }} />
@@ -239,6 +268,8 @@ export default function PostUseHtmlReportDocument({
   onVisitSupplementChange,
 }) {
   const hidden = new Set(hiddenSectionIds || [])
+  const copy = model.copy || {}
+  const showPreviousVisits = model.showPreviousVisits !== false
   const preview = model.preview
   const reviewItems = preview?.reviewChecklist || []
   const productCards = model.productCards || []
@@ -293,13 +324,13 @@ export default function PostUseHtmlReportDocument({
       </section>
 
       <section className="report-module">
-      <SectionTitle id="report-judgment">本月概述</SectionTitle>
+      <SectionTitle id="report-judgment">{copy.overviewTitle || '本月概述'}</SectionTitle>
       <Input.TextArea
         value={judgment}
         onChange={(event) => onJudgmentChange(event.target.value)}
         autoSize={{ minRows: 4 }}
         disabled={!canEdit}
-        placeholder="结合综合结论写清当月整体表现，不要改指标数字。"
+        placeholder={copy.overviewPlaceholder || '结合综合结论写清当月整体表现，不要改指标数字。'}
       />
       <div className="post-use-html-report-kpis">
         <div className="post-use-html-report-kpi">
@@ -372,11 +403,11 @@ export default function PostUseHtmlReportDocument({
           <SectionTitle id="report-todo">待办事情及进展</SectionTitle>
           <div className="post-use-html-report-kpis report-todo-kpis">
             <div className="post-use-html-report-kpi">
-              <div className="label">本月提出</div>
+              <div className="label">{copy.todoProposed || '本月提出'}</div>
               <div className="value">{model.todo.proposedCount}</div>
             </div>
             <div className="post-use-html-report-kpi">
-              <div className="label">本月关闭</div>
+              <div className="label">{copy.todoClosed || '本月关闭'}</div>
               <div className="value">{model.todo.closedCount}</div>
             </div>
             <div className={`post-use-html-report-kpi${model.todo.notRecoveredCount ? ' post-use-html-report-kpi--warn' : ''}`}>
@@ -388,7 +419,7 @@ export default function PostUseHtmlReportDocument({
               <div className="value">{model.todo.callbackCount}</div>
             </div>
           </div>
-          <Typography.Paragraph type="secondary">读者离开前应能回答：这月先办哪 3 件事。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">{copy.todoLead || '读者离开前应能回答：这月先办哪 3 件事。'}</Typography.Paragraph>
           {model.todo.proposed.length ? (
             <ul>
               {model.todo.proposed.map((item) => (
@@ -417,19 +448,19 @@ export default function PostUseHtmlReportDocument({
               ))}
             </ul>
           ) : (
-            <Typography.Paragraph type="secondary">本月建议回访清单为空，完整客户明细见附录。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">{copy.todoEmpty || '本月建议回访清单为空，完整客户明细见附录。'}</Typography.Paragraph>
           )}
           <Input.TextArea
             value={todoNote}
             onChange={(event) => onTodoNoteChange(event.target.value)}
             autoSize={{ minRows: 3 }}
             disabled={!canEdit}
-            placeholder="补充本月要办备注：先办哪 3 件事。"
+            placeholder={copy.todoPlaceholder || '补充本月要办备注：先办哪 3 件事。'}
           />
         </section>
       )}
 
-      {hidden.has(REPORT_SECTION_PREVIOUS_VISITS) ? null : (
+      {!showPreviousVisits || hidden.has(REPORT_SECTION_PREVIOUS_VISITS) ? null : (
         <section className="report-module">
           <SectionTitle id="report-previous-visits">上期客服部回访结果补充</SectionTitle>
           {(model.previousVisits || []).length ? (
@@ -642,7 +673,7 @@ export default function PostUseHtmlReportDocument({
   )
 }
 
-export function ReportSectionToggles({ hiddenSectionIds, onToggleSection }) {
+export function ReportSectionToggles({ hiddenSectionIds, onToggleSection, showPreviousVisits = true }) {
   const hidden = new Set(hiddenSectionIds || [])
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -658,12 +689,14 @@ export function ReportSectionToggles({ hiddenSectionIds, onToggleSection }) {
       >
         显示待办事情及进展
       </Checkbox>
-      <Checkbox
-        checked={!hidden.has(REPORT_SECTION_PREVIOUS_VISITS)}
-        onChange={(event) => onToggleSection(REPORT_SECTION_PREVIOUS_VISITS, event.target.checked)}
-      >
-        显示上期回访补充
-      </Checkbox>
+      {showPreviousVisits ? (
+        <Checkbox
+          checked={!hidden.has(REPORT_SECTION_PREVIOUS_VISITS)}
+          onChange={(event) => onToggleSection(REPORT_SECTION_PREVIOUS_VISITS, event.target.checked)}
+        >
+          显示上期回访补充
+        </Checkbox>
+      ) : null}
       <Checkbox
         checked={!hidden.has(REPORT_SECTION_APPENDIX)}
         onChange={(event) => onToggleSection(REPORT_SECTION_APPENDIX, event.target.checked)}
