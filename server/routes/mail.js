@@ -20,7 +20,7 @@ import {
   resolveMailContentUrl,
   uniqueEmails,
 } from '../../src/domain/mail.js'
-import { sendSmtpMail } from '../mail/smtp.js'
+import { describeMailSendError, sendSmtpMail } from '../mail/smtp.js'
 import {
   createMailChannel,
   createMailGroup,
@@ -344,7 +344,7 @@ export function registerMailRoutes(app) {
         if (message.includes('邮箱') || message.includes('请填写')) {
           return sendError(reply, 400, message)
         }
-        return sendError(reply, 502, '邮件发送失败')
+        return sendError(reply, 502, describeMailSendError(err))
       }
     },
   )

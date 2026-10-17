@@ -285,4 +285,52 @@ describeApi('mail API', () => {
     })
     expect(forbidden.statusCode).toBe(403)
   })
+
+  it('returns the SMTP failure reason instead of a generic 发送失败', async () => {
+    setMailTransportFactory(() => ({
+      sendMail: async () => {
+        const err = new Error('Invalid login')
+        err.code = 'EAUTH'
+        err.response = '535 5.7.8 Error: authentication failed'
+        throw err
+      },
+    }))
+    await app.inject({
+      method: 'PUT',
+      url: '/api/mail/public-url',
+      headers: authHeader('admin'),
+      payload: { publicAppUrl: 'https://insights.example.com' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/api/mail/channels',
+      headers: authHeader('admin'),
+      payload: {
+        name: '用后即评',
+        dataSourceType: 'post_use_rating',
+        host: 'smtp.example.com',
+        fromAddress: 'from@example.com',
+        password: 'secret',
+      },
+    })
+    const send = await app.inject({
+      method: 'POST',
+      url: '/api/mail/send',
+      headers: authHeader('editor'),
+      payload: {
+        templateId: 'post_use_report',
+        dataSourceType: 'post_use_rating',
+        linkKind: 'report',
+        reportKey: '2026-06',
+        to: ['ops@example.com'],
+        attachment: {
+          filename: 'a.html',
+          mime: 'text/html',
+          contentBase64: Buffer.from('a').toString('base64'),
+        },
+      },
+    })
+    expect(send.statusCode).toBe(502)
+    expect(send.json().error).toBe('SMTP 认证失败：535 5.7.8 Error: authentication failed')
+  })
 })

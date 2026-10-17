@@ -39,6 +39,7 @@ export default function SendMailModal({
   const [toText, setToText] = useState('')
   const [ccText, setCcText] = useState('')
   const [note, setNote] = useState('')
+  const [sendError, setSendError] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -47,6 +48,7 @@ export default function SendMailModal({
     setToText('')
     setCcText('')
     setNote('')
+    setSendError('')
     setLoading(true)
     loadMailStatus()
       .then((data) => {
@@ -89,6 +91,7 @@ export default function SendMailModal({
       return
     }
     setSending(true)
+    setSendError('')
     try {
       const attachment = await buildAttachment()
       if (!attachment) {
@@ -110,7 +113,9 @@ export default function SendMailModal({
       message.success('已发送')
       onClose()
     } catch (error) {
-      message.error(error?.message || '发送失败')
+      const reason = error?.message || '发送失败'
+      setSendError(reason)
+      message.error(reason, 8)
     } finally {
       setSending(false)
     }
@@ -131,6 +136,9 @@ export default function SendMailModal({
     >
       {disabledReason || missing ? (
         <Alert className="mb-3" type="warning" showIcon message={disabledReason || missing} />
+      ) : null}
+      {sendError ? (
+        <Alert className="mb-3" type="error" showIcon message="发送失败" description={sendError} />
       ) : null}
       <Form layout="vertical">
         <Form.Item label="邮件模板" required>
