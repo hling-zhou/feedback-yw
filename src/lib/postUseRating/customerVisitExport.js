@@ -75,6 +75,7 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       建议回访原因: matched?.recommendedReason || '',
       回访结果: visit.visitResult || '',
       内部评估: visit.internalEvaluationDetail || visit.internalConclusion || '',
+      备注: visit.remark || '',
     }
     for (let i = 0; i < maxQuotes; i += 1) {
       row[`客户原话${i + 1}`] = matched?.quotes?.[i] || ''

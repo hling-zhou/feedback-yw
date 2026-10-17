@@ -1547,6 +1547,7 @@ function CustomerVisitTable({ rows }) {
       })),
       { title: '回访结果', dataIndex: '回访结果', width: 220, ellipsis: true },
       { title: '内部评估', dataIndex: '内部评估', width: 220, ellipsis: true },
+      { title: '备注', dataIndex: '备注', width: 180, ellipsis: true },
     ]
   }, [rows])
 

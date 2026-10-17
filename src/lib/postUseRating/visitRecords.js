@@ -21,6 +21,7 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [userInfoDetail]
  * @property {string} [visitFeedbackDetail]
  * @property {string} [internalEvaluationDetail]
+ * @property {string} [remark]
  * @property {string} [jiraId]
  * @property {string} updatedAt
  */
@@ -48,6 +49,7 @@ export function normalizeVisitRecords(raw) {
     internalEvaluationDetail: String(
       item?.internalEvaluationDetail || item?.internalConclusion || '',
     ),
+    remark: String(item?.remark || ''),
   }))
 }
 

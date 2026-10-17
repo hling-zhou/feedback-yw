@@ -41,20 +41,39 @@ export function parseRatingScoreFromText(ratingText) {
   return Number.isFinite(n) ? n : NaN
 }
 
-/**
- * 稳定 id：visitMonth + productName + customer identity
- * @param {string} visitMonth
- * @param {string} productName
- * @param {string} customerKey
- */
-export function stableVisitRecordId(visitMonth, productName, customerKey) {
-  const key = [visitMonth, productName, customerKey].map((x) => String(x ?? '').trim()).join('\0')
+function hashVisitKey(parts) {
+  const key = parts.map((item) => String(item ?? '').trim()).join('\0')
   let h = 2166136261
   for (let i = 0; i < key.length; i += 1) {
     h ^= key.charCodeAt(i)
     h = Math.imul(h, 16777619)
   }
   return `visit-${(h >>> 0).toString(16)}`
+}
+
+/**
+ * 历史稳定 id：数据月份 + 产品 + 客户。仅用于对齐已入库的单条旧记录。
+ * @param {string} visitMonth
+ * @param {string} productName
+ * @param {string} customerKey
+ */
+export function stableVisitRecordId(visitMonth, productName, customerKey) {
+  return hashVisitKey([visitMonth, productName, customerKey])
+}
+
+/**
+ * 同一客户、产品、月份的多行各自成条。内容与文件内出现次序都参与 id，
+ * 再次导入同一份文件时更新原记录，不额外复制。
+ * @param {string} visitMonth
+ * @param {string} productName
+ * @param {string} customerKey
+ * @param {string} visitResult
+ * @param {string} internalConclusion
+ * @param {string} remark
+ * @param {number} occurrence
+ */
+export function visitContentRecordId(visitMonth, productName, customerKey, visitResult, internalConclusion, remark, occurrence) {
+  return hashVisitKey([visitMonth, productName, customerKey, visitResult, internalConclusion, remark, occurrence])
 }
 
 /**
@@ -79,6 +98,7 @@ export function normalizeCustomerVisitRow(mappedRow) {
   const visitFeedbackDetail = visitResult
   const internalConclusion = String(row.internalConclusion ?? row['内部评估'] ?? '').trim()
   const internalEvaluationDetail = internalConclusion
+  const remark = String(row.remark ?? row['备注'] ?? '').trim()
   const feedbackSummary = String(row.feedbackSummary ?? visitResult).trim()
   const jiraId = ''
   const ratingRecordId = ''
@@ -100,6 +120,7 @@ export function normalizeCustomerVisitRow(mappedRow) {
     visitFeedbackDetail,
     internalConclusion,
     internalEvaluationDetail,
+    remark,
     jiraId,
     ratingRecordId,
     ratingScore: Number.isFinite(ratingScore) ? ratingScore : undefined,
@@ -221,14 +242,6 @@ export function matchLibraryRecord(candidates, visit) {
 }
 
 /**
- * @param {string} left
- * @param {string} right
- */
-function sameNonEmptyText(left, right) {
-  return Boolean(left && right && left === right)
-}
-
-/**
  * @param {{
  *   rows: Record<string, unknown>[]
  *   libraryRecords: Array<import('../types.js').FeedbackRecord | Record<string, unknown>>
@@ -250,6 +263,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
   let metaOnlyCount = 0
   let detailedFieldMissingCount = 0
   let detailedFieldCompleteCount = 0
+  const contentCounts = new Map()
 
   ;(rows || []).forEach((raw, i) => {
     const rowIndex = i + 1
@@ -260,11 +274,30 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
     }
 
     const customerKey = buildCustomerKey(visit)
-    const id = stableVisitRecordId(importMonth || visit.visitMonth, visit.productName, customerKey)
+    const month = importMonth || visit.visitMonth
+    const contentKey = [
+      month,
+      visit.productName,
+      customerKey,
+      visit.visitResult,
+      visit.internalConclusion,
+      visit.remark,
+    ].join('\0')
+    const occurrence = contentCounts.get(contentKey) || 0
+    contentCounts.set(contentKey, occurrence + 1)
+    const id = visitContentRecordId(
+      month,
+      visit.productName,
+      customerKey,
+      visit.visitResult,
+      visit.internalConclusion,
+      visit.remark,
+      occurrence,
+    )
     const visitMeta = {
       id,
       visitMonth: visit.visitMonth,
-      importMonth: importMonth || visit.visitMonth,
+      importMonth: month,
       productName: visit.productName,
       customerName: visit.customerName,
       customerCode: visit.customerCode,
@@ -278,6 +311,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
       visitFeedbackDetail: visit.visitFeedbackDetail || visit.visitResult,
       internalConclusion: visit.internalConclusion,
       internalEvaluationDetail: visit.internalEvaluationDetail || visit.internalConclusion,
+      remark: visit.remark,
       jiraId: visit.jiraId || '',
       updatedAt: importedAt,
     }
@@ -331,6 +365,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
         visitFeedbackDetail: visit.visitFeedbackDetail || visit.visitResult,
         internalConclusion: visit.internalConclusion,
         internalEvaluationDetail: visit.internalEvaluationDetail || visit.internalConclusion,
+        remark: visit.remark,
         jiraId: visit.jiraId || undefined,
         importBatchId: importBatchId || '',
         importedAt,
@@ -376,25 +411,18 @@ export async function executeCustomerVisitImport({
   const dry = runCustomerVisitImportDryRun({ rows, libraryRecords, importBatchId, importMonth })
 
   let visits = await loadVisitRecords(adapter)
+  const seenIdentity = new Set()
   for (const item of dry.visitRecords) {
-    const existingIdx = visits.findIndex(
-      (r) => {
-        const recordCode = String(r.customerCode || '').trim()
-        const itemCode = String(item.customerCode || '').trim()
-        const recordName = String(r.customerName || '').trim()
-        const itemName = String(item.customerName || '').trim()
-        return (
-          r.id === item.id ||
-          ((r.importMonth || r.visitMonth) === (item.importMonth || item.visitMonth) &&
-            r.productName === item.productName &&
-            (sameNonEmptyText(recordCode, itemCode) ||
-              sameNonEmptyText(recordName, itemName) ||
-              sameNonEmptyText(String(r.userInfo || '').trim(), String(item.userInfo || '').trim())))
-        )
-      },
-    )
-    if (existingIdx >= 0) {
-      item.id = visits[existingIdx].id
+    const customerKey = buildCustomerKey(item)
+    const month = item.importMonth || item.visitMonth
+    const identity = [month, item.productName, customerKey].join('\0')
+    const isFirst = !seenIdentity.has(identity)
+    seenIdentity.add(identity)
+    if (isFirst) {
+      const legacyId = stableVisitRecordId(month, item.productName, customerKey)
+      if (legacyId !== item.id && visits.some((record) => record.id === legacyId)) {
+        item.id = legacyId
+      }
     }
     visits = upsertVisitRecord(visits, item)
   }

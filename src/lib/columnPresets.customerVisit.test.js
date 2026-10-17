@@ -20,6 +20,23 @@ describe('customer visit preset detection', () => {
       customerCode: '客户编码',
       visitResult: '回访结果',
       internalConclusion: '内部评估',
+      remark: '备注',
     })
+  })
+
+  it('still detects the template when the optional remark column is absent', () => {
+    const withoutRemark = detectPreset(
+      ['数据月份', '客户名称', '客户编码', '产品名称', '回访结果', '内部评估'],
+      'post_use_rating',
+      { postUseRatingSubType: 'customer_visit' },
+    )
+    const withRemark = detectPreset(
+      ['数据月份', '客户名称', '客户编码', '产品名称', '回访结果', '内部评估', '备注'],
+      'post_use_rating',
+      { postUseRatingSubType: 'customer_visit' },
+    )
+
+    expect(withoutRemark?.id).toBe(POST_USE_CUSTOMER_VISIT_PRESET.id)
+    expect(withRemark?.columnMap.remark).toBe('备注')
   })
 })

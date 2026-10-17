@@ -154,6 +154,7 @@ export const POST_USE_CUSTOMER_VISIT_PRESET = {
     customerCode: '客户编码',
     visitResult: '回访结果',
     internalConclusion: '内部评估',
+    remark: '备注',
     visitFeedbackDetail: '回访结果',
     internalEvaluationDetail: '内部评估',
   },

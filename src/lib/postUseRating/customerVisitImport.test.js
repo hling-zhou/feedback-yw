@@ -6,6 +6,7 @@ import {
   normalizeCustomerVisitRow,
   stableVisitRecordId,
 } from './customerVisitImport.js'
+import { loadVisitRecords, META_KEY_POST_USE_VISITS } from './visitRecords.js'
 
 describe('customerVisitImport', () => {
   it('parseRatingScoreFromText extracts leading score', () => {
@@ -89,6 +90,7 @@ describe('customerVisitImport', () => {
       客户编码: 'C001',
       回访结果: '电话已回访',
       内部评估: '待跟进',
+      备注: '补充说明',
     })
 
     expect(row.customerName).toBe('客户A')
@@ -97,6 +99,7 @@ describe('customerVisitImport', () => {
     expect(row.feedbackSummary).toBe('电话已回访')
     expect(row.visitFeedbackDetail).toBe('电话已回访')
     expect(row.internalEvaluationDetail).toBe('待跟进')
+    expect(row.remark).toBe('补充说明')
   })
 
   it('attaches imported customer visit to the matched post-use rating', async () => {
@@ -126,6 +129,7 @@ describe('customerVisitImport', () => {
           客户编码: 'C001',
           回访结果: '客户确认当前方案无法满足',
           内部评估: '建议进入需求池',
+          备注: '下月再联系',
         },
       ],
       importMonth: '2026-06',
@@ -142,5 +146,121 @@ describe('customerVisitImport', () => {
     expect(updates[0].customerVisit.customerName).toBe('客户A')
     expect(updates[0].customerVisit.customerCode).toBe('C001')
     expect(updates[0].customerVisit.internalEvaluationDetail).toBe('建议进入需求池')
+    expect(updates[0].customerVisit.remark).toBe('下月再联系')
+  })
+
+  it('keeps every row for the same customer, product, and month, and reimport does not duplicate them', async () => {
+    const storedMeta = new Map()
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => storedMeta.set(key, value),
+    }
+    const rows = [
+      {
+        数据月份: '2026-06',
+        产品名称: '云专线',
+        客户名称: '客户A',
+        客户编码: 'C001',
+        回访结果: '第一次回访',
+        内部评估: '需求接纳',
+        备注: '甲',
+      },
+      {
+        数据月份: '2026-06',
+        产品名称: '云专线',
+        客户名称: '客户A',
+        客户编码: 'C001',
+        回访结果: '第一次回访',
+        内部评估: '需求接纳',
+        备注: '甲',
+      },
+      {
+        数据月份: '2026-06',
+        产品名称: '云专线',
+        客户名称: '客户A',
+        客户编码: 'C001',
+        回访结果: '第二次回访',
+        内部评估: '待客户反馈',
+        备注: '乙',
+      },
+    ]
+    const first = await executeCustomerVisitImport({
+      adapter,
+      rows,
+      importMonth: '2026-06',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+
+    expect(first.visitRecords).toHaveLength(3)
+    expect(new Set(first.visitRecords.map((item) => item.id)).size).toBe(3)
+    expect(first.visitRecords.map((item) => item.remark)).toEqual(['甲', '甲', '乙'])
+
+    await executeCustomerVisitImport({
+      adapter,
+      rows,
+      importMonth: '2026-06',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const saved = await loadVisitRecords(adapter)
+    expect(saved).toHaveLength(3)
+    expect(saved.map((item) => item.visitResult)).toEqual(['第一次回访', '第一次回访', '第二次回访'])
+  })
+
+  it('updates a previously stored single visit and appends additional rows', async () => {
+    const legacyId = stableVisitRecordId('2026-06', '云专线', 'C001')
+    const storedMeta = new Map([
+      [META_KEY_POST_USE_VISITS, {
+        records: [{
+          id: legacyId,
+          importMonth: '2026-06',
+          visitMonth: '2026-06',
+          productName: '云专线',
+          customerName: '客户A',
+          customerCode: 'C001',
+          visitResult: '旧回访',
+          internalConclusion: '待客户反馈',
+        }],
+      }],
+    ])
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => storedMeta.set(key, value),
+    }
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [
+        {
+          数据月份: '2026-06',
+          产品名称: '云专线',
+          客户名称: '客户A',
+          客户编码: 'C001',
+          回访结果: '更正后的回访',
+          内部评估: '需求接纳',
+          备注: '甲',
+        },
+        {
+          数据月份: '2026-06',
+          产品名称: '云专线',
+          客户名称: '客户A',
+          客户编码: 'C001',
+          回访结果: '第二条回访',
+          内部评估: '待客户反馈',
+          备注: '乙',
+        },
+      ],
+      importMonth: '2026-06',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+
+    const saved = await loadVisitRecords(adapter)
+    expect(saved).toHaveLength(2)
+    expect(saved.find((item) => item.id === legacyId)).toMatchObject({
+      visitResult: '更正后的回访',
+      remark: '甲',
+    })
+    expect(saved.some((item) => item.id !== legacyId && item.visitResult === '第二条回访')).toBe(true)
   })
 })
