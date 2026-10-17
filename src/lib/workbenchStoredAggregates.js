@@ -1,6 +1,6 @@
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { isCustomerExperienceComplaint } from '../domain/complaintCause.js'
-import { resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
+import { resolveChartEndMonth, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
 import {
   monthsForInsightPeriod,
   resolveJourneyComparisonWindow,
@@ -422,7 +422,7 @@ export function buildOverviewWorkbenchAggregate({
     productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
   })
 
-  const endMonth = String(period?.endDate || '').slice(0, 7)
+  const endMonth = resolveChartEndMonth(period)
   /** @type {Record<string, ReturnType<typeof buildProductExperienceTrend>>} */
   const productExperienceTrend = {}
   for (const productName of productNames) {

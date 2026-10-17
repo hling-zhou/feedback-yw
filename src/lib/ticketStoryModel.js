@@ -9,7 +9,6 @@ import {
   normalizeInsightPeriod,
   normalizeYearMonth,
   resolvePreviousInsightPeriod,
-  shiftYearMonth,
 } from '../domain/insightPeriod.js'
 import {
   computeMonthlyWanTou,
@@ -69,19 +68,36 @@ export function formatYearMonthLabel(ym) {
 }
 
 /**
- * 旅程图对比窗口：多月范围按月均绘制，对比范围为开始月的上一个月。
+ * 旅程图对比窗口：当前周期整段合计，对比上一整段周期（月→上月，季→上季，年→上年）。
  * @param {import('../domain/insightPeriod.js').InsightPeriod | null | undefined} period
  */
 export function resolveJourneyComparisonWindow(period) {
-  const currentMonths = monthsForInsightPeriod(period)
-  const previousMonth = currentMonths[0] ? shiftYearMonth(currentMonths[0], -1) : null
-  const useMonthlyAverage = currentMonths.length > 1
+  const normalized = period ? normalizeInsightPeriod(period) : null
+  const currentMonths = monthsForInsightPeriod(normalized)
+  const previous = resolvePreviousInsightPeriod(normalized)
+  const previousMonths = monthsForInsightPeriod(previous)
+  const granularity = normalized?.granularity
   return {
     currentMonths,
-    previousMonths: previousMonth ? [previousMonth] : [],
-    useMonthlyAverage,
-    previousLabel: previousMonth ? formatYearMonthLabel(previousMonth) : '上月',
-    currentLabel: useMonthlyAverage ? '本期月均' : period?.granularity === 'month' ? '本月' : '本期',
+    previousMonths,
+    useMonthlyAverage: false,
+    previousLabel:
+      previous?.label
+      || (granularity === 'month'
+        ? (previousMonths[0] ? formatYearMonthLabel(previousMonths[0]) : '上月')
+        : granularity === 'quarter'
+          ? '上季度'
+          : granularity === 'year'
+            ? '上年'
+            : '上期'),
+    currentLabel:
+      granularity === 'month'
+        ? '本月'
+        : granularity === 'quarter'
+          ? '本季'
+          : granularity === 'year'
+            ? '本年'
+            : '本期',
   }
 }
 
@@ -686,7 +702,8 @@ export function buildTicketStoryModel(input) {
     currentMonthCount: journeyWindow.currentMonths.length,
   })
   const endMonth = normalizeYearMonth(periodEndMonth) || currentPeriodMonths.at(-1) || trendMonths.at(-1) || ''
-  const momPreviousMonth = endMonth ? shiftYearMonth(endMonth, -1) : ''
+  const previousMonthSet = new Set(journeyWindow.previousMonths)
+  const hasPreviousPeriodData = previousMonthSet.size > 0
   const volumeTrend = trendMonths.map((month) => {
     const rows = trendRecords.filter((record) => monthOf(record) === month)
     const negative = rows.filter((record) => isNegativeSentiment(record.sentiment)).length
@@ -711,12 +728,11 @@ export function buildTicketStoryModel(input) {
   const selfServiceRecords = records.filter((record) => /操作指导|信息查询|文档|自助|帮助|说明/.test(`${record.requestScene || ''} ${record.problemType || ''} ${painOf(record)}`))
   const productOverview = [...productGroups.entries()].map(([product, rows]) => {
     const productRecommendations = actionRows.filter((row) => row.product === product)
-    const currentCount = endMonth
-      ? changeSourceRecords.filter((record) => productOf(record) === product && monthOf(record) === endMonth).length
-      : 0
-    const previousCount = momPreviousMonth
-      ? changeSourceRecords.filter((record) => productOf(record) === product && monthOf(record) === momPreviousMonth).length
-      : 0
+    const previousCount = hasPreviousPeriodData
+      ? changeSourceRecords.filter(
+        (record) => productOf(record) === product && previousMonthSet.has(monthOf(record)),
+      ).length
+      : null
     const rowFollowUps = rows.filter((record) => getFollowUpScore(record) != null)
     const productWanTou = complaint
       ? buildWanTou(rows, trendRecords.filter((record) => productOf(record) === product), trendMonths, product, orderVolumes, wanTouTargets, baselineYear)
@@ -725,7 +741,7 @@ export function buildTicketStoryModel(input) {
       product,
       count: rows.length,
       sharePct: pct(rows.length, total),
-      delta: momPreviousMonth ? currentCount - previousCount : null,
+      delta: previousCount == null ? null : rows.length - previousCount,
       negativeCount: rows.filter((record) => isNegativeSentiment(record.sentiment)).length,
       negativePct: pct(rows.filter((record) => isNegativeSentiment(record.sentiment)).length, rows.length),
       primaryProblem: pickPrimaryProblem(productRecommendations, rows),
@@ -820,11 +836,8 @@ export function buildTicketStoryModel(input) {
     return { ...action, validation: action.recoveryValidation || inferred }
   }).sort((a, b) => (a.validation.status === 'not_recovered' ? -1 : 1))
   const notImproved = recoveryRows.filter((row) => row.validation.status === 'not_recovered').length
-  const latestVolume = endMonth ? volumeTrend.find((row) => row.date === endMonth)?.count ?? changeSourceRecords.filter((record) => monthOf(record) === endMonth).length : 0
-  const previousVolume = momPreviousMonth
-    ? (volumeTrend.find((row) => row.date === momPreviousMonth)?.count
-      ?? changeSourceRecords.filter((record) => monthOf(record) === momPreviousMonth).length)
-    : null
+  const latestVolume = total
+  const previousVolume = hasPreviousPeriodData ? previousPeriodRecords.length : null
   const volumeDelta = previousVolume == null ? null : latestVolume - previousVolume
   const overallState = !total ? '暂无有效工单' : negativeRecords.length / total >= 0.3 ? '负向反馈需重点关注' : volumeDelta > 0 ? '工单规模正在增长' : '整体状态相对稳定'
   return {

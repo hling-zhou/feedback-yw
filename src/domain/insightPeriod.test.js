@@ -4,6 +4,7 @@ import {
   periodIdFromSpec,
   previousPeriodIdFromPeriod,
   previousPeriodSpecFromSpec,
+  resolveChartEndMonth,
   resolvePreviousInsightPeriod,
   toLastMonthSpec,
 } from './insightPeriod.js'
@@ -59,6 +60,32 @@ describe('insightPeriod previous period', () => {
       updatedAt: '',
     }
     expect(previousPeriodIdFromPeriod(period)).toBe('period:quarter:2024-Q4')
+  })
+})
+
+describe('resolveChartEndMonth', () => {
+  it('keeps a past period end month', () => {
+    expect(
+      resolveChartEndMonth(
+        { endDate: '2026-06-30' },
+        new Date('2026-10-17T00:00:00'),
+      ),
+    ).toBe('2026-06')
+  })
+
+  it('clips unfinished year or quarter to the current month', () => {
+    expect(
+      resolveChartEndMonth(
+        { endDate: '2026-12-31' },
+        new Date('2026-10-17T00:00:00'),
+      ),
+    ).toBe('2026-10')
+    expect(
+      resolveChartEndMonth(
+        { endDate: '2026-09-30' },
+        new Date('2026-08-01T00:00:00'),
+      ),
+    ).toBe('2026-08')
   })
 })
 

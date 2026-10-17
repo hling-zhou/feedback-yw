@@ -16,7 +16,12 @@ import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBl
 import { useBulkRetagModal } from '../hooks/useBulkRetagModal.jsx'
 import TaskHistoryPanel from '../components/TaskHistoryPanel.jsx'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
-import { isImportMonthInPeriod, periodSpecFromImportMonth, resolveInsightPeriod } from '../domain/insightPeriod.js'
+import {
+  isImportMonthInPeriod,
+  listMonthsInclusive,
+  periodSpecFromImportMonth,
+  resolveInsightPeriod,
+} from '../domain/insightPeriod.js'
 import { usePeriodScope } from '../hooks/usePeriodScope.js'
 import { SCHEMA_VERSION, DEFAULT_TENANT_ID } from '../domain/constants.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
@@ -204,11 +209,23 @@ export default function Feedbacks() {
     return next
   }, [hiddenColumns, isPostUseLane])
   const isCustomerVisitLane = feedbackLane === FEEDBACK_LANE_CUSTOMER_VISITS
+  const postUseLoadMonthIds = useMemo(() => {
+    if (!currentPeriod) return currentPeriodId ? [currentPeriodId] : []
+    const months = listMonthsInclusive(
+      String(currentPeriod.startDate || '').slice(0, 7),
+      String(currentPeriod.endDate || '').slice(0, 7),
+    )
+    return months.length
+      ? months.map((month) => `period:month:${month}`)
+      : currentPeriodId
+        ? [currentPeriodId]
+        : []
+  }, [currentPeriod, currentPeriodId])
   const postUseListLoading =
     isPostUseLane &&
     postUseRatingOnDemand &&
-    Boolean(currentPeriodId) &&
-    !postUseSettledPeriodIds.includes(currentPeriodId)
+    postUseLoadMonthIds.length > 0 &&
+    postUseLoadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
   const libraryLoading =
     periodsLoading ||
     feedbacksLoading ||
@@ -336,12 +353,13 @@ export default function Feedbacks() {
     }
   }, [importSession?.active, ownedTasks, retagSession?.active, syncSharedDataFromServer, refreshCustomerVisitRecords])
 
-  // 用后即评 lane：按需加载 post_use_rating 数据（首屏不拉，切到 lane 时才加载）
+  // 用后即评 lane：按月加载（季/年拆月份，避免未入库周期 id 拉全量）
   useEffect(() => {
-    if (isPostUseLane && currentPeriodId) {
-      void loadPostUseRatingForPeriod(currentPeriodId)
+    if (!isPostUseLane) return
+    for (const periodId of postUseLoadMonthIds) {
+      void loadPostUseRatingForPeriod(periodId)
     }
-  }, [isPostUseLane, currentPeriodId, loadPostUseRatingForPeriod, postUseCacheGeneration])
+  }, [isPostUseLane, postUseLoadMonthIds, loadPostUseRatingForPeriod, postUseCacheGeneration])
 
   // 用后即评 lane：拉取服务端「待补全用户旅程」计数，横幅/按钮显示用
   useEffect(() => {

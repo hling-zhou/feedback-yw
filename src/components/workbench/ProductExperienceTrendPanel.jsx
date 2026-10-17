@@ -5,6 +5,7 @@ import { buildProductExperienceTrend } from '../../domain/workbenchProductTrends
 import { listProducts } from '../../lib/productTaxonomy.js'
 import { getEnabledProducts } from '../../lib/productCatalogLoader.js'
 import { getPostUseFocusTrackedNames } from '../../lib/productCatalog/postUseRatingProducts.js'
+import { resolveChartEndMonth } from '../../domain/insightPeriod.js'
 
 /** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
 
@@ -67,16 +68,7 @@ export default function ProductExperienceTrendPanel({
     else setSelected(next)
   }
 
-  const endMonth = useMemo(() => {
-    if (!currentPeriod) return ''
-    // month 粒度：anchorYear + anchorMonth → YYYY-MM
-    if (currentPeriod.granularity === 'month' && currentPeriod.anchorYear && currentPeriod.anchorMonth) {
-      return `${currentPeriod.anchorYear}-${String(currentPeriod.anchorMonth).padStart(2, '0')}`
-    }
-    // 其他粒度兜底：取 endDate 的 YYYY-MM
-    if (currentPeriod.endDate) return currentPeriod.endDate.slice(0, 7)
-    return ''
-  }, [currentPeriod])
+  const endMonth = useMemo(() => resolveChartEndMonth(currentPeriod), [currentPeriod])
 
   const trend = useMemo(() => {
     const stored = productName && storedTrends?.[productName]

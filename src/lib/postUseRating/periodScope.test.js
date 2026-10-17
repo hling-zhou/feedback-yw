@@ -55,6 +55,20 @@ describe('post-use rating period scope', () => {
     ).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
   })
 
+  it('clips unfinished year trends to the current month', () => {
+    expect(
+      postUseTrendMonthsForPeriod(
+        {
+          granularity: 'year',
+          anchorYear: 2026,
+          startDate: '2026-01-01',
+          endDate: '2026-12-31',
+        },
+        new Date('2026-10-17T00:00:00'),
+      ),
+    ).toEqual(Array.from({ length: 10 }, (_, index) => `2026-${String(index + 1).padStart(2, '0')}`))
+  })
+
   it('filters every trend collection to the selected period', () => {
     const filtered = filterPostUseTrendForPeriod(
       {

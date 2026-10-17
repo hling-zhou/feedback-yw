@@ -618,6 +618,20 @@ export function formatPeriodSubtitle(period) {
 }
 
 /**
+ * 趋势图终点月：取周期 endDate 所在月；若该月尚未到来，停在当前自然月（不画未来空月）。
+ * @param {InsightPeriod | null | undefined} period
+ * @param {Date} [now]
+ * @returns {string} YYYY-MM，无法推断时返回 ''
+ */
+export function resolveChartEndMonth(period, now = new Date()) {
+  if (!period) return ''
+  const periodEnd = normalizeYearMonth(period.endDate?.slice(0, 7))
+  if (!periodEnd) return ''
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return periodEnd > current ? current : periodEnd
+}
+
+/**
  * 将任意粒度的洞察周期归一化为其**最后一个月**的月粒度 spec。
  *
  * - month → 直接返回等价月 spec
@@ -625,8 +639,7 @@ export function formatPeriodSubtitle(period) {
  * - quarter / year → 取 endDate 所在月
  * - 无法推断 → 当前自然月
  *
- * 用于"洞察工作台仅月粒度"场景：当全局 currentPeriod 被其他模块设为季/年/自定义时，
- * 工作台自动收敛到最后一个月，保证月粒度口径一致。
+ * 用于洞察分析等仍要求月粒度的页面：当全局 currentPeriod 为季/年/自定义时收成最后一个月。
  *
  * @param {InsightPeriod | null | undefined} period
  * @returns {ReturnType<typeof buildPeriodSpec>}

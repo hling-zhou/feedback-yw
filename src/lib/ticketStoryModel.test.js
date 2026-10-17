@@ -134,7 +134,7 @@ describe('ticket story model', () => {
     expect(model.trendsAndChanges.changes[0].ticketIds).toEqual(expect.arrayContaining(['T-1', 'T-2']))
   })
 
-  it('uses quarter labels and aggregates across quarter months', () => {
+  it('uses quarter labels and totals against the previous full quarter', () => {
     const records = [
       record('1', { importMonth: '2026-01', problemType: 'A' }),
       record('2', { importMonth: '2026-04', problemType: 'A' }),
@@ -157,14 +157,15 @@ describe('ticket story model', () => {
       },
       periodEndMonth: '2026-06',
     })
-    expect(model.trendsAndChanges.previousPeriodLabel).toBe('2026年3月')
-    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本期月均')
+    expect(model.trendsAndChanges.previousPeriodLabel).toBe('2026年Q1')
+    expect(model.trendsAndChanges.currentPeriodLabel).toBe('本季')
     expect(model.trendsAndChanges.changes[0]).toMatchObject({
       journeyL1: '使用',
-      previousCount: 0,
-      currentCount: 0.7,
-      change: '新增',
+      previousCount: 1,
+      currentCount: 2,
+      change: '增长',
     })
+    expect(model.overview.productOverview[0].delta).toBe(1)
   })
 
   it('computes product overview MoM delta against previous calendar month', () => {
@@ -401,7 +402,7 @@ describe('ticket story model', () => {
       periodEndMonth: '2026-06',
     })
     expect(model.drivers.journeyLayout).toBe('lifecycle')
-    expect(model.overview.metrics.volumeDelta).toBe(1)
+    expect(model.overview.metrics.volumeDelta).toBe(2)
     expect(model.drivers.journeyStages[0].journeyL1).toBe('认知与选型')
     expect(model.drivers.journeyStages[0].empty).toBe(true)
     expect(model.drivers.journeyStages.map((stage) => stage.journeyL1)).not.toContain('故障与应急')
@@ -618,7 +619,7 @@ describe('ticket story model', () => {
     ])).toBe('公网IP无法访问外网')
   })
 
-  it('averages multi-month journey volume against the month before the range', () => {
+  it('sums multi-month journey volume against the previous full period', () => {
     const quarter = {
       id: 'period:quarter:2026-Q2',
       label: '2026年Q2',
@@ -631,10 +632,10 @@ describe('ticket story model', () => {
     const window = resolveJourneyComparisonWindow(quarter)
     expect(window).toMatchObject({
       currentMonths: ['2026-04', '2026-05', '2026-06'],
-      previousMonths: ['2026-03'],
-      useMonthlyAverage: true,
-      previousLabel: '2026年3月',
-      currentLabel: '本期月均',
+      previousMonths: ['2026-01', '2026-02', '2026-03'],
+      useMonthlyAverage: false,
+      previousLabel: '2026年Q1',
+      currentLabel: '本季',
     })
 
     const currentRecords = [
@@ -647,8 +648,9 @@ describe('ticket story model', () => {
       record('old', { importMonth: '2026-06', journeyL1: '故障与应急', journeyL2: '业务中断/不可用' }),
     ]
     const previousRecords = [
-      record('p1', { importMonth: '2026-03', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
-      record('p2', { importMonth: '2026-03', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('p1', { importMonth: '2026-01', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('p2', { importMonth: '2026-02', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
+      record('p3', { importMonth: '2026-03', journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }),
     ]
     const model = buildJourneyStages({
       currentRecords,
@@ -656,19 +658,19 @@ describe('ticket story model', () => {
       hasPreviousPeriod: true,
       selectedProduct: '弹性公网IP',
       sourceFilter: 'all',
-      useMonthlyAverage: true,
+      useMonthlyAverage: false,
       currentMonthCount: 3,
     })
     const operate = model.stages.find((stage) => stage.journeyL1 === '业务使用与连通')
     expect(operate).toMatchObject({
-      currentCount: 2,
-      previousCount: 2,
-      change: '持续',
-      complaintCount: 2,
+      currentCount: 6,
+      previousCount: 3,
+      change: '增长',
+      complaintCount: 6,
     })
     expect(operate.children.find((child) => child.l2 === '公网访问不通')).toMatchObject({
-      count: 2,
-      previousCount: 2,
+      count: 6,
+      previousCount: 3,
     })
     expect(model.stages.map((stage) => stage.journeyL1)).not.toContain('故障与应急')
     expect(model.stages.every((stage) => stage.fromTaxonomy)).toBe(true)

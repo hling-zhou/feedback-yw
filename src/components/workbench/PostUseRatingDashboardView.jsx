@@ -24,6 +24,8 @@ import {
   applyPostUseWorkbenchAggregate,
   postUseWorkbenchMatchesCatalog,
 } from '../../lib/workbenchStoredAggregates.js'
+import { resolveChartEndMonth } from '../../domain/insightPeriod.js'
+import { postUsePeriodMonths } from '../../lib/postUseRating/periodScope.js'
 
 /**
  * 用后即评工作台：线上综合分析；单月可打开独立 HTML 月报。
@@ -197,7 +199,8 @@ export default function PostUseRatingDashboardView() {
     }
   }
 
-  const reportMonth = reportMonthSafe(currentPeriod)
+  const reportTarget = reportTargetSafe(currentPeriod)
+  const reportMonth = reportTarget?.kind === 'month' ? reportTarget.key : ''
   const qualityMonth = reportMonth || [...new Set(scopedItems.map((r) => r.importMonth).filter(Boolean))].sort().at(-1) || ''
   const periodQuality = quality?.periods?.[qualityMonth] || null
   const useRemoteCompany = Array.isArray(remoteStatusTrends?.companyMetrics)
@@ -225,15 +228,19 @@ export default function PostUseRatingDashboardView() {
       ticketRecords,
       statusTrends: remoteStatusTrends,
       statusTrendsPending: Boolean(statusTrendsPending && !remoteStatusTrends),
-      nowMonth: String(currentPeriod?.endDate || '').slice(0, 7),
+      nowMonth: resolveChartEndMonth(currentPeriod),
     })
     return catalogMatchesStored ? applyPostUseWorkbenchAggregate(live, storedWorkbench) : live
   }, [scopedItems, allScopedItems, items, useRemoteCompany, remoteCompanyMetrics, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords, remoteStatusTrends, statusTrendsPending, catalogMatchesStored, storedWorkbench])
 
+  const loadMonthIds = useMemo(
+    () => (currentPeriod ? postUsePeriodMonths(currentPeriod).map((month) => `period:month:${month}`) : []),
+    [currentPeriod],
+  )
   const ratingsPending =
     postUseRatingOnDemand &&
-    Boolean(currentPeriod?.id) &&
-    !postUseSettledPeriodIds.includes(currentPeriod.id)
+    loadMonthIds.length > 0 &&
+    loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
 
   if (ratingsPending || !extrasReady) {
     return (
@@ -249,13 +256,13 @@ export default function PostUseRatingDashboardView() {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-3">
             <Typography.Title level={4} className="!mb-0">
-              {reportMonth ? '用后即评分析与报告' : '用后即评综合分析'}
+              {reportTarget ? '用后即评分析与报告' : '用后即评综合分析'}
             </Typography.Title>
-            {reportMonth ? (
+            {reportTarget ? (
               <Button
-                onClick={() => window.open(`/workbench/post-use-report/${reportMonth}`, '_blank')}
+                onClick={() => window.open(`/workbench/post-use-report/${reportTarget.key}`, '_blank')}
               >
-                打开月报
+                {reportTarget.kind === 'quarter' ? '打开季报' : '打开月报'}
               </Button>
             ) : null}
           </div>
@@ -266,7 +273,8 @@ export default function PostUseRatingDashboardView() {
             <Tag color="blue">范围 {storyModel.scope.periodLabel}</Tag>
             <Tag>产品 {storyModel.scope.productCount}</Tag>
             <Tag>样本 {storyModel.scope.validSample}</Tag>
-            {reportMonth ? <Tag color="green">月报 {reportMonth}</Tag> : null}
+            {reportTarget?.kind === 'month' ? <Tag color="green">月报 {reportTarget.key}</Tag> : null}
+            {reportTarget?.kind === 'quarter' ? <Tag color="green">季报 {reportTarget.key}</Tag> : null}
           </Space>
         </div>
       </div>
@@ -287,8 +295,11 @@ export default function PostUseRatingDashboardView() {
   )
 }
 
-/** @param {{ id?: string } | null | undefined} period */
-function reportMonthSafe(period) {
-  if (!period?.id?.includes('period:month:')) return ''
-  return period.id.replace('period:month:', '')
+/** @param {{ id?: string, granularity?: string, anchorYear?: number, anchorQuarter?: number } | null | undefined} period */
+function reportTargetSafe(period) {
+  if (period?.granularity === 'quarter' && period.anchorYear && period.anchorQuarter) {
+    return { kind: 'quarter', key: `${period.anchorYear}-Q${period.anchorQuarter}` }
+  }
+  if (!period?.id?.includes('period:month:')) return null
+  return { kind: 'month', key: period.id.replace('period:month:', '') }
 }

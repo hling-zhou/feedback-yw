@@ -35,7 +35,7 @@ function SectionHeading({ title, summary, id }) {
 }
 
 function formatSignedDelta(delta) {
-  if (delta == null || !Number.isFinite(delta)) return '暂无对比'
+  if (delta == null || !Number.isFinite(delta)) return '—'
   if (delta === 0) return '环比持平'
   return `环比 ${delta > 0 ? '+' : ''}${delta}`
 }
@@ -381,7 +381,7 @@ export default function TicketStoryView({
             columns={[
               { title: '产品', dataIndex: 'product', fixed: 'left', width: 150 },
               { title: '工单量', dataIndex: 'count', width: 82, render: (value, row) => <span>{value}{row.smallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
-              { title: '环比', dataIndex: 'delta', width: 88, render: (value) => value == null ? '暂无对比' : `${value >= 0 ? '+' : ''}${value}` },
+              { title: '环比', dataIndex: 'delta', width: 88, render: (value) => value == null ? '—' : `${value >= 0 ? '+' : ''}${value}` },
               ...(complaint
                 ? [
                     { title: '负向', dataIndex: 'negativePct', width: 110, render: (value, row) => `${row.negativeCount}（${value}%）` },

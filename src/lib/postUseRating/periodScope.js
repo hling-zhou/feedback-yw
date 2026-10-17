@@ -14,13 +14,20 @@ export function postUseVisitMonthsForPeriod(period) {
   return postUsePeriodMonths(period)
 }
 
-/** 月、季度、年看所在自然年；自定义周期严格使用指定月份范围。 */
-export function postUseTrendMonthsForPeriod(period) {
+/**
+ * 月、季度、年看所在自然年（起点 1 月，终点为周期末月）；
+ * 未结束周期终点停在当前月，不画未来空月。自定义周期严格使用指定月份范围。
+ * @param {import('../../domain/insightPeriod.js').InsightPeriod | null | undefined} period
+ * @param {Date} [now]
+ */
+export function postUseTrendMonthsForPeriod(period, now = new Date()) {
   if (period?.granularity === 'custom') return postUsePeriodMonths(period)
   const year = Number(period?.anchorYear || String(period?.startDate || '').slice(0, 4))
   if (!Number.isFinite(year)) return []
   const endMonth = String(period?.endDate || '').slice(0, 7)
-  const normalizedEndMonth = /^\d{4}-\d{2}$/.test(endMonth) ? endMonth : `${year}-12`
+  let normalizedEndMonth = /^\d{4}-\d{2}$/.test(endMonth) ? endMonth : `${year}-12`
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  if (normalizedEndMonth > current) normalizedEndMonth = current
   return listMonthsInclusive(`${year}-01`, normalizedEndMonth)
 }
 

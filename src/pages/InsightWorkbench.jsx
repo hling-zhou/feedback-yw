@@ -13,7 +13,7 @@ import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
 import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
-import { toLastMonthSpec } from '../domain/insightPeriod.js'
+import { listMonthsInclusive, toLastMonthSpec } from '../domain/insightPeriod.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { isTicketSource } from '../lib/importUtils.js'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
@@ -104,25 +104,30 @@ export default function InsightWorkbench() {
     }
   }, [searchParams])
 
-  // 工作台仅月粒度：当全局 currentPeriod 非月粒度时自动归一化到最后一个月
+  // 工作台支持月、季、年。自定义周期仍收到最后一个月，避免任意长窗拖垮首屏。
   const lastMismatchIdRef = useRef(null)
   useEffect(() => {
     if (!currentPeriod) return
-    if (currentPeriod.granularity === 'month') {
+    const g = currentPeriod.granularity
+    if (g === 'month' || g === 'quarter' || g === 'year') {
       lastMismatchIdRef.current = null
       return
     }
-    // 避免与正在进行的 selectInsightPeriod 循环冲突
     if (lastMismatchIdRef.current === currentPeriod.id) return
     lastMismatchIdRef.current = currentPeriod.id
     const spec = toLastMonthSpec(currentPeriod)
     selectInsightPeriod(spec)
   }, [currentPeriod, selectInsightPeriod])
 
-  // 用后即评 tab：按需加载 post_use_rating 数据（首屏不拉，切到 tab 时才加载）
+  // 用后即评 tab：按需按月加载（季/年拆成月份，避免未入库周期 id 拉全量）
   useEffect(() => {
-    if (activeTab === 'post_use_rating' && currentPeriod?.id) {
-      void loadPostUseRatingForPeriod(currentPeriod.id)
+    if (activeTab !== 'post_use_rating' || !currentPeriod) return
+    const months = listMonthsInclusive(
+      String(currentPeriod.startDate || '').slice(0, 7),
+      String(currentPeriod.endDate || '').slice(0, 7),
+    )
+    for (const month of months) {
+      void loadPostUseRatingForPeriod(`period:month:${month}`)
     }
   }, [activeTab, currentPeriod, loadPostUseRatingForPeriod, postUseCacheGeneration])
 
@@ -269,7 +274,12 @@ export default function InsightWorkbench() {
       />
 
       <div className="page-toolbar page-toolbar-nowrap !items-center !justify-between gap-2">
-        <InsightPeriodPicker compact showHint={false} className="min-w-0 flex-1" granularities={['month']} />
+        <InsightPeriodPicker
+          compact
+          showHint={false}
+          className="min-w-0 flex-1"
+          granularities={['month', 'quarter', 'year']}
+        />
         <Space className="mb-0 shrink-0" wrap size="small">
           <RebuildInsightsButton
             loading={Boolean(snapshotRebuilding)}

@@ -11,7 +11,7 @@ describe('OverviewTab journey map', () => {
     expect(map).toContain('sourceFilter')
     expect(map).toContain('resolveJourneyComparisonWindow')
     expect(map).toContain('useMonthlyAverage')
-    expect(map).toContain('多月按月均')
+    expect(map).toContain('对比')
   })
 
   it('mounts the single-product experience trend panel after 行动建议', () => {

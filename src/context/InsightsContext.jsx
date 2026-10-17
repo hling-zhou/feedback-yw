@@ -57,6 +57,7 @@ import {
   defaultMonthPeriodSpec,
   defaultMonthPeriodSpecFromMonths,
   insightPeriodFromSpec,
+  listMonthsInclusive,
   normalizeInsightPeriod,
   periodIdFromSpec,
   periodSpecFromImportMonth,
@@ -486,16 +487,18 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           /* 快照缺失时仍拉上月，保证旅程可对比 */
         }
       }
-      // 上月对比数据：后台异步加载，不阻塞首屏；数据就绪后 React 自动更新旅程图
-      const previousMonth = resolveJourneyComparisonWindow(period).previousMonths[0]
-      if (!previousMonth) return
-      const [year, month] = previousMonth.split('-').map(Number)
-      const previousPeriodId = periodIdFromSpec(
-        buildPeriodSpec({ granularity: 'month', year, month }),
-      )
-      void loadRecordsForPeriodId(previousPeriodId).catch((err) =>
-        console.warn('[storage] 旅程对比上月数据加载失败', err),
-      )
+      // 上一整段周期：按月加载，不阻塞首屏；数据就绪后 React 自动更新旅程图
+      const previousMonths = resolveJourneyComparisonWindow(period).previousMonths
+      for (const previousMonth of previousMonths) {
+        const [year, month] = previousMonth.split('-').map(Number)
+        if (!year || !month) continue
+        const previousPeriodId = periodIdFromSpec(
+          buildPeriodSpec({ granularity: 'month', year, month }),
+        )
+        void loadRecordsForPeriodId(previousPeriodId).catch((err) =>
+          console.warn('[storage] 旅程对比上期数据加载失败', err),
+        )
+      }
     },
     [adapter, loadRecordsForPeriodId],
   )
@@ -3154,9 +3157,20 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       }
       postUseJourneyActiveRef.current = true
       const reloadPostUseRatings = async () => {
-        if (!currentPeriodId) return
-        loadedPostUsePeriodIdsRef.current.delete(currentPeriodId)
-        await loadPostUseRatingForPeriod(currentPeriodId)
+        if (!currentPeriod) return
+        const months = listMonthsInclusive(
+          String(currentPeriod.startDate || '').slice(0, 7),
+          String(currentPeriod.endDate || '').slice(0, 7),
+        )
+        const periodIds = months.length
+          ? months.map((month) => `period:month:${month}`)
+          : currentPeriodId
+            ? [currentPeriodId]
+            : []
+        for (const periodId of periodIds) {
+          loadedPostUsePeriodIdsRef.current.delete(periodId)
+          await loadPostUseRatingForPeriod(periodId)
+        }
       }
       try {
         const res = await apiFetch('/api/storage/records/enrich', {

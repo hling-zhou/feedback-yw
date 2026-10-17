@@ -19,7 +19,7 @@ const SOURCE_OPTIONS = [
 
 /**
  * 综合概述总旅程图：产品与页面其他选择联动，来源仍在本图内切换，不写入快照。
- * 多月范围按当前旅程环节取月均，并与范围开始月的上一个月对比。
+ * 当前周期整段合计，对比上一整段周期。
  */
 export default function OverviewJourneyMap({
   feedbacks = [],
@@ -82,7 +82,7 @@ export default function OverviewJourneyMap({
     <div className="page-card"><div className="page-card-header"><span className="page-card-title">用户旅程</span><div>{
         <Typography.Text type="secondary" className="text-xs">
           投诉仅含客户体验类
-          {comparison.useMonthlyAverage ? ` · 多月按月均，对比${comparison.previousLabel}` : ''}
+          {comparison.previousMonths.length ? ` · 对比${comparison.previousLabel}` : ''}
         </Typography.Text>
       }</div></div>
       <div className="mb-3 flex flex-wrap items-center gap-3">

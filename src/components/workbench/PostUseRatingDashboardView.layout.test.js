@@ -6,9 +6,11 @@ describe('PostUseRatingDashboardView report availability', () => {
 
   it('opens the HTML monthly report in a new tab for a single-month range', () => {
     expect(source).toContain('打开月报')
-    expect(source).toContain("window.open(`/workbench/post-use-report/${reportMonth}`, '_blank')")
+    expect(source).toContain('打开季报')
+    expect(source).toContain("window.open(`/workbench/post-use-report/${reportTarget.key}`, '_blank')")
     expect(source).not.toContain('noopener')
-    expect(source).toContain("{reportMonth ? <Tag color=\"green\">月报 {reportMonth}</Tag> : null}")
+    expect(source).toContain('月报 {reportTarget.key}')
+    expect(source).toContain('季报 {reportTarget.key}')
     expect(source).not.toContain('Word 月报')
     expect(source).not.toContain('生成 Word')
     expect(source).not.toContain('导入修订版')
