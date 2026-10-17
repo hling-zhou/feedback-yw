@@ -147,7 +147,7 @@ const OFFLINE_CSS = `
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif; color: #1f2937; background: #e8eaed; }
-.page { width: min(1120px, calc(100% - 32px)); margin: 24px auto 48px; padding: 28px 32px 48px; background: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+.page { width: min(1300px, calc(100% - 32px)); margin: 24px auto 48px; padding: 28px 32px 48px; background: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.08); }
 .banner { font-size: 12px; color: #6b7280; margin: 0 0 16px; }
 h1 { font-size: 24px; margin: 0 0 8px; }
 h2 { font-size: 18px; margin: 32px 0 12px; }
