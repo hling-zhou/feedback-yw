@@ -1,4 +1,6 @@
+import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import {
+  POST_USE_SCORE_BASELINE,
   buildMonthlyScoreTable,
   computeExternalMixedMetrics,
   computeScoreDistribution,
@@ -16,11 +18,78 @@ import {
   buildFocusSatisfactionTrendChartModel,
   buildFocusScoreTrendChartModel,
 } from './trendStore.js'
-import { filterPostUseTrendForPeriod } from './periodScope.js'
+import { filterPostUseTrendForPeriod, postUsePeriodMonths } from './periodScope.js'
 import { postUseRecordsToScoredRows } from './scoredRows.js'
-import { buildDepartmentStatusTrends, pendingDepartmentStatusTrends } from './statusTrends.js'
+import {
+  buildDepartmentStatusTrends,
+  clipDepartmentStatusTrends,
+  pendingDepartmentStatusTrends,
+} from './statusTrends.js'
 
 export { postUseRecordsToScoredRows }
+
+function comparisonPrefix(granularity) {
+  if (granularity === 'quarter') return '较上季度'
+  if (granularity === 'year') return '较上年'
+  if (granularity === 'custom') return '较上周期'
+  return '较上月'
+}
+
+function periodWithMonthAnchor(period) {
+  if (!period || period.granularity !== 'month' || period.anchorMonth != null) return period
+  const end = String(period.endDate || period.startDate || '').slice(0, 7)
+  const match = /^(\d{4})-(\d{2})$/.exec(end)
+  if (!match) return period
+  return {
+    ...period,
+    anchorYear: period.anchorYear ?? Number(match[1]),
+    anchorMonth: Number(match[2]),
+  }
+}
+
+function recordMonth(record) {
+  const month = String(record?.importMonth || record?.createdAt || '').slice(0, 7)
+  return /^\d{4}-\d{2}$/.test(month) ? month : ''
+}
+
+/**
+ * 上一同等周期的部门均分（三渠道），供部门均分卡片写「较上月 / 较上季度」。
+ * @param {object[]} allRecords
+ * @param {import('../../domain/insightPeriod.js').InsightPeriod | null | undefined} period
+ * @param {string[]} productNames
+ */
+function previousDepartmentMixedScore(allRecords, period, productNames) {
+  const source = periodWithMonthAnchor(period)
+  const previous = resolvePreviousInsightPeriod(source)
+  const months = new Set(previous ? postUsePeriodMonths(previous) : [])
+  const prevRecords = months.size
+    ? (allRecords || []).filter((record) => months.has(recordMonth(record)))
+    : []
+  const yunwang = computeExternalMixedMetrics(postUseRecordsToScoredRows(prevRecords), { productNames }).yunwang
+  return {
+    avgScore: yunwang.totalSample ? yunwang.avgScore : null,
+    totalSample: yunwang.totalSample || 0,
+    momPrefix: comparisonPrefix(source?.granularity),
+  }
+}
+
+/**
+ * 体验现状两张问题卡：9 分以下看产品体验总览均分，投诉回访不达标沿用 n≥10 且低于 88%。
+ * @param {object[]} productOverview
+ */
+export function listExperienceStatusProducts(productOverview = []) {
+  const rows = productOverview || []
+  return {
+    belowNineNames: rows
+      .filter((row) => Number(row.sampleSize) > 0 && Number(row.avgScore) < POST_USE_SCORE_BASELINE)
+      .map((row) => row.productName)
+      .filter(Boolean),
+    callbackUnqualifiedNames: rows
+      .filter((row) => row.satisfactionBelowBaseline)
+      .map((row) => row.productName)
+      .filter(Boolean),
+  }
+}
 
 /**
  * Single presentation model for the online story and its monthly report projection.
@@ -270,7 +339,8 @@ export function buildPostUseStoryModel(input) {
   const satisfactionTrend = filteredTrend
     ? buildFocusSatisfactionTrendChartModel(filteredTrend, focusNames)
     : { data: [], areas: [] }
-  const statusTrends = providedStatusTrends
+  const dashboardMonth = String(nowMonth || period?.endDate || '').slice(0, 7)
+  const rawStatusTrends = providedStatusTrends
     ? providedStatusTrends
     : statusTrendsPending
       ? pendingDepartmentStatusTrends()
@@ -278,8 +348,9 @@ export function buildPostUseStoryModel(input) {
         departmentRecords: statusHistoryRecords ?? allRecords,
         companyRecords: statusHistoryCompanyRecords ?? companyRecords ?? allRecords,
         productNames,
-        nowMonth,
+        nowMonth: dashboardMonth,
       })
+  const statusTrends = clipDepartmentStatusTrends(rawStatusTrends, dashboardMonth)
 
   const critical = productOverview.find((product) => product.stateCode === 'critical')
     || productOverview.find((product) => product.stateCode === 'watch')
@@ -325,6 +396,7 @@ export function buildPostUseStoryModel(input) {
       scoreDistribution,
       nonTenDistributionProducts,
       statusTrends,
+      previousDepartmentScore: previousDepartmentMixedScore(allRecords, period, productNames),
     },
     productOverview,
     trendsAndChanges: { scoreTrend, satisfactionTrend, changes },

@@ -44,7 +44,7 @@
  * @property {(dataSourceType?: string) => Promise<string[]>} [listExistingTicketIds] 该数据类型下全部已有工单号
  * @property {(dataSourceType: string, ticketIds: string[]) => Promise<InsightRecord[]>} [listRecordsByTicketIds] 按工单号批量取记录（导入覆盖合并）
  * @property {() => Promise<{ months: Array<{ importMonth: string; count: number }>; bySource: Array<{ dataSourceType: string; importMonth: string; count: number }>; total: number }>} [listImportMonthSummary] 首屏默认周期推断：按导入月份×数据源聚合记录数
- * @property {() => Promise<{ pending?: boolean; experience: { data: object[]; areas: object[] }; satisfaction: { data: object[]; areas: object[] }; threeChannel: { data: object[]; areas: object[] }; companyMetrics?: Array<{ date: string; avgScore: number | null; totalSample: number; productCount: number; scoreSum: number }> }>} [listPostUseStatusTrends] 用后即评体验现状跨月趋势与公司口径（服务端聚合）
+ * @property {() => Promise<{ pending?: boolean; experience: { data: object[]; areas: object[] }; satisfaction: { data: object[]; areas: object[] }; threeChannel: { data: object[]; areas: object[] }; combined?: { data: object[]; areas: object[] }; companyMetrics?: Array<{ date: string; avgScore: number | null; totalSample: number; productCount: number; scoreSum: number }> }>} [listPostUseStatusTrends] 用后即评体验现状跨月趋势与公司口径（服务端聚合）
  * @property {() => Promise<{ records: number; snapshots: number; tagCandidates: number }>} [getStorageStats]
  * @property {(record: InsightRecord, options?: import('../domain/recordRevision.js').PutRecordOptions) => Promise<{ recordRevision?: number } | void>} putRecord
  * @property {(records: InsightRecord[]) => Promise<void>} putRecords

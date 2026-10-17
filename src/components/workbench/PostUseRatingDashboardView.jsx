@@ -225,6 +225,7 @@ export default function PostUseRatingDashboardView() {
       ticketRecords,
       statusTrends: remoteStatusTrends,
       statusTrendsPending: Boolean(statusTrendsPending && !remoteStatusTrends),
+      nowMonth: String(currentPeriod?.endDate || '').slice(0, 7),
     })
     return catalogMatchesStored ? applyPostUseWorkbenchAggregate(live, storedWorkbench) : live
   }, [scopedItems, allScopedItems, items, useRemoteCompany, remoteCompanyMetrics, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords, remoteStatusTrends, statusTrendsPending, catalogMatchesStored, storedWorkbench])

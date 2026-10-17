@@ -41,10 +41,20 @@ function normalizedVisit(visit) {
     productName: String(visit.productName || '').trim(),
     userInfo: normalizeEvidenceText(visit.userInfo || customerInfo),
     feedbackSummary: normalizeEvidenceText(visit.feedbackSummary),
-    visitResult: normalizeEvidenceText(visit.visitResult),
-    internalConclusion: normalizeEvidenceText(visit.internalConclusion),
+    visitResult: normalizeEvidenceText(visit.visitResult || visit.visitFeedbackDetail || visit.feedbackSummary),
+    internalConclusion: normalizeEvidenceText(visit.internalConclusion || visit.internalEvaluationDetail),
+    remark: normalizeEvidenceText(visit.remark),
     text: normalizeEvidenceText([visit.feedbackSummary, visit.visitResult, visit.internalConclusion].filter(Boolean).join(' ')),
   }
+}
+
+/** @param {ReturnType<typeof normalizedVisit>[]} visits */
+function visitItemsFrom(visits) {
+  return (visits || []).map((visit) => ({
+    visitResult: visit.visitResult || '',
+    internalConclusion: visit.internalConclusion || '',
+    remark: visit.remark || '',
+  }))
 }
 
 /** @param {object} record */
@@ -247,6 +257,7 @@ export function buildCustomerInsights(records, visits = []) {
     latestQuote: g.rows.find((r) => r.text)?.text || '',
     visitEvidenceCount: g.visits.length,
     visitEvidenceIds: g.visits.map((visit) => visit.id).filter(Boolean),
+    visitItems: visitItemsFrom(g.visits),
     visitConclusion: g.visits.map((visit) => visit.internalConclusion || visit.visitResult).filter(Boolean).at(-1) || '',
   })).sort((a, b) => b.nonTenCount - a.nonTenCount || a.avgScore - b.avgScore)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPostUseStoryModel } from './storyModel.js'
+import { buildPostUseStoryModel, listExperienceStatusProducts } from './storyModel.js'
 
 const records = Array.from({ length: 10 }, (_, index) => ({
   id: `r${index}`,
@@ -47,6 +47,65 @@ describe('post-use story model', () => {
     expect(model.metrics.nonTenDistributionProducts).toEqual(['弹性公网IP'])
     expect(model.metrics.scoreDistribution['弹性公网IP'].sampleSize).toBe(10)
     expect(model.drivers.needs[0].visitEvidenceCount).toBe(1)
+  })
+
+  it('compares experience score with the previous period and lists products below 9 or callback baseline', () => {
+    const may = Array.from({ length: 10 }, (_, index) => ({
+      id: `may-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 8,
+      channel: 'sms',
+      importMonth: '2026-05',
+    }))
+    const juneExperience = Array.from({ length: 10 }, (_, index) => ({
+      id: `june-exp-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 9.2,
+      channel: 'sms',
+      importMonth: '2026-06',
+    }))
+    const juneLow = Array.from({ length: 10 }, (_, index) => ({
+      id: `june-low-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '云电脑',
+      ratingScore: 8,
+      channel: 'sms',
+      importMonth: '2026-06',
+    }))
+    const juneCallback = Array.from({ length: 10 }, (_, index) => ({
+      id: `june-cb-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '云电脑',
+      ratingScore: index < 8 ? 10 : 6,
+      channel: 'callback',
+      importMonth: '2026-06',
+    }))
+    const model = buildPostUseStoryModel({
+      records: [...juneExperience, ...juneLow, ...juneCallback],
+      allRecords: [...may, ...juneExperience, ...juneLow, ...juneCallback],
+      productNames: ['弹性公网IP', '云电脑'],
+      period: {
+        id: 'period:month:2026-06',
+        label: '2026年6月',
+        granularity: 'month',
+        anchorYear: 2026,
+        anchorMonth: 6,
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+      },
+    })
+
+    expect(model.metrics.previousDepartmentScore).toMatchObject({
+      avgScore: 8,
+      totalSample: 10,
+      momPrefix: '较上月',
+    })
+    expect(listExperienceStatusProducts(model.productOverview)).toEqual({
+      belowNineNames: ['云电脑'],
+      callbackUnqualifiedNames: ['云电脑'],
+    })
   })
 
   it('keeps visit evidence out of score and priority calculations', () => {

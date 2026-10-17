@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildDepartmentStatusTrends,
+  clipDepartmentStatusTrends,
   normalizeDepartmentStatusTrends,
   rollupCompanyMetrics,
 } from './statusTrends.js'
@@ -40,6 +41,19 @@ describe('department status trends', () => {
     expect(trends.threeChannel.data.map((item) => item.department)).toEqual([9.33, null, 9, null])
     expect(trends.threeChannel.data.map((item) => item.company)).toEqual([8.5, null, 9, null])
     expect(trends.threeChannel.areas.map((item) => item.name)).toEqual(['部门均分（三渠道）', '公司均分（三渠道）'])
+    expect(trends.combined.data.map((item) => item.date)).toEqual([
+      '2026-06', '2026-07', '2026-08', '2026-09',
+    ])
+    expect(trends.combined.data.map((item) => item.departmentScore)).toEqual([9, null, 9, null])
+    expect(trends.combined.data.map((item) => item.departmentRate)).toEqual([100, null, null, null])
+    expect(trends.combined.data.map((item) => item.department)).toEqual([9.33, null, 9, null])
+    expect(trends.combined.data.map((item) => item.company)).toEqual([8.5, null, 9, null])
+    expect(trends.combined.areas.map((item) => item.name)).toEqual([
+      '部门体验均分',
+      '部门均分（三渠道）',
+      '公司均分（三渠道）',
+      '部门投诉回访满意度',
+    ])
     expect(trends.companyMetrics).toEqual([
       { date: '2026-06', avgScore: 8.5, totalSample: 4, productCount: 2, scoreSum: 34 },
       { date: '2026-08', avgScore: 9, totalSample: 1, productCount: 1, scoreSum: 9 },
@@ -64,7 +78,36 @@ describe('department status trends', () => {
     expect(trends.experience.data).toEqual([])
     expect(trends.satisfaction.data).toEqual([])
     expect(trends.threeChannel.data).toEqual([])
+    expect(trends.combined.data).toEqual([])
     expect(trends.companyMetrics).toEqual([])
+  })
+
+  it('stops the x-axis at the dashboard month even when later months have scores', () => {
+    const trends = buildDepartmentStatusTrends({
+      departmentRecords: [
+        row({ id: 'a', importMonth: '2026-06', channel: 'sms', ratingScore: 8 }),
+        row({ id: 'b', importMonth: '2026-08', channel: 'console', ratingScore: 9 }),
+      ],
+      companyRecords: [
+        row({ id: 'a', importMonth: '2026-06', channel: 'sms', ratingScore: 8 }),
+        row({ id: 'b', importMonth: '2026-08', channel: 'console', ratingScore: 9 }),
+      ],
+      productNames: ['弹性公网IP'],
+      nowMonth: '2026-06',
+    })
+    expect(trends.combined.data.map((item) => item.date)).toEqual(['2026-06'])
+    expect(clipDepartmentStatusTrends({
+      ...trends,
+      combined: {
+        data: [
+          { date: '2026-06', departmentScore: 8 },
+          { date: '2026-08', departmentScore: 9 },
+        ],
+      },
+      experience: { data: [{ date: '2026-06', departmentScore: 8 }, { date: '2026-08', departmentScore: 9 }] },
+      satisfaction: { data: [{ date: '2026-06', departmentRate: null }, { date: '2026-08', departmentRate: null }] },
+      threeChannel: { data: [{ date: '2026-06', department: 8 }, { date: '2026-08', department: 9 }] },
+    }, '2026-06').combined.data.map((item) => item.date)).toEqual(['2026-06'])
   })
 
   it('normalizes a remote payload into chart-ready series', () => {
@@ -76,6 +119,9 @@ describe('department status trends', () => {
     expect(trends.pending).toBe(false)
     expect(trends.experience.data).toEqual([{ date: '2026-06', departmentScore: 9 }])
     expect(trends.threeChannel.areas.map((item) => item.dataKey)).toEqual(['department', 'company'])
+    expect(trends.combined.data).toEqual([
+      { date: '2026-06', departmentScore: 9, departmentRate: 100, department: 9.1, company: 8.8 },
+    ])
     expect(trends.companyMetrics).toBeUndefined()
   })
 

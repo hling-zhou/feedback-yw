@@ -82,7 +82,29 @@ describe('post-use insight models', () => {
     const bundle = buildPostUseInsightBundle(records, { visits })
     expect(bundle.products[0]).toMatchObject({ sampleSize: 1, avgScore: 8, visitEvidenceCount: 1 })
     expect(bundle.needs.find((item) => item.need === '功能有缺失')).toMatchObject({ count: 1, visitEvidenceCount: 1 })
-    expect(bundle.customers[0]).toMatchObject({ nonTenCount: 1, visitEvidenceCount: 1, visitConclusion: '需求接纳' })
+    expect(bundle.customers[0]).toMatchObject({
+      nonTenCount: 1,
+      visitEvidenceCount: 1,
+      visitConclusion: '需求接纳',
+      visitItems: [{ visitResult: '功能有缺失', internalConclusion: '需求接纳', remark: '' }],
+    })
+  })
+
+  it('lists every visit for a customer in import order', () => {
+    const records = [row('r1', { ratingScore: 8, rawText: '功能有缺失', customerName: '客户A', customerCode: 'C1' })]
+    const visits = [
+      { id: 'v1', importMonth: '2026-06', productName: '弹性公网IP', userInfo: '客户A C1', visitResult: '第一次回访', internalConclusion: '需求接纳', remark: '备注一' },
+      { id: 'v2', importMonth: '2026-06', productName: '弹性公网IP', userInfo: '客户A C1', visitResult: '第二次回访', internalConclusion: '待客户反馈', remark: '' },
+    ]
+    const bundle = buildPostUseInsightBundle(records, { visits })
+    expect(bundle.customers[0]).toMatchObject({
+      visitEvidenceCount: 2,
+      visitConclusion: '待客户反馈',
+      visitItems: [
+        { visitResult: '第一次回访', internalConclusion: '需求接纳', remark: '备注一' },
+        { visitResult: '第二次回访', internalConclusion: '待客户反馈', remark: '' },
+      ],
+    })
   })
 
   it('builds high-frequency low-score reason rows grouped by reason then product per LD 3.8', () => {

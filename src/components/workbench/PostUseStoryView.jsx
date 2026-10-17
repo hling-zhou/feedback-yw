@@ -4,7 +4,13 @@ import { Alert, Button, Col, Collapse, Row, Space, Statistic, Table, Tag, Toolti
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
-import { POST_USE_SATISFACTION_BASELINE, POST_USE_SMALL_SAMPLE_N } from '../../lib/postUseRating/metrics.js'
+import {
+  POST_USE_SATISFACTION_BASELINE,
+  POST_USE_SCORE_BASELINE,
+  POST_USE_SMALL_SAMPLE_N,
+} from '../../lib/postUseRating/metrics.js'
+import { buildYunwangScoreContext } from '../../lib/postUseRating/scoreContext.js'
+import { listExperienceStatusProducts } from '../../lib/postUseRating/storyModel.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
@@ -16,6 +22,27 @@ const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 
 const recoveryColor = { recovered: 'green', not_recovered: 'red', pending: 'gold', not_applicable: 'default' }
 const actionPriorityColor = { P0: 'red', P1: 'gold', '—': 'default' }
 
+function visitFieldLines(items, field) {
+  const list = Array.isArray(items) ? items : []
+  if (!list.length) return []
+  return list.map((item, index) => {
+    const text = String(item?.[field] || '').trim() || '—'
+    return list.length > 1 ? `${index + 1}. ${text}` : text
+  })
+}
+
+function VisitFieldLines({ items, field }) {
+  const lines = visitFieldLines(items, field)
+  if (!lines.length) return '—'
+  return (
+    <div>
+      {lines.map((line, index) => (
+        <div key={`${index}-${line}`}>{line}</div>
+      ))}
+    </div>
+  )
+}
+
 function downloadCsv(text, name) {
   const blob = new Blob([`\ufeff${text}`], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -26,19 +53,45 @@ function downloadCsv(text, name) {
   URL.revokeObjectURL(url)
 }
 
-function StatusTrendChart({ pending, chart, emptyTitle, referenceLine, tooltipFormatter }) {
+function StatusTrendChart({ pending, chart, emptyTitle, referenceLine, tooltipFormatter, height = 260 }) {
   if (pending) return <Alert type="info" showIcon title="正在汇总各月评分…" />
   if (!chart?.data?.length) return <Alert type="info" showIcon title={emptyTitle} />
   return (
     <TrendChart
       variant="line"
       allowDecimals
-      height={260}
+      height={height}
       data={chart.data}
       areas={chart.areas}
       referenceLine={referenceLine}
       tooltipFormatter={tooltipFormatter}
     />
+  )
+}
+
+function comparisonClass(tone) {
+  if (tone === 'up') return 'text-emerald-700'
+  if (tone === 'down') return 'text-red-700'
+  return 'text-ink-500'
+}
+
+function ScoreComparisonLines({ comparison }) {
+  if (!comparison?.vsCompanyLabel && !comparison?.momLabel) return null
+  return (
+    <div className="mt-1 space-y-0.5 text-xs leading-5">
+      <div className={comparisonClass(comparison.vsCompanyTone)}>{comparison.vsCompanyLabel}</div>
+      <div className={comparisonClass(comparison.momTone)}>{comparison.momLabel}</div>
+    </div>
+  )
+}
+
+function ProductCountCard({ title, names }) {
+  const detail = names.length ? names.join('、') : '无'
+  return (
+    <div className="metric-card h-full">
+      <Statistic title={title} value={names.length} />
+      <div className="mt-1 line-clamp-2 text-xs text-ink-500" title={detail}>{detail}</div>
+    </div>
   )
 }
 
@@ -107,6 +160,16 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
   const sat = metrics.satisfaction
   const yw = metrics.external?.yunwang
   const company = metrics.external?.company
+  const previousDepartmentScore = metrics.previousDepartmentScore
+  const departmentComparison = buildYunwangScoreContext({
+    avgScore: yw?.totalSample ? yw.avgScore : null,
+    companyAvg: company?.avgScore,
+    companySample: company?.totalSample,
+    previousAvg: previousDepartmentScore?.avgScore,
+    previousSample: previousDepartmentScore?.totalSample,
+    momPrefix: previousDepartmentScore?.momPrefix,
+  })
+  const { belowNineNames, callbackUnqualifiedNames } = listExperienceStatusProducts(productOverview)
   const scoreDistributionRows = (metrics.nonTenDistributionProducts || []).map((productName) => ({
     productName,
     ...(metrics.scoreDistribution?.[productName] || {}),
@@ -136,47 +199,50 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       <div className="page-card">
       <SectionHeading title="体验现状" summary="统一查看体验评分、投诉回访满意度及产品状态" id="post-use-status" />
       <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="体验均分" value={exp.avgScore} precision={2} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="体验样本" value={exp.totalSample} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="投诉回访样本" value={sat.totalSample} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="体验均分" value={exp.avgScore} precision={2} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="体验样本" value={exp.totalSample} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="投诉回访样本" value={sat.totalSample} /></div></Col>
       </Row>
       <Row gutter={[12, 12]} className="mt-3">
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="云网均分（三渠道）" value={yw?.avgScore} precision={2} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="云网样本量" value={yw?.totalSample} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card"><Statistic title="公司样本量" value={company?.totalSample} /></div></Col>
+        <Col xs={24} md={12}><ProductCountCard title="9 分以下产品数" names={belowNineNames} /></Col>
+        <Col xs={24} md={12}><ProductCountCard title="投诉回访不达标产品数" names={callbackUnqualifiedNames} /></Col>
       </Row>
       <Row gutter={[12, 12]} className="mt-3">
-        <Col xs={24} lg={8}>
-          <div className="page-card-header"><span className="page-card-title">部门体验均分</span></div>
-          <StatusTrendChart
-            pending={metrics.statusTrends?.pending}
-            chart={metrics.statusTrends?.experience}
-            emptyTitle="暂无部门体验均分"
-            referenceLine={{ y: 9, label: '关注线 9' }}
-          />
+        <Col xs={12} md={6}>
+          <div className="metric-card h-full">
+            <Statistic title="部门均分（三渠道）" value={yw?.avgScore} precision={2} />
+            <ScoreComparisonLines comparison={departmentComparison} />
+          </div>
         </Col>
-        <Col xs={24} lg={8}>
-          <div className="page-card-header"><span className="page-card-title">部门投诉回访满意度</span></div>
-          <StatusTrendChart
-            pending={metrics.statusTrends?.pending}
-            chart={metrics.statusTrends?.satisfaction}
-            emptyTitle="暂无部门投诉回访满意度"
-            referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }}
-            tooltipFormatter={(value, name) => [value == null ? '—' : `${value}%`, name]}
-          />
-        </Col>
-        <Col xs={24} lg={8}>
-          <div className="page-card-header"><span className="page-card-title">部门与公司三渠道均分</span></div>
-          <StatusTrendChart
-            pending={metrics.statusTrends?.pending}
-            chart={metrics.statusTrends?.threeChannel}
-            emptyTitle="暂无三渠道均分"
-          />
-        </Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="云网样本量" value={yw?.totalSample} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="公司均分（三渠道）" value={company?.avgScore} precision={2} /></div></Col>
+        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="公司样本量" value={company?.totalSample} /></div></Col>
       </Row>
-      <p className="mb-0 mt-2 text-xs text-ink-500">从最早有用后即评评分的月份至今，不随当前所选周期变化。</p>
+      <div className="mt-3">
+        <div className="page-card-header"><span className="page-card-title">部门体验、投诉回访与三渠道均分</span></div>
+        <StatusTrendChart
+          pending={metrics.statusTrends?.pending}
+          chart={metrics.statusTrends?.combined}
+          emptyTitle="暂无部门体验均分、投诉回访满意度或三渠道均分"
+          height={300}
+          referenceLine={[
+            { y: POST_USE_SCORE_BASELINE, label: '关注线 9', yAxisId: 'score', position: 'insideTopLeft' },
+            {
+              y: POST_USE_SATISFACTION_BASELINE * 100,
+              label: '达标线 88%',
+              yAxisId: 'rate',
+              stroke: '#059669',
+              position: 'insideTopRight',
+            },
+          ]}
+          tooltipFormatter={(value, name) => {
+            if (value == null) return ['—', name]
+            return [String(name).includes('满意度') ? `${value}%` : value, name]
+          }}
+        />
+        <p className="mb-0 mt-2 text-xs text-ink-500">横轴从系统最早有评分的月份到当前看板月份。左轴为均分（关注线 9），右轴为投诉回访满意度（达标线 88%）。</p>
+      </div>
       <div className="page-card-header mt-3"><span className="page-card-title">产品体验总览</span></div>
         <Table
           size="small"
@@ -314,7 +380,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           size="small"
           rowKey={(row) => row.customerCode || `${row.customerName}-${row.products.join(',')}`}
           dataSource={drivers.customers}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1240 }}
           columns={[
             {
               title: '客户',
@@ -331,8 +397,30 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '均分', dataIndex: 'avgScore', width: 76, render: (value) => value == null ? '—' : value },
             { title: '客户特征', width: 100, render: (_, row) => row.highFrequency ? <Tag color="red">高频低分</Tag> : row.visitEvidenceCount && !row.nonTenCount ? <Tag color="blue">仅回访证据</Tag> : <Tag>单次反馈</Tag> },
             { title: '反馈原因', dataIndex: 'latestQuote', ellipsis: true },
-            { title: '回访证据', dataIndex: 'visitEvidenceCount', width: 88, render: (value) => value || '—' },
-            { title: '回访结论', dataIndex: 'visitConclusion', width: 180, ellipsis: true },
+            {
+              title: '客服部回访记录',
+              dataIndex: 'visitEvidenceCount',
+              width: 120,
+              render: (value, row) => {
+                const count = Number(value) || 0
+                if (!count) return '—'
+                return (
+                  <Tooltip title={<span className="whitespace-pre-line">{visitFieldLines(row.visitItems, 'visitResult').join('\n')}</span>}>
+                    <span>{count}</span>
+                  </Tooltip>
+                )
+              },
+            },
+            {
+              title: '回访结果内部评估/回应',
+              width: 220,
+              render: (_, row) => <VisitFieldLines items={row.visitItems} field="internalConclusion" />,
+            },
+            {
+              title: '备注',
+              width: 180,
+              render: (_, row) => <VisitFieldLines items={row.visitItems} field="remark" />,
+            },
           ]}
         />
       </div>
@@ -521,7 +609,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             children: (
               <div className="space-y-3">
                 <Typography.Paragraph className="!mb-0" type="secondary">
-                  体验均分使用短信与控制台评价（云网 16 款）；云网均分（三渠道）为短信、控制台与投诉回访混算（云网 16 款）；公司均分（三渠道）为当期全部产品、主子合并后的记录级平均。投诉回访单独计算 10 分满意度，达标线 88%；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
+                  体验均分使用短信与控制台评价（云网 16 款）；部门均分（三渠道）为短信、控制台与投诉回访混算（云网 16 款）；公司均分（三渠道）为当期全部产品、主子合并后的记录级平均。部门均分相对公司，比较的是当期公司均分（三渠道）；较上月、较上季度或较上周期仍用部门均分（三渠道）。9 分以下产品按产品体验总览中的均分统计。投诉回访单独计算 10 分满意度，达标线 88%，不达标产品为样本量达到 {POST_USE_SMALL_SAMPLE_N} 且低于该线的产品；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
                 </Typography.Paragraph>
                 <Space size={[6, 6]} wrap>
                   <Tag>目录 {model.scope.catalogVersion}</Tag>

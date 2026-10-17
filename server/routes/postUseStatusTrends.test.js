@@ -104,6 +104,13 @@ describeTrends('post-use status trends API', () => {
     const mixedJune = body.threeChannel.data.find((row) => row.date === '2026-06')
     expect(mixedJune.department).toBe(9.33)
     expect(mixedJune.company).toBe(8.5)
+    const combinedJune = body.combined.data.find((row) => row.date === '2026-06')
+    expect(combinedJune).toMatchObject({
+      departmentScore: 9,
+      departmentRate: 100,
+      department: 9.33,
+      company: 8.5,
+    })
     expect(body.companyMetrics.find((row) => row.date === '2026-06')).toEqual({
       date: '2026-06',
       avgScore: 8.5,
