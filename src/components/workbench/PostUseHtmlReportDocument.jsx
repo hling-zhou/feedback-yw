@@ -439,14 +439,13 @@ export default function PostUseHtmlReportDocument({
             </ul>
           ) : null}
           {model.todo.callbackHighlights.length ? (
-            <ul>
+            <ol>
               {model.todo.callbackHighlights.map((item, index) => (
                 <li key={`${item.customerName}-${item.productName}-${index}`}>
-                  回访要点：{item.customerName} × {item.productName}
-                  {item.reason ? ` · ${item.reason}` : ''}
+                  {item.reason}
                 </li>
               ))}
-            </ul>
+            </ol>
           ) : (
             <Typography.Paragraph type="secondary">{copy.todoEmpty || '本月建议回访清单为空，完整客户明细见附录。'}</Typography.Paragraph>
           )}

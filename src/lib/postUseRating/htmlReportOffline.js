@@ -306,7 +306,9 @@ export function buildOfflineMonthlyReportHtml(input) {
       </div>
       ${(todo.proposed || []).map((item) => `<p>提出：${text(item.productName)} · ${text(item.content)}</p>`).join('')}
       ${(todo.notRecovered || []).map((item) => `<p>已完成未恢复：${text(item.productName)} · ${text(item.content)}</p>`).join('')}
-      ${(todo.callbackHighlights || []).map((item) => `<p>回访要点：${text(item.customerName)} × ${text(item.productName)}${item.reason ? ` · ${text(item.reason)}` : ''}</p>`).join('')}
+      ${(todo.callbackHighlights || []).length
+        ? `<ol>${(todo.callbackHighlights || []).map((item) => `<li>${text(item.reason)}</li>`).join('')}</ol>`
+        : ''}
       ${todoNote ? `<p class="narrative">${pre(todoNote)}</p>` : ''}`
 
   const visitRows = (model.previousVisits || []).map((row) => {

@@ -52,7 +52,7 @@ function findRecommendedAction(actionRows, productName) {
 }
 
 function draftActionText(actionRow) {
-  if (!actionRow) return '建议明确责任人：客服回访、部门内溯源，或立项产品举措。'
+  if (!actionRow) return '建议明确责任人：客服部回访、部门内溯源，或立项产品举措。'
   if (actionRow.action?.content) {
     return `继续推进举措「${actionRow.action.content}」，写清责任人与本月完成标准。`
   }
@@ -584,12 +584,30 @@ function reportFrame(reportMonth, reportPeriod) {
   }
 }
 
+/**
+ * 月报待办里的回访要点：保留客户、产品与低分事实，去掉「客户 × 产品」前缀和模板套话。
+ * @param {string} reason
+ */
+export function formatMonthlyCallbackHighlightReason(reason) {
+  return String(reason || '')
+    .replace(/，同一客户低分记录达到2次及以上/g, '')
+    .replace(/，建议客服部回访。?$/g, '')
+    .replace(/建议客服部回访。?$/g, '')
+    .replace(/，$/, '')
+    .trim()
+}
+
 function callbackTodoHighlights(recommendations) {
-  return (recommendations || []).slice(0, 3).map((item) => ({
-    customerName: item.customerName || item.customerCode || '未标注客户',
-    productName: item.productName || '',
-    reason: item.recommendedReason || item.quoteSummary || '',
-  }))
+  return (recommendations || []).slice(0, 3).map((item) => {
+    const customerName = item.customerName || item.customerCode || '未标注客户'
+    const productName = item.productName || ''
+    const reason = formatMonthlyCallbackHighlightReason(item.recommendedReason || item.quoteSummary || '')
+    return {
+      customerName,
+      productName,
+      reason: reason || (productName ? `${customerName} 在${productName}下有低分反馈` : customerName),
+    }
+  })
 }
 
 /**

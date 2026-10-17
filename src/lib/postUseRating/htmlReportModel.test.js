@@ -7,6 +7,7 @@ import {
   buildYunwangScoreContext,
   composeVisitEvidenceSentence,
   draftJudgmentFromConclusions,
+  formatMonthlyCallbackHighlightReason,
 } from './htmlReportModel.js'
 
 const period = {
@@ -322,5 +323,44 @@ describe('html monthly report model', () => {
     expect(model.productCards[0].visitNarratives[0]).toContain('经客服部回访，核实为「第一次回访」')
     expect(model.productCards[0].visitNarratives[0]).toContain('经产品组评估，「需求接纳」：「备注一」')
     expect(model.judgment).toContain('本期客服部回访 1 条')
+  })
+
+  it('keeps monthly callback highlights as numbered facts without the template suffix', () => {
+    expect(
+      formatMonthlyCallbackHighlightReason(
+        '华博胜讯信息科技股份有限公司（经开） 在弹性公网IP下有 8 次7分以下反馈（未填写问卷名*1分*8次），同一客户低分记录达到2次及以上，建议客服部回访。',
+      ),
+    ).toBe('华博胜讯信息科技股份有限公司（经开） 在弹性公网IP下有 8 次7分以下反馈（未填写问卷名*1分*8次）')
+
+    const records = [
+      ...Array.from({ length: 2 }, (_, index) => ({
+        id: `low-${index}`,
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 1,
+        channel: 'console',
+        importMonth: '2026-06',
+        customerName: '福州梓涵科技有限公司',
+        questionnaireName: '未填写问卷名',
+      })),
+    ]
+    const storyModel = buildPostUseStoryModel({
+      records,
+      allRecords: records,
+      productNames: ['弹性公网IP'],
+      period,
+    })
+    const model = buildHtmlMonthlyReportModel({
+      reportMonth: '2026-06',
+      storyModel,
+      records,
+    })
+    expect(model.todo.callbackHighlights[0].reason).toBe(
+      '福州梓涵科技有限公司 在弹性公网IP下有 2 次7分以下反馈（未填写问卷名*1分*2次）',
+    )
+    expect(model.todo.callbackHighlights[0].reason).not.toContain('回访要点')
+    expect(model.todo.callbackHighlights[0].reason).not.toContain('×')
+    expect(model.todo.callbackHighlights[0].reason).not.toContain('同一客户低分记录达到2次及以上')
+    expect(model.todo.callbackHighlights[0].reason).not.toContain('建议客服部回访')
   })
 })
