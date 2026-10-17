@@ -60,7 +60,8 @@ describe('PostUseStoryView customer visits', () => {
 
     expect(html).toContain('客服部回访记录')
     expect(html).toContain('回访结果内部评估/回应')
-    expect(html).toContain('>2</span>')
+    expect(html).toContain('1. 第一次回访')
+    expect(html).toContain('2. 第二次回访')
     expect(html).toContain('1. 需求接纳')
     expect(html).toContain('2. 待客户反馈')
     expect(html).toContain('1. 备注一')

@@ -90,7 +90,7 @@ import {
   runCustomerVisitImportDryRun,
 } from '../lib/postUseRating/customerVisitImport.js'
 
-const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服回访导入'
+const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服部回访导入'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
@@ -1159,7 +1159,7 @@ export default function Import({ embedded = false }) {
         throw new Error('请选择有效的数据月份（YYYY-MM）')
       }
 
-      const progress0 = '正在导入客服回访…'
+      const progress0 = '正在导入客服部回访…'
       await prepareSharedBackgroundTask('import', {
         progress: progress0,
         meta: {
@@ -1225,7 +1225,7 @@ export default function Import({ embedded = false }) {
       return
     }
     Modal.confirm({
-      title: '确认导入客服回访？',
+      title: '确认导入客服部回访？',
       content: (
         <>
           将写入回访元数据，并软匹配挂到短信/控制台用后即评明细的 <code>customerVisit</code> 字段。
@@ -1607,7 +1607,7 @@ export default function Import({ embedded = false }) {
               )}
               {customerVisitImport && (
                 <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  客服回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
+                  客服部回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
                 </Typography.Text>
               )}
               {pipelineDesc && !channelBundleImport && !followUpImport && !customerVisitImport && (
@@ -1992,7 +1992,7 @@ export default function Import({ embedded = false }) {
                   <Alert
                     type="warning"
                     showIcon
-                    title="未识别客服回访表头"
+                    title="未识别客服部回访表头"
                     description="需包含月份、产品名称、用户信息/客户反馈摘要、评分来源或内部结论等列。"
                   />
                 ) : (
@@ -2188,11 +2188,11 @@ export default function Import({ embedded = false }) {
             ) : customerVisitImport ? (
               <>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  写入客服回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
+                  写入客服部回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
                 </Typography.Text>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]} ·
-                  二级分类：客服回访导入
+                  二级分类：客服部回访导入
                 </Typography.Text>
                 <div className="page-section-sm space-y-3">
                   {customerVisitPreviewLoading ? (
@@ -2456,7 +2456,7 @@ export default function Import({ embedded = false }) {
                 ? 'success'
                 : 'warning'
             }
-            title="客服回访导入完成"
+            title="客服部回访导入完成"
             subTitle={
               <>
                 回访元数据 <strong>{customerVisitImportResult.dry.visitMetaCount}</strong> 条 ·

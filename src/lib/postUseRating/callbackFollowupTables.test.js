@@ -56,7 +56,7 @@ describe('callbackFollowupTables', () => {
     expect(toCallbackNonTenFollowupRow(item).itemKey).toBe('c:T-001')
   })
 
-  it('collects checked rows for 待客服回访 / 待内部提单 and strips item keys on export', () => {
+  it('collects checked rows for 待客服部回访 / 待内部提单 and strips item keys on export', () => {
     const questionnaire = [
       {
         itemKey: 'q:C1:弹性公网IP',

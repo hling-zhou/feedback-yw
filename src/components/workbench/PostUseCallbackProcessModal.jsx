@@ -24,6 +24,16 @@ function decisionOf(map, itemKey) {
   return map.get(itemKey) || { needCustomerVisit: false, needInternalTrace: false }
 }
 
+function EllipsisHover({ value }) {
+  const text = String(value ?? '').trim()
+  if (!text) return '—'
+  return (
+    <Tooltip title={<span className="whitespace-pre-line">{text}</span>} getPopupContainer={() => document.body}>
+      <span className="block max-w-full truncate">{text}</span>
+    </Tooltip>
+  )
+}
+
 /**
  * @param {object} props
  * @param {boolean} props.open
@@ -250,9 +260,21 @@ export default function PostUseCallbackProcessModal({
     { title: '7分以下分布', dataIndex: 'scoreBreakdown', width: 240, ellipsis: true },
     { title: '最近反馈时间', dataIndex: 'latestFeedbackAt', width: 170, ellipsis: true },
     { title: '涉及渠道', dataIndex: 'channels', width: 160, render: (value) => (value || []).join('；') },
-    { title: '反馈原因', dataIndex: 'feedbackReasonSummary', width: 220, ellipsis: true },
-    { title: '建议回访原因', dataIndex: 'recommendedReason', width: 260, ellipsis: true },
-    mergedFlagColumn('needCustomerVisit', '客服回访'),
+    {
+      title: '反馈原因',
+      dataIndex: 'feedbackReasonSummary',
+      width: 220,
+      ellipsis: true,
+      render: (value) => <EllipsisHover value={value} />,
+    },
+    {
+      title: '建议回访原因',
+      dataIndex: 'recommendedReason',
+      width: 260,
+      ellipsis: true,
+      render: (value) => <EllipsisHover value={value} />,
+    },
+    mergedFlagColumn('needCustomerVisit', '客服部回访'),
     mergedFlagColumn('needInternalTrace', '部门内溯源'),
   ]
 
@@ -278,17 +300,17 @@ export default function PostUseCallbackProcessModal({
     { title: '不满原因', dataIndex: 'dissatisfactionReason', width: 180, ellipsis: true },
     { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
     { title: '问题原因', dataIndex: 'problemCause', width: 200, ellipsis: true },
-    flagColumn('needCustomerVisit', '客服回访'),
+    flagColumn('needCustomerVisit', '客服部回访'),
     flagColumn('needInternalTrace', '部门内溯源'),
   ]
 
   const exportVisit = () => {
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needCustomerVisit')
     if (!rows.length) {
-      message.info('请先勾选需要客服回访的记录')
+      message.info('请先勾选需要客服部回访的记录')
       return
     }
-    downloadFollowupTableExcel(rows, '待客服回访表', scopeLabel)
+    downloadFollowupTableExcel(rows, '待客服部回访表', scopeLabel)
   }
 
   const exportTrace = () => {
@@ -327,7 +349,7 @@ export default function PostUseCallbackProcessModal({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" className="!mb-3">
-        可同时勾选客服回访与部门内溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
+        可同时勾选客服部回访与部门内溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
       </Typography.Paragraph>
       <Tabs
         items={[
@@ -367,7 +389,7 @@ export default function PostUseCallbackProcessModal({
       />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Typography.Text type="secondary">
-          已勾选客服回访 {visitCount} 条 · 部门内溯源 {traceCount} 条
+          已勾选客服部回访 {visitCount} 条 · 部门内溯源 {traceCount} 条
         </Typography.Text>
         <Space wrap>
           <Tooltip title="下载当前范围的双表原始清单">
@@ -385,15 +407,15 @@ export default function PostUseCallbackProcessModal({
             </Button>
           </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportVisit}>
-            导出待客服回访表
+            导出待客服部回访表
           </Button>
-          <Tooltip title={visitCount ? '' : '请先勾选需要客服回访的记录'}>
+          <Tooltip title={visitCount ? '' : '请先勾选需要客服部回访的记录'}>
             <Button
               icon={<MailOutlined />}
               disabled={!canEdit || !visitCount}
               onClick={() => setMailOpen(true)}
             >
-              发送待客服回访
+              发送待客服部回访
             </Button>
           </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportTrace}>
@@ -420,7 +442,7 @@ export default function PostUseCallbackProcessModal({
         periodLabel={scopeLabel}
         linkKind="workbench"
         canSend={canEdit && visitCount > 0}
-        disabledReason={visitCount ? '' : '请先勾选需要客服回访的记录'}
+        disabledReason={visitCount ? '' : '请先勾选需要客服部回访的记录'}
         buildAttachment={async () => {
           const rows = collectFollowupExportRows(
             recommendations,
@@ -429,9 +451,9 @@ export default function PostUseCallbackProcessModal({
             'needCustomerVisit',
           )
           if (!rows.length) return null
-          const wb = buildFollowupTableWorkbook(rows, '待客服回访表')
+          const wb = buildFollowupTableWorkbook(rows, '待客服部回访表')
           return {
-            filename: followupTableFilename('待客服回访表', scopeLabel),
+            filename: followupTableFilename('待客服部回访表', scopeLabel),
             mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             contentBase64: followupWorkbookToBase64(wb),
           }

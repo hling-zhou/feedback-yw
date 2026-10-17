@@ -34,12 +34,13 @@ function visitFieldLines(items, field) {
 function VisitFieldLines({ items, field }) {
   const lines = visitFieldLines(items, field)
   if (!lines.length) return '—'
+  const full = lines.join('\n')
   return (
-    <div>
-      {lines.map((line, index) => (
-        <div key={`${index}-${line}`}>{line}</div>
-      ))}
-    </div>
+    <Tooltip title={<span className="whitespace-pre-line">{full}</span>} getPopupContainer={() => document.body}>
+      <Typography.Paragraph className="!mb-0 max-w-full whitespace-pre-line" ellipsis={{ rows: 2 }}>
+        {full}
+      </Typography.Paragraph>
+    </Tooltip>
   )
 }
 
@@ -396,20 +397,11 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
             { title: '均分', dataIndex: 'avgScore', width: 76, render: (value) => value == null ? '—' : value },
             { title: '客户特征', width: 100, render: (_, row) => row.highFrequency ? <Tag color="red">高频低分</Tag> : row.visitEvidenceCount && !row.nonTenCount ? <Tag color="blue">仅回访证据</Tag> : <Tag>单次反馈</Tag> },
-            { title: '反馈原因', dataIndex: 'latestQuote', ellipsis: true },
+            { title: '反馈原因', dataIndex: 'latestQuote', ellipsis: { tooltip: true } },
             {
               title: '客服部回访记录',
-              dataIndex: 'visitEvidenceCount',
-              width: 120,
-              render: (value, row) => {
-                const count = Number(value) || 0
-                if (!count) return '—'
-                return (
-                  <Tooltip title={<span className="whitespace-pre-line">{visitFieldLines(row.visitItems, 'visitResult').join('\n')}</span>}>
-                    <span>{count}</span>
-                  </Tooltip>
-                )
-              },
+              width: 220,
+              render: (_, row) => <VisitFieldLines items={row.visitItems} field="visitResult" />,
             },
             {
               title: '回访结果内部评估/回应',
