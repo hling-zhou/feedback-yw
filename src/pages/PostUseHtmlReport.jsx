@@ -4,7 +4,7 @@ import { Alert, Button, Space, Spin, Typography, message } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { SCHEMA_VERSION } from '../domain/constants.js'
-import { resolveInsightPeriod } from '../domain/insightPeriod.js'
+import { resolveInsightPeriod, shiftYearMonth } from '../domain/insightPeriod.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import {
   getPostUseFocusTrackedNames,
@@ -18,7 +18,7 @@ import { loadPostUseTrend } from '../lib/postUseRating/trendStore.js'
 import { loadPostUsePeriodQuality } from '../lib/postUseRating/qualityStore.js'
 import { postUseVisitMonthsForPeriod } from '../lib/postUseRating/periodScope.js'
 import { buildPostUseStoryModel } from '../lib/postUseRating/storyModel.js'
-import { normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../lib/postUseRating/statusTrends.js'
+import { clipDepartmentStatusTrends, normalizeDepartmentStatusTrends } from '../lib/postUseRating/statusTrends.js'
 import { buildHtmlMonthlyReportModel } from '../lib/postUseRating/htmlReportModel.js'
 import { loadHtmlReportOverlay, saveHtmlReportOverlay } from '../lib/postUseRating/htmlReportOverlay.js'
 import {
@@ -39,28 +39,46 @@ export default function PostUseHtmlReport() {
   const { month } = useParams()
   const { can, user } = useAuth()
   const canEdit = can('editRecord')
-  const { feedbacks, adapter, settings, storageReady, feedbacksLoading } = useInsights()
+  const {
+    feedbacks,
+    adapter,
+    settings,
+    storageReady,
+    loadPostUseRatingForPeriod,
+    postUseRatingOnDemand,
+    postUseSettledPeriodIds,
+    postUseCacheGeneration,
+    productCatalogMeta,
+  } = useInsights()
   const [visits, setVisits] = useState([])
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
   const [quality, setQuality] = useState(null)
   const [learnings, setLearnings] = useState([])
   const [overlay, setOverlay] = useState(null)
-  const [remoteStatusTrends, setRemoteStatusTrends] = useState(null)
   const [sideLoading, setSideLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [judgment, setJudgment] = useState('')
   const [todoNote, setTodoNote] = useState('')
   const [issueNarratives, setIssueNarratives] = useState({})
+  const [visitSupplements, setVisitSupplements] = useState({})
+  const [statusTrends, setStatusTrends] = useState(null)
   const [hiddenSectionIds, setHiddenSectionIds] = useState([])
-  const [printAppendix, setPrintAppendix] = useState(false)
 
   const reportMonth = MONTH_RE.test(month || '') ? month : ''
+  const reportPeriodId = reportMonth ? `period:month:${reportMonth}` : ''
   const reportPeriod = useMemo(
-    () => (reportMonth ? resolveInsightPeriod(`period:month:${reportMonth}`, null, SCHEMA_VERSION) : null),
-    [reportMonth],
+    () => (reportMonth ? resolveInsightPeriod(reportPeriodId, null, SCHEMA_VERSION) : null),
+    [reportMonth, reportPeriodId],
   )
+
+  useEffect(() => {
+    if (!storageReady || !reportPeriodId) return undefined
+    void loadPostUseRatingForPeriod(reportPeriodId)
+    const previousMonth = shiftYearMonth(reportMonth, -1)
+    if (previousMonth) void loadPostUseRatingForPeriod(`period:month:${previousMonth}`)
+  }, [storageReady, reportPeriodId, reportMonth, loadPostUseRatingForPeriod, postUseCacheGeneration])
 
   useEffect(() => {
     let cancelled = false
@@ -71,16 +89,13 @@ export default function PostUseHtmlReport() {
       }
       setSideLoading(true)
       try {
-        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap, statusTrends] = await Promise.all([
+        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap] = await Promise.all([
           loadVisitRecords(adapter),
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
           loadHtmlReportOverlay(adapter, reportMonth).catch(() => null),
           loadMonthlyReportLearnings(adapter).catch(() => []),
-          typeof adapter.listPostUseStatusTrends === 'function'
-            ? adapter.listPostUseStatusTrends().then(normalizeDepartmentStatusTrends).catch(() => null)
-            : Promise.resolve(null),
         ])
         if (!cancelled) {
           setVisits(v)
@@ -89,7 +104,6 @@ export default function PostUseHtmlReport() {
           setQuality(qualityStore)
           setOverlay(overlaySnap)
           setLearnings(learningSnap)
-          setRemoteStatusTrends(statusTrends)
         }
       } catch {
         if (!cancelled) setOverlay(null)
@@ -100,9 +114,31 @@ export default function PostUseHtmlReport() {
     return () => {
       cancelled = true
     }
-  }, [adapter, reportMonth, feedbacks])
+  }, [adapter, reportMonth])
 
-  const catalog = useMemo(() => getCatalogProducts(), [feedbacks])
+  useEffect(() => {
+    if (!adapter || typeof adapter.listPostUseStatusTrends !== 'function' || !reportMonth) {
+      setStatusTrends(null)
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const trends = clipDepartmentStatusTrends(
+          normalizeDepartmentStatusTrends(await adapter.listPostUseStatusTrends()),
+          reportMonth,
+        )
+        if (!cancelled) setStatusTrends(trends)
+      } catch {
+        if (!cancelled) setStatusTrends(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [adapter, reportMonth])
+
+  const catalog = useMemo(() => getCatalogProducts(), [feedbacks, productCatalogMeta])
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
   const focusNames = useMemo(() => getPostUseFocusTrackedNames(catalog), [catalog])
   const items = useMemo(
@@ -146,18 +182,12 @@ export default function PostUseHtmlReport() {
   }, [trendSnap, reportMonth])
   const periodQuality = quality?.periods?.[reportMonth] || null
 
-  const useRemoteCompany = Array.isArray(remoteStatusTrends?.companyMetrics)
-  const remoteCompanyMetrics = useMemo(
-    () => (useRemoteCompany ? rollupCompanyMetrics(remoteStatusTrends.companyMetrics, reportPeriod) : null),
-    [useRemoteCompany, remoteStatusTrends, reportPeriod],
-  )
   const storyModel = useMemo(() => {
     if (!reportPeriod) return null
     return buildPostUseStoryModel({
       records: scopedItems,
       allRecords: allScopedItems,
-      companyRecords: useRemoteCompany ? undefined : items,
-      companyMetrics: remoteCompanyMetrics,
+      companyRecords: items,
       visits: scopedVisits,
       productNames,
       focusNames,
@@ -167,15 +197,14 @@ export default function PostUseHtmlReport() {
       period: reportPeriod,
       settings,
       ticketRecords,
-      statusTrends: remoteStatusTrends || undefined,
+      statusTrends,
+      nowMonth: reportMonth,
     })
   }, [
     reportPeriod,
     scopedItems,
     allScopedItems,
     items,
-    useRemoteCompany,
-    remoteCompanyMetrics,
     scopedVisits,
     productNames,
     focusNames,
@@ -184,7 +213,8 @@ export default function PostUseHtmlReport() {
     periodQuality,
     settings,
     ticketRecords,
-    remoteStatusTrends,
+    statusTrends,
+    reportMonth,
   ])
 
   const model = useMemo(() => {
@@ -201,15 +231,16 @@ export default function PostUseHtmlReport() {
       quality: periodQuality,
       learnings,
       overlay,
+      statusTrends,
+      trend: trendSnap,
     })
-  }, [reportMonth, storyModel, scopedItems, allScopedItems, productNames, visits, actionItems, monthReasons, periodQuality, learnings, overlay])
+  }, [reportMonth, storyModel, scopedItems, allScopedItems, productNames, visits, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
 
   useEffect(() => {
     if (!model) return
     setJudgment(model.judgment)
     setTodoNote(model.todoNote)
     setHiddenSectionIds(model.hiddenSectionIds || [])
-    setPrintAppendix(Boolean(model.printAppendix))
     setIssueNarratives(
       Object.fromEntries(
         (model.issues || []).map((issue) => [
@@ -218,9 +249,25 @@ export default function PostUseHtmlReport() {
         ]),
       ),
     )
+    setVisitSupplements(
+      Object.fromEntries(
+        (model.previousVisits || []).map((row) => [
+          row.id,
+          {
+            visitResult: row.visitResult || '',
+            internalConclusion: row.internalConclusion || '',
+            remark: row.remark || '',
+          },
+        ]),
+      ),
+    )
   }, [model?.dataFingerprint, overlay?.updatedAt])
 
-  const loading = !storageReady || feedbacksLoading || sideLoading
+  const ratingsPending =
+    postUseRatingOnDemand &&
+    Boolean(reportPeriodId) &&
+    !postUseSettledPeriodIds.includes(reportPeriodId)
+  const loading = !storageReady || sideLoading || ratingsPending
 
   const onIssueChange = (key, field, value) => {
     setIssueNarratives((prev) => ({
@@ -228,6 +275,18 @@ export default function PostUseHtmlReport() {
       [key]: {
         conclusion: prev[key]?.conclusion || '',
         action: prev[key]?.action || '',
+        [field]: value,
+      },
+    }))
+  }
+
+  const onVisitSupplementChange = (id, field, value) => {
+    setVisitSupplements((prev) => ({
+      ...prev,
+      [id]: {
+        visitResult: prev[id]?.visitResult || '',
+        internalConclusion: prev[id]?.internalConclusion || '',
+        remark: prev[id]?.remark || '',
         [field]: value,
       },
     }))
@@ -251,11 +310,11 @@ export default function PostUseHtmlReport() {
         updatedBy: user?.username || user?.id || '',
         dataFingerprint: model.dataFingerprint,
         hiddenSectionIds,
-        printAppendix,
         narratives: {
           judgment,
           issues: issueNarratives,
           todoNote,
+          visitSupplements,
         },
       })
       setOverlay(saved)
@@ -276,6 +335,7 @@ export default function PostUseHtmlReport() {
         judgment,
         todoNote,
         issueNarratives,
+        visitSupplements,
         hiddenSectionIds,
         exportedAt: new Date().toISOString(),
       })
@@ -321,10 +381,12 @@ export default function PostUseHtmlReport() {
         judgment={judgment}
         todoNote={todoNote}
         issueNarratives={issueNarratives}
+        visitSupplements={visitSupplements}
         hiddenSectionIds={hiddenSectionIds}
         onJudgmentChange={setJudgment}
         onTodoNoteChange={setTodoNote}
         onIssueChange={onIssueChange}
+        onVisitSupplementChange={onVisitSupplementChange}
       />
     )
   }
@@ -340,9 +402,7 @@ export default function PostUseHtmlReport() {
           {model ? (
             <ReportSectionToggles
               hiddenSectionIds={hiddenSectionIds}
-              printAppendix={printAppendix}
               onToggleSection={onToggleSection}
-              onPrintAppendixChange={setPrintAppendix}
             />
           ) : null}
           <Button disabled={!canEdit || !model} loading={saving} type="primary" onClick={() => void handleSave()}>
@@ -351,10 +411,9 @@ export default function PostUseHtmlReport() {
           <Button disabled={!model} loading={exporting} onClick={handleExportOfflineHtml}>
             导出离线 HTML
           </Button>
-          <Button onClick={() => window.print()}>打印</Button>
         </Space>
       </header>
-      <div className={`post-use-html-report-sheet${printAppendix ? '' : ' hide-appendix-print'}`}>
+      <div className="post-use-html-report-sheet">
         {body}
       </div>
     </div>

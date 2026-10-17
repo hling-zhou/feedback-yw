@@ -1,7 +1,14 @@
+import { useEffect, useState } from 'react'
 import { Alert, Checkbox, Collapse, Input, Table, Tag, Typography } from 'antd'
-import { REPORT_SECTION_APPENDIX, REPORT_SECTION_ISSUES, REPORT_SECTION_TODO } from '../../lib/postUseRating/htmlReportModel.js'
+import {
+  REPORT_SECTION_APPENDIX,
+  REPORT_SECTION_PREVIOUS_VISITS,
+  REPORT_SECTION_PRODUCTS,
+  REPORT_SECTION_TODO,
+} from '../../lib/postUseRating/htmlReportModel.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
-import PostUseHtmlReportCharts from './PostUseHtmlReportCharts.jsx'
+import TrendChart from '../charts/TrendChart.jsx'
+import { FocusProductTrendCharts, StatusOverviewChart } from './PostUseHtmlReportCharts.jsx'
 
 const WORKBENCH_HREF = '/workbench?tab=post_use_rating'
 
@@ -36,14 +43,6 @@ function polarityTag(polarity) {
   return <Tag color="error">负反馈</Tag>
 }
 
-function issueStateTag(issue) {
-  if (issue.severity === 0) return <Tag color="error">重点改善</Tag>
-  if (issue.severity === 1) return <Tag color="warning">持续观察</Tag>
-  if (issue.kind === 'change') return <Tag color="orange">问题增长</Tag>
-  if (issue.kind === 'action') return <Tag>待推动</Tag>
-  return null
-}
-
 function quoteHref(item) {
   const name = String(item?.customerName || '').trim()
   if (!name || name === '匿名客户') {
@@ -66,24 +65,9 @@ function percent(part, total) {
   return Math.round((part / total) * 1000) / 10
 }
 
-function QuoteCard({ item }) {
-  const href = quoteHref(item)
-  return (
-    <a href={href} className={`report-quote-card report-quote-card--${item.polarity || 'negative'}`}>
-      <div className="report-quote-card__meta">
-        {polarityTag(item.polarity)}
-        <span>{item.channelLabel}</span>
-        {item.score == null ? null : <span>{item.score}分</span>}
-      </div>
-      <p>「{item.text}」</p>
-      <footer>{[item.customerName, item.customerCode, item.productName].filter(Boolean).join(' · ') || '未标注客户'} · 查看反馈</footer>
-    </a>
-  )
-}
-
 function SectionTitle({ id, children }) {
   return (
-    <Typography.Title id={id} level={2} className="!mb-3 !mt-8 !text-xl">
+    <Typography.Title id={id} level={2} className="!mb-3 !mt-0 !text-xl">
       {children}
     </Typography.Title>
   )
@@ -118,7 +102,6 @@ function LockedEvidence({ issue }) {
       {evidence.changeLabel ? (
         <div className="mt-1">问题变化 {evidence.changeIssue || ''} {evidence.changeLabel}</div>
       ) : null}
-      {evidence.visitEvidenceCount ? <div>回访证据 {evidence.visitEvidenceCount}</div> : null}
       {quotes.length ? (
         quotes.map((item) => (
           <a key={`${item.recordId}-${item.text}`} href={quoteHref(item)} className="post-use-html-report-quote">
@@ -159,30 +142,112 @@ function LockedEvidence({ issue }) {
  *   judgment: string
  *   todoNote: string
  *   issueNarratives: Record<string, { conclusion: string, action: string }>
+ *   visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
  *   hiddenSectionIds: string[]
  *   onJudgmentChange: (value: string) => void
  *   onTodoNoteChange: (value: string) => void
  *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void
+ *   onVisitSupplementChange?: (id: string, field: string, value: string) => void
  * }} props
  */
+function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange }) {
+  const issue = card.issue
+  const narrative = issue ? issueNarratives[issue.key] || {} : null
+  const distribution = (preview?.scoreDistributionTable || []).filter((row) => row.productName === card.productName)
+  const scenes = (preview?.sceneJourneys || []).filter((row) => row.productName === card.productName)
+  return (
+    <section className={`report-product-detail${active ? ' is-active' : ''}`}>
+      <h3>{card.productName}</h3>
+      <div className="post-use-html-report-kpis">
+        <div className="post-use-html-report-kpi"><div className="label">产品体验得分</div><div className="value">{formatScore(card.experienceScore)}</div></div>
+        <div className="post-use-html-report-kpi"><div className="label">投诉回访满意度</div><div className="value">{card.satisfactionRate == null ? '—' : `${card.satisfactionRate}%`}</div></div>
+        <div className="post-use-html-report-kpi"><div className="label">均分（三渠道）</div><div className="value">{formatScore(card.mixedAvg)}</div></div>
+        <div className="post-use-html-report-kpi"><div className="label">样本数（三渠道）</div><div className="value">{card.mixedSample}</div></div>
+        <div className="post-use-html-report-kpi"><div className="label">3 分以下样本数</div><div className="value">{card.lowScoreCount}</div></div>
+      </div>
+      <Typography.Text type="secondary">得分分布</Typography.Text>
+      <Table size="small" pagination={false} rowKey="productName" dataSource={distribution} columns={distributionColumns} locale={{ emptyText: '暂无得分分布' }} />
+      <Typography.Text type="secondary">场景与旅程</Typography.Text>
+      <Table
+        size="small"
+        pagination={false}
+        rowKey={(row) => `${row.originalScene}-${row.journey}`}
+        dataSource={scenes}
+        locale={{ emptyText: '暂无场景与旅程' }}
+        columns={[
+          { title: '场景', dataIndex: 'originalScene' },
+          { title: '旅程', dataIndex: 'journey' },
+          { title: '样本', dataIndex: 'sampleSize', width: 72 },
+          { title: '均分', dataIndex: 'avgScore', width: 72 },
+        ]}
+      />
+      <Typography.Text type="secondary">问题与证据</Typography.Text>
+      {issue ? (
+        <>
+          <div className="mt-1">结论</div>
+          <Input.TextArea
+            className="mt-1 mb-3"
+            value={narrative.conclusion ?? issue.conclusion}
+            onChange={(event) => onIssueChange(issue.key, 'conclusion', event.target.value)}
+            autoSize={{ minRows: 2 }}
+            disabled={!canEdit}
+          />
+          <LockedEvidence issue={issue} />
+          <div>建议动作</div>
+          <Input.TextArea
+            className="mt-1"
+            value={narrative.action ?? issue.action}
+            onChange={(event) => onIssueChange(issue.key, 'action', event.target.value)}
+            autoSize={{ minRows: 2 }}
+            disabled={!canEdit}
+          />
+        </>
+      ) : (
+        <Typography.Paragraph type="secondary">本产品本月没有单列问题条。</Typography.Paragraph>
+      )}
+      <div className="post-use-html-report-evidence">
+        {(card.visitNarratives || []).map((line) => <div key={line}>{line}</div>)}
+      </div>
+      <Typography.Text type="secondary">得分趋势</Typography.Text>
+      {card.scoreTrend?.data?.length ? (
+        <TrendChart
+          variant="line"
+          allowDecimals
+          height={240}
+          data={card.scoreTrend.data}
+          areas={card.scoreTrend.areas}
+          referenceLine={{ y: 9, label: '关注线 9' }}
+        />
+      ) : (
+        <Typography.Paragraph type="secondary">暂无该产品得分趋势。</Typography.Paragraph>
+      )}
+    </section>
+  )
+}
+
 export default function PostUseHtmlReportDocument({
   model,
   canEdit,
   judgment,
   todoNote,
   issueNarratives,
+  visitSupplements = {},
   hiddenSectionIds,
   onJudgmentChange,
   onTodoNoteChange,
   onIssueChange,
+  onVisitSupplementChange,
 }) {
   const hidden = new Set(hiddenSectionIds || [])
   const preview = model.preview
   const reviewItems = preview?.reviewChecklist || []
-  const voice = model.voice || { positiveCount: 0, negativeCount: 0, positiveQuotes: 0, negativeQuotes: 0, negativeOptions: 0 }
-  const scoreBands = model.scoreBands || { ten: 0, nine: 0, eight: 0, low: 0 }
-  const featuredVoice = model.featuredVoice || { positive: [], negative: [] }
-  const kpiTone = Number(model.kpis.avgScore) < 9 ? 'warn' : 'ok'
+  const productCards = model.productCards || []
+  const [selectedProduct, setSelectedProduct] = useState(productCards[0]?.productName || '')
+  useEffect(() => {
+    if (!productCards.some((card) => card.productName === selectedProduct)) {
+      setSelectedProduct(productCards[0]?.productName || '')
+    }
+  }, [productCards, selectedProduct])
   const distributionColumns = [
     { title: '产品', dataIndex: 'productName', key: 'productName' },
     { title: '样本', dataIndex: 'sampleSize', key: 'sampleSize', width: 72 },
@@ -195,17 +260,14 @@ export default function PostUseHtmlReportDocument({
   ]
 
   return (
-    <article>
-      <Typography.Title level={1} className="!mb-1 !text-2xl">
+    <article className="report-modules">
+      <section className="report-module">
+      <Typography.Title level={1} className="!mb-0 !text-2xl">
         {model.title}
       </Typography.Title>
-      <Typography.Paragraph type="secondary" className="!mb-4">
-        表格与证据由线上综合分析同一套模型锁定；图表可悬停查看明细，原话可点进反馈库。总判断、问题结论和建议动作可编辑后保存。
-      </Typography.Paragraph>
-
       {reviewItems.length ? (
         <Alert
-          className="mb-4"
+          className="mt-4"
           type="info"
           showIcon
           message="历史复核提示（只读）"
@@ -220,116 +282,94 @@ export default function PostUseHtmlReportDocument({
           }
         />
       ) : null}
-
       {model.tablesRefreshed ? (
         <Alert
-          className="mb-4"
+          className="mt-4"
           type="warning"
           showIcon
           message="表格已按最新数据刷新，叙述仍是上次保存"
         />
       ) : null}
+      </section>
 
-      <SectionTitle id="report-judgment">本月判断</SectionTitle>
-      <div className="post-use-html-report-kpis">
-        <div className={`post-use-html-report-kpi post-use-html-report-kpi--${kpiTone}`}>
-          <div className="label">云网均分</div>
-          <div className="value">{formatScore(model.kpis.avgScore)}</div>
-          <YunwangScoreHints kpis={model.kpis} />
-        </div>
-        <div className="post-use-html-report-kpi">
-          <div className="label">样本量</div>
-          <div className="value">{model.kpis.totalSample}</div>
-        </div>
-        <div className={`post-use-html-report-kpi${model.kpis.belowNineCount ? ' post-use-html-report-kpi--warn' : ''}`}>
-          <div className="label">9 分以下产品数</div>
-          <div className="value">{model.kpis.belowNineCount}</div>
-        </div>
-        <div className={`post-use-html-report-kpi${model.kpis.callbackUnqualifiedCount ? ' post-use-html-report-kpi--warn' : ''}`}>
-          <div className="label">投诉回访不达标产品数</div>
-          <div className="value">{model.kpis.callbackUnqualifiedCount}</div>
-        </div>
-      </div>
-
-      <PostUseHtmlReportCharts
-        scoreBands={scoreBands}
-        voice={voice}
-        productScores={model.charts?.productScores}
-        reasons={model.charts?.reasons}
-        scoreTrend={model.charts?.scoreTrend}
-        satisfactionTrend={model.charts?.satisfactionTrend}
-      />
-
-      {featuredVoice.positive.length || featuredVoice.negative.length ? (
-        <div className="report-voice-columns">
-          <div>
-            <div className="report-voice-columns__title">正反馈原话</div>
-            {featuredVoice.positive.length ? (
-              featuredVoice.positive.map((item) => <QuoteCard key={`${item.recordId}-${item.text}`} item={item} />)
-            ) : (
-              <Typography.Paragraph type="secondary">本月暂无有效正反馈原话。</Typography.Paragraph>
-            )}
-          </div>
-          <div>
-            <div className="report-voice-columns__title">负反馈原话</div>
-            {featuredVoice.negative.length ? (
-              featuredVoice.negative.map((item) => <QuoteCard key={`${item.recordId}-${item.text}`} item={item} />)
-            ) : (
-              <Typography.Paragraph type="secondary">本月暂无有效负反馈原话。</Typography.Paragraph>
-            )}
-          </div>
-        </div>
-      ) : null}
-
+      <section className="report-module">
+      <SectionTitle id="report-judgment">本月概述</SectionTitle>
       <Input.TextArea
         value={judgment}
         onChange={(event) => onJudgmentChange(event.target.value)}
         autoSize={{ minRows: 4 }}
         disabled={!canEdit}
-        placeholder="写清现在怎样，并点到下面的问题条，不要只写形容词。"
+        placeholder="结合综合结论写清当月整体表现，不要改指标数字。"
       />
+      <div className="post-use-html-report-kpis">
+        <div className="post-use-html-report-kpi">
+          <div className="label">涉及产品数</div>
+          <div className="value">{model.kpis.productCount}</div>
+          <div className="post-use-html-report-kpi-hints">总样本量 {model.kpis.totalSample}</div>
+        </div>
+        <div className={`post-use-html-report-kpi post-use-html-report-kpi--${Number(model.kpis.avgScore) < 9 ? 'warn' : 'ok'}`}>
+          <div className="label">云网均分（三渠道）</div>
+          <div className="value">{formatScore(model.kpis.avgScore)}</div>
+          <YunwangScoreHints kpis={model.kpis} />
+        </div>
+        <div className={`post-use-html-report-kpi${model.kpis.belowNineCount ? ' post-use-html-report-kpi--warn' : ''}`}>
+          <div className="label">9 分以下产品数</div>
+          <div className="value">{model.kpis.belowNineCount}</div>
+          <div className="post-use-html-report-kpi-hints">{(model.kpis.belowNineNames || []).join('、') || '无'}</div>
+        </div>
+        <div className={`post-use-html-report-kpi${model.kpis.callbackUnqualifiedCount ? ' post-use-html-report-kpi--warn' : ''}`}>
+          <div className="label">投诉回访不达标产品数</div>
+          <div className="value">{model.kpis.callbackUnqualifiedCount}</div>
+          <div className="post-use-html-report-kpi-hints">{(model.kpis.callbackUnqualifiedNames || []).join('、') || '无'}</div>
+        </div>
+      </div>
+      <StatusOverviewChart statusTrend={model.charts?.statusTrend} />
+      </section>
 
-      {hidden.has(REPORT_SECTION_ISSUES) ? null : (
-        <>
-          <SectionTitle id="report-issues">问题与证据</SectionTitle>
-          {model.issues.length ? (
-            model.issues.map((issue, index) => {
-              const narrative = issueNarratives[issue.key] || {}
-              return (
-                <section key={issue.key} className="post-use-html-report-issue">
-                  <h3>
-                    {index + 1}. {issue.productName || '未标注产品'} {issueStateTag(issue)}
-                  </h3>
-                  <Typography.Text type="secondary">结论</Typography.Text>
-                  <Input.TextArea
-                    className="mt-1 mb-3"
-                    value={narrative.conclusion ?? issue.conclusion}
-                    onChange={(event) => onIssueChange(issue.key, 'conclusion', event.target.value)}
-                    autoSize={{ minRows: 2 }}
-                    disabled={!canEdit}
-                  />
-                  <Typography.Text type="secondary">证据（锁定）</Typography.Text>
-                  <LockedEvidence issue={issue} />
-                  <Typography.Text type="secondary">建议动作</Typography.Text>
-                  <Input.TextArea
-                    className="mt-1"
-                    value={narrative.action ?? issue.action}
-                    onChange={(event) => onIssueChange(issue.key, 'action', event.target.value)}
-                    autoSize={{ minRows: 2 }}
-                    disabled={!canEdit}
-                  />
-                </section>
-              )
-            })
-          ) : (
-            <Typography.Paragraph>本月没有需要单列的问题条，完整明细见附录。</Typography.Paragraph>
-          )}
-        </>
+      {hidden.has(REPORT_SECTION_PRODUCTS) ? null : (
+        <section className="report-module">
+          <SectionTitle id="report-products">分产品情况</SectionTitle>
+          <div className="report-product-layout">
+            <div className="report-product-list">
+              {productCards.map((card) => (
+                <button
+                  key={card.productName}
+                  type="button"
+                  className={`report-product-list__item${card.productName === selectedProduct ? ' is-active' : ''}`}
+                  onClick={() => setSelectedProduct(card.productName)}
+                >
+                  <span>{card.productName}</span>
+                  <span>{formatScore(card.mixedAvg)}</span>
+                  {card.belowNine ? <Tag color="red">低于 9</Tag> : null}
+                  {card.callbackUnqualified ? <Tag color="gold">回访不达标</Tag> : null}
+                </button>
+              ))}
+            </div>
+            <div>
+              {productCards.map((card) => (
+                <ProductDetail
+                  key={card.productName}
+                  card={card}
+                  active={card.productName === selectedProduct}
+                  preview={preview}
+                  distributionColumns={distributionColumns}
+                  canEdit={canEdit}
+                  issueNarratives={issueNarratives}
+                  onIssueChange={onIssueChange}
+                />
+              ))}
+            </div>
+          </div>
+          <FocusProductTrendCharts
+            scoreTrend={model.charts?.scoreTrend}
+            satisfactionTrend={model.charts?.satisfactionTrend}
+          />
+        </section>
       )}
 
       {hidden.has(REPORT_SECTION_TODO) ? null : (
-        <>
-          <SectionTitle id="report-todo">本月要办</SectionTitle>
+        <section className="report-module">
+          <SectionTitle id="report-todo">待办事情及进展</SectionTitle>
           <div className="post-use-html-report-kpis report-todo-kpis">
             <div className="post-use-html-report-kpi">
               <div className="label">本月提出</div>
@@ -386,10 +426,65 @@ export default function PostUseHtmlReportDocument({
             disabled={!canEdit}
             placeholder="补充本月要办备注：先办哪 3 件事。"
           />
-        </>
+        </section>
       )}
 
-      <div className={`report-appendix${hidden.has(REPORT_SECTION_APPENDIX) ? ' screen-only-hidden' : ''}`}>
+      {hidden.has(REPORT_SECTION_PREVIOUS_VISITS) ? null : (
+        <section className="report-module">
+          <SectionTitle id="report-previous-visits">上期客服部回访结果补充</SectionTitle>
+          {(model.previousVisits || []).length ? (
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="id"
+              dataSource={model.previousVisits}
+              columns={[
+                { title: '客户', dataIndex: 'customerName', width: 160 },
+                {
+                  title: '客服部回访记录',
+                  dataIndex: 'visitResult',
+                  render: (value, row) => (
+                    <Input.TextArea
+                      value={visitSupplements[row.id]?.visitResult ?? value}
+                      disabled={!canEdit}
+                      autoSize={{ minRows: 1 }}
+                      onChange={(event) => onVisitSupplementChange?.(row.id, 'visitResult', event.target.value)}
+                    />
+                  ),
+                },
+                {
+                  title: '回访结果内部评估/回应',
+                  dataIndex: 'internalConclusion',
+                  render: (value, row) => (
+                    <Input.TextArea
+                      value={visitSupplements[row.id]?.internalConclusion ?? value}
+                      disabled={!canEdit}
+                      autoSize={{ minRows: 1 }}
+                      onChange={(event) => onVisitSupplementChange?.(row.id, 'internalConclusion', event.target.value)}
+                    />
+                  ),
+                },
+                {
+                  title: '备注',
+                  dataIndex: 'remark',
+                  render: (value, row) => (
+                    <Input.TextArea
+                      value={visitSupplements[row.id]?.remark ?? value}
+                      disabled={!canEdit}
+                      autoSize={{ minRows: 1 }}
+                      onChange={(event) => onVisitSupplementChange?.(row.id, 'remark', event.target.value)}
+                    />
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <Typography.Paragraph type="secondary">上期无客服部回访记录。</Typography.Paragraph>
+          )}
+        </section>
+      )}
+
+      <div className={`report-module report-appendix${hidden.has(REPORT_SECTION_APPENDIX) ? ' screen-only-hidden' : ''}`}>
           <SectionTitle id="report-appendix">附录</SectionTitle>
           <Collapse
             defaultActiveKey={[]}
@@ -466,38 +561,22 @@ export default function PostUseHtmlReportDocument({
               },
               {
                 key: 'customers',
-                label: '客户与回访明细',
+                label: '客户明细',
                 children: (
-                  <>
-                    <Table
-                      size="small"
-                      pagination={false}
-                      className="mb-4"
-                      rowKey={(row) => `${row.customerName}-${row.customerCode}`}
-                      dataSource={preview.customers}
-                      columns={[
-                        { title: '客户', dataIndex: 'customerName' },
-                        { title: '编码', dataIndex: 'customerCode' },
-                        { title: '产品', dataIndex: 'products', render: (products) => (products || []).join('、') },
-                        { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
-                        { title: '均分', dataIndex: 'avgScore', width: 72 },
-                        { title: '最近原话', dataIndex: 'latestQuote' },
-                      ]}
-                    />
-                    <Table
-                      size="small"
-                      pagination={false}
-                      rowKey={(row) => row.id || `${row.customerName}-${row.visitMonth}`}
-                      dataSource={preview.visitsDetailed}
-                      columns={[
-                        { title: '客户', dataIndex: 'customerName' },
-                        { title: '编码', dataIndex: 'customerCode' },
-                        { title: '产品', dataIndex: 'productName' },
-                        { title: '回访反馈', dataIndex: 'visitFeedbackDetail' },
-                        { title: '内部评估', dataIndex: 'internalEvaluationDetail' },
-                      ]}
-                    />
-                  </>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row) => `${row.customerName}-${row.customerCode}`}
+                    dataSource={preview.customers}
+                    columns={[
+                      { title: '客户', dataIndex: 'customerName' },
+                      { title: '编码', dataIndex: 'customerCode' },
+                      { title: '产品', dataIndex: 'products', render: (products) => (products || []).join('、') },
+                      { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
+                      { title: '均分', dataIndex: 'avgScore', width: 72 },
+                      { title: '最近原话', dataIndex: 'latestQuote' },
+                    ]}
+                  />
                 ),
               },
               {
@@ -563,30 +642,33 @@ export default function PostUseHtmlReportDocument({
   )
 }
 
-export function ReportSectionToggles({ hiddenSectionIds, printAppendix, onToggleSection, onPrintAppendixChange }) {
+export function ReportSectionToggles({ hiddenSectionIds, onToggleSection }) {
   const hidden = new Set(hiddenSectionIds || [])
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Checkbox
-        checked={!hidden.has(REPORT_SECTION_ISSUES)}
-        onChange={(event) => onToggleSection(REPORT_SECTION_ISSUES, event.target.checked)}
+        checked={!hidden.has(REPORT_SECTION_PRODUCTS)}
+        onChange={(event) => onToggleSection(REPORT_SECTION_PRODUCTS, event.target.checked)}
       >
-        显示问题与证据
+        显示分产品情况
       </Checkbox>
       <Checkbox
         checked={!hidden.has(REPORT_SECTION_TODO)}
         onChange={(event) => onToggleSection(REPORT_SECTION_TODO, event.target.checked)}
       >
-        显示本月要办
+        显示待办事情及进展
+      </Checkbox>
+      <Checkbox
+        checked={!hidden.has(REPORT_SECTION_PREVIOUS_VISITS)}
+        onChange={(event) => onToggleSection(REPORT_SECTION_PREVIOUS_VISITS, event.target.checked)}
+      >
+        显示上期回访补充
       </Checkbox>
       <Checkbox
         checked={!hidden.has(REPORT_SECTION_APPENDIX)}
         onChange={(event) => onToggleSection(REPORT_SECTION_APPENDIX, event.target.checked)}
       >
         显示附录
-      </Checkbox>
-      <Checkbox checked={printAppendix} onChange={(event) => onPrintAppendixChange(event.target.checked)}>
-        打印附录
       </Checkbox>
     </div>
   )

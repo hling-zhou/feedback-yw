@@ -1,6 +1,7 @@
 import {
   REPORT_SECTION_APPENDIX,
-  REPORT_SECTION_ISSUES,
+  REPORT_SECTION_PREVIOUS_VISITS,
+  REPORT_SECTION_PRODUCTS,
   REPORT_SECTION_TODO,
 } from './htmlReportModel.js'
 
@@ -209,12 +210,33 @@ function issueHtml(issue, narrative, index) {
     <p><strong>结论</strong></p>
     <p class="narrative">${pre(conclusion)}</p>
     <div class="evidence">
-      <div>均分 ${escapeHtml(formatScore(evidence.avgScore))} · 样本 ${evidence.sampleSize || 0} · 非10分 ${evidence.nonTenCount || 0}${evidence.changeLabel ? ` · 问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}` : ''}${evidence.visitEvidenceCount ? ` · 回访证据 ${evidence.visitEvidenceCount}` : ''}</div>
+      <div>均分 ${escapeHtml(formatScore(evidence.avgScore))} · 样本 ${evidence.sampleSize || 0} · 非10分 ${evidence.nonTenCount || 0}${evidence.changeLabel ? ` · 问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}` : ''}</div>
       ${quoteHtml}
       ${praiseHtml}
     </div>
     <p><strong>建议动作</strong></p>
     <p class="narrative">${pre(action)}</p>
+  </section>`
+}
+
+function productCardHtml(card, preview, issueNarratives) {
+  const issue = card.issue
+  const narrative = issue ? issueNarratives[issue.key] || {} : {}
+  const distribution = (preview.scoreDistributionTable || []).filter((row) => row.productName === card.productName)
+  const scenes = (preview.sceneJourneys || []).filter((row) => row.productName === card.productName)
+  const evidence = issue ? issueHtml(issue, narrative, 0) : '<p class="muted">本产品本月没有单列问题条。</p>'
+  return `<section class="issue">
+    <h3>${text(card.productName)}</h3>
+    <p>体验得分 ${escapeHtml(formatScore(card.experienceScore))} · 投诉回访满意度 ${card.satisfactionRate == null ? '—' : `${card.satisfactionRate}%`} · 三渠道均分 ${escapeHtml(formatScore(card.mixedAvg))} · 样本 ${card.mixedSample || 0} · 3分以下 ${card.lowScoreCount || 0}</p>
+    <h4>得分分布</h4>
+    ${tableHtml(['样本', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1'], distribution.map((row) => [row.sampleSize, row['10'], row['9'], row['8'], row['7'], row['6'], row['5'], row['4'], row['3'], row['2'], row['1']]))}
+    <h4>场景与旅程</h4>
+    ${tableHtml(['场景', '旅程', '样本', '均分'], scenes.map((row) => [row.originalScene, row.journey, row.sampleSize, row.avgScore]))}
+    ${evidence}
+    <h4>本月客服部回访</h4>
+    ${(card.visitNarratives || []).map((line) => `<p>${escapeHtml(line)}</p>`).join('')}
+    <h4>得分趋势</h4>
+    ${svgLineChart(card.scoreTrend, { yMax: 10, reference: 9 })}
   </section>`
 }
 
@@ -238,51 +260,28 @@ export function buildOfflineMonthlyReportHtml(input) {
   const issueNarratives = input.issueNarratives || {}
   const exportedAt = input.exportedAt || new Date().toISOString()
   const kpis = model.kpis || {}
-  const voice = model.voice || {}
-  const scoreBands = model.scoreBands || {}
   const charts = model.charts || {}
-  const featured = model.featuredVoice || { positive: [], negative: [] }
   const preview = model.preview || {}
 
-  const bandChart = svgBarChart([
-    { label: '10分', value: scoreBands.ten || 0, color: '#10B981' },
-    { label: '9分', value: scoreBands.nine || 0, color: '#34D399' },
-    { label: '8分', value: scoreBands.eight || 0, color: '#F59E0B' },
-    { label: '7分及以下', value: scoreBands.low || 0, color: '#EF4444' },
-  ])
-  const voiceChart = svgHBarChart([
-    { label: '正反馈', value: voice.positiveCount || 0, color: '#10B981' },
-    { label: '负反馈', value: voice.negativeCount || 0, color: '#EF4444' },
-  ])
-  const productChart = svgHBarChart(
-    (charts.productScores || []).slice().sort((a, b) => Number(a.avgScore) - Number(b.avgScore)).slice(0, 12).map((row) => ({
-      label: row.productName,
-      value: row.avgScore,
-      hint: `样本 ${row.sampleSize || 0}`,
-      color: Number(row.avgScore) < 9 ? '#DC2626' : '#4F46E5',
-    })),
-    { maxValue: 10, reference: 9 },
-  )
-  const reasonChart = svgHBarChart(
-    (charts.reasons || []).slice(0, 8).map((row) => ({
-      label: row.reason,
-      value: row.count,
-      color: '#EF4444',
-    })),
-  )
-
-  const issuesHtml = hidden.has(REPORT_SECTION_ISSUES)
+  const statusTrend = charts.statusTrend || { data: [], areas: [] }
+  const scoreStatus = {
+    data: statusTrend.data || [],
+    areas: (statusTrend.areas || []).filter((area) => area.yAxisId !== 'rate'),
+  }
+  const rateStatus = {
+    data: statusTrend.data || [],
+    areas: (statusTrend.areas || []).filter((area) => area.yAxisId === 'rate'),
+  }
+  const productsHtml = hidden.has(REPORT_SECTION_PRODUCTS)
     ? ''
-    : `<h2>问题与证据</h2>${
-      (model.issues || []).length
-        ? model.issues.map((issue, index) => issueHtml(issue, issueNarratives[issue.key], index)).join('')
-        : '<p class="muted">本月没有需要单列的问题条，完整明细见附录。</p>'
-    }`
+    : `<h2>分产品情况</h2>${(model.productCards || []).map((card) => productCardHtml(card, preview, issueNarratives)).join('') || '<p class="muted">当月暂无产品评分。</p>'}
+      <h3>重点产品体验均分趋势</h3>${svgLineChart(charts.scoreTrend, { yMax: 10, reference: 9 })}
+      <h3>重点产品投诉回访满意度趋势</h3>${svgLineChart(charts.satisfactionTrend, { yMax: 100, reference: 88 })}`
 
   const todo = model.todo || {}
   const todoHtml = hidden.has(REPORT_SECTION_TODO)
     ? ''
-    : `<h2>本月要办</h2>
+    : `<h2>待办事情及进展</h2>
       <div class="kpis">
         <div class="kpi"><div class="label">本月提出</div><div class="value">${todo.proposedCount || 0}</div></div>
         <div class="kpi"><div class="label">本月关闭</div><div class="value">${todo.closedCount || 0}</div></div>
@@ -293,6 +292,22 @@ export function buildOfflineMonthlyReportHtml(input) {
       ${(todo.notRecovered || []).map((item) => `<p>已完成未恢复：${text(item.productName)} · ${text(item.content)}</p>`).join('')}
       ${(todo.callbackHighlights || []).map((item) => `<p>回访要点：${text(item.customerName)} × ${text(item.productName)}${item.reason ? ` · ${text(item.reason)}` : ''}</p>`).join('')}
       ${todoNote ? `<p class="narrative">${pre(todoNote)}</p>` : ''}`
+
+  const visitRows = (model.previousVisits || []).map((row) => {
+    const saved = input.visitSupplements?.[row.id] || {}
+    return {
+      ...row,
+      visitResult: saved.visitResult ?? row.visitResult,
+      internalConclusion: saved.internalConclusion ?? row.internalConclusion,
+      remark: saved.remark ?? row.remark,
+    }
+  })
+  const previousVisitsHtml = hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
+    ? ''
+    : `<h2>上期客服部回访结果补充</h2>${visitRows.length ? tableHtml(
+      ['客户', '客服部回访记录', '回访结果内部评估/回应', '备注'],
+      visitRows.map((row) => [row.customerName, row.visitResult, row.internalConclusion, row.remark]),
+    ) : '<p class="muted">上期无客服部回访记录。</p>'}`
 
   const appendixHidden = hidden.has(REPORT_SECTION_APPENDIX)
   const appendixHtml = appendixHidden
@@ -332,32 +347,21 @@ export function buildOfflineMonthlyReportHtml(input) {
   <article class="page">
     <p class="banner">离线快照 · 导出于 ${escapeHtml(exportedAt)} · 不依赖系统登录，图表为导出时锁定画面</p>
     <h1>${text(model.title)}</h1>
-    <h2>本月判断</h2>
+    <h2>本月概述</h2>
+    <p class="narrative">${pre(judgment)}</p>
     <div class="kpis">
-      <div class="kpi ${Number(kpis.avgScore) < 9 ? 'warn' : ''}"><div class="label">云网均分</div><div class="value">${escapeHtml(formatScore(kpis.avgScore))}</div>${kpiHints(kpis)}</div>
-      <div class="kpi"><div class="label">样本量</div><div class="value">${kpis.totalSample ?? 0}</div></div>
-      <div class="kpi ${kpis.belowNineCount ? 'warn' : ''}"><div class="label">9 分以下产品数</div><div class="value">${kpis.belowNineCount ?? 0}</div></div>
-      <div class="kpi ${kpis.callbackUnqualifiedCount ? 'warn' : ''}"><div class="label">投诉回访不达标产品数</div><div class="value">${kpis.callbackUnqualifiedCount ?? 0}</div></div>
+      <div class="kpi"><div class="label">涉及产品数</div><div class="value">${kpis.productCount ?? 0}</div><div class="hints">总样本量 ${kpis.totalSample ?? 0}</div></div>
+      <div class="kpi ${Number(kpis.avgScore) < 9 ? 'warn' : ''}"><div class="label">云网均分（三渠道）</div><div class="value">${escapeHtml(formatScore(kpis.avgScore))}</div>${kpiHints(kpis)}</div>
+      <div class="kpi ${kpis.belowNineCount ? 'warn' : ''}"><div class="label">9 分以下产品数</div><div class="value">${kpis.belowNineCount ?? 0}</div><div class="hints">${escapeHtml((kpis.belowNineNames || []).join('、') || '无')}</div></div>
+      <div class="kpi ${kpis.callbackUnqualifiedCount ? 'warn' : ''}"><div class="label">投诉回访不达标产品数</div><div class="value">${kpis.callbackUnqualifiedCount ?? 0}</div><div class="hints">${escapeHtml((kpis.callbackUnqualifiedNames || []).join('、') || '无')}</div></div>
     </div>
     <div class="charts">
-      <div class="charts-grid">
-        <div class="panel"><h3>评分分布</h3>${bandChart}</div>
-        <div class="panel"><h3>客户声音</h3>${voiceChart}</div>
-      </div>
-      <div class="panel"><h3>产品均分（关注线 9 分）</h3>${productChart}</div>
-      <div class="panel"><h3>高频原因</h3>${reasonChart}</div>
-      <div class="charts-grid">
-        <div class="panel"><h3>重点产品体验均分趋势</h3>${svgLineChart(charts.scoreTrend, { yMax: 10, reference: 9 })}</div>
-        <div class="panel"><h3>重点产品投诉回访满意度趋势</h3>${svgLineChart(charts.satisfactionTrend, { yMax: 100, reference: 88 })}</div>
-      </div>
+      <div class="panel"><h3>均分趋势（关注线 9）</h3>${svgLineChart(scoreStatus, { yMax: 10, reference: 9 })}</div>
+      <div class="panel"><h3>投诉回访满意度（达标线 88%）</h3>${svgLineChart(rateStatus, { yMax: 100, reference: 88 })}</div>
     </div>
-    <div class="voice">
-      <div><h3>正反馈原话</h3>${featured.positive?.length ? featured.positive.map(quoteBlock).join('') : '<p class="muted">本月暂无有效正反馈原话。</p>'}</div>
-      <div><h3>负反馈原话</h3>${featured.negative?.length ? featured.negative.map(quoteBlock).join('') : '<p class="muted">本月暂无有效负反馈原话。</p>'}</div>
-    </div>
-    <p class="narrative">${pre(judgment)}</p>
-    ${issuesHtml}
+    ${productsHtml}
     ${todoHtml}
+    ${previousVisitsHtml}
     ${appendixHtml}
   </article>
 </body>

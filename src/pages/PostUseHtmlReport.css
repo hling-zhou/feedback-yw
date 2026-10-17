@@ -21,9 +21,21 @@
 .post-use-html-report-sheet {
   width: min(1120px, calc(100% - 32px));
   margin: 24px auto 48px;
-  padding: 28px 32px 48px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.report-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-module {
   background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  padding: 20px 24px;
 }
 
 .post-use-html-report-kpis {
@@ -31,6 +43,44 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin: 16px 0 20px;
+}
+
+.report-product-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.report-product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-product-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.report-product-list__item.is-active {
+  border-color: #4f46e5;
+  background: #eef2ff;
+}
+
+.report-product-detail {
+  display: none;
+}
+
+.report-product-detail.is-active {
+  display: block;
 }
 
 .post-use-html-report-kpi {
@@ -278,12 +328,23 @@
     box-shadow: none;
   }
 
-  .post-use-html-report-sheet.hide-appendix-print .report-appendix {
-    display: none !important;
+  .report-module {
+    border: 1px solid #e5e7eb;
+    break-inside: avoid;
   }
 
-  .post-use-html-report-sheet:not(.hide-appendix-print) .report-appendix.screen-only-hidden {
-    display: block !important;
+  .report-product-list {
+    display: none;
+  }
+
+  .report-product-layout {
+    display: block;
+  }
+
+  .report-product-detail {
+    display: block;
+    break-inside: avoid;
+    margin-bottom: 16px;
   }
 
   .post-use-html-report-sheet .ant-collapse-content {

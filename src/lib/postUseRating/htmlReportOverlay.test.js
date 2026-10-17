@@ -22,6 +22,9 @@ describe('html report overlay store', () => {
         judgment: '本月先看弹性公网IP',
         issues: { 'product:弹性公网IP': { conclusion: '要管', action: '回访' } },
         todoNote: '先办 3 件事',
+        visitSupplements: {
+          v1: { visitResult: '已回访', internalConclusion: '需求接纳', remark: '下月再看' },
+        },
       },
     })
     const loaded = await loadHtmlReportOverlay(adapter, '2026-06')
@@ -32,6 +35,11 @@ describe('html report overlay store', () => {
       action: '回访',
     })
     expect(loaded.narratives.todoNote).toBe('先办 3 件事')
+    expect(loaded.narratives.visitSupplements.v1).toEqual({
+      visitResult: '已回访',
+      internalConclusion: '需求接纳',
+      remark: '下月再看',
+    })
     expect(JSON.stringify(meta.get(META_KEY_POST_USE_HTML_REPORTS))).not.toContain('avgScore')
     expect(await loadHtmlReportOverlay(adapter, '2026-07')).toBeNull()
   })

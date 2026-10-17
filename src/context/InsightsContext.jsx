@@ -208,7 +208,13 @@ function retagSessionFromRuns(runs, progress = '') {
   }
 }
 
-export function InsightsProvider({ children }) {
+/**
+ * @param {{ children: import('react').ReactNode, hydrateTickets?: boolean }} props
+ * hydrateTickets=false：月报等独立页跳过工单、快照、标签候选和订单量，只保留存储初始化。
+ */
+export function InsightsProvider({ children, hydrateTickets = true }) {
+  const hydrateTicketsRef = useRef(hydrateTickets)
+  hydrateTicketsRef.current = hydrateTickets
   const message = useAppMessage()
   const { user } = useAuth()
   const adapter = useMemo(() => getStorageAdapter(), [])
@@ -626,10 +632,11 @@ export function InsightsProvider({ children }) {
 
       // 记录加载与推荐反馈补水并行，不阻塞 periodsLoading（已提前结束）
       await Promise.all([
-        hydrateRecommendationFeedbackFromServer(adapter),
-        hydrateLearningCaches(adapter),
+        hydrateTicketsRef.current ? hydrateRecommendationFeedbackFromServer(adapter) : Promise.resolve(),
+        hydrateTicketsRef.current ? hydrateLearningCaches(adapter) : Promise.resolve(),
         (async () => {
           try {
+            if (!hydrateTicketsRef.current) return
             // loadRecordsForJourneyComparison 内部已拆分：
             // 当前月 await（必需），上月数据后台异步加载（不阻塞首屏）
             await loadRecordsForJourneyComparison(period)
@@ -1115,10 +1122,12 @@ export function InsightsProvider({ children }) {
 
   useEffect(() => {
     if (storageReady) {
-      reloadSnapshots(currentPeriodId)
-      reloadTagCandidates()
-      reloadOrderVolumes()
-      reloadWanTouTargets()
+      if (hydrateTicketsRef.current) {
+        reloadSnapshots(currentPeriodId)
+        reloadTagCandidates()
+        reloadOrderVolumes()
+        reloadWanTouTargets()
+      }
       applyTaxonomyOverridesFromStorage()
     }
   }, [storageReady, currentPeriodId, reloadSnapshots, reloadTagCandidates, reloadOrderVolumes, reloadWanTouTargets, applyTaxonomyOverridesFromStorage])

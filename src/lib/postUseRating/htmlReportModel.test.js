@@ -5,6 +5,7 @@ import {
   applyHtmlReportOverlay,
   buildHtmlMonthlyReportModel,
   buildYunwangScoreContext,
+  composeVisitEvidenceSentence,
   draftJudgmentFromConclusions,
 } from './htmlReportModel.js'
 
@@ -179,6 +180,12 @@ describe('html monthly report model', () => {
       vsCompanyLabel: '与公司均分持平',
       momLabel: '暂无上月对比',
     })
+    expect(buildYunwangScoreContext({
+      avgScore: 9.4,
+      previousAvg: 9.4,
+      previousSample: 8,
+      momPrefix: '较上季度',
+    }).momLabel).toBe('较上季度持平')
 
     const current = makeRecords()
     const previous = Array.from({ length: 10 }, (_, index) => ({
@@ -215,5 +222,43 @@ describe('html monthly report model', () => {
     expect(model.kpis.momLabel).toMatch(/^较上月高 /)
     expect(model.kpis.previousAvg).toBe(8)
     expect(model.kpis.companyAvg).toBe(storyModel.metrics.external.company.avgScore)
+    expect(model.kpis.productCount).toBeGreaterThan(0)
+    expect(model.productCards[0].productName).toBe('弹性公网IP')
+    expect(model.judgment).toContain('本期暂无客服部回访结果')
+  })
+
+  it('writes current-month visit evidence as a locked sentence', () => {
+    expect(composeVisitEvidenceSentence({
+      customerName: '某某公司',
+      feedback: '功能有缺失',
+      visitResult: '第一次回访',
+      internalConclusion: '需求接纳',
+      remark: '备注一',
+    })).toBe('某某公司：反馈「功能有缺失」，经客服部回访，核实为「第一次回访」，经产品组评估，「需求接纳」：「备注一」。')
+
+    const records = makeRecords()
+    const storyModel = buildPostUseStoryModel({
+      records,
+      allRecords: records,
+      productNames: ['弹性公网IP'],
+      period,
+    })
+    const model = buildHtmlMonthlyReportModel({
+      reportMonth: '2026-06',
+      storyModel,
+      records,
+      visits: [{
+        id: 'v1',
+        importMonth: '2026-06',
+        productName: '弹性公网IP',
+        customerName: '客户0',
+        visitResult: '第一次回访',
+        internalConclusion: '需求接纳',
+        remark: '备注一',
+      }],
+    })
+    expect(model.productCards[0].visitNarratives[0]).toContain('经客服部回访，核实为「第一次回访」')
+    expect(model.productCards[0].visitNarratives[0]).toContain('经产品组评估，「需求接纳」：「备注一」')
+    expect(model.judgment).toContain('本期客服部回访 1 条')
   })
 })

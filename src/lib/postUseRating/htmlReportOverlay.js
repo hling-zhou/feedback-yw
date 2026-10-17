@@ -12,6 +12,7 @@ export const META_KEY_POST_USE_HTML_REPORTS = 'post_use_html_reports_v1'
  *     judgment: string
  *     issues: Record<string, { conclusion: string, action: string }>
  *     todoNote: string
+ *     visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
  *   }
  * }} HtmlReportOverlay
  */
@@ -39,6 +40,19 @@ function normalizeOverlay(raw, month) {
       action: String(value.action || ''),
     }
   }
+  const supplementsRaw = narratives.visitSupplements && typeof narratives.visitSupplements === 'object'
+    ? narratives.visitSupplements
+    : {}
+  /** @type {Record<string, { visitResult: string, internalConclusion: string, remark: string }>} */
+  const visitSupplements = {}
+  for (const [key, value] of Object.entries(supplementsRaw)) {
+    if (!value || typeof value !== 'object') continue
+    visitSupplements[key] = {
+      visitResult: String(value.visitResult || ''),
+      internalConclusion: String(value.internalConclusion || ''),
+      remark: String(value.remark || ''),
+    }
+  }
   return {
     month: String(raw.month || month || ''),
     updatedAt: String(raw.updatedAt || ''),
@@ -52,6 +66,7 @@ function normalizeOverlay(raw, month) {
       judgment: String(narratives.judgment || ''),
       issues,
       todoNote: String(narratives.todoNote || ''),
+      visitSupplements,
     },
   }
 }

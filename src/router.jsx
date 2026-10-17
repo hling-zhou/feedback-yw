@@ -30,7 +30,7 @@ const routes = [
       {
         path: 'workbench/post-use-report/:month',
         element: (
-          <InsightsProvider>
+          <InsightsProvider hydrateTickets={false}>
             <PostUseHtmlReport />
           </InsightsProvider>
         ),

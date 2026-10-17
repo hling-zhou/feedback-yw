@@ -12,7 +12,7 @@ import TrendChart from '../charts/TrendChart.jsx'
 import SentimentChart from '../charts/SentimentChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import ChartTooltip from '../charts/ChartTooltip.jsx'
-import { POST_USE_SATISFACTION_BASELINE } from '../../lib/postUseRating/metrics.js'
+import { POST_USE_SATISFACTION_BASELINE, POST_USE_SCORE_BASELINE } from '../../lib/postUseRating/metrics.js'
 
 const SCORE_BAND_COLORS = {
   ten: '#10B981',
@@ -34,6 +34,72 @@ const PRODUCT_BAR_WARN = '#DC2626'
  *   satisfactionTrend?: { data: object[], areas: object[] }
  * }} props
  */
+export function StatusOverviewChart({ statusTrend }) {
+  if (!statusTrend?.data?.length) {
+    return <div className="report-chart-empty">暂无体验现状趋势</div>
+  }
+  return (
+    <TrendChart
+      variant="line"
+      allowDecimals
+      height={300}
+      data={statusTrend.data}
+      areas={statusTrend.areas}
+      referenceLine={[
+        { y: POST_USE_SCORE_BASELINE, label: '关注线 9', yAxisId: 'score', position: 'insideTopLeft' },
+        {
+          y: POST_USE_SATISFACTION_BASELINE * 100,
+          label: '达标线 88%',
+          yAxisId: 'rate',
+          stroke: '#059669',
+          position: 'insideTopRight',
+        },
+      ]}
+      tooltipFormatter={(value, name) => {
+        if (value == null) return ['—', name]
+        return [String(name).includes('满意度') ? `${value}%` : value, name]
+      }}
+    />
+  )
+}
+
+export function FocusProductTrendCharts({ scoreTrend, satisfactionTrend }) {
+  return (
+    <div className="report-charts__grid">
+      <div className="report-visual-panel">
+        <div className="report-visual-panel__title">重点产品体验均分趋势</div>
+        {scoreTrend?.data?.length ? (
+          <TrendChart
+            variant="line"
+            allowDecimals
+            height={240}
+            data={scoreTrend.data}
+            areas={scoreTrend.areas}
+            referenceLine={{ y: 9, label: '关注线 9' }}
+          />
+        ) : (
+          <div className="report-chart-empty">当前月份暂无体验趋势</div>
+        )}
+      </div>
+      <div className="report-visual-panel">
+        <div className="report-visual-panel__title">重点产品投诉回访满意度趋势</div>
+        {satisfactionTrend?.data?.length ? (
+          <TrendChart
+            variant="line"
+            allowDecimals
+            height={240}
+            data={satisfactionTrend.data}
+            areas={satisfactionTrend.areas}
+            referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }}
+          />
+        ) : (
+          <div className="report-chart-empty">当前月份暂无满意度趋势</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function PostUseHtmlReportCharts({
   scoreBands,
   voice,
