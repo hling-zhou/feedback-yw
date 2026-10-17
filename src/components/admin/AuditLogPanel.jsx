@@ -50,7 +50,19 @@ export const AUDIT_ACTION_LABELS = {
   'post_use_jira.update': '更新用后内部提单',
   'post_use_jira.delete': '删除用后内部提单',
   'post_use_jira.batch_delete': '批量删除用后内部提单',
-  'post_use_callback_decisions.replace': '更新回访跟进决策' }
+  'post_use_callback_decisions.replace': '更新回访跟进决策',
+  'mail.public_url_update': '更新邮件平台地址',
+  'mail.channel_create': '创建发信通道',
+  'mail.channel_update': '更新发信通道',
+  'mail.channel_delete': '删除发信通道',
+  'mail.group_create': '创建收件人群组',
+  'mail.group_update': '更新收件人群组',
+  'mail.group_delete': '删除收件人群组',
+  'mail.template_create': '创建邮件模板',
+  'mail.template_update': '更新邮件模板',
+  'mail.template_delete': '删除邮件模板',
+  'mail.send': '发送邮件',
+}
 
 /**
  * @param {Record<string, unknown>} detail

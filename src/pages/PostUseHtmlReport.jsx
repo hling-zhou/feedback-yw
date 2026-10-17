@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Button, Space, Spin, Typography, message } from 'antd'
+import { MailOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { SCHEMA_VERSION } from '../domain/constants.js'
@@ -30,6 +31,9 @@ import { loadMonthlyReportLearnings } from '../lib/postUseRating/monthlyReportDo
 import PostUseHtmlReportDocument, {
   ReportSectionToggles,
 } from '../components/workbench/PostUseHtmlReportDocument.jsx'
+import SendMailModal from '../components/mail/SendMailModal.jsx'
+import { MAIL_PRESET_REPORT } from '../domain/mail.js'
+import { textToBase64 } from '../lib/mailClient.js'
 import './PostUseHtmlReport.css'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -78,6 +82,7 @@ export default function PostUseHtmlReport() {
   const [visitSupplements, setVisitSupplements] = useState({})
   const [statusTrends, setStatusTrends] = useState(null)
   const [hiddenSectionIds, setHiddenSectionIds] = useState([])
+  const [mailOpen, setMailOpen] = useState(false)
 
   const route = useMemo(() => resolveReportRoute(month), [month])
   const reportKey = route?.key || ''
@@ -358,19 +363,24 @@ export default function PostUseHtmlReport() {
     }
   }
 
+  const buildOfflineHtml = () => {
+    if (!model) return ''
+    return buildOfflineMonthlyReportHtml({
+      model,
+      judgment,
+      todoNote,
+      issueNarratives,
+      visitSupplements,
+      hiddenSectionIds,
+      exportedAt: new Date().toISOString(),
+    })
+  }
+
   const handleExportOfflineHtml = () => {
     if (!model) return
     setExporting(true)
     try {
-      const html = buildOfflineMonthlyReportHtml({
-        model,
-        judgment,
-        todoNote,
-        issueNarratives,
-        visitSupplements,
-        hiddenSectionIds,
-        exportedAt: new Date().toISOString(),
-      })
+      const html = buildOfflineHtml()
       downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportKey, model.copy?.filenamePrefix))
       message.success('已导出离线 HTML，可用浏览器直接打开')
     } catch (error) {
@@ -444,8 +454,35 @@ export default function PostUseHtmlReport() {
           <Button disabled={!model} loading={exporting} onClick={handleExportOfflineHtml}>
             导出离线 HTML
           </Button>
+          <Button
+            disabled={!canEdit || !model}
+            icon={<MailOutlined />}
+            onClick={() => setMailOpen(true)}
+          >
+            发送邮件
+          </Button>
         </Space>
       </header>
+      <SendMailModal
+        open={mailOpen}
+        onClose={() => setMailOpen(false)}
+        defaultTemplateId={MAIL_PRESET_REPORT}
+        dataSourceType="post_use_rating"
+        periodLabel={storyModel?.scope?.periodLabel || reportKey}
+        reportKey={reportKey}
+        reportKind={reportKind === 'quarter' ? 'quarter' : 'month'}
+        linkKind="report"
+        canSend={canEdit && Boolean(model)}
+        buildAttachment={async () => {
+          if (!model) return null
+          const html = buildOfflineHtml()
+          return {
+            filename: offlineMonthlyReportFilename(reportKey, model.copy?.filenamePrefix),
+            mime: 'text/html;charset=utf-8',
+            contentBase64: textToBase64(html),
+          }
+        }}
+      />
       <div className="post-use-html-report-sheet">
         {body}
       </div>

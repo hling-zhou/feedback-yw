@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Modal, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, FolderAddOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FolderAddOutlined, MailOutlined } from '@ant-design/icons'
 import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import {
+  buildFollowupTableWorkbook,
   collectFollowupExportRows,
   downloadFollowupTableExcel,
+  followupTableFilename,
+  followupWorkbookToBase64,
   toJiraArchivePayload,
 } from '../../lib/postUseRating/callbackFollowupTables.js'
+import SendMailModal from '../mail/SendMailModal.jsx'
+import { MAIL_PRESET_CALLBACK_VISIT } from '../../domain/mail.js'
 import {
   archivePostUseJiraItems,
   listPostUseCallbackDecisions,
@@ -42,6 +47,7 @@ export default function PostUseCallbackProcessModal({
   const [loading, setLoading] = useState(false)
   const [savingKey, setSavingKey] = useState('')
   const [archiving, setArchiving] = useState(false)
+  const [mailOpen, setMailOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -381,6 +387,15 @@ export default function PostUseCallbackProcessModal({
           <Button icon={<DownloadOutlined />} onClick={exportVisit}>
             导出待客服回访表
           </Button>
+          <Tooltip title={visitCount ? '' : '请先勾选需要客服回访的记录'}>
+            <Button
+              icon={<MailOutlined />}
+              disabled={!canEdit || !visitCount}
+              onClick={() => setMailOpen(true)}
+            >
+              发送待客服回访
+            </Button>
+          </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportTrace}>
             导出待内部提单表
           </Button>
@@ -397,6 +412,31 @@ export default function PostUseCallbackProcessModal({
           </Tooltip>
         </Space>
       </div>
+      <SendMailModal
+        open={mailOpen}
+        onClose={() => setMailOpen(false)}
+        defaultTemplateId={MAIL_PRESET_CALLBACK_VISIT}
+        dataSourceType="post_use_rating"
+        periodLabel={scopeLabel}
+        linkKind="workbench"
+        canSend={canEdit && visitCount > 0}
+        disabledReason={visitCount ? '' : '请先勾选需要客服回访的记录'}
+        buildAttachment={async () => {
+          const rows = collectFollowupExportRows(
+            recommendations,
+            callbackNonTenRecords,
+            decisions,
+            'needCustomerVisit',
+          )
+          if (!rows.length) return null
+          const wb = buildFollowupTableWorkbook(rows, '待客服回访表')
+          return {
+            filename: followupTableFilename('待客服回访表', scopeLabel),
+            mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            contentBase64: followupWorkbookToBase64(wb),
+          }
+        }}
+      />
     </Modal>
   )
 }

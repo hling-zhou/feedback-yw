@@ -17,6 +17,7 @@ import ApiKeyPanel from '../components/admin/ApiKeyPanel.jsx'
 import KnowledgeBasePanel from '../components/admin/KnowledgeBasePanel.jsx'
 import PipelineCopilotPanel from '../components/admin/PipelineCopilotPanel.jsx'
 import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
+import MailSettingsPanel from '../components/admin/MailSettingsPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -882,6 +883,10 @@ export default function Settings() {
         {activeTab === 'pipeline' && <PipelineCopilotPanel canEdit={can('manageTeamSettings')} />}
 
         {activeTab === 'curated_taxonomy' && <CuratedTaxonomyPanel canEdit={can('manageTeamSettings')} />}
+
+        {activeTab === 'mail' && can('manageTeamSettings') && (
+          <MailSettingsPanel canEdit={can('manageTeamSettings')} />
+        )}
       </div>
     </div>
   )

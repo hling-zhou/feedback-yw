@@ -97,7 +97,13 @@ export function collectFollowupExportRows(questionnaireItems, callbackItems, dec
   return selected
 }
 
-export function downloadFollowupTableExcel(rows, filenamePrefix, scopeLabel = '当前范围') {
+export function followupTableFilename(filenamePrefix, scopeLabel = '当前范围') {
+  const datePart = new Date().toISOString().slice(0, 10)
+  const safeScope = String(scopeLabel || '当前范围').replace(/[\\/:*?"<>|]+/g, '-')
+  return `${filenamePrefix}-${safeScope}-${datePart}.xlsx`
+}
+
+export function buildFollowupTableWorkbook(rows, filenamePrefix) {
   const exportRows = buildFollowupTableExportRows(rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(
@@ -107,9 +113,22 @@ export function downloadFollowupTableExcel(rows, filenamePrefix, scopeLabel = '�
     ),
     filenamePrefix,
   )
-  const datePart = new Date().toISOString().slice(0, 10)
-  const safeScope = String(scopeLabel || '当前范围').replace(/[\\/:*?"<>|]+/g, '-')
-  downloadWorkbook(wb, `${filenamePrefix}-${safeScope}-${datePart}.xlsx`)
+  return wb
+}
+
+export function followupWorkbookToBase64(wb) {
+  const bytes = new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }))
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+export function downloadFollowupTableExcel(rows, filenamePrefix, scopeLabel = '当前范围') {
+  const wb = buildFollowupTableWorkbook(rows, filenamePrefix)
+  downloadWorkbook(wb, followupTableFilename(filenamePrefix, scopeLabel))
 }
 
 export function toJiraArchivePayload(row) {

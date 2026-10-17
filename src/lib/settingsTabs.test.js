@@ -17,7 +17,7 @@ describe('settingsTabs', () => {
     )
     expect(admin).toEqual([
       'llm', 'analysis', 'metrics', 'data', 'audit', 'bottles',
-      'requirement_sync', 'pipeline', 'curated_taxonomy',
+      'requirement_sync', 'pipeline', 'curated_taxonomy', 'mail',
     ])
 
     const editor = getVisibleSettingsTabs((p) =>

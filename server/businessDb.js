@@ -603,6 +603,38 @@ export function initBusinessSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_assistant_messages_thread
       ON assistant_messages (thread_id, created_at ASC);
+
+    CREATE TABLE IF NOT EXISTS mail_channels (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      data_source_type TEXT NOT NULL UNIQUE,
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      secure INTEGER NOT NULL DEFAULT 1,
+      username TEXT NOT NULL DEFAULT '',
+      password TEXT NOT NULL DEFAULT '',
+      from_address TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_recipient_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emails_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      preset INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

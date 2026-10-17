@@ -1,4 +1,4 @@
-/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles' | 'requirement_sync' | 'knowledge_base' | 'pipeline' | 'curated_taxonomy'} SettingsTabKey */
+/** @typedef {'llm' | 'analysis' | 'metrics' | 'data' | 'audit' | 'bottles' | 'requirement_sync' | 'knowledge_base' | 'pipeline' | 'curated_taxonomy' | 'mail'} SettingsTabKey */
 
 export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'llm',
@@ -11,6 +11,7 @@ export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
   'knowledge_base',
   'pipeline',
   'curated_taxonomy',
+  'mail',
 ])
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -25,6 +26,7 @@ export const SETTINGS_TAB_LABELS = {
   knowledge_base: '产品知识库',
   pipeline: '行动建议规则补充',
   curated_taxonomy: '分类法管理',
+  mail: '邮件发送',
 }
 
 /** @type {Record<SettingsTabKey, string>} */
@@ -44,6 +46,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   pipeline: '仅管理员可运行行动建议规则补充流水线：Producer 归因 → 新词发现 → 自动写入 → 门禁验证；跑完在页面查看结果。',
   curated_taxonomy:
     '查看各产品的行动建议分类法（curated JSON）；仅管理员可编辑 family 正则与子议题，保存后写入服务端，刷新洞察即生效。',
+  mail: '配置发信通道、收件人群组与邮件模板。通道绑定数据来源；发送时选择模板和群组。仅管理员可改。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
@@ -65,6 +68,7 @@ export function getVisibleSettingsTabs(can) {
   if (can('manageKnowledgeBase')) tabs.push('knowledge_base')
   if (can('view')) tabs.push('pipeline')
   if (can('view')) tabs.push('curated_taxonomy')
+  if (can('manageTeamSettings')) tabs.push('mail')
   return tabs
 }
 
