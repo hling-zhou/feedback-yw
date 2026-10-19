@@ -101,7 +101,41 @@ export function isPostUseNon10LibraryRecord(record) {
 }
 
 /**
- * 从 URLSearchParams / lane 字符串 / { lane, source } 解析反馈库大类
+ * 用后即评满意度 tab 内的三视图。
+ * raw=原始数据 / trace=产品部溯源 / visit=客服部回访
+ */
+export const POST_USE_VIEW_RAW = /** @type {const} */ ('raw')
+export const POST_USE_VIEW_TRACE = /** @type {const} */ ('trace')
+export const POST_USE_VIEW_VISIT = /** @type {const} */ ('visit')
+
+/** @typedef {typeof POST_USE_VIEW_RAW | typeof POST_USE_VIEW_TRACE | typeof POST_USE_VIEW_VISIT} PostUseLaneView */
+
+/** @type {PostUseLaneView[]} */
+export const POST_USE_LANE_VIEWS = [POST_USE_VIEW_RAW, POST_USE_VIEW_TRACE, POST_USE_VIEW_VISIT]
+
+/**
+ * 解析用后即评 lane 内的子视图；非法值回落 raw。
+ * @param {URLSearchParams | { get?: (k: string) => string | null } | null | undefined} searchParams
+ * @returns {PostUseLaneView}
+ */
+export function resolvePostUseLaneView(searchParams) {
+  if (searchParams == null) return POST_USE_VIEW_RAW
+  const get =
+    typeof searchParams.get === 'function'
+      ? (/** @type {string} */ k) => searchParams.get(k)
+      : (/** @type {string} */ k) => {
+          const v = /** @type {Record<string, unknown>} */ (searchParams)[k]
+          return v == null ? null : String(v)
+        }
+  const view = String(get('view') ?? '').trim()
+  return /** @type {PostUseLaneView} */ (
+    POST_USE_LANE_VIEWS.includes(/** @type {PostUseLaneView} */ (view)) ? view : POST_USE_VIEW_RAW
+  )
+}
+
+/**
+ * 从 URLSearchParams / lane 字符串 / { lane, source } 解析反馈库大类。
+ * 旧顶层 lane=customer_visits 已下线：统一映射为 post_use（视图由 view=visit 承接）。
  * @param {string | URLSearchParams | { get?: (k: string) => string | null; lane?: string; source?: string } | null | undefined} searchParamsOrLane
  * @returns {typeof FEEDBACK_LANE_POST_USE | typeof FEEDBACK_LANE_TICKETS | typeof FEEDBACK_LANE_CUSTOMER_VISITS}
  */
@@ -112,7 +146,7 @@ export function resolveFeedbackLane(searchParamsOrLane) {
     const s = searchParamsOrLane.trim()
     if (s === FEEDBACK_LANE_POST_USE || s === 'post_use_rating') return FEEDBACK_LANE_POST_USE
     if (s === FEEDBACK_LANE_CUSTOMER_VISITS || s === 'customer_visit') {
-      return FEEDBACK_LANE_CUSTOMER_VISITS
+      return FEEDBACK_LANE_POST_USE
     }
     return FEEDBACK_LANE_TICKETS
   }
@@ -129,7 +163,7 @@ export function resolveFeedbackLane(searchParamsOrLane) {
   const lane = String(get('lane') ?? '').trim()
   if (lane === FEEDBACK_LANE_POST_USE) return FEEDBACK_LANE_POST_USE
   if (lane === FEEDBACK_LANE_TICKETS) return FEEDBACK_LANE_TICKETS
-  if (lane === FEEDBACK_LANE_CUSTOMER_VISITS) return FEEDBACK_LANE_CUSTOMER_VISITS
+  if (lane === FEEDBACK_LANE_CUSTOMER_VISITS) return FEEDBACK_LANE_POST_USE
 
   const source = String(get('source') ?? '').trim()
   if (source === 'post_use_rating') return FEEDBACK_LANE_POST_USE

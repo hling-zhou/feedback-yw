@@ -12,6 +12,13 @@ describe('Feedbacks customer visit tab', () => {
     expect(source).toContain('FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS')
     expect(source).toContain('visitCustomerNameOptions')
     expect(source).toContain('buildPostUseCustomerVisitRows')
-    expect(source).toContain('<CustomerVisitTable rows={customerVisitTableRows} />')
+  })
+
+  it('renders customer visit table with my-review status and drawer selection', () => {
+    expect(source).toContain('function CustomerVisitTable')
+    expect(source).toContain('__myStatus')
+    expect(source).toContain('postUseVisitReviewId')
+    expect(source).toContain('PostUseVisitDrawer')
+    expect(source).toContain('showMyReviewFilter={reviewEnabled}')
   })
 })

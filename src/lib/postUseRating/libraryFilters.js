@@ -1,4 +1,5 @@
 import { EMPTY_FILTER_TOKEN } from '../feedbackFilters.js'
+import { recordHasNegativeFeedback } from './callbackRecommendations.js'
 
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
 
@@ -87,6 +88,20 @@ export function listPostUseRatingFilterOptions(records) {
     options.push({ value: String(score), label: `${score} 分` })
   }
   return options
+}
+
+/**
+ * 快捷筛选「重点关注」：非 10 分，或 10 分但反馈含实质负面表述。
+ * 未评分记录不算重点关注。
+ * 负面口径与建议回访清单一致（recordHasNegativeFeedback / isSubstantiveFeedbackReason）。
+ *
+ * @param {FeedbackRecord | null | undefined} record
+ */
+export function matchesPostUseQuickScopeFilter(record) {
+  const score = parseRatingScore(record?.ratingScore)
+  if (score == null) return false
+  if (score < 10) return true
+  return score === 10 && recordHasNegativeFeedback(record)
 }
 
 /**

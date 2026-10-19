@@ -45,6 +45,7 @@ import {
  * @property {string} ratingScore
  * @property {string} channel
  * @property {string} commentKeyword
+ * @property {'' | 'attention' | 'all'} postUseQuickScope
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
@@ -73,6 +74,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'ratingScore',
   'channel',
   'commentKeyword',
+  'postUseQuickScope',
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
@@ -126,6 +128,13 @@ export const FEEDBACK_POST_USE_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} 
   'journeyL1',
   'resourcePool',
   'requestScene',
+  'myReview',
+])
+
+/** 快捷筛选「重点关注」选项（原始数据视图顶部 Segmented 用，不走复合筛选 chip） */
+export const POST_USE_QUICK_SCOPE_OPTIONS = /** @type {const} */ ([
+  { label: '重点关注', value: 'attention' },
+  { label: '显示全部', value: 'all' },
 ])
 
 /** 投诉咨询 Tab 复合筛选（不含用后即评专用条件） */
@@ -152,6 +161,7 @@ export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */
 /** 客服部回访 Tab 复合筛选 */
 export const FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'customerNames',
+  'myReview',
 ])
 
 /** @type {Record<FeedbackFilterKey, string>} */
@@ -179,6 +189,7 @@ export const FEEDBACK_FILTER_LABELS = {
   ratingScore: '评分',
   channel: '渠道',
   commentKeyword: '原文',
+  postUseQuickScope: '重点关注',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -207,7 +218,16 @@ export function createEmptyFeedbackFilters() {
     ratingScore: '',
     channel: '',
     commentKeyword: '',
+    postUseQuickScope: 'attention',
   }
+}
+
+/**
+ * postUseQuickScope 默认 attention（重点关注），选 all 才算“变更”。
+ * 不进复合筛选 chip（顶部 Segmented 独占展示），这里恒不活跃。
+ */
+export function isPostUseQuickScopeChipActive() {
+  return false
 }
 
 /**
@@ -364,6 +384,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
         POST_USE_RATING_BAND_OPTIONS.find((item) => item.value === values.ratingScore)?.label ||
         (values.ratingScore === EMPTY_FILTER_TOKEN ? '未评分' : `${values.ratingScore} 分`)
       )
+    case 'postUseQuickScope':
+      return (
+        POST_USE_QUICK_SCOPE_OPTIONS.find((item) => item.value === values.postUseQuickScope)?.label ||
+        values.postUseQuickScope
+      )
     case 'channel':
       return getPostUseChannelLabel(values.channel)
     default:
@@ -499,6 +524,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
     listeningReviewed: filters.listeningReviewed,
+    postUseQuickScope: filters.postUseQuickScope === 'all' ? 'all' : '',
   }
 }
 
@@ -517,6 +543,7 @@ export function feedbackFiltersFromParsed(parsed) {
 
 /**
  * 按 Tab 保留允许的筛选键；产品始终保留（条外范围开关）。
+ * postUseQuickScope 不随 keys 白名单丢弃（用后即评视图切换时保持选中态）。
  * @param {FeedbackFilterValues} filters
  * @param {FeedbackFilterKey[]} keys
  * @param {Partial<FeedbackFilterValues>} [extras]
@@ -525,6 +552,7 @@ export function feedbackFiltersFromParsed(parsed) {
 export function restrictFeedbackFiltersToKeys(filters, keys, extras = {}) {
   const next = createEmptyFeedbackFilters()
   next.product = filters.product || ''
+  next.postUseQuickScope = filters.postUseQuickScope || 'attention'
   for (const key of keys) {
     if (key === 'ticketDateTo') continue
     next[key] = filters[key]

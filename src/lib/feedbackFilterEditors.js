@@ -40,6 +40,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   ratingScore: 'enum',
   channel: 'enum',
   commentKeyword: 'text',
+  postUseQuickScope: 'enum',
 }
 
 /**
@@ -181,6 +182,9 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       return options.ratingScoreOptions || []
     case 'channel':
       return options.channelOptions || []
+    case 'postUseQuickScope':
+      // 快捷筛选由 raw 视图顶部 Segmented 独占，不走复合筛选下拉，不提供枚举选项
+      return []
     default:
       return []
   }

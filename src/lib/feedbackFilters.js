@@ -314,6 +314,14 @@ export function parseTicketIdsParam(raw) {
 }
 
 /**
+ * @param {string | null | undefined} raw
+ * @returns {'attention' | 'all'}
+ */
+export function parsePostUseQuickScopeParam(raw) {
+  return String(raw || '').trim() === 'all' ? 'all' : 'attention'
+}
+
+/**
  * @param {URLSearchParams | { get: (key: string) => string | null }} searchParams
  */
 export function parseFeedbackSearchParams(searchParams) {
@@ -342,6 +350,7 @@ export function parseFeedbackSearchParams(searchParams) {
     channel: searchParams.get('channel')?.trim() || '',
     commentKeyword: searchParams.get('commentKeyword')?.trim() || '',
     problemCauseSource: parseProblemCauseSourceParam(searchParams.get('problemCauseSource')),
+    postUseQuickScope: parsePostUseQuickScopeParam(searchParams.get('postUseQuickScope')),
   }
 }
 
@@ -359,6 +368,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'requestScene',
     'source',
     'lane',
+    'view',
     'followUp',
     'followUpResolved',
     'reasonDim',
@@ -372,6 +382,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'channel',
     'commentKeyword',
     'problemCauseSource',
+    'postUseQuickScope',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue

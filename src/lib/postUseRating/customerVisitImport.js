@@ -86,6 +86,7 @@ export function normalizeCustomerVisitRow(mappedRow) {
   const customerName = String(row.customerName ?? row['客户名称'] ?? '').trim()
   const customerCode = String(row.customerCode ?? row['客户编码'] ?? '').trim()
   const userFeedbackText = String(row.userFeedbackText ?? row['用户反馈原文'] ?? '').trim()
+  const assigneeName = String(row.assigneeName ?? row['经办人'] ?? '').trim()
   const scoreSource = ''
   const ratingText = ''
   const userInfo = String(
@@ -112,6 +113,7 @@ export function normalizeCustomerVisitRow(mappedRow) {
     customerCode,
     feedbackSummary,
     userFeedbackText,
+    assigneeName,
     scoreSource,
     ratingText,
     userInfo,
@@ -303,6 +305,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
       customerCode: visit.customerCode,
       feedbackSummary: visit.feedbackSummary,
       userFeedbackText: visit.userFeedbackText,
+      assigneeName: visit.assigneeName || '',
       scoreSource: visit.scoreSource,
       ratingText: visit.ratingText,
       userInfo: visit.userInfo,
@@ -357,6 +360,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
         customerCode: visit.customerCode,
         feedbackSummary: visit.feedbackSummary,
         userFeedbackText: visit.userFeedbackText,
+        assigneeName: visit.assigneeName || '',
         scoreSource: visit.scoreSource,
         ratingText: visit.ratingText,
         userInfo: visit.userInfo,

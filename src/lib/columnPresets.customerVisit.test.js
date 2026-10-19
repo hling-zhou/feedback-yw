@@ -39,4 +39,15 @@ describe('customer visit preset detection', () => {
     expect(withoutRemark?.id).toBe(POST_USE_CUSTOMER_VISIT_PRESET.id)
     expect(withRemark?.columnMap.remark).toBe('备注')
   })
+
+  it('detects the template when both internal evaluation and remark columns are absent', () => {
+    const preset = detectPreset(
+      ['数据月份', '客户名称', '客户编码', '产品名称', '回访结果'],
+      'post_use_rating',
+      { postUseRatingSubType: 'customer_visit' },
+    )
+
+    expect(preset?.id).toBe(POST_USE_CUSTOMER_VISIT_PRESET.id)
+    expect(preset?.columnMap.internalConclusion).toBe('内部评估')
+  })
 })

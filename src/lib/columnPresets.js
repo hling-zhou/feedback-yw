@@ -187,8 +187,7 @@ export function detectPreset(headers, dataSourceType = 'complaint_ticket', optio
     has('客户名称') &&
     has('客户编码') &&
     has('产品名称') &&
-    has('回访结果') &&
-    has('内部评估')
+    has('回访结果')
 
   if (dataSourceType === 'post_use_rating') {
     if (postUseRatingSubType === 'customer_visit') {

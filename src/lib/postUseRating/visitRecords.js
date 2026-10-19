@@ -22,6 +22,8 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [visitFeedbackDetail]
  * @property {string} [internalEvaluationDetail]
  * @property {string} [remark]
+ * @property {string} [assigneeName]
+ * @property {string} [actionId]
  * @property {string} [jiraId]
  * @property {string} updatedAt
  */
@@ -39,6 +41,8 @@ export function normalizeVisitRecords(raw) {
     customerName: String(item?.customerName || item?.userInfoDetail || item?.userInfo || ''),
     customerCode: String(item?.customerCode || ''),
     userFeedbackText: String(item?.userFeedbackText || ''),
+    assigneeName: String(item?.assigneeName || ''),
+    actionId: String(item?.actionId || ''),
     userInfoDetail: String(
       item?.userInfoDetail
       || [item?.customerName, item?.customerCode].filter(Boolean).join(' / ')
