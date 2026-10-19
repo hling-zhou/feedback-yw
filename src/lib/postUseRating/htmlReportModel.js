@@ -6,7 +6,7 @@ import {
   computeInternalExperienceMetrics,
   computeInternalSatisfactionMetrics,
 } from './metrics.js'
-import { buildYunwangScoreContext } from './scoreContext.js'
+import { buildYunwangScoreContext, compareSatisfactionMom } from './scoreContext.js'
 import { buildMonthlyReportPreviewModel } from './monthlyReportPreview.js'
 import { postUseRecordsToScoredRows } from './storyModel.js'
 import { filterVisitsByMonth, filterVisitsByMonths } from './visitRecords.js'
@@ -52,7 +52,7 @@ function findRecommendedAction(actionRows, productName) {
 }
 
 function draftActionText(actionRow) {
-  if (!actionRow) return '建议明确责任人：客服部回访、部门内溯源，或立项产品举措。'
+  if (!actionRow) return '建议明确责任人：客服部回访、产品部溯源，或立项产品举措。'
   if (actionRow.action?.content) {
     return `继续推进举措「${actionRow.action.content}」，写清责任人与本月完成标准。`
   }
@@ -156,10 +156,19 @@ function round2(n) {
 }
 
 function metricPeriodComparison(current, previous, kind, prefix = '较上月') {
+  if (kind === 'rate') {
+    return compareSatisfactionMom({
+      currentRate: current,
+      currentSample: current == null || current === '' ? 0 : 1,
+      previousRate: previous,
+      previousSample: previous == null || previous === '' ? 0 : 1,
+      momPrefix: prefix,
+    })
+  }
   const missing = { label: `暂无${String(prefix).replace(/^较/, '')}对比`, tone: 'na' }
   const currentNum = Number(current)
   const previousNum = Number(previous)
-  if (!Number.isFinite(currentNum) || previous == null || !Number.isFinite(previousNum)) return missing
+  if (current == null || current === '' || !Number.isFinite(currentNum) || previous == null || previous === '' || !Number.isFinite(previousNum)) return missing
   const delta = kind === 'score' || kind === 'rate' ? round2(currentNum - previousNum) : currentNum - previousNum
   if (delta === 0) return { label: `${prefix}持平`, tone: 'flat' }
   const higher = delta > 0
@@ -359,6 +368,7 @@ export function applyHtmlReportOverlay(model, overlay) {
     issues,
     judgment: overlay ? (narratives.judgment ?? model.judgmentDraft) : model.judgmentDraft,
     todoNote: overlay ? (narratives.todoNote ?? '') : '',
+    todoItems: overlay ? (narratives.todoItems ?? []) : [],
     previousVisits: (model.previousVisits || []).map((row) => {
       const saved = narratives.visitSupplements?.[row.id]
       if (!overlay) return row

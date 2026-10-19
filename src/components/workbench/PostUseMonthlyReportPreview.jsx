@@ -247,9 +247,9 @@ export default function PostUseMonthlyReportPreview(props) {
         </div>
       ) : null}
       <Descriptions size="small" column={2} bordered className="mb-4">
-        <Descriptions.Item label="云网产品数">{model.overview.productCount}</Descriptions.Item>
-        <Descriptions.Item label="云网样本量">{model.overview.totalSample}</Descriptions.Item>
-        <Descriptions.Item label="云网均分">{model.overview.avgScore}</Descriptions.Item>
+        <Descriptions.Item label="部门产品数">{model.overview.productCount}</Descriptions.Item>
+        <Descriptions.Item label="部门样本量">{model.overview.totalSample}</Descriptions.Item>
+        <Descriptions.Item label="部门均分">{model.overview.avgScore}</Descriptions.Item>
         <Descriptions.Item label="9分以下">
           {model.overview.belowNineCount}（{model.overview.belowNineRatio}%）
         </Descriptions.Item>
@@ -260,7 +260,7 @@ export default function PostUseMonthlyReportPreview(props) {
       <Typography.Title level={5}>线上综合分析入报范围</Typography.Title>
       <Descriptions size="small" column={3} bordered className="mb-4">
         <Descriptions.Item label="产品体验">{model.productExperience.length} 个产品</Descriptions.Item>
-        <Descriptions.Item label="场景×旅程">{model.sceneJourneys.length} 个组合</Descriptions.Item>
+        <Descriptions.Item label="用户旅程">{(model.journeyDistribution || []).length} 个组合</Descriptions.Item>
         <Descriptions.Item label="用户需求">{model.needs.length} 项</Descriptions.Item>
         <Descriptions.Item label="客户洞察">{model.customers.length} 个客户（含 {model.onlineModel?.visitEvidenceCount || 0} 条回访证据）</Descriptions.Item>
         <Descriptions.Item label="问题变化">{model.issueChanges.length} 项</Descriptions.Item>

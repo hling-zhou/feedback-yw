@@ -12,6 +12,10 @@ vi.mock('../charts/TrendChart.jsx', () => ({
   default: () => <div>trend</div>,
 }))
 
+vi.mock('./PostUseJourneyMap.jsx', () => ({
+  default: () => <div>journey-map</div>,
+}))
+
 function model() {
   return {
     scope: { periodLabel: '2026年6月', catalogVersion: 'v1', ruleVersion: 'v1' },
@@ -28,6 +32,7 @@ function model() {
     trendsAndChanges: { scoreTrend: { data: [] }, satisfactionTrend: { data: [] }, changes: [] },
     drivers: {
       sceneJourneys: [],
+      journeyDistribution: [],
       needs: [],
       highFrequencyLowScoreReasons: [],
       customers: [{

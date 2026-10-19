@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Alert, Button, Space, Table, Tabs, Tag, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { buildPostUseInsightBundle } from '../../lib/postUseRating/insights.js'
+import PostUseJourneyMap from './PostUseJourneyMap.jsx'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { recomputePostUseInsightBundle } from '../../lib/postUseRating/insightStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
@@ -59,9 +60,8 @@ export default function PostUseInsightPanel({ records, allRecords, visits = [], 
     { title: '回访证据', dataIndex: 'visitEvidenceCount', width: 88, render: (v) => v || '—' },
     { title: '判定依据', dataIndex: 'explanation' },
   ]
-  const sceneColumns = [
+  const journeyColumns = [
     { title: '产品', dataIndex: 'productName', fixed: 'left', width: 150 },
-    { title: '评价触发场景', dataIndex: 'originalScene', width: 170 },
     { title: '用户旅程', dataIndex: 'journey', width: 130 },
     { title: '样本量', dataIndex: 'sampleSize', width: 82 },
     { title: '均分', dataIndex: 'avgScore', width: 76 },
@@ -89,7 +89,7 @@ export default function PostUseInsightPanel({ records, allRecords, visits = [], 
       <Tabs
         items={[
           { key: 'products', label: '产品体验', children: <Table size="small" rowKey="productName" scroll={{ x: 760 }} pagination={{ pageSize: 10 }} columns={productColumns} dataSource={bundle.products} /> },
-          { key: 'scene', label: '场景与旅程', children: <><Alert className="mb-3" type="info" showIcon title="仅使用原始评价场景与现有用户旅程标签" description="评价触发场景来自短信问卷场景或官网一级场景；未提供与未识别环节单独披露。不会添加请求场景、问题类型或情绪标签。"/><Table size="small" rowKey={(r) => `${r.productName}-${r.originalScene}-${r.journey}`} scroll={{ x: 760 }} pagination={{ pageSize: 10 }} columns={sceneColumns} dataSource={bundle.sceneJourneys} /></> },
+          { key: 'scene', label: '用户旅程', children: <><Alert className="mb-3" type="info" showIcon title="按一级用户旅程看样本量与均分" description="柱为样本量，折线为均分。均分轴从最低分减 1 取整起，不从 0 起。不展示二级环节，也不再按评价触发场景拆分。"/><PostUseJourneyMap rows={bundle.journeyDistribution} /><Table className="mt-3" size="small" rowKey={(r) => `${r.productName}-${r.journey}`} scroll={{ x: 640 }} pagination={{ pageSize: 10 }} columns={journeyColumns} dataSource={bundle.journeyDistribution} /></> },
           { key: 'needs', label: '用户需求', children: <Table size="small" rowKey={(r) => `${r.productName}-${r.need}`} scroll={{ x: 900 }} pagination={{ pageSize: 10 }} columns={needColumns} dataSource={bundle.needs} /> },
           { key: 'customers', label: '客户洞察', children: <Table size="small" rowKey={(r) => r.customerCode || r.customerName} pagination={{ pageSize: 10 }} columns={[
             {

@@ -172,6 +172,9 @@ export function buildMonthlyReportPreviewModel(input) {
     productExperience: storyModel?.productOverview || onlineInsights.products || [],
     monthlyScoreTable,
     sceneJourneys: storyModel?.drivers?.sceneJourneys || onlineInsights.sceneJourneys || [],
+    journeyDistribution: storyModel?.drivers?.journeyDistribution
+      || onlineInsights.journeyDistribution
+      || [],
     needs: storyModel?.drivers?.needs || onlineInsights.needs || [],
     customers: storyModel?.drivers?.customers || onlineInsights.customers || [],
     issueChanges: storyModel?.trendsAndChanges?.changes || onlineInsights.issueChanges || [],

@@ -23,6 +23,7 @@ describe('post-use online analysis to monthly report preview', () => {
         ruleVersion: 'pur-insight-v1',
         products: [{ productName: '弹性公网IP' }],
         sceneJourneys: [{ productName: '弹性公网IP', originalScene: '创建后', journey: '开通' }],
+        journeyDistribution: [{ productName: '弹性公网IP', journey: '开通', sampleSize: 1, avgScore: 8 }],
         needs: [{ productName: '弹性公网IP', need: '功能有缺失' }],
         customers: [{ customerName: '客户A' }],
         issueChanges: [{ issue: '功能有缺失', change: '增长' }],
@@ -34,6 +35,7 @@ describe('post-use online analysis to monthly report preview', () => {
     expect(model.onlineModel.source).toBe('post_use_online_insight_bundle')
     expect(model.productExperience).toHaveLength(1)
     expect(model.sceneJourneys).toHaveLength(1)
+    expect(model.journeyDistribution).toHaveLength(1)
     expect(model.needs).toHaveLength(1)
     expect(model.issueChanges[0].change).toBe('增长')
     expect(model.monthlyScoreTable[0]).toMatchObject({

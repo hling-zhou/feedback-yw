@@ -103,9 +103,9 @@ export async function buildMonthlyReportDocxBlob(model) {
     simpleTable(
       ['指标', '数值'],
       [
-        ['云网产品数', String(model.overview.productCount)],
-        ['云网样本量', String(model.overview.totalSample)],
-        ['云网均分', String(model.overview.avgScore)],
+        ['部门产品数', String(model.overview.productCount)],
+        ['部门样本量', String(model.overview.totalSample)],
+        ['部门均分', String(model.overview.avgScore)],
         ['9分以下产品数', `${model.overview.belowNineCount}（${model.overview.belowNineRatio}%）`],
         ['公司均分', String(model.overview.companyAvg)],
         ['公司样本量', String(model.overview.companySample)],
@@ -156,7 +156,7 @@ export async function buildMonthlyReportDocxBlob(model) {
     children.push(new Paragraph({ text: '本月暂无月报口径产品总表。' }))
   }
 
-  const sceneJourneys = model.sceneJourneys || []
+  const journeyDistribution = model.journeyDistribution || []
   children.push(new Paragraph({ text: '2.2 整体趋势', heading: HeadingLevel.HEADING_3 }))
   if (productExperience.length) {
     children.push(
@@ -176,14 +176,13 @@ export async function buildMonthlyReportDocxBlob(model) {
   } else {
     children.push(new Paragraph({ text: '本月暂无产品体验分析。' }))
   }
-  children.push(new Paragraph({ text: '2.2.1 评价触发场景与用户旅程', heading: HeadingLevel.HEADING_3 }))
-  if (sceneJourneys.length) {
+  children.push(new Paragraph({ text: '2.2.1 用户旅程分布', heading: HeadingLevel.HEADING_3 }))
+  if (journeyDistribution.length) {
     children.push(
       simpleTable(
-        ['产品', '评价触发场景', '用户旅程', '样本量', '均分', '非10分'],
-        sceneJourneys.slice(0, 30).map((item) => [
+        ['产品', '用户旅程', '样本量', '均分', '非10分'],
+        journeyDistribution.slice(0, 30).map((item) => [
           item.productName,
-          item.originalScene,
           item.journey,
           String(item.sampleSize),
           String(item.avgScore),
@@ -192,7 +191,7 @@ export async function buildMonthlyReportDocxBlob(model) {
       ),
     )
   } else {
-    children.push(new Paragraph({ text: '本月暂无场景与旅程分析。' }))
+    children.push(new Paragraph({ text: '本月暂无用户旅程分布。' }))
   }
 
   const needs = model.needs || []

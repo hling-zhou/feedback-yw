@@ -51,6 +51,7 @@ function formatTsLabel(ts) {
  * @param {boolean} [props.stacked] 仅 area 模式有效
  * @param {number} [props.height]
  * @param {boolean} [props.allowDecimals]
+ * @param {[number, number] | null} [props.domain]
  * @param {'category' | 'time'} [props.xType]
  *        time：X 轴按日历时间，参考线可落在月内某天（工单量仍按月点）
  * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string } | Array<{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }> | null} [props.referenceLine]
@@ -70,6 +71,7 @@ export default function TrendChart({
   referenceLines = null,
   tooltipFormatter = null,
   tooltipLabelFormatter = null,
+  domain = null,
 }) {
   if (!data?.length) {
     return <EmptyChart message="暂无趋势数据" height={height} />
@@ -89,6 +91,7 @@ export default function TrendChart({
           yAxisId={id}
           orientation={sample?.orientation || (index === 0 ? 'left' : 'right')}
           domain={sample?.domain}
+          allowDataOverflow={Boolean(sample?.domain)}
           allowDecimals={allowDecimals}
           tick={{ fontSize: 11, fill: '#6B7280' }}
           tickFormatter={id === 'rate' ? (value) => `${value}%` : undefined}
@@ -96,7 +99,13 @@ export default function TrendChart({
       )
     })
     : [
-      <YAxis key="y" allowDecimals={allowDecimals} tick={{ fontSize: 11, fill: '#6B7280' }} />,
+      <YAxis
+        key="y"
+        allowDecimals={allowDecimals}
+        domain={domain || undefined}
+        allowDataOverflow={Boolean(domain)}
+        tick={{ fontSize: 11, fill: '#6B7280' }}
+      />,
     ]
   const yRefs = Array.isArray(referenceLine) ? referenceLine : referenceLine ? [referenceLine] : []
 

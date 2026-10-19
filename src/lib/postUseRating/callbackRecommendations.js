@@ -96,7 +96,7 @@ function pickLatestSurveyRecord(records) {
   return latest
 }
 
-function getFeedbackReasonValues(record) {
+export function getFeedbackReasonValues(record) {
   const explicit = Array.isArray(record.feedbackReasonTexts)
     ? record.feedbackReasonTexts
     : []
@@ -122,7 +122,7 @@ function getFeedbackReasonValues(record) {
   return values
 }
 
-function recordHasNegativeFeedback(record) {
+export function recordHasNegativeFeedback(record) {
   return getFeedbackReasonValues(record).some((text) => isSubstantiveFeedbackReason(text))
 }
 

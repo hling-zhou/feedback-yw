@@ -13,6 +13,7 @@ import SentimentChart from '../charts/SentimentChart.jsx'
 import ThemeBarChart from '../charts/ThemeBarChart.jsx'
 import ChartTooltip from '../charts/ChartTooltip.jsx'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SCORE_BASELINE } from '../../lib/postUseRating/metrics.js'
+import { withPostUseTrendDomains } from '../../lib/postUseRating/insights.js'
 
 const SCORE_BAND_COLORS = {
   ten: '#10B981',
@@ -38,13 +39,14 @@ export function StatusOverviewChart({ statusTrend }) {
   if (!statusTrend?.data?.length) {
     return <div className="report-chart-empty">暂无体验现状趋势</div>
   }
+  const chart = withPostUseTrendDomains(statusTrend, { kind: 'combined' })
   return (
     <TrendChart
       variant="line"
       allowDecimals
       height={300}
-      data={statusTrend.data}
-      areas={statusTrend.areas}
+      data={chart.data}
+      areas={chart.areas}
       referenceLine={[
         { y: POST_USE_SCORE_BASELINE, label: '关注线 9', yAxisId: 'score', position: 'insideTopLeft' },
         {
@@ -64,17 +66,20 @@ export function StatusOverviewChart({ statusTrend }) {
 }
 
 export function FocusProductTrendCharts({ scoreTrend, satisfactionTrend }) {
+  const scoreChart = withPostUseTrendDomains(scoreTrend, { kind: 'score' })
+  const rateChart = withPostUseTrendDomains(satisfactionTrend, { kind: 'rate' })
   return (
     <div className="report-charts__grid">
       <div className="report-visual-panel">
         <div className="report-visual-panel__title">重点产品体验均分趋势</div>
-        {scoreTrend?.data?.length ? (
+        {scoreChart?.data?.length ? (
           <TrendChart
             variant="line"
             allowDecimals
             height={240}
-            data={scoreTrend.data}
-            areas={scoreTrend.areas}
+            data={scoreChart.data}
+            areas={scoreChart.areas}
+            domain={scoreChart.domain}
             referenceLine={{ y: 9, label: '关注线 9' }}
           />
         ) : (
@@ -83,13 +88,14 @@ export function FocusProductTrendCharts({ scoreTrend, satisfactionTrend }) {
       </div>
       <div className="report-visual-panel">
         <div className="report-visual-panel__title">重点产品投诉回访满意度趋势</div>
-        {satisfactionTrend?.data?.length ? (
+        {rateChart?.data?.length ? (
           <TrendChart
             variant="line"
             allowDecimals
             height={240}
-            data={satisfactionTrend.data}
-            areas={satisfactionTrend.areas}
+            data={rateChart.data}
+            areas={rateChart.areas}
+            domain={rateChart.domain}
             referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }}
           />
         ) : (

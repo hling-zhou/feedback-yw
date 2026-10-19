@@ -1,4 +1,11 @@
 import { analyzeSentiment, isNegativeSentiment } from '../sentiment.js'
+
+/** 月报「正反馈」必须命中正向评价词，不能只凭 10 分。 */
+const POSITIVE_EVALUATION_TERMS = [
+  '满意', '感谢', '好用', '好评', '流畅', '推荐', '优秀', '不错', '很好', '非常好',
+  '解决了', '赞', '稳定', '方便', '清晰', '及时', '靠谱', '顺利', '省心', '给力',
+  '友好', '易用', '便捷', '专业', '高效',
+]
 import { normalizeEvidenceText } from './evidence.js'
 import {
   classifyCustomerTextKind,
@@ -81,6 +88,25 @@ export function classifyFeedbackPolarity(item) {
 }
 
 /**
+ * @param {unknown} text
+ */
+export function hasPositiveEvaluationVocab(text) {
+  const hay = String(text || '').trim().toLowerCase()
+  if (!hay) return false
+  return POSITIVE_EVALUATION_TERMS.some((term) => hay.includes(term.toLowerCase()))
+}
+
+/**
+ * 月报正反馈入选：10 分且非负向语义，并且原文带正向评价词。
+ * @param {{ kind?: string, polarity?: string, score?: number | null, text?: string }} item
+ */
+export function isPraiseQuote(item) {
+  if (!item || item.kind === 'option') return false
+  const polarity = item.polarity || classifyFeedbackPolarity(item)
+  return polarity === 'positive' && hasPositiveEvaluationVocab(item.text)
+}
+
+/**
  * @param {object} record
  * @returns {Array<{
  *   text: string
@@ -151,7 +177,7 @@ export function pickIssueEvidenceTexts(items, opts = {}) {
     if (!item?.text || seen.has(item.text)) continue
     seen.add(item.text)
     const polarity = item.polarity || classifyFeedbackPolarity(item)
-    if (item.kind === 'quote' && polarity === 'positive') {
+    if (item.kind === 'quote' && isPraiseQuote({ ...item, polarity })) {
       if (positiveQuotes.length < maxPositive) positiveQuotes.push({ ...item, polarity: 'positive' })
       continue
     }
@@ -173,7 +199,7 @@ export function summarizeQuotePolarity(registry) {
     if (item.kind === 'option' || item.polarity === 'negative') {
       if (item.kind === 'option') negativeOptions += 1
       else negativeQuotes += 1
-    } else {
+    } else if (isPraiseQuote(item)) {
       positiveQuotes += 1
     }
   }
@@ -191,7 +217,7 @@ export function summarizeQuotePolarity(registry) {
  */
 export function pickFeaturedVoiceQuotes(registry, limit = 3) {
   const positive = (registry || [])
-    .filter((item) => item.kind === 'quote' && item.polarity === 'positive')
+    .filter((item) => isPraiseQuote(item))
     .sort((a, b) => String(b.answeredAt || '').localeCompare(String(a.answeredAt || '')))
     .slice(0, limit)
   const negative = (registry || [])

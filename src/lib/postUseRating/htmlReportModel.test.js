@@ -9,6 +9,7 @@ import {
   draftJudgmentFromConclusions,
   formatMonthlyCallbackHighlightReason,
 } from './htmlReportModel.js'
+import { compareSatisfactionMom } from './scoreContext.js'
 
 const period = {
   id: 'period:month:2026-06',
@@ -46,6 +47,24 @@ function makeRecords() {
 }
 
 describe('html monthly report model', () => {
+  it('uses an em dash for satisfaction mom when either period has no sample', () => {
+    expect(compareSatisfactionMom({ currentRate: 90, currentSample: 10, previousRate: null, previousSample: 0 })).toEqual({
+      label: '—',
+      tone: 'na',
+    })
+    expect(compareSatisfactionMom({ currentRate: 0, currentSample: 0, previousRate: 90, previousSample: 8 })).toEqual({
+      label: '—',
+      tone: 'na',
+    })
+    expect(compareSatisfactionMom({ currentRate: 90, currentSample: 10, previousRate: 88, previousSample: 8 })).toMatchObject({
+      label: '较上月高 2 个百分点',
+      tone: 'up',
+    })
+    expect(compareSatisfactionMom({ currentRate: 0, currentSample: 5, previousRate: 0, previousSample: 4 })).toMatchObject({
+      label: '较上月持平',
+    })
+  })
+
   it('drafts judgment from story conclusions and names issue products', () => {
     const draft = draftJudgmentFromConclusions(
       [
@@ -229,7 +248,7 @@ describe('html monthly report model', () => {
     expect(model.productCards[0].comparisons.experienceScore.label).toMatch(/^较上月高 /)
     expect(model.productCards[0].comparisons.mixedSample).toMatchObject({ label: '较上月多 1', tone: 'flat' })
     expect(model.productCards[0].comparisons.lowScoreCount).toMatchObject({ label: '较上月持平', tone: 'flat' })
-    expect(model.productCards[0].comparisons.satisfactionRate).toMatchObject({ label: '暂无上月对比', tone: 'na' })
+    expect(model.productCards[0].comparisons.satisfactionRate).toMatchObject({ label: '—', tone: 'na' })
     expect(model.judgment).toContain('本期暂无客服部回访结果')
   })
 

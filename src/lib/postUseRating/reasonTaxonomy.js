@@ -58,6 +58,13 @@ const POSITIVE_FEEDBACK_REASONS = new Set([
  */
 const NEGATED_POSITIVE_RE = /不[太很甚较]?(满意|感谢|好用|好|赞|推荐|流畅|优秀)/
 
+/**
+ * 裸动作词：整条反馈恰为该词时是业务动作诉求而非不满，不算实质负面
+ * （2026-10-19 用户规则：「如果只有 退订 二字，也不算负面反馈」）。
+ * 仅整词精确排除；「退订失败」「无法退订」「想退订共享带宽」等带上下文的仍按实质反馈处理。
+ */
+const BARE_ACTION_WORDS = new Set(['退订'])
+
 const FIXED_REASON_LABELS = new Set(
   [...CONSOLE_REASON_TAXONOMY, ...CALLBACK_REASON_TAXONOMY].filter((label) => label !== '其他'),
 )
@@ -78,6 +85,8 @@ export function isSubstantiveFeedbackReason(value) {
   const text = normalizeEvidenceText(value)
   if (!isValidCustomerText(text)) return false
   if (POSITIVE_FEEDBACK_REASONS.has(text)) return false
+  // 裸动作词（整条恰为「退订」等）：业务诉求不算负面，但仍是有效客户文本（保留在原话登记）。
+  if (BARE_ACTION_WORDS.has(text)) return false
   // 否定式正面词（如「不太满意」）按负面处理，不交给 sentiment（避免被误判为 positive）
   if (NEGATED_POSITIVE_RE.test(text)) return true
   // 长句正面兜底：sentiment 判为正面则不算负面反馈。

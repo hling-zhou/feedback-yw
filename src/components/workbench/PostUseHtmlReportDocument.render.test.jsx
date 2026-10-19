@@ -1,7 +1,11 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import PostUseHtmlReportDocument from './PostUseHtmlReportDocument.jsx'
+
+vi.mock('./PostUseJourneyMap.jsx', () => ({
+  default: () => <div>journey-map</div>,
+}))
 
 function model() {
   return {
@@ -49,6 +53,7 @@ function model() {
       reviewChecklist: [],
       scoreDistributionTable: [],
       sceneJourneys: [],
+      journeyDistribution: [],
       monthlyScoreTable: [],
       needs: [],
       customers: [],
@@ -94,7 +99,7 @@ describe('PostUseHtmlReportDocument render', () => {
     expect(html).toContain('与公司均分持平')
     expect(html).toContain('暂无上月对比')
     expect(html).toContain('分产品情况')
-    expect(html).toContain('待办事情及进展')
+    expect(html).toContain('待办事项及进展')
     expect(html).toContain('上期客服部回访结果补充')
     expect(html).toContain('上期无客服部回访记录')
     expect(html).toContain('经客服部回访，核实为「第一次回访」')

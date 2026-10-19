@@ -9,11 +9,13 @@ import {
   POST_USE_SCORE_BASELINE,
   POST_USE_SMALL_SAMPLE_N,
 } from '../../lib/postUseRating/metrics.js'
-import { buildYunwangScoreContext } from '../../lib/postUseRating/scoreContext.js'
+import { buildYunwangScoreContext, compareSatisfactionMom } from '../../lib/postUseRating/scoreContext.js'
+import { withPostUseTrendDomains } from '../../lib/postUseRating/insights.js'
 import { listExperienceStatusProducts } from '../../lib/postUseRating/storyModel.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
 import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
+import PostUseJourneyMap from './PostUseJourneyMap.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 
@@ -54,16 +56,18 @@ function downloadCsv(text, name) {
   URL.revokeObjectURL(url)
 }
 
-function StatusTrendChart({ pending, chart, emptyTitle, referenceLine, tooltipFormatter, height = 260 }) {
+function StatusTrendChart({ pending, chart, emptyTitle, referenceLine, tooltipFormatter, height = 260, axisKind = 'combined' }) {
   if (pending) return <Alert type="info" showIcon title="正在汇总各月评分…" />
   if (!chart?.data?.length) return <Alert type="info" showIcon title={emptyTitle} />
+  const scaled = withPostUseTrendDomains(chart, { kind: axisKind })
   return (
     <TrendChart
       variant="line"
       allowDecimals
       height={height}
-      data={chart.data}
-      areas={chart.areas}
+      data={scaled.data}
+      areas={scaled.areas}
+      domain={scaled.domain}
       referenceLine={referenceLine}
       tooltipFormatter={tooltipFormatter}
     />
@@ -162,6 +166,14 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
   const yw = metrics.external?.yunwang
   const company = metrics.external?.company
   const previousDepartmentScore = metrics.previousDepartmentScore
+  const previousDepartmentSatisfaction = metrics.previousDepartmentSatisfaction
+  const satisfactionMom = compareSatisfactionMom({
+    currentRate: sat?.rate,
+    currentSample: sat?.totalSample,
+    previousRate: previousDepartmentSatisfaction?.rate,
+    previousSample: previousDepartmentSatisfaction?.totalSample,
+    momPrefix: previousDepartmentSatisfaction?.momPrefix,
+  })
   const departmentComparison = buildYunwangScoreContext({
     avgScore: yw?.totalSample ? yw.avgScore : null,
     companyAvg: company?.avgScore,
@@ -178,6 +190,8 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
   const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length
   const callbackDownloadDisabledReason = '当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录'
+  const scoreTrendChart = withPostUseTrendDomains(trendsAndChanges.scoreTrend, { kind: 'score' })
+  const satisfactionTrendChart = withPostUseTrendDomains(trendsAndChanges.satisfactionTrend, { kind: 'rate' })
 
   return (
     <div className="space-y-4">
@@ -202,7 +216,12 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="体验均分" value={exp.avgScore} precision={2} /></div></Col>
         <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="体验样本" value={exp.totalSample} /></div></Col>
-        <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="投诉回访满意度" value={sat.rate} precision={2} suffix="%" /></div></Col>
+        <Col xs={12} md={6}>
+          <div className="metric-card h-full">
+            <Statistic title="投诉回访满意度" value={sat.totalSample ? sat.rate : '—'} precision={sat.totalSample ? 2 : 0} suffix={sat.totalSample ? '%' : undefined} />
+            <div className={`mt-1 text-xs leading-5 ${comparisonClass(satisfactionMom.tone)}`}>{satisfactionMom.label}</div>
+          </div>
+        </Col>
         <Col xs={12} md={6}><div className="metric-card h-full"><Statistic title="投诉回访样本" value={sat.totalSample} /></div></Col>
       </Row>
       <Row gutter={[12, 12]} className="mt-3">
@@ -296,11 +315,11 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={12}>
           <div className="page-card-header"><span className="page-card-title">重点产品体验均分趋势</span></div>
-            {trendsAndChanges.scoreTrend.data.length ? <TrendChart variant="line" allowDecimals height={260} data={trendsAndChanges.scoreTrend.data} areas={trendsAndChanges.scoreTrend.areas} referenceLine={{ y: 9, label: '关注线 9' }} /> : <Alert type="info" showIcon title="当前范围暂无体验趋势" />}
+            {scoreTrendChart?.data?.length ? <TrendChart variant="line" allowDecimals height={260} data={scoreTrendChart.data} areas={scoreTrendChart.areas} domain={scoreTrendChart.domain} referenceLine={{ y: 9, label: '关注线 9' }} /> : <Alert type="info" showIcon title="当前范围暂无体验趋势" />}
         </Col>
         <Col xs={24} xl={12}>
           <div className="page-card-header"><span className="page-card-title">重点产品投诉回访满意度趋势</span></div>
-            {trendsAndChanges.satisfactionTrend.data.length ? <TrendChart variant="line" allowDecimals height={260} data={trendsAndChanges.satisfactionTrend.data} areas={trendsAndChanges.satisfactionTrend.areas} referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }} /> : <Alert type="info" showIcon title="当前范围暂无满意度趋势" />}
+            {satisfactionTrendChart?.data?.length ? <TrendChart variant="line" allowDecimals height={260} data={satisfactionTrendChart.data} areas={satisfactionTrendChart.areas} domain={satisfactionTrendChart.domain} referenceLine={{ y: POST_USE_SATISFACTION_BASELINE * 100, label: '达标线 88%' }} /> : <Alert type="info" showIcon title="当前范围暂无满意度趋势" />}
         </Col>
       </Row>
       <div className="page-card-header mt-3"><span className="page-card-title">问题变化</span></div>
@@ -321,20 +340,9 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
 
       <div className="page-card">
       <SectionHeading title="原因与用户需求" summary="从发生位置继续下钻到用户真正需要的改善" id="post-use-drivers" />
-      <div className="page-card-header"><span className="page-card-title">评价触发场景 × 用户旅程</span></div>
-        <LimitedTable
-          size="small"
-          rowKey={(row) => `${row.productName}-${row.originalScene}-${row.journey}`}
-          dataSource={drivers.sceneJourneys}
-          columns={[
-            { title: '产品', dataIndex: 'productName', width: 145 },
-            { title: '评价触发场景', dataIndex: 'originalScene', width: 180 },
-            { title: '用户旅程', dataIndex: 'journey', width: 140 },
-            { title: '样本量', dataIndex: 'sampleSize', width: 82 },
-            { title: '均分', dataIndex: 'avgScore', width: 76 },
-            { title: '非10分', dataIndex: 'nonTenCount', width: 82 },
-          ]}
-        />
+      <div className="page-card-header"><span className="page-card-title">用户旅程分布</span></div>
+        <p className="mb-2 text-xs text-ink-500">柱为样本量，折线为均分。均分轴从最低分减 1 取整起，不从 0 起。</p>
+        <PostUseJourneyMap rows={drivers.journeyDistribution} />
       <div className="page-card-header mt-3"><span className="page-card-title">用户需求改善优先级</span></div>
         <LimitedTable
           size="small"

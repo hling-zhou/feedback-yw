@@ -4,6 +4,8 @@ import {
   classifyFeedbackPolarity,
   collectCustomerQuoteSourceValues,
   extractValidCustomerTexts,
+  hasPositiveEvaluationVocab,
+  isPraiseQuote,
   pickFeaturedVoiceQuotes,
   pickIssueEvidenceTexts,
   summarizeQuotePolarity,
@@ -85,6 +87,24 @@ describe('customer quote extraction', () => {
     expect(mixed[0]).toMatchObject({ kind: 'quote', polarity: 'negative', text: '给了满分但还是太卡了' })
   })
 
+  it('keeps a bare 退订 at 10 points positive and out of negative voice (2026-10-19 rule)', () => {
+    // 10 分裸「退订」：中性业务诉求，不算负面原话
+    expect(classifyFeedbackPolarity({ kind: 'quote', score: 10, text: '退订' })).toBe('positive')
+    const registry = buildCustomerQuoteRegistry([
+      {
+        channel: 'sms',
+        productName: '弹性公网IP',
+        customerName: '客户甲',
+        ratingScore: 10,
+        commentText: '退订',
+      },
+    ])
+    expect(registry[0]).toMatchObject({ kind: 'quote', polarity: 'positive', text: '退订' })
+    expect(summarizeQuotePolarity(registry).negativeCount).toBe(0)
+    // 非 10 分的裸「退订」仍按分数口径判负（分数维度与文本维度独立，负面判定修复不改变分数口径）
+    expect(classifyFeedbackPolarity({ kind: 'quote', score: 8, text: '退订' })).toBe('negative')
+  })
+
   it('prefers quotes over options on an issue card', () => {
     const picked = pickIssueEvidenceTexts([
       { kind: 'option', text: '功能有缺失' },
@@ -103,6 +123,33 @@ describe('customer quote extraction', () => {
     ])
     expect(picked.quotes).toEqual([])
     expect(picked.options.map((item) => item.text)).toEqual(['功能有缺失', '缺乏操作指引'])
+  })
+
+  it('requires positive evaluation words before a 10-point quote counts as 正反馈', () => {
+    expect(hasPositiveEvaluationVocab('用着很稳定')).toBe(true)
+    expect(hasPositiveEvaluationVocab('已知悉')).toBe(false)
+    expect(isPraiseQuote({ kind: 'quote', polarity: 'positive', text: '用着很稳定', score: 10 })).toBe(true)
+    expect(isPraiseQuote({ kind: 'quote', polarity: 'positive', text: '已知悉', score: 10 })).toBe(false)
+
+    const registry = buildCustomerQuoteRegistry([
+      {
+        channel: 'sms',
+        productName: '弹性公网IP',
+        customerName: '客户甲',
+        ratingScore: 10,
+        commentText: '已知悉',
+      },
+      {
+        channel: 'sms',
+        productName: '弹性公网IP',
+        customerName: '客户乙',
+        ratingScore: 10,
+        commentText: '用着很稳定',
+      },
+    ])
+    expect(pickIssueEvidenceTexts(registry).positiveQuotes.map((item) => item.text)).toEqual(['用着很稳定'])
+    expect(pickFeaturedVoiceQuotes(registry).positive.map((item) => item.text)).toEqual(['用着很稳定'])
+    expect(summarizeQuotePolarity(registry).positiveCount).toBe(1)
   })
 
   it('keeps positive quotes off the problem evidence list', () => {

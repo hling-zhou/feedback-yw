@@ -23,6 +23,13 @@ describe('analyzeTicketSentiment', () => {
     expect(analyzeSentiment('申请退订这台云主机')).toBe('neutral_inquiry')
   })
 
+  it('keeps a bare 退订 neutral (negative-feedback exclusion lives in reasonTaxonomy, not here)', () => {
+    // 裸「退订」是业务动作诉求：sentiment 保持中性，不算负面情绪
+    expect(analyzeSentiment('退订')).toBe('neutral_inquiry')
+    // 带上下文的退订问题同样不由 sentiment 升负——负面判定交给 isSubstantiveFeedbackReason 兜底
+    expect(analyzeSentiment('退订失败')).toBe('neutral_inquiry')
+  })
+
   it('does not treat 投诉 alone in complaint context as negative without keyword', () => {
     expect(analyzeSentiment('工单编号12345')).toBe('neutral_inquiry')
   })
@@ -87,6 +94,16 @@ describe('analyzeTicketSentiment', () => {
     expect(analyzeSentiment('原有带宽不满足当前业务')).toBe('neutral_inquiry')
     expect(analyzeSentiment('负载均衡 badd228114ae 端口暴露')).toBe('neutral_inquiry')
     expect(analyzeSentiment('页面很差，给了差评')).toBe('negative')
+  })
+
+  it('treats 卡/断网 wording as mild negative but keeps 网卡 neutral', () => {
+    expect(analyzeSentiment('太卡了')).toBe('mild_negative')
+    expect(analyzeSentiment('页面有点卡')).toBe('mild_negative')
+    expect(analyzeSentiment('使用过程频繁卡顿')).toBe('mild_negative')
+    expect(analyzeSentiment('控制台经常卡死')).toBe('mild_negative')
+    expect(analyzeSentiment('经常断网')).toBe('mild_negative')
+    // 裸「卡」不收：网卡等名词不受影响
+    expect(analyzeSentiment('弹性网卡配额只有6个')).toBe('neutral_inquiry')
   })
 })
 

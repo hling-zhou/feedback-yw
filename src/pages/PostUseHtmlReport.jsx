@@ -78,6 +78,7 @@ export default function PostUseHtmlReport() {
   const [exporting, setExporting] = useState(false)
   const [judgment, setJudgment] = useState('')
   const [todoNote, setTodoNote] = useState('')
+  const [todoItems, setTodoItems] = useState([])
   const [issueNarratives, setIssueNarratives] = useState({})
   const [visitSupplements, setVisitSupplements] = useState({})
   const [statusTrends, setStatusTrends] = useState(null)
@@ -278,6 +279,7 @@ export default function PostUseHtmlReport() {
     if (!model) return
     setJudgment(model.judgment)
     setTodoNote(model.todoNote)
+    setTodoItems(model.todoItems || [])
     setHiddenSectionIds(model.hiddenSectionIds || [])
     setIssueNarratives(
       Object.fromEntries(
@@ -351,6 +353,7 @@ export default function PostUseHtmlReport() {
           judgment,
           issues: issueNarratives,
           todoNote,
+          todoItems,
           visitSupplements,
         },
       })
@@ -369,6 +372,7 @@ export default function PostUseHtmlReport() {
       model,
       judgment,
       todoNote,
+      todoItems,
       issueNarratives,
       visitSupplements,
       hiddenSectionIds,

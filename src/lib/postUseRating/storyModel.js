@@ -58,6 +58,21 @@ function recordMonth(record) {
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null | undefined} period
  * @param {string[]} productNames
  */
+function previousDepartmentSatisfaction(allRecords, period, productNames) {
+  const source = periodWithMonthAnchor(period)
+  const previous = resolvePreviousInsightPeriod(source)
+  const months = new Set(previous ? postUsePeriodMonths(previous) : [])
+  const prevRecords = months.size
+    ? (allRecords || []).filter((record) => months.has(recordMonth(record)))
+    : []
+  const sat = computeInternalSatisfactionMetrics(postUseRecordsToScoredRows(prevRecords), { productNames })
+  return {
+    rate: sat.totalSample ? sat.rate : null,
+    totalSample: sat.totalSample || 0,
+    momPrefix: comparisonPrefix(source?.granularity),
+  }
+}
+
 function previousDepartmentMixedScore(allRecords, period, productNames) {
   const source = periodWithMonthAnchor(period)
   const previous = resolvePreviousInsightPeriod(source)
@@ -397,11 +412,13 @@ export function buildPostUseStoryModel(input) {
       nonTenDistributionProducts,
       statusTrends,
       previousDepartmentScore: previousDepartmentMixedScore(allRecords, period, productNames),
+      previousDepartmentSatisfaction: previousDepartmentSatisfaction(allRecords, period, productNames),
     },
     productOverview,
     trendsAndChanges: { scoreTrend, satisfactionTrend, changes },
     drivers: {
       sceneJourneys: currentInsights.sceneJourneys,
+      journeyDistribution: currentInsights.journeyDistribution,
       needs: currentInsights.needs,
       unclassifiedNeeds: currentInsights.unclassifiedNeeds,
       customers: currentInsights.customers,

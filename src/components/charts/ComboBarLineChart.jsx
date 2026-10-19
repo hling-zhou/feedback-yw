@@ -13,16 +13,19 @@ import ChartTooltip from './ChartTooltip.jsx'
 
 /**
  * @typedef {{ dataKey: string, name: string, fill: string }} ComboBarSeries
- * @typedef {{ dataKey: string, name: string, stroke: string }} ComboLineSeries
+ * @typedef {{ dataKey: string, name: string, stroke: string, strokeWidth?: number, dotRadius?: number }} ComboLineSeries
  */
 
 /**
- * 左轴柱 + 可选右轴折线。折线不连接空值，便于万投比在缺订单数时断开。
+ * 左轴柱 + 可选右轴折线。折线默认不连接空值，便于万投比在缺订单数时断开；旅程等稀疏场景可传 connectNulls 跨空连点。
  *
  * @param {Object} props
  * @param {Record<string, unknown>[]} props.data
  * @param {ComboBarSeries[]} props.bars
  * @param {ComboLineSeries | null} [props.line]
+ * @param {string} [props.xDataKey]
+ * @param {[number, number] | null} [props.lineDomain]
+ * @param {boolean} [props.connectNulls]
  * @param {number} [props.height]
  * @param {{ y: number, label?: string } | null} [props.referenceLine]
  * @param {(value: unknown) => string} [props.lineTickFormatter]
@@ -31,6 +34,9 @@ export default function ComboBarLineChart({
   data,
   bars,
   line = null,
+  xDataKey = 'date',
+  lineDomain = null,
+  connectNulls = false,
   height = 260,
   referenceLine = null,
   lineTickFormatter = null,
@@ -47,7 +53,11 @@ export default function ComboBarLineChart({
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 8, right: line ? 12 : 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
-        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
+        <XAxis
+          dataKey={xDataKey}
+          interval={xDataKey === 'date' ? undefined : 0}
+          tick={{ fontSize: 11, fill: '#6B7280' }}
+        />
         <YAxis
           yAxisId="count"
           allowDecimals={false}
@@ -59,6 +69,8 @@ export default function ComboBarLineChart({
             yAxisId="line"
             orientation="right"
             allowDecimals
+            domain={lineDomain || undefined}
+            allowDataOverflow={Boolean(lineDomain)}
             tick={{ fontSize: 11, fill: '#0F766E' }}
             width={44}
             tickFormatter={lineTickFormatter || undefined}
@@ -75,20 +87,6 @@ export default function ComboBarLineChart({
           }}
         />
         <Legend wrapperStyle={{ fontSize: 12, lineHeight: '18px' }} />
-        {line && referenceLine && Number.isFinite(referenceLine.y) ? (
-          <ReferenceLine
-            yAxisId="line"
-            y={referenceLine.y}
-            stroke="#F59E0B"
-            strokeDasharray="6 4"
-            label={{
-              value: referenceLine.label || `目标 ${referenceLine.y}`,
-              position: 'insideTopRight',
-              fill: '#B45309',
-              fontSize: 11,
-            }}
-          />
-        ) : null}
         {bars.map((bar) => (
           <Bar
             key={bar.dataKey}
@@ -107,9 +105,26 @@ export default function ComboBarLineChart({
             dataKey={line.dataKey}
             name={line.name}
             stroke={line.stroke}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            connectNulls={false}
+            strokeWidth={line.strokeWidth || 2}
+            dot={{ r: line.dotRadius || 3, fill: line.stroke, stroke: '#fff', strokeWidth: 1 }}
+            activeDot={{ r: (line.dotRadius || 3) + 1 }}
+            connectNulls={connectNulls}
+          />
+        ) : null}
+        {/* ReferenceLine 必须放在 Bar/Line 之后：Recharts 按 JSX 顺序渲染，
+            参考线需叠在数据系列上层。Tooltip 由 recharts 单独最后渲染，仍保持最顶层 */}
+        {line && referenceLine && Number.isFinite(referenceLine.y) ? (
+          <ReferenceLine
+            yAxisId="line"
+            y={referenceLine.y}
+            stroke="#F59E0B"
+            strokeDasharray="6 4"
+            label={{
+              value: referenceLine.label || `目标 ${referenceLine.y}`,
+              position: 'insideTopRight',
+              fill: '#B45309',
+              fontSize: 11,
+            }}
           />
         ) : null}
       </ComposedChart>

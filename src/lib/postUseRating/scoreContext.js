@@ -23,6 +23,31 @@ function toneFromDelta(delta) {
  *   momPrefix?: string
  * }} input
  */
+/**
+ * 投诉回访满意度环比：本期或上期无样本时一律「—」。0% 仍可对比。
+ * @param {{
+ *   currentRate?: number | null
+ *   currentSample?: number
+ *   previousRate?: number | null
+ *   previousSample?: number
+ *   momPrefix?: string
+ * }} input
+ */
+export function compareSatisfactionMom(input = {}) {
+  const hasCurrent = Number(input.currentSample) > 0 && Number.isFinite(Number(input.currentRate))
+  const hasPrevious = Number(input.previousSample) > 0 && Number.isFinite(Number(input.previousRate))
+  if (!hasCurrent || !hasPrevious) return { label: '—', tone: 'na' }
+  const current = Number(input.currentRate)
+  const previous = Number(input.previousRate)
+  const delta = round2(current - previous)
+  const prefix = input.momPrefix || '较上月'
+  if (delta === 0) return { label: `${prefix}持平`, tone: 'flat' }
+  const abs = formatAbsDelta(delta)
+  return delta > 0
+    ? { label: `${prefix}高 ${abs} 个百分点`, tone: 'up' }
+    : { label: `${prefix}低 ${abs} 个百分点`, tone: 'down' }
+}
+
 export function buildYunwangScoreContext(input = {}) {
   const current = Number(input.avgScore)
   const hasCurrent = Number.isFinite(current)

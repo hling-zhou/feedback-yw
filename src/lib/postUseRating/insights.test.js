@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHighFrequencyLowScoreReasonRows, buildIssueChanges, buildNeedInsights, buildPostUseInsightBundle, buildProductExperienceOverview, buildSceneJourneyAnalysis, buildUnclassifiedNeedEvidence } from './insights.js'
+import { buildHighFrequencyLowScoreReasonRows, buildIssueChanges, buildJourneyDistribution, buildNeedInsights, buildPostUseInsightBundle, buildProductExperienceOverview, buildSceneJourneyAnalysis, buildUnclassifiedNeedEvidence, scoreAxisDomain, satisfactionAxisDomain, withPostUseTrendDomains, toJourneyChartRows } from './insights.js'
 
 const row = (id, overrides = {}) => ({ id, dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 8, importMonth: '2026-06', ...overrides })
 
@@ -14,6 +14,52 @@ describe('post-use insight models', () => {
       expect.objectContaining({ originalScene: '未提供', journey: '未识别环节' }),
     ]))
     expect(JSON.stringify(result)).not.toContain('不应使用')
+  })
+
+  it('aggregates journey L1 sample and score, and starts the score axis at floor(min-1)', () => {
+    const rows = buildJourneyDistribution([
+      row('a', { journeyL1: '开通', ratingScore: 9.2 }),
+      row('b', { journeyL1: '开通', ratingScore: 8.8 }),
+      row('c', { journeyL1: '使用', ratingScore: 10 }),
+      row('d', { journeyL1: '', ratingScore: 7 }),
+    ])
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ journey: '开通', sampleSize: 2, avgScore: 9 }),
+      expect.objectContaining({ journey: '使用', sampleSize: 1, avgScore: 10 }),
+      expect.objectContaining({ journey: '未识别环节', sampleSize: 1, avgScore: 7 }),
+    ]))
+    const chart = toJourneyChartRows(rows)
+    expect(chart.map((item) => item.journey)).toEqual(['开通', '账号', '使用', '变更', '费用', '退订', '未识别环节'])
+    expect(chart.find((item) => item.journey === '账号')).toMatchObject({ sampleSize: 0, avgScore: null })
+    expect(scoreAxisDomain(chart.map((item) => item.avgScore))).toEqual([6, 10])
+    expect(scoreAxisDomain([9.2, 8.8])).toEqual([7, 10])
+    expect(scoreAxisDomain([10])).toEqual([9, 10])
+    expect(scoreAxisDomain([0.4])).toEqual([0, 10])
+  })
+
+  it('starts the satisfaction axis at floor((min-10)/10)*10', () => {
+    expect(satisfactionAxisDomain([88])).toEqual([70, 100])
+    expect(satisfactionAxisDomain([91])).toEqual([80, 100])
+    expect(satisfactionAxisDomain([100])).toEqual([90, 100])
+    expect(satisfactionAxisDomain([11])).toEqual([0, 100])
+    expect(satisfactionAxisDomain([0])).toEqual([0, 100])
+  })
+
+  it('applies scoreAxisDomain to mixed score series and satisfactionAxisDomain to the rate axis', () => {
+    const chart = withPostUseTrendDomains({
+      data: [
+        { date: '2026-05', departmentScore: 9.2, department: 9.1, company: 8.8, departmentRate: 92 },
+        { date: '2026-06', departmentScore: 9.4, department: 9.3, company: 9, departmentRate: 88 },
+      ],
+      areas: [
+        { dataKey: 'departmentScore', yAxisId: 'score' },
+        { dataKey: 'department', yAxisId: 'score' },
+        { dataKey: 'company', yAxisId: 'score' },
+        { dataKey: 'departmentRate', yAxisId: 'rate' },
+      ],
+    }, { kind: 'combined' })
+    expect(chart.areas.find((area) => area.yAxisId === 'score').domain).toEqual([7, 10])
+    expect(chart.areas.find((area) => area.yAxisId === 'rate').domain).toEqual([70, 100])
   })
 
   it('recognizes multiple reasons and keeps evidence ids', () => {

@@ -12,6 +12,7 @@ export const META_KEY_POST_USE_HTML_REPORTS = 'post_use_html_reports_v1'
  *     judgment: string
  *     issues: Record<string, { conclusion: string, action: string }>
  *     todoNote: string
+ *     todoItems?: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]
  *     visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
  *   }
  * }} HtmlReportOverlay
@@ -40,6 +41,19 @@ function normalizeOverlay(raw, month) {
       action: String(value.action || ''),
     }
   }
+  /** @type {{ id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]} */
+  const todoItems = Array.isArray(narratives.todoItems)
+    ? narratives.todoItems
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({
+        id: String(item.id || `todo-${Math.random().toString(36).slice(2, 10)}`),
+        content: String(item.content || ''),
+        owner: String(item.owner || ''),
+        team: String(item.team || ''),
+        source: item.source === 'auto' ? 'auto' : 'manual',
+      }))
+      .filter((item) => item.content)
+    : []
   const supplementsRaw = narratives.visitSupplements && typeof narratives.visitSupplements === 'object'
     ? narratives.visitSupplements
     : {}
@@ -66,6 +80,7 @@ function normalizeOverlay(raw, month) {
       judgment: String(narratives.judgment || ''),
       issues,
       todoNote: String(narratives.todoNote || ''),
+      todoItems,
       visitSupplements,
     },
   }

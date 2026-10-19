@@ -50,6 +50,23 @@ describe('substantive feedback reason', () => {
     expect(isSubstantiveFeedbackReason('不错')).toBe(false)
   })
 
+  it('treats a bare 退订 as a business action, not substantive negative (2026-10-19 rule)', () => {
+    // 整条恰为「退订」二字：业务动作诉求，不算负面反馈
+    expect(isSubstantiveFeedbackReason('退订')).toBe(false)
+    // 仍是有效客户文本：保留在客户原话登记等消费方
+    expect(isValidCustomerText('退订')).toBe(true)
+    expect(classifyCustomerTextKind('退订')).toBe('quote')
+    // 带上下文的退订类表述仍按实质反馈处理（不误伤）
+    expect(isSubstantiveFeedbackReason('退订失败')).toBe(true)
+    expect(isSubstantiveFeedbackReason('无法退订')).toBe(true)
+    expect(isSubstantiveFeedbackReason('想退订共享带宽')).toBe(true)
+    expect(isSubstantiveFeedbackReason('退订后配额未释放')).toBe(true)
+    // 分号拆分后逐条判定：裸「退订」片不算负面，同格里的其他负面片仍算
+    const pieces = splitFeedbackReasonPieces('退订;稳定性不足故障频发')
+    expect(pieces).toEqual(['退订', '稳定性不足故障频发'])
+    expect(pieces.map(isSubstantiveFeedbackReason)).toEqual([false, true])
+  })
+
   it('accepts taxonomy labels and free-text complaints', () => {
     expect(isSubstantiveFeedbackReason('功能有缺失')).toBe(true)
     expect(isSubstantiveFeedbackReason('完全是垃圾，网都上不了')).toBe(true)

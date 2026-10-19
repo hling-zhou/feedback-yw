@@ -6,6 +6,8 @@ import { isKeyCustomerName } from './callbackRecommendations.js'
 
 export const POST_USE_ORIGINAL_SCENE_EMPTY = '未提供'
 export const POST_USE_JOURNEY_EMPTY = '未识别环节'
+/** 用后即评一级旅程展示顺序（生命周期，不含未识别）。 */
+export const POST_USE_JOURNEY_L1_ORDER = ['开通', '账号', '使用', '变更', '费用', '退订']
 const HIGH_FREQUENCY_LOW_SCORE_THRESHOLD = 7
 
 function isOptionScoreRecord(record) {
@@ -140,6 +142,175 @@ export function buildProductExperienceOverview(records, visits = []) {
   }).sort((a, b) => {
     const order = { critical: 0, watch: 1, small_sample: 2, healthy: 3 }
     return order[a.stateCode] - order[b.stateCode] || a.avgScore - b.avgScore
+  })
+}
+
+/**
+ * 均分纵轴起点：最低分减 1 再取整，不从 0 起；下限 0，上限默认 10。
+ * @param {number[]} scores
+ * @param {{ max?: number }} [opts]
+ */
+export function scoreAxisDomain(scores, opts = {}) {
+  const max = Number.isFinite(Number(opts.max)) ? Number(opts.max) : 10
+  const nums = (scores || [])
+    .filter((value) => value != null && value !== '')
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+  if (!nums.length) return [0, max]
+  const start = Math.max(0, Math.floor(Math.min(...nums) - 1))
+  return [Math.min(start, max), max]
+}
+
+/**
+ * 投诉回访满意度纵轴：最低值减 10 再向下取到 0/10/…/90，不从 0 起；上限 100。
+ * @param {number[]} rates
+ * @param {{ max?: number }} [opts]
+ */
+export function satisfactionAxisDomain(rates, opts = {}) {
+  const max = Number.isFinite(Number(opts.max)) ? Number(opts.max) : 100
+  const nums = (rates || [])
+    .filter((value) => value != null && value !== '')
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+  if (!nums.length) return [0, max]
+  const start = Math.max(0, Math.min(90, Math.floor((Math.min(...nums) - 10) / 10) * 10))
+  return [Math.min(start, max), max]
+}
+
+export function chartSeriesValues(data, dataKeys) {
+  const keys = Array.isArray(dataKeys) ? dataKeys : [dataKeys]
+  const values = []
+  for (const row of data || []) {
+    for (const key of keys) {
+      if (!key) continue
+      const raw = row?.[key]
+      if (raw == null || raw === '') continue
+      const num = Number(raw)
+      if (Number.isFinite(num)) values.push(num)
+    }
+  }
+  return values
+}
+
+/**
+ * 给趋势图 areas 填上纵轴 domain。kind=combined 时左轴体验分、右轴满意度。
+ * @param {{ data?: object[], areas?: object[] } | null | undefined} chart
+ * @param {{ kind?: 'score' | 'rate' | 'combined' }} [opts]
+ */
+export function withPostUseTrendDomains(chart, opts = {}) {
+  if (!chart?.data?.length || !chart.areas?.length) return chart
+  const kind = opts.kind
+    || (chart.areas.some((area) => area.yAxisId === 'rate') && chart.areas.some((area) => area.yAxisId && area.yAxisId !== 'rate')
+      ? 'combined'
+      : chart.areas.some((area) => area.yAxisId === 'rate' || /满意度|Rate/i.test(`${area.name || ''}${area.dataKey || ''}`))
+        ? 'rate'
+        : 'score')
+  if (kind === 'combined') {
+    const scoreKeys = chart.areas.filter((area) => area.yAxisId !== 'rate').map((area) => area.dataKey)
+    const rateKeys = chart.areas.filter((area) => area.yAxisId === 'rate').map((area) => area.dataKey)
+    const scoreDomain = scoreAxisDomain(chartSeriesValues(chart.data, scoreKeys))
+    const rateDomain = satisfactionAxisDomain(chartSeriesValues(chart.data, rateKeys))
+    return {
+      ...chart,
+      areas: chart.areas.map((area) => ({
+        ...area,
+        domain: area.yAxisId === 'rate' ? rateDomain : scoreDomain,
+      })),
+    }
+  }
+  const values = chartSeriesValues(chart.data, chart.areas.map((area) => area.dataKey))
+  const domain = kind === 'rate' ? satisfactionAxisDomain(values) : scoreAxisDomain(values)
+  return {
+    ...chart,
+    domain,
+    areas: chart.areas.map((area) => ({ ...area, domain })),
+  }
+}
+
+function journeySortIndex(journey) {
+  if (journey === POST_USE_JOURNEY_EMPTY) return 1000
+  const index = POST_USE_JOURNEY_L1_ORDER.indexOf(journey)
+  return index >= 0 ? index : 500
+}
+
+/**
+ * 产品 × 一级用户旅程分布（不含评价触发场景）。
+ * @param {object[]} records
+ */
+export function buildJourneyDistribution(records) {
+  const groups = new Map()
+  for (const raw of records || []) {
+    const r = normalizedRecord(raw)
+    if (!r.productName || !Number.isFinite(r.score)) continue
+    const key = `${r.productName}\u0000${r.journeyL1}`
+    const g = groups.get(key) || {
+      productName: r.productName,
+      journey: r.journeyL1,
+      rows: [],
+    }
+    g.rows.push(r)
+    groups.set(key, g)
+  }
+  return [...groups.values()]
+    .map((g) => ({
+      productName: g.productName,
+      journey: g.journey,
+      sampleSize: g.rows.length,
+      avgScore: avg(g.rows.map((r) => r.score)),
+      nonTenCount: g.rows.filter((r) => r.score < 10).length,
+    }))
+    .sort(
+      (a, b) =>
+        a.productName.localeCompare(b.productName, 'zh')
+        || journeySortIndex(a.journey) - journeySortIndex(b.journey),
+    )
+}
+
+/**
+ * 把分布行收成一张旅程图的数据：柱=样本量，线=均分。空环节均分为 null，折线断开。
+ * @param {ReturnType<typeof buildJourneyDistribution>} rows
+ * @param {{ productName?: string }} [opts]
+ */
+export function toJourneyChartRows(rows, opts = {}) {
+  const productName = String(opts.productName || '').trim()
+  const scoped = productName
+    ? (rows || []).filter((row) => row.productName === productName)
+    : (rows || [])
+  const byJourney = new Map()
+  for (const row of scoped) {
+    const journey = String(row.journey || POST_USE_JOURNEY_EMPTY)
+    const current = byJourney.get(journey) || {
+      journey,
+      sampleSize: 0,
+      scoreSum: 0,
+      nonTenCount: 0,
+    }
+    const sample = Number(row.sampleSize) || 0
+    current.sampleSize += sample
+    current.scoreSum += (Number(row.avgScore) || 0) * sample
+    current.nonTenCount += Number(row.nonTenCount) || 0
+    byJourney.set(journey, current)
+  }
+  const extra = [...byJourney.keys()].filter(
+    (journey) => !POST_USE_JOURNEY_L1_ORDER.includes(journey) && journey !== POST_USE_JOURNEY_EMPTY,
+  )
+  extra.sort((a, b) => a.localeCompare(b, 'zh'))
+  const includeUnknown = (byJourney.get(POST_USE_JOURNEY_EMPTY)?.sampleSize || 0) > 0
+  const order = [
+    ...POST_USE_JOURNEY_L1_ORDER,
+    ...extra,
+    ...(includeUnknown ? [POST_USE_JOURNEY_EMPTY] : []),
+  ]
+  return order.map((journey) => {
+    const row = byJourney.get(journey)
+    const sampleSize = row?.sampleSize || 0
+    return {
+      journey,
+      date: journey,
+      sampleSize,
+      avgScore: sampleSize ? Math.round((row.scoreSum / sampleSize) * 100) / 100 : null,
+      nonTenCount: row?.nonTenCount || 0,
+    }
   })
 }
 
@@ -421,6 +592,7 @@ export function buildPostUseInsightBundle(records, { visits = [], keyCustomers =
     visitEvidenceCount: visits.length,
     products: buildProductExperienceOverview(records, visits),
     sceneJourneys: buildSceneJourneyAnalysis(records),
+    journeyDistribution: buildJourneyDistribution(records),
     needs: buildNeedInsights(records, visits),
     unclassifiedNeeds: buildUnclassifiedNeedEvidence(records),
     customers: buildCustomerInsights(records, visits),

@@ -102,6 +102,11 @@ describe('post-use story model', () => {
       totalSample: 10,
       momPrefix: '较上月',
     })
+    expect(model.metrics.previousDepartmentSatisfaction).toMatchObject({
+      rate: null,
+      totalSample: 0,
+      momPrefix: '较上月',
+    })
     expect(listExperienceStatusProducts(model.productOverview)).toEqual({
       belowNineNames: ['云电脑'],
       callbackUnqualifiedNames: ['云电脑'],
