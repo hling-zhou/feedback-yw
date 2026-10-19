@@ -3,6 +3,7 @@
  * @property {string} importMonth
  * @property {string} productName
  * @property {string} status
+ * @property {string} assigneeId
  * @property {string} search
  */
 
@@ -10,7 +11,7 @@
 
 /** @type {{ label: string; keys: PostUseJiraFilterKey[] }[]} */
 export const POST_USE_JIRA_FILTER_GROUPS = [
-  { label: '范围', keys: ['importMonth', 'productName', 'status'] },
+  { label: '范围', keys: ['importMonth', 'productName', 'status', 'assigneeId'] },
   { label: '搜索', keys: ['search'] },
 ]
 
@@ -19,7 +20,8 @@ export const POST_USE_JIRA_FILTER_LABELS = {
   importMonth: '数据月份',
   productName: '产品名称',
   status: '状态',
-  search: '客户 / 编码 / JIRA',
+  assigneeId: '经办人',
+  search: '客户 / 编码 / 反馈',
 }
 
 /** @returns {PostUseJiraFilterValues} */
@@ -28,6 +30,7 @@ export function createEmptyPostUseJiraFilters() {
     importMonth: '',
     productName: '',
     status: '',
+    assigneeId: '',
     search: '',
   }
 }
@@ -50,6 +53,7 @@ export function listActivePostUseJiraFilterChipKeys(values) {
   if (isPostUseJiraFilterActive(values, 'importMonth')) keys.push('importMonth')
   if (isPostUseJiraFilterActive(values, 'productName')) keys.push('productName')
   if (isPostUseJiraFilterActive(values, 'status')) keys.push('status')
+  if (isPostUseJiraFilterActive(values, 'assigneeId')) keys.push('assigneeId')
   if (isPostUseJiraFilterActive(values, 'search')) keys.push('search')
   return keys
 }
@@ -126,6 +130,7 @@ export function postUseJiraFiltersToListQuery(filters) {
     importMonth: filters.importMonth.trim() || undefined,
     productName: filters.productName.trim() || undefined,
     status: filters.status.trim() || undefined,
+    assigneeId: filters.assigneeId.trim() || undefined,
     search: filters.search.trim() || undefined,
   }
 }

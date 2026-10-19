@@ -32,6 +32,8 @@ export function upsertPostUseCallbackDecisions(items) {
  *   importMonth?: string
  *   productName?: string
  *   status?: string
+ *   assigneeId?: string
+ *   actionId?: string
  *   search?: string
  *   limit?: number
  *   offset?: number
@@ -42,6 +44,8 @@ export function listPostUseJiraItems(query = {}) {
   if (query.importMonth) params.set('importMonth', query.importMonth)
   if (query.productName) params.set('productName', query.productName)
   if (query.status) params.set('status', query.status)
+  if (query.assigneeId) params.set('assigneeId', query.assigneeId)
+  if (query.actionId) params.set('actionId', query.actionId)
   if (query.search) params.set('search', query.search)
   if (query.limit != null) params.set('limit', String(query.limit))
   if (query.offset != null) params.set('offset', String(query.offset))
@@ -61,13 +65,18 @@ export function archivePostUseJiraItems(items) {
 
 /**
  * @param {string} id
- * @param {{ jiraTicket?: string; status?: string; progress?: string }} patch
+ * @param {{ jiraTicket?: string; status?: string; progress?: string; assigneeId?: string; assigneeName?: string; actionId?: string }} patch
  */
 export function patchPostUseJiraItem(id, patch) {
   return apiFetch(`/api/post-use-jira/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })
+}
+
+/** @returns {Promise<{ users: Array<{ id: string; username: string; team: string }> }>} */
+export function listAssignees() {
+  return apiFetch('/api/users/assignees')
 }
 
 /** @param {string} id */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Checkbox, Modal, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
+import { Button, Checkbox, Modal, Select, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, FolderAddOutlined, MailOutlined } from '@ant-design/icons'
 import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import {
@@ -14,6 +14,7 @@ import SendMailModal from '../mail/SendMailModal.jsx'
 import { MAIL_PRESET_CALLBACK_VISIT } from '../../domain/mail.js'
 import {
   archivePostUseJiraItems,
+  listAssignees,
   listPostUseCallbackDecisions,
   upsertPostUseCallbackDecisions,
 } from '../../lib/postUseJiraClient.js'
@@ -58,6 +59,30 @@ export default function PostUseCallbackProcessModal({
   const [savingKey, setSavingKey] = useState('')
   const [archiving, setArchiving] = useState(false)
   const [mailOpen, setMailOpen] = useState(false)
+  /** 经办人候选列表 */
+  const [assignees, setAssignees] = useState(/** @type {{ id: string; username: string; team: string }[]} */ ([]))
+  /** itemKey → { id, username } */
+  const [assigneeOverrides, setAssigneeOverrides] = useState(() => new Map())
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    listAssignees()
+      .then((res) => {
+        if (!cancelled) setAssignees(res?.users || [])
+      })
+      .catch(() => {
+        if (!cancelled) setAssignees([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  const assigneeOptions = useMemo(
+    () => assignees.map((person) => ({ label: person.username, value: person.id })),
+    [assignees],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -275,7 +300,50 @@ export default function PostUseCallbackProcessModal({
       render: (value) => <EllipsisHover value={value} />,
     },
     mergedFlagColumn('needCustomerVisit', '客服部回访'),
-    mergedFlagColumn('needInternalTrace', '部门内溯源'),
+    mergedFlagColumn('needInternalTrace', '产品部溯源'),
+    {
+      title: '产品部溯源经办人',
+      key: '__assignee',
+      width: 140,
+      render: (_v, _row, index) => {
+        const span = questionnaireSpan[index]
+        if (span === 0) return { children: '', props: { rowSpan: 0 } }
+        const keys = questionnaireGroupKeys[index] || []
+        const traced = keys.some((k) => decisionOf(decisions, k).needInternalTrace)
+        if (!traced) {
+          return { children: '—', props: { rowSpan: span } }
+        }
+        const firstKey = keys[0] || ''
+        const current = assigneeOverrides.get(firstKey)
+        return {
+          children: (
+            <Select
+              showSearch
+              size="small"
+              className="w-full"
+              placeholder="经办人"
+              value={current?.id || undefined}
+              options={assigneeOptions}
+              filterOption={(input, option) =>
+                String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+              }
+              onChange={(value) => {
+                const person = assignees.find((p) => p.id === value)
+                setAssigneeOverrides((prev) => {
+                  const map = new Map(prev)
+                  for (const key of keys) {
+                    if (person) map.set(key, { id: person.id, username: person.username })
+                    else map.delete(key)
+                  }
+                  return map
+                })
+              }}
+            />
+          ),
+          props: { rowSpan: span },
+        }
+      },
+    },
   ]
 
   const callbackColumns = [
@@ -301,7 +369,38 @@ export default function PostUseCallbackProcessModal({
     { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
     { title: '问题原因', dataIndex: 'problemCause', width: 200, ellipsis: true },
     flagColumn('needCustomerVisit', '客服部回访'),
-    flagColumn('needInternalTrace', '部门内溯源'),
+    flagColumn('needInternalTrace', '产品部溯源'),
+    {
+      title: '产品部溯源经办人',
+      key: '__assignee',
+      width: 140,
+      render: (_v, row) => {
+        if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
+        const current = assigneeOverrides.get(row.itemKey)
+        return (
+          <Select
+            showSearch
+            size="small"
+            className="w-full"
+            placeholder="经办人"
+            value={current?.id || undefined}
+            options={assigneeOptions}
+            filterOption={(input, option) =>
+              String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+            }
+            onChange={(value) => {
+              const person = assignees.find((p) => p.id === value)
+              setAssigneeOverrides((prev) => {
+                const map = new Map(prev)
+                if (person) map.set(row.itemKey, { id: person.id, username: person.username })
+                else map.delete(row.itemKey)
+                return map
+              })
+            }}
+          />
+        )
+      },
+    },
   ]
 
   const exportVisit = () => {
@@ -316,22 +415,31 @@ export default function PostUseCallbackProcessModal({
   const exportTrace = () => {
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needInternalTrace')
     if (!rows.length) {
-      message.info('请先勾选需要部门内溯源的记录')
+      message.info('请先勾选需要产品部溯源的记录')
       return
     }
-    downloadFollowupTableExcel(rows, '待内部提单表', scopeLabel)
+    downloadFollowupTableExcel(rows, '待产品部溯源表', scopeLabel)
   }
 
   const archiveTrace = async () => {
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needInternalTrace')
     if (!rows.length) {
-      message.info('请先勾选需要部门内溯源的记录')
+      message.info('请先勾选需要产品部溯源的记录')
+      return
+    }
+    // 逐条校验：所有勾选产品部溯源的行必须指定经办人
+    const missingAssigneeKeys = rows.filter((row) => !assigneeOverrides.get(row.itemKey)?.id)
+    if (missingAssigneeKeys.length) {
+      message.warning(`还有 ${missingAssigneeKeys.length} 条勾选产品部溯源的记录未指定经办人，请逐条指定后再存档`)
       return
     }
     setArchiving(true)
     try {
-      const saved = await archivePostUseJiraItems(rows.map(toJiraArchivePayload))
-      message.success(`已存档 ${saved?.items?.length || rows.length} 条到用后即评JIRA`)
+      const saved = await archivePostUseJiraItems(rows.map((row) => toJiraArchivePayload(row, assigneeOverrides)))
+      message.success(
+        `已存档 ${saved?.items?.length || rows.length} 条到「反馈库 · 用后即评满意度 · 产品部溯源」`,
+      )
+      setAssigneeOverrides(() => new Map())
     } catch (error) {
       message.error(error?.message || '存档失败')
     } finally {
@@ -349,7 +457,7 @@ export default function PostUseCallbackProcessModal({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" className="!mb-3">
-        可同时勾选客服部回访与部门内溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
+        可同时勾选客服部回访与产品部溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
       </Typography.Paragraph>
       <Tabs
         items={[
@@ -389,7 +497,7 @@ export default function PostUseCallbackProcessModal({
       />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Typography.Text type="secondary">
-          已勾选客服部回访 {visitCount} 条 · 部门内溯源 {traceCount} 条
+          已勾选客服部回访 {visitCount} 条 · 产品部溯源 {traceCount} 条
         </Typography.Text>
         <Space wrap>
           <Tooltip title="下载当前范围的双表原始清单">
@@ -419,7 +527,7 @@ export default function PostUseCallbackProcessModal({
             </Button>
           </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportTrace}>
-            导出待内部提单表
+            导出待产品部溯源表
           </Button>
           <Tooltip title={canEdit ? '' : '仅管理员与体验运营可处理清单并存档'}>
             <Button
@@ -429,7 +537,7 @@ export default function PostUseCallbackProcessModal({
               disabled={!canEdit}
               onClick={() => void archiveTrace()}
             >
-              一键存档待内部提单
+              存档「产品部溯源」
             </Button>
           </Tooltip>
         </Space>

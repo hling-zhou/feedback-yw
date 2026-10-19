@@ -39,6 +39,7 @@ export const createActionBodySchema = {
     recoveryValidation: { type: 'object', additionalProperties: true },
     scheduleChanged: { type: 'boolean' },
     warningLevel: { type: 'string', enum: ['none', 'orange', 'red'] },
+    source: { type: 'string', enum: ['ticket', 'post_use'] },
   },
 }
 
@@ -96,6 +97,7 @@ export const patchActionBodySchema = {
     recoveryValidation: { type: 'object', additionalProperties: true },
     scheduleChanged: { type: 'boolean' },
     warningLevel: { type: 'string', enum: ['none', 'orange', 'red'] },
+    source: { type: 'string', enum: ['ticket', 'post_use'] },
     expectedRevision: { type: 'integer', minimum: 0 },
   },
 }

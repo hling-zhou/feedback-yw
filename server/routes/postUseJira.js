@@ -48,6 +48,8 @@ export function registerPostUseJiraRoutes(app) {
       importMonth: q.importMonth,
       productName: q.productName,
       status: q.status,
+      assigneeId: q.assigneeId,
+      actionId: q.actionId,
       search: q.search,
       limit: q.limit ? Number(q.limit) : undefined,
       offset: q.offset ? Number(q.offset) : undefined,
@@ -60,7 +62,7 @@ export function registerPostUseJiraRoutes(app) {
     const items = Array.isArray(body.items) ? body.items : []
     if (!items.length) {
       reply.code(400)
-      return { error: '请至少提交一条待内部提单记录' }
+      return { error: '请至少提交一条产品部溯源记录' }
     }
     const saved = postUseJiraRepository.archiveMany(items)
     logAuditFromRequest(request, 'post_use_jira.create', {

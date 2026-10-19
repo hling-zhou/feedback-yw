@@ -4,7 +4,7 @@ export const POST_USE_JIRA_STATUSES = /** @type {const} */ (['待处理', '进�
 
 export const POST_USE_JIRA_DEFAULT_STATUS = /** @type {PostUseJiraStatus} */ ('待处理')
 
-export const POST_USE_JIRA_EDITABLE_FIELDS = /** @type {const} */ (['jiraTicket', 'status', 'progress'])
+export const POST_USE_JIRA_EDITABLE_FIELDS = /** @type {const} */ (['jiraTicket', 'status', 'progress', 'assigneeId', 'assigneeName'])
 
 /**
  * @param {unknown} value
@@ -36,6 +36,15 @@ export function pickPostUseJiraEditablePatch(patch) {
   }
   if (Object.prototype.hasOwnProperty.call(patch || {}, 'progress')) {
     next.progress = String(patch.progress ?? '').trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(patch || {}, 'assigneeId')) {
+    next.assigneeId = String(patch.assigneeId ?? '').trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(patch || {}, 'assigneeName')) {
+    next.assigneeName = String(patch.assigneeName ?? '').trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(patch || {}, 'actionId')) {
+    next.actionId = String(patch.actionId ?? '').trim()
   }
   return next
 }

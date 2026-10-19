@@ -73,11 +73,12 @@ function renderActionItemOption(item) {
  * @param {Object} props
  * @param {string | undefined} props.value - 当前 actionId
  * @param {string | undefined} [props.productKey] - 工单所属产品，作为产品级联默认选中
+ * @param {'ticket' | 'post_use'} [props.source] - 举措来源过滤（ticket=投诉/咨询，post_use=用后即评）
  * @param {(item: ActionItem) => void} props.onSelect
  * @param {() => void} [props.onClear]
  * @param {boolean} [props.disabled]
  */
-export default function ActionItemSelect({ value, productKey, onSelect, onClear, disabled }) {
+export default function ActionItemSelect({ value, productKey, source, onSelect, onClear, disabled }) {
   const [loading, setLoading] = useState(false)
   const [options, setOptions] = useState(/** @type {ActionItem[]} */ ([]))
   const [search, setSearch] = useState('')
@@ -99,6 +100,7 @@ export default function ActionItemSelect({ value, productKey, onSelect, onClear,
       try {
         const result = await listActionItems({
           productKey: pk,
+          source,
           search: searchText.trim() || undefined,
           limit: 80,
         })
@@ -109,7 +111,7 @@ export default function ActionItemSelect({ value, productKey, onSelect, onClear,
         setLoading(false)
       }
     },
-    [selectedProductKey],
+    [selectedProductKey, source],
   )
 
   useEffect(() => {

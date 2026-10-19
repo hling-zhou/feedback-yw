@@ -41,6 +41,7 @@ export {
  * @property {string} content
  * @property {string} [detail] - 举措详情（可选）
  * @property {ActionItemStatus} status
+ * @property {'ticket' | 'post_use'} [source] - 举措来源（ticket=投诉/咨询，post_use=用后即评）
  * @property {string} [firstProposedAt] - ISO date (YYYY-MM-DD)
  * @property {string} [scheduleAt] - 排期展示文本
  * @property {string} [painPointSnapshot]
@@ -144,6 +145,7 @@ export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'recoveryValidation',
   'scheduleChanged',
   'warningLevel',
+  'source',
 ]
 
 /**

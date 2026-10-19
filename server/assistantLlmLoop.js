@@ -190,7 +190,7 @@ function buildSystemPrompt(ctx) {
     '- citations 里的 recordId 必须来自本轮 search_records 或 get_record 的返回；',
     '- links.kind 只能是 workbench / analysis / feedbacks / actions；',
     '- workbench.params.tab 可以是 overview / complaint_ticket / consultation_ticket / post_use_rating；',
-    '- actions.params.tab 可以是 ticket-todos / product / post-use-jira / problem-reduction / playbook；',
+    '- actions.params.tab 可以是 ticket-todos / product / problem-reduction / playbook；',
     '- feedbacks.params 可带 source（complaint_ticket/consultation_ticket/post_use_rating）和 ticketIds（数组，不超过 20 个）；',
     '- 不要把超过 20 个工单号放进 links，改在 answer 里说明数量并让用户缩小范围；',
     '- 如果周期快照状态是 missing/stale/rebuilding，在 answer 里说明数字可能不可用或过期；',

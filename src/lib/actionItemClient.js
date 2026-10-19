@@ -11,6 +11,7 @@ import { toActionItemConflictError } from '../domain/actionItemRevision.js'
  * @property {string} [productKeys]
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses]
+ * @property {'ticket' | 'post_use'} [source]
  * @property {string} [ticketId]
  * @property {string} [linkedDataSources]
  * @property {string} [problemType]
@@ -41,6 +42,7 @@ export async function listActionItems(query = {}) {
   if (query.productKeys) params.set('productKeys', query.productKeys)
   if (query.status) params.set('status', query.status)
   if (query.statuses) params.set('statuses', query.statuses)
+  if (query.source) params.set('source', query.source)
   if (query.ticketId) params.set('ticketId', query.ticketId)
   if (query.linkedDataSources) params.set('linkedDataSources', query.linkedDataSources)
   if (query.problemType) params.set('problemType', query.problemType)

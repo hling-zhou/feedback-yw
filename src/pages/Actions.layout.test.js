@@ -4,15 +4,19 @@ import { describe, expect, it } from 'vitest'
 describe('Actions page tabs', () => {
   const source = fs.readFileSync(new URL('./Actions.jsx', import.meta.url), 'utf8')
 
-  it('keeps meeting todos first, then product actions, post-use JIRA, and problem reduction', () => {
+  it('keeps meeting todos first, then product actions and problem reduction; post-use JIRA tab removed', () => {
     expect(source).toContain("label: '会议待办'")
     expect(source).toContain("label: '产品举措与进展'")
-    expect(source).toContain("label: '用后即评JIRA'")
     expect(source).toContain("label: '问题压降'")
     expect(source).toContain("label: 'Playbook 沉淀'")
-    expect(source).toContain("rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction' || rawTab === 'playbook'")
+    // 用后即评JIRA tab 已下线：编辑功能收进反馈库 · 用后即评满意度 · 产品部溯源视图
+    expect(source).not.toContain("label: '用后即评JIRA'")
+    expect(source).not.toContain('<PostUseJiraTab />')
+    expect(source).not.toContain("rawTab === 'product' || rawTab === 'post-use-jira'")
+    // 旧链接 tab=post-use-jira 自动重定向
+    expect(source).toContain("rawTab === 'post-use-jira'")
+    expect(source).toContain("navigate('/feedbacks?lane=post_use&view=trace', { replace: true })")
     expect(source).toContain('<TicketTodoTab />')
-    expect(source).toContain('<PostUseJiraTab />')
     expect(source).toContain('<ProductActionsTab />')
     expect(source).toContain('<ProblemReductionTab />')
     expect(source).toContain('<PlaybookPromotionPanel />')
@@ -23,9 +27,6 @@ describe('Actions page tabs', () => {
       source.indexOf("label: '产品举措与进展'"),
     )
     expect(source.indexOf("label: '产品举措与进展'")).toBeLessThan(
-      source.indexOf("label: '用后即评JIRA'"),
-    )
-    expect(source.indexOf("label: '用后即评JIRA'")).toBeLessThan(
       source.indexOf("label: '问题压降'"),
     )
     expect(source.indexOf("label: '问题压降'")).toBeLessThan(

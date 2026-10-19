@@ -20,7 +20,6 @@ const WORKBENCH_TABS = new Set([
 const ACTIONS_TABS = new Set([
   'ticket-todos',
   'product',
-  'post-use-jira',
   'problem-reduction',
   'playbook',
 ])

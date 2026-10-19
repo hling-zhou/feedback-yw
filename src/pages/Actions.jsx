@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Button,
@@ -10,6 +10,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Segmented,
   Space,
   Table,
   Tabs,
@@ -87,6 +88,7 @@ import ActionItemStatusTag from '../components/tags/ActionItemStatusTag.jsx'
 import ActionItemConflictModal from '../components/ActionItemConflictModal.jsx'
 import ActionItemCompositeFilter from '../components/actions/ActionItemCompositeFilter.jsx'
 import LinkedTicketsCell from '../components/actions/LinkedTicketsCell.jsx'
+import PostUseLinkedFeedbackCell from '../components/actions/PostUseLinkedFeedbackCell.jsx'
 import RequirementTicketsCell from '../components/actions/RequirementTicketsCell.jsx'
 import CopyableEllipsisCell from '../components/actions/CopyableEllipsisCell.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
@@ -96,7 +98,6 @@ import ActionItemRequirementLinkFields, {
   toRequirementTicketFormList,
 } from '../components/actions/ActionItemRequirementLinkFields.jsx'
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
-import PostUseJiraTab from './PostUseJiraTab.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
 import ProblemReductionTab from './ProblemReductionTab.jsx'
 import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
@@ -191,11 +192,18 @@ function parseTicketIdsFromInput(text) {
 
 export default function Actions() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const rawTab = searchParams.get('tab')
   const tab =
-    rawTab === 'product' || rawTab === 'post-use-jira' || rawTab === 'problem-reduction' || rawTab === 'playbook'
+    rawTab === 'product' || rawTab === 'problem-reduction' || rawTab === 'playbook'
       ? rawTab
       : 'ticket-todos'
+  // 旧 tab=post-use-jira 链接重定向到反馈库 · 用后即评满意度 · 产品部溯源
+  useEffect(() => {
+    if (rawTab === 'post-use-jira') {
+      navigate('/feedbacks?lane=post_use&view=trace', { replace: true })
+    }
+  }, [rawTab, navigate])
   return (
     <div className="space-y-4">
       <Tabs
@@ -210,7 +218,6 @@ export default function Actions() {
         items={[
           { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
           { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
-          { key: 'post-use-jira', label: '用后即评JIRA', children: <PostUseJiraTab /> },
           { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
           { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
         ]}
@@ -246,6 +253,7 @@ function ProductActionsTab() {
   )
 
   const [filters, setFilters] = useState(createEmptyActionItemFilters)
+  const [actionSource, setActionSource] = useState(/** @type {'ticket' | 'post_use'} */ ('ticket'))
   const [dateRange, setDateRange] = useState(
     /** @type {[dayjs.Dayjs | null, dayjs.Dayjs | null] | null} */ (null),
   )
@@ -404,21 +412,23 @@ function ProductActionsTab() {
   const listQuery = useMemo(
     () => ({
       ...tableFilters,
+      source: actionSource,
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
       insightPeriodId: insightPeriodId || undefined,
     }),
-    [tableFilters, dateRange, insightPeriodId],
+    [tableFilters, actionSource, dateRange, insightPeriodId],
   )
 
   /** 页头周期/首次提出时间范围，不含表格区筛选 */
   const baseScopeQuery = useMemo(
     () => ({
+      source: actionSource,
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
       insightPeriodId: insightPeriodId || undefined,
     }),
-    [dateRange, insightPeriodId],
+    [actionSource, dateRange, insightPeriodId],
   )
 
   useEffect(() => {
@@ -998,11 +1008,15 @@ function ProductActionsTab() {
       width: 100,
       render: (_, record) => (
         <div onClick={(event) => event.stopPropagation()}>
-          <LinkedTicketsCell
-            ticketIds={resolveLinkedTicketIds(record)}
-            feedbackByTicketId={feedbackByTicketId}
-            onOpenTicket={openFeedbackByTicketId}
-          />
+          {actionSource === 'post_use' ? (
+            <PostUseLinkedFeedbackCell actionId={record.id} />
+          ) : (
+            <LinkedTicketsCell
+              ticketIds={resolveLinkedTicketIds(record)}
+              feedbackByTicketId={feedbackByTicketId}
+              onOpenTicket={openFeedbackByTicketId}
+            />
+          )}
         </div>
       ),
     },
@@ -1203,6 +1217,18 @@ function ProductActionsTab() {
           </Dropdown>
           </Space>
         }
+      />
+
+      <Segmented
+        value={actionSource}
+        onChange={(value) => {
+          setActionSource(/** @type {'ticket' | 'post_use'} */ (value))
+          setPage(1)
+        }}
+        options={[
+          { label: '投诉/咨询', value: 'ticket' },
+          { label: '用后即评', value: 'post_use' },
+        ]}
       />
 
       <div className="page-card">

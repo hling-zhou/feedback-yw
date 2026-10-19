@@ -10,6 +10,7 @@ export const POST_USE_JIRA_FILTER_EDITOR_KIND = {
   importMonth: 'text',
   productName: 'text',
   status: 'enum',
+  assigneeId: 'enum',
   search: 'text',
 }
 
@@ -49,12 +50,17 @@ export function isPostUseJiraFilterDraftValid(filterKey, draft) {
 /**
  * @param {PostUseJiraFilterKey} filterKey
  * @param {PostUseJiraFilterValues} _filters
- * @param {{ statusOptions?: { label: string; value: string }[] }} [options]
+ * @param {{ statusOptions?: { label: string; value: string }[]; assigneeOptions?: { label: string; value: string }[] }} [options]
  */
 export function listPostUseJiraEnumOptionsForFilterKey(filterKey, _filters, options = {}) {
-  if (filterKey !== 'status') return []
-  return (
-    options.statusOptions ||
-    POST_USE_JIRA_STATUSES.map((value) => ({ label: value, value }))
-  )
+  if (filterKey === 'status') {
+    return (
+      options.statusOptions ||
+      POST_USE_JIRA_STATUSES.map((value) => ({ label: value, value }))
+    )
+  }
+  if (filterKey === 'assigneeId') {
+    return options.assigneeOptions || []
+  }
+  return []
 }

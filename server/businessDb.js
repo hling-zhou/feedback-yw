@@ -402,8 +402,52 @@ function migrateRecordsTicketIdColumn(db) {
   )
 }
 
+function migratePostUseJiraAssigneeColumns(db) {
+  const cols = db.prepare('PRAGMA table_info(post_use_jira_items)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('assignee_id')) {
+    db.exec(`
+      ALTER TABLE post_use_jira_items ADD COLUMN assignee_id TEXT NOT NULL DEFAULT '';
+      ALTER TABLE post_use_jira_items ADD COLUMN assignee_name TEXT NOT NULL DEFAULT '';
+    `)
+    // 从 payload 里回填已有记录的 assignee 字段
+    const rows = db.prepare('SELECT id, payload FROM post_use_jira_items').all()
+    const stmt = db.prepare(
+      `UPDATE post_use_jira_items SET assignee_id = ?, assignee_name = ? WHERE id = ?`,
+    )
+    const tx = db.transaction((items) => {
+      for (const row of items) {
+        try {
+          const item = JSON.parse(row.payload)
+          stmt.run(
+            String(item?.assigneeId || '').trim(),
+            String(item?.assigneeName || '').trim(),
+            row.id,
+          )
+        } catch {
+          stmt.run('', '', row.id)
+        }
+      }
+    })
+    tx(rows)
+  }
+}
+
+function migrateActionItemSourceColumn(db) {
+  const cols = db.prepare('PRAGMA table_info(action_items)').all()
+  // 全新库表尚未创建：主 exec 会直接建带 source 列的新表，此处跳过
+  if (!cols.length) return
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('source')) {
+    db.exec(`ALTER TABLE action_items ADD COLUMN source TEXT NOT NULL DEFAULT 'ticket';`)
+  }
+}
+
 export function initBusinessSchema() {
   const db = getDb()
+  // 补列迁移必须先于主 exec：旧库 action_items 缺 source 列时，
+  // 主 exec 里的 idx_action_items_source 索引会因 no such column 失败
+  migrateActionItemSourceColumn(db)
   db.exec(`
     CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
@@ -472,6 +516,7 @@ export function initBusinessSchema() {
       product_key TEXT NOT NULL DEFAULT '',
       product_name TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'ticket',
       first_proposed_at TEXT NOT NULL DEFAULT '',
       schedule_at TEXT NOT NULL DEFAULT '',
       warning_level TEXT NOT NULL DEFAULT 'none',
@@ -479,6 +524,7 @@ export function initBusinessSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_action_items_product ON action_items(product_key);
     CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status);
+    CREATE INDEX IF NOT EXISTS idx_action_items_source ON action_items(source);
     CREATE INDEX IF NOT EXISTS idx_action_items_first_proposed ON action_items(first_proposed_at);
 
     CREATE TABLE IF NOT EXISTS message_bottles (
@@ -565,6 +611,8 @@ export function initBusinessSchema() {
       customer_code TEXT NOT NULL DEFAULT '',
       product_name TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT '待处理',
+      assignee_id TEXT NOT NULL DEFAULT '',
+      assignee_name TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT '',
       payload TEXT NOT NULL
     );
@@ -638,6 +686,7 @@ export function initBusinessSchema() {
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
+  migratePostUseJiraAssigneeColumns(db)
   migrateLegacyDcProductKeys(db)
   migrateProductCatalogCanonicalKeys(db)
   migrateSharedBandwidthToEipSpec(db)

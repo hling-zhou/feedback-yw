@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import CompositeFilter from '../filters/CompositeFilter.jsx'
+import { listAssignees } from '../../lib/postUseJiraClient.js'
 import {
   POST_USE_JIRA_FILTER_GROUPS,
   POST_USE_JIRA_FILTER_LABELS,
@@ -36,6 +37,14 @@ export default function PostUseJiraCompositeFilter({
   onClearFilters,
   className,
 }) {
+  const [assigneeOptions, setAssigneeOptions] = useState([])
+  useEffect(() => {
+    listAssignees()
+      .then((res) => setAssigneeOptions(
+        (res?.users || []).map((u) => ({ label: u.username, value: u.id })),
+      ))
+      .catch(() => {})
+  }, [])
   const config = useMemo(
     () => ({
       groups: POST_USE_JIRA_FILTER_GROUPS,
@@ -52,9 +61,22 @@ export default function PostUseJiraCompositeFilter({
       isDraftValid: isPostUseJiraFilterDraftValid,
       applyPatch: applyPostUseJiraFilterPatch,
       clearKey: clearPostUseJiraFilterKey,
-      listEnumOptions: listPostUseJiraEnumOptionsForFilterKey,
+      listEnumOptions: (key, flt) => listPostUseJiraEnumOptionsForFilterKey(key, flt, { assigneeOptions }),
     }),
-    [],
+    [assigneeOptions],
+  )
+
+  // chip label for assigneeId should show name instead of id
+  const formatChipLabelOverride = useMemo(() => {
+    const nameMap = new Map(assigneeOptions.map((o) => [o.value, o.label]))
+    return (key, vals) => {
+      if (key === 'assigneeId') return nameMap.get(vals.assigneeId) || vals.assigneeId
+      return formatPostUseJiraFilterChipLabel(key, vals)
+    }
+  }, [assigneeOptions])
+  const configWithOverride = useMemo(
+    () => ({ ...config, formatChipLabel: formatChipLabelOverride }),
+    [config, formatChipLabelOverride],
   )
 
   return (
@@ -62,9 +84,9 @@ export default function PostUseJiraCompositeFilter({
       filters={filters}
       onFiltersChange={onFiltersChange}
       onClearFilters={onClearFilters}
-      config={config}
+      config={configWithOverride}
       className={className}
-      emptyPlaceholder="选择属性筛选（月份、产品、状态、客户/JIRA）"
+      emptyPlaceholder="选择属性筛选（月份、产品、状态、经办人、客户）"
     />
   )
 }

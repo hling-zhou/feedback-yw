@@ -55,9 +55,13 @@ export function normalizeJiraItem(raw) {
     customerCode: String(raw?.customerCode || '').trim(),
     productName: String(raw?.productName || '').trim(),
     customerFeedback: String(raw?.customerFeedback || '').trim(),
+    recommendedReason: String(raw?.recommendedReason || '').trim(),
     jiraTicket: String(raw?.jiraTicket || '').trim(),
     status,
     progress: String(raw?.progress || '').trim(),
+    assigneeId: String(raw?.assigneeId || '').trim(),
+    assigneeName: String(raw?.assigneeName || '').trim(),
+    actionId: String(raw?.actionId || '').trim(),
     createdAt: String(raw?.createdAt || '') || nowIso(),
     updatedAt: String(raw?.updatedAt || '') || nowIso(),
   }
@@ -111,17 +115,31 @@ export const postUseJiraRepository = {
       .all()
       .map((row) => normalizeJiraItem(parseJson(row.payload)))
 
-    const importMonth = String(query.importMonth || '').trim()
+    // importMonth 可能是「、」分隔多月份文本；查询侧也支持传多月份（、分隔），任一命中即可
+    const importMonths = String(query.importMonth || '')
+      .split('、')
+      .map((m) => m.trim())
+      .filter(Boolean)
     const productName = String(query.productName || '').trim()
     const status = String(query.status || '').trim()
+    const assigneeId = String(query.assigneeId || '').trim()
+    const actionId = String(query.actionId || '').trim()
     const search = String(query.search || '').trim().toLowerCase()
 
     const filtered = rows.filter((item) => {
-      if (importMonth && !String(item.importMonth || '').includes(importMonth)) return false
+      if (importMonths.length) {
+        const itemMonths = String(item.importMonth || '')
+          .split('、')
+          .map((m) => m.trim())
+          .filter(Boolean)
+        if (!importMonths.some((m) => itemMonths.includes(m))) return false
+      }
       if (productName && item.productName !== productName) return false
       if (status && item.status !== status) return false
+      if (assigneeId && item.assigneeId !== assigneeId) return false
+      if (actionId && item.actionId !== actionId) return false
       if (search) {
-        const haystack = [item.customerName, item.customerCode, item.jiraTicket, item.customerFeedback]
+        const haystack = [item.customerName, item.customerCode, item.jiraTicket, item.customerFeedback, item.assigneeName]
           .join(' ')
           .toLowerCase()
         if (!haystack.includes(search)) return false
@@ -157,12 +175,12 @@ export const postUseJiraRepository = {
   archiveMany(items) {
     const insert = getDb().prepare(
       `INSERT INTO post_use_jira_items
-        (id, item_key, import_month, customer_name, customer_code, product_name, status, updated_at, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, item_key, import_month, customer_name, customer_code, product_name, status, assignee_id, assignee_name, updated_at, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const update = getDb().prepare(
       `UPDATE post_use_jira_items
-       SET import_month = ?, customer_name = ?, customer_code = ?, product_name = ?, updated_at = ?, payload = ?
+       SET import_month = ?, customer_name = ?, customer_code = ?, product_name = ?, assignee_id = ?, assignee_name = ?, updated_at = ?, payload = ?
        WHERE item_key = ?`,
     )
     const lookup = (itemKey) => postUseJiraRepository.getByItemKey(itemKey)
@@ -180,7 +198,10 @@ export const postUseJiraRepository = {
               customerCode: incoming.customerCode || existing.customerCode,
               productName: incoming.productName || existing.productName,
               customerFeedback: incoming.customerFeedback || existing.customerFeedback,
+              recommendedReason: incoming.recommendedReason || existing.recommendedReason,
               sourceType: incoming.sourceType || existing.sourceType,
+              assigneeId: incoming.assigneeId || existing.assigneeId,
+              assigneeName: incoming.assigneeName || existing.assigneeName,
               updatedAt: nowIso(),
             }
           : {
@@ -197,6 +218,8 @@ export const postUseJiraRepository = {
             next.customerName,
             next.customerCode,
             next.productName,
+            next.assigneeId,
+            next.assigneeName,
             next.updatedAt,
             stringifyJson(next),
             next.itemKey,
@@ -210,6 +233,8 @@ export const postUseJiraRepository = {
             next.customerCode,
             next.productName,
             next.status,
+            next.assigneeId,
+            next.assigneeName,
             next.updatedAt,
             stringifyJson(next),
           )
@@ -238,10 +263,10 @@ export const postUseJiraRepository = {
     getDb()
       .prepare(
         `UPDATE post_use_jira_items
-         SET status = ?, updated_at = ?, payload = ?
+         SET status = ?, assignee_id = ?, assignee_name = ?, updated_at = ?, payload = ?
          WHERE id = ?`,
       )
-      .run(next.status, next.updatedAt, stringifyJson(next), id)
+      .run(next.status, next.assigneeId, next.assigneeName, next.updatedAt, stringifyJson(next), id)
     bumpDataRevision()
     return next
   },

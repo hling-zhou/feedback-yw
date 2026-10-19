@@ -53,6 +53,7 @@ export function toQuestionnaireFollowupRow(item) {
     客户编码: item?.customerCode || '',
     产品名称: item?.productName || '',
     客户反馈: buildQuestionnaireFollowupFeedback(item),
+    recommendedReason: item?.recommendedReason || item?.reasonSummary || '',
   }
 }
 
@@ -131,7 +132,12 @@ export function downloadFollowupTableExcel(rows, filenamePrefix, scopeLabel = '�
   downloadWorkbook(wb, followupTableFilename(filenamePrefix, scopeLabel))
 }
 
-export function toJiraArchivePayload(row) {
+/**
+ * @param {object} row
+ * @param {Map<string, { id: string; username: string }>} [assigneeMap] itemKey → assignee
+ */
+export function toJiraArchivePayload(row, assigneeMap) {
+  const assignee = assigneeMap instanceof Map ? assigneeMap.get(row.itemKey) : undefined
   return {
     itemKey: row.itemKey,
     sourceType: row.sourceType,
@@ -140,5 +146,8 @@ export function toJiraArchivePayload(row) {
     customerCode: row.客户编码 || '',
     productName: row.产品名称 || '',
     customerFeedback: row.客户反馈 || '',
+    recommendedReason: row.recommendedReason || '',
+    assigneeId: assignee?.id || '',
+    assigneeName: assignee?.username || '',
   }
 }

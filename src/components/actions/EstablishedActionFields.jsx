@@ -14,6 +14,7 @@ import { getActionItemDisplayScheduleAt } from '../../domain/requirementTicketPr
  * @param {Object} props
  * @param {string} [props.productKey]
  * @param {string} [props.actionId]
+ * @param {'ticket' | 'post_use'} [props.source]
  * @param {string} [props.establishedAction]
  * @param {string} [props.establishedActionDetail]
  * @param {string} [props.actionSchedule]
@@ -28,6 +29,7 @@ import { getActionItemDisplayScheduleAt } from '../../domain/requirementTicketPr
 export default function EstablishedActionFields({
   productKey,
   actionId,
+  source,
   establishedAction,
   establishedActionDetail,
   actionSchedule,
@@ -55,6 +57,7 @@ export default function EstablishedActionFields({
           <ActionItemSelect
             value={actionId || undefined}
             productKey={productKey}
+            source={source}
             disabled={disabled}
             onSelect={(item) => {
               onSelect?.(item)
