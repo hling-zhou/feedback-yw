@@ -103,7 +103,7 @@ export default function PostUseChannelBundleImport({
                 {preview.metrics.internalExp.avgScore}（n=
                 {preview.metrics.internalExp.totalSample}）
               </Descriptions.Item>
-              <Descriptions.Item label="对外云网均分">
+              <Descriptions.Item label="对外部门均分">
                 {preview.metrics.external.yunwang.avgScore}（n=
                 {preview.metrics.external.yunwang.totalSample}）
               </Descriptions.Item>

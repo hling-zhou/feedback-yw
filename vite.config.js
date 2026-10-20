@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const ooxmlWebcryptoFallback = path.join(rootDir, 'src/lib/ooxmlWebcrypto.js')
+// E2E 等场景可把 /api 代理指向非默认端口（如 3101），dev 默认仍是 3001
+const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:3001'
 
 /** 包内是相对路径 import，alias 匹配不到；按解析后的绝对路径替换。 */
 function ooxmlWebcryptoFallbackPlugin() {
@@ -35,7 +37,7 @@ export default defineConfig({
     port: 5175,
     strictPort: false,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:3001', changeOrigin: true },
+      '/api': { target: apiProxyTarget, changeOrigin: true },
     },
   },
   preview: {
