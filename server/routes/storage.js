@@ -1114,6 +1114,8 @@ export function registerStorageRoutes(app) {
     }
     else if (decodedKey === 'app_settings_shared_v1' || decodedKey === 'recommendation_feedback_v1') {
       perms.push('manageTeamSettings')
+      // postUseKeyCustomers 存于此 key，editor 也可编辑重点客户名单
+      if (decodedKey === 'app_settings_shared_v1') perms.push('manageTags')
     }
     else if (decodedKey === 'llm_config_v1') {
       perms.push('manageLlmConfig')

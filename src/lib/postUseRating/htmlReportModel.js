@@ -599,7 +599,7 @@ function reportFrame(reportMonth, reportPeriod) {
           todoClosed: '本季关闭',
           todoLead: '读者离开前应能回答：这季先办哪 3 件事。',
           todoEmpty: '本季建议回访清单为空，完整客户明细见附录。',
-          todoPlaceholder: '补充本季要办备注：先办哪 3 件事。',
+          todoPlaceholder: '输入备注/说明',
           filenamePrefix: '用后即评季报',
         }
       : {
@@ -609,7 +609,7 @@ function reportFrame(reportMonth, reportPeriod) {
           todoClosed: '本月关闭',
           todoLead: '读者离开前应能回答：这月先办哪 3 件事。',
           todoEmpty: '本月建议回访清单为空，完整客户明细见附录。',
-          todoPlaceholder: '补充本月要办备注：先办哪 3 件事。',
+          todoPlaceholder: '输入备注/说明',
           filenamePrefix: '用后即评月报',
         },
   }

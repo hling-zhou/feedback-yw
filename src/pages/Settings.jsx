@@ -884,8 +884,8 @@ export default function Settings() {
 
         {activeTab === 'curated_taxonomy' && <CuratedTaxonomyPanel canEdit={can('manageTeamSettings')} />}
 
-        {activeTab === 'mail' && can('manageTeamSettings') && (
-          <MailSettingsPanel canEdit={can('manageTeamSettings')} />
+        {activeTab === 'mail' && can('manageTags') && (
+          <MailSettingsPanel canEdit={can('manageTags')} />
         )}
       </div>
     </div>

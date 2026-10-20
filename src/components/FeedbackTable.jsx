@@ -27,7 +27,7 @@ function channelLabel(channel, sourceSubType) {
 /**
  * @param {import('../lib/types.js').FeedbackRecord[]} items
  */
-function buildPostUseColumns() {
+function buildPostUseColumns(keyCustomers) {
   return [
     {
       title: '渠道',
@@ -335,7 +335,7 @@ export default function FeedbackTable({
     (items.length > 0 && items.every((fb) => recordSourceType(fb) === 'post_use_rating'))
 
   const allColumns = postUseView
-    ? buildPostUseColumns()
+    ? buildPostUseColumns(keyCustomers)
     : buildTicketColumns(reviewEnabled, doneRecordIds)
   const columns = filterVisibleColumns(allColumns, hiddenColumns)
   const scrollX = columns.reduce((sum, col) => sum + (col.width || 140), 0)

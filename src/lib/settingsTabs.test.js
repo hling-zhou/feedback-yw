@@ -7,6 +7,7 @@ describe('settingsTabs', () => {
       [
         'manageLlmConfig',
         'manageTeamSettings',
+        'manageTags',
         'editOrderVolumes',
         'deleteData',
         'export',
@@ -21,12 +22,12 @@ describe('settingsTabs', () => {
     ])
 
     const editor = getVisibleSettingsTabs((p) =>
-      ['editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view'].includes(p),
+      ['editOrderVolumes', 'deleteData', 'export', 'viewAudit', 'view', 'manageTags'].includes(p),
     )
-    // editor 现在也能看到 llm/analysis/requirement_sync/pipeline/curated_taxonomy（只读）
+    // editor 有 manageTags，可编辑邮件发送（mail）；无 manageTeamSettings
     expect(editor).toEqual([
       'llm', 'analysis', 'metrics', 'data', 'audit', 'bottles',
-      'requirement_sync', 'pipeline', 'curated_taxonomy',
+      'requirement_sync', 'pipeline', 'curated_taxonomy', 'mail',
     ])
 
     const viewer = getVisibleSettingsTabs((p) => ['export', 'viewAudit', 'view'].includes(p))

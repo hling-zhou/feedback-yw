@@ -620,7 +620,7 @@ export default function PostUseHtmlReportDocument({
             onChange={(event) => onTodoNoteChange(event.target.value)}
             autoSize={{ minRows: 3 }}
             disabled={!canEdit}
-            placeholder={copy.todoPlaceholder || '输出备注/说明'}
+            placeholder={copy.todoPlaceholder || '输入备注/说明'}
           />
         </section>
       )}

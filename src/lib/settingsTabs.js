@@ -46,7 +46,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   pipeline: '仅管理员可运行行动建议规则补充流水线：Producer 归因 → 新词发现 → 自动写入 → 门禁验证；跑完在页面查看结果。',
   curated_taxonomy:
     '查看各产品的行动建议分类法（curated JSON）；仅管理员可编辑 family 正则与子议题，保存后写入服务端，刷新洞察即生效。',
-  mail: '配置发信通道、收件人群组与邮件模板。通道绑定数据来源；发送时选择模板和群组。仅管理员可改。',
+  mail: '配置发信通道、收件人群组与邮件模板。通道绑定数据来源；发送时选择模板和群组。',
 }
 
 const SETTINGS_TAB_KEY_SET = new Set(SETTINGS_TAB_KEYS)
@@ -68,7 +68,7 @@ export function getVisibleSettingsTabs(can) {
   if (can('manageKnowledgeBase')) tabs.push('knowledge_base')
   if (can('view')) tabs.push('pipeline')
   if (can('view')) tabs.push('curated_taxonomy')
-  if (can('manageTeamSettings')) tabs.push('mail')
+  if (can('manageTags')) tabs.push('mail')
   return tabs
 }
 

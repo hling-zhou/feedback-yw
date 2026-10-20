@@ -856,7 +856,7 @@ export function buildOfflineMonthlyReportHtml(input) {
         <div class="post-use-html-report-kpi"><div class="label">建议回访/溯源</div><div class="value">${todo.callbackCount || 0}</div></div>
       </div>
       ${todoItemsHtml}
-      ${readonlyBlock(todoNote, copy.todoPlaceholder || '输出备注/说明')}
+      ${readonlyBlock(todoNote, copy.todoPlaceholder || '输入备注/说明')}
     </section>`
 
   const previousVisits = (model.previousVisits || []).map((row) => {

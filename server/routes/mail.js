@@ -60,7 +60,7 @@ function assertManage(request, reply) {
     sendError(reply, 401, '未登录')
     return false
   }
-  if (!hasPermission(request.user.role, 'manageTeamSettings')) {
+  if (!hasPermission(request.user.role, 'manageTags')) {
     sendError(reply, 403, '无权限执行此操作')
     return false
   }
@@ -90,7 +90,7 @@ export function registerMailRoutes(app) {
 
   app.put(
     '/api/mail/public-url',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { body: mailPublicUrlBodySchema } },
+    { preHandler: requirePermission('manageTags'), schema: { body: mailPublicUrlBodySchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       const body = /** @type {{ publicAppUrl: string }} */ (request.body)
@@ -106,7 +106,7 @@ export function registerMailRoutes(app) {
 
   app.post(
     '/api/mail/channels',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { body: mailChannelBodySchema } },
+    { preHandler: requirePermission('manageTags'), schema: { body: mailChannelBodySchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       try {
@@ -126,7 +126,7 @@ export function registerMailRoutes(app) {
   app.patch(
     '/api/mail/channels/:id',
     {
-      preHandler: requirePermission('manageTeamSettings'),
+      preHandler: requirePermission('manageTags'),
       schema: { params: uuidParamSchema, body: mailChannelPatchSchema },
     },
     async (request, reply) => {
@@ -145,7 +145,7 @@ export function registerMailRoutes(app) {
 
   app.delete(
     '/api/mail/channels/:id',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { params: uuidParamSchema } },
+    { preHandler: requirePermission('manageTags'), schema: { params: uuidParamSchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       const { id } = /** @type {{ id: string }} */ (request.params)
@@ -161,7 +161,7 @@ export function registerMailRoutes(app) {
 
   app.post(
     '/api/mail/groups',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { body: mailGroupBodySchema } },
+    { preHandler: requirePermission('manageTags'), schema: { body: mailGroupBodySchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       try {
@@ -178,7 +178,7 @@ export function registerMailRoutes(app) {
   app.patch(
     '/api/mail/groups/:id',
     {
-      preHandler: requirePermission('manageTeamSettings'),
+      preHandler: requirePermission('manageTags'),
       schema: { params: uuidParamSchema, body: mailGroupBodySchema },
     },
     async (request, reply) => {
@@ -197,7 +197,7 @@ export function registerMailRoutes(app) {
 
   app.delete(
     '/api/mail/groups/:id',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { params: uuidParamSchema } },
+    { preHandler: requirePermission('manageTags'), schema: { params: uuidParamSchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       const { id } = /** @type {{ id: string }} */ (request.params)
@@ -213,7 +213,7 @@ export function registerMailRoutes(app) {
 
   app.post(
     '/api/mail/templates',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { body: mailTemplateBodySchema } },
+    { preHandler: requirePermission('manageTags'), schema: { body: mailTemplateBodySchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       try {
@@ -230,7 +230,7 @@ export function registerMailRoutes(app) {
   app.patch(
     '/api/mail/templates/:id',
     {
-      preHandler: requirePermission('manageTeamSettings'),
+      preHandler: requirePermission('manageTags'),
       schema: { params: uuidParamSchema, body: mailTemplateBodySchema },
     },
     async (request, reply) => {
@@ -249,7 +249,7 @@ export function registerMailRoutes(app) {
 
   app.delete(
     '/api/mail/templates/:id',
-    { preHandler: requirePermission('manageTeamSettings'), schema: { params: uuidParamSchema } },
+    { preHandler: requirePermission('manageTags'), schema: { params: uuidParamSchema } },
     async (request, reply) => {
       if (!assertManage(request, reply)) return
       const { id } = /** @type {{ id: string }} */ (request.params)
