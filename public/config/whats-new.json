@@ -1,9 +1,523 @@
 {
-  "generatedAt": "2026-09-18T02:31:55.249Z",
+  "generatedAt": "2026-10-08T12:09:57.074Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "e1150668aed36234f5a28764c14cf01fd47f3007",
+  "repoCommit": "5591ed7d5c820842af3248e7a2aa7a08d1ad299d",
   "items": [
+    {
+      "id": "d8887e1ee7a61d3b18bcfbf68ff28de9df82aa86",
+      "title": "用后即评列表只展示分析范围内的产品，范围外仍只参与公司满意度",
+      "category": "fix",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "6ae8a5b50e551c847e984e39fc30b469318d8a1d",
+      "title": "补全用户旅程进行中不再把列表换成全量加载",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "f331becf412f111754df78e8af6c42a7bcd8d8a6",
+      "title": "用后即评补旅程不再按分数过滤，只保留分析范围内的产品",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e3553c95fe6c50186a8320597299f760c8b0e13e",
+      "title": "各 Tab 的旅程统计只算本类，用后即评排除分析范围外产品",
+      "category": "fix",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "投诉咨询页的未识别条数不再混入用后即评；未开启用后即评分析的产品不进入待补全。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ca45f30f1a13f5b905704581df28ed2a2f073346",
+      "title": "用后即评旅程按产品模板打标，旧关键词结果默认保留",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "补全改为服务端任务，与工单打标共用门闸和后台锁；需要时再勾选覆盖六组关键词写出的环节。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "f3c9872f701edd0025e02eaa687a7f6b805f7964",
+      "title": "用后即评已选文件不再叠在下一步按钮上",
+      "category": "fix",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "双栏里的上传列表会盖住操作按钮，文件名改排在各自拖拽区下面，渠道计数也按实际上传数显示。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "3d80be3f879ba55c909ecdabf9a1208f697e54e4",
+      "title": "非安全页面也能解密加密 Excel",
+      "category": "fix",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-09-28",
+      "appVersion": null,
+      "summary": "http 且非 localhost 时浏览器没有 crypto.subtle，用后即评加密文件会直接失败。纯 JS 回退让解密不依赖 WebCrypto。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2084edab89c59848cb11bea1e6ff4abe130b03f2",
+      "title": "进程内打标锁在重启后释放，并靠心跳续期",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-25",
+      "appVersion": null,
+      "summary": "慢模型调用会停在一次进度上，重启后又会留下空锁。续期和启动清理让锁只表示任务还在跑，锁已不在时停止写回。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e50a3433e7e994f0ceae6ea1f4c82cba48065e3e",
+      "title": "按月份、数据源和周期互斥，打标走服务端模型",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-24",
+      "appVersion": null,
+      "summary": "导入与重打标只挡住同一批对象：同数据源同月份，或工单导入落在该洞察周期内。进程内 LLM 与 HTTP 路由一样注入库里配置的模型。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "0945d665387006ab5609a6b166c08aeceaf2e9ff",
+      "title": "使用流程补上专题分析，并区分洞察入口",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-24",
+      "appVersion": null,
+      "summary": "登录页使用流程与当前模块对齐：洞察分析单独入口，专题分析标为 Beta。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "986adf326ce522a1cb64e1650a23d588ccd62df5",
+      "title": "sendBeacon 改 fetch+keepalive 携带 Authorization",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-23",
+      "appVersion": null,
+      "summary": "sendBeacon 不支持自定义 header，/api/usage/track 需要 Bearer token\n鉴权导致请求被拒。改用 fetch + keepalive：等效不阻塞行为，同时\n能携带 Authorization header。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "a9c62bea1228ddc5271901d35e0ddbd3ac0923d8",
+      "title": "打标任务按钮右对齐 + Tooltip 包裹禁用按钮 + Alert 可关闭 + 简化会话守卫",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-23",
+      "appVersion": null,
+      "summary": "Feedbacks.jsx：\n- 新增\"打标任务\"按钮（UnorderedListOutlined + !ml-auto 右对齐）\n- 批量重打标/补打/补打旅程按钮 disabled 时 Tooltip 包裹显示原因\n- TaggingProgressAlert 支持 closable + progressAlertDismissed 状态\n- 接入 TaskHistoryPanel drawer\n\nTaggingProgressAlert / ImportProgressAlert：\n- 新增 onClose 回调，closable={Boolean(onClose)}\n\nRetagSessionGuard / ImportSessionGuard：\n- 移除浮动 banner / beforeunload 离开确认 / interrupted-modal\n  逻辑（服务端后台打标不因页面刷新中断）\n- RetagSessionGuard 仅保留中断检测 Modal，文案改为引导用户\n  查看打标任务面板",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "4f9e518150fe5fdee6a9dd1e5a790958bc09a55c",
+      "title": "统一后台任务进度来源 + 打标任务抽屉",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-23",
+      "appVersion": null,
+      "summary": "解决两个顽固 bug：\n1. 抽屉永久\"正在准备分析\"——Import 轮询拿到 lock 后没同步到\n   sharedBackgroundTask，改为直接 setSharedBackgroundTask(lock)\n   替代二次 API 请求（refresh 在 auth 失败时会 reject）。\n2. 反馈库显示进度但抽屉不跟进——version tick 在 guard 块之前\n   先调 refreshSharedBackgroundTask，retag/import 进行中也能\n   持续刷新锁进度到 sharedBackgroundTask。\n\n新增 TaskHistoryPanel 组件（760 宽抽屉）：\n- 消费 sharedBackgroundTask 展示当前任务 + 历史列表\n- 取消按钮调 POST /background-task/cancel\n- 无活跃任务时自动刷新历史\n\nImport.jsx 同步改造：\n- 步骤 1 在 retag 运行时禁用\"下一步\"按钮 + Tooltip 提示\n- 确认导入按钮 Tooltip 包裹 disabled 状态\n- 移除 persistImportSessionMarker / touchSharedBackgroundTask\n  调用（进度来源已统一到锁）",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9ea3186c84a8b264a4f7d1b297e8242fe7961699",
+      "title": "后台任务锁/历史/结果/取消机制 + 流式写盘 + 协作取消",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-23",
+      "appVersion": null,
+      "summary": "为什么需要这些改动：\n- 前端两条独立轮询（Import/Retag 3s poll vs version tick 5s）依赖\n  lock.meta.result，但服务端从未写入该字段，导致抽屉永久停留在\n  \"正在准备分析\"。现在 enrichRunner 每阶段 touch lock 写入进度，\n  完成时 setTaskResult + touch lock.meta.result + appendTaskHistory。\n- 服务端写 result 后立即 releaseBackgroundTaskLock（<1ms 窗口），\n  3s 轮询来不及读取锁已释放。在 release 前加 1.5s 延迟让前端兜到。\n- enrichRunner 加 FLUSH_BATCH_SIZE=4 流式写盘 + isTaskCancelled\n  协作取消检查，取消后 flush 已处理部分再退出。\n- lock stale 从 3min 放宽到 10min（LLM 批次最慢 >3min 会被误抢占）。\n- 新增路由：history/result 读取与清除、cancel 端点。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d7b204113fdb31011995ad5071d585b3e895dae1",
+      "title": "前端接入服务端打标——fire-and-forget + 轮询",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "导入与批量重打标改为 POST /api/storage/records/enrich 立即返回，\n前端轮询 GET /api/storage/background-task 拿进度/结果，完成后\nreloadAfterEnrich 刷新内存。刷新浏览器不中断后台打标。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e01637b2de12d54adadb7dc8022b77674f43ee9e",
+      "title": "服务端打标基础设施——transport 注入与配置加载 fallback",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "llmClient/knowledgeBaseClient 新增可插拔 transport + settings override，\nNode 环境绕过 apiFetch 直连服务端；taxonomyLoader/productCatalogLoader\n新增 fs fallback 读配置文件。enrichRunner 注入 transport 后 in-process\n复用 src/lib/ 打标模块；storage 路由新增 POST /api/storage/records/enrich\nfire-and-forget 端点。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ccef7fcdeac913b3653669efea2e8d3b077dac35",
+      "title": "无月份数据时 loading 永不结束导致页面一直转圈",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "months 返回空数组时 selectedMonth 保持空字符串，loadStats 直接\nreturn 跳过 setLoading(false)，页面永久卡在加载态。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ef995f2ddbdf4372db0f2d3086c1d3b1ab1ec101",
+      "title": "运营分析页面与接口收紧为仅管理员可访问",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "前端将 /operations 加入 editor/partial_editor/viewer 的隐藏路由，\n后端查询接口从 viewAudit 改为 requireAdmin，采集端点不变。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b29d7a7e3c0c7195018d0d017ad0ef3f7a1e9eeb",
+      "title": "平台运营分析——采集页面访问频次并按月归档，支持个人/班组/角色/能力模块多维分析",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "独立 usage.db（WAL 模式，与 auth.db 隔离），两张表：\n- usage_stats：当月原始明细，字段含 user_id/username/team/role/module/page\n- usage_monthly：历史月聚合归档，服务器启动时自动把非当月原始记录聚合后删除\n\n采集方式：\n- 前端路由切换时 navigator.sendBeacon → POST /api/usage/track（不阻塞页面）\n- 工单详情 Drawer 打开时 trackUsage('feedbacks_detail')，与列表访问分开统计\n\nAPI：\n- POST /api/usage/track（登录即可）\n- GET /api/usage/stats?month=YYYY-MM（需 viewAudit 权限）\n- GET /api/usage/months（需 viewAudit 权限）\n\n看板页面 /operations（recharts）：\n- 能力使用频次柱状图（按月）\n- Top 5 活跃用户表格\n- 班组维度 + 角色维度下钻表格\n- 近 6 个月趋势折线图\n- 导航菜单加「运营分析」入口",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "62984948ab1ca9f4499b31895601527316a405d7",
+      "title": "确认导入后告知用户后台已开始，离开页面不丢结果",
+      "category": "feature",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-09-22",
+      "appVersion": null,
+      "summary": "导入确认时弹 message.info Toast 主动告知用户可切换页面、完成后会\n收到通知。setImportResult/setStep(4)/setLoading/setImportProgress/\nsetError 全部用 importPageMountedRef 守卫，离开页面后不再 set state；\n错误路径在离开页面时改为 message.error 全局通知。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d3c8f90cd01b302d9507eaf1881243dbaac8fd09",
+      "title": "增强打标阶段失败时回退规则初标继续写盘，避免 0 条写入",
+      "category": "fix",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-09-21",
+      "appVersion": null,
+      "summary": "admin 导入完成规则打标后，LLM 增强环节因任意异常终止（网络中断、\nLLM 挂起、浏览器 tab 后台被中止等），结果一条都不写入——前端列表\n0 新增、日志审计无记录。\n\n根因：enrichTicketRecordsForImport 中 runImportStage 之间的统计计算\n（computeTicketLlmEnrichmentDelta / computeJourneyEnrichmentDelta /\ncountOptimizationRetries）和 M5/M6 闸门复验（revalidateL0AfterLlm /\nrevalidateL1AfterRetag）未被 try/catch 保护，抛错直接逃逸到 doImport\n外层 catch，addFeedbacks 永远不被调用。\n\n修复：\n1. importEnrichment.js — 所有 runImportStage 之间的代码逐个包\n   try/catch，console.warn 后不阻断流程\n2. Import.jsx — enrichTicketRecordsForImport 调用外层包 try/catch，\n   增强阶段整体失败时回退规则初标结果继续走 addFeedbacks 写盘，\n   warning 提示用户可稍后手动重新打标",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d30fa44720402f4b3990c513c157862d624ba6c1",
+      "title": "投诉/咨询工单开放 LLM 打标并移除路径段对维度的兜底",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-21",
+      "appVersion": null,
+      "summary": "请求节点是用户提交工单时选的类目，与实际问题和场景不一定对应，\n直接用作维度标签兜底会导致产品名混入问题类型和请求场景（如\"共享\n带宽\"\"云专线\"出现在请求场景标签中）。本次改动：\n\n1. dimensionTagging.js — matchRequestScenesForRecords/matchProblemTypesForRecords\n   不再跳过投诉/咨询工单：本地命中默认值或\"其他\"时触发 LLM 语义匹配，\n   strictLabels 模式约束 LLM 只能从标签库选、不允许建议新名，库外返回\n   一律降级为\"未分类\"，从源头杜绝路径段值变成待复核标签候选。\n\n2. themeSemantic.js — callLlmClassifyBatch 新增 opts.strictLabels 参数，\n   prompt 和返回值后处理双重约束 LLM 只选不造；清理重复 JSDoc 块。\n\n3. ticketDimensionTagging.js — tagCore 的 usePath 块删除对 requestScene\n   和 problemType 的路径段赋值，仅保留 journey 兜底（nodeMaps 精确映射，\n   不产生 pendingReviewTag）。\n\n4. gateRetry.js — L1 重试链删除 R2 路径兜底（retryL1PathFallback），\n   变为 R1→R3(LLM)；清理空 JSDoc 和无用导入。\n\n5. dimensionTagging.test.js — 测试 mock 改为从传入 rules 取第一个标签返回，\n   模拟 strictLabels 下 LLM 只选不造的真实行为；补 mockClear 避免 spy\n   跨用例污染。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8617ffbb8c141d10a558ff0da30d8e4de9df8d0b",
+      "title": "角色名改为编辑/部分编辑 + 去岗位字段 + 导入 upsert 不改密码",
+      "category": "feature",
+      "modules": [
+        "settings"
+      ],
+      "publishedAt": "2026-09-20",
+      "appVersion": null,
+      "summary": "角色名：体验运营角色→编辑、工单分析角色→部分编辑，ROLE_LABEL_ALIASES 加旧名兼容。\n去岗位：前后端全栈移除 position 字段（表单/表格/筛选/导入导出/schema/业务函数），\n        保留 DB 列不删数据。\n导入 upsert：同名用户不再跳过，改为更新 team/role（不改密码/状态/改密标记/会话版本），\n             admin 保护仍生效；返回 {created, updated, errors}；前端文案与审计同步。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "cbea8b82d0018f79369cc89f648f5d7229035cc6",
+      "title": "Beta 版——用后即评满分过滤+来源标签+对比说明",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "10 分且无负面反馈的用后即评跳过（有负面反馈的保留）；数据来源标签\n改用 TOPIC_SOURCE_LABELS（用后即评→「用后即评（不含满分好评）」）；\nAlert 补充近期4月 vs 更早5月对比含义；缓存版本 bump 1→2",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "3f113f9a3bfdd4c28d8fb513addd1b292856d144",
+      "title": "工作台产品下拉过滤目录外产品 + 行动建议引擎扩展更多产品",
+      "category": "feature",
+      "modules": [],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "新增 filterProductsByCatalog/isManagedCatalogLoaded，工作台/分析页/快照/规划覆盖\n6 处加条件过滤（catalog 已加载才过滤），避免出现云主机ECS 等目录外产品；\n引擎 loadCuratedAll 加入云监控，默认 prods 改为处理工单中出现的所有产品\n（有 curated 精确分类，无 curated 由 deriveDraftTax 推导）",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d183ca4604132bcb8cd50bf8d442e3594384de00",
+      "title": "构建记录时补写 productKey，修复 51931 条空值",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "buildRecords.js 调 resolvePostUseRatingProduct 解析产品目录补写 productKey；\nimportSession.js 传 catalogProducts 给构建函数。修复聚合去重时同名分裂问题",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ee63b82e93f5f6de51850137235c5948df093b6f",
+      "title": "反馈库筛选栏 flex item 加 w-full 撑满，修复部署后仍不等宽",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "Feedbacks.jsx 两个分支根 div 缺 w-full，flex item 默认不撑满导致复合筛选框右侧留空",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "880142660c23ca23636454c650da2cc86c3f4920",
+      "title": "三页列宽优化+列表 hover 关键信息变蓝",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "会议待办/产品举措/用后即评JIRA 列宽按\"短列固定、长列吃剩余\"调整；\nCopyableEllipsisCell 新增 textClassName prop，行 hover 时工单号/举措/待办变蓝",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d2480a9cd9486ff8095677d8faa78e41faf67afc",
+      "title": "班组下拉去掉历史值动态带出逻辑，只显示枚举值",
+      "category": "fix",
+      "modules": [
+        "settings"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "legacyTeams/allTeamOptions/teamFilterOptions 三个 useMemo 从库内\n动态捞历史值拼进下拉，现改为直接用 TEAM_OPTIONS 枚举，下拉干净。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "97730b71a458e0d3b0b1793df54d750a4f8ebc51",
+      "title": "反馈库筛选栏产品居左操作居右，复合筛选与表格同宽",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "产品筛选与操作按钮原在同一 flex 行用 ml-auto 推右，按钮多时产品\n会被挤到下方。改用 justify-between 确保左右分立不受按钮数量影响；\n复合筛选 bar 加 w-full 撑满容器，与表格右缘对齐。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "5d9c181f62c58d9e4fda7a90d89ccd59b1b240d9",
+      "title": "工单分析角色开放数据导入权限",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "partial_editor 此前只有 view/viewAudit/editRecord/export，导入页虽\n已放开路由但 step 0 按钮被 !can('import') 守卫卡住。加 import 权限码，\n工单分析角色可正常使用数据导入功能。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2031f4ca46b50c24befe2f83b92f776878d55d76",
+      "title": "导入页入口加权限守卫，无 import 权限即时禁用",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "partial_editor 路由放开后能进入导入页、走完流程到最后一刻才被后端 403\n拦截，体验差且令人困惑。在 step 0\"下一步：上传文件\"按钮加 disabled\n守卫，入口即卡住，并保留三个确认按钮的守卫作为纵深防御。\n顺带清理 ApiKeyPanel 未使用的 useAuth import。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "eb0743c6f1e15cec7278acb38ede8bd9bc532982",
+      "title": "列表页筛选栏 sticky chrome 吸顶，避免滚动后筛选区不可见",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "Actions/Feedbacks/PostUseJiraTab 三页筛选栏随表体滚动后会消失，用户需\n回滚才能操作筛选。为这三页筛选容器加 page-sticky-chrome 吸顶模式，\nPostUseJiraTab 额外用 ResizeObserver 测量吸顶高度并传入 Table sticky\noffsetHeader，保证表头与吸顶栏不重叠。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "be15445e18404ada5676a6adf696386cb5476b60",
+      "title": "系统管理模块对非管理员开放只读，写入仅管理员收口",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-19",
+      "appVersion": null,
+      "summary": "LLM 配置、班组设置/流水线/curated 分类法、需求工单同步/API Key、漂流瓶\n等模块的只读接口从写权限码降级为 view，设置页 Tab 对所有登录用户可见；\n各面板写入控件按对应写权限码 disabled。partial_editor 可见导入页（只读）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "78a122ee734b7a2635c489e4da2beb412202b1e2",
+      "title": "补上遗漏的 userProfile 与 userInitialPassword 领域模块",
+      "category": "fix",
+      "modules": [
+        "settings"
+      ],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "前一个用户管理增强提交中，Users.jsx / config.js 引用了这两个模块但未被跟踪，\n导致生产构建失败。本次提交补录它们。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b170149b29e522e4997bd2b1999376d033258b2c",
+      "title": "补上遗漏的用户导出模块 userExport.js",
+      "category": "fix",
+      "modules": [
+        "settings"
+      ],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "前一个用户管理增强提交中，Users.jsx 引用了此模块但未纳入暂存区，\n导致生产构建失败。本次提交补录该文件。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8ec191d0e201283ec0aaaaeb47b49c9ead357d90",
+      "title": "会议待办负责人下拉拉宽与待办内容右缘对齐",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "负责人 Select 从 min-w-[180px] max-w-[280px] shrink-0 改为 min-w-[200px] flex-1，\n占满同行剩余空间，右缘与下方待办内容文本框对齐。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7b84469bb46cbfe275fc9fe1d51584c1045f64f5",
+      "title": "统一初始密码 + 班组枚举迁移 + 导入岗位/班组必填校验 + 用户管理页增强",
+      "category": "feature",
+      "modules": [
+        "settings"
+      ],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "- 新增 resolveUserInitialPassword，新建/导入账号密码留空时统一使用系统初始密码\n- users 表新增 position/team/must_change_password 列，班组旧值按 TEAM_MIGRATION_MAP 迁移\n- 导入模板表头标注岗位/班组必填，导入时做枚举校验并回传可选清单\n- 用户管理页增加岗位/班组筛选、首次改密标记、重置筛选按钮\n- 改密页面适配 must_change_password 状态",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9a2db54a05b7ed5eb8347074b888d4949e31e554",
+      "title": "登录页增加「首次登录」默认密码查看 + 用户管理 API 补全",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "- 登录页底部增加「首次登录？」链接，点击后调公开接口展示系统统一初始密码\n- 新增 GET /api/auth/default-password 公开接口（无需认证）\n- 新增 GET /api/users/default-password 管理端接口（需 manageUsers 权限）\n- 新增 POST /api/users/reset-passwords 批量重置密码接口\n- 用户创建/批量创建/编辑路由补齐 position 字段透传\n- 中间件白名单放行 /api/auth/default-password",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2065812bac9652282b9453f241210e4253030f77",
+      "title": "设置页容器宽度改用窄名单，修复含表格 tab 被压进 672px",
+      "category": "fix",
+      "modules": [],
+      "publishedAt": "2026-09-18",
+      "appVersion": null,
+      "summary": "宽名单式枚举要求每新增一个含表格的 tab 都记得登记，漏配就会把表格压成竖排单字，\naudit 与 pipeline 已各踩一次；改为默认撑满、仅窄表单类收窄，从写法上消除复发可能。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "e1150668aed36234f5a28764c14cf01fd47f3007",
       "title": "审计日志表格补横向滚动并按字段结构化展示详情",
