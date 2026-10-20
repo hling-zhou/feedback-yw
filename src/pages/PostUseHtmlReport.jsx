@@ -376,6 +376,7 @@ export default function PostUseHtmlReport() {
       issueNarratives,
       visitSupplements,
       hiddenSectionIds,
+      keyCustomers: settings?.postUseKeyCustomers,
       exportedAt: new Date().toISOString(),
     })
   }
@@ -435,6 +436,7 @@ export default function PostUseHtmlReport() {
         onTodoItemsChange={setTodoItems}
         onIssueChange={onIssueChange}
         onVisitSupplementChange={onVisitSupplementChange}
+        keyCustomers={settings?.postUseKeyCustomers}
       />
     )
   }

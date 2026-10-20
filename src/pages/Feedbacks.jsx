@@ -1581,6 +1581,7 @@ export default function Feedbacks() {
               dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
               hiddenColumns={tableHiddenColumns}
               stickyOffset={stickyChromeHeight}
+              keyCustomers={isPostUseLane ? settings?.postUseKeyCustomers : undefined}
             />
         ) : (
           <CardGrid

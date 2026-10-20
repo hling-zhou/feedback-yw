@@ -12,6 +12,8 @@ import TrendChart from '../charts/TrendChart.jsx'
 import { withPostUseTrendDomains } from '../../lib/postUseRating/insights.js'
 import { StatusOverviewChart } from './PostUseHtmlReportCharts.jsx'
 import PostUseJourneyMap from './PostUseJourneyMap.jsx'
+import WordCloud from '../charts/WordCloud.jsx'
+import KeyCustomerStar from '../common/KeyCustomerStar.jsx'
 
 const WORKBENCH_HREF = '/workbench?tab=post_use_rating'
 
@@ -215,6 +217,7 @@ function ScoreMeter({ avgScore, sampleSize, nonTenCount }) {
  *   onTodoItemsChange?: (items: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]) => void
  *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void
  *   onVisitSupplementChange?: (id: string, field: string, value: string) => void
+ *   keyCustomers?: string[]
  * }} props
  */
 function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange }) {
@@ -369,6 +372,7 @@ export default function PostUseHtmlReportDocument({
   onTodoItemsChange,
   onIssueChange,
   onVisitSupplementChange,
+  keyCustomers,
 }) {
   const hidden = new Set(hiddenSectionIds || [])
   const copy = model.copy || {}
@@ -526,7 +530,18 @@ export default function PostUseHtmlReportDocument({
           <div className="post-use-html-report-kpi-hints">{(model.kpis.callbackUnqualifiedNames || []).join('、') || '无'}</div>
         </div>
       </div>
-      <StatusOverviewChart statusTrend={model.charts?.statusTrend} />
+      <div className="report-overview-grid">
+        <div className="report-visual-panel report-overview-grid__main">
+          <div className="report-visual-panel__title">体验现状趋势</div>
+          <StatusOverviewChart statusTrend={model.charts?.statusTrend} />
+        </div>
+        {model.charts?.lowScoreReasonCloud?.length ? (
+          <div className="report-visual-panel report-overview-grid__side">
+            <div className="report-visual-panel__title">高频低分原因</div>
+            <WordCloud data={model.charts.lowScoreReasonCloud} height={300} />
+          </div>
+        ) : null}
+      </div>
       </section>
 
       {hidden.has(REPORT_SECTION_PRODUCTS) ? null : (
@@ -620,7 +635,7 @@ export default function PostUseHtmlReportDocument({
               rowKey="id"
               dataSource={model.previousVisits}
               columns={[
-                { title: '客户', dataIndex: 'customerName', width: 160 },
+                { title: '客户', dataIndex: 'customerName', width: 160, render: (value, row) => <span>{value || '—'}<KeyCustomerStar customerName={row.customerName} keyCustomers={keyCustomers} /></span> },
                 {
                   title: '客服部回访记录',
                   dataIndex: 'visitResult',
@@ -734,7 +749,7 @@ export default function PostUseHtmlReportDocument({
                     rowKey={(row) => `${row.customerName}-${row.customerCode}`}
                     dataSource={preview.customers}
                     columns={[
-                      { title: '客户', dataIndex: 'customerName' },
+                      { title: '客户', dataIndex: 'customerName', render: (value, row) => <span>{value || '—'}<KeyCustomerStar customerName={row.customerName} keyCustomers={keyCustomers} /></span> },
                       { title: '编码', dataIndex: 'customerCode' },
                       { title: '产品', dataIndex: 'products', render: (products) => (products || []).join('、') },
                       { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
@@ -762,7 +777,7 @@ export default function PostUseHtmlReportDocument({
                       {
                         title: '客户名称/编码',
                         key: 'customer',
-                        render: (_, row) => [row.customerName, row.customerCode].filter(Boolean).join(' / ') || '—',
+                        render: (_, row) => <span>{[row.customerName, row.customerCode].filter(Boolean).join(' / ') || '—'}<KeyCustomerStar customerName={row.customerName} keyCustomers={keyCustomers} /></span>,
                       },
                       { title: '时间', dataIndex: 'answeredAt', width: 120 },
                       { title: '原文', dataIndex: 'text' },

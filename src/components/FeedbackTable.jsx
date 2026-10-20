@@ -8,6 +8,7 @@ import {
   getDisplayCustomerRequest,
   getDisplayPainPoint,
 } from '../lib/ticketAnalysis/ticketAnalysisSources.js'
+import KeyCustomerStar from './common/KeyCustomerStar.jsx'
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
 import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
@@ -79,7 +80,7 @@ function buildPostUseColumns() {
       dataIndex: 'customerName',
       width: 140,
       ellipsis: true,
-      render: (_, fb) => fb.customerName || fb.customerCode || '—',
+      render: (_, fb) => <span>{fb.customerName || fb.customerCode || '—'}<KeyCustomerStar customerName={fb.customerName} keyCustomers={keyCustomers} /></span>,
     },
     {
       title: '原文 / 意见',
@@ -313,6 +314,8 @@ export default function FeedbackTable({
   hiddenColumns,
   /** 表头吸顶偏移量（来自外层 sticky chrome 高度）；不传则不吸顶 */
   stickyOffset = 0,
+  /** 用后即评重点客户名单（settings.postUseKeyCustomers） */
+  keyCustomers,
 }) {
   if (items.length === 0) {
     return (

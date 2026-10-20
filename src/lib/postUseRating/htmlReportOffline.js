@@ -6,6 +6,7 @@ import {
 } from './htmlReportModel.js'
 import { toJourneyChartRows, withPostUseTrendDomains } from './insights.js'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SCORE_BASELINE } from './metrics.js'
+import { isKeyCustomerName } from './callbackRecommendations.js'
 
 const TREND_COLORS = ['#2563EB', '#059669', '#D97706', '#DC2626', '#7C3AED', '#0891B2']
 
@@ -381,10 +382,47 @@ function scoreMeterHtml(avgScore, sampleSize, nonTenCount) {
   </div>`
 }
 
-function quoteLineHtml(item, polarity = item?.polarity || 'negative') {
+/**
+ * 离线版词云：纯 HTML（flex wrap 布局），与在线版 WordCloud.jsx 视觉一致。
+ * @param {Array<{ text: string, value: number }>} words
+ * @param {{ height?: number }} [opts]
+ */
+function wordCloudHtml(words, { height = 300 } = {}) {
+  const data = (words || []).filter((w) => w?.text && Number(w.value) > 0)
+  if (!data.length) return '<div class="word-cloud-empty" style="height:300px">暂无高频低分原因数据</div>'
+  const values = data.map((d) => Number(d.value))
+  const max = Math.max(...values, 1)
+  const min = Math.min(...values, 0)
+  const range = max - min || 1
+  const fontSize = (v) => 12 + Math.round(((Number(v) - min) / range) * 16)
+  const color = (v) => {
+    const ratio = (Number(v) - min) / range
+    if (ratio > 0.66) return '#DC2626'
+    if (ratio > 0.33) return '#F59E0B'
+    return '#9CA3AF'
+  }
+  const sorted = data.map((d) => ({ ...d, value: Number(d.value) })).sort((a, b) => b.value - a.value)
+  const items = sorted
+    .map((item) => `<span style="font-size:${fontSize(item.value)}px;color:${color(item.value)};font-weight:${item.value === max ? 700 : 500};line-height:1.4;white-space:nowrap" title="${escapeAttr(item.text)}: ${item.value} 次">${escapeHtml(item.text)}</span>`)
+    .join('')
+  return `<div class="word-cloud" style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:center;padding:8px 4px;height:${height}px;overflow-y:auto">${items}</div>`
+}
+
+/**
+ * 离线版重点客户星标 HTML。
+ * @param {string} customerName
+ * @param {string[]} keyCustomers
+ */
+function keyCustomerStarHtml(customerName, keyCustomers) {
+  if (!isKeyCustomerName(customerName || '', keyCustomers || [])) return ''
+  return '<span class="key-customer-star" title="重点关注客户">★</span>'
+}
+
+function quoteLineHtml(item, polarity = item?.polarity || 'negative', keyCustomers = []) {
   const who = [item?.customerName, item?.customerCode].filter(Boolean).join(' / ') || '未标注客户'
+  const star = keyCustomerStarHtml(item?.customerName, keyCustomers)
   const score = item?.score == null ? '' : ` · ${item.score}分`
-  return `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--${polarity === 'positive' ? 'positive' : 'negative'}">${polarityLabel(polarity)}</span>「${text(item?.text)}」— ${escapeHtml(who)}${escapeHtml(score)}${item?.channelLabel ? ` · ${escapeHtml(item.channelLabel)}` : ''}</div>`
+  return `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--${polarity === 'positive' ? 'positive' : 'negative'}">${polarityLabel(polarity)}</span>「${text(item?.text)}」— ${escapeHtml(who)}${star}${escapeHtml(score)}${item?.channelLabel ? ` · ${escapeHtml(item.channelLabel)}` : ''}</div>`
 }
 
 const PRODUCT_SECTION_GROUPS = [
@@ -401,12 +439,12 @@ function productNavHtml(productName) {
   </nav>`
 }
 
-function negativeQuotesHtml(evidence) {
+function negativeQuotesHtml(evidence, keyCustomers = []) {
   const quotes = evidence.quotes || []
   const options = evidence.options || []
-  if (quotes.length) return quotes.map((item) => quoteLineHtml(item, item.polarity)).join('')
+  if (quotes.length) return quotes.map((item) => quoteLineHtml(item, item.polarity, keyCustomers)).join('')
   if (options.length) {
-    return options.map((item) => `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--negative">负反馈</span>反馈选项：${text(item.text)}${item.customerName ? `（${escapeHtml(item.customerName)}${item.score == null ? '' : ` · ${escapeHtml(String(item.score))}分`}）` : ''}</div>`).join('')
+    return options.map((item) => `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--negative">负反馈</span>反馈选项：${text(item.text)}${item.customerName ? `（${escapeHtml(item.customerName)}${keyCustomerStarHtml(item.customerName, keyCustomers)}${item.score == null ? '' : ` · ${escapeHtml(String(item.score))}分`}）` : ''}</div>`).join('')
   }
   return '<div class="post-use-html-report-quote">本条暂无有效负向原话</div>'
 }
@@ -418,7 +456,7 @@ function productMetricCard(label, value, comparison) {
   return `<div class="post-use-html-report-kpi"><div class="label">${escapeHtml(label)}</div><div class="value">${value}</div>${hint}</div>`
 }
 
-function productCardHtml(card, preview, issueNarratives, active = false) {
+function productCardHtml(card, preview, issueNarratives, active = false, keyCustomers = []) {
   const issue = card.issue
   const narrative = issue ? issueNarratives[issue.key] || {} : {}
   const evidence = issue?.evidence || {}
@@ -463,7 +501,7 @@ function productCardHtml(card, preview, issueNarratives, active = false) {
       ${issue ? `
         ${scoreMeterHtml(evidence.avgScore, evidence.sampleSize, evidence.nonTenCount)}
         ${evidence.changeLabel ? `<div class="report-evidence-hint">问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}</div>` : ''}
-        ${negativeQuotesHtml(evidence)}` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
+        ${negativeQuotesHtml(evidence, keyCustomers)}` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
       <div class="report-group-subtitle">客服部回访记录</div>
       <div class="post-use-html-report-evidence">
         ${(card.visitNarratives || []).length
@@ -477,7 +515,7 @@ function productCardHtml(card, preview, issueNarratives, active = false) {
     <div id="${escapeAttr(anchorBase)}-positive" class="report-product-group report-product-group--positive" data-nav-group="positive">
       <div class="report-group-title">正反馈</div>
       ${positiveQuotes.length
-        ? positiveQuotes.map((item) => quoteLineHtml(item, 'positive')).join('')
+        ? positiveQuotes.map((item) => quoteLineHtml(item, 'positive', keyCustomers)).join('')
         : '<p class="report-group-empty">本产品本月暂无正反馈原话。</p>'}
     </div>
   </section>`
@@ -552,6 +590,12 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "P
 @media print { .report-toc, .report-product-nav { display: none !important; } }
 .report-visual-panel { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
 .report-visual-panel__title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.report-overview-grid { display: flex; gap: 12px; align-items: flex-start; }
+.report-overview-grid__main { flex: 1; min-width: 0; }
+.report-overview-grid__side { flex: 0 0 320px; max-width: 320px; }
+.word-cloud-empty { display: flex; align-items: center; justify-content: center; font-size: 13px; color: #9ca3af; }
+.key-customer-star { color: #F59E0B; font-size: 12px; margin-left: 4px; font-weight: 600; }
+@media (max-width: 768px) { .report-overview-grid { flex-direction: column; } .report-overview-grid__side { flex: none; max-width: 100%; } }
 .report-chart-empty, .report-table-empty, .muted { display: flex; align-items: center; justify-content: center; min-height: 80px; font-size: 13px; color: #9ca3af; }
 .report-chart-shell { position: relative; }
 svg.chart { display: block; height: auto; max-width: 100%; }
@@ -734,12 +778,14 @@ const OFFLINE_JS = `
  *   visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
  *   hiddenSectionIds?: string[]
  *   exportedAt?: string
+ *   keyCustomers?: string[]
  * }} input
  */
 export function buildOfflineMonthlyReportHtml(input) {
   const model = input?.model
   if (!model) throw new Error('没有可导出的月报')
   const hidden = new Set(input.hiddenSectionIds || [])
+  const keyCustomers = input.keyCustomers || []
   const judgment = input.judgment ?? model.judgment ?? model.judgmentDraft ?? ''
   const todoNote = input.todoNote ?? model.todoNote ?? ''
   const todoItems = input.todoItems ?? model.todoItems ?? []
@@ -786,7 +832,7 @@ export function buildOfflineMonthlyReportHtml(input) {
           </button>`).join('')}
         </div>
         <div>
-          ${productCards.map((card, index) => productCardHtml(card, preview, issueNarratives, index === 0)).join('') || '<div class="report-chart-empty">当月暂无产品评分。</div>'}
+          ${productCards.map((card, index) => productCardHtml(card, preview, issueNarratives, index === 0, keyCustomers)).join('') || '<div class="report-chart-empty">当月暂无产品评分。</div>'}
         </div>
       </div>
     </section>`
@@ -829,7 +875,7 @@ export function buildOfflineMonthlyReportHtml(input) {
       ${previousVisits.length
         ? tableHtml(
           ['客户', '客服部回访记录', '回访结果内部评估/回应', '备注'],
-          previousVisits.map((row) => [text(row.customerName), text(row.visitResult), text(row.internalConclusion), text(row.remark)]),
+          previousVisits.map((row) => [`${text(row.customerName)}${keyCustomerStarHtml(row.customerName, keyCustomers)}`, text(row.visitResult), text(row.internalConclusion), text(row.remark)]),
         )
         : '<div class="report-table-empty">上期无客服部回访记录。</div>'}
     </section>`
@@ -852,7 +898,7 @@ export function buildOfflineMonthlyReportHtml(input) {
       )}`)}
       ${appendixSectionHtml('客户明细', tableHtml(
         ['客户', '编码', '产品', '非10分', '均分', '最近原话'],
-        (preview.customers || []).map((row) => [text(row.customerName), text(row.customerCode), escapeHtml((row.products || []).join('、') || '—'), text(row.nonTenCount), text(row.avgScore), text(row.latestQuote)]),
+        (preview.customers || []).map((row) => [`${text(row.customerName)}${keyCustomerStarHtml(row.customerName, keyCustomers)}`, text(row.customerCode), escapeHtml((row.products || []).join('、') || '—'), text(row.nonTenCount), text(row.avgScore), text(row.latestQuote)]),
       ))}
       ${appendixSectionHtml('有效客户原话登记', tableHtml(
         ['渠道', '正负', '类型', '产品', '得分', '客户名称/编码', '时间', '原文'],
@@ -862,7 +908,7 @@ export function buildOfflineMonthlyReportHtml(input) {
           escapeHtml(row.kind === 'quote' ? '客户原话' : '反馈选项'),
           text(row.productName),
           text(row.score),
-          escapeHtml([row.customerName, row.customerCode].filter(Boolean).join(' / ') || '—'),
+          escapeHtml([row.customerName, row.customerCode].filter(Boolean).join(' / ') || '—') + keyCustomerStarHtml(row.customerName, keyCustomers),
           text(row.answeredAt),
           text(row.text),
         ]),
@@ -922,7 +968,16 @@ export function buildOfflineMonthlyReportHtml(input) {
           <div class="post-use-html-report-kpi${kpis.belowNineCount ? ' post-use-html-report-kpi--warn' : ''}"><div class="label">9 分以下产品数</div><div class="value">${kpis.belowNineCount ?? 0}</div><div class="post-use-html-report-kpi-hints">${escapeHtml((kpis.belowNineNames || []).join('、') || '无')}</div></div>
           <div class="post-use-html-report-kpi${kpis.callbackUnqualifiedCount ? ' post-use-html-report-kpi--warn' : ''}"><div class="label">投诉回访不达标产品数</div><div class="value">${kpis.callbackUnqualifiedCount ?? 0}</div><div class="post-use-html-report-kpi-hints">${escapeHtml((kpis.callbackUnqualifiedNames || []).join('、') || '无')}</div></div>
         </div>
-        <div class="report-visual-panel">${statusChart}</div>
+        <div class="report-overview-grid">
+          <div class="report-visual-panel report-overview-grid__main">
+            <div class="report-visual-panel__title">体验现状趋势</div>
+            ${statusChart}
+          </div>
+          ${charts.lowScoreReasonCloud?.length ? `<div class="report-visual-panel report-overview-grid__side">
+            <div class="report-visual-panel__title">高频低分原因</div>
+            ${wordCloudHtml(charts.lowScoreReasonCloud, { height: 300 })}
+          </div>` : ''}
+        </div>
       </section>
 
       ${productsHtml}

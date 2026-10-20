@@ -29,6 +29,27 @@ export const REPORT_SECTION_APPENDIX = 'appendix'
 
 const GROWING_CHANGES = new Set(['新增', '增长'])
 
+/**
+ * 从 storyModel.drivers.highFrequencyLowScoreReasons 聚合词云数据。
+ * 按 lowScoreFeedback 聚合 feedbackCount，取 Top 12，返回 [{ text, value }]。
+ * @param {Array<{ lowScoreFeedback?: string, feedbackCount?: number }>} rows
+ * @returns {Array<{ text: string, value: number }>}
+ */
+function aggregateLowScoreReasonCloud(rows) {
+  if (!Array.isArray(rows)) return []
+  const map = new Map()
+  for (const row of rows) {
+    const text = String(row?.lowScoreFeedback || '').trim()
+    if (!text) continue
+    const count = Number(row?.feedbackCount || 0)
+    map.set(text, (map.get(text) || 0) + count)
+  }
+  return [...map.entries()]
+    .map(([text, value]) => ({ text, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 12)
+}
+
 function groupQuotesByProduct(records) {
   const map = new Map()
   for (const item of buildCustomerQuoteRegistry(records)) {
@@ -748,6 +769,7 @@ export function buildHtmlMonthlyReportModel(input) {
         sampleSize: row.sampleSize,
       })),
       reasons: preview.reasons || [],
+      lowScoreReasonCloud: aggregateLowScoreReasonCloud(storyModel?.drivers?.highFrequencyLowScoreReasons),
       scoreTrend: storyModel?.trendsAndChanges?.scoreTrend || { data: [], areas: [] },
       satisfactionTrend: storyModel?.trendsAndChanges?.satisfactionTrend || { data: [], areas: [] },
       statusTrend: statusTrends?.combined || storyModel?.metrics?.statusTrends?.combined || { data: [], areas: [] },

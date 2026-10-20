@@ -12,6 +12,7 @@ import {
 } from '../../lib/postUseRating/callbackFollowupTables.js'
 import SendMailModal from '../mail/SendMailModal.jsx'
 import { MAIL_PRESET_CALLBACK_VISIT } from '../../domain/mail.js'
+import KeyCustomerStar from '../common/KeyCustomerStar.jsx'
 import {
   archivePostUseJiraItems,
   listAssignees,
@@ -264,7 +265,7 @@ export default function PostUseCallbackProcessModal({
       dataIndex: 'customerName',
       width: 160,
       ellipsis: true,
-      render: (value, _row, index) => mergedCell(value, index),
+      render: (value, row, index) => mergedCell(<span>{value}<KeyCustomerStar isKeyCustomer={row.isKeyCustomer} /></span>, index),
     },
     {
       title: '客户编码',
@@ -363,7 +364,7 @@ export default function PostUseCallbackProcessModal({
       },
     },
     { title: '投诉整体服务评价', dataIndex: 'score', width: 140 },
-    { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
+    { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true, render: (value, row) => <span>{value}<KeyCustomerStar isKeyCustomer={row.isKeyCustomer} /></span> },
     { title: '集团客户编码', dataIndex: 'customerCode', width: 140, ellipsis: true },
     { title: '不满原因', dataIndex: 'dissatisfactionReason', width: 180, ellipsis: true },
     { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
