@@ -506,7 +506,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "P
 .report-alert--warn { border-color: #fde68a; background: #fffbea; }
 .report-alert__title { font-weight: 600; margin-bottom: 6px; }
 .report-alert ul { margin: 0; padding-left: 20px; }
-.section-title { margin: 0 0 12px; font-size: 16px; line-height: 1.3; }
+.section-title { margin: 0 0 12px; font-size: 16px; line-height: 1.3; font-weight: 600; }
 .readonly-block { border: 1px solid #d9d9d9; border-radius: 8px; padding: 10px 12px; background: #fff; line-height: 1.7; font-size: 14px; min-height: 56px; }
 .field-label { margin: 14px 0 8px; font-size: 14px; font-weight: 500; color: #6b7280; }
 .post-use-html-report-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
@@ -565,7 +565,7 @@ svg.chart { display: block; height: auto; max-width: 100%; }
 .quote-pill--positive { background: #dcfce7; color: #166534; }
 .quote-pill--negative { background: #fee2e2; color: #991b1b; }
 .quote-pill--neutral { background: #eef2ff; color: #3730a3; }
-.report-product-detail h3 { margin: 0 0 12px; font-size: 16px; }
+.report-product-detail h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
 .post-use-html-report-evidence { margin: 10px 0 12px; padding: 10px 12px; background: #f9fafb; border: 1px solid #eef0f3; border-radius: 8px; font-size: 12px; line-height: 1.65; }
 .post-use-html-report-quote { display: block; margin: 6px 0 0; color: inherit; text-decoration: none; }
 .report-evidence-hint { margin-bottom: 6px; color: #4b5563; }
@@ -809,9 +809,8 @@ export function buildOfflineMonthlyReportHtml(input) {
         <div class="post-use-html-report-kpi${todo.notRecoveredCount ? ' post-use-html-report-kpi--warn' : ''}"><div class="label">已完成未恢复</div><div class="value">${todo.notRecoveredCount || 0}</div></div>
         <div class="post-use-html-report-kpi"><div class="label">建议回访/溯源</div><div class="value">${todo.callbackCount || 0}</div></div>
       </div>
-      <p class="report-lead-note">${escapeHtml(copy.todoLead || '读者离开前应能回答：这月先办哪 3 件事。')}</p>
       ${todoItemsHtml}
-      ${readonlyBlock(todoNote, copy.todoPlaceholder || '补充本月要办备注：先办哪 3 件事。')}
+      ${readonlyBlock(todoNote, copy.todoPlaceholder || '输出备注/说明')}
     </section>`
 
   const previousVisits = (model.previousVisits || []).map((row) => {

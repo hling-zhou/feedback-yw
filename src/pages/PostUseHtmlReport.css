@@ -93,6 +93,12 @@
   display: block;
 }
 
+.report-product-detail h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .post-use-html-report-kpi {
   border: 1px solid #e5e7eb;
   padding: 12px 14px;

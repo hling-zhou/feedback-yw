@@ -587,7 +587,7 @@ export default function PostUseHtmlReportDocument({
               <div className="value">{model.todo.callbackCount}</div>
             </div>
           </div>
-          <Typography.Paragraph type="secondary">{copy.todoLead || '读者离开前应能回答：这月先办哪 3 件事。'}</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">{copy.todoLead || ''}</Typography.Paragraph>
           <Table
             size="small"
             pagination={false}
@@ -605,7 +605,7 @@ export default function PostUseHtmlReportDocument({
             onChange={(event) => onTodoNoteChange(event.target.value)}
             autoSize={{ minRows: 3 }}
             disabled={!canEdit}
-            placeholder={copy.todoPlaceholder || '补充本月要办备注：先办哪 3 件事。'}
+            placeholder={copy.todoPlaceholder || '输出备注/说明'}
           />
         </section>
       )}

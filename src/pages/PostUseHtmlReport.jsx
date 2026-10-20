@@ -426,11 +426,13 @@ export default function PostUseHtmlReport() {
         canEdit={canEdit}
         judgment={judgment}
         todoNote={todoNote}
+        todoItems={todoItems}
         issueNarratives={issueNarratives}
         visitSupplements={visitSupplements}
         hiddenSectionIds={hiddenSectionIds}
         onJudgmentChange={setJudgment}
         onTodoNoteChange={setTodoNote}
+        onTodoItemsChange={setTodoItems}
         onIssueChange={onIssueChange}
         onVisitSupplementChange={onVisitSupplementChange}
       />
