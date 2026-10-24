@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { getActionItem } from '../actionItemClient.js'
 
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -17,34 +18,37 @@ function normalizedKey(customerName, customerCode, productName) {
 }
 
 /**
- * @param {Array<{
- *   id?: string
- *   importMonth?: string
- *   visitMonth?: string
- *   customerName?: string
- *   customerCode?: string
- *   productName?: string
- *   visitResult?: string
- *   internalConclusion?: string
- *   internalEvaluationDetail?: string
- * }>} visitRecords
- * @param {Array<{
- *   customerName?: string
- *   customerCode?: string
- *   productName?: string
- *   triggerType?: string
- *   lowScoreLt7Count?: number
- *   scoreBreakdown?: string
- *   quoteCount?: number
- *   reasonCount?: number
- *   latestFeedbackAt?: string
- *   channels?: string[]
- *   recommendedReason?: string
- *   quotes?: string[]
- *   reasons?: string[]
- * }>} recommendations
+ * @typedef {Object} VisitRecord
+ * @property {string} [id]
+ * @property {string} [importMonth]
+ * @property {string} [visitMonth]
+ * @property {string} [customerName]
+ * @property {string} [customerCode]
+ * @property {string} [loginAccountName]
+ * @property {string} [productName]
+ * @property {string} [assigneeName]
+ * @property {string} [scoreSource]
+ * @property {string} [originalTicketId]
+ * @property {string} [visitResult]
+ * @property {string} [internalConclusion]
+ * @property {string} [internalEvaluationDetail]
+ * @property {string} [remark]
+ * @property {string} [actionId]
  */
-export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []) {
+
+/**
+ * @typedef {Object} ActionItemInfo
+ * @property {string} [content]
+ * @property {string} [detail]
+ * @property {string} [scheduleAt]
+ */
+
+/**
+ * @param {VisitRecord[]} visitRecords
+ * @param {Array<Record<string, *>>} [recommendations]
+ * @param {Map<string, ActionItemInfo>} [actionItemMap]
+ */
+export function buildPostUseCustomerVisitRows(visitRecords, recommendations = [], actionItemMap = new Map()) {
   const list = visitRecords || []
   const recMap = new Map(
     (recommendations || []).map((item) => [
@@ -59,6 +63,7 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
     const matched = recMap.get(
       normalizedKey(visit.customerName, visit.customerCode, visit.productName),
     )
+    const actionItem = visit.actionId ? actionItemMap.get(visit.actionId) : undefined
     /** @type {Record<string, string | number>} */
     const row = {
       数据月份: visit.importMonth || visit.visitMonth || '',
@@ -79,6 +84,9 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       回访结果: visit.visitResult || '',
       内部评估: visit.internalEvaluationDetail || visit.internalConclusion || '',
       备注: visit.remark || '',
+      确立举措: String(actionItem?.content || ''),
+      举措详情: String(actionItem?.detail || ''),
+      排期: String(actionItem?.scheduleAt || ''),
     }
     for (let i = 0; i < maxQuotes; i += 1) {
       row[`客户原话${i + 1}`] = matched?.quotes?.[i] || ''
@@ -91,16 +99,47 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
 }
 
 /**
- * @param {Parameters<typeof buildPostUseCustomerVisitRows>[0]} visitRecords
- * @param {Parameters<typeof buildPostUseCustomerVisitRows>[1]} recommendations
+ * 批量拉取 action items（对 actionId 非空的行并发拉取）。
+ *
+ * @param {VisitRecord[]} visitRecords
+ * @returns {Promise<Map<string, ActionItemInfo>>}
+ */
+export async function fetchActionItemsForVisitExport(visitRecords = []) {
+  const actionIds = visitRecords
+    .map((v) => v.actionId)
+    .filter(Boolean)
+    .filter((id, index, arr) => arr.indexOf(id) === index)
+
+  if (!actionIds.length) return new Map()
+
+  const results = await Promise.allSettled(
+    actionIds.map((id) => getActionItem(id)),
+  )
+
+  const map = new Map()
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled' && result.value) {
+      map.set(actionIds[index], result.value)
+    }
+  })
+  return map
+}
+
+/**
+ * 下载客服部回访 Excel（含抽屉人工输入结果：确立举措/举措详情/排期）。
+ * 异步拉取 action_item 后生成 Excel。
+ *
+ * @param {VisitRecord[]} visitRecords
+ * @param {Array<Record<string, *>>} [recommendations]
  * @param {string} [scopeLabel]
  */
-export function downloadPostUseCustomerVisitExcel(
+export async function downloadPostUseCustomerVisitExcel(
   visitRecords,
   recommendations,
   scopeLabel = '当前范围',
 ) {
-  const rows = buildPostUseCustomerVisitRows(visitRecords, recommendations)
+  const actionItemMap = await fetchActionItemsForVisitExport(visitRecords || [])
+  const rows = buildPostUseCustomerVisitRows(visitRecords, recommendations, actionItemMap)
   const sheet = XLSX.utils.json_to_sheet(
     rows.length ? rows : [{ 提示: '当前范围内暂无客服部回访原单' }],
   )

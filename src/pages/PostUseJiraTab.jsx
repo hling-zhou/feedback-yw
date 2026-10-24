@@ -10,7 +10,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   deletePostUseJiraItem,
   deletePostUseJiraItems,
@@ -18,6 +18,7 @@ import {
   listPostUseJiraItems,
   patchPostUseJiraItem,
 } from '../lib/postUseJiraClient.js'
+import { downloadPostUseJiraExcel } from '../lib/postUseRating/postUseJiraExport.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import PostUseJiraDrawer from '../components/actions/PostUseJiraDrawer.jsx'
@@ -229,6 +230,24 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     }
   }
 
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    if (!filteredItems.length) {
+      message.info('当前筛选范围内无数据')
+      return
+    }
+    setExporting(true)
+    try {
+      await downloadPostUseJiraExcel(filteredItems, periodLabel || '当前范围')
+      message.success(`已导出 ${filteredItems.length} 条产品部溯源记录`)
+    } catch (error) {
+      message.error(error?.message || '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div
@@ -239,6 +258,14 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => void load()}>
               刷新
+            </Button>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => void handleExport()}
+              loading={exporting}
+              disabled={!filteredItems.length}
+            >
+              导出
             </Button>
             {canEdit ? (
               <Popconfirm
