@@ -59,6 +59,7 @@ import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
 import { registerUsageRoutes } from './routes/usage.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerMailRoutes } from './routes/mail.js'
+import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
@@ -101,9 +102,10 @@ registerPostUseVisitRoutes(app)
 registerTicketTodoRoutes(app)
 registerCuratedTaxonomyRoutes(app)
 registerMailRoutes(app)
-registerMcpRoutes(app)
+registerReminderRoutes(app)
 registerUsageRoutes(app)
 registerAssistantRoutes(app)
+registerMcpRoutes(app)
 
 // 初始化 AI 助手检索索引（FTS5 trigram 或 fallback），并后台幂等补齐存量记录
 initSearchIndex()

@@ -2,8 +2,9 @@ import { DATA_SOURCE_TYPES } from './enums.js'
 
 export const MAIL_PRESET_REPORT = 'post_use_report'
 export const MAIL_PRESET_CALLBACK_VISIT = 'callback_visit_list'
+export const MAIL_PRESET_REMINDER = 'reminder_digest'
 
-export const MAIL_PRESET_IDS = /** @type {const} */ ([MAIL_PRESET_REPORT, MAIL_PRESET_CALLBACK_VISIT])
+export const MAIL_PRESET_IDS = /** @type {const} */ ([MAIL_PRESET_REPORT, MAIL_PRESET_CALLBACK_VISIT, MAIL_PRESET_REMINDER])
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -20,6 +21,12 @@ export const DEFAULT_CALLBACK_BODY = `{周期标签}的待客服部回访清单
 详见附件，可用 Excel 打开
 原始数据及报告见用户反馈分析平台 {绝对链接}`
 
+export const DEFAULT_REMINDER_SUBJECT = '工单提醒周报（{周期标签}）'
+export const DEFAULT_REMINDER_BODY = `{周期标签}的工单提醒周报
+涵盖 {产品数量} 个产品，共 {待办总数} 项待处理事项
+详见附件，可用浏览器打开查看各产品完整明细
+完整数据见用户反馈分析平台 {绝对链接}`
+
 /**
  * @param {string} presetKey
  */
@@ -30,6 +37,15 @@ export function defaultMailTemplate(presetKey) {
       name: '待客服部回访清单',
       subject: DEFAULT_CALLBACK_SUBJECT,
       body: DEFAULT_CALLBACK_BODY,
+      preset: true,
+    }
+  }
+  if (presetKey === MAIL_PRESET_REMINDER) {
+    return {
+      id: MAIL_PRESET_REMINDER,
+      name: '工单提醒周报',
+      subject: DEFAULT_REMINDER_SUBJECT,
+      body: DEFAULT_REMINDER_BODY,
       preset: true,
     }
   }

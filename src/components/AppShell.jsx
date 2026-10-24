@@ -34,6 +34,8 @@ import WhatsNewFab from './WhatsNewFab.jsx'
 import WhatsNewDrawer from './WhatsNewDrawer.jsx'
 import AssistantFab from './AssistantFab.jsx'
 import AssistantDrawer from './AssistantDrawer.jsx'
+import ReminderFab from './ReminderFab.jsx'
+import ReminderSendModal from './ReminderSendModal.jsx'
 import { useUsageTracking } from '../hooks/useUsageTracking.js'
 
 const ALL_NAV = [
@@ -67,6 +69,7 @@ export default function AppShell() {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [whatsNewUnread, setWhatsNewUnread] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [reminderOpen, setReminderOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -267,6 +270,7 @@ export default function AppShell() {
             />
             <MessageBottleFab onClick={() => setBottleOpen(true)} />
             <AssistantFab onClick={() => setAssistantOpen(true)} />
+            {user?.role === 'admin' && <ReminderFab onClick={() => setReminderOpen(true)} />}
           </div>
           <WhatsNewDrawer
             open={whatsNewOpen}
@@ -279,6 +283,9 @@ export default function AppShell() {
             onClose={() => setAssistantOpen(false)}
             currentPeriodId={period?.id || ''}
           />
+          {user?.role === 'admin' && (
+            <ReminderSendModal open={reminderOpen} onClose={() => setReminderOpen(false)} />
+          )}
           <Outlet />
         </Layout.Content>
       </Layout>

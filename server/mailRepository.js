@@ -7,6 +7,7 @@ import {
   MAIL_PRESET_CALLBACK_VISIT,
   MAIL_PRESET_IDS,
   MAIL_PRESET_REPORT,
+  MAIL_PRESET_REMINDER,
   parseEmailList,
   uniqueEmails,
 } from '../src/domain/mail.js'
@@ -315,7 +316,7 @@ export function updateMailTemplate(id, patch) {
 }
 
 export function deleteMailTemplate(id) {
-  if (id === MAIL_PRESET_REPORT || id === MAIL_PRESET_CALLBACK_VISIT) {
+  if (id === MAIL_PRESET_REPORT || id === MAIL_PRESET_CALLBACK_VISIT || id === MAIL_PRESET_REMINDER) {
     throw new Error('预置模板不能删除')
   }
   const info = getDb().prepare('DELETE FROM mail_templates WHERE id = ?').run(id)

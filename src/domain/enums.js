@@ -7,6 +7,7 @@ export const DATA_SOURCE_TYPES = /** @type {const} */ ([
   'post_use_rating',
   'user_survey',
   'other',
+  'reminder',
 ])
 
 /** @type {Record<DataSourceType, string>} */
@@ -16,6 +17,7 @@ export const DATA_SOURCE_LABELS = {
   post_use_rating: '用后即评',
   user_survey: '用户调研',
   other: '其他',
+  reminder: '提醒邮件',
 }
 
 /** @typedef {typeof RECORD_STATUSES[number]} RecordStatus */
