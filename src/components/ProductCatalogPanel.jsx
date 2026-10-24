@@ -6,6 +6,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Switch,
   Table,
@@ -24,6 +25,8 @@ import {
   UploadOutlined,
 } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
+import { apiFetch } from '../lib/apiClient.js'
+import { resolveDisplayName } from '../domain/userDisplayName.js'
 import { getCatalogProducts } from '../lib/productCatalog.js'
 import {
   catalogToTableRows,
@@ -39,6 +42,14 @@ import {
 import { canonicalTaxonomyKey } from '../lib/taxonomyKeyAliases.js'
 import { parseProductCatalogWorkbook } from '../lib/productCatalogExcel.js'
 import { ALL_CATALOG_SEED_PRODUCTS } from '../lib/productCatalog/ensureTargetProducts.js'
+
+const PRODUCT_OWNER_ROLES = [
+  { key: 'productManager', label: '产品经理' },
+  { key: 'designer', label: '设计师' },
+  { key: 'opsSupport', label: '运维三线' },
+  { key: 'operations', label: '运营' },
+  { key: 'tester', label: '测试' },
+]
 
 /**
  * @param {{
@@ -70,6 +81,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   const [productModal, setProductModal] = useState(false)
   const [specModal, setSpecModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
+  const [assigneeOptions, setAssigneeOptions] = useState([])
   const [editingSpec, setEditingSpec] = useState(
     /** @type {{ productKey: string; index: number } | null} */ (null),
   )
@@ -98,6 +110,26 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
   useEffect(() => {
     loadLocal()
   }, [loadLocal, catalogMeta?.loadedAt])
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/users/assignees')
+      .then((data) => {
+        if (cancelled) return
+        const users = Array.isArray(data?.users) ? data.users : []
+        setAssigneeOptions(
+          users.map((u) => ({
+            value: u.id,
+            label: resolveDisplayName(u) || u.username,
+            raw: u,
+          })),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const persist = async (next, opts = {}) => {
     if (readOnly) return
@@ -128,12 +160,14 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       analysisPostUseRating: false,
       focusTracked: false,
       acceptParentName: true,
+      ...Object.fromEntries(PRODUCT_OWNER_ROLES.map((r) => [r.key, []])),
     })
     setProductModal(true)
   }
 
   const openEditProduct = (row) => {
     setEditingProduct(row)
+    const owners = row.owners || {}
     productForm.setFieldsValue({
       key: row.key,
       name: row.name,
@@ -141,6 +175,9 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       analysisPostUseRating: Boolean(row.analysisPostUseRating),
       focusTracked: Boolean(row.focusTracked),
       acceptParentName: row.acceptParentName,
+      ...Object.fromEntries(
+        PRODUCT_OWNER_ROLES.map((r) => [r.key, (owners[r.key] || []).map((o) => o.userId)]),
+      ),
     })
     setProductModal(true)
   }
@@ -166,6 +203,22 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
         ? products.find((p) => p.key === editingProduct.key)?.specs || []
         : [],
     }
+    // 构建负责人对象
+    const owners = {}
+    for (const role of PRODUCT_OWNER_ROLES) {
+      const userIds = v[role.key] || []
+      if (!Array.isArray(userIds) || !userIds.length) continue
+      const refs = userIds
+        .map((uid) => assigneeOptions.find((o) => o.value === uid)?.raw)
+        .filter(Boolean)
+        .map((u) => ({
+          userId: u.id,
+          username: u.username,
+          displayName: u.displayName || '',
+        }))
+      if (refs.length) owners[role.key] = refs
+    }
+    if (Object.keys(owners).length) nextProduct.owners = owners
     const next = editingProduct
       ? products.map((p) => (p.key === editingProduct.key ? nextProduct : p))
       : [...products, nextProduct]
@@ -561,6 +614,25 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
                 className="!mb-4"
                 title="保存后将自动创建与产品 Key 相同的旅程模板（环节为空，请在「旅程环节标签」中自行添加）"
               />
+              <Typography.Text type="secondary" className="text-xs">
+                产品负责人（从系统用户中选择，可多选）
+              </Typography.Text>
+              <div className="mb-2 mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                {PRODUCT_OWNER_ROLES.map((role) => (
+                  <Form.Item key={role.key} name={role.key} label={role.label}>
+                    <Select
+                      mode="multiple"
+                      showSearch
+                      allowClear
+                      placeholder="选择人员"
+                      options={assigneeOptions}
+                      filterOption={(input, option) =>
+                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                    />
+                  </Form.Item>
+                ))}
+              </div>
               <Form.Item name="acceptParentName" label="接受产品名称匹配" valuePropName="checked">
                 <Switch />
               </Form.Item>

@@ -42,6 +42,22 @@ async function fetchConfigFile(relativePath) {
  */
 
 /**
+ * @typedef {Object} ProductOwnerRef
+ * @property {string} userId
+ * @property {string} username
+ * @property {string} [displayName]
+ */
+
+/**
+ * @typedef {Object} ProductOwners
+ * @property {ProductOwnerRef[]} [productManager] - 产品经理
+ * @property {ProductOwnerRef[]} [designer] - 设计师
+ * @property {ProductOwnerRef[]} [opsSupport] - 运维三线
+ * @property {ProductOwnerRef[]} [operations] - 运营
+ * @property {ProductOwnerRef[]} [tester] - 测试
+ */
+
+/**
  * @typedef {Object} CatalogProduct
  * @property {string} key
  * @property {string} name
@@ -51,6 +67,7 @@ async function fetchConfigFile(relativePath) {
  * @property {string} taxonomyKey
  * @property {boolean} [acceptParentName]
  * @property {ProductSpecDef[]} specs
+ * @property {ProductOwners} [owners] - 产品负责人
  */
 
 /**

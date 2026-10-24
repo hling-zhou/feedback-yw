@@ -43,8 +43,39 @@ export function normalizeCatalogProducts(raw) {
               ? s.match.map((m) => String(m).trim()).filter(Boolean)
               : undefined,
           })),
+        owners: normalizeProductOwners(p.owners),
       }
     })
+}
+
+/**
+ * 清洗产品负责人结构：确保每个角色是数组，元素包含合法 userId。
+ * 非法结构（null/undefined/非对象）整体丢弃。
+ * @param {unknown} raw
+ */
+function normalizeProductOwners(raw) {
+  if (!raw || typeof raw !== 'object') return undefined
+  const roles = ['productManager', 'designer', 'opsSupport', 'operations', 'tester']
+  /** @type {Record<string, unknown>} */
+  const out = {}
+  let hasAny = false
+  const obj = /** @type {Record<string, unknown>} */ (raw)
+  for (const role of roles) {
+    const arr = obj[role]
+    if (!Array.isArray(arr)) continue
+    const cleaned = arr
+      .filter((r) => r && typeof r === 'object' && String(r.userId || '').trim())
+      .map((r) => ({
+        userId: String(r.userId).trim(),
+        username: String(r.username || r.userId).trim(),
+        displayName: String(r.displayName || '').trim() || undefined,
+      }))
+    if (cleaned.length) {
+      out[role] = cleaned
+      hasAny = true
+    }
+  }
+  return hasAny ? out : undefined
 }
 
 /**
