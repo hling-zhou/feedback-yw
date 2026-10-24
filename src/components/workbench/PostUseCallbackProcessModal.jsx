@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Checkbox, Modal, Select, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
+import { Badge, Button, Checkbox, Modal, Select, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, FolderAddOutlined, MailOutlined } from '@ant-design/icons'
 import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import {
@@ -124,6 +124,19 @@ export default function PostUseCallbackProcessModal({
   const visitCount = currentKeys.filter((key) => decisions.get(key)?.needCustomerVisit).length
   const traceCount = currentKeys.filter((key) => decisions.get(key)?.needInternalTrace).length
 
+  // 计算每个 tab 中勾选了产品部溯源但未指定经办人的行数（用于 tab 角标 + 存档提示）
+  const pendingAssigneeQuestionnaire = useMemo(() => {
+    return (recommendations || [])
+      .filter((item) => item.itemKey && decisionOf(decisions, item.itemKey).needInternalTrace && !assigneeOverrides.get(item.itemKey)?.id)
+      .map((item) => ({ itemKey: item.itemKey, customerName: item.customerName || '', productName: item.productName || '' }))
+  }, [recommendations, decisions, assigneeOverrides])
+
+  const pendingAssigneeCallback = useMemo(() => {
+    return (callbackNonTenRecords || [])
+      .filter((item) => item.itemKey && decisionOf(decisions, item.itemKey).needInternalTrace && !assigneeOverrides.get(item.itemKey)?.id)
+      .map((item) => ({ itemKey: item.itemKey, customerName: item.customerName || '', productName: item.productName || '', originalTicketId: item.originalTicketId || '' }))
+  }, [callbackNonTenRecords, decisions, assigneeOverrides])
+
   const persistDecision = async (itemKey, sourceType, patch) => {
     const current = decisionOf(decisions, itemKey)
     const next = { ...current, ...patch, sourceType, itemKey }
@@ -181,7 +194,7 @@ export default function PostUseCallbackProcessModal({
   const flagColumn = (flag, title) => ({
     title,
     dataIndex: flag,
-    width: 108,
+    width: 92,
     fixed: 'right',
     render: (_value, row) => (
       <Checkbox
@@ -233,7 +246,7 @@ export default function PostUseCallbackProcessModal({
 
   const mergedFlagColumn = (flag, title) => ({
     title,
-    width: 108,
+    width: 92,
     fixed: 'right',
     render: (_value, _row, index) => {
       const span = questionnaireSpan[index]
@@ -305,7 +318,8 @@ export default function PostUseCallbackProcessModal({
     {
       title: '产品部溯源经办人',
       key: '__assignee',
-      width: 140,
+      width: 120,
+      fixed: 'right',
       render: (_v, _row, index) => {
         const span = questionnaireSpan[index]
         if (span === 0) return { children: '', props: { rowSpan: 0 } }
@@ -374,7 +388,8 @@ export default function PostUseCallbackProcessModal({
     {
       title: '产品部溯源经办人',
       key: '__assignee',
-      width: 140,
+      width: 120,
+      fixed: 'right',
       render: (_v, row) => {
         if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
         const current = assigneeOverrides.get(row.itemKey)
@@ -431,7 +446,26 @@ export default function PostUseCallbackProcessModal({
     // 逐条校验：所有勾选产品部溯源的行必须指定经办人
     const missingAssigneeKeys = rows.filter((row) => !assigneeOverrides.get(row.itemKey)?.id)
     if (missingAssigneeKeys.length) {
-      message.warning(`还有 ${missingAssigneeKeys.length} 条勾选产品部溯源的记录未指定经办人，请逐条指定后再存档`)
+      // 按 tab 分类，附带客户/产品信息
+      const questionnaireMissing = pendingAssigneeQuestionnaire
+      const callbackMissing = pendingAssigneeCallback
+      const parts = []
+      if (questionnaireMissing.length) {
+        const detail = questionnaireMissing.slice(0, 3)
+          .map((m) => `${m.customerName || '—'}-${m.productName || '—'}`)
+          .join('、')
+        const more = questionnaireMissing.length > 3 ? `等${questionnaireMissing.length}条` : ''
+        parts.push(`官网问卷类 ${questionnaireMissing.length} 条（${detail}${more}）`)
+      }
+      if (callbackMissing.length) {
+        const detail = callbackMissing.slice(0, 3)
+          .map((m) => `${m.customerName || '—'}-${m.productName || '—'}（工单${m.originalTicketId || '—'}）`)
+          .join('、')
+        const more = callbackMissing.length > 3 ? `等${callbackMissing.length}条` : ''
+        parts.push(`投诉回访非10分 ${callbackMissing.length} 条（${detail}${more}）`)
+      }
+      const detailStr = parts.length ? `：${parts.join('；')}` : ''
+      message.warning(`还有 ${missingAssigneeKeys.length} 条勾选产品部溯源的记录未指定经办人${detailStr}。请到对应 tab 逐条指定后再存档`)
       return
     }
     setArchiving(true)
@@ -464,7 +498,11 @@ export default function PostUseCallbackProcessModal({
         items={[
           {
             key: 'questionnaire',
-            label: `官网问卷类建议回访(${recommendations.length})`,
+            label: (
+              <Badge count={pendingAssigneeQuestionnaire.length} size="small" offset={[6, 0]}>
+                <span>官网问卷类建议回访({recommendations.length})</span>
+              </Badge>
+            ),
             children: (
               <Table
                 size="small"
@@ -480,7 +518,11 @@ export default function PostUseCallbackProcessModal({
           },
           {
             key: 'callback',
-            label: `投诉回访非10分(${callbackNonTenRecords.length})`,
+            label: (
+              <Badge count={pendingAssigneeCallback.length} size="small" offset={[6, 0]}>
+                <span>投诉回访非10分({callbackNonTenRecords.length})</span>
+              </Badge>
+            ),
             children: (
               <Table
                 size="small"
