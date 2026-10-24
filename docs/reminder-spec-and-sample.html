@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="ZTiVQ4D1SO1vas3bdiLKuW">
+<head data-page-node-id="45EHWaIN74TRf0xupLywTW">
+<meta charset="UTF-8" data-page-node-id="Try5Llt7JvghQdHnyDfc5W">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="smj1xE89uRcDqnjXRvzPWw">
+<title>邮件提醒完整方案与邮件实例</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #1a1a1a; line-height: 1.7; }
+  .container { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+
+  .section { background: #fff; border-radius: 12px; padding: 32px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .section h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #1a1a1a; }
+  .section .subtitle { font-size: 14px; color: #888; margin-bottom: 24px; }
+  .rule-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rule-table th { background: #f0f5ff; color: #1a1a1a; font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 2px solid #d6e4ff; }
+  .rule-table td { padding: 10px 12px; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+  .badge-red { background: #fff1f0; color: #cf1322; }
+  .badge-blue { background: #e6f7ff; color: #096dd9; }
+  .badge-green { background: #f6ffed; color: #389e0d; }
+  .badge-gray { background: #f5f5f5; color: #666; }
+  .badge-orange { background: #fff7e6; color: #d46b08; }
+  .field-list { list-style: none; }
+  .field-list li { padding: 4px 0; font-size: 13px; }
+  .field-list code { background: #f5f5f5; padding: 1px 5px; border-radius: 3px; font-family: "SF Mono", monospace; font-size: 12px; color: #d4380d; }
+
+  .email-preview { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .email-header-bar { background: #2c2c2c; padding: 8px 20px; font-size: 12px; color: #ccc; display: flex; justify-content: space-between; align-items: center; }
+  .email-header-bar span { margin-right: 16px; }
+  .email-body-inner { padding: 24px; }
+  .email-logo { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+  .email-tagline { font-size: 12px; color: #999; margin-bottom: 24px; }
+  .email-meta { background: #f5f7fa; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12px; color: #666; }
+  .email-meta strong { color: #1a1a1a; }
+
+  .product-block { border: 1px solid #e8e8e8; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+  .product-header { background: #f0f5ff; padding: 12px 16px; border-bottom: 1px solid #d6e4ff; display: flex; justify-content: space-between; align-items: center; }
+  .product-title { font-size: 16px; font-weight: 600; color: #1a1a1a; }
+  .product-attention { font-size: 12px; color: #cf1322; font-weight: 500; }
+
+  .category-section { margin-bottom: 18px; }
+  .category-title { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #f0f0f0; }
+  .category-title .count-badge { background: #f0f0f0; color: #666; padding: 1px 8px; border-radius: 10px; font-size: 11px; margin-left: 6px; font-weight: 400; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+  .data-table th { background: #fafafa; color: #666; font-weight: 500; padding: 6px 8px; text-align: left; border-bottom: 1px solid #e8e8e8; }
+  .data-table td { padding: 6px 8px; border-bottom: 1px solid #f5f5f5; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .role-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 2px; }
+  .role-pm { background: #fff7e6; color: #d46b08; }
+  .role-design { background: #f9f0ff; color: #722ed1; }
+  .role-ops { background: #e6fffb; color: #08979c; }
+
+  .dist-row { display: flex; align-items: center; padding: 3px 0; font-size: 12px; }
+  .dist-label { width: 140px; color: #333; }
+  .dist-bar-bg { flex: 1; height: 16px; background: #f5f5f5; border-radius: 3px; overflow: hidden; }
+  .dist-bar-fill { height: 100%; background: #1890ff; border-radius: 3px; }
+  .dist-count { width: 36px; text-align: right; color: #666; font-weight: 500; }
+
+  .llm-block { background: #f5f7fa; border-left: 3px solid #1890ff; padding: 10px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .llm-block p { font-size: 12px; color: #555; line-height: 1.8; }
+
+  .email-footer { border-top: 1px solid #e8e8e8; padding: 16px 24px; background: #fafafa; }
+  .email-footer p { font-size: 11px; color: #999; line-height: 1.6; }
+  .email-footer a { color: #1890ff; text-decoration: none; }
+
+  .legend { font-size: 12px; color: #888; margin-top: 16px; padding: 8px 12px; background: #fafafa; border-radius: 6px; }
+  .legend strong { color: #333; }
+
+  .summary-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+  .summary-table th { background: #f0f5ff; color: #1a1a1a; font-weight: 600; padding: 8px 12px; text-align: left; border-bottom: 2px solid #d6e4ff; }
+  .summary-table td { padding: 8px 12px; border-bottom: 1px solid #e8e8e8; }
+  .summary-table .product-name { font-weight: 600; color: #1a1a1a; }
+  .summary-table .todo-count { font-weight: 600; color: #cf1322; }
+
+  .attachment-hint { background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #666; }
+  .attachment-hint strong { color: #d46b08; }
+  .attachment-icon { display: inline-block; width: 16px; height: 16px; background: #1890ff; border-radius: 3px; margin-right: 6px; vertical-align: middle; position: relative; }
+  .attachment-icon::after { content: ''; position: absolute; top: 4px; left: 4px; width: 8px; height: 2px; background: #fff; box-shadow: 0 3px 0 #fff; }
+
+  .tab-preview { border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; margin: 16px 0; }
+  .tab-bar { display: flex; background: #fafafa; border-bottom: 1px solid #e8e8e8; padding: 0; }
+  .tab-item { padding: 8px 16px; font-size: 13px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-item.active { color: #1890ff; border-bottom-color: #1890ff; font-weight: 600; background: #fff; }
+  .tab-panel { display: none; padding: 16px; }
+  .tab-panel.active { display: block; }
+  .role-tag-inline { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-right: 3px; }
+  .role-pm-i { background: #fff7e6; color: #d46b08; }
+  .role-design-i { background: #f9f0ff; color: #722ed1; }
+  .role-ops-i { background: #e6fffb; color: #08979c; }
+
+  .urgent-tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
+  .urgent-overdue { background: #cf1322; color: #fff; }
+  .urgent-near { background: #fa8c16; color: #fff; }
+  .urgent-row { background: #fff1f0; }
+  .urgent-row-near { background: #fff7e6; }
+</style>
+</head>
+<body data-page-node-id="AEHhcmiDnaBzS33kmP5lJI">
+<div class="container" data-page-node-id="F8yiZ0y5HAFuUK2tM26Kyh">
+
+<!-- ========== 第一部分：完整规则 ========== -->
+<div class="section" data-page-node-id="imCHmCX4nwt44KBRKA8BZO">
+  <h2 data-page-node-id="CLTwgnFmb4jGT0luADCflk">邮件提醒 - 完整规则定义</h2>
+  <div class="subtitle" data-page-node-id="L6ZmMIBw6YuGW0orYQRI7Q">基于用户多轮纠正后的最终版，含五类待办、纳入条件、周期过滤、收件人策略</div>
+
+  <table class="rule-table" data-page-node-id="mxL45rUw6YanOySdCPU0oy">
+    <thead data-page-node-id="JrezrH8w9gcUOgymmKDNl1">
+      <tr data-page-node-id="TlRQ4tY9jekLfHrbHAmTmA">
+        <th style="width:40px" data-page-node-id="zTLCujNiJTDf49LwVp92iM">#</th>
+        <th style="width:90px" data-page-node-id="Y3BBea44Zew1MhlRY0LEuK">类别</th>
+        <th style="width:180px" data-page-node-id="7HZ8hLFQRus81czSi7uBGb">数据源</th>
+        <th style="width:240px" data-page-node-id="AbCe7CXX315Qlo1iLjyAwQ">纳入条件</th>
+        <th style="width:60px" data-page-node-id="D7iFbJHINZqWcBbAIt1yFE">周期过滤</th>
+        <th data-page-node-id="iCwuGOwscM18SanBChAE3O">邮件展示内容</th>
+      </tr>
+    </thead>
+    <tbody data-page-node-id="ys38J2gyTB3KH1DcKmLjo0">
+      <!-- 1a 投诉工单 -->
+      <tr data-page-node-id="7M0ApaZTrF1rX1rPBMdhee">
+        <td data-page-node-id="TsEsWNZQ5K8kj5bKz7UYCP"><span class="badge badge-red" data-page-node-id="vIwEf0adLvhg64XQKHrojx">1a</span></td>
+        <td data-page-node-id="Ffp6iDzz0xE4N8WBbNBELD"><strong data-page-node-id="L1AFWG8zQnwxVlnBEQPgCp">投诉工单</strong></td>
+        <td data-page-node-id="OYTCptDNAXy3RA7kK4ggPr"><code data-page-node-id="iR0aDJXyU6SvmxGxqWrVt4">records</code><br data-page-node-id="HXNN3HI3Qhg08nZCCRDPt3">dataSourceType = <code data-page-node-id="2rvpQUiIWjnvWnM3ie3vz8">complaint_ticket</code></td>
+        <td data-page-node-id="XIeHquAWckWbfhbICCSs3i">
+          满足任一：<br data-page-node-id="JF8N7pUHqUfj5JHAhdGsE4">
+          1. <code data-page-node-id="OCEMv3ZmFMP8E7z2YNK0Rp">tagStatus='manual_review'</code>（打标闸门失败）<br data-page-node-id="ZhH1IM3zSJ1oxGiKqpjyZl">
+          2. 角色字段任一为空：
+          <ul class="field-list" style="margin-top:4px" data-page-node-id="jqIeWKiw9jrSSxkkwBBiws">
+            <li data-page-node-id="ftnG6R5Xv1jGS0uFt2HYgG"><code data-page-node-id="ZPf4veT9VaEwHL5xW72vj6">productGroupOptimization</code> - 产品经理未处理</li>
+            <li data-page-node-id="VdXbbQVB2guAJXCZ439Iwm"><code data-page-node-id="fz9SHSOD7LP9zwZwk4cipK">designerOptimization</code> - 设计师未处理</li>
+            <li data-page-node-id="8PFmbVnDSVdhvT9Hrrc1hE"><code data-page-node-id="ilHx1uXbrza0Zf1uHI6ynN">rootCauseReview</code> - 运维三线未处理</li>
+            <li data-page-node-id="wIlfqzvpRoQ9kxlcJ6H92k"><code data-page-node-id="5e8w3092wlYqCYtAO4ikbU">complaintCauseL1Review</code><br data-page-node-id="X9u8tEpQiHTGyZLv6NvfLM"><code data-page-node-id="yV3tnblcy8MkBMiN7xBKY0">complaintCauseL2Review</code><br data-page-node-id="FG2BigZFSDHRLKImGCdUxA"><code data-page-node-id="8pBxb0jvIkzP53c5ohNqUB">complaintCauseL3Review</code> - 投诉原因终判复核未完成（发起复核→管理员审核流程）</li>
+          </ul>
+        </td>
+        <td data-page-node-id="7yzU0DWcXMkpt1PQxmmQKK"><span class="badge badge-green" data-page-node-id="OgO0JqNzuRgicPw7nXIiMM">是</span><br data-page-node-id="wvOc7EDFgGtlPzGaCXJrMM">insightPeriodId</td>
+        <td data-page-node-id="BSKNawqFZBWZBX5OSYSJa7">
+          工单号 - 客户名 - 产品 - 问题摘要<br data-page-node-id="33kikzB1FVyxZ2BkWeo1Ij">
+          未完成角色标签（点名）<br data-page-node-id="QoAWfWcET0Vhk2cfDyiv5l">
+          闸门状态<br data-page-node-id="sqvDxDyPIos5BAyn0SgWgt">
+          <span style="color:#cf1322" data-page-node-id="om9qPU9wLYCCILFjRtThoC">- 点名需关注的角色负责人</span>
+        </td>
+      </tr>
+      <!-- 1b 咨询工单 -->
+      <tr data-page-node-id="fAHuRHuuTYxMz2MlVhEMlm">
+        <td data-page-node-id="LEaBlwFoLQ9CDH1jWRS7vw"><span class="badge badge-blue" data-page-node-id="W7sHLO5QVrZSnJihZ1wRoU">1b</span></td>
+        <td data-page-node-id="4ETTjCKIBfHJhXABDTmfIa"><strong data-page-node-id="O3A4bm59P6WVW1v8I02tSu">咨询工单</strong></td>
+        <td data-page-node-id="TwEc5iO76m8b4lS58dSGqX"><code data-page-node-id="cjTz4sJ3fYng3lVKNLboPV">records</code><br data-page-node-id="Prkgi8tEaurgMChAoNBj3k">dataSourceType = <code data-page-node-id="ns2SqLzNGzPAuaIGySINj5">consultation_ticket</code></td>
+        <td data-page-node-id="iRUUTXqDuYpbDDggXeyfFs">
+          通用纳入：本周期内全部咨询工单<br data-page-node-id="RyAdUrZfxhqX5FAYJ3Uv04">
+          <span style="color:#666" data-page-node-id="EhmfkHw65h86vLFwnmKQTG">不检查角色字段、不检查 tagStatus</span>
+        </td>
+        <td data-page-node-id="HwhHLYD8FyCGFL7MuhsnaR"><span class="badge badge-green" data-page-node-id="6g21NARBZVwJT8DVBIiSgp">是</span><br data-page-node-id="7BYLPsVlWgqTR1hTXydhT6">insightPeriodId</td>
+        <td data-page-node-id="tnpgNK539yX3CQpTmG1RZm">
+          总数：N 条<br data-page-node-id="KS40jsagE7t6D6El1sKs5Y">
+          请求场景分布（requestScene）：<br data-page-node-id="FcGwM1QOa8PufqzA8P0tls">
+          <span style="font-size:11px;color:#666" data-page-node-id="SqcThkaAfpMwioFuBMQWRM">报障与排错 X - 操作指导 Y - 资源申请 Z ...</span><br data-page-node-id="SGktA4v0qFSqd69tN6WVvV">
+          <span style="color:#096dd9" data-page-node-id="re0YNFKUwEa2zH6bbEcahU">- 通用统计，不点名角色</span>
+        </td>
+      </tr>
+      <!-- 2 用后即评-产品部溯源 -->
+      <tr data-page-node-id="gzQuS9OgTNh0mThUBDAAgz">
+        <td data-page-node-id="6pFZR5OhAN100iIQasSPqz"><span class="badge badge-orange" data-page-node-id="YeNjLq6LWCHiUC6sXMKuJX">2</span></td>
+        <td data-page-node-id="DWwulvAOTEYBh2e7dZW0sP"><strong data-page-node-id="pYREoLBIDF1BIQCiRHe0dB">用后即评-产品部溯源</strong></td>
+        <td data-page-node-id="FX7xH3pj4BEWIIfCCQKwL4">
+          <code data-page-node-id="BaCn2AwwJ8PCS9MtNOPGlC">post_use_callback_decisions</code><br data-page-node-id="c9H1IAPTvJW1PuSBqvboLW">（needInternalTrace=true）<br data-page-node-id="7haVXWEMRRY2b5WqUebthI">+
+          <code data-page-node-id="fF9HhMTDYQIfG8IRmxZ6QQ">post_use_jira_items</code><br data-page-node-id="50GF3VOxwiGLzKDkwK6aLJ">（平台原生处理记录）
+        </td>
+        <td data-page-node-id="ita6dmMNrmZ2quqo8o3S7b">
+          needInternalTrace=true<br data-page-node-id="MND7x8qMQIM1eG5P9eFP2L">
+          <strong data-page-node-id="7fLyMzllMYZILiPFMMARPG">且</strong> 溯源记录 status != '已完成'<br data-page-node-id="Yg5x9VDsDnLppnkxDrHLLF">
+          <span style="color:#666;font-size:11px" data-page-node-id="n8XjmmGPZ5lPdDZlDQTUNo">含两种：无溯源记录（从未处理）+ 有记录但未标"已完成"（待处理/进行中）</span><br data-page-node-id="bJ9dXH3Z1c7XLnFe7140Im">
+          <span style="color:#d46b08;font-size:11px" data-page-node-id="50zAs99riA6ZPUY9gHmfCw">不关联外部 Jira，jiraTicket 字段已废弃</span>
+        </td>
+        <td data-page-node-id="TNQ26btexsX6VBjPCUFi0p"><span class="badge badge-gray" data-page-node-id="FUSHY45nJUQTDi38y779tR">否</span><br data-page-node-id="fuwFcLobSQi8kQLLsXRLyq">持续待办</td>
+        <td data-page-node-id="4aYbV23HQbrbVrcopq4U6v">
+          客户名 - 产品 - 反馈摘要<br data-page-node-id="IYPDYBHQin2JBYJmKaEK96">
+          经办人 - 处理状态（待处理/进行中/已完成）<br data-page-node-id="HE58lRiRvuRLwn6hzp1H4F">
+          进展文本
+        </td>
+      </tr>
+      <!-- 3 用后即评-补充的回访结果待评估 -->
+      <tr data-page-node-id="hjvC99QyRxP5BghDxRlvdW">
+        <td data-page-node-id="fznnPywV14JwW1FgHDN8Yc"><span class="badge badge-orange" data-page-node-id="bMhlTixMlyjE5OBSoZZ7u6">3</span></td>
+        <td data-page-node-id="lnOAmEn7wNxkFXYWFQQ8xK"><strong data-page-node-id="wPeFSoQ84xCOzNtogCauTI">用后即评-补充的回访结果待评估</strong></td>
+        <td data-page-node-id="Dp4s7vRkwriCvfiZv5IC9S">
+          <code data-page-node-id="GcObaP6D48ulRQapHY25YT">post_use_callback_decisions</code><br data-page-node-id="ukuXTYowPfTNUWcQEC1g64">（needCustomerVisit=true）<br data-page-node-id="oBrcj9uyYj6M5KJW24B4Jc">+
+          <code data-page-node-id="miCsnPwqASBPxbFGqfibxr">visit_records</code><br data-page-node-id="eTQeCsmxggpimNvUlXdZpF">（META: post_use_visit_records_v1）
+        </td>
+        <td data-page-node-id="zEG8HQ6nCHkv0aV4HRrdec">
+          needCustomerVisit=true<br data-page-node-id="aZGKubp2Zqm5jbe2SMTqGt">
+          <strong data-page-node-id="EGlzyvFYRQke1ZtwH7VMgZ">且</strong> visit_record 的 internalConclusion 为空<br data-page-node-id="xL0IqL08WOsimnhPle6ZsZ">
+          <span style="color:#666;font-size:11px" data-page-node-id="C2Epo4uxnRdUUGqpfqltiF">回访结果(visitResult)已导入，但内部评估未做</span><br data-page-node-id="zZjDPsZlhBHf3C4px2uGFM">
+          <span style="font-size:11px" data-page-node-id="AKEnp4QdE37l624s05ruJq">判定逻辑：(internalEvaluationDetail || internalConclusion) 为空</span>
+        </td>
+        <td data-page-node-id="PBRl9DCaaWN7JMqnyOaFZ7"><span class="badge badge-green" data-page-node-id="jrZon3ZTl4W9qDJzg11wHd">是</span><br data-page-node-id="gRE3srulMbaE4euChkvF14">importMonth</td>
+        <td data-page-node-id="lkCPJO0ZGANuUyxSpGDH18">
+          客户名 - 产品<br data-page-node-id="8JWbsi2exyYBllMxeVbU4v">
+          回访结果<br data-page-node-id="41LOyQcLGtCcVoqGH7EdqY">
+          内部评估状态：未填写
+        </td>
+      </tr>
+      <!-- 4 未完成举措 -->
+      <tr data-page-node-id="V69WHn1KLBVW7wWrSLVi09">
+        <td data-page-node-id="2pLqBndKdT4lI4UzcCNvEH"><span class="badge badge-orange" data-page-node-id="oM2N4KjVV1EIjBo1B0kzsr">4</span></td>
+        <td data-page-node-id="H3ME10xfXS67SWXDXlR8oX"><strong data-page-node-id="2nE40mzg3zDKuGBrYAOng5">未完成举措</strong></td>
+        <td data-page-node-id="uB93jHYyAY5GNsxaN1Aysw">
+          <code data-page-node-id="K5XrifX12HRhYLZnOWtAKm">action_items</code> 表<br data-page-node-id="Ds7012nxhRYabAQFFHhCl3">
+          source = <code data-page-node-id="zPW1qGRmbPDTaO7odC6PbV">'ticket'</code> | <code data-page-node-id="GUHH4QdfHpcncCAcp84CW0">'post_use'</code>
+        </td>
+        <td data-page-node-id="11AdbhYUV4O7PthRWjMI4s">
+          status IN (<code data-page-node-id="csCOMmXNc4SsEF9bXQJDF3">pending_evaluation</code>, <code data-page-node-id="skCrFhqOoi28w8zdcOHbvz">in_progress</code>, <code data-page-node-id="xKvnbNzPzENdoHmhrmnxqJ">suspended</code>)<br data-page-node-id="b7HzSTRlXNG9ZWy4USpcht">
+          <span style="font-size:11px;color:#666" data-page-node-id="a5Rhi6HHZmws6OctCcBf74">不含 completed / not_implemented / abnormal_terminated</span><br data-page-node-id="URGENT001">
+          <strong style="color:#cf1322;font-size:12px" data-page-node-id="URGENT002">重点提醒规则：</strong><br data-page-node-id="URGENT003">
+          <span style="font-size:12px" data-page-node-id="URGENT004"><span class="urgent-tag urgent-overdue">超期</span> 排期日期已过（scheduleAt < 今天）→ 行标红 + 标签</span><br data-page-node-id="URGENT005">
+          <span style="font-size:12px" data-page-node-id="URGENT006"><span class="urgent-tag urgent-near">临近</span> 距排期日期不足 30 天 → 行标橙 + 标签</span><br data-page-node-id="URGENT007">
+          <span style="font-size:11px;color:#888" data-page-node-id="URGENT008">无排期（scheduleAt 为空）不触发重点提醒，正常列出</span>
+        </td>
+        <td data-page-node-id="oivGOxjeP87dDF9ljeDE6B"><span class="badge badge-gray" data-page-node-id="Pck0Ely4fbvbKayrXP4g4Z">否</span><br data-page-node-id="376uH8bIShFhBQxap5MqKd">持续待办</td>
+        <td data-page-node-id="2c4A83BncwZNEHSeTQFC1u">
+          举措内容 - 状态标签<br data-page-node-id="gdx68I3sj5NhUL7Qa7u02s">
+          排期 - 首次提出日期<br data-page-node-id="N2OUdq4LcfQSI3ghjI4iJG">
+          关联工单号
+        </td>
+      </tr>
+      <!-- 5 客户体验类分析会会后待办 -->
+      <tr data-page-node-id="e2HdzGDoWnpzwjwGxPEAWC">
+        <td data-page-node-id="BrLzMiDR4cPRCTLrj1SGnq"><span class="badge badge-orange" data-page-node-id="D7dKsMs6H6N9gEHORzRIIX">5</span></td>
+        <td data-page-node-id="pLyHzPQGZwD2pqTuh9TSAC"><strong data-page-node-id="tT43Tm6qQGNmzKv8nZgZmB">客户体验类分析会会后待办</strong></td>
+        <td data-page-node-id="sJYMF1ar4oYYMcWYH7jbQX">
+          <code data-page-node-id="5AEcBl2fpHcNyF8Bqpu65Z">ticket_todo</code> 表<br data-page-node-id="tLssQEEivGUM06epOWEIzH">（通过 TicketTodoRow 查询）
+        </td>
+        <td data-page-node-id="bCHmgkyYD3UUbZq00AEDMp">
+          resolution = <code data-page-node-id="2yBeFb8X9JOKCDVDoNcNqs">open</code><br data-page-node-id="GfdTSlC35kIMidrK44eTQF">
+          <span style="font-size:11px;color:#666" data-page-node-id="PUjXqzGZSaG21HesdptkEU">不含 converted_to_action / processed_without_action</span>
+        </td>
+        <td data-page-node-id="kmrmFJ9azr2xU31LHysYf6"><span class="badge badge-green" data-page-node-id="R9tYtE2J2N6VFF9vCAgqMp">是</span><br data-page-node-id="rOyhJxBf9wugxdNw0iWVRT">recordId - insightPeriodId</td>
+        <td data-page-node-id="r1QIoUShYOoeEEt58mJNch">
+          待办文本 - 工单号<br data-page-node-id="IwypRYcRrXyV9peQKuPmgF">
+          产品 - 指派人
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:20px" data-page-node-id="iFlIMcuVaA7dOolHBNC5Xp">
+    <table class="rule-table" data-page-node-id="vGlHhgp9CMSHgAsGDAjsOf">
+      <thead data-page-node-id="rHFaZb77fe0OXS7QqzC7Pn">
+        <tr data-page-node-id="lO8i2DXlrcpG5rOQSD4GTU"><th colspan="2" data-page-node-id="1KpJoDnoBRnOXyBpipBVDY">全局规则</th></tr>
+      </thead>
+      <tbody data-page-node-id="SuMKXJXWfWYcZz7aLndpv2">
+        <tr data-page-node-id="NAYf0F3BAMWsVJHNwyRfLM">
+          <td style="width:120px" data-page-node-id="3fYI0UnOzQ8M2tZKydM8af"><strong data-page-node-id="Y6xK34FJcBTQtouAfGO5lq">邮件粒度</strong></td>
+          <td data-page-node-id="I4ltHqNcLus88frY1lA8pa">一封邮件，只含有待办的产品段落（无待办产品不列入，其负责人不收邮件）</td>
+        </tr>
+        <tr data-page-node-id="rRHiSRezdViqlKStjdycHi">
+          <td data-page-node-id="EgDoqF2GGyNT5aBxigCP2Z"><strong data-page-node-id="7F7LIMugL5LcHZriTAdKkz">收件人</strong></td>
+          <td data-page-node-id="q4b1QgjbuVh83A8GzZuWkk">仅有待办产品的五角色负责人并集（产品经理 / 设计师 / 运维三线 / 运营 / 测试，来自 product_catalog owners 配置）。产品本期无待办 - 该产品负责人不收邮件</td>
+        </tr>
+        <tr data-page-node-id="hWzXO3Z56aFpM3x4oKgQL3">
+          <td data-page-node-id="I2v3ZmMDtsutNgSHL6RQHH"><strong data-page-node-id="N8iPQdsACZhSCJUtThUW6L">产品内关注</strong></td>
+          <td data-page-node-id="4JIXAr9I1BOWMblVgIkA4S">各产品段落标题旁标注需关注的角色（规则引擎判定），不裁剪收件人</td>
+        </tr>
+        <tr data-page-node-id="oONuOKEKvQKBUjbeTXsgc7">
+          <td data-page-node-id="9YeLuo38Sq6E78m4501gjx"><strong data-page-node-id="oBGFJgHS8LKHDw8G7W9eGh">正文形式</strong></td>
+          <td data-page-node-id="EwlTCzEaxMMRyMsCpqAoHQ"><strong data-page-node-id="MlkEdLdrPnWivCCwZWBAYC">A+B 组合</strong>：正文内联 HTML 简短摘要（每产品一行汇总：产品名-待办总数-需关注角色），附件 .html 含完整分产品详情（产品 Tab 切换）。邮件客户端剥除 JS - 正文无法做 Tab，附件在浏览器打开体验 = 平台原生</td>
+        </tr>
+        <tr data-page-node-id="rVlGkMs6MxQcXPtA4CX7Fo">
+          <td data-page-node-id="OnkgxlYajGpQwa9qvT4Djn"><strong data-page-node-id="OYPFQkQXH5KQPo7pRWHwWc">数据量</strong></td>
+          <td data-page-node-id="bbUKnWIRGFvwegqOId6VCI">每类最多 50 条 + "更多详见平台"提示</td>
+        </tr>
+        <tr data-page-node-id="S0CH0Q3IuVZCXC5V0jp4pj">
+          <td data-page-node-id="sjwJ21OXqPEdfJ9AHN5tCq"><strong data-page-node-id="VASIZE6odPIEy3wmh3Jbvc">LLM</strong></td>
+          <td data-page-node-id="iyghtSmvwPZJPTu0pB1wkI">每产品调 1 次 LLM：生成产品概述段落 + 趋势洞察（不做行动建议、不裁剪收件人）。失败则标记"LLM分析不可用"，规则数据正常渲染</td>
+        </tr>
+        <tr data-page-node-id="tR4wnepA0yzNq7FzapcJks">
+          <td data-page-node-id="ytbTDqX78stFG13r7beVj5"><strong data-page-node-id="xHnQ74UrSp5YBP5GXJC17X">触发方式</strong></td>
+          <td data-page-node-id="aft52szSqaMT01eOpbE9e9">第一期手动触发（预览-确认-发送），第二期用 automation 定时。入口：右下角悬浮按钮（FloatButton），仅 admin 可见，临时放置</td>
+        </tr>
+        <tr data-page-node-id="f81aTVuCds3caDZPwduLGt">
+          <td data-page-node-id="KdksgDN6K2ODj5ZzaOkIoB"><strong data-page-node-id="6caZkSHgzVovgvC2gxbLyn">洞察周期</strong></td>
+          <td data-page-node-id="BKiDpj7auwiaYu0YyPEH90">可选：投诉工单 / 用后即评-补充的回访结果待评估 / 客户体验类分析会会后待办 按周期过滤；用后即评-产品部溯源 / 未完成举措 不受限（持续待办全纳入）</td>
+        </tr>
+        <tr data-page-node-id="SMTP001">
+          <td data-page-node-id="SMTP002"><strong data-page-node-id="SMTP003">SMTP 通道</strong></td>
+          <td data-page-node-id="SMTP004">DATA_SOURCE_TYPES 新增 'reminder' 类型，管理员在设置页为提醒邮件配置独立 SMTP 通道（可与用后即评复用同一 host/账号，但 dataSourceType 不同，发件人地址可区分如 reminder@cmss.chinamobile.com）。发送时调 getMailChannelByDataSource('reminder')</td>
+        </tr>
+        <tr data-page-node-id="ENTRY001">
+          <td data-page-node-id="ENTRY002"><strong data-page-node-id="ENTRY003">入口与权限</strong></td>
+          <td data-page-node-id="ENTRY004">右下角悬浮按钮（antd FloatButton），仅 admin 角色可见。点击后弹窗：选洞察周期 → 预览（产品/收件人/摘要） → 确认发送。临时放置，后续视使用情况再定正式入口位置</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="legend" data-page-node-id="POJoQjnmTvgDC8KqEEaUk6">
+    <strong data-page-node-id="6plegwpW5uuIskDJanmKKz">请求场景 9 类</strong>（咨询工单分布用）：报障与排错 - 资源操作申请 - 操作指导 - 进度催办与协同 - 产品信息咨询 - 方案咨询与设计 - 费用与账务 - 信息查询 - 服务申诉与投诉
+  </div>
+</div>
+
+<!-- ========== 第二部分：邮件正文实例（A+B 组合） ========== -->
+<div class="section" style="padding:0;overflow:hidden" data-page-node-id="gwrHLmmP6QtFw1UO0jujXS">
+  <div style="padding:24px 24px 0" data-page-node-id="x0Z8h1JGWeoT01ngrqYuQh">
+    <h2 data-page-node-id="Pp5WZ6MRkGsyeCXpv3RVg3">邮件正文实例（A+B 组合）</h2>
+    <div class="subtitle" data-page-node-id="7MCxDgDlkU9pImu0qTadzE">洞察周期 = 2026-10。假设 5 个产品中云专线+EIP 有待办，云监控+NAT网关+ELB 本期无待办 - 不列入邮件，其负责人不收邮件</div>
+  </div>
+
+  <!-- A 部分：邮件正文（内联 HTML 简短摘要） -->
+  <div style="padding:0 24px 16px" data-page-node-id="FhVHdFLXrYXfdtyhrFD2bh">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px;color:#1a1a1a" data-page-node-id="P9lVBEgFXGviwvSrjhopYM">A. 邮件正文（收件人收到的正文）</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:16px" data-page-node-id="AL8HYJPbFTJ98KEqtQ3Ba0">CSS 全内联（style="..."），无 script，邮件客户端可直接渲染。每个产品一行汇总 + 需关注角色，详情见附件</p>
+
+    <div class="email-preview" data-page-node-id="rNcvXzQX9P2gMv9ike6zFv">
+      <div class="email-header-bar" data-page-node-id="IG2HfgHD8bnvbJ8esCWclU">
+        <span data-page-node-id="ME7IjJogeZrVcFOP3Ab3by">发件人：feedback-system@cmss.chinamobile.com</span>
+        <span data-page-node-id="7aZiywtNBteA41SybBgL2b">收件人：张伟, 李娜, 王强, 陈静, 刘洋, 赵明 ...（共 8 人，仅云专线+EIP 负责人）</span>
+        <span style="margin-left:auto" data-page-node-id="11xCnDGoCYF1lygERKKvHl">2026-10-24 19:00</span>
+      </div>
+
+      <div class="email-body-inner" data-page-node-id="uDacfDgEksq3lfOl089OhL">
+        <div class="email-logo" data-page-node-id="7gtQjAdBHBDJ2rlOG4rJFh">移动云 - 反馈洞察平台</div>
+        <div class="email-tagline" data-page-node-id="5LPR0N8SU70DGPPCrGLrfP">工单提醒 - 洞察周期 2026年10月</div>
+
+        <div class="email-meta" data-page-node-id="R7nxACMhVXFUC0pxC3J8T8">
+          <strong data-page-node-id="mXDmMqRQA2OYiSJc92dY7p">本期有待办产品 2 个</strong>：云专线、弹性公网IP(EIP)<br data-page-node-id="kqxQZaBfS1OGNoYCwDrvu8">
+          <strong data-page-node-id="EkZK16FATsi2JHCkCgi3FH">无待办产品 3 个</strong>：云监控、NAT网关、负载均衡(ELB) - 不列入本邮件<br data-page-node-id="F39HrSGm1UXV3ZZN16mfNe">
+          <strong data-page-node-id="8AGGxPZKWidNRYkLVmbWIQ">收件人</strong>：云专线 + EIP 的五角色负责人并集（共 8 人）<br data-page-node-id="SBR2PIwqxcuDCP3NTdAask">
+          <strong data-page-node-id="vDy5qQQny3E23oSBT0nMD2">数据截止</strong>：2026-10-24 16:00 - <strong data-page-node-id="kcULRhB4GqGrnvxGF84IN4">生成方式</strong>：规则引擎 + LLM 概述
+        </div>
+
+        <table class="summary-table" data-page-node-id="yg30MjZsQwlJk9xA7lUe3w">
+          <thead data-page-node-id="qsmZPkWqq8xlxGYbk3xGB8">
+            <tr data-page-node-id="g5SYeBR2bTyRlGkmCQOzut">
+              <th style="width:140px" data-page-node-id="W6YZEquAAiGb2d9KAjTeX2">产品</th>
+              <th style="width:80px" data-page-node-id="y1qu9pSxFntP9Zp7cHRVWI">待办总数</th>
+              <th data-page-node-id="AyrjrKn6VjvUHq3PDRiJhD">各类待办分布</th>
+              <th style="width:140px" data-page-node-id="FWwPmtID4H6GHxtcmGdoTY">需关注角色</th>
+            </tr>
+          </thead>
+          <tbody data-page-node-id="uIAErpDuvGh89TT8jvGDeJ">
+            <tr data-page-node-id="ONfwmJ8s3YL5eVzXQ2WnDL">
+              <td class="product-name" data-page-node-id="F6Gzd1aSUMRVHs8Amykm4v">云专线</td>
+              <td class="todo-count" data-page-node-id="POHHKav0Q4WcZMYRgRgqUQ">9 项</td>
+              <td data-page-node-id="KLUFlEA3GIeWPBfzTU1tOF">投诉工单 3 - 咨询工单 47(统计) - 用后即评-产品部溯源 2 - 用后即评-补充的回访结果待评估 1 - 未完成举措 2 - 客户体验类分析会会后待办 1</td>
+              <td data-page-node-id="bGxJklNOidSjN5qWMpCDQE"><span class="role-tag-inline role-pm-i" data-page-node-id="IWmHjJg0CXBaAQwqEtbBcX">产品经理</span><span class="role-tag-inline role-ops-i" data-page-node-id="BpWQKzo4FyBmvsbGFSqNhK">运维三线</span></td>
+            </tr>
+            <tr data-page-node-id="tQZoGrBnEyTVJ0RGQxCxfn">
+              <td class="product-name" data-page-node-id="4NvRXXH8t5lyjGesOzGJ7e">弹性公网IP (EIP)</td>
+              <td class="todo-count" data-page-node-id="UJEeI7Ht26DRxSUt5s6ijF">4 项</td>
+              <td data-page-node-id="rF2zzKbHjT3ItimmVaG58t">投诉工单 1 - 咨询工单 29(统计) - 用后即评-产品部溯源 1 - 未完成举措 1</td>
+              <td data-page-node-id="o3UNw9F4B9Bx2xl3q8c7P2"><span class="role-tag-inline role-design-i" data-page-node-id="dFAWH9EIG4cpbfEE8QFwv3">设计师</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="attachment-hint" data-page-node-id="1csmevVGwvjmbTDyjj7k0W">
+          <span class="attachment-icon" data-page-node-id="sBmJOWlAW9L2mDtQDWM00i"></span><strong data-page-node-id="sGULGaQicmoLlgApfHX8sA">附件：工单提醒详情_2026-10.html</strong>（1 个文件，约 120KB）<br data-page-node-id="xrM87cSIAT1MB3kR1f190m">
+          请下载后用浏览器打开，可点击产品 Tab 切换查看各产品完整待办明细 + LLM 概述。
+        </div>
+
+        <div class="llm-block" data-page-node-id="ncqTwKWv4tIUYU1y2VDAgr">
+          <p data-page-node-id="CYUrLL9ipW9NIVWmGYrKUJ"><strong data-page-node-id="HF4vptEzE90Vc15BAWZg88">本期整体概述：</strong>云专线投诉量较上期上升 200%，报障类咨询占比 38%，建议关注 10 月网络稳定性。EIP 费用类咨询连续两周占比第一，指向 EIP 释放后计费规则文档不清晰这一共同根因。</p>
+        </div>
+      </div>
+
+      <div class="email-footer" data-page-node-id="ME4f160OtAgYzL3UTUJg6v">
+        <p data-page-node-id="JGNvflPmcX6xL2gq8pD39U">
+          本邮件由<strong data-page-node-id="wNpyiYBUZhFZH0Q87VJjDR">移动云 - 反馈洞察平台</strong>自动生成。<br data-page-node-id="QG5iDLwhKhryhlrU7qtkcC">
+          如需查看完整数据请登录平台：<a href="https://feedback.cmss.chinamobile.com" data-page-node-id="SNw1eJaKPmbUMi9e7PjMAK">https://feedback.cmss.chinamobile.com</a><br data-page-node-id="N23DTlrAcfd3SqhW4vpzIt">
+          收到本邮件是因为您被配置为有待办产品的负责人。无待办产品的负责人本期不收邮件。<br data-page-node-id="0BON0pqRuAXqHFcFjBkSm0">
+          <span style="color:#bbb" data-page-node-id="6PZGVNJyXOvIesEIPbOn9J">LLM 概述由大模型生成，仅供参考，具体处理请以平台数据为准。</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- B 部分：HTML 附件预览（Tab 切换） -->
+  <div style="padding:0 24px 24px" data-page-node-id="iGifIsEcCxyemSOH9E7mFb">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:4px;color:#1a1a1a" data-page-node-id="73qrjj7xAJHm1iMob6Ktu0">B. HTML 附件预览（浏览器打开效果）</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:16px" data-page-node-id="biQpBU2OPwMsCQaMmcyZ0J">完整 script 可用，复用 htmlReportOffline 的 data-product-tab / data-product-panel 模式。产品 Tab 切换，一次只看一个产品</p>
+
+    <div class="tab-preview" data-page-node-id="jnsORy7IBNXhwvqRLicubl">
+      <div class="tab-bar" data-page-node-id="DVmhqpSstcD0GCfVDEgrMJ">
+        <div class="tab-item active" data-product-tab="cloud-line" onclick="document.querySelectorAll('[data-product-panel]').forEach(p= data-page-node-id="o3QcwORmpDZ00JzIYgoNsz">p.classList.remove('active'));document.querySelector('[data-product-panel=cloud-line]').classList.add('active');document.querySelectorAll('.tab-item').forEach(t=>t.classList.remove('active'));this.classList.add('active');">云专线 <span style="color:#cf1322;font-weight:600" data-page-node-id="wiwFgooz7EO5YLs313HWzn">9</span></div>
+        <div class="tab-item" data-product-tab="eip" onclick="document.querySelectorAll('[data-product-panel]').forEach(p= data-page-node-id="xnE0MJpH2CHk2oQDgGkKHM">p.classList.remove('active'));document.querySelector('[data-product-panel=eip]').classList.add('active');document.querySelectorAll('.tab-item').forEach(t=>t.classList.remove('active'));this.classList.add('active');">弹性公网IP (EIP) <span style="color:#cf1322;font-weight:600" data-page-node-id="X6n8LWJZhj8jR5jaZSsMrB">4</span></div>
+      </div>
+
+      <!-- 产品 1 面板：云专线 -->
+      <div class="tab-panel active" data-product-panel="cloud-line" style="overflow:hidden" data-page-node-id="Mbgf0bjewWOlCmLvJRnPRC">
+        <div class="product-header" style="margin-bottom:12px" data-page-node-id="9APmRD9pRlxqxftuLzi0R9">
+          <span class="product-title" data-page-node-id="Z4P17AXhtXPuoY5khmH2HN">云专线</span>
+          <span class="product-attention" data-page-node-id="Jf02YCHIin6rhxS0DiswEA">需关注：产品经理 - 运维三线</span>
+        </div>
+
+        <div class="category-section" data-page-node-id="zp7huAlpfgyU0NyeZXugAB">
+          <div class="category-title" data-page-node-id="yys97JK3e1gAWGw39l8z5O">
+            <span class="badge badge-red" data-page-node-id="XqPf1u9y9ukLmJB6AJZDTY">投诉工单</span> 待处理工单
+            <span class="count-badge" data-page-node-id="Hr56sX0SL129oroTBpTBDA">3 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="O0lE4J0rNThrxFVFu57K8G">
+            <thead data-page-node-id="GA99E8cDVq6QbeRKCXqJfX"><tr data-page-node-id="DQnYojdIQw1OhAY4ia7eUT"><th style="width:90px" data-page-node-id="gb0i2BdIqiJiGRNOj9Oiz7">工单号</th><th style="width:80px" data-page-node-id="AIUMJLZO1A9v9rrANH0p7B">客户</th><th data-page-node-id="ry50djiSdHrSNpNcItM8yv">问题摘要</th><th style="width:100px" data-page-node-id="F9QPFz0NDajPeSwHVcJOLj">未完成角色</th><th style="width:70px" data-page-node-id="4OUU34gB7STanqaHpo9Hzv">闸门状态</th></tr></thead>
+            <tbody data-page-node-id="ejDMW8uh0KTFmS5gt7CMY9">
+              <tr data-page-node-id="pDEL9K1ny7B03g9B1agYg2"><td data-page-node-id="WduQtP8K7XKbNnEyFdsZDW">GD2026101500123</td><td data-page-node-id="1myl3ATYfJlzuNKcEh1S59">中国银行</td><td data-page-node-id="DxQKpF294kk0qXaI85Ylqo">专线不通，业务中断</td><td data-page-node-id="vSYzNIuMUaU4NBX25u8Pvz"><span class="role-tag role-pm" data-page-node-id="xlqFpXoCEG2fu7CtBUuEHp">产品经理</span><span class="role-tag role-ops" data-page-node-id="EfCtCxutJswQ5c3C3WvzSx">运维三线</span></td><td data-page-node-id="SidbiTDqkhuFjU0T2Y4wsB">manual_review</td></tr>
+              <tr data-page-node-id="q3gWgNHMzr7B8EPOmu8iDF"><td data-page-node-id="zcaZM1BJJu7VzGw5DeeJOI">GD2026101600045</td><td data-page-node-id="XFvhmUZre09xYGU9HjGz3j">国家电网</td><td data-page-node-id="7IJ87LulXGkQi0a88LZyZK">带宽不满足需求，申请扩容</td><td data-page-node-id="zrx1e7iDRYHuCh83yedTRT"><span class="role-tag role-design" data-page-node-id="bom8pXCB8inPxjF4EyFECl">设计师</span><span class="role-tag role-ops" data-page-node-id="32dIZHKt66QRvQj87I1pnh">运维三线</span></td><td data-page-node-id="q1Ggm0ybLMYj8OifEetfWc">manual_review</td></tr>
+              <tr data-page-node-id="C4hd8CkcavgRjtJmIFgVij"><td data-page-node-id="C2HbjBUYe2jW9CgKBN5xUJ">GD2026101800078</td><td data-page-node-id="jzYiEhTYDpFT9wNIhmSpZb">中国石油</td><td data-page-node-id="IM8Hw3JzwptIHuG4TL2BP8">专线延迟高，影响交易系统</td><td data-page-node-id="0Vb5OLJyb0pkpXOBw75CMb"><span class="role-tag role-pm" data-page-node-id="XPb1nw2HYobgnvlAAbcskN">产品经理</span></td><td data-page-node-id="iXCDPD9tbTzdQ4ve32HssO">manual_review</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="A8BaNabDa4N4jUZYw4TRDM">
+          <div class="category-title" data-page-node-id="9K0mfuX7ZD3tHC7Fl02r10">
+            <span class="badge badge-blue" data-page-node-id="MnJGs2rbYScBhs3qURF89Z">咨询工单</span> 本周期统计概览
+            <span class="count-badge" data-page-node-id="duDwOxAMWQLol3aAUr0RP3">47 条</span>
+          </div>
+          <div style="padding:4px 0" data-page-node-id="pc87NbF8zqEdyQOylxhn81">
+            <div class="dist-row" data-page-node-id="hgABJZJpCUuCKaK4POvbRY"><span class="dist-label" data-page-node-id="qcxckYXfs1ZF6efryZmUpo">报障与排错</span><div class="dist-bar-bg" data-page-node-id="BAo4Hk5FgzhiGJRjBhGhQm"><div class="dist-bar-fill" style="width:38%;background:#cf1322" data-page-node-id="txUsaU8QzWmRFbsdLgw7qO"></div></div><span class="dist-count" data-page-node-id="HkWD5dFrpXKreqE2dQx1F6">18</span></div>
+            <div class="dist-row" data-page-node-id="dnU6splU0fkYK7e9hksdRD"><span class="dist-label" data-page-node-id="LTJ7BzwmM3FZY9CBbzFTK7">操作指导</span><div class="dist-bar-bg" data-page-node-id="FyS8lWWiSkJ3Rdy7dbdr4i"><div class="dist-bar-fill" style="width:25%;background:#096dd9" data-page-node-id="sLvQfgYAJh6aozi6oVnjEl"></div></div><span class="dist-count" data-page-node-id="dyrK24hZJPammFJoEN0mJB">12</span></div>
+            <div class="dist-row" data-page-node-id="PYuv1zxUPeq0ENiP3UGwb4"><span class="dist-label" data-page-node-id="E9WH6MkdvL1VSid6C7bGfZ">进度催办与协同</span><div class="dist-bar-bg" data-page-node-id="BKpMxX3zqF8cLVRbYwFXhI"><div class="dist-bar-fill" style="width:15%;background:#08979c" data-page-node-id="WwWbWIFJpVi6TpALbmtbQJ"></div></div><span class="dist-count" data-page-node-id="uoCDlg5RJfMgqSooiAKHGA">7</span></div>
+            <div class="dist-row" data-page-node-id="NJUAzZMPeR0DY17GVrrSAX"><span class="dist-label" data-page-node-id="5aKwRy9USKIylGeDFg2BTu">资源操作申请</span><div class="dist-bar-bg" data-page-node-id="FJt3PLsNzTZhN14lOfRvm9"><div class="dist-bar-fill" style="width:10%;background:#d46b08" data-page-node-id="bIeRyZSXdscTy0qe5yW1FI"></div></div><span class="dist-count" data-page-node-id="zsGdpMckUFTNeApytuEHMJ">5</span></div>
+            <div class="dist-row" data-page-node-id="B4p4oGzJZKE2Xs8PQmY7a5"><span class="dist-label" data-page-node-id="1sB5GiggXsXoH8NbLQYsM5">产品信息咨询</span><div class="dist-bar-bg" data-page-node-id="7PDN9IIkTheJdbqwFSxclO"><div class="dist-bar-fill" style="width:8%;background:#722ed1" data-page-node-id="iMSUPoeGM6fZVFucmuKARS"></div></div><span class="dist-count" data-page-node-id="1baGpDbkh3p5NIA46IWKxm">4</span></div>
+            <div class="dist-row" data-page-node-id="qJDDGLJ5quCZgdsCE0BetI"><span class="dist-label" data-page-node-id="M55bXew3oRUbIiAU9ZnPLA">信息查询</span><div class="dist-bar-bg" data-page-node-id="tKetoMNvbQEbI1yUL0v5JU"><div class="dist-bar-fill" style="width:2%;background:#389e0d" data-page-node-id="mBChl8zEDRZoAitFjiGrf6"></div></div><span class="dist-count" data-page-node-id="dFINn4w4KVDh0VezrYt6BD">1</span></div>
+          </div>
+        </div>
+
+        <div class="category-section" data-page-node-id="yXD7AycZxIxAETo4qN95vJ">
+          <div class="category-title" data-page-node-id="9lAClYJPaQegqz3XPkFrUT">
+            <span class="badge badge-orange" data-page-node-id="q5qCE8OaYXBOQBHTlK58MD">用后即评-产品部溯源</span> 待处理
+            <span class="count-badge" data-page-node-id="Gz2RXZRNIrYME0RFEFdQz7">2 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="LFGV6eeemznugVgaQR3UrO">
+            <thead data-page-node-id="zEQRrS7EFAT2TBFWrBCWRy"><tr data-page-node-id="N7TXGYjRSuB6ErIbnPxnov"><th style="width:80px" data-page-node-id="92RC7xzxCMNHKVHfaeVtDY">客户</th><th data-page-node-id="DeiBp66mh4aJdp5Rj53wes">产品</th><th data-page-node-id="LOGloknNRNz5KvX3jWdrND">反馈摘要</th><th style="width:70px" data-page-node-id="FCZOVajXcN8M4CHJSkmUl8">经办人</th><th style="width:70px" data-page-node-id="zLV69Sr5YRWy8YyGwQe4xH">处理状态</th></tr></thead>
+            <tbody data-page-node-id="5uEEhCxDp88cBtqtoCDAzM">
+              <tr data-page-node-id="5gnHsFGAp55S8FjbA8fDGm"><td data-page-node-id="iBe27YmnIgXCGKEc7ZfUJ6">中国银行</td><td data-page-node-id="Lw1CTYhmfF4bdVH3d0YQTF">云专线</td><td data-page-node-id="VFgdqY57PGi6WUWCC8LN5d">7分以下低分反馈，建议溯源产品原因</td><td data-page-node-id="uIlQCKPlhl01WeIzCfbI62">未指派</td><td data-page-node-id="yzx9wStQRK1GUYkrHwEM1t"><span class="badge badge-gray" data-page-node-id="K5exHI6r265aAbdBcVJzfn">待处理</span></td></tr>
+              <tr data-page-node-id="eoDUwKZeH9s1gsLhR0MQk9"><td data-page-node-id="CgVGeCGh3n79bHefBxqv6F">招商银行</td><td data-page-node-id="fMPArOhuV4Fc24bA9LCOvS">云专线</td><td data-page-node-id="qqWQZHImas0Fg0V8xil9Ou">客户反馈延迟，需确认是否链路质量</td><td data-page-node-id="lrHYzX6ptzuJ3dOMkZhzDy">王强</td><td data-page-node-id="8iFGkVA58VhrBxsstum01R"><span class="badge badge-blue" data-page-node-id="FmckvFFOH2KEWpBE7k8ECs">进行中</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="FO7cLWJgVB5bgUJVCAlIdO">
+          <div class="category-title" data-page-node-id="jHbdjPVDafRD0CPyFHf9gB">
+            <span class="badge badge-orange" data-page-node-id="H5mtMgnqdQnw1G1POh17gH">用后即评-补充的回访结果待评估</span> 内部评估待填写
+            <span class="count-badge" data-page-node-id="4jKyrzclYCBA2zMUHsPyox">1 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="q450FQ7lOdTRT3IKi112t6">
+            <thead data-page-node-id="pBkijmbzPuktyJbGLA5uxq"><tr data-page-node-id="URjJr7jDmttwN1ax2bTnjA"><th style="width:80px" data-page-node-id="DgARNDM38FPjnkfsCZ2lC5">客户</th><th data-page-node-id="5A3DuKH9egwOxbn9F2qdWa">产品</th><th data-page-node-id="z6jGqbIFeCb0iBgAFJ0ZW3">回访结果</th><th style="width:70px" data-page-node-id="Ujvx2xn5BPb2JtH1qPL1Ti">内部评估</th></tr></thead>
+            <tbody data-page-node-id="gkxjZbjGGPoaxZiiv9l8y8">
+              <tr data-page-node-id="iymwMMANPncwlHdhpQ5bKi"><td data-page-node-id="MrHZPjkgxl7C5CdOtyiB9Y">国家电网</td><td data-page-node-id="YWPFsdfDwPCyNDz8oDkOX3">云专线</td><td data-page-node-id="FtgDVazU762cmiS2djwKae">客户表示已恢复，对处理速度满意</td><td data-page-node-id="HSACOTlnxSrifxzi7wjS2f"><span style="color:#cf1322" data-page-node-id="7Do7DMBASlAhhbmaW7ef4A">未填写</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="WQvfi0w32BHF0JPvkijLKj">
+          <div class="category-title" data-page-node-id="ikX74daLUEE5KTBCWRpOkB">
+            <span class="badge badge-orange" data-page-node-id="EvXFkKyOTnT12O554t59i4">未完成举措</span>
+            <span class="count-badge" data-page-node-id="7ZFH9Dv48skV213Ywi2x2c">2 条</span>
+            <span class="urgent-tag urgent-overdue" style="margin-left:8px">超期 1</span>
+            <span class="urgent-tag urgent-near">临近 1</span>
+          </div>
+          <table class="data-table" data-page-node-id="7ke5BWdINQI2pVLw8q7Lsc">
+            <thead data-page-node-id="BAKC5aAyNHkve9XZMRzL8F"><tr data-page-node-id="F3Z5hrJb8OgBr3mlCJTHqs"><th data-page-node-id="7FeUPsesR4Sfr53UkWuhEN">举措内容</th><th style="width:60px" data-page-node-id="Pn2kme0F41jEzzyGsoORoQ">状态</th><th style="width:70px" data-page-node-id="eRnk9lGABY7blxxucZ9Pt5">排期</th><th style="width:90px" data-page-node-id="p9J7cTMx4IgH5SaJBE9N9k">首次提出</th><th style="width:50px">提醒</th></tr></thead>
+            <tbody data-page-node-id="8t6CvSxVQKnzIhHhSBvGSP">
+              <tr class="urgent-row-near" data-page-node-id="mHIrTdDujJADZ0TQYOLCVR"><td data-page-node-id="o1Pa1SYPQGVHszXL1fCucv">优化专线监控告警阈值，减少误报</td><td data-page-node-id="NFQFHGyBOdMKG3nGBggK7P"><span class="badge badge-blue" data-page-node-id="VmDFOs2NdWB95NrtkTypw6">进行中</span></td><td data-page-node-id="QAAfU8ARmy4LI7HumcQr2C">2026-11-15</td><td data-page-node-id="b3aWSeYe41DNDSneSzUb7w">2026-09-20</td><td><span class="urgent-tag urgent-near">临近</span></td></tr>
+              <tr class="urgent-row" data-page-node-id="EJ9Jl7G8g3CmCZf4UjPFEO"><td data-page-node-id="PQXtjiCvKhzSGJDkcuOcdI">专线开通流程文档更新，补充自助排查章节</td><td data-page-node-id="7BHEF8fxFSCGgvNSGYoPHo"><span class="badge badge-gray" data-page-node-id="eDHx4iEe0T7X9HHwARAG50">挂起</span></td><td data-page-node-id="wdQvnp8t8z8yNBc31RTH5L">2026-10-10</td><td data-page-node-id="aTxgvYqaFXlL9nGtGXa1AT">2026-08-05</td><td><span class="urgent-tag urgent-overdue">超期</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="eoaPd31zHsLvD74SVQygbU">
+          <div class="category-title" data-page-node-id="lHF3EYGtPq6iswAIdQhbHw">
+            <span class="badge badge-orange" data-page-node-id="otkbjXX1UizPesheW0IA2i">客户体验类分析会会后待办</span>
+            <span class="count-badge" data-page-node-id="GjansGyPUZggTAAK01llX4">1 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="YW0TcPBP61RW4JxNjuLPGL">
+            <thead data-page-node-id="5t5SDg3MvLV4T0agaWV4ee"><tr data-page-node-id="24B4gSrMDrXwt94eXIIl24"><th data-page-node-id="Z3DXH93Kx5ObNgMpQwl9dK">待办内容</th><th style="width:90px" data-page-node-id="9CB2Ihniq9tdsf6Yx7HgAS">关联工单</th><th style="width:60px" data-page-node-id="OPSv9086NrcQgL0SKzEEyg">指派人</th></tr></thead>
+            <tbody data-page-node-id="JIFA9iKiST2WwNeQvdVxpC">
+              <tr data-page-node-id="RZQu0AW8FRPtFeZRpOj7ag"><td data-page-node-id="OyARYEtICWKL8yIMCgFDzu">跟进中国银行专线扩容需求，确认资源到位时间</td><td data-page-node-id="J8HxuP70JU8Hiezn29mhuu">GD2026101500123</td><td data-page-node-id="isCAfH8ILTyougmpdpy6Vz">张伟</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="llm-block" data-page-node-id="6cLwP7nr3JLmSuCDgxUMz8">
+          <p data-page-node-id="yZJxk7bB1U9WIOKziG7gEe"><strong data-page-node-id="6VjIf7JxuIoshVWR6bmmaJ">LLM 产品概述：</strong>本周期云专线共有 3 条投诉工单待处理，主要集中于"专线不通"和"带宽不足"两类问题。其中中国银行专线中断为高危事件，产品经理和运维三线需优先关注。咨询工单 47 条中报障类占比 38%，反映近期云专线稳定性存在集中投诉趋势，建议结合监控数据排查 10 月是否出现区域性网络波动。</p>
+          <p data-page-node-id="R00lV5FpJK8DxxzxSPuE58"><strong data-page-node-id="iGZf0rbKeUyoWtNvdTE8e2">趋势洞察：</strong>较上周期（投诉 1 条 / 咨询 35 条），本周期投诉量上升 200%，咨询量上升 34%，报障类咨询从 9 条增至 18 条，需关注是否为同一底层事件引发的连锁影响。</p>
+        </div>
+
+        <div style="clear:both" data-page-node-id="N7B3xt9Vzw0OGX3yGPZOdp"></div>
+      </div>
+
+      <!-- 产品 2 面板：EIP -->
+      <div class="tab-panel" data-product-panel="eip" style="overflow:hidden" data-page-node-id="S095nCrGcCjgrMF9c1sFeh">
+        <div class="product-header" style="margin-bottom:12px" data-page-node-id="k8IEA7YXaZAHG84XPeMMRx">
+          <span class="product-title" data-page-node-id="lYDtBii7b2BRkCiBbTeeOm">弹性公网IP (EIP)</span>
+          <span class="product-attention" data-page-node-id="RVUSKsnofuDaErCSAserDu">需关注：设计师</span>
+        </div>
+
+        <div class="category-section" data-page-node-id="jZgJkoZ9tBYbmN72OS2RC0">
+          <div class="category-title" data-page-node-id="KWnjAfz5yTN0csFP7UBnfa">
+            <span class="badge badge-red" data-page-node-id="ucBULgt06XymB1ZZkQnIL6">投诉工单</span> 待处理工单
+            <span class="count-badge" data-page-node-id="5VCZ1wqmVB5Sn4YpGoGTfz">1 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="L4GR7B6RFkAFkKaVtuy453">
+            <thead data-page-node-id="DOvSkIjItW2fpZ2wFuim8d"><tr data-page-node-id="ZEMZo6ptPOQGZFqQsApjEK"><th style="width:90px" data-page-node-id="HHcVPaYNC6SvXACkogmMiD">工单号</th><th style="width:80px" data-page-node-id="nymTm8HUiijVD7idr512cE">客户</th><th data-page-node-id="UyDtXVj2aELjNsH0Thi6Ab">问题摘要</th><th style="width:100px" data-page-node-id="E1dzY5XEUE5ea377tW5EMr">未完成角色</th><th style="width:70px" data-page-node-id="Lgm8eaAKfKI75ZBtCGaFKl">闸门状态</th></tr></thead>
+            <tbody data-page-node-id="UvYBWGg6drii56B3MEch4R">
+              <tr data-page-node-id="FDwsMkrIfJ5BgC7tkP1BBc"><td data-page-node-id="YCGLOvwsqgLXXdCYqTc0KI">GD2026101700032</td><td data-page-node-id="QSLkasxQmOLPHB65y3nAGk">中国人寿</td><td data-page-node-id="ZEydAjHH2ab9V92uf9uuDF">EIP 释放后仍计费，要求退款</td><td data-page-node-id="xVW6lVXWOOzvlujEjDbFVu"><span class="role-tag role-design" data-page-node-id="UcVDkMGcSgJ5ryhHEQMi2S">设计师</span></td><td data-page-node-id="XY9AH7fgnTHRAuywUsqD4b">manual_review</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="AYhzfgNu7hc4uZMxcKlRIc">
+          <div class="category-title" data-page-node-id="p5amRA3sKWNmNze1VPZ32M">
+            <span class="badge badge-blue" data-page-node-id="8ovMGc0kFgIfMjrslCC4AQ">咨询工单</span> 本周期统计概览
+            <span class="count-badge" data-page-node-id="lugH6FxNz3vH3o6KzHZ9NE">29 条</span>
+          </div>
+          <div style="padding:4px 0" data-page-node-id="WupLrnH03UObebwqt3MG4X">
+            <div class="dist-row" data-page-node-id="mZBXlx3GcJoWOD2bV1ljDN"><span class="dist-label" data-page-node-id="Fjvi8CI3TNxXeDHFH2vG9R">费用与账务</span><div class="dist-bar-bg" data-page-node-id="GXONm3a8oKEi0vjQzTYiWR"><div class="dist-bar-fill" style="width:31%;background:#d46b08" data-page-node-id="AU7Rew5EliVAbqfo5vEEWM"></div></div><span class="dist-count" data-page-node-id="U0eAlH6ylSEcKB7DylHn5r">9</span></div>
+            <div class="dist-row" data-page-node-id="hCk7OB7WFrp1kN75kVlIh7"><span class="dist-label" data-page-node-id="exoM1Gp0z9HSkhFkK1EtUN">资源操作申请</span><div class="dist-bar-bg" data-page-node-id="hF9YTGMnTkCRv1QgZsrHu1"><div class="dist-bar-fill" style="width:28%;background:#096dd9" data-page-node-id="Wv7NZ7ZA5yCrW9eTCqnl28"></div></div><span class="dist-count" data-page-node-id="4frW8LhlshnvbdF8LO1y0i">8</span></div>
+            <div class="dist-row" data-page-node-id="d8K36gSu1ygxtm9r5iy5Aw"><span class="dist-label" data-page-node-id="OSycsiP5lojTgm87o09Lrr">报障与排错</span><div class="dist-bar-bg" data-page-node-id="hJR3L9u6mI4fpBZXaMfGZv"><div class="dist-bar-fill" style="width:21%;background:#cf1322" data-page-node-id="hORR1tnGQgMTzZXaz5Db6Q"></div></div><span class="dist-count" data-page-node-id="RuW4ZoOTCWg7azCkfbv76A">6</span></div>
+            <div class="dist-row" data-page-node-id="KmpiqGBJZRwxK9Sbz3JyBd"><span class="dist-label" data-page-node-id="FeI0vEjCOLyCRDx5KLLeiB">操作指导</span><div class="dist-bar-bg" data-page-node-id="QRXvFRJOg5MgBHseOYQs89"><div class="dist-bar-fill" style="width:14%;background:#722ed1" data-page-node-id="DvYklDTzhCGHIRmc9KXXuB"></div></div><span class="dist-count" data-page-node-id="lGPcBxBCcEbyhgnMx7lgEt">4</span></div>
+            <div class="dist-row" data-page-node-id="999QuizvnujR2xyox5O3Dk"><span class="dist-label" data-page-node-id="tuhHMsLJnaGHO7RtpGCMGZ">产品信息咨询</span><div class="dist-bar-bg" data-page-node-id="FMTXyDK0hAnYkbHspy6UL4"><div class="dist-bar-fill" style="width:7%;background:#389e0d" data-page-node-id="gS3LqAsDKhEEtXqD21JgHM"></div></div><span class="dist-count" data-page-node-id="W53qviJQhSfSZGAPypWBDj">2</span></div>
+          </div>
+        </div>
+
+        <div class="category-section" data-page-node-id="Rv4qu1ayp2OJKCFOEDWI2h">
+          <div class="category-title" data-page-node-id="XbmqSTlDv73sHmCuJ6LmvS">
+            <span class="badge badge-orange" data-page-node-id="A7weiYAhf5GuoO7qF6Otsf">用后即评-产品部溯源</span> 待处理
+            <span class="count-badge" data-page-node-id="pMp0PhmLdycTbp9NwZHGXU">1 条</span>
+          </div>
+          <table class="data-table" data-page-node-id="DH9xbNhnFPFclRQE7T8q5C">
+            <thead data-page-node-id="pgGMZsB6ohDihIHxA00U88"><tr data-page-node-id="ax6J7ybKWouI3CHSe0vgBn"><th style="width:80px" data-page-node-id="vaIgKYNSV4eZFs6ugawefe">客户</th><th data-page-node-id="Bk4e1wffuSXCQf4DXs0KTE">产品</th><th data-page-node-id="x1lOyFPggnNNj9MAB80hfx">反馈摘要</th><th style="width:70px" data-page-node-id="7ezXUxeVm5eXEzxUATMI0a">经办人</th><th style="width:70px" data-page-node-id="JJY9FcLz6HPnaIWaIUjjLS">处理状态</th></tr></thead>
+            <tbody data-page-node-id="0NLOtCZLgh0mERY1AacI1B">
+              <tr data-page-node-id="bA9OQk1BcTANwcrV2FAfoC"><td data-page-node-id="A88vTwjxh3iGC0nY6CYFQW">中国人寿</td><td data-page-node-id="QJ51pOrYZ6roU0QDmFY0XH">EIP</td><td data-page-node-id="wahixwsTd1BedgKypn37QB">低分反馈：EIP 释放流程不清晰</td><td data-page-node-id="eestwzSL7kWv6E67T5GRHc">陈静</td><td data-page-node-id="eiIRCHHIQPhAPzH8dHzKpL"><span class="badge badge-blue" data-page-node-id="g9uwwrz6x4FGaUHOjG214t">进行中</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="category-section" data-page-node-id="W4n4tmMb8Gl2eOkV2pg8A6">
+          <div class="category-title" data-page-node-id="pNwk6aSiGB8fCMszHJSun9">
+            <span class="badge badge-orange" data-page-node-id="2ACmGGz1CtLgup94ArRPTg">未完成举措</span>
+            <span class="count-badge" data-page-node-id="MTnQSPK8siwFvvE17YnPHJ">1 条</span>
+            <span class="urgent-tag urgent-overdue" style="margin-left:8px">超期 1</span>
+          </div>
+          <table class="data-table" data-page-node-id="fL9iuF5lCERJSiFwmDdMzi">
+            <thead data-page-node-id="7C1QxeD4VH6dK6Ai1WSu3d"><tr data-page-node-id="GGkf9tIBTA6FRhJ7k77lY0"><th data-page-node-id="d3IXgB3oWu4P57U1ZGAXE3">举措内容</th><th style="width:60px" data-page-node-id="lYEVw8qkKvNta0rbeW7qFa">状态</th><th style="width:70px" data-page-node-id="tdSPqGgS4j25L5eSvpHhmx">排期</th><th style="width:90px" data-page-node-id="lNQoDfM1D33iIg5NEuic31">首次提出</th><th style="width:50px">提醒</th></tr></thead>
+            <tbody data-page-node-id="ruGJELn9WzpwP9gOMnuV6F">
+              <tr class="urgent-row" data-page-node-id="LcdwCPsh0eIHDBuXbkzVQA"><td data-page-node-id="BZ77AMhBDOnv3rBECCJBJV">EIP 计费规则文档优化，补充释放后计费周期说明</td><td data-page-node-id="7odo9pPcYzHKlwoCKaqGd1"><span class="badge badge-gray" data-page-node-id="m869BT03xAghlv9OjjeN5x">待评估</span></td><td data-page-node-id="RvD9x4EbVCBLXEtz1AiDhr">2026-10-20</td><td data-page-node-id="BplgF2sJ1V0Q2bADU7CQv5">2026-10-17</td><td><span class="urgent-tag urgent-overdue">超期</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="llm-block" data-page-node-id="y3LbI7inIaByGrM4uOgx1C">
+          <p data-page-node-id="HJD9EB4GCFzauJ0Za7DgvA"><strong data-page-node-id="s4VxI3WH5LXl088uujlYg1">LLM 产品概述：</strong>本周期 EIP 有 1 条投诉工单待处理，涉及释放后仍计费问题，设计师需跟进优化文档。咨询工单 29 条中费用类占比最高（31%），反映客户对 EIP 计费规则理解存在普遍困惑，建议优先完善计费说明文档。另有 1 条举措已超期（排期 10-20 已过），需尽快推进。</p>
+          <p data-page-node-id="IgBzXkYJ8nPzfiZBQvBOew"><strong data-page-node-id="mQ9xKX0aXf5hjmGHrLm4wL">趋势洞察：</strong>费用类咨询连续两周占比第一（上周期 7/24 - 本周期 9/29），投诉工单也由费用引发，指向同一根因：EIP 释放后计费截止规则文档不清晰。</p>
+        </div>
+
+        <div style="clear:both" data-page-node-id="iAni55GEvv0ID1NA7Z4rkX"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px 16px;background:#f5f7fa;border-radius:8px;font-size:12px;color:#666" data-page-node-id="VLSgQhh1nqVLI40wRORCgb">
+      <strong style="color:#333" data-page-node-id="U0IMHuYgqFBHUIOJQu6oMD">交互说明：</strong>点击上方产品 Tab 可切换面板（此处用 inline onclick 演示，实际附件用 addEventListener）。产品内五类待办顺序铺排，不做额外目录——一个产品内容长度有限，滚动条够用。无待办产品不出现 Tab。
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

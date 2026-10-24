@@ -16,6 +16,7 @@ backup/
 docs/BACKUP-BEFORE-RELEASE.md
 docs/BUILTIN-JOURNEY-ROLLOUT.md
 docs/ACTION-ITEM-REQUIREMENT-TICKET.md
+docs/DESIGN-mcp-scenarios-20261024.md
 
 # Auto-generated reports (rebuilt every pipeline run, not source files)
 docs/行动建议-*-验证.md
@@ -27,3 +28,17 @@ docs/四产品-分层分类总览.md
 scripts/poc-*.cjs
 scripts/poc-*.py
 docs/poc-*.md
+
+# Local secrets & editor artifacts (never versioned)
+.env
+.cursor/
+
+# Personal docs (not for repo)
+FB其他文档/
+
+# One-off e2e debug probes (throwaway diagnostics)
+e2e-net-diag.mjs
+e2e-quickscope-probe.mjs
+
+# One-off backfill scripts (historical, not for production)
+scripts/backfill-post-use-rating-product-key.mjs
