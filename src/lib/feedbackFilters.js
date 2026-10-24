@@ -191,7 +191,8 @@ export function matchesProblemCauseSourceFilter(record, value = '') {
 }
 
 /**
- * 按处理意见字段做关键字模糊匹配（大小写不敏感子串）。
+ * 按「处理意见」做关键字模糊匹配（大小写不敏感子串）。
+ * handlingText 为空或 \N 时回退到 rawText（原始受理内容）。
  *
  * @param {FeedbackRecord | null | undefined} record
  * @param {string} [keyword]
@@ -199,18 +200,37 @@ export function matchesProblemCauseSourceFilter(record, value = '') {
 export function matchesHandlingKeywordFilter(record, keyword = '') {
   const needle = String(keyword ?? '').trim().toLowerCase()
   if (!needle) return true
-  const haystack = String(record?.handlingText ?? '').toLowerCase()
-  return haystack.includes(needle)
+  const sc = record?.sourceColumns
+  const rawHandling =
+    String(record?.handlingText ?? '').trim() ||
+    String(sc?.['处理意见'] ?? '').trim()
+  const rawText =
+    String(record?.rawText ?? '').trim() ||
+    String(sc?.['受理内容'] ?? '').trim()
+  const parts = [
+    rawHandling && rawHandling !== '\\N' ? rawHandling : '',
+    rawText && rawText !== '\\N' ? rawText : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return parts.includes(needle)
 }
 
 /**
+ * 按客户名称做关键字模糊匹配（大小写不敏感子串）。
+ * customerName 为空时回退到 sourceColumns['集团名称']。
+ *
  * @param {FeedbackRecord | null | undefined} record
  * @param {string[]} [customerNames]
  */
 export function matchesCustomerNamesFilter(record, customerNames = []) {
   if (!Array.isArray(customerNames) || customerNames.length === 0) return true
-  const name = String(record?.customerName ?? '').trim()
-  return Boolean(name) && customerNames.includes(name)
+  const name = String(record?.customerName ?? '').trim().toLowerCase()
+  if (name) return customerNames.some((n) => name.includes(String(n).trim().toLowerCase()))
+  const groupName = String(record?.sourceColumns?.['集团名称'] ?? '').trim().toLowerCase()
+  if (!groupName) return false
+  return customerNames.some((n) => groupName.includes(String(n).trim().toLowerCase()))
 }
 
 /**

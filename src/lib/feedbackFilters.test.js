@@ -157,6 +157,36 @@ describe('feedbackFilters', () => {
     expect(matchesHandlingKeywordFilter({ handlingText: '' }, '调整')).toBe(false)
   })
 
+  it('matchesHandlingKeywordFilter treats \\N as empty and falls back to rawText', () => {
+    expect(matchesHandlingKeywordFilter({ handlingText: '\\N' }, '调整')).toBe(false)
+    expect(matchesHandlingKeywordFilter({ handlingText: '\\N', rawText: '客户反馈带宽不够' }, '带宽')).toBe(true)
+    expect(matchesHandlingKeywordFilter({ handlingText: '', rawText: '安全组规则限制' }, '安全组')).toBe(true)
+  })
+
+  it('matchesHandlingKeywordFilter falls back to sourceColumns when handlingText/rawText are absent (list projection)', () => {
+    // 模拟 API 列表投影裁剪了 handlingText/rawText，但 sourceColumns 保留
+    const record = {
+      sourceColumns: {
+        '处理意见': '已协助客户调整安全组规则',
+        '受理内容': '客户反馈带宽不够',
+      },
+    }
+    expect(matchesHandlingKeywordFilter(record, '安全组')).toBe(true)
+    expect(matchesHandlingKeywordFilter(record, '带宽')).toBe(true)
+    expect(matchesHandlingKeywordFilter(record, 'VPC')).toBe(false)
+    // sourceColumns 中 \N 也当空
+    const recordN = { sourceColumns: { '处理意见': '\\N', '受理内容': '客户咨询带宽配额' } }
+    expect(matchesHandlingKeywordFilter(recordN, '带宽')).toBe(true)
+    expect(matchesHandlingKeywordFilter(recordN, '安全组')).toBe(false)
+    // 优先用 handlingText，其次才回退
+    const recordMixed = {
+      handlingText: '处理意见正文',
+      sourceColumns: { '处理意见': 'sourceColumns回退值', '受理内容': '受理内容回退值' },
+    }
+    expect(matchesHandlingKeywordFilter(recordMixed, '正文')).toBe(true)
+    expect(matchesHandlingKeywordFilter(recordMixed, '回退值')).toBe(true)
+  })
+
   it('matchesListeningReviewedFilter by yes/no', () => {
     expect(matchesListeningReviewedFilter({ listeningReviewed: true }, '')).toBe(true)
     expect(matchesListeningReviewedFilter({ listeningReviewed: true }, 'yes')).toBe(true)
@@ -174,11 +204,23 @@ describe('feedbackFilters', () => {
     )
   })
 
-  it('matchesCustomerNamesFilter by exact customer name', () => {
+  it('matchesCustomerNamesFilter by substring match (case-insensitive)', () => {
     expect(matchesCustomerNamesFilter({ customerName: '客户A' }, ['客户A'])).toBe(true)
     expect(matchesCustomerNamesFilter({ customerName: '客户A' }, ['客户B'])).toBe(false)
     expect(matchesCustomerNamesFilter({ customerName: '' }, ['客户A'])).toBe(false)
     expect(matchesCustomerNamesFilter({ customerName: '客户A' }, [])).toBe(true)
+    // 子串匹配：输入部分名称也能命中
+    expect(matchesCustomerNamesFilter({ customerName: '福州鑫广泰工贸有限公司' }, ['鑫广泰'])).toBe(true)
+    expect(matchesCustomerNamesFilter({ customerName: '福州鑫广泰工贸有限公司' }, ['福州'])).toBe(true)
+    expect(matchesCustomerNamesFilter({ customerName: '福州鑫广泰工贸有限公司' }, ['厦门'])).toBe(false)
+    // 多个关键词：任一命中即通过
+    expect(matchesCustomerNamesFilter({ customerName: '中国铁塔股份有限公司' }, ['福州', '铁塔'])).toBe(true)
+    // customerName 为空时回退到 sourceColumns['集团名称']
+    expect(matchesCustomerNamesFilter({ customerName: '', sourceColumns: { '集团名称': '中国铁塔股份有限公司' } }, ['铁塔'])).toBe(true)
+    expect(matchesCustomerNamesFilter({ customerName: '', sourceColumns: { '集团名称': '中国铁塔股份有限公司' } }, ['厦门'])).toBe(false)
+    expect(matchesCustomerNamesFilter({ sourceColumns: { '集团名称': '福州鑫广泰' } }, ['鑫广泰'])).toBe(true)
+    // customerName 和 sourceColumns 都没有时搜不到
+    expect(matchesCustomerNamesFilter({ customerName: '', sourceColumns: {} }, ['铁塔'])).toBe(false)
     expect(parseCustomerNamesParam('客户A,%E5%AE%A2%E6%88%B7B')).toEqual(['客户A', '客户B'])
   })
 
