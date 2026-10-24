@@ -16,6 +16,7 @@ import Actions from './pages/Actions.jsx'
 import TopicAnalysis from './pages/TopicAnalysis.jsx'
 import TopicReportDetail from './pages/TopicReportDetail.jsx'
 import Operations from './pages/Operations.jsx'
+import McpGuide from './pages/McpGuide.jsx'
 import Login from './pages/Login.jsx'
 import ChangePassword from './pages/ChangePassword.jsx'
 
@@ -58,6 +59,7 @@ const routes = [
           { path: 'tags', element: <TagManagement /> },
           { path: 'users', element: <Users /> },
           { path: 'operations', element: <Operations /> },
+          { path: 'mcp-guide', element: <McpGuide /> },
           { path: '*', element: <Navigate to="/workbench" replace /> },
         ],
       },

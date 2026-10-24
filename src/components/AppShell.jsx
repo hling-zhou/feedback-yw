@@ -12,8 +12,9 @@ import {
   FlagOutlined,
   DeploymentUnitOutlined,
   BarChartOutlined,
+  ApiOutlined,
 } from '@ant-design/icons'
-import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
+import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography, Badge } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import {
   APP_SIDER_BREAKPOINT,
@@ -45,6 +46,7 @@ const ALL_NAV = [
   { key: '/users', label: '用户管理', icon: <TeamOutlined /> },
   { key: '/operations', label: '运营分析', icon: <BarChartOutlined /> },
   { key: '/settings', label: '设置', icon: <SettingOutlined /> },
+  { key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined />, badge: 'NEW' },
 ]
 
 function resolveNavKey(pathname) {
@@ -84,11 +86,25 @@ export default function AppShell() {
     setWhatsNewUnread(false)
   }, [])
 
-  const navItems = ALL_NAV.filter((item) => canRoute(item.key)).map(({ key, label, icon }) => ({
-    key,
-    label,
-    icon,
-  }))
+  const navItems = ALL_NAV.filter((item) => canRoute(item.key)).map(({ key, label, icon, badge }) => {
+    const item = {
+      key,
+      label: badge ? (
+        <Space size={4}>
+          <span>{label}</span>
+          <Tag color="purple" className="!m-0 !text-[10px] !leading-tight">{badge}</Tag>
+        </Space>
+      ) : label,
+      icon,
+    }
+    return item
+  })
+
+  // 在 MCP 数据服务前插入分隔线
+  const mcpIndex = navItems.findIndex((n) => n.key === '/mcp-guide')
+  if (mcpIndex >= 0) {
+    navItems.splice(mcpIndex, 0, { type: 'divider' })
+  }
 
   const goChangePassword = () => {
     navigate('/change-password?mode=voluntary', {

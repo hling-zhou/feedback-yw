@@ -59,6 +59,7 @@ import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
 import { registerUsageRoutes } from './routes/usage.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerMailRoutes } from './routes/mail.js'
+import { registerMcpRoutes } from './routes/mcp.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
 import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
@@ -100,6 +101,7 @@ registerPostUseVisitRoutes(app)
 registerTicketTodoRoutes(app)
 registerCuratedTaxonomyRoutes(app)
 registerMailRoutes(app)
+registerMcpRoutes(app)
 registerUsageRoutes(app)
 registerAssistantRoutes(app)
 

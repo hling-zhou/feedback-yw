@@ -14,6 +14,7 @@ import AuditLogPanel from '../components/admin/AuditLogPanel.jsx'
 import MessageBottlePanel from '../components/admin/MessageBottlePanel.jsx'
 import RequirementTicketProgressPanel from '../components/admin/RequirementTicketProgressPanel.jsx'
 import ApiKeyPanel from '../components/admin/ApiKeyPanel.jsx'
+import McpSharedKeysPanel from '../components/admin/McpSharedKeysPanel.jsx'
 import KnowledgeBasePanel from '../components/admin/KnowledgeBasePanel.jsx'
 import PipelineCopilotPanel from '../components/admin/PipelineCopilotPanel.jsx'
 import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
@@ -874,6 +875,7 @@ export default function Settings() {
         {activeTab === 'requirement_sync' && (
           <div className="space-y-6">
             <ApiKeyPanel canEdit={can('manageRequirementSync')} />
+            <McpSharedKeysPanel canEdit={can('manageRequirementSync')} />
             <RequirementTicketProgressPanel canEdit={can('manageRequirementSync')} />
           </div>
         )}

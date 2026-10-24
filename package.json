@@ -19,7 +19,8 @@
     "prebuild": "npm run generate:whats-new",
     "benchmark:clustering": "node scripts/benchmark-clustering.mjs",
     "generate:clustering-golden": "node scripts/generate-clustering-top10-golden.mjs",
-    "promote:playbook-actions": "node scripts/promote-established-actions-to-playbook.mjs"
+    "promote:playbook-actions": "node scripts/promote-established-actions-to-playbook.mjs",
+    "mcp": "MCP_TRANSPORT=sse MCP_PORT=3002 node server/mcp-server.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.3",
