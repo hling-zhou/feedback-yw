@@ -87,7 +87,10 @@ export function normalizeCustomerVisitRow(mappedRow) {
   const customerCode = String(row.customerCode ?? row['客户编码'] ?? '').trim()
   const userFeedbackText = String(row.userFeedbackText ?? row['用户反馈原文'] ?? '').trim()
   const assigneeName = String(row.assigneeName ?? row['经办人'] ?? '').trim()
-  const scoreSource = ''
+  const groupName = String(row.groupName ?? row['集团名称'] ?? '').trim()
+  const loginAccountName = String(row.loginAccountName ?? row['登录账号名称'] ?? '').trim()
+  const originalTicketId = String(row.originalTicketId ?? row['原工单编号'] ?? '').trim()
+  const scoreSource = String(row.scoreSource ?? row['评分来源'] ?? '').trim()
   const ratingText = ''
   const userInfo = String(
     row.userInfo
@@ -111,6 +114,9 @@ export function normalizeCustomerVisitRow(mappedRow) {
     productName,
     customerName,
     customerCode,
+    groupName,
+    loginAccountName,
+    originalTicketId,
     feedbackSummary,
     userFeedbackText,
     assigneeName,
@@ -303,6 +309,9 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
       productName: visit.productName,
       customerName: visit.customerName,
       customerCode: visit.customerCode,
+      groupName: visit.groupName,
+      loginAccountName: visit.loginAccountName,
+      originalTicketId: visit.originalTicketId,
       feedbackSummary: visit.feedbackSummary,
       userFeedbackText: visit.userFeedbackText,
       assigneeName: visit.assigneeName || '',
@@ -358,6 +367,9 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
         productName: visit.productName,
         customerName: visit.customerName,
         customerCode: visit.customerCode,
+        groupName: visit.groupName,
+        loginAccountName: visit.loginAccountName,
+        originalTicketId: visit.originalTicketId,
         feedbackSummary: visit.feedbackSummary,
         userFeedbackText: visit.userFeedbackText,
         assigneeName: visit.assigneeName || '',

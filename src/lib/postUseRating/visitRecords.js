@@ -25,6 +25,9 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [assigneeName]
  * @property {string} [actionId]
  * @property {string} [jiraId]
+ * @property {string} [groupName] 集团名称（客户名称真源）
+ * @property {string} [loginAccountName] 登录账号名称
+ * @property {string} [originalTicketId] 原工单编号/相应投诉工单
  * @property {string} updatedAt
  */
 
@@ -40,6 +43,10 @@ export function normalizeVisitRecords(raw) {
     ...item,
     customerName: String(item?.customerName || item?.userInfoDetail || item?.userInfo || ''),
     customerCode: String(item?.customerCode || ''),
+    groupName: String(item?.groupName || ''),
+    loginAccountName: String(item?.loginAccountName || ''),
+    originalTicketId: String(item?.originalTicketId || ''),
+    scoreSource: String(item?.scoreSource || ''),
     userFeedbackText: String(item?.userFeedbackText || ''),
     assigneeName: String(item?.assigneeName || ''),
     actionId: String(item?.actionId || ''),

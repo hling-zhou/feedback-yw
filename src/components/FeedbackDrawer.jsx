@@ -137,6 +137,8 @@ import {
   syncTicketTodoIncoming } from '../lib/ticketTodoIncomingSync.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
+import { getSourceColumnValue } from '../lib/sourceColumns.js'
+import ActionCopyIcon from './common/ActionCopyIcon.jsx'
 import {
   countHandlingKeywordHitsInGroup,
   defaultExpandedPhaseIds,
@@ -849,9 +851,20 @@ function HandlingOriginalTextModal({
   )
 }
 
-/** @param {{ metaLine: string; postUse?: boolean }} props */
-function TicketDetailDrawerTitle({ metaLine, postUse = false }) {
+/** @param {{ metaLine: string; ticketId?: string; postUse?: boolean }} props */
+function TicketDetailDrawerTitle({ metaLine, ticketId, postUse = false }) {
   const showMetaTooltip = Boolean(metaLine?.trim() && metaLine !== '—')
+
+  // 拆分工单号与剩余部分，在工单号后插入复制 icon
+  let ticketSegment = ''
+  let restSegment = ''
+  if (ticketId?.trim() && metaLine?.startsWith(ticketId)) {
+    ticketSegment = ticketId
+    restSegment = metaLine.slice(ticketId.length)
+  } else {
+    restSegment = metaLine || ''
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
       <div className="relative min-h-[1.25rem] w-full">
@@ -870,10 +883,18 @@ function TicketDetailDrawerTitle({ metaLine, postUse = false }) {
       >
         <Typography.Text
           type="secondary"
-          className="block min-w-0 text-xs leading-snug"
+          className="block min-w-0 text-sm leading-snug"
           ellipsis={{ tooltip: false }}
         >
-          {metaLine}
+          {ticketSegment ? (
+            <span className="inline-flex items-center gap-1">
+              <span>{ticketSegment}</span>
+              <ActionCopyIcon value={ticketSegment} />
+              {restSegment ? <span>{restSegment}</span> : null}
+            </span>
+          ) : (
+            restSegment
+          )}
         </Typography.Text>
       </Tooltip>
     </div>
@@ -1664,7 +1685,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   return (
     <>
     <Drawer
-      title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} postUse={isPostUseLibrary} />}
+      title={<TicketDetailDrawerTitle metaLine={ticketMetaLine} ticketId={feedback?.ticketId} postUse={isPostUseLibrary} />}
       size={TICKET_DETAIL_DRAWER_WIDTH}
       open={Boolean(feedback)}
       onClose={handleRequestClose}
@@ -1818,12 +1839,15 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             </div>
             {feedback.customerVisit ? (
               <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">客服部回访</span></div>
-                <Descriptions size="small" column={1} bordered>
+                <Descriptions size="small" column={1} bordered labelStyle={{ whiteSpace: 'nowrap' }}>
                   <Descriptions.Item label="客户名称">
-                    {feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
+                    {feedback.customerVisit.groupName || feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="客户编码">
                     {feedback.customerVisit.customerCode || '—'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="登录账号名称">
+                    {feedback.customerVisit.loginAccountName || '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="回访反馈信息">
                     <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
@@ -1835,6 +1859,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                       {feedback.customerVisit.internalEvaluationDetail || feedback.customerVisit.internalConclusion || '—'}
                     </Typography.Paragraph>
                   </Descriptions.Item>
+                  {feedback.customerVisit.scoreSource === '投诉回访' && (
+                    <Descriptions.Item label="相应投诉工单">
+                      {feedback.customerVisit.originalTicketId || '—'}
+                    </Descriptions.Item>
+                  )}
                   <Descriptions.Item label="内部结论">
                     {feedback.customerVisit.internalConclusion || '—'}
                   </Descriptions.Item>
@@ -1881,6 +1910,34 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               默认预览约 3 行，完整内容请点右上角「放大查看」。优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
             </Typography.Text>
           </div>
+
+          {/* 集团名称 + 登录账号名称 */}
+          {(() => {
+            const groupName = getSourceColumnValue(feedback, '集团名称')
+            const loginAccountName = getSourceColumnValue(feedback, '登录账号名称')
+            if (!groupName && !loginAccountName) return null
+            return (
+              <div className="page-card-sm">
+                <div className="page-card-header"><span className="page-card-title">客户信息</span></div>
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
+                  {groupName ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">客户名称：</Typography.Text>
+                      <Typography.Text>{groupName}</Typography.Text>
+                      <ActionCopyIcon value={groupName} />
+                    </span>
+                  ) : null}
+                  {loginAccountName ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">登录账号名称：</Typography.Text>
+                      <Typography.Text>{loginAccountName}</Typography.Text>
+                      <ActionCopyIcon value={loginAccountName} />
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })()}
 
           {isFollowUpEnrichableRecord(feedback) ? (
             <>

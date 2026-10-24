@@ -261,13 +261,17 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
         <div className="space-y-4">
           <div>
             <Typography.Text type="secondary">基础信息</Typography.Text>
-            <Descriptions size="small" column={1} className="mt-2" bordered>
+            <Descriptions size="small" column={1} className="mt-2" bordered labelStyle={{ whiteSpace: 'nowrap' }}>
               <Descriptions.Item label="数据月份">{record.importMonth || record.visitMonth || '—'}</Descriptions.Item>
-              <Descriptions.Item label="客户名称">{record.customerName || '—'}</Descriptions.Item>
+              <Descriptions.Item label="客户名称">{record.groupName || record.customerName || '—'}</Descriptions.Item>
               <Descriptions.Item label="客户编码">{record.customerCode || '—'}</Descriptions.Item>
+              <Descriptions.Item label="登录账号名称">{record.loginAccountName || '—'}</Descriptions.Item>
               <Descriptions.Item label="产品名称">{record.productName || '—'}</Descriptions.Item>
               <Descriptions.Item label="用户反馈原文">{record.userFeedbackText || '—'}</Descriptions.Item>
               <Descriptions.Item label="回访结果">{record.visitResult || '—'}</Descriptions.Item>
+              {record.scoreSource === '投诉回访' && (
+                <Descriptions.Item label="相应投诉工单">{record.originalTicketId || '—'}</Descriptions.Item>
+              )}
               <Descriptions.Item label="涉及评价">{record.ratingText || '—'}</Descriptions.Item>
               <Descriptions.Item label="经办人">{record.assigneeName || '—'}</Descriptions.Item>
               <Descriptions.Item label="更新时间">{record.updatedAt || '—'}</Descriptions.Item>

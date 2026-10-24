@@ -535,7 +535,7 @@ export default function Import({ embedded = false }) {
       if (customerVisitImport) {
         if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
           throw new Error(
-            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注为可选列）',
+            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注、集团名称、登录账号名称、评分来源、原工单编号为可选列）',
           )
         }
       }
@@ -1823,7 +1823,7 @@ export default function Import({ embedded = false }) {
               followUpImport
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
-                  ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注为可选列）。`
+                  ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注、集团名称、登录账号名称、评分来源、原工单编号为可选列）。`
                   : ticketSource
                     ? `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；按表头列「工单展示流水号」识别表头。单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
                     : `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`

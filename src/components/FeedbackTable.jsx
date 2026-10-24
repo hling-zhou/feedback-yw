@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Button, Empty, Table, Tag, Typography } from 'antd'
+import { Button, Empty, Table, Tag, Tooltip, Typography } from 'antd'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
@@ -15,6 +15,7 @@ import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
 import { isComplaintTicket } from '../domain/complaintCause.js'
 import { normalizeCustomProblemCategory } from '../domain/customProblemCategory.js'
+import { getSourceColumnValue } from '../lib/sourceColumns.js'
 
 /**
  * @param {string | undefined} channel
@@ -180,6 +181,34 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
         ]
       : []),
     {
+      title: '客户名称',
+      dataIndex: 'groupName',
+      width: 140,
+      ellipsis: true,
+      render: (_, fb) => {
+        const val = getSourceColumnValue(fb, '集团名称') || '-'
+        return (
+          <Tooltip title={val !== '-' ? val : undefined} getPopupContainer={() => document.body}>
+            <Typography.Text ellipsis>{val}</Typography.Text>
+          </Tooltip>
+        )
+      },
+    },
+    {
+      title: '登录账号名称',
+      dataIndex: 'loginAccountName',
+      width: 140,
+      ellipsis: true,
+      render: (_, fb) => {
+        const val = getSourceColumnValue(fb, '登录账号名称') || '-'
+        return (
+          <Tooltip title={val !== '-' ? val : undefined} getPopupContainer={() => document.body}>
+            <Typography.Text ellipsis>{val}</Typography.Text>
+          </Tooltip>
+        )
+      },
+    },
+    {
       title: '回访满意度',
       dataIndex: 'followUpSatisfaction',
       width: 108,
@@ -281,11 +310,7 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
       title: '资源池',
       dataIndex: 'resourcePool',
       width: 130,
-      render: (value) => (
-        <Typography.Text type="secondary" className="text-xs">
-          {value || '-'}
-        </Typography.Text>
-      ),
+      render: (value) => value || '-',
     },
   ]
 }

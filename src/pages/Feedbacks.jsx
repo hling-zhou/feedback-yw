@@ -146,6 +146,8 @@ const FEEDBACK_LIST_COLUMN_OPTIONS = [
   { key: 'problemType', label: '问题类型' },
   { key: 'customProblemCategory', label: '问题分类（自定义）' },
   { key: 'journeyL1', label: '用户旅程' },
+  { key: 'groupName', label: '客户名称' },
+  { key: 'loginAccountName', label: '登录账号名称' },
   { key: 'resourcePool', label: '资源池' },
 ]
 
@@ -1688,6 +1690,7 @@ function CustomerVisitTable({ rows, reviewEnabled = false, onSelect }) {
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
       { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
+      { title: '登录账号名称', dataIndex: '登录账号名称', width: 140, ellipsis: true },
       { title: '产品名称', dataIndex: '产品名称', width: 160, ellipsis: true },
       { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
       { title: '建议触发类型', dataIndex: '建议触发类型', width: 140, ellipsis: true },
@@ -1698,6 +1701,7 @@ function CustomerVisitTable({ rows, reviewEnabled = false, onSelect }) {
       { title: '最近反馈时间', dataIndex: '最近反馈时间', width: 168 },
       { title: '涉及渠道', dataIndex: '涉及渠道', width: 140, ellipsis: true },
       { title: '建议回访原因', dataIndex: '建议回访原因', width: 260, ellipsis: true },
+      { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 180, ellipsis: true },
       ...Array.from({ length: maxQuotes }, (_, index) => ({
         title: `客户原话${index + 1}`,
         dataIndex: `客户原话${index + 1}`,

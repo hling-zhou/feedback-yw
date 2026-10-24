@@ -176,12 +176,16 @@ export default function PostUseJiraDrawer({
         <div className="space-y-4">
           <div>
             <Typography.Text type="secondary">基础信息</Typography.Text>
-            <Descriptions size="small" column={1} className="mt-2" bordered>
+            <Descriptions size="small" column={1} className="mt-2" bordered labelStyle={{ whiteSpace: 'nowrap' }}>
               <Descriptions.Item label="数据月份">{item.importMonth || '—'}</Descriptions.Item>
               <Descriptions.Item label="客户名称">{item.customerName || '—'}</Descriptions.Item>
               <Descriptions.Item label="客户编码">{item.customerCode || '—'}</Descriptions.Item>
+              <Descriptions.Item label="登录账号名称">{item.loginAccountName || '—'}</Descriptions.Item>
               <Descriptions.Item label="产品名称">{item.productName || '—'}</Descriptions.Item>
               <Descriptions.Item label="客户反馈">{item.customerFeedback || '—'}</Descriptions.Item>
+              {item.scoreSource === '投诉回访' && (
+                <Descriptions.Item label="相应投诉工单">{item.originalTicketId || '—'}</Descriptions.Item>
+              )}
               <Descriptions.Item label="经办人">{assigneeName || '—'}</Descriptions.Item>
             </Descriptions>
           </div>

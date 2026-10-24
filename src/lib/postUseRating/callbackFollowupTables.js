@@ -45,12 +45,15 @@ export function buildCallbackNonTenFollowupFeedback(item) {
 }
 
 export function toQuestionnaireFollowupRow(item) {
+  const firstRecord = item?.triggerRecords?.[0]
+  const loginAccountName = firstRecord?.sourceColumns?.['登录账号名称'] || firstRecord?.sourceColumns?.['登陆账号名称'] || ''
   return {
     itemKey: item?.itemKey || questionnaireCallbackItemKey(item),
     sourceType: 'questionnaire',
     数据月份: (item?.importMonths || []).filter(Boolean).join('、'),
     客户名称: item?.customerName || '',
     客户编码: item?.customerCode || '',
+    登录账号名称: loginAccountName,
     产品名称: item?.productName || '',
     客户反馈: buildQuestionnaireFollowupFeedback(item),
     recommendedReason: item?.recommendedReason || item?.reasonSummary || '',
@@ -64,8 +67,10 @@ export function toCallbackNonTenFollowupRow(item) {
     数据月份: item?.importMonth || '',
     客户名称: item?.customerName || '',
     客户编码: item?.customerCode || '',
+    登录账号名称: item?.loginAccountName || '',
     产品名称: item?.productName || '',
     客户反馈: buildCallbackNonTenFollowupFeedback(item),
+    相应投诉工单: item?.originalTicketId || '',
   }
 }
 
@@ -74,7 +79,9 @@ export function buildFollowupTableExportRows(rows) {
     数据月份: item.数据月份 || '',
     客户名称: item.客户名称 || '',
     客户编码: item.客户编码 || '',
+    登录账号名称: item.登录账号名称 || '',
     产品名称: item.产品名称 || '',
+    相应投诉工单: item.相应投诉工单 || '',
     客户反馈: item.客户反馈 || '',
   }))
 }
@@ -144,9 +151,12 @@ export function toJiraArchivePayload(row, assigneeMap) {
     importMonth: row.数据月份 || '',
     customerName: row.客户名称 || '',
     customerCode: row.客户编码 || '',
+    loginAccountName: row.登录账号名称 || '',
     productName: row.产品名称 || '',
     customerFeedback: row.客户反馈 || '',
     recommendedReason: row.recommendedReason || '',
+    originalTicketId: row.相应投诉工单 || '',
+    scoreSource: row.相应投诉工单 ? '投诉回访' : '',
     assigneeId: assignee?.id || '',
     assigneeName: assignee?.username || '',
   }

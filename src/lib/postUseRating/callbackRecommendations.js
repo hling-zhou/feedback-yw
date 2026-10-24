@@ -407,6 +407,7 @@ export function buildPostUseCallbackNonTenRecords(records, opts = {}) {
         score,
         customerName: normalizeText(record.customerName),
         customerCode: normalizeText(record.customerCode),
+        loginAccountName: record.sourceColumns?.['登录账号名称'] || record.sourceColumns?.['登陆账号名称'] || '',
         dissatisfactionReason: normalizeText(record.lowScoreReason),
         importMonth: normalizeText(record.importMonth),
         customerRequest: ticket ? getDisplayCustomerRequest(ticket) : '',
