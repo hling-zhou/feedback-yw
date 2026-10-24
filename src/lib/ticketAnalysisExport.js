@@ -14,6 +14,10 @@ import {
   hasIncompleteSourceColumns,
   recordsMissingSourceColumns,
 } from './sourceColumns.js'
+import {
+  desensitizeColumnValue,
+  desensitizeTextField,
+} from './ticketAnalysisDesensitize.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
 
@@ -35,8 +39,9 @@ export const getExportV2Headers = getExportV3Headers
 /**
  * @param {FeedbackRecord} record
  * @param {import('../domain/fieldRegistry.js').FieldDefinition} field
+ * @param {import('./ticketAnalysisDesensitize.js').DesensitizeOptions} [desensitizeOptions]
  */
-function exportRegistryFieldValue(record, field) {
+function exportRegistryFieldValue(record, field, desensitizeOptions) {
   const taggingFields = {
     handlingText: record.handlingText,
     rawText: record.rawText,
@@ -49,9 +54,9 @@ function exportRegistryFieldValue(record, field) {
     case 'product':
       return record.product || ''
     case 'customerRequest':
-      return record.customerRequest || ''
+      return desensitizeTextField(record.customerRequest || '', desensitizeOptions)
     case 'painPoint':
-      return readFieldValue(record, field)
+      return desensitizeTextField(readFieldValue(record, field), desensitizeOptions)
     case 'requestScene':
       return record.requestScene || ''
     case 'problemType':
@@ -80,25 +85,25 @@ function exportRegistryFieldValue(record, field) {
       return record.actionSchedule || ''
     case 'acceptanceContent': {
       const fromSnapshot = getSourceColumnValue(record, '受理内容')
-      if (fromSnapshot?.trim()) return fromSnapshot
-      return extractAcceptanceTextFromFields(taggingFields)
+      const text = fromSnapshot?.trim() ? fromSnapshot : extractAcceptanceTextFromFields(taggingFields)
+      return desensitizeTextField(text, desensitizeOptions)
     }
     case 'handlingOpinion':
-      return extractHandlingTextFromFields(taggingFields)
+      return desensitizeTextField(extractHandlingTextFromFields(taggingFields), desensitizeOptions)
     case 'rootCauseReview':
       return getProblemCauseDisplay(record).value
     case 'customerTypeName':
       return getSourceColumnValue(record, '客户类型名称')
     case 'groupName':
-      return getSourceColumnValue(record, '集团名称')
+      return desensitizeColumnValue(getSourceColumnValue(record, '集团名称'), 'groupName', desensitizeOptions)
     case 'groupCustomerCode':
-      return getSourceColumnValue(record, '集团客户编码')
+      return desensitizeColumnValue(getSourceColumnValue(record, '集团客户编码'), 'groupCustomerCode', desensitizeOptions)
     case 'groupProvince':
       return getSourceColumnValue(record, '集团所属省份')
     case 'groupCity':
       return getSourceColumnValue(record, '集团所属地市')
     case 'loginAccountName':
-      return getSourceColumnValue(record, '登录账号名称')
+      return desensitizeColumnValue(getSourceColumnValue(record, '登录账号名称'), 'loginAccountName', desensitizeOptions)
     case 'customerTierExport':
       return getSourceColumnValue(record, '移动云客户服务等级') || record.customerTier || ''
     case 'acceptChannel':
@@ -112,14 +117,15 @@ function exportRegistryFieldValue(record, field) {
  * 分析结果导出 v3：列定义与顺序唯一来自 Field Registry。
  *
  * @param {FeedbackRecord} record
+ * @param {import('./ticketAnalysisDesensitize.js').DesensitizeOptions} [desensitizeOptions]
  * @returns {Record<string, string>}
  */
-export function recordToExportRowV3(record) {
+export function recordToExportRowV3(record, desensitizeOptions) {
   /** @type {Record<string, string>} */
   const row = {}
   const columns = getExportColumns({ dataSourceType: record.dataSourceType })
   for (const field of columns) {
-    row[field.displayName] = exportRegistryFieldValue(record, field)
+    row[field.displayName] = exportRegistryFieldValue(record, field, desensitizeOptions)
   }
   return row
 }
@@ -225,8 +231,9 @@ function compareSourceMonthGroupKeys(a, b) {
 /**
  * @param {FeedbackRecord[]} records
  * @param {string} [filename]
+ * @param {import('./ticketAnalysisDesensitize.js').DesensitizeOptions} [desensitizeOptions]
  */
-export function downloadTicketAnalysisExcel(records, filename) {
+export function downloadTicketAnalysisExcel(records, filename, desensitizeOptions) {
   const groups = groupRecordsBySourceAndMonth(records)
   const keys = [...groups.keys()].sort(compareSourceMonthGroupKeys)
 
@@ -234,7 +241,7 @@ export function downloadTicketAnalysisExcel(records, filename) {
   for (const key of keys) {
     const { source, month } = parseSourceMonthGroupKey(key)
     const items = groups.get(key) || []
-    const rows = items.map(recordToExportRowV3)
+    const rows = items.map((r) => recordToExportRowV3(r, desensitizeOptions))
     const ws = XLSX.utils.json_to_sheet(
       rows.length ? rows : [{ 提示: '该 sheet 无数据' }],
     )
@@ -268,7 +275,7 @@ export function downloadTicketAnalysisExcel(records, filename) {
 /**
  * 导出当前筛选范围工单的分析结果 v3。
  * @param {FeedbackRecord[]} records
- * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string }} [options]
+ * @param {{ filePrefix?: string; periodLabel?: string; totalInDb?: number; totalScopeLabel?: string; desensitizeOptions?: import('./ticketAnalysisDesensitize.js').DesensitizeOptions }} [options]
  */
 export function exportTicketAnalysisWithConfirm(records, options = {}) {
   const filePrefix = options.filePrefix || '洞察分析'
@@ -280,7 +287,7 @@ export function exportTicketAnalysisWithConfirm(records, options = {}) {
   }
 
   const filename = `${filePrefix}-${periodLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`
-  downloadTicketAnalysisExcel(records, filename)
+  downloadTicketAnalysisExcel(records, filename, options.desensitizeOptions)
 
   const scopeLabel = options.totalScopeLabel || '库内'
   const totalHint =

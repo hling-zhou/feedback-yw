@@ -50,7 +50,8 @@ import {
   isComplaintTicket,
 } from '../domain/complaintCause.js'
 import PermissionGate from '../components/auth/PermissionGate.jsx'
-import { exportTicketAnalysisWithConfirm } from '../lib/ticketAnalysisExport.js'
+import { exportTicketAnalysisWithConfirm, getExportV3Headers } from '../lib/ticketAnalysisExport.js'
+import ExportDesensitizeModal from '../components/feedbacks/ExportDesensitizeModal.jsx'
 import { isLegacyDemoTicketId } from '../lib/desensitize.js'
 import {
   countRecordsNeedingTicketLlmEnrichment,
@@ -139,6 +140,7 @@ import {
   buildPostUseCustomerVisitRows,
   downloadPostUseCustomerVisitExcel,
 } from '../lib/postUseRating/customerVisitExport.js'
+import { downloadPostUseRatingExcel } from '../lib/postUseRating/postUseRatingExport.js'
 
 /** 列表「自定义显示列」可切换的列。默认全部显示，用户可取消勾选。 */
 const FEEDBACK_LIST_COLUMN_OPTIONS = [
@@ -185,6 +187,7 @@ export default function Feedbacks() {
   const [importAnalysisOpen, setImportAnalysisOpen] = useState(false)
   const [importCustomerRestoreOpen, setImportCustomerRestoreOpen] = useState(false)
   const [complaintCauseReviewOpen, setComplaintCauseReviewOpen] = useState(false)
+  const [exportDesensitizeOpen, setExportDesensitizeOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [progressAlertDismissed, setProgressAlertDismissed] = useState(false)
   const [taskHistoryOpen, setTaskHistoryOpen] = useState(false)
@@ -920,6 +923,10 @@ export default function Feedbacks() {
       )
       return
     }
+    if (isPostUseLane) {
+      downloadPostUseRatingExcel(filtered, activePeriod?.label || '周期')
+      return
+    }
     exportTicketAnalysisWithConfirm(filtered, {
       filePrefix: '反馈库',
       periodLabel: activePeriod?.label || '周期',
@@ -1068,7 +1075,7 @@ export default function Feedbacks() {
         <InsightPeriodPicker />
       </div>
       <Tabs
-        className="feedback-lane-tabs page-sticky-chrome mb-4 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
+        className="feedback-lane-tabs page-sticky-chrome mb-2 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
         activeKey={feedbackLane}
         onChange={(key) => switchFeedbackLane(String(key))}
         tabBarExtraContent={
@@ -1439,12 +1446,14 @@ export default function Feedbacks() {
           }}
           actions={
             <>
-              <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
-                <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
-                  导入分析结果
-                </Button>
-              </Tooltip>
-              {CUSTOMER_RESTORE_IMPORT_ENABLED ? (
+              {!isPostUseLane && (
+                <Tooltip title="按工单号覆盖库内已有分析字段；列含义与必填项见下载模板表头（带 * 为必填）">
+                  <Button icon={<DownloadOutlined />} onClick={() => setImportAnalysisOpen(true)}>
+                    导入分析结果
+                  </Button>
+                </Tooltip>
+              )}
+              {!isPostUseLane && CUSTOMER_RESTORE_IMPORT_ENABLED ? (
                 <PermissionGate permission="import">
                   <Tooltip title="临时：按工单号回填已脱敏工单的客户名称/编码。1～7 月已复原。8 月及以后数据会自带这些字段，完成后可下架。">
                     <Button onClick={() => setImportCustomerRestoreOpen(true)}>
@@ -1453,8 +1462,12 @@ export default function Feedbacks() {
                   </Tooltip>
                 </PermissionGate>
               ) : null}
-              <Button icon={<UploadOutlined />} disabled={!filtered.length} onClick={handleExport}>
-                导出分析结果
+              <Button
+                icon={<UploadOutlined />}
+                disabled={!filtered.length}
+                onClick={isPostUseLane ? handleExport : () => setExportDesensitizeOpen(true)}
+              >
+                {isPostUseLane ? '导出' : '导出分析结果'}
               </Button>
               {!isPostUseLane && user?.role === 'admin' ? (
                 <Button onClick={() => setComplaintCauseReviewOpen(true)}>投诉原因复核</Button>
@@ -1652,6 +1665,25 @@ export default function Feedbacks() {
         open={taskHistoryOpen}
         onClose={() => setTaskHistoryOpen(false)}
       />
+
+      {isPostUseLane ? null : (
+        <ExportDesensitizeModal
+          open={exportDesensitizeOpen}
+          recordCount={filtered.length}
+          columnCount={getExportV3Headers().length}
+          onCancel={() => setExportDesensitizeOpen(false)}
+          onConfirm={(desensitizeOptions) => {
+            setExportDesensitizeOpen(false)
+            exportTicketAnalysisWithConfirm(filtered, {
+              filePrefix: '反馈库',
+              periodLabel: activePeriod?.label || '周期',
+              totalInDb: periodCount,
+              totalScopeLabel: '周期内',
+              desensitizeOptions,
+            })
+          }}
+        />
+      )}
     </div>
   )
 }
