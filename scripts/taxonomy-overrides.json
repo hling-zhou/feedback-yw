@@ -19,6 +19,11 @@
             "key": "disc_netlink_质量_2",
             "name": "质量",
             "re": "质量"
+          },
+          {
+            "key": "disc_netlink_邮件_1",
+            "name": "邮件",
+            "re": "邮件"
           }
         ]
       },
