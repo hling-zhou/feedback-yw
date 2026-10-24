@@ -165,6 +165,8 @@ app.get('/api/users/assignees', async (request, reply) => {
       .map((row) => ({
         id: row.id,
         username: row.username,
+        displayName: row.display_name || '',
+        email: row.email || '',
         team: row.team,
       })),
   }
@@ -211,6 +213,8 @@ app.post(
   async (request, reply) => {
     const body = /** @type {{
       username: string
+      displayName?: string
+      email?: string
       password?: string
       team: string
       role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
@@ -219,6 +223,8 @@ app.post(
     try {
       const user = await createUser({
         username: body.username,
+        displayName: body.displayName,
+        email: body.email,
         password: body.password,
         team: body.team,
         role: body.role,
@@ -246,6 +252,8 @@ app.post(
     const body = /** @type {{
       users: {
         username: string
+        displayName?: string
+        email?: string
         password?: string
         team: string
         role: 'admin' | 'editor' | 'partial_editor' | 'viewer'
@@ -313,6 +321,8 @@ app.patch(
   async (request, reply) => {
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {{
+      displayName?: string
+      email?: string
       team?: string
       role?: 'admin' | 'editor' | 'partial_editor' | 'viewer'
       status?: 'active' | 'disabled'

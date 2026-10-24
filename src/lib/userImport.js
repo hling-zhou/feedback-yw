@@ -53,11 +53,13 @@ function cellText(value) {
  */
 function parseUserImportRow(row, rowNumber) {
   const username = cellText(row['用户名'])
+  const displayName = cellText(row['中文名'])
+  const email = cellText(row['邮箱'])
   const password = cellText(row['密码'])
   const team = cellText(row['所属班组'])
   const roleRaw = cellText(row['角色'])
 
-  if (!username && !password && !team && !roleRaw) {
+  if (!username && !displayName && !email && !password && !team && !roleRaw) {
     return { skip: true }
   }
 
@@ -100,6 +102,8 @@ function parseUserImportRow(row, rowNumber) {
   return {
     item: {
       username,
+      displayName,
+      email,
       password,
       team,
       role: /** @type {UserRole} */ (role),
@@ -124,7 +128,7 @@ export function parseUserImportFile(buffer) {
     XLSX.utils.sheet_to_json(sheet, { defval: '' })
   )
 
-  /** @type {{ username: string; password: string; team: string; role: UserRole }[]} */
+  /** @type {{ username: string; displayName: string; email: string; password: string; team: string; role: UserRole }[]} */
   const rows = []
   /** @type {{ row: number; username: string; message: string }[]} */
   const errors = []

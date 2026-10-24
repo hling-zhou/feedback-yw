@@ -57,6 +57,42 @@ function migrateUsersSchema(database) {
   migrateMustChangePassword(database)
   migratePositionAndTeamEnum(database)
   migrateDefaultPasswordFlag(database)
+  migrateDisplayName(database)
+  migrateEmail(database)
+}
+
+/**
+ * 新增中文名（display_name）字段。
+ *
+ * 顺序要紧：migrateUserRoleConstraint 会以硬编码列清单重建 users 表，
+ * 在它之前新增的列会被重建过程丢弃，故加列必须排在其后。
+ * 存量值为空串，展示时由应用层回退到 username。
+ *
+ * @param {import('better-sqlite3').Database} database
+ */
+function migrateDisplayName(database) {
+  const colNames = new Set(
+    database.prepare('PRAGMA table_info(users)').all().map((c) => c.name),
+  )
+  if (colNames.has('display_name')) return
+  database.exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
+}
+
+/**
+ * 新增邮箱（email）字段。
+ *
+ * 顺序要紧：migrateUserRoleConstraint 会以硬编码列清单重建 users 表，
+ * 在它之前新增的列会被重建过程丢弃，故加列必须排在其后。
+ * 存量值为空串，应用层在 createUser 时为空则自动生成 username@cmss.chinamobile.com。
+ *
+ * @param {import('better-sqlite3').Database} database
+ */
+function migrateEmail(database) {
+  const colNames = new Set(
+    database.prepare('PRAGMA table_info(users)').all().map((c) => c.name),
+  )
+  if (colNames.has('email')) return
+  database.exec(`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
 }
 
 /**

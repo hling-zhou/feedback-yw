@@ -9,6 +9,8 @@ export const createUserBodySchema = {
   required: ['username', 'team', 'role'],
   properties: {
     username: { type: 'string', minLength: 1, maxLength: 64 },
+    displayName: { type: 'string', maxLength: 64 },
+    email: { type: 'string', maxLength: 128 },
     password: { type: 'string', maxLength: 256 },
     team: { type: 'string', minLength: 1, maxLength: 128 },
     role: userRoleSchema,
@@ -21,6 +23,8 @@ export const updateUserBodySchema = {
   ...STRICT_OBJECT,
   minProperties: 1,
   properties: {
+    displayName: { type: 'string', maxLength: 64 },
+    email: { type: 'string', maxLength: 128 },
     team: { type: 'string', minLength: 1, maxLength: 128 },
     role: userRoleSchema,
     status: userStatusSchema,

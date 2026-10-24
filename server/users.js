@@ -35,6 +35,8 @@ function assertTeam(team) {
  * @property {string} password_hash
  * @property {string} team
  * @property {string} [position]  // 已废弃，保留列但不使用
+ * @property {string} [display_name]  // 中文名
+ * @property {string} [email]  // 邮箱
  * @property {'admin' | 'editor' | 'partial_editor' | 'viewer'} role
  * @property {'active' | 'disabled'} status
  * @property {string} created_at
@@ -54,6 +56,8 @@ export function toPublicUser(row, now = new Date()) {
   return {
     id: row.id,
     username: row.username,
+    displayName: row.display_name || '',
+    email: row.email || '',
     team: row.team,
     role: row.role,
     status: row.status,
@@ -171,6 +175,8 @@ function isDefaultPassword(password) {
 /**
  * @param {Object} input
  * @param {string} input.username
+ * @param {string} [input.displayName] - 中文名（可选）
+ * @param {string} [input.email] - 邮箱（可选，留空自动生成 username@cmss.chinamobile.com）
  * @param {string} [input.password] - 留空则使用系统统一初始密码
  * @param {string} input.team
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} input.role
@@ -182,18 +188,22 @@ export async function createUser(input) {
   const { password, isDefault } = resolvePasswordForCreation(input.password)
   assertTeam(input.team)
 
+  const displayName = (input.displayName || '').trim()
+  const email = (input.email || '').trim() || `${username}@cmss.chinamobile.com`
   const now = new Date().toISOString()
   const id = randomId()
   const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS)
   const db = getDb()
   db.prepare(
     `INSERT INTO users
-      (id, username, password_hash, team, role, status, created_at, updated_at,
+      (id, username, display_name, email, password_hash, team, role, status, created_at, updated_at,
        password_changed_at, session_version, must_change_password, password_is_default)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, 1, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, 1, ?)`,
   ).run(
     id,
     username,
+    displayName,
+    email,
     password_hash,
     input.team.trim(),
     input.role,
@@ -210,6 +220,8 @@ export async function createUser(input) {
 /**
  * @param {string} id
  * @param {Object} patch
+ * @param {string} [patch.displayName] - 中文名
+ * @param {string} [patch.email] - 邮箱
  * @param {string} [patch.team]
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} [patch.role]
  * @param {'active' | 'disabled'} [patch.status]
@@ -235,6 +247,8 @@ export async function updateUser(id, patch, actorId) {
   }
 
   const team = patch.team !== undefined ? patch.team.trim() : row.team
+  const displayName = patch.displayName !== undefined ? patch.displayName.trim() : (row.display_name || '')
+  const email = patch.email !== undefined ? patch.email.trim() : (row.email || '')
   // 存量账号的班组可能是迁移未覆盖的历史值，仅在管理员显式改动时才校验，
   // 避免因历史脏数据导致「只改角色也保存不了」。
   if (patch.team !== undefined) assertTeam(patch.team)
@@ -267,12 +281,14 @@ export async function updateUser(id, patch, actorId) {
 
   getDb()
     .prepare(
-      `UPDATE users SET team = ?, role = ?, status = ?, password_hash = ?,
+      `UPDATE users SET team = ?, display_name = ?, email = ?, role = ?, status = ?, password_hash = ?,
         updated_at = ?, password_changed_at = ?, must_change_password = ?, password_is_default = ?,
         session_version = COALESCE(session_version, 0) + ? WHERE id = ?`,
     )
     .run(
       team,
+      displayName,
+      email,
       role,
       status,
       password_hash,
@@ -386,6 +402,8 @@ export async function changeExpiredPassword(input) {
  * @param {Object[]} items
  * @param {string} items[].username
  * @param {string} items[].password
+ * @param {string} [items[].displayName] - 中文名
+ * @param {string} [items[].email] - 邮箱
  * @param {string} items[].team
  * @param {'admin' | 'editor' | 'partial_editor' | 'viewer'} items[].role
  */
@@ -402,7 +420,7 @@ export async function batchCreateUsers(items) {
     try {
       const existing = findUserByUsername(item.username)
       if (existing) {
-        // 同名用户：只改 team/role，不动密码与状态
+        // 同名用户：只改 team/role/displayName，不动密码与状态
         if (item.role && item.role !== 'admin' && existing.role === 'admin') {
           const admins = countAdmins()
           if (admins <= 1) throw new Error('至少保留一名活跃管理员')
@@ -411,18 +429,22 @@ export async function batchCreateUsers(items) {
         const now = new Date().toISOString()
         // 角色变化时才 bump session_version，与 updateUser 保持一致
         const roleChanged = item.role && item.role !== existing.role
+        const displayName = item.displayName !== undefined ? item.displayName.trim() : (existing.display_name || '')
+        const email = item.email !== undefined ? item.email.trim() : (existing.email || '')
         getDb()
           .prepare(
-            `UPDATE users SET team = ?, role = ?, updated_at = ?,
+            `UPDATE users SET team = ?, display_name = ?, email = ?, role = ?, updated_at = ?,
               session_version = COALESCE(session_version, 0) + ? WHERE id = ?`,
           )
-          .run(item.team.trim(), item.role, now, roleChanged ? 1 : 0, existing.id)
+          .run(item.team.trim(), displayName, email, item.role, now, roleChanged ? 1 : 0, existing.id)
         const refreshed = findUserById(existing.id)
         if (!refreshed) throw new Error('更新失败')
         updated.push(toPublicUser(refreshed))
       } else {
         const user = await createUser({
           username: item.username,
+          displayName: item.displayName,
+          email: item.email,
           password: item.password,
           team: item.team,
           role: item.role,

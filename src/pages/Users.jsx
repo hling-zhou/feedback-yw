@@ -178,7 +178,7 @@ export default function Users() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ role: 'viewer', status: 'active', team: undefined })
+    form.setFieldsValue({ role: 'viewer', status: 'active', team: undefined, displayName: '', email: '' })
     setModalOpen(true)
   }
 
@@ -186,6 +186,8 @@ export default function Users() {
     setEditing(record)
     form.setFieldsValue({
       username: record.username,
+      displayName: record.displayName,
+      email: record.email,
       team: record.team || undefined,
       role: record.role,
       status: record.status,
@@ -199,6 +201,8 @@ export default function Users() {
     try {
       if (editing) {
         const body = {
+          displayName: values.displayName?.trim() || '',
+          email: values.email?.trim() || '',
           team: values.team,
           role: values.role,
           status: values.status,
@@ -213,6 +217,8 @@ export default function Users() {
         // 密码留空 → 后端使用系统统一初始密码，并把该账号标记为「仍在使用默认密码」
         const payload = {
           username: values.username,
+          displayName: values.displayName?.trim() || '',
+          email: values.email?.trim() || '',
           team: values.team,
           role: values.role,
         }
@@ -295,6 +301,8 @@ export default function Users() {
 
   const columns = [
     { title: '用户名', dataIndex: 'username', width: 140 },
+    { title: '中文名', dataIndex: 'displayName', width: 120 },
+    { title: '邮箱', dataIndex: 'email', width: 220, ellipsis: true },
     { title: '所属班组', dataIndex: 'team', width: 200 },
     {
       title: '角色',
@@ -487,6 +495,20 @@ export default function Users() {
             rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input disabled={Boolean(editing)} placeholder="登录用户名" />
+          </Form.Item>
+          <Form.Item
+            label="中文名"
+            name="displayName"
+            tooltip="展示用中文名；留空时展示用户名"
+          >
+            <Input placeholder="张三" maxLength={64} />
+          </Form.Item>
+          <Form.Item
+            label="邮箱"
+            name="email"
+            tooltip="留空时自动生成 用户名@cmss.chinamobile.com"
+          >
+            <Input placeholder="留空自动生成 用户名@cmss.chinamobile.com" maxLength={128} />
           </Form.Item>
           <Form.Item
             label={editing ? '新密码（留空不改）' : '密码（留空用默认）'}

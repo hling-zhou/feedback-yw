@@ -12,6 +12,7 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @typedef {Object} TicketTodoAssignee
  * @property {string} userId
  * @property {string} username
+ * @property {string} [displayName] - 中文名（可选，展示优先）
  */
 
 /**
@@ -33,6 +34,7 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @property {TicketTodoResolution} resolution
  * @property {string} [assigneeUserId]
  * @property {string} [assigneeUsername]
+ * @property {string} [assigneeDisplayName]
  * @property {TicketTodoAssignee[]} [assignees]
  * @property {string[]} [linkedTicketIds]
  * @property {string} [processNote]
@@ -66,6 +68,7 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @property {TicketTodoResolution} resolution
  * @property {string} assigneeUserId
  * @property {string} assigneeUsername
+ * @property {string} [assigneeDisplayName]
  * @property {TicketTodoAssignee[]} [assignees]
  * @property {string[]} [linkedTicketIds]
  * @property {string} createdAt
@@ -137,6 +140,7 @@ export function normalizeTicketTodoAssignees(entry) {
       out.push({
         userId,
         username: norm(/** @type {{ username?: string }} */ (row).username) || userId,
+        displayName: norm(/** @type {{ displayName?: string }} */ (row).displayName),
       })
       if (out.length >= TICKET_TODO_ASSIGNEE_MAX) break
     }
@@ -147,6 +151,7 @@ export function normalizeTicketTodoAssignees(entry) {
     out.push({
       userId,
       username: norm(raw.assigneeUsername) || userId,
+      displayName: norm(raw.assigneeDisplayName),
     })
   }
   return out
@@ -330,7 +335,8 @@ function normalizeUpdatedBy(raw) {
   const userId = norm(/** @type {{ userId?: string }} */ (raw).userId)
   if (!userId) return undefined
   const username = norm(/** @type {{ username?: string }} */ (raw).username) || userId
-  return { userId, username }
+  const displayName = norm(/** @type {{ displayName?: string }} */ (raw).displayName)
+  return { userId, username, displayName }
 }
 
 /**
@@ -698,6 +704,7 @@ function mergeTicketTodoItemsForSave(draftItems, currentItems, actor, now, hostT
         updatedBy: {
           userId: actor.userId,
           username: actor.username || actor.userId,
+          displayName: actor.displayName || '',
         },
       })
     } else {
@@ -743,6 +750,7 @@ export function buildTicketTodoSavePatch(record, draftItems, actor) {
       updatedBy: {
         userId: actor.userId,
         username: actor.username || actor.userId,
+        displayName: actor.displayName || '',
       },
     },
   }
@@ -753,7 +761,7 @@ export function buildTicketTodoSavePatch(record, draftItems, actor) {
  */
 export function formatTicketTodoAssigneeLabel(item) {
   const names = normalizeTicketTodoAssignees(item)
-    .map((row) => row.username || row.userId)
+    .map((row) => row.displayName || row.username || row.userId)
     .filter(Boolean)
   return names.length ? names.join('、') : '未指定'
 }
@@ -774,7 +782,7 @@ export function formatTicketTodoDateTime(iso) {
  */
 export function formatTicketTodoItemUpdatedLine(item) {
   if (!item?.updatedAt) return ''
-  const name = item.updatedBy?.username?.trim() || item.updatedBy?.userId || '未知用户'
+  const name = item.updatedBy?.displayName?.trim() || item.updatedBy?.username?.trim() || item.updatedBy?.userId || '未知用户'
   return `${name} · ${formatTicketTodoDateTime(item.updatedAt)}`
 }
 
@@ -783,7 +791,7 @@ export function formatTicketTodoItemUpdatedLine(item) {
  */
 export function formatTicketTodoUpdatedLine(ticketTodo) {
   if (!ticketTodo?.updatedAt) return ''
-  const name = ticketTodo.updatedBy?.username?.trim() || ticketTodo.updatedBy?.userId || '未知用户'
+  const name = ticketTodo.updatedBy?.displayName?.trim() || ticketTodo.updatedBy?.username?.trim() || ticketTodo.updatedBy?.userId || '未知用户'
   return `${name} · ${formatTicketTodoDateTime(ticketTodo.updatedAt)}`
 }
 

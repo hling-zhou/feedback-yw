@@ -8,6 +8,8 @@ export const USER_IMPORT_SHEET_NAME = '用户列表'
 /** 导入模板表头 */
 export const USER_IMPORT_TEMPLATE_HEADERS = [
   '用户名*（必填）',
+  '中文名（可选）',
+  '邮箱（留空自动生成）',
   '密码（留空用默认）',
   '所属班组*（必填）',
   '角色*（必填）',
