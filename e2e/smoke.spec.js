@@ -11,7 +11,7 @@ async function loginAsAdmin(page) {
   await page.goto('/login')
   await page.getByPlaceholder('用户名').fill(ADMIN_USER)
   await page.getByPlaceholder('请输入密码').fill(ADMIN_PASS)
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.locator('button[type="submit"]').click()
   await expect(page).toHaveURL(/\/workbench/, { timeout: 30_000 })
 }
 
