@@ -14,7 +14,7 @@ import {
   BarChartOutlined,
   ApiOutlined,
 } from '@ant-design/icons'
-import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography, Badge } from 'antd'
+import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
 import {
   APP_SIDER_BREAKPOINT,
