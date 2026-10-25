@@ -10,7 +10,7 @@ const { Text, Paragraph } = Typography
  * @param {{ open: boolean, onClose: () => void }} props
  */
 export default function ReminderSendModal({ open, onClose }) {
-  const { periods, currentPeriodId } = useInsights()
+  const { periods, currentPeriodId, importMonthSummary, refreshImportMonthSummary } = useInsights()
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [preview, setPreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -30,7 +30,16 @@ export default function ReminderSendModal({ open, onClose }) {
     }
   }, [open, currentPeriodId])
 
-  const periodOptions = useMemo(() => buildReminderPeriodOptions(periods), [periods])
+  // 弹窗打开时刷新月度汇总：按数据判定可选周期，导入新数据/他人导入后
+  // 无需整页刷新即可选到最新（含预导入的未来）数据月份
+  useEffect(() => {
+    if (open) void refreshImportMonthSummary?.()
+  }, [open, refreshImportMonthSummary])
+
+  const periodOptions = useMemo(
+    () => buildReminderPeriodOptions(periods, importMonthSummary?.months ?? null),
+    [periods, importMonthSummary],
+  )
   const effectivePeriodId = periodOptions.some((o) => o.value === selectedPeriodId)
     ? selectedPeriodId
     : (periodOptions[0]?.value || '')
