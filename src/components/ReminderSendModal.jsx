@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, Modal, Select, Spin, Table, Tag, Typography } from 'antd'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { apiFetch } from '../lib/apiClient.js'
+import { buildReminderPeriodOptions } from './reminderPeriodOptions.js'
 
 const { Text, Paragraph } = Typography
 
@@ -29,6 +30,11 @@ export default function ReminderSendModal({ open, onClose }) {
     }
   }, [open, currentPeriodId])
 
+  const periodOptions = useMemo(() => buildReminderPeriodOptions(periods), [periods])
+  const effectivePeriodId = periodOptions.some((o) => o.value === selectedPeriodId)
+    ? selectedPeriodId
+    : (periodOptions[0]?.value || '')
+
   const handlePreview = useCallback(async () => {
     setPreviewLoading(true)
     setPreviewError('')
@@ -37,7 +43,7 @@ export default function ReminderSendModal({ open, onClose }) {
     try {
       const data = await apiFetch('/api/reminders/preview', {
         method: 'POST',
-        body: JSON.stringify({ insightPeriodId: selectedPeriodId }),
+        body: JSON.stringify({ insightPeriodId: effectivePeriodId }),
       })
       setPreview(data)
     } catch (err) {
@@ -45,7 +51,7 @@ export default function ReminderSendModal({ open, onClose }) {
     } finally {
       setPreviewLoading(false)
     }
-  }, [selectedPeriodId])
+  }, [effectivePeriodId])
 
   const handleSend = useCallback(async () => {
     setSending(true)
@@ -54,7 +60,7 @@ export default function ReminderSendModal({ open, onClose }) {
     try {
       const data = await apiFetch('/api/reminders/send', {
         method: 'POST',
-        body: JSON.stringify({ insightPeriodId: selectedPeriodId, skipLlm }),
+        body: JSON.stringify({ insightPeriodId: effectivePeriodId, skipLlm }),
       })
       setSendResult(data)
     } catch (err) {
@@ -62,12 +68,7 @@ export default function ReminderSendModal({ open, onClose }) {
     } finally {
       setSending(false)
     }
-  }, [selectedPeriodId, skipLlm])
-
-  const periodOptions = periods.map((p) => ({
-    value: p.id,
-    label: `${(p.startDate || '').slice(0, 7)}${p.status === 'archived' ? '（已归档）' : ''}`,
-  }))
+  }, [effectivePeriodId, skipLlm])
 
   const productColumns = [
     {
@@ -128,7 +129,7 @@ export default function ReminderSendModal({ open, onClose }) {
         <div className="flex items-center gap-3">
           <Text>洞察周期：</Text>
           <Select
-            value={selectedPeriodId}
+            value={effectivePeriodId}
             onChange={setSelectedPeriodId}
             options={periodOptions}
             placeholder="选择洞察周期"
@@ -136,7 +137,7 @@ export default function ReminderSendModal({ open, onClose }) {
             showSearch
             optionFilterProp="label"
           />
-          <Button onClick={() => void handlePreview()} loading={previewLoading} disabled={!selectedPeriodId}>
+          <Button onClick={() => void handlePreview()} loading={previewLoading} disabled={!effectivePeriodId}>
             预览
           </Button>
           <Checkbox checked={skipLlm} onChange={(e) => setSkipLlm(e.target.checked)}>
