@@ -197,7 +197,10 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
       enabled: Boolean(v.enabled),
       analysisPostUseRating: Boolean(v.analysisPostUseRating),
       focusTracked: Boolean(v.focusTracked),
-      taxonomyKey: canonicalTaxonomyKey(key),
+      // 编辑态保留原 taxonomyKey（借道模板不被重置为自身 key）；编辑态 Key 不可改，无 key 变更分支
+      taxonomyKey: editingProduct
+        ? editingProduct.taxonomyKey || canonicalTaxonomyKey(key)
+        : canonicalTaxonomyKey(key),
       acceptParentName: v.acceptParentName !== false,
       specs: editingProduct
         ? products.find((p) => p.key === editingProduct.key)?.specs || []
