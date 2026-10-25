@@ -1,22 +1,20 @@
+/** @type {import('json-schema').JSONSchema7} */
 export const reminderPreviewBodySchema = {
-  body: {
-    type: 'object',
-    required: [],
-    properties: {
-      insightPeriodId: { type: 'string' },
-    },
-    additionalProperties: false,
+  type: 'object',
+  required: [],
+  properties: {
+    insightPeriodId: { type: 'string' },
   },
+  additionalProperties: false,
 }
 
+/** @type {import('json-schema').JSONSchema7} */
 export const reminderSendBodySchema = {
-  body: {
-    type: 'object',
-    required: ['insightPeriodId'],
-    properties: {
-      insightPeriodId: { type: 'string' },
-      skipLlm: { type: 'boolean', default: false },
-    },
-    additionalProperties: false,
+  type: 'object',
+  required: ['insightPeriodId'],
+  properties: {
+    insightPeriodId: { type: 'string' },
+    skipLlm: { type: 'boolean', default: false },
   },
+  additionalProperties: false,
 }
