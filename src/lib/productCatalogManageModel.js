@@ -98,6 +98,47 @@ export function validateCatalogProducts(products) {
 }
 
 /**
+ * 判断产品目录变化是否影响分析结果（owners 负责人不参与判定）。
+ * 只有 owners 变化时返回 false —— 保存时可跳过全量快照失效与刷新。
+ * @param {CatalogProduct[]} oldProducts
+ * @param {CatalogProduct[]} newProducts
+ */
+export function hasAnalysisRelevantCatalogChange(oldProducts, newProducts) {
+  const project = (p) => ({
+    name: String(p?.name || '').trim(),
+    enabled: Boolean(p?.enabled),
+    analysisPostUseRating: Boolean(p?.analysisPostUseRating),
+    focusTracked: Boolean(p?.analysisPostUseRating && p?.focusTracked),
+    acceptParentName: p?.acceptParentName !== false,
+    taxonomyKey: String(p?.taxonomyKey || p?.key || '').trim(),
+    specs: (p?.specs || [])
+      .filter((s) => s?.name)
+      .map((s) => ({
+        name: String(s.name).trim(),
+        match: Array.isArray(s.match)
+          ? s.match.map((m) => String(m).trim()).filter(Boolean)
+          : undefined,
+      })),
+  })
+  const oldByKey = new Map(
+    (oldProducts || []).map((p) => [String(p?.key || '').trim(), project(p)]),
+  )
+  const newKeys = new Set()
+  for (const p of newProducts || []) {
+    const key = String(p?.key || '').trim()
+    if (!key) continue
+    newKeys.add(key)
+    const old = oldByKey.get(key)
+    if (!old) return true // 新增产品
+    if (JSON.stringify(old) !== JSON.stringify(project(p))) return true // 分析相关字段或规格变化
+  }
+  for (const key of oldByKey.keys()) {
+    if (key && !newKeys.has(key)) return true // 删除产品
+  }
+  return false
+}
+
+/**
  * @param {CatalogProduct} product
  * @param {string} key
  */

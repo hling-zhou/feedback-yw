@@ -256,6 +256,11 @@ export function createApiStorageAdapter() {
       return data.snapshots || []
     },
 
+    async markPostUseDependentSnapshotsStale() {
+      const data = await storageFetch('/snapshots/mark-post-use-stale', { method: 'POST' })
+      return data?.updated ?? 0
+    },
+
     async getMeta(key) {
       const data = await storageFetch(`/meta/${encodeURIComponent(key)}`)
       return data.value ?? null

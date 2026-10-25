@@ -1034,6 +1034,14 @@ export function registerStorageRoutes(app) {
     return { ok: true }
   })
 
+  // 产品目录分析开关变化后：服务端一次 SQL 批量失效全部期间用后即评/概述快照，
+  // 替代旧版客户端逐期间全量下载 + 整包回传（慢且易失败）
+  app.post('/api/storage/snapshots/mark-post-use-stale', async (request, reply) => {
+    if (!assertWritePermission(request, reply, ['manageTags'])) return
+    const updated = storageRepository.markPostUseDependentSnapshotsStale()
+    return { ok: true, updated }
+  })
+
   app.post(
     '/api/storage/insight-rebuild',
     { schema: { body: insightRebuildBodySchema } },

@@ -586,6 +586,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
             onOk={saveProduct}
             confirmLoading={saving}
             destroyOnClose
+            styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
           >
             <Form form={productForm} layout="vertical" className="mt-4">
               <Form.Item
@@ -646,6 +647,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
             onOk={saveSpec}
             confirmLoading={saving}
             destroyOnClose
+            styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
           >
             <Form form={specForm} layout="vertical" className="mt-4">
               <Form.Item name="name" label="规格名称" rules={[{ required: true, message: '必填' }]}>

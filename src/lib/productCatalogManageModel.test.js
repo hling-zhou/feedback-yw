@@ -5,6 +5,7 @@ import {
   validateCatalogProducts,
   formatMergeCatalogResultMessage,
   catalogToTableRows,
+  hasAnalysisRelevantCatalogChange,
 } from './productCatalogManageModel.js'
 
 describe('productCatalogManageModel', () => {
@@ -122,5 +123,54 @@ describe('productCatalogManageModel', () => {
     })
     expect(text).toContain('新增 产品 1')
     expect(text).toContain('规格 3')
+  })
+})
+
+describe('hasAnalysisRelevantCatalogChange', () => {
+  const base = {
+    key: 'eip',
+    name: '弹性公网IP',
+    enabled: true,
+    analysisPostUseRating: true,
+    focusTracked: false,
+    acceptParentName: true,
+    taxonomyKey: 'eip',
+    specs: [{ name: '移动IP', match: ['移动'] }],
+    owners: { productManager: [{ userId: 'u1', username: 'alice' }] },
+  }
+
+  it('仅 owners（负责人）变化返回 false', () => {
+    const next = [
+      {
+        ...base,
+        owners: { productManager: [{ userId: 'u2', username: 'bob' }] },
+      },
+    ]
+    expect(hasAnalysisRelevantCatalogChange([base], next)).toBe(false)
+  })
+
+  it('完全相同的目录返回 false', () => {
+    expect(hasAnalysisRelevantCatalogChange([base], [{ ...base }])).toBe(false)
+  })
+
+  it.each([
+    ['enabled 开关', { enabled: false }],
+    ['analysisPostUseRating 开关', { analysisPostUseRating: false }],
+    ['focusTracked 开关', { focusTracked: true }],
+    ['产品名称', { name: '新名称' }],
+    ['acceptParentName', { acceptParentName: false }],
+    ['taxonomyKey', { taxonomyKey: 'shared_bw' }],
+    ['规格匹配别名', { specs: [{ name: '移动IP', match: ['别的'] }] }],
+    ['规格新增', { specs: [{ name: '移动IP' }, { name: '新规格' }] }],
+  ])('分析相关字段变化（%s）返回 true', (_label, patch) => {
+    expect(hasAnalysisRelevantCatalogChange([base], [{ ...base, ...patch }])).toBe(true)
+  })
+
+  it('新增产品返回 true', () => {
+    expect(hasAnalysisRelevantCatalogChange([base], [base, { key: 'ecs', name: '云主机' }])).toBe(true)
+  })
+
+  it('删除产品返回 true', () => {
+    expect(hasAnalysisRelevantCatalogChange([base, { key: 'ecs', name: '云主机' }], [base])).toBe(true)
   })
 })

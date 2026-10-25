@@ -787,6 +787,25 @@ export const storageRepository = {
     return rows.map((r) => parseJson(r.payload))
   },
 
+  /**
+   * 将全部期间「用后即评」与「概述」快照批量标记为 stale。
+   * 服务端一次 SQL 完成，替代旧版客户端逐期间全量下载/整包回传的失效方式。
+   * @returns {number} 本次更新的快照数量
+   */
+  markPostUseDependentSnapshotsStale() {
+    const db = getDb()
+    const info = db
+      .prepare(
+        `UPDATE snapshots
+            SET payload = json_set(payload, '$.status', 'stale')
+          WHERE json_extract(payload, '$.status') = 'ready'
+            AND (id LIKE 'snapshot:%:post_use_rating' OR id LIKE 'overview:%')`,
+      )
+      .run()
+    if (info.changes > 0) bumpDataRevision()
+    return info.changes
+  },
+
   getMeta(key) {
     const row = getDb().prepare('SELECT value FROM meta WHERE key = ?').get(key)
     return row ? parseJson(row.value) : null

@@ -148,6 +148,7 @@ import {
   saveManagedTaxonomy,
 } from '../lib/tagLibrary/taxonomyManagedStore.js'
 import { syncCatalogProductsToTaxonomy, taxonomySnapshotContentEqual } from '../lib/productCenterSync.js'
+import { hasAnalysisRelevantCatalogChange } from '../lib/productCatalogManageModel.js'
 import { downloadManagedTaxonomyExcel } from '../lib/tagLibrary/taxonomyManageModel.js'
 import { listOrderVolumes, upsertOrderVolume } from '../storage/orderVolumeStore.js'
 import { listWanTouTargets, upsertWanTouTarget } from '../storage/wanTouTargetStore.js'
@@ -1628,6 +1629,12 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         ...p,
         taxonomyKey: String(p.taxonomyKey || p.key || '').trim(),
       }))
+      // 保存前取服务端旧目录做差异判定：仅 owners（负责人）变化时不触发快照失效
+      const prevSnap = await getOrInitManagedProductCatalogSnapshot(adapter)
+      const analysisChanged = hasAnalysisRelevantCatalogChange(
+        prevSnap?.products || [],
+        normalized,
+      )
       const state = await saveManagedProductCatalog(adapter, normalized, {
         deletedKeys: opts.deletedKeys || [],
         disabledAnalysisKeys: opts.disabledAnalysisKeys || [],
@@ -1635,14 +1642,31 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       setProductCatalogMeta(state)
       const taxSnap = await getOrInitManagedSnapshot(adapter)
       const synced = syncCatalogProductsToTaxonomy(taxSnap, normalized)
-      const taxState = await saveManagedTaxonomy(adapter, synced)
-      setTaxonomyMeta(taxState)
-      await markPostUseDependentSnapshotsStale(adapter)
-      setSnapshotsStale(true)
-      setSnapshotStaleReason('data')
-      if (storageReady && currentPeriodId) {
-        await reloadSnapshots(currentPeriodId)
+      if (taxonomySnapshotContentEqual(taxSnap, synced)) {
+        // 标签库内容无差异（如仅改负责人）：跳过写回，避免无谓的版本 bump 与自动发布
+        setTaxonomyMeta(applyManagedTaxonomySnapshot(synced))
+      } else {
+        const taxState = await saveManagedTaxonomy(adapter, synced)
+        setTaxonomyMeta(taxState)
       }
+      if (!analysisChanged) return normalized
+      // 快照失效 + 刷新转后台：目录与旅程模板已落库即视为保存成功，
+      // 尾部失败不再让整次保存报错，仅温和提示
+      const markStale =
+        typeof adapter.markPostUseDependentSnapshotsStale === 'function'
+          ? adapter.markPostUseDependentSnapshotsStale()
+          : markPostUseDependentSnapshotsStale(adapter)
+      Promise.resolve(markStale)
+        .then(() => {
+          setSnapshotsStale(true)
+          setSnapshotStaleReason('data')
+          if (storageReady && currentPeriodId) return reloadSnapshots(currentPeriodId)
+          return undefined
+        })
+        .catch((err) => {
+          console.warn('[product-catalog] 快照失效/刷新未完成', err)
+          message.warning('产品目录已保存；快照刷新未完成，请稍后刷新页面重试')
+        })
       return normalized
     },
     [adapter, currentPeriodId, reloadSnapshots, storageReady],

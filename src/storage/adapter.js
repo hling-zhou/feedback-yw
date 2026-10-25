@@ -60,6 +60,7 @@
  * @property {(snapshot: InsightSnapshot | OverviewSnapshot) => Promise<void>} putSnapshot
  * @property {(id: string) => Promise<InsightSnapshot | OverviewSnapshot | null>} getSnapshot
  * @property {(insightPeriodId: string) => Promise<(InsightSnapshot | OverviewSnapshot)[]>} listSnapshotsByPeriod
+ * @property {() => Promise<number>} [markPostUseDependentSnapshotsStale] 服务端批量失效全部期间用后即评/概述快照（可选能力）
  * @property {(key: string) => Promise<unknown>} getMeta
  * @property {(key: string, value: unknown) => Promise<void>} putMeta
  * @property {(filters?: { status?: string; tagType?: string }) => Promise<import('../domain/tagCandidate.js').TagCandidate[]>} listTagCandidates
