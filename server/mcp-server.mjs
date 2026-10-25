@@ -23,7 +23,7 @@ import { MCP_TOOLS } from './mcp/tools.js'
 import { authenticateMcpRequest, extractBearerToken } from './mcp/auth.js'
 
 const PORT = Number(process.env.MCP_PORT || 3002)
-const HOST = process.env.MCP_HOST || '0.0.0.0'
+const HOST = process.env.MCP_HOST || '127.0.0.1'
 
 // 确保 DB 初始化
 getDb()
@@ -152,10 +152,21 @@ function handleJsonRpc(message, token) {
  * - SSE 推送 → Server 通过 SSE 通道返回 JSON-RPC 响应
  */
 const sessions = new Map()
+const SESSION_TIMEOUT_MS = 10 * 60 * 1000 // 10 分钟无活动自动过期
 
 function generateSessionId() {
   return `mcp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
+
+// 定期清理过期会话
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, session] of sessions) {
+    if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
+      sessions.delete(id)
+    }
+  }
+}, 60 * 1000).unref()
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`)
@@ -172,7 +183,7 @@ const server = http.createServer((req, res) => {
 
     const sessionId = generateSessionId()
     const messageQueue = []
-    sessions.set(sessionId, { messageQueue, apiKey: auth.apiKey })
+    sessions.set(sessionId, { messageQueue, apiKey: auth.apiKey, lastActivity: Date.now() })
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -227,6 +238,15 @@ const server = http.createServer((req, res) => {
       return
     }
 
+    // 检查会话是否过期
+    const existingSession = sessions.get(sessionId)
+    if (existingSession && Date.now() - existingSession.lastActivity > SESSION_TIMEOUT_MS) {
+      sessions.delete(sessionId)
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: '会话已过期，请重新连接' }))
+      return
+    }
+
     let body = ''
     req.on('data', (chunk) => {
       body += chunk.toString()
@@ -248,24 +268,22 @@ const server = http.createServer((req, res) => {
           return
         }
 
-        // 用会话建立时的 API Key 处理
-        const token = extractBearerToken(req)
+        // 更新会话活跃时间
+        session.lastActivity = Date.now()
+
         // POST 请求也可以带新的 token，优先用 POST 的；否则用会话的
-        const apiKey = token ? authenticateMcpRequest(token) : null
-        const effectiveToken = apiKey?.ok
-          ? token
-          : `fi_live_session_${session.apiKey.id}` // 用会话的 apiKey
+        const postToken = extractBearerToken(req)
+        const postAuth = postToken ? authenticateMcpRequest(postToken) : null
 
         // 异步处理消息
         Promise.resolve()
           .then(async () => {
             // 如果 POST 带了新 token，用它认证；否则用会话的 apiKey
             let result
-            if (apiKey?.ok) {
-              result = handleJsonRpc(message, token)
+            if (postAuth?.ok) {
+              result = handleJsonRpc(message, postToken)
             } else {
-              // 用会话存储的 apiKey 重新构建 token 验证——
-              // 实际上会话已认证过，直接用会话的 apiKey
+              // 用会话存储的 apiKey 直接处理（会话建立时已认证过）
               result = handleJsonRpcWithApiKey(message, session.apiKey)
             }
 

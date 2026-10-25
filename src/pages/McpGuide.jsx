@@ -24,7 +24,7 @@ import {
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getMcpSharedKeys, revealMcpKey } from '../lib/mcpClient.js'
 
-const { Title, Paragraph, Text, Link: AntLink } = Typography
+const { Title, Text, Link: AntLink } = Typography
 
 /** @typedef {{ read: string; full: string } | null} McpKeys */
 
@@ -318,7 +318,7 @@ export default function McpGuide() {
                     mcpServers: {
                       'feedback-insights': {
                         url: sseUrl,
-                        headers: { Authorization: 'Bearer ' + (keys?.read || '粘贴你的密钥') },
+                        headers: { Authorization: 'Bearer 粘贴你的密钥' },
                       },
                     },
                   },
@@ -336,7 +336,7 @@ export default function McpGuide() {
     "feedback-insights": {
       "url": "${sseUrl}",
       "headers": {
-        "Authorization": "Bearer ${keys?.read || '粘贴你的密钥'}"
+        "Authorization": "Bearer 粘贴你的密钥"
       }
     }
   }

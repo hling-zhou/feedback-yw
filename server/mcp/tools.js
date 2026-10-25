@@ -156,10 +156,10 @@ export async function searchTickets(params, apiKey) {
   const offset = clampOffset(params.offset)
   const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
 
+  // 不在 DB 层做 limit/offset，因为后续还有内存过滤（产品/客户/标签/关键词）
+  // DB 层只做数据源和月份过滤，拿到全量后在内存做精细过滤再分页
   const query = {
     fields: 'list',
-    limit,
-    offset,
   }
 
   if (params.dataSourceType) query.dataSourceType = params.dataSourceType
@@ -233,9 +233,13 @@ export async function searchTickets(params, apiKey) {
     })
   }
 
-  const summaries = records.map((r) => toTicketSummary(r, opts))
+  // 内存分页（在所有过滤完成后）
+  const total = records.length
+  const paged = records.slice(offset, offset + limit)
+
+  const summaries = paged.map((r) => toTicketSummary(r, opts))
   return {
-    total: summaries.length,
+    total,
     records: summaries,
   }
 }
@@ -259,11 +263,11 @@ export async function getTicketDetail(params, apiKey) {
   if (params.id) {
     record = storageRepository.getRecord(params.id)
   } else if (params.ticketId) {
-    // 通过 ticketId 查找（需遍历，因为 getRecord 只按 id 查）
+    // 通过 ticketId 查找：需遍历，因为 getRecord 只按 id 查
+    // TODO: 优化为 DB 层按 ticket_id 索引查询（当前 records 表有 ticket_id 列）
     const result = storageRepository.listRecords({
       dataSourceTypes: ['complaint_ticket', 'consultation_ticket'],
       fields: 'full',
-      limit: 100000,
     })
     record = result.records.find((r) => r.ticketId === params.ticketId) || null
   }
@@ -303,18 +307,19 @@ export async function getTicketDetail(params, apiKey) {
  *   maxScore?: number,
  *   limit?: number,
  *   offset?: number,
+ *   desensitize?: boolean,
  * }} params
  * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
  */
 export async function getPostUseRatings(params, apiKey) {
   const limit = clampLimit(params.limit)
   const offset = clampOffset(params.offset)
+  const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
 
+  // 不在 DB 层做 limit/offset，因为后续还有内存过滤（产品/客户/渠道/分数）
   const query = {
     dataSourceType: 'post_use_rating',
     fields: 'list',
-    limit,
-    offset,
   }
 
   if (params.importMonth) {
@@ -356,7 +361,7 @@ export async function getPostUseRatings(params, apiKey) {
     records = records.filter((r) => Number(r.ratingScore) <= params.maxScore)
   }
 
-  // 统计
+  // 统计（在分页之前，对全部匹配记录做统计）
   const allScores = records.map((r) => Number(r.ratingScore)).filter((n) => Number.isFinite(n))
   const total = allScores.length
   const sum = allScores.reduce((a, b) => a + b, 0)
@@ -370,16 +375,19 @@ export async function getPostUseRatings(params, apiKey) {
     distribution[key] = (distribution[key] || 0) + 1
   }
 
-  const items = records.map((r) => ({
+  // 内存分页
+  const paged = records.slice(offset, offset + limit)
+
+  const items = paged.map((r) => ({
     id: r.id || '',
     importMonth: r.importMonth || '',
     product: r.product || r.productName || '',
     createdAt: r.createdAt || '',
     channel: r.channel || '',
     ratingScore: r.ratingScore ?? null,
-    customerName: r.customerName || '',
-    customerCode: r.customerCode || '',
-    commentText: (r.commentText || r.rawText || '').slice(0, 500),
+    customerName: desensitizeColumnValue(r.customerName, 'groupName', opts),
+    customerCode: desensitizeColumnValue(r.customerCode, 'groupCustomerCode', opts),
+    commentText: desensitizeText((r.commentText || r.rawText || '').slice(0, 500), opts),
   }))
 
   return {
@@ -706,12 +714,14 @@ export async function getActionStats(params, apiKey) {
  *   search?: string,
  *   limit?: number,
  *   offset?: number,
+ *   desensitize?: boolean,
  * }} params
  * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
  */
 export async function getPostUseTrace(params, apiKey) {
   const limit = clampLimit(params.limit)
   const offset = clampOffset(params.offset)
+  const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
 
   // visit 模式：从 meta.post_use_visits 读取回访记录
   const raw = storageRepository.getMeta(META_KEY_POST_USE_VISITS)
@@ -737,7 +747,7 @@ export async function getPostUseTrace(params, apiKey) {
     records = records.filter((r) => String(r?.productName || '') === params.productName)
   }
 
-  // 客户名称过滤
+  // 客户名称过滤（搜索时用原名，不脱敏搜索条件）
   if (params.customerName) {
     const needle = params.customerName.trim().toLowerCase()
     records = records.filter((r) =>
@@ -768,15 +778,19 @@ export async function getPostUseTrace(params, apiKey) {
   const total = records.length
   const items = records.slice(offset, offset + limit)
 
+  // 脱敏客户信息（列级）
+  const desensitizeCustomerField = (/** @type {unknown} */ value, fieldKey) =>
+    desensitizeColumnValue(value, fieldKey, opts)
+
   return {
     total,
     items: items.map((r) => ({
       id: r.id || '',
       importMonth: r.importMonth || r.visitMonth || '',
       productName: r.productName || '',
-      customerName: r.customerName || '',
-      customerCode: r.customerCode || '',
-      loginAccountName: r.loginAccountName || '',
+      customerName: desensitizeCustomerField(r.customerName, 'groupName'),
+      customerCode: desensitizeCustomerField(r.customerCode, 'groupCustomerCode'),
+      loginAccountName: desensitizeCustomerField(r.loginAccountName, 'loginAccountName'),
       internalEvaluationDetail: r.internalEvaluationDetail || '',
       internalConclusion: r.internalConclusion || '',
       remark: r.remark || '',
@@ -840,6 +854,7 @@ export const MCP_TOOLS = [
         maxScore: { type: 'number', description: '最高评分（含），如 maxScore=7 可筛低分' },
         limit: { type: 'number', description: '返回条数上限，默认 50，最大 200' },
         offset: { type: 'number', description: '分页偏移量，默认 0' },
+        desensitize: { type: 'boolean', description: '是否脱敏，默认 true。传 false 需 API Key 具备 mcp:full scope' },
       },
     },
     handler: getPostUseRatings,
@@ -927,6 +942,7 @@ export const MCP_TOOLS = [
         search: { type: 'string', description: '在客户名称、评估结论、备注等字段中搜索关键词' },
         limit: { type: 'number', description: '返回条数上限，默认 50，最大 200' },
         offset: { type: 'number', description: '分页偏移量，默认 0' },
+        desensitize: { type: 'boolean', description: '是否脱敏，默认 true。传 false 需 API Key 具备 mcp:full scope' },
       },
     },
     handler: getPostUseTrace,

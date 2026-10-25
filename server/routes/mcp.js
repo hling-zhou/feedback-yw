@@ -2,8 +2,57 @@ import { requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { storageRepository } from '../storageRepository.js'
 import { verifyPasswordCredentials } from '../users.js'
+import { resolveClientIp } from '../loginRateLimit.js'
+import { API_KEY_PREFIX } from '../../src/domain/apiKey.js'
 
 const META_KEY_MCP_SHARED_KEYS = 'mcp_shared_keys'
+
+/** @type {Map<string, { count: number; resetAt: number }>} */
+const revealAttempts = new Map()
+const REVEAL_MAX_ATTEMPTS = 5
+const REVEAL_WINDOW_MS = 5 * 60 * 1000
+
+/**
+ * @param {import('fastify').FastifyRequest} request
+ * @returns {{ blocked: boolean; retryAfterSec?: number }}
+ */
+function checkRevealRateLimit(request) {
+  const ip = resolveClientIp(request)
+  const now = Date.now()
+  const entry = revealAttempts.get(ip)
+  if (!entry || now >= entry.resetAt) {
+    return { blocked: false }
+  }
+  if (entry.count < REVEAL_MAX_ATTEMPTS) {
+    return { blocked: false }
+  }
+  return {
+    blocked: true,
+    retryAfterSec: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)),
+  }
+}
+
+/**
+ * @param {import('fastify').FastifyRequest} request
+ */
+function recordRevealFailure(request) {
+  const ip = resolveClientIp(request)
+  const now = Date.now()
+  const entry = revealAttempts.get(ip)
+  if (!entry || now >= entry.resetAt) {
+    revealAttempts.set(ip, { count: 1, resetAt: now + REVEAL_WINDOW_MS })
+    return
+  }
+  entry.count += 1
+}
+
+/**
+ * @param {import('fastify').FastifyRequest} request
+ */
+function clearRevealFailures(request) {
+  const ip = resolveClientIp(request)
+  revealAttempts.delete(ip)
+}
 
 /**
  * @typedef {{ read: string; full: string } | null} McpSharedKeys
@@ -56,6 +105,14 @@ export function registerMcpRoutes(app) {
         return reply.code(400).send({ error: '密钥类型无效' })
       }
 
+      // 频率限制：防止已登录用户暴力尝试密码
+      const rate = checkRevealRateLimit(request)
+      if (rate.blocked) {
+        return reply.code(429).send({
+          error: `尝试次数过多，请 ${rate.retryAfterSec} 秒后再试`,
+        })
+      }
+
       // 验证登录密码
       const user = request.user
       if (!user?.username) {
@@ -64,8 +121,15 @@ export function registerMcpRoutes(app) {
 
       const verified = await verifyPasswordCredentials(user.username, body.password)
       if (!verified) {
+        recordRevealFailure(request)
+        logAuditFromRequest(request, 'mcp.key_reveal_failed', {
+          scope: body.scope,
+          username: user.username,
+        })
         return reply.code(403).send({ error: '密码验证失败' })
       }
+
+      clearRevealFailures(request)
 
       const keys = /** @type {McpSharedKeys} */ (
         storageRepository.getMeta(META_KEY_MCP_SHARED_KEYS)
@@ -94,6 +158,28 @@ export function registerMcpRoutes(app) {
 
       if (!body?.read && !body?.full) {
         return reply.code(400).send({ error: '请至少提供一个密钥值' })
+      }
+
+      // 验证密钥格式（必须以 fi_live_ 开头，长度 >= 20）
+      const validateKey = (key) => {
+        if (!key) return true // 空值跳过（不更新该字段）
+        const trimmed = key.trim()
+        if (!trimmed.startsWith(API_KEY_PREFIX)) {
+          return `密钥必须以 ${API_KEY_PREFIX} 开头`
+        }
+        if (trimmed.length < 20) {
+          return '密钥长度不足'
+        }
+        return null
+      }
+
+      if (body.read) {
+        const err = validateKey(body.read)
+        if (err) return reply.code(400).send({ error: `脱敏模式密钥：${err}` })
+      }
+      if (body.full) {
+        const err = validateKey(body.full)
+        if (err) return reply.code(400).send({ error: `完整模式密钥：${err}` })
       }
 
       const existing = /** @type {McpSharedKeys} */ (

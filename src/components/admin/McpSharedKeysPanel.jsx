@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Input, Space, Typography } from 'antd'
+import { Alert, Button, Input, Typography } from 'antd'
 import { ApiOutlined, SaveOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { getMcpSharedKeys, updateMcpSharedKeys } from '../../lib/mcpClient.js'
@@ -15,6 +15,8 @@ export default function McpSharedKeysPanel({ canEdit }) {
   const [keys, setKeys] = useState(/** @type {McpKeys} */ (null))
   const [readKey, setReadKey] = useState('')
   const [fullKey, setFullKey] = useState('')
+  const [readDirty, setReadDirty] = useState(false)
+  const [fullDirty, setFullDirty] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -24,8 +26,11 @@ export default function McpSharedKeysPanel({ canEdit }) {
       const data = await getMcpSharedKeys()
       const k = data.keys || null
       setKeys(k)
-      setReadKey(k?.read || '')
-      setFullKey(k?.full || '')
+      // 密文前缀只展示，不放入编辑框（避免误把密文当明文再保存）
+      setReadKey('')
+      setFullKey('')
+      setReadDirty(false)
+      setFullDirty(false)
     } catch (err) {
       setKeys(null)
     } finally {
@@ -39,8 +44,8 @@ export default function McpSharedKeysPanel({ canEdit }) {
 
   const handleSave = async () => {
     const input = {}
-    if (readKey.trim()) input.read = readKey.trim()
-    if (fullKey.trim()) input.full = fullKey.trim()
+    if (readDirty && readKey.trim()) input.read = readKey.trim()
+    if (fullDirty && fullKey.trim()) input.full = fullKey.trim()
     if (!input.read && !input.full) {
       message.warning('请至少填写一个密钥值')
       return
@@ -49,8 +54,10 @@ export default function McpSharedKeysPanel({ canEdit }) {
     try {
       const data = await updateMcpSharedKeys(input)
       setKeys(data.keys || null)
-      setReadKey(data.keys?.read || '')
-      setFullKey(data.keys?.full || '')
+      setReadKey('')
+      setFullKey('')
+      setReadDirty(false)
+      setFullDirty(false)
       message.success('MCP 共享密钥已保存')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '保存失败')
@@ -98,10 +105,18 @@ export default function McpSharedKeysPanel({ canEdit }) {
       <div className="space-y-4">
         <div>
           <Text className="mb-1 block">脱敏模式密钥（mcp:read）</Text>
+          {keys?.read && !readDirty && (
+            <Text code className="mb-1 block text-sm text-green-600">
+              {keys.read}（已配置）
+            </Text>
+          )}
           <Input.Password
             value={readKey}
-            onChange={(e) => setReadKey(e.target.value)}
-            placeholder="粘贴 mcp:read scope 的 API Key（fi_live_...）"
+            onChange={(e) => {
+              setReadKey(e.target.value)
+              setReadDirty(true)
+            }}
+            placeholder={keys?.read ? '已配置，如需更换请输入新密钥' : '粘贴 mcp:read scope 的 API Key（fi_live_...）'}
             disabled={!canEdit}
           />
           <Text type="secondary" className="mt-1 block text-xs">
@@ -111,10 +126,18 @@ export default function McpSharedKeysPanel({ canEdit }) {
 
         <div>
           <Text className="mb-1 block">完整模式密钥（mcp:full）</Text>
+          {keys?.full && !fullDirty && (
+            <Text code className="mb-1 block text-sm text-green-600">
+              {keys.full}（已配置）
+            </Text>
+          )}
           <Input.Password
             value={fullKey}
-            onChange={(e) => setFullKey(e.target.value)}
-            placeholder="粘贴 mcp:full scope 的 API Key（fi_live_...）"
+            onChange={(e) => {
+              setFullKey(e.target.value)
+              setFullDirty(true)
+            }}
+            placeholder={keys?.full ? '已配置，如需更换请输入新密钥' : '粘贴 mcp:full scope 的 API Key（fi_live_...）'}
             disabled={!canEdit}
           />
           <Text type="secondary" className="mt-1 block text-xs">
