@@ -3,6 +3,7 @@ import { Button, Checkbox, Descriptions, Drawer, Form, Input, Select, Space, Tag
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../../constants/appLayout.js'
 import { patchPostUseVisit, postUseVisitReviewId } from '../../lib/postUseVisitClient.js'
 import { listAssignees } from '../../lib/postUseJiraClient.js'
+import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import {
   createActionItem,
   getActionItem,
@@ -293,8 +294,8 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
                   showSearch
                   allowClear
                   placeholder="选择经办人"
-                  optionFilterProp="label"
-                  options={assignees.map((u) => ({ label: u.username, value: u.username }))}
+                  filterOption={userOptionFilterOption}
+                  options={assignees.map((u) => ({ ...buildUserOption(u, assignees), value: u.username }))}
                 />
               </Form.Item>
               <Form.Item name="internalEvaluationDetail" label="内部评估">

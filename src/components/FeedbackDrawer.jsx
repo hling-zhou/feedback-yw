@@ -136,6 +136,7 @@ import {
   persistTicketTodoLinkChange,
   syncTicketTodoIncoming } from '../lib/ticketTodoIncomingSync.js'
 import { apiFetch } from '../lib/apiClient.js'
+import { buildUserOption, userOptionFilterOption } from '../lib/userSelectOptions.js'
 import { copyTextToClipboard } from '../lib/clipboard.js'
 import { getSourceColumnValue } from '../lib/sourceColumns.js'
 import ActionCopyIcon from './common/ActionCopyIcon.jsx'
@@ -1015,7 +1016,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     /** @type {import('../domain/ticketTodo.js').TicketTodoIncomingRef[]} */ ([]),
   )
   const [todoAssigneeOptions, setTodoAssigneeOptions] = useState(
-    /** @type {{ value: string; label: string; team?: string }[]} */ ([]),
+    /** @type {{ value: string; label: string; username: string; displayName: string; team?: string }[]} */ ([]),
   )
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1062,15 +1063,14 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         const data = await apiFetch('/api/users/assignees')
         if (cancelled) return
         const options = (data.users || []).map(
-          (/** @type {{ id: string; username: string; team?: string }} */ u) => ({
-            value: u.id,
-            label: u.username,
+          (u) => ({
+            ...buildUserOption(u, data.users || []),
             team: u.team }),
         )
         setTodoAssigneeOptions(options)
       } catch {
         if (!cancelled && user?.id) {
-          setTodoAssigneeOptions([{ value: user.id, label: user.username, team: user.team }])
+          setTodoAssigneeOptions([{ ...buildUserOption(user, [user]), team: user.team }])
         }
       }
     })()
@@ -2325,18 +2325,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         mode="multiple"
                         placeholder="负责人"
                         showSearch
-                        optionFilterProp="label"
+                        filterOption={userOptionFilterOption}
                         allowClear
                         maxTagCount="responsive"
                         disabled={itemDisabled || !todoAssigneeOptions.length}
                         value={assigneeIds}
-                        options={todoAssigneeOptions.map((option) => ({
-                          value: option.value,
-                          label: option.label }))}
+                        options={todoAssigneeOptions}
                         onChange={(values) => {
                           const assignees = (values || []).map((userId) => {
                             const option = todoAssigneeOptions.find((o) => o.value === userId)
-                            return { userId, username: option?.label || userId }
+                            return { userId, username: option?.username || userId }
                           })
                           const next = [...ticketTodoItems]
                           next[index] = applyTicketTodoAssigneeScalars(item, assignees)

@@ -3,6 +3,7 @@ import { Button, Descriptions, Drawer, Form, Input, Select, Typography, message 
 import { ACTION_ITEM_DRAWER_WIDTH } from '../../constants/appLayout.js'
 import { POST_USE_JIRA_STATUSES } from '../../domain/postUseJira.js'
 import { listAssignees } from '../../lib/postUseJiraClient.js'
+import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import {
   createActionItem,
   getActionItem,
@@ -195,8 +196,8 @@ export default function PostUseJiraDrawer({
                 showSearch
                 allowClear
                 placeholder="选择经办人"
-                optionFilterProp="label"
-                options={assignees.map((u) => ({ label: u.username, value: u.id }))}
+                filterOption={userOptionFilterOption}
+                options={assignees.map((u) => buildUserOption(u, assignees))}
               />
             </Form.Item>
             <Form.Item name="status" label="状态">

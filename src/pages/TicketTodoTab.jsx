@@ -55,6 +55,7 @@ import {
 } from '../lib/ticketTodoFilterModel.js'
 import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js'
 import { apiFetch } from '../lib/apiClient.js'
+import { buildUserOption } from '../lib/userSelectOptions.js'
 
 /** @typedef {import('../domain/ticketTodo.js').TicketTodoRow} TicketTodoRow */
 
@@ -88,7 +89,7 @@ export default function TicketTodoTab() {
   const [editOpen, setEditOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(/** @type {string | null} */ (null))
-  const [assigneeOptions, setAssigneeOptions] = useState(/** @type {{ value: string; label: string }[]} */ ([]))
+  const [assigneeOptions, setAssigneeOptions] = useState(/** @type {{ value: string; label: string; username: string; displayName: string }[]} */ ([]))
   const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
 
@@ -109,10 +110,9 @@ export default function TicketTodoTab() {
         if (cancelled) return
         const list = Array.isArray(data?.users) ? data.users : []
         setAssigneeOptions(
-          list.map((item) => ({
-            value: item.id,
-            label: item.username || item.id,
-          })).filter((item) => item.value),
+          list
+            .map((item) => ({ ...buildUserOption(item, list) }))
+            .filter((item) => item.value),
         )
       })
       .catch(() => {

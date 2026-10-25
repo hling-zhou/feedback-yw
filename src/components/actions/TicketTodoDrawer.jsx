@@ -33,6 +33,7 @@ import EstablishedActionFields, {
 } from './EstablishedActionFields.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
 import TicketTodoStatusTag from '../tags/TicketTodoStatusTag.jsx'
+import { userOptionFilterOption } from '../../lib/userSelectOptions.js'
 
 /** @typedef {import('../../domain/ticketTodo.js').TicketTodoRow} TicketTodoRow */
 /** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -200,7 +201,7 @@ export default function TicketTodoDrawer({
                       mode="multiple"
                       placeholder="负责人"
                       showSearch
-                      optionFilterProp="label"
+                      filterOption={userOptionFilterOption}
                       allowClear
                       disabled={saving || !assigneeOptions.length}
                       value={assignees.map((item) => item.userId)}
@@ -209,7 +210,7 @@ export default function TicketTodoDrawer({
                         setAssignees(
                           (values || []).map((userId) => {
                             const option = assigneeOptions.find((item) => item.value === userId)
-                            return { userId, username: option?.label || userId }
+                            return { userId, username: option?.username || userId }
                           }),
                         )
                       }}

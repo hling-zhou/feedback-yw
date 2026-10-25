@@ -26,7 +26,7 @@ import {
 } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { apiFetch } from '../lib/apiClient.js'
-import { resolveDisplayName } from '../domain/userDisplayName.js'
+import { buildUserOption, userOptionFilterOption } from '../lib/userSelectOptions.js'
 import { getCatalogProducts } from '../lib/productCatalog.js'
 import {
   catalogToTableRows,
@@ -118,11 +118,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
         if (cancelled) return
         const users = Array.isArray(data?.users) ? data.users : []
         setAssigneeOptions(
-          users.map((u) => ({
-            value: u.id,
-            label: resolveDisplayName(u) || u.username,
-            raw: u,
-          })),
+          users.map((u) => ({ ...buildUserOption(u, users), raw: u })),
         )
       })
       .catch(() => {})
@@ -630,9 +626,7 @@ export default function ProductCatalogPanel({ catalogMeta, readOnly = false }) {
                       allowClear
                       placeholder="选择人员"
                       options={assigneeOptions}
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
+                      filterOption={userOptionFilterOption}
                     />
                   </Form.Item>
                 ))}

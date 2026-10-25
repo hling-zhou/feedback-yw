@@ -19,6 +19,7 @@ import {
   listPostUseCallbackDecisions,
   upsertPostUseCallbackDecisions,
 } from '../../lib/postUseJiraClient.js'
+import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 
@@ -81,7 +82,7 @@ export default function PostUseCallbackProcessModal({
   }, [open])
 
   const assigneeOptions = useMemo(
-    () => assignees.map((person) => ({ label: person.username, value: person.id })),
+    () => assignees.map((person) => buildUserOption(person, assignees)),
     [assignees],
   )
 
@@ -339,9 +340,7 @@ export default function PostUseCallbackProcessModal({
               placeholder="经办人"
               value={current?.id || undefined}
               options={assigneeOptions}
-              filterOption={(input, option) =>
-                String(option?.label || '').toLowerCase().includes(input.toLowerCase())
-              }
+              filterOption={userOptionFilterOption}
               onChange={(value) => {
                 const person = assignees.find((p) => p.id === value)
                 setAssigneeOverrides((prev) => {
@@ -401,9 +400,7 @@ export default function PostUseCallbackProcessModal({
             placeholder="经办人"
             value={current?.id || undefined}
             options={assigneeOptions}
-            filterOption={(input, option) =>
-              String(option?.label || '').toLowerCase().includes(input.toLowerCase())
-            }
+            filterOption={userOptionFilterOption}
             onChange={(value) => {
               const person = assignees.find((p) => p.id === value)
               setAssigneeOverrides((prev) => {
