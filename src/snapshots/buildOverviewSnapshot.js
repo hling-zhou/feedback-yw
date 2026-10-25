@@ -1,6 +1,6 @@
 import { overviewSnapshotId } from '../domain/snapshot.js'
 import { DEFAULT_TENANT_ID } from '../domain/constants.js'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { defaultAnalysisVersions } from '../lib/versioning.js'
 import { getComparableMetrics } from '../metrics/registry.js'
 import { monthlyTrend, monthlyTrendByProduct } from '../lib/analytics.js'
@@ -47,7 +47,7 @@ export function buildOverviewSnapshot({
   /** @type {OverviewSnapshot['sourceSummaries']} */
   const sourceSummaries = {}
 
-  for (const type of DATA_SOURCE_TYPES) {
+  for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
     const snap = sourceSnapshots[type]
     const scoped = filterRecordsForScope(feedbacks, period, type)
     const maxMomGrowthProduct = computeMaxMomGrowthProductForSource(
@@ -62,7 +62,7 @@ export function buildOverviewSnapshot({
     }
   }
 
-  const ticketRecordsForTrend = DATA_SOURCE_TYPES.flatMap((type) =>
+  const ticketRecordsForTrend = IMPORTABLE_DATA_SOURCE_TYPES.flatMap((type) =>
     isTicketSource(type) ? filterRecordsForScope(feedbacks, period, type) : [],
   )
 
@@ -72,7 +72,7 @@ export function buildOverviewSnapshot({
 
   for (const metric of comparable) {
     if (metric.id === 'record_count') {
-      crossSourceMetrics.record_count = DATA_SOURCE_TYPES.map((type) => ({
+      crossSourceMetrics.record_count = IMPORTABLE_DATA_SOURCE_TYPES.map((type) => ({
         source: type,
         label: DATA_SOURCE_LABELS[type],
         value: sourceSummaries[type]?.recordCount ?? 0,
@@ -92,7 +92,7 @@ export function buildOverviewSnapshot({
     }
   }
 
-  const totalRecords = DATA_SOURCE_TYPES.reduce(
+  const totalRecords = IMPORTABLE_DATA_SOURCE_TYPES.reduce(
     (sum, type) => sum + (sourceSummaries[type]?.recordCount || 0),
     0,
   )

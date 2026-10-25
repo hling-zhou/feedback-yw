@@ -100,7 +100,7 @@ import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '
 import { getComparableMetrics, getMetricsForSource, listMetricDescriptors } from '../metrics/registry.js'
 import { defaultAnalysisVersions } from '../lib/versioning.js'
 import { emit, subscribe } from '../lib/events.js'
-import { DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
   loadSnapshotsForPeriod,
   rebuildAllSnapshots as rebuildAllSnapshotsService,
@@ -702,7 +702,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       setSourceSnapshots((prev) => {
         /** @type {Partial<Record<import('../domain/enums.js').DataSourceType, import('../domain/snapshot.js').InsightSnapshot>>} */
         const bySource = {}
-        for (const type of DATA_SOURCE_TYPES) {
+        for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
           const snap = loaded.sourceSnapshots[type]
           const merged = preferReadySnapshot(prev[type], snap)
           bySource[type] = merged

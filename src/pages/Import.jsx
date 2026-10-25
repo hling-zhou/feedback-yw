@@ -94,7 +94,7 @@ const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服部回访导入'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import { downloadFailuresCsv } from '../lib/export.js'
 import { buildTaggingPreviewRows, rowHasQuoteSourceText } from '../lib/importPreview.js'
 import QuoteImportPreviewTable from '../components/QuoteImportPreviewTable.jsx'
@@ -118,7 +118,7 @@ const STEPS_POST_USE = ['来源与月份', '上传文件', '预览确认', '导�
 
 const MERGE_OPTIONS = ['处理意见', '追加信息', '归档意见']
 
-const SOURCE_OPTIONS = DATA_SOURCE_TYPES.map((value) => ({
+const SOURCE_OPTIONS = IMPORTABLE_DATA_SOURCE_TYPES.map((value) => ({
   value,
   label: isStubPipeline(value)
     ? `${DATA_SOURCE_LABELS[value]}（Pipeline 未实现 · 仅导入）`
@@ -185,7 +185,7 @@ export default function Import({ embedded = false }) {
   } = useInsights()
 
   const [dataSourceType, setDataSourceType] = useState(() => {
-    if (initialSource && DATA_SOURCE_TYPES.includes(initialSource)) {
+    if (initialSource && IMPORTABLE_DATA_SOURCE_TYPES.includes(initialSource)) {
       return /** @type {import('../domain/enums.js').DataSourceType} */ (initialSource)
     }
     return 'complaint_ticket'
@@ -354,7 +354,7 @@ export default function Import({ embedded = false }) {
   useEffect(() => {
     if (appliedImportUrlRef.current === importUrlKey) return
     appliedImportUrlRef.current = importUrlKey
-    if (!initialSource || !DATA_SOURCE_TYPES.includes(initialSource)) return
+    if (!initialSource || !IMPORTABLE_DATA_SOURCE_TYPES.includes(initialSource)) return
     const nextSource = /** @type {import('../domain/enums.js').DataSourceType} */ (initialSource)
     setDataSourceType(nextSource)
     if (nextSource === 'post_use_rating') {

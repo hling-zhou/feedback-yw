@@ -1,4 +1,4 @@
-import { DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import { extractFromRaw } from './extract.js'
 import { normalizeQuoteNoiseConfig, stripQuoteNoise } from './quoteNoise.js'
 import {
@@ -53,7 +53,7 @@ export function defaultQuoteExtractionConfig() {
 export function normalizeQuoteExtractionConfig(partial) {
   const base = defaultQuoteExtractionConfig()
   if (!partial || typeof partial !== 'object') return base
-  for (const key of DATA_SOURCE_TYPES) {
+  for (const key of IMPORTABLE_DATA_SOURCE_TYPES) {
     const mode = partial[key]
     if (VALID_MODES.includes(/** @type {QuoteExtractionMode} */ (mode))) {
       base[key] = mode

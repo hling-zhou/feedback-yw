@@ -1,4 +1,4 @@
-import { DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import { overviewSnapshotId, sourceSnapshotId } from '../domain/snapshot.js'
 import { buildSourceSnapshot } from './buildSourceSnapshot.js'
 import { buildOverviewSnapshot } from './buildOverviewSnapshot.js'
@@ -284,7 +284,7 @@ export async function markPeriodSnapshotsRebuilding(adapter, insightPeriodId) {
     adapter,
     insightPeriodId,
   )
-  for (const type of DATA_SOURCE_TYPES) {
+  for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
     const snap = sourceSnapshots[type]
     if (snap) {
       await adapter.putSnapshot({ ...snap, status: 'rebuilding' })
@@ -314,7 +314,7 @@ export async function markPeriodSnapshotsStale(adapter, insightPeriodId) {
     adapter,
     insightPeriodId,
   )
-  for (const type of DATA_SOURCE_TYPES) {
+  for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
     const snap = sourceSnapshots[type]
     if (snap && snap.status === 'ready') {
       await adapter.putSnapshot({ ...snap, status: 'stale' })
@@ -361,12 +361,12 @@ export async function markPostUseDependentSnapshotsStale(adapter) {
  */
 export async function rebuildAllSnapshots(adapter, period, feedbacks, onProgress, settings = null) {
   const insightPeriodId = period.id
-  const total = DATA_SOURCE_TYPES.length + 1
+  const total = IMPORTABLE_DATA_SOURCE_TYPES.length + 1
   let done = 0
   /** @type {Partial<Record<DataSourceType, InsightSnapshot>>} */
   const sourceSnapshots = {}
 
-  for (const type of DATA_SOURCE_TYPES) {
+  for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
     onProgress?.(type, done, total)
     await yieldToMainThread()
     const snap = await rebuildSourceSnapshot({

@@ -2,7 +2,7 @@ import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
 } from '../domain/actionItem.js'
-import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 
 /** @typedef {import('./actionItemFilterModel.js').ActionItemFilterKey} ActionItemFilterKey */
 /** @typedef {import('./actionItemFilterModel.js').ActionItemFilterValues} ActionItemFilterValues */
@@ -132,7 +132,7 @@ export function listActionItemEnumOptionsForFilterKey(filterKey, _filters, optio
         }))
       )
     case 'linkedDataSources':
-      return DATA_SOURCE_TYPES.map((type) => ({
+      return IMPORTABLE_DATA_SOURCE_TYPES.map((type) => ({
         label: DATA_SOURCE_LABELS[type],
         value: type,
       }))

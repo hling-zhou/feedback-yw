@@ -1,4 +1,4 @@
-import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 
 /** @typedef {'dataSource' | 'product' | 'resourcePool' | 'complaintCauseL1'} WorkbenchScopeFilterKey */
 
@@ -197,4 +197,4 @@ export function workbenchScopeFiltersFromAnalysisParams(parsed) {
   }
 }
 
-export { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS }
+export { DATA_SOURCE_TYPES, IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS }

@@ -1,4 +1,4 @@
-import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 
 /** @typedef {import('./workbenchScopeFilterModel.js').WorkbenchScopeFilterKey} WorkbenchScopeFilterKey */
 /** @typedef {import('./workbenchScopeFilterModel.js').WorkbenchScopeFilterValues} WorkbenchScopeFilterValues */
@@ -50,7 +50,7 @@ export function isWorkbenchScopeFilterDraftValid(_filterKey, draft) {
 export function listWorkbenchScopeEnumOptionsForFilterKey(filterKey, filters, options = {}) {
   switch (filterKey) {
     case 'dataSource':
-      return DATA_SOURCE_TYPES.map((type) => ({
+      return IMPORTABLE_DATA_SOURCE_TYPES.map((type) => ({
         label: DATA_SOURCE_LABELS[type],
         value: type,
       }))

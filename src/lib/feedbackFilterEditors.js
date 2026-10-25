@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
@@ -132,7 +132,7 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
     case 'customerNames':
       return options.customerNameOptions || []
     case 'dataSource':
-      return (options.dataSourceTypes || DATA_SOURCE_TYPES).map((type) => ({
+      return (options.dataSourceTypes || IMPORTABLE_DATA_SOURCE_TYPES).map((type) => ({
         label: DATA_SOURCE_LABELS[type],
         value: type,
       }))

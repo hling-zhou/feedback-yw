@@ -3,7 +3,7 @@ import { Alert, Table, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { formatSnapshotGeneratedAt } from '../../domain/snapshot.js'
 import { prepareOverviewConclusionsForDisplay } from '../../snapshots/rehydrateOverviewRecommendations.js'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { buildImportUrl } from '../../lib/importRoute.js'
 import { resolvePreviousInsightPeriod } from '../../domain/insightPeriod.js'
 import { computeMaxMomGrowthProductForSource } from '../../lib/sourceOverviewMetrics.js'
@@ -91,7 +91,7 @@ export default function OverviewTab({
   )
 
   const sourceRows = useMemo(() => {
-    return DATA_SOURCE_TYPES.map((type) => {
+    return IMPORTABLE_DATA_SOURCE_TYPES.map((type) => {
       const summary = snapshot.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
       const maxMomGrowthProduct =
         summary?.maxMomGrowthProduct ??
@@ -114,7 +114,7 @@ export default function OverviewTab({
   return (
     <div className="space-y-6">
       <Typography.Text type="secondary" className="block text-xs">
-        周期内反馈 {total} 条 · 有数据来源 {activeSourceCount}/{DATA_SOURCE_TYPES.length} · 快照{' '}
+        周期内反馈 {total} 条 · 有数据来源 {activeSourceCount}/{IMPORTABLE_DATA_SOURCE_TYPES.length} · 快照{' '}
         {generatedAtLabel}；刷新/生成洞察 可获取最新结果。
       </Typography.Text>
 

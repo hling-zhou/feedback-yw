@@ -21,7 +21,7 @@ import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
 import MailSettingsPanel from '../components/admin/MailSettingsPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
-import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
   describeClearImportedScope,
   describeClearImportedScopeRisk,
@@ -763,7 +763,7 @@ export default function Settings() {
                         className="w-full"
                         placeholder="请选择数据来源"
                         value={clearSourceType || undefined}
-                        options={DATA_SOURCE_TYPES.map((t) => ({
+                        options={IMPORTABLE_DATA_SOURCE_TYPES.map((t) => ({
                           label: DATA_SOURCE_LABELS[t],
                           value: t,
                         }))}

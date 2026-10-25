@@ -20,6 +20,19 @@ export const DATA_SOURCE_LABELS = {
   reminder: '提醒邮件',
 }
 
+/**
+ * 可导入的数据源类型（排除 reminder 等非真实数据来源）。
+ * 导入页下拉、反馈库筛选器用此子集而非全量 DATA_SOURCE_TYPES。
+ * @type {DataSourceType[]}
+ */
+export const IMPORTABLE_DATA_SOURCE_TYPES = /** @type {const} */ ([
+  'complaint_ticket',
+  'consultation_ticket',
+  'post_use_rating',
+  'user_survey',
+  'other',
+])
+
 /** @typedef {typeof RECORD_STATUSES[number]} RecordStatus */
 export const RECORD_STATUSES = /** @type {const} */ (['raw', 'analyzed', 'published'])
 

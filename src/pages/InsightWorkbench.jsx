@@ -12,7 +12,7 @@ import RebuildInsightsButton from '../components/workbench/RebuildInsightsButton
 import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { listMonthsInclusive, toLastMonthSpec } from '../domain/insightPeriod.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { isTicketSource } from '../lib/importUtils.js'
@@ -78,7 +78,7 @@ export default function InsightWorkbench() {
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
-    if (tab && (tab === TAB_OVERVIEW || DATA_SOURCE_TYPES.includes(tab))) return tab
+    if (tab && (tab === TAB_OVERVIEW || IMPORTABLE_DATA_SOURCE_TYPES.includes(tab))) return tab
     return TAB_OVERVIEW
   })
   const [selectedProduct, setSelectedProduct] = useState('')

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Badge, Tabs } from 'antd'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { isStubPipeline } from '../../analysis/registry.js'
-import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
+import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/enums.js'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../../lib/productCatalog/postUseRatingProducts.js'
@@ -26,7 +26,7 @@ export default function WorkbenchAnalysisNav({
   const { sourceSnapshots, feedbacks, currentPeriod } = useInsights()
   const sourceCounts = useMemo(() => {
     const counts = {}
-    for (const type of DATA_SOURCE_TYPES) {
+    for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
       const n = sourceSnapshots[type]?.summary?.recordCount
       if (n != null) counts[type] = n
     }
@@ -44,7 +44,7 @@ export default function WorkbenchAnalysisNav({
 
   const sourceItems = [
     { key: TAB_OVERVIEW, label: '综合概述' },
-    ...DATA_SOURCE_TYPES.map((type) => {
+    ...IMPORTABLE_DATA_SOURCE_TYPES.map((type) => {
       const base = DATA_SOURCE_LABELS[type]
       const preview =
         isStubPipeline(type) && type !== 'post_use_rating' ? '(预览)' : ''
