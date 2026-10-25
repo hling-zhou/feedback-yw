@@ -28,6 +28,7 @@ import {
   actionItemMatchesJourneyL1Filter,
   actionItemMatchesProblemTypeFilter,
 } from '../src/domain/actionItemDisplay.js'
+import { buildProblemCentricView } from '../src/domain/actionProblemScope.js'
 
 /**
  * @typedef {import('../src/domain/actionItem.js').ActionItem} ActionItem
@@ -282,6 +283,21 @@ function listActionItems(query = {}) {
 }
 
 /**
+ * 问题压降视图：全库工单（投诉+咨询）按问题签名聚合，叠加全量举措的前后对比。
+ * 全库直读：不经过 listActionItems 的 500 出口钳制、不绑定洞察周期，
+ * 修复部署环境（API 模式）下前端按周期加载导致跨周期工单匹配失败、产品行缺失的回归。
+ * 产品目录刷新（loadManagedProductCatalog）由路由层负责，本函数同步读进程内缓存。
+ * @returns {{ problems: ReturnType<typeof buildProblemCentricView>['problems'] }}
+ */
+function buildProblemReductionView() {
+  const { records } = storageRepository.listRecords({
+    dataSourceTypes: ['complaint_ticket', 'consultation_ticket'],
+  })
+  const { items: actions } = getFilteredActionItems({})
+  return buildProblemCentricView(actions, records, buildProductNameByKeyMap())
+}
+
+/**
  * @param {string} id
  * @returns {ActionItem | null}
  */
@@ -449,4 +465,5 @@ export const actionItemRepository = {
   countActionItemsByStatus,
   aggregateActionItemsByProductStatus,
   unlinkTicketsFromActionItems,
+  buildProblemReductionView,
 }

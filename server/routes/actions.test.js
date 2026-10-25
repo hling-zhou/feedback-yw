@@ -44,19 +44,19 @@ describeActions('actions API (P4-1)', () => {
     const viewer = await createUser({
       username: 'actions_viewer',
       password: 'ViewerPass12345!',
-      team: '测试',
+      team: '产品运营组',
       role: 'viewer',
     })
     const editor = await createUser({
       username: 'actions_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '产品运营组',
       role: 'editor',
     })
     const admin = await createUser({
       username: 'actions_admin',
       password: 'AdminPass12345!',
-      team: '测试',
+      team: '产品运营组',
       role: 'admin',
     })
 
@@ -376,7 +376,9 @@ describeActions('actions API (P4-1)', () => {
         content: '快照举措',
         problemTypeSnapshot: '计费与账单',
         journeyL1Snapshot: '开通',
-        linkedTicketIds: ['T-FILTER-A'],
+        // 现行语义（bddb061 起）：关联工单的打标优先，快照仅在工单查不到时兜底。
+        // 关联一条库中不存在的工单号，走快照兜底路径。
+        linkedTicketIds: ['T-FILTER-SNAP'],
       },
     })
     expect(snapshotRes.statusCode).toBe(201)
@@ -526,5 +528,86 @@ describeActions('actions API (P4-1)', () => {
     const statsBody = JSON.parse(statsRes.body)
     const eipRow = statsBody.byProduct?.find((row) => row.productKey === 'eip')
     expect(eipRow?.productName).toBe('弹性公网IP')
+  })
+
+  it('problem-reduction-view aggregates across-period tickets beyond insight period window', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+    await storageRepository.putRecords([
+      {
+        id: 'rec-pr-a',
+        ticketId: 'PR-202605-001',
+        dataSourceType: 'complaint_ticket',
+        importMonth: '2026-05',
+        productKey: 'eip',
+        product: '弹性公网IP',
+        journeyL1: '资源开通',
+        journeyL2: '申请开通',
+        problemType: '开通失败',
+        sentiment: 'negative',
+        painPoint: 'EIP 开通卡在配额校验',
+      },
+      {
+        id: 'rec-pr-b',
+        ticketId: 'PR-202609-001',
+        dataSourceType: 'consultation_ticket',
+        importMonth: '2026-09',
+        productKey: 'eip',
+        product: '弹性公网IP',
+        journeyL1: '资源开通',
+        journeyL2: '申请开通',
+        problemType: '开通失败',
+        sentiment: 'neutral',
+        painPoint: '',
+      },
+      {
+        id: 'rec-pr-c',
+        ticketId: 'PR-PU-001',
+        dataSourceType: 'post_use_rating',
+        importMonth: '2026-09',
+        productKey: 'eip',
+        product: '弹性公网IP',
+        journeyL1: '资源开通',
+        journeyL2: '申请开通',
+        sentiment: 'positive',
+        painPoint: '不应该计入问题压降',
+      },
+    ])
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '开通配额预检前置',
+        productKey: 'eip',
+        productName: '弹性公网IP',
+        scheduleAt: '2026-07-01',
+        linkedTicketIds: ['PR-202605-001', 'PR-202609-001'],
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/actions/problem-reduction-view',
+      headers: authHeader('viewer'),
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    const row = body.problems?.find((p) => p.productKey === 'eip')
+    expect(row).toBeTruthy()
+    // 跨周期（2026-05 与 2026-09）工单都计入：全库聚合不受洞察周期窗口截断
+    expect(row.totalTicketCount).toBe(2)
+    expect(row.firstMonth).toBe('2026-05')
+    expect(row.lastMonth).toBe('2026-09')
+    expect(row.monthlyTrend.map((m) => m.date)).toEqual(['2026-05', '2026-09'])
+    // post_use_rating 不进问题压降口径
+    expect(row.monthlyTrend.every((m) => m.count === 1)).toBe(true)
+    // 举措前后对比：锚点月 2026-07 归前段（与服务端同口径）
+    expect(row.actions.length).toBe(1)
+    expect(row.actions[0].content).toBe('开通配额预检前置')
+    expect(row.actions[0].anchorMonth).toBe('2026-07')
+    expect(row.actions[0].reduction.beforeMonths.map((m) => m.date)).toEqual(['2026-05'])
+    expect(row.actions[0].reduction.afterMonths.map((m) => m.date)).toEqual(['2026-09'])
   })
 })

@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Empty, List, Select, Space, Tag, Typography, message } from 'antd'
 import TrendChart from '../components/charts/TrendChart.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
-import { listActionItems } from '../lib/actionItemClient.js'
-import { buildProductNameByKeyMap } from '../lib/productCatalog.js'
-import { buildProblemCentricView } from '../domain/actionProblemScope.js'
-import { useInsights } from '../context/InsightsContext.jsx'
+import { getProblemReductionView } from '../lib/actionItemClient.js'
 import { ACTION_ITEM_STATUS_LABELS } from '../domain/actionItem.js'
 
 /** @typedef {import('../domain/actionProblemScope.js').ProblemCentricRow} ProblemCentricRow */
@@ -14,53 +11,45 @@ const TREND_ARROW = { up: '↑', down: '↓', flat: '→', unknown: '—' }
 const TREND_COLOR = { up: 'red', down: 'green', flat: 'default', unknown: 'default' }
 
 export default function ProblemReductionTab() {
-  const { feedbacks } = useInsights()
-  const [actions, setActions] = useState([])
+  const [problems, setProblems] = useState(/** @type {ProblemCentricRow[]} */ ([]))
   const [loading, setLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
   const [productFilter, setProductFilter] = useState('')
 
-  const productNameByKey = useMemo(() => buildProductNameByKeyMap(), [])
-
-  const loadActions = useCallback(async () => {
+  const loadProblems = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await listActionItems({ limit: 500, offset: 0 })
-      setActions(result.items || [])
+      const result = await getProblemReductionView()
+      setProblems(result.problems || [])
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载举措失败')
+      message.error(err instanceof Error ? err.message : '加载问题压降视图失败')
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadActions()
-  }, [loadActions])
-
-  const view = useMemo(
-    () => buildProblemCentricView(actions, feedbacks, productNameByKey),
-    [actions, feedbacks, productNameByKey],
-  )
+    loadProblems()
+  }, [loadProblems])
 
   const productOptions = useMemo(() => {
     const seen = new Map()
-    for (const row of view.problems) {
+    for (const row of problems) {
       if (row.productKey && !seen.has(row.productKey)) {
         seen.set(row.productKey, row.productName)
       }
     }
     return [...seen.entries()].map(([key, name]) => ({ value: key, label: name }))
-  }, [view.problems])
+  }, [problems])
 
   const filteredProblems = useMemo(
-    () => (productFilter ? view.problems.filter((p) => p.productKey === productFilter) : view.problems),
-    [view.problems, productFilter],
+    () => (productFilter ? problems.filter((p) => p.productKey === productFilter) : problems),
+    [problems, productFilter],
   )
 
   const selected = useMemo(
-    () => view.problems.find((p) => p.key === selectedKey) || filteredProblems[0] || null,
-    [view.problems, selectedKey, filteredProblems],
+    () => problems.find((p) => p.key === selectedKey) || filteredProblems[0] || null,
+    [problems, selectedKey, filteredProblems],
   )
 
   return (

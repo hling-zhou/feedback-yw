@@ -17,6 +17,8 @@ import { requireAdmin, requirePermission } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { actionItemRepository } from '../actionItemRepository.js'
 import { ACTION_ITEM_CONFLICT_CODE } from '../../src/domain/actionItemRevision.js'
+import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
+import { storageRepository } from '../storageRepository.js'
 
 /**
  * @param {Record<string, unknown>} body
@@ -44,6 +46,27 @@ function assertEditRecordPermission(request, reply) {
 }
 
 /**
+ * 问题压降视图构建前从 DB 刷新服务端产品目录缓存。
+ * UI 保存产品只写 DB（applyCatalogProducts 更新的是浏览器进程缓存），服务端进程内
+ * 缓存不随之刷新；不刷新会把产品名解析成陈旧目录。与 reminders / enrichRunner
+ * 同一口径；刷新失败时降级用缓存，不阻塞视图本身。
+ * @param {import('fastify').FastifyBaseLogger} [logger]
+ */
+async function refreshProductCatalogForProblemView(logger) {
+  const adapter = {
+    getMeta: (key) => storageRepository.getMeta(key),
+    putMeta: (key, value) => storageRepository.putMeta(key, value),
+  }
+  try {
+    await loadManagedProductCatalog(adapter)
+  } catch (err) {
+    logger?.warn?.(
+      `[actions] 产品目录刷新失败，降级用缓存: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
+
+/**
  * @param {import('fastify').FastifyInstance} app
  */
 export function registerActionRoutes(app) {
@@ -53,6 +76,17 @@ export function registerActionRoutes(app) {
     )
     return actionItemRepository.listActionItems(q)
   })
+
+  // 问题压降视图：服务端全库聚合（问题签名 + 月度趋势 + 举措前后对比），
+  // 不受洞察周期与 listActionItems 500 出口钳制影响。Fastify 静态路由优先于 :id。
+  app.get(
+    '/api/actions/problem-reduction-view',
+    { preHandler: requirePermission('view') },
+    async (request) => {
+      await refreshProductCatalogForProblemView(request.log)
+      return actionItemRepository.buildProblemReductionView()
+    },
+  )
 
   app.get('/api/actions/stats', { preHandler: requirePermission('view') }, async (request) => {
     const q = /** @type {import('../actionItemRepository.js').ActionItemListQuery} */ (

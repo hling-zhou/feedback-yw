@@ -91,6 +91,15 @@ export async function getActionItemStats(query = {}) {
 }
 
 /**
+ * 问题压降视图：服务端全库聚合（问题签名 + 月度趋势 + 举措前后对比），
+ * 不受洞察周期与 listActionItems 500 出口钳制影响。
+ * @returns {Promise<{ problems: import('../domain/actionProblemScope.js').ProblemCentricRow[] }>}
+ */
+export async function getProblemReductionView() {
+  return apiFetch('/api/actions/problem-reduction-view')
+}
+
+/**
  * @param {string} id
  * @returns {Promise<ActionItem | null>}
  */
