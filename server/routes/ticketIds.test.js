@@ -67,7 +67,7 @@ describeTicketIds('ticket-ids API', () => {
     const editor = await createUser({
       username: 'ticket_ids_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '产品运营组',
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }

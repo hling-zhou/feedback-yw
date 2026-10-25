@@ -68,6 +68,12 @@ import {
 import { exportActionItemsWithQuery } from '../lib/actionItemExport.js'
 import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js'
 import {
+  collectMissingTicketIds,
+  fetchFeedbackRecordsByTicketIds,
+  mergeFeedbackIndexMaps,
+} from '../lib/linkedTicketBackfill.js'
+import { getApiStorageAdapter } from '../storage/apiStorageAdapter.js'
+import {
   buildProductNameToKeyMap,
   parseActionItemImportWorkbook,
   parseLinkedTicketIdsCell,
@@ -353,6 +359,45 @@ function ProductActionsTab() {
     [feedbacks],
   )
 
+  // ── 抽屉关联反馈补拉：洞察周期缓存没有的关联工单，打开抽屉时按工单号全量补拉 ──
+  // 压降验证 / 关联问题 / 关联反馈分区与问题压降 tab 同口径（举措全量工单，不受页头周期窗口截断）
+  const [backfillByTicketId, setBackfillByTicketId] = useState(() => new Map())
+  const drawerItem = useMemo(
+    () => (editing ? items.find((it) => it.id === editing.id) || editing : null),
+    [editing, items],
+  )
+  const drawerFeedbackByTicketId = useMemo(
+    () => mergeFeedbackIndexMaps(feedbackByTicketId, backfillByTicketId),
+    [feedbackByTicketId, backfillByTicketId],
+  )
+  useEffect(() => {
+    if (!editOpen || !drawerItem) return undefined
+    const missing = collectMissingTicketIds(drawerFeedbackByTicketId, drawerItem.linkedTicketIds)
+    if (!missing.length) return undefined
+    let cancelled = false
+    fetchFeedbackRecordsByTicketIds(missing, getApiStorageAdapter())
+      .then((records) => {
+        if (cancelled || !records.length) return
+        setBackfillByTicketId((prev) => {
+          let changed = false
+          const next = new Map(prev)
+          for (const record of records) {
+            const ticketId = String(record?.ticketId ?? '').trim()
+            if (!ticketId || prev.has(ticketId) || drawerFeedbackByTicketId.has(ticketId)) continue
+            next.set(ticketId, record)
+            changed = true
+          }
+          return changed ? next : prev
+        })
+      })
+      .catch((err) => {
+        if (!cancelled) console.warn('[actions] 关联反馈补拉失败，抽屉退回周期内数据', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editOpen, drawerItem, drawerFeedbackByTicketId])
+
   const {
     selected: selectedFeedback,
     setSelectedDirect,
@@ -363,7 +408,8 @@ function ProductActionsTab() {
 
   const openFeedbackByTicketId = useCallback(
     (ticketId) => {
-      const record = feedbackByTicketId.get(ticketId)
+      // 优先补拉增强索引：抽屉里展示的窗口外工单也能直接打开
+      const record = drawerFeedbackByTicketId.get(ticketId)
       if (!record) {
         message.warning('未在库中找到该工单，请稍后刷新或确认工单号')
         return
@@ -373,7 +419,7 @@ function ProductActionsTab() {
       setEditing(null)
       setSelectedDirect(record)
     },
-    [feedbackByTicketId, setSelectedDirect],
+    [drawerFeedbackByTicketId, setSelectedDirect],
   )
 
   const resolveLinkedTicketIds = useCallback(
@@ -1489,11 +1535,7 @@ function ProductActionsTab() {
       </Modal>
 
       <ActionItemDrawer
-        item={
-          editing
-            ? items.find((item) => item.id === editing.id) || editing
-            : null
-        }
+        item={drawerItem}
         open={editOpen}
         onClose={requestCloseEditDrawer}
         form={editForm}
@@ -1510,10 +1552,10 @@ function ProductActionsTab() {
         onSave={() => void handleEditSave()}
         onRequirementLinkModeChange={handleEditRequirementLinkModeChange}
         onStatusChange={handleEditStatusChange}
-        feedbackByTicketId={feedbackByTicketId}
+        feedbackByTicketId={drawerFeedbackByTicketId}
         onOpenTicket={openFeedbackByTicketId}
         productNameByKey={productNameByKey}
-        linkedTicketIds={editing ? resolveLinkedTicketIds(editing) : []}
+        linkedTicketIds={drawerItem?.linkedTicketIds || []}
       />
 
       <ActionItemConflictModal
