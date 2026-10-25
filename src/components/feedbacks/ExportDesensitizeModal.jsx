@@ -3,6 +3,7 @@ import { Modal, Radio, Checkbox, Space, Typography, Alert, message } from 'antd'
 import {
   DESENSITIZE_FIELDS,
   createAllDesensitizeOptions,
+  createNoDesensitizeOptions,
   getEnabledDesensitizeLabels,
 } from '../../lib/ticketAnalysisDesensitize.js'
 
@@ -47,7 +48,7 @@ export default function ExportDesensitizeModal({
 
   const handleConfirm = () => {
     if (mode === 'none') {
-      onConfirm?.(createAllDesensitizeOptions())
+      onConfirm?.(createNoDesensitizeOptions())
     } else {
       if (checkedKeys.length === 0) {
         message.warning('请至少选择一个脱敏项，或选择"不脱敏"')

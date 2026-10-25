@@ -24,8 +24,11 @@ describe('desensitizeColumnValue', () => {
 
   it('handles null/undefined value', () => {
     const opts = createAllDesensitizeOptions()
-    expect(desensitizeColumnValue(null, 'loginAccountName', opts)).toBe('***')
-    expect(desensitizeColumnValue(undefined, 'loginAccountName', opts)).toBe('***')
+    // 空值脱敏后保持空字符串，避免 *** 造成"有值"的错觉
+    expect(desensitizeColumnValue(null, 'loginAccountName', opts)).toBe('')
+    expect(desensitizeColumnValue(undefined, 'loginAccountName', opts)).toBe('')
+    expect(desensitizeColumnValue('', 'loginAccountName', opts)).toBe('')
+    expect(desensitizeColumnValue('  ', 'loginAccountName', opts)).toBe('')
     expect(desensitizeColumnValue(null, 'loginAccountName', createNoDesensitizeOptions())).toBe('')
   })
 })

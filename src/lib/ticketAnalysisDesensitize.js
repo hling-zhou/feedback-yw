@@ -59,6 +59,7 @@ export function createAllDesensitizeOptions() {
 /**
  * 列级脱敏：将原始值替换为 ***。
  * 仅对 type='column' 的字段生效。
+ * 原值为空时保持空字符串，避免空值也被显示为 *** 造成"有值"的错觉。
  *
  * @param {string} value
  * @param {DesensitizeFieldKey} fieldKey
@@ -67,6 +68,8 @@ export function createAllDesensitizeOptions() {
  */
 export function desensitizeColumnValue(value, fieldKey, options) {
   if (!options?.[fieldKey]) return String(value ?? '')
+  const strValue = String(value ?? '').trim()
+  if (strValue === '') return ''
   return '***'
 }
 
