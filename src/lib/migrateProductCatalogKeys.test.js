@@ -34,6 +34,46 @@ describe('migrateProductCatalogKeys', () => {
     expect(products[1].analysisPostUseRating).toBe(false)
     expect(products[1].focusTracked).toBe(false)
   })
+
+  it('preserves owners without triggering a spurious write-back', () => {
+    const owners = { productManager: [{ userId: 'u1', username: 'alice' }] }
+    const { products, changed } = migrateProductCatalogKeys([
+      { key: 'eip', name: '弹性公网IP', enabled: true, taxonomyKey: 'eip', specs: [], owners },
+    ])
+    // owners 存在不应被当成迁移变化，避免每轮加载都触发整表写回
+    expect(changed).toBe(false)
+    expect(products[0].owners).toEqual(owners)
+  })
+
+  it('keeps owners through key migration (ecc → dc)', () => {
+    const owners = { productManager: [{ userId: 'u1', username: 'alice', displayName: 'Alice' }] }
+    const { products } = migrateProductCatalogKeys([
+      { key: 'ecc', name: '云专线', enabled: true, taxonomyKey: 'ecc', specs: [], owners },
+    ])
+    expect(products[0].key).toBe('dc')
+    expect(products[0].owners).toEqual(owners)
+  })
+
+  it('keeps owners on either side of a duplicate merge', () => {
+    const ownersA = { productManager: [{ userId: 'u1', username: 'alice' }] }
+    const ownersB = { tester: [{ userId: 'u2', username: 'bob' }] }
+
+    // 首条（规范化 key）带 owners：...a 展开保留
+    const first = migrateProductCatalogKeys([
+      { key: 'dc', name: '云专线', enabled: true, taxonomyKey: 'dc', specs: [], owners: ownersA },
+      { key: 'ecc', name: '云专线旧', enabled: true, taxonomyKey: 'ecc', specs: [] },
+    ])
+    expect(first.products).toHaveLength(1)
+    expect(first.products[0].owners).toEqual(ownersA)
+
+    // 首条无 owners、待合并的旧 key 条带 owners：显式 owners 字段回填
+    const second = migrateProductCatalogKeys([
+      { key: 'dc', name: '云专线', enabled: true, taxonomyKey: 'dc', specs: [] },
+      { key: 'ecc', name: '云专线旧', enabled: true, taxonomyKey: 'ecc', specs: [], owners: ownersB },
+    ])
+    expect(second.products).toHaveLength(1)
+    expect(second.products[0].owners).toEqual(ownersB)
+  })
 })
 
 describe('countCatalogRefsToTaxonomyKey', () => {

@@ -42,6 +42,29 @@ describe('productCatalogManageModel', () => {
     ])
   })
 
+  it('catalogToTableRows 回传 owners 供编辑弹窗回显', () => {
+    const normalized = normalizeCatalogProducts([
+      {
+        key: 'eip',
+        name: '弹性公网IP',
+        enabled: true,
+        specs: [],
+        owners: {
+          productManager: [{ userId: 'u1', username: 'alice', displayName: 'Alice' }],
+          tester: [{ userId: '  ', username: 'bad' }],
+        },
+      },
+      { key: 'vpc', name: '虚拟私有云', enabled: true, specs: [] },
+    ])
+    const rows = catalogToTableRows(normalized)
+    // 有效负责人原样传递；无 userId 的脏数据被 normalizeProductOwners 清洗掉
+    expect(rows[0].owners).toEqual({
+      productManager: [{ userId: 'u1', username: 'alice', displayName: 'Alice' }],
+    })
+    // 无负责人的产品回传空对象，openEditProduct 无需再兜底 undefined
+    expect(rows[1].owners).toEqual({})
+  })
+
   it('validateCatalogProducts rejects duplicate keys', () => {
     expect(() =>
       validateCatalogProducts([

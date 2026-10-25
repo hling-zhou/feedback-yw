@@ -1,5 +1,6 @@
 import { canonicalTaxonomyKey } from './taxonomyKeyAliases.js'
 import { stripInvisibleChars } from './productCatalog/keyHygiene.js'
+import { normalizeProductOwners } from './productCatalogManageModel.js'
 
 /** @typedef {import('./productCatalogLoader.js').CatalogProduct} CatalogProduct */
 
@@ -44,6 +45,7 @@ function mergeCatalogProduct(a, b) {
     ),
     taxonomyKey: canonicalTaxonomyKey(a.taxonomyKey || a.key),
     acceptParentName: a.acceptParentName !== false && b.acceptParentName !== false,
+    owners: a.owners || b.owners,
     specs: [...specByName.values()],
   }
 }
@@ -81,6 +83,7 @@ export function migrateProductCatalogKeys(products) {
       focusTracked: Boolean(raw.analysisPostUseRating && raw.focusTracked),
       taxonomyKey,
       acceptParentName: raw.acceptParentName !== false,
+      owners: normalizeProductOwners(raw.owners),
       specs: (raw.specs || [])
         .filter((s) => s?.name)
         .map((s) => ({

@@ -51,9 +51,10 @@ export function normalizeCatalogProducts(raw) {
 /**
  * 清洗产品负责人结构：确保每个角色是数组，元素包含合法 userId。
  * 非法结构（null/undefined/非对象）整体丢弃。
+ * 同时供迁移链（migrateProductCatalogKeys）复用，避免各处白名单重建时丢字段。
  * @param {unknown} raw
  */
-function normalizeProductOwners(raw) {
+export function normalizeProductOwners(raw) {
   if (!raw || typeof raw !== 'object') return undefined
   const roles = ['productManager', 'designer', 'opsSupport', 'operations', 'tester']
   /** @type {Record<string, unknown>} */
@@ -339,6 +340,7 @@ export function catalogToTableRows(products) {
     focusTracked: Boolean(p.analysisPostUseRating && p.focusTracked),
     taxonomyKey: p.taxonomyKey,
     acceptParentName: p.acceptParentName !== false,
+    owners: p.owners || {},
     specs: p.specs || [],
     specCount: (p.specs || []).length,
   }))
