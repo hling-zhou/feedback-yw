@@ -12,7 +12,7 @@ import { normalizeActionSchedule } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_LIST_SHEET_NAME } from './actionItemExport.js'
 
 export const REQUIREMENT_LINKED_IMPORT_IGNORED_FIELDS_HINT =
-  '已填需求工单时，排期时间与状态列将被忽略；列表展示以「需求工单进展同步」为准。'
+  '已填需求工单时，排期时间与状态列将被忽略；列表展示以「外部集成」为准。'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */

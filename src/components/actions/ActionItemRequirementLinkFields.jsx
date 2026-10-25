@@ -165,7 +165,7 @@ export default function ActionItemRequirementLinkFields({
       {linkEnabled ? (
         <>
           <Typography.Text type="secondary" className="block text-xs">
-            填写需求工单号后，下方自动展示各工单的排期与状态（来自「需求工单进展同步」），不可修改，允许为空或未同步。
+            填写需求工单号后，下方自动展示各工单的排期与状态（来自「外部集成」），不可修改，允许为空或未同步。
           </Typography.Text>
           <Form.List name="requirementTicketIds">
             {(fields, { add, remove }) => (

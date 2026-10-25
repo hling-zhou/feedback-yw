@@ -145,7 +145,7 @@ test.describe('reminder + MCP 回归修复', () => {
     // 主要验证点在导入页（③已覆盖）
   })
 
-  test('⑦ admin Settings 需求工单进展同步 tab 可见 MCP 共享密钥面板', async ({ page }) => {
+  test('⑦ admin Settings 外部集成 tab 可见 MCP 共享密钥面板', async ({ page }) => {
     await loginAsAdmin(page)
     await page.goto('/settings?tab=requirement_sync')
     await page.waitForLoadState('networkidle', { timeout: 30_000 })

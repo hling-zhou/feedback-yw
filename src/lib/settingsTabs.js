@@ -22,7 +22,7 @@ export const SETTINGS_TAB_LABELS = {
   data: '数据管理',
   audit: '审计日志',
   bottles: '漂流瓶',
-  requirement_sync: '需求工单进展同步',
+  requirement_sync: '外部集成',
   knowledge_base: '产品知识库',
   pipeline: '行动建议规则补充',
   curated_taxonomy: '分类法管理',
@@ -40,7 +40,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
   audit: '查看导入、清空、配置发布等关键操作记录。',
   bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
   requirement_sync:
-    '查看外部需求工单进展与状态映射及外部系统 API Key；仅管理员可编辑映射和创建/吊销 Key，举措关联需求工单后排期与状态由此同步展示。',
+    '管理外部系统 API Key、MCP 数据服务共享密钥与需求工单进展同步映射；仅管理员可创建/吊销 Key 与编辑映射，举措关联需求工单后排期与状态由此同步展示。',
   knowledge_base:
     '上传/管理各产品的业务知识库，供工单自动分析的「优化建议」检索引用；同一产品上传即覆盖。',
   pipeline: '仅管理员可运行行动建议规则补充流水线：Producer 归因 → 新词发现 → 自动写入 → 门禁验证；跑完在页面查看结果。',

@@ -1,6 +1,6 @@
 /** 需求工单号说明（表头 hover、表单提示等） */
 export const REQUIREMENT_TICKET_FIELD_TIP =
-  '可关联多个；关联后排期与状态由「设置 → 需求工单进展同步」维护，列表自动展示。'
+  '可关联多个；关联后排期与状态由「设置 → 外部集成」维护，列表自动展示。'
 
 /** 举措与进展 · 排期时间列表头 hover 说明 */
 export const SCHEDULE_AT_HEADER_HINT =

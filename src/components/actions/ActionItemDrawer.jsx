@@ -167,7 +167,7 @@ export default function ActionItemDrawer({
                   type="info"
                   showIcon
                   message="已选择关联需求工单"
-                  description="各需求工单的排期与状态将自动从「需求工单进展同步」读取并展示，不可修改。切换为「不关联」后可自行填写举措排期与状态。"
+                  description="各需求工单的排期与状态将自动从「外部集成」读取并展示，不可修改。切换为「不关联」后可自行填写举措排期与状态。"
                 />
               ) : null}
               {stale ? (

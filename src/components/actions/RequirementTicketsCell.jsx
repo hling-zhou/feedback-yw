@@ -124,7 +124,7 @@ export default function RequirementTicketsCell({ ticketIds, requirementTickets }
   const content = (
     <div className="max-w-[34rem]">
       <Typography.Text type="secondary" className="mb-2 block text-xs">
-        共 {ids.length} 条需求工单 · 数据来自「需求工单进展同步」
+        共 {ids.length} 条需求工单 · 数据来自「外部集成」
       </Typography.Text>
       <Table
         size="small"
