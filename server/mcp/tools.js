@@ -700,17 +700,21 @@ export async function getActionStats(params, apiKey) {
 }
 
 // ============================================================
-// P1 Tool: get_post_use_trace (visit 模式)
+// P1+P2 Tool: get_post_use_trace (visit + trace 模式)
 // ============================================================
 
 /**
- * 查询产品部回访（溯源）记录。
- * P1 只实现 visit 模式（客服部回访），trace 模式（产品部溯源）留 P2。
+ * 查询用后即评回访/溯源记录。
+ * - visit 模式（P1）：客服部回访记录，从 meta.post_use_visits 读取
+ * - trace 模式（P2）：产品部溯源记录，从 post_use_jira_items 表读取
  *
  * @param {{
+ *   viewType?: 'visit' | 'trace',
  *   importMonth?: string,
  *   productName?: string,
  *   customerName?: string,
+ *   assigneeName?: string,
+ *   status?: string,
  *   search?: string,
  *   limit?: number,
  *   offset?: number,
@@ -719,11 +723,32 @@ export async function getActionStats(params, apiKey) {
  * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
  */
 export async function getPostUseTrace(params, apiKey) {
+  const viewType = params.viewType === 'trace' ? 'trace' : 'visit'
   const limit = clampLimit(params.limit)
   const offset = clampOffset(params.offset)
   const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
 
-  // visit 模式：从 meta.post_use_visits 读取回访记录
+  /** @param {unknown} value @param {string} fieldKey */
+  const desensitizeCustomerField = (value, fieldKey) =>
+    desensitizeColumnValue(value, fieldKey, opts)
+
+  if (viewType === 'trace') {
+    return getPostUseTraceMode(params, apiKey, limit, offset, opts, desensitizeCustomerField)
+  }
+  return getPostUseVisitMode(params, limit, offset, opts, desensitizeCustomerField)
+}
+
+// ---- visit 模式（客服部回访） ----
+
+/**
+ * @param {Record<string, unknown>} params
+ * @param {number} limit
+ * @param {number} offset
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ * @param {(value: unknown, fieldKey: string) => string} desensitizeCustomerField
+ */
+function getPostUseVisitMode(params, limit, offset, opts, desensitizeCustomerField) {
+  // 从 meta.post_use_visits 读取回访记录
   const raw = storageRepository.getMeta(META_KEY_POST_USE_VISITS)
   /** @type {any[]} */
   let records = Array.isArray(raw?.records) ? raw.records : []
@@ -749,7 +774,7 @@ export async function getPostUseTrace(params, apiKey) {
 
   // 客户名称过滤（搜索时用原名，不脱敏搜索条件）
   if (params.customerName) {
-    const needle = params.customerName.trim().toLowerCase()
+    const needle = String(params.customerName).trim().toLowerCase()
     records = records.filter((r) =>
       String(r?.customerName || '').toLowerCase().includes(needle),
     )
@@ -757,7 +782,7 @@ export async function getPostUseTrace(params, apiKey) {
 
   // 关键词搜索
   if (params.search) {
-    const needle = params.search.trim().toLowerCase()
+    const needle = String(params.search).trim().toLowerCase()
     records = records.filter((r) => {
       const haystack = [
         r?.customerName,
@@ -778,11 +803,8 @@ export async function getPostUseTrace(params, apiKey) {
   const total = records.length
   const items = records.slice(offset, offset + limit)
 
-  // 脱敏客户信息（列级）
-  const desensitizeCustomerField = (/** @type {unknown} */ value, fieldKey) =>
-    desensitizeColumnValue(value, fieldKey, opts)
-
   return {
+    viewType: 'visit',
     total,
     items: items.map((r) => ({
       id: r.id || '',
@@ -799,6 +821,117 @@ export async function getPostUseTrace(params, apiKey) {
       scoreSource: r.scoreSource || '',
       updatedAt: r.updatedAt || '',
     })),
+  }
+}
+
+// ---- trace 模式（产品部溯源） ----
+
+/**
+ * @param {Record<string, unknown>} params
+ * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
+ * @param {number} limit
+ * @param {number} offset
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ * @param {(value: unknown, fieldKey: string) => string} desensitizeCustomerField
+ */
+function getPostUseTraceMode(params, apiKey, limit, offset, opts, desensitizeCustomerField) {
+  // postUseJiraRepository.list() 支持 importMonth/productName/status/search，
+  // 但不支持 assigneeName 和 customerName 筛选（repo 只按 assigneeId 筛），
+  // 这两个条件在内存做
+  const repoQuery = /** @type {any} */ ({
+    limit: 0, // 0 = 不分页，拉全量后内存过滤再分页（避免 DB 分页+内存过滤导致丢数据）
+    offset: 0,
+  })
+
+  if (params.importMonth) repoQuery.importMonth = params.importMonth
+  if (params.productName) repoQuery.productName = params.productName
+  if (params.status) repoQuery.status = params.status
+  // search 交给内存过滤（repo 的 search 搜索范围不同，此处统一用 MCP 侧逻辑）
+
+  const result = postUseJiraRepository.list(repoQuery)
+  let items = result.items
+
+  // assigneeName 筛选（repo 不支持，内存做）
+  if (params.assigneeName) {
+    const needle = String(params.assigneeName).trim().toLowerCase()
+    items = items.filter((item) =>
+      String(item.assigneeName || '').toLowerCase().includes(needle),
+    )
+  }
+
+  // 客户名称筛选（搜索时用原名，不脱敏搜索条件）
+  if (params.customerName) {
+    const needle = String(params.customerName).trim().toLowerCase()
+    items = items.filter((item) =>
+      String(item.customerName || '').toLowerCase().includes(needle),
+    )
+  }
+
+  // 关键词搜索
+  if (params.search) {
+    const needle = String(params.search).trim().toLowerCase()
+    items = items.filter((item) => {
+      const haystack = [
+        item.customerName,
+        item.customerCode,
+        item.productName,
+        item.customerFeedback,
+        item.recommendedReason,
+        item.assigneeName,
+        item.progress,
+      ]
+        .filter(Boolean)
+        .map((t) => String(t).toLowerCase())
+        .join(' ')
+      return haystack.includes(needle)
+    })
+  }
+
+  const total = items.length
+  const paged = items.slice(offset, offset + limit)
+
+  // 对有 actionId 的记录，批量拉取关联举措
+  const actionIds = [...new Set(
+    paged.map((item) => item.actionId).filter(Boolean),
+  )]
+  /** @type {Map<string, { content: string; detail: string; scheduleAt: string; status: string }>} */
+  const actionMap = new Map()
+  for (const aid of actionIds) {
+    const action = actionItemRepository.getActionItem(aid)
+    if (action) {
+      actionMap.set(aid, {
+        content: action.content || '',
+        detail: action.detail || '',
+        scheduleAt: action.scheduleAt || '',
+        status: action.status || '',
+      })
+    }
+  }
+
+  return {
+    viewType: 'trace',
+    total,
+    items: paged.map((item) => {
+      const action = item.actionId ? actionMap.get(item.actionId) : undefined
+      return {
+        id: item.id || '',
+        importMonth: item.importMonth || '',
+        productName: item.productName || '',
+        customerName: desensitizeCustomerField(item.customerName, 'groupName'),
+        customerCode: desensitizeCustomerField(item.customerCode, 'groupCustomerCode'),
+        loginAccountName: desensitizeCustomerField(item.loginAccountName, 'loginAccountName'),
+        customerFeedback: item.customerFeedback || '',
+        recommendedReason: item.recommendedReason || '',
+        originalTicketId: item.originalTicketId || '',
+        scoreSource: item.scoreSource || '',
+        assigneeName: item.assigneeName || '',
+        status: item.status || '',
+        progress: item.progress || '',
+        actionId: item.actionId || '',
+        actionItem: action || null,
+        updatedAt: item.updatedAt || '',
+      }
+    }),
   }
 }
 
@@ -932,14 +1065,17 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_post_use_trace',
-    description: '查询产品部回访（溯源）记录。支持按月份、产品、客户名称、关键词筛选，返回回访记录列表（含内部评估结论、备注、经办人等）。',
+    description: '查询用后即评回访/溯源记录。viewType=visit 查询客服部回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
     inputSchema: {
       type: 'object',
       properties: {
+        viewType: { type: 'string', enum: ['visit', 'trace'], description: '查询模式：visit=客服部回访（默认），trace=产品部溯源' },
         importMonth: { type: 'string', description: '数据月份（格式：YYYY-MM，支持「、」分隔多月份）' },
         productName: { type: 'string', description: '产品名称' },
-        customerName: { type: 'string', description: '客户名称' },
-        search: { type: 'string', description: '在客户名称、评估结论、备注等字段中搜索关键词' },
+        customerName: { type: 'string', description: '客户名称（搜索时用原名匹配，返回结果中脱敏）' },
+        assigneeName: { type: 'string', description: '经办人名称（trace 模式专用，模糊匹配）' },
+        status: { type: 'string', description: '处理状态筛选（trace 模式专用：待处理/进行中/已完成）' },
+        search: { type: 'string', description: '关键词搜索（visit 模式搜客户名/评估结论/备注；trace 模式搜客户名/反馈/推荐理由/进展）' },
         limit: { type: 'number', description: '返回条数上限，默认 50，最大 200' },
         offset: { type: 'number', description: '分页偏移量，默认 0' },
         desensitize: { type: 'boolean', description: '是否脱敏，默认 true。传 false 需 API Key 具备 mcp:full scope' },

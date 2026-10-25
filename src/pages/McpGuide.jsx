@@ -80,8 +80,8 @@ const TOOLS = [
   {
     name: 'get_post_use_trace',
     scope: 'mcp:read',
-    desc: '查询产品部回访记录（visit 模式）',
-    phase: 'P1',
+    desc: '查询用后即评回访/溯源记录（visit=客服部回访, trace=产品部溯源）',
+    phase: 'P1+P2',
   },
 ]
 

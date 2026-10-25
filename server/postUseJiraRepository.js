@@ -150,7 +150,9 @@ export const postUseJiraRepository = {
       return true
     })
 
-    const limit = Math.min(500, Math.max(1, Number(query.limit) || 100))
+    // limit <= 0 表示不分页（返回全量，供需要内存二次过滤的调用方使用）
+    const rawLimit = Number(query.limit) || 100
+    const limit = rawLimit <= 0 ? filtered.length : Math.min(500, Math.max(1, rawLimit))
     const offset = Math.max(0, Number(query.offset) || 0)
     return {
       items: filtered.slice(offset, offset + limit),
