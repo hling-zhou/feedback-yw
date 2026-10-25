@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getMcpSharedKeys, revealMcpKey } from '../lib/mcpClient.js'
+import { copyTextToClipboard } from '../lib/clipboard.js'
 
 const { Title, Text, Link: AntLink } = Typography
 
@@ -171,12 +172,10 @@ export default function McpGuide() {
   }
 
   const copyText = async (text, label) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      message.success(`${label}已复制`)
-    } catch {
-      message.error('复制失败，请手动复制')
-    }
+    // 走公共工具：execCommand 兜底，WebView/受限环境下 navigator.clipboard 常不可用
+    const ok = await copyTextToClipboard(text)
+    if (ok) message.success(`${label}已复制`)
+    else message.error('复制失败，请手动复制')
   }
 
   const openReveal = (scope) => {

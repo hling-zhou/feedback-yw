@@ -13,6 +13,7 @@ import { CopyOutlined, KeyOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { API_KEY_SCOPE_LABELS, API_KEY_SCOPES } from '../../domain/apiKey.js'
 import { createApiKey, listApiKeys, revokeApiKey } from '../../lib/apiKeyClient.js'
+import { copyTextToClipboard } from '../../lib/clipboard.js'
 
 /** @typedef {import('../../lib/apiKeyClient.js').PublicApiKey} PublicApiKey */
 
@@ -151,12 +152,10 @@ export default function ApiKeyPanel({ canEdit }) {
 
   const copySecret = async () => {
     if (!createdSecret) return
-    try {
-      await navigator.clipboard.writeText(createdSecret)
-      message.success('已复制到剪贴板')
-    } catch {
-      message.error('复制失败，请手动复制')
-    }
+    // 走公共工具：execCommand 兜底，WebView/受限环境下 navigator.clipboard 常不可用
+    const ok = await copyTextToClipboard(createdSecret)
+    if (ok) message.success('已复制到剪贴板')
+    else message.error('复制失败，请手动复制')
   }
 
   return (
