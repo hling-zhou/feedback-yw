@@ -32,8 +32,6 @@ import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
 import MessageBottleFab from './MessageBottleFab.jsx'
 import WhatsNewFab from './WhatsNewFab.jsx'
 import WhatsNewDrawer from './WhatsNewDrawer.jsx'
-import AssistantFab from './AssistantFab.jsx'
-import AssistantDrawer from './AssistantDrawer.jsx'
 import ReminderFab from './ReminderFab.jsx'
 import ReminderSendModal from './ReminderSendModal.jsx'
 import { useUsageTracking } from '../hooks/useUsageTracking.js'
@@ -68,7 +66,6 @@ export default function AppShell() {
   const [bottleOpen, setBottleOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [whatsNewUnread, setWhatsNewUnread] = useState(false)
-  const [assistantOpen, setAssistantOpen] = useState(false)
   const [reminderOpen, setReminderOpen] = useState(false)
 
   useEffect(() => {
@@ -269,7 +266,6 @@ export default function AppShell() {
               onClick={() => setWhatsNewOpen(true)}
             />
             <MessageBottleFab onClick={() => setBottleOpen(true)} />
-            <AssistantFab onClick={() => setAssistantOpen(true)} />
             {user?.role === 'admin' && <ReminderFab onClick={() => setReminderOpen(true)} />}
           </div>
           <WhatsNewDrawer
@@ -278,11 +274,6 @@ export default function AppShell() {
             onMarkedSeen={handleWhatsNewMarkedSeen}
           />
           <MessageBottleSubmitModal open={bottleOpen} onClose={() => setBottleOpen(false)} />
-          <AssistantDrawer
-            open={assistantOpen}
-            onClose={() => setAssistantOpen(false)}
-            currentPeriodId={period?.id || ''}
-          />
           {user?.role === 'admin' && (
             <ReminderSendModal open={reminderOpen} onClose={() => setReminderOpen(false)} />
           )}
