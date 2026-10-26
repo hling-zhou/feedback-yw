@@ -388,14 +388,17 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   /**
    * 用后即评「待补全用户旅程」计数：来自服务端 /api/storage/records/post-use-journey/pending-count，
    * 与 enrichRunner 同口径，避免前端内存缓存漂移导致横幅数量与实际补打数不一致。
-   * count 用于横幅/按钮显示，recordIds 作为补全 targets。
-   * @type {[{ count: number; recordIds: string[]; periodId: string | null; loading: boolean }, import('react').Dispatch<import('react').SetStateAction<{ count: number; recordIds: string[]; periodId: string | null; loading: boolean }>>]}
+   * count 用于横幅/按钮显示，recordIds 作为补全 targets；
+   * breakdown 为构成明细（auto 自动待补 / llmUnknown 模型已判未识别 / legacy 旧关键词旅程），
+   * 模型已判未识别的默认不计入 count（避免死循环），仅在补全弹窗按需单独拉取时纳入。
+   * @type {[{ count: number; recordIds: string[]; periodId: string | null; loading: boolean; breakdown: { auto: number; llmUnknown: number; legacy: number } }, import('react').Dispatch<import('react').SetStateAction<{ count: number; recordIds: string[]; periodId: string | null; loading: boolean; breakdown: { auto: number; llmUnknown: number; legacy: number } }>>]}
    */
   const [postUseJourneyPending, setPostUseJourneyPending] = useState({
     count: 0,
     recordIds: [],
     periodId: null,
     loading: false,
+    breakdown: { auto: 0, llmUnknown: 0, legacy: 0 },
   })
 
   useEffect(() => {
@@ -3141,12 +3144,12 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   )
 
   /**
-   * 拉取服务端「待补全用户旅程」计数（count + recordIds）。
-   * 与 enrichRunner 同口径，横幅/按钮显示 count，补全时发 recordIds。
-   * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+   * 拉取服务端「待补全用户旅程」计数（count + recordIds + breakdown）。
+   * 恒用默认口径（与横幅显示口径一致）：不含旧关键词旅程、不含模型已判未识别的重试项——
+   * 这两类在补全弹窗按需单独拉取（直接 apiFetch），避免横幅口径漂移。
    */
   const fetchPostUseJourneyPendingCount = useCallback(
-    async (options = {}) => {
+    async () => {
       const periodId = currentPeriodId || ''
       if (!isApiStorageAdapter(adapter)) {
         setPostUseJourneyPending((prev) => ({ ...prev, periodId, loading: false }))
@@ -3156,13 +3159,24 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       try {
         const params = new URLSearchParams()
         if (periodId) params.set('periodId', periodId)
-        if (options.includeLegacyKeywordJourneys) params.set('includeLegacyKeywordJourneys', 'true')
         const res = await apiFetch(
           `/api/storage/records/post-use-journey/pending-count${params.toString() ? `?${params.toString()}` : ''}`,
         )
         const count = Number.isFinite(res?.count) ? Number(res.count) : 0
         const recordIds = Array.isArray(res?.recordIds) ? res.recordIds.filter((id) => typeof id === 'string' && id) : []
-        setPostUseJourneyPending({ count, recordIds, periodId, loading: false })
+        const rawBreakdown = res?.breakdown && typeof res.breakdown === 'object' ? res.breakdown : {}
+        const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+        setPostUseJourneyPending({
+          count,
+          recordIds,
+          periodId,
+          loading: false,
+          breakdown: {
+            auto: num(rawBreakdown.auto),
+            llmUnknown: num(rawBreakdown.llmUnknown),
+            legacy: num(rawBreakdown.legacy),
+          },
+        })
       } catch (err) {
         console.warn('[post-use-journey] 拉取待补全计数失败:', err)
         setPostUseJourneyPending((prev) => ({ ...prev, loading: false }))
@@ -3174,6 +3188,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const startPostUseJourneyEnrichment = useCallback(
     async (recordIds, options = {}) => {
       const includeLegacyKeywordJourneys = options.includeLegacyKeywordJourneys === true
+      const retryLlmUnknownJourneys = options.retryLlmUnknownJourneys === true
       const ids = (recordIds || []).filter((id) => typeof id === 'string' && id)
       if (!ids.length) {
         message.info('当前没有待补全的评价')
@@ -3208,7 +3223,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
               ? { id: currentPeriod.id, startDate: currentPeriod.startDate, endDate: currentPeriod.endDate }
               : undefined,
             settings,
-            retagOptions: { includeLegacyKeywordJourneys },
+            retagOptions: { includeLegacyKeywordJourneys, retryLlmUnknownJourneys },
           }),
         })
         if (!res?.taskId) throw new Error('后台任务未创建')
@@ -3222,8 +3237,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           } catch (err) {
             console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
           }
-          // 刷新服务端待补全计数，横幅显示剩余数
-          try { await fetchPostUseJourneyPendingCount({ includeLegacyKeywordJourneys }) } catch { /* 忽略 */ }
+          // 刷新服务端待补全计数，横幅显示剩余数。恒用默认口径（与横幅口径一致），
+          // 不随本次执行勾选（重打关键词旅程/重试模型未识别）漂移。
+          try { await fetchPostUseJourneyPendingCount() } catch { /* 忽略 */ }
           if (currentPeriod) {
             scheduleSnapshotRebuild({
               period: currentPeriod,
@@ -3235,6 +3251,8 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           message.success('补全用户旅程已完成')
           return enrichResult
         } catch (err) {
+          // 取消/失败时任务可能已流式写盘一部分，刷新待补计数避免横幅数字停滞在旧值
+          try { await fetchPostUseJourneyPendingCount() } catch { /* 忽略 */ }
           if (err?.code === 'RETAG_CANCELLED') {
             try {
               await reloadPostUseRatings()

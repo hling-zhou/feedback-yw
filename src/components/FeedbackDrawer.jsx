@@ -50,6 +50,7 @@ import {
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { resolvePostUseRatingProduct } from '../lib/productCatalog/postUseRatingProducts.js'
 import {
+  classifyPostUseJourney,
   isLegacyPostUseKeywordJourney,
   needsPostUseJourney,
 } from '../lib/postUseRating/enrichPostUseJourney.js'
@@ -1269,6 +1270,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       return
     }
     if (!needsPostUseJourney(feedback, settings)) {
+      if (classifyPostUseJourney(feedback, settings) === 'llm_unknown') {
+        message.info('模型已判这条评价无法识别用户旅程；如需重试，请在批量补全弹窗勾选「重试模型已判未识别」')
+        return
+      }
       message.info('这条评价的用户旅程已补全')
       return
     }

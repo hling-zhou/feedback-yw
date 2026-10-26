@@ -66,24 +66,48 @@ export function isLegacyPostUseKeywordJourney(record) {
 }
 
 /**
- * 是否还要补旅程：反馈库用后即评（不含回访），且旅程为空、未识别，或规则分未过门闸。不看评分。
- * 人工改过的旅程不覆盖。模型已经写出具体环节的也不再打；模型结果仍是「未识别环节」时还要再补。
- * 旧关键词写出的具体环节默认不重打，调用方显式要求时才纳入。
+ * 待补构成分类（计数接口 breakdown 与 needsPostUseJourney 共用同一口径）。
+ * - 'auto'：自动待补——旅程为空/未识别且未经模型定论，或规则分未过门闸
+ * - 'llm_unknown'：模型已判「未识别环节」，默认不再自动重试，仅显式勾选重试
+ * - 'legacy'：旧关键词写出的具体环节，仅显式勾选时按产品模板重打
+ * - 'none'：不需要补旅程
  * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
  * @param {import('../storage.js').AppSettings} [settings]
- * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+ * @returns {'auto' | 'llm_unknown' | 'legacy' | 'none'}
  */
-export function needsPostUseJourney(record, settings, options = {}) {
-  if (!isPostUseRatingLibraryRecord(record)) return false
-  if (getManualTagFields(record).includes('journey')) return false
-  if (recordHasUnknownJourney(record)) return true
-  if (record?.journeySource === 'llm') return false
+export function classifyPostUseJourney(record, settings) {
+  if (!isPostUseRatingLibraryRecord(record)) return 'none'
+  if (getManualTagFields(record).includes('journey')) return 'none'
+  const unknown = recordHasUnknownJourney(record)
+  if (record?.journeySource === 'llm') {
+    // 模型已给出定论：具体环节不再打；仍是「未识别环节」的默认不重试，
+    // 否则会永远留在待补计数里、每次补全重跑同一批 LLM（数字永不清零）。
+    return unknown ? 'llm_unknown' : 'none'
+  }
+  if (unknown) return 'auto'
   if (record?.journeySource === 'rule') {
     const score = Number(record?.journeyMatchScore)
-    if (!Number.isFinite(score)) return false
-    return score < resolveJourneyLlmSkipScoreThreshold(settings)
+    if (!Number.isFinite(score)) return 'none'
+    return score < resolveJourneyLlmSkipScoreThreshold(settings) ? 'auto' : 'none'
   }
-  if (options.includeLegacyKeywordJourneys && isLegacyPostUseKeywordJourney(record)) return true
+  if (isLegacyPostUseKeywordJourney(record)) return 'legacy'
+  return 'none'
+}
+
+/**
+ * 是否还要补旅程：反馈库用后即评（不含回访），且旅程为空、未识别，或规则分未过门闸。不看评分。
+ * 口径 = classifyPostUseJourney：模型已判「未识别环节」的默认不再重试（避免计数死循环），
+ * 仅 options.retryLlmUnknownJourneys 显式要求时才重试；旧关键词旅程仅显式勾选时重打。
+ * 人工改过的旅程不覆盖。
+ * @param {import('../types.js').FeedbackRecord | Record<string, unknown> | null | undefined} record
+ * @param {import('../storage.js').AppSettings} [settings]
+ * @param {{ includeLegacyKeywordJourneys?: boolean, retryLlmUnknownJourneys?: boolean }} [options]
+ */
+export function needsPostUseJourney(record, settings, options = {}) {
+  const cls = classifyPostUseJourney(record, settings)
+  if (cls === 'auto') return true
+  if (cls === 'llm_unknown') return options.retryLlmUnknownJourneys === true
+  if (cls === 'legacy') return options.includeLegacyKeywordJourneys === true
   return false
 }
 

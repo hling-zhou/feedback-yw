@@ -566,25 +566,33 @@ export default function Feedbacks() {
   const pendingJourneyCount = postUseJourneyPending.recordIds.length
     ? postUseJourneyPending.count
     : localPostUseJourneyTargets.length
+  // 构成明细（服务端 breakdown；服务端不可用时兜底为 0）：llmUnknown = 模型已判「未识别环节」，
+  // 默认不计入 pendingJourneyCount，仅在补全弹窗勾选重试时纳入。
+  const pendingJourneyBreakdown = postUseJourneyPending.breakdown || { auto: 0, llmUnknown: 0, legacy: 0 }
+  const llmUnknownPendingCount = pendingJourneyBreakdown.llmUnknown || 0
 
-  const runPostUseJourneyEnrichment = useCallback(async (includeLegacyKeywordJourneys = false) => {
+  const runPostUseJourneyEnrichment = useCallback(async (retryLlmUnknownJourneys = false, includeLegacyKeywordJourneys = false) => {
     if (postUseJourneyBlocked) return
     // 用服务端计数口径的 recordIds 作为补全 targets，与横幅显示数同源
     let recordIds = pendingJourneyRecordIds
-    if (includeLegacyKeywordJourneys) {
-      // legacy 口径与默认不同，单独拉一次服务端计数
+    if (retryLlmUnknownJourneys || includeLegacyKeywordJourneys) {
+      // 勾选项与横幅默认口径不同，按组合参数单独拉一次服务端计数
       try {
         const params = new URLSearchParams()
         if (currentPeriodId) params.set('periodId', currentPeriodId)
-        params.set('includeLegacyKeywordJourneys', 'true')
+        if (retryLlmUnknownJourneys) params.set('retryLlmUnknownJourneys', 'true')
+        if (includeLegacyKeywordJourneys) params.set('includeLegacyKeywordJourneys', 'true')
         const res = await apiFetch(
           `/api/storage/records/post-use-journey/pending-count?${params.toString()}`,
         )
         recordIds = Array.isArray(res?.recordIds) ? res.recordIds.filter((id) => typeof id === 'string' && id) : []
       } catch (err) {
-        console.warn('[post-use-journey] 拉取 legacy 待补全计数失败:', err)
+        console.warn('[post-use-journey] 拉取勾选项待补全计数失败:', err)
         recordIds = postUseAnalysisRecords
-          .filter((fb) => needsPostUseJourney(fb, settings, { includeLegacyKeywordJourneys: true }))
+          .filter((fb) => needsPostUseJourney(fb, settings, {
+            includeLegacyKeywordJourneys,
+            retryLlmUnknownJourneys,
+          }))
           .map((fb) => fb.id)
           .filter(Boolean)
       }
@@ -595,7 +603,7 @@ export default function Feedbacks() {
     }
     setJourneyBusy(true)
     try {
-      await startPostUseJourneyEnrichment(recordIds, { includeLegacyKeywordJourneys })
+      await startPostUseJourneyEnrichment(recordIds, { includeLegacyKeywordJourneys, retryLlmUnknownJourneys })
     } catch (e) {
       if (e?.code === 'RETAG_CANCELLED') message.info('任务已取消')
       else message.error(e?.message || '旅程补全失败')
@@ -613,10 +621,11 @@ export default function Feedbacks() {
 
   const askPostUseJourneyEnrichment = useCallback(() => {
     if (postUseJourneyBlocked) return
-    if (!legacyKeywordJourneys.length) {
-      void runPostUseJourneyEnrichment(false)
+    if (!legacyKeywordJourneys.length && !llmUnknownPendingCount) {
+      void runPostUseJourneyEnrichment(false, false)
       return
     }
+    let retryUnknown = false
     let includeLegacy = false
     Modal.confirm({
       title: '补全用户旅程',
@@ -625,25 +634,44 @@ export default function Feedbacks() {
           <Typography.Paragraph className="!mb-0">
             {pendingJourneyCount
               ? `将补全 ${pendingJourneyCount} 条空的、未识别的，或规则分没过门闸的评价。不看评分。`
-              : '当前没有待补全的评价。'}
+              : '默认口径下没有待补全的评价。'}
           </Typography.Paragraph>
-          <Checkbox
-            onChange={(event) => {
-              includeLegacy = event.target.checked
-            }}
-          >
-            同时按产品模板重打已有的关键词旅程（{legacyKeywordJourneys.length} 条）
-          </Checkbox>
+          {llmUnknownPendingCount > 0 && (
+            <Checkbox
+              defaultChecked={false}
+              onChange={(event) => {
+                retryUnknown = event.target.checked
+              }}
+            >
+              同时重试模型已判「未识别环节」的评价（{llmUnknownPendingCount} 条）
+            </Checkbox>
+          )}
+          {legacyKeywordJourneys.length > 0 && (
+            <Checkbox
+              defaultChecked={false}
+              onChange={(event) => {
+                includeLegacy = event.target.checked
+              }}
+            >
+              同时按产品模板重打已有的关键词旅程（{legacyKeywordJourneys.length} 条）
+            </Checkbox>
+          )}
+          {llmUnknownPendingCount > 0 && (
+            <Typography.Text type="secondary" className="text-xs">
+              模型已判未识别的评价不会自动重试（避免每次补全重跑同一批）；勾选后才按当前模型再试一轮。
+            </Typography.Text>
+          )}
         </div>
       ),
       okText: '开始补全',
       cancelText: '取消',
       onOk: () => {
-        void runPostUseJourneyEnrichment(includeLegacy)
+        void runPostUseJourneyEnrichment(retryUnknown, includeLegacy)
       },
     })
   }, [
     legacyKeywordJourneys.length,
+    llmUnknownPendingCount,
     postUseJourneyBlocked,
     pendingJourneyCount,
     runPostUseJourneyEnrichment,
@@ -1139,7 +1167,11 @@ export default function Feedbacks() {
           type="warning"
           showIcon
           title={`有 ${pendingJourneyCount} 条评价待补全用户旅程`}
-          description="只含已开启用后即评分析的产品，不看评分。仅补用户旅程，不走投诉/咨询打标。"
+          description={
+            llmUnknownPendingCount > 0
+              ? `只含已开启用后即评分析的产品，不看评分。仅补用户旅程，不走投诉/咨询打标。其中模型已判「未识别环节」的 ${llmUnknownPendingCount} 条不再自动重试，可在补全弹窗勾选重试。`
+              : '只含已开启用后即评分析的产品，不看评分。仅补用户旅程，不走投诉/咨询打标。'
+          }
           action={
             <PermissionGate permission="retag">
               <Tooltip title={postUseJourneyBlocked ? postUseJourneyBlockedTip : undefined}>
@@ -1510,7 +1542,7 @@ export default function Feedbacks() {
                         loading={journeyBusy}
                         disabled={
                           postUseJourneyBlocked ||
-                          (!pendingJourneyCount && !legacyKeywordJourneys.length)
+                          (!pendingJourneyCount && !legacyKeywordJourneys.length && !llmUnknownPendingCount)
                         }
                         onClick={() => askPostUseJourneyEnrichment()}
                       >

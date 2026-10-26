@@ -18,7 +18,7 @@ import { reprocessFeedbackRecord } from '../src/lib/pipeline.js'
 import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
 import { retagRecordSentiment } from '../src/lib/sentimentRetag.js'
 import { enrichRecordsWithJourneys } from '../src/lib/journeySemantic.js'
-import { needsPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
+import { needsPostUseJourney, classifyPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
 import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
 import { resolvePostUseRatingProduct } from '../src/lib/productCatalog/postUseRatingProducts.js'
 import { forwardLlmChatCompletion } from './llmProxy.js'
@@ -328,17 +328,41 @@ async function runSentimentRetag(opts, cancelled, touch) {
  *
  * @param {import('../src/lib/types.js').FeedbackRecord[]} records
  * @param {import('../src/lib/storage.js').AppSettings} settings
- * @param {{ includeLegacyKeywordJourneys?: boolean }} [options]
+ * @param {{ includeLegacyKeywordJourneys?: boolean, retryLlmUnknownJourneys?: boolean, catalogProducts?: object[] }} [options]
  * @returns {import('../src/lib/types.js').FeedbackRecord[]}
  */
 export function resolvePostUseJourneyTargets(records, settings, options = {}) {
-  const includeLegacy = options.includeLegacyKeywordJourneys === true
+  return summarizePostUseJourneyTargets(records, settings, options).targets
+}
+
+/**
+ * 计数接口用：一次遍历返回补全目标与构成明细。
+ * breakdown 三类与 classifyPostUseJourney 对齐：
+ * - auto：自动待补（旅程为空/未识别且未经模型，或规则分未过门闸）
+ * - llmUnknown：模型已判「未识别环节」，默认不计入 targets（避免计数死循环），
+ *   仅 options.retryLlmUnknownJourneys 显式要求时纳入
+ * - legacy：旧关键词旅程，仅 options.includeLegacyKeywordJourneys 时纳入
+ *
+ * @param {import('../src/lib/types.js').FeedbackRecord[]} records
+ * @param {import('../src/lib/storage.js').AppSettings} settings
+ * @param {{ includeLegacyKeywordJourneys?: boolean, retryLlmUnknownJourneys?: boolean, catalogProducts?: object[] }} [options]
+ * @returns {{ targets: import('../src/lib/types.js').FeedbackRecord[], breakdown: { auto: number, llmUnknown: number, legacy: number } }}
+ */
+export function summarizePostUseJourneyTargets(records, settings, options = {}) {
   const catalogProducts = options.catalogProducts ?? getCatalogProducts()
-  return (records || []).filter(
-    (record) =>
-      needsPostUseJourney(record, settings, { includeLegacyKeywordJourneys: includeLegacy }) &&
-      resolvePostUseRatingProduct(record, catalogProducts),
-  )
+  const breakdown = { auto: 0, llmUnknown: 0, legacy: 0 }
+  /** @type {import('../src/lib/types.js').FeedbackRecord[]} */
+  const targets = []
+  for (const record of records || []) {
+    if (!resolvePostUseRatingProduct(record, catalogProducts)) continue
+    const cls = classifyPostUseJourney(record, settings)
+    if (cls === 'none') continue
+    if (cls === 'auto') breakdown.auto += 1
+    else if (cls === 'llm_unknown') breakdown.llmUnknown += 1
+    else if (cls === 'legacy') breakdown.legacy += 1
+    if (needsPostUseJourney(record, settings, options)) targets.push(record)
+  }
+  return { targets, breakdown }
 }
 
 export async function runEnrichment(opts) {
@@ -470,8 +494,10 @@ export async function runEnrichment(opts) {
 
     if (mode === 'post_use_journey') {
       const includeLegacy = retagOptions.includeLegacyKeywordJourneys === true
+      const retryLlmUnknown = retagOptions.retryLlmUnknownJourneys === true
       const targets = resolvePostUseJourneyTargets(records, settings, {
         includeLegacyKeywordJourneys: includeLegacy,
+        retryLlmUnknownJourneys: retryLlmUnknown,
       })
       const total = targets.length
       /** @type {import('../src/lib/types.js').FeedbackRecord[]} */

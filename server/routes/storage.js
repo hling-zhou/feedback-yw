@@ -334,9 +334,10 @@ export function registerStorageRoutes(app) {
     '/api/storage/records/post-use-journey/pending-count',
     { preHandler: requirePermission('view') },
     async (request) => {
-      const q = /** @type {{ periodId?: string; includeLegacyKeywordJourneys?: string }} */ (request.query || {})
+      const q = /** @type {{ periodId?: string; includeLegacyKeywordJourneys?: string; retryLlmUnknownJourneys?: string }} */ (request.query || {})
       const periodId = typeof q.periodId === 'string' ? q.periodId.trim() : ''
       const includeLegacyKeywordJourneys = q.includeLegacyKeywordJourneys === 'true'
+      const retryLlmUnknownJourneys = q.retryLlmUnknownJourneys === 'true'
 
       // 刷新标签库 + 产品目录（与 enrichRunner 一致），确保 resolvePostUseRatingProduct 用最新目录
       const taxonomyAdapter = {
@@ -370,15 +371,23 @@ export function registerStorageRoutes(app) {
       })
       const records = listResult.records.filter(isPostUseRatingLibraryRecord)
 
-      const { resolvePostUseJourneyTargets } = await import('../enrichRunner.js')
+      const { summarizePostUseJourneyTargets } = await import('../enrichRunner.js')
       const { getCatalogProducts } = await import('../../src/lib/productCatalogLoader.js')
-      const targets = resolvePostUseJourneyTargets(records, settings, {
+      const { targets, breakdown } = summarizePostUseJourneyTargets(records, settings, {
         includeLegacyKeywordJourneys,
+        retryLlmUnknownJourneys,
         catalogProducts: getCatalogProducts(),
       })
       return {
         count: targets.length,
         recordIds: targets.map((r) => r.id).filter(Boolean),
+        // 构成明细：auto=自动待补；llmUnknown=模型已判未识别（默认不计入，retry 时计入）；
+        // legacy=旧关键词旅程（includeLegacy 时计入）。横幅/弹窗按此拆解展示。
+        breakdown: {
+          auto: breakdown.auto,
+          llmUnknown: breakdown.llmUnknown,
+          legacy: breakdown.legacy,
+        },
       }
     },
   )

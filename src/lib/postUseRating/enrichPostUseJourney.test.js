@@ -4,6 +4,7 @@ import {
   enrichPostUseJourneyRecord,
   matchPostUseJourneyFromText,
   isLegacyPostUseKeywordJourney,
+  classifyPostUseJourney,
   needsPostUseJourney,
   POST_USE_JOURNEY_UNKNOWN_L1,
 } from './enrichPostUseJourney.js'
@@ -98,15 +99,18 @@ describe('enrichPostUseJourney', () => {
         journeySource: 'llm',
       }),
     ).toBe(false)
-    expect(
-      needsPostUseJourney({
-        dataSourceType: 'post_use_rating',
-        channel: 'sms',
-        ratingScore: 6,
-        journeyL1: '未识别环节',
-        journeySource: 'llm',
-      }),
-    ).toBe(true)
+    const llmUnknown = {
+      dataSourceType: 'post_use_rating',
+      channel: 'sms',
+      ratingScore: 6,
+      journeyL1: '未识别环节',
+      journeySource: 'llm',
+    }
+    // 模型已判「未识别环节」：默认不再计入待补全（避免计数死循环、重跑同一批），
+    // 仅显式勾选重试时才补
+    expect(needsPostUseJourney(llmUnknown)).toBe(false)
+    expect(needsPostUseJourney(llmUnknown, undefined, { retryLlmUnknownJourneys: true })).toBe(true)
+    expect(needsPostUseJourney({ ...llmUnknown, manualTagFields: ['journey'] }, undefined, { retryLlmUnknownJourneys: true })).toBe(false)
     expect(
       needsPostUseJourney({
         dataSourceType: 'post_use_rating',
@@ -174,5 +178,23 @@ describe('enrichPostUseJourney', () => {
     expect(batch.map((item) => item.id)).toEqual(['a', 'b'])
     expect(batch[0].patch.journeyL1).toBe('账号')
     expect(batch[1].patch.journeyL1).toBe('账号')
+  })
+
+  it('classifyPostUseJourney 给出待补构成：auto / llm_unknown / legacy / none', () => {
+    const base = { dataSourceType: 'post_use_rating', channel: 'sms', ratingScore: 6 }
+    // auto：空旅程（未经模型）、规则未识别、规则低分
+    expect(classifyPostUseJourney(base)).toBe('auto')
+    expect(classifyPostUseJourney({ ...base, journeyL1: '未识别环节' })).toBe('auto')
+    expect(classifyPostUseJourney({ ...base, journeyL1: '未识别环节', journeySource: 'rule' })).toBe('auto')
+    expect(classifyPostUseJourney({ ...base, journeyL1: '开通', journeySource: 'rule', journeyMatchScore: 2 })).toBe('auto')
+    // llm_unknown：模型已判未识别
+    expect(classifyPostUseJourney({ ...base, journeyL1: '未识别环节', journeySource: 'llm' })).toBe('llm_unknown')
+    // none：模型已写出具体环节、规则分过门闸、人工改过、回访
+    expect(classifyPostUseJourney({ ...base, journeyL1: '开通', journeySource: 'llm' })).toBe('none')
+    expect(classifyPostUseJourney({ ...base, journeyL1: '开通', journeySource: 'rule', journeyMatchScore: 3 })).toBe('none')
+    expect(classifyPostUseJourney({ ...base, manualTagFields: ['journey'] })).toBe('none')
+    expect(classifyPostUseJourney({ ...base, channel: 'callback' })).toBe('none')
+    // legacy：旧关键词写出的具体环节
+    expect(classifyPostUseJourney({ ...base, journeyL1: '使用', journeySource: 'post_use_non10' })).toBe('legacy')
   })
 })
