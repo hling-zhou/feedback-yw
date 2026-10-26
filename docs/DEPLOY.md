@@ -10,6 +10,7 @@
 浏览器 → 静态前端 (dist/) 或 Vite 开发服
        → /api/* → Fastify (:3001) → SQLite (server/data/auth.db)
        → /config/* → public/config/（打标 Excel/JSON，可由「发布」API 写入）
+Agent(MCP) → /sse + /messages → MCP Server (:3002) → 同一 SQLite（只读为主，出参默认脱敏）
 ```
 
 - **协作数据**：反馈记录、快照、标签候选等存 SQLite，客户端约 5s 轮询 `dataRevision` 同步。工作台 `feedbacks` 为读库后的内存缓存，写入走单条/批量 API，**不会**全量 debounce 覆盖共享库。
@@ -49,6 +50,9 @@
 | `CORS_ORIGINS` | 必填，逗号分隔 |
 | `NODE_ENV` | `production` |
 | `API_PORT` / `API_HOST` | 按部署调整；对外暴露 `0.0.0.0` 时需 `ALLOW_BIND_ALL=true` |
+| `MCP_TRANSPORT` | MCP Server 传输模式，SSE 模式设 `sse` |
+| `MCP_PORT` | MCP Server 端口，默认 `3002` |
+| `MCP_HOST` | MCP Server 监听地址，默认 `127.0.0.1`；对外只经 Nginx 反代，勿改 `0.0.0.0` 直暴 |
 | `AUTH_DATABASE_PATH` | 可选，自定义 SQLite 路径 |
 | `SERVER_DATA_DIR` | 可选，数据目录（默认 `server/data`） |
 | `ADMIN_INITIAL_*` | 仅**空库首次**创建管理员 |
@@ -118,12 +122,64 @@ server {
 
 确保 `CORS_ORIGINS` 与浏览器访问的 Origin 一致（含 `https://`）。
 
-### 4.4 健康检查
+### 4.4 启动 MCP Server（Agent 数据服务）
+
+独立 Node 进程（`server/mcp-server.mjs`，SSE 传输），直连同一 SQLite 提供 Agent 查询 Tool（出参默认脱敏）。
+
+**环境变量**（写入项目根 `.env` 即可，`server/loadEnv.js` 自动加载，无需命令行前缀）：
+
+```bash
+MCP_TRANSPORT=sse
+MCP_PORT=3002
+MCP_HOST=127.0.0.1   # 保持回环，外部一律经 Nginx 反代进入
+```
+
+**启动**（与 API 同用 PM2 守护；等价裸命令为 `npm run mcp`，其默认 `MCP_HOST=127.0.0.1`）：
+
+```bash
+NODE_ENV=production pm2 start server/index.js --name feedback-api
+pm2 start server/mcp-server.mjs --name feedback-mcp
+pm2 save && pm2 startup    # 进程清单持久化 + 开机自启
+```
+
+**Nginx 反代**：MCP server 只监听回环，外部经 80/443 进入。注意 SSE 端点**只能挂在根路径**——`/sse` 握手时服务端下发相对 endpoint `/messages?sessionId=...`，客户端按根 URL 拼接，挂子路径（如 `/mcp/sse`）会导致 POST 404：
+
+```nginx
+location /sse {
+  proxy_pass http://127.0.0.1:3002;
+  proxy_http_version 1.1;
+  proxy_set_header Connection '';
+  proxy_buffering off;          # SSE 关键：禁缓冲，否则事件被 Nginx 攒住不吐
+  proxy_read_timeout 10m;       # 对齐服务端 10 分钟会话超时（30s 心跳保活）
+}
+location /messages {
+  proxy_pass http://127.0.0.1:3002;
+  proxy_http_version 1.1;
+}
+```
+
+**Agent 连接配置**（如 WorkBuddy `~/.workbuddy/mcp.json`；Bearer 为应用内签发的 MCP API Key，`fi_live_` 前缀）：
+
+```json
+{
+  "mcpServers": {
+    "feedback-insights": {
+      "url": "http://<server-host>/sse",
+      "headers": { "Authorization": "Bearer <mcp API Key>" }
+    }
+  }
+}
+```
+
+### 4.5 健康检查
 
 ```bash
 curl -s http://127.0.0.1:3001/health
 # 期望：{"ok":true,"dbOk":true,"recordCount":123,"revision":5,"revisionUpdatedAt":"..."}
 # dbOk 为 false 时 HTTP 503，负载均衡应摘除该实例
+
+curl -s http://127.0.0.1:3002/health
+# 期望：{"status":"ok","tools":[...]}（MCP Server）
 ```
 
 ---
@@ -202,6 +258,7 @@ npm test && npm run build
 | 空库无法登录 | 设置 `ADMIN_INITIAL_PASSWORD` 后重启 API |
 | 洞察数据与他人不一致 | 确认共用同一 `auth.db`；检查 revision 轮询；导入后点击「生成/刷新洞察」 |
 | 发布 Excel 成功但页面未更新 | 设置页「重新加载配置」；确认 `public/config` 路径与 Nginx 静态规则 |
+| Agent 连 MCP 报 ECONNREFUSED / 连不上 | `pm2 ls` 确认 `feedback-mcp` 在线；确认 Agent URL 走 `http://<host>/sse`（Nginx 反代），勿直连 `:3002`（默认只监听 `127.0.0.1`）；Nginx `/sse` 段须 `proxy_buffering off` |
 
 ---
 
