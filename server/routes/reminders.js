@@ -11,10 +11,35 @@ import { enhanceWithLlm } from '../reminderLlmEnhancer.js'
 import { renderReminderMail } from '../reminderMailRenderer.js'
 import { describeMailSendError, sendSmtpMail } from '../mail/smtp.js'
 import { getMailChannelByDataSource, getPublicAppUrl } from '../mailRepository.js'
+import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
+import { storageRepository } from '../storageRepository.js'
 
 function sendError(reply, code, error) {
   reply.code(code)
   return { error }
+}
+
+/**
+ * 预览/发送前从 DB 刷新服务端产品目录缓存。
+ * UI 保存负责人只写 DB（applyCatalogProducts 更新的是浏览器进程缓存），
+ * 服务端进程内缓存不随之刷新；reminderRuleEngine 解析收件人读的正是
+ * 进程内缓存，不刷新会把已配置的负责人解析成 0 收件人。
+ * 与 enrichRunner / post-use-journey-count 路由同一口径；刷新失败时
+ * 降级用缓存，不阻塞预览/发送本身。
+ * @param {import('fastify').FastifyBaseLogger} [logger]
+ */
+async function refreshProductCatalogForReminder(logger) {
+  const adapter = {
+    getMeta: (key) => storageRepository.getMeta(key),
+    putMeta: (key, value) => storageRepository.putMeta(key, value),
+  }
+  try {
+    await loadManagedProductCatalog(adapter)
+  } catch (err) {
+    logger?.warn?.(
+      `[reminders] 产品目录刷新失败，降级用缓存: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
 }
 
 /**
@@ -27,6 +52,7 @@ export function registerReminderRoutes(app) {
     { preHandler: requireAdmin(), schema: { body: reminderPreviewBodySchema } },
     async (request, reply) => {
       try {
+        await refreshProductCatalogForReminder(request.log)
         const body = /** @type {{ insightPeriodId?: string }} */ (request.body)
         const data = buildReminderData({ insightPeriodId: body.insightPeriodId })
         // 预览不返回完整邮件，只返回摘要数据
@@ -75,6 +101,7 @@ export function registerReminderRoutes(app) {
     { preHandler: requireAdmin(), schema: { body: reminderSendBodySchema } },
     async (request, reply) => {
       try {
+        await refreshProductCatalogForReminder(request.log)
         const body = /** @type {{ insightPeriodId: string, skipLlm?: boolean }} */ (request.body)
         const data = buildReminderData({ insightPeriodId: body.insightPeriodId })
 
