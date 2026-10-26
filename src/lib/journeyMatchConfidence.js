@@ -54,7 +54,7 @@ function isUnknownJourneyLocal(local) {
  * @param {string} taxonomyKey
  * @param {import('./storage.js').AppSettings} [settings]
  * @param {{ journeyL1: string; journeyL2: string }} [localHint]
- * @param {{ manualTagDimensions?: string[] }} [record]
+ * @param {{ manualTagFields?: string[] }} [record]
  * @returns {JourneyGatingDecision}
  */
 export function evaluateJourneyGating(
@@ -70,7 +70,8 @@ export function evaluateJourneyGating(
     matchJourneyByDescription(text, journeys, taxonomyKey, journeyMatchOpts(settings))
   const { score } = matchJourneyFromTextWithScore(text, journeys, taxonomyKey)
 
-  if (record?.manualTagDimensions?.includes('journey')) {
+  // 人工改过旅程的记录直接保留本地结果，不再调 LLM（字段名与 FeedbackRecord.manualTagFields 一致）
+  if (Array.isArray(record?.manualTagFields) && record.manualTagFields.includes('journey')) {
     return { local, score, skipLlm: true, reason: 'manual_override' }
   }
 
