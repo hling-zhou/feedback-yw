@@ -10,7 +10,7 @@
 浏览器 → 静态前端 (dist/) 或 Vite 开发服
        → /api/* → Fastify (:3001) → SQLite (server/data/auth.db)
        → /config/* → public/config/（打标 Excel/JSON，可由「发布」API 写入）
-Agent(MCP) → /sse + /messages → MCP Server (:3002) → 同一 SQLite（只读为主，出参默认脱敏）
+Agent(MCP) → /sse + /messages → MCP Server (:3003) → 同一 SQLite（只读为主，出参默认脱敏）
 ```
 
 - **协作数据**：反馈记录、快照、标签候选等存 SQLite，客户端约 5s 轮询 `dataRevision` 同步。工作台 `feedbacks` 为读库后的内存缓存，写入走单条/批量 API，**不会**全量 debounce 覆盖共享库。
@@ -51,8 +51,9 @@ Agent(MCP) → /sse + /messages → MCP Server (:3002) → 同一 SQLite（只�
 | `NODE_ENV` | `production` |
 | `API_PORT` / `API_HOST` | 按部署调整；对外暴露 `0.0.0.0` 时需 `ALLOW_BIND_ALL=true` |
 | `MCP_TRANSPORT` | MCP Server 传输模式，SSE 模式设 `sse` |
-| `MCP_PORT` | MCP Server 端口，默认 `3002` |
+| `MCP_PORT` | MCP Server 端口，代码默认 `3002`；与已有服务端口冲突时按需调整（本例 `3003`） |
 | `MCP_HOST` | MCP Server 监听地址，默认 `127.0.0.1`；对外只经 Nginx 反代，勿改 `0.0.0.0` 直暴 |
+| `VITE_MCP_PUBLIC_PORT` | 构建期：前端「MCP 数据服务」指南页展示的对外端口（如 `81`）；不传默认 `3002`（开发直连形态） |
 | `AUTH_DATABASE_PATH` | 可选，自定义 SQLite 路径 |
 | `SERVER_DATA_DIR` | 可选，数据目录（默认 `server/data`） |
 | `ADMIN_INITIAL_*` | 仅**空库首次**创建管理员 |
@@ -130,8 +131,8 @@ server {
 
 ```bash
 MCP_TRANSPORT=sse
-MCP_PORT=3002
-MCP_HOST=127.0.0.1   # 保持回环，外部一律经 Nginx 反代进入
+MCP_PORT=3003            # 端口与已有服务冲突时按需调整（代码默认 3002；本例 3003）
+MCP_HOST=127.0.0.1       # 保持回环，外部一律经 Nginx 反代进入
 ```
 
 **启动**（与 API 同用 PM2 守护；等价裸命令为 `npm run mcp`，其默认 `MCP_HOST=127.0.0.1`）：
@@ -142,18 +143,18 @@ pm2 start server/mcp-server.mjs --name feedback-mcp
 pm2 save && pm2 startup    # 进程清单持久化 + 开机自启
 ```
 
-**Nginx 反代**：MCP server 只监听回环，外部经 80/443 进入。注意 SSE 端点**只能挂在根路径**——`/sse` 握手时服务端下发相对 endpoint `/messages?sessionId=...`，客户端按根 URL 拼接，挂子路径（如 `/mcp/sse`）会导致 POST 404：
+**Nginx 反代**：MCP server 只监听回环，外部经服务器入口进入（本例 Nginx 入口 81；若走 443 域名同理）。注意 SSE 端点**只能挂在根路径**——`/sse` 握手时服务端下发相对 endpoint `/messages?sessionId=...`，客户端按根 URL 拼接，挂子路径（如 `/mcp/sse`）会导致 POST 404：
 
 ```nginx
 location /sse {
-  proxy_pass http://127.0.0.1:3002;
+  proxy_pass http://127.0.0.1:3003;
   proxy_http_version 1.1;
   proxy_set_header Connection '';
   proxy_buffering off;          # SSE 关键：禁缓冲，否则事件被 Nginx 攒住不吐
   proxy_read_timeout 10m;       # 对齐服务端 10 分钟会话超时（30s 心跳保活）
 }
 location /messages {
-  proxy_pass http://127.0.0.1:3002;
+  proxy_pass http://127.0.0.1:3003;
   proxy_http_version 1.1;
 }
 ```
@@ -164,12 +165,20 @@ location /messages {
 {
   "mcpServers": {
     "feedback-insights": {
-      "url": "http://<server-host>/sse",
+      "url": "http://<server-host>:81/sse",
       "headers": { "Authorization": "Bearer <mcp API Key>" }
     }
   }
 }
 ```
+
+**前端「MCP 数据服务」指南页**：页面展示的连接地址按构建形态注入——生产构建时传 `VITE_MCP_PUBLIC_PORT`（对外入口端口）：
+
+```bash
+VITE_MCP_PUBLIC_PORT=81 npm run build
+```
+
+未传时页面默认展示 `:3002/sse`（开发直连形态，与 `npm run mcp` 本地端口一致）。
 
 ### 4.5 健康检查
 
@@ -178,7 +187,7 @@ curl -s http://127.0.0.1:3001/health
 # 期望：{"ok":true,"dbOk":true,"recordCount":123,"revision":5,"revisionUpdatedAt":"..."}
 # dbOk 为 false 时 HTTP 503，负载均衡应摘除该实例
 
-curl -s http://127.0.0.1:3002/health
+curl -s http://127.0.0.1:3003/health
 # 期望：{"status":"ok","tools":[...]}（MCP Server）
 ```
 
@@ -258,7 +267,7 @@ npm test && npm run build
 | 空库无法登录 | 设置 `ADMIN_INITIAL_PASSWORD` 后重启 API |
 | 洞察数据与他人不一致 | 确认共用同一 `auth.db`；检查 revision 轮询；导入后点击「生成/刷新洞察」 |
 | 发布 Excel 成功但页面未更新 | 设置页「重新加载配置」；确认 `public/config` 路径与 Nginx 静态规则 |
-| Agent 连 MCP 报 ECONNREFUSED / 连不上 | `pm2 ls` 确认 `feedback-mcp` 在线；确认 Agent URL 走 `http://<host>/sse`（Nginx 反代），勿直连 `:3002`（默认只监听 `127.0.0.1`）；Nginx `/sse` 段须 `proxy_buffering off` |
+| Agent 连 MCP 报 ECONNREFUSED / 连不上 | `pm2 ls` 确认 `feedback-mcp` 在线；确认 Agent URL 走 `http://<server-host>:81/sse`（Nginx 反代），勿直连 MCP 端口（默认只监听 `127.0.0.1`）；Nginx `/sse` 段须 `proxy_buffering off` |
 
 ---
 
