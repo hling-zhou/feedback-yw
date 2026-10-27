@@ -942,7 +942,7 @@ function getPostUseTraceMode(params, apiKey, limit, offset, opts, desensitizeCus
 export const MCP_TOOLS = [
   {
     name: 'search_tickets',
-    description: '搜索投诉/咨询工单。支持按产品、客户名称、标签、关键词、月份等条件筛选，返回工单摘要列表（脱敏后）。',
+    description: '搜工单（按产品/客户/标签/关键词/月份筛）：搜索投诉/咨询工单。支持按产品、客户名称、标签、关键词、月份等条件筛选，返回工单摘要列表（脱敏后）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -962,7 +962,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_ticket_detail',
-    description: '获取单条工单的完整详情（含受理内容、处理意见、客户原话、回复内容、关联举措等）。',
+    description: '工单全量详情（标签、行动建议关联）：获取单条工单的完整详情（含受理内容、处理意见、客户原话、回复内容、关联举措等）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -975,7 +975,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_post_use_ratings',
-    description: '查询用后即评满意度数据。支持按产品、客户、月份、渠道、分数区间筛选，返回评分列表和统计信息。',
+    description: '用后即评满意度（均分/低分/分布统计）：查询用后即评满意度数据。支持按产品、客户、月份、渠道、分数区间筛选，返回评分列表和统计信息。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -994,7 +994,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_insight_stats',
-    description: '获取洞察统计和趋势数据。支持月度汇总、评分趋势、状态趋势、周期列表。',
+    description: '洞察统计（月度汇总/趋势/周期列表）：获取洞察统计和趋势数据。支持月度汇总、评分趋势、状态趋势、周期列表。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1007,7 +1007,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_taxonomy',
-    description: '获取分类法/标签库。managed 类型返回标签库（L1/L2 标签定义和 match 关键词），curated 类型返回行动建议分类法。',
+    description: '分类法/标签库（产品体系/旅程模板）：获取分类法/标签库。managed 类型返回标签库（L1/L2 标签定义和 match 关键词），curated 类型返回行动建议分类法。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1019,7 +1019,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_ticket_todos',
-    description: '查询会议待办清单。支持按产品、经办人、状态（open/resolved）筛选，返回待办事项列表。',
+    description: '会议待办清单：查询会议待办清单。支持按产品、经办人、状态（open/resolved）筛选，返回待办事项列表。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1035,7 +1035,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_action_items',
-    description: '查询行动建议/举措清单。支持按产品、状态、来源（ticket/post_use）、关联工单号、关键词等条件筛选，返回举措列表。',
+    description: '行动建议/举措清单：查询行动建议/举措清单。支持按产品、状态、来源（ticket/post_use）、关联工单号、关键词等条件筛选，返回举措列表。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1053,7 +1053,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_action_stats',
-    description: '获取行动建议统计。按状态汇总计数，并按产品维度分组统计。',
+    description: '举措统计：获取行动建议统计。按状态汇总计数，并按产品维度分组统计。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1065,7 +1065,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_post_use_trace',
-    description: '查询用后即评回访/溯源记录。viewType=visit 查询客服部回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
+    description: '回访/溯源记录：查询用后即评回访/溯源记录。viewType=visit 查询客服部回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
     inputSchema: {
       type: 'object',
       properties: {

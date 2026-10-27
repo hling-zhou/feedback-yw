@@ -32,56 +32,65 @@ const { Title, Text, Link: AntLink } = Typography
 const TOOLS = [
   {
     name: 'search_tickets',
+    label: '搜工单',
     scope: 'mcp:read',
-    desc: '搜索投诉/咨询工单，支持按产品、客户、标签、关键词、月份筛选',
+    desc: '按产品、客户、标签、关键词、月份筛选，返回脱敏后的摘要列表',
     phase: 'P0',
   },
   {
     name: 'get_ticket_detail',
+    label: '工单全量详情',
     scope: 'mcp:read',
-    desc: '获取单条工单全量详情（含标签、行动建议关联）',
+    desc: '含受理内容、处理意见、客户原话，以及标签与关联行动建议',
     phase: 'P0',
   },
   {
     name: 'get_post_use_ratings',
+    label: '用后即评满意度',
     scope: 'mcp:read',
-    desc: '查询用后即评满意度记录，含统计摘要（均分/低分/分布）',
+    desc: '按产品、客户、月份、渠道、分数区间筛选，含均分/低分/分布统计',
     phase: 'P0',
   },
   {
     name: 'get_insight_stats',
+    label: '洞察统计',
     scope: 'mcp:read',
-    desc: '获取洞察统计：月度汇总/满意度趋势/状态趋势/周期列表',
+    desc: '月度汇总、评分与状态趋势、周期列表',
     phase: 'P0',
   },
   {
     name: 'get_taxonomy',
+    label: '分类法/标签库',
     scope: 'mcp:read',
-    desc: '获取分类法/标签库（产品体系、旅程模板、问题类型）',
+    desc: '标签库（L1/L2 定义与 match 关键词）与行动建议分类法，含产品体系/旅程模板',
     phase: 'P0',
   },
   {
     name: 'get_ticket_todos',
+    label: '会议待办清单',
     scope: 'mcp:read',
-    desc: '查询会议待办清单，按产品/状态/经办人筛选',
+    desc: '按产品、状态（open/resolved）筛选，返回待办列表',
     phase: 'P0',
   },
   {
     name: 'get_action_items',
+    label: '行动建议/举措清单',
     scope: 'mcp:read',
-    desc: '查询行动建议/举措清单，按产品/状态/来源/工单号筛选',
+    desc: '按产品、状态、来源、关联工单号、关键词筛选',
     phase: 'P1',
   },
   {
     name: 'get_action_stats',
+    label: '举措统计',
     scope: 'mcp:read',
-    desc: '行动建议统计：按状态汇总、按产品维度分组',
+    desc: '按状态汇总计数，按产品维度分组',
     phase: 'P1',
   },
   {
     name: 'get_post_use_trace',
+    label: '回访/溯源记录',
     scope: 'mcp:read',
-    desc: '查询用后即评回访/溯源记录（visit=客服部回访, trace=产品部溯源）',
+    desc: 'visit=客服部回访，trace=产品部溯源，按月份/产品/客户/状态筛选',
     phase: 'P1+P2',
   },
 ]
@@ -104,7 +113,7 @@ const SCOPES = [
 const FAQ = [
   {
     q: '连接失败怎么办？',
-    a: '检查：① 网络能否访问服务器 3002 端口；② API Key 是否已吊销或过期；③ Authorization 头格式是否正确（Bearer + 空格 + 密钥）。',
+    a: '检查：① 网络能否访问第 1 步展示的连接地址（开发环境直连 MCP 端口，生产环境经服务器入口反代）；② API Key 是否已吊销或过期；③ Authorization 头格式是否正确（Bearer + 空格 + 密钥）。',
   },
   {
     q: '客户名称显示为 *** 怎么办？',
@@ -149,9 +158,12 @@ export default function McpGuide() {
     void loadKeys()
   }, [loadKeys])
 
+  // 对外端口按构建形态注入：开发默认 3002（本地直连）；生产构建传 VITE_MCP_PUBLIC_PORT（如 Nginx 入口 81）
+  const MCP_PUBLIC_PORT = String(import.meta.env?.VITE_MCP_PUBLIC_PORT || '3002')
+
   const sseUrl = useMemo(() => {
-    if (typeof window === 'undefined') return 'https://<server-host>:3002/sse'
-    return `${window.location.protocol}//${window.location.hostname}:3002/sse`
+    if (typeof window === 'undefined') return `http://<server-host>:${MCP_PUBLIC_PORT}/sse`
+    return `${window.location.protocol}//${window.location.hostname}:${MCP_PUBLIC_PORT}/sse`
   }, [])
 
   const handleReveal = async () => {
@@ -363,20 +375,21 @@ export default function McpGuide() {
         <Row gutter={[12, 12]}>
           {TOOLS.map((tool) => (
             <Col key={tool.name} xs={24} sm={12} lg={8}>
-              <div className="rounded-lg border border-ink-100 p-3 transition-colors hover:border-brand-300">
-                <div className="mb-1 flex items-center justify-between">
-                  <Text code className="text-xs font-semibold">{tool.name}</Text>
-                  <Tag
-                    color={tool.phase === 'P0' ? 'green' : 'orange'}
-                    className="!m-0 !text-[10px]"
-                  >
-                    {tool.phase}
-                  </Tag>
-                </div>
-                <Text type="secondary" className="text-xs leading-relaxed">
-                  {tool.desc}
-                </Text>
+            <div className="rounded-lg border border-ink-100 p-3 transition-colors hover:border-brand-300">
+              <div className="mb-1 flex items-center justify-between">
+                <Text strong className="text-sm">{tool.label}</Text>
+                <Tag
+                  color={tool.phase === 'P0' ? 'green' : 'orange'}
+                  className="!m-0 !text-[10px]"
+                >
+                  {tool.phase}
+                </Tag>
               </div>
+              <Text code className="text-xs">{tool.name}</Text>
+              <Text type="secondary" className="mt-1 block text-xs leading-relaxed">
+                {tool.desc}
+              </Text>
+            </div>
             </Col>
           ))}
         </Row>
