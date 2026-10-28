@@ -110,14 +110,13 @@ async function analyzeTicketCore(input, settings, corpus, taggerOpts = {}) {
  * @param {import('../storage.js').AppSettings | null} [settings]
  */
 async function enrichTicketAnalysisWithLlm(input, core, settings) {
-  let { customerRequest, painPoint, optimizations, sentiment, urgencyLevel } = core
+  let { customerRequest, painPoint, optimizations, sentiment, urgencyLevel, rootCause } = core
   const {
     corpus,
     candidates,
     ruleCustomerRequest,
     rulePainPoint,
     solutionSummary,
-    rootCause,
     dims,
   } = core
   let customerRequestSource = /** @type {'rule' | 'llm'} */ ('rule')
