@@ -9,7 +9,7 @@ export default function MessageBottleFab({ onClick }) {
     <Tooltip title="不好用？有更多点子？戳我戳我" placement="left">
       <button
         type="button"
-        aria-label="提交漂流瓶"
+        aria-label="提交许愿瓶"
         className="message-bottle-fab"
         onClick={onClick}
       >

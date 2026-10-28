@@ -64,7 +64,7 @@ export default function MessageBottlePanel() {
     } catch (err) {
       setItems([])
       setTotal(0)
-      message.error(err instanceof Error ? err.message : '加载漂流瓶失败')
+      message.error(err instanceof Error ? err.message : '加载许愿瓶失败')
     } finally {
       setLoading(false)
     }
@@ -158,7 +158,7 @@ export default function MessageBottlePanel() {
       />
 
       <Modal
-        title={canManage ? '漂流瓶详情 · 更新处理进展' : '漂流瓶详情'}
+        title={canManage ? '许愿瓶详情 · 更新处理进展' : '许愿瓶详情'}
         open={Boolean(detailItem)}
         okText={canManage ? '保存进展' : undefined}
         okButtonProps={{ style: canManage ? undefined : { display: 'none' } }}

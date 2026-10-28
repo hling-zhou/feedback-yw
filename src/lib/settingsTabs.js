@@ -21,7 +21,7 @@ export const SETTINGS_TAB_LABELS = {
   metrics: '万投比指标',
   data: '数据管理',
   audit: '审计日志',
-  bottles: '漂流瓶',
+  bottles: '许愿瓶',
   requirement_sync: '外部集成',
   knowledge_base: '产品知识库',
   pipeline: '行动建议规则补充',
@@ -38,7 +38,7 @@ export const SETTINGS_TAB_DESCRIPTIONS = {
     '按产品维护万投比目标与月订单数；修改后底部会出现保存条，每个产品独立保存。',
   data: '导出备份、恢复数据或按范围清空已导入工单与洞察快照。',
   audit: '查看导入、清空、配置发布等关键操作记录。',
-  bottles: '查看用户通过漂流瓶提交的优化建议、新点子；管理员可更新处理进展。',
+  bottles: '查看用户通过许愿瓶提交的优化建议、新点子；管理员可更新处理进展。',
   requirement_sync:
     '管理外部系统 API Key、MCP 数据服务共享密钥与需求工单进展同步映射；仅管理员可创建/吊销 Key 与编辑映射，举措关联需求工单后排期与状态由此同步展示。',
   knowledge_base:

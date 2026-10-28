@@ -64,7 +64,7 @@ export function registerMessageBottleRoutes(app) {
       } catch (err) {
         request.log.error(err)
         return reply.code(500).send({
-          error: err instanceof Error ? err.message : '加载漂流瓶失败',
+          error: err instanceof Error ? err.message : '加载许愿瓶失败',
         })
       }
     },
@@ -82,7 +82,7 @@ export function registerMessageBottleRoutes(app) {
       try {
         const item = messageBottleRepository.updateProgress(id, body.progress)
         if (!item) {
-          return reply.code(404).send({ error: '漂流瓶不存在' })
+          return reply.code(404).send({ error: '许愿瓶不存在' })
         }
         logAuditFromRequest(request, 'message_bottle.progress_update', {
           messageBottleId: id,

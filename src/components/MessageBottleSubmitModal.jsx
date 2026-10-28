@@ -119,7 +119,7 @@ export default function MessageBottleSubmitModal({ open, onClose }) {
 
   return (
     <Modal
-      title="装进漂流瓶"
+      title="装进许愿瓶"
       open={open}
       onCancel={onClose}
       destroyOnClose
@@ -129,7 +129,7 @@ export default function MessageBottleSubmitModal({ open, onClose }) {
           取消
         </Button>,
         <Button key="submit" type="primary" loading={submitting} onClick={() => void handleSubmit()}>
-          装进漂流瓶
+          装进许愿瓶
         </Button>,
       ]}
     >
