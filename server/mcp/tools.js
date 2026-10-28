@@ -126,6 +126,7 @@ function toTicketSummary(record, opts) {
     customerCode: r.customerCode || '',
     loginAccountName: r.loginAccountName || '',
     summary: (r.rawText || r.sourceColumns?.['受理内容'] || '').slice(0, 200),
+    handlingText: (r.handlingText || r.sourceColumns?.['处理意见'] || '').slice(0, 200),
     handlingResult: r.handlingResult || r.sourceColumns?.['处理结果'] || '',
     createdAt: r.createdAt || '',
   }
@@ -942,7 +943,7 @@ function getPostUseTraceMode(params, apiKey, limit, offset, opts, desensitizeCus
 export const MCP_TOOLS = [
   {
     name: 'search_tickets',
-    description: '搜工单（按产品/客户/标签/关键词/月份筛）：搜索投诉/咨询工单。支持按产品、客户名称、标签、关键词、月份等条件筛选，返回工单摘要列表（脱敏后）。',
+    description: '搜工单（按产品/客户/标签/关键词/月份筛）：搜索投诉/咨询工单。支持按产品、客户名称、标签、关键词、月份等条件筛选，返回工单摘要列表（含受理内容 summary 与处理意见原文摘要 handlingText，脱敏后）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -962,7 +963,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_ticket_detail',
-    description: '工单全量详情（标签、行动建议关联）：获取单条工单的完整详情（含受理内容、处理意见、客户原话、回复内容、关联举措等）。',
+    description: '工单全量详情（标签、行动建议关联）：获取单条工单的完整详情（含受理内容、处理意见原文 handlingText、客户原话、回复内容、关联举措等；处理意见为投诉/咨询工单处理过程的原文）。',
     inputSchema: {
       type: 'object',
       properties: {
