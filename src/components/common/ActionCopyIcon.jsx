@@ -5,9 +5,18 @@ import { copyTextToClipboard } from '../../lib/clipboard.js'
  * 复制图标组件——内联 data/action-copy.svg，点击即复制 value。
  * value 为空时返回 null（不渲染）。
  *
+ * 功能开关：HTTP 非安全上下文下 execCommand('copy') 可能静默丢弃写入
+ * （提示"已复制"但粘贴不出），待服务端启用 HTTPS（见 docs/DEPLOY.md
+ * §4.4 HTTPS 治本小节）后把此开关改回 true 恢复上线。
+ * @type {boolean}
+ */
+const COPY_ICON_ENABLED = false
+
+/**
  * @param {{ value?: string | null; className?: string }} props
  */
 export default function ActionCopyIcon({ value, className = '' }) {
+  if (!COPY_ICON_ENABLED) return null
   if (!value?.trim()) return null
 
   const handleCopy = async (e) => {
