@@ -54,8 +54,10 @@ echo "  ✓ 依赖就绪"
 # ---- 3. 构建 ----
 echo ""
 echo "[3/5] 构建前端..."
-# 前端「MCP 数据服务」指南页展示的对外端口（本服务器 Nginx 入口为 81；可用环境变量覆盖；开发默认 3002）
-export VITE_MCP_PUBLIC_PORT="${VITE_MCP_PUBLIC_PORT:-81}"
+# 前端「MCP 数据服务」指南页展示的对外端口写入 .env（vite build 自动读取），
+# 任何脚本裸跑 npm run build 都带上注入，不依赖本脚本 export；开发默认 3002
+grep -q '^VITE_MCP_PUBLIC_PORT' .env 2>/dev/null || \
+  echo "VITE_MCP_PUBLIC_PORT=${VITE_MCP_PUBLIC_PORT:-81}" >> .env
 npm run build 2>&1 | tail -5
 if [[ -f "dist/index.html" ]]; then
   echo "  ✓ 构建完成 (dist/index.html)"

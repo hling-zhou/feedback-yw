@@ -172,13 +172,15 @@ location /messages {
 }
 ```
 
-**前端「MCP 数据服务」指南页**：页面展示的连接地址按构建形态注入——生产构建时传 `VITE_MCP_PUBLIC_PORT`（对外入口端口）：
+**前端「MCP 数据服务」指南页**：页面展示的连接地址由 `VITE_MCP_PUBLIC_PORT`（对外入口端口，如 `81`）决定。**推荐写入项目根 `.env`**——vite build 自动读取，任何脚本裸跑 `npm run build` 都带上注入，不依赖部署脚本记得 export：
 
 ```bash
-VITE_MCP_PUBLIC_PORT=81 npm run build
+# 幂等写入（已在 .env 则跳过）
+grep -q '^VITE_MCP_PUBLIC_PORT' .env || echo 'VITE_MCP_PUBLIC_PORT=81' >> .env
+npm run build
 ```
 
-未传时页面默认展示 `:3002/sse`（开发直连形态，与 `npm run mcp` 本地端口一致）。
+未配置时页面默认展示 `:3002/sse`（开发直连形态，与 `npm run mcp` 本地端口一致）。注意区分：`MCP_PORT=3003` 是 MCP 进程真实监听端口（回环），`VITE_MCP_PUBLIC_PORT=81` 是 Nginx 对外入口（展示/连接用）。
 
 ### 4.5 健康检查
 
