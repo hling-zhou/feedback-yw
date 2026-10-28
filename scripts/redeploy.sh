@@ -63,6 +63,9 @@ else
   echo "  ✗ 构建失败：dist/index.html 不存在"
   exit 1
 fi
+# 权限兜底：root/受限 umask 下 vite 会产出 640 文件，Nginx（非 root worker）读取 403
+chmod -R a+rX dist
+echo "  ✓ dist 权限已放开（Nginx 可读）"
 
 # ---- 4. 重启服务 ----
 echo ""
