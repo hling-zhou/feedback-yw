@@ -781,6 +781,21 @@ export function registerStorageRoutes(app) {
           }
           if (writeResult?.written > 0) bumpRecordsRevision()
 
+          // 导入完成后自动触发留观自动识别（O3，DESIGN §4.3）：
+          // 独立后台任务跑同批记录（mode=observation_match），失败不影响导入主结果。
+          if (mode === 'import' && !isCancelled && !isFailed && result.records?.length) {
+            try {
+              const { triggerObservationScanForRecords } = await import('../observationAutoTrigger.js')
+              await triggerObservationScanForRecords({
+                records: result.records.map((r) => String(r?.id || '')).filter(Boolean),
+                userId,
+                username,
+              })
+            } catch (err) {
+              console.warn('[enrich] 留观自动识别触发失败（不影响导入）:', err)
+            }
+          }
+
           const taskResult = {
             taskId,
             mode,

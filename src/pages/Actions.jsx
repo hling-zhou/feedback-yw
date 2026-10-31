@@ -106,6 +106,8 @@ import ActionItemRequirementLinkFields, {
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
 import ProblemReductionTab from './ProblemReductionTab.jsx'
+import ObservationTab from './observation/ObservationTab.jsx'
+import ObservationMatchQueue from './observation/ObservationMatchQueue.jsx'
 import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
@@ -201,7 +203,7 @@ export default function Actions() {
   const navigate = useNavigate()
   const rawTab = searchParams.get('tab')
   const tab =
-    rawTab === 'product' || rawTab === 'problem-reduction' || rawTab === 'playbook'
+    rawTab === 'product' || rawTab === 'problem-reduction' || rawTab === 'playbook' || rawTab === 'observation'
       ? rawTab
       : 'ticket-todos'
   // 旧 tab=post-use-jira 链接重定向到反馈库 · 用后即评满意度 · 产品部溯源
@@ -225,6 +227,16 @@ export default function Actions() {
           { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
           { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
           { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
+          {
+            key: 'observation',
+            label: '留观问题',
+            children: (
+              <div className="space-y-6">
+                <ObservationTab />
+                <ObservationMatchQueue />
+              </div>
+            ),
+          },
           { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
         ]}
       />
@@ -259,7 +271,11 @@ function ProductActionsTab() {
   )
 
   const [filters, setFilters] = useState(createEmptyActionItemFilters)
-  const [actionSource, setActionSource] = useState(/** @type {'ticket' | 'post_use'} */ ('ticket'))
+  const [actionSource, setActionSource] = useState(
+    /** @type {'ticket' | 'post_use' | 'observation'} */ (
+      searchParams.get('source') === 'observation' ? 'observation' : 'ticket'
+    ),
+  )
   const [dateRange, setDateRange] = useState(
     /** @type {[dayjs.Dayjs | null, dayjs.Dayjs | null] | null} */ (null),
   )
@@ -1268,12 +1284,13 @@ function ProductActionsTab() {
       <Segmented
         value={actionSource}
         onChange={(value) => {
-          setActionSource(/** @type {'ticket' | 'post_use'} */ (value))
+          setActionSource(/** @type {'ticket' | 'post_use' | 'observation'} */ (value))
           setPage(1)
         }}
         options={[
           { label: '投诉/咨询', value: 'ticket' },
           { label: '用后即评', value: 'post_use' },
+          { label: '留观升级', value: 'observation' },
         ]}
       />
 

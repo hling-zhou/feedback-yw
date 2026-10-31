@@ -381,6 +381,24 @@ export async function runEnrichment(opts) {
     return runSentimentRetag(opts, cancelled, touch)
   }
 
+  if (mode === 'observation_match') {
+    // 留观自动识别（DESIGN §3.1 五步漏斗，服务端进程内跑）：
+    // 候选池 → 三通道召回 → LLM 判别/降级 → putLink(pending_suggest)。
+    // 自带记录加载（recordIds/importMonth），不受主 records 空数组守卫拦截。
+    const { runObservationMatch } = await import('./observationScanRunner.js')
+    return await runObservationMatch({
+      records: opts.records || [],
+      recordIds: opts.recordIds || [],
+      importMonth: retagOptions.importMonth || opts.importMonth || '',
+      settings: rawSettings || null,
+      userId,
+      username,
+      touch,
+      cancelled,
+      yieldToEventLoop,
+    })
+  }
+
   // 1. 刷新 taxonomy 缓存 + 产品目录（确保用最新标签库和产品目录）
   try {
     touch('正在刷新标签库…')

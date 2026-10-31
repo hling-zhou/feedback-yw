@@ -49,6 +49,7 @@ import { seedKnowledgeBasesIfEmpty } from './knowledgeBaseSeed.js'
 import { registerAuditRoutes } from './routes/audit.js'
 import { registerMessageBottleRoutes } from './routes/messageBottles.js'
 import { registerTicketReviewRoutes } from './routes/ticketReviews.js'
+import { registerObservationRoutes } from './routes/observation.js'
 import { registerComplaintCauseReviewRoutes } from './routes/complaintCauseReview.js'
 import { registerRequirementTicketProgressRoutes } from './routes/requirementTicketProgress.js'
 import { registerApiKeyRoutes } from './routes/apiKeys.js'
@@ -94,6 +95,7 @@ registerKnowledgeBaseRoutes(app)
 registerAuditRoutes(app)
 registerMessageBottleRoutes(app)
 registerTicketReviewRoutes(app)
+registerObservationRoutes(app)
 registerComplaintCauseReviewRoutes(app)
 registerRequirementTicketProgressRoutes(app)
 registerApiKeyRoutes(app)

@@ -33,6 +33,12 @@ import EstablishedActionFields, {
 } from './EstablishedActionFields.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
 import TicketTodoStatusTag from '../tags/TicketTodoStatusTag.jsx'
+import {
+  OBSERVATION_SUMMARY_MAX_LENGTH,
+} from '../../domain/observationIssue.js'
+import {
+  listObservationIssues,
+} from '../../lib/observationClient.js'
 import { userOptionFilterOption } from '../../lib/userSelectOptions.js'
 
 /** @typedef {import('../../domain/ticketTodo.js').TicketTodoRow} TicketTodoRow */
@@ -52,7 +58,7 @@ import { userOptionFilterOption } from '../../lib/userSelectOptions.js'
  *   assigneeUserId: string
  *   assigneeUsername: string
  *   assignees: { userId: string; username: string }[]
- *   processMode: 'establish_action' | 'no_action'
+ *   processMode: 'establish_action' | 'convert_observation' | 'no_action'
  *   establishedAction: string
  *   establishedActionDetail: string
  *   actionSchedule: string
@@ -60,6 +66,9 @@ import { userOptionFilterOption } from '../../lib/userSelectOptions.js'
  *   linkedFromLibrary: boolean
  *   processNote: string
  *   markProcessed: boolean
+ *   observationSummary?: string
+ *   observationIssueId?: string
+ *   observationCreateNew?: boolean
  * }) => void | Promise<void>} props.onSave
  * @param {Map<string, FeedbackRecord>} [props.feedbackByTicketId]
  * @param {(ticketId: string) => void} [props.onOpenTicket]
@@ -88,6 +97,11 @@ export default function TicketTodoDrawer({
   const [linkedFromLibrary, setLinkedFromLibrary] = useState(false)
   const [processNote, setProcessNote] = useState('')
   const [markProcessed, setMarkProcessed] = useState(true)
+  const [observationCreateNew, setObservationCreateNew] = useState(true)
+  const [observationSummary, setObservationSummary] = useState('')
+  const [observationIssueId, setObservationIssueId] = useState('')
+  const [observationOptions, setObservationOptions] = useState(/** @type {{ value: string; label: string }[]} */ ([]))
+  const [observationSearching, setObservationSearching] = useState(false)
 
   useEffect(() => {
     if (!open || !row) return
@@ -96,6 +110,10 @@ export default function TicketTodoDrawer({
     setProcessNote(row.processNote || '')
     setMarkProcessed(true)
     setProcessMode(TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION)
+    setObservationCreateNew(true)
+    setObservationIssueId('')
+    setObservationOptions([])
+    setObservationSummary((row.text || '').slice(0, OBSERVATION_SUMMARY_MAX_LENGTH))
     const ticket = record
     const existingId = String(ticket?.actionId || '').trim()
     setActionId(existingId)
@@ -145,6 +163,9 @@ export default function TicketTodoDrawer({
       linkedFromLibrary,
       processNote,
       markProcessed,
+      observationSummary,
+      observationIssueId,
+      observationCreateNew,
     })
   }
 
@@ -252,9 +273,72 @@ export default function TicketTodoDrawer({
                     onChange={(event) => setProcessMode(event.target.value)}
                   >
                     <Radio value={TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION}>制定举措</Radio>
+                    <Radio value={TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION}>转留观</Radio>
                     <Radio value={TICKET_TODO_PROCESS_MODE.NO_ACTION}>无举措</Radio>
                   </Radio.Group>
-                  {processMode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION ? (
+                  {processMode === TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION ? (
+                    <div className="sub-section-box">
+                      <div className="sub-section-label">
+                        <span>转留观</span>
+                      </div>
+                      <div className="space-y-3">
+                        <Radio.Group
+                          value={observationCreateNew ? 'new' : 'attach'}
+                          disabled={saving}
+                          onChange={(event) => setObservationCreateNew(event.target.value === 'new')}
+                        >
+                          <Radio value="new">新建留观问题</Radio>
+                          <Radio value="attach">关联已有</Radio>
+                        </Radio.Group>
+                        {observationCreateNew ? (
+                          <Input.TextArea
+                            rows={3}
+                            placeholder="问题摘要（预填待办文本，可修改）"
+                            maxLength={OBSERVATION_SUMMARY_MAX_LENGTH}
+                            showCount
+                            value={observationSummary}
+                            disabled={saving}
+                            onChange={(event) => setObservationSummary(event.target.value)}
+                          />
+                        ) : (
+                          <Select
+                            showSearch
+                            filterOption={false}
+                            placeholder={`搜索同产品留观问题${record?.productKey ? '（当前产品）' : ''}`}
+                            value={observationIssueId || undefined}
+                            disabled={saving}
+                            loading={observationSearching}
+                            options={observationOptions}
+                            onSearch={(q) => {
+                              const text = String(q || '').trim()
+                              if (!text) return
+                              setObservationSearching(true)
+                              listObservationIssues({
+                                keyword: text,
+                                productKey: record?.productKey || row.productKey || undefined,
+                                pageSize: 20,
+                              })
+                                .then((result) => {
+                                  setObservationOptions(
+                                    result.issues.map((issue) => ({
+                                      value: issue.id,
+                                      label: `${issue.title} · ${issue.occurrenceCount} 次 · 最近 ${issue.lastSeenAt?.slice(0, 10) || '—'}`,
+                                    })),
+                                  )
+                                })
+                                .catch(() => setObservationOptions([]))
+                                .finally(() => setObservationSearching(false))
+                            }}
+                            onChange={(v) => setObservationIssueId(v || '')}
+                            allowClear
+                          />
+                        )}
+                        <Typography.Text type="secondary" className="block text-xs">
+                          转留观后待办标记为「已转留观」，宿主工单将作为该留观问题的首条证据。
+                        </Typography.Text>
+                      </div>
+                    </div>
+                  ) : processMode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION ? (
                     <div className="sub-section-box">
                       <div className="sub-section-label">
                         <span>制定举措</span>

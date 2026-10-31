@@ -8,7 +8,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
+import { EyeOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
@@ -17,6 +17,10 @@ import LinkedTicketsCell from '../components/actions/LinkedTicketsCell.jsx'
 import CopyableEllipsisCell from '../components/actions/CopyableEllipsisCell.jsx'
 import TicketTodoDrawer from '../components/actions/TicketTodoDrawer.jsx'
 import TicketTodoStatusTag from '../components/tags/TicketTodoStatusTag.jsx'
+import {
+  createObservationIssue,
+  attachObservationLink,
+} from '../lib/observationClient.js'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -76,6 +80,8 @@ export default function TicketTodoTab() {
   const [loading, setLoading] = useState(false)
   const [stats, setStats] = useState(createEmptyTicketTodoResolutionCounts)
   const [conversionRate, setConversionRate] = useState(0)
+  const [actionConversionRate, setActionConversionRate] = useState(0)
+  const [observationConversionRate, setObservationConversionRate] = useState(0)
   const [statsByProduct, setStatsByProduct] = useState([])
   const [insightPeriodId, setInsightPeriodId] = useState(/** @type {string | null} */ (null))
   const [filters, setFilters] = useState(createEmptyTicketTodoFilters)
@@ -176,6 +182,8 @@ export default function TicketTodoTab() {
       const data = await getTicketTodoStats(baseScopeQuery)
       setStats({ ...createEmptyTicketTodoResolutionCounts(), ...(data.counts || {}) })
       setConversionRate(Number(data.conversionRate) || 0)
+      setActionConversionRate(Number(data.actionConversionRate) || 0)
+      setObservationConversionRate(Number(data.observationConversionRate) || 0)
       setStatsByProduct(Array.isArray(data.byProduct) ? data.byProduct : [])
       setFilterFacets({
         products: Array.isArray(data.facets?.products) ? data.facets.products : [],
@@ -280,7 +288,60 @@ export default function TicketTodoTab() {
       actionId: payload.actionId,
       linkedFromLibrary: payload.linkedFromLibrary,
       markProcessed: payload.markProcessed,
+      observationIssueId: payload.observationIssueId,
     })
+
+    // 转留观：先落 issue（新建或关联已有），宿主工单为首条证据；失败中止保存（待办状态不变）
+    if (payload.processMode === TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION) {
+      if (resolution !== 'converted_to_observation') {
+        message.warning('请先选择要关联的留观问题，或填写新建摘要')
+        return
+      }
+      try {
+        let issueId = payload.observationIssueId
+        if (payload.observationCreateNew) {
+          const summary = String(payload.observationSummary || '').trim()
+          if (!summary) {
+            message.warning('请填写留观问题摘要')
+            return
+          }
+          const productKey = String(record?.productKey || editing?.productKey || '').trim()
+          const productName = String(record?.product || record?.productName || editing?.productName || '').trim()
+          if (!productKey || !productName) {
+            message.warning('宿主工单缺少产品信息，无法新建留观问题')
+            return
+          }
+          const created = await createObservationIssue({
+            productKey,
+            productName,
+            title: summary.slice(0, 100),
+            summary: summary.slice(0, 100),
+            firstLink: record?.id
+              ? {
+                  recordId: record.id,
+                  recordDataSource: record.dataSourceType || 'complaint_ticket',
+                  ticketId: record.ticketId || undefined,
+                }
+              : undefined,
+          })
+          issueId = created.issue.id
+        } else if (issueId && record?.id) {
+          await attachObservationLink(issueId, {
+            recordId: record.id,
+            recordDataSource: record.dataSourceType || 'complaint_ticket',
+            ticketId: record.ticketId || undefined,
+          })
+        }
+        if (!issueId) {
+          message.warning('未指定留观问题，无法转留观')
+          return
+        }
+        payload.linkedObservationIssueId = issueId
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '转留观失败')
+        return
+      }
+    }
     if (payload.processMode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION && resolution === 'open') {
       message.warning('请选择或填写举措')
       return
@@ -322,6 +383,10 @@ export default function TicketTodoTab() {
               resolution === 'converted_to_action'
                 ? actionPatch.actionId || payload.actionId || item.linkedActionId || ''
                 : item.linkedActionId || '',
+            linkedObservationIssueId:
+              resolution === 'converted_to_observation'
+                ? payload.linkedObservationIssueId || item.linkedObservationIssueId || ''
+                : item.linkedObservationIssueId || '',
           },
         )
       })
@@ -487,11 +552,21 @@ export default function TicketTodoTab() {
     {
       title: '操作',
       key: 'actions',
-      width: 56,
+      width: 84,
       fixed: 'right',
       render: (_, record) =>
         canEdit ? (
           <Space size={0} onClick={(event) => event.stopPropagation()}>
+            {isTicketTodoOpen(record) ? (
+              <Tooltip title="转留观：在处理抽屉中选「转留观」，宿主工单为首条证据">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => openRow(record)}
+                />
+              </Tooltip>
+            ) : null}
             <Popconfirm
               title="删除这条会议待办？"
               okText="删除"
@@ -551,9 +626,15 @@ export default function TicketTodoTab() {
               </div>
             ))}
             <div className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1">
-              <span className="text-xs text-ink-500">转化率</span>
+              <span className="text-xs text-ink-500">转举措率</span>
               <span className="text-base font-semibold tabular-nums text-ink-900">
-                {formatSharePercent(conversionRate)}
+                {formatSharePercent(actionConversionRate)}
+              </span>
+            </div>
+            <div className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1">
+              <span className="text-xs text-ink-500">转留观率</span>
+              <span className="text-base font-semibold tabular-nums text-ink-900">
+                {formatSharePercent(observationConversionRate)}
               </span>
             </div>
           </div>

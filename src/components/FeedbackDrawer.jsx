@@ -73,6 +73,7 @@ import {
 import EstablishedActionFields, {
   getActionItemDisplayScheduleAt } from './actions/EstablishedActionFields.jsx'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
+import ObservationCard from './observation/ObservationCard.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
 import {
   buildDetailOptimizationSavePatch,
@@ -2263,6 +2264,12 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               )}
             </div>
           </div>
+
+          <ObservationCard
+            feedback={feedback}
+            canEdit={canEdit}
+            recordDataSource={isPostUseLibrary ? 'post_use_rating' : (feedback?.dataSourceType || 'complaint_ticket')}
+          />
 
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">

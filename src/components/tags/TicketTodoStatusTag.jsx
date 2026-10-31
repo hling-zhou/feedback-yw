@@ -7,6 +7,7 @@ import {
 export const TICKET_TODO_RESOLUTION_VISUAL = {
   open: { chartColor: '#F59E0B', tagTextClass: 'text-white' },
   converted_to_action: { chartColor: '#22C55E', tagTextClass: 'text-white' },
+  converted_to_observation: { chartColor: '#14B8A6', tagTextClass: 'text-white' },
   processed_without_action: { chartColor: '#64748B', tagTextClass: 'text-white' },
 }
 

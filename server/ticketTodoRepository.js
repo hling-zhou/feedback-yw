@@ -187,6 +187,8 @@ function getTicketTodoStats(query = {}) {
     counts,
     total,
     conversionRate: computeSharePercent(counts.converted_to_action, total),
+    actionConversionRate: computeSharePercent(counts.converted_to_action, total),
+    observationConversionRate: computeSharePercent(counts.converted_to_observation, total),
     byProduct: aggregateTicketTodosByProductStatus(rows, buildProductNameByKeyMap()),
     facets: collectTicketTodoFacets(rows),
   }

@@ -34,7 +34,7 @@ function hasLocalStorage() {
 
 /** @typedef {import('./quoteNoise.js').QuoteNoiseConfig} QuoteNoiseConfig */
 
-/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean; optimizationMode: OptimizationMode; postUseKeyCustomers?: string[]; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
+/** @typedef {{ useRegex: boolean; useRequestNodeForJourney: boolean; quoteExtraction?: QuoteExtractionConfig; quoteNoise?: QuoteNoiseConfig; themeRules?: ThemeRule[]; themeMatchMode: ThemeMatchMode; ticketLlmMode?: TicketLlmMode; journeyLlmGating?: boolean; journeyLlmSkipScoreThreshold?: number; taggingPipelineOrder?: TaggingPipelineOrder; retagDimensionsAfterTicketLlm?: boolean; optimizationMode: OptimizationMode; postUseKeyCustomers?: string[]; observationPromotionThreshold?: number; llmBaseUrl: string; llmModel: string; llmApiKey?: string; llmServerConfigured?: boolean }} AppSettings */
 
 /** @type {ThemeMatchMode} */
 export const DEFAULT_THEME_MATCH_MODE = 'hybrid'
@@ -47,6 +47,9 @@ export const DEFAULT_JOURNEY_LLM_SKIP_SCORE_THRESHOLD = 3
 
 /** @type {TaggingPipelineOrder} */
 export const DEFAULT_TAGGING_PIPELINE_ORDER = 'ticket_first'
+
+/** 留观问题「建议升级」阈值：confirmed 出现次数 ≥ 此值时清单高亮（人工拍板，不自动转化） */
+export const DEFAULT_OBSERVATION_PROMOTION_THRESHOLD = 3
 
 const DEFAULT_SETTINGS = {
   useRegex: true,
@@ -63,6 +66,7 @@ const DEFAULT_SETTINGS = {
   retagDimensionsAfterTicketLlm: true,
   optimizationMode: 'llm',
   postUseKeyCustomers: [],
+  observationPromotionThreshold: DEFAULT_OBSERVATION_PROMOTION_THRESHOLD,
   llmBaseUrl: '',
   llmModel: '',
 }
@@ -196,6 +200,10 @@ export function loadSettings() {
         parsed.retagDimensionsAfterTicketLlm ?? DEFAULT_SETTINGS.retagDimensionsAfterTicketLlm,
       optimizationMode: parsed.optimizationMode || DEFAULT_SETTINGS.optimizationMode,
       postUseKeyCustomers: normalizePostUseKeyCustomers(parsed.postUseKeyCustomers),
+      observationPromotionThreshold:
+        typeof parsed.observationPromotionThreshold === 'number' && Number.isFinite(parsed.observationPromotionThreshold)
+          ? Math.max(2, Math.round(parsed.observationPromotionThreshold))
+          : DEFAULT_SETTINGS.observationPromotionThreshold,
       ...resolveLlmFieldsFromParsed(parsed),
       llmApiKey: typeof parsed.llmApiKey === 'string' ? parsed.llmApiKey : '',
     }

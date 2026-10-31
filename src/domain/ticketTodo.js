@@ -5,7 +5,7 @@ import { randomId } from '../lib/randomId.js'
 import { resolveActionItemProductDisplayName } from './actionItem.js'
 
 /**
- * @typedef {'open' | 'converted_to_action' | 'processed_without_action'} TicketTodoResolution
+ * @typedef {'open' | 'converted_to_action' | 'converted_to_observation' | 'processed_without_action'} TicketTodoResolution
  */
 
 /**
@@ -39,6 +39,7 @@ import { resolveActionItemProductDisplayName } from './actionItem.js'
  * @property {string[]} [linkedTicketIds]
  * @property {string} [processNote]
  * @property {string} [linkedActionId]
+ * @property {string} [linkedObservationIssueId] - 已转留观问题的回链
  * @property {string} [createdAt]
  * @property {string} [updatedAt]
  * @property {RecordUpdatedBy} [updatedBy]
@@ -89,6 +90,7 @@ export const TICKET_TODO_LINKED_TICKET_MAX = 500
 export const TICKET_TODO_RESOLUTIONS = [
   'open',
   'converted_to_action',
+  'converted_to_observation',
   'processed_without_action',
 ]
 
@@ -96,6 +98,7 @@ export const TICKET_TODO_RESOLUTIONS = [
 export const TICKET_TODO_RESOLUTION_LABELS = {
   open: '未处理',
   converted_to_action: '已转举措',
+  converted_to_observation: '已转留观',
   processed_without_action: '已处理无举措',
 }
 
@@ -382,10 +385,11 @@ export function formatSharePercent(percent) {
   return `${Number.isInteger(n) ? String(n) : n.toFixed(1)}%`
 }
 
-/** @typedef {'establish_action' | 'no_action'} TicketTodoProcessMode */
+/** @typedef {'establish_action' | 'convert_observation' | 'no_action'} TicketTodoProcessMode */
 
 export const TICKET_TODO_PROCESS_MODE = {
   ESTABLISH_ACTION: /** @type {const} */ ('establish_action'),
+  CONVERT_OBSERVATION: /** @type {const} */ ('convert_observation'),
   NO_ACTION: /** @type {const} */ ('no_action'),
 }
 
@@ -396,7 +400,7 @@ function hasEstablishedActionInProcessInput(input) {
 }
 
 /**
- * 处理提交：按单选路径判定。制定举措 → 已转举措；无举措且勾选已处理 → 已处理无举措；否则保持未处理。
+ * 处理提交：按单选路径判定。制定举措 → 已转举措；转留观（observationIssueId）→ 已转留观；无举措且勾选已处理 → 已处理无举措；否则保持未处理。
  * 未传 processMode 时回退为旧规则（有举措内容优先于勾选）。
  *
  * @param {{
@@ -415,6 +419,10 @@ export function resolveTicketTodoProcessResolution(input) {
   }
   if (mode === TICKET_TODO_PROCESS_MODE.ESTABLISH_ACTION) {
     return hasEstablishedActionInProcessInput(input) ? 'converted_to_action' : 'open'
+  }
+  if (mode === TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION) {
+    // 转留观：observationIssueId 必填（新建或关联已有），宿主工单为首条 confirmed 证据
+    return input?.observationIssueId ? 'converted_to_observation' : 'open'
   }
   if (hasEstablishedActionInProcessInput(input)) return 'converted_to_action'
   if (input?.markProcessed) return 'processed_without_action'
@@ -477,6 +485,9 @@ export function applyTicketTodoResolutionToItem(item, resolution, extras = {}) {
   if (extras.linkedActionId != null) {
     next.linkedActionId = norm(extras.linkedActionId)
   }
+  if (extras.linkedObservationIssueId != null) {
+    next.linkedObservationIssueId = norm(extras.linkedObservationIssueId)
+  }
   return next
 }
 
@@ -488,7 +499,11 @@ export function applyTicketTodoResolutionToItem(item, resolution, extras = {}) {
  * @returns {TicketTodoResolution}
  */
 export function lockTicketTodoResolution(previous, next) {
-  if (previous === 'converted_to_action' || previous === 'processed_without_action') {
+  if (
+    previous === 'converted_to_action'
+    || previous === 'converted_to_observation'
+    || previous === 'processed_without_action'
+  ) {
     return previous
   }
   return next
@@ -511,6 +526,9 @@ function normalizeTicketTodoItem(entry) {
     TICKET_TODO_PROCESS_NOTE_MAX_LENGTH,
   )
   const linkedActionId = norm(/** @type {{ linkedActionId?: string }} */ (entry).linkedActionId)
+  const linkedObservationIssueId = norm(
+    /** @type {{ linkedObservationIssueId?: string }} */ (entry).linkedObservationIssueId,
+  )
   const resolution = getTicketTodoResolution(entry)
   const assignees = normalizeTicketTodoAssignees(entry)
   const first = assignees[0]
@@ -528,6 +546,7 @@ function normalizeTicketTodoItem(entry) {
     ...(linkedTicketIds.length ? { linkedTicketIds } : {}),
     ...(processNote ? { processNote } : {}),
     ...(linkedActionId ? { linkedActionId } : {}),
+    ...(linkedObservationIssueId ? { linkedObservationIssueId } : {}),
     ...(createdAt ? { createdAt } : {}),
     ...(updatedAt ? { updatedAt } : {}),
     ...(updatedBy ? { updatedBy } : {}),

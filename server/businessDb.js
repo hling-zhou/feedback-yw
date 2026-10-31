@@ -683,6 +683,51 @@ export function initBusinessSchema() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS observation_issues (
+      id TEXT PRIMARY KEY,
+      product_key TEXT NOT NULL DEFAULT '',
+      product_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'watching'
+        CHECK(status IN ('watching', 'promoted', 'archived')),
+      title TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      occurrence_count INTEGER NOT NULL DEFAULT 0,
+      first_seen_at TEXT NOT NULL DEFAULT '',
+      last_seen_at TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL DEFAULT '{}',
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_obs_issues_product ON observation_issues(product_key);
+    CREATE INDEX IF NOT EXISTS idx_obs_issues_status ON observation_issues(status);
+    CREATE INDEX IF NOT EXISTS idx_obs_issues_last_seen ON observation_issues(last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS observation_issue_links (
+      id TEXT PRIMARY KEY,
+      issue_id TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      record_data_source TEXT NOT NULL DEFAULT ''
+        CHECK(record_data_source IN ('', 'complaint_ticket', 'consultation_ticket', 'post_use_rating')),
+      ticket_id TEXT NOT NULL DEFAULT '',
+      link_status TEXT NOT NULL DEFAULT 'confirmed'
+        CHECK(link_status IN ('confirmed', 'pending_suggest', 'dismissed')),
+      link_source TEXT NOT NULL DEFAULT 'manual'
+        CHECK(link_source IN ('manual', 'auto_match', 'auto_anchor')),
+      match_confidence TEXT NOT NULL DEFAULT ''
+        CHECK(match_confidence IN ('', 'high', 'medium', 'low')),
+      match_reason TEXT NOT NULL DEFAULT '',
+      matched_excerpt TEXT NOT NULL DEFAULT '',
+      proposed_at TEXT NOT NULL DEFAULT '',
+      reviewed_by TEXT NOT NULL DEFAULT '',
+      reviewed_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      UNIQUE(issue_id, record_id)
+      -- 级联删除由 observationRepository.deleteIssue 事务内显式执行（本库未开启 PRAGMA foreign_keys，FK 声明不生效，故不声明）
+    );
+    CREATE INDEX IF NOT EXISTS idx_obs_links_issue ON observation_issue_links(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_obs_links_record ON observation_issue_links(record_id);
+    CREATE INDEX IF NOT EXISTS idx_obs_links_status ON observation_issue_links(link_status);
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

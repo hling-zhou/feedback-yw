@@ -36,6 +36,7 @@ import PostUseVisitDrawer from '../components/feedbacks/PostUseVisitDrawer.jsx'
 import SentimentBadge from '../components/SentimentBadge.jsx'
 import { sentimentStats } from '../lib/analytics.js'
 import { apiFetch } from '../lib/apiClient.js'
+import { getObservationPendingCount } from '../lib/observationClient.js'
 import { listResourcePools } from '../lib/productTaxonomy.js'
 import { countByField } from '../lib/productAnalytics.js'
 import {
@@ -180,6 +181,20 @@ export default function Feedbacks() {
   const { enabled: reviewEnabled, doneRecordIds } = useUserTicketReviews()
   const { remoteBannerText, ownedTasks, postUseJourneyBlocked, postUseJourneyBlockedTip } =
     useSharedBackgroundTaskBlock()
+  const [observationPending, setObservationPending] = useState({ total: 0, high: 0, medium: 0, low: 0 })
+  useEffect(() => {
+    let cancelled = false
+    getObservationPendingCount()
+      .then((count) => {
+        if (!cancelled) setObservationPending(count || { total: 0, high: 0, medium: 0, low: 0 })
+      })
+      .catch(() => {
+        // 拉取失败不展示横幅（不打扰主流程）
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [journeyBusy, setJourneyBusy] = useState(false)
   const [view, setView] = useState('table')
   const [hiddenColumns, setHiddenColumns] = useState(() => new Set())
@@ -570,6 +585,9 @@ export default function Feedbacks() {
   // 默认不计入 pendingJourneyCount，仅在补全弹窗勾选重试时纳入。
   const pendingJourneyBreakdown = postUseJourneyPending.breakdown || { auto: 0, llmUnknown: 0, legacy: 0 }
   const llmUnknownPendingCount = pendingJourneyBreakdown.llmUnknown || 0
+  // 留观待复核横幅（O3）：反馈库顶部，任何 lane（除客服回访）展示
+  const observationPendingCount = observationPending?.total || 0
+  const observationPendingBreakdown = observationPending || { high: 0, medium: 0 }
 
   const runPostUseJourneyEnrichment = useCallback(async (retryLlmUnknownJourneys = false, includeLegacyKeywordJourneys = false) => {
     if (postUseJourneyBlocked) return
@@ -1158,6 +1176,27 @@ export default function Feedbacks() {
           showIcon
           title={`检测到 ${legacyDemoTickets} 条旧版演示数据`}
           description="请重新导入真实工单，列映射选择「工单流水号」。"
+        />
+      )}
+
+      {!isCustomerVisitLane && observationPendingCount > 0 && (
+        <Alert
+          className="page-section-sm"
+          type="warning"
+          showIcon
+          title={`有 ${observationPendingCount} 条反馈疑似命中留观问题，待复核`}
+          description={
+            observationPendingBreakdown.high > 0 || observationPendingBreakdown.medium > 0
+              ? `其中高置信 ${observationPendingBreakdown.high} 条、中置信 ${observationPendingBreakdown.medium} 条。复核后可确认关联、新建留观或否决。`
+              : '复核后可确认关联、新建留观或否决。'
+          }
+          action={
+            <Link to="/actions?tab=observation">
+              <Button type="primary" size="small">
+                去复核
+              </Button>
+            </Link>
+          }
         />
       )}
 

@@ -41,7 +41,7 @@ import { buildProblemCentricView } from '../src/domain/actionProblemScope.js'
  * @property {string} [productKeys] - 逗号分隔多选
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses] - 逗号分隔多选
- * @property {'ticket' | 'post_use'} [source] - 举措来源过滤
+ * @property {'ticket' | 'post_use' | 'observation'} [source] - 举措来源过滤
  * @property {string} [ticketId] - 关联工单号
  * @property {string} [linkedDataSources] - 逗号分隔多选
  * @property {string} [problemType] - 问题类型（快照/首单回退）
@@ -78,7 +78,7 @@ function actionItemIndexFields(item) {
     productKey: item.productKey?.trim() || '',
     productName: item.productName?.trim() || '',
     status: item.status,
-    source: item.source === 'post_use' ? 'post_use' : 'ticket',
+    source: item.source === 'post_use' || item.source === 'observation' ? item.source : 'ticket',
     firstProposedAt: item.firstProposedAt?.trim() || '',
     scheduleAt: item.scheduleAt?.trim() || '',
     warningLevel: item.warningLevel || 'none',
@@ -219,7 +219,7 @@ function getFilteredActionItems(query = {}) {
     clauses.push('first_proposed_at <= ?')
     params.push(query.firstProposedTo.trim())
   }
-  if (query.source === 'ticket' || query.source === 'post_use') {
+  if (query.source === 'ticket' || query.source === 'post_use' || query.source === 'observation') {
     clauses.push('source = ?')
     params.push(query.source)
   }
