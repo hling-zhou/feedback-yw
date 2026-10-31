@@ -1355,4 +1355,20 @@ export function registerStorageRoutes(app) {
   app.get('/api/storage/pipeline/status', { preHandler: requirePermission('view') }, async () => {
     return pipelineJob || { status: 'idle' }
   })
+
+  // 下载流水线产物（evidence-rows / gate-report / taxonomy-current / pipeline-summary）
+  app.get('/api/storage/pipeline/artifacts/:filename', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const allowed = ['evidence-rows.json', 'gate-report.json', 'taxonomy-current.json', 'pipeline-summary.json']
+    const { filename } = request.params
+    if (!allowed.includes(filename)) {
+      return reply.code(400).send({ error: `不支持的文件名，允许: ${allowed.join(', ')}` })
+    }
+    const filePath = path.resolve(process.cwd(), 'dist', filename)
+    if (!fs.existsSync(filePath)) {
+      return reply.code(404).send({ error: `${filename} 不存在，请先运行流水线` })
+    }
+    return reply.header('Content-Type', 'application/json; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(fs.createReadStream(filePath))
+  })
 }
