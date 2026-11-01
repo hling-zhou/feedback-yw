@@ -195,7 +195,7 @@ export default function ObservationMatchQueue({ onCountChange, onOpenRecord }) {
           onSearch={(v) => { setPage(1); setConfidenceFilter(v) }}
         />
         {canScan ? (
-          <Tooltip title="对本库全部记录重跑一次自动识别（历史已判定组合不会重复弹建议）">
+          <Tooltip title="重新扫描全部反馈记录，识别疑似命中留观问题的新反馈；已确认或已否决的关联不会重复推荐。">
             <Button loading={scanning} onClick={() => void handleManualScan()}>
               手动扫描
             </Button>
