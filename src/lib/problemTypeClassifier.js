@@ -164,8 +164,9 @@ function isQuotaHowToConsult(text) {
  * @param {string} text
  * @param {string[]} keywords
  */
-/** 放开限制：配额/权限/售罄等。裸「带宽」不算，避免升降配被收进配额。 */
-const QUOTA_LIMIT_ASK_RE = /配额|上限|售罄|轻载|灰度|8:1|8：1|IP数量|上架/
+/** 放开限制：配额/权限/售罄等。裸「带宽」不算，避免升降配被收进配额。
+ *  但「带宽提升」+ 申请语境 → 是提升配额上限，不是单纯升降配。 */
+const QUOTA_LIMIT_ASK_RE = /配额|上限|售罄|轻载|灰度|8:1|8：1|IP数量|上架|带宽提升|带宽配额|带宽.*扩容|扩容.*带宽/
 
 function matchesQuota(text, keywords) {
   if (isQuotaHowToConsult(text)) return false
@@ -178,10 +179,7 @@ function matchesQuota(text, keywords) {
     return true
   }
   if (hasConsultIntent(text) && /到期|有效期|进度|什么时间/.test(text)) return false
-  const quotaKeywords = (keywords || []).filter(
-    (kw) => kw !== '扩容带宽' && kw !== '带宽提升',
-  )
-  if (matchesAnyKeyword(text, quotaKeywords)) return true
+  if (matchesAnyKeyword(text, keywords)) return true
   if (hasConsultIntent(text) && !OPERATION_FAILURE_RE.test(text)) return false
   return false
 }

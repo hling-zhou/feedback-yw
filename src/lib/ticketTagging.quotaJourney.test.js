@@ -37,11 +37,13 @@ describe('quota journey matching', () => {
     }
   })
 
-  it('keeps plain bandwidth change on the bandwidth node', () => {
-    for (const text of ['申请调整带宽到100M', '申请把西南-成都带宽提升到5120M']) {
-      const matched = matchJourneyFromTextWithScore(text, EIP_USER_JOURNEY, 'eip')
-      expect(matched.journeyL2, text).toBe('带宽升降配')
-    }
+  it('keeps plain bandwidth change on the bandwidth node (but 带宽提升 is quota lift, not change)', () => {
+    // 申请调整带宽 → 带宽升降配（单纯变更已有规格）
+    const m1 = matchJourneyFromTextWithScore('申请调整带宽到100M', EIP_USER_JOURNEY, 'eip')
+    expect(m1.journeyL2, '申请调整带宽到100M').toBe('带宽升降配')
+    // 带宽提升到5120M → 配额与数量（提升配额上限，不是调整已有规格）
+    const m2 = matchJourneyFromTextWithScore('申请把西南-成都带宽提升到5120M', EIP_USER_JOURNEY, 'eip')
+    expect(m2.journeyL2, '申请把西南-成都带宽提升到5120M').toMatch(/配额/)
   })
 
   it('pins VPC gray apply plus az wording to permission, not az select', () => {
