@@ -95,7 +95,7 @@ import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
 import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
-import { downloadFailuresCsv } from '../lib/export.js'
+import { downloadFailuresCsv, downloadUnmatchedFollowUpCsv } from '../lib/export.js'
 import { buildTaggingPreviewRows, rowHasQuoteSourceText } from '../lib/importPreview.js'
 import QuoteImportPreviewTable from '../components/QuoteImportPreviewTable.jsx'
 import {

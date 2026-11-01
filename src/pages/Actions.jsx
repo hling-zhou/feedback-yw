@@ -246,6 +246,7 @@ export default function Actions() {
 
 function ProductActionsTab() {
   const { user, can } = useAuth()
+  const [searchParams] = useSearchParams()
   const canEditAction = can('editRecord')
   const isAdmin = user?.role === 'admin'
   const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTasks, reprocessing } =

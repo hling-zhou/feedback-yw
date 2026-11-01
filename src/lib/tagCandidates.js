@@ -389,7 +389,7 @@ export function exportCandidatesToCsv(candidates) {
     配置文件: target.jsonPath,
     标签类型: c.tagType,
     提议标签: c.proposedLabel,
-    标签释义: c.tagMeaning || buildTagCandidateMeaning(c),
+    标签释义: c.tagMeaning || _buildMeaning(c),
     产品模板: c.taxonomyKey || '',
     一级旅程: c.journeyL1 || '',
     二级旅程: c.journeyL2 || '',
