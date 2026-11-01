@@ -28,16 +28,7 @@ export function markWhatsNewSeen(key) {
   }
 }
 
-/** 工单详情 · 处理意见放大查看 */
-export const HANDLING_EXPAND_WHATS_NEW_KEY = 'fi.handlingExpand.whatsNew.v1'
-
-export function hasSeenHandlingExpandWhatsNew() {
-  return hasSeenWhatsNew(HANDLING_EXPAND_WHATS_NEW_KEY)
-}
-
-export function markHandlingExpandWhatsNewSeen() {
-  markWhatsNewSeen(HANDLING_EXPAND_WHATS_NEW_KEY)
-}
+/** 工单详情 · 处理意见放大查看（2026-11-01 上线已久，随抽屉改版一并下线提示标记） */
 
 /** 洞察工作台 · 投诉/咨询工单 Tab（共用） */
 export const WORKBENCH_TICKET_TABS_WHATS_NEW_KEY = 'fi.workbench.ticketTabs.whatsNew.v1'

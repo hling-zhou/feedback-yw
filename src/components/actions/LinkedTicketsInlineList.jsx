@@ -153,7 +153,7 @@ export default function LinkedTicketsInlineList({
                     </div>
                     {summary ? (
                       <Typography.Paragraph
-                        className="!mb-0 !mt-1 text-xs text-ink-700"
+                        className="!mb-0 !mt-1 text-[13px] text-ink-700"
                         ellipsis={{ rows: 2, tooltip: summary }}
                       >
                         {summary}

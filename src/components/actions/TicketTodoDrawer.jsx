@@ -244,7 +244,7 @@ export default function TicketTodoDrawer({
                     <Typography.Text type="secondary" className="mb-1 block text-xs">
                       待办
                     </Typography.Text>
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px] font-medium">
                       {row.text || '—'}
                     </Typography.Paragraph>
                   </div>
@@ -252,7 +252,7 @@ export default function TicketTodoDrawer({
                     <Typography.Text type="secondary" className="mb-1 block text-xs">
                       负责人
                     </Typography.Text>
-                    <Typography.Text className="text-sm">
+                    <Typography.Text className="text-[13px]">
                       {formatTicketTodoAssigneeLabel(row)}
                     </Typography.Text>
                   </div>
@@ -456,8 +456,8 @@ export default function TicketTodoDrawer({
                     问题
                   </Typography.Text>
                   <Typography.Paragraph
-                    className="!mb-0 text-sm text-ink-800"
-                    ellipsis={{ rows: 3, tooltip: row.painPoint || '—' }}
+                    className="!mb-0 text-[13px] font-medium text-ink-800"
+                    ellipsis={{ rows: 2, tooltip: row.painPoint || '—' }}
                   >
                     {row.painPoint || '—'}
                   </Typography.Paragraph>

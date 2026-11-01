@@ -48,7 +48,7 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="暂无关联工单，无法做压降验证"
+        description="暂无关联工单，无法做效果验证"
         className="!my-4"
       />
     )
@@ -88,7 +88,7 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
             </Space>
           )}
           {problem.painPointSample ? (
-            <Typography.Paragraph type="secondary" className="!mb-0 !text-xs" ellipsis={{ rows: 2, tooltip: problem.painPointSample }}>
+            <Typography.Paragraph type="secondary" className="!mb-0 !text-[13px]" ellipsis={{ rows: 2, tooltip: problem.painPointSample }}>
               {problem.painPointSample}
             </Typography.Paragraph>
           ) : null}
@@ -156,9 +156,9 @@ function ReductionDetail({ reduction, anchorMonth }) {
   const sign = reduction.changePct > 0 ? '↑' : '↓'
   return (
     <Typography.Text className="!text-xs">
-      锚点前 {reduction.beforeMonths.length} 月（共 {reduction.beforeCount} 单，月均 {reduction.beforeAvg}）
-      {' → '}锚点后 {reduction.afterMonths.length} 月（共 {reduction.afterCount} 单，月均 {reduction.afterAvg}）
-      ，
+      锚点前 {reduction.beforeMonths.length} 月（共 {reduction.beforeCount} 单，月均{' '}
+      <span className="font-medium">{reduction.beforeAvg}</span>）→ 锚点后 {reduction.afterMonths.length} 月（共{' '}
+      {reduction.afterCount} 单，月均 <span className="font-medium">{reduction.afterAvg}</span>），{' '}
       <Typography.Text type={reduction.changePct < 0 ? 'success' : 'danger'} strong>
         {sign}{Math.abs(reduction.changePct)}%
       </Typography.Text>

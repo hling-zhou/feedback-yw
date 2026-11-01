@@ -22,7 +22,6 @@ import {
   getObservationIssue,
   updateObservationIssue,
   deleteObservationIssue,
-  listObservationLinksByIssue,
   detachObservationLink,
   reviewObservationMatch,
 } from '../../lib/observationClient.js'
@@ -512,27 +511,39 @@ export default function ObservationTab({ onOpenRecord }) {
         }
       >
         {detailIssue ? (
-          <div className="space-y-4">
-            <Form form={detailForm} layout="vertical" disabled={!canEdit}>
-              <Form.Item
-                label="问题标题"
-                name="title"
-                rules={[{ required: true, message: '标题不能为空' }]}
-              >
-                <Input maxLength={OBSERVATION_SUMMARY_MAX_LENGTH} showCount />
-              </Form.Item>
-              <Form.Item
-                label="问题描述"
-                name="summary"
-                rules={[{ required: true, message: '描述不能为空' }]}
-                extra="判别锚点：改后即时影响后续自动识别"
-              >
-                <Input.TextArea rows={3} maxLength={OBSERVATION_SUMMARY_MAX_LENGTH} showCount />
-              </Form.Item>
-              <Form.Item label="关键词" name="keywords" extra="顿号或逗号分隔；供自动召回使用">
-                <Input maxLength={200} />
-              </Form.Item>
-              {canEdit && keywordSuggestions.length ? (
+          <div className="min-w-0 max-w-full drawer-space-y overflow-x-hidden">
+            <div className="drawer-section-gap">
+              <div className="section-title">问题本体</div>
+              <div className="page-card-sm">
+                {canEdit ? (
+                <Form form={detailForm} layout="vertical">
+                  <Form.Item
+                    label="问题标题"
+                    name="title"
+                    rules={[{ required: true, message: '标题不能为空' }]}
+                  >
+                    <Input maxLength={OBSERVATION_SUMMARY_MAX_LENGTH} showCount />
+                  </Form.Item>
+                  <Form.Item
+                    label={
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        问题描述
+                        <Tooltip title="修改后，后续自动识别将按此描述判断（自动识别新反馈的判断依据）">
+                          <Typography.Text type="warning" className="cursor-help text-xs">
+                            ⓘ 修改后影响自动识别
+                          </Typography.Text>
+                        </Tooltip>
+                      </span>
+                    }
+                    name="summary"
+                    rules={[{ required: true, message: '描述不能为空' }]}
+                  >
+                    <Input.TextArea rows={3} maxLength={OBSERVATION_SUMMARY_MAX_LENGTH} showCount />
+                  </Form.Item>
+                  <Form.Item label="关键词" name="keywords" extra="顿号或逗号分隔；供自动召回使用">
+                    <Input maxLength={200} />
+                  </Form.Item>
+                  {canEdit && keywordSuggestions.length ? (
                 <div className="-mt-2 mb-3 flex flex-wrap items-center gap-1.5">
                   <Typography.Text type="secondary" className="text-xs">
                     建议：
@@ -555,65 +566,122 @@ export default function ObservationTab({ onOpenRecord }) {
               <Form.Item label="状态" name="status">
                 <Select options={Object.entries(OBSERVATION_ISSUE_STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
               </Form.Item>
-            </Form>
+              </Form>
+                ) : (
+                  <div className="space-y-3">
+                    {[
+                      { key: 'title', label: '问题标题', value: detailIssue.title || '—' },
+                      { key: 'summary', label: '问题描述', value: detailIssue.summary || '—' },
+                      {
+                        key: 'keywords',
+                        label: '关键词',
+                        value: (detailIssue.payload?.keywords || []).join('、') || '—',
+                      },
+                      { key: 'notes', label: '备注', value: detailIssue.payload?.notes || '—' },
+                      {
+                        key: 'status',
+                        label: '状态',
+                        value: OBSERVATION_ISSUE_STATUS_LABELS[detailIssue.status] || detailIssue.status,
+                      },
+                    ].map((row) => (
+                      <div key={row.key}>
+                        <Typography.Text type="secondary" className="mb-1 block text-xs">
+                          {row.label}
+                        </Typography.Text>
+                        <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
+                          {row.value}
+                        </Typography.Paragraph>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
-            <div>
-              <Typography.Text type="secondary" className="mb-2 block text-xs">
-                证据与匹配历史（含已否决）
-              </Typography.Text>
-              <div className="space-y-1.5">
-                {detailLinks.map((link) => (
-                  <div
-                    key={link.id}
-                    className="flex items-center justify-between gap-2 rounded-md border border-ink-100 p-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                        <Tag>{OBSERVATION_LINK_STATUS_LABELS[link.linkStatus] || link.linkStatus}</Tag>
-                        {link.recordDataSource ? (
-                          <Typography.Text type="secondary" className="text-xs">
-                            {DATA_SOURCE_LABELS[link.recordDataSource] || link.recordDataSource}
+            {/* 分区二：证据与匹配历史 */}
+            <div className="drawer-section-gap">
+              <div className="section-title">证据与匹配历史</div>
+              <div className="page-card-sm">
+                <Typography.Text type="secondary" className="mb-2 block text-xs">
+                  含已否决的匹配记录 · 点击工单号/评价可跳转对应详情
+                </Typography.Text>
+                <div className="space-y-1.5">
+                  {detailLinks.map((link) => (
+                    <div
+                      key={link.id}
+                      className="flex items-start justify-between gap-2 rounded-md border border-ink-100 p-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Tag>{OBSERVATION_LINK_STATUS_LABELS[link.linkStatus] || link.linkStatus}</Tag>
+                          {link.recordDataSource ? (
+                            <Typography.Text type="secondary" className="text-xs">
+                              {DATA_SOURCE_LABELS[link.recordDataSource] || link.recordDataSource}
+                            </Typography.Text>
+                          ) : null}
+                          {link.ticketId ? (
+                            onOpenRecord ? (
+                              <Button
+                                type="link"
+                                size="small"
+                                className="!h-auto !px-0 !py-0 text-[13px]"
+                                onClick={() => onOpenRecord(link)}
+                              >
+                                {link.ticketId}
+                              </Button>
+                            ) : (
+                              <Typography.Text className="text-[13px]">{link.ticketId}</Typography.Text>
+                            )
+                          ) : onOpenRecord ? (
+                            <Button
+                              type="link"
+                              size="small"
+                              className="!h-auto !px-0 !py-0 text-[13px]"
+                              onClick={() => onOpenRecord(link)}
+                            >
+                              评价详情
+                            </Button>
+                          ) : null}
+                        </div>
+                        {link.matchedExcerpt ? (
+                          <Typography.Paragraph
+                            className="!mb-0 !mt-1 text-[13px]"
+                            ellipsis={{ rows: 2, tooltip: link.matchedExcerpt }}
+                          >
+                            {link.matchedExcerpt}
+                          </Typography.Paragraph>
+                        ) : null}
+                        {link.matchReason ? (
+                          <Typography.Text type="secondary" className="mt-1 block text-xs">
+                            {OBSERVATION_LINK_SOURCE_LABELS[link.linkSource] || ''} · {link.matchReason}
                           </Typography.Text>
                         ) : null}
-                        {link.ticketId ? (
-                          <Typography.Text className="text-xs">{link.ticketId}</Typography.Text>
-                        ) : null}
                       </div>
-                      {link.matchedExcerpt ? (
-                        <Typography.Text className="mt-0.5 block truncate text-xs" type="secondary">
-                          {link.matchedExcerpt}
-                        </Typography.Text>
-                      ) : null}
-                      {link.matchReason ? (
-                        <Typography.Text className="mt-0.5 block truncate text-xs" type="secondary">
-                          {OBSERVATION_LINK_SOURCE_LABELS[link.linkSource] || ''} · {link.matchReason}
-                        </Typography.Text>
+                      {canEdit && link.linkStatus === 'confirmed' ? (
+                        <Popconfirm
+                          title="解除此证据关联？"
+                          okText="解除"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={async () => {
+                            try {
+                              await detachObservationLink(link.issueId, link.id)
+                              messageApi.success('已解除关联')
+                              const { links } = await getObservationIssue(link.issueId)
+                              setDetailLinks(links)
+                              await reload()
+                            } catch (err) {
+                              messageApi.error(err instanceof Error ? err.message : '解除失败')
+                            }
+                          }}
+                        >
+                          <Button size="small" type="link" danger>
+                            解除
+                          </Button>
+                        </Popconfirm>
                       ) : null}
                     </div>
-                    {canEdit && link.linkStatus === 'confirmed' ? (
-                      <Popconfirm
-                        title="解除此证据关联？"
-                        okText="解除"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={async () => {
-                          try {
-                            await detachObservationLink(link.issueId, link.id)
-                            messageApi.success('已解除关联')
-                            const { links } = await getObservationIssue(link.issueId)
-                            setDetailLinks(links)
-                            await reload()
-                          } catch (err) {
-                            messageApi.error(err instanceof Error ? err.message : '解除失败')
-                          }
-                        }}
-                      >
-                        <Button size="small" type="link" danger>
-                          解除
-                        </Button>
-                      </Popconfirm>
-                    ) : null}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>

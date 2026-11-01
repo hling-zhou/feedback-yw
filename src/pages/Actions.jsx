@@ -284,6 +284,7 @@ function ProductActionsTab() {
   const [editForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(/** @type {string | null} */ (null))
+  /** false | 'own_task' | 'other'（分级提示，见 recordRemoteStale.js） */
   const [editStale, setEditStale] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictServerItem, setConflictServerItem] = useState(/** @type {ActionItem | null} */ (null))
@@ -727,20 +728,19 @@ function ProductActionsTab() {
     if (!editOpen || !editing?.id) return
     const latest = items.find((item) => item.id === editing.id)
     if (!latest) return
-    if (
-      !shouldShowRemoteRecordStale(latest, baseRevisionRef.current, {
-        userId: user?.id,
-        retagActive: retagSession.active,
-        importActive: importSession.active,
-        reprocessingActive: reprocessing,
-        sharedBackgroundTasks,
-      })
-    ) {
+    const staleLevel = shouldShowRemoteRecordStale(latest, baseRevisionRef.current, {
+      userId: user?.id,
+      retagActive: retagSession.active,
+      importActive: importSession.active,
+      reprocessingActive: reprocessing,
+      sharedBackgroundTasks,
+    })
+    if (!staleLevel) {
       baseRevisionRef.current = getActionItemRevision(latest)
       setEditStale(false)
       return
     }
-    setEditStale(true)
+    setEditStale(staleLevel)
   }, [
     editOpen,
     editing?.id,

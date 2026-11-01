@@ -10,6 +10,7 @@ import {
  * @param {{
  *   open: boolean
  *   ticketLabel?: string
+ *   entityLabel?: string
  *   serverRecord: FeedbackRecord | null
  *   draftRecord: FeedbackRecord
  *   onReloadLatest: () => void
@@ -22,6 +23,7 @@ import {
 export default function RecordConflictModal({
   open,
   ticketLabel,
+  entityLabel = '工单',
   serverRecord,
   draftRecord,
   onReloadLatest,
@@ -53,7 +55,7 @@ export default function RecordConflictModal({
       )}
     >
       <Typography.Paragraph type="secondary" className="!mb-3 text-sm">
-        此工单在您编辑期间已被他人更新。以下字段与服务器当前版本不一致。
+        此{entityLabel}在您编辑期间已被他人更新。以下字段与服务器当前版本不一致。
         {updatedLine ? ` 最近更新：${updatedLine}。` : ''}
       </Typography.Paragraph>
       {diffRows.length ? (

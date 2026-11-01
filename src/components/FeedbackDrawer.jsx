@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Alert,
-  Badge,
   Button,
   Cascader,
   Collapse,
@@ -113,6 +112,7 @@ import {
 import RecordConflictModal from './RecordConflictModal.jsx'
 import { getRecordRevision, toRecordConflictError } from '../domain/recordRevision.js'
 import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
+import { formatBackgroundTaskProgressLine } from '../domain/backgroundTaskLock.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
 import {
@@ -151,9 +151,6 @@ import {
   segmentHandlingOriginalText,
   shouldUseStructuredHandlingDisplay,
   splitTextWithManualHighlights } from '../lib/handlingOriginalDisplay.js'
-import {
-  hasSeenHandlingExpandWhatsNew,
-  markHandlingExpandWhatsNewSeen } from '../lib/whatsNew.js'
 import { randomId } from '../lib/randomId.js'
 
 const RETAG_DEFAULT_TIP =
@@ -163,6 +160,10 @@ const SAVE_DETAIL_TIP =
   '将当前编辑内容写入本工单，已修改维度将标记为「人工维护」，后续单条/批量重新打标默认保留，不会被自动覆盖。'
 
 const HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH = 1280
+/** 原文预览：每行约 52 个全角字符（13px 字号 × 720px 抽屉宽估算） */
+const HANDLING_PREVIEW_CHARS_PER_LINE = 52
+/** 原文预览：最多展示 10 行，超出截断、全文走「放大查看」弹窗（不做就地展开） */
+const HANDLING_PREVIEW_MAX_LINES = 10
 const HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX = 1100
 const HANDLING_ORIGINAL_TEXT_MODAL_BODY_MAX_HEIGHT = '78vh'
 const HANDLING_PLAIN_GROUP_ID = 'plain'
@@ -423,17 +424,13 @@ function TicketDetailSectionNav({ postUse = false }) {
  *   onClose: () => void
  *   ticketId: string
  *   text: string
- *   showWhatsNew?: boolean
- *   onDismissWhatsNew?: () => void
  * }} props
  */
 function HandlingOriginalTextModal({
   open,
   onClose,
   ticketId,
-  text,
-  showWhatsNew = false,
-  onDismissWhatsNew }) {
+  text }) {
   const bodyScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const leftPaneRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const [locateKeyword, setLocateKeyword] = useState('')
@@ -674,22 +671,6 @@ function HandlingOriginalTextModal({
 
   const toolbar = (
     <div className="mb-3 space-y-2 border-b border-ink-100 pb-3">
-      {showWhatsNew ? (
-        <Alert
-          type="info"
-          showIcon
-          closable
-          className="!mb-0"
-          message="功能上新"
-          description="选中原文可高亮、加入右侧摘录；也可一键「高亮并加入摘录」。内容仅本次有效，关闭弹窗后清空，不会保存到工单。"
-          onClose={() => onDismissWhatsNew?.()}
-          action={
-            <Button size="small" type="link" onClick={() => onDismissWhatsNew?.()}>
-              不再显示
-            </Button>
-          }
-        />
-      ) : null}
       {structured && groups.length ? (
         <div className="flex flex-wrap gap-1.5">
           {groups.map((group) => {
@@ -1023,6 +1004,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [retagging, setRetagging] = useState(false)
   const [saving, setSaving] = useState(false)
   const [reviewToggling, setReviewToggling] = useState(false)
+  /** false | 'own_task' | 'other'（分级提示，见 recordRemoteStale.js） */
   const [remoteStale, setRemoteStale] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
   const [conflictServerRecord, setConflictServerRecord] = useState(
@@ -1036,9 +1018,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const saveInFlightRef = useRef(false)
   const [drawerFormReady, setDrawerFormReady] = useState(false)
   const [handlingExpandOpen, setHandlingExpandOpen] = useState(false)
-  const [showHandlingWhatsNew, setShowHandlingWhatsNew] = useState(
-    () => !hasSeenHandlingExpandWhatsNew(),
-  )
 
   const taxonomy = useMemo(
     () => (feedback ? getTaxonomyForRecord(feedback) : null),
@@ -1049,6 +1028,37 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     if (!feedback) return ''
     return extractHandlingOriginalTextForRecord(feedback)
   }, [feedback])
+
+  /** 原文是否超过预览行数（按行宽约 52 字/行估算，超过 10 行即截断并显示提示） */
+  const isHandlingOriginalTextTruncated = useMemo(() => {
+    const text = handlingOriginalText || ''
+    if (!text) return false
+    return Math.ceil(text.length / HANDLING_PREVIEW_CHARS_PER_LINE) > HANDLING_PREVIEW_MAX_LINES
+  }, [handlingOriginalText])
+
+  /** 评价态原文（评价详情通栏正文卡，放大弹窗同源） */
+  const ratingOriginalText = useMemo(() => {
+    if (!feedback) return ''
+    return feedback.rawText || feedback.commentText || feedback.lowScoreReason || ''
+  }, [feedback])
+
+  const isRatingOriginalTextTruncated = useMemo(() => {
+    if (!ratingOriginalText) return false
+    return Math.ceil(ratingOriginalText.length / HANDLING_PREVIEW_CHARS_PER_LINE) > HANDLING_PREVIEW_MAX_LINES
+  }, [ratingOriginalText])
+
+  /** own_task 分级提示附带的任务进度行（自己持有的共享任务 / 本机会话兜底） */
+  const remoteStaleTaskLine = useMemo(() => {
+    if (remoteStale !== 'own_task') return ''
+    const owned = (sharedBackgroundTasks || []).filter((task) => task.userId === user?.id)
+    if (owned.length) {
+      return owned.map((task) => formatBackgroundTaskProgressLine(task)).join('；')
+    }
+    if (importSession.active) return '数据导入进行中'
+    if (retagSession.active) return '批量重新打标进行中'
+    if (reprocessing) return '单条重新处理进行中'
+    return ''
+  }, [remoteStale, sharedBackgroundTasks, user?.id, importSession.active, retagSession.active, reprocessing])
 
   useEffect(() => {
     setHandlingExpandOpen(false)
@@ -1175,19 +1185,19 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   useEffect(() => {
     if (!feedback?.id) return
     const latestRevision = getRecordRevision(feedback)
-    if (
-      !shouldShowRemoteRecordStale(feedback, baseRevisionRef.current, {
-        userId: user?.id,
-        retagActive: retagSession.active,
-        importActive: importSession.active,
-        reprocessingActive: reprocessing,
-        sharedBackgroundTasks })
-    ) {
+    const staleLevel = shouldShowRemoteRecordStale(feedback, baseRevisionRef.current, {
+      userId: user?.id,
+      retagActive: retagSession.active,
+      importActive: importSession.active,
+      reprocessingActive: reprocessing,
+      sharedBackgroundTasks })
+    if (!staleLevel) {
       baseRevisionRef.current = latestRevision
       setRemoteStale(false)
       return
     }
-    setRemoteStale(true)
+    // own_task / other 都显示提示；基准版本不推进，由用户点「加载最新」或保存校验兜底
+    setRemoteStale(staleLevel)
   }, [
     feedback?.id,
     feedback?.recordRevision,
@@ -1727,8 +1737,8 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             ) : null}
             {canDeleteTicket && (
               <Button
+                type="text"
                 danger
-                className="min-w-[4.5rem]"
                 disabled={!feedback?.id || deleting}
                 onClick={() => setDeleteOpen(true)}
               >
@@ -1787,11 +1797,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       }
     >
       <div className="min-w-0 max-w-full drawer-space-y overflow-x-hidden">
-        {remoteStale ? (
+        {remoteStale === 'other' ? (
           <Alert
             type="warning"
             showIcon
-            message="此工单已被他人更新"
+            message={`${isPostUseLibrary ? '此评价' : '此工单'}已被他人更新`}
             description={
               <>
                 {formatRecordUpdatedByLine(feedback) || '列表数据已同步为较新版本。'}
@@ -1806,79 +1816,119 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             }
           />
         ) : null}
+        {remoteStale === 'own_task' ? (
+          <Alert
+            type="info"
+            showIcon
+            message={`${isPostUseLibrary ? '此评价' : '此工单'}已被你发起的批量任务更新`}
+            description={
+              <>
+                {remoteStaleTaskLine
+                  ? `${remoteStaleTaskLine}。`
+                  : null}{' '}
+                列表数据已同步为较新版本，如需基于最新内容继续编辑请加载。
+              </>
+            }
+            action={
+              <Button size="small" onClick={handleReloadStaleRemote}>
+                加载最新
+              </Button>
+            }
+          />
+        ) : null}
 
         {isPostUseLibrary ? (
           <div id="rating-detail-content" className="scroll-mt-2 drawer-section-gap">
             <div className="section-title">用后即评</div>
-            <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">评价摘要</span></div>
-              <Descriptions size="small" column={1} bordered>
-                <Descriptions.Item label="渠道">
-                  {feedback.channel === 'sms'
-                    ? '短信'
-                    : feedback.channel === 'console'
-                      ? '控制台'
-                      : feedback.channel || feedback.sourceSubType || '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="评分">
-                  {feedback.ratingScore != null && Number.isFinite(Number(feedback.ratingScore))
-                    ? Number(feedback.ratingScore)
-                    : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="产品">
-                  {feedback.productName || feedback.product || '—'}
-                  {feedback.productSpec &&
-                  feedback.productSpec !== (feedback.productName || feedback.product)
-                    ? ` / ${feedback.productSpec}`
-                    : ''}
-                </Descriptions.Item>
-                <Descriptions.Item label="原文">
-                  <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                    {feedback.rawText || feedback.commentText || feedback.lowScoreReason || '—'}
-                  </Typography.Paragraph>
-                </Descriptions.Item>
-                <Descriptions.Item label="用户旅程">
-                  {[journeyL1 || feedback.journeyL1, journeyL2 || feedback.journeyL2]
-                    .filter(Boolean)
-                    .join(' / ') || '待补全'}
-                </Descriptions.Item>
-              </Descriptions>
+            {/* 评价原文（通栏正文卡；渠道/评分/产品已由抽屉标题区 meta 行承载） */}
+            <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">评价原文</span><div>
+                {ratingOriginalText ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!h-auto !px-0 !py-0 text-xs"
+                    icon={<ExpandOutlined />}
+                    onClick={() => setHandlingExpandOpen(true)}
+                  >
+                    放大查看
+                  </Button>
+                ) : null}
+              </div></div>
+              <div className="relative border-l-[3px] border-brand-500 pl-3">
+                <div className="line-clamp-10 whitespace-pre-wrap text-[13px] leading-[1.7]">
+                  {ratingOriginalText || '—'}
+                </div>
+                {isRatingOriginalTextTruncated ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-8 items-end bg-gradient-to-t from-white to-transparent" />
+                ) : null}
+              </div>
+              {isRatingOriginalTextTruncated ? (
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  已截断 · 全文 {ratingOriginalText.length} 字，完整内容请点「放大查看」
+                </Typography.Text>
+              ) : null}
             </div>
             {feedback.customerVisit ? (
               <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">客服部回访</span></div>
-                <Descriptions size="small" column={1} bordered labelStyle={{ whiteSpace: 'nowrap' }}>
-                  <Descriptions.Item label="客户名称">
-                    {feedback.customerVisit.groupName || feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="客户编码">
-                    {feedback.customerVisit.customerCode || '—'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="登录账号名称">
-                    {feedback.customerVisit.loginAccountName || '—'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="回访反馈信息">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                <div className="space-y-3">
+                  {/* ① 谁：短字段横排 */}
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">客户名称：</Typography.Text>
+                      <Typography.Text>{feedback.customerVisit.groupName || feedback.customerVisit.customerName || feedback.customerVisit.userInfoDetail || feedback.customerVisit.userInfo || '—'}</Typography.Text>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">客户编码：</Typography.Text>
+                      <Typography.Text>{feedback.customerVisit.customerCode || '—'}</Typography.Text>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">登录账号名称：</Typography.Text>
+                      <Typography.Text>{feedback.customerVisit.loginAccountName || '—'}</Typography.Text>
+                    </span>
+                  </div>
+                  {/* ② 说了什么 */}
+                  <div>
+                    <Typography.Text type="secondary" className="mb-1 block text-xs">
+                      回访反馈信息
+                    </Typography.Text>
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
                       {feedback.customerVisit.visitFeedbackDetail || feedback.customerVisit.visitResult || '—'}
                     </Typography.Paragraph>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="回访反馈信息-内部评估">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                      {feedback.customerVisit.internalEvaluationDetail || feedback.customerVisit.internalConclusion || '—'}
-                    </Typography.Paragraph>
-                  </Descriptions.Item>
-                  {feedback.customerVisit.scoreSource === '投诉回访' && (
-                    <Descriptions.Item label="相应投诉工单">
-                      {feedback.customerVisit.originalTicketId || '—'}
-                    </Descriptions.Item>
-                  )}
-                  <Descriptions.Item label="内部结论">
-                    {feedback.customerVisit.internalConclusion || '—'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="反馈摘要">
-                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
+                  </div>
+                  {/* ③ 内部判断 */}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Typography.Text type="secondary" className="mb-1 block text-xs">
+                        回访反馈信息-内部评估
+                      </Typography.Text>
+                      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
+                        {feedback.customerVisit.internalEvaluationDetail || feedback.customerVisit.internalConclusion || '—'}
+                      </Typography.Paragraph>
+                    </div>
+                    <div>
+                      <Typography.Text type="secondary" className="mb-1 block text-xs">
+                        内部结论
+                      </Typography.Text>
+                      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
+                        {feedback.customerVisit.internalConclusion || '—'}
+                      </Typography.Paragraph>
+                      {feedback.customerVisit.scoreSource === '投诉回访' ? (
+                        <Typography.Text type="secondary" className="mt-1 block text-xs">
+                          相应投诉工单：{feedback.customerVisit.originalTicketId || '—'}
+                        </Typography.Text>
+                      ) : null}
+                    </div>
+                  </div>
+                  {/* ④ 摘要 */}
+                  <div>
+                    <Typography.Text type="secondary" className="mb-1 block text-xs">
+                      反馈摘要
+                    </Typography.Text>
+                    <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
                       {feedback.customerVisit.feedbackSummary || '—'}
                     </Typography.Paragraph>
-                  </Descriptions.Item>
-                </Descriptions>
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1891,41 +1941,45 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">处理意见（工单原文）</span><div>
               {handlingOriginalText ? (
-                <Badge
-                  count={showHandlingWhatsNew ? '新' : 0}
+                <Button
+                  type="link"
                   size="small"
-                  offset={[4, -2]}
-                  styles={{ indicator: { fontSize: 10, lineHeight: '14px', height: 14, minWidth: 16, padding: '0 3px' } }}
+                  className="!h-auto !px-0 !py-0 text-xs"
+                  icon={<ExpandOutlined />}
+                  onClick={() => setHandlingExpandOpen(true)}
                 >
-                  <Button
-                    type="link"
-                    size="small"
-                    className="!h-auto !px-0 !py-0 text-xs"
-                    icon={<ExpandOutlined />}
-                    onClick={() => setHandlingExpandOpen(true)}
-                  >
-                    放大查看
-                  </Button>
-                </Badge>
+                  放大查看
+                </Button>
               ) : null}
             </div></div>
-            <Typography.Paragraph className="!mb-0 line-clamp-3 overflow-hidden whitespace-pre-wrap">
-              {handlingOriginalText || '—'}
-            </Typography.Paragraph>
-            <Typography.Text type="secondary" className="mt-2 block text-xs">
-              默认预览约 3 行，完整内容请点右上角「放大查看」。优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
+            <div className="relative border-l-[3px] border-brand-500 pl-3 [&_.fi-rawtext]:leading-[1.7]">
+              <div className="fi-rawtext line-clamp-10 whitespace-pre-wrap text-[13px]">
+                {handlingOriginalText || '—'}
+              </div>
+              {isHandlingOriginalTextTruncated ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-8 items-end bg-gradient-to-t from-white to-transparent" />
+              ) : null}
+            </div>
+            {isHandlingOriginalTextTruncated ? (
+              <Typography.Text type="secondary" className="mt-1 block text-xs">
+                已截断 · 全文 {handlingOriginalText.length} 字，完整内容请点「放大查看」
+              </Typography.Text>
+            ) : null}
+            <Typography.Text type="secondary" className="mt-1 block text-xs">
+              ⌗ 优先展示「处理意见」列；若为「无/不涉及」等占位或无内容，则展示「受理内容」。
             </Typography.Text>
           </div>
 
-          {/* 集团名称 + 登录账号名称 */}
+          {/* 客户信息 + 回访满意度 + 不满意原因：合并紧凑条（元信息降权，浅灰底） */}
           {(() => {
             const groupName = getSourceColumnValue(feedback, '集团名称')
             const loginAccountName = getSourceColumnValue(feedback, '登录账号名称')
-            if (!groupName && !loginAccountName) return null
+            const followUp = isFollowUpEnrichableRecord(feedback)
+            const dissatisfiedReasons = followUp ? getFollowUpDissatisfiedReasonsDisplay(feedback) : ''
+            if (!groupName && !loginAccountName && !followUp) return null
             return (
-              <div className="page-card-sm">
-                <div className="page-card-header"><span className="page-card-title">客户信息</span></div>
-                <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
+              <div className="rounded-lg bg-ink-50/60 p-3">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
                   {groupName ? (
                     <span className="inline-flex items-center gap-1">
                       <Typography.Text type="secondary">客户名称：</Typography.Text>
@@ -1940,33 +1994,23 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                       <ActionCopyIcon value={loginAccountName} />
                     </span>
                   ) : null}
+                  {followUp ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Typography.Text type="secondary">回访满意度：</Typography.Text>
+                      <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
+                      <Typography.Text type="secondary">（回访导入 · 只读）</Typography.Text>
+                    </span>
+                  ) : null}
                 </div>
+                {followUp && dissatisfiedReasons?.trim() ? (
+                  <div className="mt-1 text-xs">
+                    <Typography.Text type="secondary">不满意原因：</Typography.Text>
+                    <Typography.Text className="whitespace-pre-wrap">{dissatisfiedReasons}</Typography.Text>
+                  </div>
+                ) : null}
               </div>
             )
           })()}
-
-          {isFollowUpEnrichableRecord(feedback) ? (
-            <>
-              <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">回访满意度</span></div>
-                <Typography.Text>{getFollowUpSatisfactionDisplay(feedback)}</Typography.Text>
-                <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  来自满意度回访导入，只读
-                </Typography.Text>
-              </div>
-              <div className="page-card-sm !bg-ink-50/50"><div className="page-card-header"><span className="page-card-title">
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    <span className="shrink-0">不满意原因</span>
-                    <Typography.Text type="secondary" className="text-xs font-normal">
-                      来自满意度回访汇总
-                    </Typography.Text>
-                  </span>
-                </span></div>
-                <Typography.Paragraph className="!mb-0 whitespace-pre-wrap">
-                  {getFollowUpDissatisfiedReasonsDisplay(feedback)}
-                </Typography.Paragraph>
-              </div>
-            </>
-          ) : null}
         </div>
         ) : null}
 
@@ -1982,9 +2026,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">客户请求内容</span>
-                <Typography.Text type="secondary" className="text-xs font-normal">
-                  工单全流程中客户核心诉求的精炼摘要（≤120 字，最长 200）。
-                </Typography.Text>
+                <Tooltip title="工单全流程中客户核心诉求的精炼摘要（≤120 字，最长 200）。">
+                  <Typography.Text type="secondary" className="cursor-help text-xs">
+                    ⓘ
+                  </Typography.Text>
+                </Tooltip>
                 <CustomerRequestSourceTag record={feedback} />
               </span>
             </span></div>
@@ -2011,9 +2057,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">需求痛点挖掘</span>
-                <Typography.Text type="secondary" className="text-xs font-normal">
-                  从客户表述中提炼最核心的未满足诉求或问题本质（≤120 字，最长 200）。
-                </Typography.Text>
+                <Tooltip title="从客户表述中提炼最核心的未满足诉求或问题本质（≤120 字，最长 200）。">
+                  <Typography.Text type="secondary" className="cursor-help text-xs">
+                    ⓘ
+                  </Typography.Text>
+                </Tooltip>
                 <PainPointSourceTag record={feedback} />
               </span>
             </span></div>
@@ -2062,9 +2110,22 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     </Typography.Text>
                     {!isRootCauseReviewManuallyMaintained(feedback) &&
                     getRootCauseReviewImportSuggestion(feedback) ? (
-                      <div className="rounded border border-dashed border-ink-200 bg-ink-50 px-2 py-1 text-xs text-secondary">
-                        <span className="font-medium">导入原文（只读建议）：</span>
-                        {getRootCauseReviewImportSuggestion(feedback)}
+                      <div className="flex items-center justify-between gap-2 rounded bg-ink-50 px-2 py-1 text-xs">
+                        <Typography.Text type="secondary" className="min-w-0 flex-1" ellipsis={{ tooltip: getRootCauseReviewImportSuggestion(feedback) }}>
+                          <span className="font-medium">导入原文建议：</span>
+                          {getRootCauseReviewImportSuggestion(feedback)}
+                        </Typography.Text>
+                        <Button
+                          type="link"
+                          size="small"
+                          className="!h-auto shrink-0 !px-0 !py-0 text-xs"
+                          onClick={() => {
+                            setRootCauseReviewTouched(true)
+                            setRootCauseReview(getRootCauseReviewImportSuggestion(feedback) || '')
+                          }}
+                        >
+                          引用建议 →
+                        </Button>
                       </div>
                     ) : null}
                     <Input.TextArea
@@ -2161,36 +2222,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                       </Form>
                     </div>
                   ) : null}
-
-                  <div>
-                    <div className="sub-section-label">确立举措</div>
-                    <EstablishedActionFields
-                      productKey={feedback.productKey || feedback.taxonomyKey}
-                      actionId={actionId}
-                      establishedAction={establishedAction}
-                      establishedActionDetail={establishedActionDetail}
-                      actionSchedule={actionSchedule}
-                      linkedFromLibrary={linkedFromLibrary}
-                      disabled={saving}
-                      onSelect={(item) => {
-                        setActionId(item.id)
-                        setEstablishedAction(item.content)
-                        setEstablishedActionDetail(item.detail || '')
-                        setActionSchedule(getActionItemDisplayScheduleAt(item))
-                        setLinkedFromLibrary(true)
-                      }}
-                      onClear={() => {
-                        setActionId('')
-                        setEstablishedAction('')
-                        setEstablishedActionDetail('')
-                        setActionSchedule('')
-                        setLinkedFromLibrary(false)
-                      }}
-                      onContentChange={setEstablishedAction}
-                      onDetailChange={setEstablishedActionDetail}
-                      onScheduleChange={setActionSchedule}
-                    />
-                  </div>
                 </div>
               ) : (
                 <>
@@ -2222,44 +2253,6 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                       />
                     </div>
                   )}
-                  {(getEstablishedActionDisplay(feedback) ||
-                    getEstablishedActionDetailDisplay(feedback) ||
-                    feedback.actionSchedule?.trim()) && (
-                    <div className="mt-4">
-                      <div className="sub-section-label">确立举措</div>
-                      <Descriptions
-                        column={1}
-                        size="small"
-                        bordered
-                        items={[
-                          {
-                            key: 'content',
-                            label: '举措内容',
-                            children: getEstablishedActionDisplay(feedback) || '—' },
-                          {
-                            key: 'schedule',
-                            label: '排期',
-                            children: getActionScheduleDisplay(feedback.actionSchedule) },
-                        ]}
-                      />
-                      {getEstablishedActionDetailDisplay(feedback) ? (
-                        <Collapse
-                          ghost
-                          className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
-                          items={[
-                            {
-                              key: 'detail',
-                              label: '举措详情',
-                              children: (
-                                <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-sm">
-                                  {getEstablishedActionDetailDisplay(feedback)}
-                                </Typography.Paragraph>
-                              ) },
-                          ]}
-                        />
-                      ) : null}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -2271,12 +2264,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
             recordDataSource={isPostUseLibrary ? 'post_use_rating' : (feedback?.dataSourceType || 'complaint_ticket')}
           />
 
+          {/* 会议待办（评价态暂不展示，2026-11-01 拍板） */}
+          {!isPostUseLibrary ? (
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="shrink-0">会议待办</span>
-                <Typography.Text type="secondary" className="text-xs font-normal">
-                  客诉复盘后的跟进事项，与「确立举措」分开维护
-                </Typography.Text>
+                <Tooltip title="客诉复盘后的跟进事项，与「确立举措」分开维护。">
+                  <Typography.Text type="secondary" className="cursor-help text-xs">
+                    ⓘ
+                  </Typography.Text>
+                </Tooltip>
               </span>
             </span></div>
             {canEdit ? (
@@ -2452,6 +2449,79 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </ul>
             ) : (
               <Typography.Text type="secondary">—</Typography.Text>
+            )}
+          </div>
+          ) : null}
+
+          {/* 确立举措（压轴独立卡，编辑/只读同构） */}
+          <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">确立举措</span></div>
+            {canEdit ? (
+              <EstablishedActionFields
+                productKey={feedback.productKey || feedback.taxonomyKey}
+                actionId={actionId}
+                establishedAction={establishedAction}
+                establishedActionDetail={establishedActionDetail}
+                actionSchedule={actionSchedule}
+                linkedFromLibrary={linkedFromLibrary}
+                disabled={saving}
+                onSelect={(item) => {
+                  setActionId(item.id)
+                  setEstablishedAction(item.content)
+                  setEstablishedActionDetail(item.detail || '')
+                  setActionSchedule(getActionItemDisplayScheduleAt(item))
+                  setLinkedFromLibrary(true)
+                }}
+                onClear={() => {
+                  setActionId('')
+                  setEstablishedAction('')
+                  setEstablishedActionDetail('')
+                  setActionSchedule('')
+                  setLinkedFromLibrary(false)
+                }}
+                onContentChange={setEstablishedAction}
+                onDetailChange={setEstablishedActionDetail}
+                onScheduleChange={setActionSchedule}
+              />
+            ) : (
+              (getEstablishedActionDisplay(feedback) ||
+                getEstablishedActionDetailDisplay(feedback) ||
+                feedback.actionSchedule?.trim()) ? (
+                <div className="space-y-2">
+                  {getEstablishedActionDisplay(feedback) ? (
+                    <div>
+                      <Typography.Text type="secondary" className="mb-1 block text-xs">
+                        举措内容
+                      </Typography.Text>
+                      <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px] font-medium">
+                        {getEstablishedActionDisplay(feedback)}
+                      </Typography.Paragraph>
+                    </div>
+                  ) : null}
+                  {getEstablishedActionDetailDisplay(feedback) ? (
+                    <Collapse
+                      ghost
+                      className="[&_.ant-collapse-header]:!px-0 [&_.ant-collapse-content-box]:!px-0"
+                      items={[
+                        {
+                          key: 'detail',
+                          label: '举措详情',
+                          children: (
+                            <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px]">
+                              {getEstablishedActionDetailDisplay(feedback)}
+                            </Typography.Paragraph>
+                          ) },
+                      ]}
+                    />
+                  ) : null}
+                  {feedback.actionSchedule?.trim() ? (
+                    <Typography.Text type="secondary" className="block text-xs">
+                      排期：{getActionScheduleDisplay(feedback.actionSchedule)}
+                    </Typography.Text>
+                  ) : null}
+                </div>
+              ) : (
+                <Typography.Text type="secondary">—</Typography.Text>
+              )
             )}
           </div>
 
@@ -2691,25 +2761,34 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               </Form.Item>
             </Form>
           ) : (
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="请求场景">
-                {requestScene || TAG_UNRECOGNIZED}
-              </Descriptions.Item>
-              <Descriptions.Item
-                label={isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型'}
-              >
-                {problemType || TAG_UNRECOGNIZED}
-              </Descriptions.Item>
-              {isComplaintTicket(feedback) ? (
-                <Descriptions.Item label="问题分类（自定义）">
-                  {customProblemCategory || '—'}
-                </Descriptions.Item>
-              ) : null}
-              <Descriptions.Item label="用户旅程">{journeyDisplay}</Descriptions.Item>
-              <Descriptions.Item label="用户情绪">
-                {getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel })}
-              </Descriptions.Item>
-            </Descriptions>
+            <div className="space-y-1.5">
+              {[
+                { key: 'requestScene', label: '请求场景', value: requestScene || TAG_UNRECOGNIZED },
+                {
+                  key: 'problemType',
+                  label: isComplaintTicket(feedback) ? '问题类型（打标）' : '问题类型',
+                  value: problemType || TAG_UNRECOGNIZED,
+                },
+                ...(isComplaintTicket(feedback)
+                  ? [{ key: 'custom', label: '问题分类（自定义）', value: customProblemCategory || '—' }]
+                  : []),
+                { key: 'journey', label: '用户旅程', value: journeyDisplay },
+                {
+                  key: 'sentiment',
+                  label: '用户情绪',
+                  value: getSentimentDisplayLabel({ ...feedback, sentiment, urgencyLevel }),
+                },
+              ].map((row) => (
+                <div key={row.key} className="flex items-baseline gap-2">
+                  <Typography.Text type="secondary" className="w-28 shrink-0 text-xs">
+                    {row.label}
+                  </Typography.Text>
+                  <Typography.Text className="min-w-0 flex-1 text-[13px]">
+                    {row.value}
+                  </Typography.Text>
+                </div>
+              ))}
+            </div>
           )}
 
           {isComplaintTicket(feedback) ? (
@@ -2824,6 +2903,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       <RecordConflictModal
         open={conflictOpen}
         ticketLabel={feedback.ticketId || feedback.id}
+        entityLabel={isPostUseLibrary ? '评价' : '工单'}
         serverRecord={conflictServerRecord}
         draftRecord={buildDraftRecord()}
         onReloadLatest={handleReloadLatestAfterConflict}
@@ -2836,12 +2916,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
         open={handlingExpandOpen}
         onClose={() => setHandlingExpandOpen(false)}
         ticketId={feedback.ticketId || ''}
-        text={handlingOriginalText}
-        showWhatsNew={showHandlingWhatsNew}
-        onDismissWhatsNew={() => {
-          markHandlingExpandWhatsNewSeen()
-          setShowHandlingWhatsNew(false)
-        }}
+        text={isPostUseLibrary ? ratingOriginalText : handlingOriginalText}
       />
     </Drawer>
     {canDeleteTicket ? (

@@ -111,7 +111,12 @@ export default function ActionItemRequirementLinkFields({
       },
     },
     {
-      title: REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt,
+      title: (
+        <span className="inline-flex items-center gap-1">
+          {REQUIREMENT_PROGRESS_FIELD_LABELS.scheduleAt}
+          <Tag className="!m-0 !text-[10px] !leading-4" color="blue">自动同步</Tag>
+        </span>
+      ),
       dataIndex: 'scheduleAt',
       width: 120,
       render: (value, record) => {
@@ -120,7 +125,12 @@ export default function ActionItemRequirementLinkFields({
       },
     },
     {
-      title: REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus,
+      title: (
+        <span className="inline-flex items-center gap-1">
+          {REQUIREMENT_PROGRESS_FIELD_LABELS.workflowStatus}
+          <Tag className="!m-0 !text-[10px] !leading-4" color="blue">自动同步</Tag>
+        </span>
+      ),
       dataIndex: 'workflowStatus',
       width: 100,
       render: (value, record) => {

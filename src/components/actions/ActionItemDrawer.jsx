@@ -72,7 +72,7 @@ function ActionItemDrawerTitle({ item, productNameByKey, requirementLinked }) {
  * @param {boolean} props.scheduleDisabled
  * @param {boolean} props.scheduleRequired
  * @param {{ value: ActionItemStatus; label: string }[]} props.statusOptions
- * @param {boolean} props.stale
+ * @param {false | 'own_task' | 'other'} props.stale
  * @param {() => void} props.onReloadStale
  * @param {boolean} props.saving
  * @param {() => void} props.onSave
@@ -178,23 +178,9 @@ export default function ActionItemDrawer({
           <div className="drawer-section-gap">
             <div className="section-title">举措</div>
             <div className="page-card-sm">
-              {locked ? (
-                <Alert
-                  type="info"
-                  showIcon
-                  message="该举措已结束"
-                  description="已完成、不予实施、异常终止的举措不可再修改内容、排期或状态。"
-                />
-              ) : null}
-              {requirementLinked && !locked ? (
-                <Alert
-                  type="info"
-                  showIcon
-                  message="已选择关联需求工单"
-                  description="各需求工单的排期与状态将自动从「外部集成」读取并展示，不可修改。切换为「不关联」后可自行填写举措排期与状态。"
-                />
-              ) : null}
-              {stale ? (
+              {/* 状态型信息由状态位承载（标题状态Tag + 表单只读 + footer 关闭），不再用 Alert；
+                  关联模式的说明由子模块说明行 + 「自动同步」徽章承载 */}
+              {stale === 'other' ? (
                 <Alert
                   type="warning"
                   showIcon
@@ -205,6 +191,19 @@ export default function ActionItemDrawer({
                       继续编辑可能覆盖他人修改；保存时将再次校验。
                     </>
                   }
+                  action={
+                    <Button size="small" onClick={onReloadStale}>
+                      加载最新
+                    </Button>
+                  }
+                />
+              ) : null}
+              {stale === 'own_task' ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="此举措已被你发起的批量任务更新"
+                  description="列表数据已同步为较新版本，如需基于最新内容继续编辑请加载。"
                   action={
                     <Button size="small" onClick={onReloadStale}>
                       加载最新
@@ -294,21 +293,16 @@ export default function ActionItemDrawer({
             </div>
           </div>
 
-          {/* ── 分区 2：洞察与效果验证 ── */}
+          {/* ── 分区 2：洞察（瘦身后仅立项依据；恢复验证移入分区五效果验证） ── */}
           {(item.insightTheme || item.linkedInsightIds?.length || item.evidenceRecordIds?.length || item.triggerMetric) ? (
             <div className="drawer-section-gap">
-              <div className="section-title">洞察与效果验证</div>
+              <div className="section-title">洞察</div>
               <div className="page-card-sm">
                 <div className="space-y-3">
                   <Space size={[6, 6]} wrap>
                     {item.insightTheme ? <Tag color="blue" className="!m-0">{item.insightTheme}</Tag> : null}
                     <Tag className="!m-0">洞察 {item.linkedInsightIds?.length || 0}</Tag>
                     <Tag className="!m-0">证据 {item.evidenceRecordIds?.length || 0}</Tag>
-                    {item.recoveryValidation?.label ? (
-                      <Tag color={item.recoveryValidation.status === 'recovered' ? 'green' : item.recoveryValidation.status === 'not_recovered' ? 'red' : 'gold'} className="!m-0">
-                        {item.recoveryValidation.label}
-                      </Tag>
-                    ) : null}
                   </Space>
                   {item.triggerMetric ? (
                     <Typography.Text type="secondary" className="block text-xs">
@@ -316,7 +310,6 @@ export default function ActionItemDrawer({
                       {item.triggerMetric.baseline != null ? ` · 目标 ${item.triggerMetric.baseline}${item.triggerMetric.unit || ''}` : ''}
                     </Typography.Text>
                   ) : null}
-                  {item.recoveryValidation?.explanation ? <Alert type={item.recoveryValidation.status === 'not_recovered' ? 'warning' : 'info'} showIcon title={item.recoveryValidation.explanation} /> : null}
                 </div>
               </div>
             </div>
@@ -346,7 +339,7 @@ export default function ActionItemDrawer({
                             {p.requestSceneLabel ? <Tag className="!m-0 !text-xs">{p.requestSceneLabel}</Tag> : null}
                           </Space>
                           {p.painPointSample ? (
-                            <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 !text-xs" ellipsis={{ rows: 2, tooltip: p.painPointSample }}>
+                            <Typography.Paragraph type="secondary" className="!mb-0 !mt-1 !text-[13px]" ellipsis={{ rows: 2, tooltip: p.painPointSample }}>
                               {p.painPointSample}
                             </Typography.Paragraph>
                           ) : null}
