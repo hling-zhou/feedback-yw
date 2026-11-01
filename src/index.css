@@ -11,7 +11,8 @@
     overflow-x: clip;
   }
   body {
-    @apply bg-ink-50 text-ink-800 font-sans;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif;
+    @apply bg-ink-50 text-ink-800;
   }
 }
 
@@ -280,14 +281,36 @@
     @apply mb-2 flex items-center justify-between gap-2;
   }
 
-  /** 卡片标题 */
+  /** 卡片标题（D3：14px/600/ink-900——用户拍板 14 足够、15 过大，2026-11-01 终版） */
   .page-card-title {
-    @apply text-sm font-medium text-ink-800;
+    @apply text-sm font-semibold text-ink-900;
   }
 
-  /** 分区标题（比卡片标题高一级，用于抽屉/页面内的大分区分组） */
+  /** ── 详情抽屉字号规范（docs/DESIGN-drawer-ux-20261101.md §2）──
+   * D1 抽屉主标题 16px/600 · D2 分区标题 14px/600（瘦蓝条 py-1.5，不倒挂 D1）
+   * D3 卡片标题 14px/600（用户拍板终版：14 足够，15 过大）
+   * D4 正文/字段值/摘录 13px（禁用 12px）
+   * D5 元信息/说明 12px/400（12px 仅允许出现在本档；Form label 同档）
+   * 同字号信息靠字重（400/500/600）+ 颜色（ink-900/600/400）+ 位置分层级；
+   * 抽屉分区间距见 drawer-space-y（20px）/ drawer-section-gap（10px）。
+   */
+  /** 抽屉内输入控件视觉降权（2026-11-01 修正②）：白底改浅灰、边框弱化，
+   *  让「值」回到文字层，不与卡片标题争夺视觉重量；仅限抽屉内，不影响页面筛选框。
+   */
+  .ant-drawer .ant-input,
+  .ant-drawer .ant-input-affix-wrapper {
+    background: #FAFAFA;
+    border-color: #F3F4F6;
+  }
+  .ant-drawer .ant-input:focus,
+  .ant-drawer .ant-input:focus-within,
+  .ant-drawer .ant-input-affix-wrapper:focus,
+  .ant-drawer .ant-input-affix-wrapper:focus-within {
+    background: #FFFFFF;
+  }
+  /** 分区标题（D2：14px/600 + 瘦蓝条 py-1.5——实测盒高 39px 曾倒挂 D1 主标题 20px 盒高，2026-11-01 三次修正） */
   .section-title {
-    @apply rounded-lg bg-brand-50 px-3 py-2 text-base font-semibold text-ink-900;
+    @apply rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-semibold text-ink-900;
   }
 
   /** 卡片内子模块标签：用于卡片内部区分"自动生成"/"人工复核"等子区块 */

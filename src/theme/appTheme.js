@@ -15,7 +15,8 @@ export const appTheme = {
     colorLinkHover: BRAND_PRIMARY_HOVER,
     colorLinkActive: BRAND_PRIMARY_ACTIVE,
     borderRadius: 8,
-    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif",
     fontSize: 13,
     fontSizeHeading1: 28,
     fontSizeHeading2: 22,
@@ -49,7 +50,7 @@ export const appTheme = {
     },
     Form: {
       itemMarginBottom: 16,
-      labelFontSize: 13,
+      labelFontSize: 12,
     },
     Tabs: {
       horizontalItemGutter: 4,
