@@ -165,9 +165,11 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
     }
   }
 
+  // taxonomyMeta.loadedAt 变化（本机保存/导入，或轮询感知到他人/服务端更新共享库）时重载表格，
+  // 与产品配置面板按 catalogMeta.loadedAt 联动重载的模式一致
   useEffect(() => {
     loadSnapshot()
-  }, [loadSnapshot])
+  }, [loadSnapshot, taxonomyMeta?.loadedAt])
 
   useEffect(() => {
     if (
@@ -483,6 +485,14 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
           </Typography.Text>
         )}
       </Space>
+
+      {taxonomyMeta?.loadedAt && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Typography.Text type="secondary" className="text-xs">
+            更新于 {taxonomyMeta.loadedAt.slice(0, 16).replace('T', ' ')}
+          </Typography.Text>
+        </div>
+      )}
 
       {tagKind === 'request_scene' && (
         <Table

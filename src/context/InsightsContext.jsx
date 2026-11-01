@@ -1098,6 +1098,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         // revision 变但 recordsRevision 不变（如 snapshot rebuild / tag meta 变更）不需要重拉
         if (prevRecords != null && recordsRevision !== prevRecords) {
           await syncSharedDataFromServer({ notify: false })
+        } else if (prev != null && revision !== prev) {
+          // 标签库等 meta 更新（他人保存/服务端写入共享库）：不重拉工单记录，
+          // 仅轻量刷新 taxonomy meta，让「更新于」时间与列表约一个轮询周期内自动跟进
+          await applyTaxonomyOverridesFromStorage()
         }
         dataRevisionRef.current = revision
         recordsRevisionRef.current = recordsRevision
@@ -1119,7 +1123,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active])
+  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active, applyTaxonomyOverridesFromStorage])
 
   useEffect(() => {
     if (storageReady && isApiStorageAdapter(adapter)) {
