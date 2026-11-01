@@ -1341,9 +1341,12 @@ export function registerStorageRoutes(app) {
           summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
         }
       } catch {}
+      // exit 0 = 全流程通过；exit 2 = 门禁有 FAIL（流水线跑完了，只是门禁拒绝发布）；
+      // 其他非零 = 脚本崩溃/Producer 异常
+      const status = code === 0 ? 'succeeded' : code === 2 ? 'gate_failed' : 'failed'
       pipelineJob = {
         ...pipelineJob,
-        status: code === 0 ? 'succeeded' : 'failed',
+        status,
         exitCode: code,
         finishedAt,
         summary,

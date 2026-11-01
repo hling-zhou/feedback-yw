@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Button, Descriptions, Radio, Space, Spin, Tag, Typography } from 'antd'
-import { PlayCircleOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined } from '@ant-design/icons'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { apiFetch } from '../../lib/apiClient.js'
 
@@ -11,6 +11,7 @@ function StatusTag({ status }) {
     idle: { color: 'default', text: '未运行' },
     running: { color: 'processing', text: '运行中' },
     succeeded: { color: 'success', text: '成功' },
+    gate_failed: { color: 'warning', text: '门禁未通过' },
     failed: { color: 'error', text: '失败' } }
   const cfg = map[status] || map.idle
   return <Tag color={cfg.color}>{cfg.text}</Tag>
@@ -154,6 +155,17 @@ export default function PipelineCopilotPanel({ canEdit }) {
         />
       )}
 
+      {!isRunning && job?.status === 'gate_failed' && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ marginBottom: 16 }}
+          message={`门禁未通过（${job.summary?.gate?.passCount ?? 0} PASS / ${job.summary?.gate?.failCount ?? 0} FAIL）`}
+          description={`流水线已跑完，门禁有 ${job.summary?.gate?.failCount ?? 0} 项未达标。回滚方案：删除 scripts/taxonomy-overrides.json 回到纯基线`}
+        />
+      )}
+
       {!isRunning && job?.status === 'failed' && (
         <Alert
           type="error"
@@ -161,7 +173,7 @@ export default function PipelineCopilotPanel({ canEdit }) {
           icon={<CloseCircleOutlined />}
           style={{ marginBottom: 16 }}
           message="流水线运行失败"
-          description={`exit code: ${job.exitCode ?? 'unknown'}`}
+          description={`exit code: ${job.exitCode ?? 'unknown'}（脚本异常崩溃，请查看日志排查）`}
         />
       )}
 
@@ -181,16 +193,6 @@ export default function PipelineCopilotPanel({ canEdit }) {
           点击「运行流水线」执行行动建议规则补充：Producer 生成 evidence-rows → keyword-discovery 发现新词 → --apply 写入 overrides → gate-check 门禁验证。
           运行完成后结果将显示在下方。
         </Paragraph>
-      )}
-
-      {job?.summary?.gate?.failCount > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginTop: 16 }}
-          message={`门禁 ${job.summary.gate.failCount} 项未通过`}
-          description="回滚方案：删除 scripts/taxonomy-overrides.json 回到纯基线状态"
-        />
       )}
     </div>
   )
