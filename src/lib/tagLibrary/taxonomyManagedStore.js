@@ -110,7 +110,7 @@ export async function getOrInitManagedSnapshot(adapter) {
 
 /**
  * @param {import('./taxonomyManageModel.js').TaxonomyManagedSnapshot} snapshot
- * @param {import('../domain/tagCandidate.js').TagCandidate} candidate
+ * @param {import('../../domain/tagCandidate.js').TagCandidate} candidate
  */
 export function mergeCandidateIntoSnapshot(snapshot, candidate) {
   const patch = buildOverridePatchFromCandidate(candidate)

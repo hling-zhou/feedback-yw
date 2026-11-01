@@ -1,4 +1,4 @@
-/** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
+/** @typedef {import('../../types.js').FeedbackRecord} FeedbackRecord */
 
 /**
  * @typedef {Object} TicketLlmGoldenCase

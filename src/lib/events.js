@@ -1,6 +1,6 @@
 /**
  * 轻量领域事件总线（NFR-E-020）
- * @typedef {'ImportCompleted' | 'ImportFinished' | 'AnalysisRunFinished' | 'TagLibraryPublished' | 'TagCandidateDiscovered' | 'SnapshotBuilt'} DomainEventName
+ * @typedef {'ImportCompleted' | 'ImportFinished' | 'AnalysisRunFinished' | 'TagLibraryPublished' | 'TagCandidateDiscovered' | 'SnapshotBuilt' | 'RetagFinished' | 'ImportAnalysisCompleted' | 'CustomerRestoreCompleted'} DomainEventName
  */
 
 /** @typedef {{ type: DomainEventName; payload?: unknown; at: string }} DomainEvent */

@@ -4,6 +4,7 @@ import {
   REQUEST_SCENE_LABEL_MIGRATION,
   PROBLEM_TYPE_LABEL_MIGRATION,
 } from '../sharedTagDefs.js'
+/** @typedef {import('../sharedTagDefs.js').SharedTagRule} SharedTagRule */
 
 /**
  * @param {SharedTagRule[]} builtins
@@ -84,7 +85,7 @@ export function migrateSharedTagsInSnapshot(snapshot) {
 }
 
 /**
- * @param {import('../../storage/types.js').FeedbackRecord} record
+ * @param {import('../types.js').FeedbackRecord} record
  * @returns {boolean}
  */
 export function migrateSharedTagsOnRecord(record) {

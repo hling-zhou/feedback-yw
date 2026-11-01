@@ -22,7 +22,7 @@ const LEGACY_REMOVED_COLUMNS = [
 ]
 
 /**
- * @param {import('../types.js').FeedbackRecord} record
+ * @param {import('./types.js').FeedbackRecord} record
  */
 function assertV2RowShape(record) {
   const headers = getExportV2Headers({ dataSourceType: record.dataSourceType })

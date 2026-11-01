@@ -28,7 +28,7 @@ export function topClusterFingerprints(topClusters) {
 }
 
 /**
- * @param {import('../runProductClusteringPipeline.js').ProductClusteringResult} result
+ * @param {import('./runProductClusteringPipeline.js').ProductClusteringResult} result
  */
 export function productTop10Fingerprints(result) {
   return topClusterFingerprints(result.topFinalClusters)

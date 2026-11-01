@@ -19,7 +19,7 @@ import {
 } from './clusterEstablishedActionCorpus.js'
 
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
-/** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
+/** @typedef {import('../../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
 
 export const CLUSTER_SYNTHESIZED_ACTION_COUNT = 2
 

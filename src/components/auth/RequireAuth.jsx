@@ -3,7 +3,7 @@ import { Spin } from 'antd'
 import { useAuth } from '../../context/AuthContext.jsx'
 
 /**
- * @param {{ permission?: import('../domain/auth/permissions.js').PermissionCode }} [props]
+ * @param {{ permission?: import('../../domain/auth/permissions.js').PermissionCode }} [props]
  */
 export default function RequireAuth({ permission }) {
   const { loading, isAuthenticated, can, canRoute } = useAuth()

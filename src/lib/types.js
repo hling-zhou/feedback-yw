@@ -7,6 +7,11 @@
  * 可用 `ticketRecordFromLegacy()` 转换。
  * @typedef {Object} FeedbackRecord
  * @property {string} id
+ * @property {import('../domain/enums.js').DataSourceType} [dataSourceType] v2 分层记录模型字段（v1 记录可能缺省）
+ * @property {string} [insightPeriodId] v2：所属洞察周期
+ * @property {string} [tenantId] v2：租户
+ * @property {import('../domain/enums.js').RecordStatus} [recordStatus] v2：记录状态
+ * @property {string} [schemaVersion] v2：数据模式版本
  * @property {string} [source]
  * @property {string} rawText
  * @property {string} customerQuote

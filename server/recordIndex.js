@@ -20,7 +20,7 @@ export function recordIndexFields(record) {
 }
 
 /**
- * @param {import('../domain/insightPeriod.js').InsightPeriod} period
+ * @param {import('../src/domain/insightPeriod.js').InsightPeriod} period
  */
 export function importMonthRangeForPeriod(period) {
   const p = normalizeInsightPeriod(period)

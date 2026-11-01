@@ -25,11 +25,11 @@ import {
 } from '../planningRecommendations.js'
 
 /** @typedef {import('./priorityScore.js').ScoredFinalCluster} ScoredFinalCluster */
-/** @typedef {import('../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
-/** @typedef {import('../domain/overviewConclusions.js').PainClusterScoreMeta} PainClusterScoreMeta */
-/** @typedef {import('../domain/overviewConclusions.js').PlanningRecommendationSections} PlanningRecommendationSections */
+/** @typedef {import('../../domain/overviewConclusions.js').OverviewRecommendation} OverviewRecommendation */
+/** @typedef {import('../../domain/overviewConclusions.js').PainClusterScoreMeta} PainClusterScoreMeta */
+/** @typedef {import('../../domain/overviewConclusions.js').PlanningRecommendationSections} PlanningRecommendationSections */
 /** @typedef {import('../types.js').FeedbackRecord} FeedbackRecord */
-/** @typedef {import('../lib/storage.js').AppSettings} AppSettings */
+/** @typedef {import('../storage.js').AppSettings} AppSettings */
 
 /**
  * @param {number} priorityScore

@@ -32,7 +32,7 @@ export function formatClusteringExclusionNote(pipelineResults) {
 }
 
 /**
- * @param {import('../domain/snapshot.js').InsightSnapshot['aggregates']} aggregates
+ * @param {import('../../domain/snapshot.js').InsightSnapshot['aggregates']} aggregates
  */
 export function isSourceSnapshotClusteringStale(aggregates) {
   const clustering = aggregates?.painPointClustering
@@ -41,7 +41,7 @@ export function isSourceSnapshotClusteringStale(aggregates) {
 }
 
 /**
- * @param {import('../domain/snapshot.js').InsightSnapshot['aggregates']} aggregates
+ * @param {import('../../domain/snapshot.js').InsightSnapshot['aggregates']} aggregates
  * @param {FeedbackRecord[]} records
  */
 export function resolveSourcePainPointClustering(aggregates, records) {

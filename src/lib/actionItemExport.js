@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+/** @typedef {import('../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
 import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,

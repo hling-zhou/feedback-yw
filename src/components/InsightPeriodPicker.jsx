@@ -28,6 +28,8 @@ function defaultCustomRange() {
   return { fromMonth: spec.customFromMonth, toMonth: spec.customToMonth }
 }
 
+/** @typedef {import('../domain/enums.js').PeriodGranularity} PeriodGranularity */
+
 /**
  * 洞察周期：按月 / 按季度 / 按年 / 自定义起止月（自动匹配数据时间）
  * @param {{

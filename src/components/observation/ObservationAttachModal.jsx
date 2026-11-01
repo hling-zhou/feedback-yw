@@ -15,7 +15,7 @@ import {
  * - 评价：原因标签 + 原文摘录（原因为「其他」时只用摘录）
  * - 建议卡新建：直接用被匹配文本（调用方传入）
  *
- * @param {import('./types.js').FeedbackRecord | null} record
+ * @param {import('../../lib/types.js').FeedbackRecord | null} record
  * @param {'complaint_ticket' | 'consultation_ticket' | 'post_use_rating'} recordDataSource
  * @returns {string}
  */
@@ -44,7 +44,7 @@ export function buildObservationSummaryDraft(record, recordDataSource) {
  * @param {Object} props
  * @param {boolean} props.open
  * @param {() => void} props.onClose
- * @param {import('./types.js').FeedbackRecord | null} props.record - 宿主记录（工单或评价）
+ * @param {import('../../lib/types.js').FeedbackRecord | null} props.record - 宿主记录（工单或评价）
  * @param {'complaint_ticket' | 'consultation_ticket' | 'post_use_rating'} props.recordDataSource
  * @param {() => void} [props.onAttached] - 关联成功回调（卡片刷新用）
  */

@@ -140,7 +140,7 @@ export function buildTaxonomyPatchPackage(overrides, opts = {}) {
 }
 
 /**
- * @param {import('../domain/tagCandidate.js').TagCandidate} candidate
+ * @param {import('../../domain/tagCandidate.js').TagCandidate} candidate
  */
 export function buildSingleCandidatePatchPackage(candidate) {
   const patch = buildOverridePatchFromCandidate(candidate)

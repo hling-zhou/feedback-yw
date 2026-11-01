@@ -338,7 +338,12 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   }, [])
   const [snapshotsStale, setSnapshotsStale] = useState(false)
   /** @type {'data' | 'period' | null} */
-  const [snapshotStaleReason, setSnapshotStaleReason] = useState(/** @type {'data' | 'period' | null} */ (null))
+  /**
+   * @type {['data' | 'period' | null, import('react').Dispatch<import('react').SetStateAction<'data' | 'period' | null>>]}
+   */
+  const [snapshotStaleReason, setSnapshotStaleReason] = useState(
+    /** @type {'data' | 'period' | null} */ (null),
+  )
   const [snapshotRebuilding, setSnapshotRebuilding] = useState(
     /** @type {string | null} */ (null),
   )
@@ -364,7 +369,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     kind: undefined,
   }))
   const importSessionRef = useRef(importSession)
-  /** @type {[{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string }>>]} */
+  /** @type {[{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string; runs?: { periodId?: string, periodStart?: string, periodEnd?: string, total?: number, scope?: string }[] }, import('react').Dispatch<import('react').SetStateAction<{ active: boolean; progress: string; total: number; scope?: import('../lib/retagSession.js').BulkRetagScope | 'all'; periodId?: string; periodStart?: string; periodEnd?: string; runs?: { periodId?: string, periodStart?: string, periodEnd?: string, total?: number, scope?: string }[] }>>]} */
   const [retagSession, setRetagSession] = useState(() => ({
     active: false,
     progress: '',
@@ -523,7 +528,11 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       const apiMode =
         isApiStorageAdapter(adapter) && typeof adapter.listImportMonthSummary === 'function'
 
-      const [teamSettings, rawPeriodList, savedSelection, savedCurrentPeriodId, monthSummary] =
+      /** @type {{ granularity: string, year: number | null, month: number | null, quarter: number | null, fromMonth: string | null, toMonth: string | null } | null} */
+      let savedSelection = null
+      /** @type {string | null} */
+      let savedCurrentPeriodId = null
+      const [teamSettings, rawPeriodList, savedSelectionRaw, savedCurrentPeriodIdRaw, monthSummary] =
         await Promise.all([
           loadTeamAppSettings(adapter),
           adapter.listInsightPeriods(),
@@ -531,6 +540,8 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           adapter.getMeta(META_CURRENT_PERIOD),
           apiMode ? adapter.listImportMonthSummary() : Promise.resolve(null),
         ])
+      savedSelection = /** @type {typeof savedSelection} */ (savedSelectionRaw)
+      savedCurrentPeriodId = /** @type {string | null} */ (savedCurrentPeriodIdRaw)
       if (Object.keys(teamSettings).length) {
         const local = loadSettings()
         const merged = attachJourneyRules(mergeTeamAndLocalSettings(teamSettings, local))
@@ -551,9 +562,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       if (!apiMode) {
         try {
           const page = await fetchAllRecordPages(adapter)
-          loadedRecords = page.records
-          setFeedbacks(page.records)
-          feedbacksRef.current = page.records
+          const pageRecords = /** @type {import('../lib/types.js').FeedbackRecord[]} */ (page.records)
+          loadedRecords = pageRecords
+          setFeedbacks(pageRecords)
+          feedbacksRef.current = pageRecords
           setTotalRecordCount(page.total)
           setFeedbacksHydrated(true)
         } finally {
@@ -834,7 +846,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       setTaxonomyMeta(managedState)
       return managedState
     }
-    const overrides = await adapter.getMeta(META_KEY_OVERRIDES)
+    const overrides = /** @type {import('../lib/tagLibrary/overrides.js').TaxonomyOverrides | null} */ (
+      await adapter.getMeta(META_KEY_OVERRIDES)
+    )
     if (overrides) {
       const tax = applyTaxonomyOverridesFromMeta(overrides)
       setTaxonomyMeta(tax)
@@ -884,9 +898,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         const postUseRecords = feedbacksRef.current.filter(
           (fb) => fb.dataSourceType === 'post_use_rating',
         )
-        const merged = [...records, ...postUseRecords.filter(
-          (pu) => !records.some((r) => r.id === pu.id),
-        )]
+        const merged = /** @type {import('../lib/types.js').FeedbackRecord[]} */ ([
+          ...records,
+          ...postUseRecords.filter((pu) => !records.some((r) => r.id === pu.id)),
+        ])
         setFeedbacks(merged)
         feedbacksRef.current = merged
         setTotalRecordCount(total)
@@ -948,8 +963,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         taskWaitersRef.current.delete(taskId)
         if (waiter) {
           if (result.status === 'cancelled') {
-            const err = new Error('任务已取消')
-            err.code = result.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED'
+            const err = Object.assign(new Error('任务已取消'), {
+              code: result.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED',
+            })
             waiter.reject(err)
           } else if (result.status === 'failed') {
             waiter.reject(new Error(String(result.error || '后台任务失败')))
@@ -1001,8 +1017,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     if (pending) {
       pendingTaskResultsRef.current.delete(taskId)
       if (pending.status === 'cancelled') {
-        const err = new Error('任务已取消')
-        err.code = pending.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED'
+        const err = Object.assign(new Error('任务已取消'), {
+          code: pending.mode === 'import' ? 'IMPORT_CANCELLED' : 'RETAG_CANCELLED',
+        })
         return Promise.reject(err)
       }
       if (pending.status === 'failed') {
@@ -1051,7 +1068,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   )
 
   const touchSharedBackgroundTask = useCallback(
-    /** @param {{ progress?: string; meta?: Record<string, unknown> }} patch */
+    /** @param {{ progress?: string; meta?: Record<string, unknown>; taskId?: string }} patch */
     async (patch) => {
       if (!isApiStorageAdapter(adapter) || !ownedBackgroundTaskRef.current) return
       try {
@@ -1388,8 +1405,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     await adapter.init()
     const version = await adapter.getMeta(META_KEY_TAG_VERSION)
     const overrides =
-      (await adapter.getMeta(META_KEY_OVERRIDES)) ||
-      emptyOverrides(version || TAG_LIBRARY_VERSION_DEFAULT)
+      /** @type {import('../lib/tagLibrary/overrides.js').TaxonomyOverrides} */
+      ((await adapter.getMeta(META_KEY_OVERRIDES)) ||
+        emptyOverrides(version || TAG_LIBRARY_VERSION_DEFAULT))
     return overrides
   }, [adapter])
 
@@ -2187,12 +2205,14 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       if (!('rawText' in existing) && typeof adapter.getRecord === 'function') {
         try {
           const full = await adapter.getRecord(id)
-          if (full) existing = full
+          if (full)
+            existing = /** @type {import('../lib/types.js').FeedbackRecord} */ (full)
         } catch (err) {
           console.warn('[update] 拉取全量记录失败，使用缓存作为 merge base', err)
         }
       }
       const manualTagFields = mergeManualTagFieldsOnUserEdit(existing, patch)
+      /** @type {import('../lib/types.js').FeedbackRecord} */
       const merged = { ...existing, ...patch, manualTagFields }
       if (!options.skipTagCorrectionCapture) {
         const correctionEvents = buildCorrectionEventsFromEdit(existing, patch, {
@@ -3352,9 +3372,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       if (existing?.status === 'succeeded' && !meta.force) {
         const finished = existing.finishedAt ? new Date(existing.finishedAt).getTime() : 0
         if (finished && Date.now() - finished < 24 * 3600 * 1000) {
-          const err = new Error('DUPLICATE_RUN')
-          err.code = 'DUPLICATE_RUN'
-          err.existingRun = existing
+          const err = Object.assign(new Error('DUPLICATE_RUN'), {
+            code: 'DUPLICATE_RUN',
+            existingRun: existing,
+          })
           throw err
         }
       }

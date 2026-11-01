@@ -27,6 +27,20 @@ export function resolveActionAnchor(action) {
 }
 
 /**
+ * 问题压降对比结果（anchor 前后均值口径）。
+ * @typedef {Object} Reduction
+ * @property {string} anchorMonth
+ * @property {{ date: string; count: number }[]} beforeMonths
+ * @property {{ date: string; count: number }[]} afterMonths
+ * @property {number} beforeAvg
+ * @property {number} afterAvg
+ * @property {number} beforeCount
+ * @property {number} afterCount
+ * @property {number} changePct
+ * @property {boolean} sufficient
+ */
+
+/**
  * 通用前后对比（全部可用数据口径，锚点当月计入前段）。
  * @param {{ date: string; count: number }[]} trend
  * @param {string} anchorMonth YYYY-MM；空则返回 null

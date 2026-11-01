@@ -2,7 +2,6 @@ import { IDB_NAME, IDB_SCHEMA_VERSION } from '../domain/constants.js'
 
 export { IDB_NAME, IDB_SCHEMA_VERSION }
 
-/** @type {const} */
 export const STORES = {
   records: 'records',
   analysis_runs: 'analysis_runs',

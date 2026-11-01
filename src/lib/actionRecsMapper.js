@@ -1,3 +1,9 @@
+/** @typedef {import('../domain/overviewConclusions.js').ActionRecsTier} ActionRecsTier */
+/** @typedef {import('../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult */
+/** @typedef {import('../domain/overviewConclusions.js').ActionRecsScale} ActionRecsScale */
+/** @typedef {import('../domain/overviewConclusions.js').ActionRecsProblemSummary} ActionRecsProblemSummary */
+/** @typedef {import('../domain/overviewConclusions.js').ActionRecsCustomerVoice} ActionRecsCustomerVoice */
+
 /**
  * actionRecsMapper.js
  * 引擎 item → ActionRecsResult 映射器

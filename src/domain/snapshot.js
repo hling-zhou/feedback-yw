@@ -15,6 +15,7 @@
  * @property {Record<string, unknown>} summary
  * @property {Record<string, unknown>} aggregates
  * @property {string[]} recordIds
+ * @property {Record<string, unknown>} [workbench] 兼容字段：综合概述聚合（分源快照一般为空）
  * @property {string} [errorSummary]
  */
 

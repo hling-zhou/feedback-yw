@@ -16,7 +16,7 @@ export function migrateSharedBandwidthTaxonomyProduct(snapshot) {
 }
 
 /**
- * @param {import('../../storage/types.js').FeedbackRecord} record
+ * @param {import('../types.js').FeedbackRecord} record
  * @returns {boolean}
  */
 export function migrateSharedBandwidthRecordToEip(record) {
