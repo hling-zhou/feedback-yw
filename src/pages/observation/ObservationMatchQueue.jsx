@@ -181,7 +181,7 @@ export default function ObservationMatchQueue({ onCountChange, onOpenRecord }) {
   const s = reviewing
 
   return (
-    <div className="space-y-3">
+    <div className="page-card-sm page-section-sm space-y-3">
       {contextHolder}
       <div className="flex flex-wrap items-center gap-2">
         <Typography.Text strong>待复核建议</Typography.Text>

@@ -8,7 +8,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { EyeOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { PageHeader } from './Dashboard.shared.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import ActionItemProductStatusChart from '../components/charts/ActionItemProductStatusChart.jsx'
@@ -289,6 +289,7 @@ export default function TicketTodoTab() {
       linkedFromLibrary: payload.linkedFromLibrary,
       markProcessed: payload.markProcessed,
       observationIssueId: payload.observationIssueId,
+      observationSummary: payload.observationSummary,
     })
 
     // 转留观：先落 issue（新建或关联已有），宿主工单为首条证据；失败中止保存（待办状态不变）
@@ -552,21 +553,11 @@ export default function TicketTodoTab() {
     {
       title: '操作',
       key: 'actions',
-      width: 84,
+      width: 56,
       fixed: 'right',
       render: (_, record) =>
         canEdit ? (
           <Space size={0} onClick={(event) => event.stopPropagation()}>
-            {isTicketTodoOpen(record) ? (
-              <Tooltip title="转留观：在处理抽屉中选「转留观」，宿主工单为首条证据">
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => openRow(record)}
-                />
-              </Tooltip>
-            ) : null}
             <Popconfirm
               title="删除这条会议待办？"
               okText="删除"

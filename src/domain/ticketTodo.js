@@ -400,7 +400,7 @@ function hasEstablishedActionInProcessInput(input) {
 }
 
 /**
- * 处理提交：按单选路径判定。制定举措 → 已转举措；转留观（observationIssueId）→ 已转留观；无举措且勾选已处理 → 已处理无举措；否则保持未处理。
+ * 处理提交：按单选路径判定。制定举措 → 已转举措；转留观（关联已有传 observationIssueId，新建传 observationSummary）→ 已转留观；无举措且勾选已处理 → 已处理无举措；否则保持未处理。
  * 未传 processMode 时回退为旧规则（有举措内容优先于勾选）。
  *
  * @param {{
@@ -409,6 +409,8 @@ function hasEstablishedActionInProcessInput(input) {
  *   actionId?: string
  *   linkedFromLibrary?: boolean
  *   markProcessed?: boolean
+ *   observationIssueId?: string - 转留观-关联已有：所选问题 ID
+ *   observationSummary?: string - 转留观-新建：问题描述
  * }} input
  * @returns {TicketTodoResolution}
  */
@@ -421,8 +423,11 @@ export function resolveTicketTodoProcessResolution(input) {
     return hasEstablishedActionInProcessInput(input) ? 'converted_to_action' : 'open'
   }
   if (mode === TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION) {
-    // 转留观：observationIssueId 必填（新建或关联已有），宿主工单为首条 confirmed 证据
-    return input?.observationIssueId ? 'converted_to_observation' : 'open'
+    // 转留观：关联已有须 observationIssueId；新建须 observationSummary 非空（建完才有 ID，不能只看 ID）。
+    // 宿主工单为首条 confirmed 证据。
+    const hasIssueId = Boolean(String(input?.observationIssueId || '').trim())
+    const hasSummary = Boolean(String(input?.observationSummary || '').trim())
+    return hasIssueId || hasSummary ? 'converted_to_observation' : 'open'
   }
   if (hasEstablishedActionInProcessInput(input)) return 'converted_to_action'
   if (input?.markProcessed) return 'processed_without_action'

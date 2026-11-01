@@ -389,6 +389,7 @@ export default function ObservationTab({ onOpenRecord }) {
   return (
     <div className="space-y-4">
       {contextHolder}
+      <div className="page-card-sm page-section-sm space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input.Search
           allowClear
@@ -469,12 +470,36 @@ export default function ObservationTab({ onOpenRecord }) {
           ),
         }}
       />
+      </div>
 
       <AntDrawer
         open={detailOpen}
-        width={560}
-        title={detailIssue ? `留观问题 · ${detailIssue.title}` : '留观问题'}
+        width={720}
+        title={
+          detailIssue ? (
+            <div className="flex w-full min-w-0 flex-col gap-1 pr-6">
+              <span className="text-base font-semibold leading-none">留观问题</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Typography.Text className="min-w-0 truncate text-xs" ellipsis={{ tooltip: detailIssue.title }}>
+                  {detailIssue.title}
+                </Typography.Text>
+                <Tag color={STATUS_TAG_COLOR[detailIssue.status]}>
+                  {OBSERVATION_ISSUE_STATUS_LABELS[detailIssue.status] || detailIssue.status}
+                </Tag>
+                <Typography.Text type="secondary" className="text-xs">
+                  出现 {detailIssue.occurrenceCount ?? '—'} 次
+                </Typography.Text>
+              </div>
+            </div>
+          ) : (
+            <span>留观问题</span>
+          )
+        }
         onClose={() => setDetailOpen(false)}
+        styles={{
+          section: { overflow: 'hidden' },
+          body: { overflowX: 'hidden', overflowY: 'auto' },
+        }}
         footer={
           canEdit ? (
             <Space className="w-full justify-end">

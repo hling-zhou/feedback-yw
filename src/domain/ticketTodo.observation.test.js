@@ -16,13 +16,29 @@ describe('ticketTodo converted_to_observation', () => {
     expect(isTicketTodoResolution('converted_to_observation')).toBe(true)
   })
 
-  it('convert_observation mode: issueId required to resolve', () => {
+  it('convert_observation mode: attach needs issueId, create needs summary', () => {
+    // 关联已有：issueId
     expect(
       resolveTicketTodoProcessResolution({
         processMode: TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION,
         observationIssueId: 'issue-1',
       }),
     ).toBe('converted_to_observation')
+    // 新建：无 issueId，但摘要非空即过（建完才有 ID，不能只看 ID）
+    expect(
+      resolveTicketTodoProcessResolution({
+        processMode: TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION,
+        observationSummary: '退订入口找不到',
+      }),
+    ).toBe('converted_to_observation')
+    // 新建：预填摘要被清空 → open
+    expect(
+      resolveTicketTodoProcessResolution({
+        processMode: TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION,
+        observationSummary: '   ',
+      }),
+    ).toBe('open')
+    // 两者皆空 → open
     expect(
       resolveTicketTodoProcessResolution({
         processMode: TICKET_TODO_PROCESS_MODE.CONVERT_OBSERVATION,
