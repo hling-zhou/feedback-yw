@@ -9,19 +9,19 @@ describe('shouldShowRemoteRecordStale', () => {
     expect(shouldShowRemoteRecordStale({ ...base, recordRevision: 1 }, 2, {})).toBe(false)
   })
 
-  it('returns false during own bulk retag, import, or reprocessing', () => {
+  it('grades own bulk retag, import, or reprocessing as own_task', () => {
     expect(
       shouldShowRemoteRecordStale({ ...base, recordRevision: 3 }, 2, { retagActive: true }),
-    ).toBe(false)
+    ).toBe('own_task')
     expect(
       shouldShowRemoteRecordStale({ ...base, recordRevision: 3 }, 2, { importActive: true }),
-    ).toBe(false)
+    ).toBe('own_task')
     expect(
       shouldShowRemoteRecordStale({ ...base, recordRevision: 3 }, 2, { reprocessingActive: true }),
-    ).toBe(false)
+    ).toBe('own_task')
   })
 
-  it('returns false when revision bump is from same user', () => {
+  it('returns false when revision bump is from same user (no task running)', () => {
     expect(
       shouldShowRemoteRecordStale(
         {
@@ -35,7 +35,7 @@ describe('shouldShowRemoteRecordStale', () => {
     ).toBe(false)
   })
 
-  it('returns false when user holds shared background task lock', () => {
+  it('grades revision bump by own shared background task lock as own_task', () => {
     expect(
       shouldShowRemoteRecordStale(
         { ...base, recordRevision: 3 },
@@ -52,10 +52,10 @@ describe('shouldShowRemoteRecordStale', () => {
           },
         },
       ),
-    ).toBe(false)
+    ).toBe('own_task')
   })
 
-  it('returns false for action item revision bump by same user', () => {
+  it('returns false for action item revision bump by same user without tasks', () => {
     expect(
       shouldShowRemoteRecordStale(
         {
@@ -69,7 +69,7 @@ describe('shouldShowRemoteRecordStale', () => {
     ).toBe(false)
   })
 
-  it('returns true for another user revision bump', () => {
+  it('grades another user revision bump as other (warning)', () => {
     expect(
       shouldShowRemoteRecordStale(
         {
@@ -80,6 +80,44 @@ describe('shouldShowRemoteRecordStale', () => {
         2,
         { userId: 'u1' },
       ),
-    ).toBe(true)
+    ).toBe('other')
+  })
+
+  it('grades another user holding the task lock as other, own hold as own_task', () => {
+    const lockOf = (userId) => ({
+      id: 'lock',
+      type: 'retag',
+      userId,
+      username: userId,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    expect(
+      shouldShowRemoteRecordStale({ ...base, recordRevision: 3 }, 2, {
+        userId: 'u1',
+        sharedBackgroundTask: lockOf('u2'),
+      }),
+    ).toBe('other')
+    expect(
+      shouldShowRemoteRecordStale({ ...base, recordRevision: 3 }, 2, {
+        userId: 'u1',
+        sharedBackgroundTask: lockOf('u1'),
+      }),
+    ).toBe('own_task')
+  })
+
+  it('own task activity wins over same-user updatedBy silence', () => {
+    // 自己发起的批量任务回写（updatedBy 也是自己）仍应提示 own_task（列表已同步为较新版本）
+    expect(
+      shouldShowRemoteRecordStale(
+        {
+          ...base,
+          recordRevision: 3,
+          updatedBy: { userId: 'u1', username: 'alice' },
+        },
+        2,
+        { userId: 'u1', retagActive: true },
+      ),
+    ).toBe('own_task')
   })
 })
