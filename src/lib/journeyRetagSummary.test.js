@@ -106,6 +106,28 @@ describe('journeyRetagSummary', () => {
     expect(msg).toContain('Network')
   })
 
+  it('formatBulkRetagResultMessage includes regressed line, consistent with panel wording', () => {
+    const msg = formatBulkRetagResultMessage({
+      total: 10,
+      beforeUnknown: 0,
+      afterUnknown: 0,
+      summary: summarizeUnknownJourneyRecords([]),
+      ticketLlmRegressed: 2,
+    })
+    expect(msg).toContain('退回规则：2 条')
+    expect(msg).toContain('「大模型」退回「规则」')
+  })
+
+  it('formatBulkRetagResultMessage omits regressed line when none regressed', () => {
+    const msg = formatBulkRetagResultMessage({
+      total: 10,
+      beforeUnknown: 0,
+      afterUnknown: 0,
+      summary: summarizeUnknownJourneyRecords([]),
+    })
+    expect(msg).not.toContain('退回规则')
+  })
+
   it('formatBulkRetagResultMessage prompts insight refresh when pain points changed materially', () => {
     const msg = formatBulkRetagResultMessage({
       total: 20,

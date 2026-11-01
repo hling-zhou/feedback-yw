@@ -646,7 +646,11 @@ export async function runEnrichment(opts) {
       const afterUnknown = afterUnknownList.length
       const summary = summarizeUnknownJourneyRecords(enriched)
       const painPointDelta = summarizeRetagPainPointChanges(beforeRecords, enriched)
-      const llmDelta = computeTicketLlmEnrichmentDelta(beforeRecords, enriched)
+      // 仅补旅程的任务不跑工单 LLM，不统计请求/痛点增量（避免误显无关欠账）
+      const llmDelta =
+        scope === 'needs_journey_llm'
+          ? null
+          : computeTicketLlmEnrichmentDelta(beforeRecords, enriched)
 
       return {
         records: enriched,
@@ -657,8 +661,9 @@ export async function runEnrichment(opts) {
           afterUnknown,
           summary,
           painPointDelta,
-          ticketLlmCompleted: llmDelta.ticketLlmCompleted,
-          ticketLlmFailed: llmDelta.ticketLlmFailed,
+          ticketLlmCompleted: llmDelta?.ticketLlmCompleted,
+          ticketLlmFailed: llmDelta?.ticketLlmFailed,
+          ticketLlmRegressed: llmDelta?.ticketLlmRegressed,
         },
       }
     }

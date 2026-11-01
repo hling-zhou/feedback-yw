@@ -129,7 +129,8 @@ export default function TaskHistoryPanel({ open, onClose }) {
         if (stats.keptManual) parts.push(`保留人工 ${stats.keptManual}`)
       }
       if (stats.ticketLlmCompleted != null) parts.push(`LLM 完成 ${stats.ticketLlmCompleted}`)
-      if (stats.ticketLlmFailed) parts.push(`失败 ${stats.ticketLlmFailed}`)
+      if (stats.ticketLlmFailed) parts.push(`仍待增强 ${stats.ticketLlmFailed}`)
+      if (stats.ticketLlmRegressed) parts.push(`退回规则 ${stats.ticketLlmRegressed}`)
       if (stats.afterUnknown != null) parts.push(`未识别旅程 ${stats.afterUnknown}`)
     }
     if (s.warnings) parts.push(`警告 ${s.warnings}`)

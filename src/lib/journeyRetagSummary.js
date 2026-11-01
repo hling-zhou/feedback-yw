@@ -128,6 +128,7 @@ export function summarizeRetagPainPointChanges(beforeRecords, afterRecords) {
  *   painPointDelta?: ReturnType<typeof summarizeRetagPainPointChanges>
  *   ticketLlmCompleted?: number
  *   ticketLlmFailed?: number
+ *   ticketLlmRegressed?: number
  * }} result
  */
 export function formatBulkRetagResultMessage(result) {
@@ -142,6 +143,9 @@ export function formatBulkRetagResultMessage(result) {
       resolved > 0 ? `（新识别 ${resolved} 条）` : ''
     }。`,
   ]
+  if (result.ticketLlmRegressed > 0) {
+    lines.push(`退回规则：${result.ticketLlmRegressed} 条工单的客户请求/需求痛点由「大模型」退回「规则」来源。`)
+  }
   const ticketLlmMsg = formatTicketLlmRemainRuleMessage(result.ticketLlmFailed ?? 0)
   if (ticketLlmMsg) {
     lines.push('')

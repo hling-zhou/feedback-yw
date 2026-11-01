@@ -2956,8 +2956,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         scope,
         summary: summarizeUnknownJourneyRecords(updatedSubset),
         painPointDelta,
-        ticketLlmCompleted: ticketLlmStats?.ticketLlmCompleted ?? 0,
-        ticketLlmFailed: ticketLlmStats?.ticketLlmFailed ?? 0,
+        ticketLlmCompleted: ticketLlmStats?.ticketLlmCompleted,
+        ticketLlmFailed: ticketLlmStats?.ticketLlmFailed,
+        ticketLlmRegressed: ticketLlmStats?.ticketLlmRegressed,
       }
     },
     [
@@ -3041,6 +3042,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           painPointDelta: stats.painPointDelta,
           ticketLlmCompleted: stats.ticketLlmCompleted,
           ticketLlmFailed: stats.ticketLlmFailed,
+          ticketLlmRegressed: stats.ticketLlmRegressed,
         }
         if (result) notifyRetagFinished(result, startedPeriodId)
         return result

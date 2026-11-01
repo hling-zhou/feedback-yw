@@ -1,5 +1,7 @@
 import {
   countRecordsNeedingJourneyLlmEnrichment,
+  getCustomerRequestSource,
+  getPainPointSource,
   recordNeedsTicketLlmEnrichment,
 } from './ticketAnalysis/ticketAnalysisSources.js'
 
@@ -9,6 +11,7 @@ export { computeJourneyEnrichmentDelta } from './ticketAnalysis/ticketAnalysisSo
  * @typedef {Object} ImportEnrichmentStats
  * @property {number} ticketLlmCompleted
  * @property {number} ticketLlmFailed
+ * @property {number} ticketLlmRegressed
  * @property {number} journeyLlmCompleted
  * @property {number} journeySkippedByGating
  * @property {number} optimizationRetryCount
@@ -19,6 +22,7 @@ export function createEmptyEnrichmentStats() {
   return {
     ticketLlmCompleted: 0,
     ticketLlmFailed: 0,
+    ticketLlmRegressed: 0,
     journeyLlmCompleted: 0,
     journeySkippedByGating: 0,
     optimizationRetryCount: 0,
@@ -26,20 +30,35 @@ export function createEmptyEnrichmentStats() {
 }
 
 /**
+ * 逐条对比任务前后快照，统计工单 LLM 增强的三类净变化：
+ * - completed：任务前待增强 → 任务后已增强（净新增）
+ * - failed：任务前待增强 → 任务后仍待增强（净欠账）
+ * - regressed：任务前已增强（不在 completed/failed 分母内）→ 任务后任一
+ *   维度来源退回「规则」。人工/导入来源（manual/import 归一化后非 rule）不算退化。
  * @param {import('./types.js').FeedbackRecord[]} before
  * @param {import('./types.js').FeedbackRecord[]} after
  */
 export function computeTicketLlmEnrichmentDelta(before, after) {
   let completed = 0
   let failed = 0
+  let regressed = 0
   for (let i = 0; i < after.length; i++) {
     const prev = before[i]
     const next = after[i]
-    if (!recordNeedsTicketLlmEnrichment(prev)) continue
+    if (!recordNeedsTicketLlmEnrichment(prev)) {
+      // 已增强记录的退化：仅当出现「规则」来源（人工接管不算）
+      if (
+        recordNeedsTicketLlmEnrichment(next) &&
+        (getCustomerRequestSource(next) === 'rule' || getPainPointSource(next) === 'rule')
+      ) {
+        regressed++
+      }
+      continue
+    }
     if (!recordNeedsTicketLlmEnrichment(next)) completed++
     else failed++
   }
-  return { ticketLlmCompleted: completed, ticketLlmFailed: failed }
+  return { ticketLlmCompleted: completed, ticketLlmFailed: failed, ticketLlmRegressed: regressed }
 }
 
 /**
