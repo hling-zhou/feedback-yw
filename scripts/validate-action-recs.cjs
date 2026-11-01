@@ -18,7 +18,39 @@ const DATA_FILE = _loaded.file;
 
 const SEP = '\u0001'; // 字段分隔哨兵：挖掘 n-gram 时跳过，避免跨字段拼出假词
 
-function get(r, f) { return String(r[f] || '').trim(); }
+// 字段名别名：本脚本沿用中文字段名（从 xlsx CLI 路径），
+// 但 DB records 的 payload 用驼峰英文字段名（系统 Web UI 导入路径 pipeline.js）。
+// get() 先试原始字段名，回退到别名。与 actionRecsEngine.cjs FIELD_ALIASES 对齐。
+const FIELD_ALIASES = {
+  '产品名称': ['product', 'productName'],
+  '问题原因': ['rootCause', 'rootCauseReview', 'rootCauseCol'],
+  '需求痛点': ['painPoint', 'problemSummary'],
+  '工单号': ['ticketId'],
+  '客户请求内容': ['customerRequest'],
+  '受理内容': ['rawText'],
+  '处理意见': ['handlingText', 'responseText'],
+  '产品技术优化': ['optimizationProduct', 'optimizationSuggestion'],
+  '是否加急': ['urgencyLevel'],
+  '问题类型': ['problemType'],
+  '旅程一级': ['journeyL1'],
+  '旅程二级': ['journeyL2'],
+  '_src': ['dataSourceType', 'source'],
+  '_month': ['importMonth'],
+  '_sheet': ['importSheetName'],
+};
+
+function get(r, f) {
+  let v = String(r[f] || '').trim();
+  if (v) return v;
+  const aliases = FIELD_ALIASES[f];
+  if (aliases) {
+    for (const a of aliases) {
+      v = String(r[a] || '').trim();
+      if (v) return v;
+    }
+  }
+  return '';
+}
 function monthOf(r) {
   const pre = get(r, '_month');      // 由加载器从 sheet 名解析（优先，稳）
   if (pre) return pre;
@@ -1765,14 +1797,14 @@ function runPipeline(taxMap) {
   // 作用域白名单：默认只分析已 curated 的产品（与已验证的 4 产品范围一致）；
   // PRODUCTS=* → 数据里全部产品（机制将为未知产品派生草稿并升级人工，演示"适配全部产品"）；
   // 也可 PRODUCTS=弹性公网IP,云专线 自定义。未 curated 且在作用域内 → 派生草稿（不跳过、不报错）。
-  const prodsAll = [...new Set(d.map(r => String(r['产品名称'] || '').replace(/\s/g, '')))].filter(Boolean);
+  const prodsAll = [...new Set(d.map(r => get(r, '产品名称').replace(/\s/g, '')))].filter(Boolean);
   const SCOPE = process.env.PRODUCTS;
   const prods = SCOPE === '*' ? prodsAll
     : (SCOPE ? SCOPE.split(',').map(s => s.trim()).filter(Boolean)
              : Object.keys(CAUSE_TAX_MAP).filter(p => prodsAll.includes(p)));
   const OV = process.env.DISABLE_OVERRIDES ? {} : loadOverrides();   // 第三方增量（默认启用）
   for (const p of prods) {
-    const rows = d.filter(r => String(r['产品名称'] || '').replace(/\s/g, '') === p);
+    const rows = d.filter(r => get(r, '产品名称').replace(/\s/g, '') === p);
     if (!rows.length) continue;
     const T = rows.length;
     const c = rows.filter(r => get(r, '_src') === '投诉').length;
@@ -1843,7 +1875,7 @@ function emitArtifacts() {
   fs.writeFileSync(path.join(DIST, 'taxonomy-current.json'), JSON.stringify(taxOut, null, 2), 'utf8');
   // 逐工单证据单独写出（含文本），让门禁/修复方独立核验，不依赖上面精简后的 rowStatus
   const evOut = summary.map(s => {
-    const rowsAll = d.filter(r => String(r['产品名称'] || '').replace(/\s/g, '') === s.p);
+    const rowsAll = d.filter(r => get(r, '产品名称').replace(/\s/g, '') === s.p);
     const byId = new Map(rowsAll.map(r => [get(r, '工单号'), r]));
     return {
       p: s.p,
@@ -1872,7 +1904,7 @@ if (require.main === module) {
           for (const s of summary) {
             if (!s.assistCandidates || !s.assistCandidates.length) continue;
             const tax = s.taxUsed;
-            const rows = d.filter(r => String(r['产品名称'] || '').replace(/\s/g, '') === s.p);
+            const rows = d.filter(r => get(r, '产品名称').replace(/\s/g, '') === s.p);
             console.log(`[llm-assist] ${s.p}: ${s.assistCandidates.length} 个复合工单待判定`);
             for (const ac of s.assistCandidates) {
               const t = rows[ac.i];
@@ -1900,7 +1932,7 @@ if (process.env.CHECK_ID) {
   for (const id of ids) {
     const r = d.find(x => String(x['工单号'] || '').trim() === id);
     if (!r) { CL.push(`[${id}] 未找到`); continue; }
-    const p = String(r['产品名称'] || '').trim();
+    const p = get(r, '产品名称').trim();
     const rows = d.filter(x => String(x['产品名称'] || '').trim() === p);
     const tax = (process.env.CAUSE_FIRST !== '0' && CAUSE_TAX_MAP[p]) ? CAUSE_TAX_MAP[p] : TAX[p];
     if (!tax) { CL.push(`[${id}] 产品 ${p} 无分类法`); continue; }
@@ -1928,7 +1960,7 @@ if (process.env.AUDIT_SAMPLE) {
   const AL = [];
   for (const s of summary) {
     const p = s.p, tax = s.taxUsed;
-    const rows = d.filter(r => String(r['产品名称'] || '').replace(/\s/g, '') === p);
+    const rows = d.filter(r => get(r, '产品名称').replace(/\s/g, '') === p);
     const recs = [];
     for (const r of rows) {
       const reason = get(r, '问题原因'), pain = get(r, '需求痛点');
