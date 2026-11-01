@@ -41,7 +41,8 @@ import { buildProblemCentricView } from '../src/domain/actionProblemScope.js'
  * @property {string} [productKeys] - 逗号分隔多选
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses] - 逗号分隔多选
- * @property {'ticket' | 'post_use' | 'observation'} [source] - 举措来源过滤
+ * @property {'ticket' | 'post_use' | 'observation'} [source] - 举措来源过滤（单值，兼容旧调用）
+ * @property {('ticket' | 'post_use' | 'observation')[]} [sources] - 举措来源过滤（多值合并视图，优先于 source）
  * @property {string} [ticketId] - 关联工单号
  * @property {string} [linkedDataSources] - 逗号分隔多选
  * @property {string} [problemType] - 问题类型（快照/首单回退）
@@ -219,7 +220,14 @@ function getFilteredActionItems(query = {}) {
     clauses.push('first_proposed_at <= ?')
     params.push(query.firstProposedTo.trim())
   }
-  if (query.source === 'ticket' || query.source === 'post_use' || query.source === 'observation') {
+  if (query.sources?.length) {
+    // 多值来源过滤（如 投诉/咨询档 = ticket+observation 合并视图）
+    const valid = query.sources.filter((v) => v === 'ticket' || v === 'post_use' || v === 'observation')
+    if (valid.length) {
+      clauses.push(`source IN (${valid.map(() => '?').join(',')})`)
+      params.push(...valid)
+    }
+  } else if (query.source === 'ticket' || query.source === 'post_use' || query.source === 'observation') {
     clauses.push('source = ?')
     params.push(query.source)
   }

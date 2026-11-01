@@ -71,9 +71,15 @@ async function refreshProductCatalogForProblemView(logger) {
  */
 export function registerActionRoutes(app) {
   app.get('/api/actions', { preHandler: requirePermission('view') }, async (request) => {
-    const q = /** @type {import('../actionItemRepository.js').ActionItemListQuery} */ (
-      request.query || {}
-    )
+    const raw = /** @type {Record<string, string>} */ (request.query || {})
+    /** @type {import('../actionItemRepository.js').ActionItemListQuery} */
+    const q = { ...raw }
+    if (typeof raw.sources === 'string' && raw.sources.trim()) {
+      q.sources = raw.sources
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+    }
     return actionItemRepository.listActionItems(q)
   })
 
@@ -89,9 +95,15 @@ export function registerActionRoutes(app) {
   )
 
   app.get('/api/actions/stats', { preHandler: requirePermission('view') }, async (request) => {
-    const q = /** @type {import('../actionItemRepository.js').ActionItemListQuery} */ (
-      request.query || {}
-    )
+    const raw = /** @type {Record<string, string>} */ (request.query || {})
+    /** @type {import('../actionItemRepository.js').ActionItemListQuery} */
+    const q = { ...raw }
+    if (typeof raw.sources === 'string' && raw.sources.trim()) {
+      q.sources = raw.sources
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+    }
     return {
       counts: actionItemRepository.countActionItemsByStatus(q),
       byProduct: actionItemRepository.aggregateActionItemsByProductStatus(q),

@@ -53,6 +53,7 @@ export {
  * @property {import('./enums.js').DataSourceType[]} [linkedDataSources]
  * @property {string[]} [linkedInsightIds]
  * @property {string[]} [evidenceRecordIds]
+ * @property {{ issueId: string, promotedAt: string }} [promotedFromObservation] 由留观问题升级的回链（见 ActionItemDrawer 留观证据区块）
  * @property {string} [insightTheme]
  * @property {{ period?: string; metric?: string; value?: number; baseline?: number; unit?: string }} [triggerMetric]
  * @property {{ status?: string; label?: string; explanation?: string }} [recoveryValidation]

@@ -273,9 +273,7 @@ function ProductActionsTab() {
 
   const [filters, setFilters] = useState(createEmptyActionItemFilters)
   const [actionSource, setActionSource] = useState(
-    /** @type {'ticket' | 'post_use' | 'observation'} */ (
-      searchParams.get('source') === 'observation' ? 'observation' : 'ticket'
-    ),
+    /** @type {'ticket' | 'post_use'} */ ('ticket'),
   )
   const [dateRange, setDateRange] = useState(
     /** @type {[dayjs.Dayjs | null, dayjs.Dayjs | null] | null} */ (null),
@@ -475,7 +473,8 @@ function ProductActionsTab() {
   const listQuery = useMemo(
     () => ({
       ...tableFilters,
-      source: actionSource,
+      // 投诉/咨询档为合并视图：含留观升级（observation）来源的举措；用后即评档保持纯净
+      sources: actionSource === 'ticket' ? ['ticket', 'observation'] : [actionSource],
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
       insightPeriodId: insightPeriodId || undefined,
@@ -486,7 +485,7 @@ function ProductActionsTab() {
   /** 页头周期/首次提出时间范围，不含表格区筛选 */
   const baseScopeQuery = useMemo(
     () => ({
-      source: actionSource,
+      sources: actionSource === 'ticket' ? ['ticket', 'observation'] : [actionSource],
       firstProposedFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
       firstProposedTo: dateRange?.[1]?.format('YYYY-MM-DD'),
       insightPeriodId: insightPeriodId || undefined,
@@ -1050,8 +1049,19 @@ function ProductActionsTab() {
       title: '举措',
       dataIndex: 'content',
       ellipsis: true,
-      width: 180,
-      render: (text) => <CopyableEllipsisCell text={text} textClassName="group-hover:text-brand-600" />,
+      width: 200,
+      render: (text, record) => (
+        <span className="inline-flex items-center gap-1.5">
+          <CopyableEllipsisCell text={text} textClassName="group-hover:text-brand-600" />
+          {record.source === 'observation' ? (
+            <Tooltip title="由留观问题升级而来，证据见详情抽屉">
+              <Tag color="cyan" className="!m-0 shrink-0">
+                留观
+              </Tag>
+            </Tooltip>
+          ) : null}
+        </span>
+      ),
     },
     {
       title: (
@@ -1285,13 +1295,12 @@ function ProductActionsTab() {
       <Segmented
         value={actionSource}
         onChange={(value) => {
-          setActionSource(/** @type {'ticket' | 'post_use' | 'observation'} */ (value))
+          setActionSource(/** @type {'ticket' | 'post_use'} */ (value))
           setPage(1)
         }}
         options={[
           { label: '投诉/咨询', value: 'ticket' },
           { label: '用后即评', value: 'post_use' },
-          { label: '留观升级', value: 'observation' },
         ]}
       />
 

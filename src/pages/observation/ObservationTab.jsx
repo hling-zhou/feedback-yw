@@ -364,7 +364,7 @@ export default function ObservationTab({ onOpenRecord }) {
               <Button
                 size="small"
                 type="link"
-                onClick={() => navigate('/actions?tab=product&source=observation')}
+                onClick={() => navigate('/actions?tab=product')}
               >
                 已升级
               </Button>

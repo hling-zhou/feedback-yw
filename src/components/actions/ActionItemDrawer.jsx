@@ -28,7 +28,8 @@ import ActionItemStatusTag from '../tags/ActionItemStatusTag.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
 import ActionProblemScopePanel from './ActionProblemScopePanel.jsx'
 import { buildActionProblemScope } from '../../domain/actionProblemScope.js'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getObservationIssue } from '../../lib/observationClient.js'
 
 /** @typedef {import('../../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -105,6 +106,29 @@ export default function ActionItemDrawer({
   productNameByKey,
   linkedTicketIds = [],
 }) {
+
+  // 留观证据（F-合并方案）：source=observation 的举措在分区 4 展示留观问题的分源证据
+  const [observationLinks, setObservationLinks] = useState(
+    /** @type {import('../../domain/observationIssue.js').ObservationIssueLink[]} */ ([]),
+  )
+  const observationIssueId = item?.source === 'observation' ? item.promotedFromObservation?.issueId : null
+  useEffect(() => {
+    let cancelled = false
+    if (!observationIssueId) {
+      setObservationLinks([])
+      return undefined
+    }
+    getObservationIssue(observationIssueId)
+      .then(({ links }) => {
+        if (!cancelled) setObservationLinks(links || [])
+      })
+      .catch(() => {
+        if (!cancelled) setObservationLinks([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [observationIssueId])
   const fieldsDisabled = !canEdit || locked
   const coreDisabled = !canEdit || coreFieldsLocked
   const journey = item ? resolveJourneyDisplay(item, feedbackByTicketId) : null
@@ -375,12 +399,120 @@ export default function ActionItemDrawer({
                 onOpenTicket={onOpenTicket}
               />
             </div>
+            {observationIssueId ? (
+              <div className="mt-2">
+                <div className="section-title">留观证据（{observationLinks.length}）</div>
+                <div className="page-card-sm space-y-2">
+                  {(() => {
+                    const ticketEv = observationLinks.filter(
+                      (l) => l.linkStatus === 'confirmed' && l.recordDataSource !== 'post_use_rating',
+                    )
+                    const ratingEv = observationLinks.filter(
+                      (l) => l.linkStatus === 'confirmed' && l.recordDataSource === 'post_use_rating',
+                    )
+                    return (
+                      <>
+                        <div>
+                          <Typography.Text type="secondary" className="mb-1 block text-xs">
+                            工单证据（{ticketEv.length}）
+                          </Typography.Text>
+                          <div className="space-y-1">
+                            {ticketEv.length ? ticketEv.map((l) => (
+                              <div
+                                key={l.id}
+                                className="flex items-center gap-2 rounded-md border border-ink-100 px-2 py-1"
+                              >
+                                {l.ticketId && onOpenTicket ? (
+                                  <Button
+                                    size="small"
+                                    type="link"
+                                    className="!px-0"
+                                    onClick={() => onOpenTicket(l.ticketId)}
+                                  >
+                                    {l.ticketId}
+                                  </Button>
+                                ) : (
+                                  l.ticketId ? (
+                                    <Typography.Text className="text-xs">{l.ticketId}</Typography.Text>
+                                  ) : null
+                                )}
+                                <Typography.Text type="secondary" className="text-xs">
+                                  {DATA_SOURCE_LABELS[l.recordDataSource] || l.recordDataSource}
+                                </Typography.Text>
+                              </div>
+                            )) : (
+                              <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <Typography.Text type="secondary" className="mb-1 block text-xs">
+                            评价证据（{ratingEv.length}）
+                          </Typography.Text>
+                          <div className="space-y-1">
+                            {ratingEv.length ? ratingEv.map((l) => (
+                              <div
+                                key={l.id}
+                                className="rounded-md border border-ink-100 px-2 py-1"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Tag color="blue" className="!m-0">用后即评</Tag>
+                                  <Typography.Text type="secondary" className="text-xs">
+                                    {l.lastSeenAt?.slice(0, 10) || l.linkedAt?.slice(0, 10) || ''}
+                                  </Typography.Text>
+                                </div>
+                                {l.matchedExcerpt ? (
+                                  <Typography.Text className="mt-0.5 block text-xs" ellipsis={{ tooltip: l.matchedExcerpt }}>
+                                    {l.matchedExcerpt}
+                                  </Typography.Text>
+                                ) : null}
+                              </div>
+                            )) : (
+                              <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
+                            )}
+                          </div>
+                        </div>
+                        <Typography.Text type="secondary" className="block text-xs">
+                          证据来自留观问题「{item?.content}」升级时确认的关联记录。
+                        </Typography.Text>
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          {/* ── 分区 5：压降验证 ── */}
+          {/* ── 分区 5：效果验证（压降 + 恢复两口径合并，方案 A） ── */}
           <div className="drawer-section-gap">
-            <div className="section-title">压降验证</div>
+            <div className="section-title">效果验证</div>
             <div className="page-card-sm">
+              {(item.recoveryValidation?.label || item.recoveryValidation?.explanation) ? (
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Typography.Text type="secondary" className="text-xs">
+                      用户评分：
+                    </Typography.Text>
+                    <Typography.Text className="text-[13px]">
+                      {item.triggerMetric?.value ?? '—'}{item.triggerMetric?.unit || ''}
+                      {item.triggerMetric?.baseline != null ? `（目标 ≥ ${item.triggerMetric.baseline}${item.triggerMetric.unit || ''}）` : ''}
+                    </Typography.Text>
+                    {item.recoveryValidation?.label ? (
+                      <Tag
+                        color={item.recoveryValidation.status === 'recovered' ? 'green' : item.recoveryValidation.status === 'not_recovered' ? 'red' : 'gold'}
+                        className="!m-0"
+                      >
+                        {item.recoveryValidation.label}
+                      </Tag>
+                    ) : null}
+                  </div>
+                  {item.recoveryValidation?.explanation ? (
+                    <div className="rounded bg-ink-50 px-2 py-1 text-xs text-secondary">
+                      {item.recoveryValidation.explanation}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <ActionProblemScopePanel
                 action={item}
                 feedbackByTicketId={feedbackByTicketId}
