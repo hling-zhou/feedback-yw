@@ -1376,6 +1376,8 @@ export function registerStorageRoutes(app) {
 
   // 下载流水线产物（evidence-rows / gate-report / taxonomy-current / pipeline-summary）
   app.get('/api/storage/pipeline/artifacts/:filename', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const fs = await import('fs')
+    const path = await import('path')
     const allowed = ['evidence-rows.json', 'gate-report.json', 'taxonomy-current.json', 'pipeline-summary.json']
     const { filename } = request.params
     if (!allowed.includes(filename)) {
