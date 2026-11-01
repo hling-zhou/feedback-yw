@@ -19,9 +19,15 @@ describe('Actions observation tab wiring', () => {
     )
   })
 
-  it('embeds both list and match queue in the tab', () => {
-    expect(source).toContain('<ObservationTab />')
-    expect(source).toContain('<ObservationMatchQueue />')
+  it('embeds both list and match queue in the tab (via drawer host container)', () => {
+    // 2026-11-02 接线收尾：留观 Tab 经 ObservationTabWithDrawer 容器渲染，
+    // 由容器注入 onOpenRecord 并挂 FeedbackDrawer（工单号/评价原地可点）
+    expect(source).toContain('<ObservationTabWithDrawer />')
+    const host = read('../ObservationTabWithDrawer.jsx')
+    expect(host).toContain('<ObservationTab onOpenRecord={(link) => void openObservationRecord(link)} />')
+    expect(host).toContain('<ObservationMatchQueue')
+    expect(host).toContain('openObservationRecord(recordId, dataSourceType)')
+    expect(host).toContain('<FeedbackDrawer')
   })
 })
 

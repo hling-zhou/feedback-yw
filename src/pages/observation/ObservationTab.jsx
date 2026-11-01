@@ -72,7 +72,7 @@ const SOURCE_MIX_LABELS = {
  * 展开行 = 快速读证据；详情侧滑 = 维护问题本体（两入口设计）。
  *
  * @param {Object} props
- * @param {() => void} [props.onOpenRecord] - 跳转记录 drawer（由 Tab 宿主注入，反馈库联动）
+ * @param {(link: { recordId?: string, recordDataSource?: string, ticketId?: string }) => void | Promise<void>} [props.onOpenRecord] - 跳转记录 drawer（由 Tab 宿主注入，反馈库联动）
  */
 export default function ObservationTab({ onOpenRecord }) {
   const { can } = useAuth()

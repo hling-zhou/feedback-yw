@@ -106,8 +106,7 @@ import ActionItemRequirementLinkFields, {
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
 import ProblemReductionTab from './ProblemReductionTab.jsx'
-import ObservationTab from './observation/ObservationTab.jsx'
-import ObservationMatchQueue from './observation/ObservationMatchQueue.jsx'
+import ObservationTabWithDrawer from './ObservationTabWithDrawer.jsx'
 import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
@@ -230,12 +229,7 @@ export default function Actions() {
           {
             key: 'observation',
             label: '留观问题',
-            children: (
-              <div className="space-y-6">
-                <ObservationTab />
-                <ObservationMatchQueue />
-              </div>
-            ),
+            children: <ObservationTabWithDrawer />,
           },
           { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
         ]}
