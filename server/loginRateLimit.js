@@ -1,5 +1,5 @@
 const DEFAULT_MAX_ATTEMPTS = 5
-const DEFAULT_WINDOW_MS = 15 * 60 * 1000
+const DEFAULT_WINDOW_MS = 10 * 60 * 1000
 
 /** @type {Map<string, { count: number; resetAt: number }>} */
 const buckets = new Map()

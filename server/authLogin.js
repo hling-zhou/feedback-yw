@@ -15,6 +15,19 @@ import {
 import { verifyPasswordCredentials } from './users.js'
 
 /**
+ * 把剩余等待秒数格式化成人类可读文案，如「5 秒」「2 分 30 秒」。
+ * @param {number | undefined} seconds
+ * @returns {string}
+ */
+function formatRetryAfter(seconds) {
+  const sec = Math.max(1, Math.floor(Number(seconds) || 0))
+  if (sec < 60) return `${sec} 秒`
+  const minutes = Math.floor(sec / 60)
+  const rest = sec % 60
+  return rest === 0 ? `${minutes} 分钟` : `${minutes} 分 ${rest} 秒`
+}
+
+/**
  * @param {import('fastify').FastifyRequest} request
  * @param {import('fastify').FastifyReply} reply
  */
@@ -30,7 +43,9 @@ export async function handlePasswordLogin(request, reply) {
       action: 'auth.login_failed',
       detail: { username, reason: 'rate_limited' },
     })
-    reply.code(429).send({ error: '登录尝试次数过多，请稍后再试' })
+    reply.code(429).send({
+      error: `登录尝试次数过多，请 ${formatRetryAfter(rate.retryAfterSec)}后再试`,
+    })
     return
   }
 
