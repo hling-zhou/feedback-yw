@@ -2600,9 +2600,9 @@ export default function Import({ embedded = false }) {
           </Typography.Text>
           {importResult.enrichmentStats && (
             <Typography.Text type="secondary" className="block text-center text-xs">
-              LLM 增强：工单完成 {importResult.enrichmentStats.ticketLlmCompleted} 条
+              LLM 增强：工单新增完成 {importResult.enrichmentStats.ticketLlmCompleted} 条
               {importResult.enrichmentStats.ticketLlmFailed > 0
-                ? `，未完成 ${importResult.enrichmentStats.ticketLlmFailed} 条`
+                ? `，仍待增强 ${importResult.enrichmentStats.ticketLlmFailed} 条`
                 : ''}
               ；旅程 LLM {importResult.enrichmentStats.journeyLlmCompleted} 条
               {importResult.enrichmentStats.journeySkippedByGating > 0

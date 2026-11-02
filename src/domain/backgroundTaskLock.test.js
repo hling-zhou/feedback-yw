@@ -16,6 +16,7 @@ import {
   isBackgroundTaskLockHeldByUser,
   isBackgroundTaskLockStale,
   backgroundTaskTypeLabel,
+  formatTaskTargetLine,
 } from './backgroundTaskLock.js'
 
 const sampleLock = {
@@ -243,5 +244,34 @@ describe('backgroundTaskLock domain', () => {
       false,
     )
     expect(isBackgroundTaskCancelRequested({ ...sampleLock, meta: { cancelled: true } })).toBe(true)
+  })
+
+  it('formats task target line for in-progress locks and flattened history entries', () => {
+    // 进行中任务：月份/类型取自 lock.meta
+    expect(
+      formatTaskTargetLine({
+        type: 'retag',
+        meta: { dataMonth: '2026-07', dataSourceType: 'complaint_ticket' },
+      }),
+    ).toBe('2026-07 · 投诉工单')
+    // retag 无 dataSourceType 时回退「投诉咨询工单」
+    expect(formatTaskTargetLine({ type: 'retag', meta: { dataMonth: '2026-07' } })).toBe(
+      '2026-07 · 投诉咨询工单',
+    )
+    // 历史条目：meta 字段平铺（buildTaskHistoryMeta 产物）
+    expect(
+      formatTaskTargetLine({
+        type: 'import',
+        dataMonth: '2026-08',
+        dataSourceType: 'consultation_ticket',
+      }),
+    ).toBe('2026-08 · 咨询工单')
+    // 历史条目只有 periodStart 也能反推月份
+    expect(
+      formatTaskTargetLine({ type: 'retag', periodStart: '2026-07-16' }),
+    ).toBe('2026-07 · 投诉咨询工单')
+    // 旧历史条目无任何对象字段：空串（不渲染对象行）
+    expect(formatTaskTargetLine({ type: 'retag' })).toBe('')
+    expect(formatTaskTargetLine(null)).toBe('')
   })
 })

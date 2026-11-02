@@ -132,6 +132,27 @@ export function backgroundTaskSourceLabel(lock) {
 }
 
 /**
+ * 任务对象行（数据月份 · 数据类型），与页面提示条同源同格式。
+ * 进行中条目传 lock（meta 在顶层），历史条目传 TaskHistoryEntry（meta 字段平铺）。
+ * 无月份且无显式数据源时返回空串（旧历史条目不渲染对象行）。
+ * @param {{ type?: string, meta?: Record<string, unknown> } | { type?: string, dataMonth?: string, dataSourceType?: string, periodId?: string, periodStart?: string } | null | undefined} task
+ * @returns {string}
+ */
+export function formatTaskTargetLine(task) {
+  if (!task) return ''
+  const raw = /** @type {Record<string, unknown>} */ (task)
+  const hasMeta = Boolean(raw.meta && typeof raw.meta === 'object')
+  const metaView = /** @type {Record<string, unknown>} */ (hasMeta ? raw.meta : raw)
+  const month = backgroundTaskMonth(metaView)
+  if (!month && !String(metaView.dataSourceType || '').trim()) return ''
+  const source = backgroundTaskSourceLabel({
+    type: /** @type {string} */ (raw.type),
+    meta: metaView,
+  })
+  return [month, source].filter(Boolean).join(' · ')
+}
+
+/**
  * 月份 · 数据类型 · 任务进度。进度里已含任务名时不再重复。
  * @param {BackgroundTaskLock | { type?: BackgroundTaskType, progress?: string, meta?: Record<string, unknown> } | null | undefined} lock
  */

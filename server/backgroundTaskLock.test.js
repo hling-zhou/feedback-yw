@@ -151,7 +151,7 @@ describeLock('background task lock server', () => {
       id: 'user-1',
       username: 'alice',
       progress: '正在规则打标 (12/300)…',
-      meta: { phase: 'client', dataMonth: '2026-08' },
+      meta: { phase: 'client', dataMonth: '2026-08', dataSourceType: 'complaint_ticket' },
     })
 
     const result = requestBackgroundTaskCancel('user-1', getBackgroundTaskLock().id)
@@ -159,6 +159,32 @@ describeLock('background task lock server', () => {
     expect(result.lock).toBeNull()
     expect(getBackgroundTaskLock()).toBeNull()
     expect(getTaskHistory()[0]?.status).toBe('cancelled')
+    // 取消历史条目携带任务对象字段（白名单提取自锁 meta）
+    expect(getTaskHistory()[0]?.dataMonth).toBe('2026-08')
+    expect(getTaskHistory()[0]?.dataSourceType).toBe('complaint_ticket')
+  })
+
+  it('buildTaskHistoryMeta extracts whitelisted meta fields only', async () => {
+    const { buildTaskHistoryMeta } = await import('./backgroundTaskLock.js')
+    expect(
+      buildTaskHistoryMeta({
+        dataMonth: '2026-07',
+        dataSourceType: 'consultation_ticket',
+        periodId: 'period-1',
+        periodStart: '2026-07-01',
+        phase: 'server',
+        scope: 'needs_ticket_llm',
+        progress: '不相关字段',
+        total: 10,
+      }),
+    ).toEqual({
+      dataMonth: '2026-07',
+      dataSourceType: 'consultation_ticket',
+      periodId: 'period-1',
+      periodStart: '2026-07-01',
+    })
+    expect(buildTaskHistoryMeta(null)).toEqual({})
+    expect(buildTaskHistoryMeta({ dataMonth: '   ', total: 3 })).toEqual({})
   })
 
   it('keeps lock when cancelling an enrich-phase task', async () => {

@@ -204,7 +204,25 @@ export function releaseBackgroundTaskLock(userId, options = {}) {
  * @property {Record<string, unknown>} [summary]
  * @property {string} [error]
  * @property {string} [username]
+ * @property {string} [dataMonth] YYYY-MM，任务对象（来源锁 meta）
+ * @property {string} [dataSourceType] 数据源类型（来源锁 meta）
+ * @property {string} [periodId]
+ * @property {string} [periodStart]
  */
+
+/**
+ * 从任务锁 meta 白名单提取任务对象字段（写入 history 条目）。
+ * @param {Record<string, unknown> | null | undefined} meta
+ */
+export function buildTaskHistoryMeta(meta) {
+  if (!meta) return {}
+  const out = {}
+  for (const key of ['dataMonth', 'dataSourceType', 'periodId', 'periodStart']) {
+    const value = meta[key]
+    if (typeof value === 'string' && value.trim()) out[key] = value
+  }
+  return out
+}
 
 /**
  * @returns {TaskHistoryEntry[]}
@@ -333,6 +351,7 @@ export function releaseOrphanedServerBackgroundTasks() {
         status: 'failed',
         error: '服务重启，打标任务已中断',
         username: task.username,
+        ...buildTaskHistoryMeta(task.meta),
       })
     } catch (err) {
       console.warn('[backgroundTask] 写入重启中断历史失败:', err)
@@ -395,6 +414,7 @@ export function requestBackgroundTaskCancel(userId, taskId) {
       status: 'cancelled',
       summary: updated.meta?.total != null ? { total: updated.meta.total } : undefined,
       username: updated.username,
+      ...buildTaskHistoryMeta(updated.meta),
     })
   } catch (err) {
     console.warn('[backgroundTask] 写入取消历史失败:', err)

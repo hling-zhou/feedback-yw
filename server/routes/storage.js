@@ -52,6 +52,7 @@ import {
   releaseBackgroundTaskLock,
   getTaskHistory,
   appendTaskHistory,
+  buildTaskHistoryMeta,
   setTaskResult,
   listTaskResults,
   clearTaskResult,
@@ -827,6 +828,7 @@ export function registerStorageRoutes(app) {
               },
               error: taskResult.error,
               username,
+              ...buildTaskHistoryMeta(acquiredLock?.meta),
             })
           } catch (err) {
             console.warn('[enrich] 写入任务历史失败:', err)
@@ -861,6 +863,7 @@ export function registerStorageRoutes(app) {
               status: 'failed',
               error: failResult.error,
               username,
+              ...buildTaskHistoryMeta(acquiredLock?.meta),
             })
           } catch { /* 忽略 */ }
         }

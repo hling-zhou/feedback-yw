@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/apiClient.js'
 import { cancelBackgroundTask } from '../lib/backgroundTaskClient.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAppMessage } from '../hooks/useAppMessage.js'
-import { backgroundTaskTypeLabel } from '../domain/backgroundTaskLock.js'
+import { backgroundTaskTypeLabel, formatTaskTargetLine } from '../domain/backgroundTaskLock.js'
 
 /**
  * 用后即评导入（渠道包/客服部回访/满意度回访）不涉及打标，不进打标任务抽屉。
@@ -37,6 +37,10 @@ function isPostUseImportTask(task) {
  * @property {Record<string, unknown>} [summary]
  * @property {string} [error]
  * @property {string} [username]
+ * @property {string} [dataMonth] YYYY-MM，任务对象（来源锁 meta）
+ * @property {string} [dataSourceType]
+ * @property {string} [periodId]
+ * @property {string} [periodStart]
  */
 
 /**
@@ -128,7 +132,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
         parts.push(`更新情绪 ${stats.changed}`)
         if (stats.keptManual) parts.push(`保留人工 ${stats.keptManual}`)
       }
-      if (stats.ticketLlmCompleted != null) parts.push(`LLM 完成 ${stats.ticketLlmCompleted}`)
+      if (stats.ticketLlmCompleted != null) parts.push(`LLM 新增完成 ${stats.ticketLlmCompleted}`)
       if (stats.ticketLlmFailed) parts.push(`仍待增强 ${stats.ticketLlmFailed}`)
       if (stats.ticketLlmRegressed) parts.push(`退回规则 ${stats.ticketLlmRegressed}`)
       if (stats.afterUnknown != null) parts.push(`未识别旅程 ${stats.afterUnknown}`)
@@ -146,6 +150,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
         key: `active-${activeLock.id}`,
         id: activeLock.id,
         source: activeLock.meta?.source || backgroundTaskTypeLabel(activeLock.type),
+        target: formatTaskTargetLine(activeLock),
         startedAt: activeLock.startedAt,
         endedAt: '-',
         status: 'in_progress',
@@ -159,6 +164,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
       key: entry.id,
       id: entry.id,
       source: entry.source || backgroundTaskTypeLabel(entry.type),
+      target: formatTaskTargetLine(entry),
       startedAt: entry.startedAt,
       endedAt: entry.endedAt,
       status: entry.status,
@@ -182,7 +188,16 @@ export default function TaskHistoryPanel({ open, onClose }) {
               : record.status === 'cancelled'
                 ? 'warning'
                 : 'error'
-        return <Tag color={color}>{text}</Tag>
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Tag color={color} className="w-fit">
+              {text}
+            </Tag>
+            {record.target ? (
+              <span className="text-xs leading-4 text-gray-500">{record.target}</span>
+            ) : null}
+          </div>
+        )
       },
     },
     {
