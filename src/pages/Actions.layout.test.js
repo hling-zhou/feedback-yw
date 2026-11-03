@@ -61,3 +61,27 @@ describe('ProblemReductionTab height', () => {
     expect(source).not.toContain('h-[calc(100dvh-13.5rem)]')
   })
 })
+
+describe('工单详情抽屉叠加语义守卫（2026-11-04 关闭详情后举措抽屉消失教训）', () => {
+  const source = fs.readFileSync(new URL('./Actions.jsx', import.meta.url), 'utf8')
+
+  /** 提取 openFeedbackByTicketId 函数体（从声明到依赖数组收尾） */
+  function extractOpenFeedbackByTicketId(src) {
+    const start = src.indexOf('const openFeedbackByTicketId = useCallback(')
+    if (start < 0) return null
+    const endMarker = 'setSelectedDirect],'
+    const end = src.indexOf(endMarker, start)
+    if (end < 0) return null
+    return src.slice(start, end + endMarker.length)
+  }
+
+  it('举措抽屉内点工单不得关闭举措抽屉（替换语义回潮即红）', () => {
+    const body = extractOpenFeedbackByTicketId(source)
+    expect(body).toBeTruthy()
+    // 旧 bug 形态：setEditOpen(false) + setEditing(null) 关掉自身 → 工单详情关回后举措抽屉消失
+    expect(body).not.toContain('setEditOpen(false)')
+    expect(body).not.toContain('setEditing(null)')
+    // 叠加语义必须保留：打开工单详情
+    expect(body).toContain('setSelectedDirect(record)')
+  })
+})

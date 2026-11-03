@@ -30,6 +30,10 @@ import ActionProblemScopePanel from './ActionProblemScopePanel.jsx'
 import { buildActionProblemScope } from '../../domain/actionProblemScope.js'
 import { useEffect, useMemo, useState } from 'react'
 import { getObservationIssue } from '../../lib/observationClient.js'
+import GeneralizationUpgradeModal, {
+  useActionGeneralizations,
+} from '../generalization/GeneralizationUpgradeModal.jsx'
+import { useNavigate } from 'react-router-dom'
 
 /** @typedef {import('../../domain/actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('../../domain/actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -80,6 +84,7 @@ function ActionItemDrawerTitle({ item, productNameByKey, requirementLinked }) {
  * @param {(status: ActionItemStatus) => void} props.onStatusChange
  * @param {Map<string, import('../../lib/types.js').FeedbackRecord>} [props.feedbackByTicketId]
  * @param {(ticketId: string) => void} [props.onOpenTicket]
+ * @param {(issueId: string) => void} [props.onOpenGeneralization] - 已升级列表点标题 → 宿主叠加打开举一反三详情抽屉（11-04 拍板：抽屉一律叠加不跳转）
  * @param {Map<string, string>} [props.productNameByKey]
  * @param {string[]} [props.linkedTicketIds]
  */
@@ -103,6 +108,7 @@ export default function ActionItemDrawer({
   onStatusChange,
   feedbackByTicketId,
   onOpenTicket,
+  onOpenGeneralization,
   productNameByKey,
   linkedTicketIds = [],
 }) {
@@ -138,6 +144,15 @@ export default function ActionItemDrawer({
     () => (item ? buildActionProblemScope(item, feedbackByTicketId, productNameByKey) : null),
     [item, feedbackByTicketId, productNameByKey],
   )
+
+  // 举一反三升级（v3.1/v3.3）：已升级态反查 + 升级 Modal
+  const navigate = useNavigate()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const {
+    list: actionGenerizations,
+    reload: reloadActionGenerizations,
+  } = useActionGeneralizations(item?.id || '')
+  const hasInProgressGeneralization = actionGenerizations.some((g) => g.status === 'in_progress')
 
   return (
     <Drawer
@@ -392,6 +407,66 @@ export default function ActionItemDrawer({
                 onOpenTicket={onOpenTicket}
               />
             </div>
+
+            {/* 举一反三（v3.1/v3.3 升级通路）：升级入口 / 已升级列表 */}
+            <div className="mt-2">
+              <div className="section-title">举一反三</div>
+              <div className="page-card-sm space-y-2">
+                {actionGenerizations.length ? (
+                  <div className="space-y-1.5">
+                    {actionGenerizations.map((g) => (
+                      <div
+                        key={g.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-ink-100 p-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              size="small"
+                              type="link"
+                              className="!h-auto !px-0 !py-0 text-[13px]"
+                              onClick={() =>
+                                onOpenGeneralization
+                                  ? onOpenGeneralization(g.id)
+                                  : navigate(
+                                      `/actions?tab=generalization&issueId=${encodeURIComponent(g.id)}`,
+                                    )
+                              }
+                            >
+                              {g.title}
+                            </Button>
+                            {g.status === 'in_progress' ? <Tag color="processing" className="!m-0">进行中</Tag> : null}
+                            {g.status === 'completed' ? <Tag color="success" className="!m-0">已完成</Tag> : null}
+                            {g.status === 'terminated' ? <Tag className="!m-0">未完成终止</Tag> : null}
+                          </div>
+                          <Typography.Text type="secondary" className="text-xs">
+                            {g.category ? `${g.category} · ` : ''}出现 {g.occurrenceCount ?? 0} 次
+                            {g.originActionId === item?.id ? ' · 由本举措升级创建' : ' · 本举措升级关联'}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : canEdit ? (
+                  <Typography.Text type="secondary" className="block text-xs">
+                    暂无。该举措的问题若具备共性，可升级为举一反三问题做系统性排查。
+                  </Typography.Text>
+                ) : (
+                  <Typography.Text type="secondary" className="block text-xs">暂无</Typography.Text>
+                )}
+                {canEdit && !hasInProgressGeneralization ? (
+                  <Button size="small" onClick={() => setUpgradeOpen(true)}>
+                    升级为举一反三
+                  </Button>
+                ) : null}
+                {hasInProgressGeneralization ? (
+                  <Typography.Text type="secondary" className="block text-xs">
+                    已有进行中的举一反三问题，完成后可再次升级开启新一轮。
+                  </Typography.Text>
+                ) : null}
+              </div>
+            </div>
+
             {observationIssueId ? (
               <div className="mt-2">
                 <div className="section-title">留观证据（{observationLinks.length}）</div>
@@ -514,6 +589,16 @@ export default function ActionItemDrawer({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* 升级为举一反三 Modal（v3.1/v3.3）：双模式新建/关联已有 + 证据全量继承 */}
+      {open && item ? (
+        <GeneralizationUpgradeModal
+          open={upgradeOpen}
+          onClose={() => setUpgradeOpen(false)}
+          item={item}
+          onUpgraded={() => void reloadActionGenerizations()}
+        />
       ) : null}
     </Drawer>
   )

@@ -104,9 +104,11 @@ import ActionItemRequirementLinkFields, {
   toRequirementTicketFormList,
 } from '../components/actions/ActionItemRequirementLinkFields.jsx'
 import ActionItemDrawer from '../components/actions/ActionItemDrawer.jsx'
+import GeneralizationDetailDrawer from '../components/generalization/GeneralizationDetailDrawer.jsx'
 import TicketTodoTab from './TicketTodoTab.jsx'
 import ProblemReductionTab from './ProblemReductionTab.jsx'
 import ObservationTabWithDrawer from './ObservationTabWithDrawer.jsx'
+import GeneralizationTabWithDrawer from './GeneralizationTabWithDrawer.jsx'
 import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
 import {
@@ -197,14 +199,40 @@ function parseTicketIdsFromInput(text) {
   return parseLinkedTicketIdsCell(text)
 }
 
+/** 默认 tab（无 tab 参数时） */
+const ACTIONS_DEFAULT_TAB = 'ticket-todos'
+
+/**
+ * Actions 页 tab 清单 —— **唯一真源**（单源化：注册/删除 tab 只改这里）。
+ * activeKey 解析白名单、URL 合法键集均从本数组派生——杜绝"items 加了、白名单漏了"的散落双写
+ * （2026-11-04 教训：G1-3 注册 generalization 只加了 items 漏改白名单，Tab 点不动）。
+ */
+const ACTIONS_TAB_ITEMS = [
+  { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
+  { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
+  { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
+  { key: 'observation', label: '留观问题', children: <ObservationTabWithDrawer /> },
+  { key: 'generalization', label: '举一反三', children: <GeneralizationTabWithDrawer /> },
+  { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
+]
+
+/** 从唯一真源派生：合法 tab 键集（activeKey 解析用） */
+const ACTIONS_TAB_KEYS = new Set(ACTIONS_TAB_ITEMS.map((item) => item.key))
+
+/**
+ * 解析 URL tab 参数 → activeKey（白名单命中才认，否则回默认 tab）。
+ * @param {string | null} rawTab
+ * @returns {string}
+ */
+function resolveActionsTabKey(rawTab) {
+  return rawTab != null && ACTIONS_TAB_KEYS.has(rawTab) ? rawTab : ACTIONS_DEFAULT_TAB
+}
+
 export default function Actions() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const rawTab = searchParams.get('tab')
-  const tab =
-    rawTab === 'product' || rawTab === 'problem-reduction' || rawTab === 'playbook' || rawTab === 'observation'
-      ? rawTab
-      : 'ticket-todos'
+  const tab = resolveActionsTabKey(rawTab)
   // 旧 tab=post-use-jira 链接重定向到反馈库 · 用后即评满意度 · 产品部溯源
   useEffect(() => {
     if (rawTab === 'post-use-jira') {
@@ -218,21 +246,11 @@ export default function Actions() {
         activeKey={tab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams)
-          if (key === 'ticket-todos') next.delete('tab')
+          if (key === ACTIONS_DEFAULT_TAB) next.delete('tab')
           else next.set('tab', key)
           setSearchParams(next, { replace: true })
         }}
-        items={[
-          { key: 'ticket-todos', label: '会议待办', children: <TicketTodoTab /> },
-          { key: 'product', label: '产品举措与进展', children: <ProductActionsTab /> },
-          { key: 'problem-reduction', label: '问题压降', children: <ProblemReductionTab /> },
-          {
-            key: 'observation',
-            label: '留观问题',
-            children: <ObservationTabWithDrawer />,
-          },
-          { key: 'playbook', label: 'Playbook 沉淀', children: <PlaybookPromotionPanel /> },
-        ]}
+        items={ACTIONS_TAB_ITEMS}
       />
     </div>
   )
@@ -424,13 +442,21 @@ function ProductActionsTab() {
         message.warning('未在库中找到该工单，请稍后刷新或确认工单号')
         return
       }
-      // 关闭举措详情抽屉，避免两个 Drawer 叠加遮挡
-      setEditOpen(false)
-      setEditing(null)
+      // 叠加语义：工单详情抽屉（zIndex 1010 > 举措抽屉 1000）盖在举措详情抽屉之上，
+      // 关闭后举措抽屉仍可见，表单编辑状态保留（2026-11-04 修复：旧"替换"式关闭会让原抽屉消失）
       setSelectedDirect(record)
     },
     [drawerFeedbackByTicketId, setSelectedDirect],
   )
+
+  // 举一反三详情抽屉（11-04 拍板：举措抽屉「已升级」点标题 = 叠加打开抽屉，不跳转 Tab）
+  const [generalizationIssueId, setGeneralizationIssueId] = useState(null)
+  const [generalizationDrawerOpen, setGeneralizationDrawerOpen] = useState(false)
+  const openGeneralizationDrawer = useCallback((issueId) => {
+    // 叠加语义：gen 详情抽屉 zIndex 1020 盖过举措抽屉（1000）与工单抽屉（1010），关闭后宿主仍在
+    setGeneralizationIssueId(issueId)
+    setGeneralizationDrawerOpen(true)
+  }, [])
 
   const resolveLinkedTicketIds = useCallback(
     (/** @type {ActionItem} */ record) => {
@@ -1237,7 +1263,7 @@ function ProductActionsTab() {
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <PageHeader
         desc="集中查看确立的举措及完成进展，支持更新状态、修改排期，及临期预警。点击行可打开举措详情。"
         hint={ACTIONS_PAGE_SUBTITLE_HINT}
@@ -1298,42 +1324,42 @@ function ProductActionsTab() {
         ]}
       />
 
-      <div className="page-card">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-ink-800">周期筛选</span>
-            <InsightPeriodPicker
-              compact
-              showHint={periodFilterActive}
-              allowEmpty
-              value={insightPeriodId}
-              onChange={(id, period) => {
-                setInsightPeriodId(id)
-                setSelectedPeriod(period)
-                setPage(1)
-              }}
-            />
-            {!periodFilterActive ? (
-              <Typography.Text type="secondary" className="text-xs">
-                当前显示全部举措（不限周期）
-              </Typography.Text>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-ink-800">首次提出时间</span>
-            <DatePicker.RangePicker
-              size="small"
-              placeholder={['起', '止']}
-              value={dateRange}
-              onChange={(v) => {
-                setDateRange(v)
-                setPage(1)
-              }}
-            />
-          </div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-800">周期筛选</span>
+          <InsightPeriodPicker
+            compact
+            showHint={periodFilterActive}
+            allowEmpty
+            value={insightPeriodId}
+            onChange={(id, period) => {
+              setInsightPeriodId(id)
+              setSelectedPeriod(period)
+              setPage(1)
+            }}
+          />
+          {!periodFilterActive ? (
+            <Typography.Text type="secondary" className="text-xs">
+              当前显示全部举措（不限周期）
+            </Typography.Text>
+          ) : null}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-800">首次提出时间</span>
+          <DatePicker.RangePicker
+            size="small"
+            placeholder={['起', '止']}
+            value={dateRange}
+            onChange={(v) => {
+              setDateRange(v)
+              setPage(1)
+            }}
+          />
+        </div>
+      </div>
 
-        <div className="mt-3 space-y-3">
+      <div className="page-card-sm overflow-visible">
+        <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {ACTION_ITEM_STATUSES.map((status) => (
               <div
@@ -1361,55 +1387,56 @@ function ProductActionsTab() {
             <ActionItemProductStatusChart data={statsByProduct} rateLabel="完成率" />
           </div>
         </div>
+      </div>
 
-        <div
-          ref={stickyChromeRef}
-          className="page-sticky-chrome mt-3 flex w-full flex-wrap items-start gap-2"
+      <div
+        ref={stickyChromeRef}
+        className="page-section-sm page-sticky-chrome flex w-full flex-wrap items-start gap-2"
+      >
+        <ActionItemCompositeFilter
+          className="min-w-0 flex-1"
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onClearFilters={handleClearFilters}
+          options={{
+            productOptions,
+            statusOptions: FILTER_STATUS_OPTIONS,
+            problemTypeOptions,
+            journeyL1Options,
+            productNameByKey,
+          }}
+        />
+        <Button
+          icon={<ReloadOutlined />}
+          loading={listRefreshing}
+          onClick={() => void handleRefreshList()}
         >
-          <ActionItemCompositeFilter
-            className="min-w-0 flex-1"
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onClearFilters={handleClearFilters}
-            options={{
-              productOptions,
-              statusOptions: FILTER_STATUS_OPTIONS,
-              problemTypeOptions,
-              journeyL1Options,
-              productNameByKey,
-            }}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            loading={listRefreshing}
-            onClick={() => void handleRefreshList()}
-          >
-            刷新
-          </Button>
-        </div>
-        <div className="mt-3">
-          <Table
-            rowKey="id"
-            size="small"
-            loading={loading}
-            columns={columns}
-            dataSource={items}
-            sticky={{ offsetHeader: stickyChromeHeight }}
-            scroll={{ x: 1100 }}
+          刷新
+        </Button>
+      </div>
+
+      <div className="page-card-sm page-section-sm">
+        <Table
+          rowKey="id"
+          size="small"
+          loading={loading}
+          columns={columns}
+          dataSource={items}
+          sticky={{ offsetHeader: stickyChromeHeight }}
+          scroll={{ x: 1100 }}
           onRow={(record) => ({
             onClick: () => openEdit(record),
             className: 'group cursor-pointer',
           })}
-            pagination={{
-              current: page,
-              pageSize: PAGE_SIZE,
-              total,
-              showSizeChanger: false,
-              showTotal: (t) => `共 ${t} 条`,
-              onChange: (p) => setPage(p),
-            }}
-          />
-        </div>
+          pagination={{
+            current: page,
+            pageSize: PAGE_SIZE,
+            total,
+            showSizeChanger: false,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p) => setPage(p),
+          }}
+        />
       </div>
 
       <Modal
@@ -1575,8 +1602,21 @@ function ProductActionsTab() {
         onStatusChange={handleEditStatusChange}
         feedbackByTicketId={drawerFeedbackByTicketId}
         onOpenTicket={openFeedbackByTicketId}
+        onOpenGeneralization={openGeneralizationDrawer}
         productNameByKey={productNameByKey}
         linkedTicketIds={drawerItem?.linkedTicketIds || []}
+      />
+
+      {/* 举一反三详情抽屉（叠加层：举措抽屉点「已升级」标题打开，zIndex 1020；证据工单点击叠加工单抽屉 1010） */}
+      <GeneralizationDetailDrawer
+        issueId={generalizationIssueId}
+        open={generalizationDrawerOpen}
+        onClose={() => setGeneralizationDrawerOpen(false)}
+        onSaved={() => void loadActions()}
+        onOpenRecord={(link) => {
+          // 证据工单 → 复用工单抽屉查找（ticketId 优先）
+          if (link?.ticketId) openFeedbackByTicketId(link.ticketId)
+        }}
       />
 
       <ActionItemConflictModal

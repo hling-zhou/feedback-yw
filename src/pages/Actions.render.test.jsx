@@ -85,6 +85,7 @@ describe('Actions 页各 tab 真渲染冒烟', () => {
     ['product', 'product', '产品举措与进展'],
     ['problem-reduction', 'problem-reduction', '问题压降'],
     ['observation', 'observation', '留观问题'],
+    ['generalization', 'generalization', '举一反三'],
     ['playbook', 'playbook', 'Playbook'],
   ]
 
@@ -93,5 +94,44 @@ describe('Actions 页各 tab 真渲染冒烟', () => {
     expect(html).toBeTruthy()
     expect(html.length).toBeGreaterThan(100)
     expect(html).toContain(marker)
+  })
+})
+
+describe('Actions tab 受控解析守卫（2026-11-04 白名单漏 generalization 教训）', () => {
+  /**
+   * 从静态 HTML 提取 active 的 tab 节点键（结构化断言——与 marker 文案完全解耦）。
+   * antd Tabs 的 tab 头节点形态：data-node-key="xxx" class="... ant-tabs-tab-active ..."；
+   * marker/label 断言不可用（label 恒渲染且 marker 可能与 label 撞名——G1-3 假绿根因）。
+   * @param {string} html
+   * @returns {string | null}
+   */
+  function extractActiveTabKey(html) {
+    const m = html.match(/data-node-key="([^"]+)" class="[^"]*ant-tabs-tab-active[^"]*"/)
+    return m ? m[1] : null
+  }
+
+  it.each([
+    ['ticket-todos（默认，无参数）', null, 'ticket-todos'],
+    ['product', 'product', 'product'],
+    ['problem-reduction', 'problem-reduction', 'problem-reduction'],
+    ['observation', 'observation', 'observation'],
+    ['generalization', 'generalization', 'generalization'],
+    ['playbook', 'playbook', 'playbook'],
+    ['未知键回退默认', 'bogus-tab', 'ticket-todos'],
+  ])('%s：URL tab 参数解析为 activeKey', (_label, tabParam, expectedKey) => {
+    const html = renderActionsTab(tabParam)
+    // 白名单漏键的 bug 形态：?tab=X 回退默认 tab → activeKey 为 ticket-todos ≠ X → 此断言红
+    expect(extractActiveTabKey(html)).toBe(expectedKey)
+  })
+})
+
+describe('Actions tab 单源守卫（防 items/白名单散落双写回归）', () => {
+  it('源码无多值白名单链（rawTab === x || rawTab === y …——散落双写回潮即红）', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('./Actions.jsx', import.meta.url), 'utf8'),
+    )
+    // 单源化后：resolveActionsTabKey 由 ACTIONS_TAB_KEYS 派生（Set 从 items map 来）。
+    // （单值特判如旧链接重定向 rawTab === 'post-use-jira' 不属白名单链，放行。）
+    expect(source).not.toMatch(/rawTab\s*===\s*'[^']+'\s*\|\|\s*rawTab/)
   })
 })
