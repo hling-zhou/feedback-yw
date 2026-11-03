@@ -728,6 +728,72 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_obs_links_issue ON observation_issue_links(issue_id);
     CREATE INDEX IF NOT EXISTS idx_obs_links_record ON observation_issue_links(record_id);
     CREATE INDEX IF NOT EXISTS idx_obs_links_status ON observation_issue_links(link_status);
+
+    -- ── 举一反三（generalization）四表 · docs/DESIGN-20261102-1.md §2 ──
+    CREATE TABLE IF NOT EXISTS generalization_issues (
+      id TEXT PRIMARY KEY,
+      product_key TEXT NOT NULL DEFAULT '',
+      product_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'in_progress'
+        CHECK(status IN ('in_progress', 'completed', 'terminated')),
+      title TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT '',            -- 可介入原因范畴（domain 枚举六选一）
+      scope TEXT NOT NULL DEFAULT '',               -- '' | multi_scenario | cross_product
+      root_cause TEXT NOT NULL DEFAULT '',          -- 根因分析（创建可空，Tab 编辑必填）
+      optimization TEXT NOT NULL DEFAULT '',        -- 优化方案（创建可空，Tab 编辑必填）
+      origin_action_id TEXT NOT NULL DEFAULT '',    -- 首个创建它的举措（视觉回链；多对一反查走 action_refs）
+      occurrence_count INTEGER NOT NULL DEFAULT 0,  -- 冗余；links(confirmed) 为真源
+      first_seen_at TEXT NOT NULL DEFAULT '',
+      last_seen_at TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL DEFAULT '{}',           -- keywords/notes
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_gen_issues_product ON generalization_issues(product_key);
+    CREATE INDEX IF NOT EXISTS idx_gen_issues_status ON generalization_issues(status);
+    CREATE INDEX IF NOT EXISTS idx_gen_issues_category ON generalization_issues(category);
+    CREATE INDEX IF NOT EXISTS idx_gen_issues_last_seen ON generalization_issues(last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS generalization_issue_links (
+      id TEXT PRIMARY KEY,
+      issue_id TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      record_data_source TEXT NOT NULL DEFAULT ''
+        CHECK(record_data_source IN ('', 'complaint_ticket', 'consultation_ticket', 'post_use_rating')),
+      ticket_id TEXT NOT NULL DEFAULT '',
+      link_status TEXT NOT NULL DEFAULT 'confirmed'
+        CHECK(link_status IN ('confirmed', 'pending_suggest', 'dismissed')),
+      link_source TEXT NOT NULL DEFAULT 'manual'
+        CHECK(link_source IN ('manual', 'auto_match', 'auto_anchor')),
+      match_confidence TEXT NOT NULL DEFAULT ''
+        CHECK(match_confidence IN ('', 'high', 'medium', 'low')),
+      match_reason TEXT NOT NULL DEFAULT '',
+      matched_excerpt TEXT NOT NULL DEFAULT '',
+      proposed_at TEXT NOT NULL DEFAULT '',
+      reviewed_by TEXT NOT NULL DEFAULT '',
+      reviewed_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      UNIQUE(issue_id, record_id)
+      -- 级联删除由 generalizationRepository.deleteIssue 事务内显式执行（同 observation 惯例，不声明 FK）
+    );
+    CREATE INDEX IF NOT EXISTS idx_gen_links_issue ON generalization_issue_links(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_gen_links_record ON generalization_issue_links(record_id);
+    CREATE INDEX IF NOT EXISTS idx_gen_links_status ON generalization_issue_links(link_status);
+
+    CREATE TABLE IF NOT EXISTS generalization_hints (
+      id TEXT PRIMARY KEY,                          -- record_id 即键：一单最多一条建议
+      payload TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS generalization_issue_action_refs (
+      issue_id TEXT NOT NULL,
+      action_item_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('created', 'linked')),
+      created_at TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (issue_id, action_item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_gen_action_refs_action ON generalization_issue_action_refs(action_item_id);
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)

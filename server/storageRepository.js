@@ -190,7 +190,7 @@ export const storageRepository = {
   },
 
   /**
-   * @param {import('../src/storage/adapter.js').RecordQuery & { fields?: 'list' | 'full' }} [query]
+   * @param {import('../src/storage/adapter.js').RecordQuery & { fields?: 'list' | 'full', generalizationFilter?: 'linked' | 'suggested' | 'none' }} [query]
    * @returns {{ records: import('../src/domain/records.js').InsightRecord[]; total: number; limit: number | null; offset: number }}
    */
   listRecords(query = {}) {
@@ -198,11 +198,34 @@ export const storageRepository = {
     const period = query.insightPeriodId ? this.getInsightPeriod(query.insightPeriodId) : null
     const { limit, offset } = parseRecordPagination(query)
     const { where, params } = buildRecordsWhereClause(query, period)
+    // G4-1 举一反三三态筛选（linked=已关联 confirmed / suggested=被建议 pending hint / none=均无）：
+    // SQL 层 EXISTS/NOT EXISTS 先过滤后分页（对齐既有纪律——分页正确性）
+    const genFilter = query.generalizationFilter
+    let genWhere = ''
+    /** @type {unknown[]} */
+    const genParams = []
+    if (genFilter === 'linked') {
+      genWhere = ` AND EXISTS (
+        SELECT 1 FROM generalization_issue_links g
+        WHERE g.record_id = records.id AND g.link_status = 'confirmed')`
+    } else if (genFilter === 'suggested') {
+      genWhere = ` AND EXISTS (
+        SELECT 1 FROM generalization_hints h WHERE h.id = records.id) AND NOT EXISTS (
+        SELECT 1 FROM generalization_issue_links g
+        WHERE g.record_id = records.id AND g.link_status = 'confirmed')`
+    } else if (genFilter === 'none') {
+      genWhere = ` AND NOT EXISTS (
+        SELECT 1 FROM generalization_issue_links g
+        WHERE g.record_id = records.id AND g.link_status = 'confirmed') AND NOT EXISTS (
+        SELECT 1 FROM generalization_hints h WHERE h.id = records.id)`
+    }
 
-    const total = db.prepare(`SELECT COUNT(*) AS n FROM records WHERE ${where}`).get(...params).n
+    const total = db
+      .prepare(`SELECT COUNT(*) AS n FROM records WHERE ${where}${genWhere}`)
+      .get(...[...params, ...genParams]).n
 
-    let sql = `SELECT payload FROM records WHERE ${where} ORDER BY import_month DESC, id ASC`
-    const listParams = [...params]
+    let sql = `SELECT payload FROM records WHERE ${where}${genWhere} ORDER BY import_month DESC, id ASC`
+    const listParams = [...params, ...genParams]
     if (limit != null) {
       sql += ' LIMIT ? OFFSET ?'
       listParams.push(limit, offset)
@@ -215,6 +238,34 @@ export const storageRepository = {
       records = filterRecords(records, query, period)
     } else if (query.importBatchId) {
       records = filterRecords(records, query, null)
+    }
+
+    // G4-1：三态派生 flag 附投影（linked=confirmed gen link / suggested=有 hint 未采纳 /
+    // undefined=均无）——前端复合筛选消费；两表缺失（旧库未迁移）时静默跳过
+    if (records.length) {
+      try {
+        const ids = records.map((r) => String(r.id || '')).filter(Boolean)
+        const placeholders = ids.map(() => '?').join(',')
+        const linkedIds = new Set(
+          db
+            .prepare(
+              `SELECT DISTINCT record_id FROM generalization_issue_links
+               WHERE link_status = 'confirmed' AND record_id IN (${placeholders})`,
+            )
+            .all(...ids)
+            .map((r) => String(r.record_id)),
+        )
+        const hintedIds = new Set(
+          db.prepare(`SELECT id FROM generalization_hints WHERE id IN (${placeholders})`).all(...ids).map((r) => String(r.id)),
+        )
+        records = records.map((r) => {
+          const id = String(r.id || '')
+          const genFlag = linkedIds.has(id) ? 'linked' : hintedIds.has(id) ? 'suggested' : 'none'
+          return { ...r, generalization: genFlag }
+        })
+      } catch {
+        // 表不存在（未迁移旧库）——不附加 flag，正常返回
+      }
     }
 
     return {
