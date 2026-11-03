@@ -322,6 +322,73 @@ describeRoutes('observation routes', () => {
     expect(body.taskId).toBeTruthy()
   })
 
+  it('issue stats endpoint aggregates counts, byProduct and promotion rate', async () => {
+    // 种子：前面用例已留下 EIP(watching)/SLB(watching)；补齐 promoted / archived / 第二个产品
+    const mkIssue = async (productKey, productName, status) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/observation/issues',
+        headers: authHeaders(),
+        payload: {
+          productKey,
+          productName,
+          title: `stats-${productKey}-${status}`,
+          summary: `stats-${productKey}-${status}`,
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const { issue } = JSON.parse(res.body)
+      if (status !== 'watching') {
+        const patched = await app.inject({
+          method: 'PATCH',
+          url: `/api/observation/issues/${issue.id}`,
+          headers: authHeaders(),
+          payload: { status },
+        })
+        expect(patched.statusCode).toBe(200)
+      }
+      return issue
+    }
+    await mkIssue('COS', '对象存储', 'promoted')
+    await mkIssue('COS', '对象存储', 'archived')
+    await mkIssue('EIP', '弹性公网IP', 'promoted')
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/observation/issues/stats',
+      headers: authHeaders(),
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+
+    // counts / total / 升级率口径（分子=已升级，分母=全部含已关闭）
+    expect(body.counts).toMatchObject({
+      watching: expect.any(Number),
+      promoted: expect.any(Number),
+      archived: expect.any(Number),
+    })
+    expect(body.total).toBeGreaterThanOrEqual(5)
+    expect(body.counts.promoted).toBeGreaterThanOrEqual(2)
+    expect(body.counts.archived).toBeGreaterThanOrEqual(1)
+    const sum = body.counts.watching + body.counts.promoted + body.counts.archived
+    expect(sum).toBe(body.total)
+    expect(body.promotionRate).toBeCloseTo(
+      Math.round((body.counts.promoted / body.total) * 1000) / 10,
+      5,
+    )
+
+    // byProduct：COS 有 promoted+archived 两段，rate = promoted/total
+    const cos = body.byProduct.find((row) => row.productKey === 'COS')
+    expect(cos).toBeTruthy()
+    expect(cos.counts.promoted).toBe(1)
+    expect(cos.counts.archived).toBe(1)
+    expect(cos.total).toBe(2)
+    expect(cos.rate).toBe(50)
+
+    // pendingTotal 与横幅同源
+    expect(body.pendingTotal).toBeGreaterThanOrEqual(0)
+  })
+
   it('requires authentication', async () => {
     const res = await app.inject({
       method: 'GET',

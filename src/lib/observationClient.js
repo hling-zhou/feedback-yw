@@ -180,6 +180,14 @@ export async function getObservationPendingCount() {
 }
 
 /**
+ * 统计大盘（全量口径）。
+ * @returns {Promise<{ counts: Record<string, number>, total: number, promotionRate: number, byProduct: Array<{ productKey: string, productName: string, counts: Record<string, number>, total: number, rate: number }>, pendingTotal: number }>}
+ */
+export async function getObservationIssueStats() {
+  return apiFetch('/api/observation/issues/stats')
+}
+
+/**
  * 三选一复核。
  * @param {string} linkId
  * @param {'confirm' | 'dismiss' | 'new_issue'} action

@@ -59,6 +59,16 @@ export const OBSERVATION_ISSUE_STATUS_LABELS = {
   archived: '已关闭',
 }
 
+/**
+ * 状态图表色（对齐会议待办语义：进行中琥珀 / 转化绿 / 终态灰）。
+ * @type {Record<ObservationIssueStatus, string>}
+ */
+export const OBSERVATION_ISSUE_CHART_COLORS = {
+  watching: '#F59E0B',
+  promoted: '#22C55E',
+  archived: '#94A3B8',
+}
+
 /** @type {ObservationLinkStatus[]} */
 export const OBSERVATION_LINK_STATUSES = ['confirmed', 'pending_suggest', 'dismissed']
 

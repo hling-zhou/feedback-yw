@@ -20,12 +20,15 @@ import {
   listObservationIssues,
   promoteObservationIssue,
   getObservationIssue,
+  getObservationIssueStats,
   updateObservationIssue,
   deleteObservationIssue,
   detachObservationLink,
   reviewObservationMatch,
 } from '../../lib/observationClient.js'
 import {
+  OBSERVATION_ISSUE_CHART_COLORS,
+  OBSERVATION_ISSUE_STATUSES,
   OBSERVATION_ISSUE_STATUS_LABELS,
   OBSERVATION_LINK_STATUS_LABELS,
   OBSERVATION_LINK_SOURCE_LABELS,
@@ -33,6 +36,8 @@ import {
 } from '../../domain/observationIssue.js'
 import { DEFAULT_OBSERVATION_PROMOTION_THRESHOLD } from '../../lib/storage.js'
 import { suggestObservationKeywords } from '../../lib/observation/keywordSuggest.js'
+import ActionItemProductStatusChart from '../../components/charts/ActionItemProductStatusChart.jsx'
+import { formatSharePercent } from '../../domain/ticketTodo.js'
 import {
   buildObservationIssuesCsv,
   downloadObservationCsv,
@@ -141,7 +146,7 @@ export default function ObservationTab({ onOpenRecord }) {
     try {
       const res = await promoteObservationIssue(issue.id)
       messageApi.success(`已升级为举措（待评估），可前往「问题与举措 · 产品举措与进展」跟进`)
-      await reload()
+      await Promise.all([reload(), loadStats()])
       void res.actionItemId
     } catch (err) {
       const text = err instanceof Error ? err.message : '升级失败'
@@ -163,6 +168,13 @@ export default function ObservationTab({ onOpenRecord }) {
   const [pageSize, setPageSize] = useState(20)
   const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState({ keyword: '', status: '', sourceMix: 'all' })
+  const [stats, setStats] = useState({
+    counts: /** @type {Record<string, number>} */ ({ watching: 0, promoted: 0, archived: 0 }),
+    total: 0,
+    promotionRate: 0,
+    byProduct: /** @type {Array<{ productKey: string, productName: string, counts: Record<string, number>, total: number, rate: number }>} */ ([]),
+    pendingTotal: 0,
+  })
 
   // 展开行状态（快速读证据）
   const [expandedIssueId, setExpandedIssueId] = useState(null)
@@ -175,6 +187,21 @@ export default function ObservationTab({ onOpenRecord }) {
   const [detailLinks, setDetailLinks] = useState(/** @type {ObservationIssueLink[]} */ ([]))
   const [detailForm] = Form.useForm()
   const [savingDetail, setSavingDetail] = useState(false)
+
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await getObservationIssueStats()
+      setStats({
+        counts: { watching: 0, promoted: 0, archived: 0, ...(data.counts || {}) },
+        total: Number(data.total) || 0,
+        promotionRate: Number(data.promotionRate) || 0,
+        byProduct: Array.isArray(data.byProduct) ? data.byProduct : [],
+        pendingTotal: Number(data.pendingTotal) || 0,
+      })
+    } catch {
+      // 统计失败不阻断列表；下次写操作/刷新自然重试
+    }
+  }, [])
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -197,7 +224,8 @@ export default function ObservationTab({ onOpenRecord }) {
 
   useEffect(() => {
     void reload()
-  }, [reload])
+    void loadStats()
+  }, [reload, loadStats])
 
   const loadLinksFor = useCallback(async (issueId) => {
     setLinksLoading(true)
@@ -220,7 +248,7 @@ export default function ObservationTab({ onOpenRecord }) {
       await reviewObservationMatch(link.id, action)
       messageApi.success(action === 'confirm' ? '已确认关联' : '已否决建议')
       if (expandedIssueId) await loadLinksFor(expandedIssueId)
-      await reload()
+      await Promise.all([reload(), loadStats()])
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '操作失败')
     }
@@ -231,7 +259,7 @@ export default function ObservationTab({ onOpenRecord }) {
       await detachObservationLink(link.issueId, link.id)
       messageApi.success('已解除关联')
       if (expandedIssueId) await loadLinksFor(expandedIssueId)
-      await reload()
+      await Promise.all([reload(), loadStats()])
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '解除失败')
     }
@@ -288,7 +316,7 @@ export default function ObservationTab({ onOpenRecord }) {
       messageApi.success('已保存')
       setDetailIssue(issue)
       setDetailOpen(false)
-      await reload()
+      await Promise.all([reload(), loadStats()])
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -300,7 +328,7 @@ export default function ObservationTab({ onOpenRecord }) {
     try {
       await deleteObservationIssue(issue.id)
       messageApi.success('已删除')
-      await reload()
+      await Promise.all([reload(), loadStats()])
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '删除失败')
     }
@@ -388,6 +416,50 @@ export default function ObservationTab({ onOpenRecord }) {
   return (
     <div className="space-y-4">
       {contextHolder}
+      <div className="page-card-sm overflow-visible">
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {OBSERVATION_ISSUE_STATUSES.map((status) => (
+              <div
+                key={status}
+                className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1"
+              >
+                <span className="text-xs text-ink-500">{OBSERVATION_ISSUE_STATUS_LABELS[status]}</span>
+                <span className="text-base font-semibold tabular-nums text-ink-900">
+                  {stats.counts[status] ?? 0}
+                </span>
+              </div>
+            ))}
+            <div className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1">
+              <span className="text-xs text-ink-500">待复核建议</span>
+              <span className="text-base font-semibold tabular-nums text-ink-900">
+                {stats.pendingTotal}
+              </span>
+            </div>
+            <div className="inline-flex min-w-[5.5rem] items-baseline gap-1.5 rounded-md border border-ink-100 bg-ink-50/60 px-2.5 py-1">
+              <span className="text-xs text-ink-500">升级率</span>
+              <span className="text-base font-semibold tabular-nums text-ink-900">
+                {formatSharePercent(stats.promotionRate)}
+              </span>
+            </div>
+          </div>
+          <div>
+            <Typography.Text type="secondary" className="mb-2 block text-xs">
+              分产品 · 分状态 · 升级率
+            </Typography.Text>
+            <ActionItemProductStatusChart
+              data={stats.byProduct}
+              statuses={OBSERVATION_ISSUE_STATUSES}
+              statusLabels={OBSERVATION_ISSUE_STATUS_LABELS}
+              statusColors={OBSERVATION_ISSUE_CHART_COLORS}
+              rateLabel="升级率"
+              countNoun="个留观问题"
+              showLinkedFeedback={false}
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="page-card-sm page-section-sm space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input.Search
@@ -411,7 +483,7 @@ export default function ObservationTab({ onOpenRecord }) {
           options={Object.entries(SOURCE_MIX_LABELS).map(([value, label]) => ({ value, label }))}
           onChange={(v) => { setPage(1); setFilters((f) => ({ ...f, sourceMix: v || 'all' })) }}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void reload()}>
+        <Button icon={<ReloadOutlined />} onClick={() => { void reload(); void loadStats() }}>
           刷新
         </Button>
         <Dropdown
@@ -668,7 +740,7 @@ export default function ObservationTab({ onOpenRecord }) {
                               messageApi.success('已解除关联')
                               const { links } = await getObservationIssue(link.issueId)
                               setDetailLinks(links)
-                              await reload()
+                              await Promise.all([reload(), loadStats()])
                             } catch (err) {
                               messageApi.error(err instanceof Error ? err.message : '解除失败')
                             }

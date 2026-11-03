@@ -36,6 +36,13 @@ export function registerObservationRoutes(app) {
     },
   )
 
+  // 注意：必须注册在 /api/observation/issues/:id 之前，否则 "stats" 会被当作 :id 吞掉
+  app.get(
+    '/api/observation/issues/stats',
+    { preHandler: requirePermission('view') },
+    async () => observationRepository.getIssueStats(),
+  )
+
   app.post(
     '/api/observation/issues',
     {

@@ -544,6 +544,74 @@ export const observationRepository = {
   },
 
   /**
+   * 统计大盘（全量口径，不随列表筛选联动）：
+   * counts = status 维计数；byProduct = product × status 维计数 + 升级率折线；
+   * pendingTotal = 待复核建议数（横幅同源）；promotionRate = 已升级 / 全部。
+   */
+  getIssueStats() {
+    const db = getDb()
+    const statusRows = db
+      .prepare(
+        `SELECT status, COUNT(*) AS n FROM observation_issues GROUP BY status`,
+      )
+      .all()
+    /** @type {Record<string, number>} */
+    const counts = { watching: 0, promoted: 0, archived: 0 }
+    for (const row of statusRows) {
+      const status = String(row.status || '')
+      if (status === 'watching' || status === 'promoted' || status === 'archived') {
+        counts[status] += Number(row.n || 0)
+      }
+    }
+    const total = counts.watching + counts.promoted + counts.archived
+
+    const productRows = db
+      .prepare(
+        `SELECT product_key, product_name, status, COUNT(*) AS n
+         FROM observation_issues
+         WHERE product_key IS NOT NULL AND product_key != ''
+         GROUP BY product_key, product_name, status
+         ORDER BY product_name ASC`,
+      )
+      .all()
+    /** @type {Map<string, { productKey: string, productName: string, counts: Record<string, number>, total: number }>} */
+    const byProductMap = new Map()
+    for (const row of productRows) {
+      const key = String(row.product_key || '')
+      const status = String(row.status || '')
+      if (!key || !(status in counts)) continue
+      const n = Number(row.n || 0)
+      let entry = byProductMap.get(key)
+      if (!entry) {
+        entry = {
+          productKey: key,
+          productName: String(row.product_name || key),
+          counts: { watching: 0, promoted: 0, archived: 0 },
+          total: 0,
+        }
+        byProductMap.set(key, entry)
+      }
+      if (!entry.productName && row.product_name) {
+        entry.productName = String(row.product_name)
+      }
+      entry.counts[status] += n
+      entry.total += n
+    }
+    const byProduct = Array.from(byProductMap.values()).map((entry) => ({
+      ...entry,
+      rate: entry.total ? Math.round((entry.counts.promoted / entry.total) * 1000) / 10 : 0,
+    }))
+
+    return {
+      counts,
+      total,
+      promotionRate: total ? Math.round((counts.promoted / total) * 1000) / 10 : 0,
+      byProduct,
+      pendingTotal: this.pendingCount().total,
+    }
+  },
+
+  /**
    * 三选一复核（confirm / dismiss / new_issue）。
    * confirm：pending → confirmed + 计数刷新；
    * dismiss：pending → dismissed（否决记忆）；

@@ -7,27 +7,48 @@ const read = (p) =>
 describe('Actions observation tab wiring', () => {
   const source = read('../Actions.jsx')
 
-  it('registers observation tab between problem-reduction and playbook', () => {
-    expect(source).toContain("rawTab === 'observation'")
+  it('registers observation tab between problem-reduction and generalization', () => {
+    // 2026-11-04 tab 清单单源化：ACTIONS_TAB_ITEMS 唯一真源 + 派生白名单
+    // （旧手写 rawTab === 'observation' 白名单链已删除，断言改为对齐单源实现）
     expect(source).toContain("key: 'observation'")
     expect(source).toContain("label: '留观问题'")
     expect(source.indexOf("key: 'problem-reduction'")).toBeLessThan(
       source.indexOf("key: 'observation'"),
     )
     expect(source.indexOf("key: 'observation'")).toBeLessThan(
-      source.indexOf("key: 'playbook'"),
+      source.indexOf("key: 'generalization'"),
     )
   })
 
   it('embeds both list and match queue in the tab (via drawer host container)', () => {
     // 2026-11-02 接线收尾：留观 Tab 经 ObservationTabWithDrawer 容器渲染，
     // 由容器注入 onOpenRecord 并挂 FeedbackDrawer（工单号/评价原地可点）
+    // 2026-11-04 单源化：容器共享实现收敛到 TicketDrawerHost（三级查找/FeedbackDrawer
+    // 挂载唯一真源），WithDrawer 只剩签名适配
     expect(source).toContain('<ObservationTabWithDrawer />')
     const host = read('../ObservationTabWithDrawer.jsx')
-    expect(host).toContain('<ObservationTab onOpenRecord={(link) => void openObservationRecord(link)} />')
+    expect(host).toContain("import TicketDrawerHost from '../components/tickets/TicketDrawerHost.jsx'")
+    expect(host).toContain('<TicketDrawerHost')
+    expect(host).toContain('<ObservationTab onOpenRecord={(link) => void openRecord(link)} />')
     expect(host).toContain('<ObservationMatchQueue')
-    expect(host).toContain('openObservationRecord(recordId, dataSourceType)')
-    expect(host).toContain('<FeedbackDrawer')
+    expect(host).toContain('openRecordByPair(recordId, dataSourceType)')
+    const shared = read('../../components/tickets/TicketDrawerHost.jsx')
+    expect(shared).toContain('<FeedbackDrawer')
+    expect(shared).toContain('useFeedbackDrawerSelection')
+    expect(shared).toContain('setSelectedDirect')
+  })
+
+  it('renders stats card reusing the shared product-status chart (2026-11-04 统计可视化)', () => {
+    const tab = read('ObservationTab.jsx')
+    expect(tab).toContain("from '../../components/charts/ActionItemProductStatusChart.jsx'")
+    expect(tab).toContain('getObservationIssueStats')
+    expect(tab).toContain('OBSERVATION_ISSUE_CHART_COLORS')
+    expect(tab).toContain('rateLabel="升级率"')
+    expect(tab).toContain('countNoun="个留观问题"')
+    const domain = read('../../domain/observationIssue.js')
+    expect(domain).toContain('export const OBSERVATION_ISSUE_CHART_COLORS')
+    const client = read('../../lib/observationClient.js')
+    expect(client).toContain('export async function getObservationIssueStats')
   })
 })
 
