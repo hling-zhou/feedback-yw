@@ -216,7 +216,10 @@ export async function runObservationMatch(opts) {
   const targets = resolveObservationScanTargets({ records, catalogProducts })
   stats.total = targets.length
 
-  if (!targets.length) {
+  // generalizationOnly=true（手动补跑——TASKS G2-4 第 5 条）：跳过留观段，只跑举一反三段（finally 内挂载）
+  const generalizationOnly = /** @type {boolean} */ (opts.generalizationOnly) === true
+
+  if (!targets.length && !generalizationOnly) {
     touch('留观自动识别 (0/0)')
     return { records: [], warnings, stats }
   }
@@ -225,7 +228,10 @@ export async function runObservationMatch(opts) {
   let llmFailedOnce = false
 
   try {
-    for (let i = 0; i < targets.length; i += CHUNK) {
+    if (generalizationOnly) {
+      touch('仅执行举一反三识别（跳过留观段）')
+    } else {
+      for (let i = 0; i < targets.length; i += CHUNK) {
       if (cancelled()) {
         stats.cancelled = true
         return { records: [], warnings: [...warnings, '任务已被用户取消'], stats }
@@ -334,7 +340,38 @@ export async function runObservationMatch(opts) {
       // 让出事件循环（抽屉/轮询不被堵）
       await opts.yieldToEventLoop()
     }
+    } // end of else（generalizationOnly 跳过留观段）
+  } catch (err) {
+    // 留观段异常不阻断举一反三段（两段互不影响）；仍需 finally 重置 transport
+    warnings.push(
+      `留观自动识别异常中断: ${err instanceof Error ? err.message : String(err)}`,
+    )
   } finally {
+    // ── 举一反三段（TASKS G2-4 / DESIGN §4.2）：同一任务/lock/transport 尾部挂载 ──
+    // generalizationOnly=true（手动补跑）或常规导入触发（默认两段都跑）
+    if (!stats.cancelled && opts.generalizationOnly !== false) {
+      try {
+        const { runGeneralizationPass } = await import('./generalizationScanRunner.js')
+        const genResult = await runGeneralizationPass({
+          records: opts.records,
+          recordIds: opts.recordIds,
+          importMonth: opts.importMonth,
+          settings,
+          userId,
+          username,
+          touch,
+          cancelled,
+          gPassRetry: opts.gPassRetry === true,
+          yieldToEventLoop: opts.yieldToEventLoop,
+        })
+        warnings.push(...genResult.warnings)
+        stats.generalization = genResult.stats
+      } catch (err) {
+        warnings.push(
+          `举一反三识别异常跳过: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
     // 重置 transport 回浏览器模式（防污染——对齐 enrichRunner finally）
     setLlmTransport(null, null)
     setKbTransport(null)

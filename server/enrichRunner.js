@@ -385,6 +385,9 @@ export async function runEnrichment(opts) {
     // 留观自动识别（DESIGN §3.1 五步漏斗，服务端进程内跑）：
     // 候选池 → 三通道召回 → LLM 判别/降级 → putLink(pending_suggest)。
     // 自带记录加载（recordIds/importMonth），不受主 records 空数组守卫拦截。
+    // 尾部挂举一反三段（G-pass+M-pass）——TASKS G2-4 口径：
+    // generalizationOnly=true 跳过留观段只跑举一反三段（手动补跑）；
+    // gPassRetry=true 显式重判 pending/adopted/dismissed 之外的旧 hint。
     const { runObservationMatch } = await import('./observationScanRunner.js')
     return await runObservationMatch({
       records: opts.records || [],
@@ -396,6 +399,8 @@ export async function runEnrichment(opts) {
       touch,
       cancelled,
       yieldToEventLoop,
+      generalizationOnly: /** @type {any} */ (retagOptions).generalizationOnly === true,
+      gPassRetry: /** @type {any} */ (retagOptions).gPassRetry === true,
     })
   }
 
