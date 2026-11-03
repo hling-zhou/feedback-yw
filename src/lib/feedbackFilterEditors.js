@@ -9,6 +9,7 @@ import {
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
+import { GENERALIZATION_FILTER_OPTIONS } from './feedbackFilterModel.js'
 
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterKey} FeedbackFilterKey */
 /** @typedef {import('./feedbackFilterModel.js').FeedbackFilterValues} FeedbackFilterValues */
@@ -41,6 +42,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   channel: 'enum',
   commentKeyword: 'text',
   postUseQuickScope: 'enum',
+  generalization: 'enum',
 }
 
 /**
@@ -185,6 +187,9 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
     case 'postUseQuickScope':
       // 快捷筛选由 raw 视图顶部 Segmented 独占，不走复合筛选下拉，不提供枚举选项
       return []
+    case 'generalization':
+      // G4-1 举一反三三态（已关联/被建议/均无）——工单侧筛选
+      return GENERALIZATION_FILTER_OPTIONS
     default:
       return []
   }

@@ -2598,6 +2598,13 @@ export default function Import({ embedded = false }) {
             数据月份 {importResult.dataMonth} · 已写入反馈库并完成打标 · 已刷新该月洞察快照 · Run ID：
             {importResult.run.id}
           </Typography.Text>
+          {importResult.dataSourceType === 'complaint_ticket' ||
+          importResult.dataSourceType === 'consultation_ticket' ? (
+            <Typography.Text type="secondary" className="block text-center text-xs">
+              导入完成后系统将自动识别问题共性（留观 / 举一反三建议与历史问题命中），
+              结果将在反馈库顶部「问题识别结果」横幅呈现，请稍后查看。
+            </Typography.Text>
+          ) : null}
           {importResult.enrichmentStats && (
             <Typography.Text type="secondary" className="block text-center text-xs">
               LLM 增强：工单新增完成 {importResult.enrichmentStats.ticketLlmCompleted} 条

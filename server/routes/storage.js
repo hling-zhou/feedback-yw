@@ -320,13 +320,18 @@ export function registerStorageRoutes(app) {
   )
 
   app.get('/api/storage/records', { preHandler: requirePermission('view') }, async (request) => {
-    const q = /** @type {import('../src/storage/adapter.js').RecordQuery & { fields?: string; dataSourceTypes?: string }} */ (request.query || {})
+    const q = /** @type {import('../src/storage/adapter.js').RecordQuery & { fields?: string; dataSourceTypes?: string; generalizationFilter?: string }} */ (request.query || {})
     const fields = q.fields === 'list' ? 'list' : 'full'
     // dataSourceTypes: 逗号分隔的多类型过滤（如 ?dataSourceTypes=complaint_ticket,consultation_ticket）
     const dataSourceTypes = typeof q.dataSourceTypes === 'string' && q.dataSourceTypes.trim()
       ? q.dataSourceTypes.split(',').map((s) => s.trim()).filter(Boolean)
       : undefined
-    return storageRepository.listRecords({ ...q, dataSourceTypes, fields })
+    // G4-1 举一反三三态筛选（linked/suggested/none——白名单校验，非法值忽略）
+    const generalizationFilter =
+      q.generalizationFilter === 'linked' || q.generalizationFilter === 'suggested' || q.generalizationFilter === 'none'
+        ? q.generalizationFilter
+        : undefined
+    return storageRepository.listRecords({ ...q, dataSourceTypes, fields, generalizationFilter })
   })
 
   // 用后即评「待补全用户旅程」计数：服务端按与 enrichRunner 同口径计算 count + recordIds，

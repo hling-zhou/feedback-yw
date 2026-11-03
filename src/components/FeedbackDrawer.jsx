@@ -73,6 +73,7 @@ import EstablishedActionFields, {
   getActionItemDisplayScheduleAt } from './actions/EstablishedActionFields.jsx'
 import { persistEstablishedActionForTicket, syncFirstTicketSnapshotsForRecord, syncLinkedTicketsForActionIds } from '../lib/establishedActionPersist.js'
 import ObservationCard from './observation/ObservationCard.jsx'
+import GeneralizationCard from './generalization/GeneralizationCard.jsx'
 import { getActionItem } from '../lib/actionItemClient.js'
 import {
   buildDetailOptimizationSavePatch,
@@ -2524,6 +2525,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               )
             )}
           </div>
+
+          {/* 举一反三（确立举措卡后·抽屉最末问题卡·蓝底突出——DESIGN-20261102 §5.1；仅工单态渲染） */}
+          {!isPostUseLibrary ? (
+            <GeneralizationCard feedback={feedback} canEdit={canEdit} />
+          ) : null}
 
           <div className="page-card-sm"><div className="page-card-header"><span className="page-card-title">备注</span></div>
             {canEdit ? (

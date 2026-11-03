@@ -371,6 +371,12 @@ export function parseFeedbackSearchParams(searchParams) {
     commentKeyword: searchParams.get('commentKeyword')?.trim() || '',
     problemCauseSource: parseProblemCauseSourceParam(searchParams.get('problemCauseSource')),
     postUseQuickScope: parsePostUseQuickScopeParam(searchParams.get('postUseQuickScope')),
+    generalization:
+      searchParams.get('generalization') === 'linked' ||
+      searchParams.get('generalization') === 'suggested' ||
+      searchParams.get('generalization') === 'none'
+        ? searchParams.get('generalization')
+        : '',
   }
 }
 
@@ -403,6 +409,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'commentKeyword',
     'problemCauseSource',
     'postUseQuickScope',
+    'generalization',
   ]
   for (const key of fields) {
     if (!(key in patch)) continue

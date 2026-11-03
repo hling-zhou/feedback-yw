@@ -46,6 +46,7 @@ import {
  * @property {string} channel
  * @property {string} commentKeyword
  * @property {'' | 'attention' | 'all'} postUseQuickScope
+ * @property {'' | 'linked' | 'suggested' | 'none'} [generalization] G4-1 举一反三三态（已关联/被建议/均无；缺省=未启用）
  */
 
 /** @typedef {keyof FeedbackFilterValues} FeedbackFilterKey */
@@ -75,6 +76,14 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'channel',
   'commentKeyword',
   'postUseQuickScope',
+  'generalization',
+])
+
+/** G4-1 举一反三三态筛选选项（已关联/被建议/均无） */
+export const GENERALIZATION_FILTER_OPTIONS = /** @type {const} */ ([
+  { value: 'linked', label: '已关联' },
+  { value: 'suggested', label: '被建议' },
+  { value: 'none', label: '均无' },
 ])
 
 /** @type {{ label: string; keys: FeedbackFilterKey[] }[]} */
@@ -113,6 +122,10 @@ export const FEEDBACK_FILTER_GROUPS = [
   {
     label: '我的复核',
     keys: ['myReview'],
+  },
+  {
+    label: '举一反三',
+    keys: ['generalization'],
   },
 ]
 
@@ -190,6 +203,7 @@ export const FEEDBACK_FILTER_LABELS = {
   channel: '渠道',
   commentKeyword: '原文',
   postUseQuickScope: '重点关注',
+  generalization: '举一反三',
 }
 
 /** @returns {FeedbackFilterValues} */
@@ -219,6 +233,7 @@ export function createEmptyFeedbackFilters() {
     channel: '',
     commentKeyword: '',
     postUseQuickScope: 'attention',
+    generalization: '',
   }
 }
 
@@ -555,7 +570,7 @@ export function restrictFeedbackFiltersToKeys(filters, keys, extras = {}) {
   next.postUseQuickScope = filters.postUseQuickScope || 'attention'
   for (const key of keys) {
     if (key === 'ticketDateTo') continue
-    next[key] = filters[key]
+    /** @type {any} */ (next)[key] = /** @type {any} */ (filters)[key]
   }
   if (keys.includes('ticketDateFrom')) {
     next.ticketDateTo = filters.ticketDateTo
