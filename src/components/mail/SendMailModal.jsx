@@ -16,6 +16,7 @@ import { parseEmailList } from '../../domain/mail.js'
  *   canSend: boolean
  *   disabledReason?: string
  *   buildAttachment: () => Promise<{ filename: string, mime: string, contentBase64: string } | null>
+ *   onSent?: () => void | Promise<void>  // 2026-11-04 需求8：发送成功后回调（如回访清单"已纳入"标记）；回调异常不影响发送成功语义
  * }} props
  */
 export default function SendMailModal({
@@ -30,6 +31,7 @@ export default function SendMailModal({
   canSend,
   disabledReason = '',
   buildAttachment,
+  onSent,
 }) {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -111,6 +113,14 @@ export default function SendMailModal({
         attachment,
       })
       message.success('已发送')
+      // onSent 回调（可选）：标记等后置动作。必须吞错——回调失败绝不能覆写"已发送"成功语义。
+      if (onSent) {
+        try {
+          await onSent()
+        } catch (callbackError) {
+          console.warn('onSent callback failed:', callbackError)
+        }
+      }
       onClose()
     } catch (error) {
       const reason = error?.message || '发送失败'

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Badge, Button, Checkbox, Modal, Select, Space, Table, Tabs, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, FolderAddOutlined, MailOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Badge, Button, Checkbox, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
+import { DownloadOutlined, FolderAddOutlined, LinkOutlined, MailOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { downloadPostUseCallbackRecommendationsExcel } from '../../lib/postUseRating/callbackRecommendationsExport.js'
 import {
   buildFollowupTableWorkbook,
@@ -17,6 +18,9 @@ import {
   archivePostUseJiraItems,
   listAssignees,
   listPostUseCallbackDecisions,
+  listPostUseJiraItems,
+  listPostUseVisitDispatch,
+  markPostUseVisitDispatch,
   upsertPostUseCallbackDecisions,
 } from '../../lib/postUseJiraClient.js'
 import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
@@ -56,6 +60,7 @@ export default function PostUseCallbackProcessModal({
 }) {
   const { user } = useAuth()
   const canEdit = canUsePostUseCallbackList(user?.role)
+  const navigate = useNavigate()
   const [decisions, setDecisions] = useState(() => new Map())
   const [loading, setLoading] = useState(false)
   const [savingKey, setSavingKey] = useState('')
@@ -65,6 +70,11 @@ export default function PostUseCallbackProcessModal({
   const [assignees, setAssignees] = useState(/** @type {{ id: string; username: string; team: string }[]} */ ([]))
   /** itemKey → { id, username } */
   const [assigneeOverrides, setAssigneeOverrides] = useState(() => new Map())
+  /** 已归档（产品部溯源）条目：itemKey 集合 + itemKey → { assigneeName }（Bug3，2026-11-04） */
+  const [archivedKeys, setArchivedKeys] = useState(() => new Set())
+  const [archivedItems, setArchivedItems] = useState(() => new Map())
+  /** 客服部回访"已纳入"标记：itemKey 集合（需求8，2026-11-04：导出/发送即标记，不可逆） */
+  const [dispatchedKeys, setDispatchedKeys] = useState(() => new Set())
 
   useEffect(() => {
     if (!open) return
@@ -115,6 +125,41 @@ export default function PostUseCallbackProcessModal({
     }
   }, [open])
 
+  // 拉取已归档（产品部溯源）条目：归档列渲染"已纳入"Tag、经办人只读、rows 收集去重（Bug3）。
+  // 注意 limit:-1 = 全量（limit:0 会经 Number(0)||100 截成 100 条，仓库既有坑）。
+  const refreshArchivedItems = useCallback(async () => {
+    const res = await listPostUseJiraItems({ limit: -1 })
+    const items = res?.items || []
+    const keys = new Set()
+    const infoMap = new Map()
+    for (const item of items) {
+      if (!item?.itemKey) continue
+      keys.add(item.itemKey)
+      infoMap.set(item.itemKey, { assigneeName: item.assigneeName || '' })
+    }
+    setArchivedKeys(keys)
+    setArchivedItems(infoMap)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    refreshArchivedItems().catch((error) => {
+      if (!cancelled) message.error(error?.message || '加载已归档条目失败')
+    })
+    listPostUseVisitDispatch()
+      .then((res) => {
+        if (cancelled) return
+        setDispatchedKeys(new Set((res?.items || []).map((item) => item.itemKey).filter(Boolean)))
+      })
+      .catch(() => {
+        // 已纳入标记加载失败不阻断弹窗（decisions/归档仍可用），导出/发送时会再次尝试
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, refreshArchivedItems])
+
   const currentKeys = useMemo(
     () => [
       ...(recommendations || []).map((item) => item.itemKey).filter(Boolean),
@@ -124,6 +169,8 @@ export default function PostUseCallbackProcessModal({
   )
   const visitCount = currentKeys.filter((key) => decisions.get(key)?.needCustomerVisit).length
   const traceCount = currentKeys.filter((key) => decisions.get(key)?.needInternalTrace).length
+  // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数
+  const dispatchedCount = currentKeys.filter((key) => dispatchedKeys.has(key)).length
 
   // 计算每个 tab 中勾选了产品部溯源但未指定经办人的行数（用于 tab 角标 + 存档提示）
   const pendingAssigneeQuestionnaire = useMemo(() => {
@@ -197,62 +244,88 @@ export default function PostUseCallbackProcessModal({
     dataIndex: flag,
     width: 92,
     fixed: 'right',
-    render: (_value, row) => (
-      <Checkbox
-        checked={Boolean(decisionOf(decisions, row.itemKey)[flag])}
-        disabled={!canEdit || savingKey === row.itemKey}
-        onChange={(event) =>
-          persistDecision(row.itemKey, row.sourceType, { [flag]: event.target.checked })
-        }
-      />
-    ),
+    render: (_value, row) => {
+      // 需求8（2026-11-04）：已纳入（导出/发送过）的行不再显示勾选框
+      if (flag === 'needCustomerVisit' && dispatchedKeys.has(row.itemKey)) {
+        return <Tag color="blue">已纳入</Tag>
+      }
+      return (
+        <Checkbox
+          checked={Boolean(decisionOf(decisions, row.itemKey)[flag])}
+          disabled={!canEdit || savingKey === row.itemKey}
+          onChange={(event) =>
+            persistDecision(row.itemKey, row.sourceType, { [flag]: event.target.checked })
+          }
+        />
+      )
+    },
   })
 
-  // 官网问卷类按客户聚合：同一客户的多产品分行展示，客户级列合并单元格。
+  // 官网问卷类按客户聚合：同一客户的多产品分行展示，显示列客户级合并单元格。
   // 行内顺序：先按客户（customerCode || customerName），再按产品名，保证同客户相邻以便 rowSpan。
+  //
+  // 2026-11-04 修复（Bug1/2）：antd 分页后 render 第三参 index 是「页内 index」，而旧的
+  // questionnaireSpan/questionnaireGroupKeys 是「全量数组 index → 映射」——页内 index 查全量
+  // 映射导致翻页后勾选态/合并单元格/经办人全部错位继承（首页客户的状态渲染到第 2 页）。
+  // 现改为把分组信息直接预挂到每行对象上，render 按 row 自取，index 彻底退场。
+  //
+  // 2026-11-04 用户拍板（业务语义）：产品部回溯是产品维度动作（不同产品线归不同经办人），
+  // 「产品部回溯」勾选列与经办人列行级独立（不做 rowSpan）；仅显示列与「客服部回访」
+  // 勾选列保留客户级合并（回访对象是客户，一勾全选是既有便捷语义）。
   const questionnaireRows = useMemo(() => {
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
-    return [...(recommendations || [])].sort(
+    const sorted = [...(recommendations || [])].sort(
       (a, b) =>
         keyOf(a).localeCompare(keyOf(b), 'zh')
         || String(a.productName || '').localeCompare(String(b.productName || ''), 'zh'),
     )
+    // 客户分组信息预挂：首行 span=组行数，后续行 span=0（渲染时返回 rowSpan:0 吞行）
+    let i = 0
+    while (i < sorted.length) {
+      let j = i
+      const keys = []
+      while (j < sorted.length && keyOf(sorted[j]) === keyOf(sorted[i])) {
+        if (sorted[j].itemKey) keys.push(sorted[j].itemKey)
+        j += 1
+      }
+      const span = j - i
+      for (let k = i; k < j; k++) {
+        sorted[k] = {
+          ...sorted[k],
+          __groupKeys: keys,
+          __isGroupFirst: k === i,
+          __groupSpan: span,
+        }
+      }
+      i = j
+    }
+    return sorted
   }, [recommendations])
 
-  // 每个客户分组的 rowSpan（首行=组内行数，后续行=0）与该组的 itemKey 列表
-  const { questionnaireSpan, questionnaireGroupKeys } = useMemo(() => {
-    const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
-    const spans = new Array(questionnaireRows.length).fill(0)
-    /** @type {Record<number, string[]>} index → 该客户分组所有 itemKey */
-    const groupKeys = {}
-    for (let i = 0; i < questionnaireRows.length; i++) {
-      if (i > 0 && keyOf(questionnaireRows[i]) === keyOf(questionnaireRows[i - 1])) continue
-      let span = 1
-      const keys = []
-      for (let j = i; j < questionnaireRows.length && keyOf(questionnaireRows[j]) === keyOf(questionnaireRows[i]); j++) {
-        span += i === j ? 0 : 1
-        if (questionnaireRows[j].itemKey) keys.push(questionnaireRows[j].itemKey)
-      }
-      spans[i] = span
-      groupKeys[i] = keys
-    }
-    return { questionnaireSpan: spans, questionnaireGroupKeys: groupKeys }
-  }, [questionnaireRows])
-
-  const mergedCell = (value, index, render) => {
-    const span = questionnaireSpan[index]
-    if (span === 0) return { children: '', props: { rowSpan: 0 } }
-    return { children: render ? render(value) : value, props: { rowSpan: span } }
+  // 客户级合并单元格的通用 render 包装：非组首行返回 rowSpan:0 吞行。
+  const mergedCell = (value, row, render) => {
+    if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
+    return { children: render ? render(value) : value, props: { rowSpan: row.__groupSpan } }
   }
 
-  const mergedFlagColumn = (flag, title) => ({
+  // 客户级合并勾选列（仅用于「客服部回访」needCustomerVisit：回访对象是客户，批量勾选）。
+  // 需求8（2026-11-04）：组内任一 itemKey 已被标记"已纳入"（导出/发送过）→ 整组显示已纳入 Tag；
+  // 全部标记显示"已纳入"，部分标记显示"已纳入（部分）"，勾选框不再渲染。
+  const visitFlagColumn = (flag, title) => ({
     title,
     width: 92,
     fixed: 'right',
-    render: (_value, _row, index) => {
-      const span = questionnaireSpan[index]
-      if (span === 0) return { children: '', props: { rowSpan: 0 } }
-      const keys = questionnaireGroupKeys[index] || []
+    render: (_value, row) => {
+      if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
+      const keys = row.__groupKeys
+      const dispatched = keys.filter((k) => dispatchedKeys.has(k))
+      if (dispatched.length) {
+        const all = dispatched.length === keys.length
+        return {
+          children: <Tag color="blue">已纳入{all ? '' : '（部分）'}</Tag>,
+          props: { rowSpan: row.__groupSpan },
+        }
+      }
       const checkedList = keys.map((k) => Boolean(decisionOf(decisions, k)[flag]))
       const allChecked = checkedList.length > 0 && checkedList.every(Boolean)
       const someChecked = checkedList.some(Boolean)
@@ -267,8 +340,30 @@ export default function PostUseCallbackProcessModal({
             }
           />
         ),
-        props: { rowSpan: span },
+        props: { rowSpan: row.__groupSpan },
       }
+    },
+  })
+
+  // 行级勾选列（用于「产品部回溯」needInternalTrace：每行=客户×产品 独立决策）；
+  // 已归档行（Bug3）显示"已纳入"Tag、无勾选框——从反馈库删除归档条目后弹窗重开即恢复初始态。
+  const rowFlagColumn = (flag, title) => ({
+    title,
+    width: 92,
+    fixed: 'right',
+    render: (_value, row) => {
+      if (archivedKeys.has(row.itemKey)) {
+        return <Tag color="blue">已纳入</Tag>
+      }
+      return (
+        <Checkbox
+          checked={Boolean(decisionOf(decisions, row.itemKey)[flag])}
+          disabled={!canEdit || savingKey === row.itemKey}
+          onChange={(event) =>
+            persistDecision(row.itemKey, row.sourceType, { [flag]: event.target.checked })
+          }
+        />
+      )
     },
   })
 
@@ -279,14 +374,14 @@ export default function PostUseCallbackProcessModal({
       dataIndex: 'customerName',
       width: 160,
       ellipsis: true,
-      render: (value, row, index) => mergedCell(<span>{value}<KeyCustomerStar isKeyCustomer={row.isKeyCustomer} /></span>, index),
+      render: (value, row) => mergedCell(<span>{value}<KeyCustomerStar isKeyCustomer={row.isKeyCustomer} /></span>, row),
     },
     {
       title: '客户编码',
       dataIndex: 'customerCode',
       width: 140,
       ellipsis: true,
-      render: (value, _row, index) => mergedCell(value || '—', index),
+      render: (value, row) => mergedCell(value || '—', row),
     },
     { title: '产品名称', dataIndex: 'productName', width: 140, ellipsis: true },
     {
@@ -294,7 +389,7 @@ export default function PostUseCallbackProcessModal({
       dataIndex: 'triggerType',
       width: 150,
       ellipsis: true,
-      render: (value, _row, index) => mergedCell(value || '—', index),
+      render: (value, row) => mergedCell(value || '—', row),
     },
     { title: '7分以下总次数', dataIndex: 'lowScoreLt7Count', width: 120 },
     { title: '7分以下分布', dataIndex: 'scoreBreakdown', width: 240, ellipsis: true },
@@ -314,48 +409,41 @@ export default function PostUseCallbackProcessModal({
       ellipsis: true,
       render: (value) => <EllipsisHover value={value} />,
     },
-    mergedFlagColumn('needCustomerVisit', '客服部回访'),
-    mergedFlagColumn('needInternalTrace', '产品部溯源'),
+    visitFlagColumn('needCustomerVisit', '客服部回访'),
+    rowFlagColumn('needInternalTrace', '产品部溯源'),
     {
+      // 经办人列行级独立（2026-11-04 用户拍板：不同产品分别指定经办人；已纳入行只读显示归档经办人）
       title: '产品部溯源经办人',
       key: '__assignee',
       width: 120,
       fixed: 'right',
-      render: (_v, _row, index) => {
-        const span = questionnaireSpan[index]
-        if (span === 0) return { children: '', props: { rowSpan: 0 } }
-        const keys = questionnaireGroupKeys[index] || []
-        const traced = keys.some((k) => decisionOf(decisions, k).needInternalTrace)
-        if (!traced) {
-          return { children: '—', props: { rowSpan: span } }
+      render: (_v, row) => {
+        if (archivedKeys.has(row.itemKey)) {
+          const info = archivedItems.get(row.itemKey)
+          return <span className="text-ink-600">{info?.assigneeName || '—'}</span>
         }
-        const firstKey = keys[0] || ''
-        const current = assigneeOverrides.get(firstKey)
-        return {
-          children: (
-            <Select
-              showSearch
-              size="small"
-              className="w-full"
-              placeholder="经办人"
-              value={current?.id || undefined}
-              options={assigneeOptions}
-              filterOption={userOptionFilterOption}
-              onChange={(value) => {
-                const person = assignees.find((p) => p.id === value)
-                setAssigneeOverrides((prev) => {
-                  const map = new Map(prev)
-                  for (const key of keys) {
-                    if (person) map.set(key, { id: person.id, username: person.username })
-                    else map.delete(key)
-                  }
-                  return map
-                })
-              }}
-            />
-          ),
-          props: { rowSpan: span },
-        }
+        if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
+        const current = assigneeOverrides.get(row.itemKey)
+        return (
+          <Select
+            showSearch
+            size="small"
+            className="w-full"
+            placeholder="经办人"
+            value={current?.id || undefined}
+            options={assigneeOptions}
+            filterOption={userOptionFilterOption}
+            onChange={(value) => {
+              const person = assignees.find((p) => p.id === value)
+              setAssigneeOverrides((prev) => {
+                const map = new Map(prev)
+                if (person) map.set(row.itemKey, { id: person.id, username: person.username })
+                else map.delete(row.itemKey)
+                return map
+              })
+            }}
+          />
+        )
       },
     },
   ]
@@ -383,13 +471,34 @@ export default function PostUseCallbackProcessModal({
     { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
     { title: '问题原因', dataIndex: 'problemCause', width: 200, ellipsis: true },
     flagColumn('needCustomerVisit', '客服部回访'),
-    flagColumn('needInternalTrace', '产品部溯源'),
+    {
+      title: '产品部溯源',
+      dataIndex: 'needInternalTrace',
+      width: 92,
+      fixed: 'right',
+      render: (_v, row) => {
+        if (archivedKeys.has(row.itemKey)) return <Tag color="blue">已纳入</Tag>
+        return (
+          <Checkbox
+            checked={Boolean(decisionOf(decisions, row.itemKey).needInternalTrace)}
+            disabled={!canEdit || savingKey === row.itemKey}
+            onChange={(event) =>
+              persistDecision(row.itemKey, row.sourceType, { needInternalTrace: event.target.checked })
+            }
+          />
+        )
+      },
+    },
     {
       title: '产品部溯源经办人',
       key: '__assignee',
       width: 120,
       fixed: 'right',
       render: (_v, row) => {
+        if (archivedKeys.has(row.itemKey)) {
+          const info = archivedItems.get(row.itemKey)
+          return <span className="text-ink-600">{info?.assigneeName || '—'}</span>
+        }
         if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
         const current = assigneeOverrides.get(row.itemKey)
         return (
@@ -416,13 +525,41 @@ export default function PostUseCallbackProcessModal({
     },
   ]
 
+  // 需求8（2026-11-04）：导出/发送成功后按 itemKey 标记"已纳入"（不可逆）；
+  // 已纳入的条目不再进入后续导出/发送收集范围。标记失败不阻断主流程。
+  const markVisitDispatched = async (rows, dispatchedVia) => {
+    const pending = rows.filter((row) => row.itemKey && !dispatchedKeys.has(row.itemKey))
+    if (!pending.length) return
+    try {
+      const res = await markPostUseVisitDispatch(
+        pending.map((row) => ({
+          itemKey: row.itemKey,
+          sourceType: row.sourceType,
+          dispatchedVia,
+          customerName: row.客户名称 || '',
+          productName: row.产品名称 || '',
+          importMonth: row.数据月份 || '',
+        })),
+      )
+      const next = new Set(dispatchedKeys)
+      for (const item of res?.items || []) {
+        if (item?.itemKey) next.add(item.itemKey)
+      }
+      setDispatchedKeys(next)
+    } catch {
+      message.warning('标记"已纳入"失败，可重新导出补标')
+    }
+  }
+
   const exportVisit = () => {
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needCustomerVisit')
+      .filter((row) => !dispatchedKeys.has(row.itemKey))
     if (!rows.length) {
-      message.info('请先勾选需要客服部回访的记录')
+      message.info('请先勾选需要客服部回访的记录（已纳入的不再重复导出）')
       return
     }
     downloadFollowupTableExcel(rows, '待客服部回访表', scopeLabel)
+    void markVisitDispatched(rows, 'export')
   }
 
   const exportTrace = () => {
@@ -435,9 +572,11 @@ export default function PostUseCallbackProcessModal({
   }
 
   const archiveTrace = async () => {
-    const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needInternalTrace')
+    const allRows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needInternalTrace')
+    // 已归档条目不再重复归档（Bug3：与"已纳入"Tag 联动）
+    const rows = allRows.filter((row) => !archivedKeys.has(row.itemKey))
     if (!rows.length) {
-      message.info('请先勾选需要产品部溯源的记录')
+      message.info(allRows.length ? '勾选的记录均已纳入产品部溯源' : '请先勾选需要产品部溯源的记录')
       return
     }
     // 逐条校验：所有勾选产品部溯源的行必须指定经办人
@@ -468,10 +607,29 @@ export default function PostUseCallbackProcessModal({
     setArchiving(true)
     try {
       const saved = await archivePostUseJiraItems(rows.map((row) => toJiraArchivePayload(row, assigneeOverrides)))
-      message.success(
-        `已存档 ${saved?.items?.length || rows.length} 条到「反馈库 · 用后即评满意度 · 产品部溯源」`,
-      )
-      setAssigneeOverrides(() => new Map())
+      const savedCount = saved?.items?.length || rows.length
+      // 归档成功：刷新已归档集合（渲染"已纳入"Tag + 经办人只读）；不再清空 assigneeOverrides——
+      // 已归档行不再渲染 Select，未归档行的经办人选择不受影响。
+      await refreshArchivedItems()
+      message.success({
+        content: (
+          <span>
+            已存档 {savedCount} 条到「反馈库 · 用后即评满意度 · 产品部溯源」
+            <Button
+              type="link"
+              size="small"
+              className="!px-1"
+              onClick={() => {
+                onClose()
+                navigate('/feedbacks?lane=post_use&view=trace&source=post_use_rating')
+              }}
+            >
+              立即查看
+            </Button>
+          </span>
+        ),
+        duration: 6,
+      })
     } catch (error) {
       message.error(error?.message || '存档失败')
     } finally {
@@ -538,6 +696,7 @@ export default function PostUseCallbackProcessModal({
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Typography.Text type="secondary">
           已勾选客服部回访 {visitCount} 条 · 产品部溯源 {traceCount} 条
+          {dispatchedCount ? ` · 客服部回访已纳入 ${dispatchedCount} 条` : ''}
         </Typography.Text>
         <Space wrap>
           <Tooltip title="下载当前范围的双表原始清单">
@@ -580,6 +739,17 @@ export default function PostUseCallbackProcessModal({
               存档「产品部溯源」
             </Button>
           </Tooltip>
+          <Tooltip title="跳转反馈库 · 用后即评满意度 · 产品部回溯视图">
+            <Button
+              icon={<LinkOutlined />}
+              onClick={() => {
+                onClose()
+                navigate('/feedbacks?lane=post_use&view=trace&source=post_use_rating')
+              }}
+            >
+              查看产品部回溯
+            </Button>
+          </Tooltip>
         </Space>
       </div>
       <SendMailModal
@@ -597,7 +767,7 @@ export default function PostUseCallbackProcessModal({
             callbackNonTenRecords,
             decisions,
             'needCustomerVisit',
-          )
+          ).filter((row) => !dispatchedKeys.has(row.itemKey))
           if (!rows.length) return null
           const wb = buildFollowupTableWorkbook(rows, '待客服部回访表')
           return {
@@ -605,6 +775,16 @@ export default function PostUseCallbackProcessModal({
             mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             contentBase64: followupWorkbookToBase64(wb),
           }
+        }}
+        onSent={async () => {
+          // 发送成功 → 与本次附件一致的未纳入行标记（buildAttachment 过滤逻辑同款重算）
+          const rows = collectFollowupExportRows(
+            recommendations,
+            callbackNonTenRecords,
+            decisions,
+            'needCustomerVisit',
+          ).filter((row) => !dispatchedKeys.has(row.itemKey))
+          await markVisitDispatched(rows, 'mail')
         }}
       />
     </Modal>

@@ -64,6 +64,24 @@ export function archivePostUseJiraItems(items) {
 }
 
 /**
+ * 客服部回访"已纳入"标记（2026-11-04 需求8）：导出/发送成功后按 itemKey 标记，不可逆。
+ * @returns {Promise<{ items: Array<{ itemKey: string; sourceType?: string; dispatchedVia?: string; dispatchedAt?: string }> }>}
+ */
+export function listPostUseVisitDispatch() {
+  return apiFetch('/api/post-use-visit-dispatch')
+}
+
+/**
+ * @param {Array<{ itemKey: string; sourceType?: string; dispatchedVia?: 'export' | 'mail'; customerName?: string; productName?: string; importMonth?: string }>} items
+ */
+export function markPostUseVisitDispatch(items) {
+  return apiFetch('/api/post-use-visit-dispatch', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
+}
+
+/**
  * @param {string} id
  * @param {{ jiraTicket?: string; status?: string; progress?: string; assigneeId?: string; assigneeName?: string; actionId?: string }} patch
  */
