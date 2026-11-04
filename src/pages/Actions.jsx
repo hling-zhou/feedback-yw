@@ -1612,7 +1612,7 @@ function ProductActionsTab() {
         issueId={generalizationIssueId}
         open={generalizationDrawerOpen}
         onClose={() => setGeneralizationDrawerOpen(false)}
-        onSaved={() => void loadActions()}
+        onSaved={() => void loadItems()}
         onOpenRecord={(link) => {
           // 证据工单 → 复用工单抽屉查找（ticketId 优先）
           if (link?.ticketId) openFeedbackByTicketId(link.ticketId)

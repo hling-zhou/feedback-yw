@@ -6,7 +6,9 @@ import { useFeedbackDrawerSelection } from '../../hooks/useFeedbackDrawerSelecti
 import { fetchFeedbackRecordsByTicketIds } from '../../lib/linkedTicketBackfill.js'
 import { getApiStorageAdapter } from '../../storage/apiStorageAdapter.js'
 
-/** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
+/** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
+/** @typedef {{ recordId?: string, recordDataSource?: string, ticketId?: string }} OpenRecordLink */
+/** @typedef {(openRecord: (link: OpenRecordLink) => void, openRecordByPair: (recordId: string, dataSourceType?: string) => void) => import('react').ReactNode} TicketDrawerHostRenderTab */
 
 /**
  * 工单详情抽屉宿主容器——「抽屉内点工单 → 叠加工单详情抽屉」的唯一正确实现
@@ -20,9 +22,7 @@ import { getApiStorageAdapter } from '../../storage/apiStorageAdapter.js'
  * 均未命中时 message.warning 提示。
  *
  * @param {Object} props
- * @param {import('react').ReactNode} props.children - 业务 Tab 本体（注入 openRecord）
- * @param {(open: (link: { recordId?: string, recordDataSource?: string, ticketId?: string } | string, dataSourceType?: string) => void) => import('react').ReactNode} [props.renderTab]
- *   消费方形态不同时的适配口：默认直接把 openRecord 作为 onOpenRecord 传给 children 函数形态。
+ * @param {import('react').ReactNode | TicketDrawerHostRenderTab} props.children - 业务 Tab 本体；传函数时注入 openRecord / openRecordByPair 两个签名适配器
  * @param {string} [props.missingHint] - 三级查找均未命中时的提示文案（默认通用文案）
  */
 export default function TicketDrawerHost({ children, missingHint }) {
@@ -61,8 +61,7 @@ export default function TicketDrawerHost({ children, missingHint }) {
 
   /**
    * 统一入口（叠加语义）。兼容两种签名：详情抽屉传 link 对象；MatchQueue 传 (recordId, dataSourceType)。
-   * @param {{ recordId?: string, recordDataSource?: string, ticketId?: string } | string | null | undefined} linkOrRecordId
-   * @param {string} [dataSourceType] 仅 Queue 直传 (recordId, dataSourceType) 时使用
+   * @type {(linkOrRecordId: OpenRecordLink | string | null | undefined, dataSourceType?: string) => Promise<void>}
    */
   const openRecord = useCallback(
     async (linkOrRecordId, dataSourceType) => {
@@ -106,8 +105,10 @@ export default function TicketDrawerHost({ children, missingHint }) {
   return (
     <div className="space-y-6">
       {typeof children === 'function'
-        ? children((link) => void openRecord(link), (recordId, dataSourceType) =>
-            void openRecord(recordId, dataSourceType))
+        ? /** @type {TicketDrawerHostRenderTab} */ (children)(
+            (link) => void openRecord(link),
+            (recordId, dataSourceType) => void openRecord(recordId, dataSourceType),
+          )
         : children}
       <FeedbackDrawer
         feedback={selectedFeedback}

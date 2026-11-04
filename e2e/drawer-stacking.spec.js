@@ -50,30 +50,31 @@ async function loginAsAdmin(page) {
 }
 
 /**
- * 抽屉叠加核心序列：宿主抽屉内点工单 → 断言两层并存 → 关详情 → 断言宿主仍在。
+ * 抽屉叠加核心断言（前提：宿主抽屉已打开）：
+ * 点工单 → 断言两层并存 → 关详情 → 断言宿主仍在。
  *
  * @param {import('@playwright/test').Page} page
- * @param {{ hostTrigger: import('@playwright/test').Locator, hostMarker: string | RegExp, ticketLink: import('@playwright/test').Locator }} ctx
+ * @param {{ hostMarker: string | RegExp, ticketLink: import('@playwright/test').Locator }} ctx
  */
 async function assertStackingSemantics(page, ctx) {
-  // ① 开宿主抽屉
-  await ctx.hostTrigger.click()
-  const hostDrawer = page.locator('.ant-drawer').filter({ has: page.locator('.ant-drawer-content-wrapper') }).last()
-  await expect(page.getByText(ctx.hostMarker)).toBeVisible({ timeout: 20_000 })
   const hostCountBefore = await page.locator('.ant-drawer').count()
+  if (hostCountBefore < 1) throw new Error('前置失败：宿主抽屉未打开')
+  const hostDrawer = page.locator('.ant-drawer').nth(hostCountBefore - 1)
 
-  // ② 抽屉内点工单号 → 叠加工单详情抽屉
+  // ① 抽屉内点工单号 → 叠加工单详情抽屉（数量 +1）
   await ctx.ticketLink.click()
-  // 工单详情抽屉（FeedbackDrawer）挂起后：抽屉数量 +1，且出现工单标题元素
   await expect(page.locator('.ant-drawer')).toHaveCount(hostCountBefore + 1, { timeout: 20_000 })
 
-  // ③ 关闭工单详情抽屉（最上层那个的关闭按钮）
-  const detailDrawer = page.locator('.ant-drawer').last()
-  await detailDrawer.locator('.ant-drawer-close').click()
+  // ② 关闭工单详情抽屉：Esc 键（关闭按钮会被占满宽度的抽屉标题层拦截 pointer events，
+  //    Esc 是真实用户同样有效的关闭路径）
+  await page.keyboard.press('Escape')
   await expect(page.locator('.ant-drawer')).toHaveCount(hostCountBefore, { timeout: 20_000 })
 
-  // ④ 宿主抽屉必须仍在（叠加语义核心断言）
-  await expect(page.getByText(ctx.hostMarker)).toBeVisible({ timeout: 10_000 })
+  // ③ 宿主抽屉必须仍在（叠加语义核心断言：不得因开/关详情被替换掉）
+  // exact 防止页面说明文案（PageHeader 描述里也含该词）造成 strict violation
+  await expect(
+    hostDrawer.getByText(ctx.hostMarker, { exact: true }),
+  ).toBeVisible({ timeout: 10_000 })
 }
 
 test.describe('抽屉叠加语义（工单详情抽屉叠在业务抽屉之上，关闭后宿主仍在）', () => {
@@ -82,10 +83,11 @@ test.describe('抽屉叠加语义（工单详情抽屉叠在业务抽屉之上�
     await page.goto('/actions?tab=product')
     await expect(page.getByRole('tab', { name: '产品举措与进展' })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 })
 
-    // 种子举措行（产品名/内容唯一定位），点行开举措详情抽屉
+    // 种子举措行（产品名/内容唯一定位）——点「举措」内容列开详情抽屉
+    // （不能点行中心：固定列 sticky 区域会拦截 pointer events）
     const row = page.locator('tr', { hasText: 'E2E叠加：修复功能异常' })
     await expect(row.first()).toBeVisible({ timeout: 30_000 })
-    await row.first().click()
+    await row.first().getByText('E2E叠加：修复功能异常').click()
 
     // 抽屉内「关联反馈」分区的工单号按钮
     const ticketLink = page
@@ -95,7 +97,6 @@ test.describe('抽屉叠加语义（工单详情抽屉叠在业务抽屉之上�
     await expect(ticketLink.first()).toBeVisible({ timeout: 15_000 })
 
     await assertStackingSemantics(page, {
-      hostTrigger: row.first(),
       hostMarker: '举措详情',
       ticketLink: ticketLink.first(),
     })
@@ -106,10 +107,10 @@ test.describe('抽屉叠加语义（工单详情抽屉叠在业务抽屉之上�
     await page.goto('/actions?tab=generalization')
     await expect(page.getByRole('tab', { name: '举一反三' })).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 })
 
-    // 种子 issue 行 → 点详情开抽屉
+    // 种子 issue 行 → 点「详情」按钮开抽屉（按钮在操作列，避开 ellipsis td 的拦截）
     const row = page.locator('tr', { hasText: 'E2E叠加：功能异常反复出现' })
     await expect(row.first()).toBeVisible({ timeout: 30_000 })
-    await row.first().getByRole('button', { name: /详情|E2E叠加：功能异常反复出现/ }).first().click()
+    await row.first().getByRole('button', { name: '详情', exact: true }).click()
 
     // 抽屉内证据区的工单号按钮（修复点：曾因 onOpenRecord 未接线而是纯文本）
     const ticketLink = page
@@ -119,7 +120,6 @@ test.describe('抽屉叠加语义（工单详情抽屉叠在业务抽屉之上�
     await expect(ticketLink.first()).toBeVisible({ timeout: 15_000 })
 
     await assertStackingSemantics(page, {
-      hostTrigger: row.first().getByRole('button', { name: /详情|E2E叠加：功能异常反复出现/ }).first(),
       hostMarker: '举一反三问题',
       ticketLink: ticketLink.first(),
     })
