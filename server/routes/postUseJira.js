@@ -6,6 +6,7 @@ import {
   postUseCallbackDecisionRepository,
   postUseJiraRepository,
 } from '../postUseJiraRepository.js'
+import { postUseVisitDispatchRepository } from '../postUseVisitDispatchRepository.js'
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertEditRecordPermission(request, reply) {
@@ -40,6 +41,28 @@ export function registerPostUseJiraRoutes(app) {
       count: saved.length,
     })
     return { items: saved }
+  })
+
+  // 2026-11-04 需求8：客服部回访"已纳入"标记（导出/发送成功后写入；不可逆、幂等）
+  app.get(
+    '/api/post-use-visit-dispatch',
+    { preHandler: requirePermission('view') },
+    async () => ({ items: postUseVisitDispatchRepository.list() }),
+  )
+
+  app.post('/api/post-use-visit-dispatch', async (request, reply) => {
+    if (!assertEditRecordPermission(request, reply)) return
+    const body = /** @type {{ items?: Record<string, unknown>[] }} */ (request.body || {})
+    const items = Array.isArray(body.items) ? body.items : []
+    if (!items.length) {
+      reply.code(400)
+      return { error: '请至少提交一条标记记录' }
+    }
+    const marked = postUseVisitDispatchRepository.markMany(items)
+    logAuditFromRequest(request, 'post_use_visit_dispatch.mark', {
+      count: marked.length,
+    })
+    return { items: marked }
   })
 
   app.get('/api/post-use-jira', { preHandler: requirePermission('view') }, async (request) => {

@@ -43,7 +43,7 @@ describeApi('post-use jira API', () => {
     const editor = await createUser({
       username: 'jira_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '产品运营组', // TEAMS 枚举收紧后旧值'测试'会让 createUser 抛错，换合法枚举（修复既有 broken）
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }
@@ -149,5 +149,66 @@ describeApi('post-use jira API', () => {
       headers: authHeader('editor'),
     })
     expect(listed.json().total).toBe(1)
+  })
+
+  it('需求8：visit dispatch 标记不可逆且幂等（重复标记保留首次时间与来源）', async () => {
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visit-dispatch',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          {
+            itemKey: 'q:C9:弹性公网IP',
+            sourceType: 'questionnaire',
+            dispatchedVia: 'export',
+            customerName: '回访客户甲',
+            productName: '弹性公网IP',
+            importMonth: '2026-07',
+          },
+        ],
+      },
+    })
+    expect(first.statusCode).toBe(200)
+    expect(first.json().items).toEqual([{ itemKey: 'q:C9:弹性公网IP' }])
+
+    const repeat = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visit-dispatch',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          {
+            itemKey: 'q:C9:弹性公网IP',
+            sourceType: 'questionnaire',
+            dispatchedVia: 'mail', // 换出口再标 → 应被忽略，保留首次 export
+          },
+        ],
+      },
+    })
+    expect(repeat.statusCode).toBe(200)
+    expect(repeat.json().items).toEqual([])
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/post-use-visit-dispatch',
+      headers: authHeader('editor'),
+    })
+    expect(listed.json().items).toHaveLength(1)
+    expect(listed.json().items[0]).toMatchObject({
+      itemKey: 'q:C9:弹性公网IP',
+      dispatchedVia: 'export',
+    })
+    // 保留首次标记时间
+    expect(listed.json().items[0].dispatchedAt).toBeTruthy()
+
+    // 空提交 400
+    const empty = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visit-dispatch',
+      headers: authHeader('editor'),
+      payload: { items: [] },
+    })
+    expect(empty.statusCode).toBe(400)
   })
 })
