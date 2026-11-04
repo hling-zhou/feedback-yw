@@ -402,6 +402,8 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
               },
             },
             { title: '涉及产品', dataIndex: 'products', width: 180, render: (value) => value.join('、') },
+            // 2026-11-04 需求5（拍板：始终显示）：月/季/年视图都展示数据月份；空数组（visit-only 客户）降级 '—'
+            { title: '数据月份', dataIndex: 'importMonths', width: 150, ellipsis: true, render: (value) => (value || []).join('、') || '—' },
             { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
             { title: '均分', dataIndex: 'avgScore', width: 76, render: (value) => value == null ? '—' : value },
             { title: '客户特征', width: 100, render: (_, row) => row.highFrequency ? <Tag color="red">高频低分</Tag> : row.visitEvidenceCount && !row.nonTenCount ? <Tag color="blue">仅回访证据</Tag> : <Tag>单次反馈</Tag> },

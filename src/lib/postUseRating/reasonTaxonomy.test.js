@@ -12,6 +12,7 @@ describe('substantive feedback reason', () => {
     expect([...FEEDBACK_REASON_PLACEHOLDERS]).toEqual(
       expect.arrayContaining([
         '无', '无/不涉及', '/', '业务使用完毕', '业务使用完毕无后续使用需求', '其他',
+        '不使用了', '不用了', '否', '暂无', '不再使用', '使用到期',
       ]),
     )
     for (const text of FEEDBACK_REASON_PLACEHOLDERS) {
@@ -22,6 +23,28 @@ describe('substantive feedback reason', () => {
     expect(isSubstantiveFeedbackReason('10')).toBe(false)
     expect(isSubstantiveFeedbackReason('abc')).toBe(false)
     expect(isSubstantiveFeedbackReason('')).toBe(false)
+  })
+
+  it('treats bare 好/非常好 as positive words, not negative feedback (2026-11-04 真实库高频变体)', () => {
+    // sentiment 词典对单字正面词判 neutral_inquiry ≠ positive → 曾被误判为负面
+    expect(isSubstantiveFeedbackReason('好')).toBe(false)
+    expect(isSubstantiveFeedbackReason('非常好')).toBe(false)
+    // 它们仍是有效客户文本（不出局占位词集合）
+    expect(isValidCustomerText('好')).toBe(true)
+    expect(isValidCustomerText('非常好')).toBe(true)
+  })
+
+  it('分号拼接串按整串判定时不逃逸占位组合（2026-11-04 修复：消费方应拆片判定）', () => {
+    // 整串不在占位词集合 → 精确匹配逃逸 → 曾经被判负面。此断言锁定「整串判定为负面」这一事实，
+    // recordHasNegativeFeedback / pickHighFrequencyLowScoreReason 等消费方必须拆片后逐片判定。
+    expect(isSubstantiveFeedbackReason('其他;业务使用完毕无后续使用需求')).toBe(true)
+    expect(isSubstantiveFeedbackReason('业务使用完毕无后续使用需求;其他')).toBe(true)
+    // 拆片后每片都是占位词，不应有任一片判负
+    expect(splitFeedbackReasonPieces('其他;业务使用完毕无后续使用需求')
+      .map(isSubstantiveFeedbackReason)).toEqual([false, false])
+    // 混有真负面片的串：拆片后仍判负（修复不误伤）
+    expect(splitFeedbackReasonPieces('无/不涉及;功能有缺失')
+      .some(isSubstantiveFeedbackReason)).toBe(true)
   })
 
   it('excludes obvious positive words from substantive feedback but still treats them as valid customer text', () => {

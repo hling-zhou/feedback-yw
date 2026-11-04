@@ -4,7 +4,7 @@ import {
 } from '../../domain/postUseRatingImport.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import { POST_USE_RATING_PRODUCT_NAMES } from '../productCatalog/postUseRatingProducts.js'
-import { isSubstantiveFeedbackReason } from './reasonTaxonomy.js'
+import { isSubstantiveFeedbackReason, splitFeedbackReasonPieces } from './reasonTaxonomy.js'
 import { normalizeTicketId } from '../desensitize.js'
 import { buildTicketRecordIndex } from '../followUpSatisfactionImport.js'
 import { normalizePostUseKeyCustomers } from '../storage.js'
@@ -122,8 +122,16 @@ export function getFeedbackReasonValues(record) {
   return values
 }
 
+/**
+ * 2026-11-04 修复：先按分号拆片再逐片判定。
+ * 背景：导入解析的三个「客户回答」列原样保留分号多选（如 `其他;业务使用完毕无后续使用需求`），
+ * 整串不在占位词集合里 → 逃过精确匹配 → sentiment 兜底把「后续」误判为待跟进 ≠ positive → 整串
+ * 被当成实质负面。拆片后每片独立判定：纯占位组合不再判负，混有真负面片的串仍判负（不误伤）。
+ * 先例：观察模块 scanTargets.js 已用「拆片 + 逐片判定」的正确姿势，本修复对齐之。
+ */
 export function recordHasNegativeFeedback(record) {
-  return getFeedbackReasonValues(record).some((text) => isSubstantiveFeedbackReason(text))
+  return getFeedbackReasonValues(record).some((text) =>
+    splitFeedbackReasonPieces(text).some((piece) => isSubstantiveFeedbackReason(piece)))
 }
 
 function isLowScoreRecord(record) {
@@ -222,7 +230,7 @@ function buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, feedbac
   }
   const reasons = []
   if (group.isKeyCustomer) reasons.push('命中重点客户名单')
-  if (group.isHighFrequency) reasons.push('同一客户低分记录达到2次及以上')
+  if (group.isHighFrequency) reasons.push('同一客户单月低分记录达到2次及以上')
   const suffix = reasons.length ? `，${reasons.join('，')}` : ''
   const head = parts.length
     ? parts.join('，')
@@ -237,7 +245,8 @@ function isCallbackTriggerChannel(record) {
 
 /**
  * 建议回访：官网评分类或选项类 + 云网产品，且满足任一路径：
- * - 低于7分 + 重点客户或同一客户低分至少2次
+ * - 低于7分 + 重点客户 或 同一客户单月低分至少2次（2026-11-04 口径修正：按客户×自然月
+ *   跨产品累计，未达标月份不入选；重点客户/负面反馈路径不看频次）
  * - 反馈原因含实质负面表述（不看分数，不要重点/高频）
  * @param {import('../types.js').FeedbackRecord[]} records
  * @param {string[]} keyCustomers
@@ -254,26 +263,38 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
     (record) => isLowScoreRecord(record) || recordHasNegativeFeedback(record),
   )
 
+  /**
+   * 2026-11-04 需求6（口径修正，用户拍板）：低分计数按「客户 × 自然月」分别累计，跨产品合并
+   * （key = customerCountKey\u0000importMonth）；记录入选仅看其所在月份的计数是否达阈值，
+   * 未达标月份的低分记录不再因「范围内累计达标」被全量带入。
+   * importMonth 为导入管线注入的动态字段（FeedbackRecord 类型未声明，运行时恒存在），
+   * 此处局部放宽类型避免 TS2339 新增。
+   */
   /** @type {Map<string, number>} */
   const customerLowScoreCounts = new Map()
-  for (const record of channelScoped) {
+  for (const record of /** @type {typeof channelScoped & { importMonth?: string }[]} */ (channelScoped)) {
     if (!isLowScoreRecord(record)) continue
     const customerKey = normalizeText(record.customerName) || normalizeText(record.customerCode)
     if (!customerKey) continue
-    customerLowScoreCounts.set(customerKey, (customerLowScoreCounts.get(customerKey) || 0) + 1)
+    const month = normalizeText(record.importMonth)
+    const countKey = `${customerKey}\u0000${month}`
+    customerLowScoreCounts.set(countKey, (customerLowScoreCounts.get(countKey) || 0) + 1)
   }
 
   const groups = new Map()
-  for (const record of scoped) {
+  for (const record of /** @type {typeof scoped & { importMonth?: string }[]} */ (scoped)) {
     const customerName = normalizeText(record.customerName) || '匿名客户'
     const customerCode = normalizeText(record.customerCode)
     const productName = normalizeText(record.productName || record.product)
     if (!productName) continue
     const customerCountKey = customerName !== '匿名客户' ? customerName : customerCode
     const isKeyCustomer = keywords.length ? isKeyCustomerName(record.customerName, keywords) : false
-    const isHighFrequency = Number(customerLowScoreCounts.get(customerCountKey) || 0) >= 2
+    // 逐记录按「其所在月」的计数判定高频（跨产品合并到客户月计数）；阈值沿用 ≥2
+    const monthCountKey = `${customerCountKey}\u0000${normalizeText(record.importMonth)}`
+    const isHighFrequency = Number(customerLowScoreCounts.get(monthCountKey) || 0) >= 2
     const hasNegative = recordHasNegativeFeedback(record)
     const isLowScore = isLowScoreRecord(record)
+    // 重点客户 / 负面反馈路径无月计数门槛（2026-11-04 6c 拍板：保持不看频次的既有语义）
     if (!hasNegative && !(isLowScore && (isKeyCustomer || isHighFrequency))) continue
 
     const key = `${normalizeCustomerKey(record)}\u0000${productName}`
@@ -331,6 +352,12 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
       const reasons = orderedRecords.map(getEffectiveReason).filter(Boolean)
       const feedbackReasons = orderedRecords.flatMap((record) => getFeedbackReasonValues(record))
       const feedbackReasonSummary = summarizeRepeatedValues(feedbackReasons)
+      // 2026-11-04 拆双字段：负面文案只用「判负命中」的文本，占位词（无/不涉及 等）不再混入
+      // 「反馈原因含负面表述（…）」的括号里；「反馈原因」展示列继续用全量 feedbackReasonSummary。
+      const negativeFeedbackSummary = summarizeRepeatedValues(
+        feedbackReasons.filter((text) =>
+          splitFeedbackReasonPieces(text).some((piece) => isSubstantiveFeedbackReason(piece))),
+      )
       const related = relatedByKey.get(group.key) || group.triggerRecords
       const latestSurveyRecord = pickLatestSurveyRecord(related)
       const channelLabels = new Set()
@@ -357,11 +384,12 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
         quoteSummary: summarizeRepeatedValues(quotes),
         reasonSummary: summarizeRepeatedValues(reasons),
         feedbackReasonSummary,
+        negativeFeedbackSummary,
         latestFeedbackAt: group.latestFeedbackAt,
         latestSurveyName: latestSurveyRecord ? getSurveyName(latestSurveyRecord) : '',
         latestTouchpointPageName: latestSurveyRecord ? getTouchpointPageName(latestSurveyRecord) : '',
         channels: sortChannelLabels(channelLabels),
-        recommendedReason: buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, feedbackReasonSummary),
+        recommendedReason: buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, negativeFeedbackSummary),
         evidenceRecordIds: [...group.evidenceRecordIds],
         completed: Boolean(group.triggerRecords.some((record) => record.customerVisit)),
         isKeyCustomer: group.isKeyCustomer,

@@ -383,7 +383,7 @@ describe('post-use story model', () => {
     expect(model.callbackRecommendations[0].latestTouchpointPageName).toBe('选项类触点页')
     expect(model.callbackRecommendations[0].channels).toEqual(['官网评分类', '选项类'])
     expect(model.callbackRecommendations[0].recommendedReason).toContain('命中重点客户名单')
-    expect(model.callbackRecommendations[0].recommendedReason).toContain('同一客户低分记录达到2次及以上')
+    expect(model.callbackRecommendations[0].recommendedReason).toContain('同一客户单月低分记录达到2次及以上')
 
     expect(model.callbackRecommendations[1]).toMatchObject({
       customerName: '普通客户',
@@ -1025,5 +1025,64 @@ describe('post-use story model', () => {
     expect(model.metrics.external.yunwang.avgScore).toBe(10)
     expect(model.metrics.external.company.avgScore).toBeNull()
     expect(model.metrics.external.company.totalSample).toBe(0)
+  })
+
+  // 2026-11-04 需求6 口径修正：低分计数按「客户 × 自然月」跨产品累计；未达标月份不入选。
+  // 阈值沿用 ≥2（6b 拍板）；重点客户/负面反馈路径无月门槛（6c 拍板）。
+  it('需求6-①：同客户同月跨产品低分2次 → 入选（月计数跨产品合并）', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        { id: 'm1', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 5, channel: 'console', importMonth: '2026-07', customerName: '跨产品客户', customerCode: 'X1', createdAt: '2026-07-01T10:00:00.000Z' },
+        { id: 'm2', dataSourceType: 'post_use_rating', productName: '共享带宽', ratingScore: 4, channel: 'console', importMonth: '2026-07', customerName: '跨产品客户', customerCode: 'X1', createdAt: '2026-07-02T10:00:00.000Z' },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP', '共享带宽'],
+    })
+    expect(model.callbackRecommendations).toHaveLength(2)
+    expect(model.callbackRecommendations.every((item) => item.customerName === '跨产品客户')).toBe(true)
+    expect(model.callbackRecommendations.every((item) => item.isHighFrequency)).toBe(true)
+  })
+
+  it('需求6-②：同客户7月1次+8月1次 → 都不入选（锁死按月口径，旧范围累计口径会入选）', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        { id: 'n1', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 5, channel: 'console', importMonth: '2026-07', customerName: '跨月散点客户', customerCode: 'X2', createdAt: '2026-07-01T10:00:00.000Z' },
+        { id: 'n2', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 4, channel: 'console', importMonth: '2026-08', customerName: '跨月散点客户', customerCode: 'X2', createdAt: '2026-08-01T10:00:00.000Z' },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.callbackRecommendations).toHaveLength(0)
+  })
+
+  it('需求6-③：同客户7月3次+8月1次 → 仅7月记录入选、importMonths 单值（不拆行，6a 拍板）', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        { id: 'p1', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 3, channel: 'console', importMonth: '2026-07', customerName: '跨月集中客户', customerCode: 'X3', createdAt: '2026-07-01T10:00:00.000Z' },
+        { id: 'p2', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 2, channel: 'console', importMonth: '2026-07', customerName: '跨月集中客户', customerCode: 'X3', createdAt: '2026-07-02T10:00:00.000Z' },
+        { id: 'p3', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 1, channel: 'console', importMonth: '2026-07', customerName: '跨月集中客户', customerCode: 'X3', createdAt: '2026-07-03T10:00:00.000Z' },
+        { id: 'p4', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 6, channel: 'console', importMonth: '2026-08', customerName: '跨月集中客户', customerCode: 'X3', createdAt: '2026-08-01T10:00:00.000Z' },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+    })
+    expect(model.callbackRecommendations).toHaveLength(1)
+    const [rec] = model.callbackRecommendations
+    expect(rec.lowScoreLt7Count).toBe(3)
+    expect(rec.importMonths).toEqual(['2026-07'])
+  })
+
+  it('需求6-④：重点客户单次低分 → 仍入选（重点路径无月门槛，回归保护）', () => {
+    const model = buildPostUseStoryModel({
+      records: [
+        { id: 'k1', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 5, channel: 'console', importMonth: '2026-07', customerName: '中国铁塔某省公司', customerCode: 'K1', createdAt: '2026-07-01T10:00:00.000Z' },
+      ],
+      allRecords: [],
+      productNames: ['弹性公网IP'],
+      settings: { postUseKeyCustomers: ['中国铁塔'] },
+    })
+    expect(model.callbackRecommendations).toHaveLength(1)
+    expect(model.callbackRecommendations[0].isKeyCustomer).toBe(true)
+    expect(model.callbackRecommendations[0].isHighFrequency).toBe(false)
   })
 })

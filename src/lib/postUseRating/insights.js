@@ -1,4 +1,4 @@
-import { isSubstantiveFeedbackReason, matchAllReasonTaxonomy } from './reasonTaxonomy.js'
+import { isSubstantiveFeedbackReason, matchAllReasonTaxonomy, splitFeedbackReasonPieces } from './reasonTaxonomy.js'
 import { normalizeEvidenceText } from './evidence.js'
 import { POST_USE_CRITICAL_LOW_SCORE, POST_USE_SMALL_SAMPLE_N, hasCriticalLowScore } from './metrics.js'
 import { POST_USE_ANALYSIS_RULE_VERSION } from './modelVersions.js'
@@ -76,7 +76,9 @@ function pickHighFrequencyLowScoreReason(record) {
     const text = normalizeEvidenceText(candidate)
     if (!text || seen.has(text)) continue
     seen.add(text)
-    if (isSubstantiveFeedbackReason(text)) return text
+    // 2026-11-04 拆片判定：候选为分号拼接串（如 `其他;业务使用完毕无后续使用需求`）时
+    // 整串会逃过占位词精确匹配而误判负面；拆片逐判与 recordHasNegativeFeedback 同口径。
+    if (splitFeedbackReasonPieces(text).some((piece) => isSubstantiveFeedbackReason(piece))) return text
   }
   return ''
 }
@@ -420,6 +422,8 @@ export function buildCustomerInsights(records, visits = []) {
   return [...groups.values()].map((g) => ({
     customerName: g.customerName,
     customerCode: g.customerCode,
+    // 2026-11-04 需求5（拍板：始终显示）：组内非10分记录的数据月份集合；visit-only 组无 rows → 空数组渲染 '—'
+    importMonths: [...new Set(g.rows.map((r) => r.month))].filter(Boolean).sort(),
     nonTenCount: g.rows.length,
     avgScore: g.rows.length ? avg(g.rows.map((r) => r.score)) : null,
     products: [...g.products],
