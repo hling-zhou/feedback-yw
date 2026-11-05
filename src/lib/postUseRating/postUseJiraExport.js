@@ -52,7 +52,7 @@ export function buildPostUseJiraExportRows(items = [], actionItemMap = new Map()
       相应投诉工单: item.scoreSource === '投诉回访' ? String(item.originalTicketId || '') : '',
       经办人: String(item.assigneeName || ''),
       状态: String(item.status || ''),
-      进展: String(item.progress || ''),
+      回溯结果: String(item.progress || ''),
       确立举措: String(actionItem?.content || ''),
       举措详情: String(actionItem?.detail || ''),
       排期: String(actionItem?.scheduleAt || ''),

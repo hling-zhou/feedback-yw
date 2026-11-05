@@ -135,8 +135,8 @@ export function buildReminderData({ insightPeriodId } = {}) {
   const traceDecisions = allDecisions.filter((d) => d.needInternalTrace)
   const visitDecisions = allDecisions.filter((d) => d.needCustomerVisit)
 
-  // 3. 查溯源处理记录
-  const allJiraItems = postUseJiraRepository.list({ limit: 500 })
+  // 3. 查溯源处理记录（2026-11-05：limit:-1 全量——归档超 500 条会静默截断漏提醒；status 读取时经 normalize 归一，旧值"已完成"已映射"已处理"）
+  const allJiraItems = postUseJiraRepository.list({ limit: -1 })
   const jiraItemByKey = new Map()
   for (const item of allJiraItems.items) {
     jiraItemByKey.set(item.itemKey, item)
@@ -257,7 +257,8 @@ export function buildReminderData({ insightPeriodId } = {}) {
   for (const decision of traceDecisions) {
     const jiraItem = jiraItemByKey.get(decision.itemKey)
     const status = jiraItem?.status || '待处理' // 无记录视为待处理
-    if (status === '已完成') continue // 已标记完成则不纳入
+    // 2026-11-05 口径拍板：已处理 = 完成态（含旧值"已完成"，读取已归一），不纳入提醒
+    if (status === '已处理') continue
 
     // 获取产品信息（从 jira_item 或 decision 关联数据）
     const productName = String(jiraItem?.productName || '').trim()

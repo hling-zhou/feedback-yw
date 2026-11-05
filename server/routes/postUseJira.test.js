@@ -107,6 +107,7 @@ describeApi('post-use jira API', () => {
     const firstItem = first.json().items[0]
     expect(firstItem.status).toBe('待处理')
 
+    // 2026-11-05 状态枚举改名：旧值"进行中"经 normalizePostUseJiraStatus 归一为"处理中"（alias 映射回归）
     const patched = await app.inject({
       method: 'PATCH',
       url: `/api/post-use-jira/${firstItem.id}`,
@@ -115,7 +116,7 @@ describeApi('post-use jira API', () => {
     })
     expect(patched.json().item).toMatchObject({
       jiraTicket: 'JIRA-9',
-      status: '进行中',
+      status: '处理中',
       progress: '已提单',
       customerName: '中国铁塔',
     })
@@ -139,7 +140,7 @@ describeApi('post-use jira API', () => {
       id: firstItem.id,
       customerFeedback: '更新后的客户反馈',
       jiraTicket: 'JIRA-9',
-      status: '进行中',
+      status: '处理中',
       progress: '已提单',
     })
 

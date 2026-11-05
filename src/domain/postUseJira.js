@@ -1,8 +1,14 @@
-export const POST_USE_JIRA_STATUSES = /** @type {const} */ (['待处理', '进行中', '已完成'])
+export const POST_USE_JIRA_STATUSES = /** @type {const} */ (['待处理', '处理中', '已处理'])
 
 /** @typedef {(typeof POST_USE_JIRA_STATUSES)[number]} PostUseJiraStatus */
 
 export const POST_USE_JIRA_DEFAULT_STATUS = /** @type {PostUseJiraStatus} */ ('待处理')
+
+/** 2026-11-05 处理状态自动流转前的旧枚举值 → 新值（已处理=完成态；读取归一，无存量迁移） */
+const POST_USE_JIRA_STATUS_ALIASES = /** @type {Record<string, PostUseJiraStatus>} */ ({
+  进行中: '处理中',
+  已完成: '已处理',
+})
 
 export const POST_USE_JIRA_EDITABLE_FIELDS = /** @type {const} */ (['jiraTicket', 'status', 'progress', 'assigneeId', 'assigneeName'])
 
@@ -19,7 +25,8 @@ export function isPostUseJiraStatus(value) {
  */
 export function normalizePostUseJiraStatus(value) {
   const text = String(value || '').trim()
-  return isPostUseJiraStatus(text) ? text : POST_USE_JIRA_DEFAULT_STATUS
+  if (isPostUseJiraStatus(text)) return text
+  return POST_USE_JIRA_STATUS_ALIASES[text] || POST_USE_JIRA_DEFAULT_STATUS
 }
 
 /**

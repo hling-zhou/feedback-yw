@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
-  Checkbox,
   Form,
   Popconfirm,
   Space,
@@ -20,7 +19,6 @@ import {
 } from '../lib/postUseJiraClient.js'
 import { downloadPostUseJiraExcel } from '../lib/postUseRating/postUseJiraExport.js'
 import { useAuth } from '../context/AuthContext.jsx'
-import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
 import PostUseJiraDrawer from '../components/actions/PostUseJiraDrawer.jsx'
 import PostUseJiraCompositeFilter from '../components/actions/PostUseJiraCompositeFilter.jsx'
 import {
@@ -31,15 +29,18 @@ import {
 
 const PAGE_SIZE = 20
 
-/** @param {string} id */
-function jiraReviewId(id) {
-  return `jira:${id}`
-}
+/** 2026-11-05：状态自动流转后的视觉语义——待处理灰 / 处理中蓝 / 已处理绿 */
+const STATUS_TAG_COLOR = /** @type {Record<string, string>} */ ({
+  待处理: 'default',
+  处理中: 'processing',
+  已处理: 'success',
+})
 
 /**
  * 产品部溯源视图（反馈库 · 用后即评满意度 · 视图 2）。
- * 从建议回访/溯源清单一键存档而来；支持编辑 JIRA工单/状态/进展、
- * 个人处理状态（jira: 前缀写 user_ticket_review）、周期月份过滤。
+ * 从建议回访/溯源清单一键存档而来；状态由操作自动流转（提交→已处理 / 暂存→处理中），
+ * 支持经办人/回溯结果编辑、周期月份过滤。
+ * 2026-11-05 拍板移除：状态下拉、列表个人标记勾选列与个人状态列（jira: 前缀个人标记体系整体下线）。
  *
  * @param {object} props
  * @param {string[]} [props.months] 当前周期覆盖的月份（YYYY-MM），空数组 = 不限周期
@@ -47,7 +48,6 @@ function jiraReviewId(id) {
  */
 export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
   const { can } = useAuth()
-  const { enabled: reviewEnabled, doneRecordIds, markReviewDone, clearReview } = useUserTicketReviews()
   const canEdit = can('editRecord')
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
@@ -146,24 +146,27 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     setEditing(item)
     form.setFieldsValue({
       assigneeId: item.assigneeId || '',
-      status: item.status || '待处理',
       progress: item.progress || '',
     })
   }
 
-  const saveEdit = async () => {
+  // 2026-11-05 拍板：状态由操作自动判定——提交=已处理（回溯结果必填校验在抽屉 Form rules）/ 暂存=处理中；成功后关抽屉
+  const saveEdit = async (mode = 'draft') => {
     if (!editing) return
-    const values = await form.validateFields()
+    if (mode === 'submit') {
+      await form.validateFields() // 触发"回溯结果"必填校验，空则抛错留在抽屉
+    }
+    const values = form.getFieldsValue()
     setSaving(true)
     try {
       const { item } = await patchPostUseJiraItem(editing.id, {
         assigneeId: values.assigneeId,
-        status: values.status,
+        status: mode === 'submit' ? '已处理' : '处理中',
         progress: values.progress,
       })
       setItems((list) => list.map((row) => (row.id === item.id ? item : row)))
-      setEditing(item)
-      message.success('已保存')
+      setEditing(null)
+      message.success(mode === 'submit' ? '已提交' : '已暂存')
     } catch (error) {
       message.error(error?.message || '保存失败')
     } finally {
@@ -217,16 +220,6 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
       message.success('已批量删除')
     } catch (error) {
       message.error(error?.message || '批量删除失败')
-    }
-  }
-
-  const toggleReview = async (item, done) => {
-    const reviewId = jiraReviewId(item.id)
-    try {
-      if (done) await markReviewDone(reviewId, 'manual')
-      else await clearReview(reviewId)
-    } catch (error) {
-      message.error(error?.message || '处理状态更新失败')
     }
   }
 
@@ -322,19 +315,6 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
           className: 'cursor-pointer',
         })}
         columns={[
-          ...(reviewEnabled
-            ? [{
-                title: '我的状态',
-                dataIndex: '__myStatus',
-                width: 110,
-                render: (_v, row) =>
-                  doneRecordIds.has(jiraReviewId(row.id)) ? (
-                    <Tag color="green">已处理</Tag>
-                  ) : (
-                    <Tag>未处理</Tag>
-                  ),
-              }]
-            : []),
           { title: '数据月份', dataIndex: 'importMonth', width: 90 },
           { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
           { title: '客户编码', dataIndex: 'customerCode', width: 130, ellipsis: true },
@@ -342,25 +322,13 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
           { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
           { title: '经办人', dataIndex: 'assigneeName', width: 120, ellipsis: true,
             render: (v, row) => v || assigneeMap.get(row.assigneeId) || '—' },
-          { title: '状态', dataIndex: 'status', width: 90 },
-          { title: '进展', dataIndex: 'progress', width: 160, ellipsis: true },
-          ...(reviewEnabled
-            ? [{
-                title: '标记处理',
-                key: '__reviewToggle',
-                width: 90,
-                render: (_v, row) => (
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={doneRecordIds.has(jiraReviewId(row.id))}
-                      onChange={(e) => void toggleReview(row, e.target.checked)}
-                    >
-                      已处理
-                    </Checkbox>
-                  </span>
-                ),
-              }]
-            : []),
+          {
+            title: '状态',
+            dataIndex: 'status',
+            width: 90,
+            render: (value) => <Tag color={STATUS_TAG_COLOR[value] || 'default'}>{value || '待处理'}</Tag>,
+          },
+          { title: '回溯结果', dataIndex: 'progress', width: 160, ellipsis: true },
           canEdit
             ? {
                 title: '操作',
@@ -395,7 +363,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         form={form}
         canEdit={canEdit}
         saving={saving}
-        onSave={() => void saveEdit()}
+        onSave={(mode) => void saveEdit(mode)}
         onActionSaved={(actionId) => void handleActionSaved(actionId)}
         onActionCleared={() => void handleActionCleared()}
       />

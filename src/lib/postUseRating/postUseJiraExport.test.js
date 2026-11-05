@@ -37,7 +37,7 @@ describe('buildPostUseJiraExportRows', () => {
     expect(row['相应投诉工单']).toBe('TS001')
     expect(row['经办人']).toBe('张三')
     expect(row['状态']).toBe('进行中')
-    expect(row['进展']).toBe('已确认问题')
+    expect(row['回溯结果']).toBe('已确认问题')
     expect(row['确立举措']).toBe('扩容带宽')
     expect(row['举措详情']).toBe('从100M升级到500M')
     expect(row['排期']).toBe('2026-11-01')

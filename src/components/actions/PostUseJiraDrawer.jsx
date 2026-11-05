@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Descriptions, Drawer, Form, Input, Select, Typography, message } from 'antd'
+import { Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Typography, message } from 'antd'
 import { ACTION_ITEM_DRAWER_WIDTH } from '../../constants/appLayout.js'
-import { POST_USE_JIRA_STATUSES } from '../../domain/postUseJira.js'
 import { listAssignees } from '../../lib/postUseJiraClient.js'
 import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import {
@@ -19,7 +18,7 @@ import EstablishedActionFields from './EstablishedActionFields.jsx'
  * @param {import('antd').FormInstance} props.form
  * @param {boolean} props.canEdit
  * @param {boolean} props.saving
- * @param {() => void} props.onSave
+ * @param {(mode: 'submit' | 'draft') => void} props.onSave 2026-11-05：状态自动流转——提交→已处理 / 暂存→处理中；提交校验回溯结果必填
  * @param {(actionId: string) => void} [props.onActionSaved]
  * @param {() => void} [props.onActionCleared]
  */
@@ -144,11 +143,18 @@ export default function PostUseJiraDrawer({
     }
   }
 
-  /** 合并保存：先保存举措（如有内容），再保存表单 */
-  const handleSaveAll = async () => {
+  /** 合并保存：先保存举措（如有内容），再按模式保存表单
+   * 2026-11-05 拍板：状态由操作自动判定——提交=已处理（校验回溯结果必填）/ 暂存=处理中（不校验）；两者成功后都关抽屉 */
+  const handleSubmit = async () => {
     const ok = await handleSaveAction()
     if (!ok) return
-    onSave()
+    onSave('submit')
+  }
+
+  const handleDraft = async () => {
+    const ok = await handleSaveAction()
+    if (!ok) return
+    onSave('draft')
   }
 
   return (
@@ -162,9 +168,21 @@ export default function PostUseJiraDrawer({
         canEdit ? (
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>取消</Button>
-            <Button type="primary" loading={saving || actionSaving} onClick={() => void handleSaveAll()}>
-              保存
+            <Button loading={saving || actionSaving} onClick={() => void handleDraft()}>
+              暂存
             </Button>
+            {/* 2026-11-05 用户拍板：提交前显式提示——回溯完结才提交，过程性进展走暂存 */}
+            <Popconfirm
+              title="请务必在回溯完结后提交"
+              description="过程性进展保存可点击「暂存」（暂存状态为处理中，可随时继续编辑）。"
+              okText="确认提交"
+              cancelText="再想想"
+              onConfirm={() => void handleSubmit()}
+            >
+              <Button type="primary" loading={saving || actionSaving}>
+                提交
+              </Button>
+            </Popconfirm>
           </div>
         ) : (
           <div className="flex justify-end">
@@ -200,13 +218,13 @@ export default function PostUseJiraDrawer({
                 options={assignees.map((u) => buildUserOption(u, assignees))}
               />
             </Form.Item>
-            <Form.Item name="status" label="状态">
-              <Select
-                options={POST_USE_JIRA_STATUSES.map((value) => ({ label: value, value }))}
-              />
-            </Form.Item>
-            <Form.Item name="progress" label="进展">
-              <Input.TextArea rows={4} placeholder="填写当前进展" />
+            {/* 2026-11-05：状态下拉移除——状态由操作自动流转（提交→已处理 / 暂存→处理中），提交时触发必填校验 */}
+            <Form.Item
+              name="progress"
+              label="回溯结果"
+              rules={[{ required: true, message: '提交前请填写回溯结果' }]}
+            >
+              <Input.TextArea rows={4} placeholder="填写回溯处理结果" />
             </Form.Item>
           </Form>
 
