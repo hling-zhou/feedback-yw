@@ -212,4 +212,64 @@ describeApi('post-use jira API', () => {
     })
     expect(empty.statusCode).toBe(400)
   })
+
+  it('#6 删除归档条目联动取消勾选：同前缀且月份被包含的 trace 勾选置 false，异客户不受影响', async () => {
+    // 准备：三个客户的决策——C1 季度键勾选、C1 月子集键勾选、C2 同月勾选（对照组）
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/post-use-callback-decisions',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          { itemKey: 'q:C1:弹性公网IP:2026-08|2026-09', sourceType: 'questionnaire', needInternalTrace: true, needCustomerVisit: true },
+          { itemKey: 'q:C1:弹性公网IP:2026-08', sourceType: 'questionnaire', needInternalTrace: true, needCustomerVisit: false },
+          { itemKey: 'q:C2:弹性公网IP:2026-08', sourceType: 'questionnaire', needInternalTrace: true, needCustomerVisit: true },
+        ],
+      },
+    })
+    expect(put.statusCode).toBe(200)
+
+    // 归档 C1 季度键条目（月份并集 08|09）
+    const archived = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-jira',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          {
+            itemKey: 'q:C1:弹性公网IP:2026-08|2026-09',
+            sourceType: 'questionnaire',
+            importMonth: '2026-08、2026-09',
+            customerName: '客户C1',
+            customerCode: 'C1',
+            productName: '弹性公网IP',
+          },
+        ],
+      },
+    })
+    expect(archived.statusCode).toBe(200)
+    const archivedItem = archived.json().items[0]
+
+    // 删除该归档条目 → 联动取消勾选
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/post-use-jira/${archivedItem.id}`,
+      headers: authHeader('editor'),
+    })
+    expect(deleted.statusCode).toBe(200)
+
+    // 决策读取：C1 两个键的 needInternalTrace 均已置 false（季度键精确命中 + 月子集键被包含命中）
+    const decisions = await app.inject({
+      method: 'GET',
+      url: '/api/post-use-callback-decisions',
+      headers: authHeader('editor'),
+    })
+    const byKey = new Map(decisions.json().items.map((item) => [item.itemKey, item]))
+    expect(byKey.get('q:C1:弹性公网IP:2026-08|2026-09')?.needInternalTrace).toBe(false)
+    expect(byKey.get('q:C1:弹性公网IP:2026-08')?.needInternalTrace).toBe(false)
+    // C2 同月但异前缀 → 不受影响
+    expect(byKey.get('q:C2:弹性公网IP:2026-08')?.needInternalTrace).toBe(true)
+    // 客服部回访维度不被归档删除触碰
+    expect(byKey.get('q:C1:弹性公网IP:2026-08|2026-09')?.needCustomerVisit).toBe(true)
+  })
 })

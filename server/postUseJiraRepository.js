@@ -279,9 +279,55 @@ export const postUseJiraRepository = {
     return next
   },
 
+  /**
+   * 2026-11-06 #6（用户拍板）：删除产品部回溯归档条目时联动取消清单勾选——
+   * 被删条目的 itemKey 在 post_use_callback_decisions 中的 needInternalTrace 置 false
+   * （needCustomerVisit 是客服部回访维度，归档删除不动它）。
+   * 覆盖周期包含语义：勾选存储键的月份段可能 ⊄ 被删归档键月份段（如月键勾选 + 季度键归档），
+   * 无法靠纯 SQL 精确圈定——取「归档键前缀（q:客户:产品）」相同的全部决策键，逐条拆月判定：
+   * 存储键月份集合 ⊆ 被删键月份集合 的才取消（与前端 itemKeySubsetMatches 同语义）。
+   * @param {string} deletedItemKey 被删除的归档条目键
+   * @returns {number} 清除勾选的决策条数
+   */
+  clearTraceDecisionsForDeletedItem(deletedItemKey) {
+    const key = normalizeItemKey(deletedItemKey)
+    if (!key) return 0
+    const prefix = extractItemKeyPrefix(key)
+    if (!prefix) return 0
+    const rows = getDb()
+      .prepare(`SELECT item_key, payload FROM post_use_callback_decisions WHERE item_key LIKE ?`)
+      .all(`${prefix}%`)
+    let cleared = 0
+    const tx = getDb().transaction(() => {
+      for (const row of rows) {
+        const decision = normalizeDecision(parseJson(row.payload))
+        if (!decision.needInternalTrace) continue
+        // 前缀相同 + 存储键月份 ⊆ 被删键月份（或存储键无月份段=旧格式兜底）才取消
+        const storedMonths = extractItemKeyMonths(row.item_key)
+        const deletedMonths = extractItemKeyMonths(key)
+        if (storedMonths.length && deletedMonths.length && !storedMonths.every((m) => deletedMonths.includes(m))) {
+          continue
+        }
+        const next = { ...decision, needInternalTrace: false, updatedAt: nowIso() }
+        getDb()
+          .prepare(`UPDATE post_use_callback_decisions SET payload = ? WHERE item_key = ?`)
+          .run(stringifyJson(next), row.item_key)
+        cleared += 1
+      }
+    })
+    tx()
+    if (cleared) bumpDataRevision()
+    return cleared
+  },
+
   delete(id) {
+    // #6：先取被删条目的 itemKey，删除后联动取消勾选（不因删除失败误清）
+    const existing = this.getById(id)
     const result = getDb().prepare('DELETE FROM post_use_jira_items WHERE id = ?').run(id)
-    if (result.changes) bumpDataRevision()
+    if (result.changes) {
+      if (existing?.itemKey) this.clearTraceDecisionsForDeletedItem(existing.itemKey)
+      bumpDataRevision()
+    }
     return result.changes > 0
   },
 
@@ -290,15 +336,50 @@ export const postUseJiraRepository = {
    */
   deleteMany(ids) {
     const stmt = getDb().prepare('DELETE FROM post_use_jira_items WHERE id = ?')
+    /** @type {string[]} */
+    const deletedItemKeys = []
     let deleted = 0
     const tx = getDb().transaction((list) => {
       for (const id of list) {
+        const row = getDb().prepare('SELECT payload FROM post_use_jira_items WHERE id = ?').get(id)
         const result = stmt.run(String(id || '').trim())
-        deleted += result.changes
+        if (result.changes) {
+          deleted += result.changes
+          if (row) {
+            const item = normalizeJiraItem(parseJson(row.payload))
+            if (item.itemKey) deletedItemKeys.push(item.itemKey)
+          }
+        }
       }
     })
     tx((ids || []).filter(Boolean))
+    // #6：事务外联动取消勾选（每条独立调用，内部自带事务）
+    for (const itemKey of deletedItemKeys) this.clearTraceDecisionsForDeletedItem(itemKey)
     if (deleted) bumpDataRevision()
     return deleted
   },
+}
+
+/**
+ * 从 itemKey 提取非月份前缀（q:客户:产品:月份 → q:客户:产品；无月份段则原样）。
+ * @param {string} itemKey
+ * @returns {string}
+ */
+function extractItemKeyPrefix(itemKey) {
+  const key = String(itemKey || '')
+  const m = key.match(/^(q:[^:]+:.+?):(?:\d{4}-\d{2})(?:\|\d{4}-\d{2})*$/)
+  if (m) return m[1]
+  return /^(q:[^:]+:.+?)$/.test(key) ? key : ''
+}
+
+/**
+ * 从 itemKey 提取月份段数组（无月份段返回空数组）。
+ * @param {string} itemKey
+ * @returns {string[]}
+ */
+function extractItemKeyMonths(itemKey) {
+  const key = String(itemKey || '')
+  const m = key.match(/^q:[^:]+:.+?:((?:\d{4}-\d{2})(?:\|\d{4}-\d{2})*)$/)
+  if (!m) return []
+  return m[1].split('|')
 }

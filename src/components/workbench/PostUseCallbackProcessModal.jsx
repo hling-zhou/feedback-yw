@@ -209,23 +209,31 @@ export default function PostUseCallbackProcessModal({
     ],
     [recommendations, callbackNonTenRecords],
   )
-  const visitCount = currentKeys.filter((key) => decisions.get(key)?.needCustomerVisit).length
-  const traceCount = currentKeys.filter((key) => decisions.get(key)?.needInternalTrace).length
-  // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数
-  const dispatchedCount = currentKeys.filter((key) => isDispatched(key)).length
+  // 同源判定（2026-11-06 复盘触发规则 3）：勾选判定统一走 decisionOf（周期包含语义）——
+  // 此前精确 decisions.get 会在跨周期场景与行勾选显示口径分裂（行显示勾选、发送按钮说没勾）。
+  const visitCount = currentKeys.filter((key) => decisionOf(decisions, key).needCustomerVisit).length
 
   // 计算每个 tab 中勾选了产品部溯源但未指定经办人的行数（用于 tab 角标 + 存档提示）
+  // 2026-11-06 #5 核实修正（用户拍板）：已纳入产品部回溯（已归档）的行**不计入**——归档行勾选
+  // 保留是设计语义、经办人来自归档记录（弹窗只读显示、不进 assigneeOverrides），此前会把
+  // 归档行永久计入角标，且存档提示误报"有 N 条未指定经办人"（实际那 N 条已归档、存档会跳过）。
   const pendingAssigneeQuestionnaire = useMemo(() => {
-    return (recommendations || [])
+    /** @type {{ itemKey?: string }[]} */
+    const typed = recommendations || []
+    return typed
       .filter((item) => item.itemKey && decisionOf(decisions, item.itemKey).needInternalTrace && !assigneeOverrides.get(item.itemKey)?.id)
+      .filter((item) => !isArchived(item.itemKey || ''))
       .map((item) => ({ itemKey: item.itemKey, customerName: item.customerName || '', productName: item.productName || '' }))
-  }, [recommendations, decisions, assigneeOverrides])
+  }, [recommendations, decisions, assigneeOverrides, isArchived])
 
   const pendingAssigneeCallback = useMemo(() => {
-    return (callbackNonTenRecords || [])
+    /** @type {{ itemKey?: string }[]} */
+    const typed = callbackNonTenRecords || []
+    return typed
       .filter((item) => item.itemKey && decisionOf(decisions, item.itemKey).needInternalTrace && !assigneeOverrides.get(item.itemKey)?.id)
+      .filter((item) => !isArchived(item.itemKey || ''))
       .map((item) => ({ itemKey: item.itemKey, customerName: item.customerName || '', productName: item.productName || '', originalTicketId: item.originalTicketId || '' }))
-  }, [callbackNonTenRecords, decisions, assigneeOverrides])
+  }, [callbackNonTenRecords, decisions, assigneeOverrides, isArchived])
 
   const persistDecision = async (itemKey, sourceType, patch) => {
     // 2026-11-06 周期包含语义：写入行键 + 同步其全部被包含子集键（Q3 勾选同步 7 月键；取消时全量写 false）
@@ -352,16 +360,42 @@ export default function PostUseCallbackProcessModal({
     return sorted
   }, [recommendations])
 
+  // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数。
+  // 2026-11-06 #15：与筛选保留口径严格同源——问卷 tab 组级语义（组内任一 itemKey 命中 → 该组
+  // 全部行计入，与 visitFlagColumn 的"已纳入（部分）"Tag 及组级过滤一致），投诉 tab 行级。
+  // 这样复选框文案数字 = 勾选该筛选后实际显示的行数，不会再出现"计数 3 但列显示 12 条"的矛盾。
+  const dispatchedCount = useMemo(() => {
+    // 问卷 tab：组级（行自带 __groupKeys 全组键，组内任一命中该行计入，与过滤谓词同款）
+    /** @type {{ __groupKeys?: string[]; itemKey?: string }[]} */
+    const typedRows = questionnaireRows
+    let count = typedRows.filter((row) => (row.__groupKeys || []).some((k) => isDispatched(k))).length
+    // 投诉 tab：行级
+    /** @type {{ itemKey?: string }[]} */
+    const typedRecords = callbackNonTenRecords
+    count += typedRecords.filter((row) => isDispatched(row.itemKey || '')).length
+    return count
+  }, [questionnaireRows, callbackNonTenRecords, isDispatched])
+  // 已纳入产品部回溯条数（行级判定；产品部回溯勾选列/经办人列行级独立，展示与过滤口径天然一致）
+  const archivedCount = useMemo(
+    () => currentKeys.filter((key) => isArchived(key)).length,
+    [currentKeys, isArchived],
+  )
+
   // 快捷筛选派生（2026-11-06）：按"已纳入"状态过滤。过滤后同客户可能只剩部分行 →
   // 每行对象重新构建分组信息（__groupKeys 只含过滤后的组内键、span 重算），保证合并单元格正确。
+  // #15 修复（2026-11-06）：客服部回访"已纳入"按**组级语义**过滤（组内任一 itemKey 命中 → 整组保留），
+  // 与 visitFlagColumn 的"已纳入（部分）"Tag 判定同源——此前筛选用行级单键匹配，在"季度视图导出
+  // 标记（多月并集存储键）+ 月视图打开筛选"等存储键与行键月份段不一致的场景下，Tag 显示已纳入
+  // 但行级匹配落空，出现"勾选筛选后为空、实际列表显示 N 条已纳入"的矛盾。产品部回溯为行级判定
+  // （勾选列/经办人列行级独立，无组级 Tag），保持行级过滤。
   // （类型说明：recommendations prop 为 object[]，此处局部放宽 itemKey/分组字段访问）
   const filteredQuestionnaireRows = useMemo(() => {
     if (!filterArchivedOnly && !filterDispatchedOnly) return questionnaireRows
-    /** @type {{ itemKey?: string; __groupKeys?: string[]; __isGroupFirst?: boolean; __groupSpan?: number }[]} */
+    /** @type {{ itemKey?: string; __groupKeys?: string[]; __isGroupFirst?: boolean; __groupSpan?: number; customerCode?: string; customerName?: string; productName?: string }[]} */
     const typedRows = questionnaireRows
     const kept = typedRows.filter((row) => {
       if (filterArchivedOnly && !isArchived(row.itemKey || '')) return false
-      if (filterDispatchedOnly && !isDispatched(row.itemKey || '')) return false
+      if (filterDispatchedOnly && !(row.__groupKeys || []).some((k) => isDispatched(k))) return false
       return true
     })
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
@@ -740,17 +774,13 @@ export default function PostUseCallbackProcessModal({
       destroyOnClose
       styles={{ body: { maxHeight: '78vh', overflowY: 'auto' } }}
     >
-      <Typography.Paragraph type="secondary" className="!mb-3">
-        可同时勾选客服部回访与产品部溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
-        勾选与已纳入按数据月份独立（2026-11-06 起）：上月勾选/归档不影响本月行。
-      </Typography.Paragraph>
-      {/* 快捷筛选（2026-11-06 用户拍板）：只看已纳入产品部回溯 / 已纳入客服部回访 的行 */}
+      {/* 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入客服部回访 的行；文案带动态计数 */}
       <div className="mb-2 flex flex-wrap items-center gap-4">
         <Checkbox checked={filterArchivedOnly} onChange={(e) => setFilterArchivedOnly(e.target.checked)}>
-          已纳入产品部回溯
+          已纳入产品部回溯（{archivedCount}）
         </Checkbox>
         <Checkbox checked={filterDispatchedOnly} onChange={(e) => setFilterDispatchedOnly(e.target.checked)}>
-          已纳入客服部回访
+          已纳入客服部回访（{dispatchedCount}）
         </Checkbox>
       </div>
       <Tabs
@@ -758,9 +788,11 @@ export default function PostUseCallbackProcessModal({
           {
             key: 'questionnaire',
             label: (
-              <Badge count={pendingAssigneeQuestionnaire.length} size="small" offset={[6, 0]}>
-                <span>官网问卷类建议回访({filteredQuestionnaireRows.length})</span>
-              </Badge>
+              <Tooltip title="红点数字 = 已勾选产品部溯源但尚未指定经办人的条数">
+                <Badge count={pendingAssigneeQuestionnaire.length} size="small" offset={[6, 0]}>
+                  <span>官网问卷类建议回访({filteredQuestionnaireRows.length})</span>
+                </Badge>
+              </Tooltip>
             ),
             children: (
               <Table
@@ -778,9 +810,11 @@ export default function PostUseCallbackProcessModal({
           {
             key: 'callback',
             label: (
-              <Badge count={pendingAssigneeCallback.length} size="small" offset={[6, 0]}>
-                <span>投诉回访非10分({filteredCallbackRecords.length})</span>
-              </Badge>
+              <Tooltip title="红点数字 = 已勾选产品部溯源但尚未指定经办人的条数">
+                <Badge count={pendingAssigneeCallback.length} size="small" offset={[6, 0]}>
+                  <span>投诉回访非10分({filteredCallbackRecords.length})</span>
+                </Badge>
+              </Tooltip>
             ),
             children: (
               <Table
@@ -797,11 +831,7 @@ export default function PostUseCallbackProcessModal({
           },
         ]}
       />
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <Typography.Text type="secondary">
-          已勾选客服部回访 {visitCount} 条 · 产品部溯源 {traceCount} 条
-          {dispatchedCount ? ` · 客服部回访已纳入 ${dispatchedCount} 条` : ''}
-        </Typography.Text>
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
         <Space wrap>
           <Tooltip title="下载当前范围的双表原始清单">
             <Button
