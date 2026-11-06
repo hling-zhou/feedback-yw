@@ -171,11 +171,25 @@ function buildScoreBreakdownText(map) {
     .join('；')
 }
 
+/**
+ * 2026-11-06 方案B（用户拍板）：问卷类清单条目键加月份段——「已纳入/勾选/归档」按月独立，
+ * 修复跨月串扰（8 月归档的产品部回溯不再让 9 月同客户同产品行自动显示已纳入）。
+ * 月份段 = 组内达标月份集合排序后用 | join（兼容 6a 不拆行拍板：多月并集仍一行，键含全部达标月）。
+ * 投诉回访 callbackNonTenItemKey 用工单号天然唯一，不加月份。
+ * @param {object} item 建议条目（group；字段动态，局部放宽访问）
+ */
 export function questionnaireCallbackItemKey(item) {
-  const code = normalizeText(item?.customerCode)
-  const name = normalizeText(item?.customerName) || '匿名客户'
-  const product = normalizeText(item?.productName)
-  return `q:${code || name}:${product}`
+  /** @type {{ customerCode?: unknown; customerName?: unknown; productName?: unknown; importMonths?: unknown }} */
+  const typed = item
+  const code = normalizeText(typed?.customerCode)
+  const name = normalizeText(typed?.customerName) || '匿名客户'
+  const product = normalizeText(typed?.productName)
+  const months = (Array.isArray(typed?.importMonths) ? typed.importMonths : [])
+    .map((month) => normalizeText(month).slice(0, 7))
+    .filter(Boolean)
+    .sort()
+  const monthPart = months.length ? `:${months.join('|')}` : ''
+  return `q:${code || name}:${product}${monthPart}`
 }
 
 export function callbackNonTenItemKey(item) {

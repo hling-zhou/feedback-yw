@@ -26,9 +26,15 @@ import {
 import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
+import { allMatchingKeys, itemKeySubsetMatches, lookupBySubset } from '../../lib/postUseRating/itemKeyPeriod.js'
 
 function decisionOf(map, itemKey) {
-  return map.get(itemKey) || { needCustomerVisit: false, needInternalTrace: false }
+  // 2026-11-06 周期包含语义：任一被包含的已存键勾选 → 视为已勾选（拍板：处理过任一月即处理）
+  const hits = lookupBySubset(map, itemKey)
+  return {
+    needCustomerVisit: hits.some((d) => d?.needCustomerVisit),
+    needInternalTrace: hits.some((d) => d?.needInternalTrace),
+  }
 }
 
 function EllipsisHover({ value }) {
@@ -163,6 +169,39 @@ export default function PostUseCallbackProcessModal({
     }
   }, [open, refreshArchivedItems])
 
+  // 2026-11-06 周期包含语义：已归档/已纳入按「存储键月份 ⊆ 行键月份」匹配（7 月归档 → Q3 行显示已纳入）
+  const isArchived = useCallback(
+    (itemKey) => {
+      if (archivedKeys.has(itemKey)) return true
+      for (const storedKey of archivedKeys) {
+        if (itemKeySubsetMatches(itemKey, storedKey)) return true
+      }
+      return false
+    },
+    [archivedKeys],
+  )
+  const archivedInfoOf = useCallback(
+    (itemKey) => {
+      const exact = archivedItems.get(itemKey)
+      if (exact) return exact
+      for (const [storedKey, info] of archivedItems) {
+        if (itemKeySubsetMatches(itemKey, storedKey)) return info
+      }
+      return null
+    },
+    [archivedItems],
+  )
+  const isDispatched = useCallback(
+    (itemKey) => {
+      if (dispatchedKeys.has(itemKey)) return true
+      for (const storedKey of dispatchedKeys) {
+        if (itemKeySubsetMatches(itemKey, storedKey)) return true
+      }
+      return false
+    },
+    [dispatchedKeys],
+  )
+
   const currentKeys = useMemo(
     () => [
       ...(recommendations || []).map((item) => item.itemKey).filter(Boolean),
@@ -173,7 +212,7 @@ export default function PostUseCallbackProcessModal({
   const visitCount = currentKeys.filter((key) => decisions.get(key)?.needCustomerVisit).length
   const traceCount = currentKeys.filter((key) => decisions.get(key)?.needInternalTrace).length
   // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数
-  const dispatchedCount = currentKeys.filter((key) => dispatchedKeys.has(key)).length
+  const dispatchedCount = currentKeys.filter((key) => isDispatched(key)).length
 
   // 计算每个 tab 中勾选了产品部溯源但未指定经办人的行数（用于 tab 角标 + 存档提示）
   const pendingAssigneeQuestionnaire = useMemo(() => {
@@ -189,17 +228,25 @@ export default function PostUseCallbackProcessModal({
   }, [callbackNonTenRecords, decisions, assigneeOverrides])
 
   const persistDecision = async (itemKey, sourceType, patch) => {
+    // 2026-11-06 周期包含语义：写入行键 + 同步其全部被包含子集键（Q3 勾选同步 7 月键；取消时全量写 false）
     const current = decisionOf(decisions, itemKey)
     const next = { ...current, ...patch, sourceType, itemKey }
+    const related = allMatchingKeys(decisions, itemKey)
+    const items = [next, ...related.filter((k) => k !== itemKey).map((k) => ({
+      ...decisionOf(decisions, k),
+      ...patch,
+      sourceType,
+      itemKey: k,
+    }))]
     setDecisions((prev) => {
       const map = new Map(prev)
-      map.set(itemKey, next)
+      for (const item of items) map.set(item.itemKey, item)
       return map
     })
     if (!canEdit) return
     setSavingKey(itemKey)
     try {
-      await upsertPostUseCallbackDecisions([next])
+      await upsertPostUseCallbackDecisions(items)
     } catch (error) {
       setDecisions((prev) => {
         const map = new Map(prev)
@@ -247,9 +294,9 @@ export default function PostUseCallbackProcessModal({
     dataIndex: flag,
     width: 92,
     fixed: 'right',
-    render: (_value, row) => {
-      // 需求8（2026-11-04）：已纳入（导出/发送过）的行不再显示勾选框
-      if (flag === 'needCustomerVisit' && dispatchedKeys.has(row.itemKey)) {
+      render: (_value, row) => {
+      // 需求8（2026-11-04）：已纳入（导出/发送过）的行不再显示勾选框（2026-11-06 含周期包含匹配）
+      if (flag === 'needCustomerVisit' && isDispatched(row.itemKey)) {
         return <Tag color="blue">已纳入</Tag>
       }
       return (
@@ -313,8 +360,8 @@ export default function PostUseCallbackProcessModal({
     /** @type {{ itemKey?: string; __groupKeys?: string[]; __isGroupFirst?: boolean; __groupSpan?: number }[]} */
     const typedRows = questionnaireRows
     const kept = typedRows.filter((row) => {
-      if (filterArchivedOnly && !archivedKeys.has(row.itemKey || '')) return false
-      if (filterDispatchedOnly && !dispatchedKeys.has(row.itemKey || '')) return false
+      if (filterArchivedOnly && !isArchived(row.itemKey || '')) return false
+      if (filterDispatchedOnly && !isDispatched(row.itemKey || '')) return false
       return true
     })
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
@@ -333,7 +380,7 @@ export default function PostUseCallbackProcessModal({
       i = j
     }
     return kept
-  }, [questionnaireRows, filterArchivedOnly, filterDispatchedOnly, archivedKeys, dispatchedKeys])
+  }, [questionnaireRows, filterArchivedOnly, filterDispatchedOnly, isArchived, isDispatched])
 
   // 投诉回访非10分 tab 同款过滤（行级无分组，直接 filter）
   const filteredCallbackRecords = useMemo(() => {
@@ -341,11 +388,11 @@ export default function PostUseCallbackProcessModal({
     /** @type {{ itemKey?: string }[]} */
     const typedRecords = callbackNonTenRecords
     return typedRecords.filter((row) => {
-      if (filterArchivedOnly && !archivedKeys.has(row.itemKey || '')) return false
-      if (filterDispatchedOnly && !dispatchedKeys.has(row.itemKey || '')) return false
+      if (filterArchivedOnly && !isArchived(row.itemKey || '')) return false
+      if (filterDispatchedOnly && !isDispatched(row.itemKey || '')) return false
       return true
     })
-  }, [callbackNonTenRecords, filterArchivedOnly, filterDispatchedOnly, archivedKeys, dispatchedKeys])
+  }, [callbackNonTenRecords, filterArchivedOnly, filterDispatchedOnly, isArchived, isDispatched])
 
   // 客户级合并单元格的通用 render 包装：非组首行返回 rowSpan:0 吞行。
   const mergedCell = (value, row, render) => {
@@ -363,7 +410,7 @@ export default function PostUseCallbackProcessModal({
     render: (_value, row) => {
       if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
       const keys = row.__groupKeys
-      const dispatched = keys.filter((k) => dispatchedKeys.has(k))
+      const dispatched = keys.filter((k) => isDispatched(k))
       if (dispatched.length) {
         const all = dispatched.length === keys.length
         return {
@@ -397,7 +444,7 @@ export default function PostUseCallbackProcessModal({
     width: 92,
     fixed: 'right',
     render: (_value, row) => {
-      if (archivedKeys.has(row.itemKey)) {
+      if (isArchived(row.itemKey)) {
         return <Tag color="blue">已纳入</Tag>
       }
       return (
@@ -464,8 +511,8 @@ export default function PostUseCallbackProcessModal({
       width: 120,
       fixed: 'right',
       render: (_v, row) => {
-        if (archivedKeys.has(row.itemKey)) {
-          const info = archivedItems.get(row.itemKey)
+        if (isArchived(row.itemKey)) {
+          const info = archivedInfoOf(row.itemKey)
           return <span className="text-ink-600">{info?.assigneeName || '—'}</span>
         }
         if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
@@ -523,7 +570,7 @@ export default function PostUseCallbackProcessModal({
       width: 92,
       fixed: 'right',
       render: (_v, row) => {
-        if (archivedKeys.has(row.itemKey)) return <Tag color="blue">已纳入</Tag>
+        if (isArchived(row.itemKey)) return <Tag color="blue">已纳入</Tag>
         return (
           <Checkbox
             checked={Boolean(decisionOf(decisions, row.itemKey).needInternalTrace)}
@@ -541,8 +588,8 @@ export default function PostUseCallbackProcessModal({
       width: 120,
       fixed: 'right',
       render: (_v, row) => {
-        if (archivedKeys.has(row.itemKey)) {
-          const info = archivedItems.get(row.itemKey)
+        if (isArchived(row.itemKey)) {
+          const info = archivedInfoOf(row.itemKey)
           return <span className="text-ink-600">{info?.assigneeName || '—'}</span>
         }
         if (!decisionOf(decisions, row.itemKey).needInternalTrace) return '—'
@@ -574,7 +621,7 @@ export default function PostUseCallbackProcessModal({
   // 需求8（2026-11-04）：导出/发送成功后按 itemKey 标记"已纳入"（不可逆）；
   // 已纳入的条目不再进入后续导出/发送收集范围。标记失败不阻断主流程。
   const markVisitDispatched = async (rows, dispatchedVia) => {
-    const pending = rows.filter((row) => row.itemKey && !dispatchedKeys.has(row.itemKey))
+    const pending = rows.filter((row) => row.itemKey && !isDispatched(row.itemKey))
     if (!pending.length) return
     try {
       const res = await markPostUseVisitDispatch(
@@ -599,7 +646,7 @@ export default function PostUseCallbackProcessModal({
 
   const exportVisit = () => {
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needCustomerVisit')
-      .filter((row) => !dispatchedKeys.has(row.itemKey))
+      .filter((row) => !isDispatched(row.itemKey))
     if (!rows.length) {
       message.info('请先勾选需要客服部回访的记录（已纳入的不再重复导出）')
       return
@@ -619,8 +666,8 @@ export default function PostUseCallbackProcessModal({
 
   const archiveTrace = async () => {
     const allRows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needInternalTrace')
-    // 已归档条目不再重复归档（Bug3：与"已纳入"Tag 联动）
-    const rows = allRows.filter((row) => !archivedKeys.has(row.itemKey))
+    // 已归档条目不再重复归档（Bug3：与"已纳入"Tag 联动；2026-11-06 含周期包含匹配）
+    const rows = allRows.filter((row) => !isArchived(row.itemKey))
     if (!rows.length) {
       message.info(allRows.length ? '勾选的记录均已纳入产品部溯源' : '请先勾选需要产品部溯源的记录')
       return
@@ -695,6 +742,7 @@ export default function PostUseCallbackProcessModal({
     >
       <Typography.Paragraph type="secondary" className="!mb-3">
         可同时勾选客服部回访与产品部溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
+        勾选与已纳入按数据月份独立（2026-11-06 起）：上月勾选/归档不影响本月行。
       </Typography.Paragraph>
       {/* 快捷筛选（2026-11-06 用户拍板）：只看已纳入产品部回溯 / 已纳入客服部回访 的行 */}
       <div className="mb-2 flex flex-wrap items-center gap-4">
@@ -823,7 +871,7 @@ export default function PostUseCallbackProcessModal({
             callbackNonTenRecords,
             decisions,
             'needCustomerVisit',
-          ).filter((row) => !dispatchedKeys.has(row.itemKey))
+          ).filter((row) => !isDispatched(row.itemKey))
           if (!rows.length) return null
           const wb = buildFollowupTableWorkbook(rows, '待客服部回访表')
           return {
@@ -839,7 +887,7 @@ export default function PostUseCallbackProcessModal({
             callbackNonTenRecords,
             decisions,
             'needCustomerVisit',
-          ).filter((row) => !dispatchedKeys.has(row.itemKey))
+          ).filter((row) => !isDispatched(row.itemKey))
           await markVisitDispatched(rows, 'mail')
         }}
       />

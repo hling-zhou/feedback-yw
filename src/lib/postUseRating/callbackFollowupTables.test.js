@@ -23,11 +23,38 @@ describe('callbackFollowupTables', () => {
       '7分以下分布：旧问卷*6分*1次；反馈原因：功能有缺失（1）',
     )
     expect(toQuestionnaireFollowupRow(item)).toMatchObject({
-      itemKey: 'q:C1:弹性公网IP',
+      itemKey: 'q:C1:弹性公网IP:2026-06',
       sourceType: 'questionnaire',
       数据月份: '2026-06',
       客户反馈: '7分以下分布：旧问卷*6分*1次；反馈原因：功能有缺失（1）',
     })
+  })
+
+  it('2026-11-06 方案B：问卷类 itemKey 带月份段——跨月勾选/归档按月独立，多月份并集排序 join', () => {
+    // 单月
+    expect(toQuestionnaireFollowupRow({
+      importMonths: ['2026-08'],
+      customerName: '客户X',
+      customerCode: 'C9',
+      productName: '共享带宽',
+    }).itemKey).toBe('q:C9:共享带宽:2026-08')
+    // 多月并集（不拆行拍板）：排序后 | join
+    expect(toQuestionnaireFollowupRow({
+      importMonths: ['2026-08', '2026-07'],
+      customerName: '客户X',
+      customerCode: 'C9',
+      productName: '共享带宽',
+    }).itemKey).toBe('q:C9:共享带宽:2026-07|2026-08')
+    // 同客户同产品不同月 → 键不同（8 月勾选不影响 9 月行）
+    const aug = toQuestionnaireFollowupRow({ importMonths: ['2026-08'], customerName: '客户X', customerCode: 'C9', productName: '共享带宽' })
+    const sep = toQuestionnaireFollowupRow({ importMonths: ['2026-09'], customerName: '客户X', customerCode: 'C9', productName: '共享带宽' })
+    expect(aug.itemKey).not.toBe(sep.itemKey)
+    // decisions 按 8 月键勾选 → 9 月键的条目不受影响（跨月串扰修复的核心断言）
+    const decisions = new Map([[aug.itemKey, { needCustomerVisit: true, needInternalTrace: true }]])
+    const rows = collectFollowupExportRows([sep], [], decisions, 'needInternalTrace')
+    expect(rows).toHaveLength(0)
+    // 无客户编码时用客户名兜底段
+    expect(toQuestionnaireFollowupRow({ importMonths: ['2026-08'], customerName: '匿名客户', productName: '云主机' }).itemKey).toBe('q:匿名客户:云主机:2026-08')
   })
 
   it('keeps only 反馈原因 in 客户反馈 when there is no 7分以下分布', () => {
@@ -59,7 +86,7 @@ describe('callbackFollowupTables', () => {
   it('collects checked rows for 待客服部回访 / 待内部提单 and strips item keys on export', () => {
     const questionnaire = [
       {
-        itemKey: 'q:C1:弹性公网IP',
+        itemKey: 'q:C1:弹性公网IP:2026-06',
         importMonths: ['2026-06'],
         customerName: '中国铁塔',
         customerCode: 'C1',
@@ -81,7 +108,7 @@ describe('callbackFollowupTables', () => {
       },
     ]
     const decisions = new Map([
-      ['q:C1:弹性公网IP', { needCustomerVisit: true, needInternalTrace: true }],
+      ['q:C1:弹性公网IP:2026-06', { needCustomerVisit: true, needInternalTrace: true }],
       ['c:T-001', { needCustomerVisit: true, needInternalTrace: false }],
     ])
 
@@ -89,7 +116,7 @@ describe('callbackFollowupTables', () => {
     const traceRows = collectFollowupExportRows(questionnaire, callback, decisions, 'needInternalTrace')
     expect(visitRows).toHaveLength(2)
     expect(traceRows).toHaveLength(1)
-    expect(traceRows[0].itemKey).toBe('q:C1:弹性公网IP')
+    expect(traceRows[0].itemKey).toBe('q:C1:弹性公网IP:2026-06')
     expect(buildFollowupTableExportRows(visitRows)[0]).toEqual({
       数据月份: '2026-06',
       客户名称: '中国铁塔',
@@ -100,7 +127,7 @@ describe('callbackFollowupTables', () => {
       客户反馈: '7分以下分布：旧问卷*6分*1次；反馈原因：功能有缺失（1）',
     })
     expect(toJiraArchivePayload(traceRows[0])).toMatchObject({
-      itemKey: 'q:C1:弹性公网IP',
+      itemKey: 'q:C1:弹性公网IP:2026-06',
       sourceType: 'questionnaire',
       customerName: '中国铁塔',
       productName: '弹性公网IP',
