@@ -184,7 +184,15 @@ export function questionnaireCallbackItemKey(item) {
   const code = normalizeText(typed?.customerCode)
   const name = normalizeText(typed?.customerName) || '匿名客户'
   const product = normalizeText(typed?.productName)
-  const months = (Array.isArray(typed?.importMonths) ? typed.importMonths : [])
+  // 2026-11-06 实测踩坑：调用链两处传 group——主构建链在 line 384 调用时 importMonths
+  // 仍是 Set（数组化在 return 对象 line 389 才发生），此前只认 Array 导致月份段永远为空、
+  // 方案B 在线上从未生效。此处同时兼容 Set / Array 两种形态。
+  const rawMonths = Array.isArray(typed?.importMonths)
+    ? typed.importMonths
+    : /** @type {Set<unknown>} */ (typed?.importMonths) instanceof Set
+      ? [.../** @type {Set<unknown>} */ (typed.importMonths)]
+      : []
+  const months = rawMonths
     .map((month) => normalizeText(month).slice(0, 7))
     .filter(Boolean)
     .sort()

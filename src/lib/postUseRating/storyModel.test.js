@@ -404,6 +404,45 @@ describe('post-use story model', () => {
     expect(model.callbackRecommendations[1].channels).toEqual(['官网评分类', '短信渠道'])
   })
 
+  it('2026-11-06 方案B 崩溃回归：完整构建链的 questionnaire itemKey 必须带月份段（group.importMonths 是 Set）', () => {
+    // 背景：questionnaireCallbackItemKey 曾只认 Array.isArray，而主构建链在调用时
+    // group.importMonths 是 Set → 月份段永远为空 → 方案B 线上从未生效，跨月串扰复现。
+    // 本用例走完整 buildPostUseStoryModel 真实链路锁定（旧代码必红）。
+    const mk = (month, score, i) => ({
+      id: `r-${month}-${i}`,
+      dataSourceType: 'post_use_rating',
+      surveyName: '官网问卷',
+      channel: 'option',
+      customerName: '客户E280',
+      customerCode: 'E2802021011318241029',
+      productName: '弹性公网IP',
+      ratingScore: score,
+      importMonth: month,
+      feedbackReasonPrimary: '功能有缺失',
+      createdAt: `${month}-15T10:00:00.000Z`,
+    })
+    const mkModel = (records) =>
+      buildPostUseStoryModel({
+        records,
+        allRecords: [],
+        productNames: ['弹性公网IP'],
+        settings: null,
+      })
+    const quarterModel = mkModel([mk('2026-08', 4, 1), mk('2026-08', 5, 2), mk('2026-09', 3, 1), mk('2026-09', 6, 2)])
+    const augModel = mkModel([mk('2026-08', 4, 1), mk('2026-08', 5, 2)])
+    const sepModel = mkModel([mk('2026-09', 3, 1), mk('2026-09', 6, 2)])
+
+    const q = quarterModel.callbackRecommendations.map((r) => r.itemKey)
+    const a = augModel.callbackRecommendations.map((r) => r.itemKey)
+    const s = sepModel.callbackRecommendations.map((r) => r.itemKey)
+    // 键必须带月份段（Set 形态在主链路被正确消费）
+    expect(q).toContain('q:E2802021011318241029:弹性公网IP:2026-08|2026-09')
+    expect(a).toContain('q:E2802021011318241029:弹性公网IP:2026-08')
+    expect(s).toContain('q:E2802021011318241029:弹性公网IP:2026-09')
+    // 跨月独立：8 月键 ≠ 9 月键（勾选/归档不再串扰）
+    expect(a[0]).not.toBe(s[0])
+  })
+
   it('includes option-channel scores below 7 for yunwang products in callback recommendations', () => {
     const model = buildPostUseStoryModel({
       records: [
