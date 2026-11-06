@@ -135,7 +135,6 @@ import {
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
-import { postUseVisitReviewId } from '../lib/postUseVisitClient.js'
 import { buildPostUseCallbackRecommendations } from '../lib/postUseRating/callbackRecommendations.js'
 import {
   buildPostUseCustomerVisitRows,
@@ -498,16 +497,9 @@ export default function Feedbacks() {
         const name = String(record.customerName || '').trim().toLowerCase()
         if (!needles.some((needle) => name.includes(needle))) return false
       }
-      if (
-        reviewEnabled &&
-        filters.myReview &&
-        !matchesMyReviewFilter(filters.myReview, postUseVisitReviewId(record.id), doneRecordIds)
-      ) {
-        return false
-      }
       return true
     })
-  }, [customerVisitPeriodRecords, filters.customerNames, filters.myReview, reviewEnabled, doneRecordIds])
+  }, [customerVisitPeriodRecords, filters.customerNames])
 
   const customerVisitTableRows = useMemo(() => {
     const rows = buildPostUseCustomerVisitRows(filteredCustomerVisitRecords, callbackRecommendationPool)
@@ -1402,11 +1394,10 @@ export default function Feedbacks() {
                 filters={filters}
                 onFiltersChange={handleFiltersChange}
                 onClearFilters={handleClearFilters}
-                showMyReviewFilter={reviewEnabled}
                 options={{
                   filterKeys: FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
                   customerNameOptions: visitCustomerNameOptions,
-                  emptyPlaceholder: '选择属性筛选（客户名称、我的处理状态）',
+                  emptyPlaceholder: '选择属性筛选（客户名称）',
                 }}
               />
             </div>
@@ -1626,7 +1617,6 @@ export default function Feedbacks() {
         ) : isCustomerVisitLane ? (
           <CustomerVisitTable
             rows={customerVisitTableRows}
-            reviewEnabled={reviewEnabled}
             onSelect={(record) => setSelectedVisitRecord(record)}
           />
         ) : view === 'table' ? (
@@ -1731,8 +1721,7 @@ export default function Feedbacks() {
   )
 }
 
-function CustomerVisitTable({ rows, reviewEnabled = false, onSelect }) {
-  const { doneRecordIds } = useUserTicketReviews()
+function CustomerVisitTable({ rows, onSelect }) {
   const columns = useMemo(() => {
     const maxQuotes = Math.max(
       0,
@@ -1748,20 +1737,20 @@ function CustomerVisitTable({ rows, reviewEnabled = false, onSelect }) {
     )
 
     return [
-      ...(reviewEnabled
-        ? [{
-            title: '我的状态',
-            dataIndex: '__myStatus',
-            width: 92,
-            fixed: 'left',
-            render: (_, row) =>
-              row.__record && doneRecordIds.has(postUseVisitReviewId(row.__record.id)) ? (
-                <Tag color="green">已处理</Tag>
-              ) : (
-                <Tag>未处理</Tag>
-              ),
-          }]
-        : []),
+      // 2026-11-05：个人标记"我的状态"列下线（visit: 前缀体系），改由评估字段派生的评估状态列
+      {
+        title: '评估状态',
+        key: '__evaluationState',
+        width: 92,
+        fixed: 'left',
+        render: (_, row) => {
+          const record = row.__record
+          const evaluation = String(record?.internalEvaluationDetail || record?.internalConclusion || '').trim()
+          const state = record?.evaluationSubmitted ? '已评估' : evaluation ? '评估中' : '待评估'
+          const color = state === '已评估' ? 'success' : state === '评估中' ? 'processing' : 'default'
+          return <Tag color={color}>{state}</Tag>
+        },
+      },
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
       { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
@@ -1793,7 +1782,7 @@ function CustomerVisitTable({ rows, reviewEnabled = false, onSelect }) {
       { title: '内部评估', dataIndex: '内部评估', width: 220, ellipsis: true },
       { title: '备注', dataIndex: '备注', width: 180, ellipsis: true },
     ]
-  }, [rows, reviewEnabled, doneRecordIds])
+  }, [rows])
 
   if (!rows.length) {
     return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配客服部回访记录" />

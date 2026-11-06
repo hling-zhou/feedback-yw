@@ -324,10 +324,13 @@ export function buildReminderData({ insightPeriodId } = {}) {
       }
     }
 
-    // 判断内部评估是否为空
+    // 2026-11-05 评估状态派生口径（与回访抽屉/列表一致）：
+    // 评估空 → 待评估（纳入提醒）；非空未提交 → 评估中（纳入提醒）；已提交 → 已评估（不纳入）。
     const internalConclusion = String(visitRecord?.internalConclusion || '').trim()
     const internalEvaluationDetail = String(visitRecord?.internalEvaluationDetail || '').trim()
-    if (internalConclusion || internalEvaluationDetail) continue // 已填写则不纳入
+    const evaluationSubmitted = Boolean(visitRecord?.evaluationSubmitted)
+    if (evaluationSubmitted) continue // 已评估（提交完结）不纳入
+    if (internalConclusion || internalEvaluationDetail) continue // 兼容旧链路：历史填了评估但无提交标记的，同样视为已评估
 
     const productKey = productKeyByName.get(productName) || ''
     const product = ensureProduct(productKey, productName)

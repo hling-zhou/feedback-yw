@@ -171,10 +171,9 @@ export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */
   'problemCauseSource',
 ])
 
-/** 客服部回访 Tab 复合筛选 */
+/** 客服部回访 Tab 复合筛选（2026-11-05：myReview 随个人标记体系下线移除） */
 export const FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'customerNames',
-  'myReview',
 ])
 
 /** @type {Record<FeedbackFilterKey, string>} */

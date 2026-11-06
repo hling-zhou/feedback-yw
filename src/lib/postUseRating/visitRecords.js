@@ -22,6 +22,7 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [visitFeedbackDetail]
  * @property {string} [internalEvaluationDetail]
  * @property {string} [remark]
+ * @property {boolean} [evaluationSubmitted] 2026-11-05 评估完结标记：提交=true / 暂存=false（状态派生用）
  * @property {string} [assigneeName]
  * @property {string} [actionId]
  * @property {string} [jiraId]
@@ -50,6 +51,8 @@ export function normalizeVisitRecords(raw) {
     userFeedbackText: String(item?.userFeedbackText || ''),
     assigneeName: String(item?.assigneeName || ''),
     actionId: String(item?.actionId || ''),
+    // 2026-11-05 评估状态派生：提交=已评估 / 暂存=评估中 / 空=待评估（Boolean 归一，旧数据 undefined=false 不影响）
+    evaluationSubmitted: Boolean(item?.evaluationSubmitted),
     userInfoDetail: String(
       item?.userInfoDetail
       || [item?.customerName, item?.customerCode].filter(Boolean).join(' / ')

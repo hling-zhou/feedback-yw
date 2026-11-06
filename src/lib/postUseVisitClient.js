@@ -26,6 +26,7 @@ export function listPostUseVisits(importMonths) {
 
 /**
  * 编辑客服部回访的内部评估/备注/经办人/关联举措。
+ * 2026-11-05 评估状态自动流转：evaluationSubmitted 提交=true（已评估）/ 暂存=false（评估中）。
  * @param {string} id
  * @param {{
  *   internalEvaluationDetail?: string
@@ -33,6 +34,7 @@ export function listPostUseVisits(importMonths) {
  *   remark?: string
  *   assigneeName?: string
  *   actionId?: string
+ *   evaluationSubmitted?: boolean
  *   baseUpdatedAt?: string
  * }} patch
  * @returns {Promise<{ item: PostUseVisitRecord }>}

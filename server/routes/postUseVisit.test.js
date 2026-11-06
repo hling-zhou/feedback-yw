@@ -165,6 +165,56 @@ describeApi('post-use visit API', () => {
     expect(item.updatedAt).not.toBe('2026-09-01T00:00:00.000Z')
   })
 
+  it('2026-11-05 评估状态流转：evaluationSubmitted 提交往返 + 暂存回退（服务端持久化验证）', async () => {
+    // visit-def 评估为空（待评估）→ 暂存（evaluationSubmitted=false + 评估草稿）→ 读回评估中
+    const draft = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-visits/visit-def',
+      headers: authHeader('editor'),
+      payload: {
+        internalEvaluationDetail: '草稿：疑似误操作',
+        evaluationSubmitted: false,
+      },
+    })
+    expect(draft.statusCode).toBe(200)
+    expect(draft.json().item.evaluationSubmitted).toBe(false)
+    expect(draft.json().item.internalEvaluationDetail).toBe('草稿：疑似误操作')
+
+    // 提交（evaluationSubmitted=true）→ 读回已评估
+    const submit = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-visits/visit-def',
+      headers: authHeader('editor'),
+      payload: {
+        internalEvaluationDetail: '确认误操作，无需优化',
+        evaluationSubmitted: true,
+      },
+    })
+    expect(submit.statusCode).toBe(200)
+    expect(submit.json().item.evaluationSubmitted).toBe(true)
+
+    // GET 列表读回持久化值（meta 真实写盘验证，非仅响应回显）
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/post-use-visits?importMonth=2026-08',
+      headers: authHeader('viewer'),
+    })
+    expect(list.statusCode).toBe(200)
+    const persisted = list.json().items.find((v) => v.id === 'visit-def')
+    expect(persisted.evaluationSubmitted).toBe(true)
+    expect(persisted.internalEvaluationDetail).toBe('确认误操作，无需优化')
+
+    // 提交后发现需补充 → 暂存回退为评估中（false 可再次写入，覆盖 true）
+    const revert = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-visits/visit-def',
+      headers: authHeader('editor'),
+      payload: { evaluationSubmitted: false },
+    })
+    expect(revert.statusCode).toBe(200)
+    expect(revert.json().item.evaluationSubmitted).toBe(false)
+  })
+
   it('syncs customerVisit snapshot on records after editing the visit', async () => {
     // 先把 visit-def 的内部评估/备注写入一条（快照回写需先有编辑前值）
     const patchRes = await app.inject({

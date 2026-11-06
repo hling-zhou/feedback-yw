@@ -112,10 +112,12 @@ export function registerPostUseVisitRoutes(app) {
     return { items: records }
   })
 
+  // 2026-11-05 状态派生链路：evaluationSubmitted 标记评估是否完结提交（暂存=false / 提交=true）；
+  // 评估状态 = 评估空→待评估、非空未提交→评估中、已提交→已评估（提醒引擎与列表派生同口径）。
   app.patch('/api/post-use-visits/:id', async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
     const { id } = /** @type {{ id: string }} */ (request.params)
-    const body = /** @type {{ internalEvaluationDetail?: string, internalConclusion?: string, remark?: string, assigneeName?: string, actionId?: string, baseUpdatedAt?: string }} */ (
+    const body = /** @type {{ internalEvaluationDetail?: string, internalConclusion?: string, remark?: string, assigneeName?: string, actionId?: string, evaluationSubmitted?: boolean, baseUpdatedAt?: string }} */ (
       request.body || {}
     )
 
@@ -145,6 +147,9 @@ export function registerPostUseVisitRoutes(app) {
       if (typeof body.remark === 'string') next.remark = body.remark
       if (typeof body.assigneeName === 'string') next.assigneeName = body.assigneeName
       if (typeof body.actionId === 'string') next.actionId = body.actionId
+      if (typeof body.evaluationSubmitted === 'boolean') {
+        next.evaluationSubmitted = body.evaluationSubmitted
+      }
       next.updatedAt = now
       return next
     })
