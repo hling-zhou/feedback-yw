@@ -13,6 +13,8 @@ import {
   DeploymentUnitOutlined,
   BarChartOutlined,
   ApiOutlined,
+  DashboardOutlined,
+  BugOutlined,
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -36,23 +38,65 @@ import ReminderFab from './ReminderFab.jsx'
 import ReminderSendModal from './ReminderSendModal.jsx'
 import { useUsageTracking } from '../hooks/useUsageTracking.js'
 
-const ALL_NAV = [
-  { key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
-  { key: '/topics', label: '专题分析', icon: <DeploymentUnitOutlined /> },
-  { key: '/feedbacks', label: '反馈库', icon: <UnorderedListOutlined /> },
-  { key: '/actions', label: '问题与举措', icon: <FlagOutlined /> },
-  { key: '/import', label: '数据导入', icon: <ImportOutlined /> },
-  { key: '/tags', label: '对象与标签', icon: <TagOutlined /> },
-  { key: '/users', label: '用户管理', icon: <TeamOutlined /> },
-  { key: '/operations', label: '运营分析', icon: <BarChartOutlined /> },
-  { key: '/settings', label: '设置', icon: <SettingOutlined /> },
-  { key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined />, badge: 'NEW' },
+/** @typedef {import('react').ReactElement} ReactNavIcon */
+
+/**
+ * 左导航唯一真源：分组（线上VOC / API巡检）与平级项混合。
+ * group 项渲染为 antd Menu group（固定分组标题，不可点击，子项常驻）；
+ * leaf 项为普通菜单项。菜单选中、角色过滤、折叠态展平均由此结构派生。
+ * @typedef {{ type: 'leaf', key: string, label: string, icon: ReactNavIcon, badge?: string }} NavLeaf
+ * @typedef {{ type: 'group', key: string, label: string, children: NavLeaf[] }} NavGroup
+ */
+
+/** @type {NavLeaf[]} */
+const VOC_NAV_CHILDREN = [
+  { type: 'leaf', key: '/workbench', label: '洞察工作台', icon: <HomeOutlined /> },
+  { type: 'leaf', key: '/topics', label: '专题分析', icon: <DeploymentUnitOutlined /> },
+  { type: 'leaf', key: '/feedbacks', label: '反馈库', icon: <UnorderedListOutlined /> },
 ]
+
+/** @type {NavLeaf[]} */
+const API_PATROL_NAV_CHILDREN = [
+  { type: 'leaf', key: '/api-patrol/overview', label: '总览', icon: <DashboardOutlined /> },
+  { type: 'leaf', key: '/api-patrol/failures', label: '异常接口溯源', icon: <BugOutlined /> },
+]
+
+/** @type {(NavGroup | NavLeaf)[]} */
+const ALL_NAV = [
+  { type: 'group', key: 'group-voc', label: '线上VOC', children: VOC_NAV_CHILDREN },
+  {
+    type: 'group',
+    key: 'group-api-patrol',
+    label: 'API巡检',
+    children: API_PATROL_NAV_CHILDREN,
+  },
+  { type: 'leaf', key: '/actions', label: '问题与举措', icon: <FlagOutlined /> },
+  { type: 'leaf', key: '/import', label: '数据导入', icon: <ImportOutlined /> },
+  { type: 'leaf', key: '/tags', label: '对象与标签', icon: <TagOutlined /> },
+  { type: 'leaf', key: '/users', label: '用户管理', icon: <TeamOutlined /> },
+  { type: 'leaf', key: '/operations', label: '运营分析', icon: <BarChartOutlined /> },
+  { type: 'leaf', key: '/settings', label: '设置', icon: <SettingOutlined /> },
+  { type: 'leaf', key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined />, badge: 'NEW' },
+]
+
+/** 递归收集全部叶子导航项（分组与平级统一摊平）。 */
+function collectNavLeaves(items) {
+  return items.flatMap((item) =>
+    item.type === 'group' ? collectNavLeaves(/** @type {NavGroup} */ (item).children) : [item],
+  )
+}
+
+/** @type {NavLeaf[]} */
+const NAV_LEAVES = collectNavLeaves(ALL_NAV)
 
 function resolveNavKey(pathname) {
   if (pathname === '/' || pathname.startsWith('/workbench')) return '/workbench'
-  const item = ALL_NAV.find((n) => n.key !== '/workbench' && pathname.startsWith(n.key))
-  return item?.key || '/workbench'
+  // 最长前缀匹配：/api-patrol/failures 必须胜出 /api-patrol/overview，
+  // 且平级 startsWith 匹配下先按 key 长度降序再取首个命中。
+  const matched = NAV_LEAVES
+    .filter((n) => n.key !== '/workbench' && pathname.startsWith(n.key))
+    .sort((a, b) => b.key.length - a.key.length)[0]
+  return matched?.key || '/workbench'
 }
 
 export default function AppShell() {
@@ -86,19 +130,46 @@ export default function AppShell() {
     setWhatsNewUnread(false)
   }, [])
 
-  const navItems = ALL_NAV.filter((item) => canRoute(item.key)).map(({ key, label, icon, badge }) => {
-    const item = {
-      key,
-      label: badge ? (
-        <Space size={4}>
-          <span>{label}</span>
-          <Tag color="purple" className="!m-0 !text-[10px] !leading-tight">{badge}</Tag>
-        </Space>
-      ) : label,
-      icon,
-    }
-    return item
+  /**
+   * 叶子项 → antd 菜单项（NEW 角标等 label 装饰在此处）。
+   * @param {NavLeaf} leaf
+   */
+  const buildLeafMenuItem = ({ key, label, icon, badge }) => ({
+    key,
+    label: badge ? (
+      <Space size={4}>
+        <span>{label}</span>
+        <Tag color="purple" className="!m-0 !text-[10px] !leading-tight">
+          {badge}
+        </Tag>
+      </Space>
+    ) : (
+      label
+    ),
+    icon,
   })
+
+  /**
+   * 折叠态：分组展平成平级菜单（antd inline collapsed 不支持 group 形态）。
+   * filter(Boolean) 无法静态收窄 null，末端 cast 对齐 antd Menu items 类型。
+   */
+  const navItems = /** @type {import('antd').MenuProps['items']} */ (
+    collapsed
+      ? NAV_LEAVES.filter((item) => canRoute(item.key)).map(buildLeafMenuItem)
+      : ALL_NAV.map((item) => {
+          if (item.type === 'group') {
+            const visibleChildren = item.children.filter((child) => canRoute(child.key))
+            if (visibleChildren.length === 0) return null // 整组被角色隐藏则不渲染
+            return {
+              type: 'group',
+              key: item.key,
+              label: item.label,
+              children: visibleChildren.map(buildLeafMenuItem),
+            }
+          }
+          return canRoute(item.key) ? buildLeafMenuItem(item) : null
+        }).filter(Boolean)
+  )
 
   // 在 MCP 数据服务前插入分隔线
   const mcpIndex = navItems.findIndex((n) => n.key === '/mcp-guide')
