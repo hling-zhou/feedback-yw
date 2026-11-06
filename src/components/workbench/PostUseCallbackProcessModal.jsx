@@ -75,6 +75,9 @@ export default function PostUseCallbackProcessModal({
   const [archivedItems, setArchivedItems] = useState(() => new Map())
   /** 客服部回访"已纳入"标记：itemKey 集合（需求8，2026-11-04：导出/发送即标记，不可逆） */
   const [dispatchedKeys, setDispatchedKeys] = useState(() => new Set())
+  /** 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入客服部回访 */
+  const [filterArchivedOnly, setFilterArchivedOnly] = useState(false)
+  const [filterDispatchedOnly, setFilterDispatchedOnly] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -302,6 +305,48 @@ export default function PostUseCallbackProcessModal({
     return sorted
   }, [recommendations])
 
+  // 快捷筛选派生（2026-11-06）：按"已纳入"状态过滤。过滤后同客户可能只剩部分行 →
+  // 每行对象重新构建分组信息（__groupKeys 只含过滤后的组内键、span 重算），保证合并单元格正确。
+  // （类型说明：recommendations prop 为 object[]，此处局部放宽 itemKey/分组字段访问）
+  const filteredQuestionnaireRows = useMemo(() => {
+    if (!filterArchivedOnly && !filterDispatchedOnly) return questionnaireRows
+    /** @type {{ itemKey?: string; __groupKeys?: string[]; __isGroupFirst?: boolean; __groupSpan?: number }[]} */
+    const typedRows = questionnaireRows
+    const kept = typedRows.filter((row) => {
+      if (filterArchivedOnly && !archivedKeys.has(row.itemKey || '')) return false
+      if (filterDispatchedOnly && !dispatchedKeys.has(row.itemKey || '')) return false
+      return true
+    })
+    const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
+    let i = 0
+    while (i < kept.length) {
+      let j = i
+      const keys = []
+      while (j < kept.length && keyOf(kept[j]) === keyOf(kept[i])) {
+        if (kept[j].itemKey) keys.push(kept[j].itemKey)
+        j += 1
+      }
+      const span = j - i
+      for (let k = i; k < j; k++) {
+        kept[k] = { ...kept[k], __groupKeys: keys, __isGroupFirst: k === i, __groupSpan: span }
+      }
+      i = j
+    }
+    return kept
+  }, [questionnaireRows, filterArchivedOnly, filterDispatchedOnly, archivedKeys, dispatchedKeys])
+
+  // 投诉回访非10分 tab 同款过滤（行级无分组，直接 filter）
+  const filteredCallbackRecords = useMemo(() => {
+    if (!filterArchivedOnly && !filterDispatchedOnly) return callbackNonTenRecords
+    /** @type {{ itemKey?: string }[]} */
+    const typedRecords = callbackNonTenRecords
+    return typedRecords.filter((row) => {
+      if (filterArchivedOnly && !archivedKeys.has(row.itemKey || '')) return false
+      if (filterDispatchedOnly && !dispatchedKeys.has(row.itemKey || '')) return false
+      return true
+    })
+  }, [callbackNonTenRecords, filterArchivedOnly, filterDispatchedOnly, archivedKeys, dispatchedKeys])
+
   // 客户级合并单元格的通用 render 包装：非组首行返回 rowSpan:0 吞行。
   const mergedCell = (value, row, render) => {
     if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
@@ -368,7 +413,8 @@ export default function PostUseCallbackProcessModal({
   })
 
   const questionnaireColumns = [
-    { title: '数据月份', dataIndex: 'importMonths', width: 110, render: (value) => (value || []).filter(Boolean).join('、') },
+    // 2026-11-06 列宽调整：数据月份/产品名称/反馈原因收窄，建议回访原因加宽，触发类型去掉"建议"前缀
+    { title: '数据月份', dataIndex: 'importMonths', width: 92, render: (value) => (value || []).filter(Boolean).join('、') },
     {
       title: '客户名称',
       dataIndex: 'customerName',
@@ -383,9 +429,9 @@ export default function PostUseCallbackProcessModal({
       ellipsis: true,
       render: (value, row) => mergedCell(value || '—', row),
     },
-    { title: '产品名称', dataIndex: 'productName', width: 140, ellipsis: true },
+    { title: '产品名称', dataIndex: 'productName', width: 110, ellipsis: true },
     {
-      title: '建议触发类型',
+      title: '触发类型',
       dataIndex: 'triggerType',
       width: 150,
       ellipsis: true,
@@ -398,14 +444,14 @@ export default function PostUseCallbackProcessModal({
     {
       title: '反馈原因',
       dataIndex: 'feedbackReasonSummary',
-      width: 220,
+      width: 170,
       ellipsis: true,
       render: (value) => <EllipsisHover value={value} />,
     },
     {
       title: '建议回访原因',
       dataIndex: 'recommendedReason',
-      width: 260,
+      width: 340,
       ellipsis: true,
       render: (value) => <EllipsisHover value={value} />,
     },
@@ -645,17 +691,27 @@ export default function PostUseCallbackProcessModal({
       width={1200}
       footer={null}
       destroyOnClose
+      styles={{ body: { maxHeight: '78vh', overflowY: 'auto' } }}
     >
       <Typography.Paragraph type="secondary" className="!mb-3">
         可同时勾选客服部回访与产品部溯源。勾选会保存，导出与一键存档只处理已勾选的记录。
       </Typography.Paragraph>
+      {/* 快捷筛选（2026-11-06 用户拍板）：只看已纳入产品部回溯 / 已纳入客服部回访 的行 */}
+      <div className="mb-2 flex flex-wrap items-center gap-4">
+        <Checkbox checked={filterArchivedOnly} onChange={(e) => setFilterArchivedOnly(e.target.checked)}>
+          已纳入产品部回溯
+        </Checkbox>
+        <Checkbox checked={filterDispatchedOnly} onChange={(e) => setFilterDispatchedOnly(e.target.checked)}>
+          已纳入客服部回访
+        </Checkbox>
+      </div>
       <Tabs
         items={[
           {
             key: 'questionnaire',
             label: (
               <Badge count={pendingAssigneeQuestionnaire.length} size="small" offset={[6, 0]}>
-                <span>官网问卷类建议回访({recommendations.length})</span>
+                <span>官网问卷类建议回访({filteredQuestionnaireRows.length})</span>
               </Badge>
             ),
             children: (
@@ -663,9 +719,9 @@ export default function PostUseCallbackProcessModal({
                 size="small"
                 rowKey={(row) => row.itemKey || `${row.customerCode}-${row.productName}`}
                 loading={loading}
-                pagination={{ pageSize: 8 }}
-                scroll={{ x: 2100 }}
-                dataSource={questionnaireRows}
+                pagination={{ pageSize: 12 }}
+                scroll={{ x: 2150 }}
+                dataSource={filteredQuestionnaireRows}
                 columns={questionnaireColumns}
                 locale={{ emptyText: '当前范围内暂无官网问卷类建议回访记录' }}
               />
@@ -675,7 +731,7 @@ export default function PostUseCallbackProcessModal({
             key: 'callback',
             label: (
               <Badge count={pendingAssigneeCallback.length} size="small" offset={[6, 0]}>
-                <span>投诉回访非10分({callbackNonTenRecords.length})</span>
+                <span>投诉回访非10分({filteredCallbackRecords.length})</span>
               </Badge>
             ),
             children: (
@@ -683,9 +739,9 @@ export default function PostUseCallbackProcessModal({
                 size="small"
                 rowKey={(row) => row.itemKey || row.id || row.originalTicketId}
                 loading={loading}
-                pagination={{ pageSize: 8 }}
+                pagination={{ pageSize: 12 }}
                 scroll={{ x: 1800 }}
-                dataSource={callbackNonTenRecords}
+                dataSource={filteredCallbackRecords}
                 columns={callbackColumns}
                 locale={{ emptyText: '当前范围内暂无投诉回访非10分记录' }}
               />
