@@ -357,11 +357,21 @@ export async function matchJourneyHybridBatch(texts, taxonomyKeys, settings, onP
             insightPeriodId: rec?.insightPeriodId,
             dataSourceType: rec?.dataSourceType,
           })
+          const mergedResult = mergeJourneyResult(group.locals[k], llm, journeys)
+          // journeySource 如实标注：模型对该条真实给出了判断（llmVerdict==='llm'，
+          // 含明说「未识别」）才标 'llm'；模型答案未送达（解析失败/缺项，UNKNOWN
+          // 只是占位）或 merge 回退本地结果时标 'rule'——否则下游
+          // classifyPostUseJourney 会把本地重匹配误判为 llm_unknown（模型已判）
+          // → 默认永不重试 → 待补全计数静默漂移。
           merged[j] = {
-            ...mergeJourneyResult(group.locals[k], llm, journeys),
-            journeySource: /** @type {'llm'} */ ('llm'),
+            ...mergedResult,
+            journeySource:
+              llm?.llmVerdict === 'llm' && mergedResult.journeyL1 === llm?.journeyL1
+                ? /** @type {'llm'} */ ('llm')
+                : /** @type {'rule'} */ ('rule'),
             journeyMatchScore: decisions[j].score,
           }
+          delete merged[j].llmVerdict
         })
       } catch (err) {
         console.warn('旅程混合批量 LLM 失败，该批仅用本地:', err)
@@ -580,6 +590,12 @@ async function callLlmJourneyBatch(texts, journeys, settings, localHints, produc
     const l1 = item?.journeyL1 || UNKNOWN_L1
     const l2 = item?.journeyL2 || UNKNOWN_L2
     const llm = { journeyL1: l1, journeyL2: l2 }
+    // llmVerdict：'llm' = 模型对这条记录真实给出了判断（含明说「未识别环节」——
+    // 那也是模型结论，下游按 llm_unknown 处理是正确的）；
+    // 'local_fallback' = 模型答案未送达（items 空/解析失败/该条缺项），l1 是
+    // UNKNOWN 占位值而非模型原话——若把这类占位当模型结论标 'llm'，下游
+    // classifyPostUseJourney 会误判 llm_unknown → 默认永不重试 → 计数漂移。
+    const llmVerdict = item ? 'llm' : 'local_fallback'
     captureJourneyCandidateIfNeeded({
       llm,
       journeys,
@@ -591,8 +607,11 @@ async function callLlmJourneyBatch(texts, journeys, settings, localHints, produc
       isValidJourneyPair(l1, l2, journeys) ||
       isLlmProposedJourney(llmResult, journeys)
     ) {
-      return llmResult
+      return { ...llmResult, llmVerdict }
     }
-    return matchJourneyByDescription(text, journeys, taxonomyKey, journeyMatchOpts(settings))
+    return {
+      ...matchJourneyByDescription(text, journeys, taxonomyKey, journeyMatchOpts(settings)),
+      llmVerdict,
+    }
   })
 }

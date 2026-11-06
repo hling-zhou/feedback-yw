@@ -119,6 +119,37 @@ describe('journeyMatchConfidence', () => {
     expect(decision.reason).toBe('forced_semantic')
   })
 
+  it('G-06: manual journey override skips LLM even when local is unknown', () => {
+    // 守卫 e7df03d：判据字段名必须是 manualTagFields（FeedbackRecord 真实字段）。
+    // 旧字段名 manualTagDimensions 是幻影字段，永不命中 → 人工改过的旅程仍被 LLM 重打。
+    // 本地结果即便是「未识别」，manual_override 判定也必须排最前——人工结论优先于一切门闸。
+    const decision = evaluateJourneyGating(
+      '完全无关的文本',
+      journeys,
+      'generic',
+      SETTINGS,
+      { journeyL1: '未识别环节', journeyL2: '未识别子环节' },
+      { manualTagFields: ['journey'] },
+    )
+    expect(decision.skipLlm).toBe(true)
+    expect(decision.reason).toBe('manual_override')
+  })
+
+  it('G-07: phantom field name must not trigger manual_override', () => {
+    // 反向守卫：若判据改回幻影字段 manualTagDimensions，此用例必红——
+    // prevent 字段名错位回潮（e7df03d 同型缺陷无测试红灯的缺口补齐）。
+    const decision = evaluateJourneyGating(
+      '完全无关的文本',
+      journeys,
+      'generic',
+      SETTINGS,
+      { journeyL1: '未识别环节', journeyL2: '未识别子环节' },
+      { manualTagDimensions: ['journey'] },
+    )
+    expect(decision.skipLlm).toBe(false)
+    expect(decision.reason).toBe('unknown')
+  })
+
   it('filterIndicesNeedingJourneyLlm respects gating', () => {
     const texts = [
       '客户反馈下单流程异常',
@@ -177,5 +208,36 @@ describe('matchJourneyHybridBatch gating', () => {
     expect(llmChatCompletion).toHaveBeenCalledTimes(1)
     const userContent = vi.mocked(llmChatCompletion).mock.calls[0]?.[1]?.messages?.[1]?.content
     expect(String(userContent)).not.toContain('下单流程')
+  })
+
+  it('G-08: records 透传链路守卫——人工改过的旅程不进 LLM 请求', async () => {
+    // 守卫 e7df03d 的链路层：matchJourneyHybridBatch → evaluateJourneyGatingBatch →
+    // evaluateJourneyGating 第六参。若批量函数丢掉 records 透传，manual_override
+    // 永不命中（同 11-06 Set/Array 形态断裂教训：纯函数对≠链路通）。
+    // 注：中间层只保证「不进 LLM」；人工旅程值的保留由上下游兜底——
+    //   上游 resolvePostUseJourneyTargets/classifyPostUseJourney 过滤人工记录，
+    //   下游 preserveManualTags（manualTagFields.js）按 manualTagFields 恢复原值。
+    vi.mocked(llmChatCompletion).mockResolvedValue({})
+    vi.mocked(getLlmCompletionText).mockReturnValue('{}')
+    vi.mocked(parseLlmMessageContent).mockReturnValue({
+      results: [{ index: 0, journeyL1: '业务使用与连通', journeyL2: '公网访问不通' }],
+    })
+
+    const texts = ['客户已人工标注旅程，原文无关', '完全无关的文本']
+    const keys = ['generic', 'generic']
+    const records = [
+      { manualTagFields: ['journey'], journeyL1: '购买', journeyL2: '下单' },
+      { journeyL1: '未识别环节', journeyL2: '未识别子环节' },
+    ]
+
+    const results = await matchJourneyHybridBatch(texts, keys, SETTINGS, undefined, records)
+
+    // 人工记录被 manual_override 跳过：不进 LLM 请求
+    expect(results[0].journeySource).toBe('rule')
+    expect(llmChatCompletion).toHaveBeenCalledTimes(1)
+    const userContent = vi.mocked(llmChatCompletion).mock.calls[0]?.[1]?.messages?.[1]?.content
+    expect(String(userContent)).not.toContain('人工标注')
+    // 未识别记录走 LLM 并采纳模型结果
+    expect(results[1].journeySource).toBe('llm')
   })
 })

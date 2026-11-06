@@ -206,3 +206,55 @@ describe('llmChatCompletion', () => {
     expect(body.model).toBe('test-model')
   })
 })
+
+describe('parseLlmMessageContent 批结果容器契约（82742ef 剥包装回归守卫）', () => {
+  // 打标类消费方（journeySemantic/themeSemantic/keywordLlmFilter 等）的提示词约定
+  // 模型返回 {"results":[...]} 包装。82742ef 起 pickAssistantPayload 会把这类容器
+  // 剥成元素本身/只剩最后一个元素 → parsed.results 恒 undefined → 批量答案整体丢失
+  // → 全部回退本地重匹配且被误标 journeySource='llm' → 下游 llm_unknown 判定失真
+  // → 待补全计数死循环以另一形态复活。本守卫锁「批容器必须原样保留」契约。
+  /** @param {unknown} parsed @returns {Record<string, any>} */
+  const asResults = (parsed) => /** @type {Record<string, any>} */ (parsed)
+  it('单元素 results 容器保留包装（不解成元素本身）', () => {
+    const parsed = asResults(parseLlmMessageContent(
+      JSON.stringify({ results: [{ index: 0, journeyL1: '产品订改续', journeyL2: '权限及配额限制' }] }),
+    ))
+    expect(Array.isArray(parsed?.results)).toBe(true)
+    expect(parsed.results[0].journeyL1).toBe('产品订改续')
+  })
+
+  it('多元素 results 容器一个不丢（不只剩最后一个）', () => {
+    const parsed = asResults(parseLlmMessageContent(
+      JSON.stringify({
+        results: [
+          { index: 0, journeyL1: '产品订改续', journeyL2: '权限及配额限制' },
+          { index: 1, journeyL1: '业务使用与连通', journeyL2: '公网访问不通' },
+        ],
+      }),
+    ))
+    expect(parsed?.results?.length).toBe(2)
+    expect(parsed.results[0].journeyL1).toBe('产品订改续')
+    expect(parsed.results[1].journeyL1).toBe('业务使用与连通')
+  })
+
+  it('fence 包裹的 results 容器同样保留', () => {
+    const content = '```json\n' + JSON.stringify({
+      results: [{ index: 0, journeyL1: '产品订改续', journeyL2: '权限及配额限制' }],
+    }) + '\n```'
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(Array.isArray(parsed?.results)).toBe(true)
+  })
+
+  it('assistant 粘连场景不回归：半截+完整 answer 仍取最后完整对象', () => {
+    const content = '{"answer":"前半截' + JSON.stringify({ answer: '完整答案', citations: [] })
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(parsed?.answer).toBe('完整答案')
+  })
+
+  it('assistant tools 批容器形态不受影响', () => {
+    const parsed = asResults(parseLlmMessageContent(
+      JSON.stringify({ tools: [{ tool: 'search_records', args: {} }] }),
+    ))
+    expect(Array.isArray(parsed?.tools)).toBe(true)
+  })
+})

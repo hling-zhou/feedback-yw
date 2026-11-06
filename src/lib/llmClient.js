@@ -286,10 +286,34 @@ function collectBalancedJsonSlices(text) {
 }
 
 /**
+ * 批结果容器识别：打标类消费方（旅程/主题/关键词/根因等）的模型提示词约定返回
+ * {"results":[...]} / {"items":[...]} / {"keep":[...]} 等包装形态。这类容器的
+ * 数组字段就是有效载荷本身，不能被当作「多个对象取最后一个」的粘连启发式剥掉包装
+ * （82742ef 引入 pickAssistantPayload 后，{results:[单元素]} 会被解成元素本身、
+ * {results:[多元素]} 只剩最后一个元素——批量答案整体丢失，所有记录回退本地重匹配
+ * 且被误标 journeySource='llm'）。
+ * @param {unknown[]} values
+ */
+function pickBatchResultContainer(values) {
+  const BATCH_KEYS = ['results', 'items', 'keep', 'words']
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const value = values[i]
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const row = /** @type {Record<string, unknown>} */ (value)
+    for (const key of BATCH_KEYS) {
+      if (Array.isArray(row[key])) return value
+    }
+  }
+  return null
+}
+
+/**
  * 多个对象时保留最后一条完整答案或工具调用。前面的半截对象丢掉。
  * @param {unknown[]} values
  */
 function pickAssistantPayload(values) {
+  const batch = pickBatchResultContainer(values)
+  if (batch) return batch
   const objects = values.filter((value) => value && typeof value === 'object' && !Array.isArray(value))
   const answers = objects.filter((value) => {
     const row = /** @type {Record<string, unknown>} */ (value)
