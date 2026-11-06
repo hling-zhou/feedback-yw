@@ -64,7 +64,9 @@ export const appTheme = {
       paddingLG: 16,
     },
     Menu: {
-      itemHeight: 36,
+      // 左导航密度：菜单项 × (32px 高 + 2px 间隙) + 紧凑底部区，保证 ~720px 视口高不出现滚动条
+      itemHeight: 32,
+      itemMarginBlock: 2,
       iconSize: 14,
     },
     Alert: {

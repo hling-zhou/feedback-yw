@@ -32,9 +32,7 @@ test.describe('smoke', () => {
     await page.goto('/workbench/analysis')
     await expect(page.getByRole('heading', { name: '洞察分析' })).toBeVisible()
 
-    const sidebarCount = await readPeriodCount(
-      page.getByTestId('period-count-sidebar').locator('.ant-statistic-content-value'),
-    )
+    const sidebarCount = await readPeriodCount(page.getByTestId('period-count-sidebar'))
     const headerCount = await readPeriodCount(page.getByTestId('period-count-display'))
     const themesDescCount = await readPeriodCount(page.getByTestId('period-count-themes-desc'))
 

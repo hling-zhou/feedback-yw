@@ -52,6 +52,38 @@
     border-right: 0 !important;
   }
 
+  /*
+   * 左导航分组样式（2026-11-07 层级误读修复）：
+   * 1. 分组标题小节标签化——小字号 + 弱色 + 字距，与可点击菜单项拉开层级差；
+   * 2. 分组闭合分隔线加呼吸感——视觉切断「API巡检 → 问题与举措」的从属误读；
+   * 3. 极小视口菜单区出滚动条时保持纤细低调（兜底，正常高度下不触发）。
+   */
+  .app-shell-sider .ant-menu-inline .ant-menu-item-group-title {
+    padding: 6px 12px 2px;
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.05em;
+    color: #9ca3af;
+  }
+
+  .app-shell-sider .ant-menu .ant-menu-item-divider {
+    margin-block: 6px;
+  }
+
+  .app-shell-sider .ant-menu {
+    scrollbar-width: thin;
+    scrollbar-color: #e5e7eb transparent;
+  }
+
+  .app-shell-sider .ant-menu::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .app-shell-sider .ant-menu::-webkit-scrollbar-thumb {
+    background: #e5e7eb;
+    border-radius: 2px;
+  }
+
   .app-shell-main {
     margin-left: var(--app-sider-width);
     height: 100vh;
