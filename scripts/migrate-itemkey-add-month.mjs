@@ -5,26 +5,28 @@
  * 新代码按 q:客户:产品:月1|月2…（达标月并集）生成键，本脚本把存量旧键补上月份段，
  * 使其与新键对齐。投诉回访 c:工单号 天然唯一，不动。
  *
- * 迁移规则（与本地已执行的一次完全一致）：
+ * 迁移规则：
  *   1. post_use_jira_items 的 q: 键（不含 YYYY-MM 段）：按该行 import_month 列补 :月份
  *   2. post_use_callback_decisions 的 q: 键（不含月份段）：
  *      按「该客户×产品在 records 中的低分(<7)月并集」补 :月1|月2…
- *      （无低分月则回退按客户全部月并集；仍无则保留原键——旧误判孤儿键，无害）
+ *      （无低分月则回退按客户全部低分月并集；仍无则保留原键——负面反馈/重点客户
+ *      路径入选的勾选无低分记录，旧键在新代码下任意周期可见，状态不丢）
  *   3. post_use_visit_dispatch 的 q: 键（不含月份段）：按 payload.importMonth 补 :月份
- *   4. 无月份段的旧键在新代码下「视为任意周期可见」（itemKeyPeriod 兜底语义），
- *      因此漏迁不会造成状态丢失，只会延续旧的全局继承显示——迁移是收敛不是抢救。
  *
- * 幂等：已含月份段的键自动跳过，重复执行安全。
+ * 幂等与成功标志：已含月份段的键自动跳过；保留原键的条目重复执行永远显示「保留」。
+ *      终态输出「拟变更 0 条 / 无可变更条目，数据库未改动」= 迁移完成。
  *
  * 用法：
  *   node scripts/migrate-itemkey-add-month.mjs [--dry-run]
  *   FEEDBACK_DB=/path/to/auth.db node scripts/migrate-itemkey-add-month.mjs
  *
- * 建议流程：先 --dry-run 看影响面 → 备份数据库文件 → 正式执行 → 验证。
+ * 执行顺序要求：先部署新代码（be386ce+），再跑本脚本（顺序反了会有窗口期
+ * 存量勾选显示失配）。正式执行只在存在实际变更时备份 DB，且不覆盖已有备份
+ * （保留最早一次的迁移前状态供回滚）；变更在单事务内执行，任一失败整体回滚。
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { copyFileSync } from 'node:fs'
+import { copyFileSync, existsSync } from 'node:fs'
 import Database from 'better-sqlite3'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -44,31 +46,30 @@ function main() {
     console.log(`数据库: ${DB_PATH}`)
     if (dryRun) console.log('[DRY RUN] 只扫描不写入\n')
 
-    // ---- 迁移 1：post_use_jira_items（归档条目，按 import_month 列补段）----
+    /** @type {Array<{table: 'jira'|'decisions'|'dispatch', oldKey: string, newKey: string}>} */
+    const planned = []
+    /** @type {Array<{key: string, reason: string}>} */
+    const skipped = []
+
+    // ---- 表 1：post_use_jira_items（归档条目，按 import_month 列补段）----
     const jiraRows = db
       .prepare(`SELECT item_key, import_month FROM post_use_jira_items WHERE item_key LIKE 'q:%'`)
       .all()
       .filter((r) => !hasMonthSeg(r.item_key))
-    console.log(`post_use_jira_items 待迁移: ${jiraRows.length} 条`)
     for (const row of jiraRows) {
       const month = String(row.import_month || '').slice(0, 7)
       if (!month) {
-        console.log(`  跳过（无月份）: ${row.item_key}`)
+        skipped.push({ key: row.item_key, reason: '无 import_month' })
         continue
       }
-      const newKey = `${row.item_key}:${month}`
-      console.log(`  ${row.item_key} → ${newKey}`)
-      if (!dryRun) {
-        db.prepare('UPDATE post_use_jira_items SET item_key = ? WHERE item_key = ?').run(newKey, row.item_key)
-      }
+      planned.push({ table: 'jira', oldKey: row.item_key, newKey: `${row.item_key}:${month}` })
     }
 
-    // ---- 迁移 2：post_use_callback_decisions（勾选，按客户×产品低分月并集补段）----
+    // ---- 表 2：post_use_callback_decisions（勾选，按客户×产品低分月并集补段）----
     const decRows = db
       .prepare(`SELECT item_key FROM post_use_callback_decisions WHERE item_key LIKE 'q:%'`)
       .all()
       .filter((r) => !hasMonthSeg(r.item_key))
-    console.log(`\npost_use_callback_decisions 待迁移: ${decRows.length} 条`)
     const pStmt = db.prepare(
       `SELECT DISTINCT import_month FROM records
        WHERE json_extract(payload, '$.customerCode') = ?
@@ -85,7 +86,7 @@ function main() {
     for (const row of decRows) {
       const m = String(row.item_key).match(/^q:([^:]+):(.+)$/)
       if (!m) {
-        console.log(`  跳过（格式不符）: ${row.item_key}`)
+        skipped.push({ key: row.item_key, reason: '格式不符' })
         continue
       }
       const code = m[1]
@@ -95,17 +96,14 @@ function main() {
         months = cStmt.all(code).map((r) => String(r.import_month).slice(0, 7)).filter(Boolean)
       }
       if (!months.length) {
-        console.log(`  跳过（无低分月，保留原键）: ${row.item_key}`)
+        skipped.push({ key: row.item_key, reason: '无低分月（负面反馈/重点客户路径勾选）' })
         continue
       }
-      const newKey = `${row.item_key}:${months.join('|')}`
-      console.log(`  ${row.item_key} → ${newKey}`)
-      if (!dryRun) {
-        db.prepare('UPDATE post_use_callback_decisions SET item_key = ? WHERE item_key = ?').run(newKey, row.item_key)
-      }
+      planned.push({ table: 'decisions', oldKey: row.item_key, newKey: `${row.item_key}:${months.join('|')}` })
     }
 
-    // ---- 迁移 3：post_use_visit_dispatch（已纳入标记，按 payload.importMonth 补段）----
+    // ---- 表 3：post_use_visit_dispatch（已纳入标记，按 payload.importMonth 补段）----
+    let dispatchExists = true
     let dispRows = []
     try {
       dispRows = db
@@ -113,10 +111,10 @@ function main() {
         .all()
         .filter((r) => !hasMonthSeg(r.item_key))
     } catch {
-      console.log('\npost_use_visit_dispatch 表不存在（库为旧版本，无已纳入标记存量）——跳过')
+      dispatchExists = false
+      console.log('post_use_visit_dispatch 表不存在（库为旧版本，无已纳入标记存量）——跳过\n')
     }
-    if (dispRows.length) {
-      console.log(`\npost_use_visit_dispatch 待迁移: ${dispRows.length} 条`)
+    if (dispatchExists) {
       for (const row of dispRows) {
         /** @type {{ importMonth?: string }} */
         let payload = {}
@@ -127,39 +125,67 @@ function main() {
         }
         const month = String(payload?.importMonth || '').slice(0, 7)
         if (!month) {
-          console.log(`  跳过（payload 无 importMonth）: ${row.item_key}`)
+          skipped.push({ key: row.item_key, reason: 'payload 无 importMonth' })
           continue
         }
-        const newKey = `${row.item_key}:${month}`
-        console.log(`  ${row.item_key} → ${newKey}`)
-        if (!dryRun) {
-          db.prepare('UPDATE post_use_visit_dispatch SET item_key = ? WHERE item_key = ?').run(newKey, row.item_key)
-        }
+        planned.push({ table: 'dispatch', oldKey: row.item_key, newKey: `${row.item_key}:${month}` })
       }
     }
 
-    // ---- 收尾：验证 + 备份提示 ----
-    if (!dryRun) {
-      const remainJira = db
-        .prepare(`SELECT COUNT(*) n FROM post_use_jira_items WHERE item_key LIKE 'q:%'`)
-        .get()
-      const remainDec = db
-        .prepare(`SELECT COUNT(*) n FROM post_use_callback_decisions WHERE item_key LIKE 'q:%'`)
-        .get()
-      console.log(`\n迁移完成。库内 q: 键现状: jira ${remainJira.n} 条 / decisions ${remainDec.n} 条（均应已含月份段）`)
-    } else {
-      console.log('\n[DRY RUN] 以上为将要执行的变更，未写入。确认无误后去掉 --dry-run 执行。')
+    // ---- 汇报（拟变更与保留分开计数，终态一眼可辨）----
+    for (const [label, table] of [
+      ['post_use_jira_items', 'jira'],
+      ['post_use_callback_decisions', 'decisions'],
+      ['post_use_visit_dispatch', 'dispatch'],
+    ]) {
+      const changes = planned.filter((p) => p.table === table)
+      console.log(`${label}: 拟变更 ${changes.length} 条`)
+      for (const p of changes) console.log(`  ${p.oldKey} → ${p.newKey}`)
     }
+    if (skipped.length) {
+      console.log(`\n保留原键 ${skipped.length} 条（旧格式键在新代码下任意周期可见，状态不丢）:`)
+      for (const s of skipped) console.log(`  ${s.key}（${s.reason}）`)
+    }
+
+    if (dryRun) {
+      console.log('\n[DRY RUN] 以上为将要执行的变更，未写入。确认无误后去掉 --dry-run 执行。')
+      return
+    }
+
+    if (!planned.length) {
+      console.log('\n无可变更条目（已迁移完成或全部属保留原键兜底），数据库未改动。')
+      return
+    }
+
+    // ---- 备份（存在实际变更才备份；不覆盖已有备份，保留最早迁移前状态供回滚）----
+    const backupPath = `${DB_PATH}.pre-itemkey-migration.bak`
+    if (existsSync(backupPath)) {
+      console.log(`\n备份已存在、不覆盖: ${backupPath}`)
+    } else {
+      copyFileSync(DB_PATH, backupPath)
+      console.log(`\n已备份: ${backupPath}`)
+    }
+
+    // ---- 执行（单事务，任一失败整体回滚）----
+    const updateStmts = {
+      jira: db.prepare('UPDATE post_use_jira_items SET item_key = ? WHERE item_key = ?'),
+      decisions: db.prepare('UPDATE post_use_callback_decisions SET item_key = ? WHERE item_key = ?'),
+      dispatch: db.prepare('UPDATE post_use_visit_dispatch SET item_key = ? WHERE item_key = ?'),
+    }
+    const tx = db.transaction(() => {
+      for (const p of planned) {
+        const stmt = updateStmts[p.table]
+        if (!stmt) throw new Error(`未知表标识: ${p.table}`)
+        const result = stmt.run(p.newKey, p.oldKey)
+        if (!result.changes) throw new Error(`更新失败（行不存在）: ${p.oldKey}`)
+      }
+    })
+    tx()
+
+    console.log(`\n迁移完成：${planned.length} 条键已补月份段；${skipped.length} 条保留原键（兜底语义覆盖）。`)
   } finally {
     db.close()
   }
-}
-
-// 正式执行前自动备份 DB 文件（dry-run 不备）
-if (!dryRun) {
-  const backupPath = `${DB_PATH}.pre-itemkey-migration.bak`
-  copyFileSync(DB_PATH, backupPath)
-  console.log(`已自动备份: ${backupPath}\n`)
 }
 
 main()
