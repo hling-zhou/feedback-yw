@@ -396,6 +396,26 @@ export function splitTextWithManualHighlights(text, ranges) {
 }
 
 /**
+ * 预览区行数估算：按硬换行分段，每段 ceil(长度/charsPerLine) 向上取整后求和。
+ * 仅用于「是否截断」提示判定，不参与正文渲染；精确截断由 CSS line-clamp 负责。
+ *
+ * @param {string} text
+ * @param {number} charsPerLine
+ * @returns {number}
+ */
+export function estimateHandlingPreviewLineCount(text, charsPerLine) {
+  const value = String(text ?? '')
+  if (!value) return 0
+  const perLine = Math.max(1, Number(charsPerLine) || 1)
+  const lines = value.split('\n')
+  let total = 0
+  for (const line of lines) {
+    total += Math.max(1, Math.ceil(line.length / perLine))
+  }
+  return total
+}
+
+/**
  * 将工单原文切成展示用分段。不改写正文子串。
  *
  * @param {string} text

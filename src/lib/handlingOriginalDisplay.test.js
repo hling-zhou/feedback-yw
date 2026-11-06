@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   countHandlingKeywordHitsInGroup,
   defaultExpandedPhaseIds,
+  estimateHandlingPreviewLineCount,
   groupHandlingOriginalByPhase,
   mergeHighlightRanges,
   phaseIdsMatchingKeyword,
@@ -79,6 +80,41 @@ describe('segmentHandlingOriginalText', () => {
   it('returns empty array for blank input', () => {
     expect(segmentHandlingOriginalText('')).toEqual([])
     expect(segmentHandlingOriginalText('   ')).toEqual([])
+  })
+})
+
+describe('estimateHandlingPreviewLineCount', () => {
+  it('counts hard-wrapped lines: each newline contributes at least one line', () => {
+    // 8 个短字段共 240 字：旧「字符数÷52」估算只算 5 行会漏报，实际渲染 8 行
+    const raw = [
+      '客户问题：无法访问',
+      '产品名称：云服务器',
+      '问题原因：端口未放行',
+      '解决方案：已放行',
+      '目前进展：已复测通过',
+      '处理人：张三',
+      '是否验证：是',
+      '回单口径：已恢复',
+    ].join('\n')
+    expect(estimateHandlingPreviewLineCount(raw, 52)).toBe(8)
+  })
+
+  it('wraps long single-line prose by charsPerLine', () => {
+    expect(estimateHandlingPreviewLineCount('a'.repeat(52), 52)).toBe(1)
+    expect(estimateHandlingPreviewLineCount('a'.repeat(53), 52)).toBe(2)
+    expect(estimateHandlingPreviewLineCount('a'.repeat(104), 52)).toBe(2)
+  })
+
+  it('treats empty lines as one rendered line each', () => {
+    expect(estimateHandlingPreviewLineCount('\n\n\n', 52)).toBe(4)
+  })
+
+  it('returns 0 for blank input and guards non-positive charsPerLine', () => {
+    expect(estimateHandlingPreviewLineCount('', 52)).toBe(0)
+    expect(estimateHandlingPreviewLineCount(null, 52)).toBe(0)
+    // charsPerLine=0 钳为 1 字/行：'abc' 折 3 行（防御语义，正常调用恒为 52）
+    expect(estimateHandlingPreviewLineCount('abc', 0)).toBe(3)
+    expect(estimateHandlingPreviewLineCount('abc', /** @type {any} */ ('52'))).toBe(1)
   })
 })
 

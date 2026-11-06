@@ -146,6 +146,7 @@ import ActionCopyIcon from './common/ActionCopyIcon.jsx'
 import {
   countHandlingKeywordHitsInGroup,
   defaultExpandedPhaseIds,
+  estimateHandlingPreviewLineCount,
   groupHandlingOriginalByPhase,
   mergeHighlightRanges,
   phaseIdsMatchingKeyword,
@@ -163,8 +164,10 @@ const SAVE_DETAIL_TIP =
 const HANDLING_ORIGINAL_TEXT_MODAL_MAX_WIDTH = 1280
 /** 原文预览：每行约 52 个全角字符（13px 字号 × 720px 抽屉宽估算） */
 const HANDLING_PREVIEW_CHARS_PER_LINE = 52
-/** 原文预览：最多展示 10 行，超出截断、全文走「放大查看」弹窗（不做就地展开） */
-const HANDLING_PREVIEW_MAX_LINES = 10
+/** 处理意见预览：最多展示 5 行，超出截断、全文走「放大查看」弹窗（不做就地展开） */
+const HANDLING_PREVIEW_MAX_LINES = 5
+/** 评价原文预览：最多展示 6 行（Tailwind 核心 line-clamp 上限），超出截断、全文走「放大查看」弹窗 */
+const RATING_PREVIEW_MAX_LINES = 6
 const HANDLING_ORIGINAL_TEXT_MODAL_Z_INDEX = 1100
 const HANDLING_ORIGINAL_TEXT_MODAL_BODY_MAX_HEIGHT = '78vh'
 const HANDLING_PLAIN_GROUP_ID = 'plain'
@@ -1030,11 +1033,11 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     return extractHandlingOriginalTextForRecord(feedback)
   }, [feedback])
 
-  /** 原文是否超过预览行数（按行宽约 52 字/行估算，超过 10 行即截断并显示提示） */
+  /** 原文是否超过预览行数（按硬换行分段 + 行宽约 52 字/行估算，超过 5 行即截断并显示提示） */
   const isHandlingOriginalTextTruncated = useMemo(() => {
     const text = handlingOriginalText || ''
     if (!text) return false
-    return Math.ceil(text.length / HANDLING_PREVIEW_CHARS_PER_LINE) > HANDLING_PREVIEW_MAX_LINES
+    return estimateHandlingPreviewLineCount(text, HANDLING_PREVIEW_CHARS_PER_LINE) > HANDLING_PREVIEW_MAX_LINES
   }, [handlingOriginalText])
 
   /** 评价态原文（评价详情通栏正文卡，放大弹窗同源） */
@@ -1045,7 +1048,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
 
   const isRatingOriginalTextTruncated = useMemo(() => {
     if (!ratingOriginalText) return false
-    return Math.ceil(ratingOriginalText.length / HANDLING_PREVIEW_CHARS_PER_LINE) > HANDLING_PREVIEW_MAX_LINES
+    return estimateHandlingPreviewLineCount(ratingOriginalText, HANDLING_PREVIEW_CHARS_PER_LINE) > RATING_PREVIEW_MAX_LINES
   }, [ratingOriginalText])
 
   /** own_task 分级提示附带的任务进度行（自己持有的共享任务 / 本机会话兜底） */
@@ -1856,7 +1859,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 ) : null}
               </div></div>
               <div className="relative border-l-[3px] border-brand-500 pl-3">
-                <div className="line-clamp-10 whitespace-pre-wrap text-[13px] leading-[1.7]">
+                <div className="line-clamp-6 whitespace-pre-wrap text-[13px] leading-[1.7]">
                   {ratingOriginalText || '—'}
                 </div>
                 {isRatingOriginalTextTruncated ? (
@@ -1954,7 +1957,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
               ) : null}
             </div></div>
             <div className="relative border-l-[3px] border-brand-500 pl-3 [&_.fi-rawtext]:leading-[1.7]">
-              <div className="fi-rawtext line-clamp-10 whitespace-pre-wrap text-[13px]">
+              <div className="fi-rawtext line-clamp-5 whitespace-pre-wrap text-[13px]">
                 {handlingOriginalText || '—'}
               </div>
               {isHandlingOriginalTextTruncated ? (
