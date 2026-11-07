@@ -73,17 +73,40 @@ const MODAL_TITLE_ALLOWLIST = [
   "{initial.apiPath ? '编辑接口' : '新增接口'}",
 ]
 
+/** 全部页面级文件（断言① 的扫描域——p-6 自包是页面级反模式，全域拦截） */
+function collectAllPageFiles() {
+  const pagesDir = join(SRC, 'pages')
+  /** @type {Array<{file: string, rel: string}>} */
+  const out = []
+  for (const file of listJsxFiles(pagesDir)) {
+    out.push({ file, rel: relative(ROOT, file) })
+  }
+  return out
+}
+
+/**
+ * 断言① 文件级豁免（人工判定"整体异类页待专项规范化"——p-6 之外 Title/Card/间距
+ * 全套偏离，单摘 p-6 会造成半吊子视觉；该页做功能改动时整体规范化后移出豁免）：
+ * - src/pages/Operations.jsx：整体异类页（p-6 + Title level={3} + antd Card + 无 page-card）
+ */
+const P6_FILE_EXEMPTIONS = new Set([
+  'src/pages/Operations.jsx',
+])
+
 describe('UI 规范守卫（apiPatrol 前端全域 · 11-07 复盘产物）', () => {
   const files = collectPatrolFrontendFiles()
+  const pageFiles = collectAllPageFiles()
 
   it('守卫覆盖非空（扫描器失效时红——防恒绿假守卫）', () => {
     expect(files.length).toBeGreaterThanOrEqual(5)
+    expect(pageFiles.length).toBeGreaterThanOrEqual(15)
   })
 
   it('① 页面/面板不得自包 p-6 容器（四周间距由外壳 app-shell-content 统一提供）', () => {
     /** @type {Array<{ file: string, line: number }>} */
     const violations = []
-    for (const { file, rel } of files) {
+    for (const { file, rel } of [...files, ...pageFiles]) {
+      if (P6_FILE_EXEMPTIONS.has(rel)) continue
       const lines = readFileSync(file, 'utf8').split('\n')
       lines.forEach((line, i) => {
         if (P6_PATTERN.test(line)) violations.push({ file: rel, line: i + 1 })
