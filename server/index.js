@@ -64,6 +64,7 @@ import { registerMailRoutes } from './routes/mail.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPatrolPushRoutes } from './routes/patrolPush.js'
+import { startPatrolReportScheduler } from './patrolReportScheduler.js'
 import { registerPatrolQueryRoutes } from './routes/patrolQuery.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
@@ -403,6 +404,8 @@ await seedKnowledgeBasesIfEmpty()
 try {
   await app.listen({ port: PORT, host: HOST })
   console.info(`[api] http://${HOST}:${PORT}`)
+  // AI 巡检日报定时器（docs/DESIGN-API巡检.md §8：进程内调度+启动自愈；未启用时每 10 分钟轮询配置）
+  startPatrolReportScheduler()
 } catch (err) {
   app.log.error(err)
   process.exit(1)

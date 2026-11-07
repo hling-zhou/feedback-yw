@@ -25,6 +25,8 @@ export default function ApiPatrolOverviewContent() {
   const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()])
   /** @type {[any, any]} */
   const [data, setData] = useState(null)
+  /** @type {[any, any]} */
+  const [summary, setSummary] = useState(null) // AI 综述独立加载（2026-11-07 拆分：LLM 慢不拖图表）
   const [loading, setLoading] = useState(false)
   const [pendingOnly, setPendingOnly] = useState(false)
   const [includeBackfill, setIncludeBackfill] = useState(false)
@@ -35,13 +37,18 @@ export default function ApiPatrolOverviewContent() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    const qs = new URLSearchParams({
+      startDate: range[0].format('YYYY-MM-DD'),
+      endDate: range[1].format('YYYY-MM-DD'),
+      pendingOnly: pendingOnly ? '1' : '0',
+      includeBackfill: includeBackfill ? '1' : '0',
+    })
+    // 两段加载：图表数据先行（cause-stats 不含 LLM，秒回）；综述文字慢填（LLM 最多 10s，超时模板降级）
+    setSummary(null)
+    void apiFetch(`/api/patrol/cause-summary?${qs}`)
+      .then((s) => setSummary(s))
+      .catch(() => setSummary(null))
     try {
-      const qs = new URLSearchParams({
-        startDate: range[0].format('YYYY-MM-DD'),
-        endDate: range[1].format('YYYY-MM-DD'),
-        pendingOnly: pendingOnly ? '1' : '0',
-        includeBackfill: includeBackfill ? '1' : '0',
-      })
       const res = await apiFetch(`/api/patrol/cause-stats?${qs}`)
       setData(res)
     } catch (err) {
@@ -146,14 +153,15 @@ export default function ApiPatrolOverviewContent() {
         </div>
       </Card>
 
-      <Card title="AI 综述" extra={!data?.aiSummary ? null : (data.aiSummary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>)}>
+      <Card title="AI 综述" extra={!summary?.summary ? null : (summary.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>)}>
           {facts ? (
             <>
-          <Typography.Paragraph className="!mb-4">{data?.aiSummary?.text}</Typography.Paragraph>
+          <Typography.Paragraph className="!mb-4">{summary?.summary?.text || '综述生成中…'}</Typography.Paragraph>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Statistic title="失败组（压缩后）" value={facts.totalGroups} />
             <Statistic title="压缩前失败请求" value={facts.preCompressTotal} />
             <Statistic title="待产品侧处理" value={facts.pendingGroups} />
+            <Statistic title="已处理" value={facts.processedGroups ?? 0} />
             <Statistic title="未诊断组" value={facts.undiagnosedGroups} />
           </div>
           <Typography.Text type="secondary" className="text-xs !mt-2 block">

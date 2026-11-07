@@ -13,6 +13,14 @@ import { getDb } from '../db.js'
 import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConfig.js'
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
+import { productNameMap } from '../patrolReportBuilder.js'
+import {
+  readPatrolReportConfig,
+  readPatrolReportState,
+  savePatrolReportConfig,
+  sendPatrolDailyReport,
+  META_KEY_PATROL_REPORT_CONFIG,
+} from '../patrolReportScheduler.js'
 import { getLlmCompletionText } from '../../src/lib/llmClient.js'
 
 const PATROL_L1_SET = new Set([
@@ -33,13 +41,12 @@ export function registerPatrolQueryRoutes(app) {
     return { start: s, end: e, single: s === e }
   }
 
-  // ①异常接口列表
-  app.get('/api/patrol/failures/interfaces', { preHandler: requirePermission('view') }, async (request, reply) => {
-    const range = parseRange(request.query)
-    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+  // ①异常接口列表——计算逻辑抽为 computeFailureInterfaces（巡检概况 facts 与列表同源单源，2026-11-07 拍板）
+  const computeFailureInterfaces = (range) => {
     const db = getDb()
+    const PRODUCT_NAMES = productNameMap()
     const statsRows = db.prepare(`
-      SELECT stat_date, pool_name, metric_name, api_path, biz_type, success_rate,
+      SELECT stat_date, product_key, pool_name, metric_name, api_path, biz_type, success_rate,
              duration_normal_ratio, avg_duration
       FROM api_patrol_stats
       WHERE stat_date BETWEEN ? AND ?
@@ -81,6 +88,7 @@ export function registerPatrolQueryRoutes(app) {
         }
         seen.set(key, out.length)
         out.push({
+          productKey: s.product_key, productName: PRODUCT_NAMES[s.product_key] || s.product_key,
           pool: s.pool_name, metricName: s.metric_name, apiPath: s.api_path, bizType: s.biz_type,
           successRate: null, // 跨日由明细 Σ 重算（下行覆盖）
           totalCount: agg.total, failCount: agg.fail,
@@ -90,6 +98,7 @@ export function registerPatrolQueryRoutes(app) {
         continue
       }
       out.push({
+        productKey: s.product_key, productName: PRODUCT_NAMES[s.product_key] || s.product_key,
         pool: s.pool_name, metricName: s.metric_name, apiPath: s.api_path, bizType: s.biz_type,
         successRate: agg.total > 0
           ? Math.round(((agg.total - agg.fail) / agg.total) * 10000) / 100
@@ -99,14 +108,33 @@ export function registerPatrolQueryRoutes(app) {
         statDates: [s.stat_date],
       })
     }
-    // 跨日 Σ：合并同键后重算成功率
+    // 跨日 Σ：合并同键后重算成功率；并推导仿真/测试标签（11-07 拍板：接口×池 窗口内失败组全为仿真/测试 → pureSim 带标签排后；混合真实客户的接口有真问题不后排）
+    const simAgg = new Map()
+    const simGroupRows = db.prepare(`
+      SELECT pool_name, api_path, customer_type
+      FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ?
+    `).all(range.start, range.end)
+    for (const g of simGroupRows) {
+      const key = `${g.pool_name}\u0000${g.api_path}`
+      if (!simAgg.has(key)) simAgg.set(key, { groups: 0, sim: 0 })
+      const agg = simAgg.get(key)
+      agg.groups += 1
+      if (g.customer_type === '仿真' || g.customer_type === '测试账号') agg.sim += 1
+    }
     for (const o of out) {
       if (o.statDates.length > 0 && !range.single && o.totalCount > 0) {
         o.successRate = Math.round(((o.totalCount - o.failCount) / o.totalCount) * 10000) / 100
       }
+      const si = simAgg.get(`${o.pool}\u0000${o.apiPath}`) || { groups: 0, sim: 0 }
+      o.simGroups = si.sim
+      o.pureSim = si.groups > 0 && si.sim === si.groups
     }
-    // 排序：<99.5% 优先在前，其余按序（拍板：展示全部<100%）
+    // 排序：仿真/测试标签行最后（11-07 拍板）→ <99.5% 优先在前，其余按序（拍板：展示全部<100%）
     out.sort((a, b) => {
+      const pa = a.pureSim ? 1 : 0
+      const pb = b.pureSim ? 1 : 0
+      if (pa !== pb) return pa - pb
       const ra = a.successRate == null ? 100 : Number(a.successRate)
       const rb = b.successRate == null ? 100 : Number(b.successRate)
       const aLow = ra < 99.5 ? 0 : 1
@@ -114,7 +142,115 @@ export function registerPatrolQueryRoutes(app) {
       if (aLow !== bLow) return aLow - bLow
       return ra - rb
     })
-    return { rows: out }
+    return out
+  }
+
+  app.get('/api/patrol/failures/interfaces', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const range = parseRange(request.query)
+    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+    return { rows: computeFailureInterfaces(range) }
+  })
+
+  // ①'巡检概况 AI 总结（溯源页顶部，2026-11-07 拍板：检测结果概况——尤其异常情况；facts 与①列表同源）
+  app.get('/api/patrol/failures/summary-facts', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const range = parseRange(request.query)
+    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+    const db = getDb()
+    const rows = computeFailureInterfaces(range)
+    const PRODUCT_NAMES = productNameMap()
+
+    // 覆盖概况 + 阈值异常数 + 失败总量 + 最差 Top3（与异常接口列表同源——computeFailureInterfaces 单源）
+    const distinctPools = new Set(rows.map((r) => r.pool))
+    const distinctProducts = new Set(rows.map((r) => r.productKey))
+    const belowThresholdCount = rows.filter((r) => Number.isFinite(Number(r.successRate)) && Number(r.successRate) < 99.5).length
+    const failTotal = rows.reduce((a, r) => a + Number(r.failCount || 0), 0)
+    const worstTop3 = rows.slice(0, 3).map((r) => ({
+      productName: r.productName, pool: r.pool, apiPath: r.apiPath,
+      successRate: r.successRate, failCount: r.failCount, pureSim: r.pureSim === true,
+    }))
+
+    // 最集中异常点（窗口内已诊断失败组按 产品×接口×L2 聚合，压缩前次数最大者；含仿真占比标注）
+    const focusRows = db.prepare(`
+      SELECT product_key pk, api_path, root_cause_l2 l2, SUM(pre_compress_count) pre, COUNT(*) groups,
+             SUM(CASE WHEN customer_type IN ('仿真','测试账号') THEN pre_compress_count ELSE 0 END) simPre
+      FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL
+      GROUP BY product_key, api_path, root_cause_l2
+      ORDER BY pre DESC LIMIT 1
+    `).all(range.start, range.end)
+    const focus = focusRows.length ? {
+      productName: PRODUCT_NAMES[focusRows[0].pk] || focusRows[0].pk,
+      apiPath: String(focusRows[0].api_path || ''), causeL2: String(focusRows[0].l2 || ''),
+      pre: Number(focusRows[0].pre || 0), groups: Number(focusRows[0].groups || 0),
+      simPre: Number(focusRows[0].simPre || 0),
+    } : null
+
+    // 根因 Top3（窗口内已诊断组 L1 占比）+ 闭环状态 + 仿真/未诊断
+    const l1Rows = db.prepare(`
+      SELECT root_cause_l1 l1, COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL
+      GROUP BY root_cause_l1 ORDER BY n DESC LIMIT 3
+    `).all(range.start, range.end)
+    const l1TotalRow = db.prepare(
+      `SELECT COUNT(*) n FROM api_patrol_failure_groups WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL`,
+    ).get(range.start, range.end)
+    const l1Total = Number(l1TotalRow?.n || 0)
+    const causeTop3 = l1Rows.map((r) => ({
+      l1: String(r.l1 || ''), count: Number(r.n),
+      ratio: l1Total > 0 ? Math.round((Number(r.n) * 100) / l1Total) : 0,
+    }))
+    const stateRows = db.prepare(`
+      SELECT product_action_status status, COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? GROUP BY product_action_status
+    `).all(range.start, range.end)
+    /** @type {Record<string, number>} */
+    const stateMap = {}
+    for (const s of stateRows) stateMap[String(s.status)] = Number(s.n)
+    const undiagnosedRow = db.prepare(
+      `SELECT COUNT(*) n FROM api_patrol_failure_groups WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NULL`,
+    ).get(range.start, range.end)
+    const simGroupsRow = db.prepare(
+      `SELECT COUNT(*) n FROM api_patrol_failure_groups WHERE group_date BETWEEN ? AND ? AND customer_type IN ('仿真','测试账号')`,
+    ).get(range.start, range.end)
+
+    // 环比（上一等长窗口，本地日期计算——toISOString 会偏移）
+    const days = Math.round((new Date(`${range.end}T00:00:00`).getTime() - new Date(`${range.start}T00:00:00`).getTime()) / 86400000) + 1
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    /** @type {{prevFailTotal: number, prevInterfaceCount: number, failDelta: number, interfaceDelta: number} | null} */
+    let delta = null
+    if (days >= 1 && days <= 92) {
+      const prevEnd = new Date(new Date(`${range.start}T00:00:00`).getTime() - 86400000)
+      const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000)
+      const prevRows = computeFailureInterfaces({ start: fmt(prevStart), end: fmt(prevEnd), single: days === 1 })
+      const prevFail = prevRows.reduce((a, r) => a + Number(r.failCount || 0), 0)
+      delta = {
+        prevFailTotal: prevFail, prevInterfaceCount: prevRows.length,
+        failDelta: failTotal - prevFail, interfaceDelta: rows.length - prevRows.length,
+      }
+    }
+
+    const facts = {
+      window: { start: range.start, end: range.end, days },
+      productCount: distinctProducts.size,
+      poolCount: distinctPools.size,
+      interfaceCount: rows.length,
+      belowThresholdCount,
+      failTotal,
+      worstTop3,
+      focus,
+      causeTop3,
+      closure: {
+        pending: stateMap['待处理'] || 0,
+        processed: stateMap['已处理'] || 0,
+        inProgress: stateMap['处理中'] || 0,
+        notNeeded: stateMap['—'] || 0,
+        undiagnosed: Number(undiagnosedRow?.n || 0),
+        simGroups: Number(simGroupsRow?.n || 0),
+      },
+      delta,
+    }
+    const summary = await buildPatrolSummaryText(facts)
+    return { facts, summary }
   })
 
   // ②失败请求列表（复合搜索）
@@ -251,6 +387,49 @@ export function registerPatrolQueryRoutes(app) {
     return getPatrolMcpConfigStatus()
   })
 
+  // ⑥AI巡检日报（docs §8）：配置前端面板维护；发送链见 patrolReportScheduler.js
+  app.get('/api/patrol/report/config', { preHandler: requirePermission('view') }, async () => {
+    return readPatrolReportConfig()
+  })
+
+  app.put('/api/patrol/report/config', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
+    const body = /** @type {{enabled?: boolean, groupIds?: string[], channelId?: string, sendTime?: string, includeQuiet?: boolean, excludeSimTagged?: boolean, maxInterfacesPerProduct?: number}} */ (request.body || {})
+    const prev = readPatrolReportConfig()
+    const next = {
+      enabled: body.enabled === true,
+      groupIds: Array.isArray(body.groupIds) ? body.groupIds.map((g) => String(g)) : [],
+      channelId: typeof body.channelId === 'string' ? body.channelId : '',
+      sendTime: typeof body.sendTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.sendTime) ? body.sendTime : '09:00',
+      includeQuiet: body.includeQuiet !== false,
+      excludeSimTagged: body.excludeSimTagged === true,
+      maxInterfacesPerProduct: Number(body.maxInterfacesPerProduct) >= 5 && Number(body.maxInterfacesPerProduct) <= 100
+        ? Math.round(Number(body.maxInterfacesPerProduct)) : 20,
+    }
+    savePatrolReportConfig(next)
+    logAuditFromRequest(request, 'api_patrol.daily_report_config_update', {
+      enabledChanged: prev.enabled !== next.enabled,
+      groupCount: next.groupIds.length,
+      channelId: next.channelId,
+      sendTime: next.sendTime,
+    })
+    return { config: next }
+  })
+
+  app.post('/api/patrol/report/send', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
+    const body = /** @type {{force?: boolean}} */ (request.body || {})
+    // 手动发送忽略 enabled 与当日幂等（立即发送=测试/补发）
+    const result = await sendPatrolDailyReport({ trigger: 'manual', force: body.force === true })
+    if (!result.ok) return reply.code(400).send({ error: result.error || '发送失败', ...result })
+    return result
+  })
+
+  app.get('/api/patrol/report/status', { preHandler: requirePermission('view') }, async () => {
+    return {
+      enabled: readPatrolReportConfig().enabled,
+      state: readPatrolReportState() || {},
+    }
+  })
+
   app.post('/api/patrol/admin/process', { preHandler: requireAdmin() }, async (request, reply) => {
     const body = /** @type {{dates?: string[], mcpEndpoint?: string, mcpToken?: string, runDiagnose?: boolean}} */ (request.body || {})
     const dates = Array.isArray(body.dates) ? body.dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)) : []
@@ -296,6 +475,44 @@ export function registerPatrolQueryRoutes(app) {
     })
     return { compressed: compressLog, diagnosed: diagnoseLog }
   })
+
+  // AI 综述 facts 计算（cause-stats 与 cause-summary 共用；与图同源，SQL 毫秒级）
+  const computeAiSummaryFacts = (start, end, statusFilter) => {
+    const db = getDb()
+    const allGroups = db.prepare(`
+      SELECT COUNT(*) AS total, SUM(pre_compress_count) AS pre,
+             SUM(CASE WHEN product_action_status = '待处理' THEN 1 ELSE 0 END) AS pending,
+             SUM(CASE WHEN product_action_status = '已处理' THEN 1 ELSE 0 END) AS processed,
+             SUM(CASE WHEN customer_type IN ('仿真', '测试账号') THEN 1 ELSE 0 END) AS sim
+      FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? ${statusFilter}
+    `).get(start, end)
+    const undiagRow = db.prepare(`
+      SELECT COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NULL ${statusFilter}
+    `).get(start, end)
+    const topCauseRow = db.prepare(`
+      SELECT root_cause_l1 AS l1, COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
+      GROUP BY root_cause_l1 ORDER BY n DESC LIMIT 1
+    `).get(start, end)
+    const topApiRow = db.prepare(`
+      SELECT api_path, pool_name, COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
+      GROUP BY api_path, pool_name ORDER BY n DESC LIMIT 1
+    `).get(start, end)
+    return {
+      rangeDesc: `${start} ~ ${end}`,
+      totalGroups: Number(/** @type {{total?: number}} */ (allGroups)?.total || 0),
+      pendingGroups: Number(/** @type {{pending?: number}} */ (allGroups)?.pending || 0),
+      processedGroups: Number(/** @type {{processed?: number}} */ (allGroups)?.processed || 0),
+      simGroups: Number(/** @type {{sim?: number}} */ (allGroups)?.sim || 0),
+      preCompressTotal: Number(/** @type {{pre?: number}} */ (allGroups)?.pre || 0),
+      undiagnosedGroups: Number(/** @type {{n?: number}} */ (undiagRow)?.n || 0),
+      topCause: String(/** @type {{l1?: string}} */ (topCauseRow)?.l1 || ''),
+      topApi: topApiRow ? `${String(topApiRow.pool_name)} ${String(topApiRow.api_path)}` : '',
+    }
+  }
 
   // ⑤总览聚合 cause-stats（docs §7.2）：单一接口支撑总览五模块
   app.get('/api/patrol/cause-stats', { preHandler: requirePermission('view') }, async (request, reply) => {
@@ -418,42 +635,25 @@ export function registerPatrolQueryRoutes(app) {
     }))
 
     // ①AI 综述 facts（与图同源；LLM 只润色文字，数字全部走 facts 锚点——防改数）
-    const allGroups = db.prepare(`
-      SELECT COUNT(*) AS total, SUM(pre_compress_count) AS pre,
-             SUM(CASE WHEN product_action_status = '待处理' THEN 1 ELSE 0 END) AS pending,
-             SUM(CASE WHEN customer_type IN ('仿真', '测试账号') THEN 1 ELSE 0 END) AS sim
-      FROM api_patrol_failure_groups
-      WHERE group_date BETWEEN ? AND ? ${statusFilter}
-    `).get(start, end)
-    const undiagRow = db.prepare(`
-      SELECT COUNT(*) n FROM api_patrol_failure_groups
-      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NULL ${statusFilter}
-    `).get(start, end)
-    const topCauseRow = db.prepare(`
-      SELECT root_cause_l1 AS l1, COUNT(*) n FROM api_patrol_failure_groups
-      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
-      GROUP BY root_cause_l1 ORDER BY n DESC LIMIT 1
-    `).get(start, end)
-    const topApiRow = db.prepare(`
-      SELECT api_path, pool_name, COUNT(*) n FROM api_patrol_failure_groups
-      WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
-      GROUP BY api_path, pool_name ORDER BY n DESC LIMIT 1
-    `).get(start, end)
-    const aiSummaryFacts = {
-      rangeDesc: `${start} ~ ${end}`,
-      totalGroups: Number(/** @type {{total?: number}} */ (allGroups)?.total || 0),
-      pendingGroups: Number(/** @type {{pending?: number}} */ (allGroups)?.pending || 0),
-      simGroups: Number(/** @type {{sim?: number}} */ (allGroups)?.sim || 0),
-      preCompressTotal: Number(/** @type {{pre?: number}} */ (allGroups)?.pre || 0),
-      undiagnosedGroups: Number(/** @type {{n?: number}} */ (undiagRow)?.n || 0),
-      topCause: String(/** @type {{l1?: string}} */ (topCauseRow)?.l1 || ''),
-      topApi: topApiRow ? `${String(topApiRow.pool_name)} ${String(topApiRow.api_path)}` : '',
+    // 2026-11-07 拆分：facts 秒回随图表；LLM 润色移独立端点 cause-summary——慢不阻塞图表
+    const aiSummaryFacts = computeAiSummaryFacts(start, end, statusFilter)
+
+    return { byProductCause, dailyTrend, l2Calendar, metricTrends, aiSummaryFacts }
+  })
+
+  // ⑤'AI 综述独立端点（2026-11-07 拆分）：LLM 润色慢也不拖图表——前端两段加载（图表先行、综述慢填）
+  app.get('/api/patrol/cause-summary', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const q = /** @type {{startDate?: string, endDate?: string, pendingOnly?: string}} */ (request.query)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(q.startDate || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(q.endDate || ''))) {
+      return reply.code(400).send({ error: '缺少 startDate/endDate（YYYY-MM-DD）' })
     }
-
-    // LLM 综述润色（可用则调，失败/未配置 → 模板降级；数字锚点在前端渲染，LLM 不落数字）
-    const aiSummary = await buildAiSummary(aiSummaryFacts, pendingOnly)
-
-    return { byProductCause, dailyTrend, l2Calendar, metricTrends, aiSummaryFacts, aiSummary }
+    const start = String(q.startDate)
+    const end = String(q.endDate)
+    const pendingOnly = q.pendingOnly === '1' || q.pendingOnly === 'true'
+    const statusFilter = pendingOnly ? `AND product_action_status = '待处理'` : ''
+    const facts = computeAiSummaryFacts(start, end, statusFilter)
+    const summary = await buildAiSummary(facts, pendingOnly)
+    return { facts, summary }
   })
 }
 
@@ -464,7 +664,7 @@ async function buildAiSummary(facts, pendingOnly) {
     `${facts.simGroups > 0 ? `，其中 ${facts.simGroups} 组为仿真/测试流量` : ''}。` +
     `最主要的根因大类是「${facts.topCause || '—'}」，` +
     `异常最集中的接口是 ${facts.topApi || '—'}。` +
-    `当前待产品侧处理的失败组 ${facts.pendingGroups} 个。`
+    `当前待产品侧处理的失败组 ${facts.pendingGroups} 个，本期已处理 ${facts.processedGroups || 0} 组。`
   let apiKey
   try {
     apiKey = resolveLlmApiKey()
@@ -481,7 +681,60 @@ async function buildAiSummary(facts, pendingOnly) {
       temperature: 0.3,
     }
     const res = await forwardLlmChatCompletion({
-      baseUrl: resolveLlmBaseUrl(), apiKey, body, timeoutMs: 30_000,
+      baseUrl: resolveLlmBaseUrl(), apiKey, body, timeoutMs: 10_000,
+    })
+    const text = getLlmCompletionText(res?.data || res)
+    if (!text) return { degraded: true, text: templateText }
+    return { degraded: false, text }
+  } catch {
+    return { degraded: true, text: templateText }
+  }
+}
+
+/** 溯源页巡检概况模板文案（降级直出即完整可用；数字全部来自 facts——LLM 模式下数字由前端锚点渲染）。 */
+function buildPatrolSummaryTemplate(facts) {
+  const w = facts.window
+  const rangeDesc = w.days === 1 ? w.start : `${w.start} ~ ${w.end}（${w.days} 天）`
+  const parts = [`API 巡检概况（${rangeDesc}）：检测覆盖 ${facts.productCount} 个产品、${facts.poolCount} 个资源池，发现 ${facts.interfaceCount} 个异常接口（其中 ${facts.belowThresholdCount} 个低于 99.5% 推送阈值），失败请求 ${facts.failTotal} 次。`]
+  const worst = facts.worstTop3 && facts.worstTop3[0]
+  if (worst) {
+    parts.push(`成功率最差：${worst.productName}·${worst.apiPath}（${worst.pool}，成功率 ${worst.successRate}%、失败 ${worst.failCount} 次${worst.pureSim ? '，全部为仿真/测试流量' : ''}）。`)
+  }
+  if (facts.focus) {
+    parts.push(`失败最集中：${facts.focus.productName}·${facts.focus.apiPath}·${facts.focus.causeL2}（压缩前 ${facts.focus.pre} 次 / ${facts.focus.groups} 组${facts.focus.simPre > 0 ? `，其中仿真/测试 ${facts.focus.simPre} 次` : ''}）。`)
+  }
+  if (facts.causeTop3 && facts.causeTop3.length) {
+    parts.push(`主要根因：${facts.causeTop3.map((c) => `${c.l1} ${c.ratio}%`).join(' · ')}。`)
+  }
+  const c = facts.closure
+  parts.push(`闭环状态：待产品侧处理 ${c.pending} 组、已处理 ${c.processed} 组、处理中 ${c.inProgress} 组${c.notNeeded ? `、无需产品处理 ${c.notNeeded} 组` : ''}${c.undiagnosed ? `、未诊断 ${c.undiagnosed} 组` : ''}${c.simGroups ? `（仿真/测试流量 ${c.simGroups} 组已打标）` : ''}。`)
+  if (facts.delta) {
+    const d = facts.delta
+    parts.push(`较上一等长周期：失败请求 ${d.failDelta >= 0 ? '+' : ''}${d.failDelta} 次、异常接口 ${d.interfaceDelta >= 0 ? '+' : ''}${d.interfaceDelta} 个。`)
+  }
+  return parts.join('\n')
+}
+
+/** 巡检概况 LLM 润色（M7 buildAiSummary 同款模式：LLM 输出不含数字，数字由前端 facts 锚点渲染）。 */
+async function buildPatrolSummaryText(facts) {
+  const templateText = buildPatrolSummaryTemplate(facts)
+  let apiKey
+  try {
+    apiKey = resolveLlmApiKey()
+  } catch {
+    return { degraded: true, text: templateText }
+  }
+  try {
+    const body = {
+      model: resolveLlmModel(),
+      messages: [
+        { role: 'system', content: '你是 API 质量运营助手。基于给定的巡检事实写 3-5 句中文概况，聚焦检测结果与异常情况（最差接口、失败集中点、主要根因、闭环状态）。用换行分隔、每行一个焦点短句（不要用编号或项目符号）。不要出现任何具体数字（数字由系统单独渲染），不要编造事实。' },
+        { role: 'user', content: JSON.stringify(facts) },
+      ],
+      temperature: 0.3,
+    }
+    const res = await forwardLlmChatCompletion({
+      baseUrl: resolveLlmBaseUrl(), apiKey, body, timeoutMs: 10_000,
     })
     const text = getLlmCompletionText(res?.data || res)
     if (!text) return { degraded: true, text: templateText }

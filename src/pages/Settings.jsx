@@ -20,6 +20,7 @@ import PipelineCopilotPanel from '../components/admin/PipelineCopilotPanel.jsx'
 import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
 import MailSettingsPanel from '../components/admin/MailSettingsPanel.jsx'
 import PatrolMcpSettingsPanel from '../components/PatrolMcpSettingsPanel.jsx'
+import PatrolDailyReportPanel from '../components/PatrolDailyReportPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -894,7 +895,16 @@ export default function Settings() {
         {activeTab === 'curated_taxonomy' && <CuratedTaxonomyPanel canEdit={can('manageTeamSettings')} />}
 
         {activeTab === 'mail' && can('manageTags') && (
-          <MailSettingsPanel canEdit={can('manageTags')} />
+          <>
+            <div className="page-card">
+              <div className="page-card-header"><span className="page-card-title">邮件发送</span></div>
+              <MailSettingsPanel canEdit={can('manageTags')} />
+            </div>
+            <div className="page-card">
+              <div className="page-card-header"><span className="page-card-title">AI巡检日报</span></div>
+              <PatrolDailyReportPanel canEdit={can('manageTags')} />
+            </div>
+          </>
         )}
       </div>
     </div>

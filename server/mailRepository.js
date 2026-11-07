@@ -116,6 +116,17 @@ export function getMailChannelByDataSource(dataSourceType) {
 }
 
 /**
+ * 按 id 取发信通道（含密码，发送用）——API 巡检日报配置按 channelId 选通道（2026-11-07）。
+ * @param {string} id
+ */
+export function getMailChannelById(id) {
+  const row = getDb()
+    .prepare('SELECT * FROM mail_channels WHERE id = ?')
+    .get(String(id || ''))
+  return row ? channelFromRow(row, { includePassword: true }) : null
+}
+
+/**
  * @param {{
  *   name: string
  *   dataSourceType: string

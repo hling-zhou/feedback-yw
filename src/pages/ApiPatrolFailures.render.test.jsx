@@ -48,4 +48,13 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(html).toContain('压缩前次数')
     expect(html).toContain('产品侧处理状态')
   })
+
+  it('巡检概况卡渲染（2026-11-07 拍板：页面顶部检测结果总结；空数据占位不误显 LLM 状态）', () => {
+    const html = renderToStaticMarkup(React.createElement(ApiPatrolFailures))
+    expect(html).toContain('巡检概况')
+    expect(html).toContain('检测结果总结，随时间范围刷新') // 卡片独有说明文案（防撞名）
+    expect(html).toContain('暂无概况') // useEffect 不跑 → 空态占位
+    expect(html).not.toContain('LLM 润色') // 无数据时不误显 LLM 状态 Tag
+    expect(html).not.toContain('LLM 未启用') // 三态：无数据不显
+  })
 })

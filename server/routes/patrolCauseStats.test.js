@@ -135,14 +135,24 @@ describeStats('patrol cause-stats 聚合接口', () => {
     // 同源断言：总组数 = 根因分布 Σ组数 + 未诊断组数（分布只含有 L1 的组）
     const sumGroups = data.byProductCause.reduce((a, r) => a + r.groupCount, 0)
     expect(facts.totalGroups).toBe(sumGroups + facts.undiagnosedGroups)
-    // 待处理 = 状态待处理的组数
+    // 待处理 = 状态待处理的组数；已处理 = 状态已处理的组数（11-07 启发补齐：清账进度）
     expect(facts.pendingGroups).toBe(1)
+    expect(facts.processedGroups).toBe(1) // 种子 g-3 已处理（清账进度）
     // 仿真标签组计数（cmic 测试账号）
     expect(facts.simGroups).toBe(1)
-    // LLM 未配置 → 模板直出（aiSummaryText 含 facts 数字锚点描述）
-    expect(typeof facts.topCause).toBe('string')
-    expect(data.aiSummary.degraded).toBe(true)
-    expect(data.aiSummary.text).toContain('失败')
+    // 2026-11-07 拆分：cause-stats 不含 aiSummary（图表秒回，LLM 润色移独立端点）
+    expect(data.aiSummary).toBeUndefined()
+    // cause-summary 独立端点：facts 同口径 + LLM 未配置模板直出
+    const sres = await app.inject({
+      method: 'GET', url: '/api/patrol/cause-summary?startDate=2026-09-01&endDate=2026-09-02',
+      headers: authHeader(),
+    })
+    expect(sres.statusCode).toBe(200)
+    const sdata = sres.json()
+    expect(sdata.facts).toEqual(facts) // 两端点 facts 同源同值
+    expect(sdata.summary.degraded).toBe(true)
+    expect(sdata.summary.text).toContain('失败')
+    expect(sdata.summary.text).toContain('已处理 1 组')
   })
 })
 

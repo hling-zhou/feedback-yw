@@ -30,6 +30,9 @@ export default function ApiPatrolFailures() {
   const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()])
   const [interfaces, setInterfaces] = useState([])
   const [loadingInterfaces, setLoadingInterfaces] = useState(false)
+  /** @type {[any, React.Dispatch<React.SetStateAction<any>>]} */
+  const [summaryData, setSummaryData] = useState(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
   const [groups, setGroups] = useState([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [filters, setFilters] = useState({
@@ -58,6 +61,24 @@ export default function ApiPatrolFailures() {
       setLoadingInterfaces(false)
     }
   }, [rangeParams, message])
+
+  /** 巡检概况（2026-11-07 拍板：检测结果概况——尤其异常情况；facts 与异常接口列表同源） */
+  const loadSummary = useCallback(async () => {
+    setLoadingSummary(true)
+    try {
+      const qs = new URLSearchParams(rangeParams)
+      const data = await apiFetch(`/api/patrol/failures/summary-facts?${qs}`)
+      setSummaryData(data)
+    } catch (err) {
+      message.error(err.message || '加载巡检概况失败')
+    } finally {
+      setLoadingSummary(false)
+    }
+  }, [rangeParams, message])
+
+  useEffect(() => {
+    loadSummary()
+  }, [loadSummary])
 
   const loadGroups = useCallback(async () => {
     setLoadingGroups(true)
@@ -112,9 +133,14 @@ export default function ApiPatrolFailures() {
 
   /** @type {any[]} */
   const interfaceColumns = useMemo(() => [
-    { title: '产品', dataIndex: 'pool', key: 'pool', width: 130, ellipsis: true },
+    { title: '产品', dataIndex: 'productName', key: 'productName', width: 110, ellipsis: true,
+      render: (v, record) => v || record.productKey || '—' },
+    { title: '资源池', dataIndex: 'pool', key: 'pool', width: 120, ellipsis: true },
     { title: '指标名称', dataIndex: 'metricName', key: 'metricName', width: 130 },
-    { title: '接口名称', dataIndex: 'apiPath', key: 'apiPath', ellipsis: true },
+    { title: '接口名称', dataIndex: 'apiPath', key: 'apiPath', ellipsis: true,
+      render: (v, record) => record.pureSim
+        ? (<span className="whitespace-nowrap">{v} <Tag className="!m-0" color="default">仿真/测试</Tag></span>)
+        : v },
     { title: '业务类型', dataIndex: 'bizType', key: 'bizType', width: 90 },
     {
       title: '成功率', dataIndex: 'successRate', key: 'successRate', width: 100,
@@ -186,6 +212,45 @@ export default function ApiPatrolFailures() {
 
   return (
     <div className="p-6">
+      <div className="page-card !mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Typography.Title level={5} className="!m-0">
+            巡检概况
+            <Typography.Text type="secondary" className="text-xs !ml-3">检测结果总结，随时间范围刷新</Typography.Text>
+          </Typography.Title>
+          {summaryData?.summary ? (
+            summaryData.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>
+          ) : null}
+        </div>
+        {summaryData?.summary ? (
+          <>
+            <div className="!mt-3 !mb-2">
+              {(summaryData.summary.text || '').split('\n').filter(Boolean).map((line, i) => (
+                <Typography.Paragraph key={i} className="!mt-0 !mb-1">{line}</Typography.Paragraph>
+              ))}
+            </div>
+            {summaryData.facts && (
+              <Space wrap size={[14, 4]}>
+                <Typography.Text type="secondary" className="text-xs">
+                  异常接口 <Typography.Text strong>{summaryData.facts.interfaceCount}</Typography.Text>
+                </Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">
+                  失败请求 <Typography.Text strong className="text-red-600">{summaryData.facts.failTotal}</Typography.Text>
+                </Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">
+                  待产品侧处理 <Typography.Text strong className="text-orange-600">{summaryData.facts.closure?.pending ?? 0}</Typography.Text>
+                </Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">
+                  已处理 <Typography.Text strong className="text-green-700">{summaryData.facts.closure?.processed ?? 0}</Typography.Text>
+                </Typography.Text>
+              </Space>
+            )}
+          </>
+        ) : (
+          <Typography.Text type="secondary" className="!mt-2 block">{loadingSummary ? '加载中…' : '暂无概况'}</Typography.Text>
+        )}
+      </div>
+
       <div className="page-card !mb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Typography.Title level={5} className="!m-0">

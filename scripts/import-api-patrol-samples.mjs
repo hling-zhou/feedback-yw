@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * API 巡检样例数据导入脚本（M8 运维工具 · docs/DESIGN-API巡检.md §9）。
+ * API 巡检样例数据导入脚本（M8 运维工具 · docs/DESIGN-API巡检.md §10）。
  * 走真实推送链路（对运行中的 API 发 HTTP，与外部系统行为一致）：
  *   1. 读样例 CSV（data/API 巡检/原始数据样例）
  *   2. POST /api/patrol/push/stats + push/requests（5000 行分批）
