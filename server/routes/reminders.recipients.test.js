@@ -38,6 +38,24 @@ function putCatalogWithPm(username, email) {
           ],
         },
       },
+      {
+        key: 'vpc',
+        name: '虚拟私有云',
+        enabled: true,
+        taxonomyKey: 'vpc',
+        acceptParentName: true,
+        specs: [],
+        owners: {
+          productManager: [
+            {
+              userId: `u-${username}`,
+              username,
+              displayName: `负责人${username}`,
+              email,
+            },
+          ],
+        },
+      },
     ],
     deletedKeys: [],
     disabledAnalysisKeys: [],
@@ -70,6 +88,46 @@ function insertComplaintRecord() {
   ])
 }
 
+// 真实数据形态：records 仅存 productKey（如 vpc），productName 为空。
+// 提醒邮件/预览展示名必须是产品目录中文名，不得回退英文 key。
+function insertKeyOnlyComplaintRecord() {
+  storageRepository.putRecords([
+    {
+      id: 'rec-reminder-vpc-1',
+      ticketId: 'T-REM-VPC-1',
+      dataSourceType: 'complaint_ticket',
+      importMonth: '2026-07',
+      productKey: 'vpc',
+      productName: '',
+      customerName: '某某公司',
+      problemSummary: '产品名中文显示回归测试',
+      handlingText: '处理中',
+      tagStatus: 'manual_review',
+    },
+  ])
+}
+
+// 真实数据形态二：record 无 productKey，中文名在 product 字段（productName 是
+// 用后即评字段，投诉/咨询恒为空）。须通过「产品名→key」反查归组到真实产品，
+// 否则落 unknown 假组、丢失 owners/收件人解析。
+function insertNameOnlyComplaintRecord() {
+  storageRepository.putRecords([
+    {
+      id: 'rec-reminder-name-only-1',
+      ticketId: 'T-REM-NAME-1',
+      dataSourceType: 'complaint_ticket',
+      importMonth: '2026-07',
+      productKey: '',
+      product: '虚拟私有云',
+      productName: '',
+      customerName: '某某公司',
+      problemSummary: '无键名映射回归测试',
+      handlingText: '处理中',
+      tagStatus: 'manual_review',
+    },
+  ])
+}
+
 async function buildApp() {
   const app = Fastify()
   app.decorateRequest('user', null)
@@ -88,6 +146,8 @@ beforeAll(async () => {
   insertUser('u-pm01', 'pm01', PM1_EMAIL)
   insertUser('u-pm02', 'pm02', PM2_EMAIL)
   insertComplaintRecord()
+  insertKeyOnlyComplaintRecord()
+  insertNameOnlyComplaintRecord()
   putCatalogWithPm('pm01', PM1_EMAIL)
   app = await buildApp()
 })
@@ -121,5 +181,29 @@ describe('POST /api/reminders/preview 收件人解析', () => {
     expect(eip.owners?.productManager?.[0]?.username).toBe('pm02')
     expect(body.recipientEmails).toContain(PM2_EMAIL)
     expect(body.recipientEmails).not.toContain(PM1_EMAIL)
+  })
+})
+
+describe('提醒产品展示名（中文）', () => {
+  it('record 仅存 productKey（productName 为空）时，展示名用目录中文名而非英文 key', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/reminders/preview', payload: {} })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    const vpc = body.products.find((p) => p.productKey === 'vpc')
+    expect(vpc).toBeTruthy()
+    expect(vpc.productName).toBe('虚拟私有云')
+    expect(vpc.productName).not.toBe('vpc')
+  })
+
+  it('record 无 productKey 但 product 字段有产品名时，反查归组到真实产品（不落 unknown）', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/reminders/preview', payload: {} })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.products.some((p) => p.productKey === 'unknown')).toBe(false)
+    const vpc = body.products.find((p) => p.productKey === 'vpc')
+    expect(vpc).toBeTruthy()
+    // T-REM-NAME-1 应归入 vpc 组
+    const inVpcGroup = vpc && vpc.distribution && vpc.distribution.complaintTickets >= 2
+    expect(Boolean(inVpcGroup)).toBe(true)
   })
 })

@@ -20,6 +20,7 @@ import { recordMatchesPeriod, normalizeInsightPeriod } from '../src/domain/insig
 import { importMonthRangeForPeriod } from './recordIndex.js'
 import { META_KEY_POST_USE_VISITS, normalizeVisitRecords } from '../src/lib/postUseRating/visitRecords.js'
 import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
+import { resolveActionItemProductDisplayName } from '../src/domain/actionItem.js'
 import { listUsers } from './users.js'
 import { uniqueEmails } from '../src/domain/mail.js'
 
@@ -191,9 +192,29 @@ export function buildReminderData({ insightPeriodId } = {}) {
     productKeyByName.set(p.name, p.key)
   }
 
+  // key → 目录中文名（records 大量 productName 为空、仅存 productKey，
+  // 提醒邮件展示须用中文名而非英文 key）
+  const productNameByKey = new Map()
+  for (const p of catalogProducts) {
+    productNameByKey.set(p.key, p.name)
+  }
+
+  /**
+   * 展示名解析：目录中文名优先（productKey 命中），回退存库 productName，再回退 key。
+   * 与举措/待办列表同源（resolveActionItemProductDisplayName）。
+   * unknown 假键（record 产品键与名称全空归组）展示为「未知产品」。
+   */
+  function resolveDisplayName(productKey, productName) {
+    const resolved = resolveActionItemProductDisplayName(
+      { productKey: String(productKey || '').trim(), productName: String(productName || '').trim() },
+      productNameByKey,
+    )
+    return resolved === 'unknown' ? '未知产品' : resolved
+  }
+
   function ensureProduct(productKey, productName) {
     const key = String(productKey || '').trim()
-    const name = String(productName || '').trim() || key || '未知产品'
+    const name = resolveDisplayName(key, productName)
     if (!productMap.has(key)) {
       const catalog = catalogByKey.get(key)
       const owners = catalog?.owners || {}
@@ -217,8 +238,11 @@ export function buildReminderData({ insightPeriodId } = {}) {
 
   // --- 1a 投诉工单 ---
   for (const record of complaintRecords) {
-    const pk = getRecordProductKey(record) || productKeyByName.get(String(record?.productName || '').trim()) || 'unknown'
-    const pn = String(record?.productName || '').trim() || pk
+    // 投诉/咨询的中文名在 product 字段（产品规格解析）；productName 是用后即评
+    // 专用字段，对这两类恒为空——读它会导致展示名回退英文 key。
+    const recordProduct = record?.product || record?.productName
+    const pk = getRecordProductKey(record) || productKeyByName.get(String(recordProduct || '').trim()) || 'unknown'
+    const pn = String(recordProduct || '').trim() || pk
     const product = ensureProduct(pk, pn)
     const tagStatus = String(record?.tagStatus || '').trim()
     const missingRoles = checkComplaintRoleFields(record)
@@ -242,8 +266,10 @@ export function buildReminderData({ insightPeriodId } = {}) {
 
   // --- 1b 咨询工单 ---
   for (const record of consultationRecords) {
-    const pk = getRecordProductKey(record) || productKeyByName.get(String(record?.productName || '').trim()) || 'unknown'
-    const pn = String(record?.productName || '').trim() || pk
+    // 同投诉工单：中文名真源是 product 字段
+    const recordProduct = record?.product || record?.productName
+    const pk = getRecordProductKey(record) || productKeyByName.get(String(recordProduct || '').trim()) || 'unknown'
+    const pn = String(recordProduct || '').trim() || pk
     const product = ensureProduct(pk, pn)
     product.categories.consultationSummary.total++
     const scene = String(record?.requestScene || '未分类').trim()
