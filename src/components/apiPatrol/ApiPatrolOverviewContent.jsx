@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Segmented, Space, Statistic, Switch, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Segmented, Space, Statistic, Switch, Table, Tag, Typography } from 'antd'
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -134,15 +134,15 @@ export default function ApiPatrolOverviewContent() {
   const trendSlots = data?.metricTrends || []
 
   return (
-    <div className="p-6 flex flex-col gap-4">
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Typography.Title level={5} className="!m-0">
-            API 巡检 · 总览
-            <Typography.Text type="secondary" className="text-xs !ml-3">
+    <div className="space-y-4">
+      <div className="page-card">
+        <div className="page-card-header">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="page-card-title">API 巡检 · 总览</span>
+            <Typography.Text type="secondary" className="text-xs">
               统计口径：失败压缩组{pendingOnly ? '（仅待处理）' : ''}；组数可能小于原始失败次数（1 小时链压缩）
             </Typography.Text>
-          </Typography.Title>
+          </div>
           <Space wrap>
             <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
             <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
@@ -151,9 +151,13 @@ export default function ApiPatrolOverviewContent() {
             <Button size="small" onClick={load} loading={loading}>刷新</Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
-      <Card title="AI 综述" extra={!summary?.summary ? null : (summary.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>)}>
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">AI 综述</span>
+          {!summary?.summary ? null : (summary.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>)}
+        </div>
           {facts ? (
             <>
           <Typography.Paragraph className="!mb-4">{summary?.summary?.text || '综述生成中…'}</Typography.Paragraph>
@@ -172,17 +176,16 @@ export default function ApiPatrolOverviewContent() {
           ) : (
             <Typography.Text type="secondary">加载中…</Typography.Text>
           )}
-        </Card>
+        </div>
 
-      <Card
-        title="根因分布（产品 × L1 大类）"
-        extra={
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">根因分布（产品 × L1 大类）</span>
           <Space>
             <Segmented size="small" value={distView} onChange={setDistView}
               options={[{ label: '堆叠柱', value: 'bar' }, { label: '表格', value: 'table' }]} />
           </Space>
-        }
-      >
+        </div>
         {distView === 'bar' ? (
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={distData}>
@@ -217,17 +220,16 @@ export default function ApiPatrolOverviewContent() {
         <Typography.Text type="secondary" className="text-xs !mt-2 block">
           点击表格行可跳转溯源页查看该根因的失败组明细
         </Typography.Text>
-      </Card>
+      </div>
 
-      <Card
-        title="指标成功率趋势"
-        extra={
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">指标成功率趋势</span>
           <Space>
             <span className="text-sm">含明细补算</span>
             <Switch size="small" checked={includeBackfill} onChange={setIncludeBackfill} />
           </Space>
-        }
-      >
+        </div>
         <Typography.Text type="secondary" className="text-xs !mb-2 block">
           无数据 = 当日未达推送阈值（≥99.5%），折线断开；开启补算后缺天用明细重算补点（× 标记）
         </Typography.Text>
@@ -265,9 +267,12 @@ export default function ApiPatrolOverviewContent() {
             </div>
           ))}
         </div>
-      </Card>
+      </div>
 
-      <Card title="根因大类趋势（L1 七类全画）">
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">根因大类趋势（L1 七类全画）</span>
+        </div>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={data?.dailyTrend || []}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -280,15 +285,14 @@ export default function ApiPatrolOverviewContent() {
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </Card>
+      </div>
 
-      <Card
-        title="跨日轨迹（L2 Top8）"
-        extra={
+      <div className="page-card">
+        <div className="page-card-header">
+          <span className="page-card-title">跨日轨迹（L2 Top8）</span>
           <Segmented size="small" value={trackView} onChange={setTrackView}
             options={[{ label: '热力', value: 'heat' }, { label: '折线', value: 'line' }]} />
-        }
-      >
+        </div>
         {trackView === 'heat' ? (
           <Table
             rowKey="l2"
@@ -313,7 +317,7 @@ export default function ApiPatrolOverviewContent() {
             </LineChart>
           </ResponsiveContainer>
         )}
-      </Card>
+      </div>
 
       {!data && !loading && (
         <Alert type="info" showIcon message="暂无数据——等待外部系统推送后展示" />

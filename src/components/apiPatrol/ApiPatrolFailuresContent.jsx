@@ -211,13 +211,13 @@ export default function ApiPatrolFailures() {
   ], [openDrawer])
 
   return (
-    <div className="p-6">
-      <div className="page-card !mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Typography.Title level={5} className="!m-0">
-            巡检概况
-            <Typography.Text type="secondary" className="text-xs !ml-3">检测结果总结，随时间范围刷新</Typography.Text>
-          </Typography.Title>
+    <div className="space-y-4">
+      <div className="page-card">
+        <div className="page-card-header">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="page-card-title">巡检概况</span>
+            <Typography.Text type="secondary" className="text-xs">检测结果总结，随时间范围刷新</Typography.Text>
+          </div>
           {summaryData?.summary ? (
             summaryData.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>
           ) : null}
@@ -251,16 +251,16 @@ export default function ApiPatrolFailures() {
         )}
       </div>
 
-      <div className="page-card !mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Typography.Title level={5} className="!m-0">
-            异常接口列表
-            <Typography.Text type="secondary" className="text-xs !ml-3">
+      <div className="page-card">
+        <div className="page-card-header">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="page-card-title">异常接口列表</span>
+            <Typography.Text type="secondary" className="text-xs">
               {isSingleDay
                 ? '单日视图：展示推送原值，总/失败次数从明细重算'
                 : '跨日视图：成功率/次数按明细 Σ 重算，时长类显示 —'}
             </Typography.Text>
-          </Typography.Title>
+          </div>
           <Space>
             <RangePicker value={range} onChange={(v) => v && setRange(v)} allowClear={false} />
             <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
@@ -280,13 +280,13 @@ export default function ApiPatrolFailures() {
       </div>
 
       <div className="page-card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Typography.Title level={5} className="!m-0">
-            失败请求列表
-            <Typography.Text type="secondary" className="text-xs !ml-3">
+        <div className="page-card-header">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="page-card-title">失败请求列表</span>
+            <Typography.Text type="secondary" className="text-xs">
               组 = 同客户同接口 1 小时内失败链（压缩后）；点击 RequestID 查看诊断原文与处理闭环
             </Typography.Text>
-          </Typography.Title>
+          </div>
         </div>
         <Space className="!my-3" wrap size="small">
           <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
