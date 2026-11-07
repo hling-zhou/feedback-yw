@@ -221,7 +221,7 @@ POST /api/patrol/push/requests
 ### 4.2 MCP 诊断（服务端直连，2026-11-06 定稿）
 
 - 平台 API 服务端实现轻量 MCP Client（JSON-RPC over HTTP）
-- 端点 `http://cni.api.mcp:31788/mcp`（云网工作台通用动态 API MCP）；鉴权 `Authorization: Bearer <个人token>`（token 存服务端 .env，运维在云网工作台自助生成）
+- 端点与 token **配置链（2026-11-07 定稿，替代"仅存 .env"口径）**：admin/process 显式传参（测试覆盖用）> 库配置（meta `api_patrol_mcp_config_v1`，Settings「产品API日志诊断配置」面板维护，与 llm_config_v1 同构：通用 meta GET 禁明文/PUT 留空保留 token/专属审计动作/脱敏 GET）> 环境变量 `PATROL_MCP_ENDPOINT` / `PATROL_MCP_TOKEN`。token 在云网工作台自助生成（通用智能体 → 设置 → MCP 工具面板）；生产建议申请服务级 token
 - 工具：`log_search` / `log_search_full_param`（支持 时间/产品/资源池/requestId/关键字 检索）
 - 调用参数：requestId + 时间窗 + 池/产品上下文
 - **并发控制**：诊断 worker 最大并发 N=3（默认，可配），队列 + 失败重试退避；超时 30-60s（底稿建议）；单个调用失败进 diagnoses.status=failed 可重试
@@ -417,6 +417,7 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 | 11-07 | C2 退订LB | 占位 LB/UNSUBSCRIBE（inferred=true 待验后修正） |
 | 11-07 | 批判性复查 7 项修正 | ①is_success 分布守卫（4309/4097）；②M13.4 改走真实诊断解析链（mock MCP 返回 JSON，不绕过）；③压缩基准=独立复算法+不变式断言（Σcount=失败总数、requestId 全集无交叠）；④根因分布/AI 综述补 pre_compress_count 严重度维度（长链 197→2 组实测）；⑤conclusion 兜底合成用例；⑥解析失败 5 条归类注释；⑦跨日 avg_duration=null 序列化断言 |
 | 11-07 | customer_type 语义 | **弱标签制（终版）**：仿真（cmic 前缀）/ 测试账号（含 test/ceshi/demo）/ 空（其余无标记）——底稿 4.2 前两条独立判据原样保留；仅展示与筛选维度，**不影响产品侧处理判定**；其余启发式（政企/个人/企业）无消费方不实现 |
+| 11-07 | MCP 配置维护 | Settings 新增「产品API日志诊断配置」面板（与 LLM 面板并列，admin 专属权限 managePatrolMcpConfig）；存储 meta api_patrol_mcp_config_v1 与 llm_config_v1 四件套同构（GET 禁明文/PUT 留空保留/专属审计/脱敏读）；解析链=显式传参>库>env（PATROL_MCP_ENDPOINT/PATROL_MCP_TOKEN） |
 
 ## 9. 实施顺序
 

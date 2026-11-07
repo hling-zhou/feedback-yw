@@ -12,6 +12,7 @@ import { logAuditFromRequest } from '../audit.js'
 import { getDb } from '../db.js'
 import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConfig.js'
 import { forwardLlmChatCompletion } from '../llmProxy.js'
+import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
 import { getLlmCompletionText } from '../../src/lib/llmClient.js'
 
 const PATROL_L1_SET = new Set([
@@ -244,6 +245,12 @@ export function registerPatrolQueryRoutes(app) {
   })
 
   // ⑥管理员显式触发：压缩 + 诊断（设计 §4.1——推送不自动触发，人工/脚本确认后执行）
+  // 产品API日志诊断配置（脱敏读）：面板状态展示用；写入走 PUT /api/storage/meta/api_patrol_mcp_config_v1
+  // （通用 meta GET 对该 key 禁明文，见 storage.js；镜像 GET /api/llm/config 的 view 权限+脱敏形态）
+  app.get('/api/patrol/admin/mcp-config', { preHandler: requirePermission('view') }, async () => {
+    return getPatrolMcpConfigStatus()
+  })
+
   app.post('/api/patrol/admin/process', { preHandler: requireAdmin() }, async (request, reply) => {
     const body = /** @type {{dates?: string[], mcpEndpoint?: string, mcpToken?: string, runDiagnose?: boolean}} */ (request.body || {})
     const dates = Array.isArray(body.dates) ? body.dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)) : []
@@ -261,20 +268,25 @@ export function registerPatrolQueryRoutes(app) {
         compressLog.push({ date, pool, groups: r.groups, compressedFrom: r.compressedFrom })
       }
     }
-    // 诊断（可选：传 mcpEndpoint 则跑；M8 端到端传 mock MCP 走真实解析链）
+    // 诊断（可选）：MCP 配置解析链 = 显式传参（测试覆盖用）> 库配置（Settings「产品API日志诊断配置」面板）> 环境变量
     /** @type {Array<{date: string, pool: string, diagnosed: number, succeeded: number, failed: number}>} */
     const diagnoseLog = []
-    if (body.runDiagnose && body.mcpEndpoint) {
-      const { runPatrolDiagnose } = await import('../patrolDiagnose.js')
-      for (const date of dates) {
-        for (const pool of pools) {
-          const r = await runPatrolDiagnose({
-            date, pool,
-            mcpEndpoint: String(body.mcpEndpoint),
-            mcpToken: String(body.mcpToken || ''),
-            timeoutMs: 30_000, concurrency: 3,
-          })
-          diagnoseLog.push({ date, pool, ...r })
+    if (body.runDiagnose) {
+      const mcp = body.mcpEndpoint
+        ? { mcpEndpoint: String(body.mcpEndpoint), mcpToken: String(body.mcpToken || '') }
+        : resolvePatrolMcpConfig()
+      if (mcp.mcpEndpoint) {
+        const { runPatrolDiagnose } = await import('../patrolDiagnose.js')
+        for (const date of dates) {
+          for (const pool of pools) {
+            const r = await runPatrolDiagnose({
+              date, pool,
+              mcpEndpoint: mcp.mcpEndpoint,
+              mcpToken: mcp.mcpToken,
+              timeoutMs: 30_000, concurrency: 3,
+            })
+            diagnoseLog.push({ date, pool, ...r })
+          }
         }
       }
     }

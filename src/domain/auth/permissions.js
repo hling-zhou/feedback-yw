@@ -11,6 +11,7 @@
  *   | 'manageUsers'
  *   | 'configureLlmPersonal'
  *   | 'manageLlmConfig'
+ *   | 'managePatrolMcpConfig'
  *   | 'editOrderVolumes'
  *   | 'manageTeamSettings'
  *   | 'viewAudit'
@@ -51,6 +52,7 @@ export const ROLE_PERMISSIONS = {
     'deleteData',
     'manageUsers',
     'manageLlmConfig',
+    'managePatrolMcpConfig',
     'editOrderVolumes',
     'manageTeamSettings',
     'viewAudit',

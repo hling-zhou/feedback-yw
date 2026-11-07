@@ -19,6 +19,7 @@ import KnowledgeBasePanel from '../components/admin/KnowledgeBasePanel.jsx'
 import PipelineCopilotPanel from '../components/admin/PipelineCopilotPanel.jsx'
 import CuratedTaxonomyPanel from '../components/admin/CuratedTaxonomyPanel.jsx'
 import MailSettingsPanel from '../components/admin/MailSettingsPanel.jsx'
+import PatrolMcpSettingsPanel from '../components/PatrolMcpSettingsPanel.jsx'
 import WorkbenchTabNav from '../components/workbench/WorkbenchTabNav.jsx'
 import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
@@ -658,10 +659,16 @@ export default function Settings() {
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
-          <div className="page-card">
-            <div className="page-card-header"><span className="page-card-title">大模型配置（团队）</span></div>
-            <LlmSettingsPanel onServerStatusChange={setPersonalSettings} canEdit={can('manageLlmConfig')} />
-          </div>
+          <>
+            <div className="page-card">
+              <div className="page-card-header"><span className="page-card-title">大模型配置（团队）</span></div>
+              <LlmSettingsPanel onServerStatusChange={setPersonalSettings} canEdit={can('manageLlmConfig')} />
+            </div>
+            <div className="page-card">
+              <div className="page-card-header"><span className="page-card-title">产品API日志诊断配置</span></div>
+              <PatrolMcpSettingsPanel canEdit={can('managePatrolMcpConfig')} />
+            </div>
+          </>
         )}
 
         {activeTab === 'analysis' && (

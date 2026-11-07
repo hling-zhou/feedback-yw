@@ -175,5 +175,5 @@ Authorization: Bearer <API Key>
 
 - **签发 Key**：设置页 → API Key 管理 → 新建（勾选 API 巡检数据推送）→ 明文 Key 只显示一次
 - **样例数据导入**：`node scripts/import-api-patrol-samples.mjs --api <平台地址> --key <key>`；可选 `--from 2026-08-06 --to 2026-08-12`（按日期过滤，含端点）、`--admin-token <JWT> --mcp <MCP端点> --mcp-token <token>`（推送后自动触发压缩+诊断）
-- **MCP 诊断地址**：`http://10.233.1.22:8080/mcp-server`（IP 直连口径）或 `http://cni.api.mcp:31788/mcp`（域名口径，需 .mcp 解析）；Bearer token 由云网工作台签发
+- **MCP 诊断地址与 Token 维护**：Settings → 大模型 tab →「产品API日志诊断配置」面板（仅管理员）——端点/Token 存库、留空保留现有 Token、脱敏回显；库优先于环境变量 `PATROL_MCP_ENDPOINT`/`PATROL_MCP_TOKEN`；候选口径 `http://10.233.1.22:8080/mcp-server`（IP 直连）或 `http://cni.api.mcp:31788/mcp`（域名，需 .mcp 解析）——以平台组确认为准。Token 由云网工作台签发（通用智能体 → 设置 → MCP 工具面板 → 生成 token），生产建议申请服务级
 - **压缩/诊断触发**（推送本身不自动触发）：`POST /api/patrol/admin/process`，body `{"dates":["2026-08-06",…]}`（可带 `mcpEndpoint`/`mcpToken` 覆盖默认 MCP 地址）——需 admin 身份

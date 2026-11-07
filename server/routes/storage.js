@@ -64,6 +64,7 @@ const META_AUDIT_ACTIONS = {
   product_catalog_managed_v1: 'storage.product_catalog_update',
   app_settings_shared_v1: 'storage.team_settings_update',
   llm_config_v1: 'storage.llm_config_update',
+  api_patrol_mcp_config_v1: 'storage.patrol_mcp_config_update',
   product_order_volumes_v1: 'storage.order_volumes_update',
   wan_tou_targets_v1: 'storage.wan_tou_targets_update',
 }
@@ -89,6 +90,13 @@ function buildMetaAuditDetail(key, previous, next) {
     detail.baseUrlChanged = (prev.baseUrl || '') !== (next2.baseUrl || '')
     detail.modelChanged = (prev.model || '') !== (next2.model || '')
     detail.apiKeyChanged = Boolean(next2.apiKey)
+  }
+  if (key === 'api_patrol_mcp_config_v1') {
+    // 不记录 mcpToken 明文，仅记录端点是否变更、token 是否变更
+    const prev = previous && typeof previous === 'object' ? previous : {}
+    const next2 = next && typeof next === 'object' ? next : {}
+    detail.endpointChanged = (prev.mcpEndpoint || '') !== (next2.mcpEndpoint || '')
+    detail.tokenChanged = Boolean(next2.mcpToken)
   }
   if (key === 'product_order_volumes_v1' || key === 'wan_tou_targets_v1') {
     if (Array.isArray(next)) detail.count = next.length
@@ -1137,6 +1145,11 @@ export function registerStorageRoutes(app) {
         reply.code(403).send({ error: '大模型配置请通过 GET /api/llm/config 读取' })
         return
       }
+      // api_patrol_mcp_config_v1 含 token，禁止经通用 meta GET 读取；请用 GET /api/patrol/admin/mcp-config（脱敏）
+      if (decodedKey === 'api_patrol_mcp_config_v1') {
+        reply.code(403).send({ error: '产品API日志诊断配置请通过 GET /api/patrol/admin/mcp-config 读取' })
+        return
+      }
       return { value: storageRepository.getMeta(decodedKey) }
     },
   )
@@ -1159,6 +1172,9 @@ export function registerStorageRoutes(app) {
     }
     else if (decodedKey === 'llm_config_v1') {
       perms.push('manageLlmConfig')
+    }
+    else if (decodedKey === 'api_patrol_mcp_config_v1') {
+      perms.push('managePatrolMcpConfig')
     } else perms.push('view')
     if (!assertWritePermission(request, reply, perms)) return
     const body = /** @type {{ value?: unknown }} */ (request.body || {})
@@ -1172,6 +1188,19 @@ export function registerStorageRoutes(app) {
         : {}
       if (!incoming.apiKey) {
         incoming.apiKey = prev.apiKey ?? ''
+      }
+      incoming.updatedBy = request.user?.username || 'unknown'
+      incoming.updatedAt = new Date().toISOString()
+      nextValue = incoming
+    }
+    // api_patrol_mcp_config_v1：mcpToken 留空表示保留现有 token；并补 updatedBy（与 llm_config_v1 同构）
+    if (decodedKey === 'api_patrol_mcp_config_v1' && nextValue && typeof nextValue === 'object') {
+      const incoming = /** @type {Record<string, unknown>} */ (nextValue)
+      const prev = previous && typeof previous === 'object'
+        ? /** @type {Record<string, unknown>} */ (previous)
+        : {}
+      if (!incoming.mcpToken) {
+        incoming.mcpToken = prev.mcpToken ?? ''
       }
       incoming.updatedBy = request.user?.username || 'unknown'
       incoming.updatedAt = new Date().toISOString()
