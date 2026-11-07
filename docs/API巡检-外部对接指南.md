@@ -13,6 +13,10 @@
 
 - **平台入口（生产）**：`http://10.64.3.250:81`（Nginx 反代 → Node API）；本地开发 `http://127.0.0.1:3001`
 - **鉴权**：API Key（`Authorization: Bearer <key>`），需平台管理员在「系统设置 → API Key 管理」签发、勾选 **API 巡检数据推送（patrol:push）** 权限
+- **推送 Key（已签发，可直接使用）**：`fi_live_ks1uLDnbaIZr44LUdXSh8yjElj-8W_xaI-Ykcb5l048`
+  - 请求头写法：`Authorization: Bearer fi_live_ks1uLDnbaIZr44LUdXSh8yjElj-8W_xaI-Ykcb5l048`
+  - 权限范围：仅 `patrol:push`（只能调用 §1 两个推送端点，无平台数据读取权限）
+  - 返回 401（Key 无效/吊销/过期）时联系平台管理员重新签发
 - **自检**：直连 API 端口时 `GET /health` 返回 200 即通；**经 81 反代时 `/health` 返回的是前端页面**（反代未代理该路径），请改用任意 `/api/*` 端点探测——返回 401 JSON（`{"error":"未登录或令牌无效"}`）即为服务在线（2026-11-07 生产实测）
 
 ## 2. 批次粒度（重要）
@@ -138,7 +142,7 @@ Authorization: Bearer <API Key>
 ## 7. 联调确认清单（勾选式）
 
 - [ ] `GET /health` 通
-- [ ] API Key 已签发且含 `patrol:push`
+- [x] API Key 已签发且含 `patrol:push`（Key 见 §1「推送 Key」，已随本文档提供）
 - [ ] 统计批次试推 1 天数据 → 响应 received/inserted 对上
 - [ ] 明细批次试推 1 天 1 池 → received/inserted 对上；`unregistered` 列表与预期一致
 - [ ] 重推同批 → 全部 `overwritten`（幂等确认）
