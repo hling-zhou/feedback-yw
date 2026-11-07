@@ -1146,7 +1146,7 @@ export function registerStorageRoutes(app) {
   }, async (request, reply) => {
     const { key } = /** @type {{ key: string }} */ (request.params)
     const decodedKey = decodeURIComponent(key)
-    const tagMetaKeys = ['taxonomy_managed', 'taxonomy_overrides', 'tag_library_version', 'product_catalog_managed_v1']
+    const tagMetaKeys = ['taxonomy_managed', 'taxonomy_overrides', 'tag_library_version', 'product_catalog_managed_v1', 'api_patrol_api_registry_v1', 'api_patrol_root_cause_rules_v1', 'api_patrol_unregistered_apis_v1']
     const perms = []
     if (tagMetaKeys.includes(decodedKey)) perms.push('manageTags')
     else if (decodedKey === 'product_order_volumes_v1' || decodedKey === 'wan_tou_targets_v1') {

@@ -1,15 +1,16 @@
-/** @typedef {'requirement_ticket_progress:import' | 'mcp:read' | 'mcp:full'} ApiKeyScope */
+/** @typedef {'requirement_ticket_progress:import' | 'mcp:read' | 'mcp:full' | 'patrol:push'} ApiKeyScope */
 
 export const API_KEY_PREFIX = 'fi_live_'
 
 /** @type {ApiKeyScope[]} */
-export const API_KEY_SCOPES = ['requirement_ticket_progress:import', 'mcp:read', 'mcp:full']
+export const API_KEY_SCOPES = ['requirement_ticket_progress:import', 'mcp:read', 'mcp:full', 'patrol:push']
 
 /** @type {Record<ApiKeyScope, string>} */
 export const API_KEY_SCOPE_LABELS = {
   'requirement_ticket_progress:import': '导入需求工单进展',
   'mcp:read': 'MCP 数据读取（脱敏）',
   'mcp:full': 'MCP 数据读取（可关闭脱敏）',
+  'patrol:push': 'API 巡检数据推送',
 }
 
 /**

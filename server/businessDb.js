@@ -11,6 +11,7 @@ import {
   migrateSharedTagsInSnapshot,
   migrateSharedTagsOnRecord,
 } from '../src/lib/tagLibrary/migrateSharedTags.js'
+import { migrateApiPatrolSeeds } from './patrolMigration.js'
 
 const META_KEY_STORAGE_INIT = 'storage_v2_initialized'
 const META_KEY_DC_PRODUCT_KEY_MIGRATION = 'migrate_ecc_to_dc_product_key_v1'
@@ -803,6 +804,99 @@ export function initBusinessSchema() {
       PRIMARY KEY (issue_id, action_item_id)
     );
     CREATE INDEX IF NOT EXISTS idx_gen_action_refs_action ON generalization_issue_action_refs(action_item_id);
+
+    -- ── API 巡检四表 · docs/DESIGN-API巡检.md §2（2026-11-07 M1）──
+    CREATE TABLE IF NOT EXISTS api_patrol_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stat_date TEXT NOT NULL,
+      product_key TEXT NOT NULL,
+      pool_name TEXT NOT NULL,
+      metric_name TEXT NOT NULL,
+      api_path TEXT NOT NULL,
+      biz_type TEXT NOT NULL,
+      success_rate REAL NOT NULL,
+      duration_normal_ratio REAL,
+      avg_duration TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(stat_date, product_key, pool_name, api_path, metric_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_patrol_stats_date ON api_patrol_stats(stat_date, product_key);
+
+    CREATE TABLE IF NOT EXISTS api_patrol_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_row_id INTEGER,
+      request_date TEXT NOT NULL,
+      pool_name TEXT NOT NULL,
+      product_key TEXT,                -- 空接口名行归属无从判定（底稿3.1），允许 NULL
+      request_id TEXT NOT NULL,
+      api_path TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      is_success INTEGER NOT NULL,
+      duration_ms INTEGER,
+      request_time TEXT NOT NULL,
+      end_time TEXT,
+      biz_category TEXT,
+      biz_target TEXT,
+      biz_no TEXT,
+      error_message TEXT,
+      pushed_diagnose TEXT,
+      app_id TEXT,
+      daily_report TEXT,
+      realtime_report TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(request_date, pool_name, request_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_patrol_requests_scope
+      ON api_patrol_requests(request_date, product_key, api_path);
+    CREATE INDEX IF NOT EXISTS idx_patrol_requests_compress
+      ON api_patrol_requests(request_date, api_path, pool_name, user_name, request_time);
+
+    CREATE TABLE IF NOT EXISTS api_patrol_failure_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_date TEXT NOT NULL,
+      product_key TEXT NOT NULL,
+      pool_name TEXT NOT NULL,
+      api_path TEXT NOT NULL,
+      metric_name TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      first_request_id TEXT NOT NULL,
+      first_request_time TEXT NOT NULL,
+      pre_compress_count INTEGER NOT NULL,
+      suppressed_request_ids TEXT NOT NULL DEFAULT '[]',
+      customer_type TEXT NOT NULL,
+      root_cause_l1 TEXT,
+      root_cause_l2 TEXT,
+      product_action_status TEXT NOT NULL DEFAULT 'pending_diagnosis',
+      assignee TEXT,
+      root_cause_confirmed TEXT,
+      measure_feedback TEXT,
+      feedback_by TEXT,
+      feedback_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(group_date, product_key, pool_name, api_path, user_name, first_request_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_patrol_groups_cause_stats
+      ON api_patrol_failure_groups(group_date, product_key, root_cause_l1);
+    CREATE INDEX IF NOT EXISTS idx_patrol_groups_status
+      ON api_patrol_failure_groups(product_action_status);
+
+    CREATE TABLE IF NOT EXISTS api_patrol_diagnoses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      failure_group_id INTEGER NOT NULL,
+      request_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'success', 'failed')),
+      tool_name TEXT,
+      mcp_raw_response TEXT,
+      final_conclusion TEXT,
+      root_cause_l1 TEXT,
+      root_cause_l2 TEXT,
+      diagnosed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_patrol_diag_group ON api_patrol_diagnoses(failure_group_id);
+    CREATE INDEX IF NOT EXISTS idx_patrol_diag_status ON api_patrol_diagnoses(status);
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
@@ -814,6 +908,7 @@ export function initBusinessSchema() {
   migrateBuiltinJourneysV2InMeta(db)
   migrateSharedTagsV2(db)
   migrateSharedTagsV3(db)
+  migrateApiPatrolSeeds(db)
 }
 
 export { META_KEY_STORAGE_INIT }

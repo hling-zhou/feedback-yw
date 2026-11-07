@@ -63,6 +63,8 @@ import { registerUsageRoutes } from './routes/usage.js'
 import { registerMailRoutes } from './routes/mail.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMcpRoutes } from './routes/mcp.js'
+import { registerPatrolPushRoutes } from './routes/patrolPush.js'
+import { registerPatrolQueryRoutes } from './routes/patrolQuery.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
 import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
@@ -110,6 +112,8 @@ registerReminderRoutes(app)
 registerUsageRoutes(app)
 // registerAssistantRoutes(app)
 registerMcpRoutes(app)
+registerPatrolPushRoutes(app)
+registerPatrolQueryRoutes(app)
 
 // 初始化 AI 助手检索索引（FTS5 trigram 或 fallback），并后台幂等补齐存量记录
 initSearchIndex()

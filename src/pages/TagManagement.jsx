@@ -7,6 +7,8 @@ import LlmTagReviewPanel from '../components/tagManagement/LlmTagReviewPanel.jsx
 import TagCorrectionReviewPanel from '../components/tagManagement/TagCorrectionReviewPanel.jsx'
 import ProductConfigurationCenter from '../components/tagManagement/ProductConfigurationCenter.jsx'
 import PostUseKeyCustomersPanel from '../components/tagManagement/PostUseKeyCustomersPanel.jsx'
+import ApiPatrolRegistryPanel from '../components/tagManagement/ApiPatrolRegistryPanel.jsx'
+import ApiPatrolRootCauseRulesPanel from '../components/tagManagement/ApiPatrolRootCauseRulesPanel.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
@@ -19,6 +21,8 @@ const TAB_KEYS = {
   keyCustomers: 'key_customers',
   review: 'review',
   correction: 'correction',
+  apiPatrolRegistry: 'api_patrol_registry',
+  apiPatrolRootCauses: 'api_patrol_root_causes',
 }
 
 export default function TagManagement() {
@@ -80,6 +84,14 @@ export default function TagManagement() {
         key: TAB_KEYS.correction,
         label: '改标学习',
       },
+      {
+        key: TAB_KEYS.apiPatrolRegistry,
+        label: '产品接口',
+      },
+      {
+        key: TAB_KEYS.apiPatrolRootCauses,
+        label: '接口失败根因分类',
+      },
     ],
     [pendingCount],
   )
@@ -100,6 +112,10 @@ export default function TagManagement() {
         return <LlmTagReviewPanel readOnly={readOnly} />
       case TAB_KEYS.correction:
         return <TagCorrectionReviewPanel readOnly={readOnly} />
+      case TAB_KEYS.apiPatrolRegistry:
+        return <ApiPatrolRegistryPanel readOnly={readOnly} />
+      case TAB_KEYS.apiPatrolRootCauses:
+        return <ApiPatrolRootCauseRulesPanel readOnly={readOnly} />
       default:
         return null
     }
