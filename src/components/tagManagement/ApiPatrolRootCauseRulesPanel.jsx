@@ -178,9 +178,9 @@ export default function ApiPatrolRootCauseRulesPanel({ readOnly = false }) {
 
   return (
     <div className="page-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
-          <Typography.Title level={5} className="!mb-1">接口失败根因分类</Typography.Title>
+      <div className="page-card-header">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <span className="page-card-title">接口失败根因分类</span>
           <Typography.Text type="secondary" className="text-xs">
             有序规则表：先命中先返回。编辑只影响之后的诊断，存量不回溯。
           </Typography.Text>

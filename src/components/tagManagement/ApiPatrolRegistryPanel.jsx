@@ -107,9 +107,9 @@ export default function ApiPatrolRegistryPanel({ readOnly = false }) {
 
   return (
     <div className="page-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
-          <Typography.Title level={5} className="!mb-1">产品接口</Typography.Title>
+      <div className="page-card-header">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <span className="page-card-title">产品接口</span>
           <Typography.Text type="secondary" className="text-xs">
             API 巡检推送数据的产品归属对照表。编辑只影响之后推送，存量不回溯。
           </Typography.Text>
