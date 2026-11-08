@@ -16,7 +16,7 @@ export const SETTINGS_TAB_KEYS = /** @type {const} */ ([
 
 /** @type {Record<SettingsTabKey, string>} */
 export const SETTINGS_TAB_LABELS = {
-  llm: '大模型',
+  llm: '模型与工具',
   analysis: '分析与打标',
   metrics: '万投比指标',
   data: '数据管理',
@@ -31,7 +31,7 @@ export const SETTINGS_TAB_LABELS = {
 
 /** @type {Record<SettingsTabKey, string>} */
 export const SETTINGS_TAB_DESCRIPTIONS = {
-  llm: '团队大模型配置，用于导入、打标与洞察中的 LLM 能力；仅管理员可改，保存后全团队生效（库优先于环境变量）。',
+  llm: '团队大模型配置（用于导入、打标与洞察中的 LLM 能力）与产品 API 日志诊断的 MCP 服务配置；仅管理员可改，保存后全团队生效（库优先于环境变量）。',
   analysis:
     '团队共享的自动打标与分析规则；仅管理员可改，修改后底部会出现保存条，保存后约 5 秒内同步给其他用户。',
   metrics:
