@@ -660,7 +660,7 @@ export default function Settings() {
         <SettingsTabIntro tab={activeTab} />
 
         {activeTab === 'llm' && (
-          <>
+          <div className="page-card-stack">
             <div className="page-card">
               <div className="page-card-header"><span className="page-card-title">大模型配置（团队）</span></div>
               <LlmSettingsPanel onServerStatusChange={setPersonalSettings} canEdit={can('manageLlmConfig')} />
@@ -669,7 +669,7 @@ export default function Settings() {
               <div className="page-card-header"><span className="page-card-title">产品API日志诊断配置</span></div>
               <PatrolMcpSettingsPanel canEdit={can('managePatrolMcpConfig')} />
             </div>
-          </>
+          </div>
         )}
 
         {activeTab === 'analysis' && (
@@ -895,7 +895,7 @@ export default function Settings() {
         {activeTab === 'curated_taxonomy' && <CuratedTaxonomyPanel canEdit={can('manageTeamSettings')} />}
 
         {activeTab === 'mail' && can('manageTags') && (
-          <>
+          <div className="page-card-stack">
             <div className="page-card">
               <div className="page-card-header"><span className="page-card-title">邮件发送</span></div>
               <MailSettingsPanel canEdit={can('manageTags')} />
@@ -904,7 +904,7 @@ export default function Settings() {
               <div className="page-card-header"><span className="page-card-title">AI巡检日报</span></div>
               <PatrolDailyReportPanel canEdit={can('manageTags')} />
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
