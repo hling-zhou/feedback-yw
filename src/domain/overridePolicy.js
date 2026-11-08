@@ -1,6 +1,12 @@
 /**
  * Override Policy — 批量打标 / 导入分析的人工内容覆盖策略。
  * @see docs/DESIGN-20260601-1.md §1.2
+ *
+ * ⚠️ 环群核心（11-08 会诊 E 栅栏）：本文件处于打标域巨型环群
+ * （overridePolicy↔applyThemes↔manualTagFields↔journeySemantic 等约 25 文件/
+ * SCC 内部边基线 50）。改本文件的导出签名/语义时影响面沿环放大——
+ * 改后必跑打标守卫族（llmClient.test / journeyMatchConfidence.test /
+ * dimensionValidation 相关），并确认 cycleBaselineGuard 未红（新增环边须三选一处置）。
  */
 
 import { themesFromJourney } from '../lib/applyThemes.js'

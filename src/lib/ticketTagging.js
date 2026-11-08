@@ -1,3 +1,11 @@
+/**
+ * 工单打标核心（旅程匹配 / correctQualityWinnerToConnectivity 等）。
+ *
+ * ⚠️ 环群核心（11-08 会诊 E 栅栏）：处于打标域巨型环群
+ * （ticketTagging↔journeySemantic↔dimensionTagging↔overridePolicy 等）。
+ * 改动必跑 journeyMatchConfidence.test（含改判守卫）与打标守卫族，
+ * 并确认 cycleBaselineGuard 未红（新增环边须三选一处置）。
+ */
 import { getTaxonomy, resolveProductKey } from './productTaxonomy.js'
 import { getNodeMapsForProduct, hasRequestNodeMaps } from './taxonomyLoader.js'
 import { extractCustomerQuote, extractResponseText } from './extract.js'

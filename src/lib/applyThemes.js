@@ -1,3 +1,12 @@
+/**
+ * 打标主题应用（lib 侧打标链核心）。
+ *
+ * ⚠️ 环群核心（11-08 会诊 E 栅栏）：处于打标域巨型环群
+ * （overridePolicy↔applyThemes↔manualTagFields↔journeySemantic 等）。
+ * 改导出签名/语义时影响面沿环放大——改后必跑打标守卫族，
+ * 并确认 cycleBaselineGuard 未红。长期方向（随下次打标域大改动顺带做）：
+ * 本文件迁 lib 单向化，打破 domain↔lib 回边。
+ */
 import { analyzeTicketSentiment } from './sentiment.js'
 import {
   enrichRecordsWithJourneys,

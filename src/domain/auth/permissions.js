@@ -77,12 +77,27 @@ export const ROLE_PERMISSIONS = {
   viewer: ['view', 'viewAudit', 'export'],
 }
 
-/** @type {Record<UserRole, string[]>} */
+/**
+ * 角色隐藏路由清单（菜单可见性，11-02 拍板默认约定：**新增菜单默认对所有角色可见**，
+ * 只有明确理由才加进隐藏清单；每条必须带 [HIDDEN-WHY] 理由注释，无注释即被
+ * menuVisibilityGuard.test.js 守卫拦红）。
+ *
+ * @type {Record<UserRole, string[]>}
+ */
 export const ROLE_HIDDEN_ROUTES = {
   admin: [],
-  editor: ['/operations'],
-  partial_editor: ['/users', '/operations'],
-  viewer: ['/import', '/users', '/operations'],
+  editor: [
+    '/operations', // [HIDDEN-WHY] 运维工具页为 admin 专属运维入口（含系统级操作），编辑者无此职责
+  ],
+  partial_editor: [
+    '/users', // [HIDDEN-WHY] 部分编辑仅编辑工单内容，无用户管理职责（manageUsers 权限本就不授予）
+    '/operations', // [HIDDEN-WHY] 同 editor：运维工具页为 admin 专属
+  ],
+  viewer: [
+    '/import', // [HIDDEN-WHY] 查看者只读（import 权限本就不授予，菜单展示无意义徒增困惑）
+    '/users', // [HIDDEN-WHY] 同 partial_editor：无用户管理职责
+    '/operations', // [HIDDEN-WHY] 同 editor：运维工具页为 admin 专属
+  ],
 }
 
 /**

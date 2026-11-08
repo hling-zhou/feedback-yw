@@ -1,3 +1,12 @@
+/**
+ * 旅程语义匹配（规则 + LLM 混合批量）。
+ *
+ * ⚠️ 环群核心（11-08 会诊 E 栅栏）：处于打标域巨型环群
+ * （ticketTagging↔journeySemantic↔dimensionTagging↔overridePolicy 等）。
+ * journeySource 标注口径（llmVerdict 如实标注）与批容器契约是本项目强守卫区——
+ * 改动必跑 journeyMatchConfidence.test / llmClient.test / journeySemantic.postUse.test，
+ * 并确认 cycleBaselineGuard 未红（新增环边须三选一处置）。
+ */
 import { getTaxonomy, getTaxonomyForRecord } from './productTaxonomy.js'
 import { getProductByKey } from './taxonomyLoader.js'
 import { matchJourneyByDescription, matchJourneyFromTextWithScore } from './ticketTagging.js'

@@ -1,3 +1,11 @@
+/**
+ * 人工标记字段保护 / 强制重打覆盖。
+ *
+ * ⚠️ 环群核心（11-08 会诊 E 栅栏）：本文件 import applyThemes + domain/overridePolicy
+ * 构成环群回边（overridePolicy→applyThemes→本文件→overridePolicy）。
+ * 新增 import 前先想清楚会不会加环边（cycleBaselineGuard 红 = 须三选一处置）；
+ * 改 preserveManualTags / applyForceRetagOverrides 语义必跑打标守卫族。
+ */
 import { themesFromJourney } from './applyThemes.js'
 import { normalizeSentiment, normalizeUrgencyLevel } from './sentiment.js'
 import { applyForceAllHumanOverrides } from '../domain/overridePolicy.js'
