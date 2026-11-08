@@ -83,7 +83,7 @@ describeFollowUp('follow-up satisfaction import API', () => {
     const editor = await createUser({
       username: 'follow_up_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }

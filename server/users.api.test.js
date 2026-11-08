@@ -48,13 +48,13 @@ describeUsers('users API', () => {
     const admin = await createUser({
       username: 'users_admin',
       password: 'AdminPass12345!',
-      team: '管理',
+      team: '综合管理组',
       role: 'admin',
     })
     const viewer = await createUser({
       username: 'users_viewer',
       password: 'ViewerPass12345!',
-      team: '查看',
+      team: '综合管理组',
       role: 'viewer',
     })
 

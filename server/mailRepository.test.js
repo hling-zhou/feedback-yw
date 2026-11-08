@@ -52,7 +52,12 @@ describeRepo('mailRepository', () => {
 
   it('seeds preset templates that can be edited but not deleted', () => {
     const templates = repo.listMailTemplates()
-    expect(templates.map((item) => item.id).sort()).toEqual(['callback_visit_list', 'post_use_report'])
+    // reminder_digest：11-07 AI 巡检日报（5b423d6）新增的第三块预设模板
+    expect(templates.map((item) => item.id).sort()).toEqual([
+      'callback_visit_list',
+      'post_use_report',
+      'reminder_digest',
+    ])
     const updated = repo.updateMailTemplate('post_use_report', { subject: '自定义主题 {周期键}' })
     expect(updated.subject).toBe('自定义主题 {周期键}')
     expect(updated.preset).toBe(true)

@@ -79,7 +79,7 @@ describeTicketTodos('ticket todos API', () => {
     const viewer = await createUser({
       username: 'todo_viewer',
       password: 'ViewerPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'viewer',
     })
     tokens = { viewer: signAccessToken(viewer) }

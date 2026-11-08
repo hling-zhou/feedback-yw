@@ -73,7 +73,7 @@ describeSession('auth session revocation (P0)', () => {
     await createUser({
       username: 'session_user',
       password: 'SessionPass123!',
-      team: '测试',
+      team: '综合管理组',
       role: 'viewer',
     })
 

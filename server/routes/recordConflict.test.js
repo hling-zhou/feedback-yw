@@ -67,7 +67,7 @@ describeConflict('record revision conflict (P0)', () => {
     const editor = await createUser({
       username: 'record_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }

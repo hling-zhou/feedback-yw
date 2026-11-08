@@ -60,7 +60,7 @@ describeMonthSummary('month-summary API', () => {
     const editor = await createUser({
       username: 'month_summary_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }

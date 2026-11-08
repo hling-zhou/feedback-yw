@@ -79,7 +79,10 @@ describe('resolveCorsOrigins', () => {
   })
 
   it('uses dev defaults when unset and not production', () => {
+    // 对齐 config.js DEFAULT_DEV_CORS_ORIGINS（5173 为 Vite 备用端口，一并放行）
     expect(resolveCorsOrigins()).toEqual([
+      'http://127.0.0.1:5173',
+      'http://localhost:5173',
       'http://127.0.0.1:5175',
       'http://localhost:5175',
     ])

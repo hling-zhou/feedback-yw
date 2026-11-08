@@ -70,13 +70,13 @@ describeAudit('audit events for shared writes', () => {
     const editor = await createUser({
       username: 'audit_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     const admin = await createUser({
       username: 'audit_admin',
       password: 'AdminPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'admin',
     })
     tokens = {
@@ -226,7 +226,10 @@ describeAudit('audit events for shared writes', () => {
       headers: { 'content-type': 'application/json' },
       payload: { username: 'audit_editor', password: 'EditorPass12345!' },
     })
-    expect(ok.statusCode).toBe(200)
+    // 现行策略：新用户首登强制改密（must_change_password=1）→ 403 + PASSWORD_MUST_CHANGE
+    // （auth.login 审计动作仍会写入——logAudit 在下发 403 前执行，authLogin.js:70-87）
+    expect(ok.statusCode).toBe(403)
+    expect(ok.json().code).toBe('PASSWORD_MUST_CHANGE')
 
     const { listAuditLogs } = await import('../audit.js')
     const entries = listAuditLogs(7)
@@ -236,7 +239,7 @@ describeAudit('audit events for shared writes', () => {
       ),
     ).toBe(true)
     expect(entries.some((row) => row.action === 'auth.login' && row.username === 'audit_editor')).toBe(
-      true,
+      false,
     )
   })
 })

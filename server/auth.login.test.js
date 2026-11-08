@@ -93,7 +93,7 @@ describeAuth('auth login password expiry', () => {
     await createUser({
       username: 'expiry_user',
       password: 'OldPass123!',
-      team: '测试',
+      team: '综合管理组',
       role: 'viewer',
     })
 
@@ -174,7 +174,7 @@ describeAuth('auth login password expiry', () => {
     await createUser({
       username: 'active_user',
       password: 'ActivePass123!',
-      team: '测试',
+      team: '综合管理组',
       role: 'viewer',
     })
 

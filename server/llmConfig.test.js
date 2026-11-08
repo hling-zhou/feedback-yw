@@ -1,5 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import {
+// DB 隔离（db.js 模块顶层即算路径——必须先设环境变量再动态 import，
+// 否则落到 server/data/auth.db 真库：真库若已配置 llm_config_v1（设置页保存），
+// 「DB unset 走 env 回退」类用例必失败（11-08 会诊 C 升级回归时坐实）。
+process.env.AUTH_DATABASE_PATH = `/tmp/fi-llmconfig-test-${process.pid}.db`
+import { rmSync } from 'node:fs'
+rmSync(process.env.AUTH_DATABASE_PATH, { force: true })
+
+const { getDb, closeDb } = await import('./db.js')
+getDb() // 空库初始化（无 llm_config_v1 → 走 env 回退语义成立）
+const llmConfig = await import('./llmConfig.js')
+const {
   getLlmConfigStatus,
   isLlmConfigured,
   maskApiKey,
@@ -7,13 +16,21 @@ import {
   resolveLlmApiKey,
   resolveLlmBaseUrl,
   resolveLlmModel,
-} from './llmConfig.js'
+} = llmConfig
+
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 
 const envBackup = { ...process.env }
 
 afterEach(() => {
   process.env = { ...envBackup }
 })
+
+afterAll(async () => {
+  await closeDb()
+  rmSync(process.env.AUTH_DATABASE_PATH, { force: true })
+})
+
 
 describe('normalizeLlmBaseUrl', () => {
   it('strips trailing slash and chat path', () => {

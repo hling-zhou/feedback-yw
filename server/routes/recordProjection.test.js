@@ -70,7 +70,7 @@ describeProjection('records payload projection', () => {
     const editor = await createUser({
       username: 'projection_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     tokens = { editor: signAccessToken(editor) }
@@ -123,7 +123,8 @@ describeProjection('records payload projection', () => {
     expect(r).not.toHaveProperty('handlingText')
     expect(r).not.toHaveProperty('customerQuote')
     expect(r).not.toHaveProperty('responseText')
-    expect(r).not.toHaveProperty('sourceColumns')
+    // sourceColumns 不裁（列表投影拍板口径：fields=list 只裁 5 个大文本，sourceColumns 保留供搜索回退）
+    expect(r).toHaveProperty('sourceColumns')
   })
 
   it('fields=full 原样返回大文本字段', async () => {

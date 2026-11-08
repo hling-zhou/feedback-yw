@@ -59,19 +59,19 @@ describeStorage('storage route permissions', () => {
     const viewer = await createUser({
       username: 'perm_viewer',
       password: 'ViewerPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'viewer',
     })
     const editor = await createUser({
       username: 'perm_editor',
       password: 'EditorPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'editor',
     })
     const admin = await createUser({
       username: 'perm_admin',
       password: 'AdminPass12345!',
-      team: '测试',
+      team: '综合管理组',
       role: 'admin',
     })
 
@@ -194,14 +194,14 @@ describeStorage('storage route permissions', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('editor cannot PUT team app settings meta', async () => {
+  it('editor can PUT team app settings meta（重点客户名单语义——editor 可编辑，storage.js perms 放行 manageTags）', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/api/storage/meta/app_settings_shared_v1',
       headers: authHeader('editor'),
       payload: { value: { useRegex: false } },
     })
-    expect(res.statusCode).toBe(403)
+    expect(res.statusCode).toBe(200)
   })
 
   it('admin can PUT team app settings meta', async () => {

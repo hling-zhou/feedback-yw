@@ -47,7 +47,7 @@ describeApi('requirement ticket progress import via API key', () => {
     const admin = await createUser({
       username: 'req_import_admin',
       password: 'AdminPass12345!',
-      team: '管理',
+      team: '综合管理组',
       role: 'admin',
     })
     adminToken = signAccessToken(admin, 0)
