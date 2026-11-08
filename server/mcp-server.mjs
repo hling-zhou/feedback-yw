@@ -21,6 +21,7 @@ import { getDb } from './db.js'
 import { storageRepository } from './storageRepository.js'
 import { MCP_TOOLS } from './mcp/tools.js'
 import { authenticateMcpRequest, extractBearerToken } from './mcp/auth.js'
+import { loadManagedProductCatalog } from '../src/storage/productCatalogStore.js'
 
 const PORT = Number(process.env.MCP_PORT || 3002)
 const HOST = process.env.MCP_HOST || '127.0.0.1'
@@ -28,6 +29,27 @@ const HOST = process.env.MCP_HOST || '127.0.0.1'
 // 确保 DB 初始化
 getDb()
 await storageRepository.init()
+
+/**
+ * Tool 调用前从 DB 刷新进程内产品目录缓存（10-25 收件人 0 人同款陈旧缓存防线）。
+ * UI 保存负责人/改目录只写 DB 与浏览器进程缓存，MCP 独立进程内 getCatalogProducts()
+ * 缓存不随之更新——tools.js 的 product→productKey 映射与 productNameToKey 会用旧目录，
+ * 表现为「改名/改负责人后 MCP 搜不到或对不上」。与 refreshProductCatalogForReminder
+ * 同口径：刷新失败降级用缓存，不阻塞 Tool 执行本身。
+ */
+async function refreshProductCatalogForMcp() {
+  const adapter = {
+    getMeta: (key) => storageRepository.getMeta(key),
+    putMeta: (key, value) => storageRepository.putMeta(key, value),
+  }
+  try {
+    await loadManagedProductCatalog(adapter)
+  } catch (err) {
+    console.warn(
+      `[MCP] 产品目录刷新失败，降级用缓存: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
 
 /**
  * JSON-RPC 2.0 消息处理。
@@ -102,9 +124,10 @@ function handleJsonRpc(message, token) {
       }
     }
 
-    // 执行 Tool handler
+    // 执行 Tool handler（先刷新目录缓存——tools.js 映射依赖最新目录）
     return (async () => {
       try {
+        await refreshProductCatalogForMcp()
         const result = await tool.handler(toolArgs, auth.apiKey)
         return {
           jsonrpc: '2.0',
@@ -396,6 +419,7 @@ function handleJsonRpcWithApiKey(message, apiKey) {
 
     return (async () => {
       try {
+        await refreshProductCatalogForMcp()
         const result = await tool.handler(toolArgs, apiKey)
         return {
           jsonrpc: '2.0',

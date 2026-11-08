@@ -557,6 +557,9 @@ export async function getTicketTodos(params, apiKey) {
   if (params.insightPeriodId) query.insightPeriodId = params.insightPeriodId
 
   // product → productKey 需要通过 catalog 映射
+  // 缓存刷新契约（11-08 会诊 #2）：本文件不经路由层，目录刷新由 mcp-server.mjs
+  // 的 refreshProductCatalogForMcp 在每次 tools/call handler 前执行——
+  // 守卫测试 catalogCacheCoverageGuard.test.js 凭此注释认可覆盖。
   if (params.product) {
     const catalogProducts = getCatalogProducts()
     const match = catalogProducts.find(

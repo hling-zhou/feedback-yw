@@ -292,10 +292,12 @@ function collectBalancedJsonSlices(text) {
  * （82742ef 引入 pickAssistantPayload 后，{results:[单元素]} 会被解成元素本身、
  * {results:[多元素]} 只剩最后一个元素——批量答案整体丢失，所有记录回退本地重匹配
  * 且被误标 journeySource='llm'）。
+ * 新容器键入表须同步 batchKeysGuard.test.js（prompt 承诺扫描守卫）与
+ * llmClient.test.js（批容器契约用例）——11-08 cards 入表即此流程先例。
  * @param {unknown[]} values
  */
 function pickBatchResultContainer(values) {
-  const BATCH_KEYS = ['results', 'items', 'keep', 'words']
+  const BATCH_KEYS = ['results', 'items', 'keep', 'words', 'cards']
   for (let i = values.length - 1; i >= 0; i -= 1) {
     const value = values[i]
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue

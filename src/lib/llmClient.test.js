@@ -245,6 +245,23 @@ describe('parseLlmMessageContent 批结果容器契约（82742ef 剥包装回归
     expect(Array.isArray(parsed?.results)).toBe(true)
   })
 
+  // 11-08 会诊 P2-2：llmRecommend（topicAnalysis 专题推荐）prompt 承诺 {"cards":[...]}
+  // （最多 20 张卡片批容器）——batchKeysGuard 扫出 cards 不在白名单（粘连场景下
+  // 启发式可能剥掉容器），按守卫处置方案① 入表 + 本契约用例。
+  it('cards 批容器（llmRecommend 专题推荐）保留包装', () => {
+    const parsed = asResults(parseLlmMessageContent(
+      JSON.stringify({
+        cards: [
+          { id: 'topic-1', mergeIds: [], intro: '简介A', whyNow: '理由A' },
+          { id: 'topic-2', mergeIds: ['topic-3'], intro: '简介B', whyNow: '理由B' },
+        ],
+      }),
+    ))
+    expect(Array.isArray(parsed?.cards)).toBe(true)
+    expect(parsed.cards.length).toBe(2)
+    expect(parsed.cards[1].mergeIds[0]).toBe('topic-3')
+  })
+
   it('assistant 粘连场景不回归：半截+完整 answer 仍取最后完整对象', () => {
     const content = '{"answer":"前半截' + JSON.stringify({ answer: '完整答案', citations: [] })
     const parsed = asResults(parseLlmMessageContent(content))

@@ -180,6 +180,10 @@ export function buildReminderData({ insightPeriodId } = {}) {
   const productMap = new Map()
 
   // 获取产品目录（含 owners）
+  // 缓存刷新契约（10-25 修复口径）：本函数目录刷新由路由层负责——
+  // routes/reminders.js 的 refreshProductCatalogForReminder 在每次
+  // preview/send 调用 buildReminderData 前刷新（守卫 catalogCacheCoverageGuard
+  // 凭此注释认可；新增调用方必须同样先刷新）。
   const catalogProducts = getCatalogProducts()
   const catalogByKey = new Map()
   for (const p of catalogProducts) {

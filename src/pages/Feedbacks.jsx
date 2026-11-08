@@ -1826,7 +1826,9 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
             fb.ratingScore != null && Number.isFinite(Number(fb.ratingScore))
               ? Number(fb.ratingScore)
               : null
-          const product = fb.productName || fb.product || '—'
+          // 同源判定纪律（11-08 会诊 P2-1）：与同页 :847 筛选同向双读 product || productName，
+          // 防止未来双值记录在「筛选分组」与「卡片展示」间漂移
+          const product = fb.product || fb.productName || '—'
           const snippet = fb.rawText || fb.commentText || fb.lowScoreReason || '—'
           return (
             <div

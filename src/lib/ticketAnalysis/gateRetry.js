@@ -39,9 +39,13 @@ import { resolveProblemTypeWithPeerFallback, resolveRequestSceneFromConfig } fro
 import { parseRequestNodeSegments } from './pathSegments.js'
 
 /**
- * 最大重试轮次
+ * 重试轮次约定（11-08 会诊 P2-3 处置）：
+ * 「最多 1 轮」是**结构性约定**而非计数控制——每个闸门层级（L0/L1/L2）在
+ * ticketDimensionTagging.js 中只调用一次 retryGate（347/390/448 三处），
+ * retryGate 内部按 R1→R3 顺序穷尽策略后返回，自身不循环。
+ * 新增策略/调用点时不得引入循环调用；若未来需要多轮，必须在调用方显式
+ * 计数（届时恢复本常量并真正消费它，而非定义死常量）。
  */
-const MAX_RETRY_ROUNDS = 1
 
 /**
  * 闸门重试结果
