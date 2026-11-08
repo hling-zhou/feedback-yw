@@ -128,6 +128,47 @@ function insertNameOnlyComplaintRecord() {
   ])
 }
 
+// 真实数据形态三：孤儿决策——needInternalTrace=true 但 jira 表无对应 item
+//（真库 2026-10 存在此形态，导致预览出现「未标注产品」空键组）。
+// 产品名须从 itemKey 第2段恢复并归组到真实产品。
+function insertOrphanTraceDecision() {
+  getDb()
+    .prepare(
+      `INSERT INTO post_use_callback_decisions (item_key, payload)
+       VALUES (?, ?)`,
+    )
+    .run(
+      'q:ORPHAN-REMINDER:虚拟私有云:2026-07',
+      JSON.stringify({
+        itemKey: 'q:ORPHAN-REMINDER:虚拟私有云:2026-07',
+        sourceType: 'questionnaire',
+        needCustomerVisit: false,
+        needInternalTrace: true,
+        updatedAt: '2026-11-08T00:00:00.000Z',
+      }),
+    )
+}
+
+// 真实数据形态四：c: 孤儿决策（投诉回访类，itemKey 无产品段）——
+// 空键组展示名须为「未知产品」，不得出现「未标注产品」。
+function insertOrphanVisitDecision() {
+  getDb()
+    .prepare(
+      `INSERT INTO post_use_callback_decisions (item_key, payload)
+       VALUES (?, ?)`,
+    )
+    .run(
+      'c:ORPHAN-VISIT-TEST',
+      JSON.stringify({
+        itemKey: 'c:ORPHAN-VISIT-TEST',
+        sourceType: 'callback_non_ten',
+        needCustomerVisit: true,
+        needInternalTrace: false,
+        updatedAt: '2026-11-08T00:00:00.000Z',
+      }),
+    )
+}
+
 async function buildApp() {
   const app = Fastify()
   app.decorateRequest('user', null)
@@ -148,6 +189,8 @@ beforeAll(async () => {
   insertComplaintRecord()
   insertKeyOnlyComplaintRecord()
   insertNameOnlyComplaintRecord()
+  insertOrphanTraceDecision()
+  insertOrphanVisitDecision()
   putCatalogWithPm('pm01', PM1_EMAIL)
   app = await buildApp()
 })
@@ -205,5 +248,22 @@ describe('提醒产品展示名（中文）', () => {
     // T-REM-NAME-1 应归入 vpc 组
     const inVpcGroup = vpc && vpc.distribution && vpc.distribution.complaintTickets >= 2
     expect(Boolean(inVpcGroup)).toBe(true)
+  })
+
+  it('孤儿决策（jira 表无对应 item）从 itemKey 恢复产品名归组，c: 孤儿显示「未知产品」', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/reminders/preview', payload: {} })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    // 任何组都不得出现「未标注产品」
+    expect(body.products.some((p) => p.productName === '未标注产品')).toBe(false)
+    // q: 孤儿（q:ORPHAN-REMINDER:虚拟私有云:2026-07）应归入 vpc 组计入溯源
+    const vpc = body.products.find((p) => p.productKey === 'vpc')
+    expect(vpc?.distribution?.internalTraces).toBeGreaterThanOrEqual(1)
+    // c: 孤儿（无产品段）空键组显示「未知产品」
+    const unknownGroup = body.products.find((p) => p.productKey === '')
+    if (unknownGroup) {
+      expect(unknownGroup.productName).toBe('未知产品')
+      expect(unknownGroup.distribution?.visitEvaluations).toBeGreaterThanOrEqual(1)
+    }
   })
 })

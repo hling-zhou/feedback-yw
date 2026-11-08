@@ -44,6 +44,24 @@ function getRecordProductKey(record) {
 }
 
 /**
+ * 孤儿决策恢复：jira 表无对应 item 时，从 itemKey 自身解析产品名。
+ * itemKey 格式锚定生产方 questionnaireCallbackItemKey：
+ *   q:{customerCode|customerName}:{productName}[:{importMonths}]
+ *   c:{ticketId}（投诉回访类，无产品段——生产方 callbackNonTenItemKey）
+ * @param {string} itemKey
+ * @returns {string} 解析不出返回空串
+ */
+function productNameFromItemKey(itemKey) {
+  const key = String(itemKey || '').trim()
+  if (!key.startsWith('q:')) return ''
+  const segments = key.slice(2).split(':')
+  // 生产方 questionnaireCallbackItemKey：q:{code|name}:{product}[:{months}]
+  // 产品名恒在第 2 段（segments[1]），第 3 段（若有）是月份段（YYYY-MM|... 形态）——
+  // 真实形态验证：q:ORPHAN:弹性公网IP:2026-07 三段时 segments[1]=产品、segments[2]=月份
+  return String(segments[1] || '').trim()
+}
+
+/**
  * 检查投诉工单角色字段是否任一为空
  * @param {Record<string, unknown>} record
  */
@@ -206,14 +224,15 @@ export function buildReminderData({ insightPeriodId } = {}) {
   /**
    * 展示名解析：目录中文名优先（productKey 命中），回退存库 productName，再回退 key。
    * 与举措/待办列表同源（resolveActionItemProductDisplayName）。
-   * unknown 假键（record 产品键与名称全空归组）展示为「未知产品」。
+   * 键与名称全解析不出（unknown 假键 / c: 孤儿决策）统一展示「未知产品」——
+   * 数据关联断裂场景不得用「未标注产品」误导为"导入时漏填"。
    */
   function resolveDisplayName(productKey, productName) {
     const resolved = resolveActionItemProductDisplayName(
       { productKey: String(productKey || '').trim(), productName: String(productName || '').trim() },
       productNameByKey,
     )
-    return resolved === 'unknown' ? '未知产品' : resolved
+    return resolved === 'unknown' || resolved === '未标注产品' ? '未知产品' : resolved
   }
 
   function ensureProduct(productKey, productName) {
@@ -291,7 +310,9 @@ export function buildReminderData({ insightPeriodId } = {}) {
     if (status === '已处理') continue
 
     // 获取产品信息（从 jira_item 或 decision 关联数据）
-    const productName = String(jiraItem?.productName || '').trim()
+    // 孤儿决策恢复：jira 表无对应 item 时从 itemKey 解析产品名（q:code:product:months 的 product 段），
+    // 避免空键空名组落「未标注产品」兜底文案
+    const productName = String(jiraItem?.productName || '').trim() || productNameFromItemKey(decision.itemKey)
     const productKey = productKeyByName.get(productName) || ''
     const product = ensureProduct(productKey, productName)
 
@@ -323,7 +344,8 @@ export function buildReminderData({ insightPeriodId } = {}) {
     // 需要从 jira_items 中查找维度信息
     const jiraItem = jiraItemByKey.get(decision.itemKey)
     const customerName = String(jiraItem?.customerName || '').trim()
-    const productName = String(jiraItem?.productName || '').trim()
+    // 孤儿决策恢复：同溯源循环口径
+    const productName = String(jiraItem?.productName || '').trim() || productNameFromItemKey(decision.itemKey)
 
     // 查 visit records
     let visitRecord = null
