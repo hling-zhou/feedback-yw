@@ -1378,16 +1378,18 @@ export default function Feedbacks() {
             : 'page-section'
         }`}
       >
+      {/* 布局一致性（11-09 方案 A 用户拍板）：溯源视图的共享 chrome 不渲染——
+          PostUseJiraTab 自带同款卡片内嵌吸顶工具条（白底 -mx-4/px-4），
+          保留外层会形成双层 sticky top-0 叠压、工具条盖住提示文字。
+          stickyChromeRef 的测量随之悬空，但溯源视图不消费 stickyChromeHeight
+          （FeedbackTable/CustomerVisitTable 均不在此分支渲染），无副作用。 */}
+      {!isPostUseTraceView && (
       <div
         ref={stickyChromeRef}
         className="sticky top-0 z-20 -mx-4 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
       >
         <div className="flex w-full flex-wrap items-start gap-2">
-        {isPostUseTraceView ? (
-          <div className="w-full text-sm text-ink-500">
-            产品部溯源视图自带筛选与操作条（下方），此处不再显示原始数据筛选。
-          </div>
-        ) : isCustomerVisitLane ? (
+        {isCustomerVisitLane ? (
           <div className="flex w-full flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">
               <FeedbackCompositeFilter
@@ -1607,8 +1609,9 @@ export default function Feedbacks() {
         )}
       </div>
       </div>
+      )}
 
-        {libraryLoading ? (
+      {libraryLoading ? (
           <div className="flex min-h-[320px] items-center justify-center py-16">
             <Spin size="large" description={libraryLoadingTip} />
           </div>
@@ -1618,6 +1621,7 @@ export default function Feedbacks() {
           <CustomerVisitTable
             rows={customerVisitTableRows}
             onSelect={(record) => setSelectedVisitRecord(record)}
+            stickyOffset={stickyChromeHeight}
           />
         ) : view === 'table' ? (
             <FeedbackTable
@@ -1721,7 +1725,13 @@ export default function Feedbacks() {
   )
 }
 
-function CustomerVisitTable({ rows, onSelect }) {
+function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
+  /**
+   * 表头吸顶偏移：与 FeedbackTable 同款机制——外层共享 sticky chrome
+   *（Feedbacks.jsx stickyChromeRef）测量高度传入，滚动时表头贴在筛选条下方。
+   * 布局一致性（11-09 排查拍板）：回访视图此前无表头吸顶，滚动时表头跟走，
+   * 与工单/原始数据视图行为不一致。
+   */
   const columns = useMemo(() => {
     const maxQuotes = Math.max(
       0,
@@ -1795,6 +1805,7 @@ function CustomerVisitTable({ rows, onSelect }) {
       dataSource={rows}
       columns={columns}
       scroll={{ x: 2200 }}
+      sticky={stickyOffset > 0 ? { offsetHeader: stickyOffset } : undefined}
       pagination={{ pageSize: 20 }}
       onRow={(row) => ({
         onClick: () => onSelect?.(row.__record || null),

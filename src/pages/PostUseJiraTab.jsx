@@ -245,7 +245,11 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     <div className="space-y-4">
       <div
         ref={stickyChromeRef}
-        className="page-sticky-chrome space-y-2"
+        // 布局一致性（11-09 方案 A 用户拍板）：卡片内嵌吸顶形态——与工单/原始数据
+        // 视图的共享 sticky chrome 同款（白底 + -mx-4/px-4 抵消宿主 page-card 的 p-4），
+        // 不再用页面级 .page-sticky-chrome（其负边距锚定外壳 padding，嵌卡片内会在
+        // lg 断点溢出卡片边缘、灰底与白底卡片视觉割裂）
+        className="sticky top-0 z-20 -mx-4 space-y-2 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Space wrap>
