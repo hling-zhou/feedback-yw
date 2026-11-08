@@ -41,11 +41,10 @@ const OPTIONAL_CONTROL_PATTERN = /allowClear|placeholder="[^"]*可选/
 
 /**
  * 文件级豁免清单（人工判定为"非提交型表单"——筛选器/配置面板，字段均有默认值非必填）：
- * - workbench/DimensionQuantityTrendPanel：图表维度筛选器（有默认值，切换即重算，无提交动作）
  * - pages/Import：列映射行组件自带 required && 红星机制（守卫正则匹配到其 hint 行属误报）
+ * （11-08 会诊 F：原豁免 workbench/DimensionQuantityTrendPanel 已随旧版工作台面板删除）
  */
 const FILE_EXEMPTIONS = new Set([
-  'src/components/workbench/DimensionQuantityTrendPanel.jsx',
   'src/pages/Import.jsx',
 ])
 
