@@ -444,11 +444,25 @@ function migrateActionItemSourceColumn(db) {
   }
 }
 
+/**
+ * 2026-11-09 收件人群组加抄送人列：存量库补 cc_emails_json（新库主 exec 直接建带列）。
+ * 旧群组数据 cc 天然空数组，读侧零兼容包袱。
+ */
+function migrateMailGroupCcColumn(db) {
+  const cols = db.prepare('PRAGMA table_info(mail_recipient_groups)').all()
+  if (!cols.length) return
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('cc_emails_json')) {
+    db.exec(`ALTER TABLE mail_recipient_groups ADD COLUMN cc_emails_json TEXT NOT NULL DEFAULT '[]';`)
+  }
+}
+
 export function initBusinessSchema() {
   const db = getDb()
   // 补列迁移必须先于主 exec：旧库 action_items 缺 source 列时，
   // 主 exec 里的 idx_action_items_source 索引会因 no such column 失败
   migrateActionItemSourceColumn(db)
+  migrateMailGroupCcColumn(db)
   db.exec(`
     CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
@@ -680,6 +694,7 @@ export function initBusinessSchema() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       emails_json TEXT NOT NULL DEFAULT '[]',
+      cc_emails_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );

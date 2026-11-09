@@ -73,6 +73,36 @@ describeRepo('mailRepository', () => {
     expect(group.emails).toEqual(['a@x.com', 'b@x.com'])
   })
 
+  // 2026-11-09 收件人群组 cc 支持（拍板：收件人必填非空、抄送人允许为空）
+  it('persists cc alongside emails and round-trips both through update', () => {
+    const group = repo.createMailGroup({
+      name: '带抄送',
+      emails: ['a@x.com'],
+      cc: ['c@x.com', 'd@x.com', 'c@x.com'],
+    })
+    expect(group.cc).toEqual(['c@x.com', 'd@x.com'])
+    const updated = repo.updateMailGroup(group.id, {
+      emails: ['a@x.com', 'b@x.com'],
+      cc: ['e@x.com'],
+    })
+    expect(updated.emails).toEqual(['a@x.com', 'b@x.com'])
+    expect(updated.cc).toEqual(['e@x.com'])
+    // cc 不传时沿用现值（部分 patch 语义）
+    const untouched = repo.updateMailGroup(group.id, { name: '改名' })
+    expect(untouched.cc).toEqual(['e@x.com'])
+  })
+
+  it('allows empty cc but rejects empty to / invalid cc addresses', () => {
+    const group = repo.createMailGroup({ name: '无抄送', emails: ['a@x.com'], cc: [] })
+    expect(group.cc).toEqual([])
+    // 收件人必填非空
+    expect(() => repo.createMailGroup({ name: '空收件人', emails: [], cc: ['c@x.com'] })).toThrow(/至少填写一个收件人/)
+    // 旧群组被清空收件人时同样拒绝（update 收件人非空口径）
+    expect(() => repo.updateMailGroup(group.id, { emails: [] })).toThrow(/至少填写一个收件人/)
+    // 抄送人非法邮箱拒绝
+    expect(() => repo.createMailGroup({ name: '坏抄送', emails: ['a@x.com'], cc: ['not-an-email'] })).toThrow(/不是有效邮箱/)
+  })
+
   it('keeps SMTP passwords server-side and one channel per data source', () => {
     const created = repo.createMailChannel({
       name: '用后即评',
@@ -107,5 +137,27 @@ describeRepo('mailRepository', () => {
     const kept = repo.updateMailChannel(created.id, { name: '用后即评通道', password: '' })
     expect(kept.name).toBe('用后即评通道')
     expect(repo.getMailChannelByDataSource('post_use_rating').password).toBe('secret-pass')
+  })
+
+  it('requires a password on channel create but keeps it optional on update (授权码口径)', () => {
+    // 2026-11-09 拍板：新建必填、编辑可空（留空保持原授权码）
+    expect(() =>
+      repo.createMailChannel({
+        name: '缺授权码',
+        dataSourceType: 'post_use_rating',
+        host: 'smtp.example.com',
+        fromAddress: 'from@example.com',
+      }),
+    ).toThrow(/请填写授权码/)
+    // 空串同样拒绝
+    expect(() =>
+      repo.createMailChannel({
+        name: '空授权码',
+        dataSourceType: 'post_use_rating',
+        host: 'smtp.example.com',
+        fromAddress: 'from@example.com',
+        password: '  ',
+      }),
+    ).toThrow(/请填写授权码/)
   })
 })

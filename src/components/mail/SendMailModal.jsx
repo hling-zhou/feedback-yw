@@ -59,6 +59,7 @@ export default function SendMailModal({
         if (group) {
           setGroupId(group.id)
           setToText((group.emails || []).join(', '))
+          setCcText((group.cc || []).join(', '))
         }
       })
       .catch((error) => message.error(error?.message || '加载发信配置失败'))
@@ -82,6 +83,8 @@ export default function SendMailModal({
     setGroupId(id || '')
     const group = groups.find((item) => item.id === id)
     setToText((group?.emails || []).join(', '))
+    // 2026-11-09 拍板：选群组同时预填抄送；清空选择时两框同清（手改不写回群组语义不变）
+    setCcText((group?.cc || []).join(', '))
   }
 
   const handleOk = async () => {

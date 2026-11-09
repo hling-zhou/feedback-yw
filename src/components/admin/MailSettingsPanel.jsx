@@ -89,18 +89,22 @@ export default function MailSettingsPanel({ canEdit = false }) {
     groupForm.setFieldsValue({
       name: item?.name || '',
       emails: (item?.emails || []).join('\n'),
+      cc: (item?.cc || []).join('\n'),
     })
     setGroupOpen(true)
   }
 
   const saveGroup = async () => {
     const values = await groupForm.validateFields()
-    const body = {
-      name: values.name,
-      emails: String(values.emails || '')
+    const splitEmails = (text) =>
+      String(text || '')
         .split(/[\n,;，；]+/)
         .map((item) => item.trim())
-        .filter(Boolean),
+        .filter(Boolean)
+    const body = {
+      name: values.name,
+      emails: splitEmails(values.emails),
+      cc: splitEmails(values.cc),
     }
     try {
       if (editingGroup) await updateMailGroup(editingGroup.id, body)
@@ -213,7 +217,9 @@ export default function MailSettingsPanel({ canEdit = false }) {
           dataSource={status.groups}
           columns={[
             { title: '名称', dataIndex: 'name' },
-            { title: '成员', dataIndex: 'emails', render: (value) => (value || []).join('、') || '—' },
+            { title: '收件人', dataIndex: 'emails', render: (value) => (value || []).join('、') || '—' },
+            { title: '抄送人', dataIndex: 'cc', render: (value) => (value || []).join('、') || '—' },
+
             ...(canEdit
               ? [{
                   title: '',
@@ -309,8 +315,20 @@ export default function MailSettingsPanel({ canEdit = false }) {
           <Form.Item name="port" label="端口"><InputNumber min={1} max={65535} className="w-full" /></Form.Item>
           <Form.Item name="secure" label="SSL/TLS" valuePropName="checked"><Switch /></Form.Item>
           <Form.Item name="username" label="账号"><Input /></Form.Item>
-          <Form.Item name="password" label="密码">
-            <Input.Password placeholder={editingChannel?.hasPassword ? '留空则保持原密码' : ''} />
+          <Form.Item
+            name="password"
+            label="授权码"
+            rules={editingChannel ? [] : [{ required: true, message: '请填写授权码' }]}
+            // 2026-11-09 拍板：新建必填；编辑留空则保持原授权码（服务端 update 同语义）
+            extra="从相应邮箱的原生客户端或网页版设置中获取（非登录密码）"
+          >
+            <Input.Password
+              placeholder={
+                editingChannel?.hasPassword
+                  ? '留空则保持原授权码'
+                  : '邮箱 SMTP 授权码，非登录密码'
+              }
+            />
           </Form.Item>
           <Form.Item name="fromAddress" label="发件人" rules={[{ required: true }]}><Input /></Form.Item>
         </Form>
@@ -325,8 +343,11 @@ export default function MailSettingsPanel({ canEdit = false }) {
       >
         <Form form={groupForm} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="emails" label="成员邮箱">
-            <Input.TextArea rows={6} placeholder="一行一个，或用逗号分隔" />
+          <Form.Item name="emails" label="收件人" rules={[{ required: true }]}>
+            <Input.TextArea rows={4} placeholder="一行一个，或用逗号分隔；至少填一个" />
+          </Form.Item>
+          <Form.Item name="cc" label="抄送人">
+            <Input.TextArea rows={3} placeholder="选填，一行一个，或用逗号分隔" />
           </Form.Item>
         </Form>
       </Modal>

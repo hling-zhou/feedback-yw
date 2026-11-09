@@ -50,6 +50,7 @@ function groupFromRow(row) {
     id: String(row.id),
     name: String(row.name || ''),
     emails: uniqueEmails(parseJsonArray(row.emails_json)),
+    cc: uniqueEmails(parseJsonArray(row.cc_emails_json)),
     createdAt: String(row.created_at || ''),
     updatedAt: String(row.updated_at || ''),
   }
@@ -151,6 +152,9 @@ export function createMailChannel(input) {
     .prepare('SELECT id FROM mail_channels WHERE data_source_type = ?')
     .get(dataSourceType)
   if (existing) throw new Error('该数据来源已有发信通道')
+  // 2026-11-09 拍板：新建时授权码必填（编辑留空则保持原授权码——updateMailChannel 既有语义）。
+  // 放在唯一性检查之后：同数据来源重复的场景优先报「已有发信通道」
+  if (!String(input.password || '').trim()) throw new Error('请填写授权码')
   const now = nowIso()
   const id = randomId()
   const port = Number(input.port) > 0 ? Math.floor(Number(input.port)) : 465
@@ -238,20 +242,39 @@ export function listMailGroups() {
     .map((row) => groupFromRow(row))
 }
 
+/**
+ * 解析并校验群组邮箱字段（收件人/抄送人共用口径）。
+ * @param {unknown} raw 请求传入的邮箱列表
+ * @returns {string[]} 去重后的邮箱数组
+ */
+function normalizeGroupEmails(raw) {
+  return uniqueEmails(parseEmailList(raw))
+}
+
+/** 逐邮箱合法性校验，返回第一个非法邮箱（无则 null） */
+function findInvalidEmail(emails) {
+  return emails.find((email) => !isValidEmail(email)) || null
+}
+
 export function createMailGroup(input) {
   const name = String(input.name || '').trim()
   if (!name) throw new Error('请填写群组名称')
-  const emails = uniqueEmails(parseEmailList(input.emails))
-  const invalid = emails.find((email) => !isValidEmail(email))
-  if (invalid) throw new Error(`「${invalid}」不是有效邮箱`)
+  const emails = normalizeGroupEmails(input.emails)
+  // 2026-11-09 拍板：收件人必填非空（防建出全空群组），抄送人允许为空
+  if (!emails.length) throw new Error('请至少填写一个收件人邮箱')
+  const invalidTo = findInvalidEmail(emails)
+  if (invalidTo) throw new Error(`「${invalidTo}」不是有效邮箱`)
+  const cc = normalizeGroupEmails(input.cc)
+  const invalidCc = findInvalidEmail(cc)
+  if (invalidCc) throw new Error(`抄送人「${invalidCc}」不是有效邮箱`)
   const now = nowIso()
   const id = randomId()
   getDb()
     .prepare(
-      `INSERT INTO mail_recipient_groups (id, name, emails_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO mail_recipient_groups (id, name, emails_json, cc_emails_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, name, JSON.stringify(emails), now, now)
+    .run(id, name, JSON.stringify(emails), JSON.stringify(cc), now, now)
   return listMailGroups().find((item) => item.id === id)
 }
 
@@ -261,14 +284,19 @@ export function updateMailGroup(id, patch) {
   const current = groupFromRow(row)
   const name = String(patch.name ?? current.name).trim()
   if (!name) throw new Error('请填写群组名称')
-  const emails = uniqueEmails(parseEmailList(patch.emails ?? current.emails))
-  const invalid = emails.find((email) => !isValidEmail(email))
-  if (invalid) throw new Error(`「${invalid}」不是有效邮箱`)
+  // 收件人必填非空（与 createMailGroup 同口径）；cc 未传时沿用现值
+  const emails = normalizeGroupEmails(patch.emails ?? current.emails)
+  if (!emails.length) throw new Error('请至少填写一个收件人邮箱')
+  const invalidTo = findInvalidEmail(emails)
+  if (invalidTo) throw new Error(`「${invalidTo}」不是有效邮箱`)
+  const cc = normalizeGroupEmails(patch.cc ?? current.cc)
+  const invalidCc = findInvalidEmail(cc)
+  if (invalidCc) throw new Error(`抄送人「${invalidCc}」不是有效邮箱`)
   getDb()
     .prepare(
-      `UPDATE mail_recipient_groups SET name = ?, emails_json = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE mail_recipient_groups SET name = ?, emails_json = ?, cc_emails_json = ?, updated_at = ? WHERE id = ?`,
     )
-    .run(name, JSON.stringify(emails), nowIso(), id)
+    .run(name, JSON.stringify(emails), JSON.stringify(cc), nowIso(), id)
   return listMailGroups().find((item) => item.id === id)
 }
 

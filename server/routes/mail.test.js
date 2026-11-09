@@ -227,6 +227,8 @@ describeApi('mail API', () => {
         dataSourceType: 'post_use_rating',
         host: 'smtp.example.com',
         fromAddress: 'from@example.com',
+        // 2026-11-09 新口径：新建通道授权码必填（本用例聚焦附件保留，非通道校验）
+        password: 'secret-pass',
       },
     })
     const send = await app.inject({
