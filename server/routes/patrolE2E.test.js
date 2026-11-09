@@ -119,8 +119,8 @@ describe.skipIf(!sqliteAvailable)('API 巡检端到端（样例全量走真实�
         /** @type {Record<string, unknown>} */
         let parsed = {}
         try { parsed = JSON.parse(body) } catch { /* ignore */ }
-        const args = /** @type {{ arguments?: { requestId?: string } }} */ (parsed.params || {})
-        const rid = String(args.arguments?.requestId || '')
+        const args = /** @type {{ arguments?: { filter?: string, requestId?: string } }} */ (parsed.params || {})
+        const rid = String(args.arguments?.filter || args.arguments?.requestId || '')
         // 从 pushed_diagnose 反查：diagMap 在模块级由 seedMcpMap 注入
         const text = mcpDiagMap.get(rid) || JSON.stringify({ final_conclusion: '日志查询异常/无数据-mock' })
         res.writeHead(200, { 'content-type': 'application/json' })

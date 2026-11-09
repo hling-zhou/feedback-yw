@@ -63,8 +63,8 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
         try { parsed = JSON.parse(body) } catch { parsed = {} }
         const method = String(parsed.method || '')
         if (method === 'tools/call') {
-          const args = /** @type {{ arguments?: { requestId?: string } }} */ (parsed.params || {})
-          const rid = String(args.arguments?.requestId || '')
+          const args = /** @type {{ arguments?: { filter?: string, requestId?: string } }} */ (parsed.params || {})
+          const rid = String(args.arguments?.filter || args.arguments?.requestId || '')
           let result
           if (rid.startsWith('lb-updating')) result = SAMPLE_DIAG_LB_UPDATING
           else if (rid.startsWith('timeout')) {
@@ -95,7 +95,7 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('8.1 JSON-RPC 形态对拍：method=tools/call、params.name=log_search、arguments.requestId', async () => {
+  it('8.1 JSON-RPC 形态对拍：method=tools/call、name=log_search、arguments 含 filter/时间窗/枚举（真实契约）', async () => {
     const { compressPatrolDay } = await import('./patrolCompress.js')
     const { runPatrolDiagnose } = await import('./patrolDiagnose.js')
     db.prepare(`INSERT INTO api_patrol_requests
@@ -111,8 +111,12 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
     const call = receivedBodies.find((b) => b.method === 'tools/call')
     expect(call).toBeTruthy()
     expect(/** @type {{params: {name: string}}} */ (call).params.name).toBe('log_search')
-    expect(/** @type {{params: {arguments: {requestId: string}}}} */ (call).params.arguments.requestId).toBe('diag-1')
-    expect(/** @type {{headers?: Record<string,string>}} */ (call).authorization !== undefined || true).toBe(true)
+    const args = /** @type {{params: {arguments: Record<string, string>}}} */ (call).params.arguments
+    expect(args.filter).toBe('diag-1')
+    expect(args.productName).toBe('fip/vpc')
+    expect(args.poolName).toBe('p1')
+    expect(String(args.startTime)).toMatch(/^2026-09-01 \d{2}:\d{2}:\d{2}$/)
+    expect(String(args.endTime)).toMatch(/^2026-09-01 \d{2}:\d{2}:\d{2}$/)
   })
 
   it('8.2 解析回填：日志缺失文本 → groups L1=诊断能力缺口、状态=—；diagnoses success', async () => {

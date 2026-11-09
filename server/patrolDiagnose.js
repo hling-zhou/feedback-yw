@@ -1,20 +1,46 @@
 /**
  * API 巡检诊断任务（docs/DESIGN-API巡检.md §4.2）。
- * 服务端轻量 MCP Client（JSON-RPC over HTTP → cni.api.mcp:31788/mcp）。
+ * 服务端轻量 MCP Client（JSON-RPC over HTTP → cni.mcp.server:31788/mcp-server/mcp）。
  * 流程：取当日该池未诊断组（pending_diagnosis）→ 并发 worker（默认 3）逐组调 log_search
  * （仅组首条 requestId）→ diagnoses 状态机（pending/success/failed）→ 回填 groups
  * root_cause_l1/l2 + product_action_status（根因映射值）。
  * 失败组保持 pending_diagnosis 可重试；超时/5xx/连接失败 → failed。
+ *
+ * 真实服务契约（2026-11-09 实测校准，serverInfo=cni-mcp-server-api-v2 v1.0.0）：
+ * - 传输 = MCP Streamable HTTP：请求必须带 `Accept: application/json, text/event-stream`
+ *   （缺头 → 400 空 body）；
+ * - log_search 必填：startTime/endTime（yyyy-MM-dd HH:mm:ss）、productName（枚举）、
+ *   poolName（枚举）；**无 requestId 参数**——requestId 走 filter 关键字过滤；
+ * - 官方 tool_timeout_sec=300（时间窗口大/日志量大时慢）。
  */
 
-const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_CONCURRENCY = 3
 const DEFAULT_TOOL_NAME = 'log_search'
 
+/** MCP  productName 枚举映射（平台产品 key → 云网枚举）。 */
+const MCP_PRODUCT_NAMES = /** @type {Record<string, string>} */ ({
+  eip: 'fip/vpc',
+  vpc: 'fip/vpc',
+  slb: 'slb-console',
+})
+
 /**
- * MCP tools/call 单次调用。
+ * 组首条时间 ±offsetMin 格式化（yyyy-MM-dd HH:mm:ss，本地时区）；无效日期回退当日零点。
+ * @param {Date} d
+ * @param {number} offsetMin
+ */
+function invalidDateGuard(d, offsetMin) {
+  const base = Number.isFinite(d.getTime()) ? d : new Date()
+  const t = new Date(base.getTime() + offsetMin * 60_000)
+  const p = (/** @type {number} */ n) => String(n).padStart(2, '0')
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`
+}
+
+/**
+ * MCP tools/call 单次调用（Streamable HTTP 传输）。
  * @param {{ mcpEndpoint: string, mcpToken: string, toolName?: string, timeoutMs?: number }} options
- * @param {{ requestId: string }} args
+ * @param {Record<string, unknown>} args
  * @returns {Promise<{ ok: true, text: string } | { ok: false, error: string }>}
  */
 export async function callMcpTool(options, args) {
@@ -31,7 +57,8 @@ export async function callMcpTool(options, args) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        accept: 'application/json',
+        // Streamable HTTP 必需（缺头 400——11-09 实测）
+        accept: 'application/json, text/event-stream',
         authorization: `Bearer ${mcpToken}`,
       },
       body: JSON.stringify({
@@ -47,12 +74,16 @@ export async function callMcpTool(options, args) {
     }
     const payload = await res.json()
     // MCP 返回形态：result.content[]（text 段落）——按协议拼回原文
-    const content = /** @type {{ result?: { content?: Array<{ type: string, text?: string }> } }} */ (payload)?.result?.content
+    const content = /** @type {{ result?: { content?: Array<{ type: string, text?: string }>, isError?: boolean } }} */ (payload)?.result?.content
     if (Array.isArray(content)) {
       const text = content
         .filter((c) => c.type === 'text' && typeof c.text === 'string')
         .map((c) => /** @type {{text: string}} */ (c).text)
         .join('\n')
+      // isError=true：text 是错误描述（如下游平台 412/500），按失败处理保可重试
+      if (payload?.result?.isError) {
+        return { ok: false, error: text.slice(0, 300) || 'MCP 工具执行错误' }
+      }
       if (text) return { ok: true, text }
     }
     // 兜底：result 直接是对象（非标准形态），原样 JSON 化
@@ -88,9 +119,9 @@ export async function runPatrolDiagnose(options) {
     concurrency = DEFAULT_CONCURRENCY,
   } = options
 
-  const groups = /** @type {Array<{ id: number, first_request_id: string, api_path: string, product_key: string | null }>} */ (
+  const groups = /** @type {Array<{ id: number, first_request_id: string, first_request_time: string, api_path: string, product_key: string | null }>} */ (
     db.prepare(`
-      SELECT id, first_request_id, api_path, product_key
+      SELECT id, first_request_id, first_request_time, api_path, product_key
       FROM api_patrol_failure_groups
       WHERE group_date=? AND pool_name=? AND product_action_status='pending_diagnosis'
       ORDER BY first_request_time
@@ -126,10 +157,21 @@ export async function runPatrolDiagnose(options) {
         const idx = cursor++
         if (idx >= groups.length) break
         const group = groups[idx]
-        // 只诊断组首条 requestId（需求原文）
+        // log_search 真实参数契约（11-09 实测）：必填 startTime/endTime/productName/poolName，
+        // requestId 走 filter。时间窗口 = 组首条 ±30 分钟（log 时区与 request_time 同为本地）。
+        const firstTime = new Date(String(group.first_request_time).replace(' ', 'T'))
+        const startTime = invalidDateGuard(firstTime, -30)
+        const endTime = invalidDateGuard(firstTime, 30)
+        const productName = MCP_PRODUCT_NAMES[String(group.product_key || '')] || 'fip/vpc'
         const result = await callMcpTool(
           { mcpEndpoint, mcpToken, toolName, timeoutMs },
-          { requestId: group.first_request_id },
+          {
+            startTime,
+            endTime,
+            productName,
+            poolName: pool,
+            filter: group.first_request_id,
+          },
         )
         if (!result.ok) {
           failed += 1

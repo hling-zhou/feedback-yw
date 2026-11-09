@@ -19,6 +19,26 @@ export function extractDiagnosticText(diagnoseRaw, errorMessage, isElb) {
     try {
       const d = JSON.parse(raw)
       text = String(d?.final_conclusion ?? d?.conclusion ?? '').trim()
+      // 真实 MCP log_search 返回（日志平台 JSON，11-09 实测）：提取失败上下文——
+      // records 的 ERROR/WARN 日志行 + errorCode/errorMessage 字段，拼为分类输入。
+      if (!text && d?.code === '0000' && d?.data?.records) {
+        /** @type {Array<{ content?: string, level?: string }>} */
+        const records = Array.isArray(d.data.records) ? d.data.records : []
+        const lines = records
+          .map((r) => String(r?.content || '').trim())
+          .filter(Boolean)
+        const errLines = lines.filter((l) => /\[\s*(ERROR|WARN|FATAL)\s*\]/.test(l))
+        const picked = (errLines.length > 0 ? errLines : lines).slice(0, 10)
+        // 行内提取 errorMessage=/errorCode= 片段优先（根因关键词常在此）
+        const frag = []
+        for (const l of picked) {
+          const m = /errorMessage=([^,\]]*)/.exec(l)
+          if (m && m[1] && m[1] !== 'null') frag.push(m[1])
+          const e = /errorCode=([^,\]]*)/.exec(l)
+          if (e && e[1] && e[1] !== 'null') frag.push(`code=${e[1]}`)
+        }
+        text = [...(frag.length > 0 ? frag : picked)].join('；').slice(0, 800)
+      }
     } catch {
       text = raw.slice(0, 800) // 底稿：解析失败截取原文前 800 字
     }
