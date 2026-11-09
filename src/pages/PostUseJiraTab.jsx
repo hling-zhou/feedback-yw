@@ -166,7 +166,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
       })
       setItems((list) => list.map((row) => (row.id === item.id ? item : row)))
       setEditing(null)
-      message.success(mode === 'submit' ? '已提交' : '已暂存')
+      message.success(mode === 'submit' ? '回溯已完成' : '已暂存')
     } catch (error) {
       message.error(error?.message || '保存失败')
     } finally {

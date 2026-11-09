@@ -107,7 +107,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
       })
       const item = data?.item
       if (item) {
-        message.success(mode === 'submit' ? '已提交' : '已暂存')
+        message.success(mode === 'submit' ? '评估已完成' : '已暂存')
         onSaved?.(item)
         onClose?.()
       } else {
@@ -246,16 +246,16 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
             <Button loading={saving || actionSaving} onClick={() => void handleSaveAll('draft')}>
               暂存
             </Button>
-            {/* 2026-11-05 用户拍板：提交前显式提示——评估完结才提交，过程性评估走暂存 */}
+            {/* 2026-11-05 用户拍板：完成前显式提示——评估完结才点完成，过程性评估走暂存；2026-11-09 按钮文案改「评估完成」 */}
             <Popconfirm
-              title="请务必在内部评估完结后提交"
+              title="请务必在内部评估完结后再标记完成"
               description="过程性评估保存可点击「暂存」（暂存状态为评估中，可随时继续编辑）。"
-              okText="确认提交"
+              okText="确认完成"
               cancelText="再想想"
               onConfirm={() => void handleSaveAll('submit')}
             >
               <Button type="primary" loading={saving || actionSaving}>
-                提交
+                评估完成
               </Button>
             </Popconfirm>
           </div>

@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Button, Empty, Table, Tag, Tooltip, Typography } from 'antd'
+import { useState } from 'react'
+import { Button, Empty, Modal, Table, Tag, Tooltip, Typography } from 'antd'
+import { ExpandOutlined } from '@ant-design/icons'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
@@ -28,7 +30,12 @@ function channelLabel(channel, sourceSubType) {
 /**
  * @param {import('../lib/types.js').FeedbackRecord[]} items
  */
-function buildPostUseColumns(keyCustomers) {
+/**
+ * 2026-11-09 拍板：原始数据 tab 去详情抽屉后，原文全文改列内「放大查看」（纯只读）。
+ * @param {string[] | undefined} keyCustomers 重点客户名单（settings.postUseKeyCustomers）
+ * @param {(record: import('../lib/types.js').FeedbackRecord) => void} onViewRaw
+ */
+function buildPostUseColumns(keyCustomers, onViewRaw) {
   return [
     {
       title: '渠道',
@@ -87,11 +94,31 @@ function buildPostUseColumns(keyCustomers) {
       title: '原文 / 意见',
       dataIndex: 'rawText',
       width: 280,
-      render: (_, fb) => (
-        <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
-          {fb.rawText || fb.commentText || fb.lowScoreReason || '—'}
-        </Typography.Paragraph>
-      ),
+      render: (_, fb) => {
+        const raw = fb.rawText || fb.commentText || fb.lowScoreReason || ''
+        return (
+          <div>
+            <Typography.Paragraph className="!mb-0 line-clamp-2 text-xs">
+              {raw || '—'}
+            </Typography.Paragraph>
+            {raw ? (
+              <Button
+                type="link"
+                size="small"
+                className="!h-auto !px-0 !py-0 !text-xs"
+                icon={<ExpandOutlined />}
+                onClick={(e) => {
+                  // 防御：行点击（onSelect 存在时）不因放大按钮触发
+                  e.stopPropagation()
+                  onViewRaw(fb)
+                }}
+              >
+                放大查看
+              </Button>
+            ) : null}
+          </div>
+        )
+      },
     },
     {
       title: '客服部回访',
@@ -330,6 +357,7 @@ export function filterVisibleColumns(columns, hiddenColumns) {
 
 export default function FeedbackTable({
   items,
+  /** 行点击回调；不传（用后即评原始数据 tab，2026-11-09 去详情抽屉拍板）则行不可点击 */
   onSelect,
   reviewEnabled = false,
   doneRecordIds = /** @type {ReadonlySet<string>} */ (new Set()),
@@ -342,6 +370,11 @@ export default function FeedbackTable({
   /** 用后即评重点客户名单（settings.postUseKeyCustomers） */
   keyCustomers,
 }) {
+  /** 2026-11-09：原文放大查看（纯只读，替代原始数据 tab 的详情抽屉原文区）。
+   *  类型按仓库惯例放宽 any：评价记录运行时字段（customerName/importMonth/ratingScore 等）
+   *  均由导入链保证有值，但 FeedbackRecord 类型定义未声明（既有欠账，不在此扩大检查面）。 */
+  const [viewingRaw, setViewingRaw] = useState(/** @type {any} */ (null))
+
   if (items.length === 0) {
     return (
       <Empty
@@ -360,13 +393,14 @@ export default function FeedbackTable({
     (items.length > 0 && items.every((fb) => recordSourceType(fb) === 'post_use_rating'))
 
   const allColumns = postUseView
-    ? buildPostUseColumns(keyCustomers)
+    ? buildPostUseColumns(keyCustomers, (fb) => setViewingRaw(fb))
     : buildTicketColumns(reviewEnabled, doneRecordIds)
   const columns = filterVisibleColumns(allColumns, hiddenColumns)
   const scrollX = columns.reduce((sum, col) => sum + (col.width || 140), 0)
   const stickyProps = stickyOffset > 0 ? { sticky: { offsetHeader: stickyOffset } } : {}
 
   return (
+    <>
     <Table
       rowKey="id"
       columns={columns}
@@ -374,10 +408,35 @@ export default function FeedbackTable({
       scroll={{ x: scrollX }}
       {...stickyProps}
       pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
-      onRow={(record) => ({
-        onClick: () => onSelect(record),
-        className: 'group cursor-pointer',
-      })}
+      onRow={onSelect
+        ? (record) => ({
+            onClick: () => onSelect(record),
+            className: 'group cursor-pointer',
+          })
+        : undefined}
     />
+    {/* 原文放大查看（纯只读）：抽屉下线后的全文兜底入口 */}
+    {viewingRaw ? (
+      <Modal
+        open
+        title={`评价原文 · ${viewingRaw.customerName || viewingRaw.customerCode || '—'} · ${viewingRaw.importMonth || '未知月份'}`}
+        width={720}
+        footer={null}
+        onCancel={() => setViewingRaw(null)}
+      >
+        <Typography.Text type="secondary" className="mb-2 block text-xs">
+          {channelLabel(viewingRaw.channel, viewingRaw.sourceSubType)}
+          {viewingRaw.ratingScore != null && Number.isFinite(Number(viewingRaw.ratingScore))
+            ? ` · ${Number(viewingRaw.ratingScore)} 分`
+            : ''}
+          {' · '}
+          {viewingRaw.product || viewingRaw.productName || '—'}
+        </Typography.Text>
+        <Typography.Paragraph className="!mb-0 whitespace-pre-wrap text-[13px] leading-[1.7]">
+          {viewingRaw.rawText || viewingRaw.commentText || viewingRaw.lowScoreReason || '—'}
+        </Typography.Paragraph>
+      </Modal>
+    ) : null}
+    </>
   )
 }

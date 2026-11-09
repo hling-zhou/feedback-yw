@@ -171,16 +171,16 @@ export default function PostUseJiraDrawer({
             <Button loading={saving || actionSaving} onClick={() => void handleDraft()}>
               暂存
             </Button>
-            {/* 2026-11-05 用户拍板：提交前显式提示——回溯完结才提交，过程性进展走暂存 */}
+            {/* 2026-11-05 用户拍板：完成前显式提示——回溯完结才点完成，过程性进展走暂存；2026-11-09 按钮文案改「回溯完成」 */}
             <Popconfirm
-              title="请务必在回溯完结后提交"
+              title="请务必在回溯完结后再标记完成"
               description="过程性进展保存可点击「暂存」（暂存状态为处理中，可随时继续编辑）。"
-              okText="确认提交"
+              okText="确认完成"
               cancelText="再想想"
               onConfirm={() => void handleSubmit()}
             >
               <Button type="primary" loading={saving || actionSaving}>
-                提交
+                回溯完成
               </Button>
             </Popconfirm>
           </div>

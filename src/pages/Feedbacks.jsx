@@ -921,9 +921,11 @@ export default function Feedbacks() {
   const filteredSentiment = useMemo(() => sentimentStats(filtered), [filtered])
   const laneTotalInDb = isCustomerVisitLane ? customerVisitRecords.length : totalInDb
 
+  // 2026-11-09：工单类与用后即评满意度来源都跳回工作台对应 Tab（显式 ?tab= 语义）；
+  // 其余来源仍走洞察分析 · 用户情绪（那里才有多来源下钻维度）。
   const sentimentWorkbenchUrl = useMemo(() => {
     const source = filters.dataSource
-    if (source && isTicketSource(source)) {
+    if (source && (isTicketSource(source) || source === 'post_use_rating')) {
       return `${WORKBENCH_HOME}?tab=${encodeURIComponent(source)}`
     }
     return buildWorkbenchAnalysisUrl({
@@ -935,7 +937,10 @@ export default function Feedbacks() {
   }, [filters.dataSource, filters.product, filters.journeyL1])
 
   const sentimentWorkbenchLabel = useMemo(() => {
-    if (filters.dataSource && isTicketSource(filters.dataSource)) {
+    if (
+      filters.dataSource &&
+      (isTicketSource(filters.dataSource) || filters.dataSource === 'post_use_rating')
+    ) {
       return `工作台 · ${DATA_SOURCE_LABELS[filters.dataSource]}`
     }
     return '洞察分析 · 用户情绪'
@@ -1627,7 +1632,8 @@ export default function Feedbacks() {
             <FeedbackTable
               key={currentPeriodId || 'no-period'}
               items={filtered}
-              onSelect={selectFeedback}
+              /* 2026-11-09 拍板：用后即评原始数据 tab 去详情抽屉——行不可点击；工单 lane 照常 */
+              onSelect={isPostUseLane ? undefined : selectFeedback}
               reviewEnabled={reviewEnabled}
               doneRecordIds={doneRecordIds}
               dataSource={isPostUseLane ? 'post_use_rating' : filters.dataSource || ''}
@@ -1639,13 +1645,15 @@ export default function Feedbacks() {
           <CardGrid
             key={currentPeriodId || 'no-period'}
             items={filtered}
-            onSelect={selectFeedback}
+            onSelect={isPostUseLane ? undefined : selectFeedback}
             postUseMode={isPostUseLane}
           />
         )}
       </div>
 
-      {!isCustomerVisitLane ? (
+      {/* 2026-11-09 拍板：用后即评 lane（原始数据/溯源/回访三视图）不挂详情抽屉——原始数据行不可点击，
+          溯源/回访有各自抽屉；工单 lane（!isCustomerVisitLane 的投诉/咨询视图）照常 */}
+      {!isCustomerVisitLane && !isPostUseLane ? (
         <FeedbackDrawer
           feedback={selected}
           onClose={requestCloseDrawer}
@@ -1762,10 +1770,11 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
         },
       },
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
+      // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定，其余原样
+      { title: '产品名称', dataIndex: '产品名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
       { title: '登录账号名称', dataIndex: '登录账号名称', width: 140, ellipsis: true },
-      { title: '产品名称', dataIndex: '产品名称', width: 160, ellipsis: true },
       { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
       { title: '建议触发类型', dataIndex: '建议触发类型', width: 140, ellipsis: true },
       { title: '7分以下总次数', dataIndex: '7分以下总次数', width: 112 },
@@ -1844,8 +1853,8 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
           return (
             <div
               key={fb.id}
-              className="page-card page-card-bordered cursor-pointer"
-              onClick={() => onSelect(fb)}
+              className={onSelect ? 'page-card page-card-bordered cursor-pointer' : 'page-card page-card-bordered'}
+              onClick={onSelect ? () => onSelect(fb) : undefined}
             >
               <div className="flex flex-wrap gap-1.5">
                 <Tag color="blue">{channel}</Tag>
@@ -1868,8 +1877,8 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
         return (
         <div
           key={fb.id}
-          className="page-card page-card-bordered cursor-pointer"
-          onClick={() => onSelect(fb)}
+          className={onSelect ? 'page-card page-card-bordered cursor-pointer' : 'page-card page-card-bordered'}
+          onClick={onSelect ? () => onSelect(fb) : undefined}
         >
           <div className="flex flex-wrap gap-1.5">
             <SentimentBadge record={fb} />

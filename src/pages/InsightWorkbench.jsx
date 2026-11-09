@@ -12,7 +12,7 @@ import RebuildInsightsButton from '../components/workbench/RebuildInsightsButton
 import { IMPORT_REBUILD_DISABLED_TIP } from '../lib/importSession.js'
 import { RETAG_REBUILD_DISABLED_TIP } from '../lib/retagSession.js'
 import { useSharedBackgroundTaskBlock } from '../hooks/useSharedBackgroundTaskBlock.js'
-import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { listMonthsInclusive, toLastMonthSpec } from '../domain/insightPeriod.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { isTicketSource } from '../lib/importUtils.js'
@@ -32,6 +32,11 @@ import {
   formatInsightRebuildSpinDescription,
 } from '../lib/insightRebuildClient.js'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
+import {
+  readWorkbenchLastActiveTab,
+  rememberWorkbenchActiveTab,
+  resolveInitialWorkbenchTab,
+} from '../lib/workbenchTabMemory.js'
 import {
   hasSeenWorkbenchTicketTabsWhatsNew,
   markWorkbenchTicketTabsWhatsNewSeen,
@@ -76,11 +81,10 @@ export default function InsightWorkbench() {
   )
 
   const [searchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState(() => {
-    const tab = searchParams.get('tab')
-    if (tab && (tab === TAB_OVERVIEW || IMPORTABLE_DATA_SOURCE_TYPES.includes(tab))) return tab
-    return TAB_OVERVIEW
-  })
+  // 2026-11-09 需求：初始 Tab 三级优先链 = URL 显式 ?tab= 参数 > 上次离开的 Tab（localStorage 本机记忆）> 第一个 Tab
+  const [activeTab, setActiveTab] = useState(() =>
+    resolveInitialWorkbenchTab(searchParams.get('tab'), readWorkbenchLastActiveTab()),
+  )
   const [selectedProduct, setSelectedProduct] = useState('')
   const [showTicketTabsWhatsNew, setShowTicketTabsWhatsNew] = useState(
     () => !hasSeenWorkbenchTicketTabsWhatsNew(),
@@ -103,6 +107,11 @@ export default function InsightWorkbench() {
       setActiveTab(tab)
     }
   }, [searchParams])
+
+  // 离开工作台前的任意时刻，把最后一次所在 Tab 记到本机（非法值由写入侧白名单拦截）
+  useEffect(() => {
+    rememberWorkbenchActiveTab(activeTab)
+  }, [activeTab])
 
   // 工作台支持月、季、年。自定义周期仍收到最后一个月，避免任意长窗拖垮首屏。
   const lastMismatchIdRef = useRef(null)
