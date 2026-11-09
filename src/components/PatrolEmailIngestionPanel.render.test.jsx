@@ -22,8 +22,8 @@ describe('Plan B 邮件拉取面板（渲染守卫）', () => {
     expect(html).toContain('每日 09:15 自动拉取导入')
     expect(html).toContain('立即拉取（测试/补拉）')
     expect(html).toContain('尚未拉取过')
-    // 未配置授权码警告（config=null → imapUser '—'）
-    expect(html).toContain('未配置授权码环境变量')
+    // 未配置授权码警告（config=null → authCodeConfigured=false → 红色提示）
+    expect(html).toContain('无法连接邮箱')
   })
 
   it('canEdit=false 时立即拉取按钮禁用', () => {

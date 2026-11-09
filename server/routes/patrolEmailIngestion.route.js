@@ -39,7 +39,7 @@ export function registerPatrolEmailIngestionRoutes(app) {
   })
 
   app.get('/api/patrol/email-ingestion/config', { preHandler: requirePermission('view') }, async () => {
-    // 脱敏：不回 auth code（它只从环境变量读取，从不入库）；imapUser 部分脱敏
+    // 脱敏：不回授权码明文；imapUser 部分脱敏
     const c = readEmailIngestionConfig()
     return {
       enabled: c.enabled,
@@ -49,21 +49,24 @@ export function registerPatrolEmailIngestionRoutes(app) {
       imapTls: c.imapTls,
       senderWhitelist: c.senderWhitelist,
       autoProcessOnFetch: c.autoProcessOnFetch,
-      authCodeConfigured: Boolean(process.env.PATROL_EMAIL_AUTH_CODE),
+      authCodeConfigured: Boolean(c.imapAuthCode || process.env.PATROL_EMAIL_AUTH_CODE),
     }
   })
 
   app.put('/api/patrol/email-ingestion/config', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
-    const body = /** @type {{enabled?: boolean, senderWhitelist?: string[], autoProcessOnFetch?: boolean}} */ (request.body || {})
+    const body = /** @type {{enabled?: boolean, senderWhitelist?: string[], autoProcessOnFetch?: boolean, imapAuthCode?: string}} */ (request.body || {})
     const prev = readEmailIngestionConfig()
     const next = {
       ...prev,
       enabled: body.enabled === true,
-      // IMAP 连接参数（host/port/user）仅设计文档约定值+环境部署级维护，前端只切换开关/白名单/自动处理
       senderWhitelist: Array.isArray(body.senderWhitelist) && body.senderWhitelist.length > 0
         ? body.senderWhitelist.map(String).filter(Boolean)
         : prev.senderWhitelist,
       autoProcessOnFetch: body.autoProcessOnFetch !== false,
+      // 授权码保存入库（对齐 SMTP 通道 password 口径）：填写则更新，留空/不传则保留原值
+      imapAuthCode: typeof body.imapAuthCode === 'string' && body.imapAuthCode.trim()
+        ? body.imapAuthCode.trim()
+        : prev.imapAuthCode,
     }
     saveEmailIngestionConfig(next)
     logAuditFromRequest(request, 'api_patrol.email_ingestion_config_update', {
@@ -80,7 +83,7 @@ export function registerPatrolEmailIngestionRoutes(app) {
         imapTls: next.imapTls,
         senderWhitelist: next.senderWhitelist,
         autoProcessOnFetch: next.autoProcessOnFetch,
-        authCodeConfigured: Boolean(process.env.PATROL_EMAIL_AUTH_CODE),
+        authCodeConfigured: Boolean(next.imapAuthCode || process.env.PATROL_EMAIL_AUTH_CODE),
       },
     }
   })

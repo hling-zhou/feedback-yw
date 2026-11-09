@@ -29,6 +29,7 @@ export const META_KEY_EMAIL_INGESTION_STATE = 'api_patrol_email_ingestion_state_
 /** @typedef {{
  *   enabled: boolean, imapHost: string, imapPort: number, imapUser: string,
  *   imapTls: boolean, senderWhitelist: string[], autoProcessOnFetch: boolean,
+ *   imapAuthCode: string,
  * }} EmailIngestionConfig */
 
 /** 默认配置（§9.2 契约值）。 */
@@ -40,10 +41,8 @@ export const DEFAULT_EMAIL_INGESTION_CONFIG = /** @type {EmailIngestionConfig} *
   imapTls: true,
   senderWhitelist: ['service@cmecloud.cn'],
   autoProcessOnFetch: true,
+  imapAuthCode: '',
 })
-
-/** auth code 环境变量（§9.5：不进 meta 库）。 */
-const AUTH_CODE_ENV = 'PATROL_EMAIL_AUTH_CODE'
 
 /**
  * @returns {EmailIngestionConfig}
@@ -63,6 +62,7 @@ export function readEmailIngestionConfig() {
         ? c.senderWhitelist.map(String)
         : DEFAULT_EMAIL_INGESTION_CONFIG.senderWhitelist,
       autoProcessOnFetch: c.autoProcessOnFetch !== false,
+      imapAuthCode: typeof c.imapAuthCode === 'string' ? c.imapAuthCode : '',
     }
   } catch {
     return { ...DEFAULT_EMAIL_INGESTION_CONFIG }
@@ -134,7 +134,8 @@ export function setImapClientFactory(factory) {
  */
 async function fetchViaImapflow(config) {
   const { ImapFlow } = await import('imapflow')
-  const authCode = process.env[AUTH_CODE_ENV] || ''
+  // 前端配置优先，部署环境变量兜底（对齐 SMTP 通道密码模式）
+  const authCode = config.imapAuthCode || process.env.PATROL_EMAIL_AUTH_CODE || ''
   const client = new ImapFlow({
     host: config.imapHost,
     port: config.imapPort,

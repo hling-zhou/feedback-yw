@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Space, Switch, Typography } from 'antd'
+import { Alert, Button, Input, Space, Switch, Typography } from 'antd'
 import { apiFetch } from '../lib/apiClient.js'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import FieldLabel from './FieldLabel.jsx'
@@ -7,8 +7,7 @@ import FieldLabel from './FieldLabel.jsx'
 /**
  * API 巡检邮件拉取面板（Settings 邮件 tab 内，docs/DESIGN-API巡检.md §9）。
  * Plan B 备用数据入口：每日 09:15 从 IMAP 邮箱拉取巡检邮件导入（P2-8 可观测性消费方）。
- * IMAP 连接参数（host/port/user）为部署级配置（环境变量 auth code），前端只维护：
- * 开关 / 上次拉取状态展示 / 立即拉取（测试/补拉）。
+ * IMAP 授权码通过前端配置入库（对齐 SMTP 发信通道 password 口径），非环境变量。
  *
  * @param {Object} props
  * @param {boolean} props.canEdit - manageTags 权限
@@ -19,6 +18,8 @@ export default function PatrolEmailIngestionPanel({ canEdit }) {
   const [status, setStatus] = useState(null)
   const [saving, setSaving] = useState(false)
   const [fetching, setFetching] = useState(false)
+  /** 授权码输入（不记 config 里——GET 不返明文，PUT 时同发送） */
+  const [authCode, setAuthCode] = useState('')
 
   const load = async () => {
     try {
@@ -43,9 +44,10 @@ export default function PatrolEmailIngestionPanel({ canEdit }) {
     try {
       const res = await apiFetch('/api/patrol/email-ingestion/config', {
         method: 'PUT',
-        body: JSON.stringify({ ...config, enabled }),
+        body: JSON.stringify({ ...config, enabled, imapAuthCode: authCode || '' }),
       })
       setConfig(res.config)
+      setAuthCode('')
       message.success(enabled ? '已启用每日 09:15 自动拉取' : '已停用自动拉取')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '保存失败')
@@ -117,12 +119,29 @@ export default function PatrolEmailIngestionPanel({ canEdit }) {
           />
         </div>
         <div>
-          <FieldLabel hint="只读，部署环境变量维护">IMAP 账号</FieldLabel>
+          <FieldLabel hint="只读，企业邮箱固定值">IMAP 账号</FieldLabel>
           <Typography.Text className="text-sm">
             {config?.imapUser || '—'}@{config?.imapHost || ''}
-            {config?.authCodeConfigured ? '' : '（⚠️ 未配置授权码环境变量）'}
           </Typography.Text>
         </div>
+      </div>
+
+      <div>
+        <FieldLabel required hint="留空则保持原授权码（不覆盖）">
+          授权码
+          {config?.authCodeConfigured ? (
+            <span className="ml-1.5 text-xs font-normal text-green-600">已配置</span>
+          ) : (
+            <span className="ml-1.5 text-xs font-normal text-red-500">未配置（⚠️ 无法连接邮箱）</span>
+          )}
+        </FieldLabel>
+        <Input.Password
+          placeholder="留空则保持原授权码不变"
+          value={authCode}
+          onChange={(e) => setAuthCode(e.target.value)}
+          disabled={!canEdit}
+          className="!w-80"
+        />
       </div>
 
       <Space>
