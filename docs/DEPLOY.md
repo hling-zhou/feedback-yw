@@ -96,12 +96,14 @@ node server/index.js
 
 ### 4.3 托管前端
 
-将 `dist/` 由 Nginx 等静态托管，并将 `/api` 反向代理到 API 端口，例如：
+将 `dist/` 由 Nginx 等静态托管，并将 `/api` 反向代理到 API 端口。**开箱模板**：仓库已提供按实际拓扑（81 入口 + 3003 MCP）写好的完整站点配置 [nginx-feedback-insights.conf](./nginx-feedback-insights.conf)，scp 到服务器替换站点配置后 `nginx -t && nginx -s reload` 即可（按服务器实际路径改 `root` 一行）。
+
+以下为核心片段与原理（模板即此形态）：
 
 ```nginx
 server {
-  listen 443 ssl;
-  server_name insights.yourcompany.com;
+  listen 81;                # 实际拓扑：81 入口（模板见 nginx-feedback-insights.conf）
+  server_name _;
 
   root /var/www/feedback-insights/dist;
   index index.html;
