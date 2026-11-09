@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Space, Spin, Tag, Typography, message } from 'antd'
+import { Button, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
+import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
 import FeedbackDrawer from '../FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../../hooks/useFeedbackDrawerSelection.js'
 import { normalizeTicketId } from '../../lib/desensitize.js'
@@ -10,6 +11,12 @@ import { listActionItems } from '../../lib/actionItemClient.js'
 import { createActionItem } from '../../lib/actionItemClient.js'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
+import {
+  CALLBACK_ENTRY_DISABLED_REASON,
+  isCallbackEntryDisabled,
+} from '../../lib/postUseRating/callbackEntry.js'
+import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
+import { useAuth } from '../../context/AuthContext.jsx'
 import {
   getPostUseFocusTrackedNames,
   getPostUseRatingProductNames,
@@ -40,6 +47,10 @@ export default function PostUseRatingDashboardView() {
     postUseSettledPeriodIds,
     sourceSnapshots,
   } = useInsights()
+  const { user } = useAuth()
+  const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
+  // 2026-11-09 双入口同弹窗：弹窗状态上提到本组件（头部「分析与报告」入口 + StoryView「客户与证据」入口共用）
+  const [callbackProcessOpen, setCallbackProcessOpen] = useState(false)
   const [extrasReady, setExtrasReady] = useState(false)
   const [visits, setVisits] = useState([])
   const [actionItems, setActionItems] = useState([])
@@ -241,6 +252,8 @@ export default function PostUseRatingDashboardView() {
     postUseRatingOnDemand &&
     loadMonthIds.length > 0 &&
     loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
+  // 2026-11-09 双入口：与 StoryView「客户与证据」入口共用同源 disabled 判定
+  const callbackEntryDisabled = isCallbackEntryDisabled(storyModel)
 
   if (ratingsPending || !extrasReady) {
     return (
@@ -265,6 +278,21 @@ export default function PostUseRatingDashboardView() {
                 {reportTarget.kind === 'quarter' ? '打开季报' : '打开月报'}
               </Button>
             ) : null}
+            {canOpenCallbackList ? (
+              <Tooltip
+                title={callbackEntryDisabled ? CALLBACK_ENTRY_DISABLED_REASON : ''}
+              >
+                <span className="ml-auto">
+                  <Button
+                    size="small"
+                    disabled={callbackEntryDisabled}
+                    onClick={() => setCallbackProcessOpen(true)}
+                  >
+                    查看并处理建议回访/溯源清单
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
           </div>
           <Space size={[8, 8]} wrap>
             <Tag color={storyModel.scope.qualityWarningCount ? 'gold' : storyModel.quality ? 'green' : 'default'}>
@@ -284,12 +312,28 @@ export default function PostUseRatingDashboardView() {
         creatingSignalKey={creatingSignalKey}
         onCreateAction={(signal) => void createActionFromSignal(signal)}
         onOpenTicket={openTicketByOriginalId}
+        onOpenCallbackProcess={() => {
+          // 双入口共用同一防御：空清单点按给提示（与 disabled 判定同源 helper）
+          if (isCallbackEntryDisabled(storyModel)) {
+            message.info('当前范围内暂无建议回访/溯源记录')
+            return
+          }
+          setCallbackProcessOpen(true)
+        }}
       />
       <FeedbackDrawer
         feedback={selected}
         onClose={requestCloseDrawer}
         onSavedClose={closeDrawer}
         onDirtyChange={onDrawerDirtyChange}
+      />
+      <PostUseCallbackProcessModal
+        open={callbackProcessOpen}
+        onClose={() => setCallbackProcessOpen(false)}
+        recommendations={storyModel.callbackRecommendations || []}
+        callbackNonTenRecords={storyModel.callbackNonTenRecords || []}
+        scopeLabel={storyModel.scope?.periodLabel || '当前范围'}
+        onOpenTicket={openTicketByOriginalId}
       />
     </div>
   )

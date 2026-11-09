@@ -105,24 +105,26 @@ export default function PostUseCallbackProcessModal({
     [assignees],
   )
 
+  // 2026-11-09 抽出复用：归档联动清勾选（服务端）后需重拉 decisions 保持与服务端一致
+  const refreshDecisions = useCallback(async () => {
+    const res = await listPostUseCallbackDecisions()
+    const next = new Map()
+    for (const item of res?.items || []) {
+      if (!item?.itemKey) continue
+      next.set(item.itemKey, {
+        needCustomerVisit: Boolean(item.needCustomerVisit),
+        needInternalTrace: Boolean(item.needInternalTrace),
+        sourceType: item.sourceType,
+      })
+    }
+    setDecisions(next)
+  }, [])
+
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
-    listPostUseCallbackDecisions()
-      .then((res) => {
-        if (cancelled) return
-        const next = new Map()
-        for (const item of res?.items || []) {
-          if (!item?.itemKey) continue
-          next.set(item.itemKey, {
-            needCustomerVisit: Boolean(item.needCustomerVisit),
-            needInternalTrace: Boolean(item.needInternalTrace),
-            sourceType: item.sourceType,
-          })
-        }
-        setDecisions(next)
-      })
+    refreshDecisions()
       .catch((error) => {
         if (!cancelled) message.error(error?.message || '加载勾选状态失败')
       })
@@ -132,7 +134,7 @@ export default function PostUseCallbackProcessModal({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, refreshDecisions])
 
   // 拉取已归档（产品部溯源）条目：归档列渲染"已纳入"Tag、经办人只读、rows 收集去重（Bug3）。
   // 注意 limit:-1 = 全量（limit:0 会经 Number(0)||100 截成 100 条，仓库既有坑）。
@@ -273,29 +275,8 @@ export default function PostUseCallbackProcessModal({
     }
   }
 
-  // 按客户批量勾选：一次 API 调用持久化同一客户下所有产品的 itemKey
-  const persistDecisionsBatch = async (itemKeys, sourceType, patch) => {
-    const items = itemKeys.map((itemKey) => ({
-      ...decisionOf(decisions, itemKey),
-      ...patch,
-      sourceType,
-      itemKey,
-    }))
-    setDecisions((prev) => {
-      const map = new Map(prev)
-      for (const item of items) map.set(item.itemKey, item)
-      return map
-    })
-    if (!canEdit) return
-    setSavingKey(items[0]?.itemKey || '')
-    try {
-      await upsertPostUseCallbackDecisions(items)
-    } catch (error) {
-      message.error(error?.message || '保存勾选失败')
-    } finally {
-      setSavingKey('')
-    }
-  }
+  // 按客户批量勾选（persistDecisionsBatch）已随 2026-11-09「客服部回访列行级化」删除：
+  // 唯一消费方是原 visitFlagColumn 的组内一勾全选；行级勾选走 persistDecision（含周期包含同步）。
 
   const flagColumn = (flag, title) => ({
     title,
@@ -327,9 +308,8 @@ export default function PostUseCallbackProcessModal({
   // 映射导致翻页后勾选态/合并单元格/经办人全部错位继承（首页客户的状态渲染到第 2 页）。
   // 现改为把分组信息直接预挂到每行对象上，render 按 row 自取，index 彻底退场。
   //
-  // 2026-11-04 用户拍板（业务语义）：产品部回溯是产品维度动作（不同产品线归不同经办人），
-  // 「产品部回溯」勾选列与经办人列行级独立（不做 rowSpan）；仅显示列与「客服部回访」
-  // 勾选列保留客户级合并（回访对象是客户，一勾全选是既有便捷语义）。
+  // 2026-11-09 用户拍板（取代 2026-11-04 旧语义）：「客服部回访」勾选列与「产品部回溯」
+  // 勾选列/经办人列一致，全部行级独立（不做 rowSpan、不一勾全选）；仅显示列保留客户级合并。
   const questionnaireRows = useMemo(() => {
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
     const sorted = [...(recommendations || [])].sort(
@@ -361,19 +341,18 @@ export default function PostUseCallbackProcessModal({
   }, [recommendations])
 
   // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数。
-  // 2026-11-06 #15：与筛选保留口径严格同源——问卷 tab 组级语义（组内任一 itemKey 命中 → 该组
-  // 全部行计入，与 visitFlagColumn 的"已纳入（部分）"Tag 及组级过滤一致），投诉 tab 行级。
-  // 这样复选框文案数字 = 勾选该筛选后实际显示的行数，不会再出现"计数 3 但列显示 12 条"的矛盾。
+  // 2026-11-09 客服部回访列行级化：两个 tab 都按行级计数（勾选该筛选后实际显示的行数）——
+  // 原问卷 tab 组级语义（组内任一命中 → 整组计入）随 visitFlagColumn 删除而下线，
+  // 行级判定走 isDispatched（含周期包含匹配），与行显示口径严格同源。
   const dispatchedCount = useMemo(() => {
-    // 问卷 tab：组级（行自带 __groupKeys 全组键，组内任一命中该行计入，与过滤谓词同款）
-    /** @type {{ __groupKeys?: string[]; itemKey?: string }[]} */
+    /** @type {{ itemKey?: string }[]} */
     const typedRows = questionnaireRows
-    let count = typedRows.filter((row) => (row.__groupKeys || []).some((k) => isDispatched(k))).length
-    // 投诉 tab：行级
     /** @type {{ itemKey?: string }[]} */
     const typedRecords = callbackNonTenRecords
-    count += typedRecords.filter((row) => isDispatched(row.itemKey || '')).length
-    return count
+    return (
+      typedRows.filter((row) => isDispatched(row.itemKey || '')).length +
+      typedRecords.filter((row) => isDispatched(row.itemKey || '')).length
+    )
   }, [questionnaireRows, callbackNonTenRecords, isDispatched])
   // 已纳入产品部回溯条数（行级判定；产品部回溯勾选列/经办人列行级独立，展示与过滤口径天然一致）
   const archivedCount = useMemo(
@@ -382,12 +361,10 @@ export default function PostUseCallbackProcessModal({
   )
 
   // 快捷筛选派生（2026-11-06）：按"已纳入"状态过滤。过滤后同客户可能只剩部分行 →
-  // 每行对象重新构建分组信息（__groupKeys 只含过滤后的组内键、span 重算），保证合并单元格正确。
-  // #15 修复（2026-11-06）：客服部回访"已纳入"按**组级语义**过滤（组内任一 itemKey 命中 → 整组保留），
-  // 与 visitFlagColumn 的"已纳入（部分）"Tag 判定同源——此前筛选用行级单键匹配，在"季度视图导出
-  // 标记（多月并集存储键）+ 月视图打开筛选"等存储键与行键月份段不一致的场景下，Tag 显示已纳入
-  // 但行级匹配落空，出现"勾选筛选后为空、实际列表显示 N 条已纳入"的矛盾。产品部回溯为行级判定
-  // （勾选列/经办人列行级独立，无组级 Tag），保持行级过滤。
+  // 每行对象重新构建分组信息（__groupKeys 只含过滤后的组内键、span 重算），保证显示列合并单元格正确。
+  // 2026-11-09 客服部回访行级化：两个"已纳入"筛选均为行级判定（isDispatched 含周期包含匹配，
+  // 覆盖"季度视图导出标记（多月并集存储键）+ 月视图打开筛选"场景）；原问卷 tab 组级
+  // 保留语义随 visitFlagColumn 删除而下线，与行级 Tag 展示口径严格同源。
   // （类型说明：recommendations prop 为 object[]，此处局部放宽 itemKey/分组字段访问）
   const filteredQuestionnaireRows = useMemo(() => {
     if (!filterArchivedOnly && !filterDispatchedOnly) return questionnaireRows
@@ -395,7 +372,7 @@ export default function PostUseCallbackProcessModal({
     const typedRows = questionnaireRows
     const kept = typedRows.filter((row) => {
       if (filterArchivedOnly && !isArchived(row.itemKey || '')) return false
-      if (filterDispatchedOnly && !(row.__groupKeys || []).some((k) => isDispatched(k))) return false
+      if (filterDispatchedOnly && !isDispatched(row.itemKey || '')) return false
       return true
     })
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
@@ -429,47 +406,12 @@ export default function PostUseCallbackProcessModal({
   }, [callbackNonTenRecords, filterArchivedOnly, filterDispatchedOnly, isArchived, isDispatched])
 
   // 客户级合并单元格的通用 render 包装：非组首行返回 rowSpan:0 吞行。
+  // 2026-11-09 用户拍板：仅用于客户名称/客户编码/触发类型等显示列；勾选列（客服部回访/
+  // 产品部溯源）全部行级独立（原 visitFlagColumn 客户级合并勾选列已删除）。
   const mergedCell = (value, row, render) => {
     if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
     return { children: render ? render(value) : value, props: { rowSpan: row.__groupSpan } }
   }
-
-  // 客户级合并勾选列（仅用于「客服部回访」needCustomerVisit：回访对象是客户，批量勾选）。
-  // 需求8（2026-11-04）：组内任一 itemKey 已被标记"已纳入"（导出/发送过）→ 整组显示已纳入 Tag；
-  // 全部标记显示"已纳入"，部分标记显示"已纳入（部分）"，勾选框不再渲染。
-  const visitFlagColumn = (flag, title) => ({
-    title,
-    width: 92,
-    fixed: 'right',
-    render: (_value, row) => {
-      if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
-      const keys = row.__groupKeys
-      const dispatched = keys.filter((k) => isDispatched(k))
-      if (dispatched.length) {
-        const all = dispatched.length === keys.length
-        return {
-          children: <Tag color="blue">已纳入{all ? '' : '（部分）'}</Tag>,
-          props: { rowSpan: row.__groupSpan },
-        }
-      }
-      const checkedList = keys.map((k) => Boolean(decisionOf(decisions, k)[flag]))
-      const allChecked = checkedList.length > 0 && checkedList.every(Boolean)
-      const someChecked = checkedList.some(Boolean)
-      return {
-        children: (
-          <Checkbox
-            checked={allChecked}
-            indeterminate={!allChecked && someChecked}
-            disabled={!canEdit || savingKey === (keys[0] || '')}
-            onChange={(event) =>
-              persistDecisionsBatch(keys, 'questionnaire', { [flag]: event.target.checked })
-            }
-          />
-        ),
-        props: { rowSpan: row.__groupSpan },
-      }
-    },
-  })
 
   // 行级勾选列（用于「产品部回溯」needInternalTrace：每行=客户×产品 独立决策）；
   // 已归档行（Bug3）显示"已纳入"Tag、无勾选框——从反馈库删除归档条目后弹窗重开即恢复初始态。
@@ -536,7 +478,10 @@ export default function PostUseCallbackProcessModal({
       ellipsis: true,
       render: (value) => <EllipsisHover value={value} />,
     },
-    visitFlagColumn('needCustomerVisit', '客服部回访'),
+    // 2026-11-09 用户拍板：客服部回访勾选列与产品部回溯列一致，行级独立不合并
+    //（原 visitFlagColumn 客户级合并/一勾全选/半选态语义下线；显示列仍保留客户级合并）。
+    // flagColumn 与投诉 tab 同款：行级 Checkbox + 已纳入行级 Tag + 周期包含语义。
+    flagColumn('needCustomerVisit', '客服部回访'),
     rowFlagColumn('needInternalTrace', '产品部溯源'),
     {
       // 经办人列行级独立（2026-11-04 用户拍板：不同产品分别指定经办人；已纳入行只读显示归档经办人）
@@ -735,9 +680,10 @@ export default function PostUseCallbackProcessModal({
     try {
       const saved = await archivePostUseJiraItems(rows.map((row) => toJiraArchivePayload(row, assigneeOverrides)))
       const savedCount = saved?.items?.length || rows.length
-      // 归档成功：刷新已归档集合（渲染"已纳入"Tag + 经办人只读）；不再清空 assigneeOverrides——
-      // 已归档行不再渲染 Select，未归档行的经办人选择不受影响。
-      await refreshArchivedItems()
+      // 归档成功：刷新已归档集合（渲染"已纳入"Tag + 经办人只读）+ 重拉勾选（2026-11-09 服务端
+      // 归档联动清勾选后，与服务端保持一致——不清 assigneeOverrides，已归档行不再渲染 Select，
+      // 未归档行的经办人选择不受影响。
+      await Promise.all([refreshArchivedItems(), refreshDecisions().catch(() => {})])
       message.success({
         content: (
           <span>

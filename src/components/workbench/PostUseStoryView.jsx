@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
@@ -14,7 +14,10 @@ import { withPostUseTrendDomains } from '../../lib/postUseRating/insights.js'
 import { listExperienceStatusProducts } from '../../lib/postUseRating/storyModel.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
-import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
+import {
+  CALLBACK_ENTRY_DISABLED_REASON,
+  isCallbackEntryDisabled,
+} from '../../lib/postUseRating/callbackEntry.js'
 import PostUseJourneyMap from './PostUseJourneyMap.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
@@ -154,13 +157,18 @@ function customerFeedbackHref(customerName) {
   })
 }
 
-export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket }) {
-  const [callbackProcessOpen, setCallbackProcessOpen] = useState(false)
+/**
+ * @param {object} props
+ * @param {any} props.model
+ * @param {string} props.creatingSignalKey
+ * @param {(signal: object) => void} props.onCreateAction
+ * @param {(originalTicketId: string) => void} [props.onOpenTicket]
+ * @param {() => void} [props.onOpenCallbackProcess] 打开「建议回访/溯源清单」弹窗（弹窗实例由 DashboardView 持有，双入口同弹窗）
+ */
+export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket, onOpenCallbackProcess }) {
   const { user } = useAuth()
   const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
-  const callbackRecommendations = model.callbackRecommendations || []
-  const callbackNonTenRecords = model.callbackNonTenRecords || []
   const exp = metrics.internalExperience
   const sat = metrics.satisfaction
   const yw = metrics.external?.yunwang
@@ -188,8 +196,9 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
-  const callbackDownloadDisabled = !callbackRecommendations.length && !callbackNonTenRecords.length
-  const callbackDownloadDisabledReason = '当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录'
+  // 2026-11-09 双入口：disabled 判定收敛到共享 helper（与 DashboardView 头部入口同源）
+  const callbackDownloadDisabled = isCallbackEntryDisabled(model)
+  const callbackDownloadDisabledReason = CALLBACK_ENTRY_DISABLED_REASON
   const scoreTrendChart = withPostUseTrendDomains(trendsAndChanges.scoreTrend, { kind: 'score' })
   const satisfactionTrendChart = withPostUseTrendDomains(trendsAndChanges.satisfactionTrend, { kind: 'rate' })
 
@@ -371,13 +380,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
                 size="small"
                 icon={<DownloadOutlined />}
                 disabled={callbackDownloadDisabled}
-                onClick={() => {
-                  if (!callbackRecommendations.length && !callbackNonTenRecords.length) {
-                    message.info('当前范围内暂无建议回访/溯源记录')
-                    return
-                  }
-                  setCallbackProcessOpen(true)
-                }}
+                onClick={() => onOpenCallbackProcess?.()}
               >
                 查看并处理建议回访/溯源清单
               </Button>
@@ -626,14 +629,6 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
         ]}
       />
       </div>
-      <PostUseCallbackProcessModal
-        open={callbackProcessOpen}
-        onClose={() => setCallbackProcessOpen(false)}
-        recommendations={callbackRecommendations}
-        callbackNonTenRecords={callbackNonTenRecords}
-        scopeLabel={model.scope.periodLabel}
-        onOpenTicket={onOpenTicket}
-      />
     </div>
   )
 }
