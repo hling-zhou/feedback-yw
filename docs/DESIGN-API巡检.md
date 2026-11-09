@@ -400,7 +400,7 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 | 收件人群组前端配置 | 复用 `mail_groups`（Settings 邮件 tab 已有群组 CRUD），日报配置选择群组（多选，发送时合并去重） |
 | 发件地址前端配置 | 复用 `mail_channels`：日报配置**选择发信通道（channelId）**——通道（SMTP+发件地址）在邮件 tab「发信通道」维护，发送按 `getMailChannelById(config.channelId)` 取；**不新增全局数据源枚举**（api_patrol 非用户反馈数据源，2026-11-07 实现期定案） |
 | SMTP | 复用 `sendSmtpMail(channel, {to, subject, html})`（HTML 正文原生支持；测试走 `setMailTransportFactory` 注入） |
-| 每天 09:00 自动发送 | **新建进程内定时器**（无 cron 依赖）：setTimeout 至次日 sendTime → 发送 → 重排；**启动自愈**——进程重启后当日未发且已过 sendTime 立即补发 |
+| 每天 10:30 自动发送（2026-11-09 拍板：由 09:00 后移，给 09:15 邮件拉取导入留出处理窗口） | **新建进程内定时器**（无 cron 依赖）：setTimeout 至次日 sendTime → 发送 → 重排；**启动自愈**——进程重启后当日未发且已过 sendTime 立即补发 |
 
 ### 8.2 配置与状态（meta）
 

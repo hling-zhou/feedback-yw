@@ -15,7 +15,7 @@ export const DEFAULT_PATROL_REPORT_CONFIG = /** @type {PatrolReportConfig} */ ({
   enabled: false,
   groupIds: [],
   channelId: '',
-  sendTime: '09:00',
+  sendTime: '10:30',
   includeQuiet: true,
   excludeSimTagged: false,
   maxInterfacesPerProduct: 20,
@@ -33,7 +33,7 @@ export function readPatrolReportConfig() {
       enabled: c.enabled === true,
       groupIds: Array.isArray(c.groupIds) ? c.groupIds.map(String) : [],
       channelId: typeof c.channelId === 'string' ? c.channelId : '',
-      sendTime: typeof c.sendTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(c.sendTime) ? c.sendTime : '09:00',
+      sendTime: typeof c.sendTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(c.sendTime) ? c.sendTime : '10:30',
       includeQuiet: c.includeQuiet !== false,
       excludeSimTagged: c.excludeSimTagged === true,
       maxInterfacesPerProduct: Number(c.maxInterfacesPerProduct) >= 5 && Number(c.maxInterfacesPerProduct) <= 100

@@ -66,7 +66,7 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
     db.prepare('DELETE FROM api_patrol_stats').run()
     db.prepare('DELETE FROM api_patrol_failure_groups').run()
     mod.savePatrolReportConfig({
-      enabled: true, groupIds: [groupId[0], groupId[1]], channelId, sendTime: '09:00',
+      enabled: true, groupIds: [groupId[0], groupId[1]], channelId, sendTime: '10:30',
       includeQuiet: true, excludeSimTagged: false, maxInterfacesPerProduct: 20,
     })
     db.prepare("DELETE FROM meta WHERE key='api_patrol_daily_report_state_v1'").run()
@@ -88,11 +88,11 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
 
   it('① nextSendAt：今日未到=今日；已过=明日', () => {
     const at = (h, m) => new Date(2026, 10, 7, h, m, 0, 0)
-    const t1 = mod.nextSendAt(at(8, 59), '09:00')
-    expect([t1.getDate(), t1.getHours(), t1.getMinutes()]).toEqual([7, 9, 0])
-    const t2 = mod.nextSendAt(at(9, 0), '09:00') // 恰好已到 → 明日
+    const t1 = mod.nextSendAt(at(10, 29), '10:30')
+    expect([t1.getDate(), t1.getHours(), t1.getMinutes()]).toEqual([7, 10, 30])
+    const t2 = mod.nextSendAt(at(10, 30), '10:30') // 恰好已到 → 明日
     expect(t2.getDate()).toBe(8)
-    const t3 = mod.nextSendAt(at(23, 59), '09:00')
+    const t3 = mod.nextSendAt(at(23, 59), '10:30')
     expect(t3.getDate()).toBe(8)
   })
 

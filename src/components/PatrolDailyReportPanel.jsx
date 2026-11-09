@@ -17,7 +17,7 @@ export default function PatrolDailyReportPanel({ canEdit }) {
   /** @type {[any, import('react').Dispatch<any>]} */
   // @ts-ignore — useState 联合类型推断过宽；本地默认值与 DEFAULT_PATROL_REPORT_CONFIG 口径一致（load 后覆盖）
   const [draft, setDraft] = useState(() => ({
-    enabled: false, groupIds: [], channelId: '', sendTime: '09:00', includeQuiet: true, excludeSimTagged: false, maxInterfacesPerProduct: 20,
+    enabled: false, groupIds: [], channelId: '', sendTime: '10:30', includeQuiet: true, excludeSimTagged: false, maxInterfacesPerProduct: 20,
   }))
   /** @type {[any, import('react').Dispatch<any>]} */
   // @ts-ignore — 同上
@@ -120,9 +120,9 @@ export default function PatrolDailyReportPanel({ canEdit }) {
           />
         </div>
         <div>
-          <FieldLabel required hint="24 小时制 HH:mm，默认 09:00">每日发送时刻</FieldLabel>
+          <FieldLabel required hint="24 小时制 HH:mm，默认 10:30">每日发送时刻</FieldLabel>
           <Input
-            placeholder="09:00"
+            placeholder="10:30"
             value={draft.sendTime}
             onChange={(e) => setDraft((prev) => ({ ...prev, sendTime: e.target.value }))}
             disabled={!canEdit}
