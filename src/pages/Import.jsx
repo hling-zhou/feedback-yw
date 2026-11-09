@@ -107,6 +107,10 @@ import {
 } from '../lib/importBatchFiles.js'
 import { displayImportFileName, parseImportFileNamePassword } from '../lib/importFilePassword.js'
 import { isBackgroundTaskCancelRequested } from '../domain/backgroundTaskLock.js'
+import {
+  downloadImportDataTemplate,
+  hasImportDataTemplate,
+} from '../lib/importDataTemplate.js'
 
 const IMPORT_CANCELLED_CODE = 'IMPORT_CANCELLED'
 
@@ -535,7 +539,7 @@ export default function Import({ embedded = false }) {
       if (customerVisitImport) {
         if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
           throw new Error(
-            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注、集团名称、登录账号名称、评分来源、原工单编号为可选列）',
+            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（其中数据月份/产品名称/客户名称或客户编码/回访结果四项内容必填；登录账号名称、相应投诉工单、内部评估、经办人、备注、集团名称、评分来源为可选列，允许为空）',
           )
         }
       }
@@ -1932,10 +1936,16 @@ export default function Import({ embedded = false }) {
             >
               下一步：列映射（{uploadFiles.length} 个文件，{uploadTotalRows} 行）
             </Button>
-            {ticketSource && (
-              <a href="/sample-tickets.csv" download className="text-xs text-brand-600 leading-8">
-                下载投诉工单样例 CSV
-              </a>
+            {hasImportDataTemplate(dataSourceType, postUseRatingSubType) && (
+              <Button
+                type="link"
+                className="!px-1"
+                onClick={() =>
+                  downloadImportDataTemplate(dataSourceType, postUseRatingSubType)
+                }
+              >
+                下载{DATA_SOURCE_LABELS[dataSourceType] === '用后即评' ? '客服部回访' : DATA_SOURCE_LABELS[dataSourceType]}模板
+              </Button>
             )}
           </div>
         </div>

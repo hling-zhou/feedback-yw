@@ -76,7 +76,7 @@ export function normalizeExcelParseError(err, options = {}) {
  * @property {string} name
  * @property {string} [description]
  * @property {import('../domain/enums.js').DataSourceType[]} [dataSourceTypes]
- * @property {Record<string, string>} columnMap
+ * @property {Record<string, string | string[]>} columnMap 数组值=同义候选列名（2026-11-09 回访导入对齐：按表头依次取首个命中）
  * @property {string[]} [rawTextMerge]
  */
 
@@ -507,7 +507,14 @@ export function guessColumnMap(headers, dataSourceType = 'complaint_ticket') {
   if (preset) {
     map = { ...preset.columnMap }
     for (const [key, col] of Object.entries(map)) {
-      if (!headers.includes(col)) delete map[key]
+      // 2026-11-09 数组候选（同义列名）：按顺序取首个命中表头的；全不命中才删除
+      if (Array.isArray(col)) {
+        const hit = col.find((c) => headers.includes(c))
+        if (hit) map[key] = hit
+        else delete map[key]
+      } else if (!headers.includes(col)) {
+        delete map[key]
+      }
     }
   } else {
     map = {}

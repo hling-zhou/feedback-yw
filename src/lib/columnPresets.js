@@ -154,13 +154,17 @@ export const POST_USE_CUSTOMER_VISIT_PRESET = {
     customerCode: '客户编码',
     groupName: '集团名称',
     loginAccountName: '登录账号名称',
-    originalTicketId: '原工单编号',
+    // 2026-11-09 模板对齐（用户拍板）：同义候选——旧导出列「原工单编号」与 10 月回访表列「相应投诉工单」
+    originalTicketId: ['原工单编号', '相应投诉工单'],
     scoreSource: '评分来源',
     visitResult: '回访结果',
     internalConclusion: '内部评估',
     remark: '备注',
     visitFeedbackDetail: '回访结果',
     internalEvaluationDetail: '内部评估',
+    // 2026-11-09 补映射：10 月回访表含「经办人」列（值允许为空）
+    assigneeName: '经办人',
+    userFeedbackText: '客户反馈',
   },
   rawTextMerge: [],
 }

@@ -85,11 +85,11 @@ export function normalizeCustomerVisitRow(mappedRow) {
   const productName = String(row.productName ?? row.productSpec ?? row['产品名称'] ?? '').trim()
   const customerName = String(row.customerName ?? row['客户名称'] ?? '').trim()
   const customerCode = String(row.customerCode ?? row['客户编码'] ?? '').trim()
-  const userFeedbackText = String(row.userFeedbackText ?? row['用户反馈原文'] ?? '').trim()
+  const userFeedbackText = String(row.userFeedbackText ?? row['用户反馈原文'] ?? row['客户反馈'] ?? '').trim()
   const assigneeName = String(row.assigneeName ?? row['经办人'] ?? '').trim()
   const groupName = String(row.groupName ?? row['集团名称'] ?? '').trim()
   const loginAccountName = String(row.loginAccountName ?? row['登录账号名称'] ?? '').trim()
-  const originalTicketId = String(row.originalTicketId ?? row['原工单编号'] ?? '').trim()
+  const originalTicketId = String(row.originalTicketId ?? row['原工单编号'] ?? row['相应投诉工单'] ?? '').trim()
   const scoreSource = String(row.scoreSource ?? row['评分来源'] ?? '').trim()
   const ratingText = ''
   const userInfo = String(
@@ -276,8 +276,10 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
   ;(rows || []).forEach((raw, i) => {
     const rowIndex = i + 1
     const visit = normalizeCustomerVisitRow(raw)
-    if (!visit.visitMonth || !visit.productName || (!visit.customerName && !visit.customerCode)) {
-      unmatched.push({ rowIndex, reason: '缺少数据月份/产品名称/客户名称或客户编码', visit })
+    // 2026-11-09 必填口径（用户拍板）：数据月份、产品名称、客户名称或客户编码、回访结果；
+    // 客户编码、登录账号名称、相应投诉工单、内部评估、经办人等其余列允许为空。
+    if (!visit.visitMonth || !visit.productName || (!visit.customerName && !visit.customerCode) || !visit.visitResult) {
+      unmatched.push({ rowIndex, reason: '缺少数据月份/产品名称/客户名称或客户编码/回访结果', visit })
       return
     }
 
@@ -323,19 +325,21 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
       visitFeedbackDetail: visit.visitFeedbackDetail || visit.visitResult,
       internalConclusion: visit.internalConclusion,
       internalEvaluationDetail: visit.internalEvaluationDetail || visit.internalConclusion,
+      // 2026-11-09 用户拍板：导入时内部评估列有值 → 评估状态直接为已评估（派生三态读 evaluationSubmitted）
+      evaluationSubmitted: Boolean(visit.internalEvaluationDetail || visit.internalConclusion),
       remark: visit.remark,
       jiraId: visit.jiraId || '',
       updatedAt: importedAt,
     }
     visitRecords.push(visitMeta)
 
+    // 2026-11-09 口径对齐：完整=四项必填齐（数据月份/产品名称/客户名称或编码/回访结果）；
+    // 客户编码、内部评估、经办人等按用户拍板为可选列，不再计入"缺失"
     const hasDetailedFields = Boolean(
       visit.visitMonth &&
       visit.productName &&
-      visit.customerName &&
-      visit.customerCode &&
-      (visit.visitFeedbackDetail || visit.visitResult) &&
-      (visit.internalEvaluationDetail || visit.internalConclusion),
+      (visit.customerName || visit.customerCode) &&
+      (visit.visitFeedbackDetail || visit.visitResult),
     )
     if (hasDetailedFields) {
       detailedFieldCompleteCount += 1
@@ -381,6 +385,8 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
         visitFeedbackDetail: visit.visitFeedbackDetail || visit.visitResult,
         internalConclusion: visit.internalConclusion,
         internalEvaluationDetail: visit.internalEvaluationDetail || visit.internalConclusion,
+        // 2026-11-09：与 visitMeta 同口径——内部评估有值即已评估
+        evaluationSubmitted: Boolean(visit.internalEvaluationDetail || visit.internalConclusion),
         remark: visit.remark,
         jiraId: visit.jiraId || undefined,
         importBatchId: importBatchId || '',

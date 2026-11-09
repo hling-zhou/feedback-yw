@@ -4,6 +4,7 @@ import {
   matchLibraryRecord,
   parseRatingScoreFromText,
   normalizeCustomerVisitRow,
+  runCustomerVisitImportDryRun,
   stableVisitRecordId,
 } from './customerVisitImport.js'
 import { loadVisitRecords, META_KEY_POST_USE_VISITS } from './visitRecords.js'
@@ -102,6 +103,60 @@ describe('customerVisitImport', () => {
     expect(row.remark).toBe('补充说明')
   })
 
+  it('2026-11-09 模板对齐：相应投诉工单/经办人/客户反馈 直传列名兜底 + 可选列允许为空', () => {
+    const row = normalizeCustomerVisitRow({
+      数据月份: '2026-10',
+      产品名称: '云监控',
+      客户名称: '客户B',
+      客户编码: '',      // 允许为空
+      回访结果: '这里是回访结果',
+      相应投诉工单: 'TS2026100100001',
+      经办人: '示例',
+      客户反馈: '7分以下分布：控制台*1分*1次',
+      内部评估: '',      // 允许为空
+    })
+    expect(row.originalTicketId).toBe('TS2026100100001')
+    expect(row.assigneeName).toBe('示例')
+    expect(row.userFeedbackText).toBe('7分以下分布：控制台*1分*1次')
+    expect(row.internalEvaluationDetail).toBe('')
+    expect(row.customerCode).toBe('')
+  })
+
+  it('2026-11-09 回访结果必填：缺回访结果的行进 unmatched，不再入库', async () => {
+    const storedMeta = new Map()
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => storedMeta.set(key, value),
+    }
+    const result = await executeCustomerVisitImport({
+      adapter,
+      rows: [
+        {
+          数据月份: '2026-10',
+          产品名称: '云监控',
+          客户名称: '客户B',
+          // 回访结果缺失 → 应被拒
+          客户编码: 'E001',
+        },
+        {
+          数据月份: '2026-10',
+          产品名称: '云监控',
+          客户名称: '客户C',
+          客户编码: 'E002',
+          回访结果: '正常回访',
+        },
+      ],
+      importMonth: '2026-10',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    expect(result.visitRecords).toHaveLength(1)
+    // 第 1 行缺回访结果被必填校验拒绝；第 2 行因空库软匹配不到明细进 unmatched（正常路径，原因不同）
+    expect(result.unmatched.length).toBeGreaterThanOrEqual(1)
+    expect(result.unmatched[0].rowIndex).toBe(1)
+    expect(result.unmatched[0].reason).toContain('回访结果')
+  })
+
   it('attaches imported customer visit to the matched post-use rating', async () => {
     const storedMeta = new Map()
     const updates = []
@@ -147,6 +202,28 @@ describe('customerVisitImport', () => {
     expect(updates[0].customerVisit.customerCode).toBe('C001')
     expect(updates[0].customerVisit.internalEvaluationDetail).toBe('建议进入需求池')
     expect(updates[0].customerVisit.remark).toBe('下月再联系')
+    // 2026-11-09：导入时内部评估有值 → 评估状态直接为已评估（两处写入点同口径）
+    expect(updates[0].customerVisit.evaluationSubmitted).toBe(true)
+    expect(result.visitRecords[0].evaluationSubmitted).toBe(true)
+  })
+
+  it('marks evaluationSubmitted=false when 内部评估 column is empty on import', () => {
+    const dry = runCustomerVisitImportDryRun({
+      rows: [
+        {
+          数据月份: '2026-10',
+          产品名称: '云专线',
+          客户名称: '客户B',
+          客户编码: 'C002',
+          回访结果: '电话已回访',
+          内部评估: '',
+        },
+      ],
+      libraryRecords: [],
+      importMonth: '2026-10',
+    })
+    expect(dry.visitRecords[0].evaluationSubmitted).toBe(false)
+    expect(dry.visitRecords[0].internalEvaluationDetail).toBe('')
   })
 
   it('keeps every row for the same customer, product, and month, and reimport does not duplicate them', async () => {
