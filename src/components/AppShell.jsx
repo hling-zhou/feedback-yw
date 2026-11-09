@@ -31,6 +31,7 @@ import { hasUnreadWhatsNewFeed } from '../domain/whatsNewFeed.js'
 import { fetchWhatsNewFeed } from '../lib/whatsNewFeedClient.js'
 import ImportSessionGuard from './ImportSessionGuard.jsx'
 import RetagSessionGuard from './RetagSessionGuard.jsx'
+import VersionRefreshBanner from './VersionRefreshBanner.jsx'
 import MessageBottleSubmitModal from './MessageBottleSubmitModal.jsx'
 import MessageBottleFab from './MessageBottleFab.jsx'
 import WhatsNewFab from './WhatsNewFab.jsx'
@@ -406,6 +407,7 @@ export default function AppShell() {
         <Layout.Content className="app-shell-content">
           <ImportSessionGuard />
           <RetagSessionGuard />
+          <VersionRefreshBanner />
           <div className="app-float-actions">
             <WhatsNewFab
               hasUnread={whatsNewUnread}

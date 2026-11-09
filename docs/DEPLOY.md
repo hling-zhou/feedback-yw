@@ -106,8 +106,27 @@ server {
   root /var/www/feedback-insights/dist;
   index index.html;
 
+  # 1. Vite 指纹产物（assets/）：文件名含内容 hash，改版即改名——放心永久缓存
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+  }
+
+  # 2. SPA 入口：每次使用前向服务器协商验证（304 则秒回），绝不让浏览器长缓存
+  location = /index.html {
+    add_header Cache-Control "no-cache";
+  }
+
+  # 3. SPA fallback 路由同样吐 index.html，同样禁长缓存
+  #    （/config/* 不带 hash 且会被「发布」API 运行时更新，也被此规则覆盖为 no-cache）
   location / {
+    add_header Cache-Control "no-cache";
     try_files $uri $uri/ /index.html;
+  }
+
+  # 流水线产物（历史遗留落盘 dist/ 根，已由 postbuild 清理，此处双保险）
+  location ~ ^/(evidence-rows|gate-report|taxonomy-current|pipeline-summary)\.json$ {
+    deny all;
   }
 
   location /api/ {
@@ -119,6 +138,17 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 }
+```
+
+**缓存策略原理（为什么必须分两层）**：`index.html` 引用带 hash 的资产文件，发版后 hash 变化 → 资产层可以放心 `immutable` 长缓存（带宽最优）；但入口 HTML 若被浏览器/代理缓存（无 `Cache-Control` 时浏览器按启发式可缓存数日），用户就会被锁死在旧 HTML 引用的旧资产上——「更新了功能、同事看到的还是旧版，手动清缓存才恢复」即此成因。`no-cache` 不是不缓存：浏览器仍存副本，但每次使用前必须与服务器协商（ETag/304），内容变了立即拿新。
+
+**长开标签页兜底**：前端已内置版本探针（AppShell 挂载 `VersionRefreshBanner`），打开页面与每 5 分钟轮询一次入口 HTML 资产指纹，检测到发版即提示「立即刷新」，刷新带缓存穿透参数。即使 Nginx 缓存策略尚未配置，用户最多滞后一个轮询周期即可获知新版本。
+
+验证（部署机执行）：
+
+```bash
+curl -sI http://127.0.0.1/index.html | grep -i cache        # 期望 Cache-Control: no-cache
+curl -sI http://127.0.0.1/assets/index-xxx.js | grep -i cache # 期望 max-age=31536000, immutable
 ```
 
 确保 `CORS_ORIGINS` 与浏览器访问的 Origin 一致（含 `https://`）。
@@ -264,6 +294,7 @@ npm test && npm run build
 
 | 现象 | 处理 |
 |------|------|
+| 发版后用户看到的还是旧版（手动清缓存才恢复） | Nginx 未按 §4.3 分层缓存配置（index.html 被浏览器启发式缓存数日）。配置 `no-cache` 后新用户立即生效；长开标签页由前端版本探针提示刷新。临时救急：让用户 Ctrl+F5 强刷 |
 | API 启动报 `未设置 JWT_SECRET` | `export JWT_SECRET=...`（≥16 字符；生产 ≥32） |
 | 登录后 API 403 / CORS 错误 | 检查 `CORS_ORIGINS` 是否与浏览器地址完全一致 |
 | 空库无法登录 | 设置 `ADMIN_INITIAL_PASSWORD` 后重启 API |
