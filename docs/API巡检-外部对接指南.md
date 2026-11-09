@@ -175,6 +175,20 @@ Authorization: Bearer <API Key>
        请求须带 Accept: application/json, text/event-stream 双协议头）
 ```
 
+> **为什么策略通了还要配 hosts（11-09 实测）**：网络层（10.64.3.250 → 10.234.188.68:31788）通只解决 TCP 可达；
+> nginx 按请求的 **Host 头**路由虚拟主机——IP 直连时 Host=IP 串命中默认 server 返回 404（实测复现），
+> 带 `Host: cni.mcp.server` 头则 200（工具列表正常返回）。hosts 让域名可解析、URL 用域名、fetch 自动带正确
+> Host 头。若不便改系统文件，替代方案 = URL 写 IP + 请求头手工加 `Host: cni.mcp.server`（需改客户端代码，不推荐）。
+>
+> **部署机验证命令**（hosts 配好后跑，预期返回 77 个工具的 JSON）：
+> ```bash
+> curl -s -m 12 -X POST "http://cni.mcp.server:31788/mcp-server/mcp" \
+>   -H 'content-type: application/json' \
+>   -H 'Accept: application/json, text/event-stream' \
+>   -H 'Authorization: Bearer <token>' \
+>   -d '{"jsonrpc":"2.0","id":"v1","method":"tools/list"}'
+> ```
+
 > 附注：MCP Token 由云网工作台签发（通用智能体 → 设置 → MCP 工具面板 → 生成 token），与个人账号绑定；
 > 生产服务长期自动调用建议向平台组申请**服务级/应用级 token**，避免绑定个人（人员变动即断）。
 
