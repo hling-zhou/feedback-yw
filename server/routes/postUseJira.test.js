@@ -272,4 +272,50 @@ describeApi('post-use jira API', () => {
     // 客服部回访维度不被归档删除触碰
     expect(byKey.get('q:C1:弹性公网IP:2026-08|2026-09')?.needCustomerVisit).toBe(true)
   })
+
+  it('#19 归档即清勾选：archiveMany 后 needInternalTrace 联动置 false（月子集键+needCustomerVisit 不受影响）', async () => {
+    // 准备：月键勾选 trace
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/post-use-callback-decisions',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          { itemKey: 'q:C9:云监控:2026-10', sourceType: 'questionnaire', needInternalTrace: true, needCustomerVisit: true },
+        ],
+      },
+    })
+    expect(put.statusCode).toBe(200)
+
+    // 归档同前缀季度键条目（月份并集覆盖勾选月）
+    const archived = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-jira',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          {
+            itemKey: 'q:C9:云监控:2026-09|2026-10',
+            sourceType: 'questionnaire',
+            importMonth: '2026-09、2026-10',
+            customerName: '客户C9',
+            customerCode: 'C9',
+            productName: '云监控',
+          },
+        ],
+      },
+    })
+    expect(archived.statusCode).toBe(200)
+
+    // 归档后：勾选月(10月)被季度键(09|10)包含 → needInternalTrace 联动清 false
+    const decisions = await app.inject({
+      method: 'GET',
+      url: '/api/post-use-callback-decisions',
+      headers: authHeader('editor'),
+    })
+    const byKey = new Map(decisions.json().items.map((item) => [item.itemKey, item]))
+    expect(byKey.get('q:C9:云监控:2026-10')?.needInternalTrace).toBe(false)
+    // 客服部回访维度不被归档触碰
+    expect(byKey.get('q:C9:云监控:2026-10')?.needCustomerVisit).toBe(true)
+  })
 })

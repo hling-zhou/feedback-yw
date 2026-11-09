@@ -251,6 +251,10 @@ export const postUseJiraRepository = {
       }
     })
     tx(items || [])
+    // 2026-11-09 归档即清勾选（用户拍板）：归档=这条溯源处理完结，decisions 的 needInternalTrace
+    // 联动退场（复用删除联动 clearTraceDecisionsForDeletedItem 的前缀+月份包含判定）。
+    // 在归档事务外逐条调用——其内部自带事务，嵌套会死锁。
+    for (const item of saved) this.clearTraceDecisionsForDeletedItem(item.itemKey)
     if (saved.length) bumpDataRevision()
     return saved
   },
