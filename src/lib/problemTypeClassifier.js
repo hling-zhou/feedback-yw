@@ -119,7 +119,20 @@ function hasApplicationIntent(text) {
  */
 function matchesPerformance(text, keywords) {
   if (CREATION_TIMEOUT_RE.test(text)) return false
-  return matchesAnyKeyword(text, keywords)
+  if (matchesAnyKeyword(text, keywords)) return true
+  // 复核补词（2026-11-09）：带宽/速率不达标的否定式表述
+  // 「带宽仅约1M」「无法达到50M规格」「仅422M未达标」「速率仅」等
+  if (/[带宽速率传输].{0,8}(仅|只有|不到|无法达到|远低于|很低)[^。，；\n]{0,12}[0-9]+\s*M/.test(text)) {
+    return true
+  }
+  if (/(压测|测试|实测).{0,16}(不达标|未达标|远低于|仅)/.test(text)) {
+    return true
+  }
+  // 「带宽/速率 + 很低 + 告警/触发/持续」——带故障语境的持续低速
+  if (/[带宽速率流出].{0,4}很低[^。，；\n]{0,16}(告警|触发|持续)/.test(text)) {
+    return true
+  }
+  return false
 }
 
 /**
@@ -148,6 +161,29 @@ function matchesBilling(text, keywords) {
   if (/欠费/.test(text) && /(异常|不合理|误判|限速|恢复)/.test(text)) return true
   // 重复扣费
   if (/扣[^。，；\n]{0,8}两次|两次[^。，；\n]{0,8}扣/.test(text)) return true
+  // 复核补词（2026-11-09）：折扣/出账类复合表述
+  // 折扣（+数字折扣如 4折/5折）与未生效/异常/不认可组合 → 计费问题
+  if (/折扣|[0-9一二三四五六七八九十]折/.test(text) && /未生效|没生效|不生效|不显示|仍显示原价|未享受|异常/.test(text)) {
+    return true
+  }
+  // 退订后仍出账 / 冻结恢复后出账
+  if (/退订[^。，；\n]{0,16}出账|冻结[^。，；\n]{0,16}恢复[^。，；\n]{0,24}出账|恢复[^。，；\n]{0,16}出账/.test(text)) {
+    return true
+  }
+  // 复核补强（2026-11-09）：计费实质诉求（决策树计费先于咨询，在此接住）
+  // 计费模式切换诉求、出账方式疑问、折扣生效关联——原被功能咨询吞掉（212 条）
+  if (/(改|换|转|调整)[^。，；\n]{0,12}(按量|包月|包年|后付费|预付费|CU计费)/.test(text)) {
+    return true
+  }
+  if (/(出账|计费|扣费)[^。，；\n]{0,16}(如何|怎么|是否|不足|当天|按天|怎么算|怎样算)/.test(text)) {
+    return true
+  }
+  if (/(如何|怎么|怎样)[^。，；\n]{0,12}(出账|计费|扣费|收费)/.test(text)) {
+    return true
+  }
+  if (/折扣[^。，；\n]{0,16}(编码|生效|未生效|不生效|不显示)|询价[^。，；\n]{0,16}折扣/.test(text)) {
+    return true
+  }
   return false
 }
 
@@ -176,6 +212,25 @@ function matchesQuota(text, keywords) {
     return true
   }
   if (hasApplicationIntent(text) && QUOTA_LIMIT_ASK_RE.test(text)) {
+    return true
+  }
+  // 复核补强（2026-11-09）：带宽/配额总量提升句式（无申请前缀也成立）
+  // 「配额数量提升至20个」「带宽总值提升至200Mbps」「IPv4带宽总量需在原基础上增加100M」
+  if (/(带宽|配额|额度)[^。，；\n]{0,12}(提升|增加|扩大|延长)[^。，；\n]{0,8}(至|到)[^。，；\n]{0,8}[0-9]/.test(text)) {
+    return true
+  }
+  // 「在原(有)?基础上(提升|增加)」「在已使用基础上增加」——基准值上移的配额诉求
+  if (/在(原有|已使用|现有|使用)?基础[上]?[^。，；\n]{0,8}(提升|增加|扩)/.test(text)) {
+    return true
+  }
+  // 「(带宽|个数|数量|VPC数量|带宽总量)提升至 X」「订购X M带宽的权限」
+  if (/(总量|总值|个数|数量)[^。，；\n]{0,6}提升至/.test(text)) return true
+  if (/订购[^。，；\n]{0,10}[0-9]+\s*[MG][^。，；\n]{0,6}带宽[^。，；\n]{0,6}权限/.test(text)) return true
+  if (/(提升|增加|延长)[^。，；\n]{0,8}(带宽|配额|额度)(总量|总值|数量|有效期)?/.test(text) && /申请|请|需要|需|计划/.test(text)) {
+    return true
+  }
+  // 「带宽有效期延长」「延长有效期」+申请语境
+  if (/延长[^。，；\n]{0,6}有效期|有效期[^。，；\n]{0,6}延长/.test(text) && /申请|请|需|即将到期/.test(text)) {
     return true
   }
   if (hasConsultIntent(text) && /到期|有效期|进度|什么时间/.test(text)) return false
@@ -227,9 +282,42 @@ function matchesUnsubscribe(text, keywords) {
 }
 
 function matchesConsult(text, keywords) {
+  // 复核补强（2026-11-09）：计费实质诉求优先于功能咨询
+  // 「临时改为按量计费」「变更当天如何出账」「计费规则对比」是计费问题，
+  // 单纯「计费规则是什么」才是功能咨询。区分：有具体计费动作/模式切换诉求 → 计费。
+  if (matchesBillingConsultWorthy(text)) {
+    return false
+  }
   if (matchesAnyKeyword(text, keywords)) return true
   if (hasConsultIntent(text) && !OPERATION_FAILURE_RE.test(text)) return true
   if (/查一下|明细/.test(text) && /费用|账单/.test(text)) return true
+  return false
+}
+
+/**
+ * 计费实质诉求（应归计费与账单而非功能咨询）：
+ * - 涉及计费模式切换/变更（按量↔包月）的诉求
+ * - 涉及具体出账/计费方式的疑问（变更当天如何出账、不足一天怎么算）
+ * - 折扣生效与订单计费关联的诉求
+ * 排除：纯名词性的「计费规则是什么」类咨询。
+ * @param {string} text
+ */
+function matchesBillingConsultWorthy(text) {
+  // 计费模式切换诉求：改为/换成 + 按量/包月/包年/CU计费
+  if (/(改|换|转|调整)[^。，；\n]{0,12}(按量|包月|包年|后付费|预付费|CU计费)/.test(text)) {
+    return true
+  }
+  // 出账方式疑问：出账/计费 + 如何/怎么/是否/不足/当天/按天
+  if (/(出账|计费|扣费)[^。，；\n]{0,16}(如何|怎么|是否|不足|当天|按天|怎么算|怎样算)/.test(text)) {
+    return true
+  }
+  if (/(如何|怎么|怎样)[^。，；\n]{0,12}(出账|计费|扣费|收费)/.test(text)) {
+    return true
+  }
+  // 折扣与订单计费关联（复核案例：折扣编码/折扣未生效）
+  if (/折扣[^。，；\n]{0,16}(编码|生效|未生效|不生效|不显示)|询价[^。，；\n]{0,16}折扣/.test(text)) {
+    return true
+  }
   return false
 }
 

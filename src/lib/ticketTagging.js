@@ -31,7 +31,8 @@ export { UNKNOWN_L1 as JOURNEY_UNKNOWN_L1, UNKNOWN_L2 as JOURNEY_UNKNOWN_L2 }
 const LIMIT_UNLOCK_PROBLEM_TYPE = '配额与权限申请'
 
 /** 数量/上限类放开限制（含带宽提升，因为带宽提升本质是提升配额上限） */
-const QUANTITY_UNLOCK_RE = /配额|上限|IP数量|规格申请|带宽提升|带宽配额|带宽.*扩容|扩容.*带宽/
+const QUANTITY_UNLOCK_RE =
+  /配额|上限|IP数量|规格申请|带宽提升|带宽配额|带宽额度|带宽.*扩容|扩容.*带宽|增加[^。，；\n]{0,8}[0-9]+\s*M|提额|额度提升/
 
 /** 灰度/订购权限类放开限制（不含裸「权限」，避免安全组等误伤） */
 const PERMISSION_UNLOCK_RE =
