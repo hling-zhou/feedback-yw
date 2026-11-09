@@ -30,6 +30,8 @@ export default function ApiPatrolOverviewContent() {
   const [loading, setLoading] = useState(false)
   const [pendingOnly, setPendingOnly] = useState(false)
   const [includeBackfill, setIncludeBackfill] = useState(false)
+  /** Plan B 邮件拉取状态（§9.6 P2-8 总览横幅数据源） */
+  const [ingestionStatus, setIngestionStatus] = useState(null)
   /** @type {[string, any]} */
   const [distView, setDistView] = useState('bar')
   /** @type {[string, any]} */
@@ -48,6 +50,10 @@ export default function ApiPatrolOverviewContent() {
     void apiFetch(`/api/patrol/cause-summary?${qs}`)
       .then((s) => setSummary(s))
       .catch(() => setSummary(null))
+    // Plan B 邮件拉取状态（§9.6 P2-8：连续失败 ≥2 天总览横幅；静默失败 view 权限即可读，失败不阻塞）
+    void apiFetch('/api/patrol/email-ingestion/status')
+      .then((s) => setIngestionStatus(s))
+      .catch(() => setIngestionStatus(null))
     try {
       const res = await apiFetch(`/api/patrol/cause-stats?${qs}`)
       setData(res)
@@ -133,8 +139,28 @@ export default function ApiPatrolOverviewContent() {
 
   const trendSlots = data?.metricTrends || []
 
+  // Plan B 拉取连续失败横幅（§9.6 P2-8）：上次拉取为错误态且距今 ≥2 天 → 显示
+  // 判据：error 类状态（fetch_error/parse_error/sender_rejected）且 lastFetchAt 距今 ≥48h。
+  // 精确"连续 N 天失败"需要逐日历史，当前 state 只存最近一次——按最近一次错误 + 无更近成功近似。
+  const ingestionErrorHours = useMemo(() => {
+    const st = ingestionStatus?.state
+    if (!st?.lastResult || !st?.lastFetchAt) return null
+    const isErr = st.lastResult === 'fetch_error' || st.lastResult === 'parse_error' || st.lastResult === 'sender_rejected'
+    if (!isErr) return null
+    const hours = (Date.now() - new Date(st.lastFetchAt).getTime()) / 3600000
+    return Number.isFinite(hours) ? hours : null
+  }, [ingestionStatus])
+
   return (
     <div className="space-y-4">
+      {ingestionStatus?.enabled && ingestionErrorHours != null && ingestionErrorHours >= 48 ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="API 巡检邮件拉取已连续异常"
+          description={`Plan B 邮件拉取连续失败超过 2 天（上次尝试 ${ingestionStatus.state.lastFetchAt}，状态 ${ingestionStatus.state.lastResult}）。若外部 HTTP 推送（Plan A）正常可忽略；否则请检查 IMAP 连通性/授权码/邮箱白名单。详情见 Settings → 邮件 → API巡检邮件拉取。`}
+        />
+      ) : null}
       <div className="page-card">
         <div className="page-card-header">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -320,7 +346,7 @@ export default function ApiPatrolOverviewContent() {
       </div>
 
       {!data && !loading && (
-        <Alert type="info" showIcon message="暂无数据——等待外部系统推送后展示" />
+        <Alert type="info" showIcon title="暂无数据——等待外部系统推送后展示" />
       )}
     </div>
   )

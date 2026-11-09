@@ -66,6 +66,8 @@ import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPatrolPushRoutes } from './routes/patrolPush.js'
 import { startPatrolReportScheduler } from './patrolReportScheduler.js'
 import { registerPatrolQueryRoutes } from './routes/patrolQuery.js'
+import { registerPatrolEmailIngestionRoutes } from './routes/patrolEmailIngestion.route.js'
+import { startPatrolEmailIngestionScheduler } from './patrolEmailIngestion.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
 import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
@@ -115,6 +117,7 @@ registerUsageRoutes(app)
 registerMcpRoutes(app)
 registerPatrolPushRoutes(app)
 registerPatrolQueryRoutes(app)
+registerPatrolEmailIngestionRoutes(app)
 
 // 初始化 AI 助手检索索引（FTS5 trigram 或 fallback），并后台幂等补齐存量记录
 initSearchIndex()
@@ -406,6 +409,8 @@ try {
   console.info(`[api] http://${HOST}:${PORT}`)
   // AI 巡检日报定时器（docs/DESIGN-API巡检.md §8：进程内调度+启动自愈；未启用时每 10 分钟轮询配置）
   startPatrolReportScheduler()
+  // Plan B 邮件拉取定时器（docs/DESIGN-API巡检.md §9：每日 09:15；同日报调度模式）
+  startPatrolEmailIngestionScheduler()
 } catch (err) {
   app.log.error(err)
   process.exit(1)

@@ -1,6 +1,6 @@
 # DESIGN · API 巡检（产品重点 API 巡检）
 
-状态：设计定稿（2026-11-07，历经逐项拍板与样例数据全量核验）。实施未开始。
+状态：设计定稿（2026-11-07 主路径定稿；2026-11-09 Plan B §9 邮件拉取导入定稿，含 8 项缺陷修正）。实施未开始。
 
 需求来源：`data/API 巡检/API 监控问题闭环管理.md`；规则参考：`data/API 巡检/平台规则底稿.md`；MCP 对接：`data/API 巡检/云网工作台通用智能体能力发布说明V1.0.docx`；接口清单：`data/API 巡检/指标清单.xlsx`。
 
@@ -12,6 +12,8 @@
 
 ```
 外部系统 ──定时推送──→ 81 反代 ──→ Fastify /api/patrol/push*（API Key 鉴权）
+                                      │
+外部系统 ──邮件──→ IMAP 邮箱 ──→ 平台 09:15 定时拉取（Plan B，§9）
                                       │
                         ┌─────────────┴──────────────┐
                   统计表（日粒度）                请求明细（天×池×包 批次）
@@ -424,7 +426,137 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 - `GET/PUT /api/patrol/report/config`（manageTags）；`POST /api/patrol/report/send`（manageTags，body `{force?}`）；`GET /api/patrol/report/status`（view）
 - 前端：**Settings → 邮件 tab 新卡片「AI巡检日报」**——开关/群组多选/发信通道选择/时刻/两个开关/明细上限/「立即发送」按钮/上次发送状态；群组与通道维护用邮件 tab 既有面板
 
-## 9. 拍板记录（防丢失）
+---
+
+## 9. Plan B：邮件拉取导入（IMAP，2026-11-09 设计定稿）
+
+### 9.1 定位与触发条件
+
+Plan B 是外部 HTTP 推送不可用时的备用数据入口。外部系统将巡检数据以邮件形式发送到指定邮箱（`service@cmecloud.cn`→`zhouhuiling@cmss.chinamobile.com`），平台通过 IMAP 在每日 **09:15** 拉取当日邮件，解析后走**与 HTTP 推送相同的写入路径**（进程内直调，不走 HTTP+API Key 自签名回路——见 P0-4）。
+
+| 路径 | 触发方 | 时机 | 数据格式 |
+|---|---|---|---|
+| Plan A（主）| 外部系统 | HTTP POST 推送 | JSON（stats + requests）|
+| **Plan B（备）** | 平台主动拉取 | 每日 09:15 定时 | 邮件（HTML 正文 + ZIP 附件）|
+
+- Plan A 和 Plan B 可并存（同一天先推后拉也不会冲突——入库走同一唯一键 upsert，后到覆盖）。
+- 定时拉取在日报发送（10:30）之前，确保日报数据完整。
+
+### 9.2 邮件格式（外部系统约定）
+
+| 属性 | 值 | 说明 |
+|---|---|---|
+| 发件人 | `service@cmecloud.cn` | **发件人白名单——P0-1：非此发件人直接丢弃并审计告警** |
+| 收件人 | `zhouhuiling@cmss.chinamobile.com` | |
+| 主题格式 | `【API巡检报告】【MM月DD日】发现 N 款产品，共 M 条接口异常记录` | 从主题提取报告日期（月日→YYYY-MM-DD）与产品数 |
+| 正文 | HTML 格式 | 按产品分块，每块以 `📦 产品：` 标记开头；内含异常接口统计表格（列：资源池/指标名称/接口名称/业务类型/成功率/正常比例/时长均值） |
+| 附件 | 2 个 ZIP 文件 | EIP/VPC 包 1 个 + ELB 包 1 个；每个 ZIP 内含对应产品×池的 CSV 请求明细 |
+| 数据日期 | 正文中标注 | 邮件标注"数据日期"优先取；无标注时按邮件发送日期 T-1（与日报窗口对齐） |
+| IMAP 服务器 | `imap.cmss.chinamobile.com:993` | Coremail，SSL/TLS；auth code 独立于登录密码 |
+
+### 9.3 拉取与解析流程
+
+```
+每日 09:15 定时触发（进程内 setTimeout，与日报调度器复用机制）
+  │
+  ▼
+IMAP 连接（imap.cmss.chinamobile.com:993, SSL, auth code）
+  │
+  ▼
+搜索当日邮件（SINCE 今日 00:00，搜索条件 FROM "service@cmecloud.cn"）
+  │
+  ├─ 同日多封 → 按 Received 时间降序取最新一封（P0-3）
+  ├─ 当日无邮件 → 审计 info："api_patrol.email_ingestion_no_email"
+  │                 状态记 no_email，不视为 error（Plan B 是备路径）
+  │
+  ▼
+发件人白名单校验（From 头精确匹配 service@cmecloud.cn）
+  │
+  ├─ 不匹配 → 丢弃 + 审计告警 action="api_patrol.email_ingestion_sender_rejected"
+  │            （P0-1：防伪造邮件注入数据）
+  │
+  ▼
+MIME 解析（mailparser）
+  │
+  ├─ 主题 → 正则 /【API巡检报告】【(\d+)月(\d+)日】.+?(\d+) 款产品.+?(\d+) 条/
+  │         提取报告月日 + 产品数 + 异常接口数（三数均与后续解析交叉校验）
+  │
+  ├─ HTML 正文 → 按产品分块解析统计表格（等价于 POST /api/patrol/push/stats 的 rows）
+  │   ├─ 主力（P1-5a）：按 `📦 产品：` emoji 标记切分产品段 → 解析 <table> 行
+  │   │   列映射：资源池/指标名称/接口名称/业务类型/成功率/正常比例/时长均值
+  │   ├─ 兜底（P1-5a 正则）：emoji 标记缺失时，正则 `<th[^>]*>资源池</th>` 定位表头 →
+  │   │   向前找产品名（取最近一个含"产品"二字的非表格文本或前驱 h2/h3）
+  │   └─ 双路均失败 → 单产品告警，跳过该段（不阻断其他产品）
+  │
+  ├─ ZIP 附件（jszip 解压）→ 每个 ZIP 为 1 个 package（eip_vpc 或 elb）
+  │   ├─ 包类型判定：
+  │   │   ├─ 文件名含 "eip" 或 "vpc"（忽略大小写）→ package=eip_vpc
+  │   │   ├─ 文件名含 "elb" 或 "slb"（忽略大小写）→ package=elb
+  │   │   └─ 兜底（P1-6）：解析 CSV 列头——含 requestMapping 列→eip_vpc；
+  │   │     含 resourceType 列→elb；均不匹配→跳过+审计告警
+  │   ├─ 池名（pool）提取：
+  │   │   ├─ 主（P1-6）：CSV 文件名正则 /(.+?)[\-_]?\d{4}-\d{2}-\d{2}/ 截取日期前部分
+  │   │   └─ 兜底（P1-6）：取 CSV 正文第一行"资源池"列的值（eip_vpc CSV 有此列；
+  │   │     ELB CSV 无此列→取文件名中最后一个大写英文段作为池名）
+  │   ├─ CSV 解析（papaparse）→ 行对象数组（等价于 POST /api/patrol/push/requests 的 rows）
+  │   └─ 附件名与正文产品交叉验证（P1-5b）：
+  │       ZIP 文件对应的产品（eip_vpc→eip+vpc, elb→slb）与 HTML 正文声明的产品清单
+  │       比对，有遗漏或多余 → 审计告警（可能正文与附件产品不一致）
+  │
+  └─ HTML-vs-CSV 交叉校验（P0-2：硬规则——底稿一致）
+       ├─ 每产品取 HTML 统计表接口数 × 成功率，与 CSV 明细重算的接口数 × 成功率比对
+       ├─ 偏差 > 0.05pp（接口数差 > 0.05% 或成功率绝对差 > 0.05pp）→ 审计告警
+       │  action="api_patrol.email_ingestion_cross_validation_mismatch"
+       └─ 不阻断写入（数据以 CSV 明细为准，HTML 仅作参考）
+  │
+  ▼
+进程内直调写入（P0-4：走 patrolIngestion.js 共享函数，不经过 HTTP + API Key 自签名回路）
+  ├─ ingestPatrolStats(db, { date, productKey, rows })  → api_patrol_stats
+  └─ ingestPatrolRequests(db, { date, pool, pkg, rows, registry, getMeta, putMeta }) → api_patrol_requests
+  │
+  ▼
+写审计日志 + 更新拉取状态 meta
+  - success：记录产品数/stats 行数/requests 行数
+  - no_email：当日无邮件
+  - sender_rejected：发件人不匹配
+  - parse_error：解析失败（含具体阶段与原因）
+  - fetch_error：IMAP 连接/鉴权/网络错误（P2-8：可观测性）
+```
+
+### 9.4 缺陷修正清单（实现时必须落，2026-11-09 复盘）
+
+| 编号 | 级别 | 缺陷 | 修正方案 | 实现位置 |
+|---|---|---|---|---|
+| **P0-1** | 安全 | 发件人白名单缺失——任何人都可伪造巡检邮件注入数据 | 校验 `From: service@cmecloud.cn`（精确匹配），不匹配直接丢弃 + 审计告警 `api_patrol.email_ingestion_sender_rejected` | 解析管线的 MIME 解析后、数据提取前 |
+| **P0-2** | 数据完整性 | HTML-vs-CSV 交叉校验缺失——邮件正文表格数据与附件 CSV 可能不一致 | 比对 HTML 统计表接口数 vs CSV 去重接口数 + 成功率，偏差 >0.05pp 审计告警（不阻断，以 CSV 为准）。口径：接口数差百分比、成功率绝对差 | 解析管线末尾、写入前 |
+| **P0-3** | 数据完整性 | 同日多封邮件无选取规则——多封时行为未定义 | 按 `Received` 头时间降序取最新一封；当日无邮件记 info 级审计 `no_email`（非 error，Plan B 是备路径） | IMAP 搜索结果处理 |
+| **P0-4** | 安全/架构 | API Key 自签名回路——进程给自己发 HTTP 请求，需在本进程内签发一个 API Key 并硬编码 | 抽取 `patrolIngestion.js` 供两路径复用（HTTP 推送 + 邮件导入），邮件导入走**进程内直调**，不经过 HTTP 层。函数签名：`ingestPatrolStats(db, params)` / `ingestPatrolRequests(db, params)` | `server/patrolIngestion.js`（新建共享模块） |
+| **P1-5a** | 健壮性 | HTML 产品分块解析仅依赖 `📦 产品：` emoji 标记——标记格式一变解析全崩 | 主力 `📦 产品：` 标记切分；兜底：正则 `<th[^>]*>资源池</th>` 定位表头 → 向前回溯产品名 | HTML 解析器内 |
+| **P1-5b** | 健壮性 | 附件名与正文产品对应关系无交叉验证——附件少/多产品静默漏/多数据 | ZIP 文件判定的产品集合与 HTML 正文声明的产品清单比对，有遗漏或多余 → 审计告警 | 交叉校验阶段 |
+| **P1-6** | 健壮性 | ZIP 池归属判定仅靠文件名——文件名不含日期格式时池名为空 | 主：文件名正则截取日期前部分；兜底：CSV 首行资源池列值（eip_vpc）或文件名大写英文段（ELB） | ZIP 解析器内 |
+| **P2-8** | 可观测性 | 静默拉取失败——IMAP 连接失败/无邮件/解析失败均无人知晓 | 每次拉取写审计日志（成功/失败/跳过/告警）；Settings 面板显示上次拉取状态；总览页顶部横幅（连续失败 ≥2 天时显示警告） | 调度器 + Settings 面板 + 总览页 |
+
+### 9.5 配置与状态（meta）
+
+- `api_patrol_email_ingestion_config_v1`：`{ enabled: bool, imapHost: 'imap.cmss.chinamobile.com', imapPort: 993, imapUser: 'zhouhuiling@cmss.chinamobile.com', imapTls: true, senderWhitelist: ['service@cmecloud.cn'] }`——IMAP 连接配置与发件人白名单（auth code 不进 meta，从环境变量 `PATROL_EMAIL_AUTH_CODE` 读取）
+- `api_patrol_email_ingestion_state_v1`：`{ lastFetchAt, lastFetchDate, lastResult('success'|'no_email'|'sender_rejected'|'parse_error'|'fetch_error'), lastStats({ products, statsRows, requestRows }), lastError }`——拉取状态（同日幂等：lastFetchDate=今日 → skip；手动 force 绕过）
+
+### 9.6 API 与前端
+
+- `GET /api/patrol/email-ingestion/status`（view）——返回最近拉取状态（脱敏，不含 auth code）
+- `POST /api/patrol/email-ingestion/fetch`（manageTags，body `{force?: boolean}`）——手动触发拉取（测试/补拉用）
+- 前端：**Settings → 邮件 tab「API巡检邮件拉取」卡片**——开关/上次拉取时间与状态/产品数/行数/错误信息（脱敏）/「立即拉取」按钮
+- 总览页顶部横幅：拉取连续失败 ≥2 天时显示警告（黄色 Alert），含上次成功时间与失败原因摘要
+
+### 9.7 调度集成
+
+在 `patrolReportScheduler.js` 中增加 09:15 定时点：与日报定时器共用同一进程内 setTimeout 机制（`startPatrolEmailIngestionScheduler()`），拉取完成后不阻塞日报（独立 try/catch）。未启用时每 10 分钟轮询配置（同日报模式：前端开关即时生效）。
+
+拉取成功后可选择是否自动触发压缩+诊断（默认开启：`autoProcessOnFetch=true`，拉取完成后调用 `compressPatrolDay` + `runPatrolDiagnose`，失败不阻塞状态更新）。
+
+---
+
+## 10. 拍板记录（防丢失）
 
 | 日期 | 事项 | 决定 |
 |---|---|---|
@@ -458,8 +590,9 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 | 11-07 | 仿真/测试排后 | 异常接口列表（溯源页①+日报明细表）：**纯仿真/测试接口**（接口×池×窗口内失败组全为仿真/测试账号）打标签并排列表最后；混合真实客户失败的接口不后排（有真问题）；推导口径两处同源（simAgg 按 池×接口） |
 | 11-07 | 溯源页巡检概况 | 页面1 顶部 AI 总结方向拍板：**检测结果概况**（非待办摘要——用户纠偏）——覆盖/阈值异常/失败总量/最差 Top3/最集中点(含仿真占比)/根因 Top3/闭环状态/环比；facts 与①列表同源（computeFailureInterfaces 单源）；LLM 输出不含数字、facts 锚点渲染、模板降级 |
 | 11-09 | MCP 真实契约 | 官方端点 `cni.mcp.server:31788/mcp-server/mcp`（hosts 前置）实测定稿：Streamable HTTP 双 Accept 头；log_search 必填时间/产品枚举/池枚举、requestId 走 filter；超时 300s 对齐官方；isError 按失败保重试；日志平台保留期有限→诊断应近实时触发 |
+| 11-09 | Plan B 邮件拉取设计 | §9 定稿：IMAP 每日 09:15 拉取（Coremail imap.cmss.chinamobile.com:993，auth code 环境变量）；发件人白名单（P0-1）；HTML-vs-CSV 交叉校验 ≤0.05pp（P0-2）；同日多封取最新（P0-3）；进程内直调不入 HTTP 回路（P0-4）；HTML 解析 emoji 主力+正则兜底（P1-5a）；附件名×正文产品交叉验证（P1-5b）；ZIP 池名文件名主+CSV 内容兜底（P1-6）；每次拉取审计+Settings 状态面板+总览连续失败横幅（P2-8）；调度集成 09:15 同日报 setTimeout 模式；拉取后可自动触发压缩诊断 |
 
-## 10. 实施顺序
+## 11. 实施顺序
 
 1. 建表 + 两个 meta 种子 migration
 2. 推送 API（鉴权中间件/两个端点/批次校验/幂等 upsert/产品归属判定+未登记告警）
@@ -470,5 +603,7 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 7. 总览页（AI 综述+分布+趋势）
 8. 样例数据导入脚本（data/API 巡检/原始数据样例 → 真实链路验证）
 9. 联调清单：Nginx body 限制/超时/Authorization 透传/外部 81 可达性/API Key 签发
+10. Plan B 邮件拉取导入（IMAP 拉取+邮件解析+共享写入模块+调度集成+前端状态面板；§9）——依赖步骤 2（patrolIngestion.js 共享模块必须先于 Plan B 落成；§9 §9.4 P0-4：两路径复用同一写入函数）
 
 每步验证纪律：真实链路跑通（node -e 最小脚本拼真实入参）+ 守卫测试红绿证明 + typecheck 零新增。
+Plan B 额外验证：(1) 发件人白名单拒绝非 service@cmecloud.cn 邮件；(2) HTML-vs-CSV 交叉校验告警触发；(3) 同日多封取最新；(4) 无邮件不报 error；(5) IMAP 连接失败审计可见。
