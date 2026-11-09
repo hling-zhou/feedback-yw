@@ -218,14 +218,15 @@ POST /api/patrol/push/requests
 
 **重推重建**：新组覆盖写入（唯一键 upsert），旧 diagnoses 成为孤儿（FK 关联的旧 group 行被覆盖，不影响功能；新组重建后自动触发新诊断任务）。人工状态按 (日期,池,接口,客户) 带回（§2.3）。
 
-### 4.2 MCP 诊断（服务端直连，2026-11-06 定稿）
+### 4.2 MCP 诊断（服务端直连，2026-11-06 定稿；2026-11-09 实测契约校准）
 
-- 平台 API 服务端实现轻量 MCP Client（JSON-RPC over HTTP）
-- 端点与 token **配置链（2026-11-07 定稿，替代"仅存 .env"口径）**：admin/process 显式传参（测试覆盖用）> 库配置（meta `api_patrol_mcp_config_v1`，Settings「产品API日志诊断配置」面板维护，与 llm_config_v1 同构：通用 meta GET 禁明文/PUT 留空保留 token/专属审计动作/脱敏 GET）> 环境变量 `PATROL_MCP_ENDPOINT` / `PATROL_MCP_TOKEN`。token 在云网工作台自助生成（通用智能体 → 设置 → MCP 工具面板）；生产建议申请服务级 token
-- 工具：`log_search` / `log_search_full_param`（支持 时间/产品/资源池/requestId/关键字 检索）
-- 调用参数：requestId + 时间窗 + 池/产品上下文
-- **并发控制**：诊断 worker 最大并发 N=3（默认，可配），队列 + 失败重试退避；超时 30-60s（底稿建议）；单个调用失败进 diagnoses.status=failed 可重试
+- 平台 API 服务端实现轻量 MCP Client（JSON-RPC over **Streamable HTTP**——请求必须带 `Accept: application/json, text/event-stream` 双协议头，缺头 400）
+- **端点（2026-11-09 官方口径，实测已通）**：`http://cni.mcp.server:31788/mcp-server/mcp`（部署机 hosts 需含 `10.234.188.68 cni.mcp.server`）；端点与 token **配置链（2026-11-07 定稿）**：admin/process 显式传参（测试覆盖用）> 库配置（meta `api_patrol_mcp_config_v1`，Settings「产品API日志诊断配置」面板维护，与 llm_config_v1 同构：通用 meta GET 禁明文/PUT 留空保留 token/专属审计动作/脱敏 GET）> 环境变量 `PATROL_MCP_ENDPOINT` / `PATROL_MCP_TOKEN`。token 在云网工作台自助生成（通用智能体 → 设置 → MCP 工具面板）；生产建议申请服务级 token
+- 工具：`log_search`（真实 schema：必填 startTime/endTime（yyyy-MM-dd HH:mm:ss）/productName 枚举/poolName 枚举；**无 requestId 参数**——requestId 走 filter 关键字）/ `log_search_full_param`（全参版）
+- 调用参数（11-09 实测定稿）：时间窗=组首条 ±30 分钟、productName 映射（eip/vpc→`fip/vpc`、slb→`slb-console`）、poolName、filter=组首条 requestId
+- **并发控制**：诊断 worker 最大并发 N=3（默认，可配），队列 + 失败重试退避；超时对齐官方 `tool_timeout_sec=300`；`result.isError=true`（如下游平台 412/500）按失败处理保重试；单个调用失败进 diagnoses.status=failed 可重试
 - 诊断仅对压缩组首条 RequestID 执行（需求原文）
+- 日志时效：平台保留期有限（实测 3 个月前的 8 月样例查不到、412 下游失败）——**诊断应近实时触发**，隔月补诊断会全落"日志缺失"
 
 ### 4.3 诊断文本 → 根因分类
 
@@ -456,6 +457,7 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 | 11-07 | AI巡检日报 | §8 定稿：窗口=昨日 T-1；待产品侧关注=待处理组（未诊断单列不算）；成功率=stats 推送值不重算；明细上限 20/产品；排序=纯仿真排后→<99.5 优先→升序；**仿真/测试流量默认不排除、打标记**（excludeSimTagged 可选排除）；无异常默认发平静简报（includeQuiet）；进程内定时器+同日幂等+手动 force 补发；复用 mail_groups，通道按 **channelId 选择**（不新增全局数据源枚举） |
 | 11-07 | 仿真/测试排后 | 异常接口列表（溯源页①+日报明细表）：**纯仿真/测试接口**（接口×池×窗口内失败组全为仿真/测试账号）打标签并排列表最后；混合真实客户失败的接口不后排（有真问题）；推导口径两处同源（simAgg 按 池×接口） |
 | 11-07 | 溯源页巡检概况 | 页面1 顶部 AI 总结方向拍板：**检测结果概况**（非待办摘要——用户纠偏）——覆盖/阈值异常/失败总量/最差 Top3/最集中点(含仿真占比)/根因 Top3/闭环状态/环比；facts 与①列表同源（computeFailureInterfaces 单源）；LLM 输出不含数字、facts 锚点渲染、模板降级 |
+| 11-09 | MCP 真实契约 | 官方端点 `cni.mcp.server:31788/mcp-server/mcp`（hosts 前置）实测定稿：Streamable HTTP 双 Accept 头；log_search 必填时间/产品枚举/池枚举、requestId 走 filter；超时 300s 对齐官方；isError 按失败保重试；日志平台保留期有限→诊断应近实时触发 |
 
 ## 10. 实施顺序
 
