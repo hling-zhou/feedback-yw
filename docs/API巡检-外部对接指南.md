@@ -185,9 +185,11 @@ Authorization: Bearer <API Key>
 > curl -s -m 12 -X POST "http://cni.mcp.server:31788/mcp-server/mcp" \
 >   -H 'content-type: application/json' \
 >   -H 'Accept: application/json, text/event-stream' \
->   -H 'Authorization: Bearer <token>' \
+>   -H 'Authorization: Bearer 48mb(YftroD=nvr=FPHWw8=$0IsvAHYZ' \
 >   -d '{"jsonrpc":"2.0","id":"v1","method":"tools/list"}'
 > ```
+> （token 已预填当前有效值；若后续在云网工作台换发 token，以「模型与工具 → 产品API日志诊断配置」
+> 面板中的值为准并同步更新此处）
 
 > 附注：MCP Token 由云网工作台签发（通用智能体 → 设置 → MCP 工具面板 → 生成 token），与个人账号绑定；
 > 生产服务长期自动调用建议向平台组申请**服务级/应用级 token**，避免绑定个人（人员变动即断）。
