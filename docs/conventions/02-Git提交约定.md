@@ -71,5 +71,5 @@ Add password support, refactor catalog panel, and update resume draft.
 
 - **不 push**：push 仅在用户明确指令时执行（11-10 实例：本地领先 origin 多个 commit 常态化存在）。
 - **amend 仅限用户明确指令**（如补 trailer），且仅限未 push 的提交。
-- **维护类提交 body 加 `Changelog: skip`**：纯改名/重构/脚本类提交不进 whats-new（whats-new 由 prebuild 生成，范围 `scripts/whats-new.since..HEAD` 勿前移；`commitToWhatsNewItem` 可 node import 实测验证一条 commit 是否会入选）。先例：a6e8403 全局改名提交带 `Changelog: skip`。
+- **更新动态只收录 feat/fix**（11-11 拍板）：chore/docs/test 等类型代码层天然不收录（`WHATS_NEW_INCLUDED_TYPES = new Set(['feat','fix'])`），**无需加 skip trailer**；`Changelog: skip` 只用于"会被收录但属维护性质"的 feat/fix（如纯改名/重构/构建修复类）。whats-new 由 prebuild 生成，范围 `scripts/whats-new.since..HEAD` 勿前移；`commitToWhatsNewItem` 可 node import 实测验证一条 commit 是否会入选。先例：a6e8403 全局改名 feat 带 `Changelog: skip`。
 - **纯改名批的"非改名行"核对方法**（11-10 沉淀）：diff 的 -/+ 行整行含新旧词（替换对），逐文件 `grep -cv` 会产生残留计数错觉；正确做法 = 过滤"含任一词"的行后看剩余是否为空 + 抽查大 diff 文件人工确认。
