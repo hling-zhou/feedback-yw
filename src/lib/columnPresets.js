@@ -148,23 +148,22 @@ export const POST_USE_CUSTOMER_VISIT_PRESET = {
   description: '客服部回访信息导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细',
   dataSourceTypes: ['post_use_rating'],
   columnMap: {
+    // 2026-11-10 用户拍板：模板列序 = 数据月份/客户名称/客户编码/登录账号名称/产品名称/
+    // 原工单编号（兼容：相应投诉工单）/客户反馈/回访结果/内部评估/经办人/备注。
+    // originalTicketId 首选「相应投诉工单」（与 10 月回访表及导出列一致），旧列名「原工单编号」保留识别兼容。
     visitMonth: '数据月份',
-    productName: '产品名称',
     customerName: '客户名称',
     customerCode: '客户编码',
-    groupName: '集团名称',
     loginAccountName: '登录账号名称',
-    // 2026-11-09 模板对齐（用户拍板）：同义候选——旧导出列「原工单编号」与 10 月回访表列「相应投诉工单」
-    originalTicketId: ['原工单编号', '相应投诉工单'],
-    scoreSource: '评分来源',
+    productName: '产品名称',
+    originalTicketId: ['相应投诉工单', '原工单编号'],
+    userFeedbackText: '客户反馈',
     visitResult: '回访结果',
     internalConclusion: '内部评估',
+    assigneeName: '经办人',
     remark: '备注',
     visitFeedbackDetail: '回访结果',
     internalEvaluationDetail: '内部评估',
-    // 2026-11-09 补映射：10 月回访表含「经办人」列（值允许为空）
-    assigneeName: '经办人',
-    userFeedbackText: '客户反馈',
   },
   rawTextMerge: [],
 }
