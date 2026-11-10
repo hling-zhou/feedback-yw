@@ -23,6 +23,7 @@ import {
   markPostUseVisitDispatch,
   upsertPostUseCallbackDecisions,
 } from '../../lib/postUseJiraClient.js'
+import { batchPreloadPostUseVisits } from '../../lib/postUseVisitClient.js'
 import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
@@ -79,9 +80,9 @@ export default function PostUseCallbackProcessModal({
   /** 已归档（产品部溯源）条目：itemKey 集合 + itemKey → { assigneeName }（Bug3，2026-11-04） */
   const [archivedKeys, setArchivedKeys] = useState(() => new Set())
   const [archivedItems, setArchivedItems] = useState(() => new Map())
-  /** 客服部回访"已纳入"标记：itemKey 集合（需求8，2026-11-04：导出/发送即标记，不可逆） */
+  /** 省代表回访"已纳入"标记：itemKey 集合（需求8，2026-11-04：导出/发送即标记，不可逆） */
   const [dispatchedKeys, setDispatchedKeys] = useState(() => new Set())
-  /** 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入客服部回访 */
+  /** 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入省代表回访 */
   const [filterArchivedOnly, setFilterArchivedOnly] = useState(false)
   const [filterDispatchedOnly, setFilterDispatchedOnly] = useState(false)
 
@@ -275,7 +276,7 @@ export default function PostUseCallbackProcessModal({
     }
   }
 
-  // 按客户批量勾选（persistDecisionsBatch）已随 2026-11-09「客服部回访列行级化」删除：
+  // 按客户批量勾选（persistDecisionsBatch）已随 2026-11-09「省代表回访列行级化」删除：
   // 唯一消费方是原 visitFlagColumn 的组内一勾全选；行级勾选走 persistDecision（含周期包含同步）。
 
   const flagColumn = (flag, title) => ({
@@ -308,7 +309,7 @@ export default function PostUseCallbackProcessModal({
   // 映射导致翻页后勾选态/合并单元格/经办人全部错位继承（首页客户的状态渲染到第 2 页）。
   // 现改为把分组信息直接预挂到每行对象上，render 按 row 自取，index 彻底退场。
   //
-  // 2026-11-09 用户拍板（取代 2026-11-04 旧语义）：「客服部回访」勾选列与「产品部回溯」
+  // 2026-11-09 用户拍板（取代 2026-11-04 旧语义）：「省代表回访」勾选列与「产品部回溯」
   // 勾选列/经办人列一致，全部行级独立（不做 rowSpan、不一勾全选）；仅显示列保留客户级合并。
   const questionnaireRows = useMemo(() => {
     const keyOf = (row) => String(row.customerCode || row.customerName || '').trim() || '匿名客户'
@@ -340,8 +341,8 @@ export default function PostUseCallbackProcessModal({
     return sorted
   }, [recommendations])
 
-  // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的客服部回访条数。
-  // 2026-11-09 客服部回访列行级化：两个 tab 都按行级计数（勾选该筛选后实际显示的行数）——
+  // 需求8：当前清单范围内已被标记"已纳入"（导出/发送过）的省代表回访条数。
+  // 2026-11-09 省代表回访列行级化：两个 tab 都按行级计数（勾选该筛选后实际显示的行数）——
   // 原问卷 tab 组级语义（组内任一命中 → 整组计入）随 visitFlagColumn 删除而下线，
   // 行级判定走 isDispatched（含周期包含匹配），与行显示口径严格同源。
   const dispatchedCount = useMemo(() => {
@@ -362,7 +363,7 @@ export default function PostUseCallbackProcessModal({
 
   // 快捷筛选派生（2026-11-06）：按"已纳入"状态过滤。过滤后同客户可能只剩部分行 →
   // 每行对象重新构建分组信息（__groupKeys 只含过滤后的组内键、span 重算），保证显示列合并单元格正确。
-  // 2026-11-09 客服部回访行级化：两个"已纳入"筛选均为行级判定（isDispatched 含周期包含匹配，
+  // 2026-11-09 省代表回访行级化：两个"已纳入"筛选均为行级判定（isDispatched 含周期包含匹配，
   // 覆盖"季度视图导出标记（多月并集存储键）+ 月视图打开筛选"场景）；原问卷 tab 组级
   // 保留语义随 visitFlagColumn 删除而下线，与行级 Tag 展示口径严格同源。
   // （类型说明：recommendations prop 为 object[]，此处局部放宽 itemKey/分组字段访问）
@@ -406,7 +407,7 @@ export default function PostUseCallbackProcessModal({
   }, [callbackNonTenRecords, filterArchivedOnly, filterDispatchedOnly, isArchived, isDispatched])
 
   // 客户级合并单元格的通用 render 包装：非组首行返回 rowSpan:0 吞行。
-  // 2026-11-09 用户拍板：仅用于客户名称/客户编码/触发类型等显示列；勾选列（客服部回访/
+  // 2026-11-09 用户拍板：仅用于客户名称/客户编码/触发类型等显示列；勾选列（省代表回访/
   // 产品部溯源）全部行级独立（原 visitFlagColumn 客户级合并勾选列已删除）。
   const mergedCell = (value, row, render) => {
     if (!row.__isGroupFirst) return { children: '', props: { rowSpan: 0 } }
@@ -478,10 +479,10 @@ export default function PostUseCallbackProcessModal({
       ellipsis: true,
       render: (value) => <EllipsisHover value={value} />,
     },
-    // 2026-11-09 用户拍板：客服部回访勾选列与产品部回溯列一致，行级独立不合并
+    // 2026-11-09 用户拍板：省代表回访勾选列与产品部回溯列一致，行级独立不合并
     //（原 visitFlagColumn 客户级合并/一勾全选/半选态语义下线；显示列仍保留客户级合并）。
     // flagColumn 与投诉 tab 同款：行级 Checkbox + 已纳入行级 Tag + 周期包含语义。
-    flagColumn('needCustomerVisit', '客服部回访'),
+    flagColumn('needCustomerVisit', '省代表回访'),
     rowFlagColumn('needInternalTrace', '产品部溯源'),
     {
       // 经办人列行级独立（2026-11-04 用户拍板：不同产品分别指定经办人；已纳入行只读显示归档经办人）
@@ -542,7 +543,7 @@ export default function PostUseCallbackProcessModal({
     { title: '不满原因', dataIndex: 'dissatisfactionReason', width: 180, ellipsis: true },
     { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
     { title: '问题原因', dataIndex: 'problemCause', width: 200, ellipsis: true },
-    flagColumn('needCustomerVisit', '客服部回访'),
+    flagColumn('needCustomerVisit', '省代表回访'),
     {
       title: '产品部溯源',
       dataIndex: 'needInternalTrace',
@@ -597,8 +598,10 @@ export default function PostUseCallbackProcessModal({
     },
   ]
 
-  // 需求8（2026-11-04）：导出/发送成功后按 itemKey 标记"已纳入"（不可逆）；
+  // 需求8（2026-11-04）：导出/发送成功后按 itemKey 标记"已纳入"；
   // 已纳入的条目不再进入后续导出/发送收集范围。标记失败不阻断主流程。
+  // 2026-11-10 需求（用户拍板）：标记成功后同批**预导入写入回访 tab**（待评估态，
+  // 回访结果/内部评估/经办人为空待导入补充；身份键与导入链一致 → 导入时同身份覆盖更新）。
   const markVisitDispatched = async (rows, dispatchedVia) => {
     const pending = rows.filter((row) => row.itemKey && !isDispatched(row.itemKey))
     if (!pending.length) return
@@ -618,6 +621,42 @@ export default function PostUseCallbackProcessModal({
         if (item?.itemKey) next.add(item.itemKey)
       }
       setDispatchedKeys(next)
+      // 预导入写入：按 itemKey 拆出身份三元组（同客户多月并集键 → 各月份独立成条，拍板：不做行合并）。
+      // 2026-11-10 拍板：客户反馈列带入清单行的客户反馈内容（与导出待省代表回访表同款文本，
+      // 回访 tab 打开即见"该客户为何被纳入回访"的上下文；后续导入时该域按导入值覆盖）。
+      const preloadItems = []
+      const seenIdentity = new Map()
+      for (const row of pending) {
+        const months = String(row.数据月份 || '').split('、').map((m) => m.trim()).filter(Boolean)
+        const feedback = String(row.客户反馈 || '').trim()
+        for (const month of months) {
+          const identity = [month, row.产品名称, row.客户名称, row.客户编码].join('\0')
+          if (seenIdentity.has(identity)) {
+            // 同身份多月拆条或多行同身份：客户反馈取信息量最大的一份（非空优先，长者优先）
+            const prev = seenIdentity.get(identity)
+            if (feedback.length > String(prev.customerFeedback || '').length) {
+              prev.customerFeedback = feedback
+            }
+            continue
+          }
+          const item = {
+            visitMonth: month,
+            productName: row.产品名称 || '',
+            customerName: row.客户名称 || '',
+            customerCode: row.客户编码 || '',
+            customerFeedback: feedback,
+          }
+          seenIdentity.set(identity, item)
+          preloadItems.push(item)
+        }
+      }
+      if (preloadItems.length) {
+        try {
+          await batchPreloadPostUseVisits(preloadItems)
+        } catch {
+          message.warning('已标记"已纳入"，但回访 tab 预写入失败（导入时仍会正常生成）')
+        }
+      }
     } catch {
       message.warning('标记"已纳入"失败，可重新导出补标')
     }
@@ -627,10 +666,10 @@ export default function PostUseCallbackProcessModal({
     const rows = collectFollowupExportRows(recommendations, callbackNonTenRecords, decisions, 'needCustomerVisit')
       .filter((row) => !isDispatched(row.itemKey))
     if (!rows.length) {
-      message.info('请先勾选需要客服部回访的记录（已纳入的不再重复导出）')
+      message.info('请先勾选需要省代表回访的记录（已纳入的不再重复导出）')
       return
     }
-    downloadFollowupTableExcel(rows, '待客服部回访表', scopeLabel)
+    downloadFollowupTableExcel(rows, '待省代表回访表', scopeLabel)
     void markVisitDispatched(rows, 'export')
   }
 
@@ -720,13 +759,13 @@ export default function PostUseCallbackProcessModal({
       destroyOnClose
       styles={{ body: { maxHeight: '78vh', overflowY: 'auto' } }}
     >
-      {/* 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入客服部回访 的行；文案带动态计数 */}
+      {/* 快捷筛选（2026-11-06）：只看已纳入产品部回溯 / 已纳入省代表回访 的行；文案带动态计数 */}
       <div className="mb-2 flex flex-wrap items-center gap-4">
         <Checkbox checked={filterArchivedOnly} onChange={(e) => setFilterArchivedOnly(e.target.checked)}>
           已纳入产品部回溯（{archivedCount}）
         </Checkbox>
         <Checkbox checked={filterDispatchedOnly} onChange={(e) => setFilterDispatchedOnly(e.target.checked)}>
-          已纳入客服部回访（{dispatchedCount}）
+          已纳入省代表回访（{dispatchedCount}）
         </Checkbox>
       </div>
       <Tabs
@@ -794,15 +833,15 @@ export default function PostUseCallbackProcessModal({
             </Button>
           </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportVisit}>
-            导出待客服部回访表
+            导出待省代表回访表
           </Button>
-          <Tooltip title={visitCount ? '' : '请先勾选需要客服部回访的记录'}>
+          <Tooltip title={visitCount ? '' : '请先勾选需要省代表回访的记录'}>
             <Button
               icon={<MailOutlined />}
               disabled={!canEdit || !visitCount}
               onClick={() => setMailOpen(true)}
             >
-              发送待客服部回访
+              发送待省代表回访
             </Button>
           </Tooltip>
           <Button icon={<DownloadOutlined />} onClick={exportTrace}>
@@ -819,7 +858,7 @@ export default function PostUseCallbackProcessModal({
               存档「产品部溯源」
             </Button>
           </Tooltip>
-          <Tooltip title="跳转反馈库 · 用后即评满意度 · 产品部回溯视图">
+          <Tooltip title="跳转反馈库 · 用后即评满意度 · 产品部溯源视图">
             <Button
               icon={<LinkOutlined />}
               onClick={() => {
@@ -827,7 +866,7 @@ export default function PostUseCallbackProcessModal({
                 navigate('/feedbacks?lane=post_use&view=trace&source=post_use_rating')
               }}
             >
-              查看产品部回溯
+              产品部溯源
             </Button>
           </Tooltip>
         </Space>
@@ -840,7 +879,7 @@ export default function PostUseCallbackProcessModal({
         periodLabel={scopeLabel}
         linkKind="workbench"
         canSend={canEdit && visitCount > 0}
-        disabledReason={visitCount ? '' : '请先勾选需要客服部回访的记录'}
+        disabledReason={visitCount ? '' : '请先勾选需要省代表回访的记录'}
         buildAttachment={async () => {
           const rows = collectFollowupExportRows(
             recommendations,
@@ -849,9 +888,9 @@ export default function PostUseCallbackProcessModal({
             'needCustomerVisit',
           ).filter((row) => !isDispatched(row.itemKey))
           if (!rows.length) return null
-          const wb = buildFollowupTableWorkbook(rows, '待客服部回访表')
+          const wb = buildFollowupTableWorkbook(rows, '待省代表回访表')
           return {
-            filename: followupTableFilename('待客服部回访表', scopeLabel),
+            filename: followupTableFilename('待省代表回访表', scopeLabel),
             mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             contentBase64: followupWorkbookToBase64(wb),
           }

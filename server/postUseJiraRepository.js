@@ -286,7 +286,7 @@ export const postUseJiraRepository = {
   /**
    * 2026-11-06 #6（用户拍板）：删除产品部回溯归档条目时联动取消清单勾选——
    * 被删条目的 itemKey 在 post_use_callback_decisions 中的 needInternalTrace 置 false
-   * （needCustomerVisit 是客服部回访维度，归档删除不动它）。
+   * （needCustomerVisit 是省代表回访维度，归档删除不动它）。
    * 覆盖周期包含语义：勾选存储键的月份段可能 ⊄ 被删归档键月份段（如月键勾选 + 季度键归档），
    * 无法靠纯 SQL 精确圈定——取「归档键前缀（q:客户:产品）」相同的全部决策键，逐条拆月判定：
    * 存储键月份集合 ⊆ 被删键月份集合 的才取消（与前端 itemKeySubsetMatches 同语义）。
@@ -361,6 +361,45 @@ export const postUseJiraRepository = {
     for (const itemKey of deletedItemKeys) this.clearTraceDecisionsForDeletedItem(itemKey)
     if (deleted) bumpDataRevision()
     return deleted
+  },
+
+  /**
+   * 2026-11-10 需求③（用户拍板）：删除省代表回访记录 → 联动重置建议回访清单勾选。
+   * 按被删回访的身份三元组（月+产品+客户）拼出 q: 前缀，把同前缀且月份包含的决策
+   * needCustomerVisit 置 false（清单恢复未勾选态）。判定模式与 clearTraceDecisionsForDeletedItem
+   * 同款（前缀相同 + 存储键月份 ⊆ 被删月份，或存储键无月份段=旧格式兜底）。
+   * @param {{ month: string, productName: string, customerCode?: string, customerName?: string }} identity
+   * @returns {number} 重置勾选的决策条数
+   */
+  clearVisitDecisionsForDeletedVisit(identity) {
+    const month = String(identity?.month || '').trim()
+    const productName = String(identity?.productName || '').trim()
+    const customerCode = String(identity?.customerCode || '').trim()
+    const customerName = String(identity?.customerName || '').trim()
+    const customer = customerCode || customerName
+    if (!month || !productName || !customer) return 0
+    const prefix = `q:${customer}:${productName}`
+    const rows = getDb()
+      .prepare(`SELECT item_key, payload FROM post_use_callback_decisions WHERE item_key LIKE ?`)
+      .all(`${prefix}%`)
+    let cleared = 0
+    const tx = getDb().transaction(() => {
+      for (const row of rows) {
+        const decision = normalizeDecision(parseJson(row.payload))
+        if (!decision.needCustomerVisit) continue
+        const storedMonths = extractItemKeyMonths(row.item_key)
+        // 存储键月份须含被删回访月份（该月勾选因这条回访存在；含=重置，不含=其他月份的勾选不动）
+        if (storedMonths.length && !storedMonths.includes(month)) continue
+        const next = { ...decision, needCustomerVisit: false, updatedAt: nowIso() }
+        getDb()
+          .prepare(`UPDATE post_use_callback_decisions SET payload = ? WHERE item_key = ?`)
+          .run(stringifyJson(next), row.item_key)
+        cleared += 1
+      }
+    })
+    tx()
+    if (cleared) bumpDataRevision()
+    return cleared
   },
 }
 

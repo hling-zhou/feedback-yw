@@ -63,7 +63,7 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       normalizedKey(visit.customerName, visit.customerCode, visit.productName),
     )
     const actionItem = visit.actionId ? actionItemMap.get(visit.actionId) : undefined
-    // 2026-11-10 用户拍板：导出列按《客服部回访-导出字段.xlsx》21 列序对齐——
+    // 2026-11-10 用户拍板：导出列按《省代表回访-导出字段.xlsx》21 列序对齐——
     // 模板段（数据月份→备注）+ 抽屉人工段（确立举措/举措详情/排期）+ 推荐分析段（建议触发类型→涉及渠道）。
     // 客户反馈列内容 = 导入列表中的「客户反馈」列（userFeedbackText）。
     // 移除列：集团名称（模板可选列非导出列）、建议回访原因、动态 客户原话N/低分原因N（需求文件无）。
@@ -123,7 +123,7 @@ export async function fetchActionItemsForVisitExport(visitRecords = []) {
 }
 
 /**
- * 下载客服部回访 Excel（含抽屉人工输入结果：确立举措/举措详情/排期）。
+ * 下载省代表回访 Excel（含抽屉人工输入结果：确立举措/举措详情/排期）。
  * 异步拉取 action_item 后生成 Excel。
  *
  * @param {VisitRecord[]} visitRecords
@@ -138,10 +138,10 @@ export async function downloadPostUseCustomerVisitExcel(
   const actionItemMap = await fetchActionItemsForVisitExport(visitRecords || [])
   const rows = buildPostUseCustomerVisitRows(visitRecords, recommendations, actionItemMap)
   const sheet = XLSX.utils.json_to_sheet(
-    rows.length ? rows : [{ 提示: '当前范围内暂无客服部回访原单' }],
+    rows.length ? rows : [{ 提示: '当前范围内暂无省代表回访原单' }],
   )
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, sheet, '客服部回访')
+  XLSX.utils.book_append_sheet(wb, sheet, '省代表回访')
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
   const datePart = new Date().toISOString().slice(0, 10)
   const safeScope = String(scopeLabel || '当前范围').replace(/[\\/:*?"<>|]+/g, '-')
@@ -149,6 +149,6 @@ export async function downloadPostUseCustomerVisitExcel(
     new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }),
-    `客服部回访-${safeScope}-${datePart}.xlsx`,
+    `省代表回访-${safeScope}-${datePart}.xlsx`,
   )
 }

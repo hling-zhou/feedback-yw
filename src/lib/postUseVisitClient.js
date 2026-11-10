@@ -3,7 +3,7 @@ import { apiFetch } from './apiClient.js'
 /** @typedef {import('./postUseRating/visitRecords.js').PostUseVisitRecord} PostUseVisitRecord */
 
 /**
- * 客服部回访处理状态 recordId 前缀。与工单 id 空间隔离，
+ * 省代表回访处理状态 recordId 前缀。与工单 id 空间隔离，
  * 存入 user_ticket_review (user_id, record_id)。
  */
 export const POST_USE_VISIT_REVIEW_PREFIX = 'visit:'
@@ -25,7 +25,7 @@ export function listPostUseVisits(importMonths) {
 }
 
 /**
- * 编辑客服部回访的内部评估/备注/经办人/关联举措。
+ * 编辑省代表回访的内部评估/备注/经办人/关联举措。
  * 2026-11-05 评估状态自动流转：evaluationSubmitted 提交=true（已评估）/ 暂存=false（评估中）。
  * @param {string} id
  * @param {{
@@ -55,5 +55,30 @@ export function patchPostUseVisit(id, patch) {
 export function deletePostUseVisit(id) {
   return apiFetch(`/api/post-use-visits/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+  })
+}
+
+/**
+ * 2026-11-10 用户拍板（需求③常驻）：批量删除回访记录（权限对齐产品部回溯 = editRecord）。
+ * 服务端联动：快照摘除 + 清单 dispatch 已纳入标记 + decisions 勾选重置。
+ * @param {string[]} ids
+ * @returns {Promise<{ deleted: number, detached: number, clearedDispatch: number, clearedDecisions: number, linkageError?: string }>}
+ */
+export function deletePostUseVisits(ids) {
+  return apiFetch('/api/post-use-visits/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  })
+}
+
+/**
+ * 2026-11-10 需求：建议回访清单勾选行导出/发送成功 → 预导入写入回访 tab（待导入补充回访结果）。
+ * @param {Array<{ visitMonth: string, productName: string, customerName?: string, customerCode?: string }>} items
+ * @returns {Promise<{ created: string[], items: PostUseVisitRecord[] }>}
+ */
+export function batchPreloadPostUseVisits(items) {
+  return apiFetch('/api/post-use-visits/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
   })
 }

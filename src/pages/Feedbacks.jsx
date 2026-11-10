@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -135,7 +135,7 @@ import {
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
-import { deletePostUseVisit } from '../lib/postUseVisitClient.js'
+import { deletePostUseVisit, deletePostUseVisits } from '../lib/postUseVisitClient.js'
 import { buildPostUseCallbackRecommendations } from '../lib/postUseRating/callbackRecommendations.js'
 import {
   buildPostUseCustomerVisitRows,
@@ -199,6 +199,8 @@ export default function Feedbacks() {
   const [customerVisitRecords, setCustomerVisitRecords] = useState([])
   const [customerVisitLoading, setCustomerVisitLoading] = useState(false)
   const [selectedVisitRecord, setSelectedVisitRecord] = useState(null)
+  // 2026-11-10 需求③：回访列表批量删除选中态（行选择）
+  const [selectedVisitRecordKeys, setSelectedVisitRecordKeys] = useState([])
   const [searchParams, setSearchParams] = useSearchParams()
   const skipUrlSyncRef = useRef(false)
   const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
@@ -291,7 +293,7 @@ export default function Feedbacks() {
         postUseListLoading
   const libraryLoadingTip =
     isCustomerVisitLane && customerVisitLoading
-      ? '加载客服部回访…'
+      ? '加载省代表回访…'
       : periodsLoading
         ? '加载数据周期…'
         : feedbacksLoading
@@ -380,21 +382,35 @@ export default function Feedbacks() {
       const records = await loadVisitRecords(adapter)
       setCustomerVisitRecords(records)
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载客服部回访失败')
+      message.error(err instanceof Error ? err.message : '加载省代表回访失败')
     } finally {
       setCustomerVisitLoading(false)
     }
   }, [adapter])
 
-  // 2026-11-10 临时功能（admin 专属，处理完存量重复数据后下线）：删除单条回访记录
+  // 2026-11-10 需求③（常驻，权限对齐产品部回溯 = editRecord）：删除回访记录（单删+批量双模式）
   const handleDeleteVisitRecord = useCallback(async (record) => {
     if (!record?.id) return
     try {
       await deletePostUseVisit(record.id)
       message.success('已删除')
+      setSelectedVisitRecordKeys((keys) => keys.filter((key) => key !== record.id))
+      if (selectedVisitRecord?.id === record.id) setSelectedVisitRecord(null)
       await refreshCustomerVisitRecords()
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
+    }
+  }, [refreshCustomerVisitRecords, selectedVisitRecord])
+
+  const handleDeleteVisitRecords = useCallback(async (ids) => {
+    if (!ids?.length) return
+    try {
+      const res = await deletePostUseVisits(ids)
+      message.success(`已批量删除 ${res?.deleted ?? ids.length} 条`)
+      setSelectedVisitRecordKeys([])
+      await refreshCustomerVisitRecords()
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '批量删除失败')
     }
   }, [refreshCustomerVisitRecords])
 
@@ -1146,7 +1162,7 @@ export default function Feedbacks() {
           options={[
             { label: '原始数据', value: POST_USE_VIEW_RAW },
             { label: '产品部溯源', value: POST_USE_VIEW_TRACE },
-            { label: '客服部回访', value: POST_USE_VIEW_VISIT },
+            { label: '省代表回访', value: POST_USE_VIEW_VISIT },
           ]}
         />
       )}
@@ -1429,6 +1445,19 @@ export default function Feedbacks() {
               >
                 导出
               </Button>
+              {/* 2026-11-10 需求③：批量删除（权限对齐产品部回溯 tab = editRecord） */}
+              {['admin', 'editor', 'partial_editor'].includes(user?.role) ? (
+                <Popconfirm
+                  title={`确定删除选中的 ${selectedVisitRecordKeys.length} 条？`}
+                  description="将联动取消建议回访清单的已纳入标记并重置勾选。"
+                  disabled={!selectedVisitRecordKeys.length}
+                  onConfirm={() => void handleDeleteVisitRecords(selectedVisitRecordKeys)}
+                >
+                  <Button danger icon={<DeleteOutlined />} disabled={!selectedVisitRecordKeys.length}>
+                    批量删除
+                  </Button>
+                </Popconfirm>
+              ) : null}
               <Button
                 icon={<ReloadOutlined />}
                 loading={refreshing || customerVisitLoading}
@@ -1640,8 +1669,10 @@ export default function Feedbacks() {
             rows={customerVisitTableRows}
             onSelect={(record) => setSelectedVisitRecord(record)}
             stickyOffset={stickyChromeHeight}
-            canDelete={user?.role === 'admin'}
-            onDelete={user?.role === 'admin' ? (record) => void handleDeleteVisitRecord(record) : undefined}
+            canDelete={['admin', 'editor', 'partial_editor'].includes(user?.role)}
+            onDelete={(record) => void handleDeleteVisitRecord(record)}
+            selectedRowKeys={selectedVisitRecordKeys}
+            onSelectedRowKeysChange={setSelectedVisitRecordKeys}
           />
         ) : view === 'table' ? (
             <FeedbackTable
@@ -1748,7 +1779,7 @@ export default function Feedbacks() {
   )
 }
 
-function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = false, onDelete }) {
+function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = false, onDelete, selectedRowKeys, onSelectedRowKeysChange }) {
   /**
    * 表头吸顶偏移：与 FeedbackTable 同款机制——外层共享 sticky chrome
    *（Feedbacks.jsx stickyChromeRef）测量高度传入，滚动时表头贴在筛选条下方。
@@ -1777,37 +1808,65 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
       },
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
       // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定
-      { title: '产品名称', dataIndex: '产品名称', width: 160, fixed: 'left', ellipsis: true },
-      { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
+      { title: '产品名称', dataIndex: '产品名称', width: 150, fixed: 'left', ellipsis: true },
+      // 2026-11-10 拍板：截断列 hover 气泡显示完整（参考投诉咨询工单列表 Tooltip 形态）；
+      // 客户编码主流 20 字符（E+19 位数字）→ 宽 220 保完整不截断
+      {
+        title: '客户名称',
+        dataIndex: '客户名称',
+        width: 150,
+        fixed: 'left',
+        ellipsis: true,
+        render: (val) => (
+          <Tooltip title={val || undefined} getPopupContainer={() => document.body}>
+            <Typography.Text ellipsis>{val || '—'}</Typography.Text>
+          </Tooltip>
+        ),
+      },
       // ↓ 以下按导入模板列序原样（客户编码/登录账号名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
-      // 2026-11-10 拍板：集团名称列从列表与模板一并去掉
-      { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
-      { title: '登录账号名称', dataIndex: '登录账号名称', width: 140, ellipsis: true },
-      { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 180, ellipsis: true },
-      { title: '客户反馈', dataIndex: '客户反馈', width: 220, ellipsis: true },
-      { title: '回访结果', dataIndex: '回访结果', width: 220, ellipsis: true },
-      { title: '内部评估', dataIndex: '内部评估', width: 220, ellipsis: true },
-      { title: '备注', dataIndex: '备注', width: 180, ellipsis: true },
-      { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
-      // 2026-11-10 临时删除列（admin 专属，存量重复清理完成后下线）：Popconfirm 二次确认
+      // 2026-11-10 拍板：集团名称列从列表与模板一并去掉；列宽优化（内容长列加宽/短列收窄）
+      { title: '客户编码', dataIndex: '客户编码', width: 220 },
+      {
+        title: '登录账号名称',
+        dataIndex: '登录账号名称',
+        width: 120,
+        ellipsis: true,
+        render: (val) => (
+          <Tooltip title={val || undefined} getPopupContainer={() => document.body}>
+            <Typography.Text ellipsis>{val || '—'}</Typography.Text>
+          </Tooltip>
+        ),
+      },
+      { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 150, ellipsis: true },
+      { title: '客户反馈', dataIndex: '客户反馈', width: 260, ellipsis: true },
+      { title: '回访结果', dataIndex: '回访结果', width: 260, ellipsis: true },
+      { title: '内部评估', dataIndex: '内部评估', width: 260, ellipsis: true },
+      { title: '备注', dataIndex: '备注', width: 170, ellipsis: true },
+      { title: '经办人', dataIndex: '经办人', width: 100, ellipsis: true },
+      // 2026-11-10 需求③（常驻，权限对齐产品部回溯）：行内单删（批量删除在工具条，双模式同 PostUseJiraTab）
       ...(canDelete && onDelete
         ? [{
-            key: '__tempDelete',
+            key: '__deleteAction',
             title: '操作',
-            width: 90,
+            width: 56,
             fixed: 'right',
             render: (_v, row) => (
               <Popconfirm
-                title="删除这条回访记录？"
-                description="临时清理功能：删除后不可恢复（含挂接快照联动摘除）。"
-                okText="删除"
-                okButtonProps={{ danger: true }}
-                cancelText="取消"
-                onConfirm={() => onDelete(row.__record || row)}
+                title="确定删除该记录？"
+                description="将联动取消建议回访清单的已纳入标记并重置勾选。"
+                onConfirm={(event) => {
+                  event?.stopPropagation?.()
+                  onDelete(row.__record || row)
+                }}
+                onCancel={(event) => event?.stopPropagation?.()}
               >
-                <Button size="small" danger onClick={(e) => e.stopPropagation()}>
-                  删除
-                </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
               </Popconfirm>
             ),
           }]
@@ -1816,18 +1875,23 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
   }, [])
 
   if (!rows.length) {
-    return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配客服部回访记录" />
+    return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配省代表回访记录" />
   }
 
   return (
     <Table
       size="small"
-      rowKey={(row, index) => `${row['数据月份'] || 'month'}-${row['客户名称'] || 'customer'}-${row['产品名称'] || 'product'}-${index}`}
+      // 行选择与删除需要稳定 key：用回访记录 id（buildPostUseCustomerVisitRows 已挂 __record）
+      rowKey={(row) => row.__record?.id || `${row['数据月份']}-${row['客户名称']}-${row['产品名称']}`}
       dataSource={rows}
       columns={columns}
-      scroll={{ x: 2200 }}
+      scroll={{ x: 2140 }}
       sticky={stickyOffset > 0 ? { offsetHeader: stickyOffset } : undefined}
       pagination={{ pageSize: 20 }}
+      rowSelection={canDelete ? {
+        selectedRowKeys,
+        onChange: (keys) => onSelectedRowKeysChange?.(keys),
+      } : undefined}
       onRow={(row) => ({
         onClick: () => onSelect?.(row.__record || null),
         className: 'cursor-pointer',

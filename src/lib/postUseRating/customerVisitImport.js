@@ -1,5 +1,5 @@
 /**
- * 客服部回访 Excel 导入：解析、软匹配用后即评明细、双写 visit_records + customerVisit
+ * 省代表回访 Excel 导入：解析、软匹配用后即评明细、双写 visit_records + customerVisit
  */
 import { isPostUseRatingLibraryRecord } from '../../domain/postUseRatingImport.js'
 import {
@@ -8,7 +8,7 @@ import {
   upsertVisitRecord,
 } from './visitRecords.js'
 
-/** 客服部回访导入支持的 6 项内部结论 */
+/** 省代表回访导入支持的 6 项内部结论 */
 export const INTERNAL_CONCLUSIONS = [
   '无需优改（客户误操作/无实际不满/账户异常/极小概率场景）',
   '综合评估后暂不处理',
@@ -151,9 +151,12 @@ function pickMostRecent(list) {
 }
 
 /**
- * @param {ReturnType<typeof normalizeCustomerVisitRow>} visit
+ * 客户身份键（编码优先，回退名称/用户信息）。2026-11-10 起导出：服务端预导入路由
+ *（清单导出/发送成功 → 回访 tab）用它拼与导入链一致的 stableVisitRecordId 身份。
+ * @param {{ customerCode?: unknown, customerName?: unknown, userInfo?: unknown }} visit
+ * @returns {string}
  */
-function buildCustomerKey(visit) {
+export function buildCustomerKey(visit) {
   return [visit.customerCode, visit.customerName, visit.userInfo]
     .map((item) => String(item || '').trim())
     .find(Boolean) || ''

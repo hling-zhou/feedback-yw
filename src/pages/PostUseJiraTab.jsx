@@ -6,6 +6,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
@@ -297,7 +298,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         rowKey="id"
         loading={loading}
         dataSource={pageItems}
-        scroll={{ x: 950 }}
+        scroll={{ x: 1040 }}
         sticky={{ offsetHeader: stickyChromeHeight }}
         rowSelection={
           canEdit
@@ -320,8 +321,19 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         })}
         columns={[
           { title: '数据月份', dataIndex: 'importMonth', width: 90 },
-          { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true },
-          { title: '客户编码', dataIndex: 'customerCode', width: 130, ellipsis: true },
+          // 2026-11-10 拍板：客户编码主流 20 字符 → 宽 220 保完整不截断；客户名称截断时 hover 气泡（参考工单列表）
+          {
+            title: '客户名称',
+            dataIndex: 'customerName',
+            width: 150,
+            ellipsis: true,
+            render: (val) => (
+              <Tooltip title={val || undefined} getPopupContainer={() => document.body}>
+                <Typography.Text ellipsis>{val || '—'}</Typography.Text>
+              </Tooltip>
+            ),
+          },
+          { title: '客户编码', dataIndex: 'customerCode', width: 220 },
           { title: '产品名称', dataIndex: 'productName', width: 100, ellipsis: true },
           { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
           { title: '经办人', dataIndex: 'assigneeName', width: 120, ellipsis: true,

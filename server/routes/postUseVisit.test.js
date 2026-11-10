@@ -300,4 +300,145 @@ describeApi('post-use visit API', () => {
     })
     expect(forbidden.statusCode).toBe(403)
   })
+
+  // 2026-11-10 需求：预导入写入（清单导出/发送成功 → 回访 tab 待评估态）+ 幂等
+  // 用独立身份（2026-07/云监控/C900）避开 beforeAll 的 visit-abc（2026-09/C001/弹性公网IP）——
+  // 身份幂等按三元组判定后会与 beforeAll 老记录互撞（用例耦合教训：构造型用例不与他人共享身份）
+  it('batch preload creates pending-visit records idempotently with editRecord permission', async () => {
+    const preload = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          { visitMonth: '2026-07', productName: '云监控', customerName: '客户Z', customerCode: 'C900',
+            customerFeedback: '7分以下分布：旧问卷*6分*2次；反馈原因：功能有缺失（2）' },
+        ],
+      },
+    })
+    expect(preload.statusCode).toBe(200)
+    expect(preload.json().created).toHaveLength(1)
+    const created = preload.json().items[0]
+    // 预导入态：回访结果/内部评估/经办人为空、评估状态=待评估；客户反馈带入清单行内容（2026-11-10 拍板）
+    expect(created.visitResult).toBe('')
+    expect(created.internalEvaluationDetail).toBe('')
+    expect(created.assigneeName).toBe('')
+    expect(created.evaluationSubmitted).toBe(false)
+    expect(created.userFeedbackText).toBe('7分以下分布：旧问卷*6分*2次；反馈原因：功能有缺失（2）')
+
+    // 幂等：同身份再预导入不新增（不覆盖首次内容——含客户反馈）
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch',
+      headers: authHeader('editor'),
+      payload: {
+        items: [
+          { visitMonth: '2026-07', productName: '云监控', customerName: '客户Z', customerCode: 'C900',
+            customerFeedback: '另一份反馈文本' },
+        ],
+      },
+    })
+    expect(again.statusCode).toBe(200)
+    expect(again.json().created).toHaveLength(0)
+    // 幂等跳过 = 首次客户反馈保留
+    const listAfter = await app.inject({
+      method: 'GET',
+      url: '/api/post-use-visits?importMonth=2026-07',
+      headers: authHeader('viewer'),
+    })
+    const preloaded = listAfter.json().items.find((item) => item.customerCode === 'C900')
+    expect(preloaded.userFeedbackText).toBe('7分以下分布：旧问卷*6分*2次；反馈原因：功能有缺失（2）')
+
+    // viewer 403 / 空提交 400
+    const forbidden = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch',
+      headers: authHeader('viewer'),
+      payload: { items: [{ visitMonth: '2026-09', productName: 'x', customerName: 'y' }] },
+    })
+    expect(forbidden.statusCode).toBe(403)
+    const empty = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch',
+      headers: authHeader('editor'),
+      payload: { items: [] },
+    })
+    expect(empty.statusCode).toBe(400)
+  })
+
+  // 2026-11-10 需求③：删除回访 → 联动清 dispatch 已纳入标记 + decisions 勾选重置（editRecord 权限）
+  it('delete clears dispatch marks and resets visit decisions with editRecord permission', async () => {
+    const { getDb } = await import('../db.js')
+    const { postUseVisitDispatchRepository } = await import('../postUseVisitDispatchRepository.js')
+    // 造联动前提：预导入记录（独立身份 2026-07/云专线/C901——避开 beforeAll 的 visit-abc/visit-def
+    // 与幂等用例的 C900，身份幂等按三元组判定）+ dispatch 标记 + decisions 勾选
+    const preload = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch',
+      headers: authHeader('editor'),
+      payload: { items: [{ visitMonth: '2026-07', productName: '云专线', customerName: '客户Y', customerCode: 'C901' }] },
+    })
+    expect(preload.statusCode).toBe(200)
+    expect(preload.json().created).toHaveLength(1)
+    const preloadId = preload.json().created[0]
+    postUseVisitDispatchRepository.markMany([
+      {
+        itemKey: 'q:C901:云专线:2026-07',
+        sourceType: 'questionnaire',
+        dispatchedVia: 'export',
+        customerName: '客户Y',
+        productName: '云专线',
+        importMonth: '2026-07',
+      },
+    ])
+    getDb()
+      .prepare(`INSERT OR REPLACE INTO post_use_callback_decisions (item_key, payload) VALUES (?, ?)`)
+      .run(
+        'q:C901:云专线:2026-07',
+        JSON.stringify({ itemKey: 'q:C901:云专线:2026-07', sourceType: 'questionnaire', needCustomerVisit: true, needInternalTrace: false }),
+      )
+
+    // 删除预导入记录（含 viewer 403 验证）
+    const forbidden = await app.inject({
+      method: 'DELETE',
+      url: `/api/post-use-visits/${preloadId}`,
+      headers: authHeader('viewer'),
+    })
+    expect(forbidden.statusCode).toBe(403)
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/post-use-visits/${preloadId}`,
+      headers: authHeader('editor'),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().clearedDispatch).toBe(1)
+    expect(res.json().clearedDecisions).toBe(1)
+
+    // dispatch 标记已清、decisions 勾选已重置
+    const dispatchLeft = postUseVisitDispatchRepository.list().filter((item) => item.itemKey === 'q:C901:云专线:2026-07')
+    expect(dispatchLeft).toHaveLength(0)
+    const decisionRow = getDb()
+      .prepare(`SELECT payload FROM post_use_callback_decisions WHERE item_key = ?`)
+      .get('q:C901:云专线:2026-07')
+    expect(JSON.parse(decisionRow.payload).needCustomerVisit).toBe(false)
+
+    // 批量删除（对 visit-abc 原有记录）
+    const batch = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-visits/batch-delete',
+      headers: authHeader('editor'),
+      payload: { ids: ['visit-abc'] },
+    })
+    expect(batch.statusCode).toBe(200)
+    expect(batch.json().deleted).toBe(1)
+
+    // 404：删除不存在
+    const missing = await app.inject({
+      method: 'DELETE',
+      url: '/api/post-use-visits/visit-missing',
+      headers: authHeader('editor'),
+    })
+    expect(missing.statusCode).toBe(404)
+  })
 })

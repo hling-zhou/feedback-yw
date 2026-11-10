@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('Feedbacks customer visit tab', () => {
@@ -6,7 +7,7 @@ describe('Feedbacks customer visit tab', () => {
 
   it('includes a read-only customer visit tab with composite search and export', () => {
     expect(source).toContain('FEEDBACK_LANE_CUSTOMER_VISITS')
-    expect(source).toContain('客服部回访')
+    expect(source).toContain('省代表回访')
     expect(source).toContain('feedback-lane-tabs')
     expect(source).toContain("{ key: FEEDBACK_LANE_TICKETS, label: '投诉咨询工单' }")
     expect(source).toContain('FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS')
@@ -49,5 +50,20 @@ describe('Feedbacks customer visit tab', () => {
     expect(tableBlock).toContain("title: '客户反馈'")
     // 2026-11-10 拍板：集团名称列从列表去掉——回潮即红
     expect(tableBlock).not.toContain("title: '集团名称'")
+  })
+
+  it('2026-11-10 客户编码 220 不截断 + 客户名称/登录账号名称 hover 气泡（参考工单列表）', () => {
+    const afterTable = source.split('function CustomerVisitTable')[1] || ''
+    const tableBlock = afterTable.split('function CardGrid')[0] || afterTable
+    // 客户编码列宽 220（主流 20 字符编码完整显示），无 ellipsis（不截断即无省略号）
+    expect(tableBlock).toMatch(/title: '客户编码'[^}]*width: 220/)
+    expect(tableBlock).not.toMatch(/title: '客户编码'[^}]*ellipsis/)
+    // 客户名称/登录账号名称：Tooltip 气泡 render（截断时 hover 完整显示）
+    expect(tableBlock).toMatch(/title: '客户名称'[\s\S]{0,220}Tooltip title=/)
+    expect(tableBlock).toMatch(/title: '登录账号名称'[\s\S]{0,220}Tooltip title=/)
+    // 溯源 tab 同款：PostUseJiraTab 客户编码 220 + 客户名称 Tooltip
+    const jiraSource = fs.readFileSync(join(__dirname, 'PostUseJiraTab.jsx'), 'utf8')
+    expect(jiraSource).toMatch(/title: '客户编码',[^}]*width: 220/)
+    expect(jiraSource).toMatch(/title: '客户名称'[\s\S]{0,260}Tooltip title=/)
   })
 })

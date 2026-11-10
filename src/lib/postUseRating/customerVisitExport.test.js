@@ -29,7 +29,7 @@ describe('customerVisitExport', () => {
           reasonCount: 1,
           latestFeedbackAt: '2026-05-21 10:00:00',
           channels: ['短信', '控制台'],
-          recommendedReason: '建议客服部回访',
+          recommendedReason: '建议省代表回访',
           quotes: ['原话A', '原话B'],
           reasons: ['原因A'],
         },
@@ -37,7 +37,7 @@ describe('customerVisitExport', () => {
     )
 
     const row = rows[0]
-    // 2026-11-10 用户拍板：导出列 =《客服部回访-导出字段.xlsx》21 列（按键序断言）
+    // 2026-11-10 用户拍板：导出列 =《省代表回访-导出字段.xlsx》21 列（按键序断言）
     expect(Object.keys(row)).toEqual([
       '数据月份', '客户名称', '客户编码', '登录账号名称', '产品名称', '相应投诉工单',
       '客户反馈', '回访结果', '内部评估', '经办人', '备注', '确立举措', '举措详情', '排期',
