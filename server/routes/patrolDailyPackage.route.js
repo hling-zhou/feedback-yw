@@ -62,10 +62,17 @@ function upsertGroup(db, g) {
   } else if (status === 'converged') {
     nextStatus = '—'
   } else {
-    // success：诊断映射值由本机分类产出。日包组行不直接携带 productAction（分类规则在发送侧），
-    // 映射规则内联在此（§6.2 v3 FINAL 两级语义的「产品侧」列——本机与部署端同源的最小实现）：
-    // 诊断能力缺口→—；其余→待处理（L2 覆盖细节由本机分类结果决定，此处按 L1 粗分）
     nextStatus = rootCauseL1 === '诊断能力缺口' ? '—' : '待处理'
+  }
+
+  // 经办人默认值（§2.3）：新建组且需要产品侧处理时填 catalog owners.productManager[0].username
+  let defaultAssignee = null
+  if (!existing && nextStatus === '待处理') {
+    const catalog = /** @type {{ products?: Array<{ key: string, owners?: { productManager?: Array<{ username: string }> } }> } | null} */ (
+      storageRepository.getMeta('product_catalog_managed_v1')
+    )
+    const prod = (catalog?.products || []).find((p) => p.key === productKey)
+    defaultAssignee = prod?.owners?.productManager?.[0]?.username || null
   }
 
   const upsert = db.prepare(`
@@ -73,8 +80,8 @@ function upsertGroup(db, g) {
       (group_date, product_key, pool_name, api_path, metric_name, user_name,
        first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
        customer_type, root_cause_l1, root_cause_l2,
-       product_action_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       product_action_status, assignee, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(group_date, product_key, pool_name, api_path, user_name, first_request_id)
     DO UPDATE SET
       pre_compress_count=excluded.pre_compress_count,
@@ -90,7 +97,7 @@ function upsertGroup(db, g) {
     userName, firstRequestId, String(g.firstRequestTime || ''),
     Number(g.preCompressCount) || 1, String(g.suppressedRequestIds || '[]'),
     String(g.customerType || ''), rootCauseL1, rootCauseL2,
-    nextStatus, now, now,
+    nextStatus, defaultAssignee, now, now,
   )
   return 1
 }

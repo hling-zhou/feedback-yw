@@ -7,6 +7,7 @@
 import { getDb } from './db.js'
 import { logAudit } from './audit.js'
 import { readPatrolRegistryItems } from './patrolRepository.js'
+import { storageRepository } from './storageRepository.js'
 
 const CHAIN_WINDOW_MS = 60 * 60 * 1000 // 1h 链式窗口（拍板 2026-11-06）
 
@@ -84,6 +85,17 @@ export function compressPatrolDay(date, pool, options = {}) {
   const registry = readPatrolRegistryItems()
   const registryByPath = new Map(registry.map((item) => [item.apiPath, item]))
 
+  // 经办人默认值：产品目录 owners.productManager[0].username（§2.3 表设计）
+  const catalog = /** @type {{ products?: Array<{ key: string, owners?: { productManager?: Array<{ username: string }> } }> } | null} */ (
+    storageRepository.getMeta('product_catalog_managed_v1')
+  )
+  /** @type {Map<string, string>} productKey → defaultAssignee */
+  const defaultAssigneeByProduct = new Map()
+  for (const p of catalog?.products || []) {
+    const pm = p.owners?.productManager?.[0]?.username
+    if (pm) defaultAssigneeByProduct.set(p.key, pm)
+  }
+
   // 4. 键=(日,客户,池,接口) 分组 → 组内按时间链式并组
   /** @type {Map<string, Array<{requestId: string, requestTime: string}>>} */
   const buckets = new Map()
@@ -100,8 +112,8 @@ export function compressPatrolDay(date, pool, options = {}) {
     INSERT INTO api_patrol_failure_groups
       (group_date, product_key, pool_name, api_path, metric_name, user_name,
        first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
-       customer_type, product_action_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_diagnosis', ?, ?)
+       customer_type, product_action_status, assignee, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_diagnosis', ?, ?, ?)
   `)
 
   let groupCount = 0
@@ -133,7 +145,9 @@ export function compressPatrolDay(date, pool, options = {}) {
         insert.run(
           date, productKey, pool, apiPath, metricName, userName,
           first.requestId, first.requestTime, chain.length,
-          JSON.stringify(suppressed), customerType, now, now,
+          JSON.stringify(suppressed), customerType,
+          defaultAssigneeByProduct.get(productKey) || null,
+          now, now,
         )
         groupCount += 1
         compressedFrom += chain.length

@@ -111,6 +111,7 @@ export async function runPatrolDiagnose(options) {
   const { getDb } = await import('./db.js')
   const { classifyPatrolRootCause, extractDiagnosticText } = await import('./patrolRootCauseClassifier.js')
   const { readPatrolRootCauseRules } = await import('./patrolRepository.js')
+  const { storageRepository } = await import('./storageRepository.js')
   const db = getDb()
   const {
     date, pool, mcpEndpoint, mcpToken,
@@ -131,6 +132,23 @@ export async function runPatrolDiagnose(options) {
 
   const rules = readPatrolRootCauseRules()
   const now = new Date().toISOString()
+
+  // 经办人默认值：产品目录 owners.productManager[0].username（§2.3）——仅在诊断回填「待处理」时适用
+  const catalog = /** @type {{ products?: Array<{ key: string, owners?: { productManager?: Array<{ username: string }> } }> } | null} */ (
+    storageRepository.getMeta('product_catalog_managed_v1')
+  )
+  /** @type {Map<string, string>} productKey → defaultAssignee */
+  const defaultAssigneeByProduct = new Map()
+  for (const p of catalog?.products || []) {
+    const pm = p.owners?.productManager?.[0]?.username
+    if (pm) defaultAssigneeByProduct.set(p.key, pm)
+  }
+
+  // 诊断回填后补 assignee 默认值（仅当 status=待处理且 assignee 为空时）
+  const fillDefaultAssignee = db.prepare(`
+    UPDATE api_patrol_failure_groups SET assignee=?
+    WHERE id=? AND assignee IS NULL AND product_action_status='待处理'
+  `)
 
   const insertDiag = db.prepare(`
     INSERT INTO api_patrol_diagnoses
@@ -189,6 +207,11 @@ export async function runPatrolDiagnose(options) {
         insertDiag.run(group.id, group.first_request_id, 'success', toolName,
           result.text, text || null, classified.l1, classified.l2, now)
         updateGroup.run(classified.l1, classified.l2, classified.productAction, now, group.id)
+        // 待处理 + assignee 为空 → 填 productManager[0] 默认经办人（§2.3）
+        if (classified.productAction === '待处理') {
+          const key = String(group.product_key || '')
+          fillDefaultAssignee.run(defaultAssigneeByProduct.get(key) || null, group.id)
+        }
       }
     })())
   }
