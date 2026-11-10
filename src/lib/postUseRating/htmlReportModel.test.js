@@ -249,7 +249,7 @@ describe('html monthly report model', () => {
     expect(model.productCards[0].comparisons.mixedSample).toMatchObject({ label: '较上月多 1', tone: 'flat' })
     expect(model.productCards[0].comparisons.lowScoreCount).toMatchObject({ label: '较上月持平', tone: 'flat' })
     expect(model.productCards[0].comparisons.satisfactionRate).toMatchObject({ label: '—', tone: 'na' })
-    expect(model.judgment).toContain('本期暂无客服部回访结果')
+    expect(model.judgment).toContain('本期暂无省代表回访结果')
   })
 
   it('rolls a quarter up against the previous quarter and omits the visit supplement', () => {
@@ -306,7 +306,7 @@ describe('html monthly report model', () => {
     expect(model.copy.overviewTitle).toBe('本季概述')
     expect(model.kpis.momLabel).toMatch(/^较上季度高 /)
     expect(model.productCards[0].comparisons.mixedAvg.label).toMatch(/^较上季度高 /)
-    expect(model.productCards[0].visitNarratives[0]).toContain('经客服部回访，核实为「已回访」')
+    expect(model.productCards[0].visitNarratives[0]).toContain('经省代表回访，核实为「已回访」')
   })
 
   it('writes current-month visit evidence as a locked sentence', () => {
@@ -316,7 +316,7 @@ describe('html monthly report model', () => {
       visitResult: '第一次回访',
       internalConclusion: '需求接纳',
       remark: '备注一',
-    })).toBe('某某公司：反馈「功能有缺失」，经客服部回访，核实为「第一次回访」，经产品组评估，「需求接纳」：「备注一」。')
+    })).toBe('某某公司：反馈「功能有缺失」，经省代表回访，核实为「第一次回访」，经产品组评估，「需求接纳」：「备注一」。')
 
     const records = makeRecords()
     const storyModel = buildPostUseStoryModel({
@@ -339,15 +339,15 @@ describe('html monthly report model', () => {
         remark: '备注一',
       }],
     })
-    expect(model.productCards[0].visitNarratives[0]).toContain('经客服部回访，核实为「第一次回访」')
+    expect(model.productCards[0].visitNarratives[0]).toContain('经省代表回访，核实为「第一次回访」')
     expect(model.productCards[0].visitNarratives[0]).toContain('经产品组评估，「需求接纳」：「备注一」')
-    expect(model.judgment).toContain('本期客服部回访 1 条')
+    expect(model.judgment).toContain('本期省代表回访 1 条')
   })
 
   it('keeps monthly callback highlights as numbered facts without the template suffix', () => {
     expect(
       formatMonthlyCallbackHighlightReason(
-        '华博胜讯信息科技股份有限公司（经开） 在弹性公网IP下有 8 次7分以下反馈（未填写问卷名*1分*8次），同一客户低分记录达到2次及以上，建议客服部回访。',
+        '华博胜讯信息科技股份有限公司（经开） 在弹性公网IP下有 8 次7分以下反馈（未填写问卷名*1分*8次），同一客户低分记录达到2次及以上，建议省代表回访。',
       ),
     ).toBe('华博胜讯信息科技股份有限公司（经开） 在弹性公网IP下有 8 次7分以下反馈（未填写问卷名*1分*8次）')
 
@@ -380,6 +380,6 @@ describe('html monthly report model', () => {
     expect(model.todo.callbackHighlights[0].reason).not.toContain('回访要点')
     expect(model.todo.callbackHighlights[0].reason).not.toContain('×')
     expect(model.todo.callbackHighlights[0].reason).not.toContain('同一客户低分记录达到2次及以上')
-    expect(model.todo.callbackHighlights[0].reason).not.toContain('建议客服部回访')
+    expect(model.todo.callbackHighlights[0].reason).not.toContain('建议省代表回访')
   })
 })

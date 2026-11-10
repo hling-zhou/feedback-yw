@@ -51,7 +51,7 @@ describe('PostUseStoryView narrative hierarchy', () => {
   })
 
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {
-    expect(source).not.toMatch(/SectionHeading[^>]+title="客服部回访"/)
+    expect(source).not.toMatch(/SectionHeading[^>]+title="省代表回访"/)
     expect(source).not.toMatch(/SectionHeading[^>]+title="投诉回访满意度"/)
   })
 

@@ -288,7 +288,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '回访满意度', dataIndex: 'satisfactionRate', width: 116, render: (value, row) => value == null ? '—' : <span>{value}%{row.satisfactionSmallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
             { title: '回访样本', dataIndex: 'satisfactionSample', width: 88 },
             { title: '主要需求', dataIndex: 'primaryNeed', width: 180, ellipsis: true },
-            { title: '客服部回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
+            { title: '省代表回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
           ]}
         />
       <Collapse
@@ -371,7 +371,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
       </div>
 
       <div className="page-card">
-      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并反馈原因与客服部回访结论" id="post-use-customers" />
+      <SectionHeading title="客户与证据" summary="识别受影响客户，并合并反馈原因与省代表回访结论" id="post-use-customers" />
       <div className="page-card-header"><div>{
           canOpenCallbackList ? (
           <Tooltip title={callbackDownloadDisabled ? callbackDownloadDisabledReason : ''}>
@@ -412,7 +412,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '客户特征', width: 100, render: (_, row) => row.highFrequency ? <Tag color="red">高频低分</Tag> : row.visitEvidenceCount && !row.nonTenCount ? <Tag color="blue">仅回访证据</Tag> : <Tag>单次反馈</Tag> },
             { title: '反馈原因', dataIndex: 'latestQuote', ellipsis: { tooltip: true } },
             {
-              title: '客服部回访记录',
+              title: '省代表回访记录',
               width: 220,
               render: (_, row) => <VisitFieldLines items={row.visitItems} field="visitResult" />,
             },
@@ -614,7 +614,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             children: (
               <div className="space-y-3">
                 <Typography.Paragraph className="!mb-0" type="secondary">
-                  体验均分使用短信与控制台评价（云网 16 款）；部门均分（三渠道）为短信、控制台与投诉回访混算（云网 16 款）；公司均分（三渠道）为当期全部产品、主子合并后的记录级平均。部门均分相对公司，比较的是当期公司均分（三渠道）；较上月、较上季度或较上周期仍用部门均分（三渠道）。9 分以下产品按产品体验总览中的均分统计。投诉回访单独计算 10 分满意度，达标线 88%，不达标产品为样本量达到 {POST_USE_SMALL_SAMPLE_N} 且低于该线的产品；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。客服部回访只作为补充证据，不改变评分和需求改善优先级。
+                  体验均分使用短信与控制台评价（云网 16 款）；部门均分（三渠道）为短信、控制台与投诉回访混算（云网 16 款）；公司均分（三渠道）为当期全部产品、主子合并后的记录级平均。部门均分相对公司，比较的是当期公司均分（三渠道）；较上月、较上季度或较上周期仍用部门均分（三渠道）。9 分以下产品按产品体验总览中的均分统计。投诉回访单独计算 10 分满意度，达标线 88%，不达标产品为样本量达到 {POST_USE_SMALL_SAMPLE_N} 且低于该线的产品；n&lt;{POST_USE_SMALL_SAMPLE_N} 通常仅作参考，但若出现 3 分及以下极低分，仍按重点风险关注。省代表回访只作为补充证据，不改变评分和需求改善优先级。
                 </Typography.Paragraph>
                 <Space size={[6, 6]} wrap>
                   <Tag>目录 {model.scope.catalogVersion}</Tag>

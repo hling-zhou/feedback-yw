@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 /**
- * 「客服部回访」勾选列行级化守卫（2026-11-09 用户拍板：与产品部回溯列一致，不做合并）。
+ * 「省代表回访」勾选列行级化守卫（2026-11-09 用户拍板：与产品部回溯列一致，不做合并）。
  * 红绿：改动前问卷 tab 用 visitFlagColumn（客户级 rowSpan 合并 + 组内一勾全选 + 半选态
  * + "已纳入（部分）"组级 Tag）→ 断言红；改动后行级 flagColumn → 绿。
  */
@@ -12,10 +12,10 @@ const source = fs.readFileSync(
   'utf8',
 )
 
-describe('PostUseCallbackProcessModal 客服部回访列行级化（2026-11-09）', () => {
-  it('两个 tab 的客服部回访列都用行级 flagColumn（与投诉 tab 同款）', () => {
+describe('PostUseCallbackProcessModal 省代表回访列行级化（2026-11-09）', () => {
+  it('两个 tab 的省代表回访列都用行级 flagColumn（与投诉 tab 同款）', () => {
     // 问卷 tab 列定义（questionnaireColumns）与投诉 tab（callbackColumns）各一处
-    const occurrences = source.match(/flagColumn\('needCustomerVisit', '客服部回访'\)/g) || []
+    const occurrences = source.match(/flagColumn\('needCustomerVisit', '省代表回访'\)/g) || []
     expect(occurrences).toHaveLength(2)
   })
 

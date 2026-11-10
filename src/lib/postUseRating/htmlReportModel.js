@@ -73,7 +73,7 @@ function findRecommendedAction(actionRows, productName) {
 }
 
 function draftActionText(actionRow) {
-  if (!actionRow) return '建议明确责任人：客服部回访、产品部溯源，或立项产品举措。'
+  if (!actionRow) return '建议明确责任人：省代表回访、产品部溯源，或立项产品举措。'
   if (actionRow.action?.content) {
     return `继续推进举措「${actionRow.action.content}」，写清责任人与本月完成标准。`
   }
@@ -126,7 +126,7 @@ export function draftJudgmentFromConclusions(conclusions, issues = [], voice = n
 }
 
 /**
- * 本月客服部回访拼成只读句子。空片段整段省略。
+ * 本月省代表回访拼成只读句子。空片段整段省略。
  * @param {{
  *   customerName?: string
  *   feedback?: string
@@ -143,7 +143,7 @@ export function composeVisitEvidenceSentence(input = {}) {
   const remark = String(input.remark || '').trim()
   const parts = []
   if (feedback) parts.push(`反馈「${feedback}」`)
-  if (visitResult) parts.push(`经客服部回访，核实为「${visitResult}」`)
+  if (visitResult) parts.push(`经省代表回访，核实为「${visitResult}」`)
   if (internalConclusion && remark) parts.push(`经产品组评估，「${internalConclusion}」：「${remark}」`)
   else if (internalConclusion) parts.push(`经产品组评估，「${internalConclusion}」`)
   else if (remark) parts.push(`经产品组评估，「${remark}」`)
@@ -467,7 +467,7 @@ export function buildProductVisitNarratives(visits, reportMonth, productName, st
   const months = periodMonths?.length ? periodMonths : [reportMonth]
   const rows = filterVisitsByMonths(visits, months)
     .filter((visit) => String(visit?.productName || '').trim() === productName)
-  if (!rows.length) return ['本期该产品暂无客服部回访记录']
+  if (!rows.length) return ['本期该产品暂无省代表回访记录']
   return rows.map((visit, index) => {
     const sentence = composeVisitEvidenceSentence({
       customerName: visitCustomerName(visit),
@@ -622,8 +622,8 @@ function reportFrame(reportMonth, reportPeriod) {
 export function formatMonthlyCallbackHighlightReason(reason) {
   return String(reason || '')
     .replace(/，同一客户低分记录达到2次及以上/g, '')
-    .replace(/，建议客服部回访。?$/g, '')
-    .replace(/建议客服部回访。?$/g, '')
+    .replace(/，建议省代表回访。?$/g, '')
+    .replace(/建议省代表回访。?$/g, '')
     .replace(/，$/, '')
     .trim()
 }
@@ -698,8 +698,8 @@ export function buildHtmlMonthlyReportModel(input) {
   const scoreBands = aggregateScoreBands(preview.scoreDistributionTable)
   const currentVisits = filterVisitsByMonths(visits, frame.periodMonths)
   const visitNote = currentVisits.length
-    ? `本期客服部回访 ${currentVisits.length} 条，见各产品问题与证据。`
-    : '本期暂无客服部回访结果。'
+    ? `本期省代表回访 ${currentVisits.length} 条，见各产品问题与证据。`
+    : '本期暂无省代表回访结果。'
   const judgmentDraft = draftJudgmentFromConclusions(storyModel?.conclusions || [], issues, voice, visitNote)
   const companyRows = statusTrends?.combined?.data || storyModel?.metrics?.statusTrends?.combined?.data || []
   const scopedRecords = allRecords.length ? allRecords : records

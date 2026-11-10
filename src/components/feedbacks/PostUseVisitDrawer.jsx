@@ -15,7 +15,7 @@ import PermissionGate from '../auth/PermissionGate.jsx'
 /** @typedef {import('../../lib/postUseRating/visitRecords.js').PostUseVisitRecord} PostUseVisitRecord */
 
 /**
- * 客服部回访详情抽屉：展示回访信息，内部评估/备注可编辑（editRecord 权限）。
+ * 省代表回访详情抽屉：展示回访信息，内部评估/备注可编辑（editRecord 权限）。
  * 2026-11-05 评估状态自动流转（对齐产品部溯源）：提交=已评估（内部评估必填）/ 暂存=评估中；
  * 状态由评估字段 + evaluationSubmitted 派生，visit: 前缀个人标记体系下线。
  *
@@ -231,7 +231,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
     <Drawer
       title={
         <Space size={8}>
-          <span>客服部回访</span>
+          <span>省代表回访</span>
           <Tag color={EVALUATION_TAG[evaluationState] || 'default'}>{evaluationState}</Tag>
         </Space>
       }

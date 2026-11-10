@@ -709,7 +709,7 @@ export async function getActionStats(params, apiKey) {
 
 /**
  * 查询用后即评回访/溯源记录。
- * - visit 模式（P1）：客服部回访记录，从 meta.post_use_visits 读取
+ * - visit 模式（P1）：省代表回访记录，从 meta.post_use_visits 读取
  * - trace 模式（P2）：产品部溯源记录，从 post_use_jira_items 表读取
  *
  * @param {{
@@ -742,7 +742,7 @@ export async function getPostUseTrace(params, apiKey) {
   return getPostUseVisitMode(params, limit, offset, opts, desensitizeCustomerField)
 }
 
-// ---- visit 模式（客服部回访） ----
+// ---- visit 模式（省代表回访） ----
 
 /**
  * @param {Record<string, unknown>} params
@@ -1069,11 +1069,11 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_post_use_trace',
-    description: '回访/溯源记录：查询用后即评回访/溯源记录。viewType=visit 查询客服部回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
+    description: '回访/溯源记录：查询用后即评回访/溯源记录。viewType=visit 查询省代表回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
     inputSchema: {
       type: 'object',
       properties: {
-        viewType: { type: 'string', enum: ['visit', 'trace'], description: '查询模式：visit=客服部回访（默认），trace=产品部溯源' },
+        viewType: { type: 'string', enum: ['visit', 'trace'], description: '查询模式：visit=省代表回访（默认），trace=产品部溯源' },
         importMonth: { type: 'string', description: '数据月份（格式：YYYY-MM，支持「、」分隔多月份）' },
         productName: { type: 'string', description: '产品名称' },
         customerName: { type: 'string', description: '客户名称（搜索时用原名匹配，返回结果中脱敏）' },

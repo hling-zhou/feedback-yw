@@ -60,7 +60,7 @@ describe('HTML monthly report route and page', () => {
     expect(document).toContain('建议举措')
     expect(document).not.toContain('问题与证据')
     expect(document).toContain('待办事项及进展')
-    expect(document).toContain('上期客服部回访结果补充')
+    expect(document).toContain('上期省代表回访结果补充')
     expect(document).toContain('附录')
     expect(document).toContain('有效客户原话登记')
     expect(document).toContain('部门均分（三渠道）')

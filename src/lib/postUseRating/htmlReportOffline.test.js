@@ -70,7 +70,7 @@ describe('offline monthly report html', () => {
     expect(html).not.toContain('待办事情及进展')
     expect(html).toContain('部门均分（三渠道）')
     expect(html).not.toContain('云网均分（三渠道）')
-    expect(html).toContain('上期客服部回访结果补充')
+    expect(html).toContain('上期省代表回访结果补充')
     expect(html).not.toContain('<textarea')
     expect(html).toContain('与公司均分持平')
     expect(html).toContain('暂无上月对比')

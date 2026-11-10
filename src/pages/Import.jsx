@@ -90,7 +90,7 @@ import {
   runCustomerVisitImportDryRun,
 } from '../lib/postUseRating/customerVisitImport.js'
 
-const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '客服部回访导入'
+const CUSTOMER_VISIT_IMPORT_SESSION_LABEL = '省代表回访导入'
 import { isApiStorageAdapter } from '../storage/feedbackStore.js'
 import { isStubPipeline } from '../analysis/registry.js'
 import { randomId } from '../lib/randomId.js'
@@ -539,7 +539,7 @@ export default function Import({ embedded = false }) {
       if (customerVisitImport) {
         if (!mapping.preset || mapping.preset.id !== POST_USE_CUSTOMER_VISIT_PRESET.id) {
           throw new Error(
-            '表头需包含客服部回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（其中数据月份/产品名称/客户名称或客户编码/回访结果四项内容必填；登录账号名称、相应投诉工单、内部评估、经办人、备注、集团名称、评分来源为可选列，允许为空）',
+            '表头需包含省代表回访模板列：数据月份、客户名称、客户编码、产品名称、回访结果（其中数据月份/产品名称/客户名称或客户编码/回访结果四项内容必填；登录账号名称、相应投诉工单、内部评估、经办人、备注、集团名称、评分来源为可选列，允许为空）',
           )
         }
       }
@@ -1163,7 +1163,7 @@ export default function Import({ embedded = false }) {
         throw new Error('请选择有效的数据月份（YYYY-MM）')
       }
 
-      const progress0 = '正在导入客服部回访…'
+      const progress0 = '正在导入省代表回访…'
       await prepareSharedBackgroundTask('import', {
         progress: progress0,
         meta: {
@@ -1229,7 +1229,7 @@ export default function Import({ embedded = false }) {
       return
     }
     Modal.confirm({
-      title: '确认导入客服部回访？',
+      title: '确认导入省代表回访？',
       content: (
         <>
           将写入回访元数据，并软匹配挂到短信/控制台用后即评明细的 <code>customerVisit</code> 字段。
@@ -1611,7 +1611,7 @@ export default function Import({ embedded = false }) {
               )}
               {customerVisitImport && (
                 <Typography.Text type="secondary" className="mt-2 block text-xs">
-                  客服部回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
+                  省代表回访导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细。
                 </Typography.Text>
               )}
               {pipelineDesc && !channelBundleImport && !followUpImport && !customerVisitImport && (
@@ -1827,7 +1827,7 @@ export default function Import({ embedded = false }) {
               followUpImport
                 ? '满意度回访仅支持单文件上传；需含「回访工单编号」「原工单编号」等列。推荐改用「短信+官网双文件」。'
                 : customerVisitImport
-                  ? `客服部回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注、集团名称、登录账号名称、评分来源、原工单编号为可选列）。`
+                  ? `省代表回访支持最多 ${MAX_IMPORT_FILES} 个结构相同的文件合并导入；模板需含数据月份、客户名称、客户编码、产品名称、回访结果（内部评估、备注、集团名称、登录账号名称、评分来源、原工单编号为可选列）。`
                   : ticketSource
                     ? `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；按表头列「工单展示流水号」识别表头。单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
                     : `可一次选择最多 ${MAX_IMPORT_FILES} 个结构相同的文件；单文件 ≤${MAX_FILE_BYTES / 1024 / 1024}MB、≤${MAX_ROWS_PER_FILE} 行，合并后总行数 ≤${MAX_ROWS_BATCH_TOTAL}。加密文件可把密码写在文件名中：名称#密码.xlsx。`
@@ -1865,7 +1865,7 @@ export default function Import({ embedded = false }) {
               {followUpImport
                 ? '拖拽或点击选择满意度回访文件'
                 : customerVisitImport
-                  ? '拖拽或点击选择客服部回访文件（可多选）'
+                  ? '拖拽或点击选择省代表回访文件（可多选）'
                   : '拖拽或点击选择文件（可多选）'}
             </p>
             <p className="ant-upload-hint">
@@ -1944,7 +1944,7 @@ export default function Import({ embedded = false }) {
                   downloadImportDataTemplate(dataSourceType, postUseRatingSubType)
                 }
               >
-                下载{DATA_SOURCE_LABELS[dataSourceType] === '用后即评' ? '客服部回访' : DATA_SOURCE_LABELS[dataSourceType]}模板
+                下载{DATA_SOURCE_LABELS[dataSourceType] === '用后即评' ? '省代表回访' : DATA_SOURCE_LABELS[dataSourceType]}模板
               </Button>
             )}
           </div>
@@ -2002,7 +2002,7 @@ export default function Import({ embedded = false }) {
                   <Alert
                     type="warning"
                     showIcon
-                    title="未识别客服部回访表头"
+                    title="未识别省代表回访表头"
                     description="需包含月份、产品名称、用户信息/客户反馈摘要、评分来源或内部结论等列。"
                   />
                 ) : (
@@ -2198,11 +2198,11 @@ export default function Import({ embedded = false }) {
             ) : customerVisitImport ? (
               <>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
-                  写入客服部回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
+                  写入省代表回访元数据，并软匹配挂到短信/控制台用后即评明细；不触发打标流水线。
                 </Typography.Text>
                 <Typography.Text type="secondary" className="mt-1 block text-xs">
                   数据月份：{importMonthDisplay} · 来源：{DATA_SOURCE_LABELS[dataSourceType]} ·
-                  二级分类：客服部回访导入
+                  二级分类：省代表回访导入
                 </Typography.Text>
                 <div className="page-section-sm space-y-3">
                   {customerVisitPreviewLoading ? (
@@ -2466,7 +2466,7 @@ export default function Import({ embedded = false }) {
                 ? 'success'
                 : 'warning'
             }
-            title="客服部回访导入完成"
+            title="省代表回访导入完成"
             subTitle={
               <>
                 回访元数据 <strong>{customerVisitImportResult.dry.visitMetaCount}</strong> 条 ·

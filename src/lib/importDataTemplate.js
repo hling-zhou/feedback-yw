@@ -90,7 +90,7 @@ const GENERIC_INSTRUCTIONS = [
   ['单文件 ≤30MB、≤10000 行；最多 5 个结构相同的文件合并导入。'],
 ]
 
-/** 从 preset.columnMap 提取列头（保持定义顺序；数组候选取首选列名；同名列去重——如客服部回访的 visitFeedbackDetail 与 visitResult 共用「回访结果」列） */
+/** 从 preset.columnMap 提取列头（保持定义顺序；数组候选取首选列名；同名列去重——如省代表回访的 visitFeedbackDetail 与 visitResult 共用「回访结果」列） */
 function headersFromPreset(preset) {
   const seen = new Set()
   const headers = []
@@ -121,7 +121,7 @@ const TEMPLATE_SPECS = [
   },
   {
     id: POST_USE_CUSTOMER_VISIT_PRESET.id,
-    filenameLabel: '客服部回访',
+    filenameLabel: '省代表回访',
     headers: headersFromPreset(POST_USE_CUSTOMER_VISIT_PRESET),
     instructions: CUSTOMER_VISIT_INSTRUCTIONS,
     dataSourceType: 'post_use_rating',

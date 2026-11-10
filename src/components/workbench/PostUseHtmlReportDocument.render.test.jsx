@@ -44,7 +44,7 @@ function model() {
       },
       belowNine: true,
       callbackUnqualified: false,
-      visitNarratives: ['某某公司：反馈「功能有缺失」，经客服部回访，核实为「第一次回访」，经产品组评估，「需求接纳」。'],
+      visitNarratives: ['某某公司：反馈「功能有缺失」，经省代表回访，核实为「第一次回访」，经产品组评估，「需求接纳」。'],
       scoreTrend: { data: [], areas: [] },
       issue: null,
     }],
@@ -100,9 +100,9 @@ describe('PostUseHtmlReportDocument render', () => {
     expect(html).toContain('暂无上月对比')
     expect(html).toContain('分产品情况')
     expect(html).toContain('待办事项及进展')
-    expect(html).toContain('上期客服部回访结果补充')
-    expect(html).toContain('上期无客服部回访记录')
-    expect(html).toContain('经客服部回访，核实为「第一次回访」')
+    expect(html).toContain('上期省代表回访结果补充')
+    expect(html).toContain('上期无省代表回访记录')
+    expect(html).toContain('经省代表回访，核实为「第一次回访」')
     expect(html).toContain('弹性公网IP')
     expect(html).toContain('post-use-html-report-kpis--product')
     expect(html).toContain('较上月高 0.2')
@@ -135,7 +135,7 @@ describe('PostUseHtmlReportDocument render', () => {
     expect(html).toContain('本季概述')
     expect(html).toContain('较上季度高 0.2')
     expect(html).toContain('本季提出')
-    expect(html).not.toContain('上期客服部回访结果补充')
+    expect(html).not.toContain('上期省代表回访结果补充')
     expect(html).not.toContain('显示上期回访补充')
   })
 })

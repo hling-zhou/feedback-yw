@@ -90,7 +90,7 @@ const TOOLS = [
     name: 'get_post_use_trace',
     label: '回访/溯源记录',
     scope: 'mcp:read',
-    desc: 'visit=客服部回访，trace=产品部溯源，按月份/产品/客户/状态筛选',
+    desc: 'visit=省代表回访，trace=产品部溯源，按月份/产品/客户/状态筛选',
     phase: 'P1+P2',
   },
 ]

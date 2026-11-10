@@ -320,12 +320,12 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
         ) : (
           <Typography.Paragraph type="secondary">本产品本月没有单列问题条。</Typography.Paragraph>
         )}
-        <div className="report-group-subtitle">客服部回访记录</div>
+        <div className="report-group-subtitle">省代表回访记录</div>
         <div className="post-use-html-report-evidence">
           {(card.visitNarratives || []).length ? (
             card.visitNarratives.map((line) => <div key={line}>{line}</div>)
           ) : (
-            <div>本期该产品暂无客服部回访记录</div>
+            <div>本期该产品暂无省代表回访记录</div>
           )}
         </div>
         {issue ? (
@@ -460,7 +460,7 @@ export default function PostUseHtmlReportDocument({
     { id: 'report-judgment', label: copy.overviewTitle || '本月概述' },
     ...(hidden.has(REPORT_SECTION_PRODUCTS) ? [] : [{ id: 'report-products', label: '分产品情况' }]),
     ...(hidden.has(REPORT_SECTION_TODO) ? [] : [{ id: 'report-todo', label: '待办事项及进展' }]),
-    ...(hidden.has(REPORT_SECTION_PREVIOUS_VISITS) || !showPreviousVisits ? [] : [{ id: 'report-previous-visits', label: '上期客服部回访结果补充' }]),
+    ...(hidden.has(REPORT_SECTION_PREVIOUS_VISITS) || !showPreviousVisits ? [] : [{ id: 'report-previous-visits', label: '上期省代表回访结果补充' }]),
     ...(hidden.has(REPORT_SECTION_APPENDIX) ? [] : [{ id: 'report-appendix', label: '附录' }]),
   ].filter((section) => !hidden.has(section.id) || section.id === 'report-judgment')
 
@@ -627,7 +627,7 @@ export default function PostUseHtmlReportDocument({
 
       {!showPreviousVisits || hidden.has(REPORT_SECTION_PREVIOUS_VISITS) ? null : (
         <section className="report-module">
-          <SectionTitle id="report-previous-visits">上期客服部回访结果补充</SectionTitle>
+          <SectionTitle id="report-previous-visits">上期省代表回访结果补充</SectionTitle>
           {(model.previousVisits || []).length ? (
             <Table
               size="small"
@@ -637,7 +637,7 @@ export default function PostUseHtmlReportDocument({
               columns={[
                 { title: '客户', dataIndex: 'customerName', width: 160, render: (value, row) => <span>{value || '—'}<KeyCustomerStar customerName={row.customerName} keyCustomers={keyCustomers} /></span> },
                 {
-                  title: '客服部回访记录',
+                  title: '省代表回访记录',
                   dataIndex: 'visitResult',
                   render: (value, row) => (
                     <Input.TextArea
@@ -675,7 +675,7 @@ export default function PostUseHtmlReportDocument({
               ]}
             />
           ) : (
-            <Typography.Paragraph type="secondary">上期无客服部回访记录。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">上期无省代表回访记录。</Typography.Paragraph>
           )}
         </section>
       )}

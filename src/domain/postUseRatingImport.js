@@ -10,7 +10,7 @@ export const POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT = /** @type {const} */ ('cus
 
 export const POST_USE_RATING_SUBTYPE_OPTIONS = [
   { value: POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE, label: '短信渠道+官网渠道 用户反馈' },
-  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '客服部回访导入' },
+  { value: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT, label: '省代表回访导入' },
 ]
 
 export const FEEDBACK_LANE_POST_USE = /** @type {const} */ ('post_use')
@@ -102,7 +102,7 @@ export function isPostUseNon10LibraryRecord(record) {
 
 /**
  * 用后即评满意度 tab 内的三视图。
- * raw=原始数据 / trace=产品部溯源 / visit=客服部回访
+ * raw=原始数据 / trace=产品部溯源 / visit=省代表回访
  */
 export const POST_USE_VIEW_RAW = /** @type {const} */ ('raw')
 export const POST_USE_VIEW_TRACE = /** @type {const} */ ('trace')

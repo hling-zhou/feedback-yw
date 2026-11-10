@@ -144,8 +144,8 @@ export const SATISFACTION_CALLBACK_PRESET = {
 /** @type {ColumnPreset} */
 export const POST_USE_CUSTOMER_VISIT_PRESET = {
   id: 'post-use-customer-visit',
-  name: '客服部回访导入',
-  description: '客服部回访信息导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细',
+  name: '省代表回访导入',
+  description: '省代表回访信息导入：写入 visit_records，并软匹配挂到短信/控制台用后即评明细',
   dataSourceTypes: ['post_use_rating'],
   columnMap: {
     // 2026-11-10 用户拍板：模板列序 = 数据月份/客户名称/客户编码/登录账号名称/产品名称/

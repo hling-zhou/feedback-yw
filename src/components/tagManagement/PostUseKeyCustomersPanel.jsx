@@ -66,7 +66,7 @@ export default function PostUseKeyCustomersPanel({ readOnly = false }) {
             onChange={(e) => setDraftText(e.target.value)}
           />
           <Typography.Text type="secondary" className="mt-2 block text-xs">
-            当前共 {normalizedDraft.length} 条关键词，可用于用后即评综合分析中的客服部回访建议清单。
+            当前共 {normalizedDraft.length} 条关键词，可用于用后即评综合分析中的省代表回访建议清单。
           </Typography.Text>
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             保存后可前往 <Link to="/workbench?tab=post_use_rating">洞察工作台 → 用后即评</Link> 查看结果。

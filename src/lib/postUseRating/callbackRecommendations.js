@@ -256,8 +256,8 @@ function buildRecommendedReason(group, lowScoreLt7Count, scoreBreakdown, feedbac
   const suffix = reasons.length ? `，${reasons.join('，')}` : ''
   const head = parts.length
     ? parts.join('，')
-    : `${group.customerName} 在${group.productName}下建议客服部回访`
-  return `${head}${suffix}，建议客服部回访。`
+    : `${group.customerName} 在${group.productName}下建议省代表回访`
+  return `${head}${suffix}，建议省代表回访。`
 }
 
 function isCallbackTriggerChannel(record) {

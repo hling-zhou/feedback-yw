@@ -618,7 +618,7 @@ export function initBusinessSchema() {
       payload TEXT NOT NULL
     );
 
-    -- 2026-11-04 需求8：客服部回访"已纳入"标记（导出/发送即标记，不可逆，独立于 decisions/归档表）
+    -- 2026-11-04 需求8：省代表回访"已纳入"标记（导出/发送即标记，不可逆，独立于 decisions/归档表）
     CREATE TABLE IF NOT EXISTS post_use_visit_dispatch (
       item_key TEXT PRIMARY KEY,
       source_type TEXT NOT NULL DEFAULT '',

@@ -269,7 +269,7 @@ describeApi('post-use jira API', () => {
     expect(byKey.get('q:C1:弹性公网IP:2026-08')?.needInternalTrace).toBe(false)
     // C2 同月但异前缀 → 不受影响
     expect(byKey.get('q:C2:弹性公网IP:2026-08')?.needInternalTrace).toBe(true)
-    // 客服部回访维度不被归档删除触碰
+    // 省代表回访维度不被归档删除触碰
     expect(byKey.get('q:C1:弹性公网IP:2026-08|2026-09')?.needCustomerVisit).toBe(true)
   })
 
@@ -315,7 +315,7 @@ describeApi('post-use jira API', () => {
     })
     const byKey = new Map(decisions.json().items.map((item) => [item.itemKey, item]))
     expect(byKey.get('q:C9:云监控:2026-10')?.needInternalTrace).toBe(false)
-    // 客服部回访维度不被归档触碰
+    // 省代表回访维度不被归档触碰
     expect(byKey.get('q:C9:云监控:2026-10')?.needCustomerVisit).toBe(true)
   })
 })

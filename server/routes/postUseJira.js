@@ -43,7 +43,7 @@ export function registerPostUseJiraRoutes(app) {
     return { items: saved }
   })
 
-  // 2026-11-04 需求8：客服部回访"已纳入"标记（导出/发送成功后写入；不可逆、幂等）
+  // 2026-11-04 需求8：省代表回访"已纳入"标记（导出/发送成功后写入；不可逆、幂等）
   app.get(
     '/api/post-use-visit-dispatch',
     { preHandler: requirePermission('view') },

@@ -21,7 +21,7 @@ export const SYSTEM_USAGE_WORKFLOW = [
   {
     step: 1,
     title: '导入原始数据',
-    description: '导入投诉/咨询工单、用后即评，以及满意度回访与客服部回访',
+    description: '导入投诉/咨询工单、用后即评，以及满意度回访与省代表回访',
     modules: [{ label: '数据导入', route: '/import' }],
     automatic: false,
   },

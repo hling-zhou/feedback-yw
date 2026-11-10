@@ -502,11 +502,11 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
         ${scoreMeterHtml(evidence.avgScore, evidence.sampleSize, evidence.nonTenCount)}
         ${evidence.changeLabel ? `<div class="report-evidence-hint">问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}</div>` : ''}
         ${negativeQuotesHtml(evidence, keyCustomers)}` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
-      <div class="report-group-subtitle">客服部回访记录</div>
+      <div class="report-group-subtitle">省代表回访记录</div>
       <div class="post-use-html-report-evidence">
         ${(card.visitNarratives || []).length
           ? card.visitNarratives.map((line) => `<div>${escapeHtml(line)}</div>`).join('')
-          : '<div class="muted">本期该产品暂无客服部回访记录</div>'}
+          : '<div class="muted">本期该产品暂无省代表回访记录</div>'}
       </div>
       ${issue ? `
         <div class="report-group-subtitle">建议举措</div>
@@ -871,13 +871,13 @@ export function buildOfflineMonthlyReportHtml(input) {
   const previousVisitsHtml = model.showPreviousVisits === false || hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
     ? ''
     : `<section class="report-module">
-      <h2 class="section-title" id="report-previous-visits">上期客服部回访结果补充</h2>
+      <h2 class="section-title" id="report-previous-visits">上期省代表回访结果补充</h2>
       ${previousVisits.length
         ? tableHtml(
-          ['客户', '客服部回访记录', '回访结果内部评估/回应', '备注'],
+          ['客户', '省代表回访记录', '回访结果内部评估/回应', '备注'],
           previousVisits.map((row) => [`${text(row.customerName)}${keyCustomerStarHtml(row.customerName, keyCustomers)}`, text(row.visitResult), text(row.internalConclusion), text(row.remark)]),
         )
-        : '<div class="report-table-empty">上期无客服部回访记录。</div>'}
+        : '<div class="report-table-empty">上期无省代表回访记录。</div>'}
     </section>`
 
   const appendixHtml = hidden.has(REPORT_SECTION_APPENDIX)
@@ -926,7 +926,7 @@ export function buildOfflineMonthlyReportHtml(input) {
     ...(hidden.has(REPORT_SECTION_TODO) ? [] : [{ id: 'report-todo', label: '待办事项及进展' }]),
     ...(model.showPreviousVisits === false || hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
       ? []
-      : [{ id: 'report-previous-visits', label: '上期客服部回访结果补充' }]),
+      : [{ id: 'report-previous-visits', label: '上期省代表回访结果补充' }]),
     ...(hidden.has(REPORT_SECTION_APPENDIX) ? [] : [{ id: 'report-appendix', label: '附录' }]),
   ]
   const tocHtml = `<nav class="report-toc" aria-label="报告目录">

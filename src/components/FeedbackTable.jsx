@@ -121,7 +121,7 @@ function buildPostUseColumns(keyCustomers, onViewRaw) {
       },
     },
     {
-      title: '客服部回访',
+      title: '省代表回访',
       dataIndex: 'customerVisit',
       width: 180,
       render: (_, fb) => {

@@ -1,5 +1,5 @@
 /**
- * 客服部回访信息（人工录入）— meta 存储
+ * 省代表回访信息（人工录入）— meta 存储
  */
 export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 

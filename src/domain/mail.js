@@ -16,8 +16,8 @@ export const DEFAULT_REPORT_BODY = `{周期标签}的用后即评{月报|季报}
 详见附件，可用浏览器直接打开
 原始数据及报告见用户反馈分析平台 {绝对链接}`
 
-export const DEFAULT_CALLBACK_SUBJECT = '待客服部回访清单（{周期标签}）'
-export const DEFAULT_CALLBACK_BODY = `{周期标签}的待客服部回访清单
+export const DEFAULT_CALLBACK_SUBJECT = '待省代表回访清单（{周期标签}）'
+export const DEFAULT_CALLBACK_BODY = `{周期标签}的待省代表回访清单
 详见附件，可用 Excel 打开
 原始数据及报告见用户反馈分析平台 {绝对链接}`
 
@@ -34,7 +34,7 @@ export function defaultMailTemplate(presetKey) {
   if (presetKey === MAIL_PRESET_CALLBACK_VISIT) {
     return {
       id: MAIL_PRESET_CALLBACK_VISIT,
-      name: '待客服部回访清单',
+      name: '待省代表回访清单',
       subject: DEFAULT_CALLBACK_SUBJECT,
       body: DEFAULT_CALLBACK_BODY,
       preset: true,

@@ -50,7 +50,7 @@ export const AUDIT_ACTION_LABELS = {
   'post_use_jira.update': '更新产品部溯源存档',
   'post_use_jira.delete': '删除产品部溯源存档',
   'post_use_jira.batch_delete': '批量删除产品部溯源存档',
-  'post_use_visit.update': '更新客服部回访',
+  'post_use_visit.update': '更新省代表回访',
   'post_use_callback_decisions.replace': '更新回访跟进决策',
   'mail.public_url_update': '更新邮件平台地址',
   'mail.channel_create': '创建发信通道',

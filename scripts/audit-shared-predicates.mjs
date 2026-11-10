@@ -34,7 +34,7 @@ const SHARED_PREDICATES = [
     patterns: ['archivedKeys.has(', 'archivedItems.get('],
   },
   {
-    concept: '已纳入客服部回访',
+    concept: '已纳入省代表回访',
     predicate: 'isDispatched',
     patterns: ['dispatchedKeys.has('],
   },

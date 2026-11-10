@@ -52,7 +52,7 @@ describe('import data template round-trip', () => {
       presetId: CONSULTATION_TICKET_PRESET.id,
     },
     {
-      label: '客服部回访',
+      label: '省代表回访',
       dataSourceType: 'post_use_rating',
       subType: POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT,
       presetId: POST_USE_CUSTOMER_VISIT_PRESET.id,
