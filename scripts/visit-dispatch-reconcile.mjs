@@ -33,9 +33,12 @@ function arg(name, def) {
 const DB_PATH = path.resolve(arg('--db', path.resolve(__dirname, '..', 'server', 'data', 'auth.db')))
 const FIX = process.argv.includes('--fix')
 const BACKFILL = process.argv.includes('--backfill')
+const MARK_IMPORTED = process.argv.includes('--mark-imported')
 
 const Database = require(path.resolve(__dirname, '..', 'node_modules', 'better-sqlite3'))
-const db = new Database(DB_PATH, FIX ? {} : { readonly: true })
+// 连接模式：任一修复 flag 即可写；纯诊断（无 flag）只读
+const WRITER = FIX || MARK_IMPORTED
+const db = new Database(DB_PATH, WRITER ? {} : { readonly: true })
 
 // ── 读 dispatch 标记 ──
 const dispatches = db
@@ -74,8 +77,8 @@ const visitKeys = new Set(
 
 // ── 身份匹配（与 deleteByIdentity 同口径：payload 三元组 + itemKey 段双保险）──
 function customerFromItemKey(itemKey) {
-  // q:客户:产品:月份 → 第 2 段是客户（编码或名称）
-  const m = String(itemKey || '').match(/^q:([^:]+):(.+?):(?:\d{4}-\d{2})/)
+  // q:客户:产品:月份（或旧格式 q:客户:产品 无月份段）→ 第 2 段客户、第 3 段产品
+  const m = String(itemKey || '').match(/^q:([^:]+):(.+?)(?::(?:\d{4}-\d{2})(?:\|\d{4}-\d{2})*)?$/)
   return m ? { customer: m[1], product: m[2] } : null
 }
 
@@ -83,13 +86,19 @@ const ghosts = []
 for (const d of dispatches) {
   const key = [d.importMonth, d.productName, d.customerName].join('\0')
   const keyAlt = customerFromItemKey(d.itemKey)
+  // 匹配三路：①payload 三元组精确 ②itemKey 有月份段（客户+产品+月份）③itemKey 无月份段
+  // （旧格式 q:客户:产品——只要该客户产品任一月有回访记录即视为非幽灵，弹窗 isDispatched
+  // 对旧格式走周期包含匹配，语义=该客户该产品处理过即已纳入）
+  const keyHasMonth = /:\d{4}-\d{2}/.test(d.itemKey || '')
   const altHit = keyAlt
     ? visitRecords.some(
         (r) =>
-          String(r.importMonth || r.visitMonth || '') === d.importMonth &&
           String(r.productName || '') === keyAlt.product &&
           (String(r.customerCode || '') === keyAlt.customer ||
-            String(r.customerName || '') === keyAlt.customer),
+            String(r.customerName || '') === keyAlt.customer) &&
+          (keyHasMonth
+            ? String(r.importMonth || r.visitMonth || '') === d.importMonth
+            : true),
       )
     : false
   if (!visitKeys.has(key) && !altHit) ghosts.push(d)
@@ -139,16 +148,19 @@ if (TRACE) {
   }
 }
 
+// 幽灵修复仅由 --fix 驱动；--mark-imported 只反向补标、不动幽灵
 if (!FIX || !ghosts.length) {
   if (!TRACE) {
     console.log(ghosts.length ? '\n以上为诊断结果（只读）。修复执行：node ... --fix（清幽灵标记）或 --fix --backfill（补建回访记录）' : '\n无幽灵标记，无需修复。')
   }
-  db.close()
-  process.exit(0)
+  if (!MARK_IMPORTED) {
+    db.close()
+    process.exit(0)
+  }
 }
 
 // ── 修复 ──
-if (BACKFILL) {
+if (FIX) {if (BACKFILL) {
   // 反向补建：为每个幽灵标记建一条预导入态回访记录（身份键沿用 stableVisitRecordId 口径由
   // 运行时导入链处理，这里直接按 meta 现有形态补 id=哈希不可得 → 用 dispatch key 派生 id 保持唯一）
   const now = new Date().toISOString()
@@ -209,6 +221,53 @@ if (BACKFILL) {
   })
   tx()
   console.log(`\n已删除幽灵标记 ${removed} 条（清单恢复勾选模式，可重新勾选导出——新逻辑会预导入写入）。`)
+}
+} // FIX 块结束
+
+// ── --mark-imported：反向补标（2026-11-10 部署环境确认需求）──
+// 场景：回访结果由整表导入（未走弹窗勾选导出）→ 库内有记录但弹窗不显示"已纳入"，
+// 已回访客户在清单中仍可被勾选重复安排。反向补标：为库内已有回访记录的身份创建
+// dispatch 标记（弹窗 isDispatched 读该表）→ 已回访行显示已纳入、不再进导出收集范围。
+// 客户段优先用客户编码（与弹窗行 itemKey 构造同源——collectFollowupExportRows 用编码）。
+if (MARK_IMPORTED) {
+  const now = new Date().toISOString()
+  const existingKeys = new Set(dispatches.map((d) => d.itemKey))
+  const ins = db.prepare(
+    'INSERT OR IGNORE INTO post_use_visit_dispatch (item_key, source_type, dispatched_via, dispatched_at, payload) VALUES (?,?,?,?,?)',
+  )
+  let marked = 0
+  const skipped = []
+  const tx = db.transaction(() => {
+    for (const r of visitRecords) {
+      const month = String(r.importMonth || r.visitMonth || '').trim()
+      const productName = String(r.productName || '').trim()
+      const customer = String(r.customerCode || r.customerName || '').trim()
+      if (!month || !productName || !customer) continue
+      const itemKey = `q:${customer}:${productName}:${month}`
+      if (existingKeys.has(itemKey)) continue
+      const result = ins.run(
+        itemKey,
+        String(r.sourceType || 'questionnaire'),
+        'import_backfill',
+        now,
+        JSON.stringify({
+          customerName: String(r.customerName || ''),
+          productName,
+          importMonth: month,
+        }),
+      )
+      if (result.changes) {
+        marked += 1
+        existingKeys.add(itemKey)
+      } else {
+        skipped.push(itemKey)
+      }
+    }
+  })
+  tx()
+  console.log(`\n反向补标：已为库内回访记录创建 dispatch 标记 ${marked} 条（弹窗将显示已纳入）。`)
+  if (skipped.length) console.log(`已存在跳过 ${skipped.length} 条。`)
+  console.log('注意：标记 via=import_backfill 可识别本批补标；若误标可按该来源清理。')
 }
 
 db.close()
