@@ -31,7 +31,7 @@
 | 表单必填守卫 | `src/lib/formRequiredGuard.test.js` | 必填无标记、手写标签绕过 FieldLabel |
 | 共享谓词审计 | `scripts/audit-shared-predicates.mjs` | 直摸数据结构绕过 isArchived/isDispatched/decisionOf（exit 1，可接 CI） |
 | sticky chrome 守卫 | `src/pages/PostUseJiraTab.chrome.render.test.jsx` | page-sticky-chrome 误入卡片内 / bg-ink-50 灰底回潮 |
-| 分页总数守卫 | `src/lib/paginationTotal.guard.test.js` | 活跃分页缺 showTotal、内联回调回潮 |
+| 分页总数守卫 | `src/lib/paginationTotal.guard.test.js` | 活跃分页缺 showTotal、内联回调回潮、消费方 import 路径断裂（11-11 部署机构建炸后补） |
 | LLM 批容器契约守卫 | `src/lib/llmClient.test.js`（批容器用例组） | 解析层剥掉 {results:[...]} 包装 |
 | 列宽拖拽守卫 | `src/lib/columnWidths.test.js` 等（11-11 新增） | scroll.x 硬编码回潮、直接写 th.style.width |
 | 目录缓存守卫 | `catalogCacheCoverageGuard`（reminders/MCP/patrol 线） | 新消费方读目录缓存前漏刷新 |
