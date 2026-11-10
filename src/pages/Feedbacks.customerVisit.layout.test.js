@@ -28,4 +28,25 @@ describe('Feedbacks customer visit tab', () => {
     const keysDef = source.split('FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS')[1]?.slice(0, 200) || ''
     expect(keysDef).not.toContain('myReview')
   })
+
+  it('2026-11-10 列表列 = 导入模板列（4 固定列 + 模板列序，无推荐分析列）', () => {
+    const afterTable = source.split('function CustomerVisitTable')[1] || ''
+    const tableBlock = afterTable.split('function CardGrid')[0] || afterTable
+    // 列定义形态断言（避开注释文字）：被移除列的列定义形态（title: 'xxx'）不得回潮
+    expect(tableBlock).not.toContain("title: '建议触发类型'")
+    expect(tableBlock).not.toContain("title: '7分以下分布'")
+    expect(tableBlock).not.toContain("title: '建议回访原因'")
+    // 动态列生成器（客户原话N/低分原因N）不得回潮
+    expect(tableBlock).not.toContain('Array.from({ length: maxQuotes }')
+    expect(tableBlock).not.toContain('Array.from({ length: maxReasons }')
+    // 4 固定列
+    expect(tableBlock).toContain("title: '评估状态'")
+    expect(tableBlock).toContain("title: '数据月份'")
+    expect(tableBlock).toContain("title: '产品名称'")
+    expect(tableBlock).toContain("title: '客户名称'")
+    // 模板列（集团名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
+    expect(tableBlock).toContain("title: '集团名称'")
+    expect(tableBlock).toContain("title: '相应投诉工单'")
+    expect(tableBlock).toContain("title: '客户反馈'")
+  })
 })

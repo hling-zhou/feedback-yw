@@ -71,6 +71,8 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       客户编码: visit.customerCode || '',
       登录账号名称: visit.loginAccountName || '',
       产品名称: visit.productName || '',
+      集团名称: visit.groupName || '',
+      客户反馈: visit.userFeedbackText || '',
       经办人: visit.assigneeName || '',
       建议触发类型: matched?.triggerType || '',
       '7分以下总次数': matched?.lowScoreLt7Count || 0,

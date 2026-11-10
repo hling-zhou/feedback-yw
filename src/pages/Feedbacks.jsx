@@ -1741,19 +1741,10 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
    * 与工单/原始数据视图行为不一致。
    */
   const columns = useMemo(() => {
-    const maxQuotes = Math.max(
-      0,
-      ...rows.map((row) =>
-        Object.keys(row).filter((key) => /^客户原话\d+$/.test(key) && row[key]).length,
-      ),
-    )
-    const maxReasons = Math.max(
-      0,
-      ...rows.map((row) =>
-        Object.keys(row).filter((key) => /^低分原因\d+$/.test(key) && row[key]).length,
-      ),
-    )
-
+    // 2026-11-10 需求澄清（用户重申拍板）：列表列 = 导入模板列（与 POST_USE_CUSTOMER_VISIT_PRESET
+    // 同源）+ 评估状态派生列；4 固定列 = 评估状态/数据月份/产品名称/客户名称（fixed left）；
+    // 其他列按模板列序原样显示。推荐分析列（建议触发类型/7分以下分布/客户原话N/低分原因N/
+    // 最近反馈时间/涉及渠道/建议回访原因）不属于模板列，从列表移除——导出 Excel 仍保留全量列。
     return [
       // 2026-11-05：个人标记"我的状态"列下线（visit: 前缀体系），改由评估字段派生的评估状态列
       {
@@ -1770,38 +1761,21 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
         },
       },
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
-      // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定，其余原样
+      // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定
       { title: '产品名称', dataIndex: '产品名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
+      // ↓ 以下按导入模板列序原样（集团名称/客户编码/登录账号名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
+      { title: '集团名称', dataIndex: '集团名称', width: 140, ellipsis: true },
       { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
       { title: '登录账号名称', dataIndex: '登录账号名称', width: 140, ellipsis: true },
-      { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
-      { title: '建议触发类型', dataIndex: '建议触发类型', width: 140, ellipsis: true },
-      { title: '7分以下总次数', dataIndex: '7分以下总次数', width: 112 },
-      { title: '7分以下分布', dataIndex: '7分以下分布', width: 160, ellipsis: true },
-      { title: '原话命中条数', dataIndex: '原话命中条数', width: 112 },
-      { title: '低分原因命中条数', dataIndex: '低分原因命中条数', width: 132 },
-      { title: '最近反馈时间', dataIndex: '最近反馈时间', width: 168 },
-      { title: '涉及渠道', dataIndex: '涉及渠道', width: 140, ellipsis: true },
-      { title: '建议回访原因', dataIndex: '建议回访原因', width: 260, ellipsis: true },
       { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 180, ellipsis: true },
-      ...Array.from({ length: maxQuotes }, (_, index) => ({
-        title: `客户原话${index + 1}`,
-        dataIndex: `客户原话${index + 1}`,
-        width: 220,
-        ellipsis: true,
-      })),
-      ...Array.from({ length: maxReasons }, (_, index) => ({
-        title: `低分原因${index + 1}`,
-        dataIndex: `低分原因${index + 1}`,
-        width: 220,
-        ellipsis: true,
-      })),
+      { title: '客户反馈', dataIndex: '客户反馈', width: 220, ellipsis: true },
       { title: '回访结果', dataIndex: '回访结果', width: 220, ellipsis: true },
       { title: '内部评估', dataIndex: '内部评估', width: 220, ellipsis: true },
       { title: '备注', dataIndex: '备注', width: 180, ellipsis: true },
+      { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
     ]
-  }, [rows])
+  }, [])
 
   if (!rows.length) {
     return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配客服部回访记录" />
