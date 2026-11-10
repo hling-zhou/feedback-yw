@@ -1,9 +1,269 @@
 {
-  "generatedAt": "2026-11-08T16:05:13.452Z",
+  "generatedAt": "2026-11-10T17:29:03.897Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "89a19f33d2d83d6e672487ab9d5678997fdea014",
+  "repoCommit": "8725a8471b69b63defff3fa6da6db319868ed213",
   "items": [
+    {
+      "id": "ec3b5e30146cf97554fc17b89c9b134f0eca8a67",
+      "title": "全部带分页的列表在分页栏左侧显示总数",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "分页栏此前无总数，长列表无法一眼看到过滤后规模；antd showTotal\n天然渲染在分页 ul 首位（居左）。同源纪律：既有 6 处内联回调迁移\n到共享 paginationShowTotal，新增 27 处消费同一真源，守卫测试锁\n\"活跃分页缺 showTotal 即红 + 内联回调回潮即红\"双断言。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "928f46aff827c0445fedd71ca28c9a32e1128b8c",
+      "title": "反馈工单、溯源、回访三表支持拖拽调节列宽",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "列宽是用户逐次调优的工作成果，静态拍板宽度（如客户编码 220）反复返工；\nantd 无内置 resizable，自研 hook 按父层持有子层消费契约落地，避免\nEmpty 早退与 tab 切换丢失状态；localStorage 按 userId 隔离持久化，\n刷新不丢。固定列、操作列、无 width 弹性列自动排除手柄；scroll.x\n改动态求和，拖宽后横向滚动联动。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "4cdebdcdcfcdd4d95b43f38e19d3c9cdd2af7160",
+      "title": "新建组时从产品目录填经办人默认值——productManager[0]",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "设计 §2.3 约定 groups.assignee 默认为 catalog.owners.productManager[0]，\n此前三处建组路径均未实现：压缩链/Plan A/B 诊断回填/Plan C 日包端点。\n现在统一：压缩新建 + 诊断回填待处理 + 日包新组待处理全部补填，\n不覆盖已有经办人（人工状态保护）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "4e39da45d61a3cee16ea4cd326757aaf2e217dd2",
+      "title": "总览与异常接口溯源加 T-1（前一天）快捷日期按钮",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "数据代理推包是 T-1 数据，在近7天/近30天之外增加 T-1 单日快捷切换，\n点后自动选昨天、进入单日视图。总览与溯源页同步。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "3aeb27c126f34ec4d2389b6769b9807ada629912",
+      "title": "省代表回访全链路闭环——清单勾选预导入、删除联动重置、人工域保护强化",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "需求三段闭环：①建议回访清单勾选行导出/发送成功 → 标记已纳入 + 预导入写入回访\ntab（待评估态，身份键=月+产品+客户与导入链一致；客户反馈列带入清单行摘要文本，\n后续导入按导入值覆盖）；②导入按同身份覆盖更新（复用身份键覆盖语义）；③删除回访\n记录 → 联动清 dispatch 已纳入标记 + decisions 勾选重置 false（清单恢复未勾选态），\n单删+批量双模式（权限对齐产品部溯源=editRecord，常驻）。\n\n幂等缺陷修复：batch 预导入原只按 id 判重——老记录字符串 id 与 stableId 不同导致\n同身份重复；改按身份三元组判重（测试实测暴露）。联动 catch 外显 linkageError\n（防吞错伪装成成功 0，CONVENTIONS 规则 2 新条款）。\n\n回访/溯源 tab 列交互：客户编码宽 220 完整显示 20 字符编码不截断；客户名称/\n登录账号名称截断时 hover 气泡显示完整（工单列表同款形态）。含文案\"客服部回访→\n省代表回访\"（本批触碰文件内的同步替换）。\n\nE2E 三段闭环单库跑通；测试 24/24；typecheck 零新增。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ab318796b9243afe7d416a1ea22ae3f8e97d5e31",
+      "title": "Plan C 日包接收端点 + 本机数据代理脚本 + 断供横幅",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "部署端新增 daily-package 端点：三段幂等 upsert、已处理组人工状态\n保护、包到达 fire-and-forget 触发日报（同日幂等）、lastPackageReceivedAt\n断供判据。本机 scripts/plan-c-daily.mjs 跑全链：拉邮件→持久库压缩→\n诊断（7 天 pending 窗口 + 包内两轮 + 超龄 converged）→组包推送\n（3 次重试）。总览横幅双判据合并：Plan B 拉取错误 OR Plan C 断供。\n真实联调：本机拉通 11-09 全量（883 明细/5 组/压缩/组包），待部署端\n更新代码后推包。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "84b5be0b34cf4b8c0eb68fa79b4028372fcf33ff",
+      "title": "回访导出列按《导出字段.xlsx》21 列对齐，列表守卫防集团名称回潮",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "导出行按需求文件列序重排：模板段（数据月份→备注）+抽屉人工段（确立举措/举措详情/\n排期）+推荐分析段（建议触发类型→涉及渠道）；客户反馈列=userFeedbackText（导入\n客户反馈列内容）；移除 集团名称/建议回访原因/动态客户原话N低分原因N（需求无）。\nObject.keys 21 列序断言+已移除列防回潮；列表布局守卫补集团名称 not 断言。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ff00d4063d56051e55f1f5a6e08f9d62776a837d",
+      "title": "回访模板列序对齐业务表——相应投诉工单升首选列名",
+      "category": "fix",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "模板列序改 数据月份/客户名称/客户编码/登录账号名称/产品名称/相应投诉工单/客户反馈/\n回访结果/内部评估/经办人/备注（columnMap 键序重排，模板列头由 preset 派生自动跟随）。\noriginalTicketId 同义候选交换顺序：相应投诉工单（10 月回访表与导出列同名列）升首选，\n旧列名「原工单编号」保留识别兼容——此前模板显示旧导出列名是候选首位惯性放错，\n业务文件列名才是真源。填写说明同步。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "910617d11cb3af6d6f870381a65b23b98cd51f71",
+      "title": "回访导入按身份键覆盖根治重复——人工域标记保护，附临时删除工具",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "同批数据导两次显示两条的根因：记录 id 含回访结果+内部结论+备注+出现次序——内容\n变了 id 就变，新增而非覆盖（注释声称的\"再导不复制\"仅对内容完全一致成立）。\n身份键改为 同数据月份+产品+客户：同身份旧条删除、新条沿用旧 id，内容差异不再\n产生新条；同批内多行仍各自成条。\n\n人工域保护（用户拍板口径\"导入值优先但人工已填不冲掉\"）：PATCH 路由对\n内部评估/经办人/备注打 manualEditedFields 域级来源标记，导入覆盖时被标记域\n保留库值，未标记域允许导入值覆盖（含空导入值清空导入来源旧值）；关联举措恒保留。\n\n临时功能（admin 专属，存量重复清理完成后下线，代码三处 temporary 标记）：\nDELETE /api/post-use-visits/:id（403 守卫+审计+快照联动摘除）+ 列表操作列\nPopconfirm 删除按钮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "5f1f3af9e4c2b5c2820307cd7493d9189ea24c13",
+      "title": "客服部回访列表列改为导入模板列——4 固定列 + 模板列序原样",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "11-09 实施时把需求中\"其他列原样显示\"的\"其他列\"误读为存量列集（含建议触发类型/\n7分以下分布/客户原话N 等推荐分析列），实际应为导入模板列。列表改为 评估状态/\n数据月份/产品名称/客户名称 4 固定列 + 集团名称/客户编码/登录账号名称/相应投诉\n工单/客户反馈/回访结果/内部评估/备注/经办人 模板列序；推荐分析列从列表移除\n（导出 Excel 仍保留全量列）。行生产方补 集团名称(groupName)/客户反馈\n(userFeedbackText) 映射防恒空列；布局守卫锁模板列形态防推荐列回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "29d58558edad44c2c25ce403064f728bff8af005",
+      "title": "前端版本探针与 Nginx 两层缓存策略，长开标签页不再滞留旧版",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "index.html 无缓存策略时被浏览器缓存数日，发版后用户仍看旧 bundle。\n入口 no-cache 轻协商 + 资产指纹 immutable 长缓存分层；前端探针轮询\n入口 HTML 指纹变化提示刷新。postbuild 清理误入 dist 根的流水线产物。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "55f3fbc26a01c08ef1408f0f7bd76003af193e32",
+      "title": "Tab 本机记忆三级优先链，用后即评 raw 改只读放大查看",
+      "category": "feature",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "高频用户重回工作台默认上次离开 Tab（URL 参数 > localStorage > 默认）；\n用后即评原始数据去详情抽屉，原文列内放大纯只读；\"提交\"文案按语义改为\n\"回溯完成/评估完成\"。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "81edd9cd1487c841a7786e00c67878032f7e2d26",
+      "title": "客服部回访导入对齐 10 月表口径，提供空白模板下载",
+      "category": "feature",
+      "modules": [
+        "import"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "10 月回访表列名与旧导出不同（相应投诉工单/经办人/客户反馈），列映射\n支持同义候选按表头依次命中；必填口径改为数据月份+产品名称+客户+回访\n结果四项。上传步提供与 preset 完全一致的空白模板替代手改样例 CSV。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e753d9f594c3c1ac534aedde6ca4fe4efd45fb3b",
+      "title": "建议回访/溯源清单双入口共享判定，客服部回访列行级化",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "入口在 DashboardView 头部与 StoryView 各一处，disabled 判定与文案\n收敛共享 helper 防两处漂移；弹窗实例上提至 DashboardView 去重。\n问卷回访勾选从客户级合并一勾全选改为行级独立（与产品部回溯列一致），\n归档后同步重拉勾选状态与服务端对齐。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "12fe39bb56f1f171c3b4736eb0a5ecc71164b25d",
+      "title": "归档即清内部溯源勾选——完结动作联动决策态退场",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "归档后 decisions 的 needInternalTrace 仍滞留，弹窗显示勾选态而非\n\"已纳入\"（完结态与决策态矛盾）。修复为服务端归档入口联动清理 +\n存量一次性回填，并沉淀为防缺陷规则 1「写任何完结动作→必答决策态退场」。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ae5c632a56fe792e6a5c54521c3b1f2a74e8d48e",
+      "title": "收件人群组支持抄送人，新建通道授权码必填",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "群发场景需抄送相关方（cc 独立存储校验，收件人必填非空、抄送允许为空），\n发信选群组时同步预填两框。新建发信通道漏填授权码此前静默建出不可用\n通道，提前到创建时拦截；编辑留空保持原码语义不变。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ba0c794ff085cd6b6c7dfee8d1f2f64a674bbfed",
+      "title": "Plan B 邮件拉取导入——IMAP 定时拉取、白名单校验、解析入库全链路",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "外部推送不可用时经 IMAP 邮件备用导入：09:15 拉取→发件人白名单防伪造\n注入→正文统计表与附件 ZIP 双路解析→HTML/CSV 交叉校验→与 HTTP 推送\n共用同一写入函数入库（进程内直调，后到覆盖互不冲突）。拉取结果全程\n审计并在 Settings 面板与总览页可观测。已连真实 Coremail 拉通 11-09\n全量数据（3 产品 883 明细行）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "66c0f8da4df10b80a3a9348b22545fdca2d04c68",
+      "title": "curated 正则对照补词——与打标分类器漏词模式对齐",
+      "category": "fix",
+      "modules": [
+        "tags"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "全维度复核的漏词在 curated 同样缺失（两套词表独立维护），\n且引擎 seedMatchers 区分大小写、语料不做 toLowerCase——补大写变体：\n- EIP netlink: 掉线/断网/断联/无法连接/SSH失败/ping大小写变体/访问很卡，\n  exclude 加安装失败防 VPN 客户端类误吸\n- EIP security: 中病毒/域名劫持/跳转违规，新建 hijack 子议题\n- EIP connect: 无法打开/访问超时组合词（裸\"超时\"误吸配额句后收窄）\n- CT link_quality: 专线.*中断/互联.*中断/中断数秒\n- ELB quota: 申请.*灰度/开通灰度/灰度权限/可用区.*权限（语序反转修复）\n\n10817 条回放零命中：ELB 7→1、CT 51→46、EIP 363→346",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b558f151dc05b5cbba94883d13efe8a6de3fd891",
+      "title": "全维度复核发现的漏分类修复——10817 条部署数据回放验证",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-10",
+      "appVersion": null,
+      "summary": "基于 11-09 全维度准确率复核（处理意见为基准，173 条精读收敛）：\n- 问题类型：可用性/性能/计费/咨询补词 + 否定式/语序反转模式逻辑\n  （投诉\"其他\"91% 可重归；全量回放 454 条修复、22 条回归，20.6:1）\n- 请求场景：配额申请语境优先于\"无法\"故障泛词，修复 54 条配额单误判报障\n- 计费实质疑问（模式切换/出账方式/折扣生效）从功能咨询重判计费，§7.4 期望同步修订\n- QUANTITY_UNLOCK_RE 补带宽额度/增加NM/提额词形，修复 22 条旅程未识别",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "698e89d14fc9fc52cac8566071094d4b3a260ade",
+      "title": "CT+ELB curated 正则补词修复误归属 [auto-reviewed]",
+      "category": "fix",
+      "modules": [
+        "tags"
+      ],
+      "publishedAt": "2026-11-09",
+      "appVersion": null,
+      "summary": "CT 云专线 (误归属率 19.4%→预计降至 ~15%):\n- link_quality/outage exclude 补路由配置类词汇（回程路由/路由优先级/\n  子网未加入/网段未添加/VRF/NAT源地址/tracert/下一跳未指向/路由表未），\n  阻止路由配置类工单被 link_quality 的\"不通\"泛词误吸\n- renew/renew_change exclude 补订购页地域/折扣生失效/订单变更产品/\n  保障等级变更入口/虚拟网关VPC网段/客服专家坐席等词汇，\n  阻止 provision/billing/doc 类工单被 renew 的\"续订/变更\"泛词误吸\n\nELB 弹性负载均衡 (误归属率 22.1%→预计降至 ~15%):\n- provision exclude 大幅扩展：转发链路时延/内容完整性不一致/监控采集错误/\n  利用率虚高/健康检查异常/后端主机未回复/TLS策略/漏扫/上架灰度/售罄/\n  配额上限/承载带宽/压测性能要求等，阻止 forward/health/monitor/\n  security/quota/bw 类工单被 provision 的\"配置.*负载均衡/功能.*支持\"误吸\n- forward re 补词：转发链路时延/额外时延/URL路径转发/Proxy Protocol/\n  四层转发/七层协议解析/请求头换行/499/跨资源池转发等\n- forward exclude 细化 TLS→TLS策略/TLS低版本/弱加密/安全TLS/漏扫/漏洞扫描\n- health re 补词：后端主机未回复/端口不通/iptables未放行/异常主机汇总/\n  后端服务器选不到/后端主机组配额上限/监听健康检查配置等\n- monitor re 补词：采集算法错误/利用率虚高/流量相减负值/连接数采集不准/\n  误告警/监控只暴露汇总值等\n- security re 补词：TLS策略/安全TLS/低版本TLS/弱加密套件/漏扫/漏洞扫描/\n  监听器未启用TLS\n- quota exclude 补承载带宽10G/压测性能要求，避免带宽类工单误吸\n- provision/config_guide re 补不支持安装第三方/不支持部署EDR/托管型不支持",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "5b423d6f1d5c16e2c5ca01f4059568f0ba6e87bb",
       "title": "AI 巡检日报定时发送、页面 AI 巡况总结与总览综述异步化",
@@ -2209,226 +2469,6 @@
       "publishedAt": "2026-08-19",
       "appVersion": null,
       "summary": "原先把标题拆成必须全部命中的词，「配额申请与配额不足」会漏检只含其一的工单；证据扫描上限也会截断匹配。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "dc51308dc4dcf81d6b39b4f34968eff8da28d817",
-      "title": "用户旅程打标改用客户请求，配额申请优先匹配配额环节",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "问题类型已按抽出的客户请求重打，旅程仍在打原始处理意见，短文本会一直未识别；带宽配额还会被裸「带宽」抢到升降配。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "36f18cad2890f67913898a63c4a17c08209fd761",
-      "title": "反馈库产品筛选只保留当前大类且已开启分析的产品",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "工单 Tab 此前按周期内全部记录聚合选项，用后即评产品和未开分析的产品会混进下拉，选中后常筛出 0 条。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "21fb2031b49f6bba22148e9939fc9e84fc1da8dc",
-      "title": "用后即评建议回访清单对体验运营开放",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "管理员与体验运营可打开并处理现有「查看并处理建议回访/溯源清单」，工单分析与查看者不再显示该入口。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "9b52866bfec5685d9e476647434e4de93fe307db",
-      "title": "体验运营角色可管理用户，并兼容旧角色中文名",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "用户管理不再仅限管理员；导入仍识别「编辑者」等旧标签。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "957700acd1d009840d57ee6899cb7b0dca9666f1",
-      "title": "举措页增加会议待办，删除工单时解绑举措",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "会议待办从投诉/咨询工单汇总为独立 tab，处理路径与工单详情对齐；产品举措补完成率，避免删单后举措仍挂着工单。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "06a21aea05f5d6427e6825ade972c5e836e8d268",
-      "title": "专题报告改为决策简报，并用原话语义聚类辅助拆专题",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-16",
-      "appVersion": null,
-      "summary": "规则先出 P 级与行动，详情改为可视化结论板；LLM 只润色措辞，且仅在原话可核验时建议拆分。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "3fd8dca4bafb372163c21e127cbffe421e388a80",
-      "title": "主题证据只展示高风险抽样，整簇去反馈库查看",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-16",
-      "appVersion": null,
-      "summary": "大簇用工单号会话集精确筛选，避免把 200+ 工单号塞进 URL 和多选芯片。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "56208673572a27830117e4d463211259429133df",
-      "title": "投诉与咨询看板共用分组指标带，咨询改用负担/可自助口径",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-16",
-      "appVersion": null,
-      "summary": "咨询不再套用万投比和回访；证据列去掉处理意见并改绑问题原因。万投比缺订单量时显示待对比，避免误报已达标。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "8949ee82a35c66da8912c34bb822189e580ced87",
-      "title": "工单号链接改为列表筛选，不再自动打开抽屉",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "旧 ticketId 查询仍会并入 ticketIds，避免长链接或误开详情。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2a8e87319d9e579345f057d2bd738e574fce7f1d",
-      "title": "工单故事按单产品生命周期展示用户旅程",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "未选产品时不画跨产品图；证据统一按产品与一级环节下钻，并列最高量环节都标为体验断点。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "de32435b64ceafec20cd5b2913ab9cc335d98aba",
-      "title": "把登录和工单更新等写操作记进操作审计",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "登录成败、工单字段变更、配置保存、投诉复核和用后 Jira 都会入账；自动写盘不再单独记一条。保存产品目录时同时递增记录侧版本，避免推荐缓存不失效。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "393848748424b69877c56cca1cf56d4b95fbcb9c",
-      "title": "产品目录同步标签库时内容未变则不写盘",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "忽略 updatedAt 和版本号后若快照相同，只应用本地缓存，避免无意义保存触发发布。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "98053b9af384999047ad39b50231ba4e60c4a72e",
-      "title": "用后内部提单改用复合筛选",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "与反馈库同一套属性筛选，替换原先散落的月份、产品、状态和搜索框。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "e6873b1bb4a9fe2841e024d698a105973ce4c979",
-      "title": "复合筛选改为弹出面板内选择，并按 Tab 收窄条件",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "下拉和日期选择挂在筛选浮层内，避免被挡住；用后即评和客服回访只保留该 Tab 能用的条件。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "9a5a44e8c667935362e41d22617f041882376c11",
-      "title": "专题推荐改为按近期密度打分，并缓存避免进页全量重算",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-15",
-      "appVersion": null,
-      "summary": "去掉条数垄断和占位主题，二级旅程并行出卡，页面展示 Top 20。改举措只补未闭环，不触发整表重算。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "783d6621de74ccddb49549b5ac2519443f6289d0",
-      "title": "专题分析按已启用产品取数，推荐不含满分无负面的用后即评",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-14",
-      "appVersion": null,
-      "summary": "只分析「产品与规格」中开启工单或用后即评的产品；系统推荐再丢掉 10 分且无负面反馈的用后即评，自定义专题不套这条。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "638e1f406b4a9db8cb2bf848099eacf7f47fa515",
-      "title": "增加共享专题分析，纳入或新建后后台生成报告",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-14",
-      "appVersion": null,
-      "summary": "按近 9 个月推荐客户/产品问题/共性专题；新建先理解再确认。报告记创建人与补充材料上传人，刷新后仍能看到生成中的条目。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "a1749a882257801c76adeb82de14ea08ae401c4b",
-      "title": "用后即评改为独立 HTML 月报，并收紧原因与原话口径",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-14",
-      "appVersion": null,
-      "summary": "单月从工作台打开可交互月报并导出离线 HTML，替代页内 Word 预览；建议回访与原话只保留有实质内容的原因。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "20d169870936bd177a03ff7d70cbe0e5c3da4efb",
-      "title": "反馈库支持按工单号临时复原客户信息",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-14",
-      "appVersion": null,
-      "summary": "历史脱敏工单缺少集团名称/编码时，可按工单号回填，便于后续按客户聚合分析。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0b7c79541fad6e13bd2f40e4a32b042478e2e80d",
-      "title": "建议回访反馈原因在缺客户回答字段时回退到原话",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-14",
-      "appVersion": null,
-      "summary": "旧导入没有 feedbackReasonTexts，清单反馈原因会整列空白；回退 commentText 后无需重导也能看到当时留下的回答。",
       "commitUrl": null,
       "source": "git"
     }
