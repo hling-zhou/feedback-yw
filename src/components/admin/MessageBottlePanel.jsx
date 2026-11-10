@@ -4,7 +4,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { listMessageBottles, updateMessageBottleProgress } from '../../lib/messageBottleClient.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {import('../../domain/messageBottle.js').MessageBottleAttachment} MessageBottleAttachment */
 

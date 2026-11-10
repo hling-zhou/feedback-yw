@@ -28,7 +28,7 @@ import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOpt
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 import { allMatchingKeys, itemKeySubsetMatches, lookupBySubset } from '../../lib/postUseRating/itemKeyPeriod.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 function decisionOf(map, itemKey) {
   // 2026-11-06 周期包含语义：任一被包含的已存键勾选 → 视为已勾选（拍板：处理过任一月即处理）

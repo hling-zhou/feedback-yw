@@ -29,7 +29,7 @@ import {
   groupTagCandidates,
   countPendingDuplicateCandidates } from '../../lib/tagCandidates.js'
 import { getTagLibraryVersion } from '../../lib/taxonomyLoader.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 const STATUS_LABELS = {
   pending: { color: 'orange', text: '待复核' },

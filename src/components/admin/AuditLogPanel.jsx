@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Descriptions, Modal, Table, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { apiFetch } from '../../lib/apiClient.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {{ id: string; userId?: string; username?: string; action: string; detail?: Record<string, unknown>; createdAt?: string }} AuditEntry */
 

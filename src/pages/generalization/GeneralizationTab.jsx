@@ -46,7 +46,7 @@ import FieldLabel from '../../components/FieldLabel.jsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import GeneralizationMatchQueue from './GeneralizationMatchQueue.jsx'
 import GeneralizationDetailDrawer from '../../components/generalization/GeneralizationDetailDrawer.jsx'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {import('../../domain/generalizationIssue.js').GeneralizationIssue} GeneralizationIssue */
 /** @typedef {import('../../domain/generalizationIssue.js').GeneralizationIssueLink} GeneralizationIssueLink */

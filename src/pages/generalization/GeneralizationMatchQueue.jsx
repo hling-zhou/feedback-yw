@@ -15,7 +15,7 @@ import {
 } from '../../domain/generalizationIssue.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import FieldLabel from '../../components/FieldLabel.jsx'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {import('../../lib/generalizationClient.js').GeneralizationPendingSuggestion} GeneralizationPendingSuggestion */
 

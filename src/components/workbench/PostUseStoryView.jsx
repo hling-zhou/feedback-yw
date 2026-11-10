@@ -21,7 +21,7 @@ import {
 import PostUseJourneyMap from './PostUseJourneyMap.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }

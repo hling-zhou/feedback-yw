@@ -13,7 +13,7 @@ import {
   savePlaybookOverrides } from '../../lib/learning/playbookOverrides.js'
 import { setPlaybookOverlayCache } from '../../lib/planningConfigLoader.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 export default function PlaybookPromotionPanel() {
   const { adapter, feedbacks, markSnapshotsStale } = useInsights()

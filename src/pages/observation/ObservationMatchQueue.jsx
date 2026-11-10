@@ -11,7 +11,7 @@ import {
   OBSERVATION_MATCH_CONFIDENCE_LABELS,
 } from '../../domain/observationIssue.js'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {import('../../lib/observationClient.js').ObservationPendingSuggestion} ObservationPendingSuggestion */
 

@@ -1,6 +1,6 @@
 import { Alert, Button, Space, Table, Typography } from 'antd'
 import { downloadUnmatchedFollowUpCsv } from '../../lib/followUpSatisfactionImport.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /**
  * @param {import('../../lib/followUpSatisfactionClient.js').FollowUpSatisfactionImportSummary | null} summary

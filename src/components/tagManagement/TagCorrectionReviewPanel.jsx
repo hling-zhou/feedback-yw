@@ -12,7 +12,7 @@ import { upsertCorrectionRule } from '../../lib/learning/tagCorrectionApprove.js
 import { buildDecisionTreeDevSpec } from '../../lib/learning/buildDecisionTreeDevSpec.js'
 import { replayCorrectionsNow } from '../../lib/learning/hydrateLearning.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 const STATUS_META = {
   pending: { color: 'orange', text: '待复核' },

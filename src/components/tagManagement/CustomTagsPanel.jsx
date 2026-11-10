@@ -29,7 +29,7 @@ import {
   resolveJourneysForManagedProduct,
 } from '../../lib/taxonomyLoader.js'
 import { markJourneyConfigured } from '../../lib/productCenterSync.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 import {
   downloadManagedTaxonomyExcel,
   formatMergeImportResultMessage,

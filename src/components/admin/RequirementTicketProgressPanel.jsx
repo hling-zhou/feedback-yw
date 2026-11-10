@@ -19,7 +19,7 @@ import {
   listRequirementTicketProgress,
   saveRequirementStatusMappings } from '../../lib/requirementTicketProgressClient.js'
 import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
-import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 import {
   buildRequirementProgressTemplateBuffer,
   parseRequirementProgressWorkbook } from '../../lib/requirementTicketProgressImport.js'
