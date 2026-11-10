@@ -19,6 +19,7 @@ import {
   listRequirementTicketProgress,
   saveRequirementStatusMappings } from '../../lib/requirementTicketProgressClient.js'
 import { REQUIREMENT_PROGRESS_FIELD_LABELS } from '../../domain/requirementTicketProgress.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 import {
   buildRequirementProgressTemplateBuffer,
   parseRequirementProgressWorkbook } from '../../lib/requirementTicketProgressImport.js'
@@ -352,7 +353,7 @@ export default function RequirementTicketProgressPanel({ canEdit }) {
             pageSize: PROGRESS_PAGE_SIZE,
             total: progressTotal,
             showSizeChanger: false,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: paginationShowTotal,
             onChange: (page) => handleProgressPageChange(page) }}
         />
       </div>

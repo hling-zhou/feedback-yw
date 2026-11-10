@@ -29,6 +29,7 @@ import {
   createEmptyPostUseJiraFilters,
   postUseJiraFiltersToListQuery,
 } from '../lib/postUseJiraFilterModel.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const PAGE_SIZE = 20
 
@@ -378,7 +379,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
           pageSize: PAGE_SIZE,
           total: filteredItems.length,
           onChange: setPage,
-          showTotal: (t) => `共 ${t} 条`,
+          showTotal: paginationShowTotal,
         }}
         onRow={(record) => ({
           onClick: () => openEdit(record),

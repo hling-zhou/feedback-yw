@@ -29,6 +29,7 @@ import {
   groupTagCandidates,
   countPendingDuplicateCandidates } from '../../lib/tagCandidates.js'
 import { getTagLibraryVersion } from '../../lib/taxonomyLoader.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const STATUS_LABELS = {
   pending: { color: 'orange', text: '待复核' },
@@ -241,7 +242,7 @@ export default function LlmTagReviewPanel({ readOnly = false }) {
         dataSource={g.items}
         columns={columns}
         rowSelection={rowSelection}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showTotal: paginationShowTotal }}
       />
     ) }))
 

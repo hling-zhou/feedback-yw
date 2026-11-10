@@ -29,6 +29,7 @@ import { parseUserImportFile } from '../lib/userImport.js'
 import { downloadUserImportTemplate } from '../lib/userImportTemplate.js'
 import { downloadUserExport } from '../lib/userExport.js'
 import { TEAMS } from '../domain/userProfile.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const ROLE_OPTIONS = ROLES.map((r) => ({ label: ROLE_LABELS[r], value: r }))
 const TEAM_OPTIONS = TEAMS.map((t) => ({ label: t, value: t }))
@@ -472,7 +473,7 @@ export default function Users() {
           loading={loading}
           columns={columns}
           dataSource={filteredUsers}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: 10, showTotal: paginationShowTotal }}
           rowSelection={{
             selectedRowKeys: selectedKeys,
             onChange: (keys) => setSelectedKeys(keys.map(String)),

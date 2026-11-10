@@ -11,6 +11,7 @@ import {
   getImportAnalysisTemplateHeaders } from '../lib/importAnalysisTemplate.js'
 import { validateImportFile, validateRowCount } from '../lib/importUtils.js'
 import { parseUploadFile } from '../lib/parseFile.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const TEMPLATE_COLUMN_COUNT = getImportAnalysisTemplateHeaders().length
 
@@ -242,7 +243,7 @@ export default function ImportAnalysisPanel({ inModal = false, onImportComplete 
           {validation.rowErrors.length > 0 && (
             <Table
               size="small"
-              pagination={{ pageSize: 10, showSizeChanger: false }}
+              pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
               rowKey={(row) => `${row.rowIndex}-${row.displayName}`}
               dataSource={validation.rowErrors}
               columns={[

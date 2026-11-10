@@ -44,6 +44,7 @@ import {
 } from '../../lib/observation/observationExportCsv.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeedbacks } from '../../context/FeedbackContext.jsx'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {import('../../domain/observationIssue.js').ObservationIssue} ObservationIssue */
 /** @typedef {import('../../domain/observationIssue.js').ObservationIssueLink} ObservationIssueLink */
@@ -516,6 +517,7 @@ export default function ObservationTab({ onOpenRecord }) {
           total,
           showSizeChanger: false,
           onChange: (p) => setPage(p),
+          showTotal: paginationShowTotal,
         }}
         locale={{
           emptyText:

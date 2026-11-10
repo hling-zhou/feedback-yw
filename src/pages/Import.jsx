@@ -107,6 +107,7 @@ import {
 } from '../lib/importBatchFiles.js'
 import { displayImportFileName, parseImportFileNamePassword } from '../lib/importFilePassword.js'
 import { isBackgroundTaskCancelRequested } from '../domain/backgroundTaskLock.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 import {
   downloadImportDataTemplate,
   hasImportDataTemplate,
@@ -2239,7 +2240,7 @@ export default function Import({ embedded = false }) {
                       {customerVisitPreview.unmatched.length > 0 && (
                         <Table
                           size="small"
-                          pagination={{ pageSize: 5 }}
+                          pagination={{ pageSize: 5, showTotal: paginationShowTotal }}
                           rowKey={(r) => `u-${r.rowIndex}`}
                           dataSource={customerVisitPreview.unmatched}
                           columns={[
@@ -2505,7 +2506,7 @@ export default function Import({ embedded = false }) {
             <Table
               className="mt-4"
               size="small"
-              pagination={{ pageSize: 8 }}
+              pagination={{ pageSize: 8, showTotal: paginationShowTotal }}
               rowKey={(r) => `ru-${r.rowIndex}`}
               dataSource={customerVisitImportResult.dry.unmatched}
               columns={[

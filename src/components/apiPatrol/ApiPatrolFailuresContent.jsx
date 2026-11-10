@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/apiClient.js'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import FieldLabel from '../FieldLabel.jsx'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const { RangePicker } = DatePicker
 
@@ -314,7 +315,7 @@ export default function ApiPatrolFailures() {
           dataSource={groups}
           loading={loadingGroups}
           size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false }}
+          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
         />
       </div>
 

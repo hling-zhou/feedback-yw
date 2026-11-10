@@ -4,6 +4,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { listMessageBottles, updateMessageBottleProgress } from '../../lib/messageBottleClient.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {import('../../domain/messageBottle.js').MessageBottleAttachment} MessageBottleAttachment */
 
@@ -154,7 +155,7 @@ export default function MessageBottlePanel() {
         loading={loading}
         columns={columns}
         dataSource={items}
-        pagination={{ pageSize: 10, showTotal: (count) => `共 ${count} 条` }}
+        pagination={{ pageSize: 10, showTotal: paginationShowTotal }}
       />
 
       <Modal

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Descriptions, Modal, Table, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { apiFetch } from '../../lib/apiClient.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {{ id: string; userId?: string; username?: string; action: string; detail?: Record<string, unknown>; createdAt?: string }} AuditEntry */
 
@@ -243,7 +244,7 @@ export default function AuditLogPanel() {
           loading={loading}
           columns={columns}
           dataSource={entries}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
+          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
           scroll={{ x: 800 }}
         />
       </div>

@@ -12,6 +12,7 @@ import { upsertCorrectionRule } from '../../lib/learning/tagCorrectionApprove.js
 import { buildDecisionTreeDevSpec } from '../../lib/learning/buildDecisionTreeDevSpec.js'
 import { replayCorrectionsNow } from '../../lib/learning/hydrateLearning.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const STATUS_META = {
   pending: { color: 'orange', text: '待复核' },
@@ -238,7 +239,7 @@ export default function TagCorrectionReviewPanel({ readOnly = false }) {
           loading={loading}
           dataSource={rows}
           columns={columns}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showTotal: paginationShowTotal }}
           expandable={{
             expandedRowRender: (row) => (
               <div className="text-xs text-neutral-500">

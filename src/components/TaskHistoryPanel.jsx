@@ -6,6 +6,7 @@ import { cancelBackgroundTask } from '../lib/backgroundTaskClient.js'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { backgroundTaskTypeLabel, formatTaskTargetLine } from '../domain/backgroundTaskLock.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
  * 用后即评导入（渠道包/省代表回访/满意度回访）不涉及打标，不进打标任务抽屉。
@@ -274,7 +275,7 @@ export default function TaskHistoryPanel({ open, onClose }) {
       <Table
         columns={columns}
         dataSource={dataSource}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
+        pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
         size="small"
         loading={loading && dataSource.length === 0}
         scroll={{ x: 640 }}

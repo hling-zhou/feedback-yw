@@ -1,5 +1,6 @@
 import { Alert, Button, Space, Table, Typography } from 'antd'
 import { downloadUnmatchedFollowUpCsv } from '../../lib/followUpSatisfactionImport.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
  * @param {import('../../lib/followUpSatisfactionClient.js').FollowUpSatisfactionImportSummary | null} summary
@@ -85,7 +86,7 @@ export function FollowUpSatisfactionImportPreview({ preview, loading, error }) {
       {previewTableData.length > 0 && (
         <Table
           size="small"
-          pagination={{ pageSize: 8, hideOnSinglePage: true }}
+          pagination={{ pageSize: 8, hideOnSinglePage: true, showTotal: paginationShowTotal }}
           dataSource={previewTableData}
           columns={[
             { title: '行号', dataIndex: 'rowIndex', width: 64 },

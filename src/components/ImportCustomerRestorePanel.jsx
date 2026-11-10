@@ -9,6 +9,7 @@ import { parseAndValidateCustomerRestoreSheet } from '../lib/customerRestore/cus
 import { downloadCustomerRestoreTemplate } from '../lib/customerRestore/customerRestoreTemplate.js'
 import { validateImportFile, validateRowCount } from '../lib/importUtils.js'
 import { parseUploadFile } from '../lib/parseFile.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
  * @param {{
@@ -226,7 +227,7 @@ export default function ImportCustomerRestorePanel({ onImportComplete }) {
           {validation.rowErrors.length > 0 ? (
             <Table
               size="small"
-              pagination={{ pageSize: 8, showSizeChanger: false }}
+              pagination={{ pageSize: 8, showSizeChanger: false, showTotal: paginationShowTotal }}
               rowKey={(row) => `${row.rowIndex}-${row.message}`}
               dataSource={validation.rowErrors}
               columns={[

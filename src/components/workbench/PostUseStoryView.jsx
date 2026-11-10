@@ -21,6 +21,7 @@ import {
 import PostUseJourneyMap from './PostUseJourneyMap.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
 const changeColor = { 新增: 'red', 增长: 'volcano', 持续: 'gold', 缓解: 'blue', 消失: 'green' }
@@ -277,7 +278,7 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
           size="small"
           rowKey="productName"
           scroll={{ x: 1080 }}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: 10, showTotal: paginationShowTotal }}
           dataSource={productOverview}
           columns={[
             { title: '产品', dataIndex: 'productName', fixed: 'left', width: 145 },

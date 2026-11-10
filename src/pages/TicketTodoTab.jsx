@@ -60,6 +60,7 @@ import {
 import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js'
 import { apiFetch } from '../lib/apiClient.js'
 import { buildUserOption } from '../lib/userSelectOptions.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {import('../domain/ticketTodo.js').TicketTodoRow} TicketTodoRow */
 
@@ -690,7 +691,7 @@ export default function TicketTodoTab() {
             pageSize: PAGE_SIZE,
             total,
             showSizeChanger: false,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: paginationShowTotal,
             onChange: (p) => setPage(p),
           }}
         />

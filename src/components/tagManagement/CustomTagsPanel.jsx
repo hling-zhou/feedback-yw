@@ -29,6 +29,7 @@ import {
   resolveJourneysForManagedProduct,
 } from '../../lib/taxonomyLoader.js'
 import { markJourneyConfigured } from '../../lib/productCenterSync.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 import {
   downloadManagedTaxonomyExcel,
   formatMergeImportResultMessage,
@@ -501,7 +502,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
           loading={loading || saving}
           dataSource={requestSceneRows}
           columns={requestSceneColumns}
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 15, showTotal: paginationShowTotal }}
         />
       )}
       {tagKind === 'problem_type' && (
@@ -511,7 +512,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
           loading={loading || saving}
           dataSource={problemRows}
           columns={problemColumns}
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 15, showTotal: paginationShowTotal }}
         />
       )}
       {tagKind === 'journey' && (
@@ -554,7 +555,7 @@ export default function CustomTagsPanel({ tagKind, readOnly = false }) {
             loading={loading || saving}
             dataSource={journeyRows}
             columns={journeyColumns}
-            pagination={{ pageSize: 15 }}
+            pagination={{ pageSize: 15, showTotal: paginationShowTotal }}
           />
         </>
       )}

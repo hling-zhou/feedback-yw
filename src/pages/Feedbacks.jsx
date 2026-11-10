@@ -144,6 +144,7 @@ import {
   downloadPostUseCustomerVisitExcel,
 } from '../lib/postUseRating/customerVisitExport.js'
 import { downloadPostUseRatingExcel } from '../lib/postUseRating/postUseRatingExport.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** 列表「自定义显示列」可切换的列。默认全部显示，用户可取消勾选。 */
 const FEEDBACK_LIST_COLUMN_OPTIONS = [
@@ -1925,7 +1926,7 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
       columns={visitColumns}
       scroll={{ x: sumColumnsWidth(visitColumns) }}
       sticky={stickyOffset > 0 ? { offsetHeader: stickyOffset } : undefined}
-      pagination={{ pageSize: 20 }}
+      pagination={{ pageSize: 20, showTotal: paginationShowTotal }}
       rowSelection={canDelete ? {
         selectedRowKeys,
         onChange: (keys) => onSelectedRowKeysChange?.(keys),

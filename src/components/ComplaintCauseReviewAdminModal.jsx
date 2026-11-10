@@ -21,6 +21,7 @@ import {
   toComplaintCauseReviewAdminRow,
 } from '../domain/complaintCauseReviewArchive.js'
 import { applyComplaintCauseReviewDecisions } from '../lib/complaintCauseReviewClient.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
  * @param {{ open: boolean; onClose: () => void }} props
@@ -199,7 +200,7 @@ export default function ComplaintCauseReviewAdminModal({ open, onClose }) {
         columns={columns}
         dataSource={rows}
         scroll={{ x: 1600, y: 480 }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: paginationShowTotal }}
         locale={{ emptyText: '暂无拟复核工单' }}
       />
     </Modal>

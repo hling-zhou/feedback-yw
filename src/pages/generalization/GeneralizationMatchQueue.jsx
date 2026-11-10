@@ -15,6 +15,7 @@ import {
 } from '../../domain/generalizationIssue.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import FieldLabel from '../../components/FieldLabel.jsx'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {import('../../lib/generalizationClient.js').GeneralizationPendingSuggestion} GeneralizationPendingSuggestion */
 
@@ -258,6 +259,7 @@ export default function GeneralizationMatchQueue({ onCountChange, onOpenRecord }
           total,
           showSizeChanger: false,
           onChange: (p) => setPage(p),
+          showTotal: paginationShowTotal,
         }}
         locale={{
           emptyText:

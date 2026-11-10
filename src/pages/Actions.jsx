@@ -111,6 +111,7 @@ import ObservationTabWithDrawer from './ObservationTabWithDrawer.jsx'
 import GeneralizationTabWithDrawer from './GeneralizationTabWithDrawer.jsx'
 import PlaybookPromotionPanel from '../components/actions/PlaybookPromotionPanel.jsx'
 import { confirmDiscardActionItemDrawerEdits } from '../lib/actionItemDrawerLeaveConfirm.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 import {
   actionItemFiltersToListQuery,
   buildActionItemProductFilterOptions,
@@ -1433,7 +1434,7 @@ function ProductActionsTab() {
             pageSize: PAGE_SIZE,
             total,
             showSizeChanger: false,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: paginationShowTotal,
             onChange: (p) => setPage(p),
           }}
         />

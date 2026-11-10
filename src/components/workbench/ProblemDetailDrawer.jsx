@@ -1,4 +1,5 @@
 import { Drawer, Table, Tag, Typography, Divider, Empty, Button } from 'antd'
+import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 /** @typedef {import('../../domain/overviewConclusions.js').ActionRecsResult} ActionRecsResult */
 /** @typedef {import('../../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -149,7 +150,7 @@ export default function ProblemDetailDrawer({ rec, open, onClose, records = [], 
             size="small"
             rowKey={(r) => r.id || r.ticketId}
             dataSource={ticketRecords}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
+            pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
             scroll={{ x: 400 }}
             columns={[
               {

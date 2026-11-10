@@ -19,6 +19,7 @@ import { isComplaintTicket } from '../domain/complaintCause.js'
 import { normalizeCustomProblemCategory } from '../domain/customProblemCategory.js'
 import { getSourceColumnValue } from '../lib/sourceColumns.js'
 import { sumColumnsWidth } from '../lib/columnWidths.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
  * @param {string | undefined} channel
@@ -413,7 +414,7 @@ export default function FeedbackTable({
       dataSource={items}
       scroll={{ x: scrollX }}
       {...stickyProps}
-      pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+      pagination={{ pageSize: 10, showSizeChanger: true, showTotal: paginationShowTotal }}
       onRow={onSelect
         ? (record) => ({
             onClick: () => onSelect(record),

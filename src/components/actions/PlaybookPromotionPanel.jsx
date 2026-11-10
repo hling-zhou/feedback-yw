@@ -13,6 +13,7 @@ import {
   savePlaybookOverrides } from '../../lib/learning/playbookOverrides.js'
 import { setPlaybookOverlayCache } from '../../lib/planningConfigLoader.js'
 import { listAllFeedbacks } from '../../storage/feedbackStore.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 export default function PlaybookPromotionPanel() {
   const { adapter, feedbacks, markSnapshotsStale } = useInsights()
@@ -89,7 +90,7 @@ export default function PlaybookPromotionPanel() {
           size="small"
           loading={loading}
           dataSource={rows}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showTotal: paginationShowTotal }}
           columns={[
             { title: '产品', dataIndex: 'product', width: 140, ellipsis: true },
             { title: '旅程 L2', dataIndex: 'journeyL2', width: 140, ellipsis: true },

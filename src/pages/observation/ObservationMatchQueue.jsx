@@ -11,6 +11,7 @@ import {
   OBSERVATION_MATCH_CONFIDENCE_LABELS,
 } from '../../domain/observationIssue.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /** @typedef {import('../../lib/observationClient.js').ObservationPendingSuggestion} ObservationPendingSuggestion */
 
@@ -218,6 +219,7 @@ export default function ObservationMatchQueue({ onCountChange, onOpenRecord }) {
           total,
           showSizeChanger: false,
           onChange: (p) => setPage(p),
+          showTotal: paginationShowTotal,
         }}
         locale={{ emptyText: '暂无待复核建议。导入完成后系统会自动识别疑似命中的反馈；也可在上方触发手动扫描。' }}
       />

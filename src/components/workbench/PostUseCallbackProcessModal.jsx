@@ -28,6 +28,7 @@ import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOpt
 import { useAuth } from '../../context/AuthContext.jsx'
 import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 import { allMatchingKeys, itemKeySubsetMatches, lookupBySubset } from '../../lib/postUseRating/itemKeyPeriod.js'
+import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 function decisionOf(map, itemKey) {
   // 2026-11-06 周期包含语义：任一被包含的已存键勾选 → 视为已勾选（拍板：处理过任一月即处理）
@@ -784,7 +785,7 @@ export default function PostUseCallbackProcessModal({
                 size="small"
                 rowKey={(row) => row.itemKey || `${row.customerCode}-${row.productName}`}
                 loading={loading}
-                pagination={{ pageSize: 12 }}
+                pagination={{ pageSize: 12, showTotal: paginationShowTotal }}
                 scroll={{ x: 2150 }}
                 dataSource={filteredQuestionnaireRows}
                 columns={questionnaireColumns}
@@ -806,7 +807,7 @@ export default function PostUseCallbackProcessModal({
                 size="small"
                 rowKey={(row) => row.itemKey || row.id || row.originalTicketId}
                 loading={loading}
-                pagination={{ pageSize: 12 }}
+                pagination={{ pageSize: 12, showTotal: paginationShowTotal }}
                 scroll={{ x: 1800 }}
                 dataSource={filteredCallbackRecords}
                 columns={callbackColumns}
