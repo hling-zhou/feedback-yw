@@ -29,6 +29,7 @@ function normalizedKey(customerName, customerCode, productName) {
  * @property {string} [assigneeName]
  * @property {string} [scoreSource]
  * @property {string} [originalTicketId]
+ * @property {string} [userFeedbackText] 客户反馈（导入列「客户反馈」，2026-11-10 导出列对齐补声明）
  * @property {string} [visitResult]
  * @property {string} [internalConclusion]
  * @property {string} [internalEvaluationDetail]
@@ -56,14 +57,16 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       item,
     ]),
   )
-  const maxQuotes = Math.max(0, ...((recommendations || []).map((item) => item.quotes?.length || 0)))
-  const maxReasons = Math.max(0, ...((recommendations || []).map((item) => item.reasons?.length || 0)))
 
   return list.map((visit) => {
     const matched = recMap.get(
       normalizedKey(visit.customerName, visit.customerCode, visit.productName),
     )
     const actionItem = visit.actionId ? actionItemMap.get(visit.actionId) : undefined
+    // 2026-11-10 用户拍板：导出列按《客服部回访-导出字段.xlsx》21 列序对齐——
+    // 模板段（数据月份→备注）+ 抽屉人工段（确立举措/举措详情/排期）+ 推荐分析段（建议触发类型→涉及渠道）。
+    // 客户反馈列内容 = 导入列表中的「客户反馈」列（userFeedbackText）。
+    // 移除列：集团名称（模板可选列非导出列）、建议回访原因、动态 客户原话N/低分原因N（需求文件无）。
     /** @type {Record<string, string | number>} */
     const row = {
       数据月份: visit.importMonth || visit.visitMonth || '',
@@ -71,9 +74,15 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       客户编码: visit.customerCode || '',
       登录账号名称: visit.loginAccountName || '',
       产品名称: visit.productName || '',
-      集团名称: visit.groupName || '',
+      相应投诉工单: visit.scoreSource === '投诉回访' ? (visit.originalTicketId || '') : '',
       客户反馈: visit.userFeedbackText || '',
+      回访结果: visit.visitResult || '',
+      内部评估: visit.internalEvaluationDetail || visit.internalConclusion || '',
       经办人: visit.assigneeName || '',
+      备注: visit.remark || '',
+      确立举措: String(actionItem?.content || ''),
+      举措详情: String(actionItem?.detail || ''),
+      排期: String(actionItem?.scheduleAt || ''),
       建议触发类型: matched?.triggerType || '',
       '7分以下总次数': matched?.lowScoreLt7Count || 0,
       '7分以下分布': matched?.scoreBreakdown || '',
@@ -81,20 +90,6 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       低分原因命中条数: matched?.reasonCount || 0,
       最近反馈时间: matched?.latestFeedbackAt || '',
       涉及渠道: (matched?.channels || []).filter(Boolean).join('；'),
-      建议回访原因: matched?.recommendedReason || '',
-      相应投诉工单: visit.scoreSource === '投诉回访' ? (visit.originalTicketId || '') : '',
-      回访结果: visit.visitResult || '',
-      内部评估: visit.internalEvaluationDetail || visit.internalConclusion || '',
-      备注: visit.remark || '',
-      确立举措: String(actionItem?.content || ''),
-      举措详情: String(actionItem?.detail || ''),
-      排期: String(actionItem?.scheduleAt || ''),
-    }
-    for (let i = 0; i < maxQuotes; i += 1) {
-      row[`客户原话${i + 1}`] = matched?.quotes?.[i] || ''
-    }
-    for (let i = 0; i < maxReasons; i += 1) {
-      row[`低分原因${i + 1}`] = matched?.reasons?.[i] || ''
     }
     return row
   })

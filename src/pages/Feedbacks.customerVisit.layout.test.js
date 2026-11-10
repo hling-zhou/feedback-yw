@@ -44,9 +44,10 @@ describe('Feedbacks customer visit tab', () => {
     expect(tableBlock).toContain("title: '数据月份'")
     expect(tableBlock).toContain("title: '产品名称'")
     expect(tableBlock).toContain("title: '客户名称'")
-    // 模板列（集团名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
-    expect(tableBlock).toContain("title: '集团名称'")
+    // 模板列（相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
     expect(tableBlock).toContain("title: '相应投诉工单'")
     expect(tableBlock).toContain("title: '客户反馈'")
+    // 2026-11-10 拍板：集团名称列从列表去掉——回潮即红
+    expect(tableBlock).not.toContain("title: '集团名称'")
   })
 })
