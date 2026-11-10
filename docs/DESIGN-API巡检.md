@@ -1,6 +1,6 @@
 # DESIGN · API 巡检（产品重点 API 巡检）
 
-状态：设计定稿（2026-11-07 主路径定稿；2026-11-09 Plan B §9 邮件拉取导入定稿，含 8 项缺陷修正）。实施未开始。
+状态：设计定稿（2026-11-07 主路径；11-09 Plan B §9 邮件拉取；11-10 Plan C §10 WorkBuddy 数据代理+诊断中继，实施未开始）。Plan A/B 已实现，Plan C 待实施。
 
 需求来源：`data/API 巡检/API 监控问题闭环管理.md`；规则参考：`data/API 巡检/平台规则底稿.md`；MCP 对接：`data/API 巡检/云网工作台通用智能体能力发布说明V1.0.docx`；接口清单：`data/API 巡检/指标清单.xlsx`。
 
@@ -556,7 +556,137 @@ MIME 解析（mailparser）
 
 ---
 
-## 10. 拍板记录（防丢失）
+## 10. Plan C：WorkBuddy 数据代理 + 诊断中继（2026-11-10 设计定稿；同日评审修正 10 项）
+
+### 10.1 背景与定位
+
+部署环境出向网络受限：MCP（`cni.mcp.server:31788`）不可达，IMAP 993 大概率同样不通（同方向出向）。而 WorkBuddy 本机网络全通（11-09 MCP 契约实测 + Coremail 真实拉取均在本机验证）。
+
+**Plan C 把整个数据链路搬到本机跑，部署环境退化为「接收 + 展示」**：
+
+```
+【WorkBuddy 本机 · 每天 09:15 automation 触发】
+  node scripts/plan-c-daily.mjs
+    │
+    ⓪ 从部署端同步注册表（GET meta 端点，消除本机/部署端运营编辑漂移——评审#5）
+    ① IMAP 拉邮件（复用 Plan B 解析：正文 stats 表 + ZIP 明细 CSV）
+    ② 本机持久库（server/data/plan-c-local.db）灌当日数据
+       → 跑压缩链（1h 链式并组，复用 patrolCompress）
+       【持久库非临时库——评审#1：7 天重试窗口需要跨日保留压缩/诊断状态】
+    ③ 逐组 MCP 诊断（cni.mcp.server:31788，并发 3、单组 300s）
+       诊断队列 = 当日新组 + 库内近 7 天 pending 历史组（§10.5）
+       → 根因分类（复用 17 条规则表）
+    ④ 组装「日包」：{ stats + requests + groups(含诊断/收敛组) }
+    ⑤ POST 部署环境 /api/patrol/push/daily-package
+       （走 81 反代，现有 API Key + patrol:push scope）
+    │
+    ▼
+【部署环境 · 唯一新增一个接收端点】
+  ⑥ 三段 upsert（全部幂等，后到覆盖）：
+     stats    → 唯一键 upsert（复用 ingestPatrolStats）
+     requests → 唯一键 upsert（复用 ingestPatrolRequests）
+     groups   → 唯一键 upsert + 诊断回填 + 人工状态保护（§10.3）
+     （含收敛组：rootCauseL1=诊断能力缺口/L2=日志缺失 表达——评审#4）
+  ⑦ 记 lastPackageReceivedAt（断供可观测——评审#2）
+  ⑧ 包到达即触发日报（fire-and-forget 不阻塞响应——评审#6）；页面照常消费
+```
+
+三条路径关系：Plan A（外部 HTTP 直推）与 Plan C 推包的 stats/requests **同一唯一键**——谁先谁后都幂等不冲突；Plan B 部署端拉取代码保留但默认关（部署机 IMAP 不通时自然失败且可观测，不影响 Plan C）。部署端压缩/诊断链路不再自动触发（组数据唯一来源是 Plan C 推包；admin/process 手动触发是可预期行为——压缩重建组安全、诊断全失败保持 pending 不损坏数据，见 §10.8）。
+
+### 10.2 日包契约（POST /api/patrol/push/daily-package）
+
+鉴权：现有 API Key + `patrol:push` scope（与 Plan A 推送端点同款，无新 scope）。
+
+```jsonc
+{
+  "date": "2026-11-09",                  // 数据日期（正文标注优先，T-1 兜底）
+  "fetchedAt": "2026-11-10T09:15:xx",    // 本机拉取时刻（审计用）
+  "stats": [                             // 邮件正文 HTML 统计表解析行（与 /push/stats 的 rows 同构）
+    { "productKey": "eip", "rows": [ { "资源池": "...", "指标名称": "...", ... } ] }
+  ],
+  "requests": [                          // ZIP 附件明细（与 /push/requests 的批次同构）
+    { "package": "eip_vpc", "pool": "华南-广州3", "rows": [ ... ] }
+  ],
+  "groups": [                            // 本机压缩+诊断后的失败组（含诊断结果）
+    {
+      "groupDate": "2026-11-09", "productKey": "eip", "poolName": "华南-广州3",
+      "apiPath": "/acl/v3/floatingip/bind", "userName": "xxx", "metricName": "绑定",
+      "firstRequestId": "req-xxx", "firstRequestTime": "2026-11-09 10:00:00",
+      "preCompressCount": 5, "suppressedRequestIds": "[\"req-b\",...]",
+      "customerType": "仿真",            // 弱标签（cmic 前缀/测试账号判定）
+      "rootCauseL1": "业务冲突", "rootCauseL2": "绑定关系未解除",
+      "finalConclusion": "诊断结论原文",
+      "diagnosisStatus": "success"       // success | failed | converged
+    }
+  ]
+}
+```
+
+- `diagnosisStatus` 三态：`success`（结论+分类正常回填）；`failed`（结论空，部署端组保持 pending_diagnosis）；**`converged`（超龄收敛——rootCauseL1=诊断能力缺口/L2=日志缺失，finalConclusion="日志缺失/超出 7 天重试窗口"，部署端 status 更新为「—」**，复用现有分类语义不新增状态机——评审#4）
+- 大小预期：明细日千行级 → JSON 数 MB，走现有 16MB bodyLimit（联调确认 Nginx `client_max_body_size ≥16m` 已在 Plan A 清单）
+- **行数上限（评审#9）**：requests 每批次 ≤5000（与 /push/requests 同）、stats 每 product ≤5000、groups ≤2000、日包总行 ≤50,000——超限 413 拒收（真实日量 883 行，余量 50 倍）
+- 幂等：全字段 upsert（唯一键同 §2.1/§2.2/§2.3），重推/补跑安全
+
+### 10.3 人工状态保护（核心防坑）
+
+groups 段 upsert 到 `api_patrol_failure_groups` 时按字段分两类：
+
+| 字段类 | 更新策略 |
+|---|---|
+| 事实数据：root_cause_l1/l2、final_conclusion、diagnoses 表 | **照常更新**（诊断是事实，重推覆盖） |
+| 人工状态：product_action_status（处理中/已处理）、assignee、root_cause_confirmed、measure_feedback、feedback_by/at | **不碰**；status 仅当现值 ∈ {pending_diagnosis, 待处理, —} 时才重置为诊断映射值（converged 包 → 固定收敛「—」） |
+
+已进入人工流程的组绝不被数据重推打回（重推带回 §2.3 语义的推包版）。diagnoses 表随包附推（组内 groups[].diagnoses[]：requestId/status/finalConclusion/raw——保持部署端诊断原文可追溯），同样 INSERT OR REPLACE 幂等。
+
+### 10.4 日报改为「包到达后触发」
+
+- daily-package 端点处理完三段 upsert 后**立即触发日报发送**（不等 10:30）
+- **fire-and-forget（评审#6）**：日报发送不 await——端点立刻返回三段 upsert 摘要，SMTP 慢/超时不拖长响应（防本机脚本 fetch 超时误判推包失败而重推）；日报失败只记 state/审计
+- 触发幂等：state meta 新增 `lastPackageReportDate`——同日第二个包（补跑/重推）不重复发日报
+- 10:30 定时器**保留作兜底**：当天没收到包（automation 空跑/失败）时照常发送已有数据的日报；包先到则定时器同日幂等跳过
+- **包晚于 10:30 到达（评审#3，拍板：接受不齐版）**：兜底日报已发（同日幂等锁住），包到达触发的日报被跳过——当天日报保持不齐版，**次日日报环比自然补齐**（设计选择：简单可预期 > force 双发两封造成的接收方困惑）
+
+### 10.5 诊断重试语义（拍板 2026-11-10；依赖本机持久库——评审#1）
+
+诊断队列 = **当日新压缩组 + 本机持久库内近 7 天仍为 pending_diagnosis 的历史组**（昨天及更早失败的天然重试——T-2 日志仍在 3 个月保留期内）：
+
+1. **包内两轮**：单组失败（超时/瞬时 412/5xx）→ 标记跳过继续（不阻塞整包）；全组跑完后失败组再跑一轮（间隔自然拉大，瞬时故障命中率高）
+2. 二轮后仍失败 → 以「结论空 + diagnosisStatus=failed」入包推走，部署端组保持 `pending_diagnosis`
+3. **次日兜底**：下次跑批时 pending 历史组入队（7 天窗口内）
+4. **超龄收敛**：近 7 天窗口外仍 pending 的组不再入队——本机库将该组标 converged，随**当日日包**推送（rootCauseL1=诊断能力缺口/L2=日志缺失，部署端 status 收敛「—」——评审#4），页面"未诊断"单列提示不再无限堆积
+
+### 10.6 密钥、automation 与运行细则
+
+- **密钥不进 automation prompt**（prompt 会存在自动化配置里，明文密钥不安全）：IMAP 授权码、MCP token、目标 URL、推送 API Key 全部从本机 env 文件读取（`scripts/plan-c-daily.mjs` 启动时加载 `.env-plan-c` 或环境变量）
+- WorkBuddy recurring automation：**每天 09:15 一次**（用户拍板，不加二次补拉——邮件晚到当天空跑，次日自然补上），执行 `node scripts/plan-c-daily.mjs`，检查退出码，失败如实报告
+- **automation 运行细则（评审#7）**：
+  - 工作目录 = 仓库根（automation cwds 配置），脚本内 `import.meta.url` 定位自身，不依赖 cwd
+  - 时刻 09:15 按北京时间（Asia/Shanghai）
+  - **退出码语义分级**：0=推包成功（诊断部分失败也算——包已推走，stdout 报告 failed 组数）；1=邮件无数据（no_email，明日自然补）；2=拉取/解析失败；3=MCP 全失败（包照推但全部 failed——提示人工看 MCP 服务）；4=推送部署端失败（最严重，数据滞留本机）
+  - **本机持久库滚动清理**：每次跑批末尾删除 30 天窗口外的 stats/requests/groups/diagnoses（防无限积累；7 天诊断窗口 < 30 天清理窗口，安全余量）
+
+### 10.7 断供可观测（评审#2）
+
+部署端对 Plan C 断供的感知链：
+
+- `api_patrol_email_ingestion_state_v1` meta 扩展 `lastPackageReceivedAt` 字段（daily-package 端点写入）
+- 总览页横幅判据扩展：**「连续 ≥2 天未收到日包（启用 Plan C 时）」或「email_ingestion 连续失败」**任一命中即显示（黄 Alert，提示检查 WorkBuddy automation/本机网络）
+- 本机侧：automation 失败如实报告（退出码非 0 时 WorkBuddy 任务面板可见）；脚本 stdout 输出各阶段摘要（拉取行数/组数/诊断成败/推送响应）
+
+### 10.8 操作边界与撤销条件
+
+- **admin/process 手动触发（评审#8）**：Plan C 上线后部署端手动触发压缩+诊断是**可预期行为非故障**——压缩重建组安全（人工状态带回保护），诊断因 MCP 不通全失败保持 pending（不损坏数据但观感为"全部未诊断"）；面板提示文案注明"部署端 MCP 不可达时请走 Plan C 数据代理"
+- **与既有拍板衔接**：
+  - 「日志时效：诊断应近实时触发」（11-09）→ Plan C 本机 T-1 当天诊断，天然满足
+  - 「重推带回唯一匹配」（11-06）→ §10.3 人工状态保护是其推包版（部署端唯一键 upsert 天然"唯一匹配"）
+  - 「同日幂等 + force 旁路」（§8.2/§9.5）→ 日报包触发幂等（§10.4）沿用同模式
+  - autoProcessOnFetch（§9.7）→ Plan C 上线后保持关：部署端不跑压缩诊断，组数据唯一来源是推包
+  - **注册表同步（评审#5）**：每日跑批 ⓪ 步从部署端 GET 注册表 meta 覆盖本机库——消除本机/部署端运营编辑漂移（metric_name 冻结、product_key 归属判定同源）；同步失败不阻塞（用本机现值继续，审计记一条）
+- **撤销条件（评审#10）**：部署环境出向策略打通（MCP `cni.mcp.server:31788` 或 IMAP 993 任一可达）时回归 Plan A/B 直连——automation 停用、`plan-c-local.db` 归档删除、daily-package 端点保留兼容（已推历史数据不受影响）。判定方式：部署机 `nc -zv cni.mcp.server 31788` 成功即可启动回归
+
+---
+
+## 11. 拍板记录（防丢失）
 
 | 日期 | 事项 | 决定 |
 |---|---|---|
@@ -591,8 +721,11 @@ MIME 解析（mailparser）
 | 11-07 | 溯源页巡检概况 | 页面1 顶部 AI 总结方向拍板：**检测结果概况**（非待办摘要——用户纠偏）——覆盖/阈值异常/失败总量/最差 Top3/最集中点(含仿真占比)/根因 Top3/闭环状态/环比；facts 与①列表同源（computeFailureInterfaces 单源）；LLM 输出不含数字、facts 锚点渲染、模板降级 |
 | 11-09 | MCP 真实契约 | 官方端点 `cni.mcp.server:31788/mcp-server/mcp`（hosts 前置）实测定稿：Streamable HTTP 双 Accept 头；log_search 必填时间/产品枚举/池枚举、requestId 走 filter；超时 300s 对齐官方；isError 按失败保重试；日志平台保留期有限→诊断应近实时触发 |
 | 11-09 | Plan B 邮件拉取设计 | §9 定稿：IMAP 每日 09:15 拉取（Coremail imap.cmss.chinamobile.com:993，auth code 环境变量）；发件人白名单（P0-1）；HTML-vs-CSV 交叉校验 ≤0.05pp（P0-2）；同日多封取最新（P0-3）；进程内直调不入 HTTP 回路（P0-4）；HTML 解析 emoji 主力+正则兜底（P1-5a）；附件名×正文产品交叉验证（P1-5b）；ZIP 池名文件名主+CSV 内容兜底（P1-6）；每次拉取审计+Settings 状态面板+总览连续失败横幅（P2-8）；调度集成 09:15 同日报 setTimeout 模式；拉取后可自动触发压缩诊断 |
+| 11-10 | Plan B 授权码入库 | IMAP 授权码改前端配置入 meta（对齐 SMTP 通道 password 口径：留空保留原值、GET 只回 authCodeConfigured 布尔）；环境变量 PATROL_EMAIL_AUTH_CODE 降为兜底 |
+| 11-10 | Plan C 数据代理 | §10 定稿：部署环境出向受限→本机 WorkBuddy 跑全链（拉邮件→本机**持久库**压缩→MCP 诊断→组日包推 81 反代）；**stats 随包推**（页面①列表数据源）；**日报改为包到达后触发**（fire-and-forget 不阻塞端点响应；10:30 定时器保留兜底，同日第二包不重发）；**automation 只跑 09:15 一次**（邮件晚到次日自然补）；诊断重试=包内两轮+次日兜底+**7 天 pending 重试窗口**（超龄收敛 diagnosisStatus=converged 随包推、status 收敛「—」）；groups 人工状态保护（处理中/已处理不打回，诊断事实照常覆盖）；密钥走本机 env 文件不进 automation prompt |
+| 11-10 | Plan C 评审修正 10 项 | 架构决策评审（dev-expert architecture-decision 框架）：①临时库→**本机持久库** plan-c-local.db（7 天重试窗口前提，30 天滚动清理）②断供可观测（lastPackageReceivedAt+横幅判据扩展）③包晚到接受不齐版（不 force 双发）④收敛组随包推（converged 三态复用分类语义）⑤每日跑批⓪步**同步注册表**消漂移 ⑥日报 fire-and-forget ⑦退出码 0-4 分级 ⑧admin/process 手动触发注明可预期 ⑨日包行数上限（批 5000/总 50000）⑩撤销条件=部署机出向打通即回归 Plan A/B |
 
-## 11. 实施顺序
+## 12. 实施顺序
 
 1. 建表 + 两个 meta 种子 migration
 2. 推送 API（鉴权中间件/两个端点/批次校验/幂等 upsert/产品归属判定+未登记告警）
@@ -604,6 +737,8 @@ MIME 解析（mailparser）
 8. 样例数据导入脚本（data/API 巡检/原始数据样例 → 真实链路验证）
 9. 联调清单：Nginx body 限制/超时/Authorization 透传/外部 81 可达性/API Key 签发
 10. Plan B 邮件拉取导入（IMAP 拉取+邮件解析+共享写入模块+调度集成+前端状态面板；§9）——依赖步骤 2（patrolIngestion.js 共享模块必须先于 Plan B 落成；§9 §9.4 P0-4：两路径复用同一写入函数）
+11. Plan C 数据代理（部署端 daily-package 接收端点 + 本机 plan-c-daily.mjs 脚本 + WorkBuddy automation 配置；§10）——依赖步骤 1/2/3/4 全量（压缩/诊断模块复用）与 9（81 反代 API Key 已签发）
 
 每步验证纪律：真实链路跑通（node -e 最小脚本拼真实入参）+ 守卫测试红绿证明 + typecheck 零新增。
 Plan B 额外验证：(1) 发件人白名单拒绝非 service@cmecloud.cn 邮件；(2) HTML-vs-CSV 交叉校验告警触发；(3) 同日多封取最新；(4) 无邮件不报 error；(5) IMAP 连接失败审计可见。
+Plan C 额外验证：(1) 三段 upsert 幂等重推；(2) 人工状态保护（已处理组不被打回）；(3) 包到达触发日报且同日第二包不重发；(4) 10:30 兜底在无包日照常；(5) 诊断 failed 组保持 pending_diagnosis；(6) 7 天窗口外 pending 组收敛为「—」。
