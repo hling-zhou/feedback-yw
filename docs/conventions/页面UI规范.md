@@ -88,6 +88,6 @@ AppShell 外壳 → .app-shell-content 统一提供页面四周 padding
 ## 8. 相关文档
 
 - `docs/DESIGN-drawer-ux-20261101.md` —— 抽屉字号/间距规范（D1–D5）
-- `docs/CONVENTIONS-防缺陷触发规则.md` —— 防缺陷触发规则（"做 X 时必答 Y"形态）
+- `防缺陷触发规则.md`（同目录）—— 防缺陷触发规则（"做 X 时必答 Y"形态）
 - `src/components/FieldLabel.jsx` —— 表单标签组件（11-04 规范载体）
 - `src/index.css` —— 以上全部类名的样式实现单源
