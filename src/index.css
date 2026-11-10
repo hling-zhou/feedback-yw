@@ -510,3 +510,35 @@
     white-space: nowrap;
   }
 }
+
+/* ------------------------------------------------------------------
+ * 表格列宽拖拽（2026-11-10 方案 v2）
+ * 手柄 = 表头单元格右侧 8px 命中区（与 useColumnResize RESIZER_HIT_ZONE 同值，
+ * 守卫：useColumnResize.render.test.js 同值守卫）
+ * ------------------------------------------------------------------ */
+.fb-col-resizable {
+  position: relative;
+}
+
+.fb-col-resizable::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 3;
+}
+
+.fb-col-resizable:hover::after,
+.fb-col-resizable:active::after {
+  background: rgba(22, 119, 255, 0.35);
+}
+
+/* 拖拽会话期间：禁用全页文本选中（hook 挂 body 类，拖完移除） */
+body.fb-col-resizing,
+body.fb-col-resizing * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}

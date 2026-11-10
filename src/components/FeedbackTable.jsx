@@ -18,6 +18,7 @@ import { getPostUseChannelLabel } from '../lib/postUseRating/libraryFilters.js'
 import { isComplaintTicket } from '../domain/complaintCause.js'
 import { normalizeCustomProblemCategory } from '../domain/customProblemCategory.js'
 import { getSourceColumnValue } from '../lib/sourceColumns.js'
+import { sumColumnsWidth } from '../lib/columnWidths.js'
 
 /**
  * @param {string | undefined} channel
@@ -369,6 +370,8 @@ export default function FeedbackTable({
   stickyOffset = 0,
   /** 用后即评重点客户名单（settings.postUseKeyCustomers） */
   keyCustomers,
+  /** 列宽拖拽实例（页面层 useColumnResize 持有传入，父层持有、子层消费）；不传则列宽不可拖 */
+  resize,
 }) {
   /** 2026-11-09：原文放大查看（纯只读，替代原始数据 tab 的详情抽屉原文区）。
    *  类型按仓库惯例放宽 any：评价记录运行时字段（customerName/importMonth/ratingScore 等）
@@ -395,8 +398,11 @@ export default function FeedbackTable({
   const allColumns = postUseView
     ? buildPostUseColumns(keyCustomers, (fb) => setViewingRaw(fb))
     : buildTicketColumns(reviewEnabled, doneRecordIds)
-  const columns = filterVisibleColumns(allColumns, hiddenColumns)
-  const scrollX = columns.reduce((sum, col) => sum + (col.width || 140), 0)
+  // 2026-11-10 列宽拖拽：先 decorateColumns 再 filterVisibleColumns（方案 v2 修正 4）——
+  // 手柄按完整列集挂，hiddenColumns 过滤后无残留；固定列（工单/渠道 fixed:'left'）自动排除。
+  const decoratedAll = resize ? resize.decorateColumns(allColumns) : allColumns
+  const columns = filterVisibleColumns(decoratedAll, hiddenColumns)
+  const scrollX = sumColumnsWidth(columns)
   const stickyProps = stickyOffset > 0 ? { sticky: { offsetHeader: stickyOffset } } : {}
 
   return (

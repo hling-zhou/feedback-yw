@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
-import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined, ColumnWidthOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -30,6 +30,8 @@ import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import FeedbackTable from '../components/FeedbackTable.jsx'
 import FeedbackDrawer from '../components/FeedbackDrawer.jsx'
 import { useFeedbackDrawerSelection } from '../hooks/useFeedbackDrawerSelection.js'
+import { useColumnResize } from '../hooks/useColumnResize.js'
+import { sumColumnsWidth } from '../lib/columnWidths.js'
 import FeedbackFilterBar from '../components/feedbacks/FeedbackFilterBar.jsx'
 import FeedbackCompositeFilter from '../components/feedbacks/FeedbackCompositeFilter.jsx'
 import PostUseVisitDrawer from '../components/feedbacks/PostUseVisitDrawer.jsx'
@@ -221,6 +223,16 @@ export default function Feedbacks() {
   const postUseLaneView = useMemo(() => resolvePostUseLaneView(searchParams), [searchParams])
   const isPostUseVisitView = isPostUseLane && postUseLaneView === POST_USE_VIEW_VISIT
   const isPostUseTraceView = isPostUseLane && postUseLaneView === POST_USE_VIEW_TRACE
+
+  // 2026-11-10 列宽拖拽（方案 v2）：页面层持有三表宽度 override（父层持有、子层消费）。
+  // FeedbackTable 双视图按 lane 分流 key（ticket / postUse），照抄 hiddenColumns 的
+  // isPostUseLane 分流先例；回访表独立 key。localStorage 按 user.id 隔离（拍板）。
+  const ticketLaneResize = useColumnResize({ tableKey: 'feedback.ticket', userId: user?.id })
+  const postUseLaneResize = useColumnResize({ tableKey: 'feedback.postUse', userId: user?.id })
+  const customerVisitResize = useColumnResize({ tableKey: 'customerVisit', userId: user?.id })
+  // 当前 lane 生效实例（FeedbackTable 内部消费 decorateColumns；回访表用 customerVisitResize）
+  const feedbackTableResize = isPostUseLane ? postUseLaneResize : ticketLaneResize
+
   const columnOptions = isPostUseLane
     ? FEEDBACK_LIST_COLUMN_OPTIONS.filter((opt) => opt.key === 'journeyL1')
     : FEEDBACK_LIST_COLUMN_OPTIONS
@@ -1642,6 +1654,25 @@ export default function Feedbacks() {
                   <Button icon={<SettingOutlined />}>自定义显示列</Button>
                 </Popover>
               ) : null}
+              {/* 2026-11-10 列宽拖拽：重置当前 lane 的自定义列宽（localStorage 同步清除）。
+                  仅存在自定义宽度时显示，避免常驻噪音。双击手柄可重置单列（见 useColumnResize）。
+                  回访 lane 走 customerVisitResize，工单/评价 lane 走 feedbackTableResize（lane 分流）。 */}
+              {view === 'table' && !isCustomerVisitLane && feedbackTableResize.hasCustomWidths ? (
+                <Button
+                  icon={<ColumnWidthOutlined />}
+                  onClick={() => feedbackTableResize.resetAllColumnWidths()}
+                >
+                  重置列宽
+                </Button>
+              ) : null}
+              {isCustomerVisitLane && customerVisitResize.hasCustomWidths ? (
+                <Button
+                  icon={<ColumnWidthOutlined />}
+                  onClick={() => customerVisitResize.resetAllColumnWidths()}
+                >
+                  重置列宽
+                </Button>
+              ) : null}
               <Button
                 icon={<ReloadOutlined />}
                 loading={refreshing}
@@ -1673,6 +1704,7 @@ export default function Feedbacks() {
             onDelete={(record) => void handleDeleteVisitRecord(record)}
             selectedRowKeys={selectedVisitRecordKeys}
             onSelectedRowKeysChange={setSelectedVisitRecordKeys}
+            resize={customerVisitResize}
           />
         ) : view === 'table' ? (
             <FeedbackTable
@@ -1686,6 +1718,7 @@ export default function Feedbacks() {
               hiddenColumns={tableHiddenColumns}
               stickyOffset={stickyChromeHeight}
               keyCustomers={isPostUseLane ? settings?.postUseKeyCustomers : undefined}
+              resize={feedbackTableResize}
             />
         ) : (
           <CardGrid
@@ -1779,7 +1812,7 @@ export default function Feedbacks() {
   )
 }
 
-function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = false, onDelete, selectedRowKeys, onSelectedRowKeysChange }) {
+function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = false, onDelete, selectedRowKeys, onSelectedRowKeysChange, resize }) {
   /**
    * 表头吸顶偏移：与 FeedbackTable 同款机制——外层共享 sticky chrome
    *（Feedbacks.jsx stickyChromeRef）测量高度传入，滚动时表头贴在筛选条下方。
@@ -1874,6 +1907,11 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
     ]
   }, [])
 
+  // 2026-11-10 列宽拖拽：resize 由页面层持有传入（父层持有、子层消费）；
+  // 4 列 fixed:'left'（评估状态/数据月份/产品名称/客户名称）与操作列（key '__deleteAction'）
+  // 由 isResizableColumn 自动排除手柄；decorateColumns 不传时零侵入（列原样）。
+  const visitColumns = resize ? resize.decorateColumns(columns) : columns
+
   if (!rows.length) {
     return <Empty className="rounded-xl border border-ink-200 bg-white py-12" description="无匹配省代表回访记录" />
   }
@@ -1884,8 +1922,8 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
       // 行选择与删除需要稳定 key：用回访记录 id（buildPostUseCustomerVisitRows 已挂 __record）
       rowKey={(row) => row.__record?.id || `${row['数据月份']}-${row['客户名称']}-${row['产品名称']}`}
       dataSource={rows}
-      columns={columns}
-      scroll={{ x: 2140 }}
+      columns={visitColumns}
+      scroll={{ x: sumColumnsWidth(visitColumns) }}
       sticky={stickyOffset > 0 ? { offsetHeader: stickyOffset } : undefined}
       pagination={{ pageSize: 20 }}
       rowSelection={canDelete ? {

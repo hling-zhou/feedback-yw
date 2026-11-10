@@ -20,6 +20,8 @@ import {
 } from '../lib/postUseJiraClient.js'
 import { downloadPostUseJiraExcel } from '../lib/postUseRating/postUseJiraExport.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useColumnResize } from '../hooks/useColumnResize.js'
+import { sumColumnsWidth } from '../lib/columnWidths.js'
 import PostUseJiraDrawer from '../components/actions/PostUseJiraDrawer.jsx'
 import PostUseJiraCompositeFilter from '../components/actions/PostUseJiraCompositeFilter.jsx'
 import {
@@ -48,7 +50,7 @@ const STATUS_TAG_COLOR = /** @type {Record<string, string>} */ ({
  * @param {string} [props.periodLabel] 周期标签（展示用）
  */
 export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const canEdit = can('editRecord')
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
@@ -103,6 +105,69 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     for (const u of assignees) m.set(u.id, u.username)
     return m
   }, [assignees])
+
+  // 2026-11-10 列宽拖拽（方案 v2）：页面层持有宽度 override（父层持有、子层消费），
+  // localStorage 按 user.id 隔离持久化（同拍板）。tableKey 全局稳定唯一。
+  const { decorateColumns } = useColumnResize({ tableKey: 'postUseJira', userId: user?.id })
+
+  // 列定义提升到 useMemo：inline array 每次 render 重建会导致装饰器列引用不稳 + 手柄重挂。
+  // 弹性列（客户反馈，无 width）与操作列（key 'actions'）由 isResizableColumn 自动排除。
+  const baseColumns = useMemo(
+    () => [
+      { title: '数据月份', dataIndex: 'importMonth', width: 90 },
+      // 2026-11-10 拍板：客户编码主流 20 字符 → 宽 220 保完整不截断；客户名称截断时 hover 气泡（参考工单列表）
+      {
+        title: '客户名称',
+        dataIndex: 'customerName',
+        width: 150,
+        ellipsis: true,
+        render: (val) => (
+          <Tooltip title={val || undefined} getPopupContainer={() => document.body}>
+            <Typography.Text ellipsis>{val || '—'}</Typography.Text>
+          </Tooltip>
+        ),
+      },
+      { title: '客户编码', dataIndex: 'customerCode', width: 220 },
+      { title: '产品名称', dataIndex: 'productName', width: 100, ellipsis: true },
+      { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
+      { title: '经办人', dataIndex: 'assigneeName', width: 120, ellipsis: true,
+        render: (v, row) => v || assigneeMap.get(row.assigneeId) || '—' },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 90,
+        render: (value) => <Tag color={STATUS_TAG_COLOR[value] || 'default'}>{value || '待处理'}</Tag>,
+      },
+      { title: '回溯结果', dataIndex: 'progress', width: 160, ellipsis: true },
+      canEdit
+        ? {
+            title: '操作',
+            key: 'actions',
+            width: 56,
+            render: (_value, row) => (
+              <Popconfirm
+                title="确定删除该记录？"
+                onConfirm={(event) => {
+                  event?.stopPropagation?.()
+                  void removeOne(row.id)
+                }}
+                onCancel={(event) => event?.stopPropagation?.()}
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </Popconfirm>
+            ),
+          }
+        : null,
+    ].filter(Boolean),
+    [canEdit, assigneeMap]
+  )
+  const columns = decorateColumns(baseColumns)
 
   // 周期月份 + 复合筛选在前端过滤
   const monthSet = useMemo(() => new Set(months), [months])
@@ -298,7 +363,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         rowKey="id"
         loading={loading}
         dataSource={pageItems}
-        scroll={{ x: 1040 }}
+        scroll={{ x: sumColumnsWidth(columns) }}
         sticky={{ offsetHeader: stickyChromeHeight }}
         rowSelection={
           canEdit
@@ -319,58 +384,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
           onClick: () => openEdit(record),
           className: 'cursor-pointer',
         })}
-        columns={[
-          { title: '数据月份', dataIndex: 'importMonth', width: 90 },
-          // 2026-11-10 拍板：客户编码主流 20 字符 → 宽 220 保完整不截断；客户名称截断时 hover 气泡（参考工单列表）
-          {
-            title: '客户名称',
-            dataIndex: 'customerName',
-            width: 150,
-            ellipsis: true,
-            render: (val) => (
-              <Tooltip title={val || undefined} getPopupContainer={() => document.body}>
-                <Typography.Text ellipsis>{val || '—'}</Typography.Text>
-              </Tooltip>
-            ),
-          },
-          { title: '客户编码', dataIndex: 'customerCode', width: 220 },
-          { title: '产品名称', dataIndex: 'productName', width: 100, ellipsis: true },
-          { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
-          { title: '经办人', dataIndex: 'assigneeName', width: 120, ellipsis: true,
-            render: (v, row) => v || assigneeMap.get(row.assigneeId) || '—' },
-          {
-            title: '状态',
-            dataIndex: 'status',
-            width: 90,
-            render: (value) => <Tag color={STATUS_TAG_COLOR[value] || 'default'}>{value || '待处理'}</Tag>,
-          },
-          { title: '回溯结果', dataIndex: 'progress', width: 160, ellipsis: true },
-          canEdit
-            ? {
-                title: '操作',
-                key: 'actions',
-                width: 56,
-                render: (_value, row) => (
-                  <Popconfirm
-                    title="确定删除该记录？"
-                    onConfirm={(event) => {
-                      event?.stopPropagation?.()
-                      void removeOne(row.id)
-                    }}
-                    onCancel={(event) => event?.stopPropagation?.()}
-                  >
-                    <Button
-                      type="link"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </Popconfirm>
-                ),
-              }
-            : null,
-        ].filter(Boolean)}
+        columns={columns}
       />
       <PostUseJiraDrawer
         item={editing}
