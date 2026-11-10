@@ -45,3 +45,15 @@ export function patchPostUseVisit(id, patch) {
     body: JSON.stringify(patch),
   })
 }
+
+/**
+ * 2026-11-10 临时功能（admin 专属，处理完存量重复数据后下线）：删除一条回访记录。
+ * 服务端联动摘除 records 表挂接的 customerVisit 快照。
+ * @param {string} id
+ * @returns {Promise<{ ok: boolean, id: string, detached: number }>}
+ */
+export function deletePostUseVisit(id) {
+  return apiFetch(`/api/post-use-visits/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}

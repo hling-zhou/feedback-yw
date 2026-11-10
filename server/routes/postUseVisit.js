@@ -114,6 +114,8 @@ export function registerPostUseVisitRoutes(app) {
 
   // 2026-11-05 状态派生链路：evaluationSubmitted 标记评估是否完结提交（暂存=false / 提交=true）；
   // 评估状态 = 评估空→待评估、非空未提交→评估中、已提交→已评估（提醒引擎与列表派生同口径）。
+  // 2026-11-10 补人工编辑标记：internalEvaluationDetail/assigneeName/remark/actionId 被人工（抽屉）编辑过
+  // → manualEditedFields 记录域名；导入覆盖语义按"导入值优先但人工已填不冲掉"判定真源。
   app.patch('/api/post-use-visits/:id', async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
     const { id } = /** @type {{ id: string }} */ (request.params)
@@ -134,22 +136,32 @@ export function registerPostUseVisitRoutes(app) {
       before = record
       const now = new Date().toISOString()
       const next = { ...record }
+      const manualEdited = new Set(Array.isArray(record?.manualEditedFields) ? record.manualEditedFields : [])
       if (typeof body.internalEvaluationDetail === 'string') {
         next.internalEvaluationDetail = body.internalEvaluationDetail
         next.internalConclusion = body.internalEvaluationDetail
+        if (body.internalEvaluationDetail.trim()) manualEdited.add('internalEvaluation')
       }
       if (typeof body.internalConclusion === 'string') {
         next.internalConclusion = body.internalConclusion
         if (typeof body.internalEvaluationDetail !== 'string') {
           next.internalEvaluationDetail = body.internalConclusion
         }
+        if (body.internalConclusion.trim()) manualEdited.add('internalEvaluation')
       }
-      if (typeof body.remark === 'string') next.remark = body.remark
-      if (typeof body.assigneeName === 'string') next.assigneeName = body.assigneeName
+      if (typeof body.remark === 'string') {
+        next.remark = body.remark
+        if (body.remark.trim()) manualEdited.add('remark')
+      }
+      if (typeof body.assigneeName === 'string') {
+        next.assigneeName = body.assigneeName
+        if (body.assigneeName.trim()) manualEdited.add('assigneeName')
+      }
       if (typeof body.actionId === 'string') next.actionId = body.actionId
       if (typeof body.evaluationSubmitted === 'boolean') {
         next.evaluationSubmitted = body.evaluationSubmitted
       }
+      if (manualEdited.size) next.manualEditedFields = [...manualEdited]
       next.updatedAt = now
       return next
     })
@@ -177,5 +189,73 @@ export function registerPostUseVisitRoutes(app) {
       syncedSnapshots,
     })
     return { item: result.record, syncedSnapshots }
+  })
+
+  // 2026-11-10 临时功能（用户拍板，处理完存量重复后下线）：删除回访记录——admin 专属。
+  // 覆盖语义修复（同身份键覆盖）上线前，同批数据导两次产生过重复条目，此路由供人工清理。
+  // 联动：records 表挂接的 customerVisit 快照一并摘除（防幽灵挂载）。
+  app.delete('/api/post-use-visits/:id', async (request, reply) => {
+    const user = request.user
+    if (!user) {
+      reply.code(401)
+      return { error: '未登录' }
+    }
+    if (user.role !== 'admin') {
+      reply.code(403)
+      return { error: '仅管理员可执行此操作' }
+    }
+    const { id } = /** @type {{ id: string }} */ (request.params)
+
+    const raw = storageRepository.getMeta(META_KEY_POST_USE_VISITS)
+    const recordList = Array.isArray(raw?.records) ? raw.records : []
+    const target = recordList.find((item) => String(item?.id || '') === String(id))
+    if (!target) {
+      reply.code(404)
+      return { error: '记录不存在' }
+    }
+
+    const nextRecords = recordList.filter((item) => String(item?.id || '') !== String(id))
+    storageRepository.putMeta(META_KEY_POST_USE_VISITS, {
+      ...raw,
+      updatedAt: new Date().toISOString(),
+      records: nextRecords,
+    })
+
+    // 联动：摘除 records 表挂接的该回访快照（匹配：月+产品+客户，避免误伤同身份其他挂接已不可能——同身份唯一）
+    let detached = 0
+    const month = String(target.importMonth || target.visitMonth || '')
+    const productName = String(target.productName || '').trim()
+    const customerCode = String(target.customerCode || '').trim()
+    const customerName = String(target.customerName || '').trim()
+    if (month && productName) {
+      const list = storageRepository.listRecords({
+        dataSourceTypes: ['post_use_rating'],
+        limit: 100000,
+      })
+      const candidates = (list?.records || []).filter((record) => {
+        const cv = record?.customerVisit
+        if (!cv || typeof cv !== 'object') return false
+        if (String(cv.importMonth || cv.visitMonth || '') !== month) return false
+        if (String(cv.productName || '').trim() !== productName) return false
+        if (customerCode && String(cv.customerCode || '').trim() !== customerCode) return false
+        if (!customerCode && customerName && String(cv.customerName || '').trim() !== customerName) return false
+        return true
+      })
+      for (const record of candidates) {
+        const { customerVisit: _removed, ...rest } = record
+        storageRepository.putRecord(rest)
+        detached += 1
+      }
+    }
+
+    logAuditFromRequest(request, 'post_use_visit.delete', {
+      id,
+      month,
+      productName,
+      customer: customerCode || customerName,
+      detachedSnapshots: detached,
+      temporary: '2026-11-10 重复数据清理专用，处理完下线',
+    })
+    return { ok: true, id, detached }
   })
 }

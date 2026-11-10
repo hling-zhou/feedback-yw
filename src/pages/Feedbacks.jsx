@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Checkbox, Empty, Modal, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
 import { DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -135,6 +135,7 @@ import {
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
+import { deletePostUseVisit } from '../lib/postUseVisitClient.js'
 import { buildPostUseCallbackRecommendations } from '../lib/postUseRating/callbackRecommendations.js'
 import {
   buildPostUseCustomerVisitRows,
@@ -384,6 +385,18 @@ export default function Feedbacks() {
       setCustomerVisitLoading(false)
     }
   }, [adapter])
+
+  // 2026-11-10 临时功能（admin 专属，处理完存量重复数据后下线）：删除单条回访记录
+  const handleDeleteVisitRecord = useCallback(async (record) => {
+    if (!record?.id) return
+    try {
+      await deletePostUseVisit(record.id)
+      message.success('已删除')
+      await refreshCustomerVisitRecords()
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '删除失败')
+    }
+  }, [refreshCustomerVisitRecords])
 
   const handleRefresh = useCallback(async () => {
     if (importSession?.active) {
@@ -1627,6 +1640,8 @@ export default function Feedbacks() {
             rows={customerVisitTableRows}
             onSelect={(record) => setSelectedVisitRecord(record)}
             stickyOffset={stickyChromeHeight}
+            canDelete={user?.role === 'admin'}
+            onDelete={user?.role === 'admin' ? (record) => void handleDeleteVisitRecord(record) : undefined}
           />
         ) : view === 'table' ? (
             <FeedbackTable
@@ -1733,7 +1748,7 @@ export default function Feedbacks() {
   )
 }
 
-function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
+function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = false, onDelete }) {
   /**
    * 表头吸顶偏移：与 FeedbackTable 同款机制——外层共享 sticky chrome
    *（Feedbacks.jsx stickyChromeRef）测量高度传入，滚动时表头贴在筛选条下方。
@@ -1764,8 +1779,8 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
       // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定
       { title: '产品名称', dataIndex: '产品名称', width: 160, fixed: 'left', ellipsis: true },
       { title: '客户名称', dataIndex: '客户名称', width: 160, fixed: 'left', ellipsis: true },
-      // ↓ 以下按导入模板列序原样（集团名称/客户编码/登录账号名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
-      { title: '集团名称', dataIndex: '集团名称', width: 140, ellipsis: true },
+      // ↓ 以下按导入模板列序原样（客户编码/登录账号名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
+      // 2026-11-10 拍板：集团名称列从列表与模板一并去掉
       { title: '客户编码', dataIndex: '客户编码', width: 140, ellipsis: true },
       { title: '登录账号名称', dataIndex: '登录账号名称', width: 140, ellipsis: true },
       { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 180, ellipsis: true },
@@ -1774,6 +1789,29 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0 }) {
       { title: '内部评估', dataIndex: '内部评估', width: 220, ellipsis: true },
       { title: '备注', dataIndex: '备注', width: 180, ellipsis: true },
       { title: '经办人', dataIndex: '经办人', width: 120, ellipsis: true },
+      // 2026-11-10 临时删除列（admin 专属，存量重复清理完成后下线）：Popconfirm 二次确认
+      ...(canDelete && onDelete
+        ? [{
+            key: '__tempDelete',
+            title: '操作',
+            width: 90,
+            fixed: 'right',
+            render: (_v, row) => (
+              <Popconfirm
+                title="删除这条回访记录？"
+                description="临时清理功能：删除后不可恢复（含挂接快照联动摘除）。"
+                okText="删除"
+                okButtonProps={{ danger: true }}
+                cancelText="取消"
+                onConfirm={() => onDelete(row.__record || row)}
+              >
+                <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                  删除
+                </Button>
+              </Popconfirm>
+            ),
+          }]
+        : []),
     ]
   }, [])
 

@@ -445,6 +445,43 @@ export async function executeCustomerVisitImport({
       if (legacyId !== item.id && visits.some((record) => record.id === legacyId)) {
         item.id = legacyId
       }
+      // 2026-11-10 用户拍板（覆盖语义）：身份键 = 同数据月份+同产品+同客户（不含内容/次序）。
+      // 同键覆盖：其余字段以新导入为准；人工编辑域（内部评估/经办人/备注/关联举措）按
+      // "导入值优先但人工已填不冲掉"——manualEditedFields（抽屉 PATCH 标记）是人工已填的
+      // 判定真源：被标记的域保留库值，未标记的域允许导入值覆盖（含空导入值清空导入来源的旧值）。
+      const sameIdentity = visits.find(
+        (record) =>
+          String(record.importMonth || record.visitMonth || '') === String(month) &&
+          String(record.productName || '') === String(item.productName) &&
+          buildCustomerKey(record) === customerKey,
+      )
+      if (sameIdentity) {
+        if (sameIdentity.id !== item.id) {
+          // 身份相同但内容 id 不同（旧记录因内容差异成了第二条）→ 以导入为准覆盖：删旧条、新条沿用旧 id 保持引用稳定
+          visits = visits.filter((record) => record.id !== sameIdentity.id)
+          item.id = sameIdentity.id
+        }
+        const manual = new Set(
+          Array.isArray(sameIdentity.manualEditedFields) ? sameIdentity.manualEditedFields : [],
+        )
+        // 人工已填的域：库值优先（导入值不冲掉）
+        if (manual.has('internalEvaluation')) {
+          const kept = String(sameIdentity.internalEvaluationDetail || sameIdentity.internalConclusion || '')
+          item.internalEvaluationDetail = kept
+          item.internalConclusion = String(sameIdentity.internalConclusion || kept)
+          item.evaluationSubmitted = Boolean(sameIdentity.evaluationSubmitted)
+        }
+        if (manual.has('assigneeName')) {
+          item.assigneeName = String(sameIdentity.assigneeName || '')
+        }
+        if (manual.has('remark')) {
+          item.remark = String(sameIdentity.remark || '')
+        }
+        // 关联举措（actionId 只在抽屉里建）恒保留库值
+        if (sameIdentity.actionId) item.actionId = sameIdentity.actionId
+        // 人工编辑标记本身继承（该记录已被人工编辑过的事实不随导入消失）
+        if (manual.size) item.manualEditedFields = [...manual]
+      }
     }
     visits = upsertVisitRecord(visits, item)
   }

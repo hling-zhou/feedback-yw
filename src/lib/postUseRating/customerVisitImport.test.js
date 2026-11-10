@@ -340,4 +340,84 @@ describe('customerVisitImport', () => {
     })
     expect(saved.some((item) => item.id !== legacyId && item.visitResult === '第二条回访')).toBe(true)
   })
+
+  // 2026-11-10 覆盖语义（用户拍板）：身份键 = 同月+同产品+同客户（不含内容/次序）；
+  // 同键覆盖消除重复；人工编辑域（manualEditedFields）导入不冲掉。
+  it('same identity + changed content reimports overwrite instead of duplicating', async () => {
+    const storedMeta = new Map()
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => storedMeta.set(key, value),
+    }
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [{ 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户A', 客户编码: 'C1', 回访结果: '第一次回访' }],
+      importMonth: '2026-10',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    // 内容变化（旧 bug：id 含内容与次序 → 再导变第二条）
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [{ 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户A', 客户编码: 'C1', 回访结果: '第一次回访（更新）' }],
+      importMonth: '2026-10',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const saved = await loadVisitRecords(adapter)
+    expect(saved).toHaveLength(1)
+    expect(saved[0].visitResult).toBe('第一次回访（更新）')
+  })
+
+  it('manual-edited fields survive reimport; import-origin values get overwritten', async () => {
+    const storedMeta = new Map([
+      [META_KEY_POST_USE_VISITS, {
+        version: 1,
+        records: [{
+          id: 'manual-id', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
+          customerName: '客户A', customerCode: 'C1', visitResult: '旧回访',
+          internalEvaluationDetail: '人工评估结论', internalConclusion: '人工评估结论',
+          assigneeName: '张三', remark: '人工备注', actionId: 'act-1',
+          evaluationSubmitted: true, manualEditedFields: ['internalEvaluation', 'assigneeName', 'remark'],
+        }, {
+          id: 'plain-id', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
+          customerName: '客户B', customerCode: 'C2', visitResult: '旧回访B',
+          internalEvaluationDetail: '导入来源的评估', assigneeName: '导入来源的经办人',
+        }],
+      }],
+    ])
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => storedMeta.set(key, value),
+    }
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [
+        { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户A', 客户编码: 'C1', 回访结果: '新回访A', 内部评估: '导入的评估A', 经办人: '李四', 备注: '导入的备注A' },
+        { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户B', 客户编码: 'C2', 回访结果: '新回访B' },
+      ],
+      importMonth: '2026-10',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const saved = await loadVisitRecords(adapter)
+    const a = saved.find((item) => item.id === 'manual-id')
+    // 人工域：库值保留
+    expect(a).toMatchObject({
+      visitResult: '新回访A',
+      internalEvaluationDetail: '人工评估结论',
+      assigneeName: '张三',
+      remark: '人工备注',
+      actionId: 'act-1',
+      evaluationSubmitted: true,
+    })
+    // 导入来源域：导入值（空）覆盖清空
+    const b = saved.find((item) => item.id === 'plain-id')
+    expect(b).toMatchObject({
+      visitResult: '新回访B',
+      internalEvaluationDetail: '',
+      assigneeName: '',
+    })
+    expect(saved).toHaveLength(2)
+  })
 })
