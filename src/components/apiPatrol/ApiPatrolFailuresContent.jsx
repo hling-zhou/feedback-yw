@@ -265,6 +265,7 @@ export default function ApiPatrolFailures() {
             <RangePicker value={range} onChange={(v) => v && setRange(v)} allowClear={false} />
             <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
             <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
+            <Button size="small" onClick={() => setRange([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])}>T-1</Button>
             <Button size="small" onClick={loadInterfaces}>刷新</Button>
           </Space>
         </div>

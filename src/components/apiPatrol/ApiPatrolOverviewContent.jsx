@@ -190,6 +190,7 @@ export default function ApiPatrolOverviewContent() {
           <Space wrap>
             <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
             <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
+            <Button size="small" onClick={() => setRange([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])}>T-1</Button>
             <span className="text-sm">仅待处理</span>
             <Switch size="small" checked={pendingOnly} onChange={setPendingOnly} />
             <Button size="small" onClick={load} loading={loading}>刷新</Button>
