@@ -49,3 +49,4 @@ scripts/taxonomy-overrides.json
 # Local-only temp test configs (vitest/playwright tmp configs, truth is in git history e51ddce)
 vitest.tmp.config.mjs
 playwright.tmp.*.config.js
+.env-plan-c

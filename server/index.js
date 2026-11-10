@@ -64,6 +64,7 @@ import { registerMailRoutes } from './routes/mail.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerPatrolPushRoutes } from './routes/patrolPush.js'
+import { registerPatrolDailyPackageRoutes } from './routes/patrolDailyPackage.route.js'
 import { startPatrolReportScheduler } from './patrolReportScheduler.js'
 import { registerPatrolQueryRoutes } from './routes/patrolQuery.js'
 import { registerPatrolEmailIngestionRoutes } from './routes/patrolEmailIngestion.route.js'
@@ -116,6 +117,7 @@ registerUsageRoutes(app)
 // registerAssistantRoutes(app)
 registerMcpRoutes(app)
 registerPatrolPushRoutes(app)
+registerPatrolDailyPackageRoutes(app)
 registerPatrolQueryRoutes(app)
 registerPatrolEmailIngestionRoutes(app)
 

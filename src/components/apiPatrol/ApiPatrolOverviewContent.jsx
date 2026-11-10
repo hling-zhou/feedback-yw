@@ -139,26 +139,44 @@ export default function ApiPatrolOverviewContent() {
 
   const trendSlots = data?.metricTrends || []
 
-  // Plan B 拉取连续失败横幅（§9.6 P2-8）：上次拉取为错误态且距今 ≥2 天 → 显示
-  // 判据：error 类状态（fetch_error/parse_error/sender_rejected）且 lastFetchAt 距今 ≥48h。
-  // 精确"连续 N 天失败"需要逐日历史，当前 state 只存最近一次——按最近一次错误 + 无更近成功近似。
-  const ingestionErrorHours = useMemo(() => {
+  // 巡检数据链路健康横幅（§9.6 P2-8 + §10.7 评审#2 同源合并）：
+  // 两个判据任一命中即显示——①Plan B 邮件拉取连续失败（错误态且 ≥48h）②Plan C 日包断供（≥48h 未收到包）。
+  // 精确"连续 N 天"需要逐日历史，state 只存最近一次——按最近一次错误 + 无更近成功近似。
+  const dataLinkBanner = useMemo(() => {
     const st = ingestionStatus?.state
-    if (!st?.lastResult || !st?.lastFetchAt) return null
-    const isErr = st.lastResult === 'fetch_error' || st.lastResult === 'parse_error' || st.lastResult === 'sender_rejected'
-    if (!isErr) return null
-    const hours = (Date.now() - new Date(st.lastFetchAt).getTime()) / 3600000
-    return Number.isFinite(hours) ? hours : null
+    if (!st) return null
+    // 判据①：Plan B 拉取错误态 ≥48h
+    const isFetchErr = ['fetch_error', 'parse_error', 'sender_rejected'].includes(String(st.lastResult || ''))
+    if (ingestionStatus?.enabled && isFetchErr && st.lastFetchAt) {
+      const hours = (Date.now() - new Date(st.lastFetchAt).getTime()) / 3600000
+      if (Number.isFinite(hours) && hours >= 48) {
+        return {
+          title: 'API 巡检邮件拉取已连续异常',
+          description: `Plan B 邮件拉取连续失败超过 2 天（上次尝试 ${st.lastFetchAt}，状态 ${st.lastResult}）。若外部 HTTP 推送（Plan A）正常可忽略；否则请检查 IMAP 连通性/授权码/邮箱白名单。详情见 Settings → 邮件 → API巡检邮件拉取。`,
+        }
+      }
+    }
+    // 判据②：Plan C 日包断供 ≥48h（启用 Plan C 时 lastPackageReceivedAt 超 48h 未更新）
+    if (ingestionStatus?.enabled && st.lastPackageReceivedAt) {
+      const hours = (Date.now() - new Date(st.lastPackageReceivedAt).getTime()) / 3600000
+      if (Number.isFinite(hours) && hours >= 48) {
+        return {
+          title: 'API 巡检数据代理已断供',
+          description: `Plan C 日包超过 2 天未送达（最后收包 ${st.lastPackageReceivedAt}）。请检查 WorkBuddy 本机 automation 是否在跑、本机到部署环境的网络，以及推送 API Key 是否有效。`,
+        }
+      }
+    }
+    return null
   }, [ingestionStatus])
 
   return (
     <div className="space-y-4">
-      {ingestionStatus?.enabled && ingestionErrorHours != null && ingestionErrorHours >= 48 ? (
+      {dataLinkBanner ? (
         <Alert
           type="warning"
           showIcon
-          title="API 巡检邮件拉取已连续异常"
-          description={`Plan B 邮件拉取连续失败超过 2 天（上次尝试 ${ingestionStatus.state.lastFetchAt}，状态 ${ingestionStatus.state.lastResult}）。若外部 HTTP 推送（Plan A）正常可忽略；否则请检查 IMAP 连通性/授权码/邮箱白名单。详情见 Settings → 邮件 → API巡检邮件拉取。`}
+          title={dataLinkBanner.title}
+          description={dataLinkBanner.description}
         />
       ) : null}
       <div className="page-card">
