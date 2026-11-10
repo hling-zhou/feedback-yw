@@ -107,7 +107,7 @@ function main() {
   }
 
   if (violations.length) {
-    console.error(`✗ 共享谓词绕过 ${violations.length} 处（同源判定纪律，见 docs/CONVENTIONS-防缺陷触发规则.md）：\n`)
+    console.error(`✗ 共享谓词绕过 ${violations.length} 处（同源判定纪律，见 docs/conventions/防缺陷触发规则.md）：\n`)
     for (const v of violations) console.error('  ' + v)
     process.exit(1)
   }
