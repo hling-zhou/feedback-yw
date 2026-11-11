@@ -166,6 +166,13 @@ async function main() {
   const pkg = buildPackage(db, dataDate)
   log('package', `日包组装：stats ${pkg.stats.reduce((a, s) => a + s.rows.length, 0)} 行 / requests ${pkg.requests.reduce((a, r) => a + r.rows.length, 0)} 行 / groups ${pkg.groups.length} 组`)
 
+  // 测试/重推钩子：PLAN_C_DUMP_PACKAGE=<path> 把组好的包写到指定路径（不推送，供断言与手动重推）
+  const dumpPath = process.env.PLAN_C_DUMP_PACKAGE
+  if (dumpPath) {
+    fs.writeFileSync(dumpPath, JSON.stringify(pkg))
+    log('package', `已 dump 包到 ${dumpPath}`)
+  }
+
   // ---------- ⑤ 推送
   if (!DRY_RUN) {
     const pushResult = await pushPackage(pkg)
@@ -313,6 +320,37 @@ function convergeOverduePending(db) {
   return Number(info.changes || 0)
 }
 
+/** EIP/VPC 归一库行 → 原始列形态（13 列，同邮件明细 CSV）。 */
+function toEipVpcPkgRow(r) {
+  return {
+    id: r.external_row_id == null ? '' : String(r.external_row_id),
+    appId: r.app_id || '',
+    requestId: r.request_id, requestMapping: r.api_path,
+    userId: r.user_id, userName: r.user_name,
+    bizCategory: r.biz_category || '', bizTarget: r.biz_target || '', bizNo: r.biz_no || '',
+    result: String(r.is_success),
+    executionTimeMillis: r.duration_ms == null ? '' : String(r.duration_ms),
+    createTime: r.request_time,
+    diagnoseResult: '',
+  }
+}
+
+/** ELB 归一库行 → 原始列形态（14 列）。api_path = resourceType/resourceOperation（设计 §2.2）。 */
+function toElbPkgRow(r) {
+  const [rt, ro] = String(r.api_path || '').split('/')
+  return {
+    id: r.external_row_id == null ? '' : String(r.external_row_id),
+    requestId: r.request_id, userId: r.user_id,
+    resourceType: rt || '', resourceOperation: ro || '',
+    startTime: r.request_time, endTime: r.end_time || '',
+    resultStatus: r.is_success === 1 ? 'SUCCESS' : 'FAILED',
+    errorMessage: r.error_message || '',
+    dailyReport: r.daily_report || '', realtimeReport: r.realtime_report || '',
+    userName: r.user_name, executionTimeMillis: r.duration_ms == null ? '' : String(r.duration_ms),
+    diagnoseResult: '',
+  }
+}
+
 /** ④ 组装日包（§10.2 契约）。 */
 function buildPackage(db, dataDate) {
   // stats：当日全部（唯一键含日期）
@@ -335,51 +373,31 @@ function buildPackage(db, dataDate) {
     })
   }
 
-  // requests：当日全部批次（按 pool 分批）
+  // requests：当日全部批次（池内按行级形态拆批——同池可出 eip_vpc+elb 两个条目）。
+  // 2026-11-11 修复：此前按池级采样 some() 判定整池单包，混合池（华南-广州3 同时含
+  // slb 大写形态行 + eip/vpc REST 形态行）把 eip 行误打 elb 形态 → 部署端 api_path
+  // 还原为空串 → 明细 Σ 断键（总次数 0）。行级判定天然精确，采样逻辑删除。
   const requestPools = db.prepare(`
-    SELECT DISTINCT pool_name AS p, product_key FROM api_patrol_requests WHERE request_date=?
+    SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?
   `).all(dataDate)
   const requests = []
   for (const pr of requestPools) {
     const pool = String(/** @type {any} */ (pr).p)
-    // 包类型按行接口形态：ELB 行 api_path 无 / 前缀（resourceType/resourceOperation 形态）
-    const sampleRows = db.prepare(`
-      SELECT * FROM api_patrol_requests WHERE request_date=? AND pool_name=? LIMIT 200
-    `).all(dataDate, pool)
-    const isElbPool = sampleRows.some((r) => !String(/** @type {any} */ (r).api_path || '').startsWith('/'))
-    const pkgKey = isElbPool ? 'elb' : 'eip_vpc'
-    // 全量行 → 原始列形态还原（EIP/VPC 13 列 / ELB 14 列）
-    const rows = db.prepare(`
+    // 全量行按 api_path 是否 / 前缀分拨（ELB 行 = resourceType/resourceOperation 形态，无 / 前缀）
+    const allRows = db.prepare(`
       SELECT * FROM api_patrol_requests WHERE request_date=? AND pool_name=?
-    `).all(dataDate, pool).map((raw) => {
+    `).all(dataDate, pool)
+    /** @type {any[]} */
+    const elbRows = []
+    /** @type {any[]} */
+    const eipVpcRows = []
+    for (const raw of allRows) {
       const r = /** @type {any} */ (raw)
-      if (pkgKey === 'elb') {
-        const [rt, ro] = String(r.api_path || '').split('/')
-        return {
-          id: r.external_row_id == null ? '' : String(r.external_row_id),
-          requestId: r.request_id, userId: r.user_id,
-          resourceType: rt || '', resourceOperation: ro || '',
-          startTime: r.request_time, endTime: r.end_time || '',
-          resultStatus: r.is_success === 1 ? 'SUCCESS' : 'FAILED',
-          errorMessage: r.error_message || '',
-          dailyReport: r.daily_report || '', realtimeReport: r.realtime_report || '',
-          userName: r.user_name, executionTimeMillis: r.duration_ms == null ? '' : String(r.duration_ms),
-          diagnoseResult: '',
-        }
-      }
-      return {
-        id: r.external_row_id == null ? '' : String(r.external_row_id),
-        appId: r.app_id || '',
-        requestId: r.request_id, requestMapping: r.api_path,
-        userId: r.user_id, userName: r.user_name,
-        bizCategory: r.biz_category || '', bizTarget: r.biz_target || '', bizNo: r.biz_no || '',
-        result: String(r.is_success),
-        executionTimeMillis: r.duration_ms == null ? '' : String(r.duration_ms),
-        createTime: r.request_time,
-        diagnoseResult: '',
-      }
-    })
-    requests.push({ package: pkgKey, pool, rows })
+      if (String(r.api_path || '').startsWith('/')) eipVpcRows.push(r)
+      else elbRows.push(r)
+    }
+    if (eipVpcRows.length > 0) requests.push({ package: 'eip_vpc', pool, rows: eipVpcRows.map(toEipVpcPkgRow) })
+    if (elbRows.length > 0) requests.push({ package: 'elb', pool, rows: elbRows.map(toElbPkgRow) })
   }
 
   // groups：当日新组 + 近 7 天诊断成功的历史 pending 组 + 收敛组（事实有变化的都要推）
