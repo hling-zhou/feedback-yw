@@ -221,6 +221,63 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     expect(g.product_action_status).toBe('—')
   })
 
+  it('(2b) 已有组·待处理·空经办人重推 → 补默认；已有经办人不覆盖（11-11 拍板：修复 11-10 旧代码首建的存量组）', async () => {
+    // 目录带 productManager（用例内覆盖，结束还原）
+    const { storageRepository } = await import('../storageRepository.js')
+    const originalCatalog = storageRepository.getMeta('product_catalog_managed_v1')
+    storageRepository.putMeta('product_catalog_managed_v1', {
+      version: 2, updatedAt: 't2',
+      products: [
+        { key: 'eip', name: '弹性公网IP', enabled: true, owners: { productManager: [{ userId: 'u-pm', username: '默认产品经理', displayName: '默认产品经理' }] } },
+        { key: 'vpc', name: '虚拟私有云', enabled: true },
+        { key: 'slb', name: '弹性负载均衡', enabled: true },
+      ],
+      deletedKeys: [], disabledAnalysisKeys: [],
+    })
+
+    try {
+      // ① 首推后模拟「旧代码首建」（assignee 空——如 11-10 的 32 个存量组）
+      await pushPackage(buildPackage())
+      db.prepare('UPDATE api_patrol_failure_groups SET assignee=NULL').run()
+      expect(db.prepare('SELECT assignee FROM api_patrol_failure_groups').get().assignee).toBeNull()   // 前置成立
+
+      // ② 重推（同包）：已有组 + 待处理 + 空经办人 → 补填默认
+      await pushPackage(buildPackage())
+      const g2 = db.prepare('SELECT assignee, product_action_status FROM api_patrol_failure_groups').get()
+      expect(g2.product_action_status).toBe('待处理')
+      expect(g2.assignee).toBe('默认产品经理')
+
+      // ③ 已有经办人 → 重推不覆盖
+      db.prepare("UPDATE api_patrol_failure_groups SET assignee='手工经办人'").run()
+      await pushPackage(buildPackage())
+      expect(db.prepare('SELECT assignee FROM api_patrol_failure_groups').get().assignee).toBe('手工经办人')
+    } finally {
+      storageRepository.putMeta('product_catalog_managed_v1', originalCatalog)
+    }
+  })
+
+  it('(2b) 已有组·处理中·空经办人重推 → 不补（§10.3 人工状态保护优先于补填）', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+    const originalCatalog = storageRepository.getMeta('product_catalog_managed_v1')
+    storageRepository.putMeta('product_catalog_managed_v1', {
+      version: 2, updatedAt: 't2',
+      products: [
+        { key: 'eip', name: '弹性公网IP', enabled: true, owners: { productManager: [{ userId: 'u-pm', username: '默认产品经理', displayName: '默认产品经理' }] } },
+      ],
+      deletedKeys: [], disabledAnalysisKeys: [],
+    })
+    try {
+      await pushPackage(buildPackage())
+      db.prepare("UPDATE api_patrol_failure_groups SET assignee=NULL, product_action_status='处理中'").run()
+      await pushPackage(buildPackage())
+      const g = db.prepare('SELECT assignee, product_action_status FROM api_patrol_failure_groups').get()
+      expect(g.product_action_status).toBe('处理中')
+      expect(g.assignee).toBeNull()   // 人工流程态不补填
+    } finally {
+      storageRepository.putMeta('product_catalog_managed_v1', originalCatalog)
+    }
+  })
+
   // ================== (5)(6) failed / converged 语义
 
   it('(5) diagnosisStatus=failed → 组保持 pending_diagnosis、结论空', async () => {

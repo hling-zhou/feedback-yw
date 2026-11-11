@@ -46,9 +46,9 @@ function upsertGroup(db, g) {
   const rootCauseL2 = g.rootCauseL2 == null ? null : String(g.rootCauseL2)
   const now = new Date().toISOString()
 
-  const existing = /** @type {{ product_action_status: string } | undefined} */ (
+  const existing = /** @type {{ product_action_status: string, assignee: string | null } | undefined} */ (
     db.prepare(`
-      SELECT product_action_status FROM api_patrol_failure_groups
+      SELECT product_action_status, assignee FROM api_patrol_failure_groups
       WHERE group_date=? AND pool_name=? AND first_request_id=?
     `).get(groupDate, poolName, firstRequestId)
   )
@@ -65,9 +65,12 @@ function upsertGroup(db, g) {
     nextStatus = rootCauseL1 === '诊断能力缺口' ? '—' : '待处理'
   }
 
-  // 经办人默认值（§2.3）：新建组且需要产品侧处理时填 catalog owners.productManager[0].username
+  // 经办人默认值（§2.3）：需要产品侧处理（待处理）且经办人空时填 catalog owners.productManager[0].username。
+  // 11-11 扩展：已有组·待处理·空经办人也补——修复旧代码首建的存量组（如 11-10 的 32 组首建时无此逻辑）；
+  // 人工流程态（处理中/已处理）在上面已保持原 status ≠ 待处理，天然不进此分支（§10.3 保护优先）。
+  const existingAssigneeEmpty = !existing || existing.assignee == null || String(existing.assignee) === ''
   let defaultAssignee = null
-  if (!existing && nextStatus === '待处理') {
+  if (nextStatus === '待处理' && existingAssigneeEmpty) {
     const catalog = /** @type {{ products?: Array<{ key: string, owners?: { productManager?: Array<{ username: string }> } }> } | null} */ (
       storageRepository.getMeta('product_catalog_managed_v1')
     )
@@ -90,6 +93,9 @@ function upsertGroup(db, g) {
       root_cause_l1=excluded.root_cause_l1,
       root_cause_l2=excluded.root_cause_l2,
       product_action_status=excluded.product_action_status,
+      assignee=CASE
+        WHEN (assignee IS NULL OR assignee = '') AND excluded.assignee IS NOT NULL THEN excluded.assignee
+        ELSE assignee END,
       updated_at=excluded.updated_at
   `)
   upsert.run(
