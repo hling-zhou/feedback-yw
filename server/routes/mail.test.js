@@ -133,6 +133,34 @@ describeApi('mail API', () => {
     expect(body.groups[0]?.dataSourceType).toBeUndefined()
   })
 
+  it('creates and updates recipient groups with optional cc', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/mail/groups',
+      headers: authHeader('admin'),
+      payload: {
+        name: '产品组',
+        emails: ['to@example.com'],
+        cc: ['copy@example.com'],
+      },
+    })
+    expect(created.statusCode).toBe(201)
+    expect(created.json().item).toMatchObject({
+      name: '产品组',
+      emails: ['to@example.com'],
+      cc: ['copy@example.com'],
+    })
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/mail/groups/${created.json().item.id}`,
+      headers: authHeader('admin'),
+      payload: { name: '产品组', emails: ['to@example.com'], cc: [] },
+    })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().item.cc).toEqual([])
+  })
+
   it('refuses to delete a preset template and replaces placeholders on send', async () => {
     const del = await app.inject({
       method: 'DELETE',

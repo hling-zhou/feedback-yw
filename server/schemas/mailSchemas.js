@@ -36,6 +36,7 @@ export const mailGroupBodySchema = {
   properties: {
     name: { type: 'string', minLength: 1, maxLength: 80 },
     emails: { ...emailArray },
+    cc: { ...emailArray },
   },
 }
 
