@@ -27,7 +27,8 @@
  *   PLAN_C_MCP_ENDPOINT    可选，默认 http://cni.mcp.server:31788/mcp-server/mcp
  *   PLAN_C_LOCAL_DB        可选，默认 <repo>/server/data/plan-c-local.db
  *
- * 用法：node scripts/plan-c-daily.mjs [--dry-run]（dry-run 只跑①-④不推送）
+ * 用法：node scripts/plan-c-daily.mjs [--dry-run] [--package-only <YYYY-MM-DD>]
+ *   dry-run 只跑①-④不推送；package-only 跳过①拉取②压缩③诊断，用库里已有数据组包推送/dump（修复重推/补推场景）。
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -55,6 +56,8 @@ const MCP_TOKEN = process.env.PLAN_C_MCP_TOKEN || ''
 const MCP_ENDPOINT = process.env.PLAN_C_MCP_ENDPOINT || 'http://cni.mcp.server:31788/mcp-server/mcp'
 const LOCAL_DB = process.env.PLAN_C_LOCAL_DB || path.join(REPO_ROOT, 'server', 'data', 'plan-c-local.db')
 const DRY_RUN = process.argv.includes('--dry-run')
+const packageOnlyIdx = process.argv.indexOf('--package-only')
+const PACKAGE_ONLY = packageOnlyIdx > -1 ? String(process.argv[packageOnlyIdx + 1] || '') : ''
 
 const DIAGNOSIS_RETRY_WINDOW_DAYS = 7   // §10.5 7 天重试窗口
 const ROLLING_CLEANUP_DAYS = 30         // §10.6 滚动清理
@@ -82,7 +85,7 @@ async function main() {
     fail('init', '缺 PLAN_C_TARGET_URL / PLAN_C_PUSH_API_KEY（检查 .env-plan-c）', 4)
     return
   }
-  if (!IMAP_AUTH_CODE) {
+  if (!PACKAGE_ONLY && !IMAP_AUTH_CODE) {
     fail('init', '缺 PLAN_C_IMAP_AUTH_CODE（检查 .env-plan-c）', 2)
     return
   }
@@ -113,54 +116,65 @@ async function main() {
   // ---------- ⓪ 注册表同步（评审#5：消本机/部署端运营编辑漂移；失败不阻塞）
   await syncRegistryFromRemote(db)
 
-  // ---------- ① 拉邮件（复用 Plan B 解析链）
-  const ingestion = await import('../server/patrolEmailIngestion.js')
-  // IMAP 授权码注入（§10.6：env 单源）——每次跑批刷新 meta config（防旧值残留；Plan B 的"留空保留"是 UI 语义，脚本侧 env 是真源）
-  const { readEmailIngestionConfig, saveEmailIngestionConfig } = ingestion
-  saveEmailIngestionConfig({ ...readEmailIngestionConfig(), imapAuthCode: IMAP_AUTH_CODE })
-  // 测试钩子：PLAN_C_IMAP_RAW_MIME 注入邮件源（跳过真实 IMAP 连接；'__EMPTY__' = 模拟无邮件）
-  const rawMimeHook = process.env.PLAN_C_IMAP_RAW_MIME
-  if (rawMimeHook) {
-    const msgs = rawMimeHook === '__EMPTY__' ? [] : [{ raw: rawMimeHook, receivedAt: new Date() }]
-    ingestion.setImapClientFactory(() => ({
-      connect: async () => {},
-      searchAndFetch: async () => msgs,
-      disconnect: async () => {},
-    }))
-  }
-  // 跑拉取解析入库（本机库）——复用全部 Plan B 链路（白名单/解析/交叉校验/审计）
-  const result = await ingestion.runPatrolEmailIngestion({ trigger: 'manual', force: true })
-  log('fetch', `结果=${result.lastResult}${result.lastStats ? ` 数据日=${result.lastStats.dataDate} stats=${result.lastStats.statsRows} requests=${result.lastStats.requestRows}` : ''}`)
-  if (result.lastResult === 'no_email') {
-    log('fetch', '当日邮箱无巡检邮件——退出（明日自然补）')
-    process.exitCode = 1
-    closeDb()
-    return
-  }
-  if (result.lastResult !== 'success') {
-    fail('fetch', `拉取/解析失败：${result.lastError || result.lastResult}`, 2)
-    closeDb()
-    return
-  }
-  const dataDate = String(result.lastStats?.dataDate || '')
-
-  // ---------- ② 压缩（当日数据 → 失败组；复用 compressPatrolDay）
-  const { compressPatrolDay } = await import('../server/patrolCompress.js')
-  const pools = [...new Set(db.prepare('SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?').all(dataDate).map((r) => String(/** @type {any} */ (r).p)))]
-  let totalGroups = 0
-  for (const pool of pools) {
-    const r = compressPatrolDay(dataDate, pool)
-    totalGroups += r.groups
-    log('compress', `${dataDate} ${pool}: ${r.groups} 组（压缩自 ${r.compressedFrom} 失败行）`)
+  // ---------- ① 拉邮件（复用 Plan B 解析链）——package-only 跳过（修复重推/补推场景，用库内已有数据组包）
+  /** @type {string} */
+  let dataDate = ''
+  if (PACKAGE_ONLY) {
+    dataDate = PACKAGE_ONLY
+    log('fetch', `package-only：跳过拉取/压缩/诊断，用库内 ${PACKAGE_ONLY} 数据直接组包`)
+  } else {
+    const ingestion = await import('../server/patrolEmailIngestion.js')
+    // IMAP 授权码注入（§10.6：env 单源）——每次跑批刷新 meta config（防旧值残留；Plan B 的"留空保留"是 UI 语义，脚本侧 env 是真源）
+    const { readEmailIngestionConfig, saveEmailIngestionConfig } = ingestion
+    saveEmailIngestionConfig({ ...readEmailIngestionConfig(), imapAuthCode: IMAP_AUTH_CODE })
+    // 测试钩子：PLAN_C_IMAP_RAW_MIME 注入邮件源（跳过真实 IMAP 连接；'__EMPTY__' = 模拟无邮件）
+    const rawMimeHook = process.env.PLAN_C_IMAP_RAW_MIME
+    if (rawMimeHook) {
+      const msgs = rawMimeHook === '__EMPTY__' ? [] : [{ raw: rawMimeHook, receivedAt: new Date() }]
+      ingestion.setImapClientFactory(() => ({
+        connect: async () => {},
+        searchAndFetch: async () => msgs,
+        disconnect: async () => {},
+      }))
+    }
+    // 跑拉取解析入库（本机库）——复用全部 Plan B 链路（白名单/解析/交叉校验/审计）
+    const result = await ingestion.runPatrolEmailIngestion({ trigger: 'manual', force: true })
+    log('fetch', `结果=${result.lastResult}${result.lastStats ? ` 数据日=${result.lastStats.dataDate} stats=${result.lastStats.statsRows} requests=${result.lastStats.requestRows}` : ''}`)
+    if (result.lastResult === 'no_email') {
+      log('fetch', '当日邮箱无巡检邮件——退出（明日自然补）')
+      process.exitCode = 1
+      closeDb()
+      return
+    }
+    if (result.lastResult !== 'success') {
+      fail('fetch', `拉取/解析失败：${result.lastError || result.lastResult}`, 2)
+      closeDb()
+      return
+    }
+    dataDate = String(result.lastStats?.dataDate || '')
   }
 
-  // ---------- ③ MCP 诊断（当日新组 + 近 7 天 pending 历史；两轮重试）
-  const diagnosis = await runPlanCDiagnose(db, dataDate)
-  log('diagnose', `队列 ${diagnosis.total} 组（当日 ${diagnosis.todayGroups} + 历史 pending ${diagnosis.pendingGroups}）：成功 ${diagnosis.succeeded} / 失败 ${diagnosis.failed} / 收敛 ${diagnosis.converged}`)
+  // ---------- ②压缩 + ③诊断 —— package-only 跳过（不动压缩组/诊断状态，只重组包重推）
+  /** @type {{ total: number, todayGroups: number, pendingGroups: number, succeeded: number, failed: number, converged: number }} */
+  let diagnosis = { total: 0, todayGroups: 0, pendingGroups: 0, succeeded: 0, failed: 0, converged: 0 }
+  if (!PACKAGE_ONLY) {
+    const { compressPatrolDay } = await import('../server/patrolCompress.js')
+    const pools = [...new Set(db.prepare('SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?').all(dataDate).map((r) => String(/** @type {any} */ (r).p)))]
+    let totalGroups = 0
+    for (const pool of pools) {
+      const r = compressPatrolDay(dataDate, pool)
+      totalGroups += r.groups
+      log('compress', `${dataDate} ${pool}: ${r.groups} 组（压缩自 ${r.compressedFrom} 失败行）`)
+    }
 
-  // ---------- ③' 超龄收敛（7 天窗口外 pending → converged，随包推）
-  const convergedCount = convergeOverduePending(db)
-  if (convergedCount > 0) log('converge', `${convergedCount} 组超龄 pending 收敛为「—」（随包推送）`)
+    // ---------- ③ MCP 诊断（当日新组 + 近 7 天 pending 历史；两轮重试）
+    diagnosis = await runPlanCDiagnose(db, dataDate)
+    log('diagnose', `队列 ${diagnosis.total} 组（当日 ${diagnosis.todayGroups} + 历史 pending ${diagnosis.pendingGroups}）：成功 ${diagnosis.succeeded} / 失败 ${diagnosis.failed} / 收敛 ${diagnosis.converged}`)
+
+    // ---------- ③' 超龄收敛（7 天窗口外 pending → converged，随包推）
+    const convergedCount = convergeOverduePending(db)
+    if (convergedCount > 0) log('converge', `${convergedCount} 组超龄 pending 收敛为「—」（随包推送）`)
+  }
 
   // ---------- ④ 组装日包
   const pkg = buildPackage(db, dataDate)

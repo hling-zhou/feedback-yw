@@ -258,6 +258,7 @@ describe('Plan C 本机脚本全链', () => {
     expect(fs.existsSync(dumpPath)).toBe(true)
 
     // 核心断言：华南-广州3 按行形态拆成 eip_vpc + elb 两个条目
+    // （库被前序用例共享——日包=当日全量，行数断言用「目标行在内」而非「恰好 1 行」）
     const pkg = JSON.parse(fs.readFileSync(dumpPath, 'utf-8'))
     const gzEntries = pkg.requests.filter((r) => r.pool === '华南-广州3')
     expect(gzEntries).toHaveLength(2)
@@ -265,11 +266,13 @@ describe('Plan C 本机脚本全链', () => {
     const elbEntry = gzEntries.find((r) => r.package === 'elb')
     expect(eipEntry).toBeTruthy()
     expect(elbEntry).toBeTruthy()
-    expect(eipEntry.rows).toHaveLength(1)
-    expect(elbEntry.rows).toHaveLength(1)
     // eip 行保持 REST 形态完整路径（防拆错）
-    expect(eipEntry.rows[0].requestMapping).toBe('/acl/v3/floatingip/unbind/{ipId}')
+    const eipRow = eipEntry.rows.find((r) => r.requestId === 'req-mix-eip')
+    expect(eipRow).toBeTruthy()
+    expect(eipRow.requestMapping).toBe('/acl/v3/floatingip/unbind/{ipId}')
     // elb 行保持大写形态
-    expect(elbEntry.rows[0].resourceType).toBe('LISTENER')
+    const elbRow = elbEntry.rows.find((r) => r.requestId === 'req-mix-elb')
+    expect(elbRow).toBeTruthy()
+    expect(elbRow.resourceType).toBe('LISTENER')
   }, 150_000)
 })
