@@ -39,7 +39,7 @@ export const DEFAULT_EMAIL_INGESTION_CONFIG = /** @type {EmailIngestionConfig} *
   imapPort: 993,
   imapUser: 'zhouhuiling@cmss.chinamobile.com',
   imapTls: true,
-  senderWhitelist: ['service@cmecloud.cn'],
+  senderWhitelist: ['service@cmecloud.cn', 'service2@cmecloud.cn', 'service3@cmecloud.cn', 'service4@cmecloud.cn', 'service5@cmecloud.cn', 'service6@cmecloud.cn', 'service7@cmecloud.cn', 'service8@cmecloud.cn', 'service9@cmecloud.cn', 'service10@cmecloud.cn'],
   autoProcessOnFetch: true,
   imapAuthCode: '',
 })
@@ -149,12 +149,15 @@ async function fetchViaImapflow(config) {
     try {
       const since = new Date()
       since.setHours(0, 0, 0, 0)
-      const uids = await client.search({ since, from: config.senderWhitelist[0] })
+      const uids = await client.search({ since })
+      const whitelistLower = config.senderWhitelist.map((s) => s.toLowerCase())
       /** @type {Array<{ raw: string, receivedAt: Date }>} */
       const messages = []
       for (const uid of uids || []) {
         const msg = await client.fetchOne(String(uid), { source: true, envelope: true })
         if (!msg?.source) continue
+        const fromAddr = String(msg.envelope?.from?.[0]?.address || '').toLowerCase()
+        if (fromAddr && !whitelistLower.includes(fromAddr)) continue
         messages.push({
           raw: msg.source.toString('utf-8'),
           receivedAt: msg.envelope?.date ? new Date(msg.envelope.date) : new Date(),
