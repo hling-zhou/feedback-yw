@@ -168,15 +168,16 @@ export default function ApiPatrolFailures() {
   /** @type {any[]} */
   const groupColumns = useMemo(() => [
     {
-      title: 'RequestID', dataIndex: 'firstRequestId', key: 'firstRequestId', width: 150, ellipsis: true,
+      title: 'RequestID', dataIndex: 'firstRequestId', key: 'firstRequestId', width: 150, ellipsis: true, fixed: 'left',
       render: (v, record) => (
         <Button type="link" size="small" className="!px-0" onClick={() => openDrawer(record.id)}>
           {v}
         </Button>
       ),
     },
-    { title: '指标名称', dataIndex: 'metricName', key: 'metricName', width: 120 },
+    { title: '指标名称', dataIndex: 'metricName', key: 'metricName', width: 120, fixed: 'left' },
     { title: '接口名称', dataIndex: 'apiPath', key: 'apiPath', width: 200, ellipsis: true },
+    { title: '资源池', dataIndex: 'poolName', key: 'poolName', width: 100, ellipsis: true },
     { title: '客户名称', dataIndex: 'userName', key: 'userName', width: 130, ellipsis: true,
       render: (v, record) => (
         <Space size={4}>
@@ -196,7 +197,7 @@ export default function ApiPatrolFailures() {
         </Space>
       ),
     },
-    { title: '压缩前次数', dataIndex: 'preCompressCount', key: 'preCompressCount', width: 90, align: 'right' },
+    { title: '压缩前失败次数', dataIndex: 'preCompressCount', key: 'preCompressCount', width: 110, align: 'right' },
     {
       title: '产品侧处理状态', dataIndex: 'productActionStatus', key: 'productActionStatus', width: 120,
       render: (v) => {
@@ -277,7 +278,7 @@ export default function ApiPatrolFailures() {
           dataSource={interfaces}
           loading={loadingInterfaces}
           size="small"
-          pagination={interfaces.length > 20 ? { pageSize: 20 } : false}
+          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
         />
       </div>
 
@@ -316,6 +317,7 @@ export default function ApiPatrolFailures() {
           loading={loadingGroups}
           size="small"
           pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
+          scroll={{ x: 1210 }}
         />
       </div>
 
@@ -392,7 +394,7 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
               { key: 'api', label: '接口', children: String(/** @type {{apiPath?: string}} */ (group).apiPath || '') },
               { key: 'metric', label: '指标', children: String(/** @type {{metricName?: string}} */ (group).metricName || '') },
               { key: 'user', label: '客户', children: String(/** @type {{userName?: string}} */ (group).userName || '') },
-              { key: 'count', label: '压缩前次数', children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
+              { key: 'count', label: '压缩前失败次数', children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
               { key: 'status', label: '产品侧处理状态', children: String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '') },
               { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
             ]}
