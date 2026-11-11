@@ -1,5 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { StaticRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -25,33 +26,42 @@ vi.mock('../lib/apiClient.js', () => ({
 
 import ApiPatrolFailures from './ApiPatrolFailures.jsx'
 
+const renderPage = (search = '') => renderToStaticMarkup(
+  <StaticRouter location={`/api-patrol/failures${search}`}>
+    <ApiPatrolFailures />
+  </StaticRouter>,
+)
+
 describe('ApiPatrolFailures 真渲染冒烟', () => {
-  it('页面挂载不炸：两表+范围选择器渲染', () => {
-    const html = renderToStaticMarkup(React.createElement(ApiPatrolFailures))
-    // 独有文案锚定（不与导航撞名）
+  it('默认展示异常接口 Tab，两个 Tab 共用时间范围', () => {
+    const html = renderPage()
     expect(html).toContain('异常接口列表')
     expect(html).toContain('失败请求列表')
-    expect(html).toContain('组 = 同客户同接口 1 小时内失败链') // 独有说明
+    expect(html).toContain('跨日视图：成功率/次数按明细')
+    expect(html).not.toContain('组 = 同客户同接口 1 小时内失败链')
     expect(html).toContain('近7天')
     expect(html).toContain('近30天')
   })
 
-  it('筛选器组渲染（RequestID/根因L1/处理状态含未诊断）', () => {
-    const html = renderToStaticMarkup(React.createElement(ApiPatrolFailures))
+  it('根因分布跳转展示失败请求 Tab 和快捷筛选', () => {
+    const html = renderPage('?rootCauseL1=业务冲突')
+    expect(html).toContain('组 = 同客户同接口 1 小时内失败链')
+    expect(html).toContain('需产品侧处理')
     expect(html).toContain('RequestID')
-    expect(html).toContain('根因 L1')
     expect(html).toContain('处理状态')
+    expect(html).toContain('业务冲突')
   })
 
-  it('表格列头渲染（成功率/总次数/失败次数/压缩前失败次数）', () => {
-    const html = renderToStaticMarkup(React.createElement(ApiPatrolFailures))
-    expect(html).toContain('成功率')
-    expect(html).toContain('总次数')
-    expect(html).toContain('失败次数')
-    expect(html).toContain('压缩前失败次数')      // 11-11 拍板改名（口径=组内失败行数）
-    expect(html).not.toContain('压缩前次数')      // 旧列名全页面退场（列表+抽屉）
-    expect(html).toContain('产品侧处理状态')
-    expect(html).toContain('资源池')               // 失败请求列表新列（配合源码正则锚定，防与异常接口列表撞名恒绿）
+  it('两个 Tab 分别渲染对应的表格列', () => {
+    const interfaces = renderPage()
+    expect(interfaces).toContain('成功率')
+    expect(interfaces).toContain('总次数')
+    expect(interfaces).toContain('失败次数')
+    const groups = renderPage('?rootCauseL1=业务冲突')
+    expect(groups).toContain('压缩前失败次数')
+    expect(groups).not.toContain('压缩前次数')
+    expect(groups).toContain('产品侧处理状态')
+    expect(groups).toContain('资源池')
   })
 
   it('失败请求列表列契约（源码正则）：资源池列在前两列固定+压缩前失败次数（11-11 拍板）', () => {
@@ -73,7 +83,7 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
   })
 
   it('巡检概况卡渲染（2026-11-07 拍板：页面顶部检测结果总结；空数据占位不误显 LLM 状态）', () => {
-    const html = renderToStaticMarkup(React.createElement(ApiPatrolFailures))
+    const html = renderPage()
     expect(html).toContain('巡检概况')
     expect(html).toContain('检测结果总结，随时间范围刷新') // 卡片独有说明文案（防撞名）
     expect(html).toContain('暂无概况') // useEffect 不跑 → 空态占位

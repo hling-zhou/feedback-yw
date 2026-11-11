@@ -273,7 +273,9 @@ export function registerPatrolQueryRoutes(app) {
     if (q.customerType) { where.push('g.customer_type = ?'); params.push(q.customerType) }
     if (q.assignee) { where.push('g.assignee = ?'); params.push(q.assignee) }
     if (q.status) {
-      if (q.status === '未诊断') { where.push(`g.product_action_status = 'pending_diagnosis'`) }
+      if (q.status === '需产品侧处理') {
+        where.push("g.product_action_status IN ('待处理', '处理中', '已处理')")
+      } else if (q.status === '未诊断') { where.push(`g.product_action_status = 'pending_diagnosis'`) }
       else { where.push('g.product_action_status = ?'); params.push(q.status) }
     }
     if (q.minPreCount) { where.push('g.pre_compress_count >= ?'); params.push(Number(q.minPreCount)) }

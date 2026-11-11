@@ -152,6 +152,31 @@ describeQuery('patrol query API', () => {
     expect(r2.json().rows).toHaveLength(1)
   })
 
+  it('需产品侧处理快捷筛选包含待处理、处理中、已处理，排除其他状态', async () => {
+    const query = () => app.inject({
+      method: 'GET',
+      url: `/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&status=${encodeURIComponent('需产品侧处理')}`,
+      headers: authHeader(),
+    })
+    const updateStatus = db.prepare('UPDATE api_patrol_failure_groups SET product_action_status=? WHERE first_request_id=?')
+    try {
+      const pendingOnly = await query()
+      expect(pendingOnly.statusCode).toBe(200)
+      expect(pendingOnly.json().rows.map((row) => row.productActionStatus)).toEqual(['待处理'])
+
+      updateStatus.run('处理中', 'fail-1')
+      const inProgress = await query()
+      expect(inProgress.json().rows.map((row) => row.productActionStatus).sort()).toEqual(['处理中', '待处理'].sort())
+
+      updateStatus.run('已处理', 'fail-3')
+      const processed = await query()
+      expect(processed.json().rows.map((row) => row.productActionStatus).sort()).toEqual(['处理中', '已处理', '待处理'].sort())
+    } finally {
+      updateStatus.run('—', 'fail-1')
+      updateStatus.run('pending_diagnosis', 'fail-3')
+    }
+  })
+
   it('详情：诊断原文 + 处理字段', async () => {
     const groups = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE root_cause_l1='业务冲突'`).get()
     const res = await app.inject({

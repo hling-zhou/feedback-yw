@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
+import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiClient.js'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -12,7 +13,7 @@ const { RangePicker } = DatePicker
 /**
  * API 巡检 · 异常接口溯源页（docs/DESIGN-API巡检.md §7.1）。
  * ①异常接口列表：时间范围（近7天/30天/自定义）+ stats 驱动（次数从明细 Σ 重算，跨日口径 API 处理）
- * ②失败请求列表：复合搜索 + L1·L2 两级 Tag + 未诊断筛选
+ * ②失败请求列表：复合搜索 + L1·L2 两级 Tag + 处理状态快捷筛选
  * ③详情抽屉：诊断原文 + 处理闭环（提交=已处理/暂存=处理中）
  * 数据来自 /api/patrol/failures/*（camelCase 返回）。
  */
@@ -20,12 +21,16 @@ const ROOT_CAUSE_L1_OPTIONS = [
   '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类',
 ]
 const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断']
+const PRODUCT_ACTION_FILTER = '需产品侧处理'
 const CUSTOMER_TYPE_LABELS = { 仿真: '仿真', 测试账号: '测试' }
 
 export default function ApiPatrolFailures() {
   const message = useAppMessage()
   const { can } = useAuth()
+  const [searchParams] = useSearchParams()
+  const rootCauseFromUrl = searchParams.get('rootCauseL1') || ''
   const readOnly = !can('manageTags')
+  const [activeTab, setActiveTab] = useState(rootCauseFromUrl ? 'groups' : 'interfaces')
 
   /** @type {[any, React.Dispatch<React.SetStateAction<any>>]} */
   const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()])
@@ -38,7 +43,7 @@ export default function ApiPatrolFailures() {
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [filters, setFilters] = useState({
     metricName: '', apiPath: '', requestId: '', userName: '',
-    rootCauseL1: '', status: '', customerType: '',
+    rootCauseL1: rootCauseFromUrl, status: '', customerType: '',
   })
   /** @type {[number | null, Function]} */
   const [drawerId, setDrawerId] = useState(null)
@@ -49,6 +54,14 @@ export default function ApiPatrolFailures() {
     startDate: range[0].format('YYYY-MM-DD'),
     endDate: range[1].format('YYYY-MM-DD'),
   }), [range])
+
+  // 总览根因分布跳转到此页时，直接展示已按 L1 筛选的失败请求列表。
+  useEffect(() => {
+    setFilters((current) => current.rootCauseL1 === rootCauseFromUrl
+      ? current
+      : { ...current, rootCauseL1: rootCauseFromUrl })
+    if (rootCauseFromUrl) setActiveTab('groups')
+  }, [rootCauseFromUrl])
 
   const loadInterfaces = useCallback(async () => {
     setLoadingInterfaces(true)
@@ -215,14 +228,20 @@ export default function ApiPatrolFailures() {
   return (
     <div className="space-y-4">
       <div className="page-card">
-        <div className="page-card-header">
+        <div className="page-card-header flex-wrap">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             <span className="page-card-title">巡检概况</span>
             <Typography.Text type="secondary" className="text-xs">检测结果总结，随时间范围刷新</Typography.Text>
+            {summaryData?.summary ? (
+              summaryData.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>
+            ) : null}
           </div>
-          {summaryData?.summary ? (
-            summaryData.summary.degraded ? <Tag>LLM 未启用 · 模板直出</Tag> : <Tag color="green">LLM 润色</Tag>
-          ) : null}
+          <Space wrap size="small">
+            <RangePicker value={range} onChange={(v) => v && setRange(v)} allowClear={false} />
+            <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
+            <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
+            <Button size="small" onClick={() => setRange([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])}>T-1</Button>
+          </Space>
         </div>
         {summaryData?.summary ? (
           <>
@@ -254,70 +273,90 @@ export default function ApiPatrolFailures() {
       </div>
 
       <div className="page-card">
-        <div className="page-card-header">
-          <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className="page-card-title">异常接口列表</span>
-            <Typography.Text type="secondary" className="text-xs">
-              {isSingleDay
-                ? '单日视图：展示推送原值，总/失败次数从明细重算'
-                : '跨日视图：成功率/次数按明细 Σ 重算，时长类显示 —'}
-            </Typography.Text>
-          </div>
-          <Space>
-            <RangePicker value={range} onChange={(v) => v && setRange(v)} allowClear={false} />
-            <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
-            <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
-            <Button size="small" onClick={() => setRange([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])}>T-1</Button>
-            <Button size="small" onClick={loadInterfaces}>刷新</Button>
-          </Space>
-        </div>
-        <Table
-          className="!mt-3"
-          rowKey={(r) => `${r.pool}|${r.apiPath}|${r.metricName}`}
-          columns={interfaceColumns}
-          dataSource={interfaces}
-          loading={loadingInterfaces}
-          size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
-        />
-      </div>
-
-      <div className="page-card">
-        <div className="page-card-header">
-          <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className="page-card-title">失败请求列表</span>
-            <Typography.Text type="secondary" className="text-xs">
-              组 = 同客户同接口 1 小时内失败链（压缩后）；点击 RequestID 查看诊断原文与处理闭环
-            </Typography.Text>
-          </div>
-        </div>
-        <Space className="!my-3" wrap size="small">
-          <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
-            onSearch={(v) => setFilters((f) => ({ ...f, requestId: v }))} />
-          <Input.Search size="small" placeholder="指标名称" allowClear className="!w-28"
-            onSearch={(v) => setFilters((f) => ({ ...f, metricName: v }))} />
-          <Input.Search size="small" placeholder="接口名称" allowClear className="!w-44"
-            onSearch={(v) => setFilters((f) => ({ ...f, apiPath: v }))} />
-          <Input.Search size="small" placeholder="客户名称" allowClear className="!w-32"
-            onSearch={(v) => setFilters((f) => ({ ...f, userName: v }))} />
-          <Select size="small" placeholder="根因 L1" allowClear className="!w-36"
-            options={ROOT_CAUSE_L1_OPTIONS.map((x) => ({ label: x, value: x }))}
-            onChange={(v) => setFilters((f) => ({ ...f, rootCauseL1: v || '' }))} />
-          <Select size="small" placeholder="处理状态" allowClear className="!w-28"
-            options={STATUS_OPTIONS.map((x) => ({ label: x, value: x }))}
-            onChange={(v) => setFilters((f) => ({ ...f, status: v || '' }))} />
-          <Select size="small" placeholder="客户类型" allowClear className="!w-24"
-            options={[{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }]}
-            onChange={(v) => setFilters((f) => ({ ...f, customerType: v || '' }))} />
-        </Space>
-        <Table
-          rowKey="id"
-          columns={groupColumns}
-          dataSource={groups}
-          loading={loadingGroups}
-          size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
-          scroll={{ x: 1210 }}
+        <Tabs
+          className="[&_.ant-tabs-tab]:font-semibold"
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'interfaces',
+              label: '异常接口列表',
+              children: (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Typography.Text type="secondary" className="text-xs">
+                      {isSingleDay
+                        ? '单日视图：展示推送原值，总/失败次数从明细重算'
+                        : '跨日视图：成功率/次数按明细 Σ 重算，时长类显示 —'}
+                    </Typography.Text>
+                    <Button size="small" onClick={loadInterfaces}>刷新</Button>
+                  </div>
+                  <Table
+                    className="!mt-3"
+                    rowKey={(r) => `${r.pool}|${r.apiPath}|${r.metricName}`}
+                    columns={interfaceColumns}
+                    dataSource={interfaces}
+                    loading={loadingInterfaces}
+                    size="small"
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'groups',
+              label: '失败请求列表',
+              children: (
+                <>
+                  <Typography.Text type="secondary" className="text-xs">
+                    组 = 同客户同接口 1 小时内失败链（压缩后）；点击 RequestID 查看诊断原文与处理闭环
+                  </Typography.Text>
+                  <Space className="!my-3" wrap size="small">
+                    <Button
+                      size="small"
+                      type={filters.status === PRODUCT_ACTION_FILTER ? 'primary' : 'default'}
+                      title="包含待处理、处理中、已处理"
+                      aria-pressed={filters.status === PRODUCT_ACTION_FILTER}
+                      onClick={() => setFilters((current) => ({
+                        ...current,
+                        status: current.status === PRODUCT_ACTION_FILTER ? '' : PRODUCT_ACTION_FILTER,
+                      }))}
+                    >
+                      需产品侧处理
+                    </Button>
+                    <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
+                      onSearch={(v) => setFilters((f) => ({ ...f, requestId: v }))} />
+                    <Input.Search size="small" placeholder="指标名称" allowClear className="!w-28"
+                      onSearch={(v) => setFilters((f) => ({ ...f, metricName: v }))} />
+                    <Input.Search size="small" placeholder="接口名称" allowClear className="!w-44"
+                      onSearch={(v) => setFilters((f) => ({ ...f, apiPath: v }))} />
+                    <Input.Search size="small" placeholder="客户名称" allowClear className="!w-32"
+                      onSearch={(v) => setFilters((f) => ({ ...f, userName: v }))} />
+                    <Select size="small" placeholder="根因 L1" allowClear className="!w-36"
+                      value={filters.rootCauseL1 || undefined}
+                      options={ROOT_CAUSE_L1_OPTIONS.map((x) => ({ label: x, value: x }))}
+                      onChange={(v) => setFilters((f) => ({ ...f, rootCauseL1: v || '' }))} />
+                    <Select size="small" placeholder="处理状态" allowClear className="!w-28"
+                      value={STATUS_OPTIONS.includes(filters.status) ? filters.status : undefined}
+                      options={STATUS_OPTIONS.map((x) => ({ label: x, value: x }))}
+                      onChange={(v) => setFilters((f) => ({ ...f, status: v || '' }))} />
+                    <Select size="small" placeholder="客户类型" allowClear className="!w-24"
+                      options={[{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }]}
+                      onChange={(v) => setFilters((f) => ({ ...f, customerType: v || '' }))} />
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    columns={groupColumns}
+                    dataSource={groups}
+                    loading={loadingGroups}
+                    size="small"
+                    pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
+                    scroll={{ x: 1210 }}
+                  />
+                </>
+              ),
+            },
+          ]}
         />
       </div>
 
