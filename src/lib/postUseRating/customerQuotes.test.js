@@ -148,6 +148,7 @@ describe('customer quote extraction', () => {
       },
     ])
     expect(pickIssueEvidenceTexts(registry).positiveQuotes.map((item) => item.text)).toEqual(['用着很稳定'])
+    expect(pickIssueEvidenceTexts(registry).quotes).toEqual([])
     expect(pickFeaturedVoiceQuotes(registry).positive.map((item) => item.text)).toEqual(['用着很稳定'])
     expect(summarizeQuotePolarity(registry).positiveCount).toBe(1)
   })

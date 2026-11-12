@@ -10,6 +10,8 @@ import {
   formatMonthlyCallbackHighlightReason,
 } from './htmlReportModel.js'
 import { compareSatisfactionMom } from './scoreContext.js'
+import { buildReportIssueOccurrences, traceSourceFingerprint } from './reportEvidence.js'
+import { initialReportIssueNarratives } from './reportNarrativeState.js'
 
 const period = {
   id: 'period:month:2026-06',
@@ -126,6 +128,16 @@ describe('html monthly report model', () => {
         commentText: '给了满分但还是太卡了',
         customerName: '客户十负',
       },
+      {
+        id: 'r-ten-neutral',
+        dataSourceType: 'post_use_rating',
+        productName: '弹性公网IP',
+        ratingScore: 10,
+        channel: 'sms',
+        importMonth: '2026-06',
+        commentText: '已知悉',
+        customerName: '客户十中',
+      },
     ]
     const storyModel = buildPostUseStoryModel({
       records,
@@ -142,6 +154,7 @@ describe('html monthly report model', () => {
     expect(model.featuredVoice.positive.map((item) => item.text)).toContain('用着很稳定')
     expect(model.featuredVoice.positive.map((item) => item.text)).not.toContain('给了满分但还是太卡了')
     expect(model.featuredVoice.negative.map((item) => item.text)).toContain('给了满分但还是太卡了')
+    expect(model.issues[0].evidence.quotes.map((item) => item.text)).not.toContain('已知悉')
   })
 
   it('applies saved narratives without copying table numbers into the overlay', () => {
@@ -309,6 +322,34 @@ describe('html monthly report model', () => {
     expect(model.productCards[0].visitNarratives[0]).toContain('经省代表回访，核实为「已回访」')
   })
 
+  it('keeps a saved conclusion for every scored product in month and quarter reports', () => {
+    const records = Array.from({ length: 10 }, (_, index) => ({
+      id: `healthy-report-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 10,
+      channel: 'sms',
+      importMonth: '2026-06',
+    }))
+    const quarter = {
+      id: 'period:quarter:2026-Q2', label: '2026年Q2',
+      startDate: '2026-04-01', endDate: '2026-06-30', granularity: 'quarter', anchorYear: 2026,
+    }
+    for (const [reportMonth, reportPeriod] of [['2026-06', period], ['2026-Q2', quarter]]) {
+      const storyModel = buildPostUseStoryModel({ records, allRecords: records, productNames: ['弹性公网IP'], period: reportPeriod })
+      const model = buildHtmlMonthlyReportModel({ reportMonth, reportPeriod, storyModel, records })
+      expect(model.issues).toEqual([])
+      expect(model.productCards).toHaveLength(1)
+      expect(model.productCards[0].issue).toBeNull()
+      expect(model.productCards[0].conclusionDraft).toContain('体验均分 10 分')
+      const key = model.productCards[0].conclusionKey
+      const saved = applyHtmlReportOverlay(model, {
+        narratives: { issues: { [key]: { conclusion: '人工填写的产品结论', action: '' } } },
+      })
+      expect(saved.productCards[0].conclusion).toBe('人工填写的产品结论')
+    }
+  })
+
   it('writes current-month visit evidence as a locked sentence', () => {
     expect(composeVisitEvidenceSentence({
       customerName: '某某公司',
@@ -342,6 +383,105 @@ describe('html monthly report model', () => {
     expect(model.productCards[0].visitNarratives[0]).toContain('经省代表回访，核实为「第一次回访」')
     expect(model.productCards[0].visitNarratives[0]).toContain('经产品组评估，「需求接纳」：「备注一」')
     expect(model.judgment).toContain('本期省代表回访 1 条')
+  })
+
+  it('keeps product visit narratives sourced only from visit records in month and quarter reports', () => {
+    const records = [{
+      id: 'rating-source-only',
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 2,
+      channel: 'sms',
+      importMonth: '2026-06',
+      customerName: '客户甲',
+      commentText: '评分记录原话：系统无法访问',
+    }]
+    const visits = [
+      {
+        id: 'visit-with-feedback',
+        importMonth: '2026-06',
+        productName: '弹性公网IP',
+        customerName: '客户甲',
+        userFeedbackText: '回访记录客户反馈：故障已恢复',
+        visitResult: '客户确认已恢复',
+      },
+      {
+        id: 'visit-without-feedback',
+        importMonth: '2026-06',
+        productName: '弹性公网IP',
+        customerName: '客户甲',
+        visitResult: '第二次回访待复查',
+      },
+    ]
+    const quarter = {
+      id: 'period:quarter:2026-Q2', label: '2026年Q2',
+      startDate: '2026-04-01', endDate: '2026-06-30', granularity: 'quarter', anchorYear: 2026,
+    }
+
+    const reportCases = [
+      { reportMonth: '2026-06', reportPeriod: period },
+      { reportMonth: '2026-Q2', reportPeriod: quarter },
+    ]
+    for (const { reportMonth, reportPeriod } of reportCases) {
+      const storyModel = buildPostUseStoryModel({ records, allRecords: records, visits, productNames: ['弹性公网IP'], period: reportPeriod })
+      const model = buildHtmlMonthlyReportModel({ reportMonth, reportPeriod, storyModel, records, visits })
+      const lines = model.productCards[0].visitNarratives
+      expect(lines).toHaveLength(2)
+      expect(lines[0]).toContain('反馈「回访记录客户反馈：故障已恢复」')
+      expect(lines[0]).toContain('经省代表回访，核实为「客户确认已恢复」')
+      expect(lines[1]).toContain('经省代表回访，核实为「第二次回访待复查」')
+      expect(lines[1]).not.toContain('反馈「')
+      expect(lines.join(' ')).not.toContain('评分记录原话：系统无法访问')
+    }
+  })
+
+  it('uses exact prior quarter issue counts and reconciles only the visited customer issue', () => {
+    const quarter = {
+      id: 'period:quarter:2026-Q2', label: '2026年Q2',
+      startDate: '2026-04-01', endDate: '2026-06-30', granularity: 'quarter', anchorYear: 2026,
+    }
+    const rating = (id, month, customerCode, score = 2) => ({
+      id, dataSourceType: 'post_use_rating', product: '弹性公网IP', productName: '弹性公网IP',
+      importMonth: month, customerCode, customerName: customerCode,
+      channel: 'console', ratingScore: score, feedbackReasonTexts: ['页面打开慢'],
+    })
+    const previous = rating('report-prior-q', '2026-03', '客户旧')
+    const older = rating('report-older-q', '2025-12', '客户更旧')
+    const excluded = rating('report-current-excluded', '2026-05', '客户甲')
+    const active = rating('report-current-active', '2026-06', '客户乙')
+    const records = [excluded, active]
+    const allRecords = [older, previous, ...records]
+    const visits = [{
+      id: 'report-visit', importMonth: '2026-05', productName: '弹性公网IP',
+      customerName: '客户甲', userFeedbackText: '页面打开慢', visitResult: '无问题',
+      internalEvaluationDetail: '核对日志后未复现',
+    }]
+    const traces = [{
+      id: 'report-trace', importMonth: '2026-06', productName: '弹性公网IP',
+      customerName: '客户乙', progress: '已定位到页面首屏资源加载耗时', assigneeName: '产品甲',
+    }]
+    const issueLinks = [{
+      issueId: buildReportIssueOccurrences([active])[0].id,
+      sourceType: 'trace', sourceId: traces[0].id,
+      sourceFingerprint: traceSourceFingerprint(traces[0]), verdict: 'related',
+    }]
+    const storyModel = buildPostUseStoryModel({ records, allRecords, visits, productNames: ['弹性公网IP'], period: quarter })
+    const model = buildHtmlMonthlyReportModel({
+      reportMonth: '2026-Q2', reportPeriod: quarter, storyModel, records, allRecords, visits, traces, issueLinks,
+    })
+    expect(model.reportChanges.find((row) => row.issue === '页面打开慢')).toMatchObject({
+      currentCount: 1, previousCount: 1, change: '持续', previousMonth: '2026-03', currentMonth: '2026-06',
+    })
+    const card = model.productCards[0]
+    expect(card.issue.evidence.report).toMatchObject({ rawPieceCount: 2, excludedIssueCount: 1, activeIssueCount: 1 })
+    expect(card.issue.detailDraft).toContain('已排除 1 次')
+    expect(card.issue.actionDraft).toContain('已定位到页面首屏资源加载耗时')
+    expect(initialReportIssueNarratives(model)[card.conclusionKey].action)
+      .toContain('已定位到页面首屏资源加载耗时')
+    expect(card.conclusionDraft).toContain('核对日志后未复现')
+    const saved = applyHtmlReportOverlay(model, { narratives: { issues: { [card.conclusionKey]: { conclusion: '人工结论', action: '人工举措' } } } })
+    expect(saved.productCards[0].conclusion).toBe('人工结论')
+    expect(saved.productCards[0].issue.action).toBe('人工举措')
   })
 
   it('keeps monthly callback highlights as numbered facts without the template suffix', () => {

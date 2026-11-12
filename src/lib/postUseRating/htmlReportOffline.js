@@ -440,6 +440,12 @@ function productNavHtml(productName) {
 }
 
 function negativeQuotesHtml(evidence, keyCustomers = []) {
+  if (evidence.report) {
+    const report = evidence.report
+    const rowHtml = (item) => `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--negative">负反馈</span>「${text(item.text)}」 · ${escapeHtml(String(item.count))} 次${item.lowestScore == null ? '' : ` · 最低 ${escapeHtml(String(item.lowestScore))} 分`}${item.excludedCount ? ` · 已排除 ${escapeHtml(String(item.excludedCount))} 次` : ''}</div>`
+    return `${report.highlights?.length ? `<div class="report-group-subtitle">低分及高频原话</div>${report.highlights.map(rowHtml).join('')}` : ''}
+      ${report.quotes?.length ? `<details><summary>查看全部原话（${escapeHtml(String(report.rawPieceCount || 0))} 条，按原话合并）</summary>${report.quotes.map(rowHtml).join('')}</details>` : ''}`
+  }
   const quotes = evidence.quotes || []
   const options = evidence.options || []
   if (quotes.length) return quotes.map((item) => quoteLineHtml(item, item.polarity, keyCustomers)).join('')
@@ -458,7 +464,7 @@ function productMetricCard(label, value, comparison) {
 
 function productCardHtml(card, preview, issueNarratives, active = false, keyCustomers = []) {
   const issue = card.issue
-  const narrative = issue ? issueNarratives[issue.key] || {} : {}
+  const narrative = issueNarratives[card.conclusionKey] || {}
   const evidence = issue?.evidence || {}
   const distribution = (preview.scoreDistributionTable || []).filter((row) => row.productName === card.productName)
   const journeys = (preview.journeyDistribution || []).filter((row) => row.productName === card.productName)
@@ -469,7 +475,7 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
     referenceLines: [{ y: POST_USE_SCORE_BASELINE, label: '关注线 9' }],
   })
   const anchorBase = `p-${card.productName}`
-  const conclusion = narrative.conclusion ?? issue?.conclusion ?? issue?.conclusionDraft ?? ''
+  const conclusion = narrative.conclusion ?? card.conclusion ?? card.conclusionDraft ?? ''
   const action = narrative.action ?? issue?.action ?? issue?.actionDraft ?? ''
   const positiveQuotes = evidence.positiveQuotes || []
   return `<section class="report-product-detail${active ? ' is-active' : ''}" data-product-panel="${escapeAttr(card.productName)}">
@@ -477,7 +483,7 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
     ${productNavHtml(card.productName)}
     <div id="${escapeAttr(anchorBase)}-overview" class="report-product-group report-product-group--overview" data-nav-group="overview">
       <div class="report-group-title">评分概览</div>
-      ${issue ? `<div class="report-group-subtitle">结论</div>${readonlyBlock(conclusion)}` : ''}
+      <div class="report-group-subtitle">结论</div>${readonlyBlock(conclusion)}
       <div class="post-use-html-report-kpis post-use-html-report-kpis--product">
         ${productMetricCard('产品体验得分', escapeHtml(formatScore(card.experienceScore)), card.comparisons?.experienceScore)}
         ${productMetricCard('投诉回访满意度', escapeHtml(formatPercent(card.satisfactionRate)), card.comparisons?.satisfactionRate)}
@@ -500,6 +506,9 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
       <div class="report-group-title">负反馈详情及建议举措</div>
       ${issue ? `
         ${scoreMeterHtml(evidence.avgScore, evidence.sampleSize, evidence.nonTenCount)}
+        ${card.generatedStale ? '<div class="report-evidence-hint">证据已变化，AI 文字稿已失效，当前显示规则稿。</div>' : ''}
+        ${readonlyBlock(issue.detailDraft || '本期未检出有效负反馈。')}
+        <div class="report-evidence-hint">证据索引：评分记录 ${escapeHtml(String(evidence.sourceRefs?.ratingIds?.length || 0))} 条（编号见附录）${evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${text(evidence.sourceRefs.traceIds.join('、'))}` : ''}${evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${text(evidence.sourceRefs.visitIds.join('、'))}` : ''}</div>
         ${evidence.changeLabel ? `<div class="report-evidence-hint">问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}</div>` : ''}
         ${negativeQuotesHtml(evidence, keyCustomers)}` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
       <div class="report-group-subtitle">省代表回访记录</div>
@@ -901,12 +910,13 @@ export function buildOfflineMonthlyReportHtml(input) {
         (preview.customers || []).map((row) => [`${text(row.customerName)}${keyCustomerStarHtml(row.customerName, keyCustomers)}`, text(row.customerCode), escapeHtml((row.products || []).join('、') || '—'), text(row.nonTenCount), text(row.avgScore), text(row.latestQuote)]),
       ))}
       ${appendixSectionHtml('有效客户原话登记', tableHtml(
-        ['渠道', '正负', '类型', '产品', '得分', '客户名称/编码', '时间', '原文'],
+        ['渠道', '正负', '类型', '产品', '记录ID', '得分', '客户名称/编码', '时间', '原文'],
         (model.quoteRegistry || []).map((row) => [
           text(row.channelLabel),
           escapeHtml(polarityLabel(row.polarity)),
           escapeHtml(row.kind === 'quote' ? '客户原话' : '反馈选项'),
           text(row.productName),
+          text(row.recordId),
           text(row.score),
           escapeHtml([row.customerName, row.customerCode].filter(Boolean).join(' / ') || '—') + keyCustomerStarHtml(row.customerName, keyCustomers),
           text(row.answeredAt),

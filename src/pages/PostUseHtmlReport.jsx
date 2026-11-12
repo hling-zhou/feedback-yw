@@ -14,6 +14,10 @@ import {
 } from '../lib/productCatalog/postUseRatingProducts.js'
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { listActionItems } from '../lib/actionItemClient.js'
+import { listAllPostUseJiraItems } from '../lib/postUseJiraClient.js'
+import { listReportDrafts, listReportIssueLinks, saveReportDraft } from '../lib/postUseRating/reportClient.js'
+import { generateReportProductDraft } from '../lib/postUseRating/reportNarrative.js'
+import { initialReportIssueNarratives, mergeManualReportIssueNarratives } from '../lib/postUseRating/reportNarrativeState.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
 import { loadPostUseTrend } from '../lib/postUseRating/trendStore.js'
 import { loadPostUsePeriodQuality } from '../lib/postUseRating/qualityStore.js'
@@ -68,6 +72,10 @@ export default function PostUseHtmlReport() {
     productCatalogMeta,
   } = useInsights()
   const [visits, setVisits] = useState([])
+  const [traces, setTraces] = useState([])
+  const [issueLinks, setIssueLinks] = useState([])
+  const [generatedDrafts, setGeneratedDrafts] = useState([])
+  const [generatingProduct, setGeneratingProduct] = useState('')
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
   const [quality, setQuality] = useState(null)
@@ -80,6 +88,7 @@ export default function PostUseHtmlReport() {
   const [todoNote, setTodoNote] = useState('')
   const [todoItems, setTodoItems] = useState([])
   const [issueNarratives, setIssueNarratives] = useState({})
+  const [manualIssueFields, setManualIssueFields] = useState({})
   const [visitSupplements, setVisitSupplements] = useState({})
   const [statusTrends, setStatusTrends] = useState(null)
   const [hiddenSectionIds, setHiddenSectionIds] = useState([])
@@ -112,16 +121,22 @@ export default function PostUseHtmlReport() {
       }
       setSideLoading(true)
       try {
-        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap] = await Promise.all([
+        const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap, traceRows, links, drafts] = await Promise.all([
           loadVisitRecords(adapter),
           listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
           loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
           loadHtmlReportOverlay(adapter, reportKey).catch(() => null),
           loadMonthlyReportLearnings(adapter).catch(() => []),
+          listAllPostUseJiraItems().catch(() => []),
+          listReportIssueLinks().catch(() => []),
+          listReportDrafts(reportKey).catch(() => []),
         ])
         if (!cancelled) {
           setVisits(v)
+          setTraces(traceRows)
+          setIssueLinks(links)
+          setGeneratedDrafts(drafts)
           setActionItems(actionsRes?.items || [])
           setTrendSnap(trend)
           setQuality(qualityStore)
@@ -256,7 +271,7 @@ export default function PostUseHtmlReport() {
   ])
 
   const model = useMemo(() => {
-    if (!reportKey || !storyModel) return null
+    if (!reportKey || !storyModel || sideLoading) return null
     return buildHtmlMonthlyReportModel({
       reportMonth: reportKey,
       reportPeriod,
@@ -265,6 +280,9 @@ export default function PostUseHtmlReport() {
       allRecords: allScopedItems,
       productNames,
       visits,
+      traces,
+      issueLinks,
+      generatedDrafts,
       actionItems,
       reasons: monthReasons,
       quality: periodQuality,
@@ -273,7 +291,7 @@ export default function PostUseHtmlReport() {
       statusTrends,
       trend: trendSnap,
     })
-  }, [reportKey, reportPeriod, storyModel, scopedItems, allScopedItems, productNames, visits, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
+  }, [reportKey, reportPeriod, storyModel, sideLoading, scopedItems, allScopedItems, productNames, visits, traces, issueLinks, generatedDrafts, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
 
   useEffect(() => {
     if (!model) return
@@ -281,14 +299,8 @@ export default function PostUseHtmlReport() {
     setTodoNote(model.todoNote)
     setTodoItems(model.todoItems || [])
     setHiddenSectionIds(model.hiddenSectionIds || [])
-    setIssueNarratives(
-      Object.fromEntries(
-        (model.issues || []).map((issue) => [
-          issue.key,
-          { conclusion: issue.conclusion, action: issue.action },
-        ]),
-      ),
-    )
+    setIssueNarratives(initialReportIssueNarratives(model))
+    setManualIssueFields({})
     setVisitSupplements(
       Object.fromEntries(
         (model.previousVisits || []).map((row) => [
@@ -309,6 +321,10 @@ export default function PostUseHtmlReport() {
   const loading = !storageReady || sideLoading || ratingsPending
 
   const onIssueChange = (key, field, value) => {
+    setManualIssueFields((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), [field]: true },
+    }))
     setIssueNarratives((prev) => ({
       ...prev,
       [key]: {
@@ -351,7 +367,11 @@ export default function PostUseHtmlReport() {
         hiddenSectionIds,
         narratives: {
           judgment,
-          issues: issueNarratives,
+          issues: mergeManualReportIssueNarratives(
+            overlay?.narratives?.issues,
+            issueNarratives,
+            manualIssueFields,
+          ),
           todoNote,
           todoItems,
           visitSupplements,
@@ -363,6 +383,32 @@ export default function PostUseHtmlReport() {
       message.error(error?.message || '保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleGenerateProduct = async (card) => {
+    if (!canEdit || !card?.narrative || !reportKey) return
+    setGeneratingProduct(card.productName)
+    try {
+      const draft = await generateReportProductDraft(settings, card.narrative)
+      const saved = await saveReportDraft(reportKey, card.productName, card.evidenceFingerprint, draft)
+      setGeneratedDrafts((prev) => [
+        ...prev.filter((item) => item.productName !== card.productName), saved.item,
+      ])
+      const manual = overlay?.narratives?.issues?.[card.conclusionKey]
+      const edited = manualIssueFields[card.conclusionKey]
+      setIssueNarratives((prev) => ({
+        ...prev,
+        [card.conclusionKey]: {
+          conclusion: manual?.conclusion ?? (edited?.conclusion ? prev[card.conclusionKey]?.conclusion : draft.conclusion),
+          action: manual?.action ?? (edited?.action ? prev[card.conclusionKey]?.action : draft.action),
+        },
+      }))
+      message.success(manual || edited ? 'AI 文字稿已生成，人工编辑保持优先' : '本产品文字稿已生成')
+    } catch (error) {
+      message.error(error?.message || '生成文字稿失败，当前继续显示规则稿')
+    } finally {
+      setGeneratingProduct('')
     }
   }
 
@@ -435,6 +481,8 @@ export default function PostUseHtmlReport() {
         onTodoNoteChange={setTodoNote}
         onTodoItemsChange={setTodoItems}
         onIssueChange={onIssueChange}
+        onGenerateProduct={handleGenerateProduct}
+        generatingProduct={generatingProduct}
         onVisitSupplementChange={onVisitSupplementChange}
         keyCustomers={settings?.postUseKeyCustomers}
       />

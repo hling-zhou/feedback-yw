@@ -30,6 +30,9 @@ function model() {
     },
     productCards: [{
       productName: '弹性公网IP',
+      conclusionKey: 'product:弹性公网IP',
+      conclusionDraft: '本期产品结论',
+      conclusion: '本期产品结论',
       experienceScore: 8,
       satisfactionRate: 90,
       mixedAvg: 8,
@@ -99,6 +102,7 @@ describe('PostUseHtmlReportDocument render', () => {
     expect(html).toContain('与公司均分持平')
     expect(html).toContain('暂无上月对比')
     expect(html).toContain('分产品情况')
+    expect(html).toContain('本期产品结论')
     expect(html).toContain('待办事项及进展')
     expect(html).toContain('上期省代表回访结果补充')
     expect(html).toContain('上期无省代表回访记录')

@@ -15,6 +15,33 @@ const period = {
 }
 
 describe('offline monthly report html', () => {
+  it('exports conclusions for healthy products in monthly and quarterly reports', () => {
+    const records = Array.from({ length: 10 }, (_, index) => ({
+      id: `offline-healthy-${index}`,
+      dataSourceType: 'post_use_rating',
+      productName: '弹性公网IP',
+      ratingScore: 10,
+      channel: 'sms',
+      importMonth: '2026-06',
+    }))
+    const quarter = {
+      id: 'period:quarter:2026-Q2', label: '2026年Q2',
+      startDate: '2026-04-01', endDate: '2026-06-30', granularity: 'quarter', anchorYear: 2026,
+    }
+    for (const [reportMonth, reportPeriod] of [['2026-06', period], ['2026-Q2', quarter]]) {
+      const storyModel = buildPostUseStoryModel({ records, allRecords: records, productNames: ['弹性公网IP'], period: reportPeriod })
+      const model = buildHtmlMonthlyReportModel({ reportMonth, reportPeriod, storyModel, records })
+      expect(model.productCards[0].issue).toBeNull()
+      const html = buildOfflineMonthlyReportHtml({
+        model,
+        issueNarratives: { [model.productCards[0].conclusionKey]: { conclusion: '离线产品结论', action: '' } },
+        exportedAt: '2026-11-12T00:00:00.000Z',
+      })
+      expect(html).toContain('report-group-subtitle">结论</div>')
+      expect(html).toContain('离线产品结论')
+    }
+  })
+
   it('builds a self-contained snapshot that opens without the app', () => {
     const records = [
       {
@@ -69,6 +96,10 @@ describe('offline monthly report html', () => {
     expect(html).toContain('待办事项及进展')
     expect(html).not.toContain('待办事情及进展')
     expect(html).toContain('部门均分（三渠道）')
+    expect(html).toContain('本期收集 1 条有效负反馈片段')
+    expect(html).toContain('查看全部原话（1 条，按原话合并）')
+    expect(html).toContain('记录ID')
+    expect(html).toContain('r0')
     expect(html).not.toContain('云网均分（三渠道）')
     expect(html).toContain('上期省代表回访结果补充')
     expect(html).not.toContain('<textarea')
@@ -162,7 +193,7 @@ describe('offline monthly report html', () => {
       storyModel,
       records,
     })
-    model.charts.statusTrend = {
+    ;/** @type {any} */ (model).charts.statusTrend = {
       data: [
         { date: '2026-04', departmentScore: 9.2, departmentRate: null },
         { date: '2026-05', departmentScore: null, departmentRate: 90 },

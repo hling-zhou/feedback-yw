@@ -1,4 +1,4 @@
-import { resolvePreviousInsightPeriod, shiftYearMonth } from '../../domain/insightPeriod.js'
+import { resolveInsightPeriod, resolvePreviousInsightPeriod, shiftYearMonth } from '../../domain/insightPeriod.js'
 import { postUsePeriodMonths } from './periodScope.js'
 import {
   POST_USE_CRITICAL_LOW_SCORE,
@@ -17,6 +17,13 @@ import {
   pickIssueEvidenceTexts,
   summarizeQuotePolarity,
 } from './customerQuotes.js'
+import {
+  buildReportIssueOccurrences,
+  buildReportPeriodIssueChanges,
+  buildReportProductEvidence,
+  resolveReportIssues,
+} from './reportEvidence.js'
+import { buildReportProductNarrative, reportNarrativeFingerprint } from './reportNarrative.js'
 
 export { buildYunwangScoreContext }
 export const MAX_REPORT_ISSUES = 8
@@ -66,18 +73,6 @@ function groupQuotesByProduct(records) {
     })
   }
   return map
-}
-
-function findRecommendedAction(actionRows, productName) {
-  return (actionRows || []).find((row) => row.productName === productName && (row.status === 'recommended' || row.action))
-}
-
-function draftActionText(actionRow) {
-  if (!actionRow) return '建议明确责任人：省代表回访、产品部溯源，或立项产品举措。'
-  if (actionRow.action?.content) {
-    return `继续推进举措「${actionRow.action.content}」，写清责任人与本月完成标准。`
-  }
-  return `建议就「${actionRow.title}」推动处理：写清谁、对什么产品、回访 / 溯源 / 产品举措。`
 }
 
 function attachEvidence({ product, change, quotesByProduct, records }) {
@@ -260,7 +255,7 @@ function previousYunwangMetrics(allRecords, months, productNames) {
 }
 
 /**
- * @param {{ reportMonth: string, overview?: object, issues?: Array<{ key: string }> }} input
+ * @param {{ reportMonth: string, overview?: Record<string, any>, issues?: Array<{ key: string }>, previousYunwangAvg?: number, callbackUnqualifiedCount?: number, quoteCount?: number, positiveCount?: number, negativeCount?: number, evidenceFingerprints?: string[] }} input
  */
 export function computeReportDataFingerprint(input) {
   const overview = input?.overview || {}
@@ -276,19 +271,21 @@ export function computeReportDataFingerprint(input) {
     input?.quoteCount ?? '',
     input?.positiveCount ?? '',
     input?.negativeCount ?? '',
+    (input?.evidenceFingerprints || []).join(','),
     issueKeys,
   ].join('|')
 }
 
 /**
  * @param {{
- *   storyModel: ReturnType<import('./storyModel.js').buildPostUseStoryModel>
+ *   storyModel: any
  *   records: object[]
+ *   reportChanges?: any[]
  * }} input
  */
-export function buildHtmlReportIssues({ storyModel, records }) {
+export function buildHtmlReportIssues({ storyModel, records, reportChanges }) {
   const products = storyModel?.productOverview || []
-  const changes = storyModel?.trendsAndChanges?.changes || []
+  const changes = reportChanges || storyModel?.trendsAndChanges?.changes || []
   const actionRows = storyModel?.actionsAndRecovery?.rows || []
   const quotesByProduct = groupQuotesByProduct(records)
   const productByName = new Map(products.map((product) => [product.productName, product]))
@@ -307,14 +304,13 @@ export function buildHtmlReportIssues({ storyModel, records }) {
     const change = extraChange
       || growingChanges.find((item) => item.productName === productName)
       || null
-    const actionRow = findRecommendedAction(actionRows, productName)
     return {
       key,
       kind,
       severity,
       productName,
       conclusionDraft,
-      actionDraft: draftActionText(actionRow),
+      actionDraft: '',
       evidence: attachEvidence({ product, change, quotesByProduct, records }),
     }
   }
@@ -373,7 +369,7 @@ export function buildHtmlReportIssues({ storyModel, records }) {
 export function applyHtmlReportOverlay(model, overlay) {
   const narratives = overlay?.narratives || {}
   const issueNarratives = narratives.issues || {}
-  const issues = (model.issues || []).map((issue) => ({
+  const applyIssueNarrative = (issue) => ({
     ...issue,
     conclusion: overlay
       ? (issueNarratives[issue.key]?.conclusion ?? issue.conclusionDraft)
@@ -381,12 +377,23 @@ export function applyHtmlReportOverlay(model, overlay) {
     action: overlay
       ? (issueNarratives[issue.key]?.action ?? issue.actionDraft)
       : issue.actionDraft,
+  })
+  const issues = (model.issues || []).map(applyIssueNarrative)
+  const overflow = (model.overflow || []).map(applyIssueNarrative)
+  const productCards = (model.productCards || []).map((card) => ({
+    ...card,
+    issue: card.issue ? applyIssueNarrative(card.issue) : null,
+    conclusion: overlay
+      ? (issueNarratives[card.conclusionKey]?.conclusion ?? card.conclusionDraft)
+      : card.conclusionDraft,
   }))
   const fingerprint = model.dataFingerprint
   const savedFingerprint = overlay?.dataFingerprint || ''
   return {
     ...model,
     issues,
+    overflow,
+    productCards,
     judgment: overlay ? (narratives.judgment ?? model.judgmentDraft) : model.judgmentDraft,
     todoNote: overlay ? (narratives.todoNote ?? '') : '',
     todoItems: overlay ? (narratives.todoItems ?? []) : [],
@@ -420,50 +427,19 @@ function visitAssessmentText(visit) {
   return String(visit?.internalConclusion || visit?.internalEvaluationDetail || '').trim()
 }
 
-function customerMatches(leftName, leftCode, rightName, rightCode) {
-  const code = String(leftCode || '').trim()
-  const otherCode = String(rightCode || '').trim()
-  if (code && otherCode && code === otherCode) return true
-  const name = String(leftName || '').trim()
-  const otherName = String(rightName || '').trim()
-  return Boolean(name && otherName && name !== '匿名客户' && (name === otherName || otherName.includes(name) || name.includes(otherName)))
-}
-
-function feedbackForVisit(visit, storyModel, records) {
-  const productName = String(visit?.productName || '').trim()
-  const customerName = visitCustomerName(visit)
-  const customerCode = String(visit?.customerCode || '').trim()
-  const highFreq = (storyModel?.drivers?.highFrequencyLowScoreReasons || []).find((row) => (
-    row.productName === productName
-    && String(row.customerNameText || '').split('；').some((name) => customerMatches(customerName, customerCode, name, ''))
-  ))
-  if (highFreq?.lowScoreFeedback) return highFreq.lowScoreFeedback
-  const negative = (records || []).find((record) => {
-    const score = Number(record.ratingScore)
-    if (!Number.isFinite(score) || score >= 10) return false
-    if (String(record.productName || record.product || '').trim() !== productName) return false
-    return customerMatches(customerName, customerCode, record.customerName, record.customerCode)
-  })
-  if (negative) {
-    const reason = Array.isArray(negative.feedbackReasonTexts) ? negative.feedbackReasonTexts.find(Boolean) : ''
-    const text = String(reason || negative.commentText || negative.rawText || '').trim()
-    if (text) return text
-  }
-  const recommendation = (storyModel?.callbackRecommendations || []).find((item) => (
-    item.productName === productName
-    && customerMatches(customerName, customerCode, item.customerName, item.customerCode)
-  ))
-  return String(recommendation?.recommendedReason || '').trim()
+function visitFeedbackText(visit) {
+  const original = String(visit?.userFeedbackText || '').trim()
+  if (original) return original
+  const summary = String(visit?.feedbackSummary || '').trim()
+  return summary && summary !== visitResultText(visit) ? summary : ''
 }
 
 /**
  * @param {object[]} visits
  * @param {string} reportMonth
  * @param {string} productName
- * @param {object} storyModel
- * @param {object[]} records
  */
-export function buildProductVisitNarratives(visits, reportMonth, productName, storyModel, records, periodMonths) {
+export function buildProductVisitNarratives(visits, reportMonth, productName, periodMonths) {
   const months = periodMonths?.length ? periodMonths : [reportMonth]
   const rows = filterVisitsByMonths(visits, months)
     .filter((visit) => String(visit?.productName || '').trim() === productName)
@@ -471,7 +447,7 @@ export function buildProductVisitNarratives(visits, reportMonth, productName, st
   return rows.map((visit, index) => {
     const sentence = composeVisitEvidenceSentence({
       customerName: visitCustomerName(visit),
-      feedback: feedbackForVisit(visit, storyModel, records),
+      feedback: visitFeedbackText(visit),
       visitResult: visitResultText(visit),
       internalConclusion: visitAssessmentText(visit),
       remark: String(visit?.remark || '').trim(),
@@ -506,12 +482,16 @@ export function buildProductScoreTrendWithCompany(trendSnap, productName, compan
 function buildProductCards({
   storyModel,
   issues,
+  records,
+  reportIssues,
+  reportChanges,
+  traces,
+  generatedDrafts,
   visits,
   reportMonth,
   periodMonths,
   previousMonths,
   comparisonPrefix,
-  records,
   allRecords,
   productNames,
   trend,
@@ -527,6 +507,9 @@ function buildProductCards({
   for (const issue of issues || []) {
     if (issue?.productName && !issueByProduct.has(issue.productName)) issueByProduct.set(issue.productName, issue)
   }
+  const overviewByProduct = new Map((storyModel?.productOverview || []).map((row) => [row.productName, row]))
+  const quotesByProduct = groupQuotesByProduct(records)
+  const draftsByProduct = new Map((generatedDrafts || []).map((row) => [row.productName, row]))
   return yunwang
     .filter((row) => Number(row.sampleSize) > 0)
     .map((row) => {
@@ -538,8 +521,42 @@ function buildProductCards({
       const experienceScore = exp?.sampleSize ? exp.avgScore : null
       const satisfactionRate = sat?.sampleSize ? sat.rate : null
       const lowScoreCount = (row.scores || []).filter((score) => Number(score) <= POST_USE_CRITICAL_LOW_SCORE).length
+      const overview = overviewByProduct.get(row.productName)
+      const issueEvidence = buildReportProductEvidence(reportIssues, row.productName)
+      const months = new Set(periodMonths)
+      const productVisits = filterVisitsByMonths(visits, periodMonths)
+        .filter((visit) => String(visit?.product || visit?.productName || '').trim() === row.productName)
+      const productTraces = (traces || []).filter((trace) => (
+        String(trace?.product || trace?.productName || '').trim() === row.productName
+        && String(trace.importMonth || '').split('、').some((month) => months.has(month.trim()))
+      ))
+      const narrative = buildReportProductNarrative({
+        productName: row.productName, evidence: issueEvidence, overview, score: row,
+        changes: reportChanges, actionRows: storyModel?.actionsAndRecovery?.rows || [],
+        traces: productTraces, visits: productVisits,
+        periodLabel: periodMonths.length > 1 ? '本季' : '本月',
+      })
+      const evidenceFingerprint = reportNarrativeFingerprint(narrative.facts)
+      const generated = draftsByProduct.get(row.productName)
+      const currentGenerated = generated?.fingerprint === evidenceFingerprint ? generated : null
+      const existing = issueByProduct.get(row.productName)
+      const fallbackEvidence = attachEvidence({ product: overview, change: null, quotesByProduct, records })
+      const detailedIssue = {
+        ...(existing || { key: `product:${row.productName}`, productName: row.productName, kind: 'product' }),
+        evidence: { ...(existing?.evidence || fallbackEvidence), report: issueEvidence, sourceRefs: narrative.sourceRefs },
+        detailDraft: currentGenerated?.detail || narrative.detailDraft,
+        actionDraft: currentGenerated?.action || narrative.actionDraft,
+        conclusionDraft: currentGenerated?.conclusion || narrative.conclusionDraft,
+      }
+      const issue = existing || issueEvidence.rawPieceCount ? detailedIssue : null
+      const conclusionDraft = currentGenerated?.conclusion || narrative.conclusionDraft
       return {
         productName: row.productName,
+        conclusionKey: issue?.key || `product:${row.productName}`,
+        conclusionDraft,
+        evidenceFingerprint,
+        narrative,
+        generatedStale: Boolean(generated && !currentGenerated),
         experienceScore,
         satisfactionRate,
         mixedAvg: row.avgScore,
@@ -555,8 +572,8 @@ function buildProductCards({
         belowNine,
         callbackUnqualified,
         priority: belowNine || callbackUnqualified ? 0 : 1,
-        issue: issueByProduct.get(row.productName) || null,
-        visitNarratives: buildProductVisitNarratives(visits, reportMonth, row.productName, storyModel, records, periodMonths),
+        issue,
+        visitNarratives: buildProductVisitNarratives(visits, reportMonth, row.productName, periodMonths),
         scoreTrend: buildProductScoreTrendWithCompany(trend, row.productName, companyRows, endMonth),
       }
     })
@@ -579,7 +596,7 @@ export function buildPreviousVisitRows(visits, reportMonth) {
 function reportFrame(reportMonth, reportPeriod) {
   const quarter = reportPeriod?.granularity === 'quarter'
   const periodMonths = quarter ? postUsePeriodMonths(reportPeriod) : [reportMonth]
-  const previousPeriod = quarter ? resolvePreviousInsightPeriod(reportPeriod) : null
+  const previousPeriod = quarter ? resolvePreviousInsightPeriod(resolveInsightPeriod(reportPeriod.id) || reportPeriod) : null
   const previousMonths = quarter
     ? postUsePeriodMonths(previousPeriod)
     : [shiftYearMonth(reportMonth, -1)].filter(Boolean)
@@ -621,7 +638,7 @@ function reportFrame(reportMonth, reportPeriod) {
  */
 export function formatMonthlyCallbackHighlightReason(reason) {
   return String(reason || '')
-    .replace(/，同一客户低分记录达到2次及以上/g, '')
+    .replace(/，同一客户(?:单月)?低分记录达到2次及以上/g, '')
     .replace(/，建议省代表回访。?$/g, '')
     .replace(/建议省代表回访。?$/g, '')
     .replace(/，$/, '')
@@ -645,10 +662,14 @@ function callbackTodoHighlights(recommendations) {
  * @param {{
  *   reportMonth: string
  *   reportPeriod?: object
- *   storyModel: object
+ *   storyModel: any
  *   records: object[]
  *   allRecords?: object[]
+ *   productNames?: string[]
  *   visits?: object[]
+ *   traces?: object[]
+ *   issueLinks?: object[]
+ *   generatedDrafts?: object[]
  *   actionItems?: object[]
  *   reasons?: object[]
  *   quality?: object
@@ -666,6 +687,9 @@ export function buildHtmlMonthlyReportModel(input) {
     records = [],
     allRecords = [],
     visits = [],
+    traces = [],
+    issueLinks = [],
+    generatedDrafts = [],
     actionItems = [],
     reasons = [],
     quality = null,
@@ -678,6 +702,19 @@ export function buildHtmlMonthlyReportModel(input) {
   const productNames = input.productNames?.length
     ? input.productNames
     : storyModel?.productOverview?.map((item) => item.productName) || []
+  const scopedRecords = allRecords.length ? allRecords : records
+  const relevantMonths = new Set([...frame.periodMonths, ...frame.previousMonths])
+  const evidenceRecords = scopedRecords.filter((record) => relevantMonths.has(recordImportMonth(record)))
+  const reportIssues = resolveReportIssues(buildReportIssueOccurrences(evidenceRecords), visits, traces, issueLinks)
+  const reportChanges = buildReportPeriodIssueChanges(
+    reportIssues, frame.periodMonths, frame.previousMonths,
+    scopedRecords.some((record) => frame.previousMonths.includes(recordImportMonth(record))),
+  )
+  const storyForReport = {
+    ...storyModel,
+    trendsAndChanges: { ...(storyModel?.trendsAndChanges || {}), changes: reportChanges },
+    insightBundle: { ...(storyModel?.insightBundle || {}), issueChanges: reportChanges },
+  }
   const preview = buildMonthlyReportPreviewModel({
     reportMonth: frame.endMonth,
     periodMonths: frame.periodMonths,
@@ -686,12 +723,12 @@ export function buildHtmlMonthlyReportModel(input) {
     visits,
     actionItems,
     reasons,
-    insightBundle: storyModel?.insightBundle,
+    insightBundle: storyForReport.insightBundle,
     quality,
-    storyModel,
+    storyModel: storyForReport,
     learnings,
   })
-  const { issues, overflow } = buildHtmlReportIssues({ storyModel, records })
+  const { issues, overflow } = buildHtmlReportIssues({ storyModel: storyForReport, records, reportChanges })
   const quoteRegistry = buildCustomerQuoteRegistry(records)
   const voice = summarizeQuotePolarity(quoteRegistry)
   const featuredVoice = pickFeaturedVoiceQuotes(quoteRegistry)
@@ -702,16 +739,19 @@ export function buildHtmlMonthlyReportModel(input) {
     : '本期暂无省代表回访结果。'
   const judgmentDraft = draftJudgmentFromConclusions(storyModel?.conclusions || [], issues, voice, visitNote)
   const companyRows = statusTrends?.combined?.data || storyModel?.metrics?.statusTrends?.combined?.data || []
-  const scopedRecords = allRecords.length ? allRecords : records
   const productCards = buildProductCards({
-    storyModel,
+    storyModel: storyForReport,
     issues: [...issues, ...overflow],
+    records,
+    reportIssues: reportIssues.filter((issue) => frame.periodMonths.includes(issue.month)),
+    reportChanges,
+    traces,
+    generatedDrafts,
     visits,
     reportMonth: frame.endMonth,
     periodMonths: frame.periodMonths,
     previousMonths: frame.previousMonths,
     comparisonPrefix: frame.comparisonPrefix,
-    records,
     allRecords: scopedRecords,
     productNames,
     trend,
@@ -752,6 +792,7 @@ export function buildHtmlMonthlyReportModel(input) {
     previousYunwangAvg: kpis.previousAvg,
     positiveCount: voice.positiveCount,
     negativeCount: voice.negativeCount,
+    evidenceFingerprints: productCards.map((card) => card.evidenceFingerprint),
   })
   const base = {
     reportMonth,
@@ -775,6 +816,7 @@ export function buildHtmlMonthlyReportModel(input) {
       statusTrend: statusTrends?.combined || storyModel?.metrics?.statusTrends?.combined || { data: [], areas: [] },
     },
     productCards,
+    reportChanges,
     previousVisits,
     preview,
     issues,

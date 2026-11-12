@@ -181,6 +181,7 @@ export function pickIssueEvidenceTexts(items, opts = {}) {
       if (positiveQuotes.length < maxPositive) positiveQuotes.push({ ...item, polarity: 'positive' })
       continue
     }
+    if (polarity !== 'negative') continue
     if (item.kind === 'quote' && quotes.length < maxQuotes) quotes.push({ ...item, polarity: 'negative' })
     if (item.kind === 'option' && options.length < maxOptions) options.push({ ...item, polarity: 'negative' })
   }

@@ -204,29 +204,20 @@ function ScoreMeter({ avgScore, sampleSize, nonTenCount }) {
 
 /**
  * @param {{
- *   model: ReturnType<import('../../lib/postUseRating/htmlReportModel.js').buildHtmlMonthlyReportModel>
- *   canEdit: boolean
- *   judgment: string
- *   todoNote: string
- *   todoItems: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]
- *   issueNarratives: Record<string, { conclusion: string, action: string }>
- *   visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
- *   hiddenSectionIds: string[]
- *   onJudgmentChange: (value: string) => void
- *   onTodoNoteChange: (value: string) => void
- *   onTodoItemsChange?: (items: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]) => void
- *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void
- *   onVisitSupplementChange?: (id: string, field: string, value: string) => void
- *   keyCustomers?: string[]
+ *   card: any, active: boolean, preview: any, distributionColumns: any[],
+ *   canEdit: boolean, issueNarratives: Record<string, { conclusion?: string, action?: string }>,
+ *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void,
+ *   onGenerateProduct?: (card: any) => void, generatingProduct?: string
  * }} props
  */
-function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange }) {
+function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange, onGenerateProduct, generatingProduct }) {
   const issue = card.issue
-  const narrative = issue ? issueNarratives[issue.key] || {} : null
+  const narrative = issueNarratives[card.conclusionKey] || {}
   const distribution = (preview?.scoreDistributionTable || []).filter((row) => row.productName === card.productName)
   const journeys = (preview?.journeyDistribution || []).filter((row) => row.productName === card.productName)
   const scoreTrend = withPostUseTrendDomains(card.scoreTrend, { kind: 'score' })
   const evidence = issue?.evidence || {}
+  const reportEvidence = evidence.report || {}
   const anchorBase = `p-${card.productName}`
   return (
     <section className={`report-product-detail${active ? ' is-active' : ''}`} data-product-panel-name={card.productName}>
@@ -235,18 +226,14 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
 
       <div id={`${anchorBase}-overview`} className="report-product-group report-product-group--overview">
         <div className="report-group-title">评分概览</div>
-        {issue ? (
-          <>
-            <div className="report-group-subtitle">结论</div>
-            <Input.TextArea
-              className="mt-1 mb-3"
-              value={narrative.conclusion ?? issue.conclusion}
-              onChange={(event) => onIssueChange(issue.key, 'conclusion', event.target.value)}
-              autoSize={{ minRows: 2 }}
-              disabled={!canEdit}
-            />
-          </>
-        ) : null}
+        <div className="report-group-subtitle">结论</div>
+        <Input.TextArea
+          className="mt-1 mb-3"
+          value={narrative.conclusion ?? card.conclusion ?? card.conclusionDraft ?? ''}
+          onChange={(event) => onIssueChange(card.conclusionKey, 'conclusion', event.target.value)}
+          autoSize={{ minRows: 2 }}
+          disabled={!canEdit}
+        />
         <div className="post-use-html-report-kpis post-use-html-report-kpis--product">
           <div className="post-use-html-report-kpi">
             <div className="label">产品体验得分</div>
@@ -296,25 +283,44 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
 
       <div id={`${anchorBase}-negative`} className="report-product-group report-product-group--negative">
         <div className="report-group-title">负反馈详情及建议举措</div>
+        {canEdit && onGenerateProduct ? (
+          <Button size="small" loading={generatingProduct === card.productName} disabled={Boolean(generatingProduct)} onClick={() => void onGenerateProduct(card)}>
+            AI 综合本产品文字
+          </Button>
+        ) : null}
         {issue ? (
           <>
             <ScoreMeter avgScore={evidence.avgScore} sampleSize={evidence.sampleSize} nonTenCount={evidence.nonTenCount} />
+            {card.generatedStale ? <Typography.Text type="warning">证据已变化，AI 文字稿已失效，当前显示规则稿。</Typography.Text> : null}
+            <Typography.Paragraph className="mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+              {issue.detailDraft || '本期未检出有效负反馈。'}
+            </Typography.Paragraph>
+            <Typography.Text type="secondary">
+              证据索引：评分记录 {evidence.sourceRefs?.ratingIds?.length || 0} 条（编号见附录）
+              {evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${evidence.sourceRefs.traceIds.join('、')}` : ''}
+              {evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${evidence.sourceRefs.visitIds.join('、')}` : ''}
+            </Typography.Text>
             {evidence.changeLabel ? (
               <div className="mt-1">问题变化 {evidence.changeIssue || ''} {evidence.changeLabel}</div>
             ) : null}
-            {(evidence.quotes || []).map((item) => (
-              <a key={`${item.recordId}-${item.text}`} href={quoteHref(item)} className="post-use-html-report-quote">
-                {polarityTag(item.polarity || 'negative')} {formatQuoteLine(item)}
+            {(reportEvidence.highlights || []).length ? <div className="report-group-subtitle">低分及高频原话</div> : null}
+            {(reportEvidence.highlights || []).map((item) => (
+              <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote">
+                {polarityTag('negative')} 「{item.text}」· 原话 {item.count} 次
+                {item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}
+                {item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}
               </a>
             ))}
-            {(evidence.options || []).map((item) => (
-              <div key={`${item.recordId}-${item.text}`} className="post-use-html-report-quote">
-                {polarityTag('negative')} 反馈选项：{item.text}
-                {item.customerName ? `（${item.customerName}${item.score == null ? '' : ` · ${item.score}分`}）` : ''}
-              </div>
-            ))}
-            {!evidence.quotes?.length && !evidence.options?.length ? (
-              <div className="post-use-html-report-quote">本条暂无有效负向原话</div>
+            {(reportEvidence.quotes || []).length ? (
+              <details className="mt-2">
+                <summary>查看全部原话（{reportEvidence.rawPieceCount} 条，按原话合并）</summary>
+                {(reportEvidence.quotes || []).map((item) => (
+                  <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote">
+                    「{item.text}」· {item.count} 次{item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}
+                    {item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}
+                  </a>
+                ))}
+              </details>
             ) : null}
           </>
         ) : (
@@ -363,16 +369,18 @@ export default function PostUseHtmlReportDocument({
   canEdit,
   judgment,
   todoNote,
-  todoItems,
+  todoItems = [],
   issueNarratives,
   visitSupplements = {},
   hiddenSectionIds,
   onJudgmentChange,
   onTodoNoteChange,
-  onTodoItemsChange,
+  onTodoItemsChange = (_items) => {},
   onIssueChange,
+  onGenerateProduct = null,
+  generatingProduct = '',
   onVisitSupplementChange,
-  keyCustomers,
+  keyCustomers = [],
 }) {
   const hidden = new Set(hiddenSectionIds || [])
   const copy = model.copy || {}
@@ -574,6 +582,8 @@ export default function PostUseHtmlReportDocument({
                   canEdit={canEdit}
                   issueNarratives={issueNarratives}
                   onIssueChange={onIssueChange}
+                  onGenerateProduct={onGenerateProduct}
+                  generatingProduct={generatingProduct}
                 />
               ))}
             </div>
@@ -696,6 +706,7 @@ export default function PostUseHtmlReportDocument({
                     dataSource={preview.monthlyScoreTable}
                     columns={[
                       { title: '产品', dataIndex: 'productName' },
+                      { title: '记录ID', dataIndex: 'recordId', width: 150 },
                       { title: '样本量', dataIndex: 'sampleSize' },
                       { title: '均分', dataIndex: 'avgScore' },
                       { title: '投诉回访10分满意比', dataIndex: 'callbackTenPointRate' },
