@@ -16,7 +16,8 @@ import {
 } from './recordIndex.js'
 import { getDb } from './db.js'
 import { META_KEY_STORAGE_INIT } from './businessDb.js'
-import { bumpDataRevision, bumpRecordsRevision } from './dataRevision.js'
+import { bumpDataRevision, bumpRecordsRevision, bumpSnapshotsRevision } from './dataRevision.js'
+import { markInsightSnapshotsDirtyForRecords } from './insightSnapshotDirty.js'
 import {
   analysisRunMatchesClearFilter,
   isClearAllImportedData,
@@ -455,6 +456,7 @@ export const storageRepository = {
           resolveTicketIdColumn(idx.ticketId, existing, existingRow?.ticket_id),
         )
         upsertRecordIndex(next)
+        markInsightSnapshotsDirtyForRecords([existing, next])
       })
       write()
     } catch (err) {
@@ -472,6 +474,7 @@ export const storageRepository = {
     let written = 0
     let skippedTicketConflicts = 0
     const tx = db.transaction((items) => {
+      const changedRecords = []
       for (const record of items) {
         const row = getExisting.get(record.id)
         const existing = row ? parseJson(row.payload) : null
@@ -491,6 +494,7 @@ export const storageRepository = {
             resolveTicketIdColumn(idx.ticketId, existing, row?.ticket_id),
           )
           upsertRecordIndex(next)
+          changedRecords.push(existing, next)
           written += 1
         } catch (err) {
           if (isTicketUniqueViolation(err)) {
@@ -503,6 +507,7 @@ export const storageRepository = {
           throw err
         }
       }
+      if (written) markInsightSnapshotsDirtyForRecords(changedRecords)
     })
     tx(records)
     if (written) bumpRecordsRevision()
@@ -511,6 +516,7 @@ export const storageRepository = {
 
   replaceAllRecords(records) {
     const db = getDb()
+    const previous = db.prepare('SELECT import_month AS importMonth FROM records').all()
     let nulledTicketConflicts = 0
     const tx = db.transaction((items) => {
       db.prepare('DELETE FROM records').run()
@@ -544,6 +550,7 @@ export const storageRepository = {
         )
         upsertRecordIndex(record)
       }
+      markInsightSnapshotsDirtyForRecords([...previous, ...items])
     })
     tx(records)
     if (nulledTicketConflicts) {
@@ -582,11 +589,13 @@ export const storageRepository = {
         DELETE FROM snapshots;
         DELETE FROM analysis_runs;
         DELETE FROM insight_rebuild_jobs;
+        DELETE FROM insight_snapshot_dirty_periods;
         DELETE FROM artifacts;
         DELETE FROM tag_candidates WHERE status = 'pending';
       `)
       clearRecordIndex()
       bumpRecordsRevision()
+      if (result.snapshotsDeleted) bumpSnapshotsRevision()
       return result
     }
 
@@ -601,20 +610,23 @@ export const storageRepository = {
       period,
     )
     const rows = db.prepare(`SELECT id, payload FROM records WHERE ${where}`).all(...params)
-    const recordIds = rows
+    const recordsToDelete = rows
       .map((row) => ({ id: row.id, record: parseJson(row.payload) }))
       .filter(({ record }) => recordMatchesClearFilter(record, options, period))
-      .map(({ id }) => id)
+    const recordIds = recordsToDelete.map(({ id }) => id)
 
     if (recordIds.length) {
-      const chunkSize = 500
-      for (let i = 0; i < recordIds.length; i += chunkSize) {
-        const chunk = recordIds.slice(i, i + chunkSize)
-        const placeholders = chunk.map(() => '?').join(',')
-        db.prepare(`DELETE FROM records WHERE id IN (${placeholders})`).run(...chunk)
-      }
+      db.transaction(() => {
+        const chunkSize = 500
+        for (let i = 0; i < recordIds.length; i += chunkSize) {
+          const chunk = recordIds.slice(i, i + chunkSize)
+          const placeholders = chunk.map(() => '?').join(',')
+          db.prepare(`DELETE FROM records WHERE id IN (${placeholders})`).run(...chunk)
+        }
+        for (const rid of recordIds) deleteRecordIndex(rid)
+        markInsightSnapshotsDirtyForRecords(recordsToDelete.map(({ record }) => record))
+      })()
       result.recordsDeleted = recordIds.length
-      for (const rid of recordIds) deleteRecordIndex(rid)
     }
 
     const deletedRecordIds = new Set(recordIds)
@@ -656,7 +668,8 @@ export const storageRepository = {
       result.pendingTagCandidatesDeleted
     ) {
       if (result.recordsDeleted) bumpRecordsRevision()
-      else bumpDataRevision()
+      if (result.snapshotsDeleted) bumpSnapshotsRevision()
+      if (!result.recordsDeleted && !result.snapshotsDeleted) bumpDataRevision()
     }
     return result
   },
@@ -693,9 +706,16 @@ export const storageRepository = {
   },
 
   deleteRecord(id) {
-    getDb().prepare('DELETE FROM records WHERE id = ?').run(id)
-    deleteRecordIndex(id)
-    bumpRecordsRevision()
+    const db = getDb()
+    const deleted = db.transaction(() => {
+      const previous = this.getRecord(id)
+      if (!previous) return false
+      db.prepare('DELETE FROM records WHERE id = ?').run(id)
+      deleteRecordIndex(id)
+      markInsightSnapshotsDirtyForRecords([previous])
+      return true
+    })()
+    if (deleted) bumpRecordsRevision()
   },
 
   putAnalysisRun(run) {

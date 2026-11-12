@@ -69,6 +69,7 @@ import { startPatrolReportScheduler } from './patrolReportScheduler.js'
 import { registerPatrolQueryRoutes } from './routes/patrolQuery.js'
 import { registerPatrolEmailIngestionRoutes } from './routes/patrolEmailIngestion.route.js'
 import { startPatrolEmailIngestionScheduler } from './patrolEmailIngestion.js'
+import { startInsightRefreshScheduler } from './insightRefreshScheduler.js'
 import { initSearchIndex, startSearchIndexBackfill } from './assistantSearchIndex.js'
 import { archiveUsageStats } from './usageDb.js'
 import { releaseOrphanedServerBackgroundTasks } from './backgroundTaskLock.js'
@@ -413,6 +414,8 @@ try {
   startPatrolReportScheduler()
   // Plan B 邮件拉取定时器（docs/DESIGN-API巡检.md §9：每日 09:15；同日报调度模式）
   startPatrolEmailIngestionScheduler()
+  // 写盘后自动合并重建，另在北京时间 05:00 扫描遗留待刷新周期。
+  startInsightRefreshScheduler()
 } catch (err) {
   app.log.error(err)
   process.exit(1)

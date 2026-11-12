@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fi-insight-rebuild-'))
 process.env.AUTH_DATABASE_PATH = path.join(tmpDir, 'test.db')
@@ -56,6 +56,8 @@ const sampleRecord = {
 const describeJob = sqliteAvailable ? describe : describe.skip
 
 describeJob('insight rebuild server job', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   beforeAll(async () => {
     const { closeDb, getDb } = await import('./db.js')
     closeDb()
@@ -72,22 +74,19 @@ describeJob('insight rebuild server job', () => {
   })
 
   it('rebuilds snapshots asynchronously and marks job succeeded', async () => {
-    const { enqueueInsightRebuild, getInsightRebuildJob } = await import('./insightRebuildJob.js')
+    const { enqueueInsightRebuild, waitForInsightRebuildCompletion } = await import('./insightRebuildJob.js')
+    const { dirtyInsightGeneration } = await import('./insightSnapshotDirty.js')
     const { storageRepository } = await import('./storageRepository.js')
 
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
     const { job, started } = await enqueueInsightRebuild(samplePeriod.id, 'test')
     expect(started).toBe(true)
     expect(job.status).toBe('queued')
 
-    const deadline = Date.now() + 30_000
-    let latest = job
-    while (Date.now() < deadline) {
-      latest = getInsightRebuildJob(job.id) || latest
-      if (latest.status === 'succeeded' || latest.status === 'failed') break
-      await new Promise((r) => setTimeout(r, 100))
-    }
+    const latest = await waitForInsightRebuildCompletion(job.id)
 
     expect(latest.status).toBe('succeeded')
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBe(0)
     const snapshots = storageRepository.listSnapshotsByPeriod(samplePeriod.id)
     expect(snapshots.length).toBeGreaterThanOrEqual(2)
     const overview = snapshots.find((s) => s.id?.startsWith('overview:'))
@@ -96,6 +95,98 @@ describeJob('insight rebuild server job', () => {
     const complaint = snapshots.find((s) => s.dataSourceType === 'complaint_ticket')
     expect(complaint?.aggregates?.workbench?.all).toBeTruthy()
     expect(overview?.workbench?.journey).toBeTruthy()
+  })
+
+  it('marks only periods whose history range includes the written month', async () => {
+    const { storageRepository } = await import('./storageRepository.js')
+    const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')
+    const future = {
+      ...samplePeriod,
+      id: 'period:month:2028-01',
+      label: '2028年1月',
+      startDate: '2028-01-01',
+      endDate: '2028-01-31',
+      anchorYear: 2028,
+    }
+    storageRepository.putInsightPeriod(future)
+    storageRepository.putRecord({ ...sampleRecord, painPoint: '更新后的投诉内容' })
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    expect(storageRepository.listSnapshotsByPeriod(samplePeriod.id).some((snap) => snap.status === 'stale')).toBe(true)
+    expect(dirtyInsightGeneration(future.id)).toBe(0)
+    const current = dirtyInsightGeneration(samplePeriod.id)
+    expect(clearDirtyInsightPeriodIfUnchanged(samplePeriod.id, current)).toBe(true)
+    storageRepository.putRecord({ ...sampleRecord, importMonth: '2028-01' })
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    expect(dirtyInsightGeneration(future.id)).toBeGreaterThan(0)
+    clearDirtyInsightPeriodIfUnchanged(samplePeriod.id, dirtyInsightGeneration(samplePeriod.id))
+    clearDirtyInsightPeriodIfUnchanged(future.id, dirtyInsightGeneration(future.id))
+  })
+
+  it('refreshes the broad legacy period only when it already has a snapshot', async () => {
+    const { LEGACY_INSIGHT_PERIOD_ID } = await import('../src/domain/constants.js')
+    const { getDb } = await import('./db.js')
+    const { storageRepository } = await import('./storageRepository.js')
+    const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')
+    expect(dirtyInsightGeneration(LEGACY_INSIGHT_PERIOD_ID)).toBe(0)
+    storageRepository.putSnapshot({ id: 'test-legacy-snapshot', insightPeriodId: LEGACY_INSIGHT_PERIOD_ID, status: 'ready' })
+    storageRepository.putRecord({ ...sampleRecord, importMonth: '2026-01' })
+    expect(dirtyInsightGeneration(LEGACY_INSIGHT_PERIOD_ID)).toBeGreaterThan(0)
+    clearDirtyInsightPeriodIfUnchanged(LEGACY_INSIGHT_PERIOD_ID, dirtyInsightGeneration(LEGACY_INSIGHT_PERIOD_ID))
+    getDb().prepare('DELETE FROM snapshots WHERE id = ?').run('test-legacy-snapshot')
+  })
+
+  it('manual rebuild clears a matching dirty generation', async () => {
+    const { enqueueInsightRebuild, waitForInsightRebuildCompletion } = await import('./insightRebuildJob.js')
+    const { dirtyInsightGeneration, markInsightSnapshotPeriodDirty } = await import('./insightSnapshotDirty.js')
+    markInsightSnapshotPeriodDirty(samplePeriod.id)
+    const { job } = await enqueueInsightRebuild(samplePeriod.id, 'manual-test')
+    expect((await waitForInsightRebuildCompletion(job.id)).status).toBe('succeeded')
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBe(0)
+  })
+
+  it('keeps the dirty marker when records change during a rebuild', async () => {
+    const { enqueueInsightRebuild, waitForInsightRebuildCompletion } = await import('./insightRebuildJob.js')
+    const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')
+    const { storageRepository } = await import('./storageRepository.js')
+    const listRecords = storageRepository.listRecords.bind(storageRepository)
+    vi.spyOn(storageRepository, 'listRecords').mockImplementationOnce((query) => {
+      storageRepository.putRecord({ ...sampleRecord, importMonth: '2026-01', painPoint: '重建期间写入' })
+      return listRecords(query)
+    })
+    const { job } = await enqueueInsightRebuild(samplePeriod.id, 'manual-test')
+    expect((await waitForInsightRebuildCompletion(job.id)).status).toBe('succeeded')
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    expect(storageRepository.listSnapshotsByPeriod(samplePeriod.id).some((snap) => snap.status === 'stale')).toBe(true)
+    clearDirtyInsightPeriodIfUnchanged(samplePeriod.id, dirtyInsightGeneration(samplePeriod.id))
+  })
+
+  it('keeps a dirty marker and stale snapshots after a failed rebuild', async () => {
+    const { enqueueInsightRebuild, waitForInsightRebuildCompletion } = await import('./insightRebuildJob.js')
+    const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')
+    const { storageRepository } = await import('./storageRepository.js')
+    vi.spyOn(storageRepository, 'listRecords').mockImplementationOnce(() => {
+      throw new Error('simulated storage read failure')
+    })
+    const { job } = await enqueueInsightRebuild(samplePeriod.id, 'manual-test')
+    const finished = await waitForInsightRebuildCompletion(job.id)
+    expect(finished.status).toBe('failed')
+    expect(finished.errorSummary).toContain('simulated storage read failure')
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    expect(storageRepository.listSnapshotsByPeriod(samplePeriod.id).some((snap) => snap.status === 'stale')).toBe(true)
+    clearDirtyInsightPeriodIfUnchanged(samplePeriod.id, dirtyInsightGeneration(samplePeriod.id))
+  })
+
+  it('marks affected periods when imported records are cleared by scope', async () => {
+    const { storageRepository } = await import('./storageRepository.js')
+    const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')
+    const result = storageRepository.clearImportedData({
+      insightPeriodId: samplePeriod.id,
+      dataSourceType: 'complaint_ticket',
+      allProducts: true,
+    })
+    expect(result.recordsDeleted).toBeGreaterThan(0)
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    clearDirtyInsightPeriodIfUnchanged(samplePeriod.id, dirtyInsightGeneration(samplePeriod.id))
   })
 
   it('findActiveInsightRebuildJob returns queued job for dedupe', async () => {
@@ -115,5 +206,15 @@ describeJob('insight rebuild server job', () => {
     const second = await enqueueInsightRebuild('period:month:2026-02', 'test')
     expect(second.started).toBe(false)
     expect(second.job.id).toBe(pending.id)
+  })
+
+  it('clears pending refresh markers with an explicit full data reset', async () => {
+    const { storageRepository } = await import('./storageRepository.js')
+    const { dirtyInsightGeneration } = await import('./insightSnapshotDirty.js')
+    storageRepository.putRecord({ ...sampleRecord, importMonth: '2026-01' })
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBeGreaterThan(0)
+    storageRepository.clearImportedData({ all: true })
+    expect(dirtyInsightGeneration(samplePeriod.id)).toBe(0)
+    expect(storageRepository.listSnapshotsByPeriod(samplePeriod.id)).toHaveLength(0)
   })
 })

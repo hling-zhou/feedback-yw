@@ -6,6 +6,7 @@ import {
 } from '../src/domain/insightRebuildJob.js'
 import {
   markPeriodSnapshotsRebuilding,
+  markPeriodSnapshotsStale,
   rebuildAllSnapshots,
 } from '../src/snapshots/snapshotService.js'
 import { createRepositoryStorageAdapter } from './repositoryStorageAdapter.js'
@@ -13,6 +14,14 @@ import { storageRepository } from './storageRepository.js'
 import { isLlmConfigured } from './llmConfig.js'
 import { resolveWorkbenchHistoryMonthRange } from '../src/lib/workbenchStoredAggregates.js'
 import { loadManagedProductCatalog } from '../src/storage/productCatalogStore.js'
+import { getDb } from './db.js'
+import { bumpSnapshotsRevision } from './dataRevision.js'
+import {
+  clearDirtyInsightPeriodIfUnchanged,
+  dirtyInsightGeneration,
+  markInsightSnapshotPeriodDirty,
+  notifyInsightSnapshotDirty,
+} from './insightSnapshotDirty.js'
 
 /** @typedef {import('../src/domain/insightRebuildJob.js').InsightRebuildJob} InsightRebuildJob */
 
@@ -23,7 +32,12 @@ let recovered = false
 
 function ensureRecovered() {
   if (recovered) return
+  const orphaned = getDb().prepare(`
+    SELECT DISTINCT insight_period_id AS periodId FROM insight_rebuild_jobs
+    WHERE status IN ('queued', 'running')
+  `).all()
   storageRepository.recoverOrphanedInsightRebuildJobs()
+  for (const row of orphaned) markInsightSnapshotPeriodDirty(row.periodId)
   recovered = true
 }
 
@@ -122,6 +136,7 @@ async function runInsightRebuildJob(jobId) {
     return
   }
 
+  const dirtyGeneration = dirtyInsightGeneration(job.insightPeriodId)
   try {
     await markPeriodSnapshotsRebuilding(adapter, job.insightPeriodId)
     try {
@@ -163,6 +178,14 @@ async function runInsightRebuildJob(jobId) {
       settings,
     )
 
+    const currentGeneration = dirtyInsightGeneration(job.insightPeriodId)
+    if (currentGeneration === dirtyGeneration) {
+      clearDirtyInsightPeriodIfUnchanged(job.insightPeriodId, dirtyGeneration)
+    } else {
+      // 重建期间有新写入，本轮结果不能冒充最新数据。
+      await markPeriodSnapshotsStale(adapter, job.insightPeriodId)
+    }
+
     const finishedAt = new Date().toISOString()
     const durationMs = job.startedAt
       ? Math.max(0, Date.parse(finishedAt) - Date.parse(job.startedAt))
@@ -174,6 +197,8 @@ async function runInsightRebuildJob(jobId) {
       progress: { done: 6, total: 6, stage: 'overview' },
       errorSummary: undefined,
     })
+    bumpSnapshotsRevision()
+    notifyInsightSnapshotDirty()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[insight-rebuild] failed:', jobId, err)
@@ -186,7 +211,20 @@ async function runInsightRebuildJob(jobId) {
         stage: null,
       },
     })
+    try {
+      if (!dirtyInsightGeneration(job.insightPeriodId)) markInsightSnapshotPeriodDirty(job.insightPeriodId)
+      await markPeriodSnapshotsStale(adapter, job.insightPeriodId)
+      bumpSnapshotsRevision()
+    } catch (cleanupError) {
+      console.error('[insight-rebuild] failed to mark snapshots stale:', cleanupError)
+    }
   }
+}
+
+export async function waitForInsightRebuildCompletion(jobId) {
+  const job = getInsightRebuildJob(jobId)
+  if (job) await periodChains.get(job.insightPeriodId)?.catch(() => {})
+  return getInsightRebuildJob(jobId)
 }
 
 /**

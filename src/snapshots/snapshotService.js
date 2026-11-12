@@ -316,7 +316,7 @@ export async function markPeriodSnapshotsStale(adapter, insightPeriodId) {
   )
   for (const type of IMPORTABLE_DATA_SOURCE_TYPES) {
     const snap = sourceSnapshots[type]
-    if (snap && snap.status === 'ready') {
+    if (snap && (snap.status === 'ready' || snap.status === 'rebuilding')) {
       await adapter.putSnapshot({ ...snap, status: 'stale' })
     } else if (!snap) {
       const empty = await buildSourceSnapshot({

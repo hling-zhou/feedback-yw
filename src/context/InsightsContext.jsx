@@ -255,6 +255,8 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const dataRevisionRef = useRef(null)
   /** recordsRevision 的 ref 镜像，用于 tick 判断是否需要重拉记录 */
   const recordsRevisionRef = useRef(null)
+  /** 服务端完整快照发布版本；只变快照时不重拉工单。 */
+  const snapshotsRevisionRef = useRef(null)
   /** 本浏览器是否持有服务端全局后台任务锁 */
   const ownedBackgroundTaskRef = useRef(false)
   /** @type {import('react').MutableRefObject<Map<string, { resolve: (result: Record<string, unknown>) => void; reject: (err: Error) => void }>>} */
@@ -674,6 +676,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         try {
           const rev = await adapter.getDataRevision()
           dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
+          snapshotsRevisionRef.current = rev.snapshotsRevision ?? 0
         } catch {
           /* 轮询同步非关键路径 */
         }
@@ -910,7 +913,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         setPeriods(list)
         setSnapshotsStale(false)
         setSnapshotStaleReason(null)
-        await reloadSnapshots(currentPeriodId)
+        await reloadSnapshots(currentPeriodId, { stale: false })
         await reloadTagCandidates()
         await applyTaxonomyOverridesFromStorage()
         await hydrateLearningCaches(adapter)
@@ -920,6 +923,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         try {
           const rev = await fetchDataRevision()
           dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
+          snapshotsRevisionRef.current = rev.snapshotsRevision ?? 0
         } catch {
           /* ignore */
         }
@@ -1108,13 +1112,18 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         return
       }
       try {
-        const { revision, recordsRevision } = await fetchDataRevision()
+        const { revision, recordsRevision, snapshotsRevision = 0 } = await fetchDataRevision()
         const prev = dataRevisionRef.current
         const prevRecords = recordsRevisionRef.current
+        const prevSnapshots = snapshotsRevisionRef.current
         // 只有 recordsRevision 变化（记录增删改）才需要重拉记录列表
         // revision 变但 recordsRevision 不变（如 snapshot rebuild / tag meta 变更）不需要重拉
         if (prevRecords != null && recordsRevision !== prevRecords) {
           await syncSharedDataFromServer({ notify: false })
+        } else if (prevSnapshots != null && snapshotsRevision !== prevSnapshots) {
+          await reloadSnapshots(currentPeriodId, { force: true, stale: false })
+          setSnapshotsStale(false)
+          setSnapshotStaleReason(null)
         } else if (prev != null && revision !== prev) {
           // 标签库等 meta 更新（他人保存/服务端写入共享库）：不重拉工单记录，
           // 仅轻量刷新 taxonomy meta，让「更新于」时间与列表约一个轮询周期内自动跟进
@@ -1122,6 +1131,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         }
         dataRevisionRef.current = revision
         recordsRevisionRef.current = recordsRevision
+        snapshotsRevisionRef.current = snapshotsRevision
         await refreshSharedBackgroundTask()
       } catch (err) {
         console.warn('[storage] 版本轮询失败', err)
@@ -1140,7 +1150,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active, applyTaxonomyOverridesFromStorage])
+  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active, applyTaxonomyOverridesFromStorage, reloadSnapshots, currentPeriodId])
 
   useEffect(() => {
     if (storageReady && isApiStorageAdapter(adapter)) {
@@ -1234,6 +1244,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
               if (typeof adapter.getDataRevision === 'function') {
                 const rev = await adapter.getDataRevision()
                 dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
+                snapshotsRevisionRef.current = rev.snapshotsRevision ?? 0
               }
             } catch {
               /* 版本号同步失败不影响已加载的新快照 */
