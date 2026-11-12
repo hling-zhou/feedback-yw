@@ -93,6 +93,8 @@ describe('offline monthly report html', () => {
     expect(html).toContain('<style>')
     expect(html).toContain('.post-use-html-report .report-product-title')
     expect(html).toContain('离线快照')
+    expect(html).not.toContain('正在生成产品文字稿')
+    expect(html).not.toContain('post-use-html-report-status')
     expect(html).toContain('本月概述')
     expect(html).toContain('待办事项及进展')
     expect(html).not.toContain('待办事情及进展')

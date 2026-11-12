@@ -533,6 +533,10 @@ export default function PostUseHtmlReport() {
     )
   }
 
+  const showEvidenceWarning = Boolean(model && canEdit && !autoEvidenceReady)
+  const showDraftProgress = autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'running'
+  const showDraftFailures = autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'done' && autoDraftStatus.failures.length > 0
+
   return (
     <div className="post-use-html-report">
       <style>{REPORT_SHARED_CSS}</style>
@@ -584,34 +588,35 @@ export default function PostUseHtmlReport() {
           }
         }}
       />
+      {showEvidenceWarning || showDraftProgress || showDraftFailures ? (
+        <div className="post-use-html-report-status no-print">
+          {showEvidenceWarning ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="部分报告证据读取失败，已暂停自动文字生成"
+              description="当前显示规则稿或已保存稿；请刷新报告重试。"
+            />
+          ) : null}
+          {showDraftProgress ? (
+            <Alert
+              type="info"
+              showIcon
+              message={`正在生成产品文字稿（${autoDraftStatus.completed}/${autoDraftStatus.total}）`}
+              description="报告可继续查看，完成的产品会逐个更新。"
+            />
+          ) : null}
+          {showDraftFailures ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={`${autoDraftStatus.failures.length} 个产品的文字稿生成失败，当前显示规则稿`}
+              description={`涉及产品：${autoDraftStatus.failures.map((item) => item.productName).join('、')}。重新打开报告时会再次尝试。`}
+            />
+          ) : null}
+        </div>
+      ) : null}
       <div className="post-use-html-report-sheet">
-        {model && canEdit && !autoEvidenceReady ? (
-          <Alert
-            className="mb-3"
-            type="warning"
-            showIcon
-            message="部分报告证据读取失败，已暂停自动文字生成"
-            description="当前显示规则稿或已保存稿；请刷新报告重试。"
-          />
-        ) : null}
-        {autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'running' ? (
-          <Alert
-            className="mb-3"
-            type="info"
-            showIcon
-            message={`正在生成产品文字稿（${autoDraftStatus.completed}/${autoDraftStatus.total}）`}
-            description="报告可继续查看，完成的产品会逐个更新。"
-          />
-        ) : null}
-        {autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'done' && autoDraftStatus.failures.length ? (
-          <Alert
-            className="mb-3"
-            type="warning"
-            showIcon
-            message={`${autoDraftStatus.failures.length} 个产品的文字稿生成失败，当前显示规则稿`}
-            description={`涉及产品：${autoDraftStatus.failures.map((item) => item.productName).join('、')}。重新打开报告时会再次尝试。`}
-          />
-        ) : null}
         {body}
       </div>
     </div>
