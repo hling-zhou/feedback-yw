@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Button, Space, Spin, Typography, message } from 'antd'
 import { MailOutlined } from '@ant-design/icons'
@@ -15,7 +15,9 @@ import {
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { listActionItems } from '../lib/actionItemClient.js'
 import { listAllPostUseJiraItems } from '../lib/postUseJiraClient.js'
+import { isLlmAvailable } from '../lib/llmClient.js'
 import { listReportDrafts, listReportIssueLinks, saveReportDraft } from '../lib/postUseRating/reportClient.js'
+import { mergeGeneratedReportDraft, runReportDraftQueue } from '../lib/postUseRating/reportDraftAuto.js'
 import { generateReportProductDraft } from '../lib/postUseRating/reportNarrative.js'
 import { initialReportIssueNarratives, mergeManualReportIssueNarratives } from '../lib/postUseRating/reportNarrativeState.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
@@ -76,13 +78,19 @@ export default function PostUseHtmlReport() {
   const [traces, setTraces] = useState([])
   const [issueLinks, setIssueLinks] = useState([])
   const [generatedDrafts, setGeneratedDrafts] = useState([])
-  const [generatingProduct, setGeneratingProduct] = useState('')
+  const [autoDraftStatus, setAutoDraftStatus] = useState({ reportKey: '', phase: 'idle', completed: 0, total: 0, failures: [] })
+  const autoDraftRunRef = useRef(null)
+  const manualIssueFieldsRef = useRef({})
+  const overlayRef = useRef(null)
   const [actionItems, setActionItems] = useState([])
   const [trendSnap, setTrendSnap] = useState(null)
   const [quality, setQuality] = useState(null)
   const [learnings, setLearnings] = useState([])
   const [overlay, setOverlay] = useState(null)
   const [sideLoading, setSideLoading] = useState(true)
+  const [loadedReportKey, setLoadedReportKey] = useState('')
+  const [sideLoadError, setSideLoadError] = useState(null)
+  const [autoEvidenceReady, setAutoEvidenceReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [judgment, setJudgment] = useState('')
@@ -94,6 +102,7 @@ export default function PostUseHtmlReport() {
   const [statusTrends, setStatusTrends] = useState(null)
   const [hiddenSectionIds, setHiddenSectionIds] = useState([])
   const [mailOpen, setMailOpen] = useState(false)
+  overlayRef.current = overlay
 
   const route = useMemo(() => resolveReportRoute(month), [month])
   const reportKey = route?.key || ''
@@ -121,17 +130,24 @@ export default function PostUseHtmlReport() {
         return
       }
       setSideLoading(true)
+      setSideLoadError(null)
+      setAutoEvidenceReady(false)
       try {
+        let completeForAi = true
+        const requiredForAi = (promise, fallback) => promise.catch(() => {
+          completeForAi = false
+          return fallback
+        })
         const [v, actionsRes, trend, qualityStore, overlaySnap, learningSnap, traceRows, links, drafts] = await Promise.all([
           loadVisitRecords(adapter),
-          listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }).catch(() => ({ items: [] })),
+          requiredForAi(listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }), { items: [] }),
           loadPostUseTrend(adapter).catch(() => null),
           loadPostUsePeriodQuality(adapter).catch(() => null),
-          loadHtmlReportOverlay(adapter, reportKey).catch(() => null),
+          requiredForAi(loadHtmlReportOverlay(adapter, reportKey), null),
           loadMonthlyReportLearnings(adapter).catch(() => []),
-          listAllPostUseJiraItems().catch(() => []),
-          listReportIssueLinks().catch(() => []),
-          listReportDrafts(reportKey).catch(() => []),
+          requiredForAi(listAllPostUseJiraItems(), []),
+          requiredForAi(listReportIssueLinks(), []),
+          requiredForAi(listReportDrafts(reportKey), []),
         ])
         if (!cancelled) {
           setVisits(v)
@@ -143,9 +159,15 @@ export default function PostUseHtmlReport() {
           setQuality(qualityStore)
           setOverlay(overlaySnap)
           setLearnings(learningSnap)
+          setLoadedReportKey(reportKey)
+          setAutoEvidenceReady(completeForAi)
         }
-      } catch {
-        if (!cancelled) setOverlay(null)
+      } catch (error) {
+        if (!cancelled) {
+          setSideLoadError({ reportKey, message: error instanceof Error ? error.message : '报告证据加载失败' })
+          setLoadedReportKey('')
+          setAutoEvidenceReady(false)
+        }
       } finally {
         if (!cancelled) setSideLoading(false)
       }
@@ -271,8 +293,12 @@ export default function PostUseHtmlReport() {
     endMonth,
   ])
 
+  const ratingsPending =
+    postUseRatingOnDemand &&
+    loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
+
   const model = useMemo(() => {
-    if (!reportKey || !storyModel || sideLoading) return null
+    if (!reportKey || !storyModel || !storageReady || ratingsPending || sideLoading || loadedReportKey !== reportKey) return null
     return buildHtmlMonthlyReportModel({
       reportMonth: reportKey,
       reportPeriod,
@@ -292,7 +318,7 @@ export default function PostUseHtmlReport() {
       statusTrends,
       trend: trendSnap,
     })
-  }, [reportKey, reportPeriod, storyModel, sideLoading, scopedItems, allScopedItems, productNames, visits, traces, issueLinks, generatedDrafts, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
+  }, [reportKey, reportPeriod, storyModel, storageReady, ratingsPending, sideLoading, loadedReportKey, scopedItems, allScopedItems, productNames, visits, traces, issueLinks, generatedDrafts, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, trendSnap])
 
   useEffect(() => {
     if (!model) return
@@ -302,6 +328,7 @@ export default function PostUseHtmlReport() {
     setHiddenSectionIds(model.hiddenSectionIds || [])
     setIssueNarratives(initialReportIssueNarratives(model))
     setManualIssueFields({})
+    manualIssueFieldsRef.current = {}
     setVisitSupplements(
       Object.fromEntries(
         (model.previousVisits || []).map((row) => [
@@ -316,16 +343,58 @@ export default function PostUseHtmlReport() {
     )
   }, [model?.dataFingerprint, overlay?.updatedAt])
 
-  const ratingsPending =
-    postUseRatingOnDemand &&
-    loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
+  useEffect(() => {
+    if (!model || !reportKey || !canEdit || !autoEvidenceReady || !isLlmAvailable(settings)) {
+      if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
+      autoDraftRunRef.current = null
+      setAutoDraftStatus((prev) => prev.phase === 'running' ? { reportKey: '', phase: 'idle', completed: 0, total: 0, failures: [] } : prev)
+      return
+    }
+    const key = `${reportKey}\0${model.productCards.map((card) => `${card.productName}:${card.evidenceFingerprint}`).join('\0')}`
+    if (autoDraftRunRef.current?.key === key) return
+    if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
+    const run = { key, cancelled: false }
+    autoDraftRunRef.current = run
+    const isCurrent = () => autoDraftRunRef.current === run && !run.cancelled
+
+    void runReportDraftQueue({
+      cards: model.productCards,
+      savedDrafts: generatedDrafts,
+      reportKey,
+      settings,
+      generate: generateReportProductDraft,
+      save: saveReportDraft,
+      isCurrent,
+      onSaved: (card, item) => {
+        setGeneratedDrafts((prev) => [...prev.filter((row) => row.productName !== card.productName), item])
+        setIssueNarratives((prev) => {
+          const manual = overlayRef.current?.narratives?.issues?.[card.conclusionKey]
+          const edited = manualIssueFieldsRef.current[card.conclusionKey]
+          return mergeGeneratedReportDraft(prev, card.conclusionKey, item, manual, edited)
+        })
+      },
+      onProgress: ({ completed, total, failures }) => {
+        if (isCurrent()) setAutoDraftStatus({ reportKey, phase: completed === total ? 'done' : 'running', completed, total, failures })
+      },
+    }).catch(() => {
+      if (isCurrent()) setAutoDraftStatus({ reportKey, phase: 'done', completed: 0, total: 0, failures: [{ productName: '报告', message: '生成队列失败' }] })
+    })
+  }, [model, reportKey, canEdit, autoEvidenceReady, settings, generatedDrafts])
+
+  useEffect(() => () => {
+    if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
+  }, [])
+
   const loading = !storageReady || sideLoading || ratingsPending
+    || (Boolean(reportKey) && loadedReportKey !== reportKey)
 
   const onIssueChange = (key, field, value) => {
-    setManualIssueFields((prev) => ({
-      ...prev,
-      [key]: { ...(prev[key] || {}), [field]: true },
-    }))
+    const editedFields = {
+      ...manualIssueFieldsRef.current,
+      [key]: { ...(manualIssueFieldsRef.current[key] || {}), [field]: true },
+    }
+    manualIssueFieldsRef.current = editedFields
+    setManualIssueFields(editedFields)
     setIssueNarratives((prev) => ({
       ...prev,
       [key]: {
@@ -387,32 +456,6 @@ export default function PostUseHtmlReport() {
     }
   }
 
-  const handleGenerateProduct = async (card) => {
-    if (!canEdit || !card?.narrative || !reportKey) return
-    setGeneratingProduct(card.productName)
-    try {
-      const draft = await generateReportProductDraft(settings, card.narrative)
-      const saved = await saveReportDraft(reportKey, card.productName, card.evidenceFingerprint, draft)
-      setGeneratedDrafts((prev) => [
-        ...prev.filter((item) => item.productName !== card.productName), saved.item,
-      ])
-      const manual = overlay?.narratives?.issues?.[card.conclusionKey]
-      const edited = manualIssueFields[card.conclusionKey]
-      setIssueNarratives((prev) => ({
-        ...prev,
-        [card.conclusionKey]: {
-          conclusion: manual?.conclusion ?? (edited?.conclusion ? prev[card.conclusionKey]?.conclusion : draft.conclusion),
-          action: manual?.action ?? (edited?.action ? prev[card.conclusionKey]?.action : draft.action),
-        },
-      }))
-      message.success(manual || edited ? 'AI 文字稿已生成，人工编辑保持优先' : '本产品文字稿已生成')
-    } catch (error) {
-      message.error(error?.message || '生成文字稿失败，当前继续显示规则稿')
-    } finally {
-      setGeneratingProduct('')
-    }
-  }
-
   const buildOfflineHtml = () => {
     if (!model) return ''
     return buildOfflineMonthlyReportHtml({
@@ -452,6 +495,8 @@ export default function PostUseHtmlReport() {
         description="请使用 YYYY-MM 或 YYYY-Qq，例如 2026-06、2026-Q2。"
       />
     )
+  } else if (sideLoadError?.reportKey === reportKey) {
+    body = <Alert type="error" showIcon message="报告证据加载失败" description={sideLoadError.message} />
   } else if (loading) {
     body = (
       <div className="flex justify-center py-24">
@@ -482,8 +527,6 @@ export default function PostUseHtmlReport() {
         onTodoNoteChange={setTodoNote}
         onTodoItemsChange={setTodoItems}
         onIssueChange={onIssueChange}
-        onGenerateProduct={handleGenerateProduct}
-        generatingProduct={generatingProduct}
         onVisitSupplementChange={onVisitSupplementChange}
         keyCustomers={settings?.postUseKeyCustomers}
       />
@@ -542,6 +585,33 @@ export default function PostUseHtmlReport() {
         }}
       />
       <div className="post-use-html-report-sheet">
+        {model && canEdit && !autoEvidenceReady ? (
+          <Alert
+            className="mb-3"
+            type="warning"
+            showIcon
+            message="部分报告证据读取失败，已暂停自动文字生成"
+            description="当前显示规则稿或已保存稿；请刷新报告重试。"
+          />
+        ) : null}
+        {autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'running' ? (
+          <Alert
+            className="mb-3"
+            type="info"
+            showIcon
+            message={`正在生成产品文字稿（${autoDraftStatus.completed}/${autoDraftStatus.total}）`}
+            description="报告可继续查看，完成的产品会逐个更新。"
+          />
+        ) : null}
+        {autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'done' && autoDraftStatus.failures.length ? (
+          <Alert
+            className="mb-3"
+            type="warning"
+            showIcon
+            message={`${autoDraftStatus.failures.length} 个产品的文字稿生成失败，当前显示规则稿`}
+            description={`涉及产品：${autoDraftStatus.failures.map((item) => item.productName).join('、')}。重新打开报告时会再次尝试。`}
+          />
+        ) : null}
         {body}
       </div>
     </div>

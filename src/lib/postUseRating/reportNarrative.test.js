@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const calls = []
+const queuedResponses = []
 vi.mock('../llmClient.js', () => ({
   llmChatCompletion: vi.fn(async (_settings, body) => {
     calls.push(body)
+    if (queuedResponses.length) return queuedResponses.shift()
     return { text: JSON.stringify(calls.length === 1
       ? { summary: '低分反馈集中于页面加载' }
       : { detail: '页面加载问题在两条原话中出现。', action: '产品甲核对首屏资源并验收加载时间。', conclusion: '下期复核加载时间与客户确认结果。' }) }
@@ -17,6 +19,7 @@ import { buildReportProductNarrative, generateReportProductDraft, reportNarrativ
 describe('report narrative generation', () => {
   it('keeps rule-owned metrics and excludes unlinked sources from action citations', async () => {
     calls.length = 0
+    queuedResponses.length = 0
     const evidence = {
       rawPieceCount: 2, rawRecordCount: 2, excludedIssueCount: 0,
       pieces: [{ recordId: 'rating-a' }, { recordId: 'rating-b' }],
@@ -35,6 +38,7 @@ describe('report narrative generation', () => {
     })
     const draft = await generateReportProductDraft({}, narrative)
     expect(calls).toHaveLength(2)
+    expect(calls[0].response_format).toEqual({ type: 'json_object' })
     expect(calls[0].messages[1].content).toContain('rating-a')
     expect(draft.detail).toContain('问题综合：「页面打开慢」原始 2 次')
     expect(draft.conclusion).toContain('体验均分 8.5 分，体验样本 10 条')
@@ -42,5 +46,42 @@ describe('report narrative generation', () => {
     expect(draft.action).not.toContain('产品部溯源 trace-unlinked')
     expect(reportNarrativeFingerprint(narrative.facts)).toBe(reportNarrativeFingerprint(narrative.facts))
     expect(reportNarrativeFingerprint({ ...narrative.facts, quotes: [] })).not.toBe(reportNarrativeFingerprint(narrative.facts))
+  })
+
+  it('retries a truncated final response without exposing raw feedback in the error', async () => {
+    calls.length = 0
+    queuedResponses.length = 0
+    const narrative = {
+      detailDraft: '规则详情', actionDraft: '规则举措', conclusionDraft: '规则结论',
+      facts: {
+        productName: '产品甲', activeThemes: [], excludedThemes: [],
+        quotes: [{ text: '原话', count: 1, lowestScore: 1, excludedCount: 0, recordIds: ['r1'] }],
+        traceFacts: [], visitFacts: [],
+      },
+    }
+    queuedResponses.push(
+      { text: '{"summary":"低分原话"}' },
+      { text: '{"detail":"原话未写完', choices: [{ finish_reason: 'length' }] },
+      { text: '{"detail":"已综合原话","action":"核查问题","conclusion":"下期复核"}' },
+    )
+    const draft = await generateReportProductDraft({}, narrative)
+    expect(calls).toHaveLength(3)
+    expect(calls[2].max_tokens).toBe(6000)
+    expect(draft.detail).toContain('已综合原话')
+
+    calls.length = 0
+    queuedResponses.push(
+      { text: '{"summary":"低分原话"}' },
+      { text: '{"detail":"原话未写完' },
+      { text: '{"detail":"原话未写完' },
+    )
+    let error = null
+    try {
+      await generateReportProductDraft({}, narrative)
+    } catch (caught) {
+      error = caught
+    }
+    expect(error?.message).toContain('模型返回格式不是完整 JSON')
+    expect(error?.message).not.toContain('原话未写完')
   })
 })

@@ -105,12 +105,30 @@ export function reportNarrativeFingerprint(facts) {
   return `v1:${(hash >>> 0).toString(16)}:${source.length}`
 }
 
-async function askLlm(settings, messages) {
-  const response = await llmChatCompletion(settings, { messages, temperature: 0.2, max_tokens: 1800 })
-  return /** @type {Record<string, any>} */ (parseLlmMessageContent(getLlmCompletionText(response)))
+async function askLlm(settings, messages, requiredKeys) {
+  let failure = '返回格式不完整'
+  for (const maxTokens of [3000, 6000]) {
+    const response = await llmChatCompletion(settings, {
+      messages, temperature: 0.2, max_tokens: maxTokens,
+      response_format: { type: 'json_object' },
+    })
+    const choice = response?.data?.choices?.[0] || response?.choices?.[0]
+    if (['length', 'max_tokens'].includes(choice?.finish_reason)) {
+      failure = '输出被截断'
+      continue
+    }
+    try {
+      const parsed = /** @type {Record<string, any>} */ (parseLlmMessageContent(getLlmCompletionText(response)))
+      if (parsed && requiredKeys.every((key) => typeof parsed[key] === 'string' && parsed[key].trim())) return parsed
+      failure = `缺少字段 ${requiredKeys.join('、')}`
+    } catch {
+      failure = '返回格式不是完整 JSON'
+    }
+  }
+  throw new Error(`模型${failure}，重试后仍未得到完整文字稿；当前继续显示规则稿`)
 }
 
-/** Called only by the explicit Generate button. Numbers and problem status remain rule-owned. */
+/** AI changes only narrative text; numbers and problem status remain rule-owned. */
 export async function generateReportProductDraft(settings, narrative) {
   const facts = narrative.facts
   const source = {
@@ -135,17 +153,13 @@ export async function generateReportProductDraft(settings, narrative) {
     const part = await askLlm(settings, [
       { role: 'system', content: '你是用后即评报告编辑。仅依据给定原话总结这一批负反馈，不推断未提供的事实。输出 JSON：{"summary":"..."}。保留低分优先、原话高频及已排除标记。' },
       { role: 'user', content: JSON.stringify(rows) },
-    ])
-    if (!part || typeof part.summary !== 'string' || !part.summary.trim()) throw new Error('模型未返回可用的负反馈分批摘要')
+    ], ['summary'])
     summaries.push(part.summary.trim())
   }
   const result = await askLlm(settings, [
     { role: 'system', content: '你是用后即评月季报告编辑。只写有来源的文字，不改均分、样本、次数、优先级或排除状态。未关联的产品部溯源和回访只作为产品层背景，不得指认为某一具体问题的结论。省代表回访确认无问题的具体问题视为已排除。举措须落实核查对象、责任方与验收方式，禁止空话。返回 JSON：{"detail":"完整负反馈文字综合","action":"具体建议举措","conclusion":"核实结果和下一步关注"}。不得输出 Markdown。' },
     { role: 'user', content: JSON.stringify({ ...source, quotes: undefined, quoteSummaries: summaries, ruleConclusion: narrative.conclusionDraft }) },
-  ])
-  if (!result || ['detail', 'action', 'conclusion'].some((key) => typeof result[key] !== 'string' || !result[key].trim())) {
-    throw new Error('模型未返回完整的报告文字稿')
-  }
+  ], ['detail', 'action', 'conclusion'])
   const actionRefs = facts.traceFacts.filter((row) => row.linkedActive).map((row) => `产品部溯源 ${row.id}`)
     .concat(facts.visitFacts.filter((row) => row.linkedActive).map((row) => `省代表回访 ${row.id}`))
   return {

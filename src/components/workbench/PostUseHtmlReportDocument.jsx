@@ -201,11 +201,10 @@ function ScoreMeter({ avgScore, sampleSize, nonTenCount }) {
  * @param {{
  *   card: any, active: boolean, preview: any, distributionColumns: any[],
  *   canEdit: boolean, issueNarratives: Record<string, { conclusion?: string, action?: string }>,
- *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void,
- *   onGenerateProduct?: (card: any) => void, generatingProduct?: string
+ *   onIssueChange: (key: string, field: 'conclusion' | 'action', value: string) => void
  * }} props
  */
-function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange, onGenerateProduct, generatingProduct }) {
+function ProductDetail({ card, active, preview, distributionColumns, canEdit, issueNarratives, onIssueChange }) {
   const issue = card.issue
   const narrative = issueNarratives[card.conclusionKey] || {}
   const distribution = (preview?.scoreDistributionTable || []).filter((row) => row.productName === card.productName)
@@ -278,11 +277,6 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
 
       <div id={`${anchorBase}-negative`} className="report-product-group report-product-group--negative">
         <h4 className="report-group-title">负反馈详情及建议举措</h4>
-        {canEdit && onGenerateProduct ? (
-          <Button size="small" loading={generatingProduct === card.productName} disabled={Boolean(generatingProduct)} onClick={() => void onGenerateProduct(card)}>
-            AI 综合本产品文字
-          </Button>
-        ) : null}
         {issue ? (
           <>
             <div className="report-detail-block">
@@ -379,8 +373,6 @@ export default function PostUseHtmlReportDocument({
   onTodoNoteChange,
   onTodoItemsChange = (_items) => {},
   onIssueChange,
-  onGenerateProduct = null,
-  generatingProduct = '',
   onVisitSupplementChange,
   keyCustomers = [],
 }) {
@@ -584,8 +576,6 @@ export default function PostUseHtmlReportDocument({
                   canEdit={canEdit}
                   issueNarratives={issueNarratives}
                   onIssueChange={onIssueChange}
-                  onGenerateProduct={onGenerateProduct}
-                  generatingProduct={generatingProduct}
                 />
               ))}
             </div>

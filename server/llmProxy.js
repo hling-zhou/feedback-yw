@@ -148,7 +148,7 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body, timeoutM
     const status = err.statusCode || 0
     const canRetry =
       payload.response_format &&
-      /\(400\)|\(500\)|\(502\)/.test(msg) &&
+      /\(400\)|\(422\)|\(500\)|\(502\)/.test(msg) &&
       status >= 400
     if (!canRetry) throw err
     const { response_format: _rf, ...withoutJsonMode } = payload

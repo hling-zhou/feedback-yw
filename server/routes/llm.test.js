@@ -43,11 +43,11 @@ describe('forwardLlmChatCompletion', () => {
     )
   })
 
-  it('retries without response_format on 400', async () => {
+  it.each([400, 422])('retries without response_format on %i', async (status) => {
     fetchMock
       .mockResolvedValueOnce({
         ok: false,
-        status: 400,
+        status,
         text: async () => JSON.stringify({ error: { message: 'json_object not supported' } }),
       })
       .mockResolvedValueOnce({
