@@ -53,6 +53,17 @@ export function listPostUseJiraItems(query = {}) {
   return apiFetch(`/api/post-use-jira${qs ? `?${qs}` : ''}`)
 }
 
+export async function listAllPostUseJiraItems() {
+  const items = []
+  let offset = 0
+  while (true) {
+    const page = await listPostUseJiraItems({ limit: 500, offset })
+    items.push(...(page?.items || []))
+    offset = items.length
+    if (!page?.items?.length || offset >= Number(page?.total || 0)) return items
+  }
+}
+
 /**
  * @param {Array<Record<string, unknown>>} items
  */

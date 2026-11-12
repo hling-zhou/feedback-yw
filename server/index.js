@@ -56,6 +56,7 @@ import { registerRequirementTicketProgressRoutes } from './routes/requirementTic
 import { registerApiKeyRoutes } from './routes/apiKeys.js'
 import { registerPostUseJiraRoutes } from './routes/postUseJira.js'
 import { registerPostUseVisitRoutes } from './routes/postUseVisit.js'
+import { registerPostUseReportRoutes } from './routes/postUseReport.js'
 import { registerTicketTodoRoutes } from './routes/ticketTodos.js'
 import { registerCuratedTaxonomyRoutes } from './routes/curatedTaxonomy.js'
 import { registerUsageRoutes } from './routes/usage.js'
@@ -110,6 +111,7 @@ registerRequirementTicketProgressRoutes(app)
 registerApiKeyRoutes(app)
 registerPostUseJiraRoutes(app)
 registerPostUseVisitRoutes(app)
+registerPostUseReportRoutes(app)
 registerTicketTodoRoutes(app)
 registerCuratedTaxonomyRoutes(app)
 registerMailRoutes(app)

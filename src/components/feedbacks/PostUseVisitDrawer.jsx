@@ -11,6 +11,8 @@ import {
 } from '../../lib/actionItemClient.js'
 import EstablishedActionFields from '../actions/EstablishedActionFields.jsx'
 import PermissionGate from '../auth/PermissionGate.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
+import PostUseReportIssueLinker from './PostUseReportIssueLinker.jsx'
 
 /** @typedef {import('../../lib/postUseRating/visitRecords.js').PostUseVisitRecord} PostUseVisitRecord */
 
@@ -26,6 +28,7 @@ import PermissionGate from '../auth/PermissionGate.jsx'
  * @param {(record: PostUseVisitRecord) => void} props.onSaved
  */
 export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
+  const { can } = useAuth()
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [assignees, setAssignees] = useState([])
@@ -331,6 +334,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
               </div>
             </div>
           </PermissionGate>
+          <PostUseReportIssueLinker sourceType="visit" sourceId={record.id} open={open} canEdit={can('editRecord')} />
         </div>
       ) : null}
     </Drawer>

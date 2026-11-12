@@ -652,6 +652,28 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_status ON post_use_jira_items(status);
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_updated ON post_use_jira_items(updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS post_use_report_issue_links (
+      issue_id TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK(source_type IN ('visit', 'trace')),
+      source_id TEXT NOT NULL,
+      source_fingerprint TEXT NOT NULL,
+      verdict TEXT NOT NULL CHECK(verdict IN ('related', 'no_issue')),
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (issue_id, source_type, source_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_use_report_links_source
+      ON post_use_report_issue_links (source_type, source_id);
+
+    CREATE TABLE IF NOT EXISTS post_use_report_drafts (
+      report_key TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (report_key, product_name)
+    );
+
     CREATE TABLE IF NOT EXISTS knowledge_bases (
       product_key TEXT PRIMARY KEY,
       product_name TEXT NOT NULL DEFAULT '',

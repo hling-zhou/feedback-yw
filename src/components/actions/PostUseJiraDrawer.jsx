@@ -9,6 +9,7 @@ import {
   updateActionItem,
 } from '../../lib/actionItemClient.js'
 import EstablishedActionFields from './EstablishedActionFields.jsx'
+import PostUseReportIssueLinker from '../feedbacks/PostUseReportIssueLinker.jsx'
 
 /**
  * @param {object} props
@@ -250,6 +251,7 @@ export default function PostUseJiraDrawer({
               </div>
             </div>
           ) : null}
+          <PostUseReportIssueLinker sourceType="trace" sourceId={/** @type {any} */ (item).id} open={open} canEdit={canEdit} />
         </div>
       ) : null}
     </Drawer>
