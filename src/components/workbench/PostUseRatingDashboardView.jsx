@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
+import { Button, Select, Space, Spin, Tag, Tooltip, Typography, message } from 'antd'
 import PostUseStoryView from './PostUseStoryView.jsx'
 import PostUseCallbackProcessModal from './PostUseCallbackProcessModal.jsx'
 import FeedbackDrawer from '../FeedbackDrawer.jsx'
@@ -26,7 +26,7 @@ import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
 import { postUseVisitMonthsForPeriod } from '../../lib/postUseRating/periodScope.js'
 import { loadPostUsePeriodQuality } from '../../lib/postUseRating/qualityStore.js'
 import { buildPostUseStoryModel } from '../../lib/postUseRating/storyModel.js'
-import { normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../../lib/postUseRating/statusTrends.js'
+import { buildProductStatusTrends, normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../../lib/postUseRating/statusTrends.js'
 import {
   applyPostUseWorkbenchAggregate,
   postUseWorkbenchMatchesCatalog,
@@ -60,6 +60,7 @@ export default function PostUseRatingDashboardView() {
   const [statusTrendsPending, setStatusTrendsPending] = useState(false)
   const hasRemoteStatusTrendsRef = useRef(false)
   const [creatingSignalKey, setCreatingSignalKey] = useState('')
+  const [selectedProduct, setSelectedProduct] = useState('')
   const postUseCount = useMemo(
     () => (feedbacks || []).filter((record) => record.dataSourceType === 'post_use_rating').length,
     [feedbacks],
@@ -128,6 +129,19 @@ export default function PostUseRatingDashboardView() {
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
   const focusNames = useMemo(() => getPostUseFocusTrackedNames(catalog), [catalog])
   const scopedItems = useMemo(() => scopePostUseRatingRecords(items, catalog), [items, catalog])
+  const productOptions = useMemo(() => {
+    const counts = new Map()
+    for (const record of scopedItems) {
+      const name = String(record.product || '').trim()
+      if (name) counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    return [...counts].map(([name, count]) => ({ value: name, label: `${name} (${count})` }))
+      .sort((a, b) => a.value.localeCompare(b.value, 'zh'))
+  }, [scopedItems])
+  const selectedItems = useMemo(
+    () => selectedProduct ? scopedItems.filter((record) => record.product === selectedProduct) : scopedItems,
+    [scopedItems, selectedProduct],
+  )
   const ticketRecords = useMemo(
     () =>
       (feedbacks || []).filter(
@@ -179,6 +193,14 @@ export default function PostUseRatingDashboardView() {
     () => scopePostUseRatingRecords(feedbacks.filter((r) => r.dataSourceType === 'post_use_rating'), catalog),
     [feedbacks, catalog],
   )
+  const selectedAllItems = useMemo(
+    () => selectedProduct ? allScopedItems.filter((record) => record.product === selectedProduct) : allScopedItems,
+    [allScopedItems, selectedProduct],
+  )
+  const selectedVisits = useMemo(
+    () => selectedProduct ? scopedVisits.filter((visit) => visit.product === selectedProduct) : scopedVisits,
+    [scopedVisits, selectedProduct],
+  )
 
   const createActionFromSignal = async (signal) => {
     const key = `${signal.type}-${signal.productName}-${signal.title}`
@@ -222,27 +244,37 @@ export default function PostUseRatingDashboardView() {
   const storedWorkbench = sourceSnapshots.post_use_rating?.aggregates?.workbench
   const catalogMatchesStored = postUseWorkbenchMatchesCatalog(storedWorkbench, catalog)
   const storyModel = useMemo(() => {
+    const statusTrends = selectedProduct
+      ? buildProductStatusTrends({
+        productName: selectedProduct,
+        trend: trendSnap,
+        companyTrends: remoteStatusTrends,
+        departmentRecords: selectedAllItems,
+        companyRecords: feedbacks.filter((record) => record.dataSourceType === 'post_use_rating'),
+        nowMonth: resolveChartEndMonth(currentPeriod),
+      })
+      : remoteStatusTrends
     const live = buildPostUseStoryModel({
-      records: scopedItems,
-      allRecords: allScopedItems,
+      records: selectedItems,
+      allRecords: selectedAllItems,
       companyRecords: useRemoteCompany ? undefined : items,
       companyMetrics: remoteCompanyMetrics,
       companyMetricsPending: Boolean(statusTrendsPending && !useRemoteCompany),
-      visits: scopedVisits,
-      productNames,
-      focusNames,
+      visits: selectedVisits,
+      productNames: selectedProduct ? [selectedProduct] : productNames,
+      focusNames: selectedProduct ? [selectedProduct] : focusNames,
       actions: actionItems,
       trend: trendSnap,
       quality: periodQuality,
       period: currentPeriod,
       settings,
       ticketRecords,
-      statusTrends: remoteStatusTrends,
-      statusTrendsPending: Boolean(statusTrendsPending && !remoteStatusTrends),
+      statusTrends,
+      statusTrendsPending: Boolean(!selectedProduct && statusTrendsPending && !remoteStatusTrends),
       nowMonth: resolveChartEndMonth(currentPeriod),
     })
-    return catalogMatchesStored ? applyPostUseWorkbenchAggregate(live, storedWorkbench) : live
-  }, [scopedItems, allScopedItems, items, useRemoteCompany, remoteCompanyMetrics, scopedVisits, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords, remoteStatusTrends, statusTrendsPending, catalogMatchesStored, storedWorkbench])
+    return catalogMatchesStored && !selectedProduct ? applyPostUseWorkbenchAggregate(live, storedWorkbench) : live
+  }, [selectedItems, selectedAllItems, items, feedbacks, useRemoteCompany, remoteCompanyMetrics, selectedVisits, selectedProduct, productNames, focusNames, actionItems, trendSnap, periodQuality, currentPeriod, settings, ticketRecords, remoteStatusTrends, statusTrendsPending, catalogMatchesStored, storedWorkbench])
 
   const loadMonthIds = useMemo(
     () => (currentPeriod ? postUsePeriodMonths(currentPeriod).map((month) => `period:month:${month}`) : []),
@@ -295,6 +327,15 @@ export default function PostUseRatingDashboardView() {
             ) : null}
           </div>
           <Space size={[8, 8]} wrap>
+            <Typography.Text strong>产品</Typography.Text>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              className="min-w-[220px]"
+              value={selectedProduct}
+              options={[{ value: '', label: `全部产品 (${scopedItems.length})` }, ...productOptions]}
+              onChange={(value) => setSelectedProduct(value || '')}
+            />
             <Tag color={storyModel.scope.qualityWarningCount ? 'gold' : storyModel.quality ? 'green' : 'default'}>
               {storyModel.scope.qualityStatus}
             </Tag>
@@ -309,6 +350,10 @@ export default function PostUseRatingDashboardView() {
 
       <PostUseStoryView
         model={storyModel}
+        selectedProduct={selectedProduct}
+        onProductChange={setSelectedProduct}
+        products={productOptions}
+        periodId={currentPeriod?.id || ''}
         creatingSignalKey={creatingSignalKey}
         onCreateAction={(signal) => void createActionFromSignal(signal)}
         onOpenTicket={openTicketByOriginalId}

@@ -258,6 +258,20 @@ describe('feedbackFilters', () => {
     ).toBe('/feedbacks?product=%E4%BA%91%E4%B8%BB%E6%9C%BA&requestScene=%E6%8A%A5%E9%9A%9C&followUp=non10&customerNames=%E5%AE%A2%E6%88%B7A&lane=post_use')
   })
 
+  it('builds a visit drill-down with period and product', () => {
+    const url = buildFeedbacksUrl({
+      periodId: 'period:quarter:2026-Q2',
+      product: '弹性公网IP',
+      lane: 'post_use',
+      view: 'visit',
+    })
+    const params = new URL(url, 'https://example.test').searchParams
+    expect(params.get('periodId')).toBe('period:quarter:2026-Q2')
+    expect(params.get('product')).toBe('弹性公网IP')
+    expect(params.get('lane')).toBe('post_use')
+    expect(params.get('view')).toBe('visit')
+  })
+
   it('buildFollowUpDrillDownUrl defaults followUp to non10', () => {
     expect(
       buildFollowUpDrillDownUrl({

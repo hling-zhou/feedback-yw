@@ -56,6 +56,32 @@ function model() {
 }
 
 describe('PostUseStoryView customer visits', () => {
+  it('shows a single-product journey and links the visit count to the filtered library', () => {
+    const selectedModel = {
+      ...model(),
+      productOverview: [{ productName: '云专线', state: '良好', stateCode: 'healthy', avgScore: 10, sampleSize: 10, nonTenCount: 0, visitEvidenceCount: 2 }],
+    }
+    const props = {
+      model: selectedModel,
+      creatingSignalKey: '',
+      onCreateAction: () => {},
+      products: [{ value: '云专线', label: '云专线 (10)' }],
+      onProductChange: () => {},
+      periodId: 'period:quarter:2026-Q2',
+    }
+    const all = renderToStaticMarkup(<MemoryRouter><PostUseStoryView {...props} /></MemoryRouter>)
+    expect(all).toContain('用户旅程按单产品查看，请选择一个产品')
+    expect(all).not.toContain('journey-map')
+    expect(all).toContain('投诉回访满意度')
+    expect(all).toContain('投诉回访样本')
+    expect(all).toContain('省代表回访数量')
+    expect(all).toContain('view=visit')
+    expect(all).toContain('product=%E4%BA%91%E4%B8%93%E7%BA%BF')
+    const selected = renderToStaticMarkup(<MemoryRouter><PostUseStoryView {...props} selectedProduct="云专线" /></MemoryRouter>)
+    expect(selected).toContain('journey-map')
+    expect(selected).not.toContain('用户旅程按单产品查看，请选择一个产品')
+  })
+
   it('shows each visit result, internal evaluation, and remark on its own line', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>

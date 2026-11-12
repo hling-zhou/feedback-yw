@@ -288,3 +288,58 @@ export function buildDepartmentStatusTrends(input = {}) {
     companyMetrics,
   }
 }
+
+/**
+ * 单产品看板沿用已发布的产品历史趋势，并用当前已加载记录补齐尚未入趋势库的月份。
+ * 公司均分仍取全公司口径，不随产品筛选变化。
+ */
+export function buildProductStatusTrends({ productName, trend, companyTrends, departmentRecords = [], companyRecords = [], nowMonth }) {
+  const local = buildDepartmentStatusTrends({
+    departmentRecords,
+    companyRecords,
+    productNames: [productName],
+    nowMonth,
+  })
+  const scoreHistory = new Map((trend?.scores || [])
+    .filter((row) => row.productName === productName && row.scope === 'internal_experience')
+    .map((row) => [row.month, row.avgScore]))
+  const mixedHistory = new Map((trend?.scores || [])
+    .filter((row) => row.productName === productName && row.scope === 'external_mixed')
+    .map((row) => [row.month, row.avgScore]))
+  const satisfactionHistory = new Map((trend?.satisfaction || [])
+    .filter((row) => row.productName === productName)
+    .map((row) => [row.month, row.rate]))
+  const localCombined = new Map((local.combined?.data || []).map((row) => [row.date, row]))
+  const companyCombined = new Map((companyTrends?.combined?.data || []).map((row) => [row.date, row]))
+  const end = /^\d{4}-\d{2}$/.test(String(nowMonth || '')) ? nowMonth : currentYearMonth()
+  const dates = [
+    ...scoreHistory.keys(),
+    ...mixedHistory.keys(),
+    ...satisfactionHistory.keys(),
+    ...localCombined.keys(),
+    ...companyCombined.keys(),
+  ].filter((month) => /^\d{4}-\d{2}$/.test(month) && month <= end).sort()
+  if (!dates.length) return local
+  const months = listMonthsInclusive(dates[0], end)
+  const experience = months.map((date) => ({
+    date,
+    departmentScore: localCombined.get(date)?.departmentScore ?? scoreHistory.get(date) ?? null,
+  }))
+  const satisfaction = months.map((date) => ({
+    date,
+    departmentRate: localCombined.get(date)?.departmentRate ?? satisfactionHistory.get(date) ?? null,
+  }))
+  const threeChannel = months.map((date) => ({
+    date,
+    department: localCombined.get(date)?.department ?? mixedHistory.get(date) ?? null,
+    company: companyCombined.get(date)?.company ?? localCombined.get(date)?.company ?? null,
+  }))
+  return {
+    pending: false,
+    experience: { data: experience, areas: EXPERIENCE_AREAS },
+    satisfaction: { data: satisfaction, areas: SATISFACTION_AREAS },
+    threeChannel: { data: threeChannel, areas: THREE_CHANNEL_AREAS },
+    combined: combineStatusTrendCharts({ data: experience }, { data: satisfaction }, { data: threeChannel }),
+    companyMetrics: companyTrends?.companyMetrics || local.companyMetrics,
+  }
+}

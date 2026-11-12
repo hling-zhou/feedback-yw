@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Select, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
 import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined, ColumnWidthOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -19,6 +19,7 @@ import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import {
   isImportMonthInPeriod,
   listMonthsInclusive,
+  periodSpecFromId,
   periodSpecFromImportMonth,
   resolveInsightPeriod,
 } from '../domain/insightPeriod.js'
@@ -136,7 +137,7 @@ import {
 } from '../lib/postUseRating/enrichPostUseJourney.js'
 import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../lib/productCatalog/postUseRatingProducts.js'
-import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
+import { customerVisitProductName, filterCustomerVisitRecords, loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
 import { deletePostUseVisit, deletePostUseVisits } from '../lib/postUseVisitClient.js'
 import { buildPostUseCallbackRecommendations } from '../lib/postUseRating/callbackRecommendations.js'
 import {
@@ -206,6 +207,7 @@ export default function Feedbacks() {
   const [selectedVisitRecordKeys, setSelectedVisitRecordKeys] = useState([])
   const [searchParams, setSearchParams] = useSearchParams()
   const skipUrlSyncRef = useRef(false)
+  const appliedPeriodParamRef = useRef('')
   const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
 
@@ -473,9 +475,14 @@ export default function Feedbacks() {
       return
     }
 
+    const periodId = searchParams.get('periodId')
     const month = searchParams.get('month')
-    if (month && /^\d{4}-\d{2}$/.test(month)) {
-      void selectInsightPeriod(periodSpecFromImportMonth(month))
+    const periodSpec = periodSpecFromId(periodId)
+      || (month && /^\d{4}-\d{2}$/.test(month) ? periodSpecFromImportMonth(month) : null)
+    const periodParam = periodSpec ? (periodId || month) : ''
+    if (periodParam && appliedPeriodParamRef.current !== periodParam) {
+      appliedPeriodParamRef.current = periodParam
+      void selectInsightPeriod(periodSpec)
     }
 
     const parsed = parseFeedbackSearchParams(searchParams)
@@ -507,18 +514,18 @@ export default function Feedbacks() {
     period: activePeriod,
   })
 
-  const customerVisitPeriodRecords = useMemo(() => {
-    return (customerVisitRecords || []).filter((record) =>
-      isImportMonthInPeriod(record.importMonth || record.visitMonth || '', activePeriod),
-    )
-  }, [customerVisitRecords, activePeriod])
-
   const catalogProducts = useMemo(
     () => getCatalogProducts(),
     // productCatalogMeta.loadedAt 变化时重新取目录
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [feedbacks, productCatalogMeta?.loadedAt],
   )
+
+  const customerVisitPeriodRecords = useMemo(() => {
+    return (customerVisitRecords || []).filter((record) =>
+      isImportMonthInPeriod(record.importMonth || record.visitMonth || '', activePeriod),
+    )
+  }, [customerVisitRecords, activePeriod])
 
   const callbackRecommendationPool = useMemo(
     () =>
@@ -533,15 +540,12 @@ export default function Feedbacks() {
   )
 
   const filteredCustomerVisitRecords = useMemo(() => {
-    const needles = (filters.customerNames || []).map((name) => String(name || '').trim().toLowerCase()).filter(Boolean)
-    return (customerVisitPeriodRecords || []).filter((record) => {
-      if (needles.length) {
-        const name = String(record.customerName || '').trim().toLowerCase()
-        if (!needles.some((needle) => name.includes(needle))) return false
-      }
-      return true
+    return filterCustomerVisitRecords(customerVisitPeriodRecords, {
+      product: filters.product,
+      customerNames: filters.customerNames,
+      catalog: catalogProducts,
     })
-  }, [customerVisitPeriodRecords, filters.customerNames])
+  }, [customerVisitPeriodRecords, filters.product, filters.customerNames, catalogProducts])
 
   const customerVisitTableRows = useMemo(() => {
     const rows = buildPostUseCustomerVisitRows(filteredCustomerVisitRecords, callbackRecommendationPool)
@@ -739,16 +743,22 @@ export default function Feedbacks() {
     [filterOptionRecords, filters.product],
   )
 
-  const products = useMemo(
-    () => listFeedbackLibraryProducts(filterOptionRecords, catalogProducts, feedbackLane),
-    [catalogProducts, feedbackLane, filterOptionRecords],
-  )
+  const products = useMemo(() => {
+    if (!isCustomerVisitLane) return listFeedbackLibraryProducts(filterOptionRecords, catalogProducts, feedbackLane)
+    const counts = new Map()
+    for (const record of customerVisitPeriodRecords) {
+      const name = customerVisitProductName(record, catalogProducts)
+      if (name) counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  }, [isCustomerVisitLane, customerVisitPeriodRecords, catalogProducts, feedbackLane, filterOptionRecords])
 
   useEffect(() => {
     if (!filters.product) return
+    if (isCustomerVisitLane && !customerVisitPeriodRecords.length) return
     if (products.some((item) => item.name === filters.product)) return
     handleProductChange('')
-  }, [filters.product, handleProductChange, products])
+  }, [filters.product, handleProductChange, products, isCustomerVisitLane, customerVisitPeriodRecords.length])
 
   const pools = useMemo(
     () => listResourcePools(scopedFeedbacks, filters.product || undefined),
@@ -1438,6 +1448,20 @@ export default function Feedbacks() {
         <div className="flex w-full flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
           <div className="flex w-full flex-wrap items-center gap-2">
+            <Typography.Text className="shrink-0 text-sm text-ink-600">产品</Typography.Text>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="全部产品"
+              className="min-w-[180px]"
+              value={filters.product || undefined}
+              options={products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))}
+              onChange={(value) => {
+                const next = { ...filters, product: value || '' }
+                handleFiltersChange(next, { syncUrl: true })
+              }}
+            />
             <div className="min-w-0 flex-1">
               <FeedbackCompositeFilter
                 filters={filters}

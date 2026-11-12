@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Button, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Col, Collapse, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import { ArrowRightOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import TrendChart from '../charts/TrendChart.jsx'
 import { ACTION_ITEM_STATUS_LABELS } from '../../domain/actionItem.js'
@@ -165,8 +165,12 @@ function customerFeedbackHref(customerName) {
  * @param {(signal: object) => void} props.onCreateAction
  * @param {(originalTicketId: string) => void} [props.onOpenTicket]
  * @param {() => void} [props.onOpenCallbackProcess] 打开「建议回访/溯源清单」弹窗（弹窗实例由 DashboardView 持有，双入口同弹窗）
+ * @param {string} [props.selectedProduct]
+ * @param {(product: string) => void} [props.onProductChange]
+ * @param {{ value: string, label: string }[]} [props.products]
+ * @param {string} [props.periodId]
  */
-export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket, onOpenCallbackProcess }) {
+export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket, onOpenCallbackProcess, selectedProduct = '', onProductChange, products = [], periodId = '' }) {
   const { user } = useAuth()
   const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
@@ -286,10 +290,18 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
             { title: '体验均分', dataIndex: 'avgScore', width: 92, render: (value, row) => <span>{value}{row.sampleSize < POST_USE_SMALL_SAMPLE_N ? <Tag className="ml-1">参考</Tag> : null}</span> },
             { title: '体验样本', dataIndex: 'sampleSize', width: 88 },
             { title: '非10分', dataIndex: 'nonTenCount', width: 80 },
-            { title: '回访满意度', dataIndex: 'satisfactionRate', width: 116, render: (value, row) => value == null ? '—' : <span>{value}%{row.satisfactionSmallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
-            { title: '回访样本', dataIndex: 'satisfactionSample', width: 88 },
+            { title: '投诉回访满意度', dataIndex: 'satisfactionRate', width: 130, render: (value, row) => value == null ? '—' : <span>{value}%{row.satisfactionSmallSample ? <Tag className="ml-1">参考</Tag> : null}</span> },
+            { title: '投诉回访样本', dataIndex: 'satisfactionSample', width: 110 },
             { title: '主要需求', dataIndex: 'primaryNeed', width: 180, ellipsis: true },
-            { title: '省代表回访证据', dataIndex: 'visitEvidenceCount', width: 112, render: (value) => value || '—' },
+            {
+              title: '省代表回访数量', dataIndex: 'visitEvidenceCount', width: 132,
+              render: (value, row) => {
+                const count = Number(value) || 0
+                return count > 0
+                  ? <Link to={buildFeedbacksUrl({ lane: 'post_use', view: 'visit', product: row.productName, periodId })}>{count}</Link>
+                  : 0
+              },
+            },
           ]}
         />
       <Collapse
@@ -350,9 +362,23 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
 
       <div className="page-card">
       <SectionHeading title="原因与用户需求" summary="从发生位置继续下钻到用户真正需要的改善" id="post-use-drivers" />
-      <div className="page-card-header"><span className="page-card-title">用户旅程分布</span></div>
-        <p className="mb-2 text-xs text-ink-500">柱为样本量，折线为均分。均分轴从最低分减 1 取整起，不从 0 起。</p>
-        <PostUseJourneyMap rows={drivers.journeyDistribution} />
+      <div className="page-card-header">
+        <span className="page-card-title">用户旅程分布</span>
+        <Select
+          showSearch
+          optionFilterProp="label"
+          className="min-w-[220px]"
+          value={selectedProduct}
+          options={[{ value: '', label: '全部产品' }, ...products]}
+          onChange={(value) => onProductChange?.(value || '')}
+        />
+      </div>
+        {selectedProduct ? (
+          <>
+            <p className="mb-2 text-xs text-ink-500">柱为样本量，折线为均分。均分轴从最低分减 1 取整起，不从 0 起。</p>
+            <PostUseJourneyMap rows={drivers.journeyDistribution} productName={selectedProduct} />
+          </>
+        ) : <Alert type="info" showIcon title="用户旅程按单产品查看，请选择一个产品。" />}
       <div className="page-card-header mt-3"><span className="page-card-title">用户需求改善优先级</span></div>
         <LimitedTable
           size="small"

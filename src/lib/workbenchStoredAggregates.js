@@ -362,6 +362,7 @@ export function postUseWorkbenchMatchesCatalog(workbench, catalog = getCatalogPr
 
 export function applyPostUseWorkbenchAggregate(model, workbench) {
   if (!model || !workbench || workbench.version !== WORKBENCH_AGGREGATE_VERSION) return model
+  const liveProducts = new Map((model.productOverview || []).map((row) => [row.productName, row]))
   return {
     ...model,
     metrics: {
@@ -388,7 +389,19 @@ export function applyPostUseWorkbenchAggregate(model, workbench) {
         },
       },
     },
-    productOverview: workbench.productOverview?.length ? workbench.productOverview : model.productOverview,
+    productOverview: workbench.productOverview?.length
+      ? workbench.productOverview.map((row) => {
+        const live = liveProducts.get(row.productName)
+        return {
+          ...live,
+          ...row,
+          // 回访记录不参与落库聚合，随页面实时加载；不能被快照里的 0 覆盖。
+          visitEvidenceCount: live?.visitEvidenceCount ?? row.visitEvidenceCount ?? 0,
+          visitEvidenceIds: live?.visitEvidenceIds || [],
+          visitConclusions: live?.visitConclusions || [],
+        }
+      })
+      : model.productOverview,
   }
 }
 

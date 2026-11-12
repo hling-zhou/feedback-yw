@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildDepartmentStatusTrends,
+  buildProductStatusTrends,
   clipDepartmentStatusTrends,
   normalizeDepartmentStatusTrends,
   rollupCompanyMetrics,
@@ -13,6 +14,28 @@ const row = (overrides) => ({
 })
 
 describe('department status trends', () => {
+  it('shows only the selected product history while retaining company comparison', () => {
+    const product = buildProductStatusTrends({
+      productName: '弹性公网IP',
+      trend: {
+        scores: [
+          { month: '2026-05', productName: '弹性公网IP', scope: 'internal_experience', avgScore: 8 },
+          { month: '2026-05', productName: '弹性公网IP', scope: 'external_mixed', avgScore: 8.5 },
+          { month: '2026-05', productName: '云主机', scope: 'internal_experience', avgScore: 3 },
+        ],
+        satisfaction: [{ month: '2026-05', productName: '弹性公网IP', rate: 90 }],
+      },
+      companyTrends: { combined: { data: [{ date: '2026-05', company: 9.3 }, { date: '2026-06', company: 9.5 }] } },
+      departmentRecords: [row({ id: 'selected-june', importMonth: '2026-06', channel: 'sms', ratingScore: 10 })],
+      companyRecords: [row({ id: 'company-june', importMonth: '2026-06', channel: 'sms', ratingScore: 7 })],
+      nowMonth: '2026-06',
+    })
+    expect(product.combined.data).toEqual([
+      { date: '2026-05', departmentScore: 8, departmentRate: 90, department: 8.5, company: 9.3 },
+      { date: '2026-06', departmentScore: 10, departmentRate: null, department: 10, company: 9.5 },
+    ])
+  })
+
   it('plots department experience, callback satisfaction, and both three-channel averages through the current month', () => {
     const departmentRecords = [
       row({ id: 'a', importMonth: '2026-06', channel: 'sms', ratingScore: 8 }),

@@ -466,7 +466,9 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
 /**
  * @param {{
  *   month?: string
+ *   periodId?: string
  *   product?: string
+ *   view?: string
  *   problemType?: string
  *   complaintCauseL1?: string
  *   journeyL1?: string
@@ -477,9 +479,11 @@ export function patchFeedbackFollowUpSearchParams(base, patch) {
  *   ticketId?: string
  *   ticketIds?: string
  *   ticketIdSet?: string
+ *   customerNames?: string
  *   ticketDateFrom?: string
  *   ticketDateTo?: string
  *   source?: string
+ *   lane?: string
  *   todoStatus?: string
  *   listeningReviewed?: string
  *   handlingKeyword?: string
@@ -492,7 +496,9 @@ export function buildFeedbacksUrl(params = {}) {
   const sp = new URLSearchParams()
   const stringFields = [
     'month',
+    'periodId',
     'product',
+    'view',
     'problemType',
     'complaintCauseL1',
     'journeyL1',

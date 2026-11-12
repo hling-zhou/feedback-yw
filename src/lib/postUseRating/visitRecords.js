@@ -1,6 +1,8 @@
 /**
  * 省代表回访信息（人工录入）— meta 存储
  */
+import { resolvePostUseRatingProduct } from '../productCatalog/postUseRatingProducts.js'
+
 export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 
 /**
@@ -79,6 +81,29 @@ export function filterVisitsByMonths(records, months) {
   const monthSet = new Set(months || [])
   if (!monthSet.size) return []
   return (records || []).filter((record) => monthSet.has(record.importMonth || record.visitMonth))
+}
+
+/** 反馈库筛选与综合视图使用同一父产品口径；未归入目录的产品保留原始名称。 */
+export function customerVisitProductName(record, catalog) {
+  return resolvePostUseRatingProduct(record, catalog)?.name
+    || String(record.product || record.productName || '').trim()
+}
+
+/**
+ * 反馈库省代表回访视图的产品、客户筛选；周期由调用方先筛。
+ * @template {{ id?: string, product?: string, productName?: string, customerName?: string }} T
+ * @param {T[]} records
+ * @param {{ product?: string, customerNames?: string[], catalog?: import('../productCatalogLoader.js').CatalogProduct[] }} [filters]
+ * @returns {T[]}
+ */
+export function filterCustomerVisitRecords(records, { product = '', customerNames = [], catalog } = {}) {
+  const needles = customerNames.map((name) => String(name || '').trim().toLowerCase()).filter(Boolean)
+  return (records || []).filter((record) => {
+    if (product && customerVisitProductName(record, catalog) !== product) return false
+    if (!needles.length) return true
+    const name = String(record.customerName || '').trim().toLowerCase()
+    return needles.some((needle) => name.includes(needle))
+  })
 }
 
 /**

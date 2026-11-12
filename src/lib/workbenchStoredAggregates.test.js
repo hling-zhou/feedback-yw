@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildPeriodSpec } from '../domain/insightPeriod.js'
+import { buildPostUseStoryModel } from './postUseRating/storyModel.js'
 import {
   WORKBENCH_AGGREGATE_VERSION,
   applyPostUseWorkbenchAggregate,
@@ -152,6 +153,18 @@ describe('workbench stored aggregates', () => {
     const merged = applyPostUseWorkbenchAggregate(live, workbench)
     expect(merged.metrics.external.yunwang.totalSample).toBe(2)
     expect(merged.metrics.external.company.totalSample).toBe(3)
+  })
+
+  it('keeps current visit counts when applying a rating-only workbench snapshot', () => {
+    const catalog = [{ key: 'eip', name: '弹性公网IP', analysisPostUseRating: true, specs: [] }]
+    const records = [{ id: 'visit-count-rating', dataSourceType: 'post_use_rating', productName: '弹性公网IP', ratingScore: 10, channel: 'sms', importMonth: '2026-06' }]
+    const visits = [{ id: 'visit-count-visit', productName: '弹性公网IP', importMonth: '2026-06' }]
+    const live = buildPostUseStoryModel({ records, allRecords: records, visits, productNames: ['弹性公网IP'], period: june })
+    const stored = buildPostUseWorkbenchAggregate({ period: june, records, catalog })
+    const merged = applyPostUseWorkbenchAggregate(live, stored)
+    expect(stored.productOverview[0].visitEvidenceCount).toBe(0)
+    expect(merged.productOverview[0].visitEvidenceCount).toBe(1)
+    expect(merged.productOverview[0].visitEvidenceIds).toEqual(['visit-count-visit'])
   })
 
   it('stores overview journey previous-month counts per product and source filter', () => {
