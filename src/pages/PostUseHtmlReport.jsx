@@ -39,6 +39,7 @@ import SendMailModal from '../components/mail/SendMailModal.jsx'
 import { MAIL_PRESET_REPORT } from '../domain/mail.js'
 import { textToBase64 } from '../lib/mailClient.js'
 import './PostUseHtmlReport.css'
+import { REPORT_SHARED_CSS } from '../lib/postUseRating/reportSharedStyles.js'
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const QUARTER_RE = /^\d{4}-Q[1-4]$/
@@ -491,6 +492,7 @@ export default function PostUseHtmlReport() {
 
   return (
     <div className="post-use-html-report">
+      <style>{REPORT_SHARED_CSS}</style>
       <header className="post-use-html-report-toolbar">
         <Space wrap>
           <Link to={WORKBENCH_HREF}>返回工作台</Link>

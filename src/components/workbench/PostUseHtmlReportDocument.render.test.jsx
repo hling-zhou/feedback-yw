@@ -115,6 +115,50 @@ describe('PostUseHtmlReportDocument render', () => {
     expect(html).toContain('较上月少 1')
   })
 
+  it('keeps negative evidence, action, and positive quotes in a clear reading order', () => {
+    const report = model()
+    report.productCards[0].issue = {
+      key: 'issue-1',
+      detailDraft: '网络连接不稳定',
+      action: '跟进连接稳定性',
+      evidence: {
+        avgScore: 8,
+        sampleSize: 2,
+        nonTenCount: 1,
+        sourceRefs: { ratingIds: ['r1'] },
+        report: { highlights: [{ text: '经常断线', count: 1, lowestScore: 8 }], quotes: [], rawPieceCount: 1 },
+        positiveQuotes: [{ recordId: 'r2', text: '连接很快', customerName: '客户甲', score: 10, channelLabel: '短信', productName: '弹性公网IP' }],
+      },
+    }
+    const html = renderToStaticMarkup(
+      <PostUseHtmlReportDocument
+        model={report}
+        canEdit
+        judgment="本月整体稳定"
+        todoNote=""
+        issueNarratives={{}}
+        visitSupplements={{}}
+        hiddenSectionIds={[]}
+        onJudgmentChange={() => {}}
+        onTodoNoteChange={() => {}}
+        onIssueChange={() => {}}
+        onVisitSupplementChange={() => {}}
+      />,
+    )
+    const labels = [
+      '<h5 class="report-group-subtitle">问题概述</h5>', '网络连接不稳定',
+      '<h5 class="report-group-subtitle">关键证据</h5>', '经常断线',
+      '<h5 class="report-group-subtitle">省代表回访记录</h5>',
+      '<h5 class="report-group-subtitle">建议举措</h5>', '跟进连接稳定性',
+      '<h4 class="report-group-title">正反馈</h4>', '连接很快',
+    ]
+    const positions = labels.map((label) => html.indexOf(label))
+    expect(positions.every((position) => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    expect(html).toContain('<h4 class="report-group-title">负反馈详情及建议举措</h4>')
+    expect(html).toContain('<span class="report-quote-meta">客户甲 · 10分 · 短信</span>')
+  })
+
   it('hides the previous-visit supplement on a quarterly report', () => {
     const html = renderToStaticMarkup(
       <PostUseHtmlReportDocument

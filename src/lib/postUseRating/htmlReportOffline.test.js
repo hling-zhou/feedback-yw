@@ -37,7 +37,7 @@ describe('offline monthly report html', () => {
         issueNarratives: { [model.productCards[0].conclusionKey]: { conclusion: '离线产品结论', action: '' } },
         exportedAt: '2026-11-12T00:00:00.000Z',
       })
-      expect(html).toContain('report-group-subtitle">结论</div>')
+      expect(html).toContain('<h5 class="report-group-subtitle">结论</h5>')
       expect(html).toContain('离线产品结论')
     }
   })
@@ -91,6 +91,7 @@ describe('offline monthly report html', () => {
     expect(html).not.toMatch(/<script\s+src=/)
     expect(html).not.toMatch(/href="https?:\/\//)
     expect(html).toContain('<style>')
+    expect(html).toContain('.post-use-html-report .report-product-title')
     expect(html).toContain('离线快照')
     expect(html).toContain('本月概述')
     expect(html).toContain('待办事项及进展')

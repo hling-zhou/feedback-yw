@@ -143,15 +143,10 @@ function YunwangScoreHints({ kpis }) {
   )
 }
 
-function formatQuoteLine(item) {
+function formatQuoteSource(item) {
   const who = [item.customerName, item.customerCode].filter(Boolean).join(' / ') || '未标注客户'
   const score = item.score == null ? '' : ` · ${item.score}分`
-  return `「${item.text}」— ${who}${score} · ${item.channelLabel}`
-}
-
-function polarityTag(polarity) {
-  if (polarity === 'positive') return <Tag color="success">正反馈</Tag>
-  return <Tag color="error">负反馈</Tag>
+  return `${who}${score}${item.channelLabel ? ` · ${item.channelLabel}` : ''}`
 }
 
 function quoteHref(item) {
@@ -178,7 +173,7 @@ function percent(part, total) {
 
 function SectionTitle({ id, children }) {
   return (
-    <Typography.Title id={id} level={2} className="!mb-3 !mt-0 !text-base !font-semibold">
+    <Typography.Title id={id} level={2} className="report-section-title">
       {children}
     </Typography.Title>
   )
@@ -221,12 +216,12 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
   const anchorBase = `p-${card.productName}`
   return (
     <section className={`report-product-detail${active ? ' is-active' : ''}`} data-product-panel-name={card.productName}>
-      <h3>{card.productName}</h3>
+      <h3 className="report-product-title">{card.productName}</h3>
       {active ? <ProductSectionNav productName={card.productName} /> : null}
 
       <div id={`${anchorBase}-overview`} className="report-product-group report-product-group--overview">
-        <div className="report-group-title">评分概览</div>
-        <div className="report-group-subtitle">结论</div>
+        <h4 className="report-group-title">评分概览</h4>
+        <h5 className="report-group-subtitle">结论</h5>
         <Input.TextArea
           className="mt-1 mb-3"
           value={narrative.conclusion ?? card.conclusion ?? card.conclusionDraft ?? ''}
@@ -261,11 +256,11 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
             <PeriodHint comparison={card.comparisons?.lowScoreCount} />
           </div>
         </div>
-        <div className="report-group-subtitle">得分分布</div>
+        <h5 className="report-group-subtitle">得分分布</h5>
         <Table size="small" pagination={false} rowKey="productName" dataSource={distribution} columns={distributionColumns} locale={{ emptyText: '暂无得分分布' }} />
-        <div className="report-group-subtitle">用户旅程分布</div>
+        <h5 className="report-group-subtitle">用户旅程分布</h5>
         <PostUseJourneyMap rows={journeys} productName={card.productName} height={220} variant="report" />
-        <div className="report-group-subtitle">得分趋势</div>
+        <h5 className="report-group-subtitle">得分趋势</h5>
         {scoreTrend?.data?.length ? (
           <TrendChart
             variant="line"
@@ -282,7 +277,7 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
       </div>
 
       <div id={`${anchorBase}-negative`} className="report-product-group report-product-group--negative">
-        <div className="report-group-title">负反馈详情及建议举措</div>
+        <h4 className="report-group-title">负反馈详情及建议举措</h4>
         {canEdit && onGenerateProduct ? (
           <Button size="small" loading={generatingProduct === card.productName} disabled={Boolean(generatingProduct)} onClick={() => void onGenerateProduct(card)}>
             AI 综合本产品文字
@@ -290,74 +285,81 @@ function ProductDetail({ card, active, preview, distributionColumns, canEdit, is
         ) : null}
         {issue ? (
           <>
-            <ScoreMeter avgScore={evidence.avgScore} sampleSize={evidence.sampleSize} nonTenCount={evidence.nonTenCount} />
-            {card.generatedStale ? <Typography.Text type="warning">证据已变化，AI 文字稿已失效，当前显示规则稿。</Typography.Text> : null}
-            <Typography.Paragraph className="mt-2" style={{ whiteSpace: 'pre-wrap' }}>
-              {issue.detailDraft || '本期未检出有效负反馈。'}
-            </Typography.Paragraph>
-            <Typography.Text type="secondary">
-              证据索引：评分记录 {evidence.sourceRefs?.ratingIds?.length || 0} 条（编号见附录）
-              {evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${evidence.sourceRefs.traceIds.join('、')}` : ''}
-              {evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${evidence.sourceRefs.visitIds.join('、')}` : ''}
-            </Typography.Text>
-            {evidence.changeLabel ? (
-              <div className="mt-1">问题变化 {evidence.changeIssue || ''} {evidence.changeLabel}</div>
-            ) : null}
-            {(reportEvidence.highlights || []).length ? <div className="report-group-subtitle">低分及高频原话</div> : null}
-            {(reportEvidence.highlights || []).map((item) => (
-              <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote">
-                {polarityTag('negative')} 「{item.text}」· 原话 {item.count} 次
-                {item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}
-                {item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}
-              </a>
-            ))}
-            {(reportEvidence.quotes || []).length ? (
-              <details className="mt-2">
-                <summary>查看全部原话（{reportEvidence.rawPieceCount} 条，按原话合并）</summary>
-                {(reportEvidence.quotes || []).map((item) => (
-                  <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote">
-                    「{item.text}」· {item.count} 次{item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}
-                    {item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}
-                  </a>
-                ))}
-              </details>
-            ) : null}
+            <div className="report-detail-block">
+              <h5 className="report-group-subtitle">问题概述</h5>
+              <Typography.Paragraph className="report-prose">
+                {issue.detailDraft || '本期未检出有效负反馈。'}
+              </Typography.Paragraph>
+            </div>
+            <div className="report-detail-block report-detail-block--evidence">
+              <h5 className="report-group-subtitle">关键证据</h5>
+              <ScoreMeter avgScore={evidence.avgScore} sampleSize={evidence.sampleSize} nonTenCount={evidence.nonTenCount} />
+              {card.generatedStale ? <div className="report-evidence-meta report-evidence-meta--warning">证据已变化，AI 文字稿已失效，当前显示规则稿。</div> : null}
+              <div className="report-evidence-meta">
+                证据索引：评分记录 {evidence.sourceRefs?.ratingIds?.length || 0} 条（编号见附录）
+                {evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${evidence.sourceRefs.traceIds.join('、')}` : ''}
+                {evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${evidence.sourceRefs.visitIds.join('、')}` : ''}
+              </div>
+              {evidence.changeLabel ? (
+                <div className="report-change-note">问题变化 {evidence.changeIssue || ''} {evidence.changeLabel}</div>
+              ) : null}
+              {(reportEvidence.highlights || []).length ? <div className="report-evidence-label">低分及高频原话</div> : null}
+              {(reportEvidence.highlights || []).map((item) => (
+                <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote post-use-html-report-quote--negative">
+                  <span className="report-quote-text">「{item.text}」</span>
+                  <span className="report-quote-meta">原话 {item.count} 次{item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}{item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}</span>
+                </a>
+              ))}
+              {(reportEvidence.quotes || []).length ? (
+                <details className="report-all-quotes">
+                  <summary>查看全部原话（{reportEvidence.rawPieceCount} 条，按原话合并）</summary>
+                  {(reportEvidence.quotes || []).map((item) => (
+                    <a key={item.text} href={quoteHref({ productName: card.productName })} className="post-use-html-report-quote post-use-html-report-quote--negative">
+                      <span className="report-quote-text">「{item.text}」</span>
+                      <span className="report-quote-meta">原话 {item.count} 次{item.lowestScore == null ? '' : ` · 最低 ${item.lowestScore} 分`}{item.excludedCount ? ` · 已排除 ${item.excludedCount} 次` : ''}</span>
+                    </a>
+                  ))}
+                </details>
+              ) : null}
+            </div>
           </>
         ) : (
-          <Typography.Paragraph type="secondary">本产品本月没有单列问题条。</Typography.Paragraph>
+          <p className="report-group-empty">本产品本月没有单列问题条。</p>
         )}
-        <div className="report-group-subtitle">省代表回访记录</div>
-        <div className="post-use-html-report-evidence">
-          {(card.visitNarratives || []).length ? (
-            card.visitNarratives.map((line) => <div key={line}>{line}</div>)
-          ) : (
-            <div>本期该产品暂无省代表回访记录</div>
-          )}
+        <div className="report-detail-block">
+          <h5 className="report-group-subtitle">省代表回访记录</h5>
+          <div className="post-use-html-report-evidence">
+            {(card.visitNarratives || []).length ? (
+              card.visitNarratives.map((line) => <div key={line}>{line}</div>)
+            ) : (
+              <div>本期该产品暂无省代表回访记录</div>
+            )}
+          </div>
         </div>
         {issue ? (
-          <>
-            <div className="report-group-subtitle">建议举措</div>
+          <div className="report-detail-block report-detail-block--action">
+            <h5 className="report-group-subtitle">建议举措</h5>
             <Input.TextArea
-              className="mt-1"
               value={narrative.action ?? issue.action}
               onChange={(event) => onIssueChange(issue.key, 'action', event.target.value)}
               autoSize={{ minRows: 2 }}
               disabled={!canEdit}
             />
-          </>
+          </div>
         ) : null}
       </div>
 
       <div id={`${anchorBase}-positive`} className="report-product-group report-product-group--positive">
-        <div className="report-group-title">正反馈</div>
+        <h4 className="report-group-title">正反馈</h4>
         {(evidence.positiveQuotes || []).length ? (
           (evidence.positiveQuotes).map((item) => (
-            <a key={`${item.recordId}-${item.text}`} href={quoteHref(item)} className="post-use-html-report-quote">
-              {polarityTag('positive')} {formatQuoteLine(item)}
+            <a key={`${item.recordId}-${item.text}`} href={quoteHref(item)} className="post-use-html-report-quote post-use-html-report-quote--positive">
+              <span className="report-quote-text">「{item.text}」</span>
+              <span className="report-quote-meta">{formatQuoteSource(item)}</span>
             </a>
           ))
         ) : (
-          <Typography.Paragraph type="secondary">本产品本月暂无正反馈原话。</Typography.Paragraph>
+          <p className="report-group-empty">本产品本月暂无正反馈原话。</p>
         )}
       </div>
     </section>

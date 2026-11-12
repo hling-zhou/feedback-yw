@@ -7,6 +7,7 @@ import {
 import { toJourneyChartRows, withPostUseTrendDomains } from './insights.js'
 import { POST_USE_SATISFACTION_BASELINE, POST_USE_SCORE_BASELINE } from './metrics.js'
 import { isKeyCustomerName } from './callbackRecommendations.js'
+import { REPORT_SHARED_CSS } from './reportSharedStyles.js'
 
 const TREND_COLORS = ['#2563EB', '#059669', '#D97706', '#DC2626', '#7C3AED', '#0891B2']
 
@@ -422,7 +423,10 @@ function quoteLineHtml(item, polarity = item?.polarity || 'negative', keyCustome
   const who = [item?.customerName, item?.customerCode].filter(Boolean).join(' / ') || '未标注客户'
   const star = keyCustomerStarHtml(item?.customerName, keyCustomers)
   const score = item?.score == null ? '' : ` · ${item.score}分`
-  return `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--${polarity === 'positive' ? 'positive' : 'negative'}">${polarityLabel(polarity)}</span>「${text(item?.text)}」— ${escapeHtml(who)}${star}${escapeHtml(score)}${item?.channelLabel ? ` · ${escapeHtml(item.channelLabel)}` : ''}</div>`
+  return `<div class="post-use-html-report-quote post-use-html-report-quote--${polarity === 'positive' ? 'positive' : 'negative'}">
+    <span class="report-quote-text">「${text(item?.text)}」</span>
+    <span class="report-quote-meta">${escapeHtml(who)}${star}${escapeHtml(score)}${item?.channelLabel ? ` · ${escapeHtml(item.channelLabel)}` : ''}</span>
+  </div>`
 }
 
 const PRODUCT_SECTION_GROUPS = [
@@ -442,17 +446,23 @@ function productNavHtml(productName) {
 function negativeQuotesHtml(evidence, keyCustomers = []) {
   if (evidence.report) {
     const report = evidence.report
-    const rowHtml = (item) => `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--negative">负反馈</span>「${text(item.text)}」 · ${escapeHtml(String(item.count))} 次${item.lowestScore == null ? '' : ` · 最低 ${escapeHtml(String(item.lowestScore))} 分`}${item.excludedCount ? ` · 已排除 ${escapeHtml(String(item.excludedCount))} 次` : ''}</div>`
-    return `${report.highlights?.length ? `<div class="report-group-subtitle">低分及高频原话</div>${report.highlights.map(rowHtml).join('')}` : ''}
-      ${report.quotes?.length ? `<details><summary>查看全部原话（${escapeHtml(String(report.rawPieceCount || 0))} 条，按原话合并）</summary>${report.quotes.map(rowHtml).join('')}</details>` : ''}`
+    const rowHtml = (item) => `<div class="post-use-html-report-quote post-use-html-report-quote--negative">
+      <span class="report-quote-text">「${text(item.text)}」</span>
+      <span class="report-quote-meta">原话 ${escapeHtml(String(item.count))} 次${item.lowestScore == null ? '' : ` · 最低 ${escapeHtml(String(item.lowestScore))} 分`}${item.excludedCount ? ` · 已排除 ${escapeHtml(String(item.excludedCount))} 次` : ''}</span>
+    </div>`
+    return `${report.highlights?.length ? `<div class="report-evidence-label">低分及高频原话</div>${report.highlights.map(rowHtml).join('')}` : ''}
+      ${report.quotes?.length ? `<details class="report-all-quotes"><summary>查看全部原话（${escapeHtml(String(report.rawPieceCount || 0))} 条，按原话合并）</summary>${report.quotes.map(rowHtml).join('')}</details>` : ''}`
   }
   const quotes = evidence.quotes || []
   const options = evidence.options || []
   if (quotes.length) return quotes.map((item) => quoteLineHtml(item, item.polarity, keyCustomers)).join('')
   if (options.length) {
-    return options.map((item) => `<div class="post-use-html-report-quote"><span class="quote-pill quote-pill--negative">负反馈</span>反馈选项：${text(item.text)}${item.customerName ? `（${escapeHtml(item.customerName)}${keyCustomerStarHtml(item.customerName, keyCustomers)}${item.score == null ? '' : ` · ${escapeHtml(String(item.score))}分`}）` : ''}</div>`).join('')
+    return options.map((item) => `<div class="post-use-html-report-quote post-use-html-report-quote--negative">
+      <span class="report-quote-text">反馈选项：${text(item.text)}</span>
+      ${item.customerName ? `<span class="report-quote-meta">${escapeHtml(item.customerName)}${keyCustomerStarHtml(item.customerName, keyCustomers)}${item.score == null ? '' : ` · ${escapeHtml(String(item.score))}分`}</span>` : ''}
+    </div>`).join('')
   }
-  return '<div class="post-use-html-report-quote">本条暂无有效负向原话</div>'
+  return '<p class="report-group-empty">本条暂无有效负向原话</p>'
 }
 
 function productMetricCard(label, value, comparison) {
@@ -479,11 +489,11 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
   const action = narrative.action ?? issue?.action ?? issue?.actionDraft ?? ''
   const positiveQuotes = evidence.positiveQuotes || []
   return `<section class="report-product-detail${active ? ' is-active' : ''}" data-product-panel="${escapeAttr(card.productName)}">
-    <h3>${text(card.productName)}</h3>
+    <h3 class="report-product-title">${text(card.productName)}</h3>
     ${productNavHtml(card.productName)}
     <div id="${escapeAttr(anchorBase)}-overview" class="report-product-group report-product-group--overview" data-nav-group="overview">
-      <div class="report-group-title">评分概览</div>
-      <div class="report-group-subtitle">结论</div>${readonlyBlock(conclusion)}
+      <h4 class="report-group-title">评分概览</h4>
+      <h5 class="report-group-subtitle">结论</h5>${readonlyBlock(conclusion)}
       <div class="post-use-html-report-kpis post-use-html-report-kpis--product">
         ${productMetricCard('产品体验得分', escapeHtml(formatScore(card.experienceScore)), card.comparisons?.experienceScore)}
         ${productMetricCard('投诉回访满意度', escapeHtml(formatPercent(card.satisfactionRate)), card.comparisons?.satisfactionRate)}
@@ -491,38 +501,48 @@ function productCardHtml(card, preview, issueNarratives, active = false, keyCust
         ${productMetricCard('样本数（三渠道）', escapeHtml(String(card.mixedSample ?? 0)), card.comparisons?.mixedSample)}
         ${productMetricCard('3 分以下样本数', escapeHtml(String(card.lowScoreCount ?? 0)), card.comparisons?.lowScoreCount)}
       </div>
-      <div class="report-group-subtitle">得分分布</div>
+      <h5 class="report-group-subtitle">得分分布</h5>
       ${tableHtml(
         ['样本', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1'],
         distribution.map((row) => [row.sampleSize, row['10'], row['9'], row['8'], row['7'], row['6'], row['5'], row['4'], row['3'], row['2'], row['1']].map((cell) => escapeHtml(String(cell ?? '—')))),
         '暂无得分分布',
       )}
-      <div class="report-group-subtitle">用户旅程分布</div>
+      <h5 class="report-group-subtitle">用户旅程分布</h5>
       ${svgJourneyCombo(journeys, { productName: card.productName })}
-      <div class="report-group-subtitle">得分趋势</div>
+      <h5 class="report-group-subtitle">得分趋势</h5>
       ${scoreTrend}
     </div>
     <div id="${escapeAttr(anchorBase)}-negative" class="report-product-group report-product-group--negative" data-nav-group="negative">
-      <div class="report-group-title">负反馈详情及建议举措</div>
+      <h4 class="report-group-title">负反馈详情及建议举措</h4>
       ${issue ? `
-        ${scoreMeterHtml(evidence.avgScore, evidence.sampleSize, evidence.nonTenCount)}
-        ${card.generatedStale ? '<div class="report-evidence-hint">证据已变化，AI 文字稿已失效，当前显示规则稿。</div>' : ''}
-        ${readonlyBlock(issue.detailDraft || '本期未检出有效负反馈。')}
-        <div class="report-evidence-hint">证据索引：评分记录 ${escapeHtml(String(evidence.sourceRefs?.ratingIds?.length || 0))} 条（编号见附录）${evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${text(evidence.sourceRefs.traceIds.join('、'))}` : ''}${evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${text(evidence.sourceRefs.visitIds.join('、'))}` : ''}</div>
-        ${evidence.changeLabel ? `<div class="report-evidence-hint">问题变化 ${text(evidence.changeIssue)} ${text(evidence.changeLabel)}</div>` : ''}
-        ${negativeQuotesHtml(evidence, keyCustomers)}` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
-      <div class="report-group-subtitle">省代表回访记录</div>
-      <div class="post-use-html-report-evidence">
-        ${(card.visitNarratives || []).length
-          ? card.visitNarratives.map((line) => `<div>${escapeHtml(line)}</div>`).join('')
-          : '<div class="muted">本期该产品暂无省代表回访记录</div>'}
+        <div class="report-detail-block">
+          <h5 class="report-group-subtitle">问题概述</h5>
+          <p class="report-prose">${pre(issue.detailDraft || '本期未检出有效负反馈。')}</p>
+        </div>
+        <div class="report-detail-block report-detail-block--evidence">
+          <h5 class="report-group-subtitle">关键证据</h5>
+          ${scoreMeterHtml(evidence.avgScore, evidence.sampleSize, evidence.nonTenCount)}
+          ${card.generatedStale ? '<div class="report-evidence-meta report-evidence-meta--warning">证据已变化，AI 文字稿已失效，当前显示规则稿。</div>' : ''}
+          <div class="report-evidence-meta">证据索引：评分记录 ${escapeHtml(String(evidence.sourceRefs?.ratingIds?.length || 0))} 条（编号见附录）${evidence.sourceRefs?.traceIds?.length ? `；产品部溯源 ${text(evidence.sourceRefs.traceIds.join('、'))}` : ''}${evidence.sourceRefs?.visitIds?.length ? `；省代表回访 ${text(evidence.sourceRefs.visitIds.join('、'))}` : ''}</div>
+          ${evidence.changeLabel ? `<div class="report-change-note">问题变化 ${escapeHtml(evidence.changeIssue || '')} ${text(evidence.changeLabel)}</div>` : ''}
+          ${negativeQuotesHtml(evidence, keyCustomers)}
+        </div>` : '<p class="report-group-empty">本产品本月没有单列问题条。</p>'}
+      <div class="report-detail-block">
+        <h5 class="report-group-subtitle">省代表回访记录</h5>
+        <div class="post-use-html-report-evidence">
+          ${(card.visitNarratives || []).length
+            ? card.visitNarratives.map((line) => `<div>${escapeHtml(line)}</div>`).join('')
+            : '<div>本期该产品暂无省代表回访记录</div>'}
+        </div>
       </div>
       ${issue ? `
-        <div class="report-group-subtitle">建议举措</div>
-        ${readonlyBlock(action)}` : ''}
+        <div class="report-detail-block report-detail-block--action">
+          <h5 class="report-group-subtitle">建议举措</h5>
+          ${readonlyBlock(action)}
+        </div>` : ''}
     </div>
     <div id="${escapeAttr(anchorBase)}-positive" class="report-product-group report-product-group--positive" data-nav-group="positive">
-      <div class="report-group-title">正反馈</div>
+      <h4 class="report-group-title">正反馈</h4>
       ${positiveQuotes.length
         ? positiveQuotes.map((item) => quoteLineHtml(item, 'positive', keyCustomers)).join('')
         : '<p class="report-group-empty">本产品本月暂无正反馈原话。</p>'}
@@ -553,9 +573,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "P
 .report-alert--warn { border-color: #fde68a; background: #fffbea; }
 .report-alert__title { font-weight: 600; margin-bottom: 6px; }
 .report-alert ul { margin: 0; padding-left: 20px; }
-.section-title { margin: 0 0 12px; font-size: 16px; line-height: 1.3; font-weight: 600; }
-.readonly-block { border: 1px solid #d9d9d9; border-radius: 8px; padding: 10px 12px; background: #fff; line-height: 1.7; font-size: 14px; min-height: 56px; }
-.field-label { margin: 14px 0 8px; font-size: 14px; font-weight: 500; color: #6b7280; }
+.readonly-block { border: 1px solid #d9d9d9; border-radius: 8px; padding: 10px 12px; background: #fff; line-height: 1.65; font-size: 13px; min-height: 56px; }
 .post-use-html-report-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
 .post-use-html-report-kpis--product { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .post-use-html-report-kpi { border: 1px solid #e5e7eb; padding: 12px 14px; border-radius: 8px; }
@@ -575,12 +593,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "P
 .report-product-list__item.is-active { border-color: #4f46e5; background: #eef2ff; }
 .report-product-detail { display: none; }
 .report-product-detail.is-active { display: block; }
-/* ===== 单产品三层结构 + 随屏导航 + 悬浮目录（与线上 PostUseHtmlReport.css 对齐）===== */
-.report-group-title { margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; color: #1f2937; }
-.report-group-title:first-child { margin-top: 0; }
-.report-group-subtitle { margin: 12px 0 6px; font-size: 12px; font-weight: 500; color: #6b7280; }
-.report-product-group + .report-product-group { margin-top: 6px; }
-.report-group-empty { margin: 8px 0; font-size: 13px; color: #9ca3af; }
+/* 阅读层级由 reportSharedStyles.js 提供，导出时内联。 */
 .report-product-nav { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; padding: 8px 0; background: #fff; border-bottom: 1px solid #e5e7eb; }
 .report-product-nav__item { padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 12px; color: #4b5563; text-decoration: none; }
 .report-product-nav__item:hover { border-color: #4f46e5; color: #4f46e5; }
@@ -618,10 +631,6 @@ svg.chart { display: block; height: auto; max-width: 100%; }
 .quote-pill--positive { background: #dcfce7; color: #166534; }
 .quote-pill--negative { background: #fee2e2; color: #991b1b; }
 .quote-pill--neutral { background: #eef2ff; color: #3730a3; }
-.report-product-detail h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
-.post-use-html-report-evidence { margin: 10px 0 12px; padding: 10px 12px; background: #f9fafb; border: 1px solid #eef0f3; border-radius: 8px; font-size: 12px; line-height: 1.65; }
-.post-use-html-report-quote { display: block; margin: 6px 0 0; color: inherit; text-decoration: none; }
-.report-evidence-hint { margin-bottom: 6px; color: #4b5563; }
 .report-score-meter { margin-bottom: 8px; }
 .report-score-meter__track { position: relative; height: 8px; background: #eef0f3; border-radius: 999px; overflow: hidden; }
 .report-score-meter__fill { display: block; height: 100%; background: #4b7bec; }
@@ -825,7 +834,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   const productsHtml = hidden.has(REPORT_SECTION_PRODUCTS)
     ? ''
     : `<section class="report-module">
-      <h2 class="section-title" id="report-products">分产品情况</h2>
+      <h2 class="report-section-title" id="report-products">分产品情况</h2>
       <div class="report-product-layout">
         <div class="report-product-list">
           ${productCards.map((card, index) => `<button
@@ -857,7 +866,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   const todoHtml = hidden.has(REPORT_SECTION_TODO)
     ? ''
     : `<section class="report-module">
-      <h2 class="section-title" id="report-todo">待办事项及进展</h2>
+      <h2 class="report-section-title" id="report-todo">待办事项及进展</h2>
       <div class="post-use-html-report-kpis">
         <div class="post-use-html-report-kpi"><div class="label">${escapeHtml(copy.todoProposed || '本月提出')}</div><div class="value">${todo.proposedCount || 0}</div></div>
         <div class="post-use-html-report-kpi"><div class="label">${escapeHtml(copy.todoClosed || '本月关闭')}</div><div class="value">${todo.closedCount || 0}</div></div>
@@ -880,7 +889,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   const previousVisitsHtml = model.showPreviousVisits === false || hidden.has(REPORT_SECTION_PREVIOUS_VISITS)
     ? ''
     : `<section class="report-module">
-      <h2 class="section-title" id="report-previous-visits">上期省代表回访结果补充</h2>
+      <h2 class="report-section-title" id="report-previous-visits">上期省代表回访结果补充</h2>
       ${previousVisits.length
         ? tableHtml(
           ['客户', '省代表回访记录', '回访结果内部评估/回应', '备注'],
@@ -892,7 +901,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   const appendixHtml = hidden.has(REPORT_SECTION_APPENDIX)
     ? ''
     : `<section class="report-module report-appendix">
-      <h2 class="section-title" id="report-appendix">附录</h2>
+      <h2 class="report-section-title" id="report-appendix">附录</h2>
       ${appendixSectionHtml('整体得分表', tableHtml(
         ['产品', '样本量', '均分', '投诉回访10分满意比'],
         (preview.monthlyScoreTable || []).map((row) => [text(row.productName), text(row.sampleSize), text(row.avgScore), text(row.callbackTenPointRate)]),
@@ -956,7 +965,7 @@ export function buildOfflineMonthlyReportHtml(input) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${text(model.title, `用后即评月报（${model.reportMonth || ''}）`)}</title>
-  <style>${OFFLINE_CSS}</style>
+  <style>${OFFLINE_CSS}\n${REPORT_SHARED_CSS}</style>
 </head>
 <body class="post-use-html-report">
   <div class="post-use-html-report-sheet">
@@ -970,7 +979,7 @@ export function buildOfflineMonthlyReportHtml(input) {
       </section>
 
       <section class="report-module">
-        <h2 class="section-title" id="report-judgment">${escapeHtml(copy.overviewTitle || '本月概述')}</h2>
+        <h2 class="report-section-title" id="report-judgment">${escapeHtml(copy.overviewTitle || '本月概述')}</h2>
         ${readonlyBlock(judgment, copy.overviewPlaceholder || '结合综合结论写清当月整体表现，不要改指标数字。')}
         <div class="post-use-html-report-kpis">
           <div class="post-use-html-report-kpi"><div class="label">涉及产品数</div><div class="value">${kpis.productCount ?? 0}</div><div class="post-use-html-report-kpi-hints">总样本量 ${kpis.totalSample ?? 0}</div></div>
