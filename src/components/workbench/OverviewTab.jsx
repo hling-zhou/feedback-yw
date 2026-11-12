@@ -16,6 +16,7 @@ import RebuildInsightsButton from './RebuildInsightsButton.jsx'
 import OverviewJourneyMap from './OverviewJourneyMap.jsx'
 import ProductExperienceTrendPanel from './ProductExperienceTrendPanel.jsx'
 import { hasWorkbenchAggregate } from '../../lib/workbenchStoredAggregates.js'
+import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 
 /**
  * @param {Object} props
@@ -23,7 +24,6 @@ import { hasWorkbenchAggregate } from '../../lib/workbenchStoredAggregates.js'
  * @param {Partial<Record<import('../../domain/enums.js').DataSourceType, import('../../domain/snapshot.js').InsightSnapshot>>} props.sourceSnapshots
  * @param {(source: import('../../domain/enums.js').DataSourceType) => void} [props.onSourceTab]
  * @param {import('../../domain/insightPeriod.js').InsightPeriod | null} [props.currentPeriod]
- * @param {import('../../lib/types.js').FeedbackRecord[]} [props.complaintRecords]
  * @param {import('../../storage/orderVolumeStore.js').OrderVolumeRow[]} [props.orderVolumes]
  * @param {import('../../storage/wanTouTargetStore.js').WanTouTargetRow[]} [props.wanTouTargets]
  * @param {() => void} [props.onRebuildSnapshots]
@@ -39,7 +39,6 @@ export default function OverviewTab({
   sourceSnapshots,
   onSourceTab,
   currentPeriod,
-  complaintRecords = [],
   orderVolumes = [],
   wanTouTargets = [],
   onRebuildSnapshots,
@@ -64,26 +63,13 @@ export default function OverviewTab({
     [snapshot?.conclusions],
   )
 
-  if (!snapshot) {
-    return (
-      <div className="page-card">
-        <Typography.Text type="secondary">请先生成洞察快照。</Typography.Text>
-      </div>
-    )
-  }
-
-  const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
-
-  const storedWorkbench = snapshot.workbench
-  const wanTouRows = hasWorkbenchAggregate(storedWorkbench) && Array.isArray(storedWorkbench.wanTouRows)
-    ? storedWorkbench.wanTouRows
-    : buildWanTouByProducts({
-        period: currentPeriod,
-        records: complaintRecords,
-        orderVolumes,
-        wanTouTargets,
-        productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
-      })
+  const wanTouRows = useMemo(() => buildWanTouByProducts({
+    period: currentPeriod,
+    records: filterRecordsForScope(feedbacks, currentPeriod, 'complaint_ticket'),
+    orderVolumes,
+    wanTouTargets,
+    productList: sourceSnapshots.complaint_ticket?.aggregates?.products,
+  }), [currentPeriod, feedbacks, orderVolumes, wanTouTargets, sourceSnapshots.complaint_ticket?.aggregates?.products])
 
   const previousPeriod = useMemo(
     () => resolvePreviousInsightPeriod(currentPeriod),
@@ -92,7 +78,7 @@ export default function OverviewTab({
 
   const sourceRows = useMemo(() => {
     return IMPORTABLE_DATA_SOURCE_TYPES.map((type) => {
-      const summary = snapshot.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
+      const summary = snapshot?.sourceSummaries?.[type] || sourceSnapshots[type]?.summary
       const maxMomGrowthProduct =
         summary?.maxMomGrowthProduct ??
         computeMaxMomGrowthProductForSource(feedbacks, currentPeriod, previousPeriod, type) ??
@@ -106,8 +92,18 @@ export default function OverviewTab({
         status: sourceSnapshots[type]?.status,
       }
     })
-  }, [snapshot.sourceSummaries, sourceSnapshots, feedbacks, currentPeriod, previousPeriod])
+  }, [snapshot?.sourceSummaries, sourceSnapshots, feedbacks, currentPeriod, previousPeriod])
 
+  if (!snapshot) {
+    return (
+      <div className="page-card">
+        <Typography.Text type="secondary">请先生成洞察快照。</Typography.Text>
+      </div>
+    )
+  }
+
+  const total = snapshot.crossSourceMetrics?.totalRecords ?? 0
+  const storedWorkbench = snapshot.workbench
   const activeSourceCount = sourceRows.filter((r) => r.count > 0).length
   const generatedAtLabel = formatSnapshotGeneratedAt(snapshot.generatedAt)
 

@@ -182,8 +182,8 @@ export default function TicketDashboardView({
     driversEmptyState,
   }), [sourceType, sourceLabel, currentPeriod, records, trendRecords, comparisonRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState])
   const storedModel = useMemo(
-    () => applyTicketWorkbenchAggregate(model, snapshot?.aggregates?.workbench, product),
-    [model, snapshot?.aggregates?.workbench, product],
+    () => applyTicketWorkbenchAggregate(model, snapshot?.aggregates?.workbench, product, orderVolumes, wanTouTargets, trendWindow.baselineYear),
+    [model, snapshot?.aggregates?.workbench, product, orderVolumes, wanTouTargets, trendWindow.baselineYear],
   )
 
   const createAction = async (row) => {

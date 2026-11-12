@@ -1,5 +1,5 @@
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
-import { isCustomerExperienceComplaint } from '../domain/complaintCause.js'
+import { isComplaintTicket, isCustomerExperienceComplaint } from '../domain/complaintCause.js'
 import { resolveChartEndMonth, resolvePreviousInsightPeriod } from '../domain/insightPeriod.js'
 import {
   monthsForInsightPeriod,
@@ -12,7 +12,8 @@ import { filterFeedbacks } from './productAnalytics.js'
 import { listProducts, filterProductsByCatalog } from './productTaxonomy.js'
 import { getCatalogProducts, getEnabledProducts, isManagedCatalogLoaded } from './productCatalogLoader.js'
 import { resolveTrendMonthWindow, filterRecordsByImportMonths } from './workbenchTrendWindow.js'
-import { buildWanTouByProducts } from './wanTouRatio.js'
+import { buildWanTouByProducts, computeMonthlyWanTou, evaluateWanTouTarget, getOrderCountForMonth } from './wanTouRatio.js'
+import { getWanTouTargetForYear } from '../storage/wanTouTargetStore.js'
 import { buildProductExperienceTrend } from '../domain/workbenchProductTrends.js'
 import { buildPostUseStoryModel } from './postUseRating/storyModel.js'
 import { buildPostUseCatalogVersion } from './postUseRating/modelVersions.js'
@@ -217,21 +218,53 @@ export function pickTicketWorkbenchSlice(workbench, selectedProduct) {
   return workbench.all || null
 }
 
-export function applyTicketWorkbenchAggregate(model, workbench, selectedProduct) {
+export function applyTicketWorkbenchAggregate(model, workbench, selectedProduct, orderVolumes = null, wanTouTargets = [], baselineYear) {
   const slice = pickTicketWorkbenchSlice(workbench, selectedProduct)
   if (!model || !slice) return model
+  const productKey = selectedProduct && workbench.sourceType === 'complaint_ticket'
+    ? (slice.wanTou?.productKey || model.overview?.wanTou?.productKey)
+    : null
+  const wanTouTrend = productKey && orderVolumes
+    ? (slice.wanTou?.trend || []).map((row) => {
+        const orders = getOrderCountForMonth(orderVolumes, productKey, row.date)
+        return { ...row, orders, ratio: computeMonthlyWanTou(row.complaints, orders) }
+      })
+    : null
+  const latest = wanTouTrend ? [...wanTouTrend].reverse().find((row) => row.ratio != null) || null : null
+  const targetYear = baselineYear || Number(latest?.date?.slice(0, 4)) || new Date().getFullYear()
+  const target = productKey
+    ? getWanTouTargetForYear(wanTouTargets, productKey, targetYear)?.customerExperienceWanTouTarget
+    : null
+  const evaluation = productKey
+    ? evaluateWanTouTarget({ ratio: latest?.ratio, target, orders: latest?.orders, complaints: latest?.complaints || 0 })
+    : null
+  const wanTou = wanTouTrend
+    ? { ...slice.wanTou, trend: wanTouTrend, latest, evaluation }
+    : slice.wanTou || model.overview.wanTou
+  const wanTouByMonth = new Map((wanTouTrend || []).map((row) => [row.date, row]))
+  const complaintVolumeWanTou = wanTouTrend
+    ? (slice.complaintVolumeWanTou || model.trendsAndChanges.complaintVolumeWanTou).map((row) => {
+        const month = wanTouByMonth.get(row.date)
+        return { ...row, ratio: month?.ratio ?? null, orders: month?.orders ?? null }
+      })
+    : slice.complaintVolumeWanTou || model.trendsAndChanges.complaintVolumeWanTou
   return {
     ...model,
     overview: {
       ...model.overview,
       metrics: slice.metrics || model.overview.metrics,
-      productOverview: slice.productOverview || model.overview.productOverview,
-      wanTou: slice.wanTou || model.overview.wanTou,
+      productOverview: wanTouTrend
+        ? (slice.productOverview || model.overview.productOverview).map((row) => row.product === selectedProduct
+          ? { ...row, wanTouRatio: latest?.ratio ?? null, wanTouTargetMet: evaluation?.met ?? null }
+          : row)
+        : slice.productOverview || model.overview.productOverview,
+      wanTou,
     },
     trendsAndChanges: {
       ...model.trendsAndChanges,
       volumeTrend: slice.volumeTrend || model.trendsAndChanges.volumeTrend,
-      complaintVolumeWanTou: slice.complaintVolumeWanTou || model.trendsAndChanges.complaintVolumeWanTou,
+      complaintVolumeWanTou,
+      wanTouTarget: wanTouTrend ? target ?? null : model.trendsAndChanges.wanTouTarget,
       changes: slice.changes || slice.journey?.changeRows || model.trendsAndChanges.changes,
       highlights: slice.journey?.highlights || model.trendsAndChanges.highlights,
     },
@@ -410,10 +443,8 @@ export function buildOverviewWorkbenchAggregate({
     journey[sourceFilter] = { all, byProduct }
   }
 
-  const complaintRecords = scopeTicketRecords(
-    filterRecordsByImportMonths(feedbacks, comparison.currentMonths),
-    'complaint_ticket',
-  )
+  const complaintRecords = filterRecordsByImportMonths(feedbacks, comparison.currentMonths)
+    .filter(isComplaintTicket)
   const wanTouRows = buildWanTouByProducts({
     period,
     records: complaintRecords,

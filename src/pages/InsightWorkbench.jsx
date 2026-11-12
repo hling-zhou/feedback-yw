@@ -20,7 +20,6 @@ import InsightPeriodPicker from '../components/InsightPeriodPicker.jsx'
 import WorkbenchAnalysisNav from '../components/workbench/WorkbenchAnalysisNav.jsx'
 import WorkbenchAnalysisLink from '../components/workbench/WorkbenchAnalysisLink.jsx'
 import {
-  resolveSnapshotRecords,
   postUseRatingFollowUpHasContent,
   workbenchSourceHasContent,
   workbenchTicketRecords,
@@ -74,11 +73,6 @@ export default function InsightWorkbench() {
     : localImport
       ? IMPORT_REBUILD_DISABLED_TIP
       : rebuildBlockedTip
-
-  const complaintRecords = useMemo(
-    () => resolveSnapshotRecords(feedbacks, sourceSnapshots.complaint_ticket),
-    [feedbacks, sourceSnapshots.complaint_ticket],
-  )
 
   const [searchParams] = useSearchParams()
   // 2026-11-09 需求：初始 Tab 三级优先链 = URL 显式 ?tab= 参数 > 上次离开的 Tab（localStorage 本机记忆）> 第一个 Tab
@@ -168,7 +162,6 @@ export default function InsightWorkbench() {
           sourceSnapshots={sourceSnapshots}
           onSourceTab={(type) => setActiveTab(type)}
           currentPeriod={currentPeriod}
-          complaintRecords={complaintRecords}
           orderVolumes={orderVolumes}
           wanTouTargets={wanTouTargets}
           onRebuildSnapshots={rebuildAllSnapshots}
@@ -255,7 +248,6 @@ export default function InsightWorkbench() {
     sourceSnapshots,
     overviewDisplay,
     currentPeriod,
-    complaintRecords,
     orderVolumes,
     wanTouTargets,
     feedbacks,

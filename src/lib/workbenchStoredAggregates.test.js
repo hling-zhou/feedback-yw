@@ -90,6 +90,41 @@ describe('workbench stored aggregates', () => {
     expect(applyTicketWorkbenchAggregate(live, workbench, '不存在的产品').overview.metrics.total).toBe(0)
   })
 
+  it('recalculates stored monthly ratios when order volumes are added after the snapshot', () => {
+    const records = [
+      ticket('may', { importMonth: '2026-05' }),
+      ticket('june'),
+    ]
+    const workbench = buildTicketWorkbenchAggregate({
+      sourceType: 'complaint_ticket',
+      period: june,
+      records: [records[1]],
+      historyRecords: records,
+      orderVolumes: [{ productKey: 'eip', month: '2026-06', orderCount: 10000 }],
+    })
+    expect(workbench.byProduct['弹性公网IP'].complaintVolumeWanTou.find((row) => row.date === '2026-05').ratio).toBeNull()
+    const live = {
+      overview: { metrics: {}, productOverview: [], wanTou: { productKey: 'eip' } },
+      trendsAndChanges: { volumeTrend: [], complaintVolumeWanTou: [], changes: [], highlights: [] },
+      drivers: { journeyLayout: 'empty', journeyStages: [], journeyChangeHighlights: [] },
+    }
+    const merged = applyTicketWorkbenchAggregate(
+      live,
+      workbench,
+      '弹性公网IP',
+      [
+        { productKey: 'eip', month: '2026-05', orderCount: 5000 },
+        { productKey: 'eip', month: '2026-06', orderCount: 10000 },
+      ],
+      [{ productKey: 'eip', year: 2026, customerExperienceWanTouTarget: 1.5 }],
+      2026,
+    )
+    expect(merged.trendsAndChanges.complaintVolumeWanTou.find((row) => row.date === '2026-05'))
+      .toMatchObject({ count: 1, orders: 5000, ratio: 2 })
+    expect(merged.overview.wanTou.latest).toMatchObject({ date: '2026-06', ratio: 1 })
+    expect(merged.trendsAndChanges.wanTouTarget).toBe(1.5)
+  })
+
   it('stores post-use analysis-scoped count and yunwang KPIs separately from company', () => {
     const catalog = [
       { key: 'eip', name: '弹性公网IP', analysisPostUseRating: true, specs: [] },
@@ -138,5 +173,27 @@ describe('workbench stored aggregates', () => {
     const allComplaint = pickOverviewJourney(workbench, 'complaint', '')
     expect(allComplaint?.changeRows.some((row) => row.journeyL1 === '开通' && row.currentCount === 1 && row.previousCount === 1)).toBe(true)
     expect(JSON.stringify(workbench.journey)).not.toContain('"ticketIds"')
+  })
+
+  it('counts every complaint in overview wan-tou while retaining the customer-experience subset', () => {
+    const feedbacks = [
+      ticket('cx'),
+      ticket('other', { complaintCauseL1Final: '非客户体验类' }),
+      ticket('consultation', { dataSourceType: 'consultation_ticket' }),
+    ]
+    const workbench = buildOverviewWorkbenchAggregate({
+      period: june,
+      feedbacks,
+      orderVolumes: [{ productKey: 'eip', month: '2026-06', orderCount: 10000 }],
+    })
+    expect(workbench.wanTouRows).toEqual([
+      expect.objectContaining({
+        productName: '弹性公网IP',
+        totalComplaints: 2,
+        totalCxComplaints: 1,
+        displayRatio: 2,
+        displayCxRatio: 1,
+      }),
+    ])
   })
 })

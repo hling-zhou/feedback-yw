@@ -6,6 +6,7 @@ import { IMPORTABLE_DATA_SOURCE_TYPES, DATA_SOURCE_LABELS } from '../../domain/e
 import { filterRecordsForScope } from '../../snapshots/recordScope.js'
 import { getCatalogProducts } from '../../lib/productCatalogLoader.js'
 import { scopePostUseRatingRecords } from '../../lib/productCatalog/postUseRatingProducts.js'
+import { isCustomerExperienceComplaint } from '../../domain/complaintCause.js'
 
 export { WORKBENCH_HOME } from '../../lib/workbenchAnalysisLink.js'
 
@@ -30,6 +31,15 @@ export default function WorkbenchAnalysisNav({
       const n = sourceSnapshots[type]?.summary?.recordCount
       if (n != null) counts[type] = n
     }
+    const complaintCount = sourceSnapshots.complaint_ticket?.aggregates?.workbench?.all?.metrics?.total
+    if (complaintCount != null) {
+      counts.complaint_ticket = complaintCount
+    } else if (feedbacks.length) {
+      counts.complaint_ticket = filterRecordsForScope(feedbacks, currentPeriod, 'complaint_ticket')
+        .filter(isCustomerExperienceComplaint).length
+    } else {
+      delete counts.complaint_ticket
+    }
     const storedPostUseCount =
       sourceSnapshots.post_use_rating?.summary?.analysisScopedCount ??
       sourceSnapshots.post_use_rating?.aggregates?.workbench?.analysisScopedCount
@@ -45,7 +55,7 @@ export default function WorkbenchAnalysisNav({
   const sourceItems = [
     { key: TAB_OVERVIEW, label: '综合概述' },
     ...IMPORTABLE_DATA_SOURCE_TYPES.map((type) => {
-      const base = DATA_SOURCE_LABELS[type]
+      const base = type === 'complaint_ticket' ? '投诉工单（客户体验类）' : DATA_SOURCE_LABELS[type]
       const preview =
         isStubPipeline(type) && type !== 'post_use_rating' ? '(预览)' : ''
       const count = sourceCounts[type]
