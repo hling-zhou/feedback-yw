@@ -19,6 +19,7 @@ import { actionItemRepository } from '../actionItemRepository.js'
 import { ACTION_ITEM_CONFLICT_CODE } from '../../src/domain/actionItemRevision.js'
 import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
 import { storageRepository } from '../storageRepository.js'
+import { listPostUseActionSources } from '../postUseActionService.js'
 
 /**
  * @param {Record<string, unknown>} body
@@ -273,6 +274,15 @@ export function registerActionRoutes(app) {
       reply.code(409).send({
         error: deleteCheck.error,
         code: deleteCheck.code || ACTION_ITEM_DELETE_BLOCKED_CODE,
+      })
+      return
+    }
+
+    const postUseLinks = listPostUseActionSources(id)
+    if (postUseLinks.traces.length || postUseLinks.visits.length) {
+      reply.code(409).send({
+        error: '该举措已关联用后即评记录，无法删除',
+        code: ACTION_ITEM_DELETE_BLOCKED_CODE,
       })
       return
     }

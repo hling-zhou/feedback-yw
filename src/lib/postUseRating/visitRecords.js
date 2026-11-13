@@ -2,12 +2,14 @@
  * 省代表回访信息（人工录入）— meta 存储
  */
 import { resolvePostUseRatingProduct } from '../productCatalog/postUseRatingProducts.js'
+import { normalizePostUseActionIds } from '../../domain/postUseActions.js'
 
 export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
 
 /**
  * @typedef {Object} PostUseVisitRecord
  * @property {string} id
+ * @property {string} [importContentId] 最近一次导入行的内容标识，用于多行同身份时重导匹配
  * @property {string} visitMonth YYYY-MM（实际回访月，业务信息）
  * @property {string} [importMonth] YYYY-MM（数据导入月份，控制线上分析范围）
  * @property {string} productName
@@ -26,7 +28,10 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [remark]
  * @property {boolean} [evaluationSubmitted] 2026-11-05 评估完结标记：提交=true / 暂存=false（状态派生用）
  * @property {string} [assigneeName]
+ * @property {string[]} [manualEditedFields] 在线人工修改过的字段域，空值修改也计入
+ * @property {Record<string, { userId: string, username: string, displayName?: string, editedAt: string }>} [fieldEditMeta]
  * @property {string} [actionId]
+ * @property {string[]} [actionIds] 有序且去重的举措关联；显式空数组代表已清空
  * @property {string} [jiraId]
  * @property {string} [groupName] 集团名称（客户名称真源）
  * @property {string} [loginAccountName] 登录账号名称
@@ -52,7 +57,8 @@ export function normalizeVisitRecords(raw) {
     scoreSource: String(item?.scoreSource || ''),
     userFeedbackText: String(item?.userFeedbackText || ''),
     assigneeName: String(item?.assigneeName || ''),
-    actionId: String(item?.actionId || ''),
+    actionIds: normalizePostUseActionIds(item?.actionIds, item?.actionId),
+    actionId: normalizePostUseActionIds(item?.actionIds, item?.actionId)[0] || '',
     // 2026-11-05 评估状态派生：提交=已评估 / 暂存=评估中 / 空=待评估（Boolean 归一，旧数据 undefined=false 不影响）
     evaluationSubmitted: Boolean(item?.evaluationSubmitted),
     userInfoDetail: String(

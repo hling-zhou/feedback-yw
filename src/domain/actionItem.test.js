@@ -47,6 +47,7 @@ describe('actionItem', () => {
       detail: '',
       productKey: '',
       productName: '',
+      source: 'ticket',
       status: 'pending_evaluation',
       firstProposedAt: created.item.firstProposedAt,
       scheduleAt: '',
@@ -62,6 +63,12 @@ describe('actionItem', () => {
     })
     expect(toActionItemCreateBody(created.item)).not.toHaveProperty('id')
     expect(toActionItemCreateBody(created.item)).not.toHaveProperty('createdAt')
+  })
+
+  it('keeps post-use source when creating a library action', () => {
+    const created = validateActionItemCreate({ content: '回访举措', source: 'post_use' })
+    expect(created.ok).toBe(true)
+    if (created.ok) expect(created.item.source).toBe('post_use')
   })
 
   it('does not derive status from schedule when requirement tickets are linked', () => {

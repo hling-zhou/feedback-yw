@@ -7,6 +7,7 @@ import {
 } from '../src/domain/postUseJira.js'
 import { bumpDataRevision } from './dataRevision.js'
 import { getDb } from './db.js'
+import { normalizePostUseActionIds, withPostUseActionIds } from '../src/domain/postUseActions.js'
 
 function parseJson(text) {
   return JSON.parse(text)
@@ -43,6 +44,7 @@ export function normalizeDecision(raw) {
  */
 export function normalizeJiraItem(raw) {
   const itemKey = normalizeItemKey(raw?.itemKey || raw?.item_key)
+  const actionIds = normalizePostUseActionIds(raw?.actionIds, raw?.actionId)
   const status = isPostUseJiraStatus(raw?.status)
     ? raw.status
     : normalizePostUseJiraStatus(raw?.status)
@@ -62,9 +64,19 @@ export function normalizeJiraItem(raw) {
     jiraTicket: String(raw?.jiraTicket || '').trim(),
     status,
     progress: String(raw?.progress || '').trim(),
+    progressEditMeta: raw?.progressEditMeta && typeof raw.progressEditMeta === 'object'
+      ? {
+          userId: String(raw.progressEditMeta.userId || ''),
+          username: String(raw.progressEditMeta.username || ''),
+          displayName: String(raw.progressEditMeta.displayName || ''),
+          editedAt: String(raw.progressEditMeta.editedAt || ''),
+        }
+      : null,
     assigneeId: String(raw?.assigneeId || '').trim(),
     assigneeName: String(raw?.assigneeName || '').trim(),
-    actionId: String(raw?.actionId || '').trim(),
+    actionIds,
+    actionId: actionIds[0] || '',
+    actionLinksEditMeta: raw?.actionLinksEditMeta || null,
     createdAt: String(raw?.createdAt || '') || nowIso(),
     updatedAt: String(raw?.updatedAt || '') || nowIso(),
   }
@@ -140,7 +152,7 @@ export const postUseJiraRepository = {
       if (productName && item.productName !== productName) return false
       if (status && item.status !== status) return false
       if (assigneeId && item.assigneeId !== assigneeId) return false
-      if (actionId && item.actionId !== actionId) return false
+      if (actionId && !item.actionIds.includes(actionId)) return false
       if (search) {
         const haystack = [item.customerName, item.customerCode, item.jiraTicket, item.customerFeedback, item.assigneeName]
           .join(' ')
@@ -151,7 +163,8 @@ export const postUseJiraRepository = {
     })
 
     // limit <= 0 表示不分页（返回全量，供需要内存二次过滤的调用方使用）
-    const rawLimit = Number(query.limit) || 100
+    const parsedLimit = Number(query.limit)
+    const rawLimit = query.limit == null || !Number.isFinite(parsedLimit) ? 100 : parsedLimit
     const limit = rawLimit <= 0 ? filtered.length : Math.min(500, Math.max(1, rawLimit))
     const offset = Math.max(0, Number(query.offset) || 0)
     return {
@@ -262,8 +275,9 @@ export const postUseJiraRepository = {
   /**
    * @param {string} id
    * @param {Record<string, unknown>} patch
+   * @param {{ id: string, username: string, displayName?: string }} [editor]
    */
-  patch(id, patch) {
+  patch(id, patch, editor) {
     const existing = this.getById(id)
     if (!existing) return null
     const editable = pickPostUseJiraEditablePatch(patch)
@@ -271,6 +285,30 @@ export const postUseJiraRepository = {
       ...existing,
       ...editable,
       updatedAt: nowIso(),
+    }
+    if (Object.prototype.hasOwnProperty.call(editable, 'actionId')) {
+      const replacement = String(editable.actionId || '').trim()
+      const actionIds = replacement
+        ? [replacement, ...existing.actionIds.slice(1).filter((id) => id !== replacement)]
+        : existing.actionIds.slice(1)
+      Object.assign(next, withPostUseActionIds(next, actionIds))
+      if (editor?.id && actionIds.join('\0') !== existing.actionIds.join('\0')) {
+        next.actionLinksEditMeta = {
+          userId: editor.id,
+          username: editor.username,
+          displayName: editor.displayName || '',
+          editedAt: next.updatedAt,
+        }
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(editable, 'progress')
+      && editable.progress !== existing.progress && editor?.id) {
+      next.progressEditMeta = {
+        userId: editor.id,
+        username: editor.username,
+        displayName: editor.displayName || '',
+        editedAt: next.updatedAt,
+      }
     }
     getDb()
       .prepare(
@@ -281,6 +319,44 @@ export const postUseJiraRepository = {
       .run(next.status, next.assigneeId, next.assigneeName, next.updatedAt, stringifyJson(next), id)
     bumpDataRevision()
     return next
+  },
+
+  /**
+   * 以增量方式保存关联，避免两个抽屉用旧快照互相覆盖。
+   * @param {string} id
+   * @param {string} actionId
+   * @param {'add'|'remove'} operation
+   * @param {{ id: string, username: string, displayName?: string }} editor
+   */
+  updateActionLink(id, actionId, operation, editor) {
+    const db = getDb()
+    let changed = false
+    const item = db.transaction(() => {
+      const existing = this.getById(id)
+      if (!existing) return null
+      const current = existing.actionIds
+      const nextIds = operation === 'add'
+        ? current.includes(actionId) ? current : [...current, actionId]
+        : current.filter((value) => value !== actionId)
+      if (nextIds.length === current.length) return existing
+      changed = true
+      const updatedAt = nowIso()
+      const next = {
+        ...withPostUseActionIds(existing, nextIds),
+        updatedAt,
+        actionLinksEditMeta: {
+          userId: editor.id,
+          username: editor.username,
+          displayName: editor.displayName || '',
+          editedAt: updatedAt,
+        },
+      }
+      db.prepare('UPDATE post_use_jira_items SET updated_at = ?, payload = ? WHERE id = ?')
+        .run(updatedAt, stringifyJson(next), id)
+      return next
+    })()
+    if (changed) bumpDataRevision()
+    return item
   },
 
   /**

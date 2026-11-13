@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { getActionItem } from '../actionItemClient.js'
+import { normalizePostUseActionIds, postUseActionExportCells } from '../../domain/postUseActions.js'
 
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -28,6 +29,7 @@ function triggerDownload(blob, filename) {
  * @property {string} [status]
  * @property {string} [progress]
  * @property {string} [actionId]
+ * @property {string[]} [actionIds]
  *
  * @typedef {Object} ActionItemInfo
  * @property {string} [content]
@@ -40,7 +42,7 @@ function triggerDownload(blob, filename) {
  */
 export function buildPostUseJiraExportRows(items = [], actionItemMap = new Map()) {
   return items.map((item) => {
-    const actionItem = item.actionId ? actionItemMap.get(item.actionId) : undefined
+    const actions = postUseActionExportCells(item, actionItemMap)
     return {
       数据月份: String(item.importMonth || ''),
       客户名称: String(item.customerName || ''),
@@ -53,9 +55,9 @@ export function buildPostUseJiraExportRows(items = [], actionItemMap = new Map()
       经办人: String(item.assigneeName || ''),
       状态: String(item.status || ''),
       回溯结果: String(item.progress || ''),
-      确立举措: String(actionItem?.content || ''),
-      举措详情: String(actionItem?.detail || ''),
-      排期: String(actionItem?.scheduleAt || ''),
+      确立举措: actions.content,
+      举措详情: actions.detail,
+      排期: actions.schedule,
     }
   })
 }
@@ -67,10 +69,8 @@ export function buildPostUseJiraExportRows(items = [], actionItemMap = new Map()
  * @returns {Promise<Map<string, ActionItemInfo>>}
  */
 export async function fetchActionItemsForExport(items = []) {
-  const actionIds = items
-    .map((item) => item.actionId)
-    .filter(Boolean)
-    .filter((id, index, arr) => arr.indexOf(id) === index)
+  const actionIds = [...new Set(items.flatMap((item) =>
+    normalizePostUseActionIds(item.actionIds, item.actionId)))]
 
   if (!actionIds.length) return new Map()
 

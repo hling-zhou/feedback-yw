@@ -165,6 +165,65 @@ describeApi('post-use visit API', () => {
     expect(item.updatedAt).not.toBe('2026-09-01T00:00:00.000Z')
   })
 
+  it('marks only changed fields, including the first manual clear, and records the editor', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+    const raw = storageRepository.getMeta('post_use_visit_records_v1')
+    storageRepository.putMeta('post_use_visit_records_v1', {
+      ...raw,
+      records: [...raw.records, {
+        id: 'visit-manual-diff',
+        visitMonth: '2026-11',
+        importMonth: '2026-11',
+        productName: '云专线',
+        customerName: '差异测试客户',
+        customerCode: 'DIFF-1',
+        internalEvaluationDetail: '',
+        internalConclusion: '导入评估',
+        assigneeName: '导入经办人',
+        remark: '导入备注',
+        evaluationSubmitted: true,
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      }],
+    })
+    const unchanged = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-visits/visit-manual-diff',
+      headers: authHeader('editor'),
+      payload: {
+        internalEvaluationDetail: '导入评估',
+        assigneeName: '导入经办人',
+        remark: '导入备注',
+        evaluationSubmitted: true,
+        baseUpdatedAt: '2026-11-01T00:00:00.000Z',
+      },
+    })
+    expect(unchanged.statusCode).toBe(200)
+    expect(unchanged.json().item.manualEditedFields).toBeUndefined()
+    expect(unchanged.json().item.updatedAt).toBe('2026-11-01T00:00:00.000Z')
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-visits/visit-manual-diff',
+      headers: authHeader('editor'),
+      payload: {
+        internalEvaluationDetail: '',
+        assigneeName: '',
+        remark: '导入备注',
+        evaluationSubmitted: false,
+        baseUpdatedAt: '2026-11-01T00:00:00.000Z',
+      },
+    })
+    expect(cleared.statusCode).toBe(200)
+    const item = cleared.json().item
+    expect(item.internalEvaluationDetail).toBe('')
+    expect(item.assigneeName).toBe('')
+    expect(item.remark).toBe('导入备注')
+    expect(item.manualEditedFields).toEqual(expect.arrayContaining(['internalEvaluation', 'assigneeName']))
+    expect(item.manualEditedFields).not.toContain('remark')
+    expect(item.fieldEditMeta.internalEvaluation).toMatchObject({ username: 'visit_editor' })
+    expect(item.fieldEditMeta.assigneeName.editedAt).toBeTruthy()
+  })
+
   it('2026-11-05 评估状态流转：evaluationSubmitted 提交往返 + 暂存回退（服务端持久化验证）', async () => {
     // visit-def 评估为空（待评估）→ 暂存（evaluationSubmitted=false + 评估草稿）→ 读回评估中
     const draft = await app.inject({

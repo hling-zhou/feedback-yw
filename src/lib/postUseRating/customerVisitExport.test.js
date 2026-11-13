@@ -70,4 +70,18 @@ describe('customerVisitExport', () => {
     expect(rows[0].相应投诉工单).toBe('T-100')
     expect(rows[1].相应投诉工单).toBe('')
   })
+
+  it('keeps multiple visit actions aligned in the existing export columns', () => {
+    const rows = buildPostUseCustomerVisitRows(
+      [{ actionIds: ['v1', 'v2'], actionId: 'v1' }],
+      [],
+      new Map([
+        ['v1', { content: '补充指引', detail: '先做文档', scheduleAt: '' }],
+        ['v2', { content: '联系客户', detail: '', scheduleAt: '2026-12-02' }],
+      ]),
+    )
+    expect(rows[0].确立举措).toBe('1. 补充指引\n2. 联系客户')
+    expect(rows[0].举措详情).toBe('1. 先做文档\n2. —')
+    expect(rows[0].排期).toBe('1. —\n2. 2026-12-02')
+  })
 })

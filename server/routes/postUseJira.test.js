@@ -119,7 +119,16 @@ describeApi('post-use jira API', () => {
       status: '处理中',
       progress: '已提单',
       customerName: '中国铁塔',
+      progressEditMeta: { username: 'jira_editor' },
     })
+    const originalEditor = patched.json().item.progressEditMeta
+    const unchangedProgress = await app.inject({
+      method: 'PATCH',
+      url: '/api/post-use-jira/' + firstItem.id,
+      headers: authHeader('editor'),
+      payload: { progress: '已提单', status: '处理中' },
+    })
+    expect(unchangedProgress.json().item.progressEditMeta).toEqual(originalEditor)
 
     const second = await app.inject({
       method: 'POST',
@@ -142,6 +151,7 @@ describeApi('post-use jira API', () => {
       jiraTicket: 'JIRA-9',
       status: '处理中',
       progress: '已提单',
+      progressEditMeta: originalEditor,
     })
 
     const listed = await app.inject({

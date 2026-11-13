@@ -241,28 +241,11 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     }
   }
 
-  /** 抽屉里保存确立举措（source=post_use）后回写 payload.actionId */
-  const handleActionSaved = async (actionId) => {
-    if (!editing?.id) return
-    try {
-      const { item } = await patchPostUseJiraItem(editing.id, { actionId })
-      setItems((list) => list.map((row) => (row.id === item.id ? item : row)))
-      setEditing(item)
-    } catch (error) {
-      message.error(error?.message || '举措关联失败')
-    }
-  }
-
-  /** 抽屉里清除举措关联 */
-  const handleActionCleared = async () => {
-    if (!editing?.id) return
-    try {
-      const { item } = await patchPostUseJiraItem(editing.id, { actionId: '' })
-      setItems((list) => list.map((row) => (row.id === item.id ? item : row)))
-      setEditing(item)
-    } catch (error) {
-      message.error(error?.message || '清除举措关联失败')
-    }
+  /** 逐条关联/移除成功后，同步列表供导出使用。 */
+  const handleActionOwnerSaved = (item) => {
+    if (!item) return
+    setItems((list) => list.map((row) => (row.id === item.id ? item : row)))
+    setEditing(item)
   }
 
   const removeOne = async (id) => {
@@ -395,8 +378,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         canEdit={canEdit}
         saving={saving}
         onSave={(mode) => void saveEdit(mode)}
-        onActionSaved={(actionId) => void handleActionSaved(actionId)}
-        onActionCleared={() => void handleActionCleared()}
+        onActionOwnerSaved={handleActionOwnerSaved}
       />
     </div>
   )

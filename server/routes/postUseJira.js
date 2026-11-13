@@ -7,6 +7,7 @@ import {
   postUseJiraRepository,
 } from '../postUseJiraRepository.js'
 import { postUseVisitDispatchRepository } from '../postUseVisitDispatchRepository.js'
+import { deleteAttachmentsForOwner } from '../postUseAttachmentRepository.js'
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertEditRecordPermission(request, reply) {
@@ -99,7 +100,7 @@ export function registerPostUseJiraRoutes(app) {
     const { id } = /** @type {{ id: string }} */ (request.params)
     const body = /** @type {Record<string, unknown>} */ (request.body || {})
     const patch = pickPostUseJiraEditablePatch(body)
-    const item = postUseJiraRepository.patch(id, patch)
+    const item = postUseJiraRepository.patch(id, patch, request.user)
     if (!item) {
       reply.code(404)
       return { error: '记录不存在' }
@@ -119,8 +120,15 @@ export function registerPostUseJiraRoutes(app) {
       reply.code(404)
       return { error: '记录不存在' }
     }
-    logAuditFromRequest(request, 'post_use_jira.delete', { id })
-    return { ok: true }
+    let attachmentCleanupError = null
+    try {
+      deleteAttachmentsForOwner('trace', id)
+    } catch (error) {
+      attachmentCleanupError = String(error?.message || error)
+      request.log.warn({ error, id }, 'post_use_jira attachment cleanup failed')
+    }
+    logAuditFromRequest(request, 'post_use_jira.delete', { id, attachmentCleanupError })
+    return { ok: true, attachmentCleanupError }
   })
 
   app.post('/api/post-use-jira/batch-delete', async (request, reply) => {
@@ -131,8 +139,18 @@ export function registerPostUseJiraRoutes(app) {
       reply.code(400)
       return { error: '请选择要删除的记录' }
     }
+    const existingIds = ids.filter((id) => postUseJiraRepository.getById(id))
     const deleted = postUseJiraRepository.deleteMany(ids)
-    logAuditFromRequest(request, 'post_use_jira.batch_delete', { count: deleted })
-    return { deleted }
+    let attachmentCleanupError = null
+    for (const id of existingIds) {
+      try {
+        deleteAttachmentsForOwner('trace', id)
+      } catch (error) {
+        attachmentCleanupError = [attachmentCleanupError, String(error?.message || error)].filter(Boolean).join('；')
+        request.log.warn({ error, id }, 'post_use_jira batch attachment cleanup failed')
+      }
+    }
+    logAuditFromRequest(request, 'post_use_jira.batch_delete', { count: deleted, attachmentCleanupError })
+    return { deleted, attachmentCleanupError }
   })
 }

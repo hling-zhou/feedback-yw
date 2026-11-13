@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { pickPostUseJiraEditablePatch, POST_USE_JIRA_DEFAULT_STATUS } from './postUseJira.js'
 
 describe('postUseJira editable patch', () => {
-  it('only keeps JIRA ticket, status and progress', () => {
+  it('keeps editable fields and normalizes legacy status values', () => {
     const patch = pickPostUseJiraEditablePatch({
       jiraTicket: ' JIRA-1 ',
       status: '进行中',
@@ -13,7 +13,7 @@ describe('postUseJira editable patch', () => {
     })
     expect(patch).toEqual({
       jiraTicket: 'JIRA-1',
-      status: '进行中',
+      status: '处理中',
       progress: '已提单',
     })
   })

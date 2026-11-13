@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { getActionItem } from '../actionItemClient.js'
+import { normalizePostUseActionIds, postUseActionExportCells } from '../../domain/postUseActions.js'
 
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -35,6 +36,7 @@ function normalizedKey(customerName, customerCode, productName) {
  * @property {string} [internalEvaluationDetail]
  * @property {string} [remark]
  * @property {string} [actionId]
+ * @property {string[]} [actionIds]
  */
 
 /**
@@ -62,7 +64,7 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
     const matched = recMap.get(
       normalizedKey(visit.customerName, visit.customerCode, visit.productName),
     )
-    const actionItem = visit.actionId ? actionItemMap.get(visit.actionId) : undefined
+    const actions = postUseActionExportCells(visit, actionItemMap)
     // 2026-11-10 用户拍板：导出列按《省代表回访-导出字段.xlsx》21 列序对齐——
     // 模板段（数据月份→备注）+ 抽屉人工段（确立举措/举措详情/排期）+ 推荐分析段（建议触发类型→涉及渠道）。
     // 客户反馈列内容 = 导入列表中的「客户反馈」列（userFeedbackText）。
@@ -80,9 +82,9 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       内部评估: visit.internalEvaluationDetail || visit.internalConclusion || '',
       经办人: visit.assigneeName || '',
       备注: visit.remark || '',
-      确立举措: String(actionItem?.content || ''),
-      举措详情: String(actionItem?.detail || ''),
-      排期: String(actionItem?.scheduleAt || ''),
+      确立举措: actions.content,
+      举措详情: actions.detail,
+      排期: actions.schedule,
       建议触发类型: matched?.triggerType || '',
       '7分以下总次数': matched?.lowScoreLt7Count || 0,
       '7分以下分布': matched?.scoreBreakdown || '',
@@ -102,10 +104,8 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
  * @returns {Promise<Map<string, ActionItemInfo>>}
  */
 export async function fetchActionItemsForVisitExport(visitRecords = []) {
-  const actionIds = visitRecords
-    .map((v) => v.actionId)
-    .filter(Boolean)
-    .filter((id, index, arr) => arr.indexOf(id) === index)
+  const actionIds = [...new Set(visitRecords.flatMap((visit) =>
+    normalizePostUseActionIds(visit.actionIds, visit.actionId)))]
 
   if (!actionIds.length) return new Map()
 

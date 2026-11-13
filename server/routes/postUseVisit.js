@@ -3,6 +3,8 @@ import { hasPermission } from '../../src/domain/auth/permissions.js'
 import { logAuditFromRequest } from '../audit.js'
 import { META_KEY_POST_USE_VISITS } from '../../src/lib/postUseRating/visitRecords.js'
 import { storageRepository } from '../storageRepository.js'
+import { deleteAttachmentsForOwner } from '../postUseAttachmentRepository.js'
+import { normalizePostUseActionIds, withPostUseActionIds } from '../../src/domain/postUseActions.js'
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertEditRecordPermission(request, reply) {
@@ -21,8 +23,8 @@ function assertEditRecordPermission(request, reply) {
 /**
  * meta 整包 read-modify-write，包内每条记录独立 updatedAt。
  * @param {string} id
- * @param {(record: any) => any} mutator
- * @returns {{ ok: boolean, record: null | any, reason?: 'not_found' }}
+ * @param {(record: any) => any | null} mutator
+ * @returns {{ ok: boolean, record: null | any, changed?: boolean, reason?: 'not_found' | 'conflict' }}
  */
 function mutateVisitRecord(id, mutator) {
   const raw = storageRepository.getMeta(META_KEY_POST_USE_VISITS)
@@ -30,13 +32,16 @@ function mutateVisitRecord(id, mutator) {
   const idx = recordList.findIndex((item) => String(item?.id || '') === String(id))
   if (idx < 0) return { ok: false, record: null, reason: 'not_found' }
   const next = [...recordList]
-  next[idx] = mutator(next[idx])
+  const updated = mutator(next[idx])
+  if (updated === null) return { ok: false, record: null, reason: 'conflict' }
+  if (updated === next[idx]) return { ok: true, record: next[idx], changed: false }
+  next[idx] = updated
   storageRepository.putMeta(META_KEY_POST_USE_VISITS, {
     ...raw,
     updatedAt: new Date().toISOString(),
     records: next,
   })
-  return { ok: true, record: next[idx] }
+  return { ok: true, record: next[idx], changed: true }
 }
 
 /**
@@ -109,13 +114,13 @@ export function registerPostUseVisitRoutes(app) {
       const monthSet = new Set(months)
       records = records.filter((r) => monthSet.has(r?.importMonth || r?.visitMonth))
     }
-    return { items: records }
+    return { items: records.map((record) =>
+      withPostUseActionIds(record, normalizePostUseActionIds(record.actionIds, record.actionId))) }
   })
 
   // 2026-11-05 状态派生链路：evaluationSubmitted 标记评估是否完结提交（暂存=false / 提交=true）；
   // 评估状态 = 评估空→待评估、非空未提交→评估中、已提交→已评估（提醒引擎与列表派生同口径）。
-  // 2026-11-10 补人工编辑标记：internalEvaluationDetail/assigneeName/remark/actionId 被人工（抽屉）编辑过
-  // → manualEditedFields 记录域名；导入覆盖语义按"导入值优先但人工已填不冲掉"判定真源。
+  // 按实际变化记录人工编辑域。清空也是人工编辑；未变化的表单值不应占用导入保护。
   app.patch('/api/post-use-visits/:id', async (request, reply) => {
     if (!assertEditRecordPermission(request, reply)) return
     const { id } = /** @type {{ id: string }} */ (request.params)
@@ -123,50 +128,78 @@ export function registerPostUseVisitRoutes(app) {
       request.body || {}
     )
 
-    /** @type {null | { conflict: true } | { error: string }} */
-    let thrown = null
     /** @type {any} */
     let before = null
     const result = mutateVisitRecord(id, (record) => {
       const baseUpdatedAt = String(body.baseUpdatedAt || '').trim()
       if (baseUpdatedAt && String(record?.updatedAt || '') !== baseUpdatedAt) {
-        thrown = { conflict: true }
-        return record
+        return null
       }
       before = record
       const now = new Date().toISOString()
       const next = { ...record }
       const manualEdited = new Set(Array.isArray(record?.manualEditedFields) ? record.manualEditedFields : [])
-      if (typeof body.internalEvaluationDetail === 'string') {
-        next.internalEvaluationDetail = body.internalEvaluationDetail
-        next.internalConclusion = body.internalEvaluationDetail
-        if (body.internalEvaluationDetail.trim()) manualEdited.add('internalEvaluation')
+      const editInfo = { ...(record?.fieldEditMeta || {}) }
+      const editor = {
+        userId: request.user.id,
+        username: request.user.username,
+        displayName: request.user.displayName || '',
+        editedAt: now,
       }
-      if (typeof body.internalConclusion === 'string') {
-        next.internalConclusion = body.internalConclusion
-        if (typeof body.internalEvaluationDetail !== 'string') {
-          next.internalEvaluationDetail = body.internalConclusion
+      let changed = false
+      const evaluation = typeof body.internalEvaluationDetail === 'string'
+        ? body.internalEvaluationDetail
+        : typeof body.internalConclusion === 'string' ? body.internalConclusion : null
+      if (evaluation !== null) {
+        const previous = String(record?.internalEvaluationDetail || record?.internalConclusion || '')
+        next.internalEvaluationDetail = evaluation
+        next.internalConclusion = evaluation
+        if (evaluation !== previous) {
+          manualEdited.add('internalEvaluation')
+          editInfo.internalEvaluation = editor
+          changed = true
         }
-        if (body.internalConclusion.trim()) manualEdited.add('internalEvaluation')
       }
-      if (typeof body.remark === 'string') {
-        next.remark = body.remark
-        if (body.remark.trim()) manualEdited.add('remark')
-      }
-      if (typeof body.assigneeName === 'string') {
-        next.assigneeName = body.assigneeName
-        if (body.assigneeName.trim()) manualEdited.add('assigneeName')
-      }
-      if (typeof body.actionId === 'string') next.actionId = body.actionId
       if (typeof body.evaluationSubmitted === 'boolean') {
         next.evaluationSubmitted = body.evaluationSubmitted
+        if (body.evaluationSubmitted !== Boolean(record?.evaluationSubmitted)) {
+          manualEdited.add('internalEvaluation')
+          editInfo.internalEvaluation = editor
+          changed = true
+        }
       }
-      if (manualEdited.size) next.manualEditedFields = [...manualEdited]
+      for (const field of ['remark', 'assigneeName']) {
+        if (typeof body[field] !== 'string') continue
+        if (body[field] === String(record?.[field] || '')) continue
+        next[field] = body[field]
+        manualEdited.add(field)
+        editInfo[field] = editor
+        changed = true
+      }
+      // 旧单条接口继续可用；新抽屉通过增量接口维护多条关联。
+      if (typeof body.actionId === 'string') {
+        const currentIds = normalizePostUseActionIds(record.actionIds, record.actionId)
+        const replacement = body.actionId.trim()
+        const nextIds = replacement
+          ? [replacement, ...currentIds.slice(1).filter((id) => id !== replacement)]
+          : currentIds.slice(1)
+        if (nextIds.join('\0') !== currentIds.join('\0')) {
+          Object.assign(next, withPostUseActionIds(next, nextIds))
+          manualEdited.add('actionIds')
+          manualEdited.add('actionId')
+          editInfo.actionIds = editor
+          editInfo.actionId = editor
+          changed = true
+        }
+      }
+      if (!changed) return record
+      next.manualEditedFields = [...manualEdited]
+      next.fieldEditMeta = editInfo
       next.updatedAt = now
       return next
     })
 
-    if (thrown?.conflict) {
+    if (result.reason === 'conflict') {
       reply.code(409)
       return { error: '记录已被他人更新，请刷新后重试' }
     }
@@ -178,7 +211,7 @@ export function registerPostUseVisitRoutes(app) {
     // 第二批：编辑后同步回写 records 表挂接的 customerVisit 快照
     let syncedSnapshots = 0
     try {
-      syncedSnapshots = syncCustomerVisitSnapshots(before, result.record)
+      if (result.changed) syncedSnapshots = syncCustomerVisitSnapshots(before, result.record)
     } catch (err) {
       request.log.warn({ err, visitId: id }, 'post_use_visit snapshot sync failed')
     }
@@ -344,6 +377,12 @@ export function registerPostUseVisitRoutes(app) {
       linkageError = String(err?.message || err)
       request.log.warn({ err, visitId: id }, 'post_use_visit delete linkage failed')
     }
+    try {
+      deleteAttachmentsForOwner('visit', id)
+    } catch (err) {
+      linkageError = [linkageError, '附件清理失败：' + String(err?.message || err)].filter(Boolean).join('；')
+      request.log.warn({ err, visitId: id }, 'post_use_visit attachment cleanup failed')
+    }
 
     logAuditFromRequest(request, 'post_use_visit.delete', {
       id,
@@ -421,6 +460,14 @@ export function registerPostUseVisitRoutes(app) {
     } catch (err) {
       linkageError = String(err?.message || err)
       request.log.warn({ err }, 'post_use_visit batch delete linkage failed')
+    }
+    for (const target of targets) {
+      try {
+        deleteAttachmentsForOwner('visit', String(target.id))
+      } catch (err) {
+        linkageError = [linkageError, '附件清理失败：' + String(err?.message || err)].filter(Boolean).join('；')
+        request.log.warn({ err, visitId: target.id }, 'post_use_visit batch attachment cleanup failed')
+      }
     }
 
     logAuditFromRequest(request, 'post_use_visit.batch_delete', {

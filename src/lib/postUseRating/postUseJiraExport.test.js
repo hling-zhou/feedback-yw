@@ -79,6 +79,19 @@ describe('buildPostUseJiraExportRows', () => {
     expect(rows[0]['确立举措']).toBe('')
   })
 
+  it('exports multiple actions with aligned numbering across three columns', () => {
+    const rows = buildPostUseJiraExportRows(
+      [{ actionIds: ['a1', 'a2'], actionId: 'a1' }],
+      new Map([
+        ['a1', { content: '校验配置', detail: '检查端口', scheduleAt: '2026-12-01' }],
+        ['a2', { content: '增加告警', detail: '', scheduleAt: '' }],
+      ]),
+    )
+    expect(rows[0]['确立举措']).toBe('1. 校验配置\n2. 增加告警')
+    expect(rows[0]['举措详情']).toBe('1. 检查端口\n2. —')
+    expect(rows[0]['排期']).toBe('1. 2026-12-01\n2. —')
+  })
+
   it('handles empty items array', () => {
     const rows = buildPostUseJiraExportRows([], new Map())
     expect(rows).toEqual([])

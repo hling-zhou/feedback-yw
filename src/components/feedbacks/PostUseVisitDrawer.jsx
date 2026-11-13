@@ -1,18 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Tag, Typography, message } from 'antd'
 import { TICKET_DETAIL_DRAWER_WIDTH } from '../../constants/appLayout.js'
 import { patchPostUseVisit } from '../../lib/postUseVisitClient.js'
 import { listAssignees } from '../../lib/postUseJiraClient.js'
 import { buildUserOption, userOptionFilterOption } from '../../lib/userSelectOptions.js'
-import {
-  createActionItem,
-  getActionItem,
-  updateActionItem,
-} from '../../lib/actionItemClient.js'
-import EstablishedActionFields from '../actions/EstablishedActionFields.jsx'
+import PostUseMultiActions from '../actions/PostUseMultiActions.jsx'
 import PermissionGate from '../auth/PermissionGate.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import PostUseReportIssueLinker from './PostUseReportIssueLinker.jsx'
+import PostUseAttachments from './PostUseAttachments.jsx'
+import FieldEditorMeta from './FieldEditorMeta.jsx'
 
 /** @typedef {import('../../lib/postUseRating/visitRecords.js').PostUseVisitRecord} PostUseVisitRecord */
 
@@ -32,13 +29,8 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [assignees, setAssignees] = useState([])
-  const [actionItem, setActionItem] = useState(null)
-  const [actionSaving, setActionSaving] = useState(false)
-  const [actionDraft, setActionDraft] = useState({
-    establishedAction: '',
-    establishedActionDetail: '',
-    actionSchedule: '',
-  })
+  const latestRecordRef = useRef(record)
+  useEffect(() => { latestRecordRef.current = record }, [record])
 
   // 评估状态派生（2026-11-05）：空=待评估 / 非空未提交=评估中 / 已提交=已评估
   const evaluationState = useMemo(() => {
@@ -55,33 +47,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
       .catch(() => {})
   }, [open])
 
-  // 打开时若有 actionId，加载 action_item 全量数据
-  useEffect(() => {
-    if (!open || !record?.actionId) {
-      setActionItem(null)
-      setActionDraft({ establishedAction: '', establishedActionDetail: '', actionSchedule: '' })
-      return
-    }
-    let cancelled = false
-    getActionItem(record.actionId)
-      .then((full) => {
-        if (cancelled) return
-        setActionItem(full)
-        setActionDraft({
-          establishedAction: full?.content || '',
-          establishedActionDetail: full?.detail || '',
-          actionSchedule: full?.scheduleAt || '',
-        })
-      })
-      .catch(() => {
-        if (cancelled) return
-        setActionItem(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, record?.actionId])
-
+  // 关联举措即时更新 record 时，不覆盖尚未暂存的评估、备注等表单草稿。
   useEffect(() => {
     if (open && record) {
       form.setFieldsValue({
@@ -90,24 +56,31 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
         assigneeName: record.assigneeName || '',
       })
     }
-  }, [open, record, form])
+  }, [open, record?.id, form])
 
   // 2026-11-05 状态自动流转：提交=已评估（内部评估必填校验）/ 暂存=评估中（不校验）；成功后都关抽屉
-  const handleSave = async (mode = 'draft') => {
-    if (!record?.id) return
-    if (mode === 'submit') {
-      await form.validateFields() // 内部评估必填，空则抛错留在抽屉
+  const handleSave = async (mode = 'draft', currentRecord = record, values = form.getFieldsValue()) => {
+    if (!currentRecord?.id) return
+    const patch = { baseUpdatedAt: currentRecord.updatedAt }
+    const evaluation = String(values.internalEvaluationDetail || '')
+    const remark = String(values.remark || '')
+    const assigneeName = String(values.assigneeName || '')
+    if (evaluation !== String(currentRecord.internalEvaluationDetail || currentRecord.internalConclusion || '')) {
+      patch.internalEvaluationDetail = evaluation
     }
-    const values = form.getFieldsValue()
+    if (remark !== String(currentRecord.remark || '')) patch.remark = remark
+    if (assigneeName !== String(currentRecord.assigneeName || '')) patch.assigneeName = assigneeName
+    if ((mode === 'submit') !== Boolean(currentRecord.evaluationSubmitted)) {
+      patch.evaluationSubmitted = mode === 'submit'
+    }
+    if (Object.keys(patch).length === 1) {
+      message.success('没有需要保存的变化')
+      onClose?.()
+      return
+    }
     setSaving(true)
     try {
-      const data = await patchPostUseVisit(record.id, {
-        internalEvaluationDetail: String(values.internalEvaluationDetail || ''),
-        remark: String(values.remark || ''),
-        assigneeName: String(values.assigneeName || ''),
-        evaluationSubmitted: mode === 'submit',
-        baseUpdatedAt: record.updatedAt,
-      })
+      const data = await patchPostUseVisit(currentRecord.id, patch)
       const item = data?.item
       if (item) {
         message.success(mode === 'submit' ? '评估已完成' : '已暂存')
@@ -128,100 +101,21 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
     }
   }
 
-  /** 从举措库选择已有 action_item → 回写 meta.actionId */
-  const handleSelect = async (selected) => {
-    setActionItem(selected)
-    setActionDraft({
-      establishedAction: selected?.content || '',
-      establishedActionDetail: selected?.detail || '',
-      actionSchedule: selected?.scheduleAt || '',
-    })
-    if (selected?.id && record?.id) {
-      try {
-        const data = await patchPostUseVisit(record.id, { actionId: selected.id, baseUpdatedAt: record.updatedAt })
-        const item = data?.item
-        if (item) {
-          message.success('已关联举措')
-          onSaved?.(item)
-        }
-      } catch (err) {
-        message.error(err?.message || '关联举措失败')
-      }
-    }
-  }
-
-  /** 清除关联 */
-  const handleClear = async () => {
-    setActionItem(null)
-    setActionDraft({ establishedAction: '', establishedActionDetail: '', actionSchedule: '' })
-    if (record?.id) {
-      try {
-        const data = await patchPostUseVisit(record.id, { actionId: '', baseUpdatedAt: record.updatedAt })
-        const item = data?.item
-        if (item) {
-          message.success('已清除举措关联')
-          onSaved?.(item)
-        }
-      } catch (err) {
-        message.error(err?.message || '清除举措关联失败')
-      }
-    }
-  }
-
-  const handleContentChange = (value) => {
-    setActionDraft((prev) => ({ ...prev, establishedAction: value }))
-  }
-  const handleDetailChange = (value) => {
-    setActionDraft((prev) => ({ ...prev, establishedActionDetail: value }))
-  }
-  const handleScheduleChange = (value) => {
-    setActionDraft((prev) => ({ ...prev, actionSchedule: value }))
-  }
-
-  /** 保存举措（新建 or 更新）→ 回写 meta.actionId → 返回是否成功 */
-  const handleSaveAction = async () => {
-    const content = actionDraft.establishedAction.trim()
-    if (!content) return true // 无举措内容视为无需保存，不阻断
-    if (!record?.id) return false
-    setActionSaving(true)
-    try {
-      const payload = {
-        productKey: record?.productName || '',
-        productName: record?.productName || '',
-        content,
-        detail: actionDraft.establishedActionDetail || '',
-        scheduleAt: actionDraft.actionSchedule || '',
-        source: 'post_use',
-      }
-      let savedActionId = actionItem?.id || ''
-      if (actionItem?.id) {
-        const updated = await updateActionItem(actionItem.id, payload)
-        setActionItem(updated)
-      } else {
-        const created = await createActionItem(payload)
-        setActionItem(created)
-        savedActionId = created.id
-      }
-      // 回写 meta.actionId
-      const data = await patchPostUseVisit(record.id, { actionId: savedActionId, baseUpdatedAt: record.updatedAt })
-      const visitItem = data?.item
-      if (visitItem) {
-        onSaved?.(visitItem)
-      }
-      return true
-    } catch (err) {
-      message.error(err?.message || '举措保存失败')
-      return false
-    } finally {
-      setActionSaving(false)
-    }
-  }
-
-  /** 合并保存：先保存举措（如有内容），再按模式保存表单（2026-11-05：暂存/提交双操作） */
+  /** 举措在区块内逐条保存；页脚仅保存经办人、评估和备注。 */
   const handleSaveAll = async (mode = 'draft') => {
-    const ok = await handleSaveAction()
-    if (!ok) return
-    await handleSave(mode)
+    if (mode === 'submit') {
+      try {
+        await form.validateFields()
+      } catch {
+        return
+      }
+    }
+    await handleSave(mode, latestRecordRef.current, form.getFieldsValue())
+  }
+
+  const handleActionOwnerSaved = (item) => {
+    latestRecordRef.current = item
+    onSaved?.(item)
   }
 
   const EVALUATION_TAG = /** @type {Record<string, string>} */ ({
@@ -246,7 +140,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
         <PermissionGate permission="editRecord">
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>取消</Button>
-            <Button loading={saving || actionSaving} onClick={() => void handleSaveAll('draft')}>
+            <Button loading={saving} onClick={() => void handleSaveAll('draft')}>
               暂存
             </Button>
             {/* 2026-11-05 用户拍板：完成前显式提示——评估完结才点完成，过程性评估走暂存；2026-11-09 按钮文案改「评估完成」 */}
@@ -257,7 +151,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
               cancelText="再想想"
               onConfirm={() => void handleSaveAll('submit')}
             >
-              <Button type="primary" loading={saving || actionSaving}>
+              <Button type="primary" loading={saving}>
                 评估完成
               </Button>
             </Popconfirm>
@@ -281,7 +175,6 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
                 <Descriptions.Item label="相应投诉工单">{record.originalTicketId || '—'}</Descriptions.Item>
               )}
               <Descriptions.Item label="涉及评价">{record.ratingText || '—'}</Descriptions.Item>
-              <Descriptions.Item label="经办人">{record.assigneeName || '—'}</Descriptions.Item>
               <Descriptions.Item label="更新时间">{record.updatedAt || '—'}</Descriptions.Item>
             </Descriptions>
           </div>
@@ -307,33 +200,31 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
               >
                 <Input.TextArea rows={3} placeholder="填写内部评估结论" />
               </Form.Item>
+              <FieldEditorMeta meta={record.fieldEditMeta?.internalEvaluation} />
               <Form.Item name="remark" label="备注">
                 <Input.TextArea rows={2} placeholder="填写备注" />
               </Form.Item>
             </Form>
           </PermissionGate>
-
-          <PermissionGate permission="editRecord">
+          {!can('editRecord') && (
             <div>
-              <Typography.Text type="secondary">确立举措</Typography.Text>
-              <div className="mt-2">
-                <EstablishedActionFields
-                  productKey={record?.productName || ''}
-                  actionId={actionItem?.id || ''}
-                  source="post_use"
-                  establishedAction={actionDraft.establishedAction}
-                  establishedActionDetail={actionDraft.establishedActionDetail}
-                  actionSchedule={actionDraft.actionSchedule}
-                  linkedFromLibrary={Boolean(actionItem?.id)}
-                  onSelect={handleSelect}
-                  onClear={handleClear}
-                  onContentChange={handleContentChange}
-                  onDetailChange={handleDetailChange}
-                  onScheduleChange={handleScheduleChange}
-                />
+              <Typography.Text type="secondary">内部评估</Typography.Text>
+              <div className="mt-2 whitespace-pre-wrap text-sm">
+                {record.internalEvaluationDetail || record.internalConclusion || '—'}
               </div>
+              <FieldEditorMeta meta={record.fieldEditMeta?.internalEvaluation} />
             </div>
-          </PermissionGate>
+          )}
+
+          <PostUseAttachments ownerType="visit" ownerId={record.id} open={open} canEdit={can('editRecord')} />
+          <PostUseMultiActions
+            ownerType="visit"
+            ownerId={record.id}
+            productKey={record.productName || ''}
+            open={open}
+            canEdit={can('editRecord')}
+            onOwnerSaved={handleActionOwnerSaved}
+          />
           <PostUseReportIssueLinker sourceType="visit" sourceId={record.id} open={open} canEdit={can('editRecord')} />
         </div>
       ) : null}

@@ -231,6 +231,7 @@ export function normalizeActionItem(input) {
     content: String(input.content ?? '').trim(),
     detail: String(input.detail ?? '').trim().slice(0, ACTION_ITEM_DETAIL_MAX_LENGTH),
     status,
+    source: input.source === 'post_use' || input.source === 'observation' ? input.source : 'ticket',
     firstProposedAt: String(input.firstProposedAt ?? '').trim(),
     scheduleAt,
     painPointSnapshot: String(input.painPointSnapshot ?? '').trim(),

@@ -2,6 +2,7 @@
  * 省代表回访 Excel 导入：解析、软匹配用后即评明细、双写 visit_records + customerVisit
  */
 import { isPostUseRatingLibraryRecord } from '../../domain/postUseRatingImport.js'
+import { normalizePostUseActionIds } from '../../domain/postUseActions.js'
 import {
   loadVisitRecords,
   saveVisitRecords,
@@ -264,7 +265,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
   const importedAt = new Date().toISOString()
   /** @type {import('./visitRecords.js').PostUseVisitRecord[]} */
   const visitRecords = []
-  /** @type {Array<{ id: string; customerVisit: Record<string, unknown> }>} */
+  /** @type {Array<{ id: string; visitRecordIndex: number; customerVisit: Record<string, unknown> }>} */
   const recordPatches = []
   /** @type {Array<{ rowIndex: number; reason: string; visit: ReturnType<typeof normalizeCustomerVisitRow> }>} */
   const unmatched = []
@@ -309,6 +310,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
     )
     const visitMeta = {
       id,
+      importContentId: id,
       visitMonth: visit.visitMonth,
       importMonth: month,
       productName: visit.productName,
@@ -368,6 +370,7 @@ export function runCustomerVisitImportDryRun({ rows, libraryRecords, importBatch
 
     recordPatches.push({
       id: String(match.record.id),
+      visitRecordIndex: visitRecords.length - 1,
       customerVisit: {
         visitMonth: visit.visitMonth,
         importMonth: importMonth || visit.visitMonth,
@@ -436,54 +439,84 @@ export async function executeCustomerVisitImport({
   const dry = runCustomerVisitImportDryRun({ rows, libraryRecords, importBatchId, importMonth })
 
   let visits = await loadVisitRecords(adapter)
-  const seenIdentity = new Set()
+  /** @param {import('./visitRecords.js').PostUseVisitRecord} record */
+  const identityOf = (record) => [
+    record.importMonth || record.visitMonth || '',
+    record.productName || '',
+    buildCustomerKey(record),
+  ].join('\0')
+  /** @type {Map<string, import('./visitRecords.js').PostUseVisitRecord[]>} */
+  const existingByIdentity = new Map()
+  /** @type {Map<string, import('./visitRecords.js').PostUseVisitRecord[]>} */
+  const incomingByIdentity = new Map()
+  for (const record of visits) {
+    const identity = identityOf(record)
+    const group = existingByIdentity.get(identity) || []
+    group.push(record)
+    existingByIdentity.set(identity, group)
+  }
   for (const item of dry.visitRecords) {
-    const customerKey = buildCustomerKey(item)
-    const month = item.importMonth || item.visitMonth
-    const identity = [month, item.productName, customerKey].join('\0')
-    const isFirst = !seenIdentity.has(identity)
-    seenIdentity.add(identity)
-    if (isFirst) {
-      const legacyId = stableVisitRecordId(month, item.productName, customerKey)
-      if (legacyId !== item.id && visits.some((record) => record.id === legacyId)) {
-        item.id = legacyId
+    const identity = identityOf(item)
+    const group = incomingByIdentity.get(identity) || []
+    group.push(item)
+    incomingByIdentity.set(identity, group)
+  }
+  /** @type {Map<import('./visitRecords.js').PostUseVisitRecord, import('./visitRecords.js').PostUseVisitRecord>} */
+  const matchedVisits = new Map()
+  for (const [identity, incoming] of incomingByIdentity) {
+    const existing = existingByIdentity.get(identity) || []
+    const taken = new Set()
+    // 多行同身份时先匹配内容 id，避免文件调序把人工信息挪到另一行。
+    for (const item of incoming) {
+      const exact = existing.find((record) =>
+        (record.importContentId || record.id) === item.importContentId && !taken.has(record.id))
+      if (exact) {
+        matchedVisits.set(item, exact)
+        taken.add(exact.id)
       }
-      // 2026-11-10 用户拍板（覆盖语义）：身份键 = 同数据月份+同产品+同客户（不含内容/次序）。
-      // 同键覆盖：其余字段以新导入为准；人工编辑域（内部评估/经办人/备注/关联举措）按
-      // "导入值优先但人工已填不冲掉"——manualEditedFields（抽屉 PATCH 标记）是人工已填的
-      // 判定真源：被标记的域保留库值，未标记的域允许导入值覆盖（含空导入值清空导入来源的旧值）。
-      const sameIdentity = visits.find(
-        (record) =>
-          String(record.importMonth || record.visitMonth || '') === String(month) &&
-          String(record.productName || '') === String(item.productName) &&
-          buildCustomerKey(record) === customerKey,
+    }
+    // 内容变化的行按未匹配的原有顺序覆盖，沿用旧 id 以保留附件关联。
+    for (const item of incoming) {
+      if (matchedVisits.has(item)) continue
+      const previous = existing.find((record) => !taken.has(record.id))
+      if (previous) {
+        matchedVisits.set(item, previous)
+        taken.add(previous.id)
+      }
+    }
+  }
+
+  for (const item of dry.visitRecords) {
+    const previous = matchedVisits.get(item)
+    if (previous) {
+      item.id = previous.id
+      const manual = new Set(
+        Array.isArray(previous.manualEditedFields) ? previous.manualEditedFields : [],
       )
-      if (sameIdentity) {
-        if (sameIdentity.id !== item.id) {
-          // 身份相同但内容 id 不同（旧记录因内容差异成了第二条）→ 以导入为准覆盖：删旧条、新条沿用旧 id 保持引用稳定
-          visits = visits.filter((record) => record.id !== sameIdentity.id)
-          item.id = sameIdentity.id
-        }
-        const manual = new Set(
-          Array.isArray(sameIdentity.manualEditedFields) ? sameIdentity.manualEditedFields : [],
+      // 人工编辑的域：库值优先（空值也是人工编辑结果）。
+      if (manual.has('internalEvaluation')) {
+        item.internalEvaluationDetail = String(previous.internalEvaluationDetail ?? previous.internalConclusion ?? '')
+        item.internalConclusion = String(previous.internalConclusion ?? previous.internalEvaluationDetail ?? '')
+        item.evaluationSubmitted = Boolean(previous.evaluationSubmitted)
+      }
+      if (manual.has('assigneeName')) item.assigneeName = String(previous.assigneeName || '')
+      if (manual.has('remark')) item.remark = String(previous.remark || '')
+      // 关联举措只在线上维护；多条、旧单条、人工清空都须在重导后保留。
+      const actionIds = normalizePostUseActionIds(previous.actionIds, previous.actionId)
+      item.actionIds = actionIds
+      item.actionId = actionIds[0] || ''
+      if (actionIds.length || manual.has('actionId') || manual.has('actionIds')) {
+        manual.add('actionIds')
+        manual.add('actionId')
+      }
+      if (manual.size) item.manualEditedFields = [...manual]
+      if (previous.fieldEditMeta && typeof previous.fieldEditMeta === 'object') {
+        item.fieldEditMeta = Object.fromEntries(
+          Object.entries(previous.fieldEditMeta).filter(([field]) => manual.has(field)),
         )
-        // 人工已填的域：库值优先（导入值不冲掉）
-        if (manual.has('internalEvaluation')) {
-          const kept = String(sameIdentity.internalEvaluationDetail || sameIdentity.internalConclusion || '')
-          item.internalEvaluationDetail = kept
-          item.internalConclusion = String(sameIdentity.internalConclusion || kept)
-          item.evaluationSubmitted = Boolean(sameIdentity.evaluationSubmitted)
+        if (!item.fieldEditMeta.actionIds && item.fieldEditMeta.actionId) {
+          item.fieldEditMeta.actionIds = item.fieldEditMeta.actionId
         }
-        if (manual.has('assigneeName')) {
-          item.assigneeName = String(sameIdentity.assigneeName || '')
-        }
-        if (manual.has('remark')) {
-          item.remark = String(sameIdentity.remark || '')
-        }
-        // 关联举措（actionId 只在抽屉里建）恒保留库值
-        if (sameIdentity.actionId) item.actionId = sameIdentity.actionId
-        // 人工编辑标记本身继承（该记录已被人工编辑过的事实不随导入消失）
-        if (manual.size) item.manualEditedFields = [...manual]
       }
     }
     visits = upsertVisitRecord(visits, item)
@@ -496,7 +529,27 @@ export async function executeCustomerVisitImport({
       .map((p) => {
         const base = byId.get(p.id)
         if (!base) return null
-        return { ...base, customerVisit: p.customerVisit }
+        const snapshot = { ...p.customerVisit }
+        const current = dry.visitRecords[p.visitRecordIndex]
+        if (current) {
+          const manual = new Set(Array.isArray(current.manualEditedFields) ? current.manualEditedFields : [])
+          if (manual.has('internalEvaluation')) {
+            snapshot.internalEvaluationDetail = current.internalEvaluationDetail
+            snapshot.internalConclusion = current.internalConclusion
+            snapshot.evaluationSubmitted = current.evaluationSubmitted
+          }
+          if (manual.has('assigneeName')) snapshot.assigneeName = current.assigneeName
+          if (manual.has('remark')) snapshot.remark = current.remark
+          if (manual.has('actionId') || manual.has('actionIds')) {
+            snapshot.actionIds = normalizePostUseActionIds(current.actionIds, current.actionId)
+            snapshot.actionId = snapshot.actionIds[0] || ''
+          }
+          if (manual.size) {
+            snapshot.manualEditedFields = [...manual]
+            snapshot.fieldEditMeta = current.fieldEditMeta || {}
+          }
+        }
+        return { ...base, customerVisit: snapshot }
       })
       .filter(Boolean)
 

@@ -652,6 +652,37 @@ export function initBusinessSchema() {
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_status ON post_use_jira_items(status);
     CREATE INDEX IF NOT EXISTS idx_post_use_jira_items_updated ON post_use_jira_items(updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS post_use_attachments (
+      id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL CHECK(owner_type IN ('trace', 'visit')),
+      owner_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      storage_key TEXT NOT NULL UNIQUE,
+      uploaded_by_user_id TEXT,
+      uploaded_by_username TEXT NOT NULL DEFAULT '',
+      uploaded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_use_attachments_owner
+      ON post_use_attachments(owner_type, owner_id, uploaded_at DESC);
+
+    CREATE TABLE IF NOT EXISTS post_use_attachment_uploads (
+      id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL CHECK(owner_type IN ('trace', 'visit')),
+      owner_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      received_bytes INTEGER NOT NULL DEFAULT 0,
+      uploaded_by_user_id TEXT,
+      uploaded_by_username TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_use_attachment_uploads_created
+      ON post_use_attachment_uploads(created_at);
+
     CREATE TABLE IF NOT EXISTS post_use_report_issue_links (
       issue_id TEXT NOT NULL,
       source_type TEXT NOT NULL CHECK(source_type IN ('visit', 'trace')),

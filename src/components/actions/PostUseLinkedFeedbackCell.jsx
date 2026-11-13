@@ -1,30 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Popover, Space, Typography, message } from 'antd'
-import { listPostUseJiraItems } from '../../lib/postUseJiraClient.js'
+import { listPostUseActionSources } from '../../lib/postUseActionClient.js'
 
 /**
- * 用后即评举措列表的「关联反馈」单元格：source='post_use' 时，
- * 关联的是 post_use_jira_items（溯源项），展示客户+产品+建议回访原因。
+ * 用后即评举措列表的「关联反馈」单元格：展示溯源与回访的全部关联。
  *
  * @param {Object} props
  * @param {string} props.actionId
  */
 export default function PostUseLinkedFeedbackCell({ actionId }) {
-  const [items, setItems] = useState([])
+  const [items, setItems] = useState({ traces: [], visits: [] })
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!actionId) return
     let cancelled = false
     setLoading(true)
-    listPostUseJiraItems({ actionId, limit: 100 })
+    listPostUseActionSources(actionId)
       .then((res) => {
         if (cancelled) return
-        setItems(res?.items || [])
+        setItems({ traces: res?.traces || [], visits: res?.visits || [] })
       })
       .catch(() => {
         if (cancelled) return
-        setItems([])
+        setItems({ traces: [], visits: [] })
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -34,37 +33,42 @@ export default function PostUseLinkedFeedbackCell({ actionId }) {
     }
   }, [actionId])
 
-  const count = items.length
+  const count = items.traces.length + items.visits.length
 
   const content = useMemo(() => {
     if (!count) {
       return (
         <Typography.Text type="secondary" className="text-xs">
-          暂无关联溯源项
+          暂无关联溯源或回访
         </Typography.Text>
       )
     }
     return (
       <div className="min-w-[16rem] max-w-[24rem] max-h-56 overflow-y-auto">
         <Typography.Text type="secondary" className="mb-2 block text-xs">
-          共 {count} 条溯源项
+          共 {items.traces.length} 条溯源、{items.visits.length} 条回访
         </Typography.Text>
         <Space direction="vertical" size={8} className="w-full">
-          {items.map((item) => (
-            <div key={item.id} className="rounded border border-line-200 p-2">
+          {[
+            ...items.traces.map((item) => ({ ...item, linkType: '产品部溯源' })),
+            ...items.visits.map((item) => ({ ...item, linkType: '省代表回访' })),
+          ].map((item) => (
+            <div key={`${item.linkType}:${item.id}`} className="rounded border border-line-200 p-2">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <Typography.Text className="text-xs font-medium text-ink-800">
-                  {item.customerName || '—'}
+                  {item.linkType} · {item.customerName || item.groupName || '—'}
                 </Typography.Text>
                 <Typography.Text type="secondary" className="text-[10px]">
                   {item.importMonth || ''}
                 </Typography.Text>
               </div>
               <Typography.Text type="secondary" className="block text-[11px]">
-                产品：{item.productName || '—'}
+                产品：{item.product || item.productName || '—'}
               </Typography.Text>
               <Typography.Text className="block text-[11px] text-ink-700">
-                建议回访原因：{item.recommendedReason || '—'}
+                {item.linkType === '产品部溯源'
+                  ? `建议回访原因：${item.recommendedReason || '—'}`
+                  : `回访结果：${item.visitResult || '—'}`}
               </Typography.Text>
             </div>
           ))}
@@ -78,7 +82,7 @@ export default function PostUseLinkedFeedbackCell({ actionId }) {
   return (
     <Popover content={content} title="关联溯源项" trigger="hover">
       <Button type="link" size="small" loading={loading} className="!px-0">
-        {count} 个溯源
+        {count} 条关联
       </Button>
     </Popover>
   )

@@ -126,7 +126,7 @@ describe('customerVisitImport', () => {
     const storedMeta = new Map()
     const adapter = {
       getMeta: async (key) => storedMeta.get(key),
-      putMeta: async (key, value) => storedMeta.set(key, value),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
     }
     const result = await executeCustomerVisitImport({
       adapter,
@@ -174,7 +174,7 @@ describe('customerVisitImport', () => {
     const result = await executeCustomerVisitImport({
       adapter: {
         getMeta: async (key) => storedMeta.get(key),
-        putMeta: async (key, value) => storedMeta.set(key, value),
+        putMeta: async (key, value) => { storedMeta.set(key, value) },
       },
       rows: [
         {
@@ -189,7 +189,7 @@ describe('customerVisitImport', () => {
       ],
       importMonth: '2026-06',
       libraryRecords,
-      updateRecords: async (records) => updates.push(...records),
+      updateRecords: async (records) => { updates.push(...records) },
     })
 
     expect(result.matchedCount).toBe(1)
@@ -230,7 +230,7 @@ describe('customerVisitImport', () => {
     const storedMeta = new Map()
     const adapter = {
       getMeta: async (key) => storedMeta.get(key),
-      putMeta: async (key, value) => storedMeta.set(key, value),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
     }
     const rows = [
       {
@@ -272,6 +272,19 @@ describe('customerVisitImport', () => {
     expect(first.visitRecords).toHaveLength(3)
     expect(new Set(first.visitRecords.map((item) => item.id)).size).toBe(3)
     expect(first.visitRecords.map((item) => item.remark)).toEqual(['甲', '甲', '乙'])
+    const secondId = first.visitRecords[1].id
+    storedMeta.set(META_KEY_POST_USE_VISITS, {
+      version: 1,
+      records: first.visitRecords.map((item, index) => index === 1 ? {
+        ...item,
+        internalEvaluationDetail: '',
+        internalConclusion: '',
+        manualEditedFields: ['internalEvaluation'],
+        fieldEditMeta: {
+          internalEvaluation: { userId: 'u2', username: 'second_editor', editedAt: '2026-06-08T10:00:00.000Z' },
+        },
+      } : item),
+    })
 
     await executeCustomerVisitImport({
       adapter,
@@ -283,6 +296,41 @@ describe('customerVisitImport', () => {
     const saved = await loadVisitRecords(adapter)
     expect(saved).toHaveLength(3)
     expect(saved.map((item) => item.visitResult)).toEqual(['第一次回访', '第一次回访', '第二次回访'])
+    expect(saved.find((item) => item.id === secondId)).toMatchObject({
+      internalEvaluationDetail: '',
+      fieldEditMeta: { internalEvaluation: { username: 'second_editor' } },
+    })
+
+    const changedRows = rows.map((row, index) => index === 0
+      ? { ...row, 回访结果: '修改后的第一条回访' }
+      : index === 1 ? { ...row, 回访结果: '修改后的第二条回访' } : row)
+    await executeCustomerVisitImport({
+      adapter,
+      rows: changedRows,
+      importMonth: '2026-06',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const savedAfterChange = await loadVisitRecords(adapter)
+    expect(savedAfterChange).toHaveLength(3)
+    expect(savedAfterChange.find((item) => item.id === secondId)).toMatchObject({
+      visitResult: '修改后的第二条回访',
+      internalEvaluationDetail: '',
+      fieldEditMeta: { internalEvaluation: { username: 'second_editor' } },
+    })
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [changedRows[1], changedRows[0], changedRows[2]],
+      importMonth: '2026-06',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const savedAfterReorder = await loadVisitRecords(adapter)
+    expect(savedAfterReorder.find((item) => item.id === secondId)).toMatchObject({
+      visitResult: '修改后的第二条回访',
+      internalEvaluationDetail: '',
+      fieldEditMeta: { internalEvaluation: { username: 'second_editor' } },
+    })
   })
 
   it('updates a previously stored single visit and appends additional rows', async () => {
@@ -303,7 +351,7 @@ describe('customerVisitImport', () => {
     ])
     const adapter = {
       getMeta: async (key) => storedMeta.get(key),
-      putMeta: async (key, value) => storedMeta.set(key, value),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
     }
     await executeCustomerVisitImport({
       adapter,
@@ -343,11 +391,11 @@ describe('customerVisitImport', () => {
 
   // 2026-11-10 覆盖语义（用户拍板）：身份键 = 同月+同产品+同客户（不含内容/次序）；
   // 同键覆盖消除重复；人工编辑域（manualEditedFields）导入不冲掉。
-  it('same identity + changed content reimports overwrite instead of duplicating', async () => {
+  it('reimport keeps the visit id so linked attachments remain associated', async () => {
     const storedMeta = new Map()
     const adapter = {
       getMeta: async (key) => storedMeta.get(key),
-      putMeta: async (key, value) => storedMeta.set(key, value),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
     }
     await executeCustomerVisitImport({
       adapter,
@@ -356,6 +404,7 @@ describe('customerVisitImport', () => {
       libraryRecords: [],
       updateRecords: async () => {},
     })
+    const originalId = (await loadVisitRecords(adapter))[0].id
     // 内容变化（旧 bug：id 含内容与次序 → 再导变第二条）
     await executeCustomerVisitImport({
       adapter,
@@ -366,6 +415,7 @@ describe('customerVisitImport', () => {
     })
     const saved = await loadVisitRecords(adapter)
     expect(saved).toHaveLength(1)
+    expect(saved[0].id).toBe(originalId)
     expect(saved[0].visitResult).toBe('第一次回访（更新）')
   })
 
@@ -377,24 +427,44 @@ describe('customerVisitImport', () => {
           id: 'manual-id', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
           customerName: '客户A', customerCode: 'C1', visitResult: '旧回访',
           internalEvaluationDetail: '人工评估结论', internalConclusion: '人工评估结论',
-          assigneeName: '张三', remark: '人工备注', actionId: 'act-1',
-          evaluationSubmitted: true, manualEditedFields: ['internalEvaluation', 'assigneeName', 'remark'],
+          assigneeName: '张三', remark: '人工备注', actionId: 'act-1', actionIds: ['act-1', 'act-2'],
+          evaluationSubmitted: true, manualEditedFields: ['internalEvaluation', 'assigneeName', 'remark', 'actionIds'],
+          fieldEditMeta: {
+            internalEvaluation: { userId: 'u1', username: 'editor1', editedAt: '2026-10-03T10:00:00.000Z' },
+            assigneeName: { userId: 'u1', username: 'editor1', editedAt: '2026-10-03T11:00:00.000Z' },
+            remark: { userId: 'u2', username: 'editor2', editedAt: '2026-10-03T12:00:00.000Z' },
+            actionIds: { userId: 'u2', username: 'editor2', editedAt: '2026-10-03T13:00:00.000Z' },
+          },
         }, {
           id: 'plain-id', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
           customerName: '客户B', customerCode: 'C2', visitResult: '旧回访B',
           internalEvaluationDetail: '导入来源的评估', assigneeName: '导入来源的经办人',
+        }, {
+          id: 'cleared-id', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
+          customerName: '客户C', customerCode: 'C3', visitResult: '旧回访C',
+          internalEvaluationDetail: '', internalConclusion: '', assigneeName: '', remark: '',
+          actionId: 'stale-act', actionIds: [],
+          evaluationSubmitted: false,
+          manualEditedFields: ['internalEvaluation', 'assigneeName', 'remark', 'actionIds'],
+          fieldEditMeta: {
+            internalEvaluation: { userId: 'u3', username: 'editor3', editedAt: '2026-10-04T10:00:00.000Z' },
+            assigneeName: { userId: 'u3', username: 'editor3', editedAt: '2026-10-04T10:00:00.000Z' },
+            remark: { userId: 'u3', username: 'editor3', editedAt: '2026-10-04T10:00:00.000Z' },
+            actionId: { userId: 'u3', username: 'editor3', editedAt: '2026-10-04T10:00:00.000Z' },
+          },
         }],
       }],
     ])
     const adapter = {
       getMeta: async (key) => storedMeta.get(key),
-      putMeta: async (key, value) => storedMeta.set(key, value),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
     }
     await executeCustomerVisitImport({
       adapter,
       rows: [
         { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户A', 客户编码: 'C1', 回访结果: '新回访A', 内部评估: '导入的评估A', 经办人: '李四', 备注: '导入的备注A' },
         { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户B', 客户编码: 'C2', 回访结果: '新回访B' },
+        { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户C', 客户编码: 'C3', 回访结果: '新回访C', 内部评估: '导入评估C', 经办人: '李四', 备注: '导入备注C' },
       ],
       importMonth: '2026-10',
       libraryRecords: [],
@@ -409,7 +479,14 @@ describe('customerVisitImport', () => {
       assigneeName: '张三',
       remark: '人工备注',
       actionId: 'act-1',
+      actionIds: ['act-1', 'act-2'],
       evaluationSubmitted: true,
+    })
+    expect(a.fieldEditMeta).toMatchObject({
+      internalEvaluation: { username: 'editor1' },
+      assigneeName: { username: 'editor1' },
+      remark: { username: 'editor2' },
+      actionIds: { username: 'editor2' },
     })
     // 导入来源域：导入值（空）覆盖清空
     const b = saved.find((item) => item.id === 'plain-id')
@@ -418,6 +495,142 @@ describe('customerVisitImport', () => {
       internalEvaluationDetail: '',
       assigneeName: '',
     })
-    expect(saved).toHaveLength(2)
+    const c = saved.find((item) => item.id === 'cleared-id')
+    expect(c).toMatchObject({
+      visitResult: '新回访C',
+      internalEvaluationDetail: '',
+      internalConclusion: '',
+      assigneeName: '',
+      remark: '',
+      actionId: '',
+      actionIds: [],
+      evaluationSubmitted: false,
+    })
+    expect(c.fieldEditMeta.internalEvaluation.username).toBe('editor3')
+    expect(saved).toHaveLength(3)
+  })
+
+  it('keeps manual evaluation and editor metadata in the linked rating snapshot on reimport', async () => {
+    /** @type {Map<string, unknown>} */
+    const storedMeta = new Map([
+      [META_KEY_POST_USE_VISITS, {
+        version: 1,
+        records: [{
+          id: 'manual-snapshot-visit',
+          visitMonth: '2026-07',
+          importMonth: '2026-07',
+          productName: '云专线',
+          customerName: '快照客户',
+          customerCode: 'SNAP-1',
+          internalEvaluationDetail: '人工结论',
+          internalConclusion: '人工结论',
+          assigneeName: '人工经办人',
+          evaluationSubmitted: true,
+          manualEditedFields: ['internalEvaluation', 'assigneeName'],
+          fieldEditMeta: {
+            internalEvaluation: { userId: 'u1', username: 'reviewer', editedAt: '2026-07-08T10:00:00.000Z' },
+            assigneeName: { userId: 'u1', username: 'reviewer', editedAt: '2026-07-08T10:00:00.000Z' },
+          },
+        }],
+      }],
+    ])
+    const updates = []
+    await executeCustomerVisitImport({
+      adapter: {
+        getMeta: async (key) => storedMeta.get(key),
+        putMeta: async (key, value) => { storedMeta.set(key, value) },
+      },
+      rows: [{
+        数据月份: '2026-07',
+        产品名称: '云专线',
+        客户名称: '快照客户',
+        客户编码: 'SNAP-1',
+        回访结果: '新回访结果',
+        内部评估: '导入评估',
+        经办人: '导入经办人',
+      }],
+      importMonth: '2026-07',
+      libraryRecords: [{
+        id: 'rating-snapshot-1',
+        dataSourceType: 'post_use_rating',
+        channel: 'sms',
+        productName: '云专线',
+        customerName: '快照客户',
+        customerCode: 'SNAP-1',
+        ratingScore: 8,
+        importMonth: '2026-07',
+      }],
+      updateRecords: async (records) => { updates.push(...records) },
+    })
+    const visits = await loadVisitRecords({
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async () => {},
+    })
+    expect(visits[0]).toMatchObject({
+      id: 'manual-snapshot-visit',
+      visitResult: '新回访结果',
+      internalEvaluationDetail: '人工结论',
+      assigneeName: '人工经办人',
+    })
+    expect(updates).toHaveLength(1)
+    expect(updates[0].customerVisit).toMatchObject({
+      visitResult: '新回访结果',
+      internalEvaluationDetail: '人工结论',
+      assigneeName: '人工经办人',
+      fieldEditMeta: { internalEvaluation: { username: 'reviewer' } },
+    })
+  })
+
+  it('keeps each linked snapshot with its own visit when one customer has multiple rows', async () => {
+    /** @type {Map<string, unknown>} */
+    const storedMeta = new Map([[META_KEY_POST_USE_VISITS, {
+      version: 1,
+      records: [{
+        id: 'multi-first', visitMonth: '2026-08', importMonth: '2026-08',
+        productName: '云专线', customerName: '多行客户', customerCode: 'MULTI-1',
+        visitResult: '旧回访一', internalEvaluationDetail: '导入一',
+      }, {
+        id: 'multi-second', visitMonth: '2026-08', importMonth: '2026-08',
+        productName: '云专线', customerName: '多行客户', customerCode: 'MULTI-1',
+        visitResult: '旧回访二', internalEvaluationDetail: '人工二', internalConclusion: '人工二',
+        manualEditedFields: ['internalEvaluation'],
+        fieldEditMeta: {
+          internalEvaluation: { userId: 'u2', username: 'second_reviewer', editedAt: '2026-08-08T10:00:00.000Z' },
+        },
+      }],
+    }]])
+    const updates = []
+    await executeCustomerVisitImport({
+      adapter: {
+        getMeta: async (key) => storedMeta.get(key),
+        putMeta: async (key, value) => { storedMeta.set(key, value) },
+      },
+      rows: [{
+        数据月份: '2026-08', 产品名称: '云专线', 客户名称: '多行客户', 客户编码: 'MULTI-1',
+        评分来源: '控制台评分', 回访结果: '新回访一', 内部评估: '新导入一',
+      }, {
+        数据月份: '2026-08', 产品名称: '云专线', 客户名称: '多行客户', 客户编码: 'MULTI-1',
+        评分来源: '短信评分', 回访结果: '新回访二', 内部评估: '新导入二',
+      }],
+      importMonth: '2026-08',
+      libraryRecords: [{
+        id: 'rating-multi-console', dataSourceType: 'post_use_rating', channel: 'console',
+        productName: '云专线', customerName: '多行客户', customerCode: 'MULTI-1', importMonth: '2026-08',
+      }, {
+        id: 'rating-multi-sms', dataSourceType: 'post_use_rating', channel: 'sms',
+        productName: '云专线', customerName: '多行客户', customerCode: 'MULTI-1', importMonth: '2026-08',
+      }],
+      updateRecords: async (records) => { updates.push(...records) },
+    })
+    expect(updates).toHaveLength(2)
+    expect(updates.find((item) => item.id === 'rating-multi-console').customerVisit).toMatchObject({
+      visitResult: '新回访一', internalEvaluationDetail: '新导入一',
+    })
+    expect(updates.find((item) => item.id === 'rating-multi-sms').customerVisit).toMatchObject({
+      visitResult: '新回访二', internalEvaluationDetail: '人工二',
+      fieldEditMeta: { internalEvaluation: { username: 'second_reviewer' } },
+    })
+    const saved = await loadVisitRecords({ getMeta: async (key) => storedMeta.get(key), putMeta: async () => {} })
+    expect(saved.find((item) => item.id === 'multi-second').fieldEditMeta.internalEvaluation.username).toBe('second_reviewer')
   })
 })
