@@ -163,7 +163,6 @@ export default function Import({ embedded = false }) {
   const appliedImportUrlRef = useRef(importUrlKey)
   const {
     addFeedbacks,
-    reloadAfterEnrich,
     adapter,
     beginImportSession,
     prepareSharedBackgroundTask,
@@ -945,13 +944,10 @@ export default function Import({ embedded = false }) {
         },
       })
 
-      if (isApiStorageAdapter(adapter)) {
-        reportProgress(formatPostUseChannelImportProgress({ phase: 'sync' }))
-        await syncSharedDataFromServer({ notify: false })
-      }
+      if (isApiStorageAdapter(adapter)) reportProgress('写盘完成，任务结束后同步变更记录…')
 
       try {
-        reportProgress(formatPostUseChannelImportProgress({ phase: 'snapshot' }))
+        reportProgress(isApiStorageAdapter(adapter) ? '洞察已标记待重建…' : formatPostUseChannelImportProgress({ phase: 'snapshot' }))
         await rebuildSnapshotsForImportMonth(dataMonth)
       } catch (snapErr) {
         console.warn('[import] post-use channel snapshot rebuild:', snapErr)
@@ -1194,10 +1190,7 @@ export default function Import({ embedded = false }) {
         putRecords: (recs) => adapter.putRecords(recs),
       })
 
-      if (isApiStorageAdapter(adapter)) {
-        reportProgress('正在同步数据…')
-        await syncSharedDataFromServer({ notify: false })
-      }
+      if (isApiStorageAdapter(adapter)) reportProgress('写盘完成，任务结束后同步变更记录…')
 
       notifyImportFinished({
         dataMonth,
@@ -1440,12 +1433,7 @@ export default function Import({ embedded = false }) {
       if (ticketSource && enrichResult) {
         // 服务端 enrich 端点已写盘
         serverAlreadyWritten = true
-        reportProgress(`正在同步前端状态…`)
-        try {
-          await reloadAfterEnrich(dataMonth)
-        } catch (err) {
-          console.warn('[import] reloadAfterEnrich 失败，不影响写盘:', err)
-        }
+        reportProgress('写盘完成，任务结束后同步变更工单…')
         // 从 enrich 结果拿统计
         const wr = enrichResult.writeResult || {}
         const updatedCount = enrichResult.stats?.updated || 0
@@ -1468,7 +1456,7 @@ export default function Import({ embedded = false }) {
       }
 
       try {
-        reportProgress('正在生成该数据月份的洞察快照…')
+        reportProgress(isApiStorageAdapter(adapter) ? '洞察已标记待重建…' : '正在生成该数据月份的洞察快照…')
         await rebuildSnapshotsForImportMonth(dataMonth, ticketSource ? [] : records)
       } catch (snapErr) {
         console.warn('[import] snapshot rebuild after import:', snapErr)

@@ -1,16 +1,12 @@
 import { enqueueInsightRebuild, waitForInsightRebuildCompletion } from './insightRebuildJob.js'
 import { listBackgroundTasks } from './backgroundTaskLock.js'
-import { listDirtyInsightPeriods, setInsightSnapshotDirtyListener } from './insightSnapshotDirty.js'
+import { storageRepository } from './storageRepository.js'
+import { dirtyInsightGeneration } from './insightSnapshotDirty.js'
+import { pruneRecordChanges } from './recordChangeLog.js'
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
-const RETRY_MS = 10 * 60 * 1000
 const BUSY_RETRY_MS = 15 * 1000
-
-let drainTimer = null
-let dailyTimer = null
-let draining = false
-let started = false
-const failedUntil = new Map()
+const MAX_STALE_RETRIES = 2
 
 export function nextBeijingFive(now = new Date()) {
   const local = new Date(now.getTime() + BEIJING_OFFSET_MS)
@@ -19,74 +15,146 @@ export function nextBeijingFive(now = new Date()) {
   return new Date(target)
 }
 
-function scheduleDrain(delayMs = 1500) {
-  if (!started) return
-  if (drainTimer) clearTimeout(drainTimer)
-  drainTimer = setTimeout(() => {
-    drainTimer = null
-    void drainDirtyPeriods()
-  }, delayMs)
-}
+/** The injected operations keep timer and interruption behavior testable without a live SQLite file. */
+export function createInsightRefreshScheduler({
+  listTasks = listBackgroundTasks,
+  listPeriods = () => storageRepository.listInsightPeriods(),
+  enqueue = enqueueInsightRebuild,
+  wait = waitForInsightRebuildCompletion,
+  dirtyGeneration = dirtyInsightGeneration,
+  prune = pruneRecordChanges,
+  now = () => new Date(),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+  logger = console,
+} = {}) {
+  let dailyTimer = null
+  let busyTimer = null
+  let running = false
+  let started = false
+  let pendingDailyRun = false
+  let queuedDailyRun = false
+  let pendingPeriodIds = null
+  const staleRetries = new Map()
 
-async function drainDirtyPeriods() {
-  if (draining || !started) return
-  draining = true
-  try {
-    for (let completed = 0; completed < 20; completed += 1) {
-      const rows = listDirtyInsightPeriods()
-      if (!rows.length) return
-      // 打标和导入会流式写盘；等所有写入任务结束再读取快照输入。
-      if (listBackgroundTasks().some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) {
-        scheduleDrain(BUSY_RETRY_MS)
-        return
+  const hasWritingTask = () => listTasks().some((task) =>
+    ['import', 'retag', 'post_use_journey'].includes(task.type),
+  )
+
+  const scheduleBusyRetry = () => {
+    if (!started || busyTimer) return
+    busyTimer = setTimer(() => {
+      busyTimer = null
+      void runDailyFullRebuild()
+    }, BUSY_RETRY_MS)
+  }
+
+  async function runDailyFullRebuild() {
+    if (!started || running || !pendingDailyRun) return
+    if (hasWritingTask()) {
+      scheduleBusyRetry()
+      return
+    }
+    running = true
+    try {
+      // 每日重建全部已保存周期；逐周期运行，避免 SQLite 读写争用。
+      if (!pendingPeriodIds) {
+        pendingPeriodIds = [...new Set(listPeriods().map((period) => period.id).filter(Boolean))]
       }
-      const row = rows.find((item) => (failedUntil.get(item.periodId) || 0) <= Date.now())
-      if (!row) {
-        scheduleDrain(RETRY_MS)
-        return
-      }
-      try {
-        const { job } = await enqueueInsightRebuild(row.periodId, 'system-auto')
-        const finished = await waitForInsightRebuildCompletion(job.id)
-        if (finished?.status !== 'succeeded') {
-          failedUntil.set(row.periodId, Date.now() + RETRY_MS)
-          console.warn('[insight-refresh] automatic rebuild failed:', row.periodId, finished?.errorSummary)
-        } else {
-          failedUntil.delete(row.periodId)
+      while (pendingPeriodIds.length) {
+        if (!started) return
+        if (hasWritingTask()) {
+          scheduleBusyRetry()
+          return
         }
-      } catch (error) {
-        failedUntil.set(row.periodId, Date.now() + RETRY_MS)
-        console.error('[insight-refresh] automatic rebuild error:', row.periodId, error)
+        const periodId = pendingPeriodIds[0]
+        try {
+          const { job } = await enqueue(periodId, 'system-05:00')
+          const finished = await wait(job.id)
+          if (finished?.status !== 'succeeded') {
+            logger.warn('[insight-refresh] daily rebuild failed:', periodId, finished?.errorSummary)
+          } else if (dirtyGeneration(periodId) > 0) {
+            // 重建途中有写入，快照仍过期；在任务结束后补做该周期。
+            if (hasWritingTask()) {
+              scheduleBusyRetry()
+              return
+            }
+            const retries = staleRetries.get(periodId) || 0
+            if (retries < MAX_STALE_RETRIES) {
+              staleRetries.set(periodId, retries + 1)
+              pendingPeriodIds.shift()
+              pendingPeriodIds.push(periodId)
+              continue
+            }
+            logger.warn('[insight-refresh] daily rebuild remained stale:', periodId)
+          }
+        } catch (error) {
+          if (error?.code === 'INSIGHT_REBUILD_BUSY') {
+            scheduleBusyRetry()
+            return
+          }
+          logger.error('[insight-refresh] daily rebuild error:', periodId, error)
+        }
+        pendingPeriodIds.shift()
+      }
+      pendingDailyRun = false
+      pendingPeriodIds = null
+      staleRetries.clear()
+      prune()
+    } catch (error) {
+      logger.error('[insight-refresh] daily sweep error:', error)
+      if (pendingDailyRun) scheduleBusyRetry()
+    } finally {
+      running = false
+      if (started && queuedDailyRun && !pendingDailyRun) {
+        queuedDailyRun = false
+        pendingDailyRun = true
+        pendingPeriodIds = null
+        staleRetries.clear()
+        queueMicrotask(() => void runDailyFullRebuild())
       }
     }
-    if (listDirtyInsightPeriods().length) scheduleDrain(1500)
-  } finally {
-    draining = false
+  }
+
+  function armDaily() {
+    if (!started) return
+    const current = now()
+    const delay = nextBeijingFive(current).getTime() - current.getTime()
+    dailyTimer = setTimer(() => {
+      if (pendingDailyRun || running) {
+        queuedDailyRun = true
+      } else {
+        pendingDailyRun = true
+        pendingPeriodIds = null
+        void runDailyFullRebuild()
+      }
+      armDaily()
+    }, delay)
+  }
+
+  return {
+    start() {
+      if (started) return () => {}
+      started = true
+      armDaily()
+      return () => {
+        started = false
+        pendingDailyRun = false
+        queuedDailyRun = false
+        pendingPeriodIds = null
+        staleRetries.clear()
+        if (dailyTimer) clearTimer(dailyTimer)
+        if (busyTimer) clearTimer(busyTimer)
+        dailyTimer = null
+        busyTimer = null
+      }
+    },
   }
 }
 
-function armDaily() {
-  if (!started) return
-  const delay = nextBeijingFive().getTime() - Date.now() + 1000
-  dailyTimer = setTimeout(() => {
-    scheduleDrain(0)
-    armDaily()
-  }, delay)
-}
+const scheduler = createInsightRefreshScheduler()
 
-/** Start immediately after the API begins listening. The 05:00 sweep recovers leftover dirty periods. */
+/** Only Beijing 05:00 starts automatic rebuilds. Record writes merely mark snapshots stale. */
 export function startInsightRefreshScheduler() {
-  if (started) return () => {}
-  started = true
-  setInsightSnapshotDirtyListener(() => scheduleDrain())
-  scheduleDrain(0)
-  armDaily()
-  return () => {
-    started = false
-    setInsightSnapshotDirtyListener(null)
-    if (drainTimer) clearTimeout(drainTimer)
-    if (dailyTimer) clearTimeout(dailyTimer)
-    drainTimer = null
-    dailyTimer = null
-  }
+  return scheduler.start()
 }

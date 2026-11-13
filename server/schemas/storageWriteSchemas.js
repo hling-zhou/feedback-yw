@@ -61,6 +61,21 @@ export const recordsBatchBodySchema = {
 }
 
 /** @type {import('json-schema').JSONSchema7} */
+export const recordsByIdsBodySchema = {
+  type: 'object',
+  ...STRICT_OBJECT,
+  required: ['ids'],
+  properties: {
+    ids: {
+      type: 'array',
+      maxItems: 500,
+      items: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+    fields: { type: 'string', enum: ['list', 'full'] },
+  },
+}
+
+/** @type {import('json-schema').JSONSchema7} */
 export const recordPatchBodySchema = {
   type: 'object',
   ...STRICT_OBJECT,

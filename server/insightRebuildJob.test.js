@@ -144,6 +144,19 @@ describeJob('insight rebuild server job', () => {
     expect(dirtyInsightGeneration(samplePeriod.id)).toBe(0)
   })
 
+  it('rejects manual rebuild while an import holds the write lock', async () => {
+    const { enqueueInsightRebuild } = await import('./insightRebuildJob.js')
+    const { acquireBackgroundTaskLock, releaseBackgroundTask } = await import('./backgroundTaskLock.js')
+    const owner = { id: 'busy-rebuild-test', username: 'busy-rebuild-test', meta: { phase: 'client' } }
+    const { lock } = acquireBackgroundTaskLock('import', owner)
+    try {
+      await expect(enqueueInsightRebuild(samplePeriod.id, 'manual-test'))
+        .rejects.toMatchObject({ code: 'INSIGHT_REBUILD_BUSY' })
+    } finally {
+      releaseBackgroundTask(lock.id, owner.id)
+    }
+  })
+
   it('keeps the dirty marker when records change during a rebuild', async () => {
     const { enqueueInsightRebuild, waitForInsightRebuildCompletion } = await import('./insightRebuildJob.js')
     const { dirtyInsightGeneration, clearDirtyInsightPeriodIfUnchanged } = await import('./insightSnapshotDirty.js')

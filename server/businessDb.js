@@ -944,6 +944,29 @@ export function initBusinessSchema() {
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
+  // 记录变更游标与工单写入同事务提交。触发器覆盖单条、批量、替换和删除入口。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS record_changes (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id TEXT NOT NULL,
+      old_source_type TEXT,
+      new_source_type TEXT,
+      old_import_month TEXT,
+      new_import_month TEXT
+    );
+    CREATE TRIGGER IF NOT EXISTS record_changes_insert AFTER INSERT ON records BEGIN
+      INSERT INTO record_changes (record_id, new_source_type, new_import_month)
+      VALUES (NEW.id, NEW.data_source_type, NEW.import_month);
+    END;
+    CREATE TRIGGER IF NOT EXISTS record_changes_update AFTER UPDATE ON records BEGIN
+      INSERT INTO record_changes (record_id, old_source_type, new_source_type, old_import_month, new_import_month)
+      VALUES (NEW.id, OLD.data_source_type, NEW.data_source_type, OLD.import_month, NEW.import_month);
+    END;
+    CREATE TRIGGER IF NOT EXISTS record_changes_delete AFTER DELETE ON records BEGIN
+      INSERT INTO record_changes (record_id, old_source_type, old_import_month)
+      VALUES (OLD.id, OLD.data_source_type, OLD.import_month);
+    END;
+  `)
   migratePostUseJiraAssigneeColumns(db)
   migrateLegacyDcProductKeys(db)
   migrateProductCatalogCanonicalKeys(db)

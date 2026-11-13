@@ -12,6 +12,7 @@ import {
   recordIdParamsSchema,
   recordPatchBodySchema,
   recordsBatchBodySchema,
+  recordsByIdsBodySchema,
   recordsReplaceBodySchema,
   runPutBodySchema,
   snapshotPutBodySchema,
@@ -21,6 +22,7 @@ import {
 import { requireAdmin, requirePermission } from '../middleware.js'
 import { bumpDataRevision, bumpRecordsRevision, getDataRevision } from '../dataRevision.js'
 import { storageRepository, TICKET_ID_CONFLICT_CODE } from '../storageRepository.js'
+import { listRecordChanges } from '../recordChangeLog.js'
 import { actionItemRepository } from '../actionItemRepository.js'
 import {
   getProductCatalogPublishStatus,
@@ -46,7 +48,6 @@ import {
   startBackgroundTaskHeartbeat,
   isTaskCancelled,
   listBackgroundTasks,
-  getBackgroundTaskLock,
   touchBackgroundTaskLock,
   releaseBackgroundTask,
   releaseBackgroundTaskLock,
@@ -136,8 +137,15 @@ export function registerStorageRoutes(app) {
     return getDataRevision()
   })
 
-  app.get('/api/storage/background-task', { preHandler: requirePermission('view') }, async () => {
-    return { tasks: listBackgroundTasks(), results: listTaskResults(), lock: getBackgroundTaskLock() }
+  app.get('/api/storage/background-task', { preHandler: requirePermission('view') }, async (request) => {
+    const watched = String(request.query?.watchTaskIds || '')
+      .split(',').filter((id) => id.length > 0 && id.length <= 128).slice(0, 20)
+    const watchedIds = new Set(watched)
+    const results = watchedIds.size
+      ? listTaskResults().filter((result) => watchedIds.has(String(result.taskId || '')))
+      : []
+    const tasks = listBackgroundTasks()
+    return { tasks, results, lock: tasks[0] || null }
   })
 
   app.get('/api/storage/background-task/history', { preHandler: requirePermission('view') }, async () => {
@@ -340,6 +348,26 @@ export function registerStorageRoutes(app) {
         ? q.generalizationFilter
         : undefined
     return storageRepository.listRecords({ ...q, dataSourceTypes, fields, generalizationFilter })
+  })
+
+  app.get('/api/storage/records/changes', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const q = /** @type {{ after?: string; through?: string; limit?: string }} */ (request.query || {})
+    const after = Number(q.after)
+    const through = Number(q.through)
+    const limit = q.limit == null ? 1000 : Number(q.limit)
+    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(through)
+      || through < after || !Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      return reply.code(400).send({ error: '无效的记录变更游标或分页大小' })
+    }
+    return listRecordChanges(after, through, limit)
+  })
+
+  app.post('/api/storage/records/by-ids', {
+    preHandler: requirePermission('view'),
+    schema: { body: recordsByIdsBodySchema },
+  }, async (request) => {
+    const body = /** @type {{ ids: string[]; fields?: 'list' | 'full' }} */ (request.body)
+    return { records: storageRepository.listRecordsByIds(body.ids, body.fields || 'list') }
   })
 
   // 用后即评「待补全用户旅程」计数：服务端按与 enrichRunner 同口径计算 count + recordIds，
@@ -763,6 +791,7 @@ export function registerStorageRoutes(app) {
       const taskId = acquiredLock.id
       const stopHeartbeat = startBackgroundTaskHeartbeat(taskId)
       ;(async () => {
+        let terminalResult = null
         try {
           const { runEnrichment } = await import('../enrichRunner.js')
           const result = await runEnrichment({
@@ -824,7 +853,7 @@ export function registerStorageRoutes(app) {
             status: isCancelled ? 'cancelled' : isFailed ? 'failed' : 'success',
             error: isFailed ? (result.warnings || []).join('；') || '分析未产生可导入记录' : undefined,
           }
-          try { setTaskResult(taskId, taskResult) } catch { /* 结果写入失败不阻断 */ }
+          terminalResult = taskResult
           try {
             appendTaskHistory({
               id: taskId,
@@ -864,7 +893,7 @@ export function registerStorageRoutes(app) {
             dataMonth: body.dataMonth,
             dataSourceType: body.dataSourceType,
           }
-          try { setTaskResult(taskId, failResult) } catch { /* 忽略 */ }
+          terminalResult = failResult
           try {
             appendTaskHistory({
               id: taskId,
@@ -882,6 +911,10 @@ export function registerStorageRoutes(app) {
         }
         stopHeartbeat()
         try { releaseBackgroundTask(taskId, userId) } catch { /* 任务可能已取消释放 */ }
+        // 只有写盘与任务锁释放都结束后，才对前端公布终态。
+        if (terminalResult) {
+          try { setTaskResult(taskId, terminalResult) } catch { /* 结果写入失败不阻断 */ }
+        }
       })()
 
       return reply.send({ ok: true, taskId, message: '打标已在服务端后台开始' })
@@ -1098,7 +1131,8 @@ export function registerStorageRoutes(app) {
       })
       return result
     } catch (err) {
-      reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
+      reply.code(err?.code === 'INSIGHT_REBUILD_BUSY' ? 409 : 400)
+        .send({ error: err instanceof Error ? err.message : String(err) })
     }
     },
   )

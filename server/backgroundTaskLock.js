@@ -266,7 +266,10 @@ function readResultMap() {
 export function setTaskResult(taskId, result) {
   const map = readResultMap()
   map[taskId] = { ...result, taskId }
-  storageRepository.putMeta(META_KEY_BACKGROUND_TASK_RESULTS, map)
+  // 发起页关闭后结果可能无人清除；限制持久化结果数量。
+  storageRepository.putMeta(META_KEY_BACKGROUND_TASK_RESULTS, Object.fromEntries(
+    Object.entries(map).slice(-50),
+  ))
   storageRepository.deleteMeta(META_KEY_BACKGROUND_TASK_RESULT)
 }
 

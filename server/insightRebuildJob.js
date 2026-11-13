@@ -16,6 +16,7 @@ import { resolveWorkbenchHistoryMonthRange } from '../src/lib/workbenchStoredAgg
 import { loadManagedProductCatalog } from '../src/storage/productCatalogStore.js'
 import { getDb } from './db.js'
 import { bumpSnapshotsRevision } from './dataRevision.js'
+import { listBackgroundTasks } from './backgroundTaskLock.js'
 import {
   clearDirtyInsightPeriodIfUnchanged,
   dirtyInsightGeneration,
@@ -84,6 +85,11 @@ export async function enqueueInsightRebuild(insightPeriodId, triggeredBy) {
   const periodId = insightPeriodId?.trim()
   if (!periodId) {
     throw new Error('缺少 insightPeriodId')
+  }
+  if (listBackgroundTasks().some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) {
+    const error = new Error('打标或导入任务正在写入，请任务结束后重建洞察')
+    error.code = 'INSIGHT_REBUILD_BUSY'
+    throw error
   }
 
   const existing = storageRepository.findActiveInsightRebuildJob(periodId)

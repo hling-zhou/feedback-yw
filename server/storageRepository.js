@@ -96,6 +96,32 @@ function projectRecordPayload(record, fields) {
   return /** @type {T} */ (next)
 }
 
+/** Keep list and changed-record projections identical for the three-state generalization filter. */
+function attachGeneralizationFlags(db, records) {
+  if (!records.length) return records
+  try {
+    const ids = records.map((record) => String(record.id || '')).filter(Boolean)
+    const placeholders = ids.map(() => '?').join(',')
+    const linkedIds = new Set(db.prepare(`
+      SELECT DISTINCT record_id FROM generalization_issue_links
+      WHERE link_status = 'confirmed' AND record_id IN (${placeholders})
+    `).all(...ids).map((row) => String(row.record_id)))
+    const hintedIds = new Set(db.prepare(`
+      SELECT id FROM generalization_hints WHERE id IN (${placeholders})
+    `).all(...ids).map((row) => String(row.id)))
+    return records.map((record) => {
+      const id = String(record.id || '')
+      return {
+        ...record,
+        generalization: linkedIds.has(id) ? 'linked' : hintedIds.has(id) ? 'suggested' : 'none',
+      }
+    })
+  } catch {
+    // 旧库缺少泛化表时保持原投影。
+    return records
+  }
+}
+
 function stringifyJson(value) {
   return JSON.stringify(value)
 }
@@ -241,33 +267,8 @@ export const storageRepository = {
       records = filterRecords(records, query, null)
     }
 
-    // G4-1：三态派生 flag 附投影（linked=confirmed gen link / suggested=有 hint 未采纳 /
-    // undefined=均无）——前端复合筛选消费；两表缺失（旧库未迁移）时静默跳过
-    if (records.length) {
-      try {
-        const ids = records.map((r) => String(r.id || '')).filter(Boolean)
-        const placeholders = ids.map(() => '?').join(',')
-        const linkedIds = new Set(
-          db
-            .prepare(
-              `SELECT DISTINCT record_id FROM generalization_issue_links
-               WHERE link_status = 'confirmed' AND record_id IN (${placeholders})`,
-            )
-            .all(...ids)
-            .map((r) => String(r.record_id)),
-        )
-        const hintedIds = new Set(
-          db.prepare(`SELECT id FROM generalization_hints WHERE id IN (${placeholders})`).all(...ids).map((r) => String(r.id)),
-        )
-        records = records.map((r) => {
-          const id = String(r.id || '')
-          const genFlag = linkedIds.has(id) ? 'linked' : hintedIds.has(id) ? 'suggested' : 'none'
-          return { ...r, generalization: genFlag }
-        })
-      } catch {
-        // 表不存在（未迁移旧库）——不附加 flag，正常返回
-      }
-    }
+    // G4-1：三态派生 flag 附投影；增量按 ID 读取复用同一口径。
+    records = attachGeneralizationFlags(db, records)
 
     return {
       records,
@@ -275,6 +276,22 @@ export const storageRepository = {
       limit: limit ?? total,
       offset: limit != null ? offset : 0,
     }
+  },
+
+  /** @param {string[]} ids @param {'list' | 'full'} [fields] */
+  listRecordsByIds(ids, fields = 'list') {
+    const unique = [...new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))]
+    if (!unique.length) return []
+    const db = getDb()
+    const records = []
+    for (let i = 0; i < unique.length; i += 500) {
+      const chunk = unique.slice(i, i + 500)
+      const placeholders = chunk.map(() => '?').join(',')
+      const rows = db.prepare(`SELECT payload FROM records WHERE id IN (${placeholders})`).all(...chunk)
+      const projected = rows.map((row) => projectRecordPayload(parseJson(row.payload), fields))
+      records.push(...attachGeneralizationFlags(db, projected))
+    }
+    return records
   },
 
   listTicketRecordsForFollowUpImport() {

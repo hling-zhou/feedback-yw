@@ -4,10 +4,14 @@ import { apiFetch } from './apiClient.js'
 /** @typedef {import('../domain/backgroundTaskLock.js').BackgroundTaskType} BackgroundTaskType */
 
 /**
+ * @param {string[]} [watchTaskIds] Only return results this tab is actively waiting for.
  * @returns {Promise<{ tasks: BackgroundTaskLock[]; results: Record<string, unknown>[] }>}
  */
-export async function fetchBackgroundTaskState() {
-  const data = await apiFetch('/api/storage/background-task')
+export async function fetchBackgroundTaskState(watchTaskIds = []) {
+  const query = watchTaskIds.length
+    ? `?watchTaskIds=${encodeURIComponent(watchTaskIds.join(','))}`
+    : ''
+  const data = await apiFetch(`/api/storage/background-task${query}`)
   const tasks = Array.isArray(data?.tasks) ? data.tasks : data?.lock ? [data.lock] : []
   const results = Array.isArray(data?.results) ? data.results : data?.result ? [data.result] : []
   return { tasks, results }

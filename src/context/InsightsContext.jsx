@@ -13,6 +13,7 @@ import { hydrateRecommendationFeedbackFromServer } from '../lib/planningRecommen
 import {
   loadFeedbacksForPeriod,
   listAllFeedbacks,
+  normalizeFeedbackRecord,
   getTotalRecordCount,
   persistFeedbacks,
   persistRecordUpdate,
@@ -57,10 +58,10 @@ import {
   defaultMonthPeriodSpec,
   defaultMonthPeriodSpecFromMonths,
   insightPeriodFromSpec,
-  listMonthsInclusive,
   normalizeInsightPeriod,
   periodIdFromSpec,
   periodSpecFromImportMonth,
+  recordMatchesPeriod,
   resolveInsightPeriod,
   selectionFromPeriod,
 } from '../domain/insightPeriod.js'
@@ -168,6 +169,12 @@ import {
 } from '../lib/tagLibrary/exportTaxonomyPatch.js'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { DATA_SYNC_POLL_MS, fetchDataRevision } from '../lib/dataSync.js'
+import {
+  changeTouchesLoadedCache,
+  fetchRecordDelta,
+  mergeRecordDelta,
+  shouldCacheChangedRecord,
+} from '../lib/recordDeltaSync.js'
 const META_CURRENT_PERIOD = 'current_insight_period_id'
 const META_PERIOD_SELECTION = 'insight_period_selection'
 
@@ -255,6 +262,8 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const dataRevisionRef = useRef(null)
   /** recordsRevision 的 ref 镜像，用于 tick 判断是否需要重拉记录 */
   const recordsRevisionRef = useRef(null)
+  /** 已合并到前端缓存的 SQLite 记录变更游标。 */
+  const recordCursorRef = useRef(/** @type {number | null} */ (null))
   /** 服务端完整快照发布版本；只变快照时不重拉工单。 */
   const snapshotsRevisionRef = useRef(null)
   /** 本浏览器是否持有服务端全局后台任务锁 */
@@ -529,6 +538,14 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       // 共享 API 模式：月份聚合替代全表下载；本机 IDB 全量加载无网络开销，保持原语义
       const apiMode =
         isApiStorageAdapter(adapter) && typeof adapter.listImportMonthSummary === 'function'
+      // 在首屏读取之前留游标；加载期间的写入随后走增量补齐，避免把新版本误当已应用。
+      if (apiMode && recordCursorRef.current == null) {
+        try {
+          recordCursorRef.current = (await adapter.getDataRevision()).recordCursor ?? null
+        } catch {
+          recordCursorRef.current = null
+        }
+      }
 
       /** @type {{ granularity: string, year: number | null, month: number | null, quarter: number | null, fromMonth: string | null, toMonth: string | null } | null} */
       let savedSelection = null
@@ -759,6 +776,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         applySnapshotState(loaded, options.stale ?? snapshotsStale)
         if (seq) endSnapshotLoad(periodId, seq, { applied: true })
         else snapshotPeriodRef.current = periodId
+        return loaded
       } catch (err) {
         endSnapshotLoad(periodId, seq, { applied: false, clear: seq !== 0 })
         throw err
@@ -864,11 +882,27 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const refreshImportMonthSummary = useCallback(async () => {
     if (typeof adapter.listImportMonthSummary !== 'function') return
     try {
-      setImportMonthSummary(await adapter.listImportMonthSummary())
+      const summary = await adapter.listImportMonthSummary()
+      setImportMonthSummary((prev) => JSON.stringify(prev) === JSON.stringify(summary) ? prev : summary)
+      setTotalRecordCount(summary.total)
+      return summary
     } catch {
       /* 汇总刷新非关键路径 */
     }
   }, [adapter])
+
+  const refreshSnapshotState = useCallback(async (records = feedbacksRef.current) => {
+    const loaded = await reloadSnapshots(currentPeriodId, { force: true, stale: false })
+    if (!loaded) return
+    const hasStaleSnapshot = Object.values(loaded.sourceSnapshots || {}).some((snap) => snap?.status === 'stale')
+      || loaded.overviewSnapshot?.status === 'stale'
+    const hasCurrentRecords = currentPeriod
+      ? records.some((record) => recordMatchesPeriod(record, currentPeriod))
+      : false
+    const stale = hasStaleSnapshot || (hasCurrentRecords && !snapshotsHavePeriodData(loaded))
+    setSnapshotsStale(stale)
+    setSnapshotStaleReason(stale ? 'data' : null)
+  }, [currentPeriod, currentPeriodId, reloadSnapshots])
 
   /**
    * 其他用户写入共享库后，拉取最新反馈、快照与标签候选。
@@ -881,54 +915,72 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         !storageReady ||
         clearInProgressRef.current ||
         remoteSyncInProgressRef.current ||
-        importLockRef.current
+        importLockRef.current ||
+        tasksRef.current.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))
       ) {
-        return
+        return false
       }
       remoteSyncInProgressRef.current = true
       skipPersistRef.current = true
       try {
-        // 与首屏加载策略一致：只拉工单类型，post_use_rating 按需加载
+        // 游标先于全量读取；读取期间若有新写入，下次轮询增量补齐。
+        const before = isApiStorageAdapter(adapter) ? await fetchDataRevision() : null
+        /** @type {import('../storage/adapter.js').RecordQuery} */
         const ticketQuery = isApiStorageAdapter(adapter)
-          ? { dataSourceTypes: ['complaint_ticket', 'consultation_ticket'] }
+          ? { dataSourceTypes: ['complaint_ticket', 'consultation_ticket'], fields: 'list' }
           : {}
-        const [{ records, total }] = await Promise.all([
+        const [{ records, total }, monthSummary] = await Promise.all([
           fetchAllRecordPages(adapter, ticketQuery),
           refreshImportMonthSummary(),
         ])
+        const loadedPostUsePeriods = [...loadedPostUsePeriodIdsRef.current]
+        const postUsePages = isApiStorageAdapter(adapter)
+          ? await Promise.all(loadedPostUsePeriods.map((periodId) => fetchAllRecordPages(adapter, {
+            insightPeriodId: periodId,
+            dataSourceTypes: ['post_use_rating'],
+            fields: 'list',
+          })))
+          : []
+        if (isApiStorageAdapter(adapter)) {
+          const state = await fetchBackgroundTaskState()
+          tasksRef.current = state.tasks
+          if (state.tasks.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) return false
+        }
         loadedPeriodIdsRef.current = new Set(currentPeriodId ? [currentPeriodId] : [])
-        // 保留已加载的 post_use_rating 记录，只更新工单记录（合并而非替换）
-        const postUseRecords = feedbacksRef.current.filter(
-          (fb) => fb.dataSourceType === 'post_use_rating',
-        )
+        const postUseRecords = postUsePages.length
+          ? postUsePages.flatMap((page) => page.records.map(normalizeFeedbackRecord))
+          : feedbacksRef.current.filter((fb) => fb.dataSourceType === 'post_use_rating')
+        const byId = new Map(records.map((record) => {
+          const normalized = normalizeFeedbackRecord(record)
+          return [normalized.id, normalized]
+        }))
+        for (const record of postUseRecords) byId.set(record.id, record)
         const merged = /** @type {import('../lib/types.js').FeedbackRecord[]} */ ([
-          ...records,
-          ...postUseRecords.filter((pu) => !records.some((r) => r.id === pu.id)),
+          ...byId.values(),
         ])
         setFeedbacks(merged)
         feedbacksRef.current = merged
-        setTotalRecordCount(total)
+        setTotalRecordCount(monthSummary?.total ?? total)
         setFeedbacksHydrated(true)
         const list = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
         setPeriods(list)
-        setSnapshotsStale(false)
-        setSnapshotStaleReason(null)
-        await reloadSnapshots(currentPeriodId, { stale: false })
+        await refreshSnapshotState(merged)
         await reloadTagCandidates()
         await applyTaxonomyOverridesFromStorage()
         await hydrateLearningCaches(adapter)
         if (notify) {
           message.info('已同步其他用户的最新数据')
         }
-        try {
-          const rev = await fetchDataRevision()
-          dataRevisionRef.current = rev.revision; recordsRevisionRef.current = rev.recordsRevision
-          snapshotsRevisionRef.current = rev.snapshotsRevision ?? 0
-        } catch {
-          /* ignore */
+        if (before) {
+          dataRevisionRef.current = before.revision
+          recordsRevisionRef.current = before.recordsRevision
+          snapshotsRevisionRef.current = before.snapshotsRevision ?? 0
+          recordCursorRef.current = before.recordCursor ?? null
         }
+        return true
       } catch (err) {
         console.warn('[storage] 远程同步失败', err)
+        return false
       } finally {
         skipPersistRef.current = false
         remoteSyncInProgressRef.current = false
@@ -938,13 +990,93 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       adapter,
       storageReady,
       currentPeriodId,
-      reloadSnapshots,
+      refreshSnapshotState,
       reloadTagCandidates,
       applyTaxonomyOverridesFromStorage,
       refreshImportMonthSummary,
       message,
     ],
   )
+
+  /** 批次写盘只在任务结束后合并；普通单条修改也沿用同一增量通道。 */
+  const syncRecordChangesFromServer = useCallback(async (revision = null) => {
+    if (!storageReady || remoteSyncInProgressRef.current || clearInProgressRef.current) {
+      return false
+    }
+    if (!revision) {
+      const state = await fetchBackgroundTaskState()
+      tasksRef.current = state.tasks
+      if (state.tasks.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) return false
+      revision = await fetchDataRevision()
+    } else if (tasksRef.current.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) {
+      return false
+    }
+    if (revision.recordCursor == null || recordCursorRef.current == null) {
+      // 前后端版本交错或首屏游标读取失败时，做一次全量恢复。
+      return syncSharedDataFromServer({ notify: false })
+    }
+    const from = recordCursorRef.current ?? 0
+    const target = revision.recordCursor ?? from
+    if (target < from) return syncSharedDataFromServer({ notify: false })
+    if (target === from) return true
+
+    remoteSyncInProgressRef.current = true
+    skipPersistRef.current = true
+    let resetRequired = false
+    try {
+      const cachedIds = new Set(feedbacksRef.current.map((record) => record.id))
+      const resolveLoadedPeriods = (ids) => [...ids].map((id) =>
+        resolveInsightPeriod(id, periods.find((period) => period.id === id) || null),
+      ).filter(Boolean)
+      const ticketPeriods = resolveLoadedPeriods(loadedPeriodIdsRef.current)
+      const postUsePeriods = resolveLoadedPeriods(loadedPostUsePeriodIdsRef.current)
+      const delta = await fetchRecordDelta({
+        after: from,
+        through: target,
+        includeChange: (change) => changeTouchesLoadedCache(
+          change, cachedIds, ticketPeriods, postUsePeriods,
+        ),
+      })
+      if (delta.resetRequired) {
+        resetRequired = true
+      } else {
+        const state = await fetchBackgroundTaskState()
+        if (state.tasks.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) {
+          tasksRef.current = state.tasks
+          return false
+        }
+        const merged = mergeRecordDelta(
+          feedbacksRef.current,
+          delta.ids,
+          delta.records.map(normalizeFeedbackRecord),
+          (record) => shouldCacheChangedRecord(record, ticketPeriods, postUsePeriods),
+        )
+        feedbacksRef.current = merged
+        if (delta.ids.length) setFeedbacks(merged)
+        await refreshImportMonthSummary()
+        const latestPeriods = (await adapter.listInsightPeriods()).map(normalizeInsightPeriod)
+        setPeriods((prev) => JSON.stringify(prev) === JSON.stringify(latestPeriods)
+          ? prev
+          : /** @type {import('../domain/insightPeriod.js').InsightPeriod[]} */ (latestPeriods))
+        await refreshSnapshotState(merged)
+        await reloadTagCandidates()
+        await applyTaxonomyOverridesFromStorage()
+        recordCursorRef.current = delta.cursor
+        dataRevisionRef.current = revision.revision
+        recordsRevisionRef.current = revision.recordsRevision
+        snapshotsRevisionRef.current = revision.snapshotsRevision ?? 0
+      }
+    } catch (err) {
+      console.warn('[storage] 增量记录同步失败', err)
+      return false
+    } finally {
+      skipPersistRef.current = false
+      remoteSyncInProgressRef.current = false
+    }
+    if (resetRequired) return syncSharedDataFromServer({ notify: false })
+    return true
+  }, [adapter, applyTaxonomyOverridesFromStorage, periods, refreshImportMonthSummary,
+    refreshSnapshotState, reloadTagCandidates, storageReady, syncSharedDataFromServer])
 
   const refreshSharedBackgroundTask = useCallback(async () => {
     if (!storageReady || !isApiStorageAdapter(adapter)) {
@@ -953,11 +1085,11 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       return null
     }
     try {
-      const { tasks, results } = await fetchBackgroundTaskState()
+      const { tasks, results } = await fetchBackgroundTaskState([...taskWaitersRef.current.keys()])
       ownedBackgroundTaskRef.current = tasks.some(
         (task) => task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id),
       )
-      setSharedBackgroundTasks(tasks)
+      setSharedBackgroundTasks((prev) => JSON.stringify(prev) === JSON.stringify(tasks) ? prev : tasks)
       tasksRef.current = tasks
       for (const result of results) {
         const taskId = String(result.taskId || '')
@@ -994,12 +1126,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
                 failures: Array.isArray(pending.failures) ? pending.failures.length : 0,
                 ticketLlmFailed: pending.stats?.ticketLlmFailed || 0,
               })
-              void syncSharedDataFromServer({ notify: false })
             } else if (pending?.status === 'success') {
               message.success(
                 pending.mode === 'post_use_journey' ? '补全用户旅程已完成' : '批量重新打标已完成',
               )
-              void syncSharedDataFromServer({ notify: false })
             } else if (pending?.status === 'cancelled') {
               message.info('任务已取消')
             } else if (pending?.status === 'failed') {
@@ -1014,7 +1144,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       console.warn('[storage] 后台任务锁查询失败', err)
       return null
     }
-  }, [adapter, message, storageReady, syncSharedDataFromServer, user?.id])
+  }, [adapter, message, storageReady, user?.id])
 
   const waitForBackgroundTask = useCallback((taskId) => {
     const pending = pendingTaskResultsRef.current.get(taskId)
@@ -1065,6 +1195,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       }
       const { lock } = await acquireBackgroundTask(type, { ...payload, meta })
       ownedBackgroundTaskRef.current = true
+      tasksRef.current = [...tasksRef.current.filter((task) => task.id !== lock.id), lock]
       setSharedBackgroundTasks((prev) => [...prev.filter((task) => task.id !== lock.id), lock])
       return lock
     },
@@ -1091,15 +1222,15 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     if (!storageReady || typeof adapter.getDataRevision !== 'function') return
 
     let cancelled = false
+    let ticking = false
 
     const tick = async () => {
-      if (cancelled || document.visibilityState === 'hidden') return
-      // 锁进度需要持续刷新，即使在 retag/import 进行中也要更新 sharedBackgroundTask
+      if (cancelled || ticking || document.visibilityState === 'hidden') return
+      ticking = true
       try {
-        await refreshSharedBackgroundTask()
-      } catch (err) {
-        console.warn('[storage] 锁进度刷新失败', err)
-      }
+      // 锁进度需要持续刷新，即使在 retag/import 进行中也要更新 sharedBackgroundTask
+      const tasks = await refreshSharedBackgroundTask()
+      if (!tasks || tasks.some((task) => ['import', 'retag', 'post_use_journey'].includes(task.type))) return
       if (
         remoteSyncInProgressRef.current ||
         clearInProgressRef.current ||
@@ -1112,19 +1243,40 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         return
       }
       try {
-        const { revision, recordsRevision, snapshotsRevision = 0 } = await fetchDataRevision()
+        const next = await fetchDataRevision()
+        const { revision, recordsRevision, snapshotsRevision = 0, recordCursor } = next
         const prev = dataRevisionRef.current
         const prevRecords = recordsRevisionRef.current
         const prevSnapshots = snapshotsRevisionRef.current
-        // 只有 recordsRevision 变化（记录增删改）才需要重拉记录列表
-        // revision 变但 recordsRevision 不变（如 snapshot rebuild / tag meta 变更）不需要重拉
-        if (prevRecords != null && recordsRevision !== prevRecords) {
-          await syncSharedDataFromServer({ notify: false })
-        } else if (prevSnapshots != null && snapshotsRevision !== prevSnapshots) {
-          await reloadSnapshots(currentPeriodId, { force: true, stale: false })
-          setSnapshotsStale(false)
-          setSnapshotStaleReason(null)
-        } else if (prev != null && revision !== prev) {
+        if (recordCursor != null && recordCursorRef.current == null) {
+          if (!await syncSharedDataFromServer({ notify: false })) return
+          return
+        }
+        if (recordCursor == null && prevRecords != null && recordsRevision !== prevRecords) {
+          if (!await syncSharedDataFromServer({ notify: false })) return
+          return
+        }
+        if (recordCursor != null && recordCursor < (recordCursorRef.current ?? 0)) {
+          if (!await syncSharedDataFromServer({ notify: false })) return
+          return
+        }
+        if (recordCursor != null && recordCursor > (recordCursorRef.current ?? 0)) {
+          if (!await syncRecordChangesFromServer(next)) return
+          return
+        }
+        const recordsChanged = prevRecords != null && recordsRevision !== prevRecords
+        const snapshotsChanged = prevSnapshots != null && snapshotsRevision !== prevSnapshots
+        if (recordsChanged) {
+          // recordsRevision 有 400ms 防抖；游标未变时可能只是已合并批次的延迟版本。
+          // 产品目录发布也会触发此版本，读取配置即可，无需重拉工单。
+          await applyTaxonomyOverridesFromStorage()
+          const catalog = await loadManagedProductCatalog(adapter)
+          if (catalog) setProductCatalogMeta(catalog)
+        }
+        if (snapshotsChanged) {
+          await refreshSnapshotState()
+        }
+        if (!recordsChanged && !snapshotsChanged && prev != null && revision !== prev) {
           // 标签库等 meta 更新（他人保存/服务端写入共享库）：不重拉工单记录，
           // 仅轻量刷新 taxonomy meta，让「更新于」时间与列表约一个轮询周期内自动跟进
           await applyTaxonomyOverridesFromStorage()
@@ -1132,9 +1284,11 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         dataRevisionRef.current = revision
         recordsRevisionRef.current = recordsRevision
         snapshotsRevisionRef.current = snapshotsRevision
-        await refreshSharedBackgroundTask()
       } catch (err) {
         console.warn('[storage] 版本轮询失败', err)
+      }
+      } finally {
+        ticking = false
       }
     }
 
@@ -1150,7 +1304,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [storageReady, adapter, syncSharedDataFromServer, refreshSharedBackgroundTask, retagSession.active, applyTaxonomyOverridesFromStorage, reloadSnapshots, currentPeriodId])
+  }, [storageReady, adapter, syncRecordChangesFromServer, syncSharedDataFromServer,
+    refreshSharedBackgroundTask, retagSession.active, applyTaxonomyOverridesFromStorage,
+    refreshSnapshotState])
 
   useEffect(() => {
     if (storageReady && isApiStorageAdapter(adapter)) {
@@ -1237,9 +1393,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
             setSnapshotRebuilding(formatInsightRebuildProgress(runningJob) || '重建中…')
           })
           if (updateUi && period.id === currentPeriodId) {
-            await reloadSnapshots(currentPeriodId, { force: true, stale: false })
-            setSnapshotsStale(false)
-            setSnapshotStaleReason(null)
+            await refreshSnapshotState()
             try {
               if (typeof adapter.getDataRevision === 'function') {
                 const rev = await adapter.getDataRevision()
@@ -1285,13 +1439,18 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         setSnapshotRebuilding(null)
       }
     },
-    [adapter, currentPeriodId, settings, storageReady, reloadSnapshots],
+    [adapter, currentPeriodId, settings, storageReady, refreshSnapshotState],
   )
 
   const scheduleSnapshotRebuild = useCallback(
     (opts = {}) => {
       const period = opts.period ?? currentPeriod
       if (!period || importLockRef.current) return
+      if (isApiStorageAdapter(adapter)) {
+        setSnapshotsStale(true)
+        setSnapshotStaleReason(opts.reason === 'period' ? 'period' : 'data')
+        return
+      }
       snapshotRebuildPendingRef.current = {
         period,
         recordsForBuild: opts.recordsForBuild,
@@ -1320,7 +1479,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           })
       }, debounceMs)
     },
-    [currentPeriod, executeSnapshotRebuild],
+    [adapter, currentPeriod, executeSnapshotRebuild],
   )
 
   const rebuildSourceSnapshot = useCallback(
@@ -1929,8 +2088,10 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     }
     importSessionRef.current = next
     setImportSession(next)
-    void releaseSharedBackgroundTask('import')
-  }, [releaseSharedBackgroundTask])
+    void releaseSharedBackgroundTask('import').then(() => {
+      if (isApiStorageAdapter(adapter)) void syncRecordChangesFromServer()
+    })
+  }, [adapter, releaseSharedBackgroundTask, syncRecordChangesFromServer])
 
   /**
    * 导入全流程成功结束（可在离开导入页后触发全局 Toast）
@@ -3053,9 +3214,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
 
         try {
-          await reloadAfterEnrich(currentPeriodId)
+          await syncRecordChangesFromServer()
         } catch (err) {
-          console.warn('[retag] reloadAfterEnrich 失败:', err)
+          console.warn('[retag] 增量同步失败:', err)
         }
 
         if (currentPeriod) {
@@ -3084,6 +3245,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       } catch (err) {
         endRetagSession(startedPeriodId)
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        try { await syncRecordChangesFromServer() } catch { /* 留给轮询重试 */ }
         throw err
       }
     },
@@ -3094,7 +3256,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       currentPeriodId,
       endRetagSession,
       notifyRetagFinished,
-      reloadAfterEnrich,
+      syncRecordChangesFromServer,
       refreshSharedBackgroundTask,
       scheduleSnapshotRebuild,
       settings,
@@ -3138,9 +3300,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         const enrichResult = await waitForBackgroundTask(res.taskId)
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
         try {
-          await reloadAfterEnrich(currentPeriodId)
+          await syncRecordChangesFromServer()
         } catch (err) {
-          console.warn('[sentiment-retag] reloadAfterEnrich 失败:', err)
+          console.warn('[sentiment-retag] 增量同步失败:', err)
         }
         if (currentPeriod) {
           scheduleSnapshotRebuild({
@@ -3163,6 +3325,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       } catch (err) {
         endRetagSession(startedPeriodId)
         try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        try { await syncRecordChangesFromServer() } catch { /* 留给轮询重试 */ }
         throw err
       }
     },
@@ -3173,7 +3336,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       currentPeriodId,
       endRetagSession,
       message,
-      reloadAfterEnrich,
+      syncRecordChangesFromServer,
       refreshSharedBackgroundTask,
       scheduleSnapshotRebuild,
       waitForBackgroundTask,
@@ -3232,22 +3395,6 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         return null
       }
       postUseJourneyActiveRef.current = true
-      const reloadPostUseRatings = async () => {
-        if (!currentPeriod) return
-        const months = listMonthsInclusive(
-          String(currentPeriod.startDate || '').slice(0, 7),
-          String(currentPeriod.endDate || '').slice(0, 7),
-        )
-        const periodIds = months.length
-          ? months.map((month) => `period:month:${month}`)
-          : currentPeriodId
-            ? [currentPeriodId]
-            : []
-        for (const periodId of periodIds) {
-          loadedPostUsePeriodIdsRef.current.delete(periodId)
-          await loadPostUseRatingForPeriod(periodId)
-        }
-      }
       try {
         const res = await apiFetch('/api/storage/records/enrich', {
           method: 'POST',
@@ -3269,10 +3416,9 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
           const enrichResult = await waitForBackgroundTask(res.taskId)
           try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
           try {
-            await reloadPostUseRatings()
-            await reloadAfterEnrich(currentPeriodId)
+            await syncRecordChangesFromServer()
           } catch (err) {
-            console.warn('[post-use-journey] reloadAfterEnrich 失败:', err)
+            console.warn('[post-use-journey] 增量同步失败:', err)
           }
           // 刷新服务端待补全计数，横幅显示剩余数。恒用默认口径（与横幅口径一致），
           // 不随本次执行勾选（重打关键词旅程/重试模型未识别）漂移。
@@ -3290,12 +3436,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
         } catch (err) {
           // 取消/失败时任务可能已流式写盘一部分，刷新待补计数避免横幅数字停滞在旧值
           try { await fetchPostUseJourneyPendingCount() } catch { /* 忽略 */ }
-          if (err?.code === 'RETAG_CANCELLED') {
-            try {
-              await reloadPostUseRatings()
-              await reloadAfterEnrich(currentPeriodId)
-            } catch { /* 忽略 */ }
-          }
+          try { await syncRecordChangesFromServer() } catch { /* 留给轮询重试 */ }
           try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
           throw err
         }
@@ -3307,9 +3448,8 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       currentPeriod,
       currentPeriodId,
       fetchPostUseJourneyPendingCount,
-      loadPostUseRatingForPeriod,
       message,
-      reloadAfterEnrich,
+      syncRecordChangesFromServer,
       refreshSharedBackgroundTask,
       scheduleSnapshotRebuild,
       settings,
@@ -3452,6 +3592,13 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const rebuildSnapshotsForImportMonth = useCallback(
     async (importMonth, newRecords = []) => {
       const period = await ensurePeriodForImportMonth(importMonth)
+      if (isApiStorageAdapter(adapter)) {
+        if (period.id === currentPeriodId) {
+          setSnapshotsStale(true)
+          setSnapshotStaleReason('data')
+        }
+        return
+      }
       const merged = [...feedbacksRef.current]
       const seen = new Set(merged.map((f) => f.id))
       for (const r of newRecords) {
@@ -3474,7 +3621,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       await snapshotRebuildChainRef.current
       emit('SnapshotBuilt', { periodId: period.id, scope: 'all', importMonth })
     },
-    [ensurePeriodForImportMonth, currentPeriodId, executeSnapshotRebuild],
+    [adapter, ensurePeriodForImportMonth, currentPeriodId, executeSnapshotRebuild],
   )
 
   const snapshotsLoading = storageReady && snapshotsPending
@@ -3594,6 +3741,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       reloadWanTouTargets,
       saveWanTouTarget,
       syncSharedDataFromServer,
+      syncRecordChangesFromServer,
     }),
     [
       feedbacks,
@@ -3700,6 +3848,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       reloadWanTouTargets,
       saveWanTouTarget,
       syncSharedDataFromServer,
+      syncRecordChangesFromServer,
     ],
   )
 

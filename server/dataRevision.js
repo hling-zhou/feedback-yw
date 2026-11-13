@@ -1,9 +1,10 @@
 import { storageRepository } from './storageRepository.js'
+import { getRecordChangeCursor } from './recordChangeLog.js'
 
 export const META_KEY_DATA_REVISION = 'data_revision'
 
 /**
- * @returns {{ revision: number; recordsRevision: number; snapshotsRevision: number; updatedAt: string | null }}
+ * @returns {{ revision: number; recordsRevision: number; snapshotsRevision: number; recordCursor: number; updatedAt: string | null }}
  */
 export function getDataRevision() {
   const v = storageRepository.getMeta(META_KEY_DATA_REVISION)
@@ -13,10 +14,11 @@ export function getDataRevision() {
       revision: row.revision || 0,
       recordsRevision: row.recordsRevision || 0,
       snapshotsRevision: row.snapshotsRevision || 0,
+      recordCursor: getRecordChangeCursor(),
       updatedAt: row.updatedAt || null,
     }
   }
-  return { revision: 0, recordsRevision: 0, snapshotsRevision: 0, updatedAt: null }
+  return { revision: 0, recordsRevision: 0, snapshotsRevision: 0, recordCursor: getRecordChangeCursor(), updatedAt: null }
 }
 
 /** @type {ReturnType<typeof setTimeout> | null} */

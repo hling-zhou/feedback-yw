@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { App } from 'antd'
+import { AuthProvider } from './AuthContext.jsx'
 import { InsightsProvider, useInsights } from './InsightsContext.jsx'
 
 // 冒烟：模块可编译、导入链完整（不渲染组件，不依赖后端环境）。
@@ -8,5 +11,18 @@ describe('InsightsContext module smoke', () => {
   it('imports cleanly (syntax + import graph)', () => {
     expect(typeof InsightsProvider).toBe('function')
     expect(typeof useInsights).toBe('function')
+  })
+
+  it('renders the provider and its child', () => {
+    const html = renderToStaticMarkup(
+      <App>
+        <AuthProvider>
+          <InsightsProvider hydrateTickets={false}>
+            <span>insights child</span>
+          </InsightsProvider>
+        </AuthProvider>
+      </App>,
+    )
+    expect(html).toContain('insights child')
   })
 })
