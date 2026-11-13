@@ -1,11 +1,11 @@
 # 02 · Git 提交约定
 
 > 本项目不自动提交：修改文件后只改不提交，等用户明确说"提交"才执行 git commit（2026-09-09 用户约定）。
-> 提交时遵守 commit-hygiene 规则（原文如下，源文件在 AI 工具环境 ~/Downloads/commit-hygiene.md，此处为入库版）。
+> 提交时遵守结合本项目 Conventional Commit 与更新动态机制整理的 commit-hygiene 规则（原始参考文件位于 AI 工具环境 ~/Downloads/commit-hygiene.md）。
 
 ## Commit Hygiene
 
-Gate commits so the staged file set matches the user's intent and the message matches the staged diff. Do not invent a commit style; match the repo's recent log. Do not run reviews or tests unless the user asked.
+Gate commits so the staged file set matches the user's intent and the message matches the staged diff. Use the repo's current Conventional Commit style. For a request to commit already completed work, do not rerun reviews or tests solely for the commit unless the user asks or a hook requires them; complete the verification required for code changes before committing.
 
 ### 1. Inspect
 
@@ -38,7 +38,7 @@ Stop and ask; do not commit if any gate fails:
 ### 4. Stage and commit
 
 - Stage only named paths. Never `git add .`, `git add -A`, or `git add -i`.
-- Message: 1–2 sentences that state **why**. Pass it via HEREDOC.
+- Message: use `<type>(<scope>): <summary>` for the subject (for example `fix(import): ...`); use a concise body to state **why** when needed. The subject and body must match the staged diff. Pass a multiline message via HEREDOC.
 - Do not push.
 - Do not amend unless the user explicitly asked and the existing amend safety conditions are met.
 - If a hook rejects the commit, fix the issue and create a **new** commit. Do not amend.
@@ -49,9 +49,9 @@ Stop and ask; do not commit if any gate fails:
 Good (matches a focused staged diff):
 
 ```text
-Keep import password handling out of the parsed row payload.
+fix(import): Keep password out of parsed row payload
 
-The password is only needed to open the file; storing it on each row
+The password is only needed to open the file. Storing it on each row
 made later merges treat it as a data field.
 ```
 

@@ -4,6 +4,8 @@
 
 **生产部署与备份**请参阅 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
+**协作与开发约定**请从 [docs/conventions/README.md](docs/conventions/README.md) 查阅；AI 协作者的入口见 [AGENTS.md](AGENTS.md)。
+
 ## 本地开发
 
 ```bash
