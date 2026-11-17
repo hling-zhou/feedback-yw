@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
@@ -24,6 +24,26 @@ const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
 const CUSTOMER_TYPE_LABELS = { 仿真: '仿真', 测试账号: '测试' }
 
+/**
+ * 表头吸顶测量（11-17）：观察 ref 元素高度并回传 setState——卡片内工具条 → Table sticky.offsetHeader。
+ * 照抄 Feedbacks.jsx stickyChromeHeight 先例（ResizeObserver + 初次同步）。
+ * @param {React.RefObject<HTMLElement | null>} ref 工具条 ref
+ * @param {(h: number) => void} onHeight 高度回调
+ */
+function useMeasureHeight(ref, onHeight) {
+  const cbRef = useRef(onHeight)
+  cbRef.current = onHeight
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return undefined
+    const sync = () => cbRef.current(el.offsetHeight)
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref])
+}
+
 export default function ApiPatrolFailures() {
   const message = useAppMessage()
   const { can } = useAuth()
@@ -42,9 +62,24 @@ export default function ApiPatrolFailures() {
   const [groups, setGroups] = useState([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [filters, setFilters] = useState({
-    metricName: '', apiPath: '', requestId: '', userName: '',
-    rootCauseL1: rootCauseFromUrl, status: '', customerType: '',
+    product: '', metricName: '', apiPath: '', requestId: '', userName: '',
+    rootCauseL1: rootCauseFromUrl, status: '', customerType: '', assignee: '',
   })
+  /** 经办人选项（11-17：DISTINCT 端点，时间范围内有组的非空经办人） */
+  const [assigneeOptions, setAssigneeOptions] = useState([])
+  /** 分产品计数（11-17：两 tab 产品筛选共用——异常接口按接口行/失败请求按组数） */
+  const [productCounts, setProductCounts] = useState([])
+  /** 异常接口列表产品筛选（单选；跨 tab 独立状态——两 tab 口径不同不共享值） */
+  const [interfaceProduct, setInterfaceProduct] = useState('')
+
+  // 表头吸顶（11-17）：卡片内吸顶——测量工具条高度传 Table sticky.offsetHeader
+  // （照抄 FeedbackTable/CustomerVisitTable 先例：ResizeObserver 测量传递，非 page-sticky-chrome）
+  const interfacesToolbarRef = useRef(null)
+  const groupsToolbarRef = useRef(null)
+  const [interfacesToolbarH, setInterfacesToolbarH] = useState(0)
+  const [groupsToolbarH, setGroupsToolbarH] = useState(0)
+  useMeasureHeight(interfacesToolbarRef, setInterfacesToolbarH)
+  useMeasureHeight(groupsToolbarRef, setGroupsToolbarH)
   /** @type {[number | null, Function]} */
   const [drawerId, setDrawerId] = useState(null)
   const [drawerData, setDrawerData] = useState(null)
@@ -67,6 +102,7 @@ export default function ApiPatrolFailures() {
     setLoadingInterfaces(true)
     try {
       const qs = new URLSearchParams(rangeParams)
+      if (interfaceProduct) qs.set('product', interfaceProduct)
       const data = await apiFetch(`/api/patrol/failures/interfaces?${qs}`)
       setInterfaces(data.rows || [])
     } catch (err) {
@@ -74,7 +110,7 @@ export default function ApiPatrolFailures() {
     } finally {
       setLoadingInterfaces(false)
     }
-  }, [rangeParams, message])
+  }, [rangeParams, interfaceProduct, message])
 
   /** 巡检概况（2026-11-07 拍板：检测结果概况——尤其异常情况；facts 与异常接口列表同源） */
   const loadSummary = useCallback(async () => {
@@ -113,6 +149,26 @@ export default function ApiPatrolFailures() {
   useEffect(() => { loadInterfaces() }, [loadInterfaces])
   useEffect(() => { loadGroups() }, [loadGroups])
 
+  // 经办人选项加载（11-17）：随时间范围刷新；失败不阻塞列表（选项空时 Select 仍可手输搜索）
+  useEffect(() => {
+    let cancelled = false
+    const qs = new URLSearchParams(rangeParams)
+    apiFetch(`/api/patrol/failures/assignees?${qs}`)
+      .then((data) => { if (!cancelled) setAssigneeOptions(data.rows || []) })
+      .catch(() => { if (!cancelled) setAssigneeOptions([]) })
+    return () => { cancelled = true }
+  }, [rangeParams])
+
+  // 分产品计数加载（11-17）：两 tab 产品筛选共用一次拉取；失败静默降级
+  useEffect(() => {
+    let cancelled = false
+    const qs = new URLSearchParams(rangeParams)
+    apiFetch(`/api/patrol/failures/product-counts?${qs}`)
+      .then((data) => { if (!cancelled) setProductCounts(data.rows || []) })
+      .catch(() => { if (!cancelled) setProductCounts([]) })
+    return () => { cancelled = true }
+  }, [rangeParams])
+
   const openDrawer = useCallback(async (id) => {
     setDrawerId(id)
     setDrawerLoading(true)
@@ -142,8 +198,6 @@ export default function ApiPatrolFailures() {
       message.error(err.message || '保存失败')
     }
   }, [message, loadGroups])
-
-  const isSingleDay = rangeParams.startDate === rangeParams.endDate
 
   // 筛选下拉数量统计（11-17 傍晚拍板①）：基于当前窗口全部组（未应用该筛选项的其余条件？——
   // 口径拍板：计数基于「当前时间范围」全量组（与列表 LIMIT 500 同源），不受其他筛选项影响，
@@ -326,12 +380,20 @@ export default function ApiPatrolFailures() {
               label: '异常接口列表',
               children: (
                 <>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Typography.Text type="secondary" className="text-xs">
-                      {isSingleDay
-                        ? '单日视图：展示推送原值，总/失败次数从明细重算'
-                        : '跨日视图：成功率/次数按明细 Σ 重算，时长类显示 —'}
-                    </Typography.Text>
+                  <div ref={interfacesToolbarRef} className="flex flex-wrap items-center justify-between gap-2">
+                    {/* 11-17：产品筛选（分产品计数——接口行口径）；说明行已按拍板移除 */}
+                    <Select
+                      size="small"
+                      placeholder="全部产品"
+                      allowClear
+                      className="!w-40"
+                      value={interfaceProduct || undefined}
+                      options={productCounts.map((p) => ({
+                        label: `${p.name}（${p.interfaceCount}）`,
+                        value: p.key,
+                      }))}
+                      onChange={(v) => setInterfaceProduct(v || '')}
+                    />
                     <Button size="small" onClick={loadInterfaces}>刷新</Button>
                   </div>
                   <Table
@@ -342,6 +404,7 @@ export default function ApiPatrolFailures() {
                     loading={loadingInterfaces}
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
+                    sticky={interfacesToolbarH > 0 ? { offsetHeader: interfacesToolbarH } : undefined}
                   />
                 </>
               ),
@@ -351,39 +414,70 @@ export default function ApiPatrolFailures() {
               label: '失败请求列表',
               children: (
                 <>
-                  <Space className="!my-3" wrap size="small">
-                    <Button
-                      size="small"
-                      type={filters.status === PRODUCT_ACTION_FILTER ? 'primary' : 'default'}
-                      title="包含待处理、处理中、已处理"
-                      aria-pressed={filters.status === PRODUCT_ACTION_FILTER}
-                      onClick={() => setFilters((current) => ({
-                        ...current,
-                        status: current.status === PRODUCT_ACTION_FILTER ? '' : PRODUCT_ACTION_FILTER,
-                      }))}
-                    >
-                      需产品侧处理
-                    </Button>
-                    <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
-                      onSearch={(v) => setFilters((f) => ({ ...f, requestId: v }))} />
-                    <Input.Search size="small" placeholder="指标名称" allowClear className="!w-28"
-                      onSearch={(v) => setFilters((f) => ({ ...f, metricName: v }))} />
-                    <Input.Search size="small" placeholder="接口名称" allowClear className="!w-44"
-                      onSearch={(v) => setFilters((f) => ({ ...f, apiPath: v }))} />
-                    <Input.Search size="small" placeholder="客户名称" allowClear className="!w-32"
-                      onSearch={(v) => setFilters((f) => ({ ...f, userName: v }))} />
-                    <Select size="small" placeholder="根因 L1" allowClear className="!w-36"
-                      value={filters.rootCauseL1 || undefined}
-                      options={withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts)}
-                      onChange={(v) => setFilters((f) => ({ ...f, rootCauseL1: v || '' }))} />
-                    <Select size="small" placeholder="处理状态" allowClear className="!w-28"
-                      value={STATUS_OPTIONS.includes(filters.status) ? filters.status : undefined}
-                      options={withCount(STATUS_OPTIONS, statusCounts)}
-                      onChange={(v) => setFilters((f) => ({ ...f, status: v || '' }))} />
-                    <Select size="small" placeholder="客户类型" allowClear className="!w-24"
-                      options={[{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }]}
-                      onChange={(v) => setFilters((f) => ({ ...f, customerType: v || '' }))} />
-                  </Space>
+                  <div ref={groupsToolbarRef} className="flex flex-wrap items-center justify-between gap-2">
+                    <Space className="!my-0" wrap size="small">
+                      {/* 产品筛选（11-17）：组数口径计数；进入 groups 查询的 q.product 精确匹配 */}
+                      <Select
+                        size="small"
+                        placeholder="全部产品"
+                        allowClear
+                        className="!w-40"
+                        value={filters.product || undefined}
+                        options={productCounts.map((p) => ({
+                          label: `${p.name}（${p.groupCount}）`,
+                          value: p.key,
+                        }))}
+                        onChange={(v) => setFilters((f) => ({ ...f, product: v || '' }))}
+                      />
+                      <Button
+                        size="small"
+                        type={filters.status === PRODUCT_ACTION_FILTER ? 'primary' : 'default'}
+                        title="包含待处理、处理中、已处理"
+                        aria-pressed={filters.status === PRODUCT_ACTION_FILTER}
+                        onClick={() => setFilters((current) => ({
+                          ...current,
+                          status: current.status === PRODUCT_ACTION_FILTER ? '' : PRODUCT_ACTION_FILTER,
+                        }))}
+                      >
+                        需产品侧处理
+                      </Button>
+                      <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
+                        onSearch={(v) => setFilters((f) => ({ ...f, requestId: v }))} />
+                      <Input.Search size="small" placeholder="指标名称" allowClear className="!w-28"
+                        onSearch={(v) => setFilters((f) => ({ ...f, metricName: v }))} />
+                      <Input.Search size="small" placeholder="接口名称" allowClear className="!w-44"
+                        onSearch={(v) => setFilters((f) => ({ ...f, apiPath: v }))} />
+                      <Input.Search size="small" placeholder="客户名称" allowClear className="!w-32"
+                        onSearch={(v) => setFilters((f) => ({ ...f, userName: v }))} />
+                      <Select size="small" placeholder="根因 L1" allowClear className="!w-36"
+                        value={filters.rootCauseL1 || undefined}
+                        options={withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts)}
+                        onChange={(v) => setFilters((f) => ({ ...f, rootCauseL1: v || '' }))} />
+                      <Select size="small" placeholder="处理状态" allowClear className="!w-28"
+                        value={STATUS_OPTIONS.includes(filters.status) ? filters.status : undefined}
+                        options={withCount(STATUS_OPTIONS, statusCounts)}
+                        onChange={(v) => setFilters((f) => ({ ...f, status: v || '' }))} />
+                      <Select size="small" placeholder="客户类型" allowClear className="!w-24"
+                        options={[{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }]}
+                        onChange={(v) => setFilters((f) => ({ ...f, customerType: v || '' }))} />
+                      {/* 经办人（11-17）：单选 + showSearch 模糊匹配；选项 = 当前时间范围 DISTINCT 经办人 */}
+                      <Select
+                        size="small"
+                        placeholder="经办人"
+                        allowClear
+                        showSearch
+                        className="!w-32"
+                        value={filters.assignee || undefined}
+                        optionFilterProp="label"
+                        options={assigneeOptions.map((a) => ({
+                          label: `${a.assignee}（${a.count}）`,
+                          value: a.assignee,
+                        }))}
+                        onChange={(v) => setFilters((f) => ({ ...f, assignee: v || '' }))}
+                      />
+                    </Space>
+                    <Button size="small" onClick={() => { loadGroups(); }}>刷新</Button>
+                  </div>
                   <Table
                     rowKey="id"
                     columns={groupColumns}
@@ -392,6 +486,7 @@ export default function ApiPatrolFailures() {
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
                     scroll={{ x: 1430 }}
+                    sticky={groupsToolbarH > 0 ? { offsetHeader: groupsToolbarH } : undefined}
                     onRow={(record) => ({
                       onClick: () => openDrawer(record.id),
                       style: { cursor: 'pointer' },

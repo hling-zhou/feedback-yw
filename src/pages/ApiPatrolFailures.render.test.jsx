@@ -39,7 +39,9 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     const html = renderPage()
     expect(html).toContain('异常接口列表')
     expect(html).toContain('失败请求列表')
-    expect(html).toContain('跨日视图：成功率/次数按明细')
+    // 11-17 晚拍板：跨日/单日说明行已移除（工具条只留产品筛选+刷新）
+    expect(html).not.toContain('跨日视图：成功率/次数按明细')
+    expect(html).toContain('全部产品')          // 产品筛选 placeholder（两 tab）
     expect(html).not.toContain('组 = 同客户同接口 1 小时内失败链')
     expect(html).toContain('近7天')
     expect(html).toContain('近30天')
@@ -96,6 +98,56 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).not.toContain('组 = 同客户同接口 1 小时内失败链')
     // ⑤ 压缩前失败次数 hover 提示（Tooltip + 压缩规则文案）
     expect(src).toMatch(/压缩规则/)
+  })
+
+  it('失败请求列表增强契约（11-17 晚：刷新/经办人筛选/表头吸顶）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 经办人筛选：单选 + showSearch 模糊匹配 + DISTINCT 选项端点消费
+    expect(src).toMatch(/placeholder="经办人"/)
+    expect(src).toMatch(/showSearch/)
+    expect(src).toMatch(/failures\/assignees/)
+    expect(src).toMatch(/assignee: v \|\| ''/)  // 单选 onChange 写 filters.assignee
+    // ② 失败请求列表右上角刷新按钮（groups 工具条内的 loadGroups 按钮）
+    expect(src).toMatch(/onClick=\{\(\) => \{ loadGroups\(\); \}\}/)
+    // ③ 两表表头吸顶：测量传递机制（ResizeObserver hook + 两 ref + 两 sticky offsetHeader）
+    expect(src).toMatch(/function useMeasureHeight/)
+    expect(src).toMatch(/new ResizeObserver/)
+    expect((src.match(/ToolbarRef/g) || []).length).toBeGreaterThanOrEqual(4)  // 2 声明 + 2 挂载
+    expect((src.match(/sticky=\{[a-zA-Z]+ToolbarH > 0 \? \{ offsetHeader: [a-zA-Z]+ToolbarH \} : undefined\}/g) || []).length).toBe(2)
+    // ④ 经办人筛选参与后端查询（filters 对象含 assignee 键 → qs 序列化透传）
+    expect(src).toMatch(/assignee: '',/)
+  })
+
+  it('两 tab 产品筛选契约（11-17 晚：分产品计数 + 双口径）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 共用计数端点（一次拉取双口径）
+    expect(src).toMatch(/failures\/product-counts/)
+    // ② 异常接口 tab：interfaceProduct 状态 + 接口行口径计数 + 透传 loadInterfaces
+    expect(src).toMatch(/interfaceProduct/)
+    expect(src).toMatch(/p\.interfaceCount/)
+    expect(src).toMatch(/qs\.set\('product', interfaceProduct\)/)
+    // ③ 失败请求 tab：filters.product + 组数口径计数
+    expect(src).toMatch(/filters\.product/)
+    expect(src).toMatch(/p\.groupCount/)
+    expect(src).toMatch(/product: v \|\| ''/)
+    // ④ 说明行退场（两形态都不在）
+    expect(src).not.toContain('单日视图：展示推送原值')
+    expect(src).not.toContain('跨日视图：成功率/次数按明细')
+  })
+
+  it('真渲染：经办人筛选与刷新按钮在 DOM 中出现（11-17 晚）', () => {
+    // 默认 tab（异常接口列表）：刷新按钮在（antd 两字中文自动加空格 → 「刷 新」）
+    const interfacesHtml = renderPage()
+    expect(interfacesHtml).toMatch(/刷\s+新/)
+    // groups tab 激活（rootCauseL1 参数）：经办人筛选 + 该 tab 刷新按钮
+    const groupsHtml = renderPage('?rootCauseL1=业务冲突')
+    expect(groupsHtml).toContain('经办人')
+    expect(groupsHtml).toMatch(/刷\s+新/)
+    // 两 tab 合计刷新按钮 = 2
+    const total = ((interfacesHtml.match(/刷\s+新/g) || []).length) + ((groupsHtml.match(/刷\s+新/g) || []).length)
+    expect(total).toBe(2)
   })
 
   it('诊断结果五段契约（源码正则，11-17 晚拍板）', () => {
