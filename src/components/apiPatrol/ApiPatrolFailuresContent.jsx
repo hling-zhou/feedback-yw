@@ -643,7 +643,18 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
 
   return (
     <Drawer
-      title={`失败组详情 · ${group ? /** @type {{firstRequestId?: string}} */ (group).firstRequestId : ''}`}
+      title={
+        <div className="flex w-full min-w-0 flex-col gap-1">
+          <span className="text-base font-semibold leading-none">失败组详情</span>
+          <Typography.Text type="secondary" className="block min-w-0 text-sm leading-snug" ellipsis={{ tooltip: true }}>
+            {group ? [
+              String(/** @type {{firstRequestId?: string}} */ (group).firstRequestId || ''),
+              String(/** @type {{groupDate?: string}} */ (group).groupDate || ''),
+              String(/** @type {{poolName?: string}} */ (group).poolName || ''),
+            ].filter(Boolean).join(' · ') : ''}
+          </Typography.Text>
+        </div>
+      }
       open={groupId != null}
       onClose={onClose}
       width={720}
@@ -667,47 +678,55 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
     >
       {loading ? <Typography.Text type="secondary">加载中…</Typography.Text> : null}
       {group && (
-        <Space direction="vertical" size={16} className="w-full">
-          <Descriptions size="small" column={2} bordered
-            items={[
-              { key: 'date', label: '日期', children: String(/** @type {{groupDate?: string}} */ (group).groupDate || '') },
-              { key: 'pool', label: '资源池', children: String(/** @type {{poolName?: string}} */ (group).poolName || '') },
-              { key: 'api', label: '接口', children: String(/** @type {{apiPath?: string}} */ (group).apiPath || '') },
-              { key: 'metric', label: '指标', children: String(/** @type {{metricName?: string}} */ (group).metricName || '') },
-              { key: 'user', label: '客户', children: String(/** @type {{userName?: string}} */ (group).userName || '') },
-              { key: 'count', label: '压缩前失败次数', children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
-              { key: 'status', label: '产品侧处理状态', children: String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '') },
-              { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
-            ]}
-          />
+        /* 抽屉骨架（11-17 晚对齐反馈库 D1-D5 规范）：drawer-space-y 分区 20px → section-title 分区标题
+           → drawer-section-gap 分区内 10px → page-card-sm 白卡；正文 13px（D4），元信息 12px（D5） */
+        <div className="min-w-0 max-w-full drawer-space-y overflow-x-hidden">
+          {/* ── 分区一 失败组信息 ── */}
+          <div className="scroll-mt-2 drawer-section-gap">
+            <div className="section-title">失败组信息</div>
+            <div className="page-card-sm page-card-bordered">
+              <Descriptions size="small" column={2} bordered
+                items={[
+                  { key: 'date', label: '日期', children: String(/** @type {{groupDate?: string}} */ (group).groupDate || '') },
+                  { key: 'pool', label: '资源池', children: String(/** @type {{poolName?: string}} */ (group).poolName || '') },
+                  { key: 'api', label: '接口', children: String(/** @type {{apiPath?: string}} */ (group).apiPath || '') },
+                  { key: 'metric', label: '指标', children: String(/** @type {{metricName?: string}} */ (group).metricName || '') },
+                  { key: 'user', label: '客户', children: String(/** @type {{userName?: string}} */ (group).userName || '') },
+                  { key: 'count', label: '压缩前失败次数', children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
+                  { key: 'status', label: '产品侧处理状态', children: String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '') },
+                  { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
+                ]}
+              />
+            </div>
+          </div>
 
-          {/* 诊断结果五段（11-17 拍板）：服务端 diagnosisReport 单源切分，前端只渲染 */}
-          <div>
-            <Typography.Text strong>诊断结果</Typography.Text>
-            <div className="mt-2 space-y-3">
-              {/* ① 诊断结论——浅红高亮 */}
-              <div className="p-3 rounded border-l-4 border-red-300 bg-red-50 text-sm">
-                <Typography.Text type="secondary" className="text-xs block !mb-1">诊断结论</Typography.Text>
+          {/* ── 分区二 诊断结果（五段照 11-17 拍板；样式对齐 D4/D5）── */}
+          <div className="scroll-mt-2 drawer-section-gap">
+            <div className="section-title">诊断结果</div>
+            <div className="space-y-3">
+              {/* ① 诊断结论——浅红高亮（左竖条 3px 对齐正文规范；正文 13px） */}
+              <div className="p-3 rounded border-l-[3px] border-red-300 bg-red-50 text-[13px] leading-relaxed">
+                <div className="sub-section-label">诊断结论</div>
                 {report?.conclusion
                   ? report.conclusion
                   : '（该组尚未完成 AI 诊断，或诊断无结论）'}
               </div>
-              {/* ② 失败组信息——方案 A：顶部 Descriptions 已全量展示，此处精简速览 */}
-              <div className="text-sm">
-                <Typography.Text type="secondary" className="text-xs block !mb-1">失败组信息</Typography.Text>
+              {/* ② 失败组信息——方案 A：顶部 Descriptions 已全量展示，此处精简速览（13px） */}
+              <div className="text-[13px]">
+                <div className="sub-section-label">失败组信息</div>
                 <Space wrap size={12}>
                   <span>接口 {String(/** @type {{apiPath?: string}} */ (group).apiPath || '—')}</span>
                   <span>资源池 {String(/** @type {{poolName?: string}} */ (group).poolName || '—')}</span>
                   <span>客户 {String(/** @type {{userName?: string}} */ (group).userName || '—')}</span>
                 </Space>
               </div>
-              {/* ③ 直接原因——默认收起；展开显示核心行；「查看完整日志」第二层 */}
+              {/* ③ 直接原因——默认收起；展开显示核心行；「查看完整日志」第二层（日志 13px 等宽） */}
               <div>
-                <Typography.Text type="secondary" className="text-xs block !mb-1">直接原因（含日志原文、返回体）</Typography.Text>
+                <div className="sub-section-label">直接原因（含日志原文、返回体）</div>
                 {report && (report.directCause?.logLines?.length || report.directCause?.returnFragments?.length) ? (
                   <>
                     {(report.directCause.returnFragments || []).map((f, i) => (
-                      <div key={`ret-${i}`} className="text-xs text-gray-600">{f}</div>
+                      <div key={`ret-${i}`} className="text-xs text-ink-500">{f}</div>
                     ))}
                     <Button type="link" size="small" className="!px-0"
                       onClick={() => setLogLinesOpen(!logLinesOpen)}>
@@ -716,14 +735,14 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                     {logLinesOpen && (
                       <div className="mt-1">
                         {(report.directCause.logLines || []).map((l, i) => (
-                          <div key={`log-${i}`} className="font-mono text-xs bg-gray-50 rounded p-2 mb-1 whitespace-pre-wrap break-all">{l}</div>
+                          <div key={`log-${i}`} className="font-mono text-[13px] bg-ink-50/60 rounded p-2 mb-1 whitespace-pre-wrap break-all">{l}</div>
                         ))}
                         <Button type="link" size="small" className="!px-0"
                           onClick={() => setRawLogOpen(!rawLogOpen)}>
                           {rawLogOpen ? '收起完整日志' : `查看完整日志（原始 ${report.directCause.rawCount} 行，本页仅核心 10 条）`}
                         </Button>
                         {rawLogOpen && (
-                          <div className="font-mono text-xs bg-gray-50 rounded p-2 mt-1 whitespace-pre-wrap break-all">
+                          <div className="font-mono text-[13px] bg-ink-50/60 rounded p-2 mt-1 whitespace-pre-wrap break-all">
                             {String(diagnosis?.mcpRawResponse || '').slice(0, 4000)}
                             {String(diagnosis?.mcpRawResponse || '').length > 4000 ? '\n…（超过 4000 字截断）' : ''}
                           </div>
@@ -735,82 +754,93 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                   <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
                 )}
               </div>
-              {/* ④ 关键证据 */}
+              {/* ④ 关键证据（正文 13px） */}
               <div>
-                <Typography.Text type="secondary" className="text-xs block !mb-1">关键证据</Typography.Text>
+                <div className="sub-section-label">关键证据</div>
                 {report?.evidence?.length ? (
-                  <ul className="text-sm space-y-1 list-disc pl-5">
+                  <ul className="text-[13px] space-y-1 list-disc pl-5">
                     {report.evidence.map((e, i) => <li key={i}>{e}</li>)}
                   </ul>
                 ) : (
                   <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
                 )}
               </div>
-              {/* ⑤ 处理建议——浅蓝高亮 */}
-              <div className="p-3 rounded border-l-4 border-blue-300 bg-blue-50 text-sm">
-                <Typography.Text type="secondary" className="text-xs block !mb-1">处理建议</Typography.Text>
+              {/* ⑤ 处理建议——浅蓝高亮（左竖条 3px；正文 13px） */}
+              <div className="p-3 rounded border-l-[3px] border-blue-300 bg-blue-50 text-[13px] leading-relaxed">
+                <div className="sub-section-label">处理建议</div>
                 {report?.suggestion || '—'}
               </div>
             </div>
           </div>
 
+          {/* ── 分区三 处理反馈（!readOnly）── */}
           {!readOnly && (
-            <div>
-              <Typography.Text strong>产品侧处理反馈</Typography.Text>
-              <Form form={form} layout="vertical" className="!mt-2">
-                <Form.Item label={<FieldLabel required>根因是否属实</FieldLabel>} name="rootCauseConfirmed"
-                  rules={[{ required: true, message: '请选择根因是否属实' }]}>
-                  <Select options={[
-                    { label: '属实', value: '属实' },
-                    { label: '不属实', value: '不属实' },
-                  ]} />
-                </Form.Item>
-                <Form.Item noStyle shouldUpdate={(a, b) => a.rootCauseConfirmed !== b.rootCauseConfirmed}>
-                  {() => form.getFieldValue('rootCauseConfirmed') === '不属实' && (
-                    <Form.Item label={<FieldLabel required>真实根因</FieldLabel>} name="realRootCause"
-                      rules={[{ required: true, message: '根因不属实时必须填写真实根因' }]}>
-                      <Input.TextArea rows={2} placeholder="请填写实际根因（必填）" />
-                    </Form.Item>
-                  )}
-                </Form.Item>
-                <Form.Item label={<FieldLabel required>举措及排期说明</FieldLabel>} name="measureFeedback"
-                  rules={[{ required: true, message: '请填写举措及排期（不涉及也请说明）' }]}>
-                  <Input.TextArea rows={3} placeholder="如：已修复 v1.2 / 已排期下迭代 / 不涉及（说明原因）" />
-                </Form.Item>
-                <Form.Item label={<FieldLabel>经办人</FieldLabel>} name="assignee">
-                  <Input placeholder="经办人（可修改）" />
-                </Form.Item>
-              </Form>
+            <div className="scroll-mt-2 drawer-section-gap">
+              <div className="section-title">产品侧处理反馈</div>
+              <div className="page-card-sm page-card-bordered">
+                <Form form={form} layout="vertical">
+                  <Form.Item label={<FieldLabel required>根因是否属实</FieldLabel>} name="rootCauseConfirmed"
+                    rules={[{ required: true, message: '请选择根因是否属实' }]}>
+                    <Select options={[
+                      { label: '属实', value: '属实' },
+                      { label: '不属实', value: '不属实' },
+                    ]} />
+                  </Form.Item>
+                  <Form.Item noStyle shouldUpdate={(a, b) => a.rootCauseConfirmed !== b.rootCauseConfirmed}>
+                    {() => form.getFieldValue('rootCauseConfirmed') === '不属实' && (
+                      <Form.Item label={<FieldLabel required>真实根因</FieldLabel>} name="realRootCause"
+                        rules={[{ required: true, message: '根因不属实时必须填写真实根因' }]}>
+                        <Input.TextArea rows={2} placeholder="请填写实际根因（必填）" />
+                      </Form.Item>
+                    )}
+                  </Form.Item>
+                  <Form.Item label={<FieldLabel required>举措及排期说明</FieldLabel>} name="measureFeedback"
+                    rules={[{ required: true, message: '请填写举措及排期（不涉及也请说明）' }]}>
+                    <Input.TextArea rows={3} placeholder="如：已修复 v1.2 / 已排期下迭代 / 不涉及（说明原因）" />
+                  </Form.Item>
+                  <Form.Item label={<FieldLabel>经办人</FieldLabel>} name="assignee">
+                    <Input placeholder="经办人（可修改）" />
+                  </Form.Item>
+                </Form>
+              </div>
             </div>
           )}
 
-          {/* 压缩前全部记录（11-17）：展开收起，默认收起；分页 10 条/页。数据=组首条+被压缩全部请求。 */}
-          <Collapse
-            activeKey={allRecordsOpen}
-            onChange={(keys) => setAllRecordsOpen(Array.isArray(keys) ? keys : [keys])}
-            items={[{
-              key: 'allRecords',
-              label: `压缩前全部记录（${requests.length} 条）`,
-              children: requests.length > 0 ? (
-                <Table
-                  rowKey="requestId"
-                  size="small"
-                  dataSource={requests}
-                  pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
-                  columns={[
-                    { title: 'RequestID', dataIndex: 'requestId', key: 'requestId', width: 260, ellipsis: true },
-                    { title: '开始时间', dataIndex: 'requestTime', key: 'requestTime', width: 160 },
-                    // 结束时间：ELB 行有值；EIP 行原始 CSV 无此列恒 null → 显示 —
-                    { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160,
-                      render: (v) => v || '—' },
-                  ]}
-                />
-              ) : (
-                <Typography.Text type="secondary">（无压缩前请求明细）</Typography.Text>
-              ),
-            }]}
-          />
-        </Space>
+          {/* ── 分区四 关联请求明细（方案 B 拍板：数据明细独立分区，不是反馈的一部分）── */}
+          <div className="scroll-mt-2 drawer-section-gap">
+            <div className="section-title">关联请求明细</div>
+            <div className="page-card-sm page-card-bordered">
+              <Collapse
+                activeKey={allRecordsOpen}
+                onChange={(keys) => setAllRecordsOpen(Array.isArray(keys) ? keys : [keys])}
+                items={[{
+                  key: 'allRecords',
+                  label: `压缩前全部记录（${requests.length} 条）`,
+                  children: requests.length > 0 ? (
+                    <Table
+                      rowKey="requestId"
+                      size="small"
+                      dataSource={requests}
+                      pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
+                      columns={[
+                        // RequestID 完整显示不截断（11-17 拍板）：reqId-+32hex=38 字符，
+                        // 去掉 ellipsis、放宽列、word-break 兜底超长形态
+                        { title: 'RequestID', dataIndex: 'requestId', key: 'requestId', width: 330,
+                          render: (v) => <span className="whitespace-normal break-all">{v}</span> },
+                        { title: '开始时间', dataIndex: 'requestTime', key: 'requestTime', width: 160 },
+                        // 结束时间：ELB 行有值；EIP 行原始 CSV 无此列恒 null → 显示 —
+                        { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160,
+                          render: (v) => v || '—' },
+                      ]}
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">（无压缩前请求明细）</Typography.Text>
+                  ),
+                }]}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       <Modal

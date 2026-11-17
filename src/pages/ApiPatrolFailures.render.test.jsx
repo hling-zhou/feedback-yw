@@ -182,8 +182,40 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     // 三列：RequestID / 开始时间 / 结束时间
     expect(src).toMatch(/title: '开始时间', dataIndex: 'requestTime'/)
     expect(src).toMatch(/title: '结束时间', dataIndex: 'endTime'/)
+    // RequestID 列完整显示（11-17 晚拍板）：加宽 330、无 ellipsis、break-all 兜底超长
+    expect(src).toMatch(/dataIndex: 'requestId', key: 'requestId', width: 330/)
+    expect(src).toMatch(/break-all/)
+    expect(src).not.toMatch(/dataIndex: 'requestId', key: 'requestId', width: 260, ellipsis/)
     // 分页每页 10 条 + 小尺寸
     expect(src).toMatch(/pageSize: 10/)
+  })
+
+  it('详情抽屉样式对齐反馈库 D1-D5 规范（11-17 晚拍板：方案 B + bordered 保留）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 两行式标题（主标题 16px + meta 行 secondary，reqId 不再挤主标题）
+    expect(src).toMatch(/text-base font-semibold leading-none/)
+    expect(src).not.toMatch(/失败组详情 · \$\{/)   // 旧单行拼接标题退场
+    // ② 分区骨架：drawer-space-y + section-title + page-card-bordered（反馈库同款）
+    expect(src).toMatch(/drawer-space-y/)
+    expect((src.match(/section-title/g) || []).length).toBeGreaterThanOrEqual(4)  // 4 分区
+    expect(src).toMatch(/page-card-bordered/)
+    // ③ 正文 D4 13px（高亮块/日志行）；旧 text-sm 正文退场
+    expect(src).toMatch(/bg-red-50 text-\[13px\]/)
+    expect(src).toMatch(/bg-blue-50 text-\[13px\]/)
+    expect(src).toMatch(/font-mono text-\[13px\]/)
+    expect(src).not.toMatch(/bg-red-50 text-sm/)
+    // ④ 左竖条 3px（规范正文竖条规格）：抽屉双高亮块 2 处（红/蓝）+ 概况综述左边条 1 处；旧 4px 退场
+    expect((src.match(/border-l-\[3px\]/g) || []).length).toBe(3)
+    expect(src).toMatch(/border-red-300 bg-red-50/)
+    expect(src).toMatch(/border-blue-300 bg-blue-50/)
+    expect(src).not.toMatch(/border-l-4/)
+    // ⑤ 五段字段标签统一 sub-section-label（12px/600）；旧散装 secondary 标签退场
+    expect((src.match(/sub-section-label/g) || []).length).toBeGreaterThanOrEqual(5)
+    // ⑥ 方案 B：独立分区「关联请求明细」（数据明细不是反馈）
+    expect(src).toMatch(/关联请求明细/)
+    // ⑦ Descriptions bordered 保留（短字段横排例外拍板）
+    expect(src).toMatch(/column=\{2\} bordered/)
   })
 
   it('失败请求列表列契约（源码正则）：资源池列在前两列固定+压缩前失败次数（11-11 拍板）', () => {
