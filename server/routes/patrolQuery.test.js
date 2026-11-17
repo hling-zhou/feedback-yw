@@ -131,7 +131,7 @@ describeQuery('patrol query API', () => {
     })
     expect(res.statusCode).toBe(200)
     const rows = res.json().rows
-    expect(rows.length).toBe(3) // 3 组：诊断缺口的2组 + 待处理1组（见 seedData）
+    expect(rows.length).toBe(4) // 4 组：诊断缺口2 + 待处理1 + 未诊断1 + slb对照1（11-17 产品筛选用）
     // L1/L2 Tag 数据直读（不 join）
     const pending = rows.find((r) => r.rootCauseL1 === '业务冲突')
     expect(pending.rootCauseL2).toBe('绑定关系未解除')
@@ -144,12 +144,12 @@ describeQuery('patrol query API', () => {
     })
     expect(r1.json().rows).toHaveLength(1)
 
-    // 未诊断状态筛选（PENDING 组）
+    // 未诊断状态筛选（PENDING 组——11-17 加 slb 对照组后为 2：fail-3 + fail-s1）
     const r2 = await app.inject({
       method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&status=未诊断',
       headers: authHeader(),
     })
-    expect(r2.json().rows).toHaveLength(1)
+    expect(r2.json().rows).toHaveLength(2)
   })
 
   it('需产品侧处理快捷筛选包含待处理、处理中、已处理，排除其他状态', async () => {
@@ -187,6 +187,88 @@ describeQuery('patrol query API', () => {
     const data = res.json()
     expect(data.group).toBeTruthy()
     expect(data.diagnosis.finalConclusion).toContain('存在绑定关系')
+  })
+
+  // ── ②'经办人筛选 + 选项端点（11-17）──
+  it('assignees 选项端点：DISTINCT 非空经办人 + 组数计数；空经办人不出现', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/assignees?startDate=2026-08-10&endDate=2026-08-11',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().rows
+    // seedData 有 fanhaoyu（2 组）+ 一组空 assignee——空值必须被排除
+    const names = rows.map((r) => r.assignee)
+    expect(names).toContain('fanhaoyu')
+    expect(names.every((n) => n && n.trim() !== '')).toBe(true)
+    expect(rows.find((r) => r.assignee === 'fanhaoyu').count).toBe(2)
+  })
+
+  it('groups 经办人筛选（assignee 精确匹配）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&assignee=fanhaoyu',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().rows
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((r) => r.assignee === 'fanhaoyu')).toBe(true)
+    // 无匹配经办人 → 空列表（非报错）
+    const none = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&assignee=不存在的人',
+      headers: authHeader(),
+    })
+    expect(none.json().rows).toHaveLength(0)
+  })
+
+  // ── ②''产品筛选 + 分产品计数（11-17）──
+  it('product-counts 端点：双口径计数（接口行数/组数）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/product-counts?startDate=2026-08-10&endDate=2026-08-11',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().rows
+    const eip = rows.find((r) => r.key === 'eip')
+    const slb = rows.find((r) => r.key === 'slb')
+    // eip：stats 4 行（8-10 两行 + 8-11 两行）+ 孤行 8-12 不在窗口内；组 4（fail-1/2/3）
+    expect(eip.interfaceCount).toBe(4)
+    expect(eip.groupCount).toBe(3)
+    // slb：stats 1 行 + 组 1
+    expect(slb.interfaceCount).toBe(1)
+    expect(slb.groupCount).toBe(1)
+    // 零计数产品不出现
+    expect(rows.some((r) => r.interfaceCount === 0 && r.groupCount === 0)).toBe(false)
+  })
+
+  it('interfaces 产品过滤：product=slb 只剩 slb 接口行', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/interfaces?startDate=2026-08-10&endDate=2026-08-11&product=slb',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().rows
+    expect(rows.length).toBe(1)
+    expect(rows[0].productKey).toBe('slb')
+    expect(rows[0].apiPath).toBe('LOADBALANCER/CREATE')
+    // 不带 product → 跨日合并后全量 3 行：广州3订购（2日合1）+ 济南绑定（2日合1）+ slb 1
+    const all = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/interfaces?startDate=2026-08-10&endDate=2026-08-11',
+      headers: authHeader(),
+    })
+    expect(all.json().rows.length).toBe(3)
+  })
+
+  it('groups 产品过滤：product=slb 只剩 slb 组', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&product=slb',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().rows
+    expect(rows.length).toBe(1)
+    expect(rows[0].productKey).toBe('slb')
+    expect(rows[0].firstRequestId).toBe('fail-s1')
   })
 
   // ── ③处理闭环 PATCH ──
@@ -251,6 +333,21 @@ function seedData() {
   insertStat.run('2026-08-11', '华东-济南', '绑定', '/acl/v3/floatingip/bind', '绑定', 100, null, null)
   // 孤行：当日无明细
   insertStat.run('2026-08-12', '华南-广州3', '续订', '/customer/v3/order/renew', '续订', 99.0, null, null)
+  // 11-17 产品筛选对照：slb 一条 stats + 一个组（对照产品）。
+  // 注意：insertStat 写死 product_key='eip'——slb 行必须独立 INSERT，别复用。
+  db.prepare(`
+    INSERT INTO api_patrol_stats
+      (stat_date, product_key, pool_name, metric_name, api_path, biz_type, success_rate,
+       duration_normal_ratio, avg_duration, created_at, updated_at)
+    VALUES ('2026-08-10', 'slb', '华北-北京3', '负载均衡', 'LOADBALANCER/CREATE', '订购', 80, null, null, 't', 't')
+  `).run()
+  db.prepare(`
+    INSERT INTO api_patrol_failure_groups
+      (group_date, product_key, pool_name, api_path, metric_name, user_name,
+       first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
+       customer_type, root_cause_l1, root_cause_l2, product_action_status, assignee, created_at, updated_at)
+    VALUES ('2026-08-11', 'slb', '华北-北京3', 'LOADBALANCER/CREATE', '负载均衡', 'userS', 'fail-s1', '2026-08-11 12:00:00', 1, '[]', '', null, null, 'pending_diagnosis', null, 't', 't')
+  `).run()
 
   const insertReq = db.prepare(`
     INSERT INTO api_patrol_requests
@@ -264,20 +361,20 @@ function seedData() {
   // 8月11日：1 失败
   insertReq.run('2026-08-11', 'fail-2', 0, '2026-08-11 09:00:00')
 
-  // groups：3 组（2 个已诊断 + 1 未诊断）
+  // groups：3 组（2 个已诊断 + 1 未诊断）；11-17 经办人筛选：fail-1/fail-2=fanhaoyu、fail-3 空（选项端点须排除空值）
   const insertGroup = db.prepare(`
     INSERT INTO api_patrol_failure_groups
       (group_date, product_key, pool_name, api_path, metric_name, user_name,
        first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
-       customer_type, root_cause_l1, root_cause_l2, product_action_status, created_at, updated_at)
-    VALUES (?, 'eip', '华南-广州3', '/customer/v3/order/create/floatingip', ?, ?, ?, ?, ?, '[]', '', ?, ?, ?, 't', 't')
+       customer_type, root_cause_l1, root_cause_l2, product_action_status, assignee, created_at, updated_at)
+    VALUES (?, 'eip', '华南-广州3', '/customer/v3/order/create/floatingip', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, 't', 't')
   `)
   insertGroup.run('2026-08-10', '订购', 'YDY15292250571',
-    'fail-1', '2026-08-10 19:51:30', 1, '诊断能力缺口', '日志缺失/无数据', '—')
+    'fail-1', '2026-08-10 19:51:30', 1, '[]', '诊断能力缺口', '日志缺失/无数据', '—', 'fanhaoyu')
   insertGroup.run('2026-08-11', '订购', 'YDY15292250571',
-    'fail-2', '2026-08-11 09:00:00', 1, '业务冲突', '绑定关系未解除', '待处理')
+    'fail-2', '2026-08-11 09:00:00', 1, '[]', '业务冲突', '绑定关系未解除', '待处理', 'fanhaoyu')
   insertGroup.run('2026-08-11', '订购', 'other-user',
-    'fail-3', '2026-08-11 10:00:00', 1, null, null, 'pending_diagnosis')
+    'fail-3', '2026-08-11 10:00:00', 1, '[]', null, null, 'pending_diagnosis', null)
   // 为未诊断组补 requests 行（fail-3）
   insertReq.run('2026-08-11', 'fail-3', 0, '2026-08-11 10:00:00')
 

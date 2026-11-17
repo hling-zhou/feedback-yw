@@ -43,18 +43,20 @@ export function registerPatrolQueryRoutes(app) {
   }
 
   // ①异常接口列表——计算逻辑抽为 computeFailureInterfaces（巡检概况 facts 与列表同源单源，2026-11-07 拍板）
-  const computeFailureInterfaces = (range) => {
+  //   11-17 加 product 过滤（分产品筛选——两 tab 共用键）。
+  const computeFailureInterfaces = (range, product) => {
     const db = getDb()
     const PRODUCT_NAMES = productNameMap()
     const statsRows = db.prepare(`
       SELECT stat_date, product_key, pool_name, metric_name, api_path, biz_type, success_rate,
              duration_normal_ratio, avg_duration
       FROM api_patrol_stats
-      WHERE stat_date BETWEEN ? AND ?
+      WHERE stat_date BETWEEN ? AND ?${product ? ' AND product_key = ?' : ''}
       ORDER BY success_rate ASC
-    `).all(range.start, range.end)
+    `).all(...(product ? [range.start, range.end, product] : [range.start, range.end]))
 
-    // 明细 Σ 重算（按 池×接口 聚合）
+    // 明细 Σ 重算（按 池×接口 聚合；11-17 分产品筛选——api_path 与产品强关联，
+    // 但同池同名接口跨产品时按 stats 行的产品键归并更严谨：此处给聚合键追加产品维度）
     const detailAgg = new Map()
     const rows = db.prepare(`
       SELECT request_date, pool_name, api_path, is_success, COUNT(*) n
@@ -62,6 +64,8 @@ export function registerPatrolQueryRoutes(app) {
       WHERE request_date BETWEEN ? AND ?
       GROUP BY request_date, pool_name, api_path, is_success
     `).all(range.start, range.end)
+    // requests 无产品列——api_path 前缀判产品不可靠（ELB 形态无 /）。按池×接口聚合保持原样，
+    // 产品过滤由 statsRows 单侧收敛（out 只从 statsRows 生成——聚合值只被 stats 行消费）。
     for (const r of rows) {
       const key = `${r.pool_name}\u0000${r.api_path}`
       if (!detailAgg.has(key)) detailAgg.set(key, { total: 0, fail: 0 })
@@ -149,7 +153,48 @@ export function registerPatrolQueryRoutes(app) {
   app.get('/api/patrol/failures/interfaces', { preHandler: requirePermission('view') }, async (request, reply) => {
     const range = parseRange(request.query)
     if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
-    return { rows: computeFailureInterfaces(range) }
+    const product = String(request.query.product || '').trim() || undefined
+    return { rows: computeFailureInterfaces(range, product) }
+  })
+
+  // ①''分产品计数（11-17：两 tab 产品筛选选项数据源——
+  //    异常接口列表按接口行数计、失败请求列表按组数计，同一端点双口径一次拉取）
+  app.get('/api/patrol/failures/product-counts', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const range = parseRange(request.query)
+    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+    const db = getDb()
+    const PRODUCT_NAMES = productNameMap()
+    // 接口行口径：窗口内 stats 行数（单日=行数；跨日=池×接口合并行近似——直接按 stats 行计，两口径一致性够筛选用）
+    const ifaceRows = db.prepare(`
+      SELECT product_key, COUNT(*) n FROM api_patrol_stats
+      WHERE stat_date BETWEEN ? AND ? GROUP BY product_key
+    `).all(range.start, range.end)
+    /** @type {Record<string, number>} */
+    const ifaceMap = {}
+    for (const r of ifaceRows) ifaceMap[String(r.product_key)] = Number(r.n)
+    // 组数口径
+    const groupRows = db.prepare(`
+      SELECT product_key, COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? GROUP BY product_key
+    `).all(range.start, range.end)
+    /** @type {Record<string, number>} */
+    const groupMap = {}
+    for (const r of groupRows) groupMap[String(r.product_key)] = Number(r.n)
+    // 产品目录真源（先 loadManagedProductCatalog 刷新防缓存陈旧——10-25 根因先例；
+    //    复用 loadPatrolCatalogShared：含 metaAdapter + 刷新 + products 读取全链）
+    const { loadPatrolCatalogShared } = await import('../patrolIngestion.js')
+    const catalog = await loadPatrolCatalogShared()
+    /** @type {Record<string, string>} */
+    const catalogNames = {}
+    for (const p of catalog) catalogNames[p.key] = p.name
+    // 输出：窗口内有数据的产品（计数并集）；目录外产品键（数据异常）也如实出现——名字用 PRODUCT_NAMES 兜底
+    const keySet = new Set([...Object.keys(ifaceMap), ...Object.keys(groupMap)])
+    const rows = [...keySet].sort().map((key) => ({
+      key, name: catalogNames[key] || PRODUCT_NAMES[key] || key,
+      interfaceCount: ifaceMap[key] || 0,
+      groupCount: groupMap[key] || 0,
+    }))
+    return { rows }
   })
 
   // ①'巡检概况 AI 总结（溯源页顶部，2026-11-07 拍板：检测结果概况——尤其异常情况；facts 与①列表同源）
@@ -300,6 +345,23 @@ export function registerPatrolQueryRoutes(app) {
       /** @type {{ productKey?: string }} */ (r).productName = PRODUCT_NAMES[String(/** @type {{ productKey?: string }} */ (r).productKey || '')] || /** @type {{ productKey?: string }} */ (r).productKey
     }
     return { rows }
+  })
+
+  // ②' 经办人选项列表（11-17：失败请求列表经办人筛选——单选模糊匹配的下拉数据源；
+  //    口径 = 当前时间范围 DISTINCT 非空 assignee，按组数降序）
+  app.get('/api/patrol/failures/assignees', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const range = parseRange(request.query)
+    if (!range) return reply.code(400).send({ error: '缺少 startDate/endDate' })
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT assignee, COUNT(*) AS n
+      FROM api_patrol_failure_groups
+      WHERE group_date BETWEEN ? AND ? AND assignee IS NOT NULL AND assignee != ''
+      GROUP BY assignee
+      ORDER BY n DESC, assignee
+      LIMIT 200
+    `).all(range.start, range.end)
+    return { rows: rows.map((r) => ({ assignee: String(r.assignee), count: Number(r.n) })) }
   })
 
   // ③详情
