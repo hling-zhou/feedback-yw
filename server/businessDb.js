@@ -403,6 +403,18 @@ function migrateRecordsTicketIdColumn(db) {
   )
 }
 
+/**
+ * 11-17 诊断建议列迁移：api_patrol_diagnoses 加 suggestion 列
+ * （LLM 生成的处理建议，随诊断产出；存量行默认 NULL——由重分类脚本补跑）。
+ */
+function migratePatrolDiagnosesSuggestionColumn(db) {
+  const cols = db.prepare('PRAGMA table_info(api_patrol_diagnoses)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('suggestion')) {
+    db.exec('ALTER TABLE api_patrol_diagnoses ADD COLUMN suggestion TEXT')
+  }
+}
+
 function migratePostUseJiraAssigneeColumns(db) {
   const cols = db.prepare('PRAGMA table_info(post_use_jira_items)').all()
   const names = new Set(cols.map((c) => c.name))
@@ -968,6 +980,7 @@ export function initBusinessSchema() {
       final_conclusion TEXT,
       root_cause_l1 TEXT,
       root_cause_l2 TEXT,
+      suggestion TEXT,
       diagnosed_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_patrol_diag_group ON api_patrol_diagnoses(failure_group_id);
@@ -975,6 +988,7 @@ export function initBusinessSchema() {
   `)
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
+  migratePatrolDiagnosesSuggestionColumn(db)
   // 记录变更游标与工单写入同事务提交。触发器覆盖单条、批量、替换和删除入口。
   db.exec(`
     CREATE TABLE IF NOT EXISTS record_changes (

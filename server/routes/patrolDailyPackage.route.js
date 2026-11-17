@@ -127,8 +127,8 @@ function upsertDiagnoses(db, g) {
   const insert = db.prepare(`
     INSERT INTO api_patrol_diagnoses
       (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion,
-       root_cause_l1, root_cause_l2, diagnosed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       root_cause_l1, root_cause_l2, suggestion, diagnosed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const now = new Date().toISOString()
   const diags = Array.isArray(g.diagnoses) && g.diagnoses.length > 0
@@ -140,6 +140,7 @@ function upsertDiagnoses(db, g) {
       finalConclusion: g.finalConclusion == null ? null : String(g.finalConclusion),
       rootCauseL1: g.rootCauseL1 == null ? null : String(g.rootCauseL1),
       rootCauseL2: g.rootCauseL2 == null ? null : String(g.rootCauseL2),
+      suggestion: g.suggestion == null ? null : String(g.suggestion),
     }]
   for (const d of diags) {
     if (!d || typeof d !== 'object') continue
@@ -152,6 +153,7 @@ function upsertDiagnoses(db, g) {
       d.finalConclusion == null ? null : String(d.finalConclusion),
       d.rootCauseL1 == null ? null : String(d.rootCauseL1),
       d.rootCauseL2 == null ? null : String(d.rootCauseL2),
+      d.suggestion == null ? null : String(d.suggestion),
       d.diagnosedAt || now,
     )
   }

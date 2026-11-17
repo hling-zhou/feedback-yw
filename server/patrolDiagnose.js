@@ -181,6 +181,9 @@ export async function runPatrolDiagnose(options) {
         const startTime = invalidDateGuard(firstTime, -30)
         const endTime = invalidDateGuard(firstTime, 30)
         const productName = MCP_PRODUCT_NAMES[String(group.product_key || '')] || 'fip/vpc'
+        // 11-17 实测：filter 含连字符（reqId- 前缀）触发下游 412 子查询失败——
+        // 剥前缀只传 hex 段可精准命中（诊断内容仍含完整 reqId）。
+        const filterKeyword = String(group.first_request_id || '').replace(/^reqId-/, '')
         const result = await callMcpTool(
           { mcpEndpoint, mcpToken, toolName, timeoutMs },
           {
@@ -188,7 +191,7 @@ export async function runPatrolDiagnose(options) {
             endTime,
             productName,
             poolName: pool,
-            filter: group.first_request_id,
+            filter: filterKeyword,
           },
         )
         if (!result.ok) {

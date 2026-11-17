@@ -7,6 +7,24 @@
  */
 
 /**
+ * 日志行清洗（11-17 抽出共享）：剥时间戳/级别/线程/reqId/堆栈噪声，取核心语义。
+ * 详情端点 diagnosisReport（五段之「关键证据/直接原因」）与本提取逻辑同源复用。
+ * @param {string} line 原始日志行
+ * @returns {string} 清洗后语义（可空）
+ */
+export function cleanLogLine(line) {
+  return String(line || '')
+    .replace(/\tat\s+[^\s]*/g, ' ')
+    .replace(/\[\d{4}-\d{2}-\d{2}[^\]]*\]/g, ' ')
+    .replace(/\[\s*(ERROR|WARN|FATAL|INFO)\s*\]/g, ' ')
+    .replace(/\[[^\]]*exec-\d+[^\]]*\]/g, ' ')
+    .replace(/\[reqId-[^\]]*\]/g, ' ')
+    .replace(/\[[cC]\.[^\]]*:[0-9]+\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * @param {string} diagnoseRaw diagnoseResult 原文（JSON 字符串或纯文本）
  * @param {string} errorMessage ELB errorMessage（EIP/VPC 传空）
  * @param {boolean} isElb
@@ -21,6 +39,11 @@ export function extractDiagnosticText(diagnoseRaw, errorMessage, isElb) {
       text = String(d?.final_conclusion ?? d?.conclusion ?? '').trim()
       // 真实 MCP log_search 返回（日志平台 JSON，11-09 实测）：提取失败上下文——
       // records 的 ERROR/WARN 日志行 + errorCode/errorMessage 字段，拼为分类输入。
+      // 11-17 修复①无失败语义守卫：所选行既无 ERROR/WARN 级别又无 errorMessage/errorCode
+      //   片段时，是正常调用日志（伪输入，曾致 22 组归兜底）→ 返回空文本归「诊断能力缺口」。
+      // 11-17 修复②行级清洗：超长行（堆栈整行可 98k 字符）先剥日志前缀+堆栈噪声再取核心语义，
+      //   防 ERROR 行语义被 WARN 行的 800 字窗口挤占（先例 #25 组：WARN 调用方法行 98k 字符，
+      //   真正的「查询用户下角色信息异常」排第 2 行被截断）。
       if (!text && d?.code === '0000' && d?.data?.records) {
         /** @type {Array<{ content?: string, level?: string }>} */
         const records = Array.isArray(d.data.records) ? d.data.records : []
@@ -37,14 +60,20 @@ export function extractDiagnosticText(diagnoseRaw, errorMessage, isElb) {
           const e = /errorCode=([^,\]]*)/.exec(l)
           if (e && e[1] && e[1] !== 'null') frag.push(`code=${e[1]}`)
         }
-        text = [...(frag.length > 0 ? frag : picked)].join('；').slice(0, 800)
+        // 无失败语义守卫：无 ERROR/WARN 行 且 无 errorMessage/errorCode 片段 → 空文本
+        const hasErrorLevel = errLines.length > 0
+        const hasErrorFrag = frag.length > 0
+        if (!hasErrorLevel && !hasErrorFrag) return ''
+        // 行级清洗（cleanLogLine 共享单源——详情端点五段同源复用）
+        const cleaned = (frag.length > 0 ? frag : picked).map(cleanLogLine).filter(Boolean)
+        text = cleaned.join('；').slice(0, 800)
       }
     } catch {
       text = raw.slice(0, 800) // 底稿：解析失败截取原文前 800 字
     }
   }
-  // 字符串 "null" 视同空（样例实测 7 条）
-  if (text.toLowerCase() === 'null') text = ''
+  // 字符串 "null" 视同空（样例实测 7 条；11-17：含尾随标点变体如 "null)" 一并视同）
+  if (/^null[\s)）；;.,]*$/i.test(text)) text = ''
   // ELB 拼 errorMessage（底稿 §4：ELB 同时读 errorMessage；§5.1：前 40 字不在诊断中才拼）
   if (isElb) {
     const err = String(errorMessage || '').trim()
