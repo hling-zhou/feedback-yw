@@ -212,8 +212,16 @@ const SUBJECT_RE = /【API巡检报告】【(\d{1,2})月(\d{1,2})日】发现\s*
  */
 function extractDataDateFromHtml(html) {
   const text = stripHtmlTags(html)
-  const m = /数据日期[：:]\s*(\d{4}-\d{2}-\d{2})/.exec(text)
-  return m ? m[1] : null
+  // YYYY-MM-DD 格式（如 2026-11-16）
+  let m = /数据日期[：:]\s*(\d{4}-\d{2}-\d{2})/.exec(text)
+  if (m) return m[1]
+  // MM月DD日 格式（如 11月11日）——早期邮件仅标注月日，按当年补全
+  m = /数据日期[：:]\s*(\d{1,2})月(\d{1,2})日/.exec(text)
+  if (m) {
+    const year = new Date().getFullYear()
+    return `${year}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`
+  }
+  return null
 }
 
 /** 粗剥 HTML 标签（日期等短字段提取用；表格解析走专用函数）。 */
