@@ -90,6 +90,7 @@ function buildMetaAuditDetail(key, previous, next) {
     const next2 = next && typeof next === 'object' ? next : {}
     detail.baseUrlChanged = (prev.baseUrl || '') !== (next2.baseUrl || '')
     detail.modelChanged = (prev.model || '') !== (next2.model || '')
+    detail.reportModelChanged = (prev.reportModel || '') !== (next2.reportModel || '')
     detail.apiKeyChanged = Boolean(next2.apiKey)
   }
   if (key === 'api_patrol_mcp_config_v1') {
@@ -470,7 +471,13 @@ export function registerStorageRoutes(app) {
   app.get(
     '/api/storage/records/post-use-status-trends',
     { preHandler: requirePermission('view') },
-    async () => storageRepository.listPostUseStatusTrends(),
+    async () => {
+      await loadManagedProductCatalog({
+        getMeta: (key) => storageRepository.getMeta(key),
+        putMeta: (key, value) => storageRepository.putMeta(key, value),
+      })
+      return storageRepository.listPostUseStatusTrends()
+    },
   )
 
   app.get(
@@ -1206,6 +1213,9 @@ export function registerStorageRoutes(app) {
     }
     else if (decodedKey === 'llm_config_v1') {
       perms.push('manageLlmConfig')
+    }
+    else if (decodedKey === 'post_use_html_reports_v1' || decodedKey === 'post_use_html_reports_v2' || /^post_use_html_report_v2_\d{4}-(?:\d{2}|Q[1-4])$/.test(decodedKey)) {
+      perms.push('editRecord')
     }
     else if (decodedKey === 'api_patrol_mcp_config_v1') {
       perms.push('managePatrolMcpConfig')

@@ -237,6 +237,29 @@ describeApi('mail API', () => {
     expect(sent[0].subject).toBe('自定义 2026-06')
     expect(sent[0].text).toContain('2026年6月 月报 https://insights.example.com/workbench/post-use-report/2026-06')
     expect(sent[0].attachments[0].filename).toBe('用后即评月报-2026-06.html')
+
+    const sendV2 = await app.inject({
+      method: 'POST',
+      url: '/api/mail/send',
+      headers: authHeader('editor'),
+      payload: {
+        templateId,
+        dataSourceType: 'post_use_rating',
+        periodLabel: '2026年10月',
+        reportKey: '2026-10',
+        reportKind: 'month',
+        reportVersion: 'v2',
+        linkKind: 'report',
+        to: ['ops@example.com'],
+        attachment: {
+          filename: '用后即评月报-新版-2026-10.html',
+          mime: 'text/html;charset=utf-8',
+          contentBase64: Buffer.from('<html>report v2</html>').toString('base64'),
+        },
+      },
+    })
+    expect(sendV2.statusCode).toBe(200)
+    expect(sent[1].text).toContain('https://insights.example.com/workbench/post-use-report-v2/2026-10')
   })
 
   it('keeps the report attachment when sending with the callback template', async () => {

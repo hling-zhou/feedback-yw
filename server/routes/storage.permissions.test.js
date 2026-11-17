@@ -119,6 +119,18 @@ describeStorage('storage route permissions', () => {
     expect(res.json()).toEqual({ ok: true })
   })
 
+  it('only editors can save a shared V2 report snapshot', async () => {
+    const url = '/api/storage/meta/post_use_html_report_v2_2026-Q3'
+    const payload = { value: { month: '2026-Q3', snapshot: { version: 'v2', reportKey: '2026-Q3' } } }
+    const viewer = await app.inject({ method: 'PUT', url, headers: authHeader('viewer'), payload })
+    expect(viewer.statusCode).toBe(403)
+    const editor = await app.inject({ method: 'PUT', url, headers: authHeader('editor'), payload })
+    expect(editor.statusCode).toBe(200)
+    const laterReader = await app.inject({ method: 'GET', url, headers: authHeader('viewer') })
+    expect(laterReader.statusCode).toBe(200)
+    expect(laterReader.json().value.snapshot.reportKey).toBe('2026-Q3')
+  })
+
   it('viewer cannot POST /api/storage/bootstrap-from-local', async () => {
     const res = await app.inject({
       method: 'POST',

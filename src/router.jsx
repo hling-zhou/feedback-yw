@@ -39,6 +39,14 @@ const routes = [
         ),
       },
       {
+        path: 'workbench/post-use-report-v2/:month',
+        element: (
+          <InsightsProvider hydrateTickets={false}>
+            <PostUseHtmlReport version="v2" />
+          </InsightsProvider>
+        ),
+      },
+      {
         element: (
           <InsightsProvider>
             <UserTicketReviewProvider>

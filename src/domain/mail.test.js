@@ -58,5 +58,8 @@ describe('mail domain', () => {
     expect(resolveMailContentUrl(MAIL_PRESET_REPORT, 'quarter', '2026-Q2', 'https://example.com')).toBe(
       'https://example.com/workbench/post-use-report/2026-Q2',
     )
+    expect(resolveMailContentUrl(MAIL_PRESET_REPORT, 'quarter', '2026-Q3', 'https://example.com', 'v2')).toBe(
+      'https://example.com/workbench/post-use-report-v2/2026-Q3',
+    )
   })
 })

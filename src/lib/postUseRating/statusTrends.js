@@ -50,6 +50,7 @@ export function emptyDepartmentStatusTrends() {
     threeChannel: { data: [], areas: THREE_CHANNEL_AREAS },
     combined: { data: [], areas: COMBINED_AREAS },
     companyMetrics: [],
+    productScores: [],
   }
 }
 
@@ -85,6 +86,16 @@ export function normalizeDepartmentStatusTrends(raw) {
           scoreSum: Number(row?.scoreSum) || 0,
         }))
         .filter((row) => /^\d{4}-\d{2}$/.test(row.date))
+      : undefined,
+    productScores: Array.isArray(source.productScores)
+      ? source.productScores
+        .map((row) => ({
+          date: String(row?.date || ''),
+          productName: String(row?.productName || ''),
+          avgScore: Number(row?.avgScore),
+          sampleSize: Number(row?.sampleSize) || 0,
+        }))
+        .filter((row) => /^\d{4}-\d{2}$/.test(row.date) && row.productName && row.sampleSize > 0 && Number.isFinite(row.avgScore))
       : undefined,
   }
 }
@@ -210,6 +221,9 @@ export function clipDepartmentStatusTrends(trends, endMonth) {
     companyMetrics: Array.isArray(trends.companyMetrics)
       ? trends.companyMetrics.filter((row) => String(row.date || '') <= end)
       : trends.companyMetrics,
+    productScores: Array.isArray(trends.productScores)
+      ? trends.productScores.filter((row) => String(row.date || '') <= end)
+      : trends.productScores,
   }
 }
 
@@ -241,6 +255,7 @@ export function buildDepartmentStatusTrends(input = {}) {
   const satisfaction = []
   const threeChannel = []
   const companyMetrics = []
+  const productScores = []
 
   for (const month of range) {
     const departmentScored = departmentByMonth.get(month) || []
@@ -273,6 +288,14 @@ export function buildDepartmentStatusTrends(input = {}) {
         scoreSum: companyScored.reduce((sum, row) => sum + Number(row.score || 0), 0),
       })
     }
+    for (const product of mixed.yunwang.byProduct) {
+      productScores.push({
+        date: month,
+        productName: product.productName,
+        avgScore: product.avgScore,
+        sampleSize: product.sampleSize,
+      })
+    }
   }
 
   return {
@@ -286,6 +309,7 @@ export function buildDepartmentStatusTrends(input = {}) {
       { data: threeChannel },
     ),
     companyMetrics,
+    productScores,
   }
 }
 
@@ -341,5 +365,6 @@ export function buildProductStatusTrends({ productName, trend, companyTrends, de
     threeChannel: { data: threeChannel, areas: THREE_CHANNEL_AREAS },
     combined: combineStatusTrendCharts({ data: experience }, { data: satisfaction }, { data: threeChannel }),
     companyMetrics: companyTrends?.companyMetrics || local.companyMetrics,
+    productScores: local.productScores,
   }
 }

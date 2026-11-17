@@ -1,4 +1,10 @@
 export const META_KEY_POST_USE_HTML_REPORTS = 'post_use_html_reports_v1'
+export const META_KEY_POST_USE_HTML_REPORTS_V2 = 'post_use_html_reports_v2'
+export const META_KEY_POST_USE_HTML_REPORT_V2_PREFIX = 'post_use_html_report_v2_'
+
+function metaKeyForVersion(version) {
+  return version === 'v2' ? META_KEY_POST_USE_HTML_REPORTS_V2 : META_KEY_POST_USE_HTML_REPORTS
+}
 
 /**
  * @typedef {{
@@ -8,11 +14,13 @@ export const META_KEY_POST_USE_HTML_REPORTS = 'post_use_html_reports_v1'
  *   dataFingerprint: string
  *   hiddenSectionIds: string[]
  *   printAppendix: boolean
+ *   snapshot?: Record<string, unknown> | null
  *   narratives: {
  *     judgment: string
  *     issues: Record<string, { conclusion: string, action: string }>
  *     todoNote: string
  *     todoItems?: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]
+ *     actionOverrides?: Record<string, { text?: string, title?: string, detail?: string, actionType?: string, owner?: string, team?: string }>
  *     visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
  *   }
  * }} HtmlReportOverlay
@@ -26,6 +34,15 @@ function normalizeStore(raw) {
   if (!raw || typeof raw !== 'object') return emptyStore()
   const reports = raw.reports && typeof raw.reports === 'object' ? raw.reports : {}
   return { version: 1, reports }
+}
+
+function normalizeSnapshot(raw, month) {
+  if (raw?.version !== 'v2' || raw.reportKey !== month) return null
+  try {
+    return JSON.parse(JSON.stringify(raw))
+  } catch {
+    return null
+  }
 }
 
 function normalizeOverlay(raw, month) {
@@ -50,6 +67,8 @@ function normalizeOverlay(raw, month) {
         content: String(item.content || ''),
         owner: String(item.owner || ''),
         team: String(item.team || ''),
+        productName: String(item.productName || ''),
+        status: String(item.status || ''),
         source: item.source === 'auto' ? 'auto' : 'manual',
       }))
       .filter((item) => item.content)
@@ -76,11 +95,19 @@ function normalizeOverlay(raw, month) {
       ? raw.hiddenSectionIds.map((id) => String(id)).filter(Boolean)
       : [],
     printAppendix: Boolean(raw.printAppendix),
+    snapshot: normalizeSnapshot(raw.snapshot, month),
     narratives: {
       judgment: String(narratives.judgment || ''),
       issues,
       todoNote: String(narratives.todoNote || ''),
       todoItems,
+      actionOverrides: narratives.actionOverrides && typeof narratives.actionOverrides === 'object'
+        ? Object.fromEntries(Object.entries(narratives.actionOverrides).map(([key, value]) => [key,
+          Object.fromEntries(['text', 'title', 'detail', 'actionType', 'owner', 'team']
+            .filter((field) => Object.prototype.hasOwnProperty.call(value || {}, field))
+            .map((field) => [field, String(value[field] ?? '')])),
+        ]))
+        : {},
       visitSupplements,
     },
   }
@@ -91,26 +118,35 @@ function normalizeOverlay(raw, month) {
  * @param {string} month
  * @returns {Promise<HtmlReportOverlay | null>}
  */
-export async function loadHtmlReportOverlay(adapter, month) {
+export async function loadHtmlReportOverlay(adapter, month, version = 'v1') {
   if (!adapter?.getMeta || !month) return null
-  const store = normalizeStore(await adapter.getMeta(META_KEY_POST_USE_HTML_REPORTS))
+  if (version === 'v2') {
+    const direct = await adapter.getMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`)
+    if (direct) return normalizeOverlay(direct, month)
+  }
+  const store = normalizeStore(await adapter.getMeta(metaKeyForVersion(version)))
   return normalizeOverlay(store.reports[month], month)
 }
 
 /**
  * @param {{ getMeta: (k: string) => Promise<unknown>; putMeta: (k: string, v: unknown) => Promise<void> }} adapter
- * @param {HtmlReportOverlay} overlay
+ * @param {Partial<HtmlReportOverlay> & {month: string}} overlay
  */
-export async function saveHtmlReportOverlay(adapter, overlay) {
+export async function saveHtmlReportOverlay(adapter, overlay, version = 'v1') {
   if (!adapter?.putMeta) throw new Error('当前存储不支持保存月报叙述')
   const month = String(overlay?.month || '')
   if (!month) throw new Error('缺少报告月份')
-  const prev = normalizeStore(await adapter.getMeta?.(META_KEY_POST_USE_HTML_REPORTS))
   const nextOverlay = normalizeOverlay({
     ...overlay,
     updatedAt: overlay.updatedAt || new Date().toISOString(),
   }, month)
-  await adapter.putMeta(META_KEY_POST_USE_HTML_REPORTS, {
+  if (version === 'v2') {
+    await adapter.putMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`, nextOverlay)
+    return nextOverlay
+  }
+  const key = metaKeyForVersion(version)
+  const prev = normalizeStore(await adapter.getMeta?.(key))
+  await adapter.putMeta(key, {
     version: 1,
     updatedAt: nextOverlay.updatedAt,
     reports: {

@@ -79,6 +79,8 @@
 
 /**
  * @typedef {BaseRecord & {
+ *   productName?: string
+ *   sourceProductName?: string
  *   ratingScore?: number
  *   ratingDimension?: string
  *   commentText?: string

@@ -38,6 +38,7 @@ describe('report narrative generation', () => {
     })
     const draft = await generateReportProductDraft({}, narrative)
     expect(calls).toHaveLength(2)
+    expect(calls.every((call) => call.purpose === 'report')).toBe(true)
     expect(calls[0].response_format).toEqual({ type: 'json_object' })
     expect(calls[0].messages[1].content).toContain('rating-a')
     expect(draft.detail).toContain('问题综合：「页面打开慢」原始 2 次')

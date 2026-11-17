@@ -12,6 +12,7 @@ import { parseEmailList } from '../../domain/mail.js'
  *   periodLabel: string
  *   reportKey?: string
  *   reportKind?: 'month' | 'quarter'
+ *   reportVersion?: 'v1' | 'v2'
  *   linkKind: 'report' | 'workbench'
  *   canSend: boolean
  *   disabledReason?: string
@@ -27,6 +28,7 @@ export default function SendMailModal({
   periodLabel,
   reportKey = '',
   reportKind = 'month',
+  reportVersion = 'v1',
   linkKind,
   canSend,
   disabledReason = '',
@@ -109,6 +111,7 @@ export default function SendMailModal({
         periodLabel,
         reportKey,
         reportKind,
+        reportVersion,
         linkKind,
         to,
         cc,

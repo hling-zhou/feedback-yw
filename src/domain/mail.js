@@ -155,15 +155,15 @@ export function joinPublicAppUrl(publicAppUrl, path) {
  * @param {'month' | 'quarter' | string} reportKind
  * @param {string} reportKey
  */
-export function resolveMailContentUrl(templateId, reportKind, reportKey, publicAppUrl) {
+export function resolveMailContentUrl(templateId, reportKind, reportKey, publicAppUrl, reportVersion = 'v1') {
   if (templateId === MAIL_PRESET_CALLBACK_VISIT) {
     return joinPublicAppUrl(publicAppUrl, '/workbench?tab=post_use_rating')
   }
   if (reportKind === 'quarter' && reportKey) {
-    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report/${reportKey}`)
+    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report${reportVersion === 'v2' ? '-v2' : ''}/${reportKey}`)
   }
   if (reportKey) {
-    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report/${reportKey}`)
+    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report${reportVersion === 'v2' ? '-v2' : ''}/${reportKey}`)
   }
   return joinPublicAppUrl(publicAppUrl, '/workbench?tab=post_use_rating')
 }

@@ -149,9 +149,10 @@ function LlmSettingsPanel({ onServerStatusChange, canEdit }) {
     apiKey: '',
     llmBaseUrl: '',
     llmModel: '',
+    reportModel: '',
   }))
   const [serverStatus, setServerStatus] = useState(
-    /** @type {{ source: 'db' | 'env' | 'none'; apiKeyMasked: string; baseUrl: string; model: string } | null} */ (null),
+    /** @type {{ source: 'db' | 'env' | 'none'; apiKeyMasked: string; baseUrl: string; model: string; reportModel: string } | null} */ (null),
   )
   const [saving, setSaving] = useState(false)
 
@@ -163,11 +164,13 @@ function LlmSettingsPanel({ onServerStatusChange, canEdit }) {
         apiKeyMasked: data.apiKeyMasked || '',
         baseUrl: data.baseUrl || '',
         model: data.model || '',
+        reportModel: data.reportModel || '',
       })
       setDraft((prev) => ({
         ...prev,
         llmBaseUrl: data.baseUrl || '',
         llmModel: data.model || '',
+        reportModel: data.reportModel || '',
       }))
     } catch (err) {
       message.error(err instanceof Error ? err.message : '读取大模型配置失败')
@@ -196,6 +199,7 @@ function LlmSettingsPanel({ onServerStatusChange, canEdit }) {
             apiKey: draft.apiKey || undefined,
             baseUrl: draft.llmBaseUrl || '',
             model: draft.llmModel || '',
+            reportModel: draft.reportModel || '',
           },
         }),
       })
@@ -282,6 +286,18 @@ function LlmSettingsPanel({ onServerStatusChange, canEdit }) {
             留空则回退环境变量 LLM_MODEL
           </Typography.Text>
         </div>
+      </div>
+      <div>
+        <Typography.Text strong className="mb-1 block text-xs">用后即评月报／季报模型</Typography.Text>
+        <Input
+          placeholder="留空沿用上方模型"
+          value={draft.reportModel}
+          onChange={(e) => setDraft((prev) => ({ ...prev, reportModel: e.target.value }))}
+          disabled={!canEdit}
+        />
+        <Typography.Text type="secondary" className="mt-1 block text-xs">
+          只指定模型名称；API 地址与密钥复用团队配置。留空时使用上方模型。
+        </Typography.Text>
       </div>
       <Button type="primary" loading={saving} onClick={handleSave} disabled={!canEdit}>
         保存大模型配置

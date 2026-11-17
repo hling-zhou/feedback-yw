@@ -81,6 +81,10 @@ describe('department status trends', () => {
       { date: '2026-06', avgScore: 8.5, totalSample: 4, productCount: 2, scoreSum: 34 },
       { date: '2026-08', avgScore: 9, totalSample: 1, productCount: 1, scoreSum: 9 },
     ])
+    expect(trends.productScores).toEqual([
+      { date: '2026-06', productName: '弹性公网IP', avgScore: 9.33, sampleSize: 3 },
+      { date: '2026-08', productName: '弹性公网IP', avgScore: 9, sampleSize: 1 },
+    ])
     expect(rollupCompanyMetrics(trends.companyMetrics, {
       startDate: '2026-06-01',
       endDate: '2026-06-30',
@@ -103,6 +107,7 @@ describe('department status trends', () => {
     expect(trends.threeChannel.data).toEqual([])
     expect(trends.combined.data).toEqual([])
     expect(trends.companyMetrics).toEqual([])
+    expect(trends.productScores).toEqual([])
   })
 
   it('stops the x-axis at the dashboard month even when later months have scores', () => {
@@ -146,6 +151,7 @@ describe('department status trends', () => {
       { date: '2026-06', departmentScore: 9, departmentRate: 100, department: 9.1, company: 8.8 },
     ])
     expect(trends.companyMetrics).toBeUndefined()
+    expect(trends.productScores).toBeUndefined()
   })
 
   it('keeps companyMetrics when the remote payload includes monthly company totals', () => {
@@ -156,6 +162,17 @@ describe('department status trends', () => {
     })
     expect(trends.companyMetrics).toEqual([
       { date: '2026-06', avgScore: 8.5, totalSample: 4, productCount: 2, scoreSum: 34 },
+    ])
+  })
+
+  it('normalizes and clips fresh product score aggregates', () => {
+    const trends = normalizeDepartmentStatusTrends({ productScores: [
+      { date: '2026-06', productName: '弹性公网IP', avgScore: 9.5, sampleSize: 2 },
+      { date: '2026-08', productName: '弹性公网IP', avgScore: 8, sampleSize: 1 },
+      { date: 'bad', productName: '弹性公网IP', avgScore: 7, sampleSize: 1 },
+    ] })
+    expect(clipDepartmentStatusTrends(trends, '2026-06').productScores).toEqual([
+      { date: '2026-06', productName: '弹性公网IP', avgScore: 9.5, sampleSize: 2 },
     ])
   })
 })

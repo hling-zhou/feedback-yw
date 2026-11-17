@@ -109,7 +109,7 @@ async function askLlm(settings, messages, requiredKeys) {
   let failure = '返回格式不完整'
   for (const maxTokens of [3000, 6000]) {
     const response = await llmChatCompletion(settings, {
-      messages, temperature: 0.2, max_tokens: maxTokens,
+      purpose: 'report', messages, temperature: 0.2, max_tokens: maxTokens,
       response_format: { type: 'json_object' },
     })
     const choice = response?.data?.choices?.[0] || response?.choices?.[0]

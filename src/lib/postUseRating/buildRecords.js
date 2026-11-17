@@ -54,6 +54,7 @@ export function buildPostUseRatingRecord(row, meta) {
     importMonth: meta.importMonth,
     product: productName,
     productName,
+    sourceProductName: row.productName,
     productKey,
     ratingScore: Number.isFinite(row.score) ? row.score : undefined,
     commentText: row.rawComment || '',

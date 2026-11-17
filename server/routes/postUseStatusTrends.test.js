@@ -118,5 +118,8 @@ describeTrends('post-use status trends API', () => {
       productCount: 2,
       scoreSum: 34,
     })
+    expect(body.productScores.find((row) => row.date === '2026-06' && row.productName === '弹性公网IP')).toEqual({
+      date: '2026-06', productName: '弹性公网IP', avgScore: 9.33, sampleSize: 3,
+    })
   })
 })

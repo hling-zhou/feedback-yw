@@ -16,6 +16,13 @@ describe('HTML monthly report route and page', () => {
     expect(router.slice(reportIndex, shellIndex)).not.toContain('<AppShell')
   })
 
+  it('keeps both report versions reachable for the same period', () => {
+    expect(router).toContain("path: 'workbench/post-use-report-v2/:month'")
+    expect(router).toContain('<PostUseHtmlReport version="v2" />')
+    expect(page).toContain('查看旧版')
+    expect(page).toContain('查看新版')
+  })
+
   it('loads the report month post-use records before rendering empty state', () => {
     expect(page).toContain('loadPostUseRatingForPeriod')
     expect(page).toContain('postUseSettledPeriodIds')

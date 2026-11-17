@@ -6,6 +6,7 @@ import {
   resolveLlmApiKey,
   resolveLlmBaseUrl,
   resolveLlmModel,
+  resolveReportLlmModel,
 } from '../llmConfig.js'
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 
@@ -20,6 +21,7 @@ export function registerLlmRoutes(app) {
       source: status.source,
       defaultBaseUrl: status.baseUrl,
       defaultModel: status.model,
+      reportModel: status.reportModel || status.model,
     }
   })
 
@@ -35,6 +37,7 @@ export function registerLlmRoutes(app) {
       apiKeyConfigured: status.configured,
       baseUrl: status.baseUrl,
       model: status.model,
+      reportModel: status.reportModel,
     }
   })
 
@@ -58,10 +61,8 @@ export function registerLlmRoutes(app) {
     // baseUrl / model 一律由服务端解析（库 ＞ 环境变量），不接受请求体覆盖，
     // 避免个人设置绕过团队配置。
     const baseUrl = resolveLlmBaseUrl()
-    const defaultModel = resolveLlmModel()
-    const { baseUrl: _b, model: _m, apiKey: _k, ...chatBody } = body
-    const model =
-      (typeof chatBody.model === 'string' && chatBody.model.trim()) || defaultModel
+    const { baseUrl: _b, model: _m, apiKey: _k, purpose, ...chatBody } = body
+    const model = purpose === 'report' ? resolveReportLlmModel() : resolveLlmModel()
 
     try {
       return await forwardLlmChatCompletion({

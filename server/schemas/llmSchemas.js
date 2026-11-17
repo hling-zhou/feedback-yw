@@ -6,6 +6,7 @@ export const llmChatBodySchema = {
     apiKey: { type: 'string', maxLength: 512 },
     baseUrl: { type: 'string', maxLength: 512 },
     model: { type: 'string', maxLength: 128 },
+    purpose: { type: 'string', enum: ['report'] },
     messages: {
       type: 'array',
       maxItems: 100,

@@ -305,7 +305,7 @@ export default function PostUseRatingDashboardView() {
             </Typography.Title>
             {reportTarget ? (
               <Button
-                onClick={() => window.open(`/workbench/post-use-report/${reportTarget.key}`, '_blank')}
+                onClick={() => window.open(`/workbench/post-use-report-v2/${reportTarget.key}`, '_blank')}
               >
                 {reportTarget.kind === 'quarter' ? '打开季报' : '打开月报'}
               </Button>

@@ -91,6 +91,13 @@ describeProjection('records payload projection', () => {
         records: [
           makeRecord('rec-proj-1', '2026-05'),
           makeRecord('rec-proj-2', '2026-06'),
+          {
+            ...makeRecord('rec-proj-shared', '2026-06'),
+            dataSourceType: 'post_use_rating',
+            product: '弹性公网IP',
+            productName: '弹性公网IP',
+            sourceProductName: '共享带宽',
+          },
         ],
       },
     })
@@ -125,6 +132,8 @@ describeProjection('records payload projection', () => {
     expect(r).not.toHaveProperty('responseText')
     // sourceColumns 不裁（列表投影拍板口径：fields=list 只裁 5 个大文本，sourceColumns 保留供搜索回退）
     expect(r).toHaveProperty('sourceColumns')
+    expect(body.records.find((record) => record.id === 'rec-proj-shared'))
+      .toMatchObject({ product: '弹性公网IP', sourceProductName: '共享带宽' })
   })
 
   it('fields=full 原样返回大文本字段', async () => {

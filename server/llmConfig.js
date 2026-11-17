@@ -18,7 +18,7 @@ export function normalizeLlmBaseUrl(url) {
 
 /**
  * 读取库内 LLM 配置；DB 未初始化或读取失败时返回 null（回退环境变量）。
- * @returns {{ apiKey?: string; baseUrl?: string; model?: string; updatedAt?: string; updatedBy?: string } | null}
+ * @returns {{ apiKey?: string; baseUrl?: string; model?: string; reportModel?: string; updatedAt?: string; updatedBy?: string } | null}
  */
 function getLlmConfigFromDb() {
   try {
@@ -29,6 +29,7 @@ function getLlmConfigFromDb() {
       apiKey: typeof cfg.apiKey === 'string' ? cfg.apiKey.trim() : '',
       baseUrl: typeof cfg.baseUrl === 'string' ? cfg.baseUrl.trim() : '',
       model: typeof cfg.model === 'string' ? cfg.model.trim() : '',
+      reportModel: typeof cfg.reportModel === 'string' ? cfg.reportModel.trim() : '',
       updatedAt: typeof cfg.updatedAt === 'string' ? cfg.updatedAt : undefined,
       updatedBy: typeof cfg.updatedBy === 'string' ? cfg.updatedBy : undefined,
     }
@@ -81,8 +82,13 @@ export function resolveLlmModel() {
   return (process.env.LLM_MODEL || DEFAULT_LLM_MODEL).trim() || DEFAULT_LLM_MODEL
 }
 
+/** 报告文案使用独立模型名称，地址与密钥沿用团队大模型服务。 */
+export function resolveReportLlmModel() {
+  return getLlmConfigFromDb()?.reportModel || resolveLlmModel()
+}
+
 /**
- * @returns {{ configured: boolean; source: 'db' | 'env' | 'none'; baseUrl: string; model: string; apiKeyMasked: string }}
+ * @returns {{ configured: boolean; source: 'db' | 'env' | 'none'; baseUrl: string; model: string; reportModel: string; apiKeyMasked: string }}
  */
 export function getLlmConfigStatus() {
   const db = getLlmConfigFromDb()
@@ -94,6 +100,7 @@ export function getLlmConfigStatus() {
       source: 'db',
       baseUrl: normalizeLlmBaseUrl(db?.baseUrl || process.env.LLM_BASE_URL || DEFAULT_LLM_BASE),
       model: db?.model || (process.env.LLM_MODEL || DEFAULT_LLM_MODEL).trim() || DEFAULT_LLM_MODEL,
+      reportModel: db?.reportModel || '',
       apiKeyMasked: maskApiKey(dbKey),
     }
   }
@@ -103,6 +110,7 @@ export function getLlmConfigStatus() {
       source: 'env',
       baseUrl: normalizeLlmBaseUrl(process.env.LLM_BASE_URL || DEFAULT_LLM_BASE),
       model: (process.env.LLM_MODEL || DEFAULT_LLM_MODEL).trim() || DEFAULT_LLM_MODEL,
+      reportModel: db?.reportModel || '',
       apiKeyMasked: maskApiKey(envKey),
     }
   }
@@ -111,6 +119,7 @@ export function getLlmConfigStatus() {
     source: 'none',
     baseUrl: normalizeLlmBaseUrl(DEFAULT_LLM_BASE),
     model: DEFAULT_LLM_MODEL,
+    reportModel: db?.reportModel || '',
     apiKeyMasked: '',
   }
 }

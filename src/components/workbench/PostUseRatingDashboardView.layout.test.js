@@ -7,7 +7,7 @@ describe('PostUseRatingDashboardView report availability', () => {
   it('opens the HTML monthly report in a new tab for a single-month range', () => {
     expect(source).toContain('打开月报')
     expect(source).toContain('打开季报')
-    expect(source).toContain("window.open(`/workbench/post-use-report/${reportTarget.key}`, '_blank')")
+    expect(source).toContain("window.open(`/workbench/post-use-report-v2/${reportTarget.key}`, '_blank')")
     expect(source).not.toContain('noopener')
     expect(source).toContain('月报 {reportTarget.key}')
     expect(source).toContain('季报 {reportTarget.key}')

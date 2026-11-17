@@ -8,6 +8,7 @@ rmSync(process.env.AUTH_DATABASE_PATH, { force: true })
 const { getDb, closeDb } = await import('./db.js')
 getDb() // 空库初始化（无 llm_config_v1 → 走 env 回退语义成立）
 const llmConfig = await import('./llmConfig.js')
+const { storageRepository } = await import('./storageRepository.js')
 const {
   getLlmConfigStatus,
   isLlmConfigured,
@@ -16,6 +17,7 @@ const {
   resolveLlmApiKey,
   resolveLlmBaseUrl,
   resolveLlmModel,
+  resolveReportLlmModel,
 } = llmConfig
 
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
@@ -97,5 +99,22 @@ describe('getLlmConfigStatus', () => {
     expect(status.configured).toBe(false)
     expect(status.source).toBe('none')
     expect(status.apiKeyMasked).toBe('')
+  })
+})
+
+describe('report model selection', () => {
+  it('uses the separate report model and falls back to the team model when blank', () => {
+    process.env.LLM_MODEL = 'team-model'
+    try {
+      storageRepository.putMeta('llm_config_v1', { apiKey: 'sk-test', baseUrl: 'https://api.example.com/v1', model: 'tag-model', reportModel: 'report-model' })
+      expect(resolveLlmModel()).toBe('tag-model')
+      expect(resolveReportLlmModel()).toBe('report-model')
+      expect(getLlmConfigStatus().reportModel).toBe('report-model')
+      storageRepository.putMeta('llm_config_v1', { apiKey: 'sk-test', baseUrl: 'https://api.example.com/v1', model: 'tag-model', reportModel: '' })
+      expect(resolveReportLlmModel()).toBe('tag-model')
+      expect(getLlmConfigStatus().reportModel).toBe('')
+    } finally {
+      storageRepository.putMeta('llm_config_v1', null)
+    }
   })
 })

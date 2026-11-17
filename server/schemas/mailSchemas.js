@@ -70,6 +70,7 @@ export const mailSendBodySchema = {
     periodLabel: { type: 'string', maxLength: 80 },
     reportKey: { type: 'string', maxLength: 32 },
     reportKind: { type: 'string', enum: ['month', 'quarter'] },
+    reportVersion: { type: 'string', enum: ['v1', 'v2'] },
     linkKind: { type: 'string', enum: ['report', 'workbench'] },
     to: { ...emailArray, minItems: 1 },
     cc: emailArray,
