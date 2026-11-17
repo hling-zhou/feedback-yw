@@ -341,29 +341,108 @@ export default function ApiPatrolFailures() {
           </Space>
         </div>
         {summaryData?.summary ? (
-          <>
-            <div className="!mt-3 !mb-2">
+          <div className="!mt-3 space-y-3">
+            {/* ① 结论区：LLM 综述正文（13px/行高1.7，浅色左边条——与详情抽屉原文卡同构） */}
+            <div className="border-l-[3px] border-brand-300 pl-3 text-[13px] leading-relaxed">
               {(summaryData.summary.text || '').split('\n').filter(Boolean).map((line, i) => (
-                <Typography.Paragraph key={i} className="!mt-0 !mb-1">{line}</Typography.Paragraph>
+                <p key={i} className="!my-0.5">{line}</p>
               ))}
             </div>
+
             {summaryData.facts && (
-              <Space wrap size={[14, 4]}>
-                <Typography.Text type="secondary" className="text-xs">
-                  异常接口 <Typography.Text strong>{summaryData.facts.interfaceCount}</Typography.Text>
-                </Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">
-                  失败请求 <Typography.Text strong className="text-red-600">{summaryData.facts.failTotal}</Typography.Text>
-                </Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">
-                  待产品侧处理 <Typography.Text strong className="text-orange-600">{summaryData.facts.closure?.pending ?? 0}</Typography.Text>
-                </Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">
-                  已处理 <Typography.Text strong className="text-green-700">{summaryData.facts.closure?.processed ?? 0}</Typography.Text>
-                </Typography.Text>
-              </Space>
+              <>
+                {/* ② 指标数字行：metric-card 灰底小卡（大数字 20px/600 + 12px 标签；语义色沿用） */}
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div className="metric-card">
+                    <div className="text-xs text-ink-500">异常接口</div>
+                    <div className="text-xl font-semibold text-ink-900">{summaryData.facts.interfaceCount ?? '—'}</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="text-xs text-ink-500">
+                      失败请求
+                      {/* 环比小箭头（上一等长窗口对比；无数据不显示） */}
+                      {summaryData.facts.delta && summaryData.facts.delta.failDelta !== 0 ? (
+                        <span className={summaryData.facts.delta.failDelta > 0 ? 'ml-1 text-red-600' : 'ml-1 text-green-600'}>
+                          {summaryData.facts.delta.failDelta > 0 ? `↑${summaryData.facts.delta.failDelta}` : `↓${Math.abs(summaryData.facts.delta.failDelta)}`}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-xl font-semibold text-red-600">{summaryData.facts.failTotal ?? '—'}</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="text-xs text-ink-500">待产品侧处理</div>
+                    <div className="text-xl font-semibold text-orange-600">{summaryData.facts.closure?.pending ?? 0}</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="text-xs text-ink-500">已处理</div>
+                    <div className="text-xl font-semibold text-green-700">{summaryData.facts.closure?.processed ?? 0}</div>
+                  </div>
+                </div>
+
+                {/* ③ 诊断细节区：三栏（最差接口/根因分布/处理闭环），仅在有数据时显示 */}
+                {(summaryData.facts.worstTop3?.length > 0 || summaryData.facts.causeTop3?.length > 0 || summaryData.facts.closure) && (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {/* ③-1 最差接口 Top3 */}
+                    {summaryData.facts.worstTop3?.length > 0 && (
+                      <div className="rounded-lg bg-ink-50/60 p-3">
+                        <div className="sub-section-label">最差接口 Top{summaryData.facts.worstTop3.length}</div>
+                        <div className="space-y-1.5">
+                          {summaryData.facts.worstTop3.map((w, i) => (
+                            <div key={i} className="flex min-w-0 items-center gap-1.5 text-xs">
+                              <Typography.Text type="secondary" className="shrink-0">{i + 1}</Typography.Text>
+                              <span className="min-w-0 truncate text-ink-800" title={`${w.pool} · ${w.apiPath}`}>
+                                {w.productName} · {w.apiPath}
+                              </span>
+                              <Tag className="!m-0 ml-auto shrink-0" color={Number(w.successRate) < 99.5 ? 'red' : 'orange'}>
+                                {w.successRate}%
+                              </Tag>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* ③-2 根因 Top3（占比条形态） */}
+                    {summaryData.facts.causeTop3?.length > 0 && (
+                      <div className="rounded-lg bg-ink-50/60 p-3">
+                        <div className="sub-section-label">根因 Top{summaryData.facts.causeTop3.length}（已诊断组）</div>
+                        <div className="space-y-1.5">
+                          {summaryData.facts.causeTop3.map((c, i) => (
+                            <div key={i} className="flex min-w-0 items-center gap-1.5 text-xs">
+                              <Tag className="!m-0 shrink-0" color="blue">{c.l1}</Tag>
+                              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded bg-ink-100">
+                                <div className="h-full rounded bg-brand-400" style={{ width: `${c.ratio}%` }} />
+                              </div>
+                              <span className="shrink-0 text-ink-500">{c.count}组 · {c.ratio}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* ③-3 处理闭环（未诊断/仿真灰字计数补充口径） */}
+                    {summaryData.facts.closure && (
+                      <div className="rounded-lg bg-ink-50/60 p-3">
+                        <div className="sub-section-label">处理闭环</div>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Tag className="!m-0" color="orange">待处理 {summaryData.facts.closure.pending ?? 0}</Tag>
+                            <Tag className="!m-0" color="processing">处理中 {summaryData.facts.closure.inProgress ?? 0}</Tag>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Tag className="!m-0" color="green">已处理 {summaryData.facts.closure.processed ?? 0}</Tag>
+                            <Tag className="!m-0">— {summaryData.facts.closure.notNeeded ?? 0}</Tag>
+                          </div>
+                          <Typography.Text type="secondary" className="block pt-0.5">
+                            未诊断 {summaryData.facts.closure.undiagnosed ?? 0} 组
+                            {summaryData.facts.closure.simGroups > 0 ? ` · 仿真/测试 ${summaryData.facts.closure.simGroups} 组` : ''}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
-          </>
+          </div>
         ) : (
           <Typography.Text type="secondary" className="!mt-2 block">{loadingSummary ? '加载中…' : '暂无概况'}</Typography.Text>
         )}

@@ -212,4 +212,23 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(html).not.toContain('LLM 润色') // 无数据时不误显 LLM 状态 Tag
     expect(html).not.toContain('LLM 未启用') // 三态：无数据不显
   })
+
+  it('巡检概况信息层次契约（11-17 晚拍板：结论/指标卡/诊断细节三段式）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 结论区：LLM 综述带浅色左边条（与抽屉原文卡同构）+ 13px 正文
+    expect(src).toMatch(/border-brand-300 pl-3 text-\[13px\]/)
+    // ② 指标数字行：metric-card 灰底卡 ×4 + 大数字 20px（xl）+ 环比箭头
+    expect((src.match(/metric-card/g) || []).length).toBeGreaterThanOrEqual(4)
+    expect((src.match(/text-xl font-semibold/g) || []).length).toBe(4)
+    expect(src).toMatch(/delta\.failDelta/)
+    // 旧裸数字行（Space 平铺 strong）退场
+    expect(src).not.toMatch(/异常接口 <Typography/)
+    // ③ 诊断细节三栏：worstTop3 / causeTop3（占比条）/ 闭环 5 态 + 未诊断/仿真计数
+    expect(src).toMatch(/worstTop3/)
+    expect(src).toMatch(/causeTop3/)
+    expect(src).toMatch(/未诊断.*组/)      // closure.undiagnosed 灰字补充
+    expect(src).toMatch(/simGroups/)
+    expect(src).toMatch(/sub-section-label/)  // 细节栏标题统一
+  })
 })
