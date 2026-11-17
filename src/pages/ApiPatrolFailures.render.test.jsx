@@ -47,11 +47,11 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
 
   it('根因分布跳转展示失败请求 Tab 和快捷筛选', () => {
     const html = renderPage('?rootCauseL1=业务冲突')
-    expect(html).toContain('组 = 同客户同接口 1 小时内失败链')
+    // 11-17 傍晚拍板④：旧说明文案「组 = 同客户同接口…」已删除，锚点改用需产品侧处理按钮 + RequestID 筛选
     expect(html).toContain('需产品侧处理')
     expect(html).toContain('RequestID')
     expect(html).toContain('处理状态')
-    expect(html).toContain('业务冲突')
+    expect(html).toContain('业务冲突')   // URL 预填的 L1 筛选值
   })
 
   it('两个 Tab 分别渲染对应的表格列', () => {
@@ -76,6 +76,48 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     // 失败请求列表：数据日期列 + 产品列（productName 映射 productKey 兜底）
     expect(src).toMatch(/title: '数据日期', dataIndex: 'groupDate'/)
     expect(src).toMatch(/title: '产品', dataIndex: 'productName'/)
+  })
+
+  it('失败请求列表交互契约（源码正则，11-17 傍晚拍板 5 项）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 筛选下拉带数量统计（根因 L1 + 处理状态 options 挂 count——withCount 共享构造）
+    expect(src).toMatch(/const withCount = \(options, counts\)/)
+    expect(src).toMatch(/withCount\(ROOT_CAUSE_L1_OPTIONS, l1Counts\)/)
+    expect(src).toMatch(/withCount\(STATUS_OPTIONS, statusCounts\)/)
+    // ② 整行点击进详情（onRow 箭头函数 → openDrawer + 指针样式）
+    expect(src).toMatch(/onRow=\{\(record\) => \(\{/)
+    expect(src).toMatch(/onClick: \(\) => openDrawer\(record\.id\)/)
+    // ③ 抽屉按钮：评估完成 + 底部固定栏居右（footer + justify-end）
+    expect(src).toMatch(/footer=\{/)
+    expect(src).toMatch(/评估完成/)
+    expect(src).not.toMatch(/提交（已处理）/)
+    // ④ 说明文案退场
+    expect(src).not.toContain('组 = 同客户同接口 1 小时内失败链')
+    // ⑤ 压缩前失败次数 hover 提示（Tooltip + 压缩规则文案）
+    expect(src).toMatch(/压缩规则/)
+  })
+
+  it('诊断结果五段契约（源码正则，11-17 晚拍板）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // 标题改名 + 旧标题退场
+    expect(src).toMatch(/诊断结果/)
+    expect(src).not.toMatch(/AI 诊断原文/)
+    // 五段标签全在
+    expect(src).toMatch(/诊断结论/)
+    expect(src).toMatch(/失败组信息/)
+    expect(src).toMatch(/直接原因/)
+    expect(src).toMatch(/关键证据/)
+    expect(src).toMatch(/处理建议/)
+    // 结论浅红 + 建议浅蓝高亮（tailwind bg 类）
+    expect(src).toMatch(/bg-red-50/)
+    expect(src).toMatch(/bg-blue-50/)
+    // 日志原文双层展开：核心行默认 + 查看完整日志
+    expect(src).toMatch(/查看完整日志/)
+    // 数据源：diagnosisReport 服务端切分单源（前端不做行清洗——cleanLogLine 不得出现在前端）
+    expect(src).toMatch(/diagnosisReport/)
+    expect(src).not.toMatch(/cleanLogLine/)
   })
 
   it('详情抽屉压缩前全部记录模块契约（源码正则，11-17）：默认收起 Collapse + 三列分页 10', () => {

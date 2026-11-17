@@ -36,6 +36,7 @@ export const mailGroupBodySchema = {
   properties: {
     name: { type: 'string', minLength: 1, maxLength: 80 },
     emails: { ...emailArray },
+    // 群组抄送（11-11 修复：前端表单已带 cc，schema 漏声明导致 additionalProperties 拒绝）
     cc: { ...emailArray },
   },
 }
