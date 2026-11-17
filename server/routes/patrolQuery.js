@@ -293,6 +293,11 @@ export function registerPatrolQueryRoutes(app) {
       ORDER BY g.group_date DESC, g.first_request_time DESC
       LIMIT 500
     `).all(...params)
+    // 产品名（11-17 失败请求列表加「产品」列）：与异常接口列表同源——productNameMap() 单一映射函数
+    const PRODUCT_NAMES = productNameMap()
+    for (const r of rows) {
+      /** @type {{ productKey?: string }} */ (r).productName = PRODUCT_NAMES[String(/** @type {{ productKey?: string }} */ (r).productKey || '')] || /** @type {{ productKey?: string }} */ (r).productKey
+    }
     return { rows }
   })
 
@@ -314,7 +319,7 @@ export function registerPatrolQueryRoutes(app) {
     const g = /** @type {{first_request_id: string, suppressed_request_ids: string, pool_name: string, request_id?: string}} */ (group)
     const ids = [g.first_request_id, ...safeParseIds(g.suppressed_request_ids)]
     const reqQuery = db.prepare(`
-      SELECT request_id, request_time, is_success, duration_ms, error_message
+      SELECT request_id, request_time, end_time, is_success, duration_ms, error_message
       FROM api_patrol_requests WHERE request_id = ?
     `)
     for (const rid of ids) {

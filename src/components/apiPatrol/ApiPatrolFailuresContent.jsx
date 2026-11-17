@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Typography } from 'antd'
+import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Typography, Collapse } from 'antd'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiClient.js'
@@ -147,6 +147,14 @@ export default function ApiPatrolFailures() {
 
   /** @type {any[]} */
   const interfaceColumns = useMemo(() => [
+    // 数据日期（11-17）：单日=该日；跨日合并行=statDates 多值（区间展示）
+    { title: '数据日期', dataIndex: 'statDates', key: 'statDates', width: 110, ellipsis: true,
+      render: (v) => {
+        const dates = Array.isArray(v) ? v.filter(Boolean) : []
+        if (dates.length === 0) return '—'
+        if (dates.length === 1) return dates[0]
+        return `${dates[0]} ~ ${dates[dates.length - 1]}`
+      } },
     { title: '产品', dataIndex: 'productName', key: 'productName', width: 110, ellipsis: true,
       render: (v, record) => v || record.productKey || '—' },
     { title: '资源池', dataIndex: 'pool', key: 'pool', width: 120, ellipsis: true },
@@ -189,6 +197,9 @@ export default function ApiPatrolFailures() {
       ),
     },
     { title: '指标名称', dataIndex: 'metricName', key: 'metricName', width: 120, fixed: 'left' },
+    { title: '数据日期', dataIndex: 'groupDate', key: 'groupDate', width: 110 },
+    { title: '产品', dataIndex: 'productName', key: 'productName', width: 110, ellipsis: true,
+      render: (v, record) => v || record.productKey || '—' },
     { title: '接口名称', dataIndex: 'apiPath', key: 'apiPath', width: 200, ellipsis: true },
     { title: '资源池', dataIndex: 'poolName', key: 'poolName', width: 100, ellipsis: true },
     { title: '客户名称', dataIndex: 'userName', key: 'userName', width: 130, ellipsis: true,
@@ -351,7 +362,7 @@ export default function ApiPatrolFailures() {
                     loading={loadingGroups}
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
-                    scroll={{ x: 1210 }}
+                    scroll={{ x: 1430 }}
                   />
                 </>
               ),
@@ -387,6 +398,8 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
   const [submitting, setSubmitting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmSubmit, setConfirmSubmit] = useState(true)
+  // 压缩前全部记录：默认收起（11-17 拍板）
+  const [allRecordsOpen, setAllRecordsOpen] = useState([])
   const group = data?.group
   const diagnosis = data?.diagnosis
   const requests = data?.requests || []
@@ -492,6 +505,33 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
               </Space>
             </div>
           )}
+
+          {/* 压缩前全部记录（11-17）：展开收起，默认收起；分页 10 条/页。数据=组首条+被压缩全部请求。 */}
+          <Collapse
+            activeKey={allRecordsOpen}
+            onChange={(keys) => setAllRecordsOpen(Array.isArray(keys) ? keys : [keys])}
+            items={[{
+              key: 'allRecords',
+              label: `压缩前全部记录（${requests.length} 条）`,
+              children: requests.length > 0 ? (
+                <Table
+                  rowKey="requestId"
+                  size="small"
+                  dataSource={requests}
+                  pagination={{ pageSize: 10, showSizeChanger: false, showTotal: paginationShowTotal }}
+                  columns={[
+                    { title: 'RequestID', dataIndex: 'requestId', key: 'requestId', width: 260, ellipsis: true },
+                    { title: '开始时间', dataIndex: 'requestTime', key: 'requestTime', width: 160 },
+                    // 结束时间：ELB 行有值；EIP 行原始 CSV 无此列恒 null → 显示 —
+                    { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160,
+                      render: (v) => v || '—' },
+                  ]}
+                />
+              ) : (
+                <Typography.Text type="secondary">（无压缩前请求明细）</Typography.Text>
+              ),
+            }]}
+          />
         </Space>
       )}
 
