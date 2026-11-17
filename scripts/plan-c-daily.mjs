@@ -275,23 +275,38 @@ async function runPlanCDiagnose(db, dataDate) {
     const firstTime = new Date(String(g.first_request_time).replace(' ', 'T'))
     const base = Number.isFinite(firstTime.getTime()) ? firstTime : new Date()
     const productName = MCP_PRODUCT_NAMES[String(g.product_key || '')] || 'fip/vpc'
+    // 11-17 实测：filter 含连字符（reqId- 前缀）触发下游 412——剥前缀只传 hex 段
+    const filterKeyword = String(g.first_request_id || '').replace(/^reqId-/, '')
     const res = await callMcpTool(
       { mcpEndpoint: MCP_ENDPOINT, mcpToken: MCP_TOKEN },
       {
         startTime: fmt(base, -30), endTime: fmt(base, 30),
-        productName, poolName: g.pool_name, filter: g.first_request_id,
+        productName, poolName: g.pool_name, filter: filterKeyword,
       },
     )
     if (!res.ok) return false
     const isElb = g.product_key === 'slb'
     const text = extractDiagnosticText(res.text, '', isElb)
-    const classified = classifyPatrolRootCause(text, rules)
+    let classified = classifyPatrolRootCause(text, rules)
+    // 11-17 LLM 语义兜底：规则未命中（兜底）且文本非空 → LLM 从 7 类枚举选择；
+    // 判不出保持其他/未归类（宁缺毋滥）。l2 标注 LLM 来源。
+    if (classified.l1 === '其他/未归类' && text) {
+      const { classifyRootCauseByLlm } = await import('../server/patrolRootCauseLlmClassifier.js')
+      const llm = await classifyRootCauseByLlm(text)
+      if (llm.byLlm) {
+        classified = { ...classified, l1: llm.l1, l2: 'LLM语义判定' }
+        log('diagnose', `组 #${g.id} 规则未命中 → LLM 判「${llm.l1}」`)
+      }
+    }
+    // 11-17 处理建议（诊断结果五段之一）：LLM 基于结论+日志生成；失败 null 不阻塞主链
+    const { generateDiagnosisSuggestion } = await import('../server/patrolDiagnosisSuggestion.js')
+    const suggestion = await generateDiagnosisSuggestion(text, text, classified.l1)
     const now = new Date().toISOString()
     db.prepare('DELETE FROM api_patrol_diagnoses WHERE failure_group_id=?').run(g.id)
     db.prepare(`
-      INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, diagnosed_at)
-      VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?)
-    `).run(g.id, g.first_request_id, res.text, text || null, classified.l1, classified.l2, now)
+      INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, diagnosed_at)
+      VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?)
+    `).run(g.id, g.first_request_id, res.text, text || null, classified.l1, classified.l2, suggestion, now)
     db.prepare(`
       UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
     `).run(classified.l1, classified.l2, classified.productAction, now, g.id)
@@ -417,7 +432,7 @@ function buildPackage(db, dataDate) {
   // groups：当日新组 + 近 7 天诊断成功的历史 pending 组 + 收敛组（事实有变化的都要推）
   const windowStart = localDateStr(new Date(Date.now() - DIAGNOSIS_RETRY_WINDOW_DAYS * 24 * 3600 * 1000))
   const groups = /** @type {any[]} */ (db.prepare(`
-    SELECT g.*, d.final_conclusion, d.status AS diag_status
+    SELECT g.*, d.final_conclusion, d.suggestion, d.status AS diag_status
     FROM api_patrol_failure_groups g
     LEFT JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
     WHERE g.group_date = ? OR (g.group_date >= ? AND g.updated_at >= datetime('now', '-2 days'))
@@ -432,6 +447,7 @@ function buildPackage(db, dataDate) {
       customerType: r.customer_type,
       rootCauseL1: r.root_cause_l1, rootCauseL2: r.root_cause_l2,
       finalConclusion: r.final_conclusion,
+      suggestion: r.suggestion,
       diagnosisStatus: r.product_action_status === '—' && r.root_cause_l1 === '诊断能力缺口'
         ? 'converged'
         : (r.diag_status === 'success' ? 'success' : 'failed'),

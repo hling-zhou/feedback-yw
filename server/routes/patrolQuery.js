@@ -14,6 +14,7 @@ import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConf
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
 import { productNameMap } from '../patrolReportBuilder.js'
+import { cleanLogLine } from '../patrolRootCauseClassifier.js'
 import {
   readPatrolReportConfig,
   readPatrolReportState,
@@ -309,10 +310,12 @@ export function registerPatrolQueryRoutes(app) {
     const group = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE id=?`).get(id)
     if (!group) return reply.code(404).send({ error: '组不存在' })
     const diag = db.prepare(`
-      SELECT request_id, status, tool_name, mcp_raw_response, final_conclusion,
+      SELECT request_id, status, tool_name, mcp_raw_response, final_conclusion, suggestion,
              root_cause_l1, root_cause_l2, diagnosed_at
       FROM api_patrol_diagnoses WHERE failure_group_id=? ORDER BY id DESC LIMIT 1
     `).get(id)
+    // 诊断结果五段（11-17 拍板：结论/失败组信息/直接原因/关键证据/处理建议——服务端切分单源）
+    const diagnosisReport = diag ? buildDiagnosisReport(group, diag) : null
     // 被压缩请求明细：从 suppressed_request_ids 展开
     /** @type {Array<Record<string, unknown>>} */
     const detailRows = []
@@ -329,6 +332,7 @@ export function registerPatrolQueryRoutes(app) {
     return {
       group: rowToCamel(group),
       diagnosis: diag ? rowToCamel(diag) : null,
+      diagnosisReport,
       requests: detailRows.map((r) => rowToCamel(r)),
     }
   })
@@ -784,5 +788,59 @@ function safeParseIds(json) {
     return Array.isArray(parsed) ? parsed.map(String) : []
   } catch {
     return []
+  }
+}
+
+/**
+ * 诊断结果五段（11-17 拍板：诊断结论/失败组信息/直接原因/关键证据/处理建议）。
+ * 服务端切分单源——前端只渲染不重算（同源判定纪律）。
+ * - 失败组信息段按方案 A 不重复输出（抽屉顶部 Descriptions 已全量展示）——
+ *   此处 failureFacts 仅出精简速览行（接口/池/客户）。
+ * - 直接原因：日志 ERROR/WARN 原文行（默认收起，前端双层展开）+「返回:」片段提取。
+ * - 关键证据：行级清洗后的证据句（cleanLogLine 与分类器同源）+ errorMessage/errorCode 片段。
+ * @param {Record<string, any>} group groups 行（snake_case 原始行）
+ * @param {Record<string, any>} diag diagnoses 行
+ */
+function buildDiagnosisReport(group, diag) {
+  const conclusion = String(diag.final_conclusion || '').trim() || null
+  const suggestion = String(diag.suggestion || '').trim() || null
+  /** @type {{logLines: string[], returnFragments: string[], rawCount: number}} */
+  const directCause = { logLines: [], returnFragments: [], rawCount: 0 }
+  /** @type {string[]} */
+  const evidence = []
+  const raw = String(diag.mcp_raw_response || '')
+  try {
+    const d = JSON.parse(raw)
+    if (d?.code === '0000' && Array.isArray(d?.data?.records)) {
+      const lines = d.data.records.map((r) => String(r?.content || '').trim()).filter(Boolean)
+      directCause.rawCount = lines.length
+      const errLines = lines.filter((l) => /\[\s*(ERROR|WARN|FATAL)\s*\]/.test(l))
+      for (const l of (errLines.length > 0 ? errLines : lines).slice(0, 10)) {
+        // 直接原因：核心行原文（每行截 300 字——98k 堆栈行防吞内存）
+        directCause.logLines.push(l.slice(0, 300))
+        // 返回体片段：「调X服务返回：<200,…」类形态行内提取
+        const rm = /返回[:：]\s*(<\d{3}[^)）]{0,150}|[A-Z0-9_]{3,})/.exec(l)
+        if (rm) directCause.returnFragments.push(rm[0].slice(0, 160))
+        // 关键证据：清洗后语义句
+        const cleaned = cleanLogLine(l)
+        if (cleaned) evidence.push(cleaned.slice(0, 200))
+        const em = /errorMessage=([^,\]]*)/.exec(l)
+        if (em && em[1] && em[1] !== 'null') evidence.push(`errorMessage=${em[1].slice(0, 120)}`)
+        const ec = /errorCode=([^,\]]*)/.exec(l)
+        if (ec && ec[1] && ec[1] !== 'null') evidence.push(`errorCode=${ec[1]}`)
+      }
+    }
+  } catch { /* 非 JSON 原文——直接原因留空，结论照常 */ }
+  return {
+    conclusion,
+    failureFacts: {
+      apiPath: String(group.api_path || ''),
+      poolName: String(group.pool_name || ''),
+      userName: String(group.user_name || ''),
+      metricName: String(group.metric_name || ''),
+    },
+    directCause,
+    evidence: [...new Set(evidence)].slice(0, 10),
+    suggestion,
   }
 }
