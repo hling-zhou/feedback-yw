@@ -10,7 +10,8 @@ vi.mock('../lib/postUseJiraClient.js', () => ({
   deletePostUseJiraItem: vi.fn(),
   deletePostUseJiraItems: vi.fn(),
   listAssignees: vi.fn(async () => []),
-  listPostUseJiraItems: vi.fn(async () => ({ items: [] })),
+  listAllPostUseJiraItems: vi.fn(async () => []),
+  importPostUseJiraItems: vi.fn(),
   patchPostUseJiraItem: vi.fn(),
 }))
 
@@ -34,5 +35,6 @@ describe('PostUseJiraTab 工具条卡片内嵌形态', () => {
     expect(html).not.toContain('page-sticky-chrome')
     // 灰底不得用于工具条背景
     expect(html).not.toContain('bg-ink-50')
+    expect(html).toContain('临时导入')
   })
 })

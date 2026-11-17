@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Alert,
   Button,
   Form,
+  Modal,
   Popconfirm,
   Space,
   Table,
@@ -10,15 +12,17 @@ import {
   Typography,
   message,
 } from 'antd'
-import { DeleteOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   deletePostUseJiraItem,
   deletePostUseJiraItems,
+  importPostUseJiraItems,
   listAssignees,
-  listPostUseJiraItems,
+  listAllPostUseJiraItems,
   patchPostUseJiraItem,
 } from '../lib/postUseJiraClient.js'
 import { downloadPostUseJiraExcel } from '../lib/postUseRating/postUseJiraExport.js'
+import { parsePostUseJiraImportWorkbook } from '../lib/postUseRating/postUseJiraImport.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useColumnResize } from '../hooks/useColumnResize.js'
 import { sumColumnsWidth } from '../lib/columnWidths.js'
@@ -54,7 +58,6 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
   const { can, user } = useAuth()
   const canEdit = can('editRecord')
   const [items, setItems] = useState([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
@@ -62,6 +65,9 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [assignees, setAssignees] = useState([])
+  const [importPreview, setImportPreview] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const importInputRef = useRef(/** @type {HTMLInputElement | null} */ (null))
   const [form] = Form.useForm()
   const stickyChromeRef = useRef(/** @type {HTMLDivElement | null} */ (null))
   const [stickyChromeHeight, setStickyChromeHeight] = useState(0)
@@ -76,13 +82,11 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
     return () => ro.disconnect()
   }, [])
 
-  // 一次性拉取 ≤500 条 + 前端过滤分页（用户拍板：视图 2 跟随当前周期）
+  // 全量拉取后按当前周期过滤分页；临时导入也可能让总量超过单页接口的 500 条上限。
   const load = async () => {
     setLoading(true)
     try {
-      const res = await listPostUseJiraItems({ limit: 500 })
-      setItems(res?.items || [])
-      setTotal(Number(res?.total) || 0)
+      setItems(await listAllPostUseJiraItems())
     } catch (error) {
       message.error(error?.message || '加载产品部溯源失败')
     } finally {
@@ -275,6 +279,43 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
 
   const [exporting, setExporting] = useState(false)
 
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      message.error('导入文件不能超过 5 MB')
+      return
+    }
+    try {
+      const preview = parsePostUseJiraImportWorkbook(await file.arrayBuffer())
+      if (!preview.items.length && !preview.errors.length) {
+        message.warning('表中没有可导入的记录')
+        return
+      }
+      setImportPreview(preview)
+    } catch (error) {
+      message.error(error?.message || '读取导入文件失败')
+    }
+  }
+
+  const handleImportConfirm = async () => {
+    if (!importPreview?.items.length || importPreview.errors.length) return
+    setImporting(true)
+    try {
+      const result = await importPostUseJiraItems(importPreview.items)
+      setImportPreview(null)
+      setSelectedRowKeys([])
+      setPage(1)
+      await load()
+      message.success(`导入完成：新增 ${result.created} 条，更新 ${result.updated} 条，未变化 ${result.unchanged} 条，新增举措 ${result.actionsCreated} 条`)
+    } catch (error) {
+      message.error(error?.message || '产品部溯源导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleExport = async () => {
     if (!filteredItems.length) {
       message.info('当前筛选范围内无数据')
@@ -314,6 +355,20 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
             >
               导出
             </Button>
+            {canEdit ? (
+              <>
+                <Button icon={<DownloadOutlined />} onClick={() => importInputRef.current?.click()}>
+                  临时导入
+                </Button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+              </>
+            ) : null}
             {canEdit ? (
               <Popconfirm
                 title={`确定删除选中的 ${selectedRowKeys.length} 条？`}
@@ -380,6 +435,41 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         onSave={(mode) => void saveEdit(mode)}
         onActionOwnerSaved={handleActionOwnerSaved}
       />
+      <Modal
+        title="临时导入产品部溯源"
+        open={Boolean(importPreview)}
+        onCancel={() => setImportPreview(null)}
+        onOk={() => void handleImportConfirm()}
+        okText="确认导入"
+        okButtonProps={{ disabled: !importPreview?.items.length || Boolean(importPreview?.errors.length) }}
+        confirmLoading={importing}
+        closable={!importing}
+        keyboard={!importing}
+        mask={{ closable: !importing }}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
+          使用本页导出的 14 列 Excel。相同记录按月份、客户、产品及投诉工单匹配并更新；缺失记录新增。表中状态、经办人和回溯结果会写入，确立举措会关联到举措库。
+        </Typography.Paragraph>
+        {importPreview ? (
+          <>
+            <Alert
+              type={importPreview.errors.length ? 'error' : 'info'}
+              showIcon
+              message={`识别到 ${importPreview.items.length} 条记录${importPreview.errors.length ? `，${importPreview.errors.length} 行有误` : ''}`}
+              description={importPreview.errors.length ? '请修正错误后重新选择文件；存在错误时不会写入任何记录。' : '确认后将写入反馈库。'}
+            />
+            {importPreview.errors.length ? (
+              <ul className="mt-3 max-h-48 list-disc overflow-auto pl-5 text-sm text-red-600">
+                {importPreview.errors.slice(0, 20).map((error, index) => (
+                  <li key={`${error.row}-${index}`}>第 {error.row} 行：{error.message}</li>
+                ))}
+                {importPreview.errors.length > 20 ? <li>另有 {importPreview.errors.length - 20} 行错误</li> : null}
+              </ul>
+            ) : null}
+          </>
+        ) : null}
+      </Modal>
     </div>
   )
 }

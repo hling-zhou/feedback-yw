@@ -1,6 +1,7 @@
 import { requirePermission } from '../middleware.js'
 import { hasPermission } from '../../src/domain/auth/permissions.js'
 import { pickPostUseJiraEditablePatch } from '../../src/domain/postUseJira.js'
+import { validatePostUseJiraImportItems } from '../../src/lib/postUseRating/postUseJiraImport.js'
 import { logAuditFromRequest } from '../audit.js'
 import {
   postUseCallbackDecisionRepository,
@@ -93,6 +94,31 @@ export function registerPostUseJiraRoutes(app) {
       count: saved.length,
     })
     return { items: saved }
+  })
+
+  app.post('/api/post-use-jira/import', { bodyLimit: 5 * 1024 * 1024 }, async (request, reply) => {
+    if (!assertEditRecordPermission(request, reply)) return
+    const body = /** @type {{ items?: Record<string, unknown>[] }} */ (request.body || {})
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 2000) {
+      reply.code(400)
+      return { error: '请提交 1 至 2000 条产品部溯源记录' }
+    }
+    const checked = validatePostUseJiraImportItems(body.items)
+    if (checked.errors.length) {
+      reply.code(400)
+      return { error: '导入表存在无效行', errors: checked.errors }
+    }
+    try {
+      const result = postUseJiraRepository.importMany(checked.items, request.user)
+      logAuditFromRequest(request, 'post_use_jira.import', result)
+      return result
+    } catch (error) {
+      const reason = String(error?.message || '')
+      const userError = /第 \d+ 行|经办人「/.test(reason)
+      request.log.error({ error }, 'post_use_jira import failed')
+      reply.code(userError ? 400 : 500)
+      return { error: userError ? reason : '产品部溯源导入失败，请稍后重试' }
+    }
   })
 
   app.patch('/api/post-use-jira/:id', async (request, reply) => {

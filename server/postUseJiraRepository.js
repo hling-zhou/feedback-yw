@@ -8,6 +8,9 @@ import {
 import { bumpDataRevision } from './dataRevision.js'
 import { getDb } from './db.js'
 import { normalizePostUseActionIds, withPostUseActionIds } from '../src/domain/postUseActions.js'
+import { validateActionItemCreate } from '../src/domain/actionItem.js'
+import { postUseJiraImportItemKey } from '../src/lib/postUseRating/postUseJiraImport.js'
+import { actionItemRepository } from './actionItemRepository.js'
 
 function parseJson(text) {
   return JSON.parse(text)
@@ -270,6 +273,146 @@ export const postUseJiraRepository = {
     for (const item of saved) this.clearTraceDecisionsForDeletedItem(item.itemKey)
     if (saved.length) bumpDataRevision()
     return saved
+  },
+
+  /**
+   * 回导本视图的 Excel：按生产方 itemKey 更新，兼容旧键时按月份×客户×产品精确匹配。
+   * 基础字段和新举措在同一事务内写入；已有举措关联不会因空单元格被删除。
+   * @param {Array<Record<string, any>>} rows 已通过 validatePostUseJiraImportItems 校验的行
+   * @param {{ id: string, username: string, displayName?: string }} editor
+   */
+  importMany(rows, editor) {
+    const db = getDb()
+    const users = db.prepare("SELECT id, username, display_name FROM users WHERE status = 'active'").all()
+    const existingItems = this.list({ limit: 0 }).items
+    const insert = db.prepare(
+      `INSERT INTO post_use_jira_items
+       (id, item_key, import_month, customer_name, customer_code, product_name, status, assignee_id, assignee_name, updated_at, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    const update = db.prepare(
+      `UPDATE post_use_jira_items
+       SET import_month = ?, customer_name = ?, customer_code = ?, product_name = ?, status = ?,
+           assignee_id = ?, assignee_name = ?, updated_at = ?, payload = ? WHERE id = ?`,
+    )
+    const result = { created: 0, updated: 0, unchanged: 0, actionsCreated: 0 }
+    const importedKeys = []
+
+    const resolveAssigneeId = (name, existing) => {
+      if (!name) return ''
+      const byUsername = users.filter((user) => user.username === name)
+      const matches = byUsername.length ? byUsername : users.filter((user) => user.display_name === name)
+      if (matches.length > 1) throw new Error(`经办人「${name}」对应多个账号，请改用登录账号名`)
+      if (matches.length === 1) return matches[0].id
+      return existing?.assigneeName === name ? existing.assigneeId : ''
+    }
+    const sameMonths = (left, right) =>
+      String(left || '').split('、').sort().join('、') === String(right || '').split('、').sort().join('、')
+
+    const tx = db.transaction(() => {
+      for (const row of rows) {
+        const itemKey = postUseJiraImportItemKey(row)
+        let existing = existingItems.find((item) => item.itemKey === itemKey)
+        if (!existing) {
+          const matches = existingItems.filter((item) =>
+            sameMonths(item.importMonth, row.importMonth)
+            && item.productName === row.productName
+            && (row.customerCode ? item.customerCode === row.customerCode : item.customerName === row.customerName)
+            && item.originalTicketId === row.originalTicketId,
+          )
+          if (matches.length > 1) throw new Error(`第 ${row.rowNumber} 行匹配到多条现有记录，请先核对身份字段`)
+          existing = matches[0]
+        }
+        const now = nowIso()
+        const assigneeId = resolveAssigneeId(row.assigneeName, existing)
+        const fields = {
+          importMonth: row.importMonth,
+          customerName: row.customerName,
+          customerCode: row.customerCode,
+          loginAccountName: row.loginAccountName,
+          productName: row.productName,
+          customerFeedback: row.customerFeedback,
+          recommendedReason: row.recommendedReason,
+          originalTicketId: row.originalTicketId,
+          scoreSource: row.originalTicketId ? '投诉回访' : (existing?.scoreSource || ''),
+          assigneeId,
+          assigneeName: row.assigneeName,
+          status: row.status,
+          progress: row.progress,
+        }
+        const changed = !existing || Object.entries(fields).some(([key, value]) => existing[key] !== value)
+        let saved
+        if (existing) {
+          if (changed) {
+            saved = {
+              ...existing,
+              ...fields,
+              updatedAt: now,
+              progressEditMeta: fields.progress !== existing.progress
+                ? { userId: editor.id, username: editor.username, displayName: editor.displayName || '', editedAt: now }
+                : existing.progressEditMeta,
+            }
+            update.run(
+              saved.importMonth, saved.customerName, saved.customerCode, saved.productName,
+              saved.status, saved.assigneeId, saved.assigneeName, saved.updatedAt,
+              stringifyJson(saved), saved.id,
+            )
+            result.updated += 1
+          } else {
+            saved = existing
+            result.unchanged += 1
+          }
+        } else {
+          saved = normalizeJiraItem({
+            itemKey,
+            sourceType: row.originalTicketId ? 'callback_non_ten' : 'questionnaire',
+            ...fields,
+            progressEditMeta: row.progress
+              ? { userId: editor.id, username: editor.username, displayName: editor.displayName || '', editedAt: now }
+              : null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          insert.run(
+            saved.id, saved.itemKey, saved.importMonth, saved.customerName, saved.customerCode,
+            saved.productName, saved.status, saved.assigneeId, saved.assigneeName,
+            saved.updatedAt, stringifyJson(saved),
+          )
+          existingItems.push(saved)
+          result.created += 1
+        }
+        importedKeys.push(saved.itemKey)
+
+        const linked = new Set(saved.actionIds.map((id) => {
+          const action = actionItemRepository.getActionItem(id)
+          return action ? [action.content, action.detail, action.scheduleAt].join('\0') : ''
+        }))
+        for (const action of row.actions) {
+          const identity = [action.content, action.detail, action.scheduleAt].join('\0')
+          if (linked.has(identity)) continue
+          const validated = validateActionItemCreate({
+            productKey: row.productName,
+            productName: row.productName,
+            source: 'post_use',
+            content: action.content,
+            detail: action.detail,
+            scheduleAt: action.scheduleAt,
+          })
+          if (!validated.ok) throw new Error(`第 ${row.rowNumber} 行举措无效：${validated.error}`)
+          const created = actionItemRepository.putActionItem(validated.item, {
+            actor: { userId: editor.id, username: editor.username },
+          })
+          this.updateActionLink(saved.id, created.id, 'add', editor)
+          linked.add(identity)
+          result.actionsCreated += 1
+        }
+      }
+    })
+    tx()
+    // 与 archiveMany 相同：完成归档后清理建议回访清单的勾选态。
+    for (const itemKey of importedKeys) this.clearTraceDecisionsForDeletedItem(itemKey)
+    if (result.created || result.updated || result.actionsCreated) bumpDataRevision()
+    return result
   },
 
   /**

@@ -328,4 +328,111 @@ describeApi('post-use jira API', () => {
     // 省代表回访维度不被归档触碰
     expect(byKey.get('q:C9:云监控:2026-10')?.needCustomerVisit).toBe(true)
   })
+
+  it('回导 Excel 记录可新增、更新且重导不会重复创建记录或举措', async () => {
+    const record = {
+      rowNumber: 2,
+      importMonth: '2026-11',
+      customerName: '导入测试客户',
+      customerCode: 'C-IMPORT-UNIQUE',
+      loginAccountName: '',
+      productName: '云专线',
+      customerFeedback: '反馈内容',
+      recommendedReason: '需回溯',
+      originalTicketId: '',
+      assigneeName: 'jira_editor',
+      status: '处理中',
+      progress: '正在排查',
+      actions: [{ content: '增加告警规则', detail: '覆盖误报场景', scheduleAt: '' }],
+    }
+    const send = (items) => app.inject({
+      method: 'POST',
+      url: '/api/post-use-jira/import',
+      headers: authHeader('editor'),
+      payload: { items },
+    })
+
+    const created = await send([record])
+    expect(created.statusCode).toBe(200)
+    expect(created.json()).toMatchObject({ created: 1, updated: 0, actionsCreated: 1 })
+    const first = await app.inject({ method: 'GET', url: '/api/post-use-jira?limit=500', headers: authHeader('editor') })
+    const item = first.json().items.find((entry) => entry.customerCode === record.customerCode)
+    expect(item).toMatchObject({
+      itemKey: 'q:C-IMPORT-UNIQUE:云专线:2026-11',
+      status: '处理中',
+      progress: '正在排查',
+      assigneeName: 'jira_editor',
+    })
+    expect(item.assigneeId).toBeTruthy()
+    expect(item.actionIds).toHaveLength(1)
+
+    const repeated = await send([record])
+    expect(repeated.statusCode).toBe(200)
+    expect(repeated.json()).toMatchObject({ created: 0, updated: 0, unchanged: 1, actionsCreated: 0 })
+
+    const changed = await send([{ ...record, status: '已处理', progress: '排查完毕' }])
+    expect(changed.statusCode).toBe(200)
+    expect(changed.json()).toMatchObject({ created: 0, updated: 1, actionsCreated: 0 })
+    const final = await app.inject({ method: 'GET', url: '/api/post-use-jira?limit=500', headers: authHeader('editor') })
+    const matches = final.json().items.filter((entry) => entry.customerCode === record.customerCode)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toMatchObject({ id: item.id, status: '已处理', progress: '排查完毕' })
+    expect(matches[0].actionIds).toEqual(item.actionIds)
+
+    const rejected = await send([{ ...record, rowNumber: 3, status: '未知状态' }])
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.json().errors[0]).toMatchObject({ row: 3 })
+
+    const atomicCode = 'C-IMPORT-ATOMIC-UNIQUE'
+    const mixed = await send([
+      { ...record, rowNumber: 4, customerCode: atomicCode },
+      { ...record, rowNumber: 5, customerCode: 'C-IMPORT-INVALID-UNIQUE', status: '未知状态' },
+    ])
+    expect(mixed.statusCode).toBe(400)
+    const afterMixed = await app.inject({ method: 'GET', url: '/api/post-use-jira?limit=500', headers: authHeader('editor') })
+    expect(afterMixed.json().items.some((entry) => entry.customerCode === atomicCode)).toBe(false)
+  })
+
+  it('回导时兼容无月份的旧归档键，保留原记录 ID', async () => {
+    const legacy = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-jira',
+      headers: authHeader('editor'),
+      payload: { items: [{
+        itemKey: 'q:C-LEGACY-IMPORT:云监控',
+        importMonth: '2026-08',
+        customerName: '旧键客户',
+        customerCode: 'C-LEGACY-IMPORT',
+        productName: '云监控',
+      }] },
+    })
+    expect(legacy.statusCode).toBe(200)
+    const oldId = legacy.json().items[0].id
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/post-use-jira/import',
+      headers: authHeader('editor'),
+      payload: { items: [{
+        rowNumber: 2,
+        importMonth: '2026-08',
+        customerName: '旧键客户',
+        customerCode: 'C-LEGACY-IMPORT',
+        loginAccountName: '',
+        productName: '云监控',
+        customerFeedback: '回导更新',
+        recommendedReason: '',
+        originalTicketId: '',
+        assigneeName: '',
+        status: '已处理',
+        progress: '完成排查',
+        actions: [],
+      }] },
+    })
+    expect(imported.statusCode).toBe(200)
+    expect(imported.json()).toMatchObject({ created: 0, updated: 1 })
+    const listed = await app.inject({ method: 'GET', url: '/api/post-use-jira?limit=500', headers: authHeader('editor') })
+    const matches = listed.json().items.filter((item) => item.customerCode === 'C-LEGACY-IMPORT')
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toMatchObject({ id: oldId, itemKey: 'q:C-LEGACY-IMPORT:云监控', status: '已处理' })
+  })
 })

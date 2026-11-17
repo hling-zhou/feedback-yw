@@ -74,6 +74,14 @@ export function archivePostUseJiraItems(items) {
   })
 }
 
+/** @param {Array<Record<string, unknown>>} items */
+export function importPostUseJiraItems(items) {
+  return apiFetch('/api/post-use-jira/import', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
+}
+
 /**
  * 省代表回访"已纳入"标记（2026-11-04 需求8）：导出/发送成功后按 itemKey 标记，不可逆。
  * @returns {Promise<{ items: Array<{ itemKey: string; sourceType?: string; dispatchedVia?: string; dispatchedAt?: string }> }>}
