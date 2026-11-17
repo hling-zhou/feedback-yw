@@ -1,6 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { StaticRouter } from 'react-router'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url'
  * API 巡检溯源页真渲染冒烟测试（M6）。
  * renderToStaticMarkup 真渲染——挂载即炸直接红；useEffect 不执行（数据拉取不触发）。
  * 断言锚定页面独有文案（防与导航/Tab label 撞名恒绿——11-04 教训）。
+ * 路由包裹用 react-router-dom 的 MemoryRouter——组件消费 useSearchParams（react-router-dom），
+ * 包裹源必须同库（11-12 2e2ec12 起 StaticRouter/react-router 与 hook 不同源，真渲染全红 5 天未察觉）。
  */
 
 vi.mock('../context/AuthContext.jsx', () => ({
@@ -27,9 +29,9 @@ vi.mock('../lib/apiClient.js', () => ({
 import ApiPatrolFailures from './ApiPatrolFailures.jsx'
 
 const renderPage = (search = '') => renderToStaticMarkup(
-  <StaticRouter location={`/api-patrol/failures${search}`}>
+  <MemoryRouter initialEntries={[`/api-patrol/failures${search}`]}>
     <ApiPatrolFailures />
-  </StaticRouter>,
+  </MemoryRouter>,
 )
 
 describe('ApiPatrolFailures 真渲染冒烟', () => {
@@ -57,11 +59,37 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(interfaces).toContain('成功率')
     expect(interfaces).toContain('总次数')
     expect(interfaces).toContain('失败次数')
+    expect(interfaces).toContain('数据日期')   // 11-17 两表新增
     const groups = renderPage('?rootCauseL1=业务冲突')
     expect(groups).toContain('压缩前失败次数')
     expect(groups).not.toContain('压缩前次数')
     expect(groups).toContain('产品侧处理状态')
     expect(groups).toContain('资源池')
+    expect(groups).toContain('产品')           // 11-17 失败请求列表新增
+  })
+
+  it('数据日期/产品列契约（源码正则，11-17）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // 异常接口列表：数据日期列（statDates 跨日合并展示）
+    expect(src).toMatch(/title: '数据日期', dataIndex: 'statDates'/)
+    // 失败请求列表：数据日期列 + 产品列（productName 映射 productKey 兜底）
+    expect(src).toMatch(/title: '数据日期', dataIndex: 'groupDate'/)
+    expect(src).toMatch(/title: '产品', dataIndex: 'productName'/)
+  })
+
+  it('详情抽屉压缩前全部记录模块契约（源码正则，11-17）：默认收起 Collapse + 三列分页 10', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // 模块标题（Collapse header 独有文案——抽屉外无此词，防撞名）
+    expect(src).toMatch(/压缩前全部记录/)
+    // 默认收起（Collapse activeKey 受控初值空数组）
+    expect(src).toMatch(/allRecordsOpen[\s\S]{0,80}useState\(\[\]\)/)
+    // 三列：RequestID / 开始时间 / 结束时间
+    expect(src).toMatch(/title: '开始时间', dataIndex: 'requestTime'/)
+    expect(src).toMatch(/title: '结束时间', dataIndex: 'endTime'/)
+    // 分页每页 10 条 + 小尺寸
+    expect(src).toMatch(/pageSize: 10/)
   })
 
   it('失败请求列表列契约（源码正则）：资源池列在前两列固定+压缩前失败次数（11-11 拍板）', () => {
