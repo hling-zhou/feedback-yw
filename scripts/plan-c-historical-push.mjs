@@ -113,8 +113,10 @@ async function runDiagnose(db, dataDate) {
     const base = Number.isFinite(firstTime.getTime()) ? firstTime : new Date()
     const productName = MCP_PRODUCT_NAMES[String(g.product_key || '')] || 'fip/vpc'
     try {
+      // 11-17：filter 剥 reqId- 前缀（连字符触发下游 412）；分页拉全量（单页截断曾致证据丢失）
       const filterKeyword = String(g.first_request_id || '').replace(/^reqId-/, '')
-      const res = await callMcpTool(
+      const { fetchPatrolDiagnosticLogs } = await import('../server/patrolDiagnose.js')
+      const res = await fetchPatrolDiagnosticLogs(
         { mcpEndpoint: MCP_ENDPOINT, mcpToken: MCP_TOKEN },
         { startTime: fmt(base, -30), endTime: fmt(base, 30), productName, poolName: g.pool_name, filter: filterKeyword },
       )
