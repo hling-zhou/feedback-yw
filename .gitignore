@@ -50,3 +50,6 @@ scripts/taxonomy-overrides.json
 vitest.tmp.config.mjs
 playwright.tmp.*.config.js
 .env-plan-c
+
+# Runtime pipeline outputs (docx generation tasks, regeneratable)
+output/
