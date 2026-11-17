@@ -373,7 +373,7 @@ export function registerPatrolQueryRoutes(app) {
     if (!group) return reply.code(404).send({ error: '组不存在' })
     const diag = db.prepare(`
       SELECT request_id, status, tool_name, mcp_raw_response, final_conclusion, suggestion,
-             root_cause_l1, root_cause_l2, diagnosed_at
+             root_cause_l1, root_cause_l2, direct_cause, evidence, root_cause_source, diagnosed_at
       FROM api_patrol_diagnoses WHERE failure_group_id=? ORDER BY id DESC LIMIT 1
     `).get(id)
     // 诊断结果五段（11-17 拍板：结论/失败组信息/直接原因/关键证据/处理建议——服务端切分单源）
@@ -869,30 +869,47 @@ function buildDiagnosisReport(group, diag) {
   /** @type {{logLines: string[], returnFragments: string[], rawCount: number}} */
   const directCause = { logLines: [], returnFragments: [], rawCount: 0 }
   /** @type {string[]} */
-  const evidence = []
+  let evidence = []
   const raw = String(diag.mcp_raw_response || '')
-  try {
-    const d = JSON.parse(raw)
-    if (d?.code === '0000' && Array.isArray(d?.data?.records)) {
-      const lines = d.data.records.map((r) => String(r?.content || '').trim()).filter(Boolean)
-      directCause.rawCount = lines.length
-      const errLines = lines.filter((l) => /\[\s*(ERROR|WARN|FATAL)\s*\]/.test(l))
-      for (const l of (errLines.length > 0 ? errLines : lines).slice(0, 10)) {
-        // 直接原因：核心行原文（每行截 300 字——98k 堆栈行防吞内存）
-        directCause.logLines.push(l.slice(0, 300))
-        // 返回体片段：「调X服务返回：<200,…」类形态行内提取
-        const rm = /返回[:：]\s*(<\d{3}[^)）]{0,150}|[A-Z0-9_]{3,})/.exec(l)
-        if (rm) directCause.returnFragments.push(rm[0].slice(0, 160))
-        // 关键证据：清洗后语义句
-        const cleaned = cleanLogLine(l)
-        if (cleaned) evidence.push(cleaned.slice(0, 200))
-        const em = /errorMessage=([^,\]]*)/.exec(l)
-        if (em && em[1] && em[1] !== 'null') evidence.push(`errorMessage=${em[1].slice(0, 120)}`)
-        const ec = /errorCode=([^,\]]*)/.exec(l)
-        if (ec && ec[1] && ec[1] !== 'null') evidence.push(`errorCode=${ec[1]}`)
+
+  // ---------- 11-17 LLM 结构化产物优先（主路径）：direct_cause/evidence 列（JSON 数组字符串）
+  const llmDirect = safeParseStringArray(diag.direct_cause)
+  const llmEvidence = safeParseStringArray(diag.evidence)
+  if (llmDirect.length > 0) {
+    directCause.logLines = llmDirect.map((l) => l.slice(0, 300))
+    try {
+      const d = JSON.parse(raw)
+      if (d?.code === '0000' && Array.isArray(d?.data?.records)) {
+        directCause.rawCount = d.data.records.length
       }
+    } catch { /* raw 非 JSON（LLM 时代前的旧数据）——rawCount 留 0 */
     }
-  } catch { /* 非 JSON 原文——直接原因留空，结论照常 */ }
+  }
+  if (llmEvidence.length > 0) evidence = llmEvidence.map((e) => e.slice(0, 200))
+
+  // ---------- 降级路径（LLM 未产出 / 旧数据）：从 mcp_raw_response 日志行挑选切分（原逻辑）
+  if (directCause.logLines.length === 0) {
+    try {
+      const d = JSON.parse(raw)
+      if (d?.code === '0000' && Array.isArray(d?.data?.records)) {
+        const lines = d.data.records.map((r) => String(r?.content || '').trim()).filter(Boolean)
+        directCause.rawCount = lines.length
+        const errLines = lines.filter((l) => /\[\s*(ERROR|WARN|FATAL)\s*\]/.test(l))
+        for (const l of (errLines.length > 0 ? errLines : lines).slice(0, 10)) {
+          directCause.logLines.push(l.slice(0, 300))
+          const rm = /返回[:：]\s*(<\d{3}[^)）]{0,150}|[A-Z0-9_]{3,})/.exec(l)
+          if (rm) directCause.returnFragments.push(rm[0].slice(0, 160))
+          const cleaned = cleanLogLine(l)
+          if (cleaned) evidence.push(cleaned.slice(0, 200))
+          const em = /errorMessage=([^,\]]*)/.exec(l)
+          if (em && em[1] && em[1] !== 'null') evidence.push(`errorMessage=${em[1].slice(0, 120)}`)
+          const ec = /errorCode=([^,\]]*)/.exec(l)
+          if (ec && ec[1] && ec[1] !== 'null') evidence.push(`errorCode=${ec[1]}`)
+        }
+      }
+    } catch { /* 非 JSON 原文——直接原因留空，结论照常 */ }
+  }
+
   return {
     conclusion,
     failureFacts: {
@@ -904,5 +921,20 @@ function buildDiagnosisReport(group, diag) {
     directCause,
     evidence: [...new Set(evidence)].slice(0, 10),
     suggestion,
+    // 11-17 根因来源标注（llm=LLM 结构化诊断 / rule=规则引擎 / null=旧数据）
+    rootCauseSource: diag.root_cause_source == null ? null : String(diag.root_cause_source),
+  }
+}
+
+/** JSON 数组字符串安全解析为 string[]（LLM 五段落库形态：direct_cause/evidence 列）。 */
+function safeParseStringArray(v) {
+  const raw = String(v || '').trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(String).filter(Boolean)
+  } catch {
+    return []
   }
 }

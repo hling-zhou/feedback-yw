@@ -74,10 +74,11 @@ describe.skipIf(!sqliteAvailable)('api patrol schema', () => {
     ])
   })
 
-  it('1.4 api_patrol_diagnoses 列结构逐列对拍设计 §2.4', () => {
+  it('1.4 api_patrol_diagnoses 列结构逐列对拍设计 §2.4（11-17 增 suggestion/direct_cause/evidence/root_cause_source）', () => {
     expect(tableColumns('api_patrol_diagnoses')).toEqual([
       'id', 'failure_group_id', 'request_id', 'status', 'tool_name',
       'mcp_raw_response', 'final_conclusion', 'root_cause_l1', 'root_cause_l2',
+      'suggestion', 'direct_cause', 'evidence', 'root_cause_source',
       'diagnosed_at',
     ])
   })

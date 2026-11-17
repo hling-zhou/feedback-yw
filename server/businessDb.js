@@ -415,6 +415,24 @@ function migratePatrolDiagnosesSuggestionColumn(db) {
   }
 }
 
+/**
+ * 11-17 五段结构化列迁移：api_patrol_diagnoses 加 direct_cause/evidence/root_cause_source
+ * （LLM 结构化诊断五段之直接原因/关键证据 + 根因来源标注 llm|rule；存量行默认 NULL）。
+ */
+function migratePatrolDiagnosesFiveSegColumns(db) {
+  const cols = db.prepare('PRAGMA table_info(api_patrol_diagnoses)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('direct_cause')) {
+    db.exec('ALTER TABLE api_patrol_diagnoses ADD COLUMN direct_cause TEXT')
+  }
+  if (!names.has('evidence')) {
+    db.exec('ALTER TABLE api_patrol_diagnoses ADD COLUMN evidence TEXT')
+  }
+  if (!names.has('root_cause_source')) {
+    db.exec("ALTER TABLE api_patrol_diagnoses ADD COLUMN root_cause_source TEXT")
+  }
+}
+
 function migratePostUseJiraAssigneeColumns(db) {
   const cols = db.prepare('PRAGMA table_info(post_use_jira_items)').all()
   const names = new Set(cols.map((c) => c.name))
@@ -981,6 +999,9 @@ export function initBusinessSchema() {
       root_cause_l1 TEXT,
       root_cause_l2 TEXT,
       suggestion TEXT,
+      direct_cause TEXT,
+      evidence TEXT,
+      root_cause_source TEXT,
       diagnosed_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_patrol_diag_group ON api_patrol_diagnoses(failure_group_id);
@@ -989,6 +1010,7 @@ export function initBusinessSchema() {
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
   migratePatrolDiagnosesSuggestionColumn(db)
+  migratePatrolDiagnosesFiveSegColumns(db)
   // 记录变更游标与工单写入同事务提交。触发器覆盖单条、批量、替换和删除入口。
   db.exec(`
     CREATE TABLE IF NOT EXISTS record_changes (

@@ -63,8 +63,8 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
         try { parsed = JSON.parse(body) } catch { parsed = {} }
         const method = String(parsed.method || '')
         if (method === 'tools/call') {
-          const args = /** @type {{ arguments?: { filter?: string, requestId?: string } }} */ (parsed.params || {})
-          const rid = String(args.arguments?.filter || args.arguments?.requestId || '')
+          const params = /** @type {{ name?: string, arguments?: { filter?: string, requestId?: string } }} */ (parsed.params || {})
+          const rid = String(params.arguments?.filter || params.arguments?.requestId || '')
           let result
           if (rid.startsWith('lb-updating')) result = SAMPLE_DIAG_LB_UPDATING
           else if (rid.startsWith('timeout')) {
@@ -95,7 +95,7 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('8.1 JSON-RPC 形态对拍：method=tools/call、name=log_search、arguments 含 filter/时间窗/枚举（真实契约）', async () => {
+  it('8.1 JSON-RPC 形态对拍：method=tools/call、name=log_search_full_param（11-17 分页全量）、arguments 含 filter/时间窗/枚举（真实契约）', async () => {
     const { compressPatrolDay } = await import('./patrolCompress.js')
     const { runPatrolDiagnose } = await import('./patrolDiagnose.js')
     db.prepare(`INSERT INTO api_patrol_requests
@@ -110,7 +110,8 @@ describe.skipIf(!sqliteAvailable)('patrol diagnose (MCP client + task)', () => {
     expect(receivedBodies.length).toBeGreaterThan(0)
     const call = receivedBodies.find((b) => b.method === 'tools/call')
     expect(call).toBeTruthy()
-    expect(/** @type {{params: {name: string}}} */ (call).params.name).toBe('log_search')
+    // 11-17 翻页全量：toolName 从 log_search 换为 log_search_full_param（分页拉全量日志）
+    expect(/** @type {{params: {name: string}}} */ (call).params.name).toBe('log_search_full_param')
     const args = /** @type {{params: {arguments: Record<string, string>}}} */ (call).params.arguments
     expect(args.filter).toBe('diag-1')
     expect(args.productName).toBe('fip/vpc')

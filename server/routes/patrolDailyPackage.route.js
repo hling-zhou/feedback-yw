@@ -127,8 +127,8 @@ function upsertDiagnoses(db, g) {
   const insert = db.prepare(`
     INSERT INTO api_patrol_diagnoses
       (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion,
-       root_cause_l1, root_cause_l2, suggestion, diagnosed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const now = new Date().toISOString()
   const diags = Array.isArray(g.diagnoses) && g.diagnoses.length > 0
@@ -141,6 +141,10 @@ function upsertDiagnoses(db, g) {
       rootCauseL1: g.rootCauseL1 == null ? null : String(g.rootCauseL1),
       rootCauseL2: g.rootCauseL2 == null ? null : String(g.rootCauseL2),
       suggestion: g.suggestion == null ? null : String(g.suggestion),
+      // 11-17 五段结构化（LLM 主路径产物直传——directCause/evidence 为 JSON 数组字符串）
+      directCause: g.directCause == null ? null : String(g.directCause),
+      evidence: g.evidence == null ? null : String(g.evidence),
+      rootCauseSource: g.rootCauseSource == null ? null : String(g.rootCauseSource),
     }]
   for (const d of diags) {
     if (!d || typeof d !== 'object') continue
@@ -154,6 +158,9 @@ function upsertDiagnoses(db, g) {
       d.rootCauseL1 == null ? null : String(d.rootCauseL1),
       d.rootCauseL2 == null ? null : String(d.rootCauseL2),
       d.suggestion == null ? null : String(d.suggestion),
+      d.directCause == null ? null : String(d.directCause),
+      d.evidence == null ? null : String(d.evidence),
+      d.rootCauseSource == null ? null : String(d.rootCauseSource),
       d.diagnosedAt || now,
     )
   }

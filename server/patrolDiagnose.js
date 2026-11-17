@@ -102,6 +102,59 @@ export async function callMcpTool(options, args) {
 }
 
 /**
+ * 诊断日志全量拉取（11-17：分页缺失曾致关键证据截断——失败点常在第 2/3 页）。
+ * log_search_full_param 循环翻页直到取完 total 或达安全上限；
+ * 返回合成 MCP 响应文本（与 log_search 单页同形态：{code:'0000', data:{records, total}}），
+ * 下游 extractDiagnosticText / buildDiagnosisReport 切分逻辑无需改动。
+ * @param {{ mcpEndpoint: string, mcpToken: string, timeoutMs?: number, maxPages?: number, pageSize?: number }} options
+ * @param {{ startTime: string, endTime: string, productName: string, poolName: string, filter: string }} args
+ * @returns {Promise<{ ok: true, text: string, total: number, pagesFetched: number, truncated: boolean } | { ok: false, error: string }>}
+ */
+export async function fetchPatrolDiagnosticLogs(options, args) {
+  const {
+    mcpEndpoint,
+    mcpToken,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxPages = 10,   // 安全上限：500/页 × 10 页 = 5000 行（超大日志截断并标记）
+    pageSize = 100,
+  } = options
+  /** @type {Array<Record<string, unknown>>} */
+  const records = []
+  let total = 0
+  let page = 1
+  let truncated = false
+  for (;;) {
+    const res = await callMcpTool(
+      { mcpEndpoint, mcpToken, toolName: 'log_search_full_param', timeoutMs },
+      { ...args, indexList: [], pageNum: page, pageSize },
+    )
+    if (!res.ok) return { ok: false, error: res.error }
+    /** @type {{ code?: string, data?: { records?: Array<Record<string, unknown>>, total?: number } } | null} */
+    let parsed = null
+    try {
+      parsed = JSON.parse(res.text)
+    } catch {
+      // 非 JSON 原文（诊断文本形态）——单页即全量，原样返回
+      return { ok: true, text: res.text, total: records.length + 1, pagesFetched: page, truncated: false }
+    }
+    if (parsed?.code !== '0000' || !Array.isArray(parsed?.data?.records)) {
+      // 旧诊断文本形态（{final_conclusion,...} 或纯文本）——无分页概念，单页即全量，原样返回
+      return { ok: true, text: res.text, total: 1, pagesFetched: 1, truncated: false }
+    }
+    const batch = parsed.data.records
+    total = Number(parsed.data?.total ?? batch.length) || batch.length
+    records.push(...batch)
+    if (batch.length < pageSize) break          // 末页（不足一页）
+    if (records.length >= total) break           // 取满
+    if (page >= maxPages) { truncated = true; break }  // 安全上限
+    page += 1
+  }
+  // 合成与 log_search 同形态的响应原文（下流切分单源复用）
+  const text = JSON.stringify({ code: '0000', msg: null, tip: '成功', data: { records, total, pageNum: 1, pageSize: records.length, pages: 1, truncated } })
+  return { ok: true, text, total, pagesFetched: page, truncated }
+}
+
+/**
  * 运行某日某池的诊断任务：pending_diagnosis 组 → MCP → 分类回填。
  * @param {{ date: string, pool: string, mcpEndpoint: string, mcpToken: string,
  *   toolName?: string, timeoutMs?: number, concurrency?: number }} options
@@ -153,8 +206,8 @@ export async function runPatrolDiagnose(options) {
   const insertDiag = db.prepare(`
     INSERT INTO api_patrol_diagnoses
       (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion,
-       root_cause_l1, root_cause_l2, diagnosed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const updateGroup = db.prepare(`
     UPDATE api_patrol_failure_groups
@@ -184,8 +237,9 @@ export async function runPatrolDiagnose(options) {
         // 11-17 实测：filter 含连字符（reqId- 前缀）触发下游 412 子查询失败——
         // 剥前缀只传 hex 段可精准命中（诊断内容仍含完整 reqId）。
         const filterKeyword = String(group.first_request_id || '').replace(/^reqId-/, '')
-        const result = await callMcpTool(
-          { mcpEndpoint, mcpToken, toolName, timeoutMs },
+        // 11-17 分页拉全量（log_search_full_param 翻页）——单页截断曾致关键证据丢失
+        const result = await fetchPatrolDiagnosticLogs(
+          { mcpEndpoint, mcpToken, timeoutMs },
           {
             startTime,
             endTime,
@@ -197,7 +251,7 @@ export async function runPatrolDiagnose(options) {
         if (!result.ok) {
           failed += 1
           insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
-            JSON.stringify({ error: result.error }), null, null, null, now)
+            JSON.stringify({ error: result.error }), null, null, null, null, null, null, null, now)
           // 组保持 pending_diagnosis（可重试）
           continue
         }
@@ -205,10 +259,45 @@ export async function runPatrolDiagnose(options) {
         // 分类输入构造：MCP 原文走真实解析链（extractDiagnosticText 支持 JSON 诊断原文；
         // ELB 需拼接 error_message —— MCP 返回已是诊断全文，errorMessage 传空由 MCP text 承载）
         const text = extractDiagnosticText(result.text, '', isElb)
-        const classified = classifyPatrolRootCause(text, rules)
+        let classified = classifyPatrolRootCause(text, rules)
+        // 11-17 LLM 主路径（规则为加速/兜底）：规则命中非兜底类 = 加速路径省 LLM 调用；
+        // 未命中/判能力缺口 → LLM 结构化分析全量日志（五段 + 根因枚举）。
+        /** @type {{ byLlm: boolean, llmFailed: boolean, attempts: number, conclusion: string | null, directCause: string[], evidence: string[], suggestion: string | null, rootCauseL1: string | null }} */
+        let llmReport = { byLlm: false, llmFailed: false, attempts: 0, conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
+        let rootCauseSource = 'rule'
+        if (classified.l1 === '其他/未归类' || classified.l1 === '诊断能力缺口') {
+          const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
+          const analysis = await analyzeFailureByLlm(result.text, {
+            apiPath: String(group.api_path || ''), poolName: pool, userName: '', productKey: String(group.product_key || ''),
+          })
+          // 11-17 用户拍板：LLM 重试 3 次仍失败 → 视为未诊断——组保持 pending_diagnosis（可重试）
+          if (analysis.llmFailed) {
+            failed += 1
+            insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
+              JSON.stringify({ error: `LLM ${analysis.attempts} 次全失败（未诊断）` }), null, null, null, null, null, null, null, now)
+            continue
+          }
+          if (analysis.byLlm) {
+            llmReport = analysis
+            rootCauseSource = 'llm'
+            if (analysis.rootCauseL1) {
+              classified = { ...classified, l1: analysis.rootCauseL1, l2: 'LLM结构化诊断' }
+            }
+          }
+        }
+        // 五段处理建议：LLM 产物优先；无则建议生成器兜底
+        let suggestion = llmReport.suggestion
+        if (!suggestion) {
+          const { generateDiagnosisSuggestion } = await import('./patrolDiagnosisSuggestion.js')
+          suggestion = await generateDiagnosisSuggestion(text, text, classified.l1)
+        }
+        const directCauseJson = llmReport.directCause.length > 0 ? JSON.stringify(llmReport.directCause) : null
+        const evidenceJson = llmReport.evidence.length > 0 ? JSON.stringify(llmReport.evidence) : null
+        const conclusionFinal = llmReport.conclusion || text || null
         succeeded += 1
         insertDiag.run(group.id, group.first_request_id, 'success', toolName,
-          result.text, text || null, classified.l1, classified.l2, now)
+          result.text, conclusionFinal, classified.l1, classified.l2,
+          suggestion, directCauseJson, evidenceJson, rootCauseSource, now)
         updateGroup.run(classified.l1, classified.l2, classified.productAction, now, group.id)
         // 待处理 + assignee 为空 → 填 productManager[0] 默认经办人（§2.3）
         if (classified.productAction === '待处理') {
