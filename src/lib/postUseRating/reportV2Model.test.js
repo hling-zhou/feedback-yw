@@ -228,6 +228,33 @@ describe('V2 report facts', () => {
   })
 
   // 11-18 部门低分原因汇总对齐原型：归并、组级 NEW、排序、产品计数契约
+  // 11-18 晚信息密度改造：lowestQuotes 选录——console 渠道 occurrence 文本恒等于主题名，
+  // 典型原话只取最低分记录的 commentText（客户自由原话列）；reason 标签成员无 commentText 时为空。
+  it('picks the lowest-score representative quote for theme rows', () => {
+    const records = [
+      { ...rating('q-label', '2026-10', 1, '功能有缺失') },
+      { ...rating('q-label-comment', '2026-10', 1, '无法绑定', 'NAT网关'), commentText: '绑定一直转圈失败' },
+      { ...rating('q-low', '2026-10', 1, '', '云监控'), commentText: '不能批量退订非要移除共享带宽才可以批量五个退' },
+      { ...rating('q-low2', '2026-10', 1, '', 'NAT网关'), commentText: '短原话' },
+      { ...rating('q-mid', '2026-10', 5, '', '云监控'), commentText: '五分记录的原话不应入选' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const feature = model.themes.find((row) => row.theme === '功能有缺失')
+    expect(feature.lowestQuotes).toEqual([])
+    // 标签成员的最低分记录带 commentText → 典型原话取 commentText（标签本身无信息增量）
+    const bindTheme = model.themes.find((row) => row.theme === '无法绑定')
+    expect(bindTheme.lowestQuotes).toEqual(['绑定一直转圈失败'])
+    const longQuote = model.themes.find((row) => row.theme === '不能批量退订非要移除共享带宽才可以批量五个退')
+    expect(longQuote.lowestQuotes).toEqual(['不能批量退订非要移除共享带宽才可以批量五个退'])
+    // 组行成员账本携带 quotes（部门表典型原话来源）；LLM 归类后原话并入组，典型原话仍可追溯
+    const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
+    const member = merged.memberThemes.find((m) => m.theme === '功能有缺失')
+    expect(member.quotes).toEqual([])
+  })
+
   it('merges alias reasons into one department row with member/period facts', () => {
     const records = [
       rating('eip-a', '2026-10', 1, '功能有缺失'),
@@ -248,7 +275,8 @@ describe('V2 report facts', () => {
     expect(merged.products).toEqual([{ name: '弹性公网IP', count: 2 }, { name: 'NAT网关', count: 1 }])
     const option = model.reasons.find((row) => row.type === 'ten-option')
     expect(option.name).toBe('10 分反馈选项类')
-    expect(option.memberThemes).toEqual([{ theme: '购买时参数/配置选择错误', count: 1, lowestScore: 10 }])
+    // 11-18 晚：成员对象新增 quotes（典型原话）——断言锁定关键字段而非全对象
+    expect(option.memberThemes).toEqual([expect.objectContaining({ theme: '购买时参数/配置选择错误', count: 1, lowestScore: 10 })])
     // 排序拍板：10 分选项殿后
     expect(model.reasons.at(-1).type).toBe('ten-option')
   })

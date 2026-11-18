@@ -47,6 +47,9 @@ body { margin:0; }
 .v2-tag--lc-fade { color:#047857; background:var(--v2-success-bg); border:1px solid #a7d8bc; border-radius:999px; font-weight:700; }
 .v2-warning-text { color:var(--v2-warning); }
 .v2-mdist { font-size:11px; color:#4b5563; white-space:nowrap; }
+/* 11-18 晚信息密度改造：原因归类/问题主题行内"成员带计数 + 典型原话"两行灰字 */
+.v2-reason-detail { font-size:11px; color:#6b7280; margin-top:3px; line-height:1.5; font-weight:400; }
+.v2-reason-detail .v2-detail-lead { color:#374151; font-weight:500; }
 .v2-metric { border-radius:6px; }.v2-metric--danger { border-color:#f0b4b4; background:#fff7f7; }.v2-metric--ok { border-color:#b7dcc4; background:#f5fbf6; }
 .v2-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(426px,1fr)); gap:12px; margin-bottom:14px; overflow-x:auto; }
 .v2-panel { border:1px solid #e5e7eb; border-radius:6px; padding:12px; margin:12px 0; min-width:0; }

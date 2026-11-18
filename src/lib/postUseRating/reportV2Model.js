@@ -1,6 +1,6 @@
 import { buildCustomerQuoteRegistry, isPraiseQuote } from './customerQuotes.js'
 import { buildReportIssueOccurrences, resolveReportIssues } from './reportEvidence.js'
-import { isSubstantiveFeedbackReason, REASON_TAXONOMY_EXCLUDE } from './reasonTaxonomy.js'
+import { isSubstantiveFeedbackReason, isValidCustomerText, REASON_TAXONOMY_EXCLUDE } from './reasonTaxonomy.js'
 import { postUsePeriodMonths } from './periodScope.js'
 import { computeInternalSatisfactionMetrics } from './metrics.js'
 import { postUseRecordsToScoredRows } from './scoredRows.js'
@@ -309,6 +309,16 @@ function themeRows(records, allRecords, visits, traces, links, months, earlierMo
       linkedTraceIds: distinct(row.occurrences.flatMap((item) => item.linkedTraceIds || [])),
       linkedVisitIds,
       quotes: distinct(row.occurrences.filter((item) => item.kind === 'quote').map((item) => item.text)).slice(0, 3),
+      // 11-18 晚信息密度改造：最低分处的典型客户原话（渲染层"典型：「…」· N 分"行）。
+      // console 渠道的 occurrence 文本恒等于主题名本身（reason 列聚合键），无信息增量，
+      // 故只取该主题最低分记录的 commentText（客户自由原话列，不进 occurrences）；
+      // 原话自成一档的行行名已是全文原话，无需典型行（渲染层省略）。
+      lowestQuotes: distinct([...row.recordIds]
+        .map((recordId) => sourceById.get(String(recordId)))
+        .filter((record) => record && Number(record.ratingScore ?? record.score) === row.lowestScore)
+        .map((record) => String(record.commentText || record.rawComment || '').trim())
+        .filter((text) => isValidCustomerText(text)))
+        .sort((a, b) => b.length - a.length).slice(0, 2),
     }
   }).sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority])
     || a.lowestScore - b.lowestScore || b.count - a.count || a.theme.localeCompare(b.theme, 'zh'))
@@ -764,9 +774,11 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     entry.segmentCount += row.segmentCount || 0
     entry.lowestScore = entry.lowestScore == null ? row.lowestScore : Math.min(entry.lowestScore, row.lowestScore)
     entry.productCounts.set(row.productName, (entry.productCounts.get(row.productName) || 0) + row.count)
-    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null }
+    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null, quotes: [] }
     members.count += row.count
     members.lowestScore = members.lowestScore == null ? row.lowestScore : Math.min(members.lowestScore, row.lowestScore)
+    // 成员级典型原话（11-18 信息密度改造）：来自最低分记录，渲染层选主导成员的原话展示
+    members.quotes = distinct([...(members.quotes || []), ...(row.lowestQuotes || [])])
     entry.memberThemes.set(row.theme, members)
     entry.themeKeys.set(row.theme, row.key)
     reasonsMap.set(key, entry)

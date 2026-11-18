@@ -132,10 +132,11 @@ describe('V2 offline document', () => {
   it('aligns the department reason summary with the prototype (grouping, subtitle, products×N, footnote)', () => {
     // 2026.10 原型对照：功能缺失 3 + 功能缺失/不完善 1 → 归并一行；低分组行名带「类」后缀与成员括注
     const records = [
-      { id: 'eip-a', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性公网IP', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' },
+      { id: 'eip-a', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性公网IP', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失', commentText: '不能批量退订非要移除共享带宽才可以批量五个退' },
       { id: 'eip-b', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性公网IP', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能缺失/不完善' },
       { id: 'nat-a', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' },
       { id: 'eip-opt', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性公网IP', channel: 'option', ratingScore: 10, feedbackReasonPrimary: '购买时参数/配置选择错误' },
+      { id: 'eip-raw', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性公网IP', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '烂到极致我要退款这产品没法用了' },
     ]
     const model = buildPostUseReportV2Model({
       reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
@@ -145,14 +146,36 @@ describe('V2 offline document', () => {
     expect(html).toContain('部门低分原因汇总（按严重度排序）')
     const grouped = tableRowFor(html, '部门低分原因汇总', '功能缺失/不完善')
     expect(grouped).toContain('功能缺失/不完善类')
-    expect(grouped).toContain('（功能有缺失、功能缺失/不完善）')
+    // 11-18 晚信息密度改造：成员计数与典型原话移入行内灰字两行（不再挤进行名括注）
+    expect(grouped).toContain('v2-reason-detail')
+    expect(grouped).toContain('成员：<span class="v2-detail-lead">功能有缺失 2</span>')
+    expect(grouped).toContain('· 功能缺失/不完善 1')
     expect(grouped).toContain('<b>3</b>')
     expect(grouped).toContain('弹性公网IP×2、NAT网关×1')
     expect(grouped).toContain('class="v2-row-danger"')
     const optionRow = tableRowFor(html, '部门低分原因汇总', '10 分反馈选项类')
     expect(optionRow).toContain('低风险')
     expect(optionRow).toContain('v2-option-text')
-    expect(optionRow).toContain('（购买时参数/配置选择错误 1）')
+    expect(optionRow).toContain('购买时参数/配置选择错误 1')
+    // 11-18 晚信息密度改造：典型原话行——标签成员的最低分记录 commentText（客户自由原话），
+    // 以及 LLM 归类 overlay 并入组的原话成员；与成员名相同者无信息增量自动省略
+    expect(grouped).toContain('典型：「不能批量退订非要移除共享带宽才可以批量五个退」· 1 分')
+    const overlayModel = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+      overlay: { narratives: { themeGroupLabels: { '烂到极致我要退款这产品没法用了': '功能缺失/不完善' } } },
+    })
+    const overlayHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={overlayModel} printAll todoItems={[]} />)
+    const overlayGrouped = tableRowFor(overlayHtml, '部门低分原因汇总', '功能缺失/不完善')
+    expect(overlayGrouped).toContain('烂到极致我要退款这产品没法用了 1')
+    // commentText 原话优先于成员名原话（更长的自由文本信息量更高）
+    expect(overlayGrouped).toContain('典型：「不能批量退订非要移除共享带宽才可以批量五个退」· 1 分')
+    // 分产品"问题主题分布"同款 detail 行（成员带计数；组内原话带典型行）
+    const themeGrouped = tableRowFor(html, '问题主题分布', '功能缺失/不完善')
+    expect(themeGrouped).toContain('v2-reason-detail')
+    expect(themeGrouped).toContain('成员：')
+    const overlayTheme = tableRowFor(overlayHtml, '问题主题分布', '功能缺失/不完善')
+    expect(overlayTheme).toContain('典型：「不能批量退订非要移除共享带宽才可以批量五个退」· 1 分')
     expect(html).toContain('不构成低分风险')
     expect(html).toContain('同记录多标签的产品已在分产品模块标注')
     expect(html).not.toContain('有效正反馈')

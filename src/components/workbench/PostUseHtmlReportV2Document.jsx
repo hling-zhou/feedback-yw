@@ -96,27 +96,43 @@ function reasonNameClass(row) {
   return ''
 }
 
-/** 部门表行名（11-18 对齐原型）：低分组多成员才带「类」后缀+括注（单成员原样，如"稳定性不足故障频发"）；
- * 10 分选项类为合成行，始终列出成员及计数（原型：9-10 分反馈选项类（购买参数 45、价格 5…）） */
+/** 部门表行名（11-18 对齐原型）：低分组多成员带「类」后缀；10 分选项类原样。
+ * 11-18 晚信息密度改造：成员计数与典型原话不再挤进行名括注，改由 reasonDetailNode 单独两行灰字展示。 */
 function reasonNameNode(row) {
-  const members = row.memberThemes || []
-  if (row.type === 'ten-option') {
-    const memberText = members.length
-      ? `（${members.map((member) => `${member.theme} ${member.count}`).join('、')}）`
-      : ''
-    return <b>{row.name}{memberText}</b>
-  }
-  const memberText = members.length > 1
-    ? `${row.name}类（${members.map((member) => member.theme).join('、')}）`
-    : row.name
-  return <b>{memberText}</b>
+  const multiMembers = (row.memberThemes || []).length > 1
+  return <b>{row.type === 'ten-option' || !multiMembers ? row.name : `${row.name}类`}</b>
 }
 
-/** 涉及产品列（11-18 拍板）：统一 产品×N；单产品不标计数 */
+/** 部门表行内补充两行（11-18 晚信息密度拍板"成员带计数 + 典型原话"）：
+ * 成员行——主导成员（count 最大）加粗，最多列 4 个，更多折叠为"等 N 项"；
+ * 典型原话行——取组内最低分原话（≤30 字截断），带最低分标注；无原话时省略。 */
+function reasonDetailNode(row) {
+  const members = [...(row.memberThemes || [])].sort((a, b) => b.count - a.count)
+  const detail = []
+  if (members.length) {
+    const shown = members.slice(0, 4)
+    const rest = members.length - shown.length
+    detail.push(<div key="members" className="v2-reason-detail">
+      成员：{shown.map((member, index) => <span key={member.theme} className={index === 0 ? 'v2-detail-lead' : ''}>{index ? ' · ' : ''}{member.theme} {member.count}</span>)}{rest > 0 ? ` 等 ${members.length} 项` : ''}
+    </div>)
+  }
+  // 原话与成员标签/组名同名（标签库外变体被分类器判为自由文本）时无信息增量，跳过取下一条
+  const memberNames = new Set([row.name, ...members.map((member) => member.theme)])
+  const quote = members.flatMap((member) => member.quotes || []).find((text) => !memberNames.has(String(text).trim()))
+  if (quote) {
+    const text = String(quote).replace(/\s+/g, ' ').trim()
+    detail.push(<div key="quote" className="v2-reason-detail">典型：「{text.length > 30 ? `${text.slice(0, 30)}…` : text}」· {row.lowestScore} 分</div>)
+  }
+  return detail.length ? <>{detail}</> : null
+}
+
+/** 涉及产品列（11-18 拍板）：统一 产品×N；单产品不标计数。
+ * 11-18 晚信息密度改造：TOP3 + 「等 N 款」截断（全列时 16 款长文本压垮行高）。 */
 function renderReasonProducts(row) {
   const products = row.products || []
   if (products.length === 1) return products[0].name
-  return products.map((product) => `${product.name}×${product.count}`).join('、')
+  const shown = products.slice(0, 3).map((product) => `${product.name}×${product.count}`).join('、')
+  return products.length > 3 ? `${shown} 等 ${products.length} 款` : shown
 }
 
 /** 生命周期徽章 tone（11-18 拍板四色）：贯穿=红、集中爆发=橙、单月=黄、已收敛=绿；三处渲染共用 */
@@ -148,7 +164,17 @@ function problemThemeRows(themes, productName, months, kind, groupLabelOverrides
     row.priorRecordIds = [...new Set([...(row.priorRecordIds || []), ...(!theme.isNew ? (theme.recordIds || []) : [])])]
     row.recordIds = [...new Set([...row.recordIds, ...(theme.recordIds || [])])]
     row.customerKeys = [...new Set([...row.customerKeys, ...(theme.customerKeys || [])])]
-    row.memberThemes.push(theme.theme)
+    // 成员账本（11-18 晚信息密度改造）：与部门表 memberThemes 同形态 {theme,count,quotes}，
+    // 供行内"成员：X N · Y M"+"典型：「…」"两行灰字；count 按成员行、quotes 取该成员最低分原话
+    const memberIndex = row.memberThemes.findIndex((member) => member.theme === theme.theme)
+    if (memberIndex === -1) {
+      row.memberThemes.push({ theme: theme.theme, count: theme.count, lowestScore: theme.lowestScore, quotes: [...(theme.lowestQuotes || [])] })
+    } else {
+      const member = row.memberThemes[memberIndex]
+      member.count += theme.count
+      member.lowestScore = member.lowestScore == null ? theme.lowestScore : Math.min(member.lowestScore, theme.lowestScore)
+      member.quotes = [...new Set([...(member.quotes || []), ...(theme.lowestQuotes || [])])]
+    }
     for (const month of months) {
       const ids = theme.monthRecordIds?.[month]
       row.monthRecordIds[month] = [...new Set([...(row.monthRecordIds[month] || []), ...(ids || [])])]
@@ -334,7 +360,7 @@ function ProductPanel({ product, index, model, printAll, issueNarratives, onIssu
       ? <div className="v2-state-neutral">本期有 {product.nonTen} 条非 10 分评分，但没有可归因的有效负反馈原话。{product.smallQuarterSample ? '样本不足，波动暂不下结论。' : ''}{neutralNote}下期复核低分记录与新增原话。</div>
       : <div className="v2-state-ok">✓ 无有效低分问题——{product.sample} 条样本中 {product.distribution['10']} 条 10 分、{product.distribution['9']} 条 9 分。{optionCount ? `另有 10 分反馈选项 ${optionCount} 条，单列为低风险。` : ''}{neutralNote}下期仅复核低分记录与新增原话。</div>
       : <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">问题主题分布</span><span className="v2-subtle">{themeRecordCount === 1 ? `${themeSegmentCount} 条片段，同 1 条记录 · ${themeCustomerCount} 名客户` : `${themeSegmentCount} 条片段 / ${themeRecordCount} 条评分记录，按优先级排序`}</span></div>
-        <div className="v2-table-scroll"><table className="v2-table v2-theme-table"><thead><tr><th>问题主题</th><th>条数</th><th>分布</th>{model.kind === 'quarter' ? <th>月度分布</th> : null}<th>最低分</th><th>{showPriority ? '优先级' : '类型'}</th>{model.kind === 'quarter' ? <th>生命周期</th> : null}</tr></thead><tbody>{displayThemes.map((row) => <tr key={row.key} className={problemRowClass(row)}><td className={problemNameClass(row)}><b>{row.theme}</b> {row.isNew && row.type !== 'ten-option' ? tag(model.kind === 'quarter' ? `NEW 0→${row.count}` : 'NEW', 'warning') : null}{row.memberThemes.length > 1 ? <span className="v2-subtle">（{[...new Set(row.memberThemes)].join('、')}）</span> : null}</td><td><b>{row.count}</b></td><td><DistributionBar count={row.count} max={maxCount} tone={row.type === 'ten-option' ? 'muted' : row.lowestScore <= 5 ? 'danger' : 'warning'} /></td>{model.kind === 'quarter' ? <td>{model.months.map((month) => <span key={month} className={row.monthCounts[month] && row.monthCounts[month] === Math.max(...Object.values(row.monthCounts)) ? 'v2-danger' : ''}>{monthLabel(month)} {row.monthCounts[month] || 0}{month !== model.months.at(-1) ? ' / ' : ''}</span>)}</td> : null}<td className={row.type === 'low' && row.lowestScore <= 5 ? 'v2-danger' : ''}><b>{row.lowestScore}</b></td><td>{showPriority ? tag(row.priority, row.priority.toLowerCase()) : tag(row.type === 'ten-option' ? '10分选项' : row.isNew ? 'NEW' : '低分', row.type === 'ten-option' ? 'muted' : row.isNew ? 'warning' : 'danger')}</td>{model.kind === 'quarter' ? <td>{row.lifecycle ? tag(row.lifecycle, lifecycleTagTone(row.lifecycle)) : '—'}</td> : null}</tr>)}</tbody></table></div>
+        <div className="v2-table-scroll"><table className="v2-table v2-theme-table"><thead><tr><th>问题主题</th><th>条数</th><th>分布</th>{model.kind === 'quarter' ? <th>月度分布</th> : null}<th>最低分</th><th>{showPriority ? '优先级' : '类型'}</th>{model.kind === 'quarter' ? <th>生命周期</th> : null}</tr></thead><tbody>{displayThemes.map((row) => <tr key={row.key} className={problemRowClass(row)}><td className={problemNameClass(row)}><b>{row.theme}</b> {row.isNew && row.type !== 'ten-option' ? tag(model.kind === 'quarter' ? `NEW 0→${row.count}` : 'NEW', 'warning') : null}{reasonDetailNode(row)}</td><td><b>{row.count}</b></td><td><DistributionBar count={row.count} max={maxCount} tone={row.type === 'ten-option' ? 'muted' : row.lowestScore <= 5 ? 'danger' : 'warning'} /></td>{model.kind === 'quarter' ? <td>{model.months.map((month) => <span key={month} className={row.monthCounts[month] && row.monthCounts[month] === Math.max(...Object.values(row.monthCounts)) ? 'v2-danger' : ''}>{monthLabel(month)} {row.monthCounts[month] || 0}{month !== model.months.at(-1) ? ' / ' : ''}</span>)}</td> : null}<td className={row.type === 'low' && row.lowestScore <= 5 ? 'v2-danger' : ''}><b>{row.lowestScore}</b></td><td>{showPriority ? tag(row.priority, row.priority.toLowerCase()) : tag(row.type === 'ten-option' ? '10分选项' : row.isNew ? 'NEW' : '低分', row.type === 'ten-option' ? 'muted' : row.isNew ? 'warning' : 'danger')}</td>{model.kind === 'quarter' ? <td>{row.lifecycle ? tag(row.lifecycle, lifecycleTagTone(row.lifecycle)) : '—'}</td> : null}</tr>)}</tbody></table></div>
       </div>}
     <EvidenceNote product={product} />
     {productActions.length && !noIssue ? <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">建议举措</span></div>{productActions.map((action) => <ActionItem key={action.id} action={action} overrides={actionOverrides} canEdit={canEdit} onActionChange={onActionChange} />)}</div> : null}
@@ -390,7 +416,7 @@ export default function PostUseHtmlReportV2Document({ model, canEdit = false, pr
         <div className="v2-focus"><h3>{model.kind === 'quarter' ? '本季关注' : '本月关注'}（按行动紧迫度排序）</h3>{focus.length ? focus.map((action) => <ActionItem key={action.id} action={action} overrides={actionOverrides} canEdit={canEdit} onActionChange={onActionChange} isFocus />) : <p>{model.kind === 'quarter' ? '本季' : '本月'}无需重点跟进事项</p>}{model.actions.filter((row) => row.priority === 'P0').length > 3 && !hidden.has(REPORT_SECTION_PRODUCTS) ? <p className="v2-subtle">其余 {model.actions.filter((row) => row.priority === 'P0').length - 3} 项见分产品建议举措</p> : null}</div>{model.kind === 'quarter' ? <p className="v2-quarter-change"><b>主要变化：</b>{model.quarterChange}</p> : null}
         <div className="post-use-html-report-kpis"><Metric label="部门均分（三渠道）" value={number(model.kpis.avg)} hint={<><span className={companyGap == null ? '' : companyGap >= 0 ? 'v2-ok' : 'v2-danger'}>{companyGapText}</span> · {model.kind === 'quarter' ? '较上季度' : '环比'} {periodChangeText}</>} tone={companyGap != null && companyGap >= 0 ? 'ok' : ''} /><Metric label="有效样本量" value={model.kpis.totalSample} hint={`涉及 ${model.kpis.productCount} 款产品`} /><Metric label="9 分以下产品数" value={model.kpis.belowNineCount} hint={model.kpis.belowNineNames.join('、') || '无'} tone={model.kpis.belowNineCount ? 'danger' : ''} /><Metric label="投诉回访不达标产品数" value={model.kpis.callbackUnqualifiedCount} hint={model.kpis.callbackUnqualifiedCount ? '需关注' : '全部达标'} tone={model.kpis.callbackUnqualifiedCount ? 'danger' : 'ok'} /></div>
         <div className="v2-chart-grid"><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门与公司均分趋势</span></div><TrendSvg months={model.departmentTrend.map((row) => row.month)} series={[{ name: '部门', color: 'var(--v2-blue)', data: model.departmentTrend }, { name: '公司', color: 'var(--v2-warning)', data: model.companyTrend }]} min={overviewMinScore} max={overviewMaxScore} baseline={9} baselineLabel="关注线 9" quarterMonths={quarterMonths} compact /><p className="v2-subtle">另有「体验均分」（短信及控制台）口径，本期为 {number(model.kpis.experienceAvg)} 分；图中仅展示三渠道均分。</p></div><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">投诉回访满意度（10 分满意度）</span></div><TrendSvg months={model.satisfactionTrend.map((row) => row.month)} series={[{ name: '10 分满意度', color: 'var(--v2-success)', data: model.satisfactionTrend }]} min={80} max={100} baseline={88} baselineLabel="达标线 88%" quarterMonths={quarterMonths} suffix="%" missingLabel="无工单" tickStep={5} compact /></div></div>
-        <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门低分原因汇总{model.kind === 'quarter' ? '（按严重度 + 季度生命周期排序）' : '（按严重度排序）'}</span></div><div className="v2-table-scroll"><table className="v2-table v2-reason-table"><thead><tr><th>原因归类</th><th>条数</th>{model.kind === 'quarter' ? <th>月度分布</th> : null}<th>最低分</th><th>涉及产品</th>{model.kind === 'quarter' ? <th>季度生命周期</th> : null}</tr></thead><tbody>{model.reasons.map((row) => <tr key={row.name} className={reasonRowClass(row)}><td className={reasonNameClass(row)}>{reasonNameNode(row)} {row.type === 'ten-option' ? tag('低风险', 'muted') : row.isNew ? tag(model.kind === 'quarter' ? `NEW 0→${row.count}` : 'NEW', 'warning') : null}</td><td><Microbar count={row.count} max={maxReason} tone={row.type === 'ten-option' ? 'muted' : row.lowestScore <= 5 ? 'danger' : 'warning'} /></td>{model.kind === 'quarter' ? <td className="v2-mdist">{model.months.map((month) => <span key={month} className={row.monthCounts[month] && row.monthCounts[month] === Math.max(...Object.values(row.monthCounts)) ? 'v2-danger' : ''}>{monthLabel(month)} {row.monthCounts[month] || 0}{month !== model.months.at(-1) ? ' / ' : ''}</span>)}</td> : null}<td className={row.type === 'low' && row.lowestScore <= 5 ? 'v2-danger' : ''}><b>{row.lowestScore}</b></td><td>{renderReasonProducts(row)}</td>{model.kind === 'quarter' ? <td>{row.lifecycle ? tag(row.lifecycle, lifecycleTagTone(row.lifecycle)) : '—'}</td> : null}</tr>)}</tbody></table></div><p className="v2-subtle">低分原因 ≤5 分的共 {model.lowScoreRecordCount} 条；10 分反馈选项指客户评 10 分但勾选反馈选项，<b>不构成低分风险</b>，单列一档避免与真实低分混淆。同记录多标签的产品已在分产品模块标注。{model.kind === 'quarter' ? ' 生命周期判定：贯穿全季=3 个月均出现（根因治理）；集中爆发=单月次数显著高于其他月（定位该月事件）；单月=仅 1 个月出现（观察是否再现）；已收敛=前月出现末月消失（下季验证）。' : ''}</p></div>
+        <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门低分原因汇总{model.kind === 'quarter' ? '（按严重度 + 季度生命周期排序）' : '（按严重度排序）'}</span></div><div className="v2-table-scroll"><table className="v2-table v2-reason-table"><thead><tr><th>原因归类</th><th>条数</th>{model.kind === 'quarter' ? <th>月度分布</th> : null}<th>最低分</th><th>涉及产品</th>{model.kind === 'quarter' ? <th>季度生命周期</th> : null}</tr></thead><tbody>{model.reasons.map((row) => <tr key={row.name} className={reasonRowClass(row)}><td className={reasonNameClass(row)}>{reasonNameNode(row)} {row.type === 'ten-option' ? tag('低风险', 'muted') : row.isNew ? tag(model.kind === 'quarter' ? `NEW 0→${row.count}` : 'NEW', 'warning') : null}{reasonDetailNode(row)}</td><td><Microbar count={row.count} max={maxReason} tone={row.type === 'ten-option' ? 'muted' : row.lowestScore <= 5 ? 'danger' : 'warning'} /></td>{model.kind === 'quarter' ? <td className="v2-mdist">{model.months.map((month) => <span key={month} className={row.monthCounts[month] && row.monthCounts[month] === Math.max(...Object.values(row.monthCounts)) ? 'v2-danger' : ''}>{monthLabel(month)} {row.monthCounts[month] || 0}{month !== model.months.at(-1) ? ' / ' : ''}</span>)}</td> : null}<td className={row.type === 'low' && row.lowestScore <= 5 ? 'v2-danger' : ''}><b>{row.lowestScore}</b></td><td>{renderReasonProducts(row)}</td>{model.kind === 'quarter' ? <td>{row.lifecycle ? tag(row.lifecycle, lifecycleTagTone(row.lifecycle)) : '—'}</td> : null}</tr>)}</tbody></table></div><p className="v2-subtle">低分原因 ≤5 分的共 {model.lowScoreRecordCount} 条；10 分反馈选项指客户评 10 分但勾选反馈选项，<b>不构成低分风险</b>，单列一档避免与真实低分混淆。同记录多标签的产品已在分产品模块标注。{model.kind === 'quarter' ? ' 生命周期判定：贯穿全季=3 个月均出现（根因治理）；集中爆发=单月次数显著高于其他月（定位该月事件）；单月=仅 1 个月出现（观察是否再现）；已收敛=前月出现末月消失（下季验证）。' : ''}</p></div>
       </Section>
       {!hidden.has(REPORT_SECTION_PRODUCTS) ? <Section id="report-v2-products" title="一、分产品情况"><div className="v2-product-layout"><nav className="v2-product-list" aria-label="产品列表">{model.products.map((product) => <button key={product.name} type="button" className={selectedProduct === product.name ? 'is-active' : ''} onClick={() => setSelectedProduct(product.name)}><span>{product.name}</span><b className={product.avg < 9 ? 'v2-danger' : ''}>{number(product.avg)}</b>{product.belowNine ? tag('低于9', 'danger') : product.status === '重点改善' ? tag('重点改善', 'danger') : null}</button>)}</nav><div className="v2-product-content">{model.products.map((product, index) => <div key={product.name} className={`v2-product-slot ${selectedProduct === product.name ? 'is-active' : ''}`}><ProductPanel product={product} index={index} model={model} printAll={printAll} issueNarratives={issueNarratives} onIssueChange={onIssueChange} actionOverrides={actionOverrides} onActionChange={onActionChange} canEdit={canEdit} /></div>)}</div></div></Section> : null}
       {!hidden.has(REPORT_SECTION_TODO) ? <Section id="report-v2-todo" title="二、待办事项及进展"><div className="v2-table-scroll"><table className="v2-table v2-todo-table"><thead><tr><th>序号</th><th>事项</th><th>责任人</th><th>班组</th></tr></thead><tbody>{todoRows.map((row, index) => <tr key={row.id || index}><td>{index + 1}</td><td><b>【{row.productName || '待确认产品'}】</b>{row.content || row.text || '—'}</td><td>{row.owner || '待指派'}</td><td>{row.team || '—'}</td></tr>)}</tbody></table></div>{!todoRows.length ? <p className="v2-subtle">{model.kind === 'quarter' ? '本季' : '本月'}无转为待办跟进的事项</p> : null}{model.todoCandidateCounts ? <p className="v2-subtle">口径说明：本{model.kind === 'quarter' ? '季' : '月'}待办来自两部分——反馈库中本周期产品部溯源未完结 {model.todoCandidateCounts.trace} 条、省代表回访未评估 {model.todoCandidateCounts.visit} 条；问题与举措中用后即评 tab 本周期首次提出的待办 {model.todoCandidateCounts.action} 条。{model.todoCandidateCounts.mergedVisit ? `其中 ${model.todoCandidateCounts.mergedVisit} 条回访待办与同客户溯源待办已合并为一行呈现（一行同时跟进回溯与回访评估）。` : ''}历史待办及进展不在本表累计。</p> : <p className="v2-subtle">本期建议回访/溯源的反馈记录共 {model.recommendedFeedbackCount} 条；测试账号与 10 分反馈选项无需跟进，实际转为待办 {todoRows.length} 项（上表）。</p>}<p className="v2-subtle v2-todo-links">历史待办及进展 详见 用户反馈分析平台：<br />· <a href="http://10.64.3.250:81/feedbacks?source=post_use_rating&amp;lane=post_use&amp;view=trace" target="_blank" rel="noreferrer">产品部溯源及省代表回访评估</a><br />· <a href="http://10.64.3.250:81/actions?tab=product" target="_blank" rel="noreferrer">举措跟踪</a></p>{canEdit ? <details className="v2-edit no-print"><summary>编辑待办</summary><button type="button" onClick={() => onTodoItemsChange?.([...todoRows, { id: `todo-${Date.now()}`, productName: '', content: '', owner: '', team: '', status: '待处理', source: 'manual' }])}>添加待办</button>{todoRows.map((row, index) => <div key={row.id || index} className="v2-edit-grid v2-edit-grid--todo"><input aria-label="产品" value={row.productName || ''} onChange={(event) => onTodoItemsChange?.(todoRows.map((item, i) => i === index ? { ...item, productName: event.target.value } : item))} /><input aria-label="事项" value={row.content || ''} onChange={(event) => onTodoItemsChange?.(todoRows.map((item, i) => i === index ? { ...item, content: event.target.value } : item))} /><input aria-label="责任人" value={row.owner || ''} onChange={(event) => onTodoItemsChange?.(todoRows.map((item, i) => i === index ? { ...item, owner: event.target.value } : item))} /><input aria-label="班组" value={row.team || ''} onChange={(event) => onTodoItemsChange?.(todoRows.map((item, i) => i === index ? { ...item, team: event.target.value } : item))} /><button type="button" onClick={() => onTodoItemsChange?.(todoRows.filter((_, i) => i !== index))}>删除</button></div>)}</details> : null}</Section> : null}
