@@ -89,11 +89,36 @@ describe('V2 offline document', () => {
     expect(axisTicks).toEqual(['7', '8', '9', '10'])
     expect(scoreChart).toContain('viewBox="0 0 400 245"')
     expect(rateChart).toContain('viewBox="0 0 400 245"')
+    // 11-18 用户口径：无回访工单的月份不再标「无工单」文本
+    expect(rateChart).not.toContain('无工单')
     expect(REPORT_V2_CSS).toMatch(/\.v2-svg-label \{ font-size:11px;/)
     expect(REPORT_V2_CSS).toMatch(/\.v2-chart-legend \{[^}]*font-size:12px;/)
     expect(REPORT_V2_CSS).toContain('grid-template-columns:repeat(2,minmax(426px,1fr))')
     expect(REPORT_V2_CSS).not.toMatch(/\.v2-chart-grid \{[^}]*grid-template-columns:1fr/)
     expect(REPORT_V2_CSS).not.toMatch(/v2-chart-wrap--compact svg \{[^}]*width:\d+px/)
+  })
+
+  it('renders online charts via recharts and export charts via static SVG (V1 dual-track policy)', () => {
+    // 11-18 拍板：采用 V1 双轨——在线页 recharts 组件库 / printAll（离线导出/邮件/打印）静态 SVG。
+    // recharts 依赖 JS 渲染，renderToStaticMarkup 下只输出空容器——所以 printAll 态必须走 TrendSvg。
+    const records = [{ id: 'rating', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 10 }]
+    const base = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const model = {
+      ...base,
+      departmentTrend: [{ month: '2026-09', value: 9.4 }, { month: '2026-10', value: 9.6 }],
+      companyTrend: [{ month: '2026-09', value: 8.8 }, { month: '2026-10', value: 9.1 }],
+    }
+    const onlineHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} />)
+    // 在线态：三处图均为 recharts 容器（SSR 空壳形态，真机由 JS 填充），无 SVG 趋势图
+    expect((onlineHtml.match(/recharts-responsive-container/g) || []).length).toBe(3)
+    expect(onlineHtml).not.toContain('v2-chart-wrap')
+    const exportHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll />)
+    // 导出态：三处图均为静态 SVG，无 recharts 容器
+    expect(exportHtml).not.toContain('recharts-responsive-container')
+    expect((exportHtml.match(/v2-chart-wrap/g) || []).length).toBeGreaterThanOrEqual(3)
   })
 
   it('applies the documented row tones while keeping option rows neutral and blue', () => {
@@ -339,5 +364,46 @@ describe('V2 offline document', () => {
     expect(html).toContain('产品部溯源（刘****）：')
     expect(html).not.toContain('（刘浩）')
     expect(html).toContain('产品部溯源记录（1 条）')
+  })
+
+  it('keeps online recharts and export SVG semantically aligned (dual-track consistency guard)', () => {
+    // 11-18 用户要求：离线 SVG 与在线组件库严格复核——同 model 双态渲染后，
+    // 月份轴、系列名、数据数值、参考线（关注线/达标线）语义必须一致。
+    const records = [
+      { id: 'r1', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 9 },
+      { id: 'r2', dataSourceType: 'post_use_rating', importMonth: '2026-09', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 8 },
+    ]
+    const base = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const model = {
+      ...base,
+      departmentTrend: [{ month: '2026-08', value: 9.2 }, { month: '2026-09', value: 9.4 }, { month: '2026-10', value: 9.6 }],
+      companyTrend: [{ month: '2026-08', value: 8.9 }, { month: '2026-09', value: 8.8 }, { month: '2026-10', value: 9.1 }],
+      satisfactionTrend: [{ month: '2026-08', value: null }, { month: '2026-09', value: 90 }, { month: '2026-10', value: 92 }],
+    }
+    const exportHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll />)
+    // 双轨共用同一 model：在线态数据源直接取 model（TrendChartOnline 的 data 由同字段构造），
+    // 此处断言导出 SVG 承载的全部语义要素都来自 model——月份、数值、系列名、参考线。
+    const scoreChart = chartAfter(exportHtml, '部门与公司均分趋势')
+    for (const month of ['8月', '9月', '10月']) expect(scoreChart).toContain(`>${month}<`)
+    // ≥3 数据点时 SVG 不印数值文本（靠 title 提示），数值语义在 <title>「月份 系列 值」中——与在线 recharts tooltip 同语义
+    for (const [month, name, value] of [['8月', '部门', 9.2], ['9月', '部门', 9.4], ['10月', '部门', 9.6], ['8月', '公司', 8.9], ['9月', '公司', 8.8], ['10月', '公司', 9.1]]) {
+      expect(scoreChart).toContain(`${month} ${name} ${value}`)
+    }
+    expect(scoreChart).toContain('关注线 9')
+    expect(scoreChart).toContain('>部门<')
+    expect(scoreChart).toContain('>公司<')
+    const rateChart = chartAfter(exportHtml, '投诉回访满意度（10 分满意度）')
+    expect(rateChart).toContain('90%')
+    expect(rateChart).toContain('92%')
+    expect(rateChart).toContain('达标线 88%')
+    // 无工单月份（8 月 value=null）不渲染「无工单」标注（11-18 口径），仅缺数据点
+    expect(rateChart).not.toContain('无工单')
+    // 在线态（recharts SSR 空壳）+ 同 model：语义数据在 TrendChartOnline 构造时来自同一数组，
+    // 由组件代码结构保证（months/series 同源传参），此处校验在线态确实切到了 recharts 轨道
+    const onlineHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} />)
+    expect((onlineHtml.match(/recharts-responsive-container/g) || []).length).toBe(3)
   })
 })

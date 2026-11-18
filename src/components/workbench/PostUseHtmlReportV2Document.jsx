@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import TrendChart from '../charts/TrendChart.jsx'
 import { scoreAxisDomain } from '../../lib/postUseRating/insights.js'
 import { reportV2QuoteCategory, reportV2ThemeGroupLabel, reportV2GroupedLifecycle } from '../../lib/postUseRating/reportV2Model.js'
 import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PREVIOUS_VISITS, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../../lib/postUseRating/htmlReportModel.js'
@@ -105,7 +106,7 @@ function reasonNameNode(row) {
 
 /** 部门表行内补充两行（11-18 晚信息密度拍板"成员带计数 + 典型原话"）：
  * 成员行——主导成员（count 最大）加粗，最多列 4 个，更多折叠为"等 N 项"；
- * 典型原话行——取组内最低分原话（≤30 字截断），带最低分标注；无原话时省略。 */
+ * 典型原话行——取主导成员的最低分原话（≤30 字截断），带最低分标注；无原话时省略。 */
 function reasonDetailNode(row) {
   const members = [...(row.memberThemes || [])].sort((a, b) => b.count - a.count)
   const detail = []
@@ -247,7 +248,8 @@ function TrendSvg({ series, months, min, max, baseline = null, baselineLabel = '
     return segments
   }
   return <div className={`v2-chart-wrap ${compact ? 'v2-chart-wrap--compact' : ''}`}>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${series.map((item) => item.name).join('、')}趋势`}>
+    {/* 固定像素渲染（V1 离线先例 svgOpen）：文字保持 11px 设计尺寸不随容器拉伸；小窗口由 CSS max-width 等比缩回 */}
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={`${series.map((item) => item.name).join('、')}趋势`}>
       {quarterIndexes.length ? <><rect x={bandStart} y={top} width={bandEnd - bandStart} height={plotH} fill="#eef2ff" /><text x={bandStart + 5} y={top + 13} className="v2-svg-label">Q{Math.ceil(Number(quarterMonths[0]?.slice(5)) / 3)}</text></> : null}
       {ticks.map((tick) => <g key={tick}><line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="#e5e7eb" strokeDasharray="3 3" /><text x={left - 8} y={y(tick) + 4} textAnchor="end" className="v2-svg-label">{tick}{suffix}</text></g>)}
       {baseline != null && baseline >= min && baseline <= max ? <g><line x1={left} x2={width - right} y1={y(baseline)} y2={y(baseline)} stroke={suffix === '%' ? '#059669' : '#d97706'} strokeDasharray="6 4" /><text x={width - right - 4} y={y(baseline) - 6} textAnchor="end" className="v2-svg-label" fill={suffix === '%' ? '#047857' : '#b45309'}>{baselineLabel || baseline}</text></g> : null}
@@ -261,6 +263,29 @@ function TrendSvg({ series, months, min, max, baseline = null, baselineLabel = '
     </svg>
     <div className="v2-chart-legend">{series.map((item) => <span key={item.name}><i style={{ background: item.color }} />{item.name}</span>)}</div>
   </div>
+}
+
+/**
+ * 在线版趋势图（11-18 拍板：采用 V1 双轨——在线 recharts 组件库 / 离线导出静态 SVG）。
+ * 与 TrendSvg 共用同一份 series/months 数据与关注线语义；仅在线页渲染（printAll=false），
+ * 离线导出/邮件/打印走 TrendSvg（renderToStaticMarkup 产物无 JS，recharts 会渲染成空壳）。
+ * 刻度/图例字号与全站图表一致（TrendChart 内建 11-12px），不随 SVG viewBox 拉伸。
+ */
+function TrendChartOnline({ series, months, baseline = null, baselineLabel = '', suffix = '' }) {
+  const data = months.map((month, index) => {
+    const row = { date: monthLabel(month) }
+    for (const item of series) row[item.name] = item.data[index]?.value ?? null
+    return row
+  })
+  return <TrendChart
+    variant="line"
+    allowDecimals={!suffix}
+    height={240}
+    data={data}
+    areas={series.map((item) => ({ dataKey: item.name, name: item.name, stroke: item.color }))}
+    referenceLine={baseline != null ? { y: baseline, label: baselineLabel || String(baseline), stroke: suffix === '%' ? '#059669' : '#F59E0B' } : null}
+    tooltipFormatter={(value, name) => (value == null ? ['—', name] : [`${value}${suffix}`, name])}
+  />
 }
 
 function Microbar({ count, max, tone }) {
@@ -355,7 +380,7 @@ function ProductPanel({ product, index, model, printAll, issueNarratives, onIssu
       <Metric label="非 10 分" value={product.nonTen} hint={`${percent(product.nonTen, product.sample)}${model.kind === 'quarter' && product.nonTen ? ` · ${monthList(product.nonTenMonths)}` : ''}`} tone={product.nonTen === product.sample ? 'danger' : ''} />
       <Metric label="3 分以下样本" value={product.lowThree} hint={model.kind === 'quarter' ? `发生于${monthList(product.lowThreeMonths)}` : `较上月 ${product.previousSample ? signedDiff(product.lowThree, product.previousLowThree) : '—'}`} />
     </div>
-    <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">产品得分趋势</span></div><TrendSvg months={product.trend.map((row) => row.month)} series={[{ name: product.name, color: 'var(--v2-blue)', data: product.trend }]} min={Math.max(1, Math.floor(Math.min(9, ...product.trend.filter((row) => row.value != null).map((row) => row.value)) - 1))} max={10} baseline={9} baselineLabel="关注线 9" quarterMonths={quarterMonths} emphasizeLow /></div>
+    <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">产品得分趋势</span></div>{printAll ? <TrendSvg months={product.trend.map((row) => row.month)} series={[{ name: product.name, color: 'var(--v2-blue)', data: product.trend }]} min={Math.max(1, Math.floor(Math.min(9, ...product.trend.filter((row) => row.value != null).map((row) => row.value)) - 1))} max={10} baseline={9} baselineLabel="关注线 9" quarterMonths={quarterMonths} emphasizeLow /> : <TrendChartOnline series={[{ name: product.name, color: '#2563eb', data: product.trend }]} months={product.trend.map((row) => row.month)} baseline={9} baselineLabel="关注线 9" />}</div>
     {noIssue ? product.nonTen > product.distribution['9']
       ? <div className="v2-state-neutral">本期有 {product.nonTen} 条非 10 分评分，但没有可归因的有效负反馈原话。{product.smallQuarterSample ? '样本不足，波动暂不下结论。' : ''}{neutralNote}下期复核低分记录与新增原话。</div>
       : <div className="v2-state-ok">✓ 无有效低分问题——{product.sample} 条样本中 {product.distribution['10']} 条 10 分、{product.distribution['9']} 条 9 分。{optionCount ? `另有 10 分反馈选项 ${optionCount} 条，单列为低风险。` : ''}{neutralNote}下期仅复核低分记录与新增原话。</div>
@@ -415,7 +440,7 @@ export default function PostUseHtmlReportV2Document({ model, canEdit = false, pr
       <Section id="report-v2-overview" title={model.kind === 'quarter' ? '本季概述' : '本月概述'}>
         <div className="v2-focus"><h3>{model.kind === 'quarter' ? '本季关注' : '本月关注'}（按行动紧迫度排序）</h3>{focus.length ? focus.map((action) => <ActionItem key={action.id} action={action} overrides={actionOverrides} canEdit={canEdit} onActionChange={onActionChange} isFocus />) : <p>{model.kind === 'quarter' ? '本季' : '本月'}无需重点跟进事项</p>}{model.actions.filter((row) => row.priority === 'P0').length > 3 && !hidden.has(REPORT_SECTION_PRODUCTS) ? <p className="v2-subtle">其余 {model.actions.filter((row) => row.priority === 'P0').length - 3} 项见分产品建议举措</p> : null}</div>{model.kind === 'quarter' ? <p className="v2-quarter-change"><b>主要变化：</b>{model.quarterChange}</p> : null}
         <div className="post-use-html-report-kpis"><Metric label="部门均分（三渠道）" value={number(model.kpis.avg)} hint={<><span className={companyGap == null ? '' : companyGap >= 0 ? 'v2-ok' : 'v2-danger'}>{companyGapText}</span> · {model.kind === 'quarter' ? '较上季度' : '环比'} {periodChangeText}</>} tone={companyGap != null && companyGap >= 0 ? 'ok' : ''} /><Metric label="有效样本量" value={model.kpis.totalSample} hint={`涉及 ${model.kpis.productCount} 款产品`} /><Metric label="9 分以下产品数" value={model.kpis.belowNineCount} hint={model.kpis.belowNineNames.join('、') || '无'} tone={model.kpis.belowNineCount ? 'danger' : ''} /><Metric label="投诉回访不达标产品数" value={model.kpis.callbackUnqualifiedCount} hint={model.kpis.callbackUnqualifiedCount ? '需关注' : '全部达标'} tone={model.kpis.callbackUnqualifiedCount ? 'danger' : 'ok'} /></div>
-        <div className="v2-chart-grid"><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门与公司均分趋势</span></div><TrendSvg months={model.departmentTrend.map((row) => row.month)} series={[{ name: '部门', color: 'var(--v2-blue)', data: model.departmentTrend }, { name: '公司', color: 'var(--v2-warning)', data: model.companyTrend }]} min={overviewMinScore} max={overviewMaxScore} baseline={9} baselineLabel="关注线 9" quarterMonths={quarterMonths} compact /><p className="v2-subtle">另有「体验均分」（短信及控制台）口径，本期为 {number(model.kpis.experienceAvg)} 分；图中仅展示三渠道均分。</p></div><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">投诉回访满意度（10 分满意度）</span></div><TrendSvg months={model.satisfactionTrend.map((row) => row.month)} series={[{ name: '10 分满意度', color: 'var(--v2-success)', data: model.satisfactionTrend }]} min={80} max={100} baseline={88} baselineLabel="达标线 88%" quarterMonths={quarterMonths} suffix="%" missingLabel="无工单" tickStep={5} compact /></div></div>
+        <div className="v2-chart-grid"><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门与公司均分趋势</span></div>{printAll ? <TrendSvg months={model.departmentTrend.map((row) => row.month)} series={[{ name: '部门', color: 'var(--v2-blue)', data: model.departmentTrend }, { name: '公司', color: 'var(--v2-warning)', data: model.companyTrend }]} min={overviewMinScore} max={overviewMaxScore} baseline={9} baselineLabel="关注线 9" quarterMonths={quarterMonths} compact /> : <TrendChartOnline series={[{ name: '部门', color: '#2563eb', data: model.departmentTrend }, { name: '公司', color: '#d97706', data: model.companyTrend }]} months={model.departmentTrend.map((row) => row.month)} baseline={9} baselineLabel="关注线 9" />}<p className="v2-subtle">另有「体验均分」（短信及控制台）口径，本期为 {number(model.kpis.experienceAvg)} 分；图中仅展示三渠道均分。</p></div><div className="v2-panel"><div className="page-card-header"><span className="page-card-title">投诉回访满意度（10 分满意度）</span></div>{printAll ? <TrendSvg months={model.satisfactionTrend.map((row) => row.month)} series={[{ name: '10 分满意度', color: 'var(--v2-success)', data: model.satisfactionTrend }]} min={80} max={100} baseline={88} baselineLabel="达标线 88%" quarterMonths={quarterMonths} suffix="%" tickStep={5} compact /> : <TrendChartOnline series={[{ name: '10 分满意度', color: '#059669', data: model.satisfactionTrend }]} months={model.satisfactionTrend.map((row) => row.month)} baseline={88} baselineLabel="达标线 88%" suffix="%" />}</div></div>
         <div className="v2-panel"><div className="page-card-header"><span className="page-card-title">部门低分原因汇总{model.kind === 'quarter' ? '（按严重度 + 季度生命周期排序）' : '（按严重度排序）'}</span></div><div className="v2-table-scroll"><table className="v2-table v2-reason-table"><thead><tr><th>原因归类</th><th>条数</th>{model.kind === 'quarter' ? <th>月度分布</th> : null}<th>最低分</th><th>涉及产品</th>{model.kind === 'quarter' ? <th>季度生命周期</th> : null}</tr></thead><tbody>{model.reasons.map((row) => <tr key={row.name} className={reasonRowClass(row)}><td className={reasonNameClass(row)}>{reasonNameNode(row)} {row.type === 'ten-option' ? tag('低风险', 'muted') : row.isNew ? tag(model.kind === 'quarter' ? `NEW 0→${row.count}` : 'NEW', 'warning') : null}{reasonDetailNode(row)}</td><td><Microbar count={row.count} max={maxReason} tone={row.type === 'ten-option' ? 'muted' : row.lowestScore <= 5 ? 'danger' : 'warning'} /></td>{model.kind === 'quarter' ? <td className="v2-mdist">{model.months.map((month) => <span key={month} className={row.monthCounts[month] && row.monthCounts[month] === Math.max(...Object.values(row.monthCounts)) ? 'v2-danger' : ''}>{monthLabel(month)} {row.monthCounts[month] || 0}{month !== model.months.at(-1) ? ' / ' : ''}</span>)}</td> : null}<td className={row.type === 'low' && row.lowestScore <= 5 ? 'v2-danger' : ''}><b>{row.lowestScore}</b></td><td>{renderReasonProducts(row)}</td>{model.kind === 'quarter' ? <td>{row.lifecycle ? tag(row.lifecycle, lifecycleTagTone(row.lifecycle)) : '—'}</td> : null}</tr>)}</tbody></table></div><p className="v2-subtle">低分原因 ≤5 分的共 {model.lowScoreRecordCount} 条；10 分反馈选项指客户评 10 分但勾选反馈选项，<b>不构成低分风险</b>，单列一档避免与真实低分混淆。同记录多标签的产品已在分产品模块标注。{model.kind === 'quarter' ? ' 生命周期判定：贯穿全季=3 个月均出现（根因治理）；集中爆发=单月次数显著高于其他月（定位该月事件）；单月=仅 1 个月出现（观察是否再现）；已收敛=前月出现末月消失（下季验证）。' : ''}</p></div>
       </Section>
       {!hidden.has(REPORT_SECTION_PRODUCTS) ? <Section id="report-v2-products" title="一、分产品情况"><div className="v2-product-layout"><nav className="v2-product-list" aria-label="产品列表">{model.products.map((product) => <button key={product.name} type="button" className={selectedProduct === product.name ? 'is-active' : ''} onClick={() => setSelectedProduct(product.name)}><span>{product.name}</span><b className={product.avg < 9 ? 'v2-danger' : ''}>{number(product.avg)}</b>{product.belowNine ? tag('低于9', 'danger') : product.status === '重点改善' ? tag('重点改善', 'danger') : null}</button>)}</nav><div className="v2-product-content">{model.products.map((product, index) => <div key={product.name} className={`v2-product-slot ${selectedProduct === product.name ? 'is-active' : ''}`}><ProductPanel product={product} index={index} model={model} printAll={printAll} issueNarratives={issueNarratives} onIssueChange={onIssueChange} actionOverrides={actionOverrides} onActionChange={onActionChange} canEdit={canEdit} /></div>)}</div></div></Section> : null}

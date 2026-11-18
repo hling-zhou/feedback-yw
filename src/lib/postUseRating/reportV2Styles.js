@@ -53,7 +53,8 @@ body { margin:0; }
 .v2-metric { border-radius:6px; }.v2-metric--danger { border-color:#f0b4b4; background:#fff7f7; }.v2-metric--ok { border-color:#b7dcc4; background:#f5fbf6; }
 .v2-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(426px,1fr)); gap:12px; margin-bottom:14px; overflow-x:auto; }
 .v2-panel { border:1px solid #e5e7eb; border-radius:6px; padding:12px; margin:12px 0; min-width:0; }
-.v2-chart-wrap svg { width:100%; height:auto; display:block; }.v2-chart-legend { display:flex; gap:12px; justify-content:center; color:#6b7280; font-size:12px; line-height:18px; }
+/* SVG 仅在导出态渲染：固定像素 + max-width 等比缩回（V1 离线先例），文字不随容器拉伸 */
+.v2-chart-wrap svg { display:block; max-width:100%; height:auto; margin-inline:auto; }.v2-chart-legend { display:flex; gap:12px; justify-content:center; color:#6b7280; font-size:12px; line-height:18px; }
 .v2-chart-legend span { display:inline-flex; align-items:center; gap:4px; }.v2-chart-legend i { width:8px; height:8px; border-radius:50%; }
 .v2-svg-label { font-size:11px; font-family:inherit; fill:#6b7280; }.v2-svg-label--missing { fill:#9ca3af; }
 .v2-table-scroll { overflow-x:auto; }.v2-table { width:100%; border-collapse:collapse; font-size:13px; line-height:1.5; }
