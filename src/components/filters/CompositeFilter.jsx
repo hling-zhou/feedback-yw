@@ -113,6 +113,8 @@ export default function CompositeFilter({
   const [specialOpen, setSpecialOpen] = useState(false)
   const pendingKeyRef = useRef(pendingKey)
   pendingKeyRef.current = pendingKey
+  /** 特殊编辑器弹层锚 = 触发元素（chip 编辑按钮/属性按钮；无则回退 bar 容器） */
+  const specialAnchorRef = useRef(/** @type {HTMLElement | null} */ (null))
 
   const activeChipKeys = useMemo(() => config.listActiveChipKeys(filters), [config, filters])
   const activeCount = config.countActive(filters)
@@ -178,21 +180,24 @@ export default function CompositeFilter({
     [config, filters, onFiltersChange, resetPending],
   )
 
-  const openSpecialEditor = (key) => {
+  const openSpecialEditor = (key, anchorEl) => {
     const normalized = config.normalizeEditorKey(key)
     setPendingKey(normalized)
     setSpecialDraft(config.readDraftValue(normalized, filters))
+    // 11-18 修复：弹层锚定触发元素（chip 编辑按钮/属性按钮）——此前锚整条 bar，
+    // 工具条 flex-wrap 下 bar 左缘远离复合筛选组件，文本输入框出现在离点击很远的位置
+    specialAnchorRef.current = anchorEl || null
     setSpecialOpen(true)
   }
 
-  const handleSelectAttribute = (key) => {
+  const handleSelectAttribute = (key, anchorEl) => {
     const filterKey = /** @type {TKey} */ (key)
     const normalized = config.normalizeEditorKey(filterKey)
     setPendingKey(normalized)
     setAttributeOpen(false)
     const kind = config.getEditorKind(normalized)
     if (kind === 'enum') return
-    openSpecialEditor(normalized)
+    openSpecialEditor(normalized, anchorEl)
   }
 
   const handleSelectEnumValue = (value) => {
@@ -207,13 +212,13 @@ export default function CompositeFilter({
     if (pendingKey === config.normalizeEditorKey(key)) resetPending()
   }
 
-  const handleEditChip = (key) => {
+  const handleEditChip = (key, anchorEl) => {
     const normalized = config.normalizeEditorKey(key)
     setPendingKey(normalized)
     setAttributeOpen(false)
     const kind = config.getEditorKind(normalized)
     if (kind === 'enum') return
-    openSpecialEditor(normalized)
+    openSpecialEditor(normalized, anchorEl)
   }
 
   const enumEditorOpen = Boolean(
@@ -254,7 +259,7 @@ export default function CompositeFilter({
             label={config.labels[key]}
             value={config.formatChipLabel(key, filters)}
             onRemove={() => handleRemoveChip(key)}
-            onEdit={() => handleEditChip(key)}
+            onEdit={(event) => handleEditChip(key, /** @type {HTMLElement} */ (event.currentTarget))}
             active={false}
           />
         ))}
@@ -297,7 +302,8 @@ export default function CompositeFilter({
               className: 'composite-filter-attribute-menu',
               onClick: ({ key }) => {
                 if (String(key).startsWith('group-') || String(key).startsWith('divider-')) return
-                handleSelectAttribute(key)
+                // 属性按钮是 Dropdown child，点击后为 activeElement——弹层锚定它而非整条 bar
+                handleSelectAttribute(key, /** @type {HTMLElement} */ (document.activeElement))
               },
               style: { maxHeight: 280, overflow: 'auto', minWidth: 200 },
             }}
@@ -356,7 +362,7 @@ export default function CompositeFilter({
       {pendingKey && config.getEditorKind(pendingKey) !== 'enum' ? (
         <SpecialFilterPopover
           open={specialOpen}
-          anchorRef={barRef}
+          anchorRef={specialAnchorRef.current ? specialAnchorRef : barRef}
           label={config.labels[pendingKey]}
           filterKey={pendingKey}
           editorKind={config.getEditorKind(pendingKey)}

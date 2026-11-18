@@ -23,4 +23,12 @@ describe('CompositeFilter special popover', () => {
     expect(source).toContain('清空')
     expect(source).toContain('fitsBelow')
   })
+
+  it('special popover anchors to the trigger element, not the whole bar (11-18: text editor appeared far from click)', () => {
+    // 弹层锚定触发元素（chip 编辑按钮/属性按钮），不再锚整条 bar——
+    // 巡检页工具条 flex-wrap 下 bar rect 左缘离复合筛选组件很远，输入框错位
+    expect(source).toContain('specialAnchorRef')
+    expect(source).toContain('openSpecialEditor(normalized, anchorEl)')
+    expect(source).not.toContain('anchorRef={barRef}')
+  })
 })
