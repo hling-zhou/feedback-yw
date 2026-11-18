@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
 import { InfoCircleOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -29,26 +29,6 @@ const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
 const CUSTOMER_TYPE_LABELS = { 仿真: '仿真', 测试账号: '测试' }
 
-/**
- * 表头吸顶测量（11-17）：观察 ref 元素高度并回传 setState——卡片内工具条 → Table sticky.offsetHeader。
- * 照抄 Feedbacks.jsx stickyChromeHeight 先例（ResizeObserver + 初次同步）。
- * @param {React.RefObject<HTMLElement | null>} ref 工具条 ref
- * @param {(h: number) => void} onHeight 高度回调
- */
-function useMeasureHeight(ref, onHeight) {
-  const cbRef = useRef(onHeight)
-  cbRef.current = onHeight
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return undefined
-    const sync = () => cbRef.current(el.offsetHeight)
-    sync()
-    const observer = new ResizeObserver(sync)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref])
-}
-
 export default function ApiPatrolFailures() {
   const message = useAppMessage()
   const { can, user } = useAuth()
@@ -59,7 +39,6 @@ export default function ApiPatrolFailures() {
   // 列宽拖拽（11-18 拍板④：复用系统 useColumnResize 机制——localStorage 按 userId 持久化）
   const interfacesResize = useColumnResize({ tableKey: 'patrol.interfaces', userId: user?.id })
   const groupsResize = useColumnResize({ tableKey: 'patrol.groups', userId: user?.id })
-
   /** @type {[any, React.Dispatch<React.SetStateAction<any>>]} */
   const [range, setRange] = useState([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')]) // 默认 T-1（11-18 拍板），与快捷按钮同语义
   const [interfaces, setInterfaces] = useState([])
@@ -80,12 +59,6 @@ export default function ApiPatrolFailures() {
   /** 异常接口列表产品筛选（单选；跨 tab 独立状态——两 tab 口径不同不共享值） */
   const [interfaceProduct, setInterfaceProduct] = useState('')
 
-  // 表头吸顶（11-18 修订）：页面级 sticky chrome——Tabs 头吸顶（page-sticky-chrome），
-  // chrome 实测高度传两表 offsetHeader（表头贴 chrome 底 = 视口顶）。
-  // 旧「卡片内工具条吸顶」形态废弃：Tabs 不吸导致 11-17 实现视觉未生效。
-  const chromeRef = useRef(null)
-  const [chromeH, setChromeH] = useState(0)
-  useMeasureHeight(chromeRef, setChromeH)
   /** @type {[number | null, Function]} */
   const [drawerId, setDrawerId] = useState(null)
   const [drawerData, setDrawerData] = useState(null)
@@ -303,13 +276,23 @@ export default function ApiPatrolFailures() {
       ) },
     {
       title: '根因分类', key: 'rootCause', width: 190,
-      render: (record) => (
-        <Space size={4} wrap>
-          {record.rootCauseL1 ? <Tag color="blue">{record.rootCauseL1}</Tag> : null}
-          {record.rootCauseL2 ? <Tag>{record.rootCauseL2}</Tag> : null}
-          {!record.rootCauseL1 && !record.rootCauseL2 ? <Tag>未诊断</Tag> : null}
-        </Space>
-      ),
+      render: (record) => {
+        // 11-18 人工修正优先展示（同源派生：manual 有值优先，LLM 原判保留在抽屉对照）
+        const l1 = record.rootCauseL1Manual || record.rootCauseL1
+        const l2 = record.rootCauseL2Manual || record.rootCauseL2
+        const isManual = Boolean(record.rootCauseL1Manual)
+        return (
+          <Space size={4} wrap>
+            {l1 ? <Tag color={isManual ? 'geekblue' : 'blue'}>{isManual ? `${l1}·人工` : l1}</Tag> : null}
+            {/* 11-18 拍板：诊断能力缺口不显细分场景；L2 是场景不是来源标注（LLM语义判定/LLM结构化诊断 旧值过滤） */}
+            {l2
+              && l1 !== '诊断能力缺口'
+              && !/^LLM(语义判定|结构化诊断|未诊断)/.test(l2)
+              ? <Tag>{l2}</Tag> : null}
+            {!l1 && !l2 ? <Tag>未诊断</Tag> : null}
+          </Space>
+        )
+      },
     },
     {
       // 11-18 拍板：值区不再 hover；表头 info icon 提示压缩规则
@@ -461,27 +444,20 @@ export default function ApiPatrolFailures() {
         )}
       </div>
 
-      {/* 表头吸顶（11-18 上午修正）：Tabs nav 吸顶——renderTabBar 包 page-sticky-chrome。
-          11-17 初版 offsetHeader 只算工具条（Tabs 不吸）未生效；11-18 早版把整个 Tabs
-          （nav+表格内容）包进 sticky chrome——chromeH 实测为千像素级内容高度，表头
-          offset 飞出视口，两 tab 吸顶全失效。正确形态：只吸 nav（46px 级），
-          chromeH（nav 实测高度）传两表 offsetHeader。 */}
-      <div className="page-card !mb-0">
-        <Tabs
-          className="[&_.ant-tabs-tab]:font-semibold [&_.ant-tabs-nav]:!mb-0"
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          renderTabBar={(props, DefaultTabBar) => (
-            <div ref={chromeRef} className="page-sticky-chrome !py-0">
-              <DefaultTabBar {...props} />
-            </div>
-          )}
-          items={[
+      {/* 11-18 下午拍板：Tabs 裸挂（出 page-card）对齐反馈库 feedback-lane-tabs 样式——
+          tab 不吸顶、表头吸顶（sticky={{ offsetHeader: 0 }} 两表直挂视口顶）。
+          间距：nav 底 mb（lane-tabs mb-2 同款）+ 卡内筛选器顶部间距 mt-3——tab 与内容间距语义归位。 */}
+      <Tabs
+        className="patrol-lane-tabs mb-2 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
             {
               key: 'interfaces',
               label: '异常接口列表',
               children: (
                 <>
+                  <div className="page-card">
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
                     {/* 11-17：产品筛选（分产品计数——接口行口径）；说明行已按拍板移除 */}
                     <Select
@@ -507,8 +483,9 @@ export default function ApiPatrolFailures() {
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
                     scroll={{ x: sumColumnsWidth(decoratedInterfaceColumns) }}
-                    sticky={chromeH > 0 ? { offsetHeader: chromeH + 8 } : undefined}
+                    sticky={{ offsetHeader: 0 }}
                   />
+                  </div>
                 </>
               ),
             },
@@ -517,8 +494,9 @@ export default function ApiPatrolFailures() {
               label: '失败请求列表',
               children: (
                 <>
+                  <div className="page-card">
                   {/* 复合搜索行（11-18 拍板）：q 全字段搜框 + 复合筛选 chips + 需产品侧处理勾选 + 刷新，同一行。
-                      pb-3 —— 工具条与表格间距（吸顶滚动时 chrome 与表头分隔）。 */}
+                      pb-3 —— 工具条与表格间距。 */}
                   <div className="flex flex-wrap items-center gap-2 pb-3">
                     <Input.Search
                       size="small"
@@ -538,7 +516,12 @@ export default function ApiPatrolFailures() {
                         product: productCounts.map((p) => ({ label: `${p.name}（${p.groupCount}）`, value: p.key })),
                         rootCauseL1: withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts),
                         status: withCount(STATUS_OPTIONS, statusCounts),
-                        customerType: [{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }],
+                        // 11-18 拍板：其他 = 除仿真/测试账号以外的真实客户（customer_type 空值）；哨兵值 __others__ 后端转空值过滤
+                        customerType: [
+                          { label: '仿真', value: '仿真' },
+                          { label: '测试账号', value: '测试账号' },
+                          { label: '其他', value: '__others__' },
+                        ],
                         assignee: assigneeOptions.map((a) => ({ label: `${a.assignee}（${a.count}）`, value: a.assignee })),
                       }}
                     />
@@ -561,18 +544,18 @@ export default function ApiPatrolFailures() {
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
                     scroll={{ x: sumColumnsWidth(decoratedGroupColumns) }}
-                    sticky={chromeH > 0 ? { offsetHeader: chromeH + 8 } : undefined}
+                    sticky={{ offsetHeader: 0 }}
                     onRow={(record) => ({
                       onClick: () => openDrawer(record.id),
                       style: { cursor: 'pointer' },
                     })}
                   />
+                  </div>
                 </>
               ),
             },
           ]}
         />
-      </div>
 
       <FailureGroupDrawer
         groupId={drawerId}
@@ -619,12 +602,14 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
     if (group) {
       form.setFieldsValue({
         rootCauseConfirmed: /** @type {{rootCauseConfirmed?: string}} */ (group).rootCauseConfirmed || undefined,
-        realRootCause: '',
+        realRootCause: /** @type {{realRootCause?: string}} */ (group).realRootCause || '',
         measureFeedback: /** @type {{measureFeedback?: string}} */ (group).measureFeedback || '',
         assignee: /** @type {{assignee?: string}} */ (group).assignee || undefined,
         actionId: /** @type {{actionId?: string}} */ (group).actionId || '',
         establishedAction: /** @type {{establishedAction?: string}} */ (group).establishedAction || '',
         actionSchedule: /** @type {{actionSchedule?: string}} */ (group).actionSchedule || '',
+        rootCauseL1Manual: /** @type {{rootCauseL1Manual?: string}} */ (group).rootCauseL1Manual || undefined,
+        rootCauseL2Manual: /** @type {{rootCauseL2Manual?: string}} */ (group).rootCauseL2Manual || '',
       })
     }
   }, [group, form])
@@ -796,6 +781,27 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
               <div className="section-title">产品侧处理反馈</div>
               <div className="page-card-sm page-card-bordered">
                 <Form form={form} layout="vertical">
+                  {/* 根因分类人工修正（11-18 拍板）：manual 独立存储不覆盖 LLM 原判；
+                      修正值即"根因不属实"时表单意义上的真实根因载体，列表立即按人工值展示（·人工 标识） */}
+                  <div className="mb-3 rounded-md bg-ink-50/60 p-2">
+                    <div className="sub-section-label mb-1">根因分类（AI 判定与人工修正）</div>
+                    <Typography.Text type="secondary" className="mb-2 block text-xs">
+                      AI 判定：{group ? (String(/** @type {{rootCauseL1?: string}} */ (group).rootCauseL1 || '未诊断')
+                        + (/** @type {{rootCauseL2?: string}} */ (group).rootCauseL2 ? ` / ${String(/** @type {{rootCauseL2?: string}} */ (group).rootCauseL2)}` : '')) : '—'}
+                    </Typography.Text>
+                    <div className="flex flex-wrap items-start gap-2">
+                      <Form.Item label={<FieldLabel>修正根因大类</FieldLabel>} name="rootCauseL1Manual" className="!mb-0" style={{ minWidth: 180 }}>
+                        <Select
+                          allowClear
+                          placeholder="不改则留空"
+                          options={ROOT_CAUSE_L1_OPTIONS.map((v) => ({ label: v, value: v }))}
+                        />
+                      </Form.Item>
+                      <Form.Item label={<FieldLabel>修正细分场景</FieldLabel>} name="rootCauseL2Manual" className="!mb-0" style={{ minWidth: 180 }}>
+                        <Input placeholder="不改则留空" maxLength={60} />
+                      </Form.Item>
+                    </div>
+                  </div>
                   <Form.Item label={<FieldLabel required>根因是否属实</FieldLabel>} name="rootCauseConfirmed"
                     rules={[{ required: true, message: '请选择根因是否属实' }]}>
                     <Select options={[

@@ -45,6 +45,42 @@ const VALID_REPORT = JSON.stringify({
 })
 
 describe('patrolDiagnosisLlmAnalyzer', () => {
+  it('extractErrorCodes：错误码清单提取（去重保序）——11-18 拍板喂 LLM 的结构化信号', async () => {
+    const { extractErrorCodes } = await import('./patrolDiagnosisLlmAnalyzer.js')
+    expect(extractErrorCodes('errorCode=CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE, x')).toEqual(['CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE'])
+    // 去重保序
+    expect(extractErrorCodes('a errorCode=AAA_BBB_CC d errorCode=AAA_BBB_CC e errorCode=DDD_EEE_FF')).toEqual(['AAA_BBB_CC', 'DDD_EEE_FF'])
+    // 无码/短码（<6 位防误匹配）
+    expect(extractErrorCodes('no code here')).toEqual([])
+    expect(extractErrorCodes('errorCode=ABC')).toEqual([])
+  })
+
+  it('错误码清单注入 user content：判类第一优先级信号（11-18 拍板——不预维护白名单，LLM 现场判归属）', async () => {
+    const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
+    const mcpWithCode = JSON.stringify({
+      code: '0000',
+      data: {
+        records: [
+          { content: '[ERROR] errorCode=CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE errorMessage=锁定中' },
+          { content: '[WARN] retry suppressed' },
+        ],
+      },
+    })
+    const { forward, seenBodies } = makeForward([VALID_REPORT])
+    const r = await analyzeFailureByLlm(mcpWithCode, {}, {
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.ok).toBe(true)
+    const userContent = seenBodies[0].messages.find((m) => m.role === 'user').content
+    expect(userContent).toContain('CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE')
+    expect(userContent).toContain('判类第一优先级信号')
+    // 无码形态：显式告知「未提取到」而不是静默缺段
+    const { forward: f2, seenBodies: b2 } = makeForward([VALID_REPORT])
+    await analyzeFailureByLlm(MCP_TEXT, {}, { llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: f2 } })
+    const uc2 = b2[0].messages.find((m) => m.role === 'user').content
+    expect(uc2).toContain('未提取到平台错误码')
+  })
+
   it('请求 body 显式 max_tokens=8192（防推理型模型截断——7 组 3 连败先例）', async () => {
     const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
     const { forward, seenBodies, seenOpts } = makeForward([VALID_REPORT])

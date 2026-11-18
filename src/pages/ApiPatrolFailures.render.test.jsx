@@ -109,10 +109,11 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/value: a\.assignee/)
     // ② 失败请求列表刷新按钮（复合搜索行内 loadGroups 按钮）
     expect(src).toMatch(/onClick=\{\(\) => \{ loadGroups\(\); \}\}/)
-    // ③ 表头吸顶（11-18 修订：页面级 chrome 单源）——ResizeObserver hook + chromeRef + 两表 offsetHeader
-    expect(src).toMatch(/function useMeasureHeight/)
-    expect(src).toMatch(/new ResizeObserver/)
-    expect((src.match(/chromeH > 0 \? \{ offsetHeader: chromeH \+ 8 \} : undefined/g) || []).length).toBe(2)
+    // ③ 表头吸顶（11-18 下午修订）：tab 不吸、表头吸——两表 sticky={{ offsetHeader: 0 }} 直挂视口顶
+    //    chrome 测量机制全退场（useMeasureHeight/chromeRef 无消费方后删除）
+    expect((src.match(/sticky=\{\{ offsetHeader: 0 \}\}$/gm) || []).length).toBe(2)
+    expect(src).not.toMatch(/useMeasureHeight/)
+    expect(src).not.toMatch(/chromeRef/)
     // ④ 经办人筛选参与后端查询（filters 对象含 assignee 键 → qs 序列化透传）
     expect(src).toMatch(/assignee: '',/)
   })
@@ -137,15 +138,13 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
   it('失败请求列表 sticky chrome + 复合搜索 + 勾选形态（11-18 拍板）', () => {
     const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
     const src = fs.readFileSync(contentPath, 'utf-8')
-    // ① 页面级 sticky chrome：Tabs 头（含时间范围）sticky top-0 白底负边距锚定外壳
-    //    ——旧「卡片内吸顶」形态（Tabs 不吸）是 11-17 吸顶未生效的根因
-    expect(src).toMatch(/page-sticky-chrome/)
-    expect(src).toMatch(/chromeRef/)
-    // ①-2（11-18 上午修正）：chrome 不得包整个 Tabs（nav+表格内容全进 sticky = chromeH 千像素级、
-    // 表头 offset 飞出视口——两 tab 吸顶全失效）。正确形态 = renderTabBar 只吸 nav。
-    expect(src).toMatch(/renderTabBar/)
-    // renderTabBar 包装层用 chromeRef 测 nav 实高（复用既有测量 hook 语义）
-    expect(src).toMatch(/ref=\{chromeRef\}/)
+    // ①（11-18 下午拍板修正）：tab 不吸顶、表头吸顶——renderTabBar/sticky chrome 全退场；
+    //    Tabs 裸挂对齐反馈库 feedback-lane-tabs 样式（14px/加粗/mb-2）
+    expect(src).not.toMatch(/renderTabBar/)
+    expect(src).not.toMatch(/page-sticky-chrome/)
+    expect(src).toMatch(/feedback-lane-tabs|patrol-lane-tabs/)
+    // 表头吸顶：两表 sticky offsetHeader 直挂（贴视口顶——Tabs 滚走后表头吸住；行尾 JSX 形态防注释误计）
+    expect((src.match(/sticky=\{\{ offsetHeader: 0 \}\}$/gm) || []).length).toBe(2)
     // ② 复合搜索：四字段（RequestID/指标/接口/客户名）合一，默认全字段搜
     expect(src).toMatch(/复合搜索|q: /)
     expect(src).not.toMatch(/placeholder="RequestID"/)   // 旧四散 Input.Search 退场
@@ -159,6 +158,17 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/source="api_patrol"/)
     expect(src).toMatch(/备注/)
     expect(src).not.toMatch(/举措及排期说明/)
+    // ⑥ 根因分类 L2 口径（11-18 下午拍板）：缺口类不显 L2；L2 来源标注旧值前端过滤
+    expect(src).toMatch(/诊断能力缺口.*不显细分场景|record\.rootCauseL1 !== '诊断能力缺口'/)
+    expect(src).toMatch(/LLM\(语义判定\|结构化诊断\|未诊断\)/)
+    // ⑦ 人工修正根因（11-18 傍晚拍板）：manual 优先展示（·人工标识）+ 抽屉修正表单 + AI 原判对照
+    expect(src).toMatch(/rootCauseL1Manual/)
+    expect(src).toMatch(/record\.rootCauseL1Manual \|\| record\.rootCauseL1/)
+    expect(src).toMatch(/AI 判定/)
+    expect(src).toMatch(/`拦截?|修正根因大类/)
+    // ⑧ 客户类型加「其他」（11-18 傍晚拍板：除仿真/测试账号外都是其他=真实客户，哨兵 __others__ 后端转空值过滤）
+    expect(src).toMatch(/customerType: \[/)
+    expect(src).toMatch(/label: '其他', value: '__others__'/)
   })
 
   it('11-18 中午四项：证据收起 + 压缩规则提示 icon + MCP 来源提示 + 列宽拖拽', () => {

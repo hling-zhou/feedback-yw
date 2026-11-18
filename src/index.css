@@ -374,6 +374,15 @@
     padding-top: 0 !important;
   }
 
+  /** 巡检溯源页 lane tabs（11-18：tab 不吸顶、裸挂对齐反馈库——nav 零底距 + content 无顶距） */
+  .patrol-lane-tabs .ant-tabs-nav {
+    margin-bottom: 0 !important;
+  }
+
+  .patrol-lane-tabs .ant-tabs-content-holder {
+    padding-top: 0 !important;
+  }
+
   .post-use-report-tabs.ant-segmented {
     display: inline-flex;
     padding: 0.125rem;

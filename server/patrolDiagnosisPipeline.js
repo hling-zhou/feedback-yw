@@ -69,7 +69,7 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
     return {
       status: 'success',
       l1: classified.l1,
-      l2: classified.l2,
+      l2: '', // 11-18 拍板：诊断能力缺口不显示细分场景（l2 置空，前端只显 L1）
       productAction: classified.productAction,
       rootCauseSource: null, // 无 LLM 产物、无规则对语义的匹配——旧形态数据该列为 null（11-17 前）
       conclusion: null,
@@ -96,7 +96,8 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
     onStage?.('diagnose', `LLM ${analysis.attempts} 次全失败——视为未诊断（保持 pending，明日重试）`)
     return {
       status: 'no_diagnosis',
-      l1: '其他/未归类', l2: 'LLM未诊断', productAction: '待处理',
+      l1: '其他/未归类', l2: '', // 11-18 拍板：L2 是场景不是来源标注——未诊断无场景，置空
+      productAction: '待处理',
       rootCauseSource: null,
       conclusion: null, directCause: [], evidence: [], suggestion: null,
       llmAttempts: analysis.attempts, llmFailed: true,
@@ -148,7 +149,7 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
   return {
     status: 'success',
     l1,
-    l2: 'LLM结构化诊断',
+    l2: extractL2FromConclusion(analysis.conclusion), // 11-18 拍板：L2=细分场景（结论首句核心语义），不是来源标注
     productAction: '待处理',
     rootCauseSource: 'llm',
     conclusion: analysis.conclusion,
@@ -158,4 +159,22 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
     llmAttempts: analysis.attempts,
     llmFailed: false,
   }
+}
+
+/**
+ * L2 细分场景提取（11-18 拍板：L2 是场景不是来源标注）——从 LLM 结论取首句核心语义短语。
+ * 规则：取第一句；剥「根因/原因/导致/因为」等引导词与句末标点；≤24 字；空结论 → '语义识别待细分'。
+ * @param {string | null} conclusion LLM 诊断结论
+ * @returns {string}
+ */
+function extractL2FromConclusion(conclusion) {
+  const first = String(conclusion || '')
+    .split(/[。；;.！!？?\n]/)[0] // 首句
+    .trim()
+  if (!first) return '语义识别待细分'
+  const cleaned = first
+    .replace(/^(根因|原因|直接原因|故障原因|失败原因|经分析|诊断结果)[是为：:\s]*/i, '')
+    .replace(/[，,]\s*(由于|因为|系)\s*/g, '，')
+    .trim()
+  return cleaned.length > 24 ? `${cleaned.slice(0, 24)}…` : cleaned
 }

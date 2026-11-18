@@ -324,7 +324,10 @@ export function registerPatrolQueryRoutes(app) {
     }
     if (q.rootCauseL1) { where.push('g.root_cause_l1 = ?'); params.push(q.rootCauseL1) }
     if (q.rootCauseL2) { where.push('g.root_cause_l2 = ?'); params.push(q.rootCauseL2) }
-    if (q.customerType) { where.push('g.customer_type = ?'); params.push(q.customerType) }
+    // 11-18 拍板：「其他」= 仿真/测试账号以外的真实客户（customer_type 空值或非标注值）
+    if (q.customerType === '__others__') {
+      where.push(`(g.customer_type IS NULL OR g.customer_type = '' OR (g.customer_type <> '仿真' AND g.customer_type <> '测试账号'))`)
+    } else if (q.customerType) { where.push('g.customer_type = ?'); params.push(q.customerType) }
     if (q.assignee) { where.push('g.assignee = ?'); params.push(q.assignee) }
     if (q.status) {
       if (q.status === '需产品侧处理') {
@@ -412,7 +415,8 @@ export function registerPatrolQueryRoutes(app) {
     const id = Number((/** @type {{id: string}} */ (request.params)).id)
     const body = /** @type {{action?: string, rootCauseConfirmed?: string, realRootCause?: string,
       measureFeedback?: string, assignee?: string,
-      actionId?: string, establishedAction?: string, actionSchedule?: string}} */ (request.body || {})
+      actionId?: string, establishedAction?: string, actionSchedule?: string,
+      rootCauseL1Manual?: string, rootCauseL2Manual?: string}} */ (request.body || {})
     const db = getDb()
     const before = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE id=?`).get(id)
     if (!before) return reply.code(404).send({ error: '组不存在' })
@@ -428,12 +432,17 @@ export function registerPatrolQueryRoutes(app) {
     const status = body.action === 'submit' ? '已处理' : '处理中'
     const now = new Date().toISOString()
     // 11-18 确立举措三列（与投诉咨询线同语义：不强制必填；actionId 关联举措库，手填内容与排期可独立）
+    // 11-18 人工修正根因三列（独立存储不覆盖 LLM 原判——两值并存供对比/算准确率）；
+    // real_root_cause 同时补历史丢数据洞（旧版前端收了但 UPDATE 没存）
     db.prepare(`
       UPDATE api_patrol_failure_groups SET
         product_action_status=?, root_cause_confirmed=COALESCE(?, root_cause_confirmed),
         measure_feedback=COALESCE(?, measure_feedback), assignee=COALESCE(?, assignee),
         action_id=COALESCE(?, action_id), established_action=COALESCE(?, established_action),
         action_schedule=COALESCE(?, action_schedule),
+        root_cause_l1_manual=COALESCE(?, root_cause_l1_manual),
+        root_cause_l2_manual=COALESCE(?, root_cause_l2_manual),
+        real_root_cause=COALESCE(?, real_root_cause),
         feedback_by=?, feedback_at=?, updated_at=?
       WHERE id=?
     `).run(
@@ -444,6 +453,9 @@ export function registerPatrolQueryRoutes(app) {
       body.actionId ?? null,
       body.establishedAction ?? null,
       body.actionSchedule ?? null,
+      body.rootCauseL1Manual ?? null,
+      body.rootCauseL2Manual ?? null,
+      body.realRootCause ?? null,
       /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown',
       now, now, id,
     )
@@ -457,6 +469,7 @@ export function registerPatrolQueryRoutes(app) {
         rootCauseConfirmed: /** @type {{root_cause_confirmed: string | null}} */ (before).root_cause_confirmed,
         measureFeedback: /** @type {{measure_feedback: string | null}} */ (before).measure_feedback,
         actionId: /** @type {{action_id: string | null}} */ (before).action_id,
+        rootCauseL1Manual: /** @type {{root_cause_l1_manual: string | null}} */ (before).root_cause_l1_manual,
       },
       after: {
         productActionStatus: /** @type {{product_action_status: string}} */ (after).product_action_status,
@@ -464,6 +477,7 @@ export function registerPatrolQueryRoutes(app) {
         rootCauseConfirmed: /** @type {{root_cause_confirmed: string | null}} */ (after).root_cause_confirmed,
         measureFeedback: /** @type {{measure_feedback: string | null}} */ (after).measure_feedback,
         actionId: /** @type {{action_id: string | null}} */ (after).action_id,
+        rootCauseL1Manual: /** @type {{root_cause_l1_manual: string | null}} */ (after).root_cause_l1_manual,
       },
       changedBy: /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown',
     })

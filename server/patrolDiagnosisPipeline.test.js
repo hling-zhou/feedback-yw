@@ -128,11 +128,12 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     })
     expect(r.status).toBe('success')
     expect(r.l1).toBe('参数无效/校验失败') // LLM 枚举兜底，非规则「锁定」劫持
-    expect(r.l2).toBe('LLM结构化诊断')
+    // 11-18 拍板：l2=结论首句核心语义（场景），不再是来源标注
+    expect(r.l2).toBe('RAM 子用户未被授权该操作，鉴权阶段直接拒绝')
     expect(forward).toHaveBeenCalledTimes(1)
   })
 
-  it('③ 规则未命中 → LLM 枚举兜底定 L1，l2=LLM结构化诊断', async () => {
+  it('③ 规则未命中 → LLM 枚举兜底定 L1，l2=细分场景（conclusion 首句核心语义——11-18 拍板：L2 是场景不是来源标注）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_ENUM)))
     const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
@@ -141,7 +142,10 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     })
     expect(r.status).toBe('success')
     expect(r.l1).toBe('业务冲突') // 来自 analysis.rootCauseL1（同一次调用产物，不二次调用）
-    expect(r.l2).toBe('LLM结构化诊断')
+    // l2 从结论提取细分场景短语，不再是来源标注「LLM结构化诊断」
+    expect(r.l2).not.toBe('LLM结构化诊断')
+    expect(r.l2).toBeTruthy()
+    expect(String(r.l2).length).toBeLessThanOrEqual(24)
     expect(r.rootCauseSource).toBe('llm')
   })
 

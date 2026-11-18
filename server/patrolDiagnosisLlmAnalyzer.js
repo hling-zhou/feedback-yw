@@ -79,12 +79,14 @@ const SYSTEM_PROMPT = `你是云平台 API 失败诊断专家。基于给定失�
    - "suggestion"：1-3 句可执行处理建议（面向内部产品运营/运维，基于日志事实，禁止编造）。
    - "rootCauseL1"：根因大类，从枚举中选一个：${LLM_ROOT_CAUSE_L1_OPTIONS.join(' | ')}。
 3. rootCauseL1 类目边界（判定顺序）：
+   - 【第一优先级】若日志提取到平台错误码（errorCode=CSLOPENSTACK_XXX 等），优先以错误码语义判类：码名自带业务语义（如 BIZ_IN_LOCK_OPERATE=锁定中、NOT_FOUND=资源不存在、INVALID_XXX_PARAM=参数无效、QUOTA=配额、FORBIDDEN=权限拒绝），须结合对应 errorMessage 佐证后归属；
+   - 资源锁定 vs 资源状态边界：IN_OPERATION/IN_LOCK/OPERATING 类（操作进行中，稍后可重试）= 资源锁定/并发冲突；NOT_FOUND/非ACTIVE/状态不满足类（实例状态本身不对，重试也没用）= 资源状态异常或参数无效（资源不存在）；
    - 诊断能力缺口——日志只有正常调用/框架日志，看不出失败原因；
    - 参数无效/校验失败——请求侧传参不过校验（必填、格式、取值、业务规则校验拒绝）；
    - 配额不足——数量/额度上限；
    - 资源锁定/并发冲突——瞬时占用，稍后重试可能成功；
    - 资源状态异常——单资源实例状态不满足，不改状态必失败；
-   - 业务冲突——产品级业务规则对一类操作的限制（如网段冲突、不支持的操作组合）；
+   - 业务冲突——产品级业务规则对一类操作的限制（如网段冲突、不支持的操作组合、绑定关系冲突）；
    - 其他/未归类——确实无法判断时选这个，禁止编造。
 4. 日志里没有的信息不许编造；判断不了的字段用空数组/空串。`
 
@@ -98,6 +100,23 @@ const SYSTEM_PROMPT = `你是云平台 API 失败诊断专家。基于给定失�
  * @returns {Promise<{ ok: boolean, byLlm: boolean, llmFailed: boolean, attempts: number, conclusion: string | null, directCause: string[], evidence: string[], suggestion: string | null, rootCauseL1: string | null }>}
  *   ok=false = 输入不可分析；byLlm=false = LLM 未产出；llmFailed=true = LLM 尝试 3 次全失败（调用方视为未诊断）
  */
+/**
+ * 提取日志中的平台错误码清单（11-18 拍板：错误码作为结构化信号显式喂给 LLM 现场判类——
+ * 不预维护白名单，错误码是产品自身命名、语义稳定，LLM 结合 errorMessage 判归属）。
+ * 形态：errorCode=CSLOPENSTACK_XXX；去重保序；无错误码返回空数组。
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function extractErrorCodes(text) {
+  const t = String(text || '')
+  const codes = []
+  const seen = new Set()
+  for (const m of t.matchAll(/errorCode=([A-Z][A-Z0-9_]{6,})/g)) {
+    if (!seen.has(m[1])) { seen.add(m[1]); codes.push(m[1]) }
+  }
+  return codes
+}
+
 export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
   const EMPTY = { conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
   const { ok, lines, rawCount } = extractLogLinesForLlm(mcpText)
@@ -130,7 +149,12 @@ export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
     groupCtx.poolName ? `资源池：${groupCtx.poolName}` : '',
     groupCtx.userName ? `客户：${groupCtx.userName}` : '',
   ].filter(Boolean).join(' · ')
-  const userContent = `失败请求上下文：${ctx || '（无）'}\n日志共 ${rawCount} 行（已按诊断价值挑选 ${budgeted.length} 行，时间序）：\n${budgeted.join('\n')}`
+  // 11-18 拍板：全量日志提取错误码清单显式喂给 LLM（裁剪预算可能把含码行裁掉——错误码是最高价值信号）
+  const errorCodes = extractErrorCodes(mcpText)
+  const ecLine = errorCodes.length > 0
+    ? `本次日志提取到的平台错误码（errorCode，判类第一优先级信号，须结合对应 errorMessage 判断归属）：\n${errorCodes.join('\n')}`
+    : '本次日志未提取到平台错误码。'
+  const userContent = `失败请求上下文：${ctx || '（无）'}\n${ecLine}\n日志共 ${rawCount} 行（已按诊断价值挑选 ${budgeted.length} 行，时间序）：\n${budgeted.join('\n')}`
 
   /** 单次尝试：调 LLM → 解析 JSON → 枚举匹配。返回 null = 本次失败（可重试）。 */
   const attemptOnce = async () => {

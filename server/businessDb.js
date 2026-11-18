@@ -435,6 +435,25 @@ function migratePatrolGroupActionColumns(db) {
 }
 
 /**
+ * 11-18 人工修正根因列迁移：api_patrol_failure_groups 加 root_cause_l1_manual/root_cause_l2_manual/real_root_cause 三列。
+ * 人工修正值独立存储不覆盖 LLM 判定（root_cause_l1/l2 保持原判）——两值并存可对比，
+ * 是后续统计 LLM 准确率的数据基础；real_root_cause 补历史丢数据洞（前端旧版收了但 UPDATE 没存）。
+ */
+function migratePatrolGroupManualCauseColumns(db) {
+  const cols = db.prepare('PRAGMA table_info(api_patrol_failure_groups)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('root_cause_l1_manual')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN root_cause_l1_manual TEXT')
+  }
+  if (!names.has('root_cause_l2_manual')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN root_cause_l2_manual TEXT')
+  }
+  if (!names.has('real_root_cause')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN real_root_cause TEXT')
+  }
+}
+
+/**
  * 11-17 五段结构化列迁移：api_patrol_diagnoses 加 direct_cause/evidence/root_cause_source
  * （LLM 结构化诊断五段之直接原因/关键证据 + 根因来源标注 llm|rule；存量行默认 NULL）。
  */
@@ -1001,6 +1020,9 @@ export function initBusinessSchema() {
       action_id TEXT,
       established_action TEXT,
       action_schedule TEXT,
+      root_cause_l1_manual TEXT,
+      root_cause_l2_manual TEXT,
+      real_root_cause TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(group_date, product_key, pool_name, api_path, user_name, first_request_id)
@@ -1033,6 +1055,7 @@ export function initBusinessSchema() {
   migrateRecordsTicketIdColumn(db)
   migratePatrolDiagnosesSuggestionColumn(db)
   migratePatrolGroupActionColumns(db)
+  migratePatrolGroupManualCauseColumns(db)
   migratePatrolDiagnosesFiveSegColumns(db)
   // 记录变更游标与工单写入同事务提交。触发器覆盖单条、批量、替换和删除入口。
   db.exec(`

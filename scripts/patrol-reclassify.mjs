@@ -55,7 +55,7 @@ for (const r of rows) {
   let byLlm = false
   if (classified.l1 === '其他/未归类' && text) {
     const llm = await classifyRootCauseByLlm(text)
-    if (llm.byLlm) { classified = { l1: llm.l1, l2: 'LLM语义判定' }; byLlm = true }
+    if (llm.byLlm) { classified = { l1: llm.l1, l2: '' }; byLlm = true } // 11-18 拍板：L2 场景置空待 LLM 主链补（此脚本只兜 L1）
   }
   const key = classified.l1 + '/' + classified.l2 + (byLlm ? ' (LLM)' : '')
   counts[key] = (counts[key] || 0) + 1
