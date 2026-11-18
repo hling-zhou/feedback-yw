@@ -29,6 +29,26 @@ const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
 const CUSTOMER_TYPE_LABELS = { 仿真: '仿真', 测试账号: '测试' }
 
+/**
+ * 根因分类展示派生（11-18 晚拍板：同源谓词——列表 Tag/抽屉 AI 判定行共用同一函数）。
+ * 口径：①列表模式 manual 优先（带 isManual 标识）；抽屉对照模式取 AI 原值（对照本意）
+ * ②诊断能力缺口不显 L2 ③L2 是场景不是来源标注——「LLM结构化诊断/LLM语义判定/
+ * LLM未诊断/无诊断结论」旧值过滤退场（两模式同口径）。
+ * @param {{ rootCauseL1?: string | null, rootCauseL2?: string | null,
+ *           rootCauseL1Manual?: string | null, rootCauseL2Manual?: string | null }} record
+ * @param {'list' | 'ai-original'} [mode] list=manual 优先（默认）；ai-original=抽屉对照行取 AI 原判
+ * @returns {{ l1: string, l2: string, isManual: boolean, hasManual: boolean }}
+ */
+function displayRootCause(record, mode = 'list') {
+  const hasManual = Boolean(record.rootCauseL1Manual)
+  const useManual = mode === 'list' && hasManual
+  const l1 = (useManual ? record.rootCauseL1Manual : record.rootCauseL1) || ''
+  let l2 = (useManual ? record.rootCauseL2Manual : record.rootCauseL2) || ''
+  if (l1 === '诊断能力缺口') l2 = ''
+  if (/^LLM(语义判定|结构化诊断|未诊断)/.test(l2) || l2 === '无诊断结论') l2 = ''
+  return { l1, l2, isManual: useManual, hasManual }
+}
+
 export default function ApiPatrolFailures() {
   const message = useAppMessage()
   const { can, user } = useAuth()
@@ -49,7 +69,7 @@ export default function ApiPatrolFailures() {
   const [groups, setGroups] = useState([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [filters, setFilters] = useState(/** @type {Record<string, string>} */ ({
-    q: '', product: '', metricName: '', apiPath: '', requestId: '', userName: '',
+    product: '', metricName: '', apiPath: '', requestId: '', userName: '',
     rootCauseL1: rootCauseFromUrl, status: '', customerType: '', assignee: '',
   }))
   /** 经办人选项（11-17：DISTINCT 端点，时间范围内有组的非空经办人） */
@@ -277,18 +297,12 @@ export default function ApiPatrolFailures() {
     {
       title: '根因分类', key: 'rootCause', width: 190,
       render: (record) => {
-        // 11-18 人工修正优先展示（同源派生：manual 有值优先，LLM 原判保留在抽屉对照）
-        const l1 = record.rootCauseL1Manual || record.rootCauseL1
-        const l2 = record.rootCauseL2Manual || record.rootCauseL2
-        const isManual = Boolean(record.rootCauseL1Manual)
+        // 11-18 同源派生：displayRootCause 与抽屉 AI 判定行共用（同概念多呈现单一谓词）
+        const { l1, l2, isManual } = displayRootCause(record)
         return (
           <Space size={4} wrap>
             {l1 ? <Tag color={isManual ? 'geekblue' : 'blue'}>{isManual ? `${l1}·人工` : l1}</Tag> : null}
-            {/* 11-18 拍板：诊断能力缺口不显细分场景；L2 是场景不是来源标注（LLM语义判定/LLM结构化诊断 旧值过滤） */}
-            {l2
-              && l1 !== '诊断能力缺口'
-              && !/^LLM(语义判定|结构化诊断|未诊断)/.test(l2)
-              ? <Tag>{l2}</Tag> : null}
+            {l2 ? <Tag>{l2}</Tag> : null}
             {!l1 && !l2 ? <Tag>未诊断</Tag> : null}
           </Space>
         )
@@ -459,12 +473,13 @@ export default function ApiPatrolFailures() {
                 <>
                   <div className="page-card">
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
-                    {/* 11-17：产品筛选（分产品计数——接口行口径）；说明行已按拍板移除 */}
+                    {/* 11-17：产品筛选（分产品计数——接口行口径）；说明行已按拍板移除。
+                        11-18 晚：宽度 200（原名看不全） */}
                     <Select
                       size="small"
                       placeholder="全部产品"
                       allowClear
-                      className="!w-40"
+                      className="!w-[200px]"
                       value={interfaceProduct || undefined}
                       options={productCounts.map((p) => ({
                         label: `${p.name}（${p.interfaceCount}）`,
@@ -495,23 +510,16 @@ export default function ApiPatrolFailures() {
               children: (
                 <>
                   <div className="page-card">
-                  {/* 复合搜索行（11-18 拍板）：q 全字段搜框 + 复合筛选 chips + 需产品侧处理勾选 + 刷新，同一行。
-                      pb-3 —— 工具条与表格间距。 */}
+                  {/* 复合搜索行（11-18 晚拍板修订）：复合筛选组件独占搜索入口——
+                      其文本字段（RequestID/指标/接口/客户名）+ 枚举 chips 全承载，独立 q 搜索框退场。
+                      需产品侧处理勾选 + 刷新同排；pb-3 工具条与表格间距。 */}
                   <div className="flex flex-wrap items-center gap-2 pb-3">
-                    <Input.Search
-                      size="small"
-                      allowClear
-                      placeholder="搜索 RequestID / 指标 / 接口 / 客户名"
-                      className="!w-64"
-                      onSearch={(v) => setFilters((f) => ({ ...f, q: v }))}
-                    />
                     <PatrolCompositeFilter
                       filters={filters}
                       onFiltersChange={(next) => setFilters(next)}
-                      onClearFilters={() => setFilters((f) => ({
-                        q: f.q,
+                      onClearFilters={() => setFilters({
                         rootCauseL1: rootCauseFromUrl,
-                      }))}
+                      })}
                       enumOptions={{
                         product: productCounts.map((p) => ({ label: `${p.name}（${p.groupCount}）`, value: p.key })),
                         rootCauseL1: withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts),
@@ -786,9 +794,20 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                   <div className="mb-3 rounded-md bg-ink-50/60 p-2">
                     <div className="sub-section-label mb-1">根因分类（AI 判定与人工修正）</div>
                     <Typography.Text type="secondary" className="mb-2 block text-xs">
-                      AI 判定：{group ? (String(/** @type {{rootCauseL1?: string}} */ (group).rootCauseL1 || '未诊断')
-                        + (/** @type {{rootCauseL2?: string}} */ (group).rootCauseL2 ? ` / ${String(/** @type {{rootCauseL2?: string}} */ (group).rootCauseL2)}` : '')) : '—'}
+                      {/* 11-18 晚拍板：同源派生 ai-original 模式——对照行取 AI 原判（manual 修正另在下方表单），
+                          来源标注旧值/缺口类 L2 与列表同口径过滤 */}
+                      AI 判定：{(() => {
+                        if (!group) return '—'
+                        const { l1, l2, hasManual } = displayRootCause(group, 'ai-original')
+                        return (l1 || '未诊断') + (l2 ? ` / ${l2}` : '') + (hasManual ? '（已被人工修正）' : '')
+                      })()}
                     </Typography.Text>
+                    {diagnosis?.actionReason ? (
+                      <Typography.Text type="secondary" className="mb-2 block text-xs">
+                        处理判定依据：{String(/** @type {{actionReason?: string}} */ (diagnosis).actionReason)}
+                        （{String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '') === '—' ? '不需产品侧处理' : '需产品侧处理'}）
+                      </Typography.Text>
+                    ) : null}
                     <div className="flex flex-wrap items-start gap-2">
                       <Form.Item label={<FieldLabel>修正根因大类</FieldLabel>} name="rootCauseL1Manual" className="!mb-0" style={{ minWidth: 180 }}>
                         <Select

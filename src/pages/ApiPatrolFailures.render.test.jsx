@@ -145,9 +145,11 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/feedback-lane-tabs|patrol-lane-tabs/)
     // 表头吸顶：两表 sticky offsetHeader 直挂（贴视口顶——Tabs 滚走后表头吸住；行尾 JSX 形态防注释误计）
     expect((src.match(/sticky=\{\{ offsetHeader: 0 \}\}$/gm) || []).length).toBe(2)
-    // ② 复合搜索：四字段（RequestID/指标/接口/客户名）合一，默认全字段搜
-    expect(src).toMatch(/复合搜索|q: /)
-    expect(src).not.toMatch(/placeholder="RequestID"/)   // 旧四散 Input.Search 退场
+    // ② 复合搜索（11-18 晚拍板修订）：复合筛选组件独占搜索入口——独立 q 搜索框退场（文本字段在组件内）
+    expect(src).toMatch(/PatrolCompositeFilter/)
+    expect(src).not.toMatch(/placeholder="搜索 RequestID/)
+    // 异常接口 tab 产品筛选宽 200（原名看不全）
+    expect(src).toMatch(/!w-\[200px\]/)
     // ③ 需产品侧处理改勾选形式（Checkbox），与复合搜索、刷新同排一行
     expect(src).toMatch(/Checkbox/)
     expect(src).not.toMatch(/需产品侧处理'\s*\}\s*<\/Button>/)
@@ -158,17 +160,20 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/source="api_patrol"/)
     expect(src).toMatch(/备注/)
     expect(src).not.toMatch(/举措及排期说明/)
-    // ⑥ 根因分类 L2 口径（11-18 下午拍板）：缺口类不显 L2；L2 来源标注旧值前端过滤
-    expect(src).toMatch(/诊断能力缺口.*不显细分场景|record\.rootCauseL1 !== '诊断能力缺口'/)
+    // ⑥ 根因分类 L2 口径（11-18 下午拍板；晚收敛进 displayRootCause 单一谓词）：
+    // 缺口类不显 L2；来源标注旧值（LLM语义判定/结构化诊断/未诊断/无诊断结论）过滤退场
+    expect(src).toMatch(/if \(l1 === '诊断能力缺口'\) l2 = ''/)
     expect(src).toMatch(/LLM\(语义判定\|结构化诊断\|未诊断\)/)
-    // ⑦ 人工修正根因（11-18 傍晚拍板）：manual 优先展示（·人工标识）+ 抽屉修正表单 + AI 原判对照
+    // ⑦ 人工修正根因（11-18 傍晚拍板）：manual 优先（·人工标识）+ 抽屉修正表单 + AI 原判对照
     expect(src).toMatch(/rootCauseL1Manual/)
-    expect(src).toMatch(/record\.rootCauseL1Manual \|\| record\.rootCauseL1/)
+    expect(src).toMatch(/修正根因大类/)
     expect(src).toMatch(/AI 判定/)
-    expect(src).toMatch(/`拦截?|修正根因大类/)
     // ⑧ 客户类型加「其他」（11-18 傍晚拍板：除仿真/测试账号外都是其他=真实客户，哨兵 __others__ 后端转空值过滤）
     expect(src).toMatch(/customerType: \[/)
     expect(src).toMatch(/label: '其他', value: '__others__'/)
+    // ⑨ 根因展示同源派生（11-18 晚拍板：列表与抽屉同一谓词——抽屉 AI 判定行不得显示来源标注旧值/缺口类 L2）
+    expect(src).toMatch(/displayRootCause/)
+    expect((src.match(/displayRootCause\(/g) || []).length).toBeGreaterThanOrEqual(2)  // 列 + 抽屉两消费方
   })
 
   it('11-18 中午四项：证据收起 + 压缩规则提示 icon + MCP 来源提示 + 列宽拖拽', () => {
