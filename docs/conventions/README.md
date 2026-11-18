@@ -20,7 +20,7 @@
 | [04-测试与验证约定.md](04-测试与验证约定.md) | vitest 子集、真实链路验证、typecheck 纪律、本地 E2E 需指令 | 改完代码后、交付声明前 |
 | [05-设计拍板与已知坑.md](05-设计拍板与已知坑.md) | 已拍板设计、已知坑与先例、**待拍板清单** | 动数据模型/键粒度/UI 结构前 |
 | [06-环境启动与部署.md](06-环境启动与部署.md) | dev:clean、端口、部署缓存三件套、MCP/Mail | 起服务、发版、排障时 |
-| [防缺陷触发规则.md](防缺陷触发规则.md) | 11 条"做 X 时必答 Y"触发规则 + 排查约定（11-06 起持续补充） | 写删除/计数/共享层/来源标注前 |
+| [防缺陷触发规则.md](防缺陷触发规则.md) | 13 条"做 X 时必答 Y"触发规则 + 排查约定（11-06 起持续补充；12/13 为 11-18 复盘新增） | 写删除/计数/共享层/来源标注/构造测试前置前 |
 | [页面UI规范.md](页面UI规范.md) | 三级间距/卡片/标题/表单标签体系 + 守卫清单（11-07 复盘产物） | 写任何 UI 前必读 |
 
 ## 机器守卫与审计脚本索引
@@ -32,7 +32,7 @@
 | 共享谓词审计 | `scripts/audit-shared-predicates.mjs` | 直摸数据结构绕过 isArchived/isDispatched/decisionOf（exit 1，可接 CI） |
 | sticky chrome 守卫 | `src/pages/PostUseJiraTab.chrome.render.test.jsx` | page-sticky-chrome 误入卡片内 / bg-ink-50 灰底回潮 |
 | 分页总数守卫 | `src/lib/paginationTotal.guard.test.js` | 活跃分页缺 showTotal、内联回调回潮、消费方 import 路径断裂（11-11 部署机构建炸后补） |
-| LLM 批容器契约守卫 | `src/lib/llmClient.test.js`（批容器用例组） | 解析层剥掉 {results:[...]} 包装 |
+| LLM 批容器契约守卫 | `src/lib/llmClient.test.js`（批容器用例组） | 解析层剥掉 {results:[...]} 包装；截断态思考草稿冒充正文（11-18）；报告 V2 focus/products/todos 容器（11-18） |
 | 列宽拖拽守卫 | `src/lib/columnWidths.test.js` 等（11-11 新增） | scroll.x 硬编码回潮、直接写 th.style.width |
 | 目录缓存守卫 | `catalogCacheCoverageGuard`（reminders/MCP/patrol 线） | 新消费方读目录缓存前漏刷新 |
 
