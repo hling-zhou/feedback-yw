@@ -306,7 +306,7 @@ function pickBatchResultContainer(values) {
   // focus/products/todos/themeGroups：报告 V2 文案（reportV2Narrative）的批容器承诺键
   //（11-18 真实链路实证：不入表时 pickAssistantPayload 走「取最后对象」启发式，
   // 99 产品完整 JSON 被切内部子对象后只剩最后一个 {"index":98,...} → 批量丢失；
-  // themeGroups 同日入表：LLM 语义归类批容器，承诺在 reportV2Narrative system prompt）。
+  // themeGroups 同日入表：LLM 语义归类批容器（11-19 拆批后由独立归类小批承诺）。
   // narrative/recommendations：专题分析叙事扩写（llmBrief polishTopicAnalysisWithLlm）
   // 的输出契约键——11-18 同日真实链路实证同款形态：完整输出被剥成最后一个
   // {"id":"r2","text":...} 子对象，narrative/whyHappenedNarrative 整体丢失。

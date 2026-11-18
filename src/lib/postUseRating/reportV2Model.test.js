@@ -345,6 +345,31 @@ describe('V2 report facts', () => {
     expect(overridden.themeGroupLabels).toEqual({ '烂到极致，我要退款': '操作与帮助文档' })
   })
 
+  // 11-19 P1：focus 标题按生命周期分支措辞——数量+时点+低点影响三要素（原型洞察句式）
+  it('writes focus titles with count, peak month, and quarter low-point impact', () => {
+    const allRecords = [
+      rating('q1', '2026-07', 1, '功能有缺失'),
+      rating('q2', '2026-08', 1, '功能有缺失'),
+      rating('q3', '2026-09', 1, '功能有缺失'),
+      rating('q4', '2026-08', 2, '稳定性不足故障频发'),
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
+      records: allRecords, companyRecords: allRecords, allRecords, allCompanyRecords: allRecords,
+    })
+    const spanRow = model.focus.find((row) => row.theme === '功能有缺失')
+    expect(spanRow.title).toContain('贯穿全季（3 条，最低 1 分），需根因治理')
+    const singleRow = model.focus.find((row) => row.theme === '稳定性不足故障频发')
+    expect(singleRow.title).toContain('本季新增 1 条（最低 2 分），8 月集中出现')
+    // 低点拖累：低分记录拉低产品季内均分 → detail 附低点线索（低点月与爆发月可能不同月）
+    const singleProduct = model.products.find((row) => row.name === singleRow.productName)
+    const lowMonth = singleProduct?.monthly.filter((row) => row.value != null).sort((a, b) => a.value - b.value)[0]
+    if (lowMonth && lowMonth.value < 9) {
+      expect(singleRow.detail).toContain(`${Number(lowMonth.month.slice(5))} 月均分`)
+      expect(singleRow.detail).toContain('为季内低点')
+    }
+  })
+
   it('computes department reason month distribution and lifecycle for the quarter', () => {
     const allRecords = [
       rating('q1', '2026-07', 1, '功能有缺失'),
@@ -387,7 +412,8 @@ describe('V2 report facts', () => {
       traces,
     })
     expect(model.actions.find((row) => row.theme === '功能有缺失')).toMatchObject({ owner: '经办甲', text: '核查缺失能力' })
-    expect(model.actions.find((row) => row.theme === '页面打开慢')).toMatchObject({ owner: '', text: '核查「页面打开慢」并明确处理结论' })
+    // 11-19 P0-③：无溯源经办人时默认兜底"产品部经办人"（消掉"待指派"），有真实经办人保持不变
+    expect(model.actions.find((row) => row.theme === '页面打开慢')).toMatchObject({ owner: '产品部经办人', text: '核查「页面打开慢」并明确处理结论' })
   })
 
   it('puts a dissatisfied customer first and keeps the focus across products', () => {

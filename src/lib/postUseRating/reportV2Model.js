@@ -497,7 +497,11 @@ function focusFacts(row, trace, visit, months, kind, visitInferred = false, back
   if (traceText) facts.push(`产品部溯源：${traceText.slice(0, 140)}`)
   const backgroundText = maskPhoneInText(String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim())
   if (!traceText && backgroundText) facts.push(`产品部溯源背景：${backgroundText.slice(0, 140)}`)
-  if (!visitText && row.quotes[0]) facts.push(`客户原话：「${maskPhoneInText(row.quotes[0]).slice(0, 100)}」`)
+  // 11-19 P0-④：原话只取真实客户语言——commentText（lowestQuotes）优先；
+  // 回退 occurrence 原文时过滤与主题名相同者（console 渠道 occurrence 文本恒等于主题名，标签冒充原话零信息量）
+  const customerQuote = maskPhoneInText(String(row.lowestQuotes?.[0]
+    || row.quotes.find((text) => String(text).trim() !== row.theme) || '').trim())
+  if (!visitText && customerQuote) facts.push(`客户原话：「${customerQuote.slice(0, 100)}」`)
   if (kind === 'quarter') facts.push(`月度分布：${months.map((month) => `${Number(month.slice(5))}月 ${row.monthCounts[month] || 0} 条`).join('、')}`)
   else if (row.previousCount) facts.push(`上期 ${row.previousCount} 条，本期 ${row.count} 条`)
   return facts.join('；') || `本期关联 ${row.count} 条评分记录，最低 ${row.lowestScore} 分。`
@@ -517,7 +521,7 @@ function inferVisitForTheme(row, themes, visits) {
   return candidates.length === 1 ? candidates[0] : null
 }
 
-function actionRows(themes, traces, visits, actions, months, kind) {
+function actionRows(themes, traces, visits, actions, months, kind, products = []) {
   return themes.filter((row) => row.type === 'low').map((row) => {
     const linkedTraceIds = new Set(row.linkedTraceIds || [])
     const matchingTraces = traces.filter((item) => linkedTraceIds.has(String(item.id)))
@@ -546,21 +550,43 @@ function actionRows(themes, traces, visits, actions, months, kind) {
                 : `核查「${row.theme}」并明确处理结论`)
     const actionType = focusActionType(row, trace || backgroundTrace, visit)
     const severity = `${row.count} 条，最低 ${row.lowestScore} 分`
+    // 11-19 P1：标题按生命周期分支措辞——数量 + 时点 + 对产品/均分的影响 三要素（对齐原型洞察句式）。
+    // isNew（上期 0）时点出「Q3 新增」；单月/集中爆发点出爆发月份；低点拖累时点出该产品季内低点均分。
+    const productMonthly = products.find((item) => item.name === row.productName)?.monthly || []
+    const quarterLow = productMonthly.filter((item) => item.value != null)
+      .sort((a, b) => a.value - b.value)[0] || null
+    const lowPointNote = quarterLow && quarterLow.value < 9
+      ? `，${Number(quarterLow.month.slice(5))} 月均分跌至 ${quarterLow.value}` : ''
+    const peakMonth = kind === 'quarter' ? Object.entries(row.monthCounts || {}).sort((a, b) => b[1] - a[1])[0] : null
+    const peakNote = peakMonth && peakMonth[1] ? `，${Number(peakMonth[0].slice(5))} 月集中出现` : ''
     const title = customerDissatisfied
       ? `${row.productName}「${row.theme}」客户回访明确不满，需跟进回应`
-      : kind === 'quarter' && row.lifecycle
-        ? `${row.productName}「${row.theme}」${row.lifecycle}（${severity}），需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
-        : `${row.productName}「${row.theme}」${row.previousCount ? '连续两期出现，' : ''}本期 ${severity}，需${actionType === '缺陷修复' ? '定位修复' : '明确处理结论'}`
+      : kind === 'quarter' && row.lifecycle === '贯穿全季'
+        ? `${row.productName}「${row.theme}」贯穿全季（${severity}），需根因治理`
+        : kind === 'quarter' && row.lifecycle.includes('集中爆发')
+          ? `${row.productName}「${row.theme}」${row.lifecycle}（${severity}），需定位该月事件${lowPointNote}`
+          : kind === 'quarter' && row.lifecycle.startsWith('单月')
+            ? `${row.productName}「${row.theme}」${row.isNew ? '本季新增 ' : ''}${row.count} 条（最低 ${row.lowestScore} 分）${peakNote}${lowPointNote}，需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
+            : kind === 'quarter' && row.lifecycle
+              ? `${row.productName}「${row.theme}」${row.lifecycle}（${severity}），需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
+              : `${row.productName}「${row.theme}」${row.previousCount ? '连续两期出现，' : ''}本期 ${severity}，需${actionType === '缺陷修复' ? '定位修复' : '明确处理结论'}`
     return {
       id: row.key, productName: row.productName, theme: row.theme, priority: row.priority,
       lifecycle: row.lifecycle, text: String(verb).trim(), actionType, title,
-      detail: focusFacts(row, trace, visit, months, kind, visitInferred, backgroundTrace),
+      detail: focusFacts(row, trace, visit, months, kind, visitInferred, backgroundTrace)
+        // 11-19 P1：detail 补第三要素"影响"——该产品季内低点均分（拖累判断的量化线索）
+        + (quarterLow && quarterLow.value < 9 ? `；${row.productName} ${Number(quarterLow.month.slice(5))} 月均分 ${quarterLow.value} 为季内低点` : ''),
       customerDissatisfied,
       isNew: row.isNew, previousCount: row.previousCount, lowestScore: row.lowestScore,
-      owner: traceOwners.length === 1 ? traceOwners[0] : '',
+      // 11-19 P0-③：无溯源经办人时默认兜底（原型先例"产品部经办人"），消掉"待指派"；有真实经办人保持不变
+      owner: traceOwners.length === 1 ? traceOwners[0] : '产品部经办人',
       team: String(action?.team || '').trim(), status: String(action?.status || trace?.status || '待处理'),
       check: row.priority === 'P2' ? '下期观察同类反馈计数' : '复核客户反馈及后续评分',
       sourceRecordCount: row.count, recordIds: row.recordIds,
+      // 11-19 P2：LLM facts 素材——月度分布与客户原话（focus 行携带，narrative 层组装输入）
+      monthCounts: row.monthCounts || null,
+      quotes: row.quotes || [],
+      lowestQuotes: row.lowestQuotes || [],
     }
   })
 }
@@ -740,7 +766,7 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
   }).sort((a, b) => Number(b.belowNine) - Number(a.belowNine)
     || Number(b.status === '重点改善') - Number(a.status === '重点改善')
     || b.sample - a.sample || a.name.localeCompare(b.name, 'zh'))
-  const rawActions = actionRows(themes, traces, visits, actionItems, months, kind)
+  const rawActions = actionRows(themes, traces, visits, actionItems, months, kind, products)
   const focus = selectFocus(rawActions, kind, products)
   const allActions = capActionsByProduct(rawActions, focus)
   const todoCandidates = buildTodoCandidates({ months, visits, traces, actionItems })

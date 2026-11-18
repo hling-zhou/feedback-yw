@@ -90,13 +90,16 @@ describe('V2 report wording', () => {
   })
 
   // 11-18 晚 LLM 语义归类（用户拍板"结合 LLM 语义分析做归类"）：
-  // ungroupedThemes 进 prompt 输入；themeGroups 输出经封闭组过滤 + theme 逐字匹配；
-  // 非法条目（自造组名 / theme 不在未归类清单）丢弃回退原文自成一档，不阻塞文案批。
+  // 11-19 拆批：归类独立小批（第二次调用，4000 预算短指令），文案批不再携带 themeGroups；
+  // 归类输出经封闭组过滤 + theme 逐字匹配；非法条目丢弃回退原文自成一档，不阻塞文案批。
   it('classifies ungrouped low-score themes via strictLabels and drops forged entries', async () => {
     llmChatCompletion.mockReset()
-    llmChatCompletion.mockResolvedValue({ text: JSON.stringify({
+    // 第一次调用 = 文案批；第二次调用 = 归类批
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
       products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
+    }) })
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       themeGroups: [
         { theme: '垃圾云电脑,不用就关机', group: '操作与帮助文档' },
         { theme: '页面加载慢/报错', group: '体验极差类' },
@@ -111,8 +114,15 @@ describe('V2 report wording', () => {
       ungroupedThemes: ['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能'],
     }
     const result = await generatePostUseReportV2Narrative({}, model)
-    const userPayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
-    expect(userPayload.ungroupedThemes).toEqual(['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能'])
+    // 文案批 user 消息不再携带 ungroupedThemes（拆批瘦身）
+    const narrativePayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
+    expect(narrativePayload.ungroupedThemes).toBeUndefined()
+    // 归类批：独立短指令 + 封闭组清单进输入
+    expect(llmChatCompletion).toHaveBeenCalledTimes(2)
+    const groupPayload = JSON.parse(llmChatCompletion.mock.calls[1][1].messages[1].content)
+    expect(groupPayload.ungroupedThemes).toEqual(['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能'])
+    expect(groupPayload.candidateGroups).toContain('功能缺失/不完善')
+    expect(llmChatCompletion.mock.calls[1][1].max_tokens).toBe(4000)
     expect(result.themeGroupLabels).toEqual({
       '垃圾云电脑,不用就关机': '操作与帮助文档',
       '找不到需要的产品/功能': '功能缺失/不完善',
@@ -122,10 +132,12 @@ describe('V2 report wording', () => {
 
   it('keeps themeGroupLabels empty when the model returns no grouping', async () => {
     llmChatCompletion.mockReset()
-    llmChatCompletion.mockResolvedValue({ text: JSON.stringify({
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
       products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
     }) })
+    // 归类批返回空 themeGroups
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({ themeGroups: [] }) })
     const model = {
       kind: 'month', months: ['2026-10'],
       focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
@@ -135,5 +147,24 @@ describe('V2 report wording', () => {
     const result = await generatePostUseReportV2Narrative({}, model)
     expect(result.themeGroupLabels).toEqual({})
     // 分类批全丢但 focus/products 可用 → 不抛错（回退语义：标签按原文自成一档）
+  })
+
+  // 11-19：归类批失败（网络/解析）不阻塞文案批——themeGroupLabels 空回退
+  it('does not fail the narrative batch when the grouping batch errors', async () => {
+    llmChatCompletion.mockReset()
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
+      focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
+      products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
+    }) })
+    llmChatCompletion.mockRejectedValueOnce(new Error('LLM 输出被截断（finish_reason=length），请增大 max_tokens 或缩短输入'))
+    const model = {
+      kind: 'month', months: ['2026-10'],
+      focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
+      products: [{ name: '云监控', avg: 1, sample: 1, previousAvg: 4.67, status: '重点改善', themes: [] }],
+      ungroupedThemes: ['页面加载慢/报错'],
+    }
+    const result = await generatePostUseReportV2Narrative({}, model)
+    expect(result.focus).toBeTruthy()
+    expect(result.themeGroupLabels).toEqual({})
   })
 })
