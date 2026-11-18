@@ -314,6 +314,14 @@ export function registerPatrolQueryRoutes(app) {
     if (q.apiPath) { where.push('g.api_path LIKE ?'); params.push(`%${q.apiPath}%`) }
     if (q.requestId) { where.push('(g.first_request_id LIKE ? OR g.suppressed_request_ids LIKE ?)'); params.push(`%${q.requestId}%`, `%${q.requestId}%`) }
     if (q.userName) { where.push('g.user_name LIKE ?'); params.push(`%${q.userName}%`) }
+    // 复合搜索全字段参数（11-18 拍板）：未指定字段时的默认全字段搜——
+    // RequestID/指标/接口/客户名四列 OR LIKE（含被压缩 IDs 内的 RequestID）
+    if (q.q) {
+      const like = `%${q.q}%`
+      where.push(`(g.first_request_id LIKE ? OR g.suppressed_request_ids LIKE ?
+                   OR g.metric_name LIKE ? OR g.api_path LIKE ? OR g.user_name LIKE ?)`)
+      params.push(like, like, like, like, like)
+    }
     if (q.rootCauseL1) { where.push('g.root_cause_l1 = ?'); params.push(q.rootCauseL1) }
     if (q.rootCauseL2) { where.push('g.root_cause_l2 = ?'); params.push(q.rootCauseL2) }
     if (q.customerType) { where.push('g.customer_type = ?'); params.push(q.customerType) }

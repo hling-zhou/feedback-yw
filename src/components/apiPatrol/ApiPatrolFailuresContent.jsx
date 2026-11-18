@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
+import { Button, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
+import { InfoCircleOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiClient.js'
@@ -7,6 +8,10 @@ import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import FieldLabel from '../FieldLabel.jsx'
 import { paginationShowTotal } from '../../lib/paginationTotal.js'
+import PatrolCompositeFilter from './PatrolCompositeFilter.jsx'
+import EstablishedActionFields, { getActionItemDisplayScheduleAt } from '../actions/EstablishedActionFields.jsx'
+import { useColumnResize } from '../../hooks/useColumnResize.js'
+import { sumColumnsWidth } from '../../lib/columnWidths.js'
 
 const { RangePicker } = DatePicker
 
@@ -18,7 +23,7 @@ const { RangePicker } = DatePicker
  * 数据来自 /api/patrol/failures/*（camelCase 返回）。
  */
 const ROOT_CAUSE_L1_OPTIONS = [
-  '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类',
+  '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '权限/授权不足', '诊断能力缺口', '其他/未归类',
 ]
 const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断']
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
@@ -46,14 +51,17 @@ function useMeasureHeight(ref, onHeight) {
 
 export default function ApiPatrolFailures() {
   const message = useAppMessage()
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const [searchParams] = useSearchParams()
   const rootCauseFromUrl = searchParams.get('rootCauseL1') || ''
   const readOnly = !can('manageTags')
   const [activeTab, setActiveTab] = useState(rootCauseFromUrl ? 'groups' : 'interfaces')
+  // 列宽拖拽（11-18 拍板④：复用系统 useColumnResize 机制——localStorage 按 userId 持久化）
+  const interfacesResize = useColumnResize({ tableKey: 'patrol.interfaces', userId: user?.id })
+  const groupsResize = useColumnResize({ tableKey: 'patrol.groups', userId: user?.id })
 
   /** @type {[any, React.Dispatch<React.SetStateAction<any>>]} */
-  const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()])
+  const [range, setRange] = useState([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')]) // 默认 T-1（11-18 拍板），与快捷按钮同语义
   const [interfaces, setInterfaces] = useState([])
   const [loadingInterfaces, setLoadingInterfaces] = useState(false)
   /** @type {[any, React.Dispatch<React.SetStateAction<any>>]} */
@@ -61,10 +69,10 @@ export default function ApiPatrolFailures() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [groups, setGroups] = useState([])
   const [loadingGroups, setLoadingGroups] = useState(false)
-  const [filters, setFilters] = useState({
-    product: '', metricName: '', apiPath: '', requestId: '', userName: '',
+  const [filters, setFilters] = useState(/** @type {Record<string, string>} */ ({
+    q: '', product: '', metricName: '', apiPath: '', requestId: '', userName: '',
     rootCauseL1: rootCauseFromUrl, status: '', customerType: '', assignee: '',
-  })
+  }))
   /** 经办人选项（11-17：DISTINCT 端点，时间范围内有组的非空经办人） */
   const [assigneeOptions, setAssigneeOptions] = useState([])
   /** 分产品计数（11-17：两 tab 产品筛选共用——异常接口按接口行/失败请求按组数） */
@@ -72,14 +80,12 @@ export default function ApiPatrolFailures() {
   /** 异常接口列表产品筛选（单选；跨 tab 独立状态——两 tab 口径不同不共享值） */
   const [interfaceProduct, setInterfaceProduct] = useState('')
 
-  // 表头吸顶（11-17）：卡片内吸顶——测量工具条高度传 Table sticky.offsetHeader
-  // （照抄 FeedbackTable/CustomerVisitTable 先例：ResizeObserver 测量传递，非 page-sticky-chrome）
-  const interfacesToolbarRef = useRef(null)
-  const groupsToolbarRef = useRef(null)
-  const [interfacesToolbarH, setInterfacesToolbarH] = useState(0)
-  const [groupsToolbarH, setGroupsToolbarH] = useState(0)
-  useMeasureHeight(interfacesToolbarRef, setInterfacesToolbarH)
-  useMeasureHeight(groupsToolbarRef, setGroupsToolbarH)
+  // 表头吸顶（11-18 修订）：页面级 sticky chrome——Tabs 头吸顶（page-sticky-chrome），
+  // chrome 实测高度传两表 offsetHeader（表头贴 chrome 底 = 视口顶）。
+  // 旧「卡片内工具条吸顶」形态废弃：Tabs 不吸导致 11-17 实现视觉未生效。
+  const chromeRef = useRef(null)
+  const [chromeH, setChromeH] = useState(0)
+  useMeasureHeight(chromeRef, setChromeH)
   /** @type {[number | null, Function]} */
   const [drawerId, setDrawerId] = useState(null)
   const [drawerData, setDrawerData] = useState(null)
@@ -264,6 +270,11 @@ export default function ApiPatrolFailures() {
       render: (v) => (v == null ? <Tag>—</Tag> : v),
     },
   ], [])
+  // 11-18 列宽拖拽：装饰列（override 应用 + 拖拽手柄注入）；scroll.x 动态求和
+  const decoratedInterfaceColumns = useMemo(
+    () => interfacesResize.decorateColumns(interfaceColumns),
+    [interfaceColumns, interfacesResize],
+  )
 
   /** @type {any[]} */
   const groupColumns = useMemo(() => [
@@ -301,12 +312,10 @@ export default function ApiPatrolFailures() {
       ),
     },
     {
-      title: '压缩前失败次数', dataIndex: 'preCompressCount', key: 'preCompressCount', width: 110, align: 'right',
-      render: (v) => (
-        <Tooltip title="压缩规则：同客户同接口 1 小时内的失败请求链压缩为一组，此处为压缩前的失败请求条数">
-          <span>{v}</span>
-        </Tooltip>
-      ),
+      // 11-18 拍板：值区不再 hover；表头 info icon 提示压缩规则
+      title: <span>压缩前失败次数 <Tooltip title="压缩规则：同客户同接口 1 小时内的失败请求链压缩为一组，此处为压缩前的失败请求条数"><InfoCircleOutlined className="text-ink-400" /></Tooltip></span>,
+      dataIndex: 'preCompressCount', key: 'preCompressCount', width: 110, align: 'right',
+      render: (v) => <span>{v}</span>,
     },
     {
       title: '产品侧处理状态', dataIndex: 'productActionStatus', key: 'productActionStatus', width: 120,
@@ -321,6 +330,10 @@ export default function ApiPatrolFailures() {
     { title: '经办人', dataIndex: 'assignee', key: 'assignee', width: 90,
       render: (v) => v || '—' },
   ], [openDrawer])
+  const decoratedGroupColumns = useMemo(
+    () => groupsResize.decorateColumns(groupColumns),
+    [groupColumns, groupsResize],
+  )
 
   return (
     <div className="space-y-4">
@@ -448,18 +461,28 @@ export default function ApiPatrolFailures() {
         )}
       </div>
 
-      <div className="page-card">
+      {/* 表头吸顶（11-18 上午修正）：Tabs nav 吸顶——renderTabBar 包 page-sticky-chrome。
+          11-17 初版 offsetHeader 只算工具条（Tabs 不吸）未生效；11-18 早版把整个 Tabs
+          （nav+表格内容）包进 sticky chrome——chromeH 实测为千像素级内容高度，表头
+          offset 飞出视口，两 tab 吸顶全失效。正确形态：只吸 nav（46px 级），
+          chromeH（nav 实测高度）传两表 offsetHeader。 */}
+      <div className="page-card !mb-0">
         <Tabs
-          className="[&_.ant-tabs-tab]:font-semibold"
+          className="[&_.ant-tabs-tab]:font-semibold [&_.ant-tabs-nav]:!mb-0"
           activeKey={activeTab}
           onChange={setActiveTab}
+          renderTabBar={(props, DefaultTabBar) => (
+            <div ref={chromeRef} className="page-sticky-chrome !py-0">
+              <DefaultTabBar {...props} />
+            </div>
+          )}
           items={[
             {
               key: 'interfaces',
               label: '异常接口列表',
               children: (
                 <>
-                  <div ref={interfacesToolbarRef} className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
                     {/* 11-17：产品筛选（分产品计数——接口行口径）；说明行已按拍板移除 */}
                     <Select
                       size="small"
@@ -478,12 +501,13 @@ export default function ApiPatrolFailures() {
                   <Table
                     className="!mt-3"
                     rowKey={(r) => `${r.pool}|${r.apiPath}|${r.metricName}`}
-                    columns={interfaceColumns}
+                    columns={decoratedInterfaceColumns}
                     dataSource={interfaces}
                     loading={loadingInterfaces}
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
-                    sticky={interfacesToolbarH > 0 ? { offsetHeader: interfacesToolbarH } : undefined}
+                    scroll={{ x: sumColumnsWidth(decoratedInterfaceColumns) }}
+                    sticky={chromeH > 0 ? { offsetHeader: chromeH + 8 } : undefined}
                   />
                 </>
               ),
@@ -493,79 +517,51 @@ export default function ApiPatrolFailures() {
               label: '失败请求列表',
               children: (
                 <>
-                  <div ref={groupsToolbarRef} className="flex flex-wrap items-center justify-between gap-2">
-                    <Space className="!my-0" wrap size="small">
-                      {/* 产品筛选（11-17）：组数口径计数；进入 groups 查询的 q.product 精确匹配 */}
-                      <Select
-                        size="small"
-                        placeholder="全部产品"
-                        allowClear
-                        className="!w-40"
-                        value={filters.product || undefined}
-                        options={productCounts.map((p) => ({
-                          label: `${p.name}（${p.groupCount}）`,
-                          value: p.key,
-                        }))}
-                        onChange={(v) => setFilters((f) => ({ ...f, product: v || '' }))}
-                      />
-                      <Button
-                        size="small"
-                        type={filters.status === PRODUCT_ACTION_FILTER ? 'primary' : 'default'}
-                        title="包含待处理、处理中、已处理"
-                        aria-pressed={filters.status === PRODUCT_ACTION_FILTER}
-                        onClick={() => setFilters((current) => ({
-                          ...current,
-                          status: current.status === PRODUCT_ACTION_FILTER ? '' : PRODUCT_ACTION_FILTER,
-                        }))}
-                      >
-                        需产品侧处理
-                      </Button>
-                      <Input.Search size="small" placeholder="RequestID" allowClear className="!w-40"
-                        onSearch={(v) => setFilters((f) => ({ ...f, requestId: v }))} />
-                      <Input.Search size="small" placeholder="指标名称" allowClear className="!w-28"
-                        onSearch={(v) => setFilters((f) => ({ ...f, metricName: v }))} />
-                      <Input.Search size="small" placeholder="接口名称" allowClear className="!w-44"
-                        onSearch={(v) => setFilters((f) => ({ ...f, apiPath: v }))} />
-                      <Input.Search size="small" placeholder="客户名称" allowClear className="!w-32"
-                        onSearch={(v) => setFilters((f) => ({ ...f, userName: v }))} />
-                      <Select size="small" placeholder="根因 L1" allowClear className="!w-36"
-                        value={filters.rootCauseL1 || undefined}
-                        options={withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts)}
-                        onChange={(v) => setFilters((f) => ({ ...f, rootCauseL1: v || '' }))} />
-                      <Select size="small" placeholder="处理状态" allowClear className="!w-28"
-                        value={STATUS_OPTIONS.includes(filters.status) ? filters.status : undefined}
-                        options={withCount(STATUS_OPTIONS, statusCounts)}
-                        onChange={(v) => setFilters((f) => ({ ...f, status: v || '' }))} />
-                      <Select size="small" placeholder="客户类型" allowClear className="!w-24"
-                        options={[{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }]}
-                        onChange={(v) => setFilters((f) => ({ ...f, customerType: v || '' }))} />
-                      {/* 经办人（11-17）：单选 + showSearch 模糊匹配；选项 = 当前时间范围 DISTINCT 经办人 */}
-                      <Select
-                        size="small"
-                        placeholder="经办人"
-                        allowClear
-                        showSearch
-                        className="!w-32"
-                        value={filters.assignee || undefined}
-                        optionFilterProp="label"
-                        options={assigneeOptions.map((a) => ({
-                          label: `${a.assignee}（${a.count}）`,
-                          value: a.assignee,
-                        }))}
-                        onChange={(v) => setFilters((f) => ({ ...f, assignee: v || '' }))}
-                      />
-                    </Space>
+                  {/* 复合搜索行（11-18 拍板）：q 全字段搜框 + 复合筛选 chips + 需产品侧处理勾选 + 刷新，同一行。
+                      pb-3 —— 工具条与表格间距（吸顶滚动时 chrome 与表头分隔）。 */}
+                  <div className="flex flex-wrap items-center gap-2 pb-3">
+                    <Input.Search
+                      size="small"
+                      allowClear
+                      placeholder="搜索 RequestID / 指标 / 接口 / 客户名"
+                      className="!w-64"
+                      onSearch={(v) => setFilters((f) => ({ ...f, q: v }))}
+                    />
+                    <PatrolCompositeFilter
+                      filters={filters}
+                      onFiltersChange={(next) => setFilters(next)}
+                      onClearFilters={() => setFilters((f) => ({
+                        q: f.q,
+                        rootCauseL1: rootCauseFromUrl,
+                      }))}
+                      enumOptions={{
+                        product: productCounts.map((p) => ({ label: `${p.name}（${p.groupCount}）`, value: p.key })),
+                        rootCauseL1: withCount(ROOT_CAUSE_L1_OPTIONS, l1Counts),
+                        status: withCount(STATUS_OPTIONS, statusCounts),
+                        customerType: [{ label: '仿真', value: '仿真' }, { label: '测试账号', value: '测试账号' }],
+                        assignee: assigneeOptions.map((a) => ({ label: `${a.assignee}（${a.count}）`, value: a.assignee })),
+                      }}
+                    />
+                    <Checkbox
+                      checked={filters.status === PRODUCT_ACTION_FILTER}
+                      onChange={(e) => setFilters((current) => ({
+                        ...current,
+                        status: e.target.checked ? PRODUCT_ACTION_FILTER : '',
+                      }))}
+                    >
+                      需产品侧处理
+                    </Checkbox>
                     <Button size="small" onClick={() => { loadGroups(); }}>刷新</Button>
                   </div>
                   <Table
                     rowKey="id"
-                    columns={groupColumns}
+                    columns={decoratedGroupColumns}
                     dataSource={groups}
                     loading={loadingGroups}
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: false, showTotal: paginationShowTotal }}
-                    scroll={{ x: 1430 }}
-                    sticky={groupsToolbarH > 0 ? { offsetHeader: groupsToolbarH } : undefined}
+                    scroll={{ x: sumColumnsWidth(decoratedGroupColumns) }}
+                    sticky={chromeH > 0 ? { offsetHeader: chromeH + 8 } : undefined}
                     onRow={(record) => ({
                       onClick: () => openDrawer(record.id),
                       style: { cursor: 'pointer' },
@@ -612,6 +608,8 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
   // 直接原因日志：第一层默认收起；展开后显示核心行；「查看完整日志」第二层（11-17 拍板）
   const [logLinesOpen, setLogLinesOpen] = useState(false)
   const [rawLogOpen, setRawLogOpen] = useState(false)
+  // 关键证据：默认收起可展开（11-18 拍板）
+  const [evidenceOpen, setEvidenceOpen] = useState([])
   const group = data?.group
   const diagnosis = data?.diagnosis
   const report = data?.diagnosisReport
@@ -624,6 +622,9 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
         realRootCause: '',
         measureFeedback: /** @type {{measureFeedback?: string}} */ (group).measureFeedback || '',
         assignee: /** @type {{assignee?: string}} */ (group).assignee || undefined,
+        actionId: /** @type {{actionId?: string}} */ (group).actionId || '',
+        establishedAction: /** @type {{establishedAction?: string}} */ (group).establishedAction || '',
+        actionSchedule: /** @type {{actionSchedule?: string}} */ (group).actionSchedule || '',
       })
     }
   }, [group, form])
@@ -692,7 +693,7 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                   { key: 'api', label: '接口', children: String(/** @type {{apiPath?: string}} */ (group).apiPath || '') },
                   { key: 'metric', label: '指标', children: String(/** @type {{metricName?: string}} */ (group).metricName || '') },
                   { key: 'user', label: '客户', children: String(/** @type {{userName?: string}} */ (group).userName || '') },
-                  { key: 'count', label: '压缩前失败次数', children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
+                  { key: 'count', label: <span>压缩前失败次数 <Tooltip title="压缩规则：同客户同接口 1 小时内的失败请求链压缩为一组，此处为压缩前的失败请求条数"><InfoCircleOutlined className="text-ink-400" /></Tooltip></span>, children: String(/** @type {{preCompressCount?: number}} */ (group).preCompressCount ?? '') },
                   { key: 'status', label: '产品侧处理状态', children: String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '') },
                   { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
                 ]}
@@ -702,7 +703,15 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
 
           {/* ── 分区二 诊断结果（五段照 11-17 拍板；样式对齐 D4/D5）── */}
           <div className="scroll-mt-2 drawer-section-gap">
-            <div className="section-title">诊断结果</div>
+            {/* 11-18 拍板③：标题栏右侧提示诊断数据来源 */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="section-title">诊断结果</div>
+              <Tooltip title="诊断数据来源：云网工作台 MCP Server 日志查询工具（log_search）——基于失败请求前后日志窗口检索产出">
+                <Typography.Text type="secondary" className="text-xs cursor-help">
+                  来自云网工作台MCP Server日志查询工具 <InfoCircleOutlined />
+                </Typography.Text>
+              </Tooltip>
+            </div>
             <div className="space-y-3">
               {/* ① 诊断结论——浅红高亮（左竖条 3px 对齐正文规范；正文 13px） */}
               <div className="p-3 rounded border-l-[3px] border-red-300 bg-red-50 text-[13px] leading-relaxed">
@@ -754,16 +763,24 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                   <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
                 )}
               </div>
-              {/* ④ 关键证据（正文 13px） */}
+              {/* ④ 关键证据（11-18 拍板①：默认收起可展开；正文 13px） */}
               <div>
-                <div className="sub-section-label">关键证据</div>
-                {report?.evidence?.length ? (
-                  <ul className="text-[13px] space-y-1 list-disc pl-5">
-                    {report.evidence.map((e, i) => <li key={i}>{e}</li>)}
-                  </ul>
-                ) : (
-                  <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
-                )}
+                <Collapse
+                  ghost
+                  activeKey={evidenceOpen}
+                  onChange={(keys) => setEvidenceOpen(Array.isArray(keys) ? keys : [keys])}
+                  items={[{
+                    key: 'evidence',
+                    label: `关键证据（${report?.evidence?.length || 0} 条）`,
+                    children: report?.evidence?.length ? (
+                      <ul className="text-[13px] space-y-1 list-disc pl-5">
+                        {report.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                    ) : (
+                      <Typography.Text type="secondary" className="text-xs">—</Typography.Text>
+                    ),
+                  }]}
+                />
               </div>
               {/* ⑤ 处理建议——浅蓝高亮（左竖条 3px；正文 13px） */}
               <div className="p-3 rounded border-l-[3px] border-blue-300 bg-blue-50 text-[13px] leading-relaxed">
@@ -794,8 +811,33 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                       </Form.Item>
                     )}
                   </Form.Item>
-                  <Form.Item label={<FieldLabel required>举措及排期说明</FieldLabel>} name="measureFeedback"
-                    rules={[{ required: true, message: '请填写举措及排期（不涉及也请说明）' }]}>
+                  {/* 确立举措（11-18 拍板）：与投诉咨询单抽屉同语义——库选/手填 + 排期可空；不强制必填。
+                      Form.Item noStyle shouldUpdate 桥接——组件读 props 需 form 值变化触发重渲染 */}
+                  <Form.Item noStyle shouldUpdate={(a, b) =>
+                    a.actionId !== b.actionId || a.establishedAction !== b.establishedAction || a.actionSchedule !== b.actionSchedule}>
+                    {() => (
+                      <EstablishedActionFields
+                        productKey={group ? String(/** @type {{productKey?: string}} */ (group).productKey || '') : ''}
+                        source="api_patrol"
+                        actionId={form.getFieldValue('actionId') || ''}
+                        establishedAction={form.getFieldValue('establishedAction') || ''}
+                        actionSchedule={form.getFieldValue('actionSchedule') || ''}
+                        disabled={submitting}
+                        onSelect={(item) => form.setFieldsValue({
+                          actionId: item.id,
+                          establishedAction: item.content,
+                          // ActionItem 领域类型与组件回调类型的历史错位同 ActionItemSelect 基线——局部断言
+                          actionSchedule: getActionItemDisplayScheduleAt(/** @type {any} */ (item)),
+                        })}
+                        onClear={() => form.setFieldsValue({ actionId: '', establishedAction: '', actionSchedule: '' })}
+                        onContentChange={(v) => form.setFieldsValue({ establishedAction: v })}
+                        onScheduleChange={(v) => form.setFieldsValue({ actionSchedule: v })}
+                      />
+                    )}
+                  </Form.Item>
+                  {/* 备注（11-18 拍板改名：旧「举措及排期」文案退场；结构化举措由上方确立举措模块独立承载） */}
+                  <Form.Item label={<FieldLabel required>备注</FieldLabel>} name="measureFeedback"
+                    rules={[{ required: true, message: '请填写备注（不涉及也请说明）' }]}>
                     <Input.TextArea rows={3} placeholder="如：已修复 v1.2 / 已排期下迭代 / 不涉及（说明原因）" />
                   </Form.Item>
                   <Form.Item label={<FieldLabel>经办人</FieldLabel>} name="assignee">

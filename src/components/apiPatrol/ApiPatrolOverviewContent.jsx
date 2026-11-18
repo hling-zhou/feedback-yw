@@ -9,8 +9,8 @@ import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiClient.js'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 
-const PATROL_L1_KEYS = ['业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类']
-const L1_COLORS = ['#f5222d', '#fa8c16', '#faad14', '#722ed1', '#13c2c2', '#1677ff', '#8c8c8c']
+const PATROL_L1_KEYS = ['业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '权限/授权不足', '诊断能力缺口', '其他/未归类']
+const L1_COLORS = ['#f5222d', '#fa8c16', '#faad14', '#722ed1', '#13c2c2', '#eb2f96', '#1677ff', '#8c8c8c']
 const HEAT_COLORS = ['#fff7e6', '#ffe7ba', '#ffd591', '#ffc069', '#fa8c16', '#d46b08', '#a04000']
 
 /**
@@ -22,7 +22,7 @@ const HEAT_COLORS = ['#fff7e6', '#ffe7ba', '#ffd591', '#ffc069', '#fa8c16', '#d4
 export default function ApiPatrolOverviewContent() {
   const message = useAppMessage()
   const navigate = useNavigate()
-  const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()])
+  const [range, setRange] = useState([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')]) // 默认 T-1（11-18 拍板），与快捷按钮同语义
   /** @type {[any, any]} */
   const [data, setData] = useState(null)
   /** @type {[any, any]} */

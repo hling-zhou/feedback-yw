@@ -100,26 +100,24 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/压缩规则/)
   })
 
-  it('失败请求列表增强契约（11-17 晚：刷新/经办人筛选/表头吸顶）', () => {
+  it('失败请求列表增强契约（11-17 晚；11-18 复合搜索改版锚点迁移）', () => {
     const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
     const src = fs.readFileSync(contentPath, 'utf-8')
-    // ① 经办人筛选：单选 + showSearch 模糊匹配 + DISTINCT 选项端点消费
-    expect(src).toMatch(/placeholder="经办人"/)
-    expect(src).toMatch(/showSearch/)
+    // ① 经办人筛选（11-18 迁移：下拉并入复合筛选 chips，选项仍 = DISTINCT 端点 + 计数形态）
     expect(src).toMatch(/failures\/assignees/)
-    expect(src).toMatch(/assignee: v \|\| ''/)  // 单选 onChange 写 filters.assignee
-    // ② 失败请求列表右上角刷新按钮（groups 工具条内的 loadGroups 按钮）
+    expect(src).toMatch(/\$\{a\.assignee\}（\$\{a\.count\}）/)
+    expect(src).toMatch(/value: a\.assignee/)
+    // ② 失败请求列表刷新按钮（复合搜索行内 loadGroups 按钮）
     expect(src).toMatch(/onClick=\{\(\) => \{ loadGroups\(\); \}\}/)
-    // ③ 两表表头吸顶：测量传递机制（ResizeObserver hook + 两 ref + 两 sticky offsetHeader）
+    // ③ 表头吸顶（11-18 修订：页面级 chrome 单源）——ResizeObserver hook + chromeRef + 两表 offsetHeader
     expect(src).toMatch(/function useMeasureHeight/)
     expect(src).toMatch(/new ResizeObserver/)
-    expect((src.match(/ToolbarRef/g) || []).length).toBeGreaterThanOrEqual(4)  // 2 声明 + 2 挂载
-    expect((src.match(/sticky=\{[a-zA-Z]+ToolbarH > 0 \? \{ offsetHeader: [a-zA-Z]+ToolbarH \} : undefined\}/g) || []).length).toBe(2)
+    expect((src.match(/chromeH > 0 \? \{ offsetHeader: chromeH \+ 8 \} : undefined/g) || []).length).toBe(2)
     // ④ 经办人筛选参与后端查询（filters 对象含 assignee 键 → qs 序列化透传）
     expect(src).toMatch(/assignee: '',/)
   })
 
-  it('两 tab 产品筛选契约（11-17 晚：分产品计数 + 双口径）', () => {
+  it('两 tab 产品筛选契约（11-17 晚；11-18 groups 端改复合筛选形态）', () => {
     const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
     const src = fs.readFileSync(contentPath, 'utf-8')
     // ① 共用计数端点（一次拉取双口径）
@@ -128,13 +126,57 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/interfaceProduct/)
     expect(src).toMatch(/p\.interfaceCount/)
     expect(src).toMatch(/qs\.set\('product', interfaceProduct\)/)
-    // ③ 失败请求 tab：filters.product + 组数口径计数
-    expect(src).toMatch(/filters\.product/)
+    // ③ 失败请求 tab（11-18 迁移：产品入复合筛选 enumOptions，组数口径计数不变）
     expect(src).toMatch(/p\.groupCount/)
-    expect(src).toMatch(/product: v \|\| ''/)
+    expect(src).toMatch(/product: productCounts\.map/)
     // ④ 说明行退场（两形态都不在）
     expect(src).not.toContain('单日视图：展示推送原值')
     expect(src).not.toContain('跨日视图：成功率/次数按明细')
+  })
+
+  it('失败请求列表 sticky chrome + 复合搜索 + 勾选形态（11-18 拍板）', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 页面级 sticky chrome：Tabs 头（含时间范围）sticky top-0 白底负边距锚定外壳
+    //    ——旧「卡片内吸顶」形态（Tabs 不吸）是 11-17 吸顶未生效的根因
+    expect(src).toMatch(/page-sticky-chrome/)
+    expect(src).toMatch(/chromeRef/)
+    // ①-2（11-18 上午修正）：chrome 不得包整个 Tabs（nav+表格内容全进 sticky = chromeH 千像素级、
+    // 表头 offset 飞出视口——两 tab 吸顶全失效）。正确形态 = renderTabBar 只吸 nav。
+    expect(src).toMatch(/renderTabBar/)
+    // renderTabBar 包装层用 chromeRef 测 nav 实高（复用既有测量 hook 语义）
+    expect(src).toMatch(/ref=\{chromeRef\}/)
+    // ② 复合搜索：四字段（RequestID/指标/接口/客户名）合一，默认全字段搜
+    expect(src).toMatch(/复合搜索|q: /)
+    expect(src).not.toMatch(/placeholder="RequestID"/)   // 旧四散 Input.Search 退场
+    // ③ 需产品侧处理改勾选形式（Checkbox），与复合搜索、刷新同排一行
+    expect(src).toMatch(/Checkbox/)
+    expect(src).not.toMatch(/需产品侧处理'\s*\}\s*<\/Button>/)
+    // ④ 工具条与表格间距：sticky chrome pb 分隔
+    expect(src).toMatch(/pb-3/)
+    // ⑤ 抽屉确立举措（11-18 拍板）：EstablishedActionFields 复用 + source=api_patrol + 备注改名
+    expect(src).toMatch(/EstablishedActionFields/)
+    expect(src).toMatch(/source="api_patrol"/)
+    expect(src).toMatch(/备注/)
+    expect(src).not.toMatch(/举措及排期说明/)
+  })
+
+  it('11-18 中午四项：证据收起 + 压缩规则提示 icon + MCP 来源提示 + 列宽拖拽', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // ① 关键证据默认收起可展开（Collapse 包证据段）
+    expect(src).toMatch(/关键证据[\s\S]{0,120}Collapse/)
+    // ② 压缩前失败次数：表头列 title JSX 挂 info icon hover 压缩规则（antd Tooltip + InfoCircle）
+    expect(src).toMatch(/InfoCircleOutlined/)
+    expect(src).toMatch(/压缩前失败次数 <Tooltip/)
+    // 值渲染不再包 Tooltip（值区去 hover）
+    expect(src).not.toMatch(/render: \(v\) => \(\s*<Tooltip title="压缩规则/)
+    // ③ 诊断结果标题右侧 MCP 来源提示
+    expect(src).toMatch(/来自云网工作台MCP Server日志查询工具/)
+    // ④ 列宽拖拽：useColumnResize + decorateColumns + scroll.x 求和（复用系统机制）
+    expect(src).toMatch(/useColumnResize/)
+    expect(src).toMatch(/decorateColumns/)
+    expect(src).toMatch(/sumColumnsWidth/)
   })
 
   it('真渲染：经办人筛选与刷新按钮在 DOM 中出现（11-17 晚）', () => {
@@ -228,8 +270,8 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     // 前两列固定（RequestID + 指标名称）
     const fixedCount = (src.match(/fixed: 'left'/g) || []).length
     expect(fixedCount).toBeGreaterThanOrEqual(2)
-    // 失败请求列表 Table 启用横向滚动（antd 固定列前提）
-    expect(src).toMatch(/scroll=\{\{ x: \d+ \}\}/)
+    // 失败请求列表 Table 启用横向滚动（antd 固定列前提；11-18 起改为 sumColumnsWidth 动态求和）
+    expect(src).toMatch(/scroll=\{\{ x: sumColumnsWidth\(decoratedGroupColumns\) \}\}/)
     // 异常接口列表分页总数（11-11：对齐 ec3b5e3 全局形态；条件分页旧形态退场）
     expect(src).not.toMatch(/interfaces\.length > 20 \? \{ pageSize: 20 \} : false/)
     const showTotalCount = (src.match(/showTotal: paginationShowTotal/g) || []).length
