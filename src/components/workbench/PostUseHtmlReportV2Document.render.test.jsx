@@ -328,6 +328,28 @@ describe('V2 offline document', () => {
     expect(html).toContain('彭****松')
   })
 
+  it('shows candidate guidance when todo table is empty but candidates exist (11-19 UX fix)', () => {
+    // 口径说明报"候选 N 条"与空表"无转为待办"并排会让读者困惑——空表但有候选时改为引导语
+    const records = [{ id: 'rating', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' }]
+    const traces = [{ id: 't-open', importMonth: '2026-10', productName: 'NAT网关', status: '待处理', customerName: '彭红松', customerFeedback: 'API 不完善' }]
+    const visits = [{ id: 'v-pending', importMonth: '2026-10', productName: 'NAT网关', customerName: '王五', visitResult: '客户表示不满' }]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits, traces,
+    })
+    const html = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll todoItems={[]} />)
+    expect(html).toContain('本月暂无已确认待办——候选 2 条（溯源 1、回访 1、举措 0）')
+    expect(html).toContain('点击「生成报告文案」生成待办草稿后复核保存')
+    // 无候选时维持原"无转为待办"结论
+    const emptyModel = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const emptyHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={emptyModel} printAll todoItems={[]} />)
+    expect(emptyHtml).toContain('本月无转为待办跟进的事项')
+    expect(emptyHtml).not.toContain('暂无已确认待办')
+  })
+
   it('applies the 11-18 display masking policy: customer names plain, personal names and phones masked', () => {
     // 11-18 用户口径：客户名（企业/机构/账号）明文；客户姓名（聚类标记）、省代表/内部员工姓名、电话号码脱敏；LLM 输入侧另行保持。
     const records = [{ id: 'rating', dataSourceType: 'post_use_rating', importMonth: '2026-09', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' }]
