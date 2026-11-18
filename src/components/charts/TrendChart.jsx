@@ -56,8 +56,10 @@ function formatTsLabel(ts) {
  *        time：X 轴按日历时间，参考线可落在月内某天（工单量仍按月点）
  * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string } | Array<{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }> | null} [props.referenceLine]
  *        y=水平基准线；可传数组画多条；x=X 轴某值处的垂直线（月份或 YYYY-MM-DD）
- * @param {{ x?: string | number; label?: string; stroke?: string; strokeDasharray?: string }[]} [props.referenceLines]
+ * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }[]} [props.referenceLines]
  *        多条垂直参考线（如同一问题上多个举措的实施日）
+ * @param {((value: unknown, name: string) => unknown[]) | null} [props.tooltipFormatter] tooltip 数值格式化（V1 StatusOverviewChart 先例：[值, 名]）
+ * @param {((label: unknown) => string) | null} [props.tooltipLabelFormatter] tooltip 轴标签格式化
  */
 export default function TrendChart({
   data,
