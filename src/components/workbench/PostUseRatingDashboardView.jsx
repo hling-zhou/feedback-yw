@@ -33,6 +33,7 @@ import {
 } from '../../lib/workbenchStoredAggregates.js'
 import { resolveChartEndMonth } from '../../domain/insightPeriod.js'
 import { postUsePeriodMonths } from '../../lib/postUseRating/periodScope.js'
+import { isOptionScoreRecord } from '../../lib/postUseRating/scoredRows.js'
 
 /**
  * 用后即评工作台：线上综合分析；单月可打开独立 HTML 月报。
@@ -201,6 +202,12 @@ export default function PostUseRatingDashboardView() {
     () => selectedProduct ? scopedVisits.filter((visit) => visit.product === selectedProduct) : scopedVisits,
     [scopedVisits, selectedProduct],
   )
+  // 「样本」Tag 口径说明（11-18 拍板）：样本=可计分行（scoredRows，排除选项题），
+  // 选项题条数按当前产品筛选范围实时统计；>0 时追加说明，与产品下拉计数（含选项题）对得上。
+  const optionRecordCount = useMemo(
+    () => selectedItems.filter(isOptionScoreRecord).length,
+    [selectedItems],
+  )
 
   const createActionFromSignal = async (signal) => {
     const key = `${signal.type}-${signal.productName}-${signal.title}`
@@ -341,7 +348,10 @@ export default function PostUseRatingDashboardView() {
             </Tag>
             <Tag color="blue">范围 {storyModel.scope.periodLabel}</Tag>
             <Tag>产品 {storyModel.scope.productCount}</Tag>
-            <Tag>样本 {storyModel.scope.validSample}</Tag>
+            <Tag>
+              样本 {storyModel.scope.validSample}
+              {optionRecordCount > 0 ? `，另含选项题 ${optionRecordCount} 条（无评分）` : ''}
+            </Tag>
             {reportTarget?.kind === 'month' ? <Tag color="green">月报 {reportTarget.key}</Tag> : null}
             {reportTarget?.kind === 'quarter' ? <Tag color="green">季报 {reportTarget.key}</Tag> : null}
           </Space>

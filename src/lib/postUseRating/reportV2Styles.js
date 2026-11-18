@@ -40,10 +40,17 @@ body { margin:0; }
 .v2-tag--p0 { color:#fff; background:var(--v2-danger); }.v2-tag--p1 { color:#fff; background:var(--v2-warning); }.v2-tag--p2 { color:#374151; background:#e5e7eb; }
 .v2-tag--action-followup,.v2-tag--action-repair,.v2-tag--action-closure,.v2-tag--action-observe { color:#fff; font-weight:650; }
 .v2-tag--action-followup { background:var(--v2-danger); }.v2-tag--action-repair { background:var(--v2-warning); }.v2-tag--action-closure { background:var(--v2-blue); }.v2-tag--action-observe { background:var(--v2-ink); }
+/* 11-18 生命周期徽章四色（对齐季报原型 .lc 体系，部门表/分产品表/行动卡三处共用） */
+.v2-tag--lc-through { color:#fff; background:var(--v2-danger); border-radius:999px; font-weight:700; }
+.v2-tag--lc-burst { color:#fff; background:var(--v2-warning); border-radius:999px; font-weight:700; }
+.v2-tag--lc-single { color:#92400e; background:#fef3c7; border:1px solid #fde68a; border-radius:999px; font-weight:700; }
+.v2-tag--lc-fade { color:#047857; background:var(--v2-success-bg); border:1px solid #a7d8bc; border-radius:999px; font-weight:700; }
+.v2-warning-text { color:var(--v2-warning); }
+.v2-mdist { font-size:11px; color:#4b5563; white-space:nowrap; }
 .v2-metric { border-radius:6px; }.v2-metric--danger { border-color:#f0b4b4; background:#fff7f7; }.v2-metric--ok { border-color:#b7dcc4; background:#f5fbf6; }
 .v2-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(426px,1fr)); gap:12px; margin-bottom:14px; overflow-x:auto; }
 .v2-panel { border:1px solid #e5e7eb; border-radius:6px; padding:12px; margin:12px 0; min-width:0; }
-.v2-chart-wrap svg { width:100%; height:auto; display:block; }.v2-chart-wrap--compact svg { width:400px; max-width:100%; margin-inline:auto; }.v2-chart-legend { display:flex; gap:12px; justify-content:center; color:#6b7280; font-size:12px; line-height:18px; }
+.v2-chart-wrap svg { width:100%; height:auto; display:block; }.v2-chart-legend { display:flex; gap:12px; justify-content:center; color:#6b7280; font-size:12px; line-height:18px; }
 .v2-chart-legend span { display:inline-flex; align-items:center; gap:4px; }.v2-chart-legend i { width:8px; height:8px; border-radius:50%; }
 .v2-svg-label { font-size:11px; font-family:inherit; fill:#6b7280; }.v2-svg-label--missing { fill:#9ca3af; }
 .v2-table-scroll { overflow-x:auto; }.v2-table { width:100%; border-collapse:collapse; font-size:13px; line-height:1.5; }
@@ -52,6 +59,8 @@ body { margin:0; }
 .v2-microbar { display:flex; align-items:center; gap:8px; min-width:110px; }.v2-microbar-track { display:block; width:72px; height:12px; background:#eef0f3; border-radius:8px; overflow:hidden; }
 .v2-microbar-fill { display:block; height:100%; border-radius:8px; background:#d97706; }.v2-microbar-fill--danger { background:#dc2626; }.v2-microbar-fill--muted { background:#9ca3af; }
 .v2-distribution-bar { display:block; min-width:90px; }.v2-distribution-bar .v2-microbar-track { width:100%; }.v2-theme-table td:nth-child(2),.v2-theme-table th:nth-child(2) { width:56px; text-align:center; }.v2-theme-table td:nth-child(3),.v2-theme-table th:nth-child(3) { min-width:110px; }
+/* 11-18 部门低分原因汇总表：条数列窄列，月度分布/生命周期列不折行 */
+.v2-reason-table td:nth-child(2),.v2-reason-table th:nth-child(2) { width:88px; }.v2-reason-table .v2-mdist { white-space:nowrap; }.v2-reason-table td:last-child { white-space:nowrap; }
 .v2-product-layout { display:grid; grid-template-columns:250px minmax(0,1fr); gap:18px; }.v2-product-list { align-self:start; position:sticky; top:78px; display:grid; gap:6px; }
 .v2-product-list button { display:flex; align-items:center; flex-wrap:wrap; gap:6px; width:100%; border:1px solid #e5e7eb; border-radius:5px; background:#fff; padding:9px 10px; text-align:left; cursor:pointer; font-size:13px; }
 .v2-product-list button span:first-child { flex:1; }.v2-product-list button.is-active { border-color:#4f46e5; background:#eef2ff; }
@@ -68,6 +77,7 @@ body { margin:0; }
 .v2-details { border:1px solid #e5e7eb; border-radius:5px; margin:9px 0; padding:9px 12px; font-size:13px; }.v2-details summary { cursor:pointer; font-weight:600; }
 .v2-details-content { padding-top:10px; }.v2-quote { border-left:3px solid #dc2626; margin:0 0 8px; padding:6px 10px; background:#f9fafb; }.v2-quote--neutral { border-left-color:#9ca3af; }.v2-quote--option { border-left-color:#2563eb; }.v2-quote small { display:block; color:#6b7280; margin-top:4px; }
 .v2-todo-table td:first-child,.v2-todo-table th:first-child { min-width:44px; width:44px; text-align:center; }.v2-todo-table td:nth-child(2) { min-width:360px; }.v2-todo-table td:not(:nth-child(2)) { white-space:nowrap; }
+.v2-todo-links { margin-top:6px; line-height:1.8; }.v2-todo-links a { color:var(--v2-blue); text-decoration:underline; }
 .v2-edit { margin-top:8px; font-size:12px; }.v2-edit summary { cursor:pointer; color:var(--v2-brand); }.v2-edit-grid { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:8px; margin-top:8px; }.v2-edit-grid label { display:grid; gap:2px; }.v2-edit input,.v2-edit textarea,.v2-edit select { width:100%; border:1px solid #d1d5db; border-radius:4px; padding:5px 7px; background:#fff; }.v2-edit textarea { min-height:65px; margin-top:6px; }
 .v2-edit-grid--todo { grid-template-columns:1.2fr 2fr 1fr 1fr 1fr auto; }
 .v2-toc { flex:0 0 210px; }.v2-toc a.is-active { color:#4f46e5; font-weight:650; }
@@ -75,6 +85,6 @@ body { margin:0; }
 @media(max-width:600px) { .report-v2 .post-use-html-report-kpis { grid-template-columns:1fr; }.v2-summary > span { width:100%; border:0; padding:0; } }
 @media(max-width:800px) { .v2-edit-grid--todo { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media print { .post-use-html-report-toolbar,.post-use-html-report-status,.v2-toc,.v2-product-list,.no-print { display:none!important; }.report-v2 .report-modules { width:100%; }.v2-product-layout { display:block; }.v2-product-slot { display:block!important; margin-bottom:24px; }.v2-details > * { display:block; }.v2-details-content { display:block!important; }.v2-table thead { display:table-header-group; }.v2-table tr { break-inside:avoid; }.report-module,.v2-panel,.v2-action,.v2-product-panel { print-color-adjust:exact; -webkit-print-color-adjust:exact; }.v2-action { break-inside:avoid; }.post-use-html-report-sheet { display:block; padding:0; }.post-use-html-report { background:#fff; } }
-@media print { .v2-chart-grid { grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; }.v2-chart-wrap--compact svg { width:100%; } }
+@media print { .v2-chart-grid { grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; } }
 .report-v2--print .v2-product-layout { display:block; }.report-v2--print .v2-product-slot { display:block; margin-bottom:24px; }.report-v2--print .v2-product-list { display:none; }.report-v2--print .v2-details > .v2-details-content { display:block; }
 `

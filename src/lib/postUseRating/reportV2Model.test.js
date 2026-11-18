@@ -98,6 +98,75 @@ describe('V2 report facts', () => {
     expect(model.todoRows).toEqual([])
   })
 
+  it('collects todo candidates only from open in-period traces, unevaluated visits, and new in-period post-use actions (11-18 口径)', () => {
+    const records = [rating('nat-low', '2026-10', 1, '功能有缺失', 'NAT网关')]
+    const traces = [
+      { id: 't-open', importMonth: '2026-10', productName: 'NAT网关', status: '待处理', customerName: '彭红松', customerFeedback: 'API 不完善', assigneeName: '刘浩' },
+      { id: 't-legacy-done', importMonth: '2026-10', productName: 'NAT网关', status: '已完成', customerName: '李四', customerFeedback: '旧枚举完成态须排除' },
+      { id: 't-done', importMonth: '2026-10', productName: 'NAT网关', status: '已处理', customerName: '王五', customerFeedback: '新枚举完成态须排除' },
+      { id: 't-old-month', importMonth: '2026-09', productName: 'NAT网关', status: '待处理', customerName: '赵六', customerFeedback: '上周期遗留不收' },
+    ]
+    const visits = [
+      { id: 'v-pending', importMonth: '2026-10', productName: 'NAT网关', customerName: '钱七', visitResult: '客户表示不满' },
+      { id: 'v-drafting', importMonth: '2026-10', productName: 'NAT网关', customerName: '孙八', visitResult: '已回访', internalEvaluationDetail: '评估中', evaluationSubmitted: false },
+      { id: 'v-done', importMonth: '2026-10', productName: 'NAT网关', customerName: '周九', visitResult: '无实际不满', internalEvaluationDetail: '无需优改', evaluationSubmitted: true },
+      { id: 'v-old', importMonth: '2026-08', productName: 'NAT网关', customerName: '吴十', visitResult: '上周期不收' },
+    ]
+    const actionItems = [
+      { id: 'a-new-pending', source: 'post_use', status: 'pending_evaluation', firstProposedAt: '2026-10-15', productName: 'NAT网关', content: '核实批量导出诉求' },
+      { id: 'a-new-progress', source: 'post_use', status: 'in_progress', firstProposedAt: '2026-10-16', productName: 'NAT网关', content: '推进排期' },
+      { id: 'a-done', source: 'post_use', status: 'completed', firstProposedAt: '2026-10-17', productName: 'NAT网关', content: '已完成不收' },
+      { id: 'a-old', source: 'post_use', status: 'in_progress', firstProposedAt: '2026-09-01', productName: 'NAT网关', content: '上周期提出不收' },
+      { id: 'a-ticket', source: 'ticket', status: 'in_progress', firstProposedAt: '2026-10-18', productName: 'NAT网关', content: '非用后即评来源不收' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+      visits, traces, actionItems,
+    })
+    expect(model.todoCandidateCounts).toEqual({ trace: 1, visit: 2, action: 2, mergedVisit: 0 })
+    const ids = model.todoCandidates.map((row) => row.id)
+    expect(ids).toEqual(['todo-trace:t-open', 'todo-visit:v-pending', 'todo-visit:v-drafting', 'todo-action:a-new-pending', 'todo-action:a-new-progress'])
+    // 脱敏（11-18 拍板）：客户姓不进事实文本
+    expect(model.todoCandidates[0].customerMaskedName).toBe('彭****松')
+    expect(model.todoCandidates[0].fallbackContent).toContain('跟进产品部回溯闭环')
+    expect(model.todoCandidates[1].fallbackContent).toContain('完成省代表回访评估')
+    expect(model.todoCandidates[3].fallbackContent).toContain('推进举措落地')
+  })
+
+  it('merges a same-customer visit todo into its trace todo as one row (11-18 拍板)', () => {
+    const records = [rating('nat-low', '2026-10', 1, '功能有缺失', 'NAT网关')]
+    const traces = [{ id: 't1', importMonth: '2026-10', productName: 'NAT网关', status: '待处理', customerName: '彭红松', customerFeedback: 'API 不完善', assigneeName: '刘浩' }]
+    const visits = [
+      { id: 'v-merge', importMonth: '2026-10', productName: 'NAT网关', customerName: '彭红松', visitResult: '客户表示不满', assigneeName: '省代表张三' },
+      { id: 'v-solo', importMonth: '2026-10', productName: 'NAT网关', customerName: '王五', visitResult: '无对应溯源的回访' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+      visits, traces,
+    })
+    // 合并后：trace 行 1（含回访）+ 独立回访行 1；visit 计数只含未合并行
+    expect(model.todoCandidateCounts).toEqual({ trace: 1, visit: 1, action: 0, mergedVisit: 1 })
+    expect(model.todoCandidates.map((row) => row.id)).toEqual(['todo-trace:t1', 'todo-visit:v-solo'])
+    const merged = model.todoCandidates[0]
+    expect(merged.mergedVisit).toMatchObject({ id: 'todo-visit:v-merge', evaluationState: '待评估' })
+    // owner 取溯源经办人优先，回访经办人兜底
+    expect(merged.owner).toBe('刘浩')
+    expect(merged.fallbackContent).toContain('跟进回溯闭环并完成回访评估')
+    expect(merged.fallbackContent).toContain('省代表回访：客户表示不满')
+    // 空客户键（无 code 无 name）不参与匹配，两行保持独立（11-18 修复验证）
+    const model2 = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+      visits: [{ importMonth: '2026-10', productName: 'NAT网关', visitResult: 'x' }],
+      traces: [{ importMonth: '2026-10', productName: 'NAT网关', status: '待处理' }],
+    })
+    expect(model2.todoCandidates).toHaveLength(2)
+    expect(model2.todoCandidates.every((row) => !row.id.includes('undefined'))).toBe(true)
+    expect(model2.todoCandidateCounts.mergedVisit).toBe(0)
+  })
+
   it('uses a uniquely matched customer visit for the focus action label and fact line', () => {
     const records = [rating('monitor-low', '2026-10', 1, '不支持批量导出', '云监控')]
     const visits = [{ id: 'visit-monitor', importMonth: '2026-10', productName: '云监控', customerCode: 'C-monitor-low', visitResult: '反馈还没改，很不满意' }]
@@ -156,6 +225,122 @@ describe('V2 report facts', () => {
     expect(model.satisfactionTrend).toHaveLength(6)
     expect(model.products[0].trend).toHaveLength(14)
     expect(validatePostUseReportV2(model, Object.fromEntries(model.focus.map((row) => [row.id, { owner: '负责人' }])))).toEqual([])
+  })
+
+  // 11-18 部门低分原因汇总对齐原型：归并、组级 NEW、排序、产品计数契约
+  it('merges alias reasons into one department row with member/period facts', () => {
+    const records = [
+      rating('eip-a', '2026-10', 1, '功能有缺失'),
+      rating('eip-b', '2026-10', 1, '功能缺失/不完善'),
+      rating('nat-a', '2026-10', 1, '功能有缺失', 'NAT网关'),
+      rating('opt', '2026-10', 10, '购买时参数/配置选择错误', '弹性公网IP', 'option'),
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
+    expect(merged).toBeTruthy()
+    expect(merged.count).toBe(3)
+    expect(merged.previousCount).toBe(0)
+    expect(merged.isNew).toBe(true)
+    expect(merged.memberThemes.map((member) => member.theme)).toEqual(['功能有缺失', '功能缺失/不完善'])
+    expect(merged.products).toEqual([{ name: '弹性公网IP', count: 2 }, { name: 'NAT网关', count: 1 }])
+    const option = model.reasons.find((row) => row.type === 'ten-option')
+    expect(option.name).toBe('10 分反馈选项类')
+    expect(option.memberThemes).toEqual([{ theme: '购买时参数/配置选择错误', count: 1, lowestScore: 10 }])
+    // 排序拍板：10 分选项殿后
+    expect(model.reasons.at(-1).type).toBe('ten-option')
+  })
+
+  it('marks a department group NEW only when every member record is new (prototype 0→N semantics)', () => {
+    const allRecords = [
+      rating('old-a', '2026-09', 1, '功能有缺失'),
+      rating('new-a', '2026-10', 1, '功能有缺失'),
+      rating('new-b', '2026-10', 1, '功能缺失/不完善'),
+    ]
+    const records = allRecords.filter((row) => row.importMonth === '2026-10')
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords, allCompanyRecords: allRecords,
+    })
+    const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
+    // 组内含上期已有记录（old-a）→ 组级不打 NEW（原型月报 EIP 功能缺失组同场景无 NEW）
+    expect(merged.isNew).toBe(false)
+    expect(merged.previousCount).toBe(1)
+    expect(merged.count).toBe(2)
+  })
+
+  // 11-18 晚重新分类拍板：购买参数/配置选择错误 ← 配置规格；操作与帮助文档 ← 任务操作流程/界面布局/帮助类；安全类 ← 网络安全；功能缺失/不完善 ← 多线BGP
+  it('maps the reclassified reason groups exactly as approved', () => {
+    const records = [
+      rating('cfg', '2026-10', 5, '配置规格不知道如何选择'),
+      rating('bgp', '2026-10', 5, '多线BGP'),
+      rating('sec', '2026-10', 5, '网络安全'),
+      rating('flow', '2026-10', 5, '任务操作流程复杂'),
+      rating('doc', '2026-10', 5, '内容/帮助说明不充分'),
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const names = model.reasons.map((row) => row.name)
+    expect(names).toContain('购买参数/配置选择错误')
+    expect(names).toContain('安全类')
+    expect(names).toContain('操作与帮助文档')
+    const feature = model.reasons.find((row) => row.name === '功能缺失/不完善')
+    expect(feature).toBeTruthy()
+    expect(feature.memberThemes.map((member) => member.theme)).toContain('多线BGP')
+    const ops = model.reasons.find((row) => row.name === '操作与帮助文档')
+    expect(ops.memberThemes.map((member) => member.theme).sort()).toEqual(['任务操作流程复杂', '内容/帮助说明不充分'])
+    expect(names).not.toContain('配置选择与帮助文档')
+    expect(names).not.toContain('操作与安全类')
+  })
+
+  it('applies LLM theme group overrides from the overlay before regex fallback', () => {
+    const records = [
+      rating('vague-a', '2026-10', 1, '垃圾云电脑,不用就关机'),
+      rating('vague-b', '2026-10', 1, '烂到极致，我要退款'),
+    ]
+    const base = { reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records }
+    const plain = buildPostUseReportV2Model(base)
+    // 无 overlay：未命中正则按原文自成一档（回退语义）
+    expect(plain.reasons.map((row) => row.name)).toEqual(['垃圾云电脑,不用就关机', '烂到极致，我要退款'])
+    const overridden = buildPostUseReportV2Model({
+      ...base,
+      overlay: { narratives: { themeGroupLabels: { '烂到极致，我要退款': '操作与帮助文档' } } },
+    })
+    const grouped = overridden.reasons.find((row) => row.name === '操作与帮助文档')
+    expect(grouped.memberThemes.map((member) => member.theme)).toEqual(['烂到极致，我要退款'])
+    expect(overridden.reasons.find((row) => row.name === '垃圾云电脑,不用就关机')).toBeTruthy()
+    expect(overridden.themeGroupLabels).toEqual({ '烂到极致，我要退款': '操作与帮助文档' })
+  })
+
+  it('computes department reason month distribution and lifecycle for the quarter', () => {
+    const allRecords = [
+      rating('q1', '2026-07', 1, '功能有缺失'),
+      rating('q2', '2026-08', 1, '功能有缺失'),
+      rating('q3', '2026-09', 1, '功能有缺失'),
+      rating('m1', '2026-08', 1, '稳定性不足故障频发'),
+      rating('m2', '2026-08', 3, '稳定性不足故障频发'),
+      rating('c1', '2026-07', 5, '配置规格不知道如何选择'),
+      rating('c2', '2026-08', 5, '配置规格不知道如何选择'),
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
+      records: allRecords, companyRecords: allRecords, allRecords, allCompanyRecords: allRecords,
+    })
+    const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
+    expect(merged.monthCounts).toEqual({ '2026-07': 1, '2026-08': 1, '2026-09': 1 })
+    expect(merged.lifecycle).toBe('贯穿全季')
+    const burst = model.reasons.find((row) => row.name === '稳定性不足故障频发')
+    // [0,2,0] 判单月事件（8月），不误判已收敛（11-18 对照季报原型 MOP 行拍板）
+    expect(burst.monthCounts).toEqual({ '2026-07': 0, '2026-08': 2, '2026-09': 0 })
+    expect(burst.lifecycle).toBe('单月（8月）')
+    const faded = model.reasons.find((row) => row.name === '购买参数/配置选择错误')
+    // [1,1,0] 两个月出现末月消失 → 已收敛
+    expect(faded.lifecycle).toBe('已收敛（末月无）')
   })
 
   it('assigns an owner only when the trace is linked to that issue', () => {

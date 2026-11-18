@@ -532,6 +532,34 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           ...(prev[key] || {}), ...value,
         }])),
       }))
+      // 待办自动行（11-18）：LLM 逐条推导 content；失败条目回退规则模板 fallbackContent。
+      // 只按候选 id 命中——index 越界/被丢弃的条目天然走回退；人工行不在此合成（编辑态手动加）。
+      if (model.todoCandidates?.length) {
+        const manualRows = todoItems.filter((row) => row.source === 'manual' || (!row.source && !String(row.id || '').startsWith('todo-')))
+        setTodoItems([
+          ...model.todoCandidates.map((candidate) => ({
+            id: candidate.id,
+            productName: candidate.productName,
+            content: draft.todos?.[candidate.id] || candidate.fallbackContent,
+            owner: candidate.owner || '',
+            team: candidate.team || '',
+            status: candidate.status || '',
+            source: 'auto',
+          })),
+          ...manualRows,
+        ])
+      }
+      // 语义归类覆盖表（11-18）：LLM 把未命中正则的低分标签归入封闭组；合入 overlay 触发模型重算，
+      // 部门表/分产品表立即按归类结果聚合；保存时随 narratives.themeGroupLabels 落库。
+      if (draft.themeGroupLabels && Object.keys(draft.themeGroupLabels).length) {
+        setOverlay((prev) => ({
+          ...(prev || {}),
+          narratives: { ...(prev?.narratives || {}), themeGroupLabels: {
+            ...(prev?.narratives?.themeGroupLabels || {}),
+            ...draft.themeGroupLabels,
+          } },
+        }))
+      }
       message.success('报告文案草稿已生成，请复核后保存')
     } catch (error) {
       message.error(error?.message || '报告文案生成失败')
@@ -562,6 +590,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           todoNote,
           todoItems,
           ...(isV2 ? { actionOverrides } : {}),
+          ...(isV2 ? { themeGroupLabels: overlay?.narratives?.themeGroupLabels || {} } : {}),
           visitSupplements,
         },
       }, version)

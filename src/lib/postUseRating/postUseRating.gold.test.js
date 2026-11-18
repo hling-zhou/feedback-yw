@@ -97,14 +97,16 @@ describe.skipIf(!hasJune)('postUseRating June gold', () => {
       productNames: [...POST_USE_RATING_PRODUCT_NAMES],
       companyRows: merged.scored,
     })
-    // 合并后云网产品数 16 → 12（SSL VPN/IPSec VPN 合成融合VPN，其余 3 个并入已有父产品）
-    expect(ext.yunwang.productCount).toBe(12)
+    // 合并后云网产品数 16 → 13（SSL VPN/IPSec VPN 合成融合VPN，其余 3 个并入已有父产品；
+    // 09-18 d8ac800 目录扩展 5 款产品后，六月数据新归并出「内网DNS」4 条样本，12 → 13）
+    expect(ext.yunwang.productCount).toBe(13)
     expect(ext.yunwang.avgScore).toBe(9.93)
-    expect(ext.yunwang.belowNineCount).toBe(1)
-    expect(ext.yunwang.belowNineRatio).toBe(8.33)
-    // 样本总量不变：子产品样本被归到父产品，未被丢弃
-    expect(ext.yunwang.totalSample).toBeGreaterThanOrEqual(4115)
-    expect(ext.yunwang.totalSample).toBeLessThanOrEqual(4116)
+    // 内网DNS 均分 7.75 < 9，进入低于 9 分名单：1 → 2
+    expect(ext.yunwang.belowNineCount).toBe(2)
+    expect(ext.yunwang.belowNineRatio).toBe(15.38)
+    // 样本总量不变：子产品样本被归到父产品，未被丢弃；内网DNS 4 条并入后 4115 → 4119（容差 ±1 对齐 PRD）
+    expect(ext.yunwang.totalSample).toBeGreaterThanOrEqual(4118)
+    expect(ext.yunwang.totalSample).toBeLessThanOrEqual(4120)
     expect(ext.company.productCount).toBe(89)
     expect(ext.company.totalSample).toBe(13567)
     expect(ext.company.avgScore).toBe(9.79)

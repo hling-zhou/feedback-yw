@@ -5,6 +5,9 @@ import { postUsePeriodMonths } from './periodScope.js'
 import { computeInternalSatisfactionMetrics } from './metrics.js'
 import { postUseRecordsToScoredRows } from './scoredRows.js'
 import { buildCustomerInsights } from './insights.js'
+import { visitEvaluationState } from './visitRecords.js'
+import { normalizePostUseJiraStatus } from '../../domain/postUseJira.js'
+import { maskCustomerName, maskPhoneInText } from '../customerMask.js'
 
 const SCORE_BASELINE = 9
 const REPORT_PRODUCT_ALIASES = new Map([['共享带宽', '弹性公网IP']])
@@ -149,15 +152,87 @@ function lifecycle(monthCounts, months) {
   const counts = months.map((month) => monthCounts[month] || 0)
   const active = counts.filter(Boolean).length
   if (!active) return ''
-  if (counts.at(-1) === 0 && counts.slice(0, -1).some(Boolean)) return '已收敛（末月无）'
   if (active === months.length) return '贯穿全季'
+  // 单月事件优先于已收敛（11-18 对照季报原型拍板）：仅 1 个月出现（含非末月）判单月；
+  // 已收敛保留给"多个月出现后末月消失"的主题（原型 MOP 退订链路 0/3/0 → 单月事件（8月））
   if (active === 1) return `单月（${Number(months[counts.findIndex(Boolean)].slice(5))}月）`
+  if (counts.at(-1) === 0 && counts.slice(0, -1).some(Boolean)) return '已收敛（末月无）'
   const max = Math.max(...counts)
   const peak = counts.indexOf(max)
   if (max >= 2 * (counts.reduce((sum, value) => sum + value, 0) - max)) {
     return `${Number(months[peak].slice(5))}月集中爆发`
   }
   return ''
+}
+
+/** 部门低分原因汇总行底色层级（11-18 拍板）：最低分 ≤5 红底优先，NEW 用徽章+橙底表达；与组件层 reasonRowClass 同源。 */
+export function reportV2ReasonToneRank(row) {
+  if (row.type === 'ten-option') return 2
+  if (row.lowestScore != null && row.lowestScore <= 5) return 0
+  if (row.isNew) return 1
+  return 2
+}
+
+/**
+ * 归并后主题行的生命周期判定（11-18 对齐原型改造）：输入按记录去重的月度计数，
+ * 与单主题 lifecycle() 同规则；导出供组件层归并行共用，禁止再造副本。
+ */
+export function reportV2GroupedLifecycle(monthCounts, months) {
+  return lifecycle(monthCounts, months)
+}
+
+/**
+ * 归并后的问题主题标签（11-18 部门低分原因汇总对齐原型改造，单一真源）：
+ * 分产品"问题主题分布"表与概述"部门低分原因汇总"表共用，禁止两处各写一套。
+ * ten-option 组内合成时按命中行名归并（购买时参数/配置选择错误、价格/操作复杂等）。
+ * 低分组映射（11-18 晚用户重新分类拍板）：
+ *   购买参数/配置选择错误 ← 配置规格、购买参数/配置选择错误；
+ *   操作与帮助文档 ← 任务操作流程、界面布局、帮助说明、内容/帮助、缺乏操作指引、帮助文档；
+ *   安全类 ← 网络安全；
+ *   功能缺失/不完善 ← 原功能组 + 多线BGP。
+ * 未命中正则的标签走 LLM 语义归类（groupLabelOverrides 注入，见 buildTodoCandidates 同款管线）；无覆盖时按原文自成一档。
+ */
+export function reportV2ThemeGroupLabel(text, type, productName, groupLabelOverrides = null) {
+  const value = String(text || '').trim()
+  const overrides = groupLabelOverrides && typeof groupLabelOverrides === 'object' ? groupLabelOverrides : {}
+  if (Object.prototype.hasOwnProperty.call(overrides, value)) return overrides[value]
+  if (type === 'ten-option') {
+    if (/购买时参数|配置选择错误/.test(value)) return '购买时参数/配置选择错误'
+    if (/产品价格|价格没有优势|操作过于复杂|服务不好用/.test(value)) return '价格无优势 / 操作过于复杂'
+    if (/不满足业务部署/.test(value)) return '不满足业务部署要求'
+    return value
+  }
+  if (/功能有缺失|功能缺失.?不完善|无法绑定|不能绑定|多线BGP/.test(value)) return '功能缺失/不完善'
+  if (/MOP.*退订|KCS.*退订|关联退订失败/.test(value)) return 'MOP 退订链路'
+  if (/IP地区|IP 地区|地域.*IP|福建厦门.*北京/.test(value)) return 'IP 地域匹配'
+  if (/配置规格|购买参数|配置选择错误/.test(value)) return '购买参数/配置选择错误'
+  if (/任务操作流程|界面布局|帮助说明|内容\/帮助|缺乏操作指引|帮助文档/.test(value)) return '操作与帮助文档'
+  if (/网络安全/.test(value)) return '安全类'
+  if (productName === '弹性公网IP' && /共享带宽|双栈带宽|批量.*退|IP不能.*退/.test(value)) return '共享带宽能力限制'
+  return value
+}
+
+/** LLM 语义归类的封闭组清单（11-18 拍板 strictLabels 只选不造）：正则组的并集，LLM 只能归入这些组 */
+export const REPORT_V2_THEME_GROUPS = [
+  '功能缺失/不完善', 'MOP 退订链路', 'IP 地域匹配', '购买参数/配置选择错误',
+  '操作与帮助文档', '安全类', '共享带宽能力限制',
+]
+
+/**
+ * 未命中正则归并的低分标签收集（11-18 LLM 语义归类输入）：
+ * 报告文案生成时交给 LLM 按封闭组清单归类（strictLabels 只选不造）；
+ * 语义归类结果经 overlay.narratives.themeGroupLabels 注入 reportV2ThemeGroupLabel。
+ */
+export function reportV2UngroupedThemeLabels(themes, groupLabelOverrides = {}) {
+  const labels = new Set()
+  for (const row of themes || []) {
+    if (row.type !== 'low') continue
+    const label = reportV2ThemeGroupLabel(row.theme, 'low', row.productName, groupLabelOverrides)
+    if (label !== row.theme) continue
+    if (labels.has(row.theme)) continue
+    labels.add(row.theme)
+  }
+  return [...labels]
 }
 
 function themeRows(records, allRecords, visits, traces, links, months, earlierMonths, kind) {
@@ -266,6 +341,135 @@ function previousVisitRows(visits, reportKey) {
     })
 }
 
+/**
+ * V2 待办候选收集（11-18 需求）：三路来源，只收本周期未完结项。
+ * 口径拍板：①产品部溯源（本周期 importMonth，状态≠已处理，旧枚举归一）；
+ * ②省代表回访（本周期月份，评估状态≠已评估，谓词走 visitEvaluationState 共享层）；
+ * ③用后即评举措（source=post_use，firstProposedAt ∈ 周期，状态仅待评估/进行中）。
+ * 更早周期遗留的未完结项不收（历史进展由报告链接行引导至平台查看）。
+ * 客户姓名脱敏（与 V2 文档层 mask 同形：首字符+****+尾字符）——LLM 输入与兜底文案共用。
+ */
+function todoCandidateFacts(candidate) {
+  const facts = []
+  // 11-18 口径：候选事实文本同时供 LLM 输入与兜底文案渲染，统一手机号打码（姓名已由 customerMaskedName 脱敏）
+  const customer = candidate.customerMaskedName ? `客户 ${candidate.customerMaskedName}` : ''
+  if (candidate.sourceKind === 'trace') {
+    if (customer) facts.push(`${customer}反馈「${maskPhoneInText(String(candidate.customerFeedback || '')).slice(0, 60)}」`)
+    if (candidate.progress) facts.push(`回溯进展：${maskPhoneInText(String(candidate.progress)).slice(0, 80)}`)
+    if (!candidate.progress && candidate.recommendedReason) facts.push(`建议回溯：${maskPhoneInText(String(candidate.recommendedReason)).slice(0, 80)}`)
+    // 跨源合并（11-18）：同客户回访待办并入后，一行同时呈现回溯与回访评估两件事
+    if (candidate.mergedVisit) {
+      const visitText = maskPhoneInText(String(candidate.mergedVisit.visitResult || '')).slice(0, 80)
+      if (visitText) facts.push(`省代表回访：${visitText}`)
+      if (candidate.mergedVisit.evaluationState === '评估中') facts.push('回访内部评估已暂存，待提交完结')
+    }
+  } else if (candidate.sourceKind === 'visit') {
+    if (customer) facts.push(`${customer}的回访记录：${maskPhoneInText(String(candidate.visitResult || '')).slice(0, 80)}`)
+    if (candidate.evaluationState === '评估中') facts.push('内部评估已暂存，待提交完结')
+  } else if (candidate.sourceKind === 'action') {
+    if (candidate.actionContent) facts.push(`举措内容：${maskPhoneInText(String(candidate.actionContent)).slice(0, 100)}`)
+    if (candidate.actionStatus === '待评估') facts.push('举措待评估推进')
+  }
+  return facts
+}
+
+function todoFallbackContent(candidate) {
+  const facts = todoCandidateFacts(candidate)
+  const lead = candidate.sourceKind === 'trace'
+    ? (candidate.mergedVisit ? '跟进回溯闭环并完成回访评估' : '跟进产品部回溯闭环')
+    : candidate.sourceKind === 'visit' ? '完成省代表回访评估'
+      : '推进举措落地'
+  return facts.length ? `${lead}：${facts.join('；')}` : lead
+}
+
+function buildTodoCandidates({ months, visits = [], traces = [], actionItems = [] }) {
+  const monthSet = new Set(months)
+  const inPeriod = (monthText) => String(monthText || '').split('、').map((m) => m.trim()).filter(Boolean).some((m) => monthSet.has(m))
+  // 候选 id 兜底键：无 id 的行用 月份:客户键:产品 拼；空段一律空串（11-18 修复：禁止 "undefined" 字面量进 id）
+  const fallbackKeyOf = (monthText, customerCode, customerName, productName) =>
+    [monthText, String(customerCode || '').trim() || String(customerName || '').trim(), productName]
+      .map((part) => String(part || '').trim()).join(':')
+  // 跨源合并客户键（11-18 拍板）：customerCode 优先，空则 customerName（原始值比对），都空不参与匹配
+  const mergeCustomerKeyOf = (record) => {
+    const code = String(record?.customerCode || '').trim()
+    if (code) return `code:${code}`
+    const name = String(record?.customerName || '').trim()
+    return name ? `name:${name}` : ''
+  }
+  const candidates = []
+  for (const trace of traces) {
+    if (!inPeriod(trace.importMonth)) continue
+    if (normalizePostUseJiraStatus(trace.status) === '已处理') continue
+    const productName = String(trace.product || trace.productName || '').trim()
+    const customerMaskedName = maskCustomerName(trace.customerName)
+    const candidate = {
+      id: `todo-trace:${String(trace.id || fallbackKeyOf(trace.importMonth, trace.customerCode, trace.customerName, productName))}`,
+      sourceKind: 'trace', productName,
+      mergeCustomerKey: mergeCustomerKeyOf(trace),
+      customerMaskedName,
+      customerFeedback: String(trace.customerFeedback || '').trim(),
+      recommendedReason: String(trace.recommendedReason || '').trim(),
+      progress: String(trace.progress || '').trim(),
+      owner: String(trace.assigneeName || '').trim(),
+      team: '',
+      status: normalizePostUseJiraStatus(trace.status),
+    }
+    candidates.push({ ...candidate, facts: todoCandidateFacts(candidate), fallbackContent: todoFallbackContent(candidate) })
+  }
+  for (const visit of visits) {
+    if (!inPeriod(visit.importMonth || visit.visitMonth)) continue
+    const state = visitEvaluationState(visit)
+    if (state === '已评估') continue
+    const productName = String(visit.product || visit.productName || '').trim()
+    const customerMaskedName = maskCustomerName(visit.customerName)
+    const candidate = {
+      id: `todo-visit:${String(visit.id || fallbackKeyOf(visit.importMonth || visit.visitMonth, visit.customerCode, visit.customerName, productName))}`,
+      sourceKind: 'visit', productName,
+      mergeCustomerKey: mergeCustomerKeyOf(visit),
+      customerMaskedName,
+      visitResult: String(visit.visitResult || visit.visitFeedbackDetail || visit.feedbackSummary || '').trim(),
+      evaluationState: state,
+      owner: String(visit.assigneeName || '').trim(),
+      team: '',
+      status: state,
+    }
+    // 跨源合并（11-18 拍板）：同客户同产品的回访待办并入对应溯源待办，一行呈现"回溯+回访评估"两件事。
+    // 合并后不删 trace 行的独立语义——facts/fallback 由 mergedVisit 驱动重算；owner 取溯源经办人优先。
+    const mergeTarget = candidate.mergeCustomerKey
+      && candidates.find((row) => row.sourceKind === 'trace' && row.mergeCustomerKey === candidate.mergeCustomerKey && row.productName === productName)
+    if (mergeTarget) {
+      const merged = {
+        ...mergeTarget,
+        mergedVisit: { id: candidate.id, visitResult: candidate.visitResult, evaluationState: candidate.evaluationState, owner: candidate.owner },
+        owner: mergeTarget.owner || candidate.owner,
+        status: mergeTarget.status === '待处理' ? '待处理' : mergeTarget.status,
+      }
+      merged.facts = todoCandidateFacts(merged)
+      merged.fallbackContent = todoFallbackContent(merged)
+      candidates.splice(candidates.indexOf(mergeTarget), 1, merged)
+      continue
+    }
+    candidates.push({ ...candidate, facts: todoCandidateFacts(candidate), fallbackContent: todoFallbackContent(candidate) })
+  }
+  for (const action of actionItems) {
+    if (action.source !== 'post_use') continue
+    if (!['pending_evaluation', 'in_progress'].includes(action.status)) continue
+    if (!inPeriod(action.firstProposedAt?.slice(0, 7))) continue
+    const productName = String(action.product || action.productName || '').trim()
+    const candidate = {
+      id: `todo-action:${String(action.id || '')}`,
+      sourceKind: 'action', productName,
+      customerMaskedName: '',
+      actionContent: String(action.content || '').trim(),
+      actionStatus: action.status === 'in_progress' ? '进行中' : '待评估',
+      owner: '', team: '',
+      status: action.status === 'in_progress' ? '进行中' : '待评估',
+    }
+    candidates.push({ ...candidate, facts: todoCandidateFacts(candidate), fallbackContent: todoFallbackContent(candidate) })
+  }
+  return candidates
+}
+
 function focusActionType(row, trace, visit) {
   if (row.dissatisfied || (visit && /不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))) return '回访跟进'
   if (/故障|不通|稳定性|网络质量|卡单|缺陷/.test(`${row.theme} ${trace?.recommendedReason || ''}`)) return '缺陷修复'
@@ -276,13 +480,14 @@ function focusActionType(row, trace, visit) {
 
 function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null) {
   const facts = []
-  const visitText = String(visit?.visitResult || visit?.visitFeedbackDetail || '').trim()
+  // 11-18 口径：LLM 输入侧自由文本统一手机号打码（姓名脱敏已有 maskCustomerName，此处补电话维度）
+  const visitText = maskPhoneInText(String(visit?.visitResult || visit?.visitFeedbackDetail || '').trim())
   if (visitText) facts.push(`${visitInferred ? '同客户省代表回访' : '省代表回访'}：「${visitText.slice(0, 100)}」`)
-  const traceText = String(trace?.recommendedReason || trace?.progress || '').trim()
+  const traceText = maskPhoneInText(String(trace?.recommendedReason || trace?.progress || '').trim())
   if (traceText) facts.push(`产品部溯源：${traceText.slice(0, 140)}`)
-  const backgroundText = String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim()
+  const backgroundText = maskPhoneInText(String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim())
   if (!traceText && backgroundText) facts.push(`产品部溯源背景：${backgroundText.slice(0, 140)}`)
-  if (!visitText && row.quotes[0]) facts.push(`客户原话：「${row.quotes[0].slice(0, 100)}」`)
+  if (!visitText && row.quotes[0]) facts.push(`客户原话：「${maskPhoneInText(row.quotes[0]).slice(0, 100)}」`)
   if (kind === 'quarter') facts.push(`月度分布：${months.map((month) => `${Number(month.slice(5))}月 ${row.monthCounts[month] || 0} 条`).join('、')}`)
   else if (row.previousCount) facts.push(`上期 ${row.previousCount} 条，本期 ${row.count} 条`)
   return facts.join('；') || `本期关联 ${row.count} 条评分记录，最低 ${row.lowestScore} 分。`
@@ -528,21 +733,61 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
   const rawActions = actionRows(themes, traces, visits, actionItems, months, kind)
   const focus = selectFocus(rawActions, kind, products)
   const allActions = capActionsByProduct(rawActions, focus)
+  const todoCandidates = buildTodoCandidates({ months, visits, traces, actionItems })
+  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"生成报告文案"管线写入，
+  // 未命中正则的标签 → LLM 归入封闭组；旧快照无该字段时回退纯正则（groupLabelOverrides 为空对象）
+  const groupLabelOverrides = overlay?.narratives?.themeGroupLabels && typeof overlay.narratives.themeGroupLabels === 'object'
+    ? overlay.narratives.themeGroupLabels : {}
   const registry = reportQuotes(records)
   const positiveRegistry = registry.filter(isReportV2PraiseQuote)
   const reasonsMap = new Map()
   for (const row of themes) {
-    const key = row.type === 'ten-option' ? '10 分反馈选项类' : row.theme
-    const entry = reasonsMap.get(key) || { name: key, count: 0, lowestScore: null, products: new Set(), type: row.type, isNew: false }
-    entry.count += row.count
+    // 部门表 10 分选项类合成一行；低分组按共享归并标签聚合（11-18 对齐原型）
+    const key = row.type === 'ten-option' ? 'ten-option' : reportV2ThemeGroupLabel(row.theme, 'low', row.productName, groupLabelOverrides)
+    const entry = reasonsMap.get(key) || {
+      name: row.type === 'ten-option' ? '10 分反馈选项类' : key,
+      type: row.type, count: 0, segmentCount: 0, lowestScore: null,
+      recordIds: new Set(), productCounts: new Map(), monthRecordIds: new Map(),
+      memberThemes: new Map(), themeKeys: new Map(),
+      newRecordIds: new Set(), priorRecordIds: new Set(),
+    }
+    for (const recordId of row.recordIds) {
+      entry.recordIds.add(recordId)
+      if (row.isNew) entry.newRecordIds.add(recordId)
+      else entry.priorRecordIds.add(recordId)
+      const month = Object.keys(row.monthRecordIds || {}).find((m) => (row.monthRecordIds[m] || []).includes(recordId))
+      const monthSet = entry.monthRecordIds.get(month) || new Set()
+      monthSet.add(recordId)
+      entry.monthRecordIds.set(month, monthSet)
+    }
+    entry.count = entry.recordIds.size
+    entry.segmentCount += row.segmentCount || 0
     entry.lowestScore = entry.lowestScore == null ? row.lowestScore : Math.min(entry.lowestScore, row.lowestScore)
-    entry.products.add(row.productName)
-    entry.isNew ||= row.isNew
+    entry.productCounts.set(row.productName, (entry.productCounts.get(row.productName) || 0) + row.count)
+    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null }
+    members.count += row.count
+    members.lowestScore = members.lowestScore == null ? row.lowestScore : Math.min(members.lowestScore, row.lowestScore)
+    entry.memberThemes.set(row.theme, members)
+    entry.themeKeys.set(row.theme, row.key)
     reasonsMap.set(key, entry)
   }
-  const reasons = [...reasonsMap.values()].map((row) => ({ ...row, products: [...row.products] }))
-    .sort((a, b) => Number(a.type === 'ten-option') - Number(b.type === 'ten-option')
-      || a.lowestScore - b.lowestScore || b.count - a.count)
+  const reasons = [...reasonsMap.values()].map((row) => {
+    // 组级 NEW 语义（11-18 拍板）：组内全部成员记录均来自本期新增（上期 0→N）才打 NEW
+    const isNew = row.recordIds.size > 0 && row.newRecordIds.size === row.recordIds.size
+    const previousCount = row.recordIds.size - row.newRecordIds.size
+    const monthCounts = Object.fromEntries(months.map((month) => [month, row.monthRecordIds.get(month)?.size || 0]))
+    return {
+      name: row.name, type: row.type, count: row.count, segmentCount: row.segmentCount,
+      lowestScore: row.lowestScore, isNew, previousCount,
+      products: [...row.productCounts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh')),
+      memberThemes: [...row.memberThemes.entries()].map(([theme, meta]) => ({ theme, ...meta })).sort((a, b) => b.count - a.count),
+      monthCounts,
+      lifecycle: kind === 'quarter' ? lifecycle(monthCounts, months) : '',
+    }
+  }).sort((a, b) => Number(a.type === 'ten-option') - Number(b.type === 'ten-option')
+    // 排序拍板（11-18）：10 分选项殿后，其余按 底色层级（≤5 红 → NEW 橙 → 默认）→ 最低分升序 → 条数降序
+    || reportV2ReasonToneRank(a) - reportV2ReasonToneRank(b)
+    || a.lowestScore - b.lowestScore || b.count - a.count)
   const avg = average(currentScored)
   const companyAvg = average(companyScored)
   const previousAvg = average(historyScored.filter((row) => previous.includes(monthOf(row))))
@@ -590,6 +835,9 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
       ).notQualified.length,
     },
     products, themes, reasons, actions: allActions, focus,
+    themeGroupLabels: groupLabelOverrides,
+    // 11-18 LLM 语义归类输入：未命中正则的低分标签清单（已命中覆盖表的标签不再送 LLM）
+    ungroupedThemes: reportV2UngroupedThemeLabels(themes, groupLabelOverrides),
     departmentTrend,
     companyTrend,
     satisfactionTrend: satisfactionMonths,
@@ -606,6 +854,13 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     ),
     todoRows: Array.isArray(overlay?.narratives?.todoItems) ? overlay.narratives.todoItems : [],
     todoNote: overlay?.narratives?.todoNote || '',
+    todoCandidates,
+    todoCandidateCounts: {
+      trace: todoCandidates.filter((row) => row.sourceKind === 'trace').length,
+      visit: todoCandidates.filter((row) => row.sourceKind === 'visit').length,
+      action: todoCandidates.filter((row) => row.sourceKind === 'action').length,
+      mergedVisit: todoCandidates.filter((row) => row.sourceKind === 'trace' && row.mergedVisit).length,
+    },
     recommendedFeedbackCount: distinct(themes.flatMap((row) => row.priority === 'P0' || row.priority === 'P1' ? row.recordIds : [])).length,
     judgment: overlay?.narratives?.judgment || '',
     hiddenSectionIds: overlay?.hiddenSectionIds || [],

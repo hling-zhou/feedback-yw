@@ -121,6 +121,20 @@ export function visitMonthForReport(reportMonth) {
 }
 
 /**
+ * 省代表回访评估状态共享谓词（2026-11-05 评估状态自动流转口径，2026-11-18 抽共享）：
+ * 已提交=已评估 / 有内容未提交=评估中 / 空=待评估。
+ * 消费方：PostUseVisitDrawer（展示）、Feedbacks 列表、V2 报告待办候选收集——判定必须走本函数，不内联重写。
+ * @param {{ evaluationSubmitted?: boolean, internalEvaluationDetail?: string, internalConclusion?: string }} record
+ * @returns {'已评估' | '评估中' | '待评估'}
+ */
+export function visitEvaluationState(record) {
+  const evaluation = String(record?.internalEvaluationDetail || record?.internalConclusion || '').trim()
+  if (record?.evaluationSubmitted) return '已评估'
+  if (evaluation) return '评估中'
+  return '待评估'
+}
+
+/**
  * @param {{ getMeta: (k: string) => Promise<unknown>; putMeta: (k: string, v: unknown) => Promise<void> }} adapter
  */
 export async function loadVisitRecords(adapter) {

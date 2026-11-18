@@ -41,3 +41,16 @@ describe('PostUseRatingDashboardView 头部快捷入口（2026-11-09）', () => 
     expect(source).toContain('onOpenCallbackProcess={() => {')
   })
 })
+
+describe('PostUseRatingDashboardView 样本 Tag 口径说明（11-18 拍板）', () => {
+  it('「样本」Tag 在存在选项题时追加说明文案', () => {
+    expect(source).toContain('样本 {storyModel.scope.validSample}')
+    expect(source).toContain('另含选项题 ${optionRecordCount} 条（无评分）')
+  })
+
+  it('选项题计数复用共享谓词（与 scoredRows 排除口径同源），不另写判定', () => {
+    expect(source).toContain("import { isOptionScoreRecord } from '../../lib/postUseRating/scoredRows.js'")
+    expect(source).toContain('selectedItems.filter(isOptionScoreRecord).length')
+    expect(source).not.toContain("channel === 'option' ||")
+  })
+})
