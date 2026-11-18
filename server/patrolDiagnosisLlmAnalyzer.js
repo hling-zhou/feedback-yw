@@ -23,8 +23,9 @@ const LLM_INPUT_CHAR_BUDGET = 24_000
 /** 直接原因/关键证据行数上限。 */
 const MAX_DIRECT_CAUSE_LINES = 8
 const MAX_EVIDENCE_ITEMS = 10
-/** LLM 单组最大尝试次数（11-17 用户拍板：失败重试，最多 3 次；仍失败视为未诊断）。 */
-const LLM_MAX_ATTEMPTS = 3
+/** LLM 单组最大尝试次数（11-17 拍板 3 次；11-18 拍板增至 5 次——所有组依赖 LLM 出结论后失败面变大，
+ *  多给 2 次吸收瞬时网关/超时抖动；5 次仍失败视为未诊断，组保持 pending 明日重试）。 */
+const LLM_MAX_ATTEMPTS = 5
 /** 重试间隔基数（毫秒）——指数退避：1s、2s。 */
 const LLM_RETRY_BASE_DELAY_MS = 1_000
 
@@ -140,12 +141,22 @@ export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
         { role: 'user', content: userContent },
       ],
       temperature: 0,
+      // 11-18 实证：推理型模型 reasoning 与正文共享 max_tokens 预算——共享默认 2048 下
+      // 复杂组推理吃光预算（实测最坏组 #183 reasoning=3748 + 正文≈1846 字 → completion=4687），
+      // 正文 0 字或 JSON 半途截断 → 解析必败且 temperature=0 重试同型 3 连败。
+      // 8192 为实测安全值（最坏组 finish_reason=stop）。
+      max_tokens: 8192,
     }
     const res = await forward({
       baseUrl: deps.llm?.baseUrl || resolveLlmBaseUrl(),
       apiKey,
       body,
-      timeoutMs: 60_000,
+      // 11-18 实证：max_tokens 8192 修复截断后，推理型模型充分推理生成时长变长
+      //（实测吞吐 ~78 tok/s，8192 tokens 封顶 ≈ 105s），旧 60s 超时按 2048 预算时代
+      // 标定，正卡在生成时长边上——#214 首跑超时、重试翻身先例。超时与 token 预算
+      // 联动：8192÷78 ≈ 105s 封顶 + 余量 → 120s。连接类错误即时返回不吃此预算，
+      // 放宽只吸收「正常生成但慢」的形态，不放大网关挂的暴露面。
+      timeoutMs: 120_000,
     })
     const answer = String(getLlmCompletionText(res?.data || res) || '').trim()
     // 剥 markdown 代码块包裹（LLM 常见行为）
