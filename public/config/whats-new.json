@@ -1,9 +1,594 @@
 {
-  "generatedAt": "2026-11-10T17:29:03.897Z",
+  "generatedAt": "2026-11-18T14:42:14.485Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "8725a8471b69b63defff3fa6da6db319868ed213",
+  "repoCommit": "847e827ead3e4d127dc02bf72f371ad3fbc0cf65",
   "items": [
+    {
+      "id": "488e971ff16140b16022db5c220b5fd4693b3727",
+      "title": "举措 product_key 写入口径修正——中文名直塞改目录 key + 选择器归一层 + 存量迁移",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "历史缺陷：溯源/回访新建、导入举措把中文名直接塞 product_key，与\n/api/actions?productKey= 按目录 key 查询的口径错位——当年「名查名」\n碰巧命中掩盖了断裂。\n\n- 写入口径修正：addPostUseAction / importMany 经 resolveCatalogProduct\n  按目录解析（未命中原样兜底不阻断写入）；两路由写路径前\n  loadManagedProductCatalog 刷新进程内缓存（refreshProductCatalogForReminder\n  先例），刷新失败降级不阻塞业务。路由级真实链路测试覆盖双口径。\n- 前端选择器归一层 resolveProductKeyToCatalog：宿主传中文名（溯源/回访\n  抽屉）或 key（工单/巡检抽屉）统一归一为目录 key——存量中文名 product_key\n  举措回填也能正确默认选中；守卫测试锁四个接线点。\n- 存量迁移脚本 migrate-postuse-action-productkey：source=post_use 且\n  product_key 命中目录的行归位为 key（payload.productKey 同步），幂等 +\n  dry-run + 备份 + 单事务回滚。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "264dd2403640758eaf5fcb6ed2946c3e38f0fbc2",
+      "title": "根因展示同源派生 displayRootCause + 复合筛选独占搜索入口",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "- 根因分类展示收敛进单一谓词 displayRootCause（列表 Tag 与抽屉 AI 判定\n  行共用，list=manual 优先带·人工标识，ai-original=抽屉对照行取 AI 原判\n  并标注已被人工修正）：缺口类不显 L2、来源标注旧值（LLM语义判定/结构化\n  诊断等）过滤退场，两模式同口径——消灭列表与抽屉各写一份过滤的判定漂移。\n- 复合筛选组件独占搜索入口（晚拍板修订）：文本字段（RequestID/指标/\n  接口/客户名）+ 枚举 chips 全承载在组件内，独立 q 全字段搜索框退场。\n- 异常接口 tab 产品筛选宽 200（原名看不全）；抽屉新增处理判定依据行\n  （actionReason 与需/不需产品侧处理结论）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b33be21e0e0f074b359e7f3230c42b9f99b3ed9f",
+      "title": "LLM 现场判 L2 场景与 needsProductAction + 概况统计 manual 优先 + 存量全量重跑口径",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "- 诊断 L2 改由 LLM 自主生成细分场景短语（4-16 字，如「网卡操作进行中」），\n  不再从结论首句提取兜底优先；needsProductAction 现场判定：并发进行中/\n  客户侧使用问题=—（不需产品侧处理），产品缺陷/平台故障=待处理，缺省保守\n  true；判定理由 actionReason 落库（diagnoses 表加列），抽屉「处理判定\n  依据」行展示供人工复核。三写入口（patrolDiagnose/plan-c-daily/\n  plan-c-rediagnose）同步接新列。\n- 概况统计 manual 优先（与列表/抽屉同口径 COALESCE）：L1 分布、L2 聚合、\n  跨日轨迹、topCause 按人工修正类归——修正后统计不再被 AI 原判稀释。\n- 存量重跑口径（用户拍板 117 组全刷）：rediagnose 筛选放开 src——诊断\n  逻辑更新后旧 LLM 产物同样需要重刷；人工痕迹三重保护不变。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "39ea7040c55ea774b17029403e482e6b8ad533d6",
+      "title": "待办三路自动合成 + 部门原因汇总对齐原型 + LLM 语义归类 + 展示脱敏接线",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "V2 月季报四项拍板落地：\n\n- 待办三路候选收集（buildTodoCandidates）：本周期未完结溯源（旧枚举\n  归一排除已处理）+ 未评估回访（visitEvaluationState 共享谓词抽共享）+\n  本周期新提 post_use 举措；同客户同产品回访待办并入溯源待办一行双事。\n  LLM 逐条推导 content，失败回退规则模板；页面「生成文案」按候选 id\n  合成自动行、themeGroupLabels 合入 overlay 随保存落库。\n- 部门低分原因汇总对齐季报原型：别名归并单一真源\n  reportV2ThemeGroupLabel（分产品表共用，禁止两处各写）；低分组重分类\n  （购买参数/操作与帮助文档/安全类/功能缺失并多线BGP）；组级 NEW=\n  全部成员记录本期新增（0→N）；季报表加月度分布+生命周期徽章四色；\n  排序=10分选项殿后→≤5红→NEW橙→最低分→条数。单月事件优先于已收敛\n  （0/3/0 判单月不误判收敛）。\n- LLM 语义归类：未命中正则的低分标签交 LLM 按封闭组清单归类\n  （strictLabels 只选不造，自造组名/越清单条目丢弃回退原文自成一档，\n  不阻塞文案批）；结果经 overlay.narratives.themeGroupLabels 注入。\n- 展示脱敏接线（11-18 口径）：企业客户名明文走 displayCustomerText、\n  聚类人名段与手机号打码；省代表/溯源经办人姓名 maskCustomerName；\n  客户原话/回访记录等自由文本出口统一 maskPhoneInText；LLM 输入侧\n  （facts/quotes）同步打码。\n\n另：样本 Tag 追加选项题计数（复用 isOptionScoreRecord 共享谓词，\n导出加 export 不改判定）；图表 compact svg 固定宽移除（打印自适应）；\n金测基线随 09-18 目录扩展后六月数据重归并（12→13 产品）更新。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "65b712814a19c9bf2b51c8cfa87be483b33ecf5a",
+      "title": "客户脱敏共享层——姓名/手机号/聚类人名三形态单源",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "抽共享单源（脱敏类判定出现新消费方即抽，不受第 3 处计数约束）：\n- maskCustomerName：首字符+****+尾字符，两字内只留首字\n- maskPhoneInText：1[3-9] 手机号前3+****+后4，前后紧邻字母数字不动\n  （工单号/长编码不误伤；下划线内嵌手机号段照打码——真库形态）\n- displayCustomerText：企业/机构客户名明文（11-18 用户口径），\n  仅「（聚类客户）姓名」标记段脱敏——真库 51981 条自然人姓名仅出现\n  在聚类标记后，不做纯人名猜测避免误杀企业名",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "bc96d7e526b51f598beffb29d7e772406f30ca12",
+      "title": "截断态思考草稿不得冒充正文 + 批容器白名单扩充 + max_tokens 全线重标定",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "推理型模型 reasoning 与正文共享 max_tokens 预算，按旧模型标定的预算\n整体失效：思考吃光预算、正文 0 字或 JSON 截断，解析层报「不是合法 JSON」。\n\n- getLlmCompletionText：finish_reason=length/max_tokens 时跳过\n  reasoning_content 兜底（思考草稿是半成品，冒充正文会让报错内容失真），\n  正文空则抛明确截断错误不流入解析层；正常收尾兜底契约不变\n- 批容器白名单 +focus/products/todos/themeGroups/narrative/recommendations：\n  报告 V2 与专题叙事的输出契约键不入表时被「取末位子对象」启发式剥掉包装，\n  99 产品完整 JSON 只剩最后一个子对象批量丢失（真实链路实证）\n- 预算重标定：llmProxy 兜底 2048→4096（批处理线不显式传值全吃它）；\n  报告 narrative 梯度 [16000,24000] + finish_reason=length 升级重试；\n  专题叙事 1600→8192、推荐 4000→8192、专题解析 700→2048、\n  巡检建议 300→800、提醒增强 1024→2048、重点主题 1200→2048",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b9686b8cac464cdb32c007d6856a14d4d25c5d11",
+      "title": "特殊编辑器弹层锚定触发元素，不再锚整条 bar",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "巡检页工具条 flex-wrap 下 bar 左缘远离复合筛选组件，文本输入框出现在\n离点击很远的位置；改为锚定 chip 编辑按钮/属性按钮（无锚点回退 bar），\n行为测试锁定接线。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "705245b86917ddad31977a2693e2945f111540fb",
+      "title": "错误码喂 LLM 现场判类 + 根因人工修正 + 吸顶/搜索/筛选 11 项打磨",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "错误码不再预维护白名单（码太多维护不过来），诊断时从全量日志提取 errorCode 清单\n显式喂给 LLM 现场判归属——裁剪预算可能裁掉含码行，故从原文提取后再入 prompt；\nprompt 补码名语义指引与资源锁定/状态边界。根因分类支持人工修正：manual 三列\n独立存储不覆盖 LLM 原判（两值并存=后续算准确率的数据基础），列表 manual 优先\n展示带·人工标识，抽屉 AI 判定对照+修正表单；顺手补 realRootCause 历史丢数据洞。\n其余打磨：tab 裸挂对齐反馈库不吸顶、表头 offsetHeader 直挂视口、L2 场景化去\n来源标注、缺口类不显 L2、客户类型加「其他」（哨兵值后端转空值过滤）、压缩规则\n提示 icon 移表头、关键证据默认收起、诊断结果标 MCP 来源、列宽拖拽接入。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9dec961811a86cbb414fba7b04411789c896cf41",
+      "title": "失败组确立举措闭环——action 三列 + Actions 页 API 巡检档",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "巡检溯源抽屉「确立举措」与投诉咨询单抽屉同语义：action_id 关联举措库、\nestablished_action 手填、action_schedule 排期可空=待评估；必填性与\nticket 线一致不强制。groups 表 +action_id/established_action/\naction_schedule 三列（migration），PATCH 端点收三字段 + 审计前后快照\n补 actionId；抽屉「举措及排期说明」更名「备注」。\n\n举措来源值域 +api_patrol（仓库层三处白名单 + 类型链全链）：Actions 页\nSegmented 三档，API 巡检档新增举措自动带 source=api_patrol，关联工单列\n显「—」（巡检组闭环在溯源页抽屉维护）。\n\n规则表面板 L1 下拉同步「权限/授权不足」（运营可维护新类目）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "70d66f026c2f838ff0f8fda83b1ac6dc270099c5",
+      "title": "溯源页表头吸顶根因修复 + 复合搜索改版 + 默认周期 T-1",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "表头吸顶（11-17 视觉未生效的根因修复）：11-17 卡片内吸顶 offsetHeader\n只算工具条高度、Tabs 头不吸——表头吸到页面元素底下。改页面级 page-sticky\nchrome（Feedbacks 先例）：Tabs nav sticky top-0 负边距锚定外壳 padding，\nchrome 实测高度（useMeasureHeight/ResizeObserver）传两表 offsetHeader+8。\n\n复合搜索（11-18 拍板：未指定字段默认全字段搜）：新组件 PatrolCompositeFilter\n复用反馈库 CompositeFilter chips 形态；q 全字段参数进 groups 查询（五列\nOR LIKE 含压缩 IDs）；「需产品侧处理」独立 Checkbox 同排。\n\n时间周期默认 T-1（总览+溯源两页，原近 7 天）——与页面既有 T-1 快捷\n按钮同语义，快捷按钮全保留。render 契约测试同步迁移。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8c03fba80ded7ae073f5ed971a7bd7a05f202a4f",
+      "title": "权限/授权不足类目落地种子/迁移/分类器与守卫",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "种子规则 order 0（RAM/子账号鉴权拒绝：Forbidden/Unauthorized/未授权/\n无权限/没有权限 × RAM/鉴权/授权/子用户/角色/action 两组 AND）——\n强语义全局最优先，接口名泛匹配（HAVIP 等）不得再抢先劫持鉴权组。\n\nmigration v2：存量库规则表按 order 判重追加新种子，运营编辑（改/删）\n保留不覆盖，幂等重跑零变化；新库 v1 直接受益。\n\nLLM 兜底分类器枚举 7→8 类 + prompt 边界（鉴权/授权拒绝=权限类）；\n黄金回放表同步（2 条双因样本转权限类，配额 16→14、待处理 204→206）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "207d65b1eff4db791fb0d3cc1521e2da33cd220b",
+      "title": "归类流程倒转——LLM 先产结论、规则表对结论定类 + 权限类目",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "新共享层 patrolDiagnosisPipeline：快速路径（无失败语义不烧 LLM）→ LLM\n五段结构化（所有组）→ 规则表对 LLM 结论文本定 L1/L2（规则表=归类真源，\n运营维护）→ 未命中 LLM 枚举兜底 → LLM 未配置降级旧链路。三处流程复制\n（部署端 + plan-c-daily/rediagnose 脚本）统一收口到管线。\n\n根治两个质量断崖：规则命中组结论=日志原文、关键证据全空——现所有组\n均有 LLM 真结论+五段。分类输入只取结论（#288 实证 directCause 原始\n日志行会把 RAM 鉴权组劫持成参数无效，日志噪声不得进分类通道）。\n\n新类目「权限/授权不足」（#288 RAM 误归先例）：LLM 枚举 8 类 + prompt\n边界、种子规则 order 0 强语义全局最优先（4097 样本黄金回放双重校准：\n排 order 23 轮不到、弱词会反劫持配额样本）、migration v2 存量库按\norder 判重追加（运营编辑保留）、前端枚举三处同步。黄金表同步：2 条\n双因样本转权限类、配额 16→14、待处理 204→206。\n\nrediagnose 补 rule 源组筛选（原只认 null 漏 40 组）+ 0 成功不推送守卫\n（全挂时降级状态包会把部署端已诊断打回 pending——当日网关 500 实证）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "61f87124696d5b0fe0ec2f0e91fe1c0892922fd8",
+      "title": "LLM 诊断请求 max_tokens 显式 8192 + 超时 120s 联动 + 重试扩至 5 次",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "推理型模型 reasoning 与正文共享 max_tokens 预算，共享默认 2048 下复杂组\n推理吃光预算（实测 #183 reasoning=3748），正文 0 字或 JSON 截断，temperature=0\n重试必然同型 3 连败（11-17/11-18 两轮 7 组同败实证）。\n\n预算 8192 解除截断后生成时长变长（~78 tok/s，8192 封顶 ≈ 105s），旧 60s\n超时正卡在边上（#214 首跑超时先例）——超时与 token 预算联动放宽到 120s。\n\n所有组依赖 LLM 出结论后失败面变大（11-18 拍板），重试 3→5 次吸收瞬时\n网关/超时抖动，5 次仍失败保持 pending 明日重试（11-17 语义沿袭）。\n守卫测试沉淀：max_tokens/timeout 契约 + 五连败语义 + markdown/散文解析。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "c5e0643c7ea11972703aa5b4d8221b4be2ac9c31",
+      "title": "存量重跑脚本 + 历史推送脚本接新诊断链路",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "plan-c-rediagnose：幂等重跑存量已诊断组（识别 root_cause_source 空的旧数据，\n排除人工痕迹/流程态/新链路产物）→ 新链路逐组诊断 → 逐日组包推送。99 组实测\n17 处根因纠正（单页时代假缺口大半翻身），18 组 LLM 连败按重试语义保持 pending。\nhistorical-push 同步翻页函数修复（旧 callMcpTool 单页截断）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "494d7630452a36df247570f65755c73722086785",
+      "title": "详情抽屉样式对齐反馈库 D1-D5 规范（方案 B + bordered 保留）",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "单行拼接标题/Space 裸排/14px 正文不符合抽屉规范：标题两行式（16px 主标题+\nmeta 行 reqId·日期·池）；四分区骨架 drawer-spacey→section-title→page-card-sm\n（失败组信息/诊断结果/处理反馈/关联请求明细——Collapse 独立分区拍板）；五段\n样式对齐（高亮块 3px 竖条 13px 正文、日志行 13px 等宽 ink-50、字段标签统一\nsub-section-label）；Descriptions bordered 保留（短字段横排例外）。守卫 8 项\n防回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ff328a98119cef36ee5e2f53eab3b36802f4dc92",
+      "title": "巡检概况信息层次三段式——指标卡/诊断细节消费全量 facts",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "平面堆叠（综述大段+裸数字一行）看不出重点，facts 的 worstTop3/causeTop3/\nclosure 全量/delta 一直被丢弃。三段式：结论（综述+浅色左边条）→ 指标数字行\n（metric-card 大数字×4，失败请求带环比箭头）→ 诊断细节三栏（最差接口/根因\n占比条/处理闭环含未诊断与仿真计数）。测试补全字段消费契约。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ec99d3973d219027fdac1dc1b639b1445394ecbc",
+      "title": "溯源页两 tab 筛选/吸顶前端 + 概况说明行退场",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "- 失败请求列表：产品/经办人筛选接入（后端端点随前一提交）、右上线刷新按钮\n- 两表表头滚动吸顶：ResizeObserver 测工具条高度传 Table sticky.offsetHeader\n  （Feedbacks.jsx stickyChromeHeight 同款测量传递——卡片内吸顶不用 page-sticky-chrome）\n- 异常接口列表：单日/跨日说明行退场（拍板），产品筛选 + 刷新占位工具条\n- 测试：SSR 渲染断言 refresh 计数/产品筛选 placeholder + 契约正则（antd 中文\n  两字按钮 DOM 为「刷 新」需正则匹配；groups tab 懒渲染需 URL 参数激活）",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b7c42ecbe80f82b506106769beef0909f23dd02d",
+      "title": "诊断链路 LLM 主路径——分页全量日志 + 五段结构化 + 重试语义",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-18",
+      "appVersion": null,
+      "summary": "根因：log_search 单页只拿第 1 页 100 条，失败证据常在第 2/3 页被截断，\nLLM 只能看到入口 WARN 行、诚实判「诊断能力缺口」——问题在输入不在模型。\n\n- 分页全量：fetchPatrolDiagnosticLogs（log_search_full_param 循环翻页，合成\n  与 log_search 同形态响应——下游切分零改动）；旧诊断文本形态单页即全量\n- LLM 结构化主路径：patrolDiagnosisLlmAnalyzer 证据分层挑选（错误级+语义行\n  +尾部30行）→ 严格 JSON 五段（结论/直接原因/关键证据/处理建议/根因大类\n  7 类枚举只选不造）；规则引擎降级为加速/兜底（高置信命中省一次调用）\n- 重试语义（拍板）：LLM 失败重试最多 3 次（指数退避）；全失败视为未诊断\n  ——组保持 pending 不落库不推分类；未配置 LLM 不重试直走规则\n- 落库：diagnoses 表 +direct_cause/evidence/root_cause_source 三列（幂等\n  迁移）；收包端 upsertDiagnoses 五段直传；详情 buildDiagnosisReport LLM\n  产物优先、旧切分降级保留",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ebadc7d02b61ab36fea4c4f40017e93daafa8612",
+      "title": "失败请求列表经办人/产品筛选 + 异常接口产品过滤——双口径计数端点",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "- 经办人筛选：Select 单选 + showSearch 模糊匹配，选项=时间范围 DISTINCT 非空经办人（新端点 /failures/assignees，组数计数降序）\n- 产品筛选：两 tab 各自状态（组数/接口行双口径），共用新端点 /failures/product-counts 一次拉取；computeFailureInterfaces 加 product 参数（stats 单侧收敛——requests 无产品列，ELB api_path 无 / 前缀不可靠）\n- 时间范围窗口计数口径与列表一致；测试 seed 加 slb 对照产品（insertStat 写死 eip，独立 INSERT）",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "371181a34a8ff13473b1b76c40db31e377d059a0",
+      "title": "历史数据回补脚本对 + output/ 入 gitignore",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "fetch（IMAP 补拉 11-11 以来邮件按数据日走完整入库链）与 push（逐日\n压缩/诊断/组包/推送批处理，--skip-diagnose 供 MCP 断供期）配套成对，\n为月日格式兼容修复（400e139）的落地工具，已实际用于历史断供回补。\noutput/ 是文档生成流水线的可再生运行产物，不入库。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2d93494c3a6f0d50ade1cbf22f9f220d63d392bb",
+      "title": "抽屉诊断结果五段渲染 + 失败请求列表交互 5 项",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "「AI 诊断原文」改「诊断结果」五段：结论浅红高亮（bg-red-50 左红条）、\n失败组信息精简速览（方案 A——顶部 Descriptions 承担全量）、直接原因\n默认收起双层展开（核心行→完整日志 4000 字截断）、关键证据列表、处理\n建议浅蓝高亮（bg-blue-50 左蓝条）。失败请求列表：根因/处理状态下拉\n带数量统计（withCount 单源）、整行点击进详情、评估完成按钮移底部\n固定栏居右、组说明文案退场、压缩前失败次数 hover 压缩规则提示。\nmailSchemas cc 注释补录。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2697a27bf9fa215670540fb7b73c6a02a565a85b",
+      "title": "详情端点 diagnosisReport 五段切分 + 组包带 suggestion",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "服务端切分单源（同源判定纪律）：结论/失败组信息/直接原因（日志核心行\n+返回体片段+rawCount）/关键证据（cleanLogLine 与分类器共享导出防漂移）\n/处理建议。Plan C 组包 SELECT 增 suggestion 随包附推。前端只渲染\n不重算——cleanLogLine 不进前端（守卫断言）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "cf9612ea96bb040c31dc53084a7964af2dc9ec6b",
+      "title": "根因分类三层修复 + 诊断建议 LLM 生成——64 兜底组全部消解",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "64 组「其他/未归类」语义分析：39 组有明确语义但规则关键词未跟上真实\n日志措辞，25 组是正常调用日志被当分类输入。三层修复：\n① 提取层：无失败语义守卫/超长堆栈行清洗（98k 单行挤占 800 字窗口）/\n\"null)\"变体视同空；② 规则表 +5 条（资源忙/绑定状态/订单策略/必填\n缺失/资源不存在）——黄金对拍 4097 条 ±0 不受影响；③ LLM 语义兜底\n（7 类枚举只选不造，判不出保持兜底）。诊断链顺手生成处理建议\n（suggestion 列 migration + 收包端落库）；filter 剥 reqId- 前缀修\n下游 412。存量 64 组重分类清零 + 94 组建议补跑。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "c49cfe4893d3bcc8bd5e46aa2947909f06b15c4b",
+      "title": "上线新版月季报",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "新增按需求文档重构的月报与季报页面，并保留新旧版互跳。\n支持独立报告模型、共享快照保存、离线导出和邮件链接。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7bf4aed71862f6daf6d80877cab56964d7aacf8b",
+      "title": "支持产品部溯源 Excel 临时导入",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "让线下维护的溯源结果按现有导出格式回到反馈库。\n导入前校验表格，按记录身份幂等写入并恢复举措关联。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "400e13962e0547a368c25b3c5939a5fe5c05f6ba",
+      "title": "数据日期提取兼容月日格式——早期巡检邮件按当年补全",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "extractDataDateFromHtml 原只认 YYYY-MM-DD 完整格式，早期邮件仅标注\n「11月11日」形态匹配不到 → 历史邮件拉取时解析失败。补月日正则\n兜底，年份按当年补全。历史回补链路（plan-c-historical 脚本）前置。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "1ae40f518a4e66a475838c84ec37b9b96035dcfd",
+      "title": "溯源页加数据日期/产品列 + 抽屉压缩前全部记录模块",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "两表加「数据日期」（跨日合并行区间展示），失败请求列表加「产品」列\n（productNameMap 单源映射）；详情抽屉尾部加「压缩前全部记录」展开\n模块（默认收起，RequestID/开始时间/结束时间三列分页 10）。详情端点\nSELECT 补 end_time（ELB 行有值，EIP 行原始 CSV 无此列显示 —）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8bc048137d8daecf58252776dccb46371ad2a7ee",
+      "title": "CT/ELB curated 正则补词修复未归类/误归属 [auto-reviewed]",
+      "category": "fix",
+      "modules": [
+        "tags"
+      ],
+      "publishedAt": "2026-11-17",
+      "appVersion": null,
+      "summary": "CT: routing re 补路由冲突/回程路由/NPE/VRF/CE NAT/子网未包含/互联地址路由不可达等，\nrouting exclude 去掉过宽\"中断\"避免与 link_quality 互斥死锁；\nrenew exclude 补带宽变更进度/变更入口置灰/续订确认弹窗/调测预约/资源预勘/非标带宽/\n订购流程入口/白名单审核/账号类型限制等，阻止 provision/billing 类工单被 renew 误吸。\nELB: provision exclude 大幅扩展，拉流失败/502/OPTIONS/Proxy Protocol/TOA/UDP监听器/\n499/跨资源池转发/流量分发不均衡/健康检查异常/后端主机未回复/iptables未放行/异常主机汇总/\n后端服务器选不到/后端主机组配额/带宽利用率采集异常/误告警/售罄/灰度码/EMOP上架/\n配额上限/CLB单IP/能力边界/WebSocket/日志查询/API文档/安全组收敛/端口暴露/ICP备案/\n带宽限速/大文件传输限速/流式传输不支持/高并发响应延迟/请求耗时拆分/网元负载异常/\n视频分片内容不一致 等已在其他 family re 中定义的关键词全部加入排除，\n阻止 forward/health/monitor/quota/bw/security/cert 类工单被 provision 泛词误吸。\nconfig_guide sub exclude 同步扩展。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e240e058ab5e54cc555201018f2de2c0dd92e140",
+      "title": "完善溯源和回访详情抽屉",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-14",
+      "appVersion": null,
+      "summary": "支持附件上传与删除，并让一条溯源或回访关联多条确立举措。\n重导保留人工编辑、举措关联及编辑人信息，导出和举措库同步展示多条关联。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "abbaf4261d23366cbc4cfa1d4c076a0ae9618b81",
+      "title": "增量同步共享记录并按日重建洞察",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-14",
+      "appVersion": null,
+      "summary": "用记录变更游标更新已加载的前端缓存，避免每次写入后重拉全量记录。\n后台导入与打标结束后再公布任务结果，洞察快照改由每日定时任务重建。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "5b55543c83e9296537c9f4e8a80382d926257772",
+      "title": "将报告生成提示移至页面顶部",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "把生成进度与异常提示移出正文布局，避免占据左侧区域。\n补充离线导出不包含生成状态的断言。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "1ae2adb620530c0fd104e2fccb1ca99a7efaa51d",
+      "title": "自动生成月季报产品文字稿",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "打开报告后逐个生成缺失或证据已变化的产品文字稿，复用已有结果，\n保留人工编辑和规则稿回退，并移除手动生成入口。\n\n增加 JSON 格式约束、截断重试和网关兼容处理，补充设计说明与测试。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "05c8e2a52553070276164a5a5609b29033606c98",
+      "title": "统一月季报反馈排版层级",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "在线与离线报告共用阅读样式，区分问题概述、关键证据、\n回访记录和建议举措，并分开呈现原话正文与来源信息。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "330a1c5b40c5c5d27d139edcb37547f0efd0c3c2",
+      "title": "用证据生成月季报产品结论与举措",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "- 每个有评分的产品展示结论，优先保留已保存的人工编辑\n- 汇总负反馈、低分高频原话、产品部溯源与省代表回访评估\n- 按紧邻上一期计算问题变化，并同步在线和离线报告",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2d910e3ceb172f4b786789c69b1df108062d1a00",
+      "title": "建立报告问题级证据关联",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "- 归集负反馈原话并按客户、产品、具体问题关联回访和溯源\n- 回访确认无问题时仅排除对应问题，保留原始评分统计\n- 提供关联存储、接口和抽屉操作入口",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "531ec21143d895c9d21262c39c64ad1df9e3ab40",
+      "title": "用后即评产品筛选联动与回访下钻",
+      "category": "feature",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-11-13",
+      "appVersion": null,
+      "summary": "- 顶部产品筛选联动综合指标、趋势、表格和用户旅程\n- 省代表回访数量携产品与周期跳转反馈库\n- 保留实时回访数量，避免已存聚合的零值覆盖",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "eb1fd4c94f8b5c4b1f4a8302dbd6acb655504e2b",
+      "title": "refresh dirty snapshots after data writes",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-12",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "c6ab1542095985bf601c07d4d96672819bbd433e",
+      "title": "correct complaint metrics and product ratios",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-12",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2e2ec12d002b9d5fdf1d7f48d96e39b5d28318c7",
+      "title": "tab failure views and add product-action filter",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-12",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "0461031d5ca16964d46eba25a6c0dce5cf5be28e",
+      "title": "accept cc when saving recipient groups",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "6308d2188817db32ec2c92e1666eea02cabc4dfd",
+      "title": "日包收包端已有组·待处理·空经办人重推时补默认值",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "11-10 的 32 组由旧代码首建（assignee 默认值逻辑未部署），人工状态\n保护使重推永不回填。扩展为「空则补」语义（对齐诊断链先例）：待处理\n且经办人空（新建或已有）即从目录取 productManager[0]；ON CONFLICT\n用 CASE 空则补非空保持。补填随「MCP 恢复→诊断成功→正常日包推送」\n自然触发，无需手工干预。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "91807b7f76f7f4b0d8937967c7e79063cf507c67",
+      "title": "失败请求列表加资源池列、压缩前次数改名失败次数、前两列固定",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "资源池口径用户拍板增列（接口名称后）；「压缩前失败次数」澄清口径为\n组内失败行数（用户误读为总次数）；RequestID/指标名称固定列 + 横向\n滚动便于宽表浏览。异常接口列表分页总数对齐 ec3b5e3 全局形态补漏\n（条件分页形态退场）。源码正则守卫双锚防回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8221eef6267497a1030f41a51e07190cd0861675",
+      "title": "--package-only 重推模式——跳拉取/压缩/诊断直接组包推送",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "混合池形态错乱已修（b0ec3f7），但部署端 11-09/11-10 两天的 eip 脏行\n需重推自愈；邮件已被消费无法重跑全链，新增重推正路。\n测试断言容错：共享库下日包=当日全量，行数断言改为「目标行在内」。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b0ec3f784f831913dd164aabdb26398cdfffcf70",
+      "title": "混合池按行级形态拆包——eip+elb 行同池不再误打单包",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "buildPackage 原按池级 some() 采样判定整池包类型（eip_vpc/elb），混合池\n（华南-广州3 同时含 slb 大写形态行 + eip/vpc REST 形态行）把 eip 行误打\nelb 形态 → 部署端 api_path 还原为空串 → 明细 Σ 断键（总次数 0）。\n改为行级分拨：按 api_path 是否 / 前缀逐行判定，同池可出两个 package 条目。\n新增 PLAN_C_DUMP_PACKAGE 钩子供测试断言，加混合池拆包测试。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7e8ca43bad686f510b6d4755061e63a75d0f9f35",
+      "title": "发件人白名单扩展至 service~service10 + IMAP 搜全量 INBOX 按 envelope 过滤",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-11",
+      "appVersion": null,
+      "summary": "Coremail 巡检系统使用编号发件地址（service2~10@cmecloud.cn）分发邮件，\n原白名单仅含 service@cmecloud.cn 且 IMAP 搜索按 senderWhitelist[0] 过滤，\n导致编号地址的巡检邮件被静默跳过返回 no_email。\n修复：白名单 10 个 + IMAP 搜当日全量 INBOX + envelope.from 层白名单过滤。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "ec3b5e30146cf97554fc17b89c9b134f0eca8a67",
       "title": "全部带分页的列表在分页栏左侧显示总数",
@@ -1974,501 +2559,6 @@
       "publishedAt": "2026-09-16",
       "appVersion": null,
       "summary": "syncSharedDataFromServer 改为只拉工单记录后，setFeedbacks 全量替换\n会导致已加载的 post_use_rating 从列表消失。改为合并：保留内存中已\n有的 post_use_rating，只更新工单记录。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "062ea235fddd82cad989dd7b06c029caf3546e4c",
-      "title": "tick 检测 recordsRevision 而非 revision，避免非记录变更触发全量重拉",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "原 tick 检测 revision 变化即触发 syncSharedDataFromServer，但 revision\n涵盖 snapshot rebuild / tag meta 等非记录变更。改为检查 recordsRevision\n（只在记录增删改时递增），仅记录变更才触发重拉。同时 syncSharedDataFromServer\n的 fetchAllRecordPages 加 dataSourceTypes 过滤，与首屏策略一致不拉\npost_use_rating。updateFeedback 保存后 500ms 延迟取 revision 设 ref，\n消除 400ms bump 窗口竞态。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "dbd7adb83e94d2284de9a1c59a46e81d7ab41899",
-      "title": "消除保存后 tick 误判触发列表全量同步的竞态",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "原方案仅置 dataRevisionRef=null，若 tick 恰在服务端 400ms bump\n窗口内执行会存入旧 revision，导致下一轮 tick 误判为远端变更而\n触发 syncSharedDataFromServer 全量重拉。改为 500ms 后重新拉取\nrevision 写入 ref，确保拿到 bump 后的新值。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "c1d44d9653ae4e1876277a19b7711c2b7fab0fc3",
-      "title": "保存工单后列表闪烁重入 loading 态",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "根因：服务端 putRecord 调 bumpRecordsRevision()，400ms 后 data_revision 递增。\n前端 updateFeedback 在 persistRecordUpdate 后立即 fetchDataRevision() 拿到的\n还是 bump 前的旧值并设了 dataRevisionRef。5 秒后版本轮询 tick 发现 revision 变了，\n误认为是其他用户修改，触发 syncSharedDataFromServer 全量重拉（setFeedbacksLoading(true)）。\n\n修复：updateFeedback 完成后置 dataRevisionRef.current = null。tick 发现 prev == null\n时跳过 sync，并设 dataRevisionRef 为 bump 后的最新值。后续 tick 拿到相同值不再触发。\nupdateFeedback 内部已 setFeedbacks 就地更新内存数据，不需要全量重拉。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "d61588fc6570389679203f3d7b30dbd0f8f55491",
-      "title": "反馈库列表加载后闪烁重入 loading 态",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "根因：reloadPeriods 中 setStorageReady(true) 导致 storageReady state 变化，\n级联重建 loadRecordsForPeriodId → loadRecordsForJourneyComparison → reloadPeriods，\n触发 useEffect :524 二次调用 reloadPeriods，造成 setFeedbacksLoading(true → false → true → false) 闪烁。\n\n修复：loadRecordsForPeriodId / loadPostUseRatingForPeriod 改用 storageReadyRef\n（ref 不触发重渲染），依赖列表去掉 storageReady，阻断级联重建链路。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2c740a55f05d387bcf2ce209a015010ba6e8e42a",
-      "title": "Feedbacks.jsx useEffect 缺少 if(skipUrlSyncRef) 开头导致构建失败",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "插入 post_use_rating 按需加载 useEffect 时误吞了原有 useEffect 的\nif (skipUrlSyncRef.current) { 行，补回。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "79a9be0508574ecb1bd80fb9f195e40804aacb83",
-      "title": "灌库脚本 sourceColumns 存原始值而非映射表，补充客户分级等字段",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "import-feedback-xlsx.cjs 之前把 COL_TO_CANON 映射表直接存进 sourceColumns，\n导致导出时 getSourceColumnValue 拿不到实际数据值。改为存中文列名→数据值，\n并补充 customerTier/customerGroupCode/customerProvince/customerCity/loginAccount/\nserviceLevel 等字段。parseFile.js 导出 fillOptionalColumnCandidates 供\nImport.jsx 在加载预设时自动填充可选列映射。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "20026dce2cc3f59193475ebfb133aafe04401d41",
-      "title": "行动建议门禁详情抽屉 + 跨产品对比 + 工单列表优化 + 首页加载态",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-15",
-      "appVersion": null,
-      "summary": "门禁失败项增加 evidence 工单关联，前端新增 GateDetailDrawer 抽屉展示\n未通过检查项的具体原因、涉及工单及人工复核指引；新增 CrossProductCompare\n跨产品问题矩阵对比视图；ProblemDetailDrawer 工单号不再截断并增加来源列；\nInsightWorkbench 首屏加载态区分初始加载与空态；修复 _src 别名顺序导致\n投诉/咨询数量为 0 的问题。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "3e7bb680c7cf737d6960309a6d05bf7261189b3b",
-      "title": "移除 @nlpjs/nlp 和 @nlpjs/lang-zh 依赖，修复 Linux 部署",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-14",
-      "appVersion": null,
-      "summary": "这两个包只在 PoC 脚本（poc-nlpjs-dualtrack*.cjs）中使用，正式代码\n无引用；@nlpjs/slot 从 npmmirror 下载超时导致 Linux npm install 失败。\nPoC 脚本已有 try-catch + 手动安装提示，不影响正式部署。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2ff115a396cc77ba0ec137e4ae9fca54ce081d84",
-      "title": "移除 @rollup/rollup-darwin-x64 直接依赖，修复 Linux 部署",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "该包是 macOS 专用二进制，误加为 dependencies 后导致 Linux 服务器\nnpm install 报 EBADPLATFORM。rollup 自身已通过 optionalDependencies\n按平台自动安装对应二进制，无需显式声明。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "fc9551583ab8158a1ace6633f8cb1cf19af9bdf6",
-      "title": "InsightWorkbench Card→page-card 补漏 + 更新 xlsx 配置",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "C5 遗漏了 InsightWorkbench 的 Card→page-card 替换；同步更新\n产品规格配置和打标配置 xlsx 文件。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "a8e1a1b19759e0531674f4fbc33b4f42c7829682",
-      "title": "行动建议三方闭环脚本 + curated 分类法 JSON",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "行动建议治理体系：validate-action-recs（Gate 42+ 项检查）、\nfix-classification（Fixer）、run-loop（5 轮有界编排器）、\nllm-assist（LLM 批量增强）、gate-check 等脚本；五产品\ncurated 分类法 JSON（CC/EIP/ELB/云监控/VPC）及 taxonomy-overrides。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "5a2f56d76707d1e1b3b58009a83d91d5fd695dcc",
-      "title": "actionRecsEngine 修复",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "f7181af32e3e1bdc08eadd477ab1a3e8b2aa7ef9",
-      "title": "规则生产副驾 pipeline API + curated 分类法管理",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "后端新增 /api/storage/pipeline/run 触发打标流水线、curated 分类法\nCRUD 路由；前端新增 CuratedTaxonomyPanel 和 PipelineCopilotPanel\n管理面板；配套 run-pipeline.sh / deploy-pipeline.sh 脚本。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "1d22b0748f318e53c3b786b51337a0b1d21be9ae",
-      "title": "CORS 添加 5173 端口 + .gitignore 忽略规则 + 新依赖声明",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-13",
-      "appVersion": null,
-      "summary": "dev server 改用 5173 端口后 CORS 拒绝请求；新增 nlpjs 中文分词和\nrollup darwin 平台依赖；gitignore 排除自动生成的报告和 PoC 脚本。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "f7e4d0db7ebbc65377c17565b6ee42bb0ae1695f",
-      "title": "修复 Vite 生产构建——移除 Node crypto 依赖，引擎改动态加载",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-12",
-      "appVersion": null,
-      "summary": "actionRecsMapper 的 hashId 从 Node crypto.createHash 改为纯 JS djb2\n哈希，消除浏览器构建报错。buildActionRecsConclusions 的\ncreateRequire 从静态 import 改为运行时 dynamic import，避免 Vite\n将 actionRecsEngine.cjs 拉入浏览器 bundle。vite.config 声明 Node\n内置模块为 external。buildSourceSnapshot 及调用链改 async。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "1018a80d6901e21236a49b9375c5901326dc216f",
-      "title": "pipeline.plaintext 测试适配 processRow/reprocessFeedbackRecord 异步化",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-12",
-      "appVersion": null,
-      "summary": "processRow 和 reprocessFeedbackRecord 已改为 async，测试用例补 await。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "645961958fa0a74f81a60686f1869fc54bb54793",
-      "title": "配额申请场景排除可用性故障误判",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-12",
-      "appVersion": null,
-      "summary": "配额工单痛点常含「可能导致业务中断」等假设性表述，决策树中可用性\n优先于配额会截断正确分类。新增 QUOTA_CONTEXT_RE 正则，匹配到\n配额申请标志词时跳过可用性故障匹配。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "f6e44015c8c9c3a45acd80962197c001a099ad52",
-      "title": "单产品体验趋势产品下拉只显示已启用产品",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-11",
-      "appVersion": null,
-      "summary": "之前 listProducts(feedbacks) 从数据中提取所有产品名，未按 catalog\nenabled 过滤，导致未开启投诉/咨询分析的产品（云主机、云硬盘等）\n也出现在下拉列表。改为用 getEnabledProducts() 过滤。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "6ec90890d00c5fb43df2334aec96729bf723b598",
-      "title": "重打标脚本补齐 M7 异主体闸门",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-11",
-      "appVersion": null,
-      "summary": "重打标脚本之前与导入流程相比缺了 M7（pre-disk-gate）步骤，\n导致 rootCause/painPoint/action/optimization 等字段的异主体\n一致性未被复验。新增 runPreDiskGate() 函数，复刻\nserver/routes/storage.js 中 pre-disk-gate 端点的底层逻辑：\n写临时 JSON → execFileSync 跑 ticket-gate-loop.cjs → 读回\ngated records + gate report，使重打标与导入流程完全对齐。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "706ca5c29de3dc9c392287d21d61caf9a1fa1c4b",
-      "title": "LLM 调用 max_tokens 统一设为 2048",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-11",
-      "appVersion": null,
-      "summary": "deepseek-v4-flash 偶发触发 reasoning 思维链，旧值（200-1024）会被\nreasoning token 耗尽导致 content 为 null（finish_reason=length）。\n统一 2048 给 reasoning+content 留足余量。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "29b2373c3ae5193888f1ea2a6cff747f0ddba12d",
-      "title": "工单打标三道闸门+重试闭环+异主体验证+LLM增强复验",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-10",
-      "appVersion": null,
-      "summary": "- L0/L1/L2 三道闸门（dimensionValidation.js）：CR 质量+意图可信度→scene×type 一致性→journey 有效性\n- 闸门重试闭环（gateRetry.js）：L0 三策略/L1 三策略/L2 两策略，最多 1 轮，仍失败标 manual_review\n- 共享意图提取层（intentExtractor.js）：action/domain 正则+加权评分\n- L1 报障白名单扩展（配置与操作/DNS证书/退订与释放/资源开通与创建）\n- L2 宽容场景集（咨询/费用/投诉跨旅程不 fail）+ 期望正则扩配置/规则/绑定\n- 方案B M1-M7：processRow 切异步闸门→LLM 批量增强→M5/M6 复验→异主体闸门→落盘\n- 异主体闸门三件套（ticket-gate-check/fix/loop.cjs）：独立子进程验证，5 轮有界\n- CR 截断策略 80→200 字，提取模式扩展（客户来电/致电/报称等）\n- 全量重打标脚本 retag-nat-vpn-cc-monitor.mjs",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2d1e8ce48132ce563230c09d24fb8896e6f97abb",
-      "title": "单产品体验趋势图锚定选中月份",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-09",
-      "appVersion": null,
-      "summary": "趋势图时间窗口从「数据中最新12个月」改为「以当前选中月份为终点\n的近12个月」（选2026-06→显示2025-07~2026-06），与工作台月粒度\n选择器联动。\n\n改动：\n- workbenchProductTrends.js: buildProductExperienceTrend 新增 endMonth\n  参数，有值时取以该月为终点的前 limit 个月，无值时保持旧行为\n- ProductExperienceTrendPanel.jsx: 接收 currentPeriod prop，从中提取\n  endMonth（month 粒度用 anchorYear+anchorMonth，其他兜底取 endDate）\n  传给 buildProductExperienceTrend\n- OverviewTab.jsx: 向 ProductExperienceTrendPanel 传递 currentPeriod",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "8b19d32abffe0663001266024ecf3f2e07e63a78",
-      "title": "洞察工作台时间选择收窄为仅月粒度",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-09",
-      "appVersion": null,
-      "summary": "工作台（/workbench + /workbench/analysis）时间选择从月/季/年/自定义\n收窄为仅月粒度；其他模块（反馈库/举措/专题分析等）不受影响，仍支持\n全部粒度。跨模块跳转时，若来源模块非月粒度，工作台自动取其最后\n一个月。\n\n改动：\n- insightPeriod.js: 新增 toLastMonthSpec(period) 工具函数，将任意粒度\n  周期归一化为其最后一个月的月粒度 spec\n- InsightPeriodPicker.jsx: 新增 granularities prop，按它过滤 Segmented\n  options；仅 1 种粒度时隐藏 Segmented 切换器只展示月份选择器\n- InsightWorkbench.jsx: 传 granularities={['month']}；加 useEffect\n  检测 currentPeriod 非月粒度时自动归一化\n- Themes.jsx: 同上（两处 InsightPeriodPicker + useEffect 归一化）\n- insightPeriod.test.js: 补 toLastMonthSpec 5 个测试用例",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "6e08e4ccf8eddc3124a7e63b6c80ff3b4b76e782",
-      "title": "反馈库列表支持自定义显示列，默认隐藏四项次要列",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "列表新增「自定义显示列」开关（请求场景/问题类型/用户旅程/资源池），默认隐藏，用户可勾选显示；表格横向滚动宽度改为按可见列宽动态计算。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "515d2710dd1162093fa684ab78decbf4b59a13ca",
-      "title": "反馈库筛选新增「问题原因」来源过滤（自动/人工）",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "新增筛选键 problemCauseSource，选项「自动/人工」，与列表「问题原因」列同源取值：人工复核记录=人工、自动生成记录=自动；无根因记录两种皆不匹配。仅出现在投诉咨询 Tab，因 rootCause 仅工单记录存在。\n\n改动覆盖筛选模型、枚举编辑器、URL 解析/序列化与列表匹配，并补充对应单测。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2f1ce71b0269fc66c7398a89ba0c1a4f2fb6763a",
-      "title": "反馈库列表/导出/导入新增「问题原因」列，并加固详情防脏",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "将根因排查模块的值统一为「问题原因」列：列表置于需求痛点之后并标注人工/自动来源，导出与导入模板同步（导出版本升 v4）；列表移除用户情绪列（导出保留）。\n详情人工复核不再预填导入脏数据，改为只读建议展示；强制重打标时一并清空问题原因，交由打标流水线重新生成自动根因，避免原始导入文本被误标为人工复核。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "53c4951f2434892cfcf4b6304ed2ea078dda6877",
-      "title": "工单 LLM 一次写出问题原因，详情页显示最新根因",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "统一调用不再另打一次根因；解析中文键并清洗后再校验。单条重打标补全语料，抽屉优先更新 revision，避免仍显示「待分析」。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "427beda729d921159115bce13770b8d4a6968b24",
-      "title": "导入列终判树不再预填人工复核，聚类只抽可用问题原因",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "工单「问题原因」列常被填成投诉原因终判路径，预填进复核后会被当成最可信聚类轴。详情页不再预填终判树，聚类对复核同样剥树或回退自动根因。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "63b2461906a617cb52f0aa29599eea08fe037c5a",
-      "title": "根因排查自动生成标签反映 rootCauseSource（规则/大模型）",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "AutoRootCauseTag 之前硬编码「规则」，工单 LLM 写入 rootCause 后仍显示规则；\n新增 getRootCauseSource 读 rootCauseSource，标签随 llm 切换为「大模型」，\n与痛点、优化建议来源标签一致。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "b6fb5e3a8c731ca543b6779b54565e8f026ca69d",
-      "title": "旅程图多月范围按月均绘制，空态提供产品选择",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "对比窗口改为范围开始月的上一个月，多月按月均汇总；未选产品时空态展示\n产品芯片可直达切换，并按当前目录保留旅程环节、剔除已下线环节。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "1faa63b9c1b28b92e71eb06b8eb2818d99071dde",
-      "title": "行动建议聚类改为按问题原因分组，类名用多数成因短语",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-06",
-      "appVersion": null,
-      "summary": "一次聚类先按问题原因键分桶（同因同簇，不再依赖痛点措辞），二次聚类只按\n问题原因跨来源/跨一级环节合并；工单 LLM 在导入/重打标时写入 rootCause，\n聚类优先读复核与问题原因，禁用一二级归责、最多用三级；类名取簇内多数\n问题原因短语，摘要标注本期新增/环比激增成因。聚类版本升 v2.4。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "70fe68c6c97d9f381792223b84fc343df1da9c74",
-      "title": "会议待办可关联已有条目并支持多名负责人",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "多张工单指向同一条待办，详情与举措页改负责人或处理后互相同步。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "e727d72caa8de3ac96dc5a1ed5da5da6e25798c7",
-      "title": "问题压降双栏按剩余视口撑满，避免右侧提前见底",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "标题和内容区 padding 不再重复扣进格子高度，左右栏齐刷到页面底部再各自滚动。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "721c1e13985de7d62cfb77aca4678d80a78bf1aa",
-      "title": "从人工改标和举措沉淀学习，审批后再改规则",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "改标对照系统快照，批准后写入关键词与覆盖规则；确立举措可沉淀进 Playbook，避免只改这一条工单。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "583b5d8b5c2026fc0e0e0251bc434457cd1f1263",
-      "title": "收紧产品旅程打标，去掉故障应急桶并修正互抢",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "EIP/SLB/云专线按使用生命周期打标，报障优先落到使用侧；配额、计费、开通词不再互相抢分。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "e2d9d675f23b000f658b589a67909adadd635c95",
-      "title": "专题报告改为结论先行，并补上可扫的分析专章",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "决策板仍回答有多急、做什么；规模、发生了什么、为何发生和建议按问题展开，原始工单放进依据，避免同一套图表把结论铺平。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "03a4fce0f9aaa8b259c98e2ef1a02124fb4530fe",
-      "title": "问题压降图举措竖线对齐实施日，左右栏改为视口内滚动",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "工单量仍按月点，参考线落到 schedule 当天，避免整月挤在月初；问题类型与请求场景加上前缀，避免和旅程标签混读。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "eb7d4d4990c71e259e08b595d43200526c8b2b18",
-      "title": "配额申请工单按请求收敛旅程，并区分数量配额与订购权限",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-05",
-      "appVersion": null,
-      "summary": "避免「申请+带宽」误标配额，也不再被开通/资源池词拆散；各产品将数量配额与灰度/订购权限拆成两个二级。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "fafb557d2b4a06e7ad0cceb11e6decb2832e9fa7",
-      "title": "工单优化建议接入产品知识库，并支持前端上传入库管理",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-04",
-      "appVersion": null,
-      "summary": "服务端按 productKey 关键词检索知识库片段注入 LLM prompt，让优化建议有 KB 支撑；\n知识库改为数据库存储，管理员/体验运营可在设置页上传、替换与删除，启动时自动 seed 现有文件。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "f5c86dc8961214a2ae0dc37e72d56454b1f0c0ef",
-      "title": "首页新增单产品体验趋势视图，看 4 指标走势与相关性",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-04",
-      "appVersion": null,
-      "summary": "综合概述在行动建议之后挂载「单产品体验趋势」面板：选一个产品，把投诉数、咨询数、用后即评得分、回访 10 分率按各自区间归一到 0–100 叠加折线，看走势与相关性，hover 显示原值；下方原值表按月对齐读绝对值。新增 workbenchProductTrends 领域工具（均分/10分率/归一/单产品趋势），TrendChart 透传 tooltipFormatter 以显示原值。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "dd20b6574f0b0981f863bafffa22aad6a754ad1f",
-      "title": "精简会议待办列表，去除冗余列与重复操作",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-04",
-      "appVersion": null,
-      "summary": "删除问题/来源列（抽屉与筛选已含），合并提出与最近更新时间为单列时间，操作仅留删除图标（查看即行点击）。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "bddb061e9093a610cbc74372164fa0d730f20901",
-      "title": "举措压降验证与问题聚合（一期），并精简举措列表",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-04",
-      "appVersion": null,
-      "summary": "新增问题签名（productKey|journeyL1|journeyL2）聚合：以举措为中心做前后对比压降验证，以问题为中心看长趋势叠加多举措；举措详情抽屉新增关联问题聚合段与压降验证折叠面板。筛选 options 与匹配改为聚合所有关联工单，去除首单化漏举措。举措列表删除问题类型/用户旅程/来源/举措详情 4 列、合并最近更新列。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "41c40199ff645ab7fd5b3617d738f8ccdeafab59",
-      "title": "大模型配置改为仅管理员可改，库优先级高于环境变量",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-03",
-      "appVersion": null,
-      "summary": "将 LLM 配置从个人 localStorage 迁移到团队级 meta（llm_config_v1），\n新增 manageLlmConfig 权限仅授予 admin；解析时数据库优先、环境变量兜底；\nAPI key 脱敏展示，审计日志不记录明文，留空保存时保留原 key。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "178b43e1b3eef342c1f8e5aa5788858803d8708d",
-      "title": "加密 Excel 解密后按列名找表头，避免导入预览为空",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-08-20",
-      "appVersion": null,
-      "summary": "现代 xlsx 的文件名#密码先解密再解析；短信/官网/工单按固定列定位表头。跨页「导入数据」带上数据来源。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "6d8680ad4d52170464f5e4c78b2be35b6d31613e",
-      "title": "专题分析用分层且/或条件匹配，自然语言标题也能命中配额工单",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-08-19",
-      "appVersion": null,
-      "summary": "原先把标题拆成必须全部命中的词，「配额申请与配额不足」会漏检只含其一的工单；证据扫描上限也会截断匹配。",
       "commitUrl": null,
       "source": "git"
     }
