@@ -17,7 +17,11 @@ function loadCcTicketsFromDb() {
     const rows = db.prepare('SELECT payload FROM records').all()
     return rows
       .map((r) => JSON.parse(r.payload))
-      .filter((r) => r.productKey === 'cc')
+      // 工单类 only：旅程校准对象是投诉/咨询工单文本。用后即评记录无工单正文
+      //（rawText 恒为「无」），7-31 导入 5.2 万条后混入会把匹配率稀释到 0.13~0.22
+      //（11-18 实测四产品用后即评 0 命中）——测试 6-17 建立时库内只有工单类，
+      // 口径本就是工单文本校准，这里显式恢复该口径。
+      .filter((r) => r.productKey === 'cc' && (r.dataSourceType === 'complaint_ticket' || r.dataSourceType === 'consultation_ticket'))
   } finally {
     db.close()
   }
@@ -38,6 +42,8 @@ describe('CC_USER_JOURNEY calibration', () => {
     ])
   })
 
+  // 11-18 注：loader 同步全量 SELECT + 5 万次 JSON.parse，四文件并发时机器争用可超默认 5s
+  //（单文件跑 2.4s 稳定绿）——超时上限放宽到 30s，断言不变。
   it('matches ≥90% of local cc tickets when DB present', () => {
     const tickets = loadCcTicketsFromDb()
     if (tickets.length === 0) return
@@ -51,7 +57,7 @@ describe('CC_USER_JOURNEY calibration', () => {
 
     const rate = matched / tickets.length
     expect(rate).toBeGreaterThanOrEqual(0.9)
-  })
+  }, 30_000)
 
   it('syncs cc.json journeys with builtin SSOT', () => {
     const jsonPath = join(process.cwd(), 'public/config/taxonomy/cc.json')

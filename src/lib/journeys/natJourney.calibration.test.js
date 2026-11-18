@@ -17,7 +17,9 @@ function loadNatTicketsFromDb() {
     const rows = db.prepare('SELECT payload FROM records').all()
     return rows
       .map((r) => JSON.parse(r.payload))
-      .filter((r) => r.productKey === 'nat')
+      // 工单类 only（11-18 口径修复，同 ccJourney.calibration.test.js 注释）：
+      // 用后即评记录无工单正文，混入会稀释匹配率；校准对象本就是工单文本。
+      .filter((r) => r.productKey === 'nat' && (r.dataSourceType === 'complaint_ticket' || r.dataSourceType === 'consultation_ticket'))
   } finally {
     db.close()
   }
@@ -38,6 +40,7 @@ describe('NAT_USER_JOURNEY calibration', () => {
     ])
   })
 
+  // 11-18 注：超时上限 30s（同 ccJourney.calibration.test.js 注释——全库慢查询并发争用）。
   it('matches ≥90% of local nat tickets when DB present', () => {
     const tickets = loadNatTicketsFromDb()
     if (tickets.length === 0) return
@@ -51,7 +54,7 @@ describe('NAT_USER_JOURNEY calibration', () => {
 
     const rate = matched / tickets.length
     expect(rate).toBeGreaterThanOrEqual(0.9)
-  })
+  }, 30_000)
 
   it('syncs nat.json journeys with builtin SSOT', () => {
     const jsonPath = join(process.cwd(), 'public/config/taxonomy/nat.json')
