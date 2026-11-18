@@ -696,9 +696,10 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
 
           {/* ── 分区二 诊断结果（五段照 11-17 拍板；样式对齐 D4/D5）── */}
           <div className="scroll-mt-2 drawer-section-gap">
-            {/* 11-18 拍板③：标题栏右侧提示诊断数据来源 */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="section-title">诊断结果</div>
+            {/* 11-18 拍板③：标题栏右侧提示诊断数据来源；22:57 修订：标题栏通栏与其他分区一致，
+                说明文字嵌在蓝色背景内右侧 */}
+            <div className="section-title flex items-center justify-between gap-2">
+              <span>诊断结果</span>
               <Tooltip title="诊断数据来源：云网工作台 MCP Server 日志查询工具（log_search）——基于失败请求前后日志窗口检索产出">
                 <Typography.Text type="secondary" className="text-xs cursor-help">
                   来自云网工作台MCP Server日志查询工具 <InfoCircleOutlined />
