@@ -149,6 +149,41 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(r.rootCauseSource).toBe('llm')
   })
 
+  it('③b（11-18 晚拍板）LLM 生成 L2 优先 + needsProductAction 现场判定：客户侧使用问题 → —；缺失默认待处理', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    // LLM 生成 L2 + 判定不需产品侧处理（客户传参错误）
+    const report = {
+      conclusion: '客户传入的参数不满足校验规则，请求被拒绝',
+      directCause: ['[ERROR] invalid param'], evidence: ['参数校验失败'], suggestion: '修正参数后重试',
+      rootCauseL1: '参数无效/校验失败', rootCauseL2: '参数校验拒绝',
+      needsProductAction: false, actionReason: '客户侧传参错误，产品无缺陷',
+    }
+    const forward = vi.fn(makeForward(JSON.stringify(report)))
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.l1).toBe('参数无效/校验失败')
+    expect(r.l2).toBe('参数校验拒绝') // LLM 生成值优先（不再走结论首句提取）
+    expect(r.productAction).toBe('—') // needsProductAction=false → 不需产品侧处理
+    expect(r.actionReason).toBe('客户侧传参错误，产品无缺陷')
+    // 旧形态兼容：无 needsProductAction 字段 → 保守默认待处理（fixture=LLM_REPORT_ENUM 无该字段）
+    const forward2 = vi.fn(makeForward(JSON.stringify(LLM_REPORT_ENUM)))
+    const r2 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: forward2 },
+    })
+    expect(r2.productAction).toBe('待处理')
+    // needsProductAction=true（平台故障）→ 待处理
+    const report3 = { ...report, needsProductAction: true, actionReason: '状态机异常需修复' }
+    const forward3 = vi.fn(makeForward(JSON.stringify(report3)))
+    const r3 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: forward3 },
+    })
+    expect(r3.productAction).toBe('待处理')
+  })
+
   it('④ LLM 全败（5 次——11-18 拍板 3→5）→ status=no_diagnosis（调用方保持组 pending）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(async () => ({ choices: [{ message: { role: 'assistant', content: '不是JSON' } }] }))

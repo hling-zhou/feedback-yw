@@ -451,6 +451,11 @@ function migratePatrolGroupManualCauseColumns(db) {
   if (!names.has('real_root_cause')) {
     db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN real_root_cause TEXT')
   }
+  const dcols = db.prepare('PRAGMA table_info(api_patrol_diagnoses)').all()
+  const dnames = new Set(dcols.map((c) => c.name))
+  if (!dnames.has('action_reason')) {
+    db.exec('ALTER TABLE api_patrol_diagnoses ADD COLUMN action_reason TEXT')
+  }
 }
 
 /**
@@ -1046,6 +1051,7 @@ export function initBusinessSchema() {
       direct_cause TEXT,
       evidence TEXT,
       root_cause_source TEXT,
+      action_reason TEXT,
       diagnosed_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_patrol_diag_group ON api_patrol_diagnoses(failure_group_id);

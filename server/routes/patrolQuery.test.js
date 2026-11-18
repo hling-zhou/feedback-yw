@@ -132,10 +132,12 @@ describeQuery('patrol query API', () => {
     expect(res.statusCode).toBe(200)
     const rows = res.json().rows
     expect(rows.length).toBe(4) // 4 组：诊断缺口2 + 待处理1 + 未诊断1 + slb对照1（11-17 产品筛选用）
-    // L1/L2 Tag 数据直读（不 join）
+    // L1/L2 Tag 数据直读（不 join；11-18 manual 列也回传——前端 displayRootCause 做优先派生）
     const pending = rows.find((r) => r.rootCauseL1 === '业务冲突')
     expect(pending.rootCauseL2).toBe('绑定关系未解除')
     expect(pending.productActionStatus).toBe('待处理')
+    expect(pending.rootCauseL1Manual).toBe('参数无效/校验失败')
+    expect(pending.rootCauseL2Manual).toBe('传参缺失')
 
     // 根因 L1 筛选
     const r1 = await app.inject({
@@ -175,6 +177,28 @@ describeQuery('patrol query API', () => {
       updateStatus.run('—', 'fail-1')
       updateStatus.run('pending_diagnosis', 'fail-3')
     }
+  })
+
+  it('概况统计 manual 优先（11-18 拍板：L1 分布/L2 聚合/趋势与列表同口径——人工修正后统计按修正类归）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/cause-stats?startDate=2026-08-10&endDate=2026-08-11',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()
+    // fail-2 组 AI 原判=业务冲突，人工修正=参数无效/校验失败——
+    // ②产品×L1 分布须按修正类归（修正类出现、原判类退场）
+    const eipRows = (data.byProductCause || []).filter((r) => r.productKey === 'eip')
+    expect(eipRows.some((r) => r.l1 === '参数无效/校验失败')).toBe(true)
+    expect(eipRows.some((r) => r.l1 === '业务冲突')).toBe(false)
+    // ①facts.topCause（主要根因）同口径：修正后窗口内最高根因=参数无效/校验失败（缺口类 2 组不带 statusFilter 时占多，
+    //   但 topCause 判定在 pendingOnly=1 下验证——只看待处理组，修正组是唯一待处理组）
+    const r2 = await app.inject({
+      method: 'GET', url: '/api/patrol/cause-stats?startDate=2026-08-10&endDate=2026-08-11&pendingOnly=1',
+      headers: authHeader(),
+    })
+    const facts2 = r2.json().aiSummaryFacts || {}
+    expect(facts2.topCause).toBe('参数无效/校验失败')
   })
 
   it('详情：诊断原文 + 处理字段', async () => {
@@ -386,4 +410,8 @@ function seedData() {
   `)
   const g2 = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE root_cause_l1='业务冲突'`).get()
   insertDiag.run(g2.id, 'fail-2', '存在绑定关系需先解绑再退订', '业务冲突', '绑定关系未解除')
+
+  // 11-18 人工修正种子：fail-2 组被人工修正为「参数无效/校验失败/传参缺失」——
+  // 概况统计（L1 分布/L2 聚合/趋势）须 manual 优先（同源判定纪律——与列表/抽屉同口径）
+  db.prepare(`UPDATE api_patrol_failure_groups SET root_cause_l1_manual='参数无效/校验失败', root_cause_l2_manual='传参缺失' WHERE id=?`).run(g2.id)
 }

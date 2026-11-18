@@ -45,6 +45,16 @@ const VALID_REPORT = JSON.stringify({
 })
 
 describe('patrolDiagnosisLlmAnalyzer', () => {
+  it('needsProductAction 判定边界 prompt 契约（11-18 晚拍板：明确并发进行中=确定性 false；缺省保守 true）', async () => {
+    const fs = await import('node:fs')
+    const src = fs.readFileSync(new URL('./patrolDiagnosisLlmAnalyzer.js', import.meta.url), 'utf8')
+    // 确定性并发判据位列 false 边界第一（is operating/正在执行/锁定中——资源正常占用机制直接判 false）
+    expect(src).toContain('①日志已明确失败原因是并发/操作进行中')
+    expect(src).toContain('is operating')
+    // 保守默认 true
+    expect(src).toContain('needsProductAction 判断不了时取 true')
+  })
+
   it('extractErrorCodes：错误码清单提取（去重保序）——11-18 拍板喂 LLM 的结构化信号', async () => {
     const { extractErrorCodes } = await import('./patrolDiagnosisLlmAnalyzer.js')
     expect(extractErrorCodes('errorCode=CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE, x')).toEqual(['CSLOPENSTACK_NETWORK_IP_BIZ_IN_LOCK_OPERATE'])
@@ -55,8 +65,7 @@ describe('patrolDiagnosisLlmAnalyzer', () => {
     expect(extractErrorCodes('errorCode=ABC')).toEqual([])
   })
 
-  it('错误码清单注入 user content：判类第一优先级信号（11-18 拍板——不预维护白名单，LLM 现场判归属）', async () => {
-    const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
+  it('错误码清单注入 user content：判类第一优先级信号（11-18 拍板——不预维护白名单，LLM 现场判归属）', async () => {    const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
     const mcpWithCode = JSON.stringify({
       code: '0000',
       data: {

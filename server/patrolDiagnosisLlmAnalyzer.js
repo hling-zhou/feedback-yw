@@ -78,6 +78,9 @@ const SYSTEM_PROMPT = `你是云平台 API 失败诊断专家。基于给定失�
    - "evidence"：字符串数组，支撑结论的关键证据句（清洗后语义，每条 ≤200 字，最多 10 条）。
    - "suggestion"：1-3 句可执行处理建议（面向内部产品运营/运维，基于日志事实，禁止编造）。
    - "rootCauseL1"：根因大类，从枚举中选一个：${LLM_ROOT_CAUSE_L1_OPTIONS.join(' | ')}。
+   - "rootCauseL2"：根因细分场景，4-16 字短语（LLM 自主生成——描述具体失败场景，如「网卡操作进行中」「订单已是终态」「RAM 子用户无此操作权限」；不得是「LLM判断」类来源标注）。
+   - "needsProductAction"：布尔，产品侧是否需要跟进处理（判定依据见第 4 条）。
+   - "actionReason"：一句话判定理由（≤50 字，说明为何需要/不需要产品侧处理）。
 3. rootCauseL1 类目边界（判定顺序）：
    - 【第一优先级】若日志提取到平台错误码（errorCode=CSLOPENSTACK_XXX 等），优先以错误码语义判类：码名自带业务语义（如 BIZ_IN_LOCK_OPERATE=锁定中、NOT_FOUND=资源不存在、INVALID_XXX_PARAM=参数无效、QUOTA=配额、FORBIDDEN=权限拒绝），须结合对应 errorMessage 佐证后归属；
    - 资源锁定 vs 资源状态边界：IN_OPERATION/IN_LOCK/OPERATING 类（操作进行中，稍后可重试）= 资源锁定/并发冲突；NOT_FOUND/非ACTIVE/状态不满足类（实例状态本身不对，重试也没用）= 资源状态异常或参数无效（资源不存在）；
@@ -88,7 +91,10 @@ const SYSTEM_PROMPT = `你是云平台 API 失败诊断专家。基于给定失�
    - 资源状态异常——单资源实例状态不满足，不改状态必失败；
    - 业务冲突——产品级业务规则对一类操作的限制（如网段冲突、不支持的操作组合、绑定关系冲突）；
    - 其他/未归类——确实无法判断时选这个，禁止编造。
-4. 日志里没有的信息不许编造；判断不了的字段用空数组/空串。`
+4. needsProductAction 判定边界（11-18 拍板）：
+   - false（不需产品侧处理）：①日志已明确失败原因是并发/操作进行中（如 is operating、in operation、正在执行、并发、锁定中、稍后重试类拒绝）——这是资源正常占用机制，直接判 false；②失败由客户侧使用方式导致（传参错误、配额用尽、无权限操作、重复提交、资源被自己占用、主动解绑未绑定的资源等）；③瞬时并发冲突稍后重试可成功且日志无平台异常迹象——以上皆产品侧无 bug 可修，客户稍后重试或自查；
+   - true（需产品侧处理）：疑似产品缺陷、平台故障、资源状态机异常、锁定机制缺陷（长时间锁定不释放）、能力不支持导致客户合理操作失败、错误信息误导客户——产品侧需要跟进修复、评估或改进提示。
+5. 日志里没有的信息不许编造；判断不了的字段用空数组/空串；needsProductAction 判断不了时取 true（保守）。`
 
 /**
  * LLM 结构化诊断主函数。
@@ -118,7 +124,7 @@ export function extractErrorCodes(text) {
 }
 
 export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
-  const EMPTY = { conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
+  const EMPTY = { conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null, rootCauseL2: null, needsProductAction: true, actionReason: null }
   const { ok, lines, rawCount } = extractLogLinesForLlm(mcpText)
   if (!ok || rawCount === 0 || lines.length === 0) {
     return { ok: false, byLlm: false, llmFailed: false, attempts: 0, ...EMPTY }
@@ -219,12 +225,19 @@ export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
       : []
     const conclusion = String(report.conclusion || '').trim() || null
     const suggestion = String(report.suggestion || '').trim() || null
+    // 11-18 拍板：L2 由 LLM 自主生成细分场景短语；needsProductAction 现场判定（保守默认 true）
+    const rootCauseL2 = String(report.rootCauseL2 || '').trim().slice(0, 24) || null
+    const needsProductAction = typeof report.needsProductAction === 'boolean' ? report.needsProductAction : true
+    const actionReason = String(report.actionReason || '').trim().slice(0, 80) || null
     return {
       conclusion,
       directCause,
       evidence,
       suggestion,
       rootCauseL1: l1,
+      rootCauseL2,
+      needsProductAction,
+      actionReason,
     }
   }
 
@@ -263,5 +276,8 @@ export async function analyzeFailureByLlm(mcpText, groupCtx = {}, deps = {}) {
     evidence: result.evidence,
     suggestion: result.suggestion,
     rootCauseL1: result.rootCauseL1,
+    rootCauseL2: result.rootCauseL2,
+    needsProductAction: result.needsProductAction,
+    actionReason: result.actionReason,
   }
 }

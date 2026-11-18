@@ -51,6 +51,7 @@ function buildClassificationText(llmReport) {
  *   l1: string, l2: string, productAction: '待处理' | '—',
  *   rootCauseSource: 'llm' | 'rule' | null,
  *   conclusion: string | null, directCause: string[], evidence: string[], suggestion: string | null,
+ *   actionReason: string | null,
  *   llmAttempts: number, llmFailed: boolean,
  * }>}
  *   status='no_diagnosis' = LLM 3 次全败（调用方保持组 pending，不落库不推分类）；
@@ -100,6 +101,7 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
       productAction: '待处理',
       rootCauseSource: null,
       conclusion: null, directCause: [], evidence: [], suggestion: null,
+      actionReason: null,
       llmAttempts: analysis.attempts, llmFailed: true,
     }
   }
@@ -146,16 +148,20 @@ export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = 
   // 规则未命中 → LLM 枚举判断（analyzeFailureByLlm 已产 rootCauseL1——同一调用产物直接用，不二次调用）
   const l1 = analysis.rootCauseL1 || '其他/未归类'
   onStage?.('diagnose', `规则未命中——LLM 枚举判断 →「${l1}」`)
+  // 11-18 拍板：productAction 由 LLM 现场判定（needsProductAction）——客户侧使用问题/瞬时冲突=—，
+  // 产品缺陷/平台故障=待处理；保守默认 true。L2 优先 LLM 生成场景，缺失时从结论提取兜底。
+  const productAction = analysis.needsProductAction === false ? '—' : '待处理'
   return {
     status: 'success',
     l1,
-    l2: extractL2FromConclusion(analysis.conclusion), // 11-18 拍板：L2=细分场景（结论首句核心语义），不是来源标注
-    productAction: '待处理',
+    l2: analysis.rootCauseL2 || extractL2FromConclusion(analysis.conclusion), // L2=细分场景：LLM 生成优先、结论首句兜底
+    productAction,
     rootCauseSource: 'llm',
     conclusion: analysis.conclusion,
     directCause: analysis.directCause,
     evidence: analysis.evidence,
     suggestion: analysis.suggestion,
+    actionReason: analysis.actionReason, // 判定理由——供抽屉展示给人工复核
     llmAttempts: analysis.attempts,
     llmFailed: false,
   }

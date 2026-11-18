@@ -306,9 +306,9 @@ async function runPlanCDiagnose(db, dataDate) {
     const now = new Date().toISOString()
     db.prepare('DELETE FROM api_patrol_diagnoses WHERE failure_group_id=?').run(g.id)
     db.prepare(`
-      INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
-      VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, now)
+      INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, action_reason, diagnosed_at)
+      VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, outcome.actionReason ?? null, now)
     db.prepare(`
       UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
     `).run(outcome.l1, outcome.l2, outcome.productAction, now, g.id)

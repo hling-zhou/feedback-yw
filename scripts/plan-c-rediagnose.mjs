@@ -93,9 +93,9 @@ async function diagnoseGroupNew(db, g, deps) {
   const now = new Date().toISOString()
   db.prepare('DELETE FROM api_patrol_diagnoses WHERE failure_group_id=?').run(g.id)
   db.prepare(`
-    INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
-    VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, now)
+    INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, action_reason, diagnosed_at)
+    VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, outcome.actionReason ?? null, now)
   db.prepare(`
     UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
   `).run(outcome.l1, outcome.l2, outcome.productAction, now, g.id)
@@ -204,10 +204,11 @@ async function main() {
     FROM api_patrol_failure_groups g
     WHERE g.group_date IN (${placeholders})
   `).all(...allDates)
+  // 11-18 晚拍板（用户指令「存量 117 组全部重跑刷新」）：筛选放开 src——诊断逻辑更新
+  // （错误码喂 LLM 现场判类、L2 场景化）后旧 LLM 产物同样需要重刷；人工痕迹三重保护不变。
+  // src 沿留仅作日志参考，不再作为过滤条件。
   const rerun = targets.filter((g) =>
-    (g.src == null || g.src === 'rule')               // 旧数据 + 规则降级产物（11-18 刷新口径：结论=日志原文的组）；
-                                                      // 'llm' 是新链路产物（真结论+五段）不重跑
-    && !MANUAL_FLOW_STATUSES.has(g.product_action_status)
+    !MANUAL_FLOW_STATUSES.has(g.product_action_status)
     && !(g.root_cause_confirmed_check)               // 防御位（下方 SQL 已过滤主条件）
   )
   // 人工痕迹过滤（root_cause_confirmed / measure_feedback 非空不重跑）

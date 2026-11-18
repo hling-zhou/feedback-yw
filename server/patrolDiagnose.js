@@ -205,8 +205,8 @@ export async function runPatrolDiagnose(options) {
   const insertDiag = db.prepare(`
     INSERT INTO api_patrol_diagnoses
       (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion,
-       root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, action_reason, diagnosed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const updateGroup = db.prepare(`
     UPDATE api_patrol_failure_groups
@@ -250,7 +250,7 @@ export async function runPatrolDiagnose(options) {
         if (!result.ok) {
           failed += 1
           insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
-            JSON.stringify({ error: result.error }), null, null, null, null, null, null, null, now)
+            JSON.stringify({ error: result.error }), null, null, null, null, null, null, null, null, now)
           // 组保持 pending_diagnosis（可重试）
           continue
         }
@@ -266,7 +266,7 @@ export async function runPatrolDiagnose(options) {
         if (outcome.status === 'no_diagnosis') {
           failed += 1
           insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
-            JSON.stringify({ error: `LLM ${outcome.llmAttempts} 次全失败（未诊断）` }), null, null, null, null, null, null, null, now)
+            JSON.stringify({ error: `LLM ${outcome.llmAttempts} 次全失败（未诊断）` }), null, null, null, null, null, null, null, null, now)
           continue
         }
         const classified = { l1: outcome.l1, l2: outcome.l2, productAction: outcome.productAction }
@@ -284,7 +284,7 @@ export async function runPatrolDiagnose(options) {
         succeeded += 1
         insertDiag.run(group.id, group.first_request_id, 'success', toolName,
           result.text, outcome.conclusion, classified.l1, classified.l2,
-          suggestion, directCauseJson, evidenceJson, rootCauseSource, now)
+          suggestion, directCauseJson, evidenceJson, rootCauseSource, outcome.actionReason ?? null, now)
         updateGroup.run(classified.l1, classified.l2, classified.productAction, now, group.id)
         // 待处理 + assignee 为空 → 填 productManager[0] 默认经办人（§2.3）
         if (classified.productAction === '待处理') {

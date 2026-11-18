@@ -217,11 +217,11 @@ export function registerPatrolQueryRoutes(app) {
 
     // 最集中异常点（窗口内已诊断失败组按 产品×接口×L2 聚合，压缩前次数最大者；含仿真占比标注）
     const focusRows = db.prepare(`
-      SELECT product_key pk, api_path, root_cause_l2 l2, SUM(pre_compress_count) pre, COUNT(*) groups,
+      SELECT product_key pk, api_path, COALESCE(NULLIF(root_cause_l2_manual, ''), root_cause_l2) l2, SUM(pre_compress_count) pre, COUNT(*) groups,
              SUM(CASE WHEN customer_type IN ('仿真','测试账号') THEN pre_compress_count ELSE 0 END) simPre
       FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL
-      GROUP BY product_key, api_path, root_cause_l2
+      GROUP BY product_key, api_path, COALESCE(NULLIF(root_cause_l2_manual, ''), root_cause_l2)
       ORDER BY pre DESC LIMIT 1
     `).all(range.start, range.end)
     const focus = focusRows.length ? {
@@ -231,11 +231,11 @@ export function registerPatrolQueryRoutes(app) {
       simPre: Number(focusRows[0].simPre || 0),
     } : null
 
-    // 根因 Top3（窗口内已诊断组 L1 占比）+ 闭环状态 + 仿真/未诊断
+    // 根因 Top3（窗口内已诊断组 L1 占比）+ 闭环状态 + 仿真/未诊断——11-18 manual 优先（同口径 COALESCE）
     const l1Rows = db.prepare(`
-      SELECT root_cause_l1 l1, COUNT(*) n FROM api_patrol_failure_groups
+      SELECT COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) l1, COUNT(*) n FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL
-      GROUP BY root_cause_l1 ORDER BY n DESC LIMIT 3
+      GROUP BY COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) ORDER BY n DESC LIMIT 3
     `).all(range.start, range.end)
     const l1TotalRow = db.prepare(
       `SELECT COUNT(*) n FROM api_patrol_failure_groups WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL`,
@@ -342,6 +342,7 @@ export function registerPatrolQueryRoutes(app) {
              first_request_id AS firstRequestId, first_request_time AS firstRequestTime,
              pre_compress_count AS preCompressCount, suppressed_request_ids AS suppressedRequestIds,
              customer_type AS customerType, root_cause_l1 AS rootCauseL1, root_cause_l2 AS rootCauseL2,
+             root_cause_l1_manual AS rootCauseL1Manual, root_cause_l2_manual AS rootCauseL2Manual,
              product_action_status AS productActionStatus, assignee,
              root_cause_confirmed AS rootCauseConfirmed, measure_feedback AS measureFeedback,
              feedback_by AS feedbackBy, feedback_at AS feedbackAt
@@ -384,7 +385,7 @@ export function registerPatrolQueryRoutes(app) {
     if (!group) return reply.code(404).send({ error: '组不存在' })
     const diag = db.prepare(`
       SELECT request_id, status, tool_name, mcp_raw_response, final_conclusion, suggestion,
-             root_cause_l1, root_cause_l2, direct_cause, evidence, root_cause_source, diagnosed_at
+             root_cause_l1, root_cause_l2, direct_cause, evidence, root_cause_source, action_reason, diagnosed_at
       FROM api_patrol_diagnoses WHERE failure_group_id=? ORDER BY id DESC LIMIT 1
     `).get(id)
     // 诊断结果五段（11-17 拍板：结论/失败组信息/直接原因/关键证据/处理建议——服务端切分单源）
@@ -596,9 +597,9 @@ export function registerPatrolQueryRoutes(app) {
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NULL ${statusFilter}
     `).get(start, end)
     const topCauseRow = db.prepare(`
-      SELECT root_cause_l1 AS l1, COUNT(*) n FROM api_patrol_failure_groups
+      SELECT COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) AS l1, COUNT(*) n FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
-      GROUP BY root_cause_l1 ORDER BY n DESC LIMIT 1
+      GROUP BY COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) ORDER BY n DESC LIMIT 1
     `).get(start, end)
     const topApiRow = db.prepare(`
       SELECT api_path, pool_name, COUNT(*) n FROM api_patrol_failure_groups
@@ -632,13 +633,13 @@ export function registerPatrolQueryRoutes(app) {
 
     const statusFilter = pendingOnly ? `AND product_action_status = '待处理'` : ''
 
-    // ②根因分布（严重度双维度：组数 + 压缩前次数）
+    // ②根因分布（严重度双维度：组数 + 压缩前次数）——11-18 manual 优先（COALESCE 与列表/抽屉同口径）
     const byProductCause = db.prepare(`
-      SELECT product_key AS productKey, root_cause_l1 AS l1,
+      SELECT product_key AS productKey, COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) AS l1,
              COUNT(*) AS groupCount, SUM(pre_compress_count) AS preCompressTotal
       FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
-      GROUP BY product_key, root_cause_l1
+      GROUP BY product_key, COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1)
       ORDER BY groupCount DESC
     `).all(start, end)
 
@@ -647,10 +648,10 @@ export function registerPatrolQueryRoutes(app) {
     /** @type {Array<Record<string, unknown>>} */
     const dailyTrend = []
     const trendRows = db.prepare(`
-      SELECT group_date AS date, root_cause_l1 AS l1, COUNT(*) AS n
+      SELECT group_date AS date, COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1) AS l1, COUNT(*) AS n
       FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l1 IS NOT NULL ${statusFilter}
-      GROUP BY group_date, root_cause_l1
+      GROUP BY group_date, COALESCE(NULLIF(root_cause_l1_manual, ''), root_cause_l1)
     `).all(start, end)
     const days = eachDay(start, end)
     for (const day of days) {
@@ -667,10 +668,10 @@ export function registerPatrolQueryRoutes(app) {
 
     // ⑤跨日轨迹 L2 Top8（热力日历/折线双形态数据同源）
     const l2Rows = db.prepare(`
-      SELECT root_cause_l2 AS l2, group_date AS date, COUNT(*) AS n
+      SELECT COALESCE(NULLIF(root_cause_l2_manual, ''), root_cause_l2) AS l2, group_date AS date, COUNT(*) AS n
       FROM api_patrol_failure_groups
       WHERE group_date BETWEEN ? AND ? AND root_cause_l2 IS NOT NULL ${statusFilter}
-      GROUP BY root_cause_l2, group_date
+      GROUP BY COALESCE(NULLIF(root_cause_l2_manual, ''), root_cause_l2), group_date
     `).all(start, end)
     const l2Totals = new Map()
     for (const r of l2Rows) {
