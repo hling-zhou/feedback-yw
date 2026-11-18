@@ -5,6 +5,25 @@ import { storageRepository } from './storageRepository.js'
 import { META_KEY_POST_USE_VISITS } from '../src/lib/postUseRating/visitRecords.js'
 import { isActionItemLocked, validateActionItemCreate } from '../src/domain/actionItem.js'
 import { normalizePostUseActionIds, withPostUseActionIds } from '../src/domain/postUseActions.js'
+import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
+import { resolveCatalogProduct } from '../src/lib/productCatalog/resolveCatalogProduct.js'
+
+/**
+ * 用后即评 owner 的产品名 → 目录 key 解析（11-18 拍板：写入口径修正）。
+ * 溯源/回访记录只有中文名（productName），历史实现把中文名直接塞进 productKey 通道，
+ * 与举措库按目录 key 匹配的查询口径错位。此处按进程内目录缓存解析；
+ * 路由层在写操作前已 loadManagedProductCatalog 刷新（refreshProductCatalogForReminder 先例）。
+ * 未命中目录时保持旧形态（中文名原样返回），不阻断写入。
+ * @param {string | undefined | null} productName
+ * @returns {string}
+ */
+function resolvePostUseProductKeyFromCatalog(productName) {
+  const raw = String(productName ?? '').trim()
+  if (!raw) return ''
+  const products = getCatalogProducts()
+  const resolved = products.length ? resolveCatalogProduct({ productName: raw }, products) : null
+  return resolved?.key?.trim() || raw
+}
 
 /** @param {string} id */
 function getVisit(id) {
@@ -92,8 +111,10 @@ export function addPostUseAction(ownerType, ownerId, input, actor) {
     let action
     if (input.newAction) {
       const productName = String(owner.product || owner.productName || '').trim()
+      // 11-18 写入口径修正：productKey 通道走目录 key（ productName 保持中文名），
+      // 历史行为是把中文名塞进 product_key——与 /api/actions 按目录 key 的查询口径错位。
       const validated = validateActionItemCreate({
-        productKey: productName,
+        productKey: resolvePostUseProductKeyFromCatalog(productName),
         productName,
         source: 'post_use',
         content: input.newAction.content,

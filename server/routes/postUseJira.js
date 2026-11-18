@@ -9,6 +9,28 @@ import {
 } from '../postUseJiraRepository.js'
 import { postUseVisitDispatchRepository } from '../postUseVisitDispatchRepository.js'
 import { deleteAttachmentsForOwner } from '../postUseAttachmentRepository.js'
+import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
+import { storageRepository } from '../storageRepository.js'
+
+/**
+ * 溯源导入前从 DB 刷新服务端产品目录缓存（11-18，refreshProductCatalogForReminder 先例）。
+ * importMany 给新举措落库时按目录把行产品名解析成目录 key——不刷新会用旧目录解析错。
+ * 刷新失败降级用缓存，不阻塞导入本身。
+ * @param {import('fastify').FastifyBaseLogger} [logger]
+ */
+async function refreshProductCatalogForImport(logger) {
+  const adapter = {
+    getMeta: (key) => storageRepository.getMeta(key),
+    putMeta: (key, value) => storageRepository.putMeta(key, value),
+  }
+  try {
+    await loadManagedProductCatalog(adapter)
+  } catch (err) {
+    logger?.warn?.(
+      `[post-use-jira] 产品目录刷新失败，降级用缓存: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
 
 /** @param {import('fastify').FastifyRequest} request */
 function assertEditRecordPermission(request, reply) {
@@ -108,6 +130,8 @@ export function registerPostUseJiraRoutes(app) {
       reply.code(400)
       return { error: '导入表存在无效行', errors: checked.errors }
     }
+    // 行校验通过才刷目录（无效请求不白刷）；导入行含新举措时按最新目录解析 productKey。
+    await refreshProductCatalogForImport(request.log)
     try {
       const result = postUseJiraRepository.importMany(checked.items, request.user)
       logAuditFromRequest(request, 'post_use_jira.import', result)

@@ -232,4 +232,70 @@ describeApi('post-use multiple actions API', () => {
     expect(list.statusCode).toBe(200)
     expect(list.json().items.map((item) => item.id)).toContain(legacyActionId)
   })
+
+  it('new action stores catalog product key when catalog is loaded (11-18 写入口径)', async () => {
+    // 11-18 写入口径修正链路验证：注入 managed 目录 → POST newAction（trace 产品名=云专线）
+    // → 路由刷新缓存 + service 解析 → 落库 product_key 应为目录 key dc（旧口径为中文名）。
+    // 真实链路证据（04 §2）：走完整路由而非直调 resolve 函数。
+    // 注：目录刷新会经 ensureTargetProductsInCatalog 自动补种子产品（dc 必在），
+    // 注入是为了让本用例不依赖种子行为；测试库本用例独享，结束不恢复全局目录。
+    const { storageRepository } = await import('../storageRepository.js')
+    storageRepository.putMeta('product_catalog_managed_v1', {
+      version: 1, updatedAt: 't', products: [
+        { key: 'dc', name: '云专线', enabled: true, specs: [] },
+      ], deletedKeys: [], disabledAnalysisKeys: [],
+    })
+
+    const url = `/api/post-use-actions/trace/${traceId}`
+    const created = await app.inject({
+      method: 'POST', url, headers: editorHeaders(),
+      payload: { newAction: { content: '口径修正链路验证举措' } },
+    })
+    expect(created.statusCode, created.body).toBe(200)
+    const createdId = created.json().action.id
+    expect(created.json().action.productKey).toBe('dc')
+    expect(created.json().action.productName).toBe('云专线')
+
+    // 落库 payload 双通道（productKey/productName）经 repository 读回验证——迁移脚本的同步写口径
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    const item = actionItemRepository.getActionItem(createdId)
+    expect(item?.productKey).toBe('dc')
+    expect(item?.productName).toBe('云专线')
+
+    // 清理：移除该关联与举措行（构造型身份唯一纪律——不残留影响其他用例）
+    const removed = await app.inject({
+      method: 'DELETE', url: `${url}/${createdId}`, headers: editorHeaders(),
+    })
+    expect(removed.statusCode).toBe(200)
+    const { getDb } = await import('../db.js')
+    getDb().prepare('DELETE FROM action_items WHERE id = ?').run(createdId)
+  })
+
+  it('new action falls back to raw product name when catalog misses (旧口径兜底)', async () => {
+    // 兜底路径：owner 产品名不在目录（自定义产品）→ 原样写入，不阻断业务。
+    // 注意：种子目标产品（云专线/dc 等）会在目录刷新时被 ensureTargetProductsInCatalog
+    // 自动补回，不能用来构造"不在目录"场景——用真实自定义产品名。
+    const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+    const customTrace = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-CUSTOM-X:自定义神秘产品:2026-10', importMonth: '2026-10',
+      productName: '自定义神秘产品', customerName: '兜底客户', customerCode: 'ACTION-CUSTOM-X',
+    }])[0]
+
+    const created = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${customTrace.id}`, headers: editorHeaders(),
+      payload: { newAction: { content: '兜底口径验证举措' } },
+    })
+    expect(created.statusCode, created.body).toBe(200)
+    expect(created.json().action.productKey).toBe('自定义神秘产品')
+
+    // 清理
+    const createdId = created.json().action.id
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${customTrace.id}/${createdId}`,
+      headers: editorHeaders(),
+    })
+    const { getDb } = await import('../db.js')
+    getDb().prepare('DELETE FROM action_items WHERE id = ?').run(createdId)
+    getDb().prepare('DELETE FROM post_use_jira_items WHERE id = ?').run(customTrace.id)
+  })
 })

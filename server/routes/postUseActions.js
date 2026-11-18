@@ -1,6 +1,8 @@
 import { requirePermission } from '../middleware.js'
 import { hasPermission } from '../../src/domain/auth/permissions.js'
 import { logAuditFromRequest } from '../audit.js'
+import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
+import { storageRepository } from '../storageRepository.js'
 import {
   addPostUseAction,
   listPostUseActionSources,
@@ -8,6 +10,27 @@ import {
   migrateLegacyPostUseActionSources,
   removePostUseAction,
 } from '../postUseActionService.js'
+
+/**
+ * 新建议措写入前从 DB 刷新服务端产品目录缓存（11-18，refreshProductCatalogForReminder 先例）。
+ * addPostUseAction 新建路径要按目录把 owner 产品名解析成目录 key——UI 改目录只写 DB，
+ * 服务端进程内缓存不随之刷新，不刷新会用旧目录把 key 解析错/解析不中。
+ * 刷新失败降级用缓存，不阻塞写入本身。
+ * @param {import('fastify').FastifyBaseLogger} [logger]
+ */
+async function refreshProductCatalogForPostUseAction(logger) {
+  const adapter = {
+    getMeta: (key) => storageRepository.getMeta(key),
+    putMeta: (key, value) => storageRepository.putMeta(key, value),
+  }
+  try {
+    await loadManagedProductCatalog(adapter)
+  } catch (err) {
+    logger?.warn?.(
+      `[post-use-actions] 产品目录刷新失败，降级用缓存: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
 
 /** @param {unknown} value */
 function validOwnerType(value) { return value === 'trace' || value === 'visit' }
@@ -51,6 +74,8 @@ export function registerPostUseActionRoutes(app) {
     if (Boolean(body.actionId) === Boolean(body.newAction)) {
       return reply.code(400).send({ error: '请选择已有举措或填写新举措' })
     }
+    // 仅新建议措路径需要最新目录（库选路径不落库新行）；刷新放在校验后避免无效请求白刷。
+    if (body.newAction) await refreshProductCatalogForPostUseAction(request.log)
     try {
       const result = addPostUseAction(ownerType, ownerId, body, request.user)
       if (!result) return reply.code(404).send({ error: '记录不存在' })

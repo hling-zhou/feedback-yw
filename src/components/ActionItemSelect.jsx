@@ -9,8 +9,9 @@ import {
 } from '../domain/requirementTicketProgress.js'
 import { listActionItems, getActionItem } from '../lib/actionItemClient.js'
 import ActionItemStatusTag from './tags/ActionItemStatusTag.jsx'
-import { getEnabledProducts } from '../lib/productCatalog.js'
+import { getEnabledProducts, getCatalogProduct } from '../lib/productCatalog.js'
 import { getProductByKey } from '../lib/taxonomyLoader.js'
+import { resolveProductKeyToCatalog } from '../lib/productCatalog/resolveProductKeyToCatalog.js'
 
 /** @typedef {import('../domain/actionItem.js').ActionItem} ActionItem */
 
@@ -22,6 +23,9 @@ function filterSelectableActionItems(items) {
 }
 
 /**
+ * 产品下拉选项（11-18 归一后口径）：启用产品为主体；归一化后的 productKey 若不在
+ * 启用清单（如 disabled 的用后即评产品，或未入目录的自定义产品），补一项保证默认
+ * 选中值有对应选项——label 优先目录中文名（getCatalogProduct 含 disabled），再 taxonomy，最后 key。
  * @param {string | undefined} currentProductKey
  */
 function buildProductSelectOptions(currentProductKey) {
@@ -32,10 +36,11 @@ function buildProductSelectOptions(currentProductKey) {
     if (!key) continue
     map.set(key, product.name?.trim() || key)
   }
-  const pk = currentProductKey?.trim()
+  const pk = resolveProductKeyToCatalog(currentProductKey)
   if (pk && !map.has(pk)) {
-    const taxonomy = getProductByKey(pk)
-    map.set(pk, taxonomy?.name?.trim() || pk)
+    const catalogName = getCatalogProduct(pk)?.name?.trim()
+    const taxonomyName = catalogName || getProductByKey(pk)?.name?.trim()
+    map.set(pk, taxonomyName || pk)
   }
   return [...map.entries()]
     .map(([value, label]) => ({ value, label }))
@@ -82,7 +87,9 @@ export default function ActionItemSelect({ value, productKey, source, onSelect, 
   const [loading, setLoading] = useState(false)
   const [options, setOptions] = useState(/** @type {ActionItem[]} */ ([]))
   const [search, setSearch] = useState('')
-  const [selectedProductKey, setSelectedProductKey] = useState(() => productKey?.trim() || '')
+  // 11-18 归一层：宿主传入可能是目录 key、中文名或规格名（溯源/回访传中文名），
+  // 统一归一为目录 key 再进默认选中与查询通道。
+  const [selectedProductKey, setSelectedProductKey] = useState(() => resolveProductKeyToCatalog(productKey))
 
   const productOptions = useMemo(
     () => buildProductSelectOptions(productKey),
@@ -116,7 +123,7 @@ export default function ActionItemSelect({ value, productKey, source, onSelect, 
 
   useEffect(() => {
     if (!value?.trim()) {
-      setSelectedProductKey(productKey?.trim() || '')
+      setSelectedProductKey(resolveProductKeyToCatalog(productKey))
     }
   }, [productKey, value])
 
@@ -131,7 +138,9 @@ export default function ActionItemSelect({ value, productKey, source, onSelect, 
       const item = await getActionItem(value)
       if (cancelled || !item) return
       if (item.productKey?.trim()) {
-        setSelectedProductKey(item.productKey.trim())
+        // 11-18 归一层：存量 post_use 举措 product_key 可能是中文名——回填同样归一，
+        // 已选条目本身由下方 merged 逻辑强制并入 options，不受查询过滤影响。
+        setSelectedProductKey(resolveProductKeyToCatalog(item.productKey))
       }
       setOptions((prev) => {
         if (isActionItemLocked(item.status)) return prev

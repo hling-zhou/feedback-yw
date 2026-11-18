@@ -11,6 +11,23 @@ import { normalizePostUseActionIds, withPostUseActionIds } from '../src/domain/p
 import { validateActionItemCreate } from '../src/domain/actionItem.js'
 import { postUseJiraImportItemKey } from '../src/lib/postUseRating/postUseJiraImport.js'
 import { actionItemRepository } from './actionItemRepository.js'
+import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
+import { resolveCatalogProduct } from '../src/lib/productCatalog/resolveCatalogProduct.js'
+
+/**
+ * 导入行产品名 → 目录 key 解析（11-18 写入口径修正，同 postUseActionService）。
+ * importMany 为同步方法读进程内目录缓存；导入路由在调用前已 loadManagedProductCatalog
+ * 刷新（refreshProductCatalogForReminder 先例）。未命中目录时保持旧形态原样返回。
+ * @param {string | undefined | null} productName
+ * @returns {string}
+ */
+function resolvePostUseImportProductKey(productName) {
+  const raw = String(productName ?? '').trim()
+  if (!raw) return ''
+  const products = getCatalogProducts()
+  const resolved = products.length ? resolveCatalogProduct({ productName: raw }, products) : null
+  return resolved?.key?.trim() || raw
+}
 
 function parseJson(text) {
   return JSON.parse(text)
@@ -391,7 +408,9 @@ export const postUseJiraRepository = {
           const identity = [action.content, action.detail, action.scheduleAt].join('\0')
           if (linked.has(identity)) continue
           const validated = validateActionItemCreate({
-            productKey: row.productName,
+            // 11-18 写入口径修正：productKey 走目录 key（productName 保持中文名）——
+            // 历史行为中文名直入 product_key，与举措库按目录 key 查询的口径错位。
+            productKey: resolvePostUseImportProductKey(row.productName),
             productName: row.productName,
             source: 'post_use',
             content: action.content,
