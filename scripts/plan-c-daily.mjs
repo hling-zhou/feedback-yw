@@ -237,7 +237,6 @@ async function syncRegistryFromRemote(db) {
  */
 async function runPlanCDiagnose(db, dataDate) {
   const { callMcpTool } = await import('../server/patrolDiagnose.js')
-  const { classifyPatrolRootCause, extractDiagnosticText } = await import('../server/patrolRootCauseClassifier.js')
   const { readPatrolRootCauseRules } = await import('../server/patrolRepository.js')
   const rules = readPatrolRootCauseRules()
 
@@ -270,7 +269,7 @@ async function runPlanCDiagnose(db, dataDate) {
 
   let succeeded = 0
   let failed = 0
-  /** 单组诊断（含分类回填）。 */
+  /** 单组诊断（含分类回填）——11-18 起统一走 patrolDiagnosisPipeline（归类流程倒转：LLM 先产结论，规则表对 LLM 产物定类）。 */
   const diagnoseGroup = async (g) => {
     const firstTime = new Date(String(g.first_request_time).replace(' ', 'T'))
     const base = Number.isFinite(firstTime.getTime()) ? firstTime : new Date()
@@ -288,55 +287,31 @@ async function runPlanCDiagnose(db, dataDate) {
     )
     if (!res.ok) return false
     const isElb = g.product_key === 'slb'
-    const text = extractDiagnosticText(res.text, '', isElb)
-    let classified = classifyPatrolRootCause(text, rules)
-    // 11-17 拍板：LLM 主路径，规则引擎降级为兜底/加速——
-    // 规则先做高置信初筛（命中非兜底类 = 加速路径，省一次 LLM 调用）；
-    // 未命中（其他/未归类兜底）→ LLM 结构化分析（全量日志，五段 + 根因枚举）。
-    /** @type {{ byLlm: boolean, llmFailed: boolean, attempts: number, conclusion: string | null, directCause: string[], evidence: string[], suggestion: string | null, rootCauseL1: string | null }} */
-    let llmReport = { byLlm: false, llmFailed: false, attempts: 0, conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
-    let rootCauseSource = 'rule'
-    if (classified.l1 === '其他/未归类' || classified.l1 === '诊断能力缺口') {
-      const { analyzeFailureByLlm } = await import('../server/patrolDiagnosisLlmAnalyzer.js')
-      const analysis = await analyzeFailureByLlm(res.text, {
-        apiPath: g.api_path, poolName: g.pool_name, userName: g.user_name, productKey: g.product_key,
-      }, { onRetry: (attempt, reason) => log('diagnose', `组 #${g.id} LLM 第 ${attempt} 次失败（${reason}）——重试`) })
-      // 11-17 用户拍板：LLM 重试 3 次仍失败 → 视为未诊断——组保持 pending_diagnosis，
-      // 不落 diagnoses、不推垃圾分类（明日跑批自然重试）
-      if (analysis.llmFailed) {
-        log('diagnose', `组 #${g.id} LLM ${analysis.attempts} 次全失败——视为未诊断（保持 pending，明日重试）`)
-        return false
-      }
-      if (analysis.byLlm) {
-        llmReport = analysis
-        rootCauseSource = 'llm'
-        if (analysis.rootCauseL1) {
-          classified = { ...classified, l1: analysis.rootCauseL1, l2: 'LLM结构化诊断' }
-          log('diagnose', `组 #${g.id} LLM 结构化诊断 →「${analysis.rootCauseL1}」`)
-        }
-      }
-    } else {
-      log('diagnose', `组 #${g.id} 规则命中（加速路径）→「${classified.l1}」`)
-    }
-    // 11-17 五段处理建议：LLM 结构化产出优先；规则命中组无 LLM 报告时用既有建议生成器补
-    let suggestion = llmReport.suggestion
+    const { runPatrolDiagnosisPipeline } = await import('../server/patrolDiagnosisPipeline.js')
+    const outcome = await runPatrolDiagnosisPipeline(res.text, {
+      apiPath: g.api_path, poolName: g.pool_name, userName: g.user_name, productKey: g.product_key, isElb,
+    }, { rules, onStage: (stage, msg) => log(stage, `组 #${g.id} ${msg}`) })
+    // LLM 3 次全败 → 未诊断（保持 pending，明日重试——11-17 拍板沿袭）
+    if (outcome.status === 'no_diagnosis') return false
+    // 五段处理建议：LLM 产物优先；无则建议生成器兜底（降级链路组）
+    let suggestion = outcome.suggestion
     if (!suggestion) {
+      const { extractDiagnosticText } = await import('../server/patrolRootCauseClassifier.js')
       const { generateDiagnosisSuggestion } = await import('../server/patrolDiagnosisSuggestion.js')
-      suggestion = await generateDiagnosisSuggestion(text, text, classified.l1)
+      const text = extractDiagnosticText(res.text, '', isElb)
+      suggestion = await generateDiagnosisSuggestion(outcome.conclusion || text, text, outcome.l1)
     }
-    // 五段「直接原因/关键证据」：LLM 产出优先；无则空数组（服务端切分层降级到日志行挑选）
-    const directCauseJson = llmReport.directCause.length > 0 ? JSON.stringify(llmReport.directCause) : null
-    const evidenceJson = llmReport.evidence.length > 0 ? JSON.stringify(llmReport.evidence) : null
-    const conclusionFinal = llmReport.conclusion || text || null
+    const directCauseJson = outcome.directCause.length > 0 ? JSON.stringify(outcome.directCause) : null
+    const evidenceJson = outcome.evidence.length > 0 ? JSON.stringify(outcome.evidence) : null
     const now = new Date().toISOString()
     db.prepare('DELETE FROM api_patrol_diagnoses WHERE failure_group_id=?').run(g.id)
     db.prepare(`
       INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
       VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(g.id, g.first_request_id, res.text, conclusionFinal, classified.l1, classified.l2, suggestion, directCauseJson, evidenceJson, rootCauseSource, now)
+    `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, now)
     db.prepare(`
       UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
-    `).run(classified.l1, classified.l2, classified.productAction, now, g.id)
+    `).run(outcome.l1, outcome.l2, outcome.productAction, now, g.id)
     return true
   }
 

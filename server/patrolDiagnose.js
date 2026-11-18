@@ -162,7 +162,6 @@ export async function fetchPatrolDiagnosticLogs(options, args) {
  */
 export async function runPatrolDiagnose(options) {
   const { getDb } = await import('./db.js')
-  const { classifyPatrolRootCause, extractDiagnosticText } = await import('./patrolRootCauseClassifier.js')
   const { readPatrolRootCauseRules } = await import('./patrolRepository.js')
   const { storageRepository } = await import('./storageRepository.js')
   const db = getDb()
@@ -256,47 +255,35 @@ export async function runPatrolDiagnose(options) {
           continue
         }
         const isElb = group.product_key === 'slb'
-        // 分类输入构造：MCP 原文走真实解析链（extractDiagnosticText 支持 JSON 诊断原文；
-        // ELB 需拼接 error_message —— MCP 返回已是诊断全文，errorMessage 传空由 MCP text 承载）
-        const text = extractDiagnosticText(result.text, '', isElb)
-        let classified = classifyPatrolRootCause(text, rules)
-        // 11-17 LLM 主路径（规则为加速/兜底）：规则命中非兜底类 = 加速路径省 LLM 调用；
-        // 未命中/判能力缺口 → LLM 结构化分析全量日志（五段 + 根因枚举）。
-        /** @type {{ byLlm: boolean, llmFailed: boolean, attempts: number, conclusion: string | null, directCause: string[], evidence: string[], suggestion: string | null, rootCauseL1: string | null }} */
-        let llmReport = { byLlm: false, llmFailed: false, attempts: 0, conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
-        let rootCauseSource = 'rule'
-        if (classified.l1 === '其他/未归类' || classified.l1 === '诊断能力缺口') {
-          const { analyzeFailureByLlm } = await import('./patrolDiagnosisLlmAnalyzer.js')
-          const analysis = await analyzeFailureByLlm(result.text, {
-            apiPath: String(group.api_path || ''), poolName: pool, userName: '', productKey: String(group.product_key || ''),
-          })
-          // 11-17 用户拍板：LLM 重试 3 次仍失败 → 视为未诊断——组保持 pending_diagnosis（可重试）
-          if (analysis.llmFailed) {
-            failed += 1
-            insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
-              JSON.stringify({ error: `LLM ${analysis.attempts} 次全失败（未诊断）` }), null, null, null, null, null, null, null, now)
-            continue
-          }
-          if (analysis.byLlm) {
-            llmReport = analysis
-            rootCauseSource = 'llm'
-            if (analysis.rootCauseL1) {
-              classified = { ...classified, l1: analysis.rootCauseL1, l2: 'LLM结构化诊断' }
-            }
-          }
+        // 11-18 拍板：归类流程倒转——LLM 先产结论文本（五段），归因规则表对 LLM 产物文本定类，
+        // 未命中 LLM 枚举兜底；无失败语义快速路径不烧 LLM。三处消费方（部署端 + plan-c 两脚本）
+        // 统一走 patrolDiagnosisPipeline（消灭流程复制）。
+        const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+        const outcome = await runPatrolDiagnosisPipeline(result.text, {
+          apiPath: String(group.api_path || ''), poolName: pool, userName: String(group.user_name || ''), productKey: String(group.product_key || ''), isElb,
+        }, { rules })
+        // 11-17 用户拍板（沿袭）：LLM 3 次全败 → 视为未诊断——组保持 pending_diagnosis（可重试）
+        if (outcome.status === 'no_diagnosis') {
+          failed += 1
+          insertDiag.run(group.id, group.first_request_id, 'failed', toolName,
+            JSON.stringify({ error: `LLM ${outcome.llmAttempts} 次全失败（未诊断）` }), null, null, null, null, null, null, null, now)
+          continue
         }
-        // 五段处理建议：LLM 产物优先；无则建议生成器兜底
-        let suggestion = llmReport.suggestion
+        const classified = { l1: outcome.l1, l2: outcome.l2, productAction: outcome.productAction }
+        const rootCauseSource = outcome.rootCauseSource
+        // 五段处理建议：LLM 产物优先；无则建议生成器兜底（降级链路组）
+        let suggestion = outcome.suggestion
         if (!suggestion) {
+          const { extractDiagnosticText: extText } = await import('./patrolRootCauseClassifier.js')
+          const text = extText(result.text, '', isElb)
           const { generateDiagnosisSuggestion } = await import('./patrolDiagnosisSuggestion.js')
-          suggestion = await generateDiagnosisSuggestion(text, text, classified.l1)
+          suggestion = await generateDiagnosisSuggestion(outcome.conclusion || text, text, outcome.l1)
         }
-        const directCauseJson = llmReport.directCause.length > 0 ? JSON.stringify(llmReport.directCause) : null
-        const evidenceJson = llmReport.evidence.length > 0 ? JSON.stringify(llmReport.evidence) : null
-        const conclusionFinal = llmReport.conclusion || text || null
+        const directCauseJson = outcome.directCause.length > 0 ? JSON.stringify(outcome.directCause) : null
+        const evidenceJson = outcome.evidence.length > 0 ? JSON.stringify(outcome.evidence) : null
         succeeded += 1
         insertDiag.run(group.id, group.first_request_id, 'success', toolName,
-          result.text, conclusionFinal, classified.l1, classified.l2,
+          result.text, outcome.conclusion, classified.l1, classified.l2,
           suggestion, directCauseJson, evidenceJson, rootCauseSource, now)
         updateGroup.run(classified.l1, classified.l2, classified.productAction, now, group.id)
         // 待处理 + assignee 为空 → 填 productManager[0] 默认经办人（§2.3）

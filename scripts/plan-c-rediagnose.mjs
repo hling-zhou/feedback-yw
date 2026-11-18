@@ -56,13 +56,10 @@ function localDateStr(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-/** 与 plan-c-daily diagnoseGroup 同构：新链路单组诊断（分页全量→规则→LLM→五段落库）。 */
+/** 与 plan-c-daily diagnoseGroup 同构：新链路单组诊断——11-18 起统一走 patrolDiagnosisPipeline（归类流程倒转）。 */
 async function diagnoseGroupNew(db, g, deps) {
   const { fetchPatrolDiagnosticLogs } = await import('../server/patrolDiagnose.js')
-  const { classifyPatrolRootCause, extractDiagnosticText } = await import('../server/patrolRootCauseClassifier.js')
-  const { readPatrolRootCauseRules } = await import('../server/patrolRepository.js')
-  const { analyzeFailureByLlm } = await import('../server/patrolDiagnosisLlmAnalyzer.js')
-  const { MCP_PRODUCT_NAMES, rules } = deps
+  const { rules } = deps
   const fmt = (d, off) => {
     const t = new Date(d.getTime() + off * 60_000)
     const p = (n) => String(n).padStart(2, '0')
@@ -70,6 +67,7 @@ async function diagnoseGroupNew(db, g, deps) {
   }
   const firstTime = new Date(String(g.first_request_time).replace(' ', 'T'))
   const base = Number.isFinite(firstTime.getTime()) ? firstTime : new Date()
+  const MCP_PRODUCT_NAMES = { eip: 'fip/vpc', vpc: 'fip/vpc', slb: 'slb-console' }
   const productName = MCP_PRODUCT_NAMES[String(g.product_key || '')] || 'fip/vpc'
   const filterKeyword = String(g.first_request_id || '').replace(/^reqId-/, '')
   const res = await fetchPatrolDiagnosticLogs(
@@ -78,39 +76,30 @@ async function diagnoseGroupNew(db, g, deps) {
   )
   if (!res.ok) return { ok: false, reason: `MCP: ${res.error}` }
   const isElb = g.product_key === 'slb'
-  const text = extractDiagnosticText(res.text, '', isElb)
-  let classified = classifyPatrolRootCause(text, rules)
-  let llmReport = { byLlm: false, llmFailed: false, attempts: 0, conclusion: null, directCause: [], evidence: [], suggestion: null, rootCauseL1: null }
-  let rootCauseSource = 'rule'
-  if (classified.l1 === '其他/未归类' || classified.l1 === '诊断能力缺口') {
-    const analysis = await analyzeFailureByLlm(res.text, {
-      apiPath: g.api_path, poolName: g.pool_name, userName: g.user_name, productKey: g.product_key,
-    })
-    if (analysis.llmFailed) return { ok: false, reason: `LLM ${analysis.attempts} 次全失败（未诊断——保持 pending 可重试）` }
-    if (analysis.byLlm) {
-      llmReport = analysis
-      rootCauseSource = 'llm'
-      if (analysis.rootCauseL1) classified = { ...classified, l1: analysis.rootCauseL1, l2: 'LLM结构化诊断' }
-    }
-  }
-  let suggestion = llmReport.suggestion
+  const { runPatrolDiagnosisPipeline } = await import('../server/patrolDiagnosisPipeline.js')
+  const outcome = await runPatrolDiagnosisPipeline(res.text, {
+    apiPath: g.api_path, poolName: g.pool_name, userName: g.user_name, productKey: g.product_key, isElb,
+  }, { rules })
+  if (outcome.status === 'no_diagnosis') return { ok: false, reason: `LLM ${outcome.llmAttempts} 次全失败（未诊断——保持 pending 可重试）` }
+  let suggestion = outcome.suggestion
   if (!suggestion) {
+    const { extractDiagnosticText } = await import('../server/patrolRootCauseClassifier.js')
     const { generateDiagnosisSuggestion } = await import('../server/patrolDiagnosisSuggestion.js')
-    suggestion = await generateDiagnosisSuggestion(text, text, classified.l1)
+    const text = extractDiagnosticText(res.text, '', isElb)
+    suggestion = await generateDiagnosisSuggestion(outcome.conclusion || text, text, outcome.l1)
   }
-  const directCauseJson = llmReport.directCause.length > 0 ? JSON.stringify(llmReport.directCause) : null
-  const evidenceJson = llmReport.evidence.length > 0 ? JSON.stringify(llmReport.evidence) : null
-  const conclusionFinal = llmReport.conclusion || text || null
+  const directCauseJson = outcome.directCause.length > 0 ? JSON.stringify(outcome.directCause) : null
+  const evidenceJson = outcome.evidence.length > 0 ? JSON.stringify(outcome.evidence) : null
   const now = new Date().toISOString()
   db.prepare('DELETE FROM api_patrol_diagnoses WHERE failure_group_id=?').run(g.id)
   db.prepare(`
     INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, suggestion, direct_cause, evidence, root_cause_source, diagnosed_at)
     VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(g.id, g.first_request_id, res.text, conclusionFinal, classified.l1, classified.l2, suggestion, directCauseJson, evidenceJson, rootCauseSource, now)
+  `).run(g.id, g.first_request_id, res.text, outcome.conclusion, outcome.l1, outcome.l2, suggestion, directCauseJson, evidenceJson, outcome.rootCauseSource, now)
   db.prepare(`
     UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
-  `).run(classified.l1, classified.l2, classified.productAction, now, g.id)
-  return { ok: true, l1: classified.l1, source: rootCauseSource, byLlm: llmReport.byLlm }
+  `).run(outcome.l1, outcome.l2, outcome.productAction, now, g.id)
+  return { ok: true, l1: outcome.l1, source: outcome.rootCauseSource, byLlm: outcome.rootCauseSource === 'llm' }
 }
 
 /** 组包推送（与 plan-c-daily buildPackage 同构——从库内数据组装日包）。 */
@@ -204,7 +193,7 @@ async function main() {
   initBusinessSchema()
   const db = getDb()
   const { readPatrolRootCauseRules } = await import('../server/patrolRepository.js')
-  const deps = { rules: readPatrolRootCauseRules(), MCP_PRODUCT_NAMES: { eip: 'fip/vpc', vpc: 'fip/vpc', slb: 'slb-console' } }
+  const deps = { rules: readPatrolRootCauseRules() }
 
   // ① 收集重跑目标：已诊断但非新链路产物、无人工痕迹
   const placeholders = allDates.map(() => '?').join(',')
@@ -216,7 +205,8 @@ async function main() {
     WHERE g.group_date IN (${placeholders})
   `).all(...allDates)
   const rerun = targets.filter((g) =>
-    g.src == null                                    // 旧数据（root_cause_source 无值）
+    (g.src == null || g.src === 'rule')               // 旧数据 + 规则降级产物（11-18 刷新口径：结论=日志原文的组）；
+                                                      // 'llm' 是新链路产物（真结论+五段）不重跑
     && !MANUAL_FLOW_STATUSES.has(g.product_action_status)
     && !(g.root_cause_confirmed_check)               // 防御位（下方 SQL 已过滤主条件）
   )
@@ -257,6 +247,15 @@ async function main() {
   log('diag', `完成：${okCount} 成功（LLM ${llmCount} / 规则 ${ruleCount}）/ ${failCount} 失败保持 pending`)
 
   // ③ 逐日组包推送（五段随 groups 附推部署端）
+  // 11-18 保护：全部组刷新失败（如 MCP 日志网关全挂 500）时不推「降级状态包」——
+  // 否则会把部署端已诊断组状态打回 pending（本次刷新没产出任何新结果，推过去只有状态回退没有增益）。
+  // 有成功组才推（部分成功时推：成功组的新产物需要上去，失败组保持 pending 的状态投影是真实语义）。
+  if (okCount === 0 && failCount > 0) {
+    log('push', `全部 ${failCount} 组刷新失败——跳过推送（避免把部署端已诊断状态打回 pending；明日日跑批刷新成功后随包自然同步）`)
+    closeDb()
+    log('done', '重跑完成（0 成功，未推送）。')
+    return
+  }
   for (const dataDate of allDates) {
     const has = db.prepare(`SELECT COUNT(*) n FROM api_patrol_failure_groups WHERE group_date=?`).get(dataDate)
     if (!Number(has.n)) continue
