@@ -53,7 +53,9 @@ export async function enhanceWithLlm(products, { skipLlm = false } = {}) {
             { role: 'user', content: prompt },
           ],
           temperature: 0.3,
-          max_tokens: 1024,
+          // 11-18 实测：推理型模型 reasoning 与正文共享预算，产品概述任务 reasoning=548+text=153
+          //——旧值 1024 富余不足一倍，待办条数多时必截断；2048 留足余量。
+          max_tokens: 2048,
         },
       })
 

@@ -79,6 +79,65 @@ describe('getLlmCompletionText', () => {
     })
     expect(text).toBe('你好')
   })
+
+  // 11-18 守卫：推理型模型 reasoning 与正文共享 max_tokens 预算，length 截断时
+  // content 为空、reasoning_content 是思考半成品。旧实现把思考草稿当正文返回，
+  // 下游「不是合法 JSON」报错内容失真成思考文本（报告文案线上事故实证）。
+  // 契约：截断态只认 content / choice.text，思考草稿不得冒充正文；正文空则抛
+  // 明确截断错误，不流入解析层。
+  it('length-truncated thinking model: reasoning draft must not masquerade as content', () => {
+    const data = {
+      choices: [
+        {
+          finish_reason: 'length',
+          message: {
+            content: '',
+            reasoning_content: 'We need produce JSON only. {"focus":[{"index":0,"title":"半截',
+          },
+        },
+      ],
+    }
+    expect(() => getLlmCompletionText(data)).toThrow(/截断/)
+  })
+
+  it('length-truncated but content has text: returns content as-is', () => {
+    const data = {
+      choices: [
+        {
+          finish_reason: 'length',
+          message: {
+            content: '{"focus":[{"index":0,"title":"写了一半',
+            reasoning_content: '思考草稿…',
+          },
+        },
+      ],
+    }
+    // 正文非空截断：原样返回，由消费方按 finish_reason/解析层处理（如 askLlm 升预算重试）
+    expect(getLlmCompletionText(data)).toBe('{"focus":[{"index":0,"title":"写了一半')
+  })
+
+  it('stop-finished thinking model still falls back to reasoning_content', () => {
+    const data = {
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: {
+            content: '',
+            reasoning_content: '{"measures":["a"]}',
+          },
+        },
+      ],
+    }
+    // 正常收尾的思考模型兜底契约不变（contentToText 空、思考有值 → 返回思考）
+    expect(getLlmCompletionText(data)).toBe('{"measures":["a"]}')
+  })
+
+  it('data.choices nested gateway payload keeps working', () => {
+    const text = getLlmCompletionText({
+      data: { choices: [{ message: { content: '网关嵌套' } }] },
+    })
+    expect(text).toBe('网关嵌套')
+  })
 })
 
 describe('parseLlmResponseBody', () => {
@@ -273,5 +332,68 @@ describe('parseLlmMessageContent 批结果容器契约（82742ef 剥包装回归
       JSON.stringify({ tools: [{ tool: 'search_records', args: {} }] }),
     ))
     expect(Array.isArray(parsed?.tools)).toBe(true)
+  })
+
+  // 11-18 报告 V2 容器入表（batchKeysGuard 处置方案① 先例）：reportV2Narrative prompt
+  // 承诺 {"focus":[...],"products":[...],"todos":[...]}，不入白名单时被
+  // pickAssistantPayload「取最后对象」启发式剥掉包装 → 99 产品只剩 {"index":98,...}
+  // →「报告模型未返回完整文案」批量丢失（真实链路实证）。入表后从后往前扫，
+  // 唯一含数组字段的完整对象是外层容器本身，正确保留。
+  it('报告 V2 容器（focus/products/todos）保留包装不取内部子对象', () => {
+    const content = JSON.stringify({
+      focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
+      products: [
+        { index: 0, conclusion: '云监控需核实批量导出诉求。' },
+        { index: 1, conclusion: '账号中心持续观察。' },
+      ],
+      todos: [{ index: 0, content: '跟进回溯闭环' }],
+    })
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(Array.isArray(parsed?.focus)).toBe(true)
+    expect(Array.isArray(parsed?.products)).toBe(true)
+    expect(parsed?.products?.length).toBe(2)
+    expect(parsed.products[1].conclusion).toBe('账号中心持续观察。')
+    expect(Array.isArray(parsed?.todos)).toBe(true)
+  })
+
+  // 11-18 晚 themeGroups 入表同先例：reportV2Narrative 语义归类批容器（LLM 把未命中
+  // 正则的低分标签归入封闭组），与 focus/products/todos 同批返回。
+  it('报告 V2 语义归类容器（themeGroups）与文案容器同批保留', () => {
+    const content = JSON.stringify({
+      focus: [{ index: 0, title: '待回应', detail: '客户反馈功能缺失' }],
+      products: [{ index: 0, conclusion: '需核实。' }],
+      themeGroups: [
+        { theme: '垃圾云电脑,不用就关机', group: '操作与帮助文档' },
+        { theme: '烂到极致，我要退款', group: '操作与帮助文档' },
+      ],
+    })
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(Array.isArray(parsed?.themeGroups)).toBe(true)
+    expect(parsed?.themeGroups?.length).toBe(2)
+    expect(parsed.themeGroups[1].theme).toBe('烂到极致，我要退款')
+  })
+
+  // 11-18 llmBrief 叙事容器入表：输出契约 {"narrative":...,"whyHappenedNarrative":...,
+  // "recommendations":[...],"sourceIds":[...]}，不入白名单时被「取最后对象」剥成最后一个
+  // {"id":"r2","text":...} 子对象 → narrative/whyHappenedNarrative 整体丢失（真实链路
+  // 实证：旧 1600 截断时代解析直接抛错走 fallback 掩盖了剥离；8192 后正文完整产出，
+  // 剥离才显形——llmApplied=true 但 narrative 空串，最隐蔽的一类静默劣化）。
+  it('llmBrief 叙事容器（narrative/recommendations）保留包装不取末位子对象', () => {
+    const content = JSON.stringify({
+      narrative: '月末出账时段带宽计费争议集中，客户对计费规则理解存在偏差。',
+      whyHappenedNarrative: '推测为计费说明文案歧义导致客户预期与账单不一致（假设，待验证）。',
+      recommendations: [
+        { id: 'r1', text: '优化账单页计费明细展示' },
+        { id: 'r2', text: '复核计费说明文案' },
+      ],
+      sourceIds: ['s0', 's1'],
+    })
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(typeof parsed?.narrative).toBe('string')
+    expect(parsed.narrative).toContain('带宽计费争议')
+    expect(typeof parsed?.whyHappenedNarrative).toBe('string')
+    expect(Array.isArray(parsed?.recommendations)).toBe(true)
+    expect(parsed.recommendations.length).toBe(2)
+    expect(parsed.recommendations[1].text).toBe('复核计费说明文案')
   })
 })

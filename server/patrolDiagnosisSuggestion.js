@@ -41,7 +41,9 @@ export async function generateDiagnosisSuggestion(conclusion, logText, rootCause
         { role: 'user', content: `根因分类：${rootCauseL1 || '未分类'}\n诊断结论：${c || '（无明确结论）'}\n失败日志摘录：\n${l.slice(0, 600)}` },
       ],
       temperature: 0.3,
-      max_tokens: 300,
+      // 11-18 实测：推理型模型 reasoning 与正文共享预算，建议任务实测 reasoning=150+text=33
+      //——旧值 300 思考已占半、稍长输入即截断；800 留足余量（输出仍截 500 字符）。
+      max_tokens: 800,
     }
     const res = await forward({
       baseUrl: deps.llm?.baseUrl || resolveLlmBaseUrl(),

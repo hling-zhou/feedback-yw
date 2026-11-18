@@ -66,7 +66,9 @@ export async function polishRecommendationsWithLlm(candidates, settings) {
   const payload = candidates.map(compactCandidate)
   const data = await llmChatCompletion(settings, {
     temperature: 0.2,
-    max_tokens: 4000,
+    // 11-18 加大：推理型模型 reasoning 与正文共享预算，20 卡上限场景思考量随输入规模上涨
+    //（实测 237+143，但输入规模是运营变量），8192 对齐报告/patrol 线大输出场景标定。
+    max_tokens: 8192,
     messages: [
       {
         role: 'system',

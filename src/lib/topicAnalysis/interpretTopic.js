@@ -191,7 +191,9 @@ export async function interpretCustomTopic(input) {
   try {
     const data = await llmChatCompletion(input.settings, {
       temperature: 0.2,
-      max_tokens: 700,
+      // 11-18 实测：推理型模型 reasoning 与正文共享预算，自定义专题解析实测 reasoning=642+text=57
+      //——旧值 700 临界必截断；2048 实测 reasoning=791+text=227 富余稳定。
+      max_tokens: 2048,
       messages: [
         {
           role: 'system',

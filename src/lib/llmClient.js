@@ -146,9 +146,15 @@ export function extractLlmAssistantText(message) {
 export function getLlmCompletionText(data) {
   const root = data?.data?.choices ? data.data : data
   const choice = root?.choices?.[0]
-  const text = extractLlmAssistantText(choice?.message)
+  // finish_reason=length/max_tokens 时跳过 reasoning_content 兜底——思考草稿是半成品
+  //（推理型模型预算被吃光、正文尚未产出），当正文返回会让下游解析报错内容失真成思考
+  // 文本（11-18 实证：报告文案「不是合法 JSON」报错内容实为模型思考草稿）。
+  const truncated = ['length', 'max_tokens'].includes(choice?.finish_reason)
+  const text = truncated
+    ? contentToText(choice?.message?.content) || (typeof choice?.text === 'string' ? choice.text.trim() : '')
+    : extractLlmAssistantText(choice?.message)
   if (text) return text
-  if (typeof choice?.text === 'string' && choice.text.trim()) {
+  if (!truncated && typeof choice?.text === 'string' && choice.text.trim()) {
     return choice.text.trim()
   }
   const finish = choice?.finish_reason
@@ -297,7 +303,14 @@ function collectBalancedJsonSlices(text) {
  * @param {unknown[]} values
  */
 function pickBatchResultContainer(values) {
-  const BATCH_KEYS = ['results', 'items', 'keep', 'words', 'cards']
+  // focus/products/todos/themeGroups：报告 V2 文案（reportV2Narrative）的批容器承诺键
+  //（11-18 真实链路实证：不入表时 pickAssistantPayload 走「取最后对象」启发式，
+  // 99 产品完整 JSON 被切内部子对象后只剩最后一个 {"index":98,...} → 批量丢失；
+  // themeGroups 同日入表：LLM 语义归类批容器，承诺在 reportV2Narrative system prompt）。
+  // narrative/recommendations：专题分析叙事扩写（llmBrief polishTopicAnalysisWithLlm）
+  // 的输出契约键——11-18 同日真实链路实证同款形态：完整输出被剥成最后一个
+  // {"id":"r2","text":...} 子对象，narrative/whyHappenedNarrative 整体丢失。
+  const BATCH_KEYS = ['results', 'items', 'keep', 'words', 'cards', 'focus', 'products', 'todos', 'themeGroups', 'narrative', 'recommendations']
   for (let i = values.length - 1; i >= 0; i -= 1) {
     const value = values[i]
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue

@@ -121,7 +121,11 @@ export async function forwardLlmChatCompletion({ baseUrl, apiKey, body, timeoutM
     }
   }
 
-  const payload = { max_tokens: 2048, ...body }
+  // 11-18 兜底默认 2048→4096：打标批处理线（journeySemantic/themeSemantic/observation 等）
+  // 不显式传 max_tokens 全吃此值。推理型模型 reasoning 与正文共享预算，实测 10 条批容器
+  // reasoning=1327、长文本+多候选 1112——批大小是运营变量（当前 4 条/批，未来可放大），
+  // 2048 余量不足一倍；4096 为批处理场景安全值。显式传值不受影响（...body 覆盖）。
+  const payload = { max_tokens: 4096, ...body }
 
   /** @type {AbortController | null} */
   let controller = null

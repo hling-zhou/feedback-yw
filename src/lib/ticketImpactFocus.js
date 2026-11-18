@@ -435,7 +435,9 @@ ${summary.focusItems.map((item, index) => `${index + 1}. themeId=${item.themeId}
   try {
     const data = await llmChatCompletion(settings, {
       temperature: 0.2,
-      max_tokens: 1200,
+      // 11-18 实测：推理型模型 reasoning 与正文共享预算，重点主题总结 reasoning=315+text=97
+      //——主题条数多时思考量上涨，旧值 1200 余量不足；2048 留足余量。
+      max_tokens: 2048,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },

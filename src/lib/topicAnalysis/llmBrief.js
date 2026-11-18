@@ -36,7 +36,10 @@ export async function polishTopicBriefWithLlm(brief, settings) {
   }
   const data = await llmChatCompletion(settings, {
     temperature: 0.2,
-    max_tokens: 1200,
+    // 11-18 实测：推理型模型 reasoning 与正文共享预算。叙事扩写任务 reasoning 实测 1268+
+    // 正文 316；旧值 1600 下思考吃满预算正文 0 字（必败），4096 仍不收敛（思考随预算涨满），
+    // 8192 实测稳定 stop。润色任务同模型同风险，同步加大。
+    max_tokens: 8192,
     messages: [
       {
         role: 'system',
@@ -146,7 +149,8 @@ export async function polishTopicAnalysisWithLlm(brief, settings) {
   }
   const data = await llmChatCompletion(settings, {
     temperature: 0.2,
-    max_tokens: 1600,
+    // 11-18 实测同上：旧值 1600 下叙事扩写 reasoning 吃满预算正文 0 字（必败），8192 实测稳定。
+    max_tokens: 8192,
     messages: [
       {
         role: 'system',
