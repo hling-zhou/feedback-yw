@@ -77,15 +77,18 @@ describe.skipIf(!sqliteAvailable)('api patrol seeds migration', () => {
     expect(inferred.map((i) => i.apiPath).sort()).toEqual(['LB/UNSUBSCRIBE', 'LISTENER/CREATE', 'LISTENER/DELETE'])
   })
 
-  it('2.3 根因规则 17+兜底 有序灌入，DNAT 序1、兜底末位', () => {
+  it('2.3 根因规则有序灌入（11-18 v2：+order 0 RAM 鉴权最优先 + 18~22 补强），兜底末位', () => {
     const rules = readRules()
-    expect(rules.items).toHaveLength(18)
-    expect(rules.items[0]).toMatchObject({ l1: '业务冲突', l2: 'DNAT规则冲突', productAction: '待处理' })
+    // 种子 24 条：order 0（RAM/权限）+ 1~17 + 18~22（11-17 补强）+ 99 兜底
+    expect(rules.items).toHaveLength(24)
+    // 11-18：强语义（鉴权）全局最优先——#288 劫持先例（被 order 11 HAVIP 接口名泛匹配抢先）
+    expect(rules.items[0]).toMatchObject({ order: 0, l1: '权限/授权不足', l2: 'RAM/子账号鉴权拒绝' })
+    expect(rules.items[1]).toMatchObject({ l1: '业务冲突', l2: 'DNAT规则冲突', productAction: '待处理' })
     const fallback = rules.items[rules.items.length - 1]
     expect(fallback).toMatchObject({ l1: '其他/未归类', l2: '兜底', isFallback: true, productAction: '待处理' })
-    // 顺序连续性
-    const orders = rules.items.filter((r) => !r.isFallback).map((r) => r.order)
-    expect(orders).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
+    // 顺序连续性（order 升序；order 99 兜底恒尾）
+    const orders = rules.items.map((r) => r.order)
+    expect(orders).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 99])
   })
 
   it('2.4 锁定二分：规则6 并发进行中=—、规则7 机制待查=待处理', () => {
@@ -96,17 +99,28 @@ describe.skipIf(!sqliteAvailable)('api patrol seeds migration', () => {
     expect(r7).toMatchObject({ l2: '锁定机制待查', productAction: '待处理' })
   })
 
-  it('2.5 幂等：重复执行不重灌不覆盖（标记跳过）', async () => {
+  it('2.5 幂等：重复执行不重灌不覆盖（v1 标记跳过 + 11-18 v2 按 order 判重）', async () => {
     const { migrateApiPatrolSeeds } = await import('./patrolMigration.js')
     // 手工改一条，重跑 migration，断言不被覆盖（标记存在即跳过）
     const registry = readRegistry()
     registry.items.push({ productKey: 'eip', metricName: '手工项', apiPath: '/manual/x', bizType: 'x' })
     db.prepare(`UPDATE meta SET value=? WHERE key='api_patrol_api_registry_v1'`).run(JSON.stringify(registry))
+    // 手工改规则表（模拟运营编辑：改一条 + 删一条种子），重跑 migration
+    const rules = readRules()
+    rules.items.find((r) => r.order === 6).enabled = false
+    const withoutOrder9 = rules.items.filter((r) => r.order !== 9)
+    db.prepare(`UPDATE meta SET value=? WHERE key='api_patrol_root_cause_rules_v1'`).run(JSON.stringify({ ...rules, items: withoutOrder9 }))
     migrateApiPatrolSeeds(db)
     expect(readRegistry().items).toHaveLength(35) // 手工项保留
-    expect(readRules().items).toHaveLength(18)
+    const rulesAfter = readRules().items
+    // v2 幂等：v2 标记已打（beforeAll 首跑）——重跑不追加不覆盖：运营删的 order 9 不复活（尊重运营编辑）
+    expect(rulesAfter).toHaveLength(23)
+    expect(rulesAfter.some((r) => r.order === 9)).toBe(false)
+    expect(rulesAfter.find((r) => r.order === 6).enabled).toBe(false) // 运营编辑保留
     // migration 标记存在
     const flag = db.prepare(`SELECT value FROM meta WHERE key='migrate_api_patrol_seeds_v1'`).get()
     expect(flag).toBeTruthy()
+    const flag2 = db.prepare(`SELECT value FROM meta WHERE key='migrate_api_patrol_seeds_v2'`).get()
+    expect(flag2).toBeTruthy()
   })
 })

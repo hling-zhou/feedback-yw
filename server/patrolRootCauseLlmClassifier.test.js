@@ -16,8 +16,9 @@ const apiDeps = (answer) => ({
 })
 
 describe('patrolRootCauseLlmClassifier', () => {
-  it('枚举值域 = 7 类（与规则表 L1 值域一致）', () => {
-    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toHaveLength(7)
+  it('枚举值域 = 8 类（与规则表 L1 值域一致——11-18 新增「权限/授权不足」）', () => {
+    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toHaveLength(8)
+    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('权限/授权不足')
     expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('其他/未归类')
   })
 

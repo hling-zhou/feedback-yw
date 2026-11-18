@@ -59,6 +59,17 @@ export const API_PATROL_API_REGISTRY_SEED = [
  * }} PatrolRootCauseRule
  */
 export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
+  // ---- 11-18 补强（真实链路实证 #288：RAM 鉴权拒绝组被 order 11「HAVIP」接口名泛匹配劫持——
+  //      有序匹配下强语义必须先于弱语义：鉴权语义全局最优先，任何接口通用。
+  //      黄金回放 4097 反向校准：组 A 只收强拒绝词（Forbidden/Unauthorized/未授权/无权限/没有权限），
+  //      不收「权限不足/需要授权」弱词——配额主因样本的日志附注常带角色权限措辞（先例 8月7日_西南-成都：
+  //      CSLQUOTA 配额样本尾部带「服务关联角色权限不足」），弱词入组会把配额样本反劫持进权限类；
+  //      用户拍板新增类目「权限/授权不足」----
+  { order: 0, l1: '权限/授权不足', l2: 'RAM/子账号鉴权拒绝', productAction: '待处理',
+    requiresAll: [
+      ['Forbidden', 'Unauthorized', '未授权', '无权限', '没有权限'],
+      ['RAM', '鉴权', '授权', '子用户', '角色', 'action', 'Action'],
+    ] },
   { order: 1, l1: '业务冲突', l2: 'DNAT规则冲突', productAction: '待处理', anyOf: ['DNAT'] },
   { order: 2, l1: '诊断能力缺口', l2: '日志缺失/无数据', productAction: '—',
     anyOf: ['缺少后续', '日志不完整', '日志查询异常', '无数据'] },
