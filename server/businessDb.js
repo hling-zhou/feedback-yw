@@ -416,6 +416,25 @@ function migratePatrolDiagnosesSuggestionColumn(db) {
 }
 
 /**
+ * 11-18 确立举措列迁移：api_patrol_failure_groups 加 action_id/established_action/action_schedule 三列
+ * （巡检抽屉「确立举措」子模块——与投诉咨询单抽屉同语义：action_id 关联举措库，
+ * established_action 手填内容，action_schedule 排期可空=待评估）。
+ */
+function migratePatrolGroupActionColumns(db) {
+  const cols = db.prepare('PRAGMA table_info(api_patrol_failure_groups)').all()
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('action_id')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN action_id TEXT')
+  }
+  if (!names.has('established_action')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN established_action TEXT')
+  }
+  if (!names.has('action_schedule')) {
+    db.exec('ALTER TABLE api_patrol_failure_groups ADD COLUMN action_schedule TEXT')
+  }
+}
+
+/**
  * 11-17 五段结构化列迁移：api_patrol_diagnoses 加 direct_cause/evidence/root_cause_source
  * （LLM 结构化诊断五段之直接原因/关键证据 + 根因来源标注 llm|rule；存量行默认 NULL）。
  */
@@ -979,6 +998,9 @@ export function initBusinessSchema() {
       measure_feedback TEXT,
       feedback_by TEXT,
       feedback_at TEXT,
+      action_id TEXT,
+      established_action TEXT,
+      action_schedule TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(group_date, product_key, pool_name, api_path, user_name, first_request_id)
@@ -1010,6 +1032,7 @@ export function initBusinessSchema() {
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
   migratePatrolDiagnosesSuggestionColumn(db)
+  migratePatrolGroupActionColumns(db)
   migratePatrolDiagnosesFiveSegColumns(db)
   // 记录变更游标与工单写入同事务提交。触发器覆盖单条、批量、替换和删除入口。
   db.exec(`

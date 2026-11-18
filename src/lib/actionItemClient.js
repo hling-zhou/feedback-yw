@@ -11,7 +11,7 @@ import { toActionItemConflictError } from '../domain/actionItemRevision.js'
  * @property {string} [productKeys]
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses]
- * @property {'ticket' | 'post_use'} [source]
+ * @property {'ticket' | 'post_use' | 'api_patrol'} [source]
  * @property {string} [ticketId]
  * @property {string} [linkedDataSources]
  * @property {string} [problemType]

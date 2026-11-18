@@ -411,7 +411,8 @@ export function registerPatrolQueryRoutes(app) {
   app.patch('/api/patrol/failures/groups/:id', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
     const id = Number((/** @type {{id: string}} */ (request.params)).id)
     const body = /** @type {{action?: string, rootCauseConfirmed?: string, realRootCause?: string,
-      measureFeedback?: string, assignee?: string}} */ (request.body || {})
+      measureFeedback?: string, assignee?: string,
+      actionId?: string, establishedAction?: string, actionSchedule?: string}} */ (request.body || {})
     const db = getDb()
     const before = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE id=?`).get(id)
     if (!before) return reply.code(404).send({ error: '组不存在' })
@@ -422,14 +423,17 @@ export function registerPatrolQueryRoutes(app) {
       return reply.code(400).send({ error: '根因不属实时必须填写真实根因' })
     }
     if (body.action === 'submit' && body.rootCauseConfirmed && !String(body.measureFeedback || '').trim()) {
-      return reply.code(400).send({ error: '提交时必须填写举措及排期说明（不涉及也需说明）' })
+      return reply.code(400).send({ error: '提交时必须填写备注（不涉及也需说明）' })
     }
     const status = body.action === 'submit' ? '已处理' : '处理中'
     const now = new Date().toISOString()
+    // 11-18 确立举措三列（与投诉咨询线同语义：不强制必填；actionId 关联举措库，手填内容与排期可独立）
     db.prepare(`
       UPDATE api_patrol_failure_groups SET
         product_action_status=?, root_cause_confirmed=COALESCE(?, root_cause_confirmed),
         measure_feedback=COALESCE(?, measure_feedback), assignee=COALESCE(?, assignee),
+        action_id=COALESCE(?, action_id), established_action=COALESCE(?, established_action),
+        action_schedule=COALESCE(?, action_schedule),
         feedback_by=?, feedback_at=?, updated_at=?
       WHERE id=?
     `).run(
@@ -437,6 +441,9 @@ export function registerPatrolQueryRoutes(app) {
       body.rootCauseConfirmed ?? null,
       body.measureFeedback ?? null,
       body.assignee ?? null,
+      body.actionId ?? null,
+      body.establishedAction ?? null,
+      body.actionSchedule ?? null,
       /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown',
       now, now, id,
     )
@@ -449,12 +456,14 @@ export function registerPatrolQueryRoutes(app) {
         assignee: /** @type {{assignee: string | null}} */ (before).assignee,
         rootCauseConfirmed: /** @type {{root_cause_confirmed: string | null}} */ (before).root_cause_confirmed,
         measureFeedback: /** @type {{measure_feedback: string | null}} */ (before).measure_feedback,
+        actionId: /** @type {{action_id: string | null}} */ (before).action_id,
       },
       after: {
         productActionStatus: /** @type {{product_action_status: string}} */ (after).product_action_status,
         assignee: /** @type {{assignee: string | null}} */ (after).assignee,
         rootCauseConfirmed: /** @type {{root_cause_confirmed: string | null}} */ (after).root_cause_confirmed,
         measureFeedback: /** @type {{measure_feedback: string | null}} */ (after).measure_feedback,
+        actionId: /** @type {{action_id: string | null}} */ (after).action_id,
       },
       changedBy: /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown',
     })

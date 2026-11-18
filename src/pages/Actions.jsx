@@ -286,7 +286,7 @@ function ProductActionsTab() {
 
   const [filters, setFilters] = useState(createEmptyActionItemFilters)
   const [actionSource, setActionSource] = useState(
-    /** @type {'ticket' | 'post_use'} */ ('ticket'),
+    /** @type {'ticket' | 'post_use' | 'api_patrol'} */ ('ticket'),
   )
   const [dateRange, setDateRange] = useState(
     /** @type {[dayjs.Dayjs | null, dayjs.Dayjs | null] | null} */ (null),
@@ -961,6 +961,8 @@ function ProductActionsTab() {
         problemTypeSnapshot: values.problemTypeSnapshot?.trim() || '',
         scheduleAt,
         status,
+        // API巡检档新增的举措归属 api_patrol source（其他档缺省=后端归一为 ticket）
+        ...(actionSource === 'api_patrol' ? { source: 'api_patrol' } : {}),
         linkedTicketIds: [],
         linkedRequirementTicketIds,
         linkedDataSources: [],
@@ -1104,6 +1106,9 @@ function ProductActionsTab() {
         <div onClick={(event) => event.stopPropagation()}>
           {actionSource === 'post_use' ? (
             <PostUseLinkedFeedbackCell actionId={record.id} />
+          ) : actionSource === 'api_patrol' ? (
+            // API巡检举措暂无关联工单列数据（巡检组闭环在溯源页抽屉维护）
+            <Typography.Text type="secondary">—</Typography.Text>
           ) : (
             <LinkedTicketsCell
               ticketIds={resolveLinkedTicketIds(record)}
@@ -1316,12 +1321,13 @@ function ProductActionsTab() {
       <Segmented
         value={actionSource}
         onChange={(value) => {
-          setActionSource(/** @type {'ticket' | 'post_use'} */ (value))
+          setActionSource(/** @type {'ticket' | 'post_use' | 'api_patrol'} */ (value))
           setPage(1)
         }}
         options={[
           { label: '投诉/咨询', value: 'ticket' },
           { label: '用后即评', value: 'post_use' },
+          { label: 'API巡检', value: 'api_patrol' },
         ]}
       />
 

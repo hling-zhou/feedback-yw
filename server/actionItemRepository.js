@@ -41,8 +41,8 @@ import { buildProblemCentricView } from '../src/domain/actionProblemScope.js'
  * @property {string} [productKeys] - 逗号分隔多选
  * @property {ActionItemStatus} [status]
  * @property {string} [statuses] - 逗号分隔多选
- * @property {'ticket' | 'post_use' | 'observation'} [source] - 举措来源过滤（单值，兼容旧调用）
- * @property {('ticket' | 'post_use' | 'observation')[]} [sources] - 举措来源过滤（多值合并视图，优先于 source）
+ * @property {'ticket' | 'post_use' | 'observation' | 'api_patrol'} [source] - 举措来源过滤（单值，兼容旧调用）
+ * @property {('ticket' | 'post_use' | 'observation' | 'api_patrol')[]} [sources] - 举措来源过滤（多值合并视图，优先于 source）
  * @property {string} [ticketId] - 关联工单号
  * @property {string} [linkedDataSources] - 逗号分隔多选
  * @property {string} [problemType] - 问题类型（快照/首单回退）
@@ -79,7 +79,7 @@ function actionItemIndexFields(item) {
     productKey: item.productKey?.trim() || '',
     productName: item.productName?.trim() || '',
     status: item.status,
-    source: item.source === 'post_use' || item.source === 'observation' ? item.source : 'ticket',
+    source: item.source === 'post_use' || item.source === 'observation' || item.source === 'api_patrol' ? item.source : 'ticket',
     firstProposedAt: item.firstProposedAt?.trim() || '',
     scheduleAt: item.scheduleAt?.trim() || '',
     warningLevel: item.warningLevel || 'none',
@@ -222,12 +222,12 @@ function getFilteredActionItems(query = {}) {
   }
   if (query.sources?.length) {
     // 多值来源过滤（如 投诉/咨询档 = ticket+observation 合并视图）
-    const valid = query.sources.filter((v) => v === 'ticket' || v === 'post_use' || v === 'observation')
+    const valid = query.sources.filter((v) => v === 'ticket' || v === 'post_use' || v === 'observation' || v === 'api_patrol')
     if (valid.length) {
       clauses.push(`source IN (${valid.map(() => '?').join(',')})`)
       params.push(...valid)
     }
-  } else if (query.source === 'ticket' || query.source === 'post_use' || query.source === 'observation') {
+  } else if (query.source === 'ticket' || query.source === 'post_use' || query.source === 'observation' || query.source === 'api_patrol') {
     clauses.push('source = ?')
     params.push(query.source)
   }

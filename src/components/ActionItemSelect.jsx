@@ -73,7 +73,7 @@ function renderActionItemOption(item) {
  * @param {Object} props
  * @param {string | undefined} props.value - 当前 actionId
  * @param {string | undefined} [props.productKey] - 工单所属产品，作为产品级联默认选中
- * @param {'ticket' | 'post_use'} [props.source] - 举措来源过滤（ticket=投诉/咨询，post_use=用后即评）
+ * @param {'ticket' | 'post_use' | 'api_patrol'} [props.source] - 举措来源过滤（ticket=投诉/咨询，post_use=用后即评，api_patrol=API巡检）
  * @param {(item: ActionItem) => void} props.onSelect
  * @param {() => void} [props.onClear]
  * @param {boolean} [props.disabled]

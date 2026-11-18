@@ -230,7 +230,7 @@ function RuleEditModal({ initial, saving, isNew, onCancel, onOk }) {
     Array.isArray(initial.anyOf) ? /** @type {string[]} */ (initial.anyOf).join(',') : '',
   )
   const L1_OPTIONS = [
-    '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类',
+    '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '权限/授权不足', '诊断能力缺口', '其他/未归类',
   ]
   const isFallback = !!initial.isFallback
   return (

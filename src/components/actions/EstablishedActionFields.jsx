@@ -14,7 +14,7 @@ import { getActionItemDisplayScheduleAt } from '../../domain/requirementTicketPr
  * @param {Object} props
  * @param {string} [props.productKey]
  * @param {string} [props.actionId]
- * @param {'ticket' | 'post_use'} [props.source]
+ * @param {'ticket' | 'post_use' | 'api_patrol'} [props.source]
  * @param {string} [props.establishedAction]
  * @param {string} [props.establishedActionDetail]
  * @param {string} [props.actionSchedule]
