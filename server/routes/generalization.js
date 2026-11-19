@@ -483,6 +483,30 @@ export function registerGeneralizationRoutes(app) {
 
       // 同一 observation_match 任务（TASKS G2-4 口径：不注册新 mode），generalizationOnly 跳过留观段
       ;(async () => {
+        const { appendTaskHistory, buildTaskHistoryMeta, releaseBackgroundTask } = await import(
+          '../backgroundTaskLock.js'
+        )
+        const writeHistory = (/** @type {'success' | 'failed' | 'cancelled'} */ status, extra = {}) => {
+          try {
+            appendTaskHistory({
+              id: taskId,
+              type: 'retag',
+              source: '举一反三识别',
+              scope: body.generalizationOnly === true ? '举一反三' : undefined,
+              startedAt: acquiredLock?.startedAt || new Date().toISOString(),
+              endedAt: new Date().toISOString(),
+              status,
+              username,
+              ...buildTaskHistoryMeta({
+                dataMonth: body.importMonth,
+                ...buildTaskHistoryMeta(acquiredLock?.meta),
+              }),
+              ...extra,
+            })
+          } catch (err) {
+            console.warn('[generalization scan] 写入任务历史失败:', err)
+          }
+        }
         try {
           const { runEnrichment } = await import('../enrichRunner.js')
           const result = await runEnrichment({
@@ -509,6 +533,10 @@ export function registerGeneralizationRoutes(app) {
             warnings: result.warnings || [],
             cancelled: stats.cancelled === true,
           })
+          writeHistory(
+            stats.cancelled === true ? 'cancelled' : 'success',
+            { summary: { total: stats.total ?? body.recordIds?.length ?? 0, stats } },
+          )
         } catch (err) {
           console.error('[generalization scan] 执行失败:', err)
           const { storageRepository: repo } = await import('../storageRepository.js')
@@ -517,8 +545,10 @@ export function registerGeneralizationRoutes(app) {
             finishedAt: new Date().toISOString(),
             error: err instanceof Error ? err.message : String(err),
           })
+          writeHistory('failed', { error: err instanceof Error ? err.message : String(err) })
         } finally {
           stopHeartbeat?.()
+          try { releaseBackgroundTask(taskId, userId) } catch { /* 任务可能已被取消释放 */ }
         }
       })()
 

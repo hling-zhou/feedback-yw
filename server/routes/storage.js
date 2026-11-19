@@ -38,6 +38,7 @@ import { loadManagedTaxonomy } from '../../src/lib/tagLibrary/taxonomyManagedSto
 import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
 import { resolveSettingsForLlm } from '../../src/lib/llmClient.js'
 import { isPostUseRatingLibraryRecord } from '../../src/domain/postUseRatingImport.js'
+import { backgroundTaskTypeLabel } from '../../src/domain/backgroundTaskLock.js'
 import {
   enqueueInsightRebuild,
   getInsightRebuildJob,
@@ -45,6 +46,7 @@ import {
 } from '../insightRebuildJob.js'
 import {
   acquireBackgroundTaskLock,
+  getBackgroundTask,
   startBackgroundTaskHeartbeat,
   isTaskCancelled,
   listBackgroundTasks,
@@ -235,10 +237,39 @@ export function registerStorageRoutes(app) {
     }
     try {
       const taskId = request.query?.taskId || request.body?.taskId
+      // 客户端阶段任务（用后即评导入等）随释放写历史：释放前拷锁快照，
+      // meta.finished（{ status, source, summary?, error? }）由前端收尾时 touch 进锁。
+      // 无 finished 的释放（analysis/customer_restore 等既有路径）维持原行为不写历史；
+      // 取消路径已有 cancelled 历史，此处锁已不在 → 自然不重复写。
+      const finishedTask = taskId ? getBackgroundTask(String(taskId)) : null
+      const finishedMeta = /** @type {{ status?: string, source?: string, summary?: Record<string, unknown>, error?: string } | null | undefined} */ (
+        finishedTask?.meta?.finished
+      )
       const released = releaseBackgroundTaskLock(user.id, { taskId })
       if (!released) {
         reply.code(404).send({ error: '当前无进行中的后台任务' })
         return
+      }
+      if (finishedTask && finishedMeta?.status) {
+        const status = /** @type {'success' | 'failed'} */ (
+          finishedMeta.status === 'failed' ? 'failed' : 'success'
+        )
+        try {
+          appendTaskHistory({
+            id: finishedTask.id,
+            type: finishedTask.type,
+            source: finishedMeta.source || backgroundTaskTypeLabel(finishedTask.type),
+            startedAt: finishedTask.startedAt,
+            endedAt: new Date().toISOString(),
+            status,
+            summary: finishedMeta.summary,
+            error: status === 'failed' ? String(finishedMeta.error || '任务失败') : undefined,
+            username: finishedTask.username,
+            ...buildTaskHistoryMeta(finishedTask.meta),
+          })
+        } catch (err) {
+          console.warn('[background-task] 写入客户端任务历史失败:', err)
+        }
       }
       logAuditFromRequest(request, 'storage.background_task_release', {})
       return { ok: true }

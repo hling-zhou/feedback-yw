@@ -1,4 +1,10 @@
-import { acquireBackgroundTaskLock, startBackgroundTaskHeartbeat } from './backgroundTaskLock.js'
+import {
+  acquireBackgroundTaskLock,
+  appendTaskHistory,
+  buildTaskHistoryMeta,
+  releaseBackgroundTask,
+  startBackgroundTaskHeartbeat,
+} from './backgroundTaskLock.js'
 
 /**
  * 导入完成后的留观自动识别自动触发（O3，DESIGN §4.3）。
@@ -43,6 +49,23 @@ export async function triggerObservationScanForRecords({ records, userId, userna
   const stopHeartbeat = startBackgroundTaskHeartbeat(taskId)
 
   ;(async () => {
+    const writeHistory = (/** @type {'success' | 'failed' | 'cancelled'} */ status, extra = {}) => {
+      try {
+        appendTaskHistory({
+          id: taskId,
+          type: 'retag',
+          source: '留观自动识别（导入触发）',
+          startedAt: lock.startedAt,
+          endedAt: new Date().toISOString(),
+          status,
+          username,
+          ...buildTaskHistoryMeta(lock.meta),
+          ...extra,
+        })
+      } catch (err) {
+        console.warn('[observation auto-trigger] 写入任务历史失败:', err)
+      }
+    }
     try {
       const { runEnrichment } = await import('./enrichRunner.js')
       const result = await runEnrichment({
@@ -55,6 +78,7 @@ export async function triggerObservationScanForRecords({ records, userId, userna
         username,
         retagOptions: {},
       })
+      const stats = result.stats || {}
       const { storageRepository } = await import('./storageRepository.js')
       storageRepository.putMeta(OBSERVATION_SCAN_RESULT_META_KEY, {
         taskId,
@@ -64,6 +88,10 @@ export async function triggerObservationScanForRecords({ records, userId, userna
         warnings: result.warnings || [],
         cancelled: result.stats?.cancelled === true,
       })
+      writeHistory(
+        stats.cancelled === true ? 'cancelled' : 'success',
+        { summary: { total: stats.total ?? recordIds.length, stats } },
+      )
     } catch (err) {
       console.error('[observation auto-trigger] 执行失败:', err)
       const { storageRepository } = await import('./storageRepository.js')
@@ -73,8 +101,10 @@ export async function triggerObservationScanForRecords({ records, userId, userna
         trigger: 'import',
         error: err instanceof Error ? err.message : String(err),
       })
+      writeHistory('failed', { error: err instanceof Error ? err.message : String(err) })
     } finally {
       stopHeartbeat?.()
+      try { releaseBackgroundTask(taskId, userId) } catch { /* 任务可能已被取消释放 */ }
     }
   })()
 

@@ -1166,7 +1166,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     })
   }, [])
 
-  const releaseSharedBackgroundTask = useCallback(async (type) => {
+  const releaseSharedBackgroundTask = useCallback(async (type, options = {}) => {
     const heldClient = (task) =>
       task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id)
     const clientTask = tasksRef.current.find((task) => heldClient(task) && (!type || task.type === type))
@@ -1174,6 +1174,18 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     const remaining = tasksRef.current.some((task) => heldClient(task) && task.id !== clientTask?.id)
     if (!remaining) ownedBackgroundTaskRef.current = false
     if (!isApiStorageAdapter(adapter) || !clientTask) return
+    // 客户端任务终态（{ status, source, summary?, error? }）：touch 进锁 meta 后释放，
+    // 服务端 DELETE 路由按 meta.finished 写打标历史（用后即评导入三类，11-19 拍板）。
+    const finish = /** @type {{ status?: 'success' | 'failed', source?: string, summary?: Record<string, unknown>, error?: string } | undefined} */ (
+      options.finish
+    )
+    if (finish?.status) {
+      try {
+        await touchBackgroundTask({ taskId: clientTask.id, meta: { finished: finish } })
+      } catch (err) {
+        console.warn('[storage] 写入客户端任务终态失败', err)
+      }
+    }
     try {
       await releaseBackgroundTask(clientTask.id)
     } catch (err) {
@@ -2071,35 +2083,56 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
     [touchSharedBackgroundTask, user?.id],
   )
 
-  const endImportSession = useCallback(() => {
-    if (importDepthRef.current === 0 && importSessionRef.current.active) {
-      importDepthRef.current = 1
-    }
-    importDepthRef.current = Math.max(0, importDepthRef.current - 1)
-    if (importDepthRef.current > 0) return
-    importLockRef.current = false
-    const next = {
-      active: false,
-      progress: '',
-      dataMonth: undefined,
-      dataSourceType: undefined,
-      batchName: undefined,
-      kind: undefined,
-    }
-    importSessionRef.current = next
-    setImportSession(next)
-    void releaseSharedBackgroundTask('import').then(() => {
-      if (isApiStorageAdapter(adapter)) void syncRecordChangesFromServer()
-    })
-  }, [adapter, releaseSharedBackgroundTask, syncRecordChangesFromServer])
+  /**
+   * 结束导入会话。带 finish（{ status, source, summary?, error? }）时随锁释放写打标历史
+   * （客户端任务历史写入点，11-19 拍板：用后即评导入三类正常完成/失败均留痕）。
+   * @param {{ status?: 'success' | 'failed', source?: string, summary?: Record<string, unknown>, error?: string }} [finish]
+   */
+  const endImportSession = useCallback(
+    (finish) => {
+      if (importDepthRef.current === 0 && importSessionRef.current.active) {
+        importDepthRef.current = 1
+      }
+      importDepthRef.current = Math.max(0, importDepthRef.current - 1)
+      if (importDepthRef.current > 0) return
+      importLockRef.current = false
+      const next = {
+        active: false,
+        progress: '',
+        dataMonth: undefined,
+        dataSourceType: undefined,
+        batchName: undefined,
+        kind: undefined,
+      }
+      importSessionRef.current = next
+      setImportSession(next)
+      void releaseSharedBackgroundTask('import', { finish }).then(() => {
+        if (isApiStorageAdapter(adapter)) void syncRecordChangesFromServer()
+      })
+    },
+    [adapter, releaseSharedBackgroundTask, syncRecordChangesFromServer],
+  )
 
   /**
-   * 导入全流程成功结束（可在离开导入页后触发全局 Toast）
+   * 导入全流程成功结束（可在离开导入页后触发全局 Toast）。
+   * 客户端阶段任务（用后即评导入三类）随释放写 success 历史（11-19 拍板）；
+   * 工单导入的历史由服务端 enrich 路径写，此处 finish 仅在锁为客户端阶段时生效，不冲突。
    * @param {import('../lib/importSession.js').ImportFinishedPayload} payload
    */
   const notifyImportFinished = useCallback(
     (payload) => {
-      endImportSession()
+      const source = String(payload?.batchName || '').trim() || '数据导入'
+      const summaryParts = []
+      if (payload?.added != null) summaryParts.push(`新增 ${payload.added}`)
+      if (payload?.updated != null) summaryParts.push(`更新 ${payload.updated}`)
+      if (payload?.skippedDuplicates != null) summaryParts.push(`重复跳过 ${payload.skippedDuplicates}`)
+      if (payload?.failures != null) summaryParts.push(`失败 ${payload.failures}`)
+      if (payload?.skippedProducts != null) summaryParts.push(`范围外跳过 ${payload.skippedProducts}`)
+      endImportSession({
+        status: 'success',
+        source,
+        summary: { detail: summaryParts.join(' · ') || '完成' },
+      })
       emit('ImportFinished', payload)
     },
     [endImportSession],

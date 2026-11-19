@@ -9,24 +9,6 @@ import { backgroundTaskTypeLabel, formatTaskTargetLine } from '../domain/backgro
 import { paginationShowTotal } from '../lib/paginationTotal.js'
 
 /**
- * 用后即评导入（渠道包/省代表回访/满意度回访）不涉及打标，不进打标任务抽屉。
- * 这些任务由前端 prepareSharedBackgroundTask('import', { meta: { importKind } }) 创建，
- * 完成后走单独流程，不写打标历史；显示在抽屉里只会「出现又消失」，造成困惑。
- * 工单导入（complaint_ticket/consultation_ticket）无 importKind，走 /records/enrich 服务端路径，保留。
- */
-const POST_USE_IMPORT_KINDS = new Set(['postUseChannel', 'customerVisit', 'followUp'])
-
-/**
- * 是否为用后即评导入任务（应从打标任务抽屉隐藏）。
- * @param {{ type?: string; meta?: Record<string, unknown> | null } | null | undefined} task
- */
-function isPostUseImportTask(task) {
-  return Boolean(
-    task?.type === 'import' && POST_USE_IMPORT_KINDS.has(/** @type {string} */ (task.meta?.importKind)),
-  )
-}
-
-/**
  * @typedef {Object} TaskHistoryEntry
  * @property {string} id
  * @property {string} type
@@ -146,7 +128,6 @@ export default function TaskHistoryPanel({ open, onClose }) {
   const dataSource = []
   if (sharedBackgroundTasks?.length) {
     for (const activeLock of sharedBackgroundTasks) {
-      if (isPostUseImportTask(activeLock)) continue
       dataSource.push({
         key: `active-${activeLock.id}`,
         id: activeLock.id,

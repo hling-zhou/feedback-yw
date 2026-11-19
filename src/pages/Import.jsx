@@ -881,6 +881,7 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     setError('')
     let importFinishedNotified = false
+    let importFailedError = ''
     try {
       if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
@@ -966,12 +967,19 @@ export default function Import({ embedded = false }) {
         setStep(4)
       }
     } catch (e) {
+      importFailedError = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
       if (importPageMountedRef.current) {
-        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+        setError(importFailedError)
       }
     } finally {
       if (!importFinishedNotified) {
-        endImportSession()
+        // 客户端任务历史（11-19 拍板）：失败终态随锁释放写打标历史；
+        // 锁未建立就失败（session 前置校验 throw）时 endImportSession 无锁可释，安全。
+        endImportSession({
+          status: 'failed',
+          source: POST_USE_CHANNEL_IMPORT_SESSION_LABEL,
+          error: importFailedError || '导入失败',
+        })
       }
       setLoading(false)
       setImportProgress('')
@@ -1048,6 +1056,8 @@ export default function Import({ embedded = false }) {
     setError('')
     let sessionStarted = false
     let shouldSyncAfterImport = false
+    let sessionEndNotified = false
+    let importFailedError = ''
     try {
       if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
@@ -1065,7 +1075,11 @@ export default function Import({ embedded = false }) {
 
       await prepareSharedBackgroundTask('import', {
         progress: '正在导入满意度回访…',
-        meta: { importKind: 'followUp', importMonth: normalizeImportMonth(importMonth) },
+        meta: {
+          importKind: 'followUp',
+          importMonth: normalizeImportMonth(importMonth),
+          dataSourceType: 'post_use_rating',
+        },
       })
       beginImportSession({
         batchName: FOLLOW_UP_IMPORT_SESSION_LABEL,
@@ -1095,10 +1109,29 @@ export default function Import({ embedded = false }) {
       if (summary.updatedRecordCount === 0) {
         setError('没有工单被更新，请检查未匹配清单')
       }
+      // 客户端任务历史（11-19 拍板）：成功终态随锁释放写打标历史
+      endImportSession({
+        status: 'success',
+        source: FOLLOW_UP_IMPORT_SESSION_LABEL,
+        summary: {
+          detail: [
+            `应用行 ${summary.appliedRowCount ?? 0}`,
+            `更新工单 ${summary.updatedRecordCount ?? 0}`,
+          ].join(' · '),
+        },
+      })
+      sessionEndNotified = true
     } catch (e) {
-      setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+      importFailedError = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
+      setError(importFailedError)
     } finally {
-      if (sessionStarted) endImportSession()
+      if (sessionStarted && !sessionEndNotified) {
+        endImportSession({
+          status: 'failed',
+          source: FOLLOW_UP_IMPORT_SESSION_LABEL,
+          error: importFailedError || '导入失败',
+        })
+      }
       if (shouldSyncAfterImport) {
         await syncSharedDataFromServer({ notify: false })
       }
@@ -1140,6 +1173,7 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     setError('')
     let importFinishedNotified = false
+    let importFailedError = ''
     try {
       if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
@@ -1205,12 +1239,18 @@ export default function Import({ embedded = false }) {
         setStep(4)
       }
     } catch (e) {
+      importFailedError = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
       if (importPageMountedRef.current) {
-        setError(readBackgroundTaskErrorMessage(e) || e.message || '导入失败')
+        setError(importFailedError)
       }
     } finally {
       if (!importFinishedNotified) {
-        endImportSession()
+        // 客户端任务历史（11-19 拍板）：失败终态随锁释放写打标历史
+        endImportSession({
+          status: 'failed',
+          source: CUSTOMER_VISIT_IMPORT_SESSION_LABEL,
+          error: importFailedError || '导入失败',
+        })
       }
       setLoading(false)
       setImportProgress('')
@@ -1243,6 +1283,7 @@ export default function Import({ embedded = false }) {
     setLoading(true)
     setError('')
     let importFinishedNotified = false
+    let importFailedError = ''
     try {
       if (importBlocked) {
         throw new Error(importBlockedTip || '当前无法导入')
@@ -1499,6 +1540,7 @@ export default function Import({ embedded = false }) {
       }
     } catch (e) {
       if (e?.code === IMPORT_CANCELLED_CODE) {
+        // 取消：服务端取消路径已写 cancelled 历史，此处不写 failed（防一天两条）
         if (importPageMountedRef.current) {
           setError('已取消导入')
         } else {
@@ -1518,17 +1560,27 @@ export default function Import({ embedded = false }) {
           setError('已取消：相同文件近期已完成分析')
         }
       } else {
-        const errMsg = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
+        importFailedError = readBackgroundTaskErrorMessage(e) || e.message || '导入失败'
         // 离开页面后通过全局 Toast 通知错误
         if (importPageMountedRef.current) {
-          setError(errMsg)
+          setError(importFailedError)
         } else {
-          message.error(`导入失败：${errMsg}`, 10)
+          message.error(`导入失败：${importFailedError}`, 10)
         }
       }
     } finally {
       if (!importFinishedNotified) {
-        endImportSession()
+        // 客户端任务历史（11-19 拍板）：真失败写 failed 历史；取消/重试分支 finish 为空，不写。
+        // batchMeta 在 try 内声明，catch 内不可达——source 用导入来源默认批名兜底。
+        endImportSession(
+          importFailedError
+            ? {
+                status: 'failed',
+                source: defaultBatchName(dataSourceType, importMonth),
+                error: importFailedError,
+              }
+            : undefined,
+        )
       }
       if (importPageMountedRef.current) {
         setLoading(false)

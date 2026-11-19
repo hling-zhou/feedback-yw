@@ -104,7 +104,8 @@ export function formatBackgroundTaskBlockedTip(lock) {
 }
 
 /**
- * 任务自己的数据月份。优先 dataMonth，否则从周期起日或周期 id 取 YYYY-MM。
+ * 任务自己的数据月份。优先 dataMonth，否则从周期起日或周期 id 取 YYYY-MM；
+ * 用后即评导入（importKind）锁的月份字段是 importMonth，作最终回退。
  * @param {Record<string, unknown> | null | undefined} meta
  */
 export function backgroundTaskMonth(meta) {
@@ -114,6 +115,8 @@ export function backgroundTaskMonth(meta) {
   if (/^\d{4}-\d{2}/.test(start)) return start.slice(0, 7)
   const periodId = String(meta?.periodId || '').trim()
   if (/^\d{4}-\d{2}$/.test(periodId)) return periodId
+  const importMonth = String(meta?.importMonth || '').trim()
+  if (/^\d{4}-\d{2}/.test(importMonth)) return importMonth.slice(0, 7)
   return ''
 }
 

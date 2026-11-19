@@ -212,11 +212,17 @@ export function releaseBackgroundTaskLock(userId, options = {}) {
 
 /**
  * 从任务锁 meta 白名单提取任务对象字段（写入 history 条目）。
+ * 客户端阶段任务（用后即评导入等）的月份字段是 importMonth，映射为 dataMonth 入史。
  * @param {Record<string, unknown> | null | undefined} meta
  */
 export function buildTaskHistoryMeta(meta) {
   if (!meta) return {}
   const out = {}
+  const importMonth = typeof meta.importMonth === 'string' ? meta.importMonth.trim() : ''
+  if (importMonth && !out.dataMonth) {
+    const value = /** @type {string} */ (meta.dataMonth)
+    if (!(typeof value === 'string' && value.trim())) out.dataMonth = importMonth
+  }
   for (const key of ['dataMonth', 'dataSourceType', 'periodId', 'periodStart']) {
     const value = meta[key]
     if (typeof value === 'string' && value.trim()) out[key] = value
