@@ -7,6 +7,7 @@ import PostUseMultiActions from './PostUseMultiActions.jsx'
 import PostUseReportIssueLinker from '../feedbacks/PostUseReportIssueLinker.jsx'
 import PostUseAttachments from '../feedbacks/PostUseAttachments.jsx'
 import FieldEditorMeta from '../feedbacks/FieldEditorMeta.jsx'
+import PostUseOptimizationSection from '../feedbacks/PostUseOptimizationSection.jsx'
 
 /**
  * @param {object} props
@@ -18,6 +19,7 @@ import FieldEditorMeta from '../feedbacks/FieldEditorMeta.jsx'
  * @param {boolean} props.saving
  * @param {(mode: 'submit' | 'draft') => void} props.onSave 2026-11-05：状态自动流转——提交→已处理 / 暂存→处理中；提交校验回溯结果必填
  * @param {(item: Record<string, any>) => void} [props.onActionOwnerSaved]
+ * @param {() => void} [props.onPendingCountChanged] 2026-11-19：单条生成优化建议后刷新宿主待生成计数
  */
 export default function PostUseJiraDrawer({
   item,
@@ -28,6 +30,7 @@ export default function PostUseJiraDrawer({
   saving,
   onSave,
   onActionOwnerSaved,
+  onPendingCountChanged,
 }) {
   const [assignees, setAssignees] = useState([])
 
@@ -95,6 +98,16 @@ export default function PostUseJiraDrawer({
               )}
             </Descriptions>
           </div>
+          {/* 2026-11-19 优化建议（自动生成）：基础信息下方、经办人/回溯结果表单之前（共享组件两抽屉同源） */}
+          <PostUseOptimizationSection
+            entity={item}
+            entityType="trace"
+            open={open}
+            onUpdated={(next) => {
+              onActionOwnerSaved?.(next)
+              onPendingCountChanged?.()
+            }}
+          />
           <Form form={form} layout="vertical" disabled={!canEdit}>
             <Form.Item name="assigneeId" label="经办人">
               <Select

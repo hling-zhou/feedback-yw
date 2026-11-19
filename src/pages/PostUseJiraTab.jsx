@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -12,7 +12,8 @@ import {
   Typography,
   message,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, ReloadOutlined, ThunderboltOutlined, UploadOutlined } from '@ant-design/icons'
+import { apiFetch } from '../lib/apiClient.js'
 import {
   deletePostUseJiraItem,
   deletePostUseJiraItems,
@@ -53,8 +54,10 @@ const STATUS_TAG_COLOR = /** @type {Record<string, string>} */ ({
  * @param {object} props
  * @param {string[]} [props.months] 当前周期覆盖的月份（YYYY-MM），空数组 = 不限周期
  * @param {string} [props.periodLabel] 周期标签（展示用）
+ * @param {() => Promise<unknown>} [props.onStartOptimization] 宿主注入的批量生成入口
+ *        （2026-11-19 优化建议自动生成：context startPostUseOptimizationEnrichment('trace', …)）
  */
-export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
+export default function PostUseJiraTab({ months = [], periodLabel = '', onStartOptimization }) {
   const { can, user } = useAuth()
   const canEdit = can('editRecord')
   const [items, setItems] = useState([])
@@ -103,6 +106,40 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
       .then((res) => setAssignees(res?.users || []))
       .catch(() => {})
   }, [])
+
+  // 2026-11-19 优化建议（自动生成）：trace 待生成计数（与按钮同源；计数失败不阻塞）
+  const [traceOptimizationPending, setTraceOptimizationPending] = useState({ pending: 0, total: 0 })
+  const [optimizationBusy, setOptimizationBusy] = useState(false)
+
+  const refreshTraceOptimizationPending = useCallback(async () => {
+    try {
+      const qs = months.length ? `?importMonth=${encodeURIComponent(months.join('、'))}` : ''
+      const res = await apiFetch(`/api/post-use-optimization/pending-count${qs}`)
+      if (res && typeof res === 'object') {
+        setTraceOptimizationPending({ pending: res.tracePending ?? 0, total: res.traceTotal ?? 0 })
+      }
+    } catch {
+      /* 计数失败不阻塞视图 */
+    }
+  }, [months])
+
+  useEffect(() => {
+    void refreshTraceOptimizationPending()
+  }, [refreshTraceOptimizationPending, items.length])
+
+  const runTraceOptimization = useCallback(async () => {
+    if (!onStartOptimization || optimizationBusy) return
+    setOptimizationBusy(true)
+    try {
+      await onStartOptimization()
+      // 生成完成刷新列表（行内建议/状态）+ 待生成计数（items.length 不变时 effect 不会重跑，须显式刷新）
+      await Promise.all([load(), refreshTraceOptimizationPending()])
+    } catch (error) {
+      message.error(error?.message || '生成优化建议失败')
+    } finally {
+      setOptimizationBusy(false)
+    }
+  }, [onStartOptimization, optimizationBusy, refreshTraceOptimizationPending])
 
   const assigneeMap = useMemo(() => {
     /** @type {Map<string, string>} */
@@ -347,6 +384,27 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
             <Button icon={<ReloadOutlined />} onClick={() => void load()}>
               刷新
             </Button>
+            {/* 2026-11-19 优化建议（自动生成）：批量入口（retag 权限由宿主注入函数守卫） */}
+            {onStartOptimization ? (
+              <Tooltip
+                title={
+                  traceOptimizationPending.pending
+                    ? `待生成 ${traceOptimizationPending.pending} 条（共 ${traceOptimizationPending.total} 条溯源）`
+                    : '当前没有待生成的溯源（已生成或无语料）'
+                }
+              >
+                <span className="inline-block">
+                  <Button
+                    icon={<ThunderboltOutlined />}
+                    loading={optimizationBusy}
+                    disabled={!traceOptimizationPending.pending}
+                    onClick={() => void runTraceOptimization()}
+                  >
+                    生成优化建议{traceOptimizationPending.pending ? `（${traceOptimizationPending.pending}）` : ''}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
             <Button
               icon={<UploadOutlined />}
               onClick={() => void handleExport()}
@@ -434,6 +492,7 @@ export default function PostUseJiraTab({ months = [], periodLabel = '' }) {
         saving={saving}
         onSave={(mode) => void saveEdit(mode)}
         onActionOwnerSaved={handleActionOwnerSaved}
+        onPendingCountChanged={() => void refreshTraceOptimizationPending()}
       />
       <Modal
         title="临时导入产品部溯源"

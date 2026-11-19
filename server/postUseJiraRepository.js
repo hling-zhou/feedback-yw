@@ -97,6 +97,10 @@ export function normalizeJiraItem(raw) {
     actionIds,
     actionId: actionIds[0] || '',
     actionLinksEditMeta: raw?.actionLinksEditMeta || null,
+    // 2026-11-19 优化建议（自动生成）：payload 内嵌三字段（DESIGN-用后即评抽屉优化建议-20261119）
+    optimizationProduct: String(raw?.optimizationProduct || '').trim(),
+    optimizationService: String(raw?.optimizationService || '').trim(),
+    optimizationSource: String(raw?.optimizationSource || '').trim(),
     createdAt: String(raw?.createdAt || '') || nowIso(),
     updatedAt: String(raw?.updatedAt || '') || nowIso(),
   }
@@ -519,6 +523,34 @@ export const postUseJiraRepository = {
     })()
     if (changed) bumpDataRevision()
     return item
+  },
+
+  /**
+   * 优化建议（自动生成）re-read merge 写回（2026-11-19，DESIGN-用后即评抽屉优化建议 §5）：
+   * 批量/单条生成完只把 optimizationProduct/Service/Source 三字段 merge 进最新库值，
+   * 禁止整条覆盖（防冲掉在线编辑的回溯结果/经办人）；记录已删则跳过。
+   * @param {string} id
+   * @param {{ optimizationProduct: string, optimizationService: string, optimizationSource: 'rule' | 'llm' }} patch
+   * @returns {import('../src/domain/postUseJira.js').PostUseJiraItem | null} 写回后的最新条目；记录不存在返回 null
+   */
+  mergeOptimizationPatch(id, patch) {
+    const db = getDb()
+    const result = db.transaction(() => {
+      const existing = this.getById(id)
+      if (!existing) return null
+      const next = {
+        ...existing,
+        optimizationProduct: String(patch.optimizationProduct || ''),
+        optimizationService: String(patch.optimizationService || ''),
+        optimizationSource: String(patch.optimizationSource || ''),
+        updatedAt: nowIso(),
+      }
+      db.prepare('UPDATE post_use_jira_items SET updated_at = ?, payload = ? WHERE id = ?')
+        .run(next.updatedAt, stringifyJson(next), id)
+      return next
+    })()
+    if (result) bumpDataRevision()
+    return result
   },
 
   /**

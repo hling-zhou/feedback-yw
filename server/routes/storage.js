@@ -752,7 +752,7 @@ export function registerStorageRoutes(app) {
     },
     async (request, reply) => {
       const body = /** @type {{
-        mode: 'import' | 'bulk_retag' | 'single_retag' | 'post_use_journey' | 'sentiment_retag'
+        mode: 'import' | 'bulk_retag' | 'single_retag' | 'post_use_journey' | 'post_use_optimization' | 'sentiment_retag'
         records?: any[]
         recordIds?: string[]
         rows?: any[]
@@ -767,12 +767,42 @@ export function registerStorageRoutes(app) {
 
       const mode = body.mode || 'import'
       const writePermissions =
-        mode === 'post_use_journey' || mode === 'sentiment_retag' ? ['retag'] : ['import', 'editRecord']
+        mode === 'post_use_journey' || mode === 'post_use_optimization' || mode === 'sentiment_retag'
+          ? ['retag']
+          : ['import', 'editRecord']
       if (!assertWritePermission(request, reply, writePermissions)) return
       const records = Array.isArray(body.records) ? body.records : null
       const recordIds = Array.isArray(body.recordIds) ? body.recordIds : null
       const rows = Array.isArray(body.rows) ? body.rows : null
-      if (!records?.length && !recordIds?.length && !rows?.length) {
+
+      // 2026-11-19 优化建议（自动生成）：visit/trace 实体不在 records 表，
+      // 由路由按实体存储拉取后传给 runner（runner 内 re-read merge 写回）。
+      let optimizationEntities = null
+      if (mode === 'post_use_optimization') {
+        const entityType = /** @type {any} */ (body.retagOptions)?.entityType === 'trace' ? 'trace' : 'visit'
+        const ids = new Set((recordIds || []).map((id) => String(id || '')))
+        const months = String(body.dataMonth || '')
+          .split(/[、,，;；|]/)
+          .map((m) => m.trim())
+          .filter(Boolean)
+        if (entityType === 'trace') {
+          const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+          const list = postUseJiraRepository.list({ limit: 0 }).items
+          optimizationEntities = (ids.size ? list.filter((item) => ids.has(item.id)) : list)
+            .filter((item) => !months.length || String(item.importMonth || '').split('、').some((m) => months.includes(m)))
+        } else {
+          const { META_KEY_POST_USE_VISITS } = await import('../../src/lib/postUseRating/visitRecords.js')
+          const raw = storageRepository.getMeta(META_KEY_POST_USE_VISITS)
+          const list = Array.isArray(raw?.records) ? raw.records : []
+          optimizationEntities = (ids.size ? list.filter((item) => ids.has(String(item?.id || ''))) : list)
+            .filter((item) => !months.length || months.includes(String(item?.importMonth || item?.visitMonth || '')))
+        }
+        if (!optimizationEntities.length) {
+          return reply.send({ ok: true, message: '无记录需要生成优化建议' })
+        }
+      }
+
+      if (!records?.length && !recordIds?.length && !rows?.length && !optimizationEntities?.length) {
         return reply.send({ ok: true, message: '无记录需要增强' })
       }
 
@@ -786,7 +816,9 @@ export function registerStorageRoutes(app) {
           ? '数据导入'
           : mode === 'post_use_journey'
             ? '补全用户旅程'
-            : mode === 'sentiment_retag'
+            : mode === 'post_use_optimization'
+              ? '生成优化建议'
+              : mode === 'sentiment_retag'
               ? '只重打用户情绪'
               : mode === 'single_retag'
                 ? '单条重新打标'
@@ -800,11 +832,13 @@ export function registerStorageRoutes(app) {
           progress:
             mode === 'post_use_journey'
               ? '正在补全用户旅程…'
-              : mode === 'sentiment_retag'
-                ? '正在重打用户情绪…'
-                : mode === 'import'
-                  ? '正在准备分析…'
-                  : '正在准备…',
+              : mode === 'post_use_optimization'
+                ? '正在生成优化建议…'
+                : mode === 'sentiment_retag'
+                  ? '正在重打用户情绪…'
+                  : mode === 'import'
+                    ? '正在准备分析…'
+                    : '正在准备…',
           meta: {
             phase: 'server',
             source: sourceLabel,
@@ -814,7 +848,7 @@ export function registerStorageRoutes(app) {
             periodStart: period.startDate,
             periodEnd: period.endDate,
             scope: body.retagOptions?.scope,
-            total: rows?.length || recordIds?.length || records?.length,
+            total: rows?.length || recordIds?.length || records?.length || optimizationEntities?.length,
           },
         })
         acquiredLock = lock
@@ -835,7 +869,8 @@ export function registerStorageRoutes(app) {
           const result = await runEnrichment({
             mode,
             taskId,
-            records: records || undefined,
+            // post_use_optimization：实体已由路由从各实体存储拉取（visit meta / trace jira 表）
+            records: (mode === 'post_use_optimization' ? optimizationEntities : records) || undefined,
             recordIds: recordIds || undefined,
             rows: rows || undefined,
             dataSourceType: body.dataSourceType,

@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import PostUseReportIssueLinker from './PostUseReportIssueLinker.jsx'
 import PostUseAttachments from './PostUseAttachments.jsx'
 import FieldEditorMeta from './FieldEditorMeta.jsx'
+import PostUseOptimizationSection from './PostUseOptimizationSection.jsx'
 
 /** @typedef {import('../../lib/postUseRating/visitRecords.js').PostUseVisitRecord} PostUseVisitRecord */
 
@@ -23,8 +24,9 @@ import FieldEditorMeta from './FieldEditorMeta.jsx'
  * @param {boolean} props.open
  * @param {() => void} props.onClose
  * @param {(record: PostUseVisitRecord) => void} props.onSaved
+ * @param {() => void} [props.onPendingCountChanged] 2026-11-19：单条生成优化建议后刷新宿主待生成计数
  */
-export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
+export default function PostUseVisitDrawer({ record, open, onClose, onSaved, onPendingCountChanged }) {
   const { can } = useAuth()
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
@@ -178,6 +180,15 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved }) {
               <Descriptions.Item label="更新时间">{record.updatedAt || '—'}</Descriptions.Item>
             </Descriptions>
           </div>
+
+          {/* 2026-11-19 优化建议（自动生成）：基础信息下方、经办人/评估表单之前（共享组件两抽屉同源） */}
+          <PostUseOptimizationSection
+            entity={record}
+            entityType="visit"
+            open={open}
+            onUpdated={(next) => onSaved?.(/** @type {PostUseVisitRecord} */ (next))}
+            onPendingCountChanged={onPendingCountChanged}
+          />
 
           {/* 2026-11-05：个人标记勾选移除（visit: 前缀体系下线），评估状态由操作自动流转 */}
 

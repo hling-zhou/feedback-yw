@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Checkbox, Empty, Modal, Popconfirm, Popover, Segmented, Select, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
-import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined, ColumnWidthOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, ReloadOutlined, SettingOutlined, UploadOutlined, UnorderedListOutlined, ColumnWidthOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useInsights } from '../context/InsightsContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useUserTicketReviews } from '../context/UserTicketReviewContext.jsx'
@@ -177,6 +177,7 @@ export default function Feedbacks() {
     productCatalogMeta,
     syncSharedDataFromServer,
     startPostUseJourneyEnrichment,
+    startPostUseOptimizationEnrichment,
     fetchPostUseJourneyPendingCount,
     postUseJourneyPending,
     adapter,
@@ -186,6 +187,9 @@ export default function Feedbacks() {
   const { remoteBannerText, ownedTasks, postUseJourneyBlocked, postUseJourneyBlockedTip } =
     useSharedBackgroundTaskBlock()
   const [journeyBusy, setJourneyBusy] = useState(false)
+  // 2026-11-19 优化建议（自动生成）：省代表回访视图批量生成态 + 待生成计数
+  const [optimizationBusy, setOptimizationBusy] = useState(false)
+  const [visitOptimizationPending, setVisitOptimizationPending] = useState({ pending: 0, total: 0 })
   const [view, setView] = useState('table')
   const [hiddenColumns, setHiddenColumns] = useState(() => new Set())
   const [filters, setFilters] = useState(createEmptyFeedbackFilters)
@@ -402,6 +406,52 @@ export default function Feedbacks() {
       setCustomerVisitLoading(false)
     }
   }, [adapter])
+
+  // 2026-11-19 优化建议（自动生成）：回访视图进入/刷新时拉取待生成计数（与横幅同源）
+  const refreshVisitOptimizationPending = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/post-use-optimization/pending-count')
+      if (res && typeof res === 'object') {
+        setVisitOptimizationPending({ pending: res.visitPending ?? 0, total: res.visitTotal ?? 0 })
+      }
+    } catch {
+      /* 计数失败不阻塞视图 */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isPostUseVisitView) void refreshVisitOptimizationPending()
+  }, [isPostUseVisitView, customerVisitRecords.length, refreshVisitOptimizationPending])
+
+  // 批量生成：只跑本视图已加载的回访记录月份（与服务端计数口径一致的数据面）
+  const runVisitOptimizationEnrichment = useCallback(async () => {
+    if (optimizationBusy) return
+    if (!visitOptimizationPending.pending) {
+      message.info('当前没有待生成优化建议的回访')
+      return
+    }
+    const months = [...new Set(
+      customerVisitRecords
+        .map((r) => String(r?.importMonth || r?.visitMonth || ''))
+        .filter((m) => /^\d{4}-\d{2}$/.test(m)),
+    )].join('、')
+    setOptimizationBusy(true)
+    try {
+      await startPostUseOptimizationEnrichment('visit', { importMonth: months || undefined })
+      await Promise.all([refreshCustomerVisitRecords(), refreshVisitOptimizationPending()])
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '生成优化建议失败')
+    } finally {
+      setOptimizationBusy(false)
+    }
+  }, [
+    optimizationBusy,
+    visitOptimizationPending.pending,
+    customerVisitRecords,
+    startPostUseOptimizationEnrichment,
+    refreshCustomerVisitRecords,
+    refreshVisitOptimizationPending,
+  ])
 
   // 2026-11-10 需求③（常驻，权限对齐产品部回溯 = editRecord）：删除回访记录（单删+批量双模式）
   const handleDeleteVisitRecord = useCallback(async (record) => {
@@ -1475,6 +1525,27 @@ export default function Feedbacks() {
               />
             </div>
             <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+              {/* 2026-11-19 优化建议（自动生成）：批量入口（retag 权限；待生成计数驱动） */}
+              <PermissionGate permission="retag">
+                <Tooltip
+                  title={
+                    visitOptimizationPending.pending
+                      ? `待生成 ${visitOptimizationPending.pending} 条（共 ${visitOptimizationPending.total} 条回访）`
+                      : '当前没有待生成的回访（已生成或无语料）'
+                  }
+                >
+                  <span className="inline-block">
+                    <Button
+                      icon={<ThunderboltOutlined />}
+                      loading={optimizationBusy}
+                      disabled={!visitOptimizationPending.pending}
+                      onClick={() => void runVisitOptimizationEnrichment()}
+                    >
+                      生成优化建议{visitOptimizationPending.pending ? `（${visitOptimizationPending.pending}）` : ''}
+                    </Button>
+                  </span>
+                </Tooltip>
+              </PermissionGate>
               <Button
                 icon={<UploadOutlined />}
                 disabled={!filteredCustomerVisitRecords.length}
@@ -1719,7 +1790,18 @@ export default function Feedbacks() {
             <Spin size="large" description={libraryLoadingTip} />
           </div>
         ) : isPostUseTraceView ? (
-          <PostUseJiraTab months={postUseTraceMonths} periodLabel={activePeriod?.label || ''} />
+          <PostUseJiraTab
+            months={postUseTraceMonths}
+            periodLabel={activePeriod?.label || ''}
+            onStartOptimization={
+              ['admin', 'editor'].includes(user?.role)
+                ? () =>
+                    startPostUseOptimizationEnrichment('trace', {
+                      importMonth: postUseTraceMonths.join('、') || undefined,
+                    })
+                : undefined
+            }
+          />
         ) : isCustomerVisitLane ? (
           <CustomerVisitTable
             rows={customerVisitTableRows}
@@ -1774,7 +1856,13 @@ export default function Feedbacks() {
           setCustomerVisitRecords((prev) =>
             prev.map((row) => (row.id === item.id ? { ...row, ...item } : row)),
           )
+          // 2026-11-19 优化建议单条生成也走 onSaved：同步抽屉数据源，
+          // 否则"生成成功"后抽屉仍显示旧数据（同源判定纪律——列表/抽屉/计数同一实体）
+          setSelectedVisitRecord((prev) =>
+            prev && prev.id === item.id ? { ...prev, ...item } : prev,
+          )
         }}
+        onPendingCountChanged={() => void refreshVisitOptimizationPending()}
       />
 
       {!isCustomerVisitLane ? (

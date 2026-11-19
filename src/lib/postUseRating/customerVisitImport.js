@@ -501,6 +501,14 @@ export async function executeCustomerVisitImport({
       }
       if (manual.has('assigneeName')) item.assigneeName = String(previous.assigneeName || '')
       if (manual.has('remark')) item.remark = String(previous.remark || '')
+      // 2026-11-19 优化建议（自动生成）重导保留（DESIGN-用后即评抽屉优化建议 §8）：
+      // 优化三字段只由生成链路写入（导入表即使带列也不回写，§7），重导按模板列重建
+      // 对象时若不显式保留会把已生成建议静默清掉——对齐 actionIds 保留先例。
+      if (previous.optimizationProduct || previous.optimizationService) {
+        item.optimizationProduct = String(previous.optimizationProduct || '')
+        item.optimizationService = String(previous.optimizationService || '')
+        item.optimizationSource = /** @type {any} */ (String(previous.optimizationSource || ''))
+      }
       // 关联举措只在线上维护；多条、旧单条、人工清空都须在重导后保留。
       const actionIds = normalizePostUseActionIds(previous.actionIds, previous.actionId)
       item.actionIds = actionIds

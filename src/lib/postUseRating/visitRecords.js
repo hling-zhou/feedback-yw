@@ -36,6 +36,9 @@ export const META_KEY_POST_USE_VISITS = 'post_use_visit_records_v1'
  * @property {string} [groupName] 集团名称（客户名称真源）
  * @property {string} [loginAccountName] 登录账号名称
  * @property {string} [originalTicketId] 原工单编号/相应投诉工单
+ * @property {string} [optimizationProduct] 产品/技术优化（自动生成，2026-11-19）
+ * @property {string} [optimizationService] 服务/流程改进（自动生成，2026-11-19）
+ * @property {'rule' | 'llm' | ''} [optimizationSource] 优化建议来源（如实标注：LLM 失败回退标 rule）
  * @property {string} updatedAt
  */
 

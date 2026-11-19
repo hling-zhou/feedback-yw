@@ -30,6 +30,8 @@ function triggerDownload(blob, filename) {
  * @property {string} [progress]
  * @property {string} [actionId]
  * @property {string[]} [actionIds]
+ * @property {string} [optimizationProduct] 产品/技术优化（自动生成，2026-11-19）
+ * @property {string} [optimizationService] 服务/流程改进（自动生成，2026-11-19）
  *
  * @typedef {Object} ActionItemInfo
  * @property {string} [content]
@@ -58,6 +60,9 @@ export function buildPostUseJiraExportRows(items = [], actionItemMap = new Map()
       确立举措: actions.content,
       举措详情: actions.detail,
       排期: actions.schedule,
+      // 2026-11-19 优化建议（自动生成）导出列（末位；导入不回导——额外列解析天然跳过）
+      '产品/技术优化（自动）': String(item.optimizationProduct || ''),
+      '服务/流程改进（自动）': String(item.optimizationService || ''),
     }
   })
 }

@@ -510,6 +510,55 @@ describe('customerVisitImport', () => {
     expect(saved).toHaveLength(3)
   })
 
+  it('2026-11-19 优化建议（自动生成）重导保留：已生成建议不被模板列重建清掉；导入表即使带建议列也不回写', async () => {
+    /** @type {Map<string, unknown>} */
+    const storedMeta = new Map([
+      [META_KEY_POST_USE_VISITS, {
+        version: 1,
+        records: [{
+          id: 'with-opt', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
+          customerName: '客户A', customerCode: 'C1', visitResult: '旧回访',
+          userFeedbackText: '客户反馈原文',
+          optimizationProduct: '建议P1', optimizationService: '建议S1', optimizationSource: 'llm',
+        }, {
+          id: 'no-opt', visitMonth: '2026-10', importMonth: '2026-10', productName: '云专线',
+          customerName: '客户B', customerCode: 'C2', visitResult: '旧回访B',
+        }],
+      }],
+    ])
+    const adapter = {
+      getMeta: async (key) => storedMeta.get(key),
+      putMeta: async (key, value) => { storedMeta.set(key, value) },
+    }
+    await executeCustomerVisitImport({
+      adapter,
+      rows: [
+        // 行 A：模板列正常；即使导入表被塞了建议列（额外列），也不得回写库内建议
+        {
+          数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户A', 客户编码: 'C1',
+          回访结果: '新回访A', 客户反馈: '新客户反馈',
+          '产品/技术优化（自动）': '表里手改的建议', '服务/流程改进（自动）': '表里手改的服务建议',
+        },
+        // 行 B：无建议的记录重导后仍无建议
+        { 数据月份: '2026-10', 产品名称: '云专线', 客户名称: '客户B', 客户编码: 'C2', 回访结果: '新回访B' },
+      ],
+      importMonth: '2026-10',
+      libraryRecords: [],
+      updateRecords: async () => {},
+    })
+    const saved = await loadVisitRecords(adapter)
+    const a = saved.find((item) => item.id === 'with-opt')
+    // 优化三字段保留（生成链路产物），导入表的建议列不回写（"导入不加"拍板）
+    expect(a.optimizationProduct).toBe('建议P1')
+    expect(a.optimizationService).toBe('建议S1')
+    expect(a.optimizationSource).toBe('llm')
+    // 模板列正常被导入值覆盖
+    expect(a.visitResult).toBe('新回访A')
+    expect(a.userFeedbackText).toBe('新客户反馈')
+    const b = saved.find((item) => item.id === 'no-opt')
+    expect(b.optimizationProduct || '').toBe('')
+  })
+
   it('keeps manual evaluation and editor metadata in the linked rating snapshot on reimport', async () => {
     /** @type {Map<string, unknown>} */
     const storedMeta = new Map([

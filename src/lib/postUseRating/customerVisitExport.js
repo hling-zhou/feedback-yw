@@ -37,6 +37,8 @@ function normalizedKey(customerName, customerCode, productName) {
  * @property {string} [remark]
  * @property {string} [actionId]
  * @property {string[]} [actionIds]
+ * @property {string} [optimizationProduct] 产品/技术优化（自动生成，2026-11-19）
+ * @property {string} [optimizationService] 服务/流程改进（自动生成，2026-11-19）
  */
 
 /**
@@ -92,6 +94,9 @@ export function buildPostUseCustomerVisitRows(visitRecords, recommendations = []
       低分原因命中条数: matched?.reasonCount || 0,
       最近反馈时间: matched?.latestFeedbackAt || '',
       涉及渠道: (matched?.channels || []).filter(Boolean).join('；'),
+      // 2026-11-19 优化建议（自动生成）导出列（末位；导入不回导——额外列解析天然跳过）
+      '产品/技术优化（自动）': String(visit.optimizationProduct || ''),
+      '服务/流程改进（自动）': String(visit.optimizationService || ''),
     }
     return row
   })

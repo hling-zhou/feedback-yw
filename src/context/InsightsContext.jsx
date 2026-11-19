@@ -3493,6 +3493,46 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   const reprocessAllTags = startBulkRetag
 
   /**
+   * 批量生成优化建议（省代表回访 visit / 产品部溯源 trace，2026-11-19
+   * DESIGN-用后即评抽屉优化建议-20261119 §5）。走 /records/enrich 后台任务，
+   * 完成后刷新共享任务态 + 对应实体列表（刷新由宿主页面按 entityType 自行处理）。
+   * @param {'visit' | 'trace'} entityType
+   * @param {{ ids?: string[], importMonth?: string }} [options]
+   */
+  const startPostUseOptimizationEnrichment = useCallback(
+    async (entityType, options = {}) => {
+      const ids = (options.ids || []).filter((id) => typeof id === 'string' && id)
+      const res = await apiFetch('/api/storage/records/enrich', {
+        method: 'POST',
+        body: JSON.stringify({
+          mode: 'post_use_optimization',
+          recordIds: ids,
+          dataMonth: options.importMonth || undefined,
+          periodId: currentPeriodId,
+          dataSourceType: 'post_use_rating',
+          settings,
+          retagOptions: { entityType },
+        }),
+      })
+      if (!res?.ok && res?.code === 'BACKGROUND_TASK_CONFLICT') {
+        throw new Error(res.error || '另一用户正在执行后台任务，请稍后再试')
+      }
+      if (!res?.taskId) throw new Error('后台任务未创建')
+      void refreshSharedBackgroundTask()
+      try {
+        const result = await waitForBackgroundTask(res.taskId)
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        message.success('优化建议生成完成')
+        return result
+      } catch (err) {
+        try { await refreshSharedBackgroundTask() } catch { /* 忽略 */ }
+        throw err
+      }
+    },
+    [currentPeriodId, settings, refreshSharedBackgroundTask, waitForBackgroundTask],
+  )
+
+  /**
    * 执行已注册 Pipeline（WP3 导入联调入口）
    * @param {import('../domain/enums.js').DataSourceType} dataSourceType
    * @param {Object[]} rows
@@ -3697,6 +3737,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       startBulkRetag,
       startSentimentRetag,
       startPostUseJourneyEnrichment,
+      startPostUseOptimizationEnrichment,
       fetchPostUseJourneyPendingCount,
       postUseJourneyPending,
       updateFeedback,
@@ -3810,6 +3851,7 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       startBulkRetag,
       startSentimentRetag,
       startPostUseJourneyEnrichment,
+      startPostUseOptimizationEnrichment,
       fetchPostUseJourneyPendingCount,
       postUseJourneyPending,
       updateFeedback,

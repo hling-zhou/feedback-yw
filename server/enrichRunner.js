@@ -19,6 +19,11 @@ import { reprocessAllThemesAndSentiment } from '../src/lib/applyThemes.js'
 import { retagRecordSentiment } from '../src/lib/sentimentRetag.js'
 import { enrichRecordsWithJourneys } from '../src/lib/journeySemantic.js'
 import { needsPostUseJourney, classifyPostUseJourney } from '../src/lib/postUseRating/enrichPostUseJourney.js'
+import {
+  generatePostUseOptimizations,
+  needsPostUseOptimization,
+  traceComplaintTicketId,
+} from '../src/lib/postUseRating/postUseOptimization.js'
 import { getCatalogProducts } from '../src/lib/productCatalogLoader.js'
 import { resolvePostUseRatingProduct } from '../src/lib/productCatalog/postUseRatingProducts.js'
 import { forwardLlmChatCompletion } from './llmProxy.js'
@@ -26,6 +31,8 @@ import { isLlmConfigured, resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel }
 import { retrieveSnippets } from './knowledgeBaseLoader.js'
 import { storageRepository } from './storageRepository.js'
 import { touchBackgroundTask, isTaskCancelled } from './backgroundTaskLock.js'
+import { formatKnowledgeSnippetsForPrompt } from '../src/lib/knowledgeBaseClient.js'
+import { resolveCatalogProduct } from '../src/lib/productCatalog/resolveCatalogProduct.js'
 import { createPipeline, getPipelineDescriptor } from '../src/analysis/registry.js'
 import { defaultAnalysisVersions } from '../src/lib/versioning.js'
 import { buildIdempotencyKey } from '../src/domain/analysisRun.js'
@@ -565,6 +572,88 @@ export async function runEnrichment(opts) {
         touch(`正在补全用户旅程 (${written.length}/${total})`)
       }
       return { records: written, warnings: [], stats: { total, processed: written.length } }
+    }
+
+    if (mode === 'post_use_optimization') {
+      // 2026-11-19 优化建议（自动生成）批量链路（DESIGN-用后即评抽屉优化建议 §5）：
+      // entityType = visit（省代表回访 meta 整包）| trace（产品部溯源 jira 表）。
+      // 写回一律 re-read 最新库值 → 只 merge 三字段 → 落盘（禁止整条覆盖在线编辑）。
+      // 幂等：已有建议（optimizationProduct 非空）不重生成（needsPostUseOptimization 过滤）。
+      const entityType = retagOptions.entityType === 'trace' ? 'trace' : 'visit'
+      const targets = records.filter((entity) => needsPostUseOptimization(entity, entityType))
+      const total = records.length
+      const actor = { userId, username }
+      const catalogProducts = getCatalogProducts()
+      let processed = 0
+      let writtenCount = 0
+      let skipped = total - targets.length
+      const stopCancelled = () => ({
+        records: [],
+        warnings: ['任务已被用户取消'],
+        stats: { total, entityType, cancelled: true, processed, written: writtenCount, skipped },
+      })
+      touch(`正在生成优化建议 (0/${total})`)
+      for (let i = 0; i < targets.length; i += 1) {
+        if (cancelled()) return stopCancelled()
+        const entity = targets[i]
+        try {
+          /** @type {{ complaintHandlingText?: string, knowledgeSnippets?: string, productName?: string }} */
+          const extras = { productName: String(entity.productName || '') }
+          // 投诉回访类溯源：跨表取原投诉工单处理意见（口径 split('处理意见：')[-1]）
+          if (entityType === 'trace') {
+            const ticketId = traceComplaintTicketId(entity)
+            if (ticketId) {
+              const [source] = storageRepository.listRecordsByTicketIds('complaint_ticket', [ticketId])
+              if (source) {
+                const handling = String(source.handlingText || '').trim()
+                extras.complaintHandlingText = handling.includes('处理意见：')
+                  ? handling.split('处理意见：').pop() || ''
+                  : handling
+              }
+            }
+          }
+          // KB 检索：按目录解析产品 key，直接用服务端 retrieveSnippets（绕过 HTTP transport）
+          const resolved = catalogProducts.length
+            ? resolveCatalogProduct({ productName: extras.productName }, catalogProducts)
+            : null
+          const productKey = resolved?.key?.trim() || extras.productName
+          if (productKey) {
+            try {
+              const snippets = retrieveSnippets(productKey, entity.userFeedbackText || entity.customerFeedback || '', [])
+              extras.knowledgeSnippets = formatKnowledgeSnippetsForPrompt(snippets || [])
+            } catch (err) {
+              console.warn('[post-use-optimization] KB 检索失败，降级空片段:', err)
+            }
+          }
+          const result = await generatePostUseOptimizations(entity, entityType, settings, extras)
+          if (result.optimizationProduct || result.optimizationService) {
+            if (entityType === 'trace') {
+              const { postUseJiraRepository } = await import('./postUseJiraRepository.js')
+              const next = postUseJiraRepository.mergeOptimizationPatch(entity.id, result)
+              if (next) writtenCount += 1
+              else skipped += 1
+            } else {
+              const { mergeVisitOptimizationPatch } = await import('./postUseVisitOptimizationStore.js')
+              const next = await mergeVisitOptimizationPatch(entity.id, result)
+              if (next) writtenCount += 1
+              else skipped += 1
+            }
+          } else {
+            skipped += 1
+          }
+        } catch (err) {
+          skipped += 1
+          console.warn('[post-use-optimization] 单条生成失败，跳过:', err)
+        }
+        processed += 1
+        touch(`正在生成优化建议 (${processed}/${total})`)
+      }
+      return {
+        records: [],
+        warnings: [],
+        persisted: true,
+        stats: { total, entityType, processed, written: writtenCount, skipped },
+      }
     }
 
     if (mode === 'bulk_retag' || mode === 'single_retag') {
