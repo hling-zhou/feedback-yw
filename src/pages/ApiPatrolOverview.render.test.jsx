@@ -50,11 +50,14 @@ describe('ApiPatrolOverview 真渲染冒烟（五模块）', () => {
     expect(html).toContain('点击表格行可跳转溯源页') // 独有说明
   })
 
-  it('③指标趋势卡（缺天断线说明+补算开关）', () => {
+  it('③指标趋势卡默认收起（11-19 拍板：展开/收起 + 移至最末；口径说明与补算开关展开后可见）', () => {
     const html = renderOverview()
     expect(html).toContain('指标成功率趋势')
-    expect(html).toContain('未达推送阈值')   // 缺天断线口径说明
-    expect(html).toContain('含明细补算')     // 补算开关
+    // 默认收起：口径说明与补算开关不渲染
+    expect(html).not.toContain('未达推送阈值')
+    expect(html).not.toContain('含明细补算')
+    // 展开按钮存在
+    expect(html).toContain('>展开</span>')
   })
 
   it('④⑤L1 趋势七类 + 跨日轨迹双形态', () => {
@@ -63,5 +66,15 @@ describe('ApiPatrolOverview 真渲染冒烟（五模块）', () => {
     expect(html).toContain('跨日轨迹（L2 Top8）')
     expect(html).toContain('热力')
     expect(html).toContain('折线')
+  })
+
+  it('③指标趋势卡位置在最末（跨日轨迹之后、暂无数据 Alert 之前）', () => {
+    const html = renderOverview()
+    const trendIdx = html.indexOf('指标成功率趋势')
+    const trackIdx = html.indexOf('跨日轨迹（L2 Top8）')
+    const alertIdx = html.indexOf('暂无数据——等待外部系统推送后展示')
+    expect(trackIdx).toBeGreaterThan(-1)
+    expect(trendIdx).toBeGreaterThan(trackIdx) // 位于跨日轨迹之后
+    expect(alertIdx).toBeGreaterThan(trendIdx)  // 暂无数据 Alert 仍在其后（页面末尾）
   })
 })

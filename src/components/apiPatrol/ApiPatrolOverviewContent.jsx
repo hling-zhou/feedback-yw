@@ -36,6 +36,8 @@ export default function ApiPatrolOverviewContent() {
   const [distView, setDistView] = useState('bar')
   /** @type {[string, any]} */
   const [trackView, setTrackView] = useState('heat')
+  /** 指标成功率趋势展开态——11-19 拍板：默认收起 */
+  const [trendOpen, setTrendOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -269,53 +271,6 @@ export default function ApiPatrolOverviewContent() {
 
       <div className="page-card">
         <div className="page-card-header">
-          <span className="page-card-title">指标成功率趋势</span>
-          <Space>
-            <span className="text-sm">含明细补算</span>
-            <Switch size="small" checked={includeBackfill} onChange={setIncludeBackfill} />
-          </Space>
-        </div>
-        <Typography.Text type="secondary" className="text-xs !mb-2 block">
-          无数据 = 当日未达推送阈值（≥99.5%），折线断开；开启补算后缺天用明细重算补点（× 标记）
-        </Typography.Text>
-        {trendSlots.length === 0 && (
-          <Typography.Text type="secondary">该时间范围无推送数据</Typography.Text>
-        )}
-        <div className="flex flex-col gap-4">
-          {trendSlots.map((t) => (
-            <div key={`${t.pool}|${t.apiPath}|${t.metricName}`}>
-              <Typography.Text strong className="text-sm">
-                {t.pool} · {t.metricName}
-                <Typography.Text type="secondary" className="text-xs !ml-2">{t.apiPath}</Typography.Text>
-              </Typography.Text>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={t.points}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tickFormatter={(v) => String(v).slice(5)} />
-                  <YAxis domain={[80, 100]} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="successRate"
-                    connectNulls={false}
-                    stroke="#1677ff"
-                    dot={(/** @type {any} */ props) => {
-                      const { cx, cy, payload } = props
-                      if (payload?.successRate == null || cx == null || cy == null) return null
-                      return <Cell key={`dot-${cx}`} cx={cx} cy={cy} r={3}
-                        fill={payload.backfilled ? '#fff' : '#1677ff'}
-                        stroke="#1677ff" />
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="page-card">
-        <div className="page-card-header">
           <span className="page-card-title">根因大类趋势（L1 七类全画）</span>
         </div>
         <ResponsiveContainer width="100%" height={280}>
@@ -361,6 +316,73 @@ export default function ApiPatrolOverviewContent() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* 指标成功率趋势——11-19 拍板：支持展开收起、默认收起、位置移至最末 */}
+      <div className="page-card">
+        <div className="page-card-header">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button
+              type="link"
+              size="small"
+              className="!px-0"
+              onClick={() => setTrendOpen(!trendOpen)}
+            >
+              {trendOpen ? '收起' : '展开'}
+            </Button>
+            <span className="page-card-title">指标成功率趋势</span>
+            {trendSlots.length > 0 && (
+              <span className="text-xs text-ink-500">{trendSlots.length} 项指标</span>
+            )}
+          </div>
+          {trendOpen && (
+            <Space>
+              <span className="text-sm">含明细补算</span>
+              <Switch size="small" checked={includeBackfill} onChange={setIncludeBackfill} />
+            </Space>
+          )}
+        </div>
+        {trendOpen && (
+          <>
+            <Typography.Text type="secondary" className="text-xs !mb-2 block">
+              无数据 = 当日未达推送阈值（≥99.5%），折线断开；开启补算后缺天用明细重算补点（× 标记）
+            </Typography.Text>
+            {trendSlots.length === 0 && (
+              <Typography.Text type="secondary">该时间范围无推送数据</Typography.Text>
+            )}
+            <div className="flex flex-col gap-4">
+              {trendSlots.map((t) => (
+                <div key={`${t.pool}|${t.apiPath}|${t.metricName}`}>
+                  <Typography.Text strong className="text-sm">
+                    {t.pool} · {t.metricName}
+                    <Typography.Text type="secondary" className="text-xs !ml-2">{t.apiPath}</Typography.Text>
+                  </Typography.Text>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={t.points}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tickFormatter={(v) => String(v).slice(5)} />
+                      <YAxis domain={[80, 100]} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="successRate"
+                        connectNulls={false}
+                        stroke="#1677ff"
+                        dot={(/** @type {any} */ props) => {
+                          const { cx, cy, payload } = props
+                          if (payload?.successRate == null || cx == null || cy == null) return null
+                          return <Cell key={`dot-${cx}`} cx={cx} cy={cy} r={3}
+                            fill={payload.backfilled ? '#fff' : '#1677ff'}
+                            stroke="#1677ff" />
+                        }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
