@@ -1,5 +1,5 @@
 import { buildCustomerQuoteRegistry, isPraiseQuote } from './customerQuotes.js'
-import { buildReportIssueOccurrences, resolveReportIssues } from './reportEvidence.js'
+import { buildReportIssueOccurrences, resolveReportIssues, isNoDissatisfactionVisit, isNoActionNeededConclusion } from './reportEvidence.js'
 import { isSubstantiveFeedbackReason, isValidCustomerText, REASON_TAXONOMY_EXCLUDE } from './reasonTaxonomy.js'
 import { postUsePeriodMonths } from './periodScope.js'
 import { computeInternalSatisfactionMetrics } from './metrics.js'
@@ -192,31 +192,102 @@ export function reportV2GroupedLifecycle(monthCounts, months) {
  *   功能缺失/不完善 ← 原功能组 + 多线BGP。
  * 未命中正则的标签走 LLM 语义归类（groupLabelOverrides 注入，见 buildTodoCandidates 同款管线）；无覆盖时按原文自成一档。
  */
-export function reportV2ThemeGroupLabel(text, type, productName, groupLabelOverrides = null) {
-  const value = String(text || '').trim()
-  const overrides = groupLabelOverrides && typeof groupLabelOverrides === 'object' ? groupLabelOverrides : {}
-  if (Object.prototype.hasOwnProperty.call(overrides, value)) return overrides[value]
-  if (type === 'ten-option') {
-    if (/购买时参数|配置选择错误/.test(value)) return '购买时参数/配置选择错误'
-    if (/产品价格|价格没有优势|操作过于复杂|服务不好用/.test(value)) return '价格无优势 / 操作过于复杂'
-    if (/不满足业务部署/.test(value)) return '不满足业务部署要求'
-    return value
-  }
-  if (/功能有缺失|功能缺失.?不完善|无法绑定|不能绑定|多线BGP/.test(value)) return '功能缺失/不完善'
-  if (/MOP.*退订|KCS.*退订|关联退订失败/.test(value)) return 'MOP 退订链路'
-  if (/IP地区|IP 地区|地域.*IP|福建厦门.*北京/.test(value)) return 'IP 地域匹配'
-  if (/配置规格|购买参数|配置选择错误/.test(value)) return '购买参数/配置选择错误'
-  if (/任务操作流程|界面布局|帮助说明|内容\/帮助|缺乏操作指引|帮助文档/.test(value)) return '操作与帮助文档'
-  if (/网络安全/.test(value)) return '安全类'
-  if (productName === '弹性公网IP' && /共享带宽|双栈带宽|批量.*退|IP不能.*退/.test(value)) return '共享带宽能力限制'
-  return value
+/**
+ * L1 大类（11-19 用户拍板定稿，8 类封闭——LLM strictLabels 只选不造）。
+ * 判定树（prompt 同款语义）：能力不存在→1；页面/API 操作层执行断或慢卡超时→2；
+ * 资源/服务层本身故障慢不稳→3；能完成但路径难→4；规格参数购买路径→5；价格→6；安全→7；服务响应→8。
+ */
+export const REPORT_V2_L1_GROUPS = [
+  '功能缺失/不完善',
+  '操作执行性能/稳定性不足',
+  '服务资源性能/稳定性不足',
+  '操作与帮助体验',
+  '购买与配置决策',
+  '价格与商务',
+  '安全与合规',
+  '服务与响应',
+]
+
+/** L1 稳定键（表聚合/迁移用，不随文案微调漂移） */
+export const REPORT_V2_L1_KEYS = ['l1-function', 'l1-op-perf', 'l1-res-perf', 'l1-ux', 'l1-purchase', 'l1-price', 'l1-security', 'l1-service']
+const L1_NAME_TO_KEY = Object.fromEntries(REPORT_V2_L1_GROUPS.map((name, index) => [name, REPORT_V2_L1_KEYS[index]]))
+
+/**
+ * L2 细类登记表（11-19 拍板：登记式而非枚举式；带产品适用域）。
+ * 只作 L1 内展示细分（"分布"灰字），不进封闭集；新场景登记一行即可。
+ */
+export const REPORT_V2_L2_REGISTRY = [
+  { name: 'MOP 退订链路', l1: '操作执行性能/稳定性不足', products: null },
+  { name: 'IP 地域匹配', l1: '功能缺失/不完善', products: null },
+  { name: '共享带宽能力限制', l1: '功能缺失/不完善', products: ['弹性公网IP'] },
+]
+
+/**
+ * 旧 7 组名 → 新 L1 映射（11-19 体系切换一次性迁移；兼容读取已存 overlay.themeGroupLabels）。
+ */
+export const REPORT_V2_LEGACY_GROUP_TO_L1 = {
+  '功能缺失/不完善': '功能缺失/不完善',
+  'MOP 退订链路': '操作执行性能/稳定性不足',
+  'IP 地域匹配': '功能缺失/不完善',
+  '购买参数/配置选择错误': '购买与配置决策',
+  '操作与帮助文档': '操作与帮助体验',
+  '安全类': '安全与合规',
+  '共享带宽能力限制': '功能缺失/不完善',
 }
 
-/** LLM 语义归类的封闭组清单（11-18 拍板 strictLabels 只选不造）：正则组的并集，LLM 只能归入这些组 */
-export const REPORT_V2_THEME_GROUPS = [
-  '功能缺失/不完善', 'MOP 退订链路', 'IP 地域匹配', '购买参数/配置选择错误',
-  '操作与帮助文档', '安全类', '共享带宽能力限制',
+/**
+ * 正则快捷锚（11-19 拍板降级：命中即定 L1+L2，省 LLM token；未命中走 LLM 语义判定）。
+ * 锚词按判定树语义归类改造——"慢/卡"类操作语境词归操作层，资源词归资源层。
+ */
+const THEME_ANCHORS = [
+  { re: /功能有缺失|功能缺失.?不完善|无法绑定|不能绑定|多线BGP|不支持|暂不支持|没有这个功能/, l1: '功能缺失/不完善', l2: '' },
+  { re: /IP地区|IP 地区|地域.*IP|福建厦门.*北京/, l1: '功能缺失/不完善', l2: 'IP 地域匹配' },
+  { re: /共享带宽|双栈带宽|IP不能.*退/, l1: '功能缺失/不完善', l2: '共享带宽能力限制', products: ['弹性公网IP'] },
+  { re: /MOP.*退订|KCS.*退订|关联退订失败/, l1: '操作执行性能/稳定性不足', l2: 'MOP 退订链路' },
+  { re: /配置规格|购买参数|配置选择错误|购买时参数/, l1: '购买与配置决策', l2: '' },
+  { re: /任务操作流程|界面布局|帮助说明|内容\/帮助|缺乏操作指引|帮助文档|不会用|找不到入口|操作复杂/, l1: '操作与帮助体验', l2: '' },
+  { re: /网络安全|权限不足/, l1: '安全与合规', l2: '' },
+  { re: /价格|费用|计费/, l1: '价格与商务', l2: '' },
+  { re: /页面打开慢|操作超时|操作失败|页面卡顿|控制台卡|操作报错|执行失败/, l1: '操作执行性能/稳定性不足', l2: '' },
+  { re: /网络卡顿|故障频发|服务慢|连接不稳|业务服务慢|实例不可用|掉线|不稳定/, l1: '服务资源性能/稳定性不足', l2: '' },
 ]
+
+/**
+ * 主题分类单一真源（11-19 L1/L2 体系）：正则快捷锚 → overlay 覆盖（旧组名迁移兼容）→ 回退原文自成一档。
+ * 返回 { label: L1 名, l1Key: 稳定键, l2: 细类名或 '' }；LLM 判定结果经 overlay.themeGroupLabels
+ * 注入（值 = L1 名），与本函数同源合并——部门表与分产品表共用，禁止两处各写。
+ */
+export function classifyReportTheme(text, type, productName, groupLabelOverrides = null) {
+  const value = String(text || '').trim()
+  const overrides = groupLabelOverrides && typeof groupLabelOverrides === 'object' ? groupLabelOverrides : {}
+  const resolved = Object.prototype.hasOwnProperty.call(overrides, value)
+    ? String(overrides[value] || '').trim()
+    : ''
+  const fromOverride = REPORT_V2_LEGACY_GROUP_TO_L1[resolved] || resolved
+  if (resolved && L1_NAME_TO_KEY[fromOverride]) {
+    const l2 = REPORT_V2_L2_REGISTRY.find((row) => row.name === resolved)?.name || ''
+    return { label: fromOverride, l1Key: L1_NAME_TO_KEY[fromOverride], l2 }
+  }
+  if (type === 'ten-option') {
+    if (/购买时参数|配置选择错误/.test(value)) return { label: '购买与配置决策', l1Key: 'l1-purchase', l2: '' }
+    if (/产品价格|价格没有优势/.test(value)) return { label: '价格与商务', l1Key: 'l1-price', l2: '' }
+    if (/不满足业务部署/.test(value)) return { label: '功能缺失/不完善', l1Key: 'l1-function', l2: '' }
+    return { label: value, l1Key: '', l2: '' }
+  }
+  for (const anchor of THEME_ANCHORS) {
+    if (!anchor.re.test(value)) continue
+    if (anchor.products && !anchor.products.includes(productName)) continue
+    return { label: anchor.l1, l1Key: L1_NAME_TO_KEY[anchor.l1], l2: anchor.l2 || '' }
+  }
+  return { label: value, l1Key: '', l2: '' }
+}
+
+/**
+ * 旧名兼容：历史消费方（组件/迁移期）仍传"组名"语义时把 L1 结果映射回可显示名。
+ */
+export function reportV2ThemeGroupLabel(text, type, productName, groupLabelOverrides = null) {
+  return classifyReportTheme(text, type, productName, groupLabelOverrides).label
+}
 
 /**
  * 未命中正则归并的低分标签收集（11-18 LLM 语义归类输入）：
@@ -233,6 +304,62 @@ export function reportV2UngroupedThemeLabels(themes, groupLabelOverrides = {}) {
     labels.add(row.theme)
   }
   return [...labels]
+}
+
+/**
+ * 分产品"问题主题分布"行（11-19 下沉单源化）：与部门低分原因汇总（reasonsMap）同走
+ * reportV2ThemeGroupLabel 分类——分类机制单一真源；本函数只负责分产品视角的组内聚合
+ * （成员账本/组级 NEW 双轨记账/月度记账/组级生命周期），形态语义与原组件实现逐字一致。
+ */
+export function reportV2ProblemThemeRows(themes, productName, months, kind, groupLabelOverrides = null) {
+  const priorityRank = { P0: 0, P1: 1, P2: 2 }
+  const grouped = new Map()
+  for (const theme of themes) {
+    const label = reportV2ThemeGroupLabel(theme.theme, theme.type, productName, groupLabelOverrides)
+    const key = `${theme.type}\0${label}`
+    const row = grouped.get(key) || {
+      ...theme, key, theme: label, count: 0, segmentCount: 0, lowestScore: null,
+      priority: 'P2', isNew: false, recordIds: [], customerKeys: [], monthRecordIds: {}, monthFallbackCounts: {}, memberThemes: [],
+    }
+    row.segmentCount = (row.segmentCount || 0) + (theme.segmentCount || 0)
+    row.lowestScore = row.lowestScore == null ? theme.lowestScore : Math.min(row.lowestScore, theme.lowestScore)
+    if (priorityRank[theme.priority] < priorityRank[row.priority]) row.priority = theme.priority
+    // 组级 NEW（11-18 拍板，与部门表同语义）：组内全部成员记录均为本期新增才打 NEW；记录双轨记账
+    row.newRecordIds = [...new Set([...(row.newRecordIds || []), ...(theme.isNew ? (theme.recordIds || []) : [])])]
+    row.priorRecordIds = [...new Set([...(row.priorRecordIds || []), ...(!theme.isNew ? (theme.recordIds || []) : [])])]
+    row.recordIds = [...new Set([...(row.recordIds || []), ...(theme.recordIds || [])])]
+    row.customerKeys = [...new Set([...(row.customerKeys || []), ...(theme.customerKeys || [])])]
+    // 成员账本（11-18 晚信息密度改造）：与部门表 memberThemes 同形态 {theme,count,quotes}，
+    // 供行内"成员：X N · Y M"+"典型：「…」"两行灰字；count 按成员行、quotes 取该成员最低分原话
+    const memberIndex = row.memberThemes.findIndex((member) => member.theme === theme.theme)
+    if (memberIndex === -1) {
+      row.memberThemes.push({ theme: theme.theme, count: theme.count, lowestScore: theme.lowestScore, quotes: [...(theme.lowestQuotes || [])] })
+    } else {
+      const member = row.memberThemes[memberIndex]
+      member.count += theme.count
+      member.lowestScore = member.lowestScore == null ? theme.lowestScore : Math.min(member.lowestScore, theme.lowestScore)
+      member.quotes = [...new Set([...(member.quotes || []), ...(theme.lowestQuotes || [])])]
+    }
+    for (const month of months) {
+      const ids = theme.monthRecordIds?.[month]
+      row.monthRecordIds[month] = [...new Set([...(row.monthRecordIds[month] || []), ...(ids || [])])]
+      row.monthFallbackCounts[month] = (row.monthFallbackCounts[month] || 0) + (theme.monthCounts?.[month] || 0)
+    }
+    grouped.set(key, row)
+  }
+  return [...grouped.values()].map((row) => {
+    const monthCounts = Object.fromEntries(months.map((month) => [month,
+      row.monthRecordIds[month]?.length || row.monthFallbackCounts[month] || 0]))
+    return {
+      ...row,
+      count: row.recordIds.length,
+      monthCounts,
+      isNew: row.recordIds.length > 0 && (row.newRecordIds?.length || 0) === row.recordIds.length,
+      lifecycle: kind === 'quarter' ? reportV2GroupedLifecycle(monthCounts, months) : '',
+    }
+  }).sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority]
+    || Number(a.type === 'ten-option') - Number(b.type === 'ten-option')
+    || a.lowestScore - b.lowestScore || b.count - a.count)
 }
 
 function themeRows(records, allRecords, visits, traces, links, months, earlierMonths, kind) {
@@ -298,6 +425,12 @@ function themeRows(records, allRecords, visits, traces, links, months, earlierMo
       else if (life.includes('集中爆发') && row.lowestScore <= 5) priority = 'P0'
     }
     if (nonActionable) priority = 'P2'
+    // 11-19 两档剔除·档 2 半剔除（进定量不进定性）：组内全部 occurrence 均被判定
+    // excluded_no_action（内部评估/溯源"无需优改"类）才标记 noAction——部分半剔除的组
+    // 仍进定性（一条被评估无需优改不代表整个主题退场）。
+    const noAction = row.type === 'low' && row.occurrences.length > 0
+      && row.occurrences.every((item) => item.status === 'excluded_no_action')
+    if (noAction) priority = 'P2'
     return {
       key: row.key, productName: row.productName, theme: row.theme, type: row.type,
       count: row.recordIds.size, segmentCount: row.pieceIds.size, customerCount: row.customerKeys.size,
@@ -305,6 +438,7 @@ function themeRows(records, allRecords, visits, traces, links, months, earlierMo
       monthRecordIds: Object.fromEntries(months.map((month) => [month, [...(row.monthRecordIds.get(month) || [])]])),
       lifecycle: life, priority,
       isNew: previousCount === 0, previousCount, dissatisfied, nonActionable,
+      noAction,
       recordIds: [...row.recordIds], customerKeys: [...row.customerKeys],
       linkedTraceIds: distinct(row.occurrences.flatMap((item) => item.linkedTraceIds || [])),
       linkedVisitIds,
@@ -481,7 +615,7 @@ function buildTodoCandidates({ months, visits = [], traces = [], actionItems = [
 }
 
 function focusActionType(row, trace, visit) {
-  if (row.dissatisfied || (visit && /不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))) return '回访跟进'
+  if (row.dissatisfied || (visit && /(?<!无实际)不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))) return '回访跟进'
   if (/故障|不通|稳定性|网络质量|卡单|缺陷/.test(`${row.theme} ${trace?.recommendedReason || ''}`)) return '缺陷修复'
   if (/功能|能力|接口|API|配置|批量|指标|诉求|界面|布局|体验|操作/.test(row.theme)) return '诉求闭环'
   if (/回访/.test(String(trace?.recommendedReason || ''))) return '回访跟进'
@@ -522,7 +656,9 @@ function inferVisitForTheme(row, themes, visits) {
 }
 
 function actionRows(themes, traces, visits, actions, months, kind, products = []) {
-  return themes.filter((row) => row.type === 'low').map((row) => {
+  return themes.filter((row) => row.type === 'low'
+    // 11-19 两档剔除·档 2：半剔除主题不进定性（关注项/建议举措源），定量层（reasons/主题分布）不受影响
+    && !row.noAction).map((row) => {
     const linkedTraceIds = new Set(row.linkedTraceIds || [])
     const matchingTraces = traces.filter((item) => linkedTraceIds.has(String(item.id)))
     const traceOwners = distinct(matchingTraces.map((item) => String(item.assigneeName || '').trim()))
@@ -535,7 +671,7 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
     const directVisit = matchingVisits.length === 1 ? matchingVisits[0] : null
     const visit = directVisit || inferVisitForTheme(row, themes, visits)
     const visitInferred = Boolean(visit && !directVisit)
-    const customerDissatisfied = row.dissatisfied || Boolean(visit && /不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))
+    const customerDissatisfied = row.dissatisfied || Boolean(visit && /(?<!无实际)不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))
     const recordIds = new Set(row.recordIds)
     const action = actions.find((item) => productOf(item) === row.productName
       && item.linkedDataSources?.includes('post_use_rating')
@@ -578,8 +714,9 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
         + (quarterLow && quarterLow.value < 9 ? `；${row.productName} ${Number(quarterLow.month.slice(5))} 月均分 ${quarterLow.value} 为季内低点` : ''),
       customerDissatisfied,
       isNew: row.isNew, previousCount: row.previousCount, lowestScore: row.lowestScore,
-      // 11-19 P0-③：无溯源经办人时默认兜底（原型先例"产品部经办人"），消掉"待指派"；有真实经办人保持不变
-      owner: traceOwners.length === 1 ? traceOwners[0] : '产品部经办人',
+      // 11-19 撤销"产品部经办人"兜底（用户拍板）：owner 空回退"待指派"，
+      // 由 v2Validation 阻断保存/导出/发邮件，提示先补齐经办人——禁止假兜底掩盖未指派
+      owner: traceOwners.length === 1 ? traceOwners[0] : (String(action?.owner || '').trim() || '待指派'),
       team: String(action?.team || '').trim(), status: String(action?.status || trace?.status || '待处理'),
       check: row.priority === 'P2' ? '下期观察同类反馈计数' : '复核客户反馈及后续评分',
       sourceRecordCount: row.count, recordIds: row.recordIds,
@@ -725,7 +862,35 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     })
     sourceSpecsByProduct.set(name, list)
   }
-  const themes = themeRows(currentScored, allRecords, visits, traces, issueLinks, months, previous, kind)
+  // 11-19 两档剔除·LLM verdicts 合并（正则优先、LLM 补充）：overlay.narratives.evidenceVerdicts
+  // 由"LLM 优化"管线写入（id → verdict）。注入方式=改写判定字段尾部追加确定性标记词，
+  // resolveReportIssues 的正则路径自然吸收——保持纯函数与渲染层零改动。
+  const evidenceVerdicts = overlay?.narratives?.evidenceVerdicts && typeof overlay.narratives.evidenceVerdicts === 'object'
+    ? overlay.narratives.evidenceVerdicts : {}
+  const injectVerdicts = (rows, verdictOf) => rows.map((row) => {
+    const verdict = evidenceVerdicts[String(row.id || '')]
+    if (!verdict) return row
+    if (verdict === 'no_dissatisfaction') {
+      return { ...row, visitResult: `${String(row.visitResult || '')}；LLM 判定：无实际不满` }
+    }
+    if (verdict === 'no_action_needed') {
+      return { ...row, internalConclusion: `${String(row.internalConclusion || row.recommendedReason || '')}；LLM 判定：无需优改` }
+    }
+    return row
+  })
+  const visitsWithVerdicts = injectVerdicts(visits)
+  const tracesWithVerdicts = injectVerdicts(traces)
+  const themes = themeRows(currentScored, allRecords, visitsWithVerdicts, tracesWithVerdicts, issueLinks, months, previous, kind)
+  // LLM verdicts 批输入候选：正则未命中的本期回访/溯源文本（命中正则的已有确定性判定，无需 LLM）
+  const inPeriodRow = (row) => String(row.importMonth || row.visitMonth || '').split('、').some((m) => monthSet.has(m.trim()))
+  const evidenceVerdictPending = [
+    ...visits.filter(inPeriodRow).filter((row) => !isNoDissatisfactionVisit(row) && !isNoActionNeededConclusion(row.internalConclusion || row.internalEvaluationDetail))
+      .map((row) => ({ id: String(row.id || ''), sourceKind: 'visit', text: String(row.visitResult || row.visitFeedbackDetail || row.internalConclusion || '') })),
+    ...traces.filter(inPeriodRow).filter((row) => !isNoActionNeededConclusion(row.recommendedReason || row.progress || row.customerFeedback))
+      .map((row) => ({ id: String(row.id || ''), sourceKind: 'trace', text: String(row.recommendedReason || row.progress || row.customerFeedback || '') })),
+  ].filter((row) => row.id && String(row.text || '').trim()
+    // 11-19 审查修复 #2：已有 LLM verdict 的记录不再重复送判定批（幂等省 token）
+    && !evidenceVerdicts[String(row.id)])
   const reportVisits = visits.filter((row) => monthSet.has(row.importMonth || row.visitMonth))
   const productNames = [...groups.keys()]
   const productTrendMonths = monthRange(months.at(-1) || '', kind === 'quarter' ? 14 : 5)
@@ -770,10 +935,14 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
   const focus = selectFocus(rawActions, kind, products)
   const allActions = capActionsByProduct(rawActions, focus)
   const todoCandidates = buildTodoCandidates({ months, visits, traces, actionItems })
-  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"生成报告文案"管线写入，
+  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"LLM 优化"管线写入，
   // 未命中正则的标签 → LLM 归入封闭组；旧快照无该字段时回退纯正则（groupLabelOverrides 为空对象）
+  // 11-19 L1/L2 体系：themeGroupLabels 值 = L1 名（旧 7 组名经 classifyReportTheme 内 legacy 映迁移兼容）
   const groupLabelOverrides = overlay?.narratives?.themeGroupLabels && typeof overlay.narratives.themeGroupLabels === 'object'
     ? overlay.narratives.themeGroupLabels : {}
+  // L2 细类覆盖表：展示"分布"灰字用，不进聚合键
+  const themeL2Labels = overlay?.narratives?.themeL2Labels && typeof overlay.narratives.themeL2Labels === 'object'
+    ? overlay.narratives.themeL2Labels : {}
   const registry = reportQuotes(records)
   const positiveRegistry = registry.filter(isReportV2PraiseQuote)
   const reasonsMap = new Map()
@@ -800,8 +969,14 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     entry.segmentCount += row.segmentCount || 0
     entry.lowestScore = entry.lowestScore == null ? row.lowestScore : Math.min(entry.lowestScore, row.lowestScore)
     entry.productCounts.set(row.productName, (entry.productCounts.get(row.productName) || 0) + row.count)
-    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null, quotes: [] }
+    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null, quotes: [], l2: '' }
     members.count += row.count
+    // 11-19 L1/L2：成员 L2 细类判定——themeL2Labels 覆盖优先，锚点判定按成员来源产品
+    if (!members.l2) {
+      members.l2 = themeL2Labels[row.theme]
+        || classifyReportTheme(row.theme, 'low', row.productName, groupLabelOverrides).l2
+        || ''
+    }
     members.lowestScore = members.lowestScore == null ? row.lowestScore : Math.min(members.lowestScore, row.lowestScore)
     // 成员级典型原话（11-18 信息密度改造）：来自最低分记录，渲染层选主导成员的原话展示
     members.quotes = distinct([...(members.quotes || []), ...(row.lowestQuotes || [])])
@@ -818,6 +993,8 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
       name: row.name, type: row.type, count: row.count, segmentCount: row.segmentCount,
       lowestScore: row.lowestScore, isNew, previousCount,
       products: [...row.productCounts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh')),
+      // 11-19 L1/L2 体系：归并成员带 L2 细类后缀展示（"原话（共享带宽能力限制）"形态），
+      // L2 在聚合循环内判定（themeL2Labels 覆盖优先 + 锚点按成员来源产品）
       memberThemes: [...row.memberThemes.entries()].map(([theme, meta]) => ({ theme, ...meta })).sort((a, b) => b.count - a.count),
       monthCounts,
       lifecycle: kind === 'quarter' ? lifecycle(monthCounts, months) : '',
@@ -874,8 +1051,11 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     },
     products, themes, reasons, actions: allActions, focus,
     themeGroupLabels: groupLabelOverrides,
+    themeL2Labels,
     // 11-18 LLM 语义归类输入：未命中正则的低分标签清单（已命中覆盖表的标签不再送 LLM）
     ungroupedThemes: reportV2UngroupedThemeLabels(themes, groupLabelOverrides),
+    // 11-19 两档剔除：正则未命中的本期回访/溯源文本 → LLM verdicts 批输入候选
+    evidenceVerdictPending,
     departmentTrend,
     companyTrend,
     satisfactionTrend: satisfactionMonths,
@@ -909,7 +1089,7 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
 }
 
 /** Export-blocking checks; readers never see their internal diagnostics. */
-export function validatePostUseReportV2(model, actionOverrides = {}) {
+export function validatePostUseReportV2(model, actionOverrides = {}, pendingTodoItems = null) {
   const errors = []
   const productSample = model.products.reduce((sum, product) => sum + product.sample, 0)
   if (productSample !== model.kpis.totalSample) errors.push(`样本量不一致：概述 ${model.kpis.totalSample}、产品合计 ${productSample}`)
@@ -941,7 +1121,15 @@ export function validatePostUseReportV2(model, actionOverrides = {}) {
     if (!String(actionOverrides[focus.id]?.title ?? focus.title ?? '').trim()) errors.push(`${focus.productName}「${focus.theme}」缺少关注结论`)
     if (!String(actionOverrides[focus.id]?.detail ?? focus.detail ?? '').trim()) errors.push(`${focus.productName}「${focus.theme}」缺少补充事实`)
     const owner = String(actionOverrides[focus.id]?.owner ?? focus.owner ?? '').trim()
-    if (!owner) errors.push(`${focus.productName}「${focus.theme}」缺少责任人`)
+    // 11-19 拍板：待指派/产品部经办人 = 未指定，与空值同判——阻断发送邮件与导出，先补齐经办人
+    if (!owner || owner === '待指派' || owner === '产品部经办人') errors.push(`${focus.productName}「${focus.theme}」责任人未指定，请补齐经办人`)
+  }
+  // 11-19 拍板：待办责任人未指定同判（自动行 owner 空 + 人工行均可触发）；
+  // pendingTodoItems = 页面当前编辑中的待办（优先于 model.todoRows——未保存的新增/删除也能拦住）
+  const todoSource = Array.isArray(pendingTodoItems) && pendingTodoItems.length ? pendingTodoItems : (model.todoRows || [])
+  for (const todo of todoSource) {
+    const owner = String(todo.owner || '').trim()
+    if (!owner || owner === '待指派') errors.push(`待办「${String(todo.productName || '').trim() || (todo.content || '').slice(0, 12)}」责任人未指定，请补齐经办人`)
   }
   return errors
 }

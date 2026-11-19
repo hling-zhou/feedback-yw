@@ -37,6 +37,27 @@ export function isExplicitNoProblemVisit(visit) {
   return /^(?:(?:经省代表回访|经回访|客户|省代表|经核实|回访)(?:核实|确认)?[，,:：]?\s*)?(?:无问题|没有问题|未发现问题|未复现问题|不存在问题)(?:[。；;，,\s]|$)/.test(result)
 }
 
+/**
+ * 11-19 两档剔除（用户拍板）·档 1 全剔除：省代表回访结果判定"无实际不满"——
+ * 客户其实没有不满（误操作/情绪分），五模块全不进（关注项/部门低分原因汇总/核心结论/问题主题分布/建议举措）。
+ * 仅看 visitResult（回访结果）；internalConclusion（内部评估）归档 2。
+ */
+export function isNoDissatisfactionVisit(visit) {
+  const result = normalizeEvidenceText(visit?.visitResult || visit?.visitFeedbackDetail)
+  return /无实际不满/.test(result)
+}
+
+/**
+ * 11-19 两档剔除（用户拍板）·档 2 半剔除：回访结果未判无实际不满，但内部评估选了
+ * "无需优改（客户误操作/账户异常/极小概率场景）"类（枚举值本身含"无实际不满"字样，
+ * 用户拍板按档 2 处理）；或产品部溯源判定无需优改类——问题存在但不值得优化，
+ * 不进定性（关注项/核心结论），进定量（部门低分原因汇总/问题主题分布）。
+ */
+export function isNoActionNeededConclusion(text) {
+  const value = normalizeEvidenceText(text)
+  return /无需优?改|无需优化/.test(value)
+}
+
 function sourceTexts(record) {
   const primary = extractValidCustomerTexts(record)
   const channel = String(record?.channel || record?.sourceSubType || '').trim()
@@ -150,13 +171,40 @@ export function resolveReportIssues(occurrences, visits = [], traces = [], links
         && normalizeEvidenceText(trace?.customerFeedback) === issue.text
       ))
     const autoTrace = exactTraces.length === 1 ? exactTraces[0] : null
-    const excluded = validLinks.some((row) => row.sourceType === 'visit' && row.verdict === 'no_issue') || Boolean(autoVisit)
+    // 11-19 两档剔除（用户拍板，客户+产品+本期匹配，非逐字）：
+    // 档 1 全剔除——回访结果"无实际不满"（省代表核实客户无真实不满）→ excluded_no_issue
+    // 档 2 半剔除——内部评估"无需优改"类 或 产品部溯源"无需优改"类 → excluded_no_action（进定量不进定性）
+    // 沿用 validSource（客户+产品+月份窗口）防误杀：同客户其他产品/其他期的问题不受影响。
+    // 11-19 审查防御（用户拍板"不满意优先"）：矛盾回访对（同客户同产品既有"无实际不满"又有
+    // 不满意措辞）不自动剔除——回访数据月粒度无法判时间序，自动剔除可能吞掉真实不满；
+    // 回退人工 link 判定路径（verdict=no_issue 的 link 仍然生效）。
+    const matchedVisits = (visits || []).filter((visit) => validSource(issue, visit))
+    const hasDissatisfiedVisit = matchedVisits.some((visit) =>
+      /(?<!无实际)不满|未解决|仍有问题|还没改/.test(String(visit?.visitResult || visit?.visitFeedbackDetail || '')))
+    const noDissatisfactionVisit = !hasDissatisfiedVisit
+      ? matchedVisits.find((visit) => isNoDissatisfactionVisit(visit)) || null : null
+    const noActionConclusionVisit = !hasDissatisfiedVisit
+      ? matchedVisits.find((visit) => validSource(issue, visit)
+        && !isNoDissatisfactionVisit(visit) && isNoActionNeededConclusion(visit?.internalConclusion || visit?.internalEvaluationDetail)) || null
+      : null
+    const noActionTrace = (traces || []).find((trace) => validSource(issue, trace)
+      && isNoActionNeededConclusion(trace?.recommendedReason || trace?.progress || trace?.customerFeedback)) || null
+    const excluded = validLinks.some((row) => row.sourceType === 'visit' && row.verdict === 'no_issue') || Boolean(autoVisit) || Boolean(noDissatisfactionVisit)
+    const halfExcluded = !excluded && Boolean(noActionConclusionVisit || noActionTrace)
     return {
       ...issue,
-      status: excluded ? 'excluded_no_issue' : 'open',
-      resolutionSource: excluded ? (autoVisit && !linkedVisitIds.length ? 'exact_visit' : 'manual_visit') : '',
-      linkedVisitIds: autoVisit ? [...new Set([...linkedVisitIds, String(autoVisit.id)])] : linkedVisitIds,
-      linkedTraceIds: autoTrace ? [...new Set([...linkedTraceIds, String(autoTrace.id)])] : linkedTraceIds,
+      status: excluded ? 'excluded_no_issue' : halfExcluded ? 'excluded_no_action' : 'open',
+      resolutionSource: excluded
+        ? (autoVisit && !linkedVisitIds.length ? 'exact_visit' : linkedVisitIds.length || noDissatisfactionVisit ? 'no_dissatisfaction_visit' : 'manual_visit')
+        : halfExcluded ? (noActionConclusionVisit ? 'no_action_conclusion' : 'no_action_trace') : '',
+      linkedVisitIds: autoVisit || noDissatisfactionVisit
+        ? [...new Set([...linkedVisitIds, String((autoVisit || noDissatisfactionVisit).id)])]
+        : noActionConclusionVisit
+          ? [...new Set([...linkedVisitIds, String(noActionConclusionVisit.id)])]
+          : linkedVisitIds,
+      linkedTraceIds: autoTrace || noActionTrace
+        ? [...new Set([...linkedTraceIds, String((autoTrace || noActionTrace).id)])]
+        : linkedTraceIds,
       staleLinkCount: (linksByIssue.get(issue.id) || []).length - validLinks.length,
     }
   })

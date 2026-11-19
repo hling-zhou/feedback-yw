@@ -114,6 +114,9 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   const [mailOpen, setMailOpen] = useState(false)
   const [regeneratingKey, setRegeneratingKey] = useState('')
   const [narrativeGenerating, setNarrativeGenerating] = useState(false)
+  // 11-19 拍板：未保存报告打开时自动触发一次 LLM 优化（三批）。ref 防重：同报告+同数据指纹
+  // 只自动跑一次，失败不重试（用户可手动点按钮）；已保存报告永不自动触发（显示上次结果）。
+  const narrativeAutoRunRef = useRef('')
   overlayRef.current = overlay
 
   const route = useMemo(() => resolveReportRoute(month), [month])
@@ -463,6 +466,22 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
     if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
   }, [])
 
+  // 11-19 拍板：未保存报告打开 → 自动触发一次 LLM 优化。守卫：仅 V2 + 未保存（无 overlay.snapshot）
+  // + 数据齐 + LLM 可用 + 有编辑权；同报告同数据指纹只跑一次（narrativeAutoRunRef 幂等键）。
+  // 已保存报告（重开/保存后）不触发——显示上次结果，需手动点「重新 LLM 优化」。
+  useEffect(() => {
+    if (!isV2 || !model || !canEdit || !autoEvidenceReady || !isLlmAvailable(settings)) return
+    if (overlay?.snapshot) return
+    const autoKey = `${reportKey}\0${model.dataFingerprint || ''}`
+    if (narrativeAutoRunRef.current === autoKey || narrativeAutoRunRef.current === 'failed:' + autoKey) return
+    narrativeAutoRunRef.current = autoKey
+    void handleGenerateV2Narrative().catch(() => {
+      // 自动触发失败：标记该键已试过，本次会话不再自动重试（防失败风暴）；手动按钮仍可用
+      narrativeAutoRunRef.current = 'failed:' + autoKey
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleGenerateV2Narrative 引用同批 state；autoKey 已含指纹防重复
+  }, [isV2, model, canEdit, autoEvidenceReady, settings, overlay?.snapshot, reportKey])
+
   const loading = !storageReady || sideLoading || ratingsPending || (isV2 && !statusTrendsReady)
     || (Boolean(reportKey) && loadedReportKey !== reportKey)
 
@@ -490,7 +509,8 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
     }))
   }
 
-  const v2Validation = isV2 && model ? validatePostUseReportV2(model, actionOverrides) : []
+  // 11-19 拍板：责任人未指定阻断保存/导出/发邮件——校验含页面当前编辑中的待办（未保存也能拦住）
+  const v2Validation = isV2 && model ? validatePostUseReportV2(model, actionOverrides, todoItems) : []
 
   const onVisitSupplementChange = (id, field, value) => {
     setVisitSupplements((prev) => ({
@@ -560,6 +580,27 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           } },
         }))
       }
+      // L2 细类覆盖表（11-19 L1/L2 体系）：与 L1 同机制合入 overlay；保存随 narratives 落库
+      if (draft.themeL2Labels && Object.keys(draft.themeL2Labels).length) {
+        setOverlay((prev) => ({
+          ...(prev || {}),
+          narratives: { ...(prev?.narratives || {}), themeL2Labels: {
+            ...(prev?.narratives?.themeL2Labels || {}),
+            ...draft.themeL2Labels,
+          } },
+        }))
+      }
+      // 两档剔除·LLM verdicts（11-19）：合入 overlay 触发模型重算（正则优先、LLM 补充）；
+      // 保存时随 narratives.evidenceVerdicts 落库，下次打开不再重跑。
+      if (draft.evidenceVerdicts && Object.keys(draft.evidenceVerdicts).length) {
+        setOverlay((prev) => ({
+          ...(prev || {}),
+          narratives: { ...(prev?.narratives || {}), evidenceVerdicts: {
+            ...(prev?.narratives?.evidenceVerdicts || {}),
+            ...draft.evidenceVerdicts,
+          } },
+        }))
+      }
       message.success('报告文案草稿已生成，请复核后保存')
     } catch (error) {
       message.error(error?.message || '报告文案生成失败')
@@ -591,6 +632,8 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           todoItems,
           ...(isV2 ? { actionOverrides } : {}),
           ...(isV2 ? { themeGroupLabels: overlay?.narratives?.themeGroupLabels || {} } : {}),
+          ...(isV2 ? { themeL2Labels: overlay?.narratives?.themeL2Labels || {} } : {}),
+          ...(isV2 ? { evidenceVerdicts: overlay?.narratives?.evidenceVerdicts || {} } : {}),
           visitSupplements,
         },
       }, version)
@@ -739,9 +782,11 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
               重新生成草稿
             </Button>
           ) : null}
-          {isV2 && model && (!overlay?.snapshot || regenerating) && canEdit ? (
+          {isV2 && model && canEdit ? (
             <Button disabled={!isLlmAvailable(settings)} loading={narrativeGenerating} onClick={() => void handleGenerateV2Narrative()}>
-              生成报告文案
+              {/* 11-19 拍板：按钮常驻（不再只未保存态显示）；已保存报告显示"重新 LLM 优化"， */}
+              {/* 未保存显示"LLM 优化"。重开后默认展示上次保存结果，需要时手动重新触发。 */}
+              {overlay?.snapshot ? '重新 LLM 优化' : 'LLM 优化'}
             </Button>
           ) : null}
           {isV2 && model ? <Typography.Text type="secondary" className="text-xs">
@@ -754,7 +799,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
             导出离线 HTML
           </Button>
           <Button
-            disabled={!canEdit || !model}
+            disabled={!canEdit || !model || (isV2 && v2Validation.length > 0)}
             icon={<MailOutlined />}
             onClick={() => setMailOpen(true)}
           >

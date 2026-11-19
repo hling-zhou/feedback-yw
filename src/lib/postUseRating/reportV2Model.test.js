@@ -300,6 +300,8 @@ describe('V2 report facts', () => {
   })
 
   // 11-18 晚重新分类拍板：购买参数/配置选择错误 ← 配置规格；操作与帮助文档 ← 任务操作流程/界面布局/帮助类；安全类 ← 网络安全；功能缺失/不完善 ← 多线BGP
+  // 11-19 L1/L2 体系改版：旧 7 组名 → 新 L1 名（购买参数/配置选择错误→购买与配置决策、
+  // 操作与帮助文档→操作与帮助体验、安全类→安全与合规）；多线BGP 归功能缺失/不完善。
   it('maps the reclassified reason groups exactly as approved', () => {
     const records = [
       rating('cfg', '2026-10', 5, '配置规格不知道如何选择'),
@@ -313,13 +315,13 @@ describe('V2 report facts', () => {
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
     })
     const names = model.reasons.map((row) => row.name)
-    expect(names).toContain('购买参数/配置选择错误')
-    expect(names).toContain('安全类')
-    expect(names).toContain('操作与帮助文档')
+    expect(names).toContain('购买与配置决策')
+    expect(names).toContain('安全与合规')
+    expect(names).toContain('操作与帮助体验')
     const feature = model.reasons.find((row) => row.name === '功能缺失/不完善')
     expect(feature).toBeTruthy()
     expect(feature.memberThemes.map((member) => member.theme)).toContain('多线BGP')
-    const ops = model.reasons.find((row) => row.name === '操作与帮助文档')
+    const ops = model.reasons.find((row) => row.name === '操作与帮助体验')
     expect(ops.memberThemes.map((member) => member.theme).sort()).toEqual(['任务操作流程复杂', '内容/帮助说明不充分'])
     expect(names).not.toContain('配置选择与帮助文档')
     expect(names).not.toContain('操作与安全类')
@@ -337,12 +339,12 @@ describe('V2 report facts', () => {
     expect(plain.reasons.map((row) => row.name)).toEqual(['垃圾云电脑,不用就关机', '烂到极致，我要退款'])
     const overridden = buildPostUseReportV2Model({
       ...base,
-      overlay: { narratives: { themeGroupLabels: { '烂到极致，我要退款': '操作与帮助文档' } } },
+      overlay: { narratives: { themeGroupLabels: { '烂到极致，我要退款': '操作与帮助体验' } } },
     })
-    const grouped = overridden.reasons.find((row) => row.name === '操作与帮助文档')
+    const grouped = overridden.reasons.find((row) => row.name === '操作与帮助体验')
     expect(grouped.memberThemes.map((member) => member.theme)).toEqual(['烂到极致，我要退款'])
     expect(overridden.reasons.find((row) => row.name === '垃圾云电脑,不用就关机')).toBeTruthy()
-    expect(overridden.themeGroupLabels).toEqual({ '烂到极致，我要退款': '操作与帮助文档' })
+    expect(overridden.themeGroupLabels).toEqual({ '烂到极致，我要退款': '操作与帮助体验' })
   })
 
   // 11-19 P1：focus 标题按生命周期分支措辞——数量+时点+低点影响三要素（原型洞察句式）
@@ -387,13 +389,61 @@ describe('V2 report facts', () => {
     const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
     expect(merged.monthCounts).toEqual({ '2026-07': 1, '2026-08': 1, '2026-09': 1 })
     expect(merged.lifecycle).toBe('贯穿全季')
-    const burst = model.reasons.find((row) => row.name === '稳定性不足故障频发')
+    const burst = model.reasons.find((row) => row.name === '服务资源性能/稳定性不足')
     // [0,2,0] 判单月事件（8月），不误判已收敛（11-18 对照季报原型 MOP 行拍板）
     expect(burst.monthCounts).toEqual({ '2026-07': 0, '2026-08': 2, '2026-09': 0 })
     expect(burst.lifecycle).toBe('单月（8月）')
-    const faded = model.reasons.find((row) => row.name === '购买参数/配置选择错误')
+    const faded = model.reasons.find((row) => row.name === '购买与配置决策')
     // [1,1,0] 两个月出现末月消失 → 已收敛
     expect(faded.lifecycle).toBe('已收敛（末月无）')
+  })
+
+  // 11-19 两档剔除（用户拍板）：档 1 回访"无实际不满"五模块全不进；
+  // 档 2 内部评估/溯源"无需优改"类进定量（部门低分原因汇总/主题分布）不进定性（关注项/核心结论素材）。
+  it('excludes tier-1 no-dissatisfaction issues from all five modules', () => {
+    const records = [
+      rating('nd-1', '2026-10', 1, '功能有缺失'),
+      rating('nd-2', '2026-10', 2, '页面打开慢', '云监控'),
+    ]
+    const visits = [
+      { id: 'v-nd', importMonth: '2026-10', productName: '弹性公网IP', customerCode: 'C-nd-1', visitResult: '经省代表回访，客户无实际不满，系误操作' },
+    ]
+    // rating fixture 的 customerCode 是 'C-' + id；回访必须同客户码命中
+    visits[0].customerCode = 'C-nd-1'
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
+    })
+    // 档 1：弹性公网IP 的问题全剔除——themes/reasons/focus 全无
+    expect(model.themes.filter((row) => row.productName === '弹性公网IP')).toHaveLength(0)
+    expect(model.reasons.find((row) => row.memberThemes?.some((m) => m.theme === '功能有缺失'))).toBeUndefined()
+    expect(model.focus.find((row) => row.theme === '功能有缺失')).toBeUndefined()
+    // 云监控不受影响
+    expect(model.themes.find((row) => row.productName === '云监控')).toBeTruthy()
+  })
+
+  it('keeps tier-2 no-action issues in quantitative stats but out of focus', () => {
+    const records = [
+      rating('na-1', '2026-10', 1, '功能有缺失'),
+      rating('na-2', '2026-10', 1, '无法绑定', '云监控'),
+    ]
+    const visits = [
+      { id: 'v-na', importMonth: '2026-10', productName: '弹性公网IP', customerCode: 'C-na-1',
+        visitResult: '客户反馈功能缺失', internalConclusion: '无需优改（客户误操作/账户异常/极小概率场景）' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
+    })
+    // 档 2：进定量——themes/reasons 仍在
+    const theme = model.themes.find((row) => row.productName === '弹性公网IP' && row.theme === '功能有缺失')
+    expect(theme).toBeTruthy()
+    expect(theme.noAction).toBe(true)
+    expect(model.reasons.find((row) => row.name === '功能缺失/不完善')).toBeTruthy()
+    // 不进定性——focus 无该主题
+    expect(model.focus.find((row) => row.theme === '功能有缺失')).toBeUndefined()
+    // 未判定的云监控正常进定性
+    expect(model.focus.find((row) => row.theme === '无法绑定')).toBeTruthy()
   })
 
   it('assigns an owner only when the trace is linked to that issue', () => {
@@ -412,8 +462,8 @@ describe('V2 report facts', () => {
       traces,
     })
     expect(model.actions.find((row) => row.theme === '功能有缺失')).toMatchObject({ owner: '经办甲', text: '核查缺失能力' })
-    // 11-19 P0-③：无溯源经办人时默认兜底"产品部经办人"（消掉"待指派"），有真实经办人保持不变
-    expect(model.actions.find((row) => row.theme === '页面打开慢')).toMatchObject({ owner: '产品部经办人', text: '核查「页面打开慢」并明确处理结论' })
+    // 11-19 撤销兜底（用户拍板）：无溯源经办人回退"待指派"，由 v2Validation 阻断保存/导出/发邮件
+    expect(model.actions.find((row) => row.theme === '页面打开慢')).toMatchObject({ owner: '待指派', text: '核查「页面打开慢」并明确处理结论' })
   })
 
   it('puts a dissatisfied customer first and keeps the focus across products', () => {
@@ -445,6 +495,27 @@ describe('V2 report facts', () => {
     expect(actions).toHaveLength(5)
     expect(actions.some((row) => row.mergedThemeCount > 1)).toBe(true)
     expect(model.focus.every((row) => actions.some((action) => action.id === row.id))).toBe(true)
-    expect(validatePostUseReportV2(model).filter((error) => !error.includes('缺少责任人'))).toEqual([])
+    // 11-19 责任人未指定阻断：本用例关注 cap 逻辑，过滤新旧两版责任人提示后应无其他差异
+    expect(validatePostUseReportV2(model).filter((error) => !error.includes('责任人'))).toEqual([])
+  })
+
+  // 11-19 拍板：责任人未指定（空/待指派）阻断保存/导出/发邮件——关注项与页面编辑中待办同判
+  it('blocks on unassigned owners for focus actions and pending todo rows', () => {
+    const records = [rating('own-1', '2026-10', 5, '功能有缺失')]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    // 关注项 owner=待指派（无溯源经办人）→ 阻断
+    expect(validatePostUseReportV2(model)).toContain('弹性公网IP「功能有缺失」责任人未指定，请补齐经办人')
+    // 补齐经办人后放行；页面编辑中待办 owner 空 → 阻断，补齐后放行
+    const fixed = validatePostUseReportV2(model, { [model.focus[0].id]: { owner: '张三' } })
+    expect(fixed.filter((error) => error.includes('责任人未指定'))).toEqual([])
+    const todoPending = validatePostUseReportV2(model, { [model.focus[0].id]: { owner: '张三' } },
+      [{ id: 'todo-1', productName: '云监控', content: '跟进回访评估', owner: '' }])
+    expect(todoPending).toContain('待办「云监控」责任人未指定，请补齐经办人')
+    expect(validatePostUseReportV2(model, { [model.focus[0].id]: { owner: '张三' } },
+      [{ id: 'todo-1', productName: '云监控', content: '跟进回访评估', owner: '李四' }])
+      .filter((error) => error.includes('责任人未指定'))).toEqual([])
   })
 })

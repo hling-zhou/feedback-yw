@@ -90,54 +90,60 @@ describe('V2 report wording', () => {
   })
 
   // 11-18 晚 LLM 语义归类（用户拍板"结合 LLM 语义分析做归类"）：
-  // 11-19 拆批：归类独立小批（第二次调用，4000 预算短指令），文案批不再携带 themeGroups；
+  // 11-19 拆批 + 并行化：归类批与文案批并行发起（归类浮签先创建 → 调用序 calls[0]=归类批、calls[1]=文案批）；
   // 归类输出经封闭组过滤 + theme 逐字匹配；非法条目丢弃回退原文自成一档，不阻塞文案批。
+  // 11-19 拆批 + 并行化 + L1/L2 体系：归类批输出 {theme,l1,l2}——L1 八类封闭（只选不造），
+  // L2 细类开放可空；非法条目丢弃回退原文自成一档，不阻塞文案批。
   it('classifies ungrouped low-score themes via strictLabels and drops forged entries', async () => {
     llmChatCompletion.mockReset()
-    // 第一次调用 = 文案批；第二次调用 = 归类批
+    // 并行发起序：第一次调用 = 归类批；第二次调用 = 文案批
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
+      themeGroups: [
+        { theme: '垃圾云电脑,不用就关机', l1: '操作与帮助体验' },
+        { theme: '页面加载慢/报错', l1: '体验极差类' },
+        { theme: '不在清单里的标签', l1: '安全与合规' },
+        { theme: '找不到需要的产品/功能', l1: '功能缺失/不完善', l2: '' },
+        { theme: 'MOP退订一直失败', l1: '操作执行性能/稳定性不足', l2: 'MOP 退订链路' },
+      ],
+    }) })
     llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
       products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
-    }) })
-    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
-      themeGroups: [
-        { theme: '垃圾云电脑,不用就关机', group: '操作与帮助文档' },
-        { theme: '页面加载慢/报错', group: '体验极差类' },
-        { theme: '不在清单里的标签', group: '安全类' },
-        { theme: '找不到需要的产品/功能', group: '功能缺失/不完善' },
-      ],
     }) })
     const model = {
       kind: 'month', months: ['2026-10'],
       focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
       products: [{ name: '云监控', avg: 1, sample: 1, previousAvg: 4.67, status: '重点改善', themes: [] }],
-      ungroupedThemes: ['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能'],
+      ungroupedThemes: ['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能', 'MOP退订一直失败'],
     }
     const result = await generatePostUseReportV2Narrative({}, model)
-    // 文案批 user 消息不再携带 ungroupedThemes（拆批瘦身）
-    const narrativePayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
-    expect(narrativePayload.ungroupedThemes).toBeUndefined()
-    // 归类批：独立短指令 + 封闭组清单进输入
     expect(llmChatCompletion).toHaveBeenCalledTimes(2)
-    const groupPayload = JSON.parse(llmChatCompletion.mock.calls[1][1].messages[1].content)
-    expect(groupPayload.ungroupedThemes).toEqual(['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能'])
-    expect(groupPayload.candidateGroups).toContain('功能缺失/不完善')
-    expect(llmChatCompletion.mock.calls[1][1].max_tokens).toBe(4000)
+    // 归类批（calls[0]）：判定树 prompt + L1/L2 候选清单进输入 + 4000 预算
+    const groupPayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
+    expect(groupPayload.ungroupedThemes).toEqual(['垃圾云电脑,不用就关机', '页面加载慢/报错', '找不到需要的产品/功能', 'MOP退订一直失败'])
+    expect(groupPayload.candidateL1).toContain('功能缺失/不完善')
+    expect(groupPayload.candidateL2).toContain('MOP 退订链路')
+    expect(llmChatCompletion.mock.calls[0][1].max_tokens).toBe(4000)
+    // 文案批（calls[1]）：不再携带 ungroupedThemes（拆批瘦身）
+    const narrativePayload = JSON.parse(llmChatCompletion.mock.calls[1][1].messages[1].content)
+    expect(narrativePayload.ungroupedThemes).toBeUndefined()
     expect(result.themeGroupLabels).toEqual({
-      '垃圾云电脑,不用就关机': '操作与帮助文档',
+      '垃圾云电脑,不用就关机': '操作与帮助体验',
       '找不到需要的产品/功能': '功能缺失/不完善',
+      'MOP退订一直失败': '操作执行性能/稳定性不足',
     })
-    // 自造组名（体验极差类）与 theme 越清单（不在清单里的标签）均被丢弃
+    expect(result.themeL2Labels).toEqual({ 'MOP退订一直失败': 'MOP 退订链路' })
+    // 自造 L1（体验极差类）与 theme 越清单（不在清单里的标签）均被丢弃
   })
 
   it('keeps themeGroupLabels empty when the model returns no grouping', async () => {
     llmChatCompletion.mockReset()
+    // 并行发起序：归类批先（空 themeGroups），文案批后
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({ themeGroups: [] }) })
     llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
       products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
     }) })
-    // 归类批返回空 themeGroups
-    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({ themeGroups: [] }) })
     const model = {
       kind: 'month', months: ['2026-10'],
       focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
@@ -152,11 +158,12 @@ describe('V2 report wording', () => {
   // 11-19：归类批失败（网络/解析）不阻塞文案批——themeGroupLabels 空回退
   it('does not fail the narrative batch when the grouping batch errors', async () => {
     llmChatCompletion.mockReset()
+    // 并行发起序：归类批先（抛错），文案批后
+    llmChatCompletion.mockRejectedValueOnce(new Error('LLM 输出被截断（finish_reason=length），请增大 max_tokens 或缩短输入'))
     llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
       focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
       products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
     }) })
-    llmChatCompletion.mockRejectedValueOnce(new Error('LLM 输出被截断（finish_reason=length），请增大 max_tokens 或缩短输入'))
     const model = {
       kind: 'month', months: ['2026-10'],
       focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
@@ -166,5 +173,61 @@ describe('V2 report wording', () => {
     const result = await generatePostUseReportV2Narrative({}, model)
     expect(result.focus).toBeTruthy()
     expect(result.themeGroupLabels).toEqual({})
+  })
+
+  // 11-19 两档剔除·LLM verdicts 第三并行批：evidenceVerdictPending 进输入，封闭集过滤，
+  // keep 不存储（默认语义即 keep）；无 pending 时不发起 verdicts 批。
+  it('runs the verdicts batch in parallel and filters forged verdicts', async () => {
+    llmChatCompletion.mockReset()
+    // 并行发起序（三个批均无 pending 依赖时）：verdicts 批先于文案批发起（pendingVerdicts 非空时）
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
+      verdicts: [
+        { id: 'visit-1', verdict: 'no_dissatisfaction' },
+        { id: 'visit-2', verdict: 'no_action_needed' },
+        { id: 'visit-3', verdict: 'keep' },
+        { id: 'visit-4', verdict: '自造判定' },
+        { id: 'not-in-pending', verdict: 'no_dissatisfaction' },
+      ],
+    }) })
+    llmChatCompletion.mockResolvedValueOnce({ text: JSON.stringify({
+      focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
+      products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
+    }) })
+    const model = {
+      kind: 'month', months: ['2026-10'],
+      focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
+      products: [{ name: '云监控', avg: 1, sample: 1, previousAvg: 4.67, status: '重点改善', themes: [] }],
+      evidenceVerdictPending: [
+        { id: 'visit-1', sourceKind: 'visit', text: '经回访客户说没实际问题' },
+        { id: 'visit-2', sourceKind: 'visit', text: '评估为不用优化' },
+        { id: 'visit-3', sourceKind: 'visit', text: '客户仍有诉求' },
+        { id: 'visit-4', sourceKind: 'visit', text: '待处理' },
+      ],
+    }
+    const result = await generatePostUseReportV2Narrative({}, model)
+    // verdicts 批输入含 id + 打码文本
+    const verdictPayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
+    expect(verdictPayload.evidence[0]).toMatchObject({ id: 'visit-1', sourceKind: 'visit' })
+    // keep 不存储；自造判定丢弃；不在 pending 清单的 id 丢弃
+    expect(result.evidenceVerdicts).toEqual({
+      'visit-1': 'no_dissatisfaction',
+      'visit-2': 'no_action_needed',
+    })
+  })
+
+  it('skips the verdicts batch when there is no pending evidence', async () => {
+    llmChatCompletion.mockReset()
+    llmChatCompletion.mockResolvedValue({ text: JSON.stringify({
+      focus: [{ index: 0, title: '云监控待回应', detail: '客户反馈批量导出' }],
+      products: [{ index: 0, conclusion: '云监控需核实批量导出诉求。' }],
+    }) })
+    const model = {
+      kind: 'month', months: ['2026-10'],
+      focus: [{ id: 'focus-1', productName: '云监控', theme: '功能有缺失', actionType: '回访跟进', title: '规则标题', detail: '规则事实', text: '核查并回应', priority: 'P0', owner: 'liuhao' }],
+      products: [{ name: '云监控', avg: 1, sample: 1, previousAvg: 4.67, status: '重点改善', themes: [] }],
+    }
+    const result = await generatePostUseReportV2Narrative({}, model)
+    expect(llmChatCompletion).toHaveBeenCalledTimes(1)
+    expect(result.evidenceVerdicts).toEqual({})
   })
 })
