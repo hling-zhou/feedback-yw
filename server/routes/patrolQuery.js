@@ -322,8 +322,20 @@ export function registerPatrolQueryRoutes(app) {
                    OR g.metric_name LIKE ? OR g.api_path LIKE ? OR g.user_name LIKE ?)`)
       params.push(like, like, like, like, like)
     }
-    if (q.rootCauseL1) { where.push('g.root_cause_l1 = ?'); params.push(q.rootCauseL1) }
-    if (q.rootCauseL2) { where.push('g.root_cause_l2 = ?'); params.push(q.rootCauseL2) }
+    // 11-19 升级：L1/L2 过滤改有效根因口径（manual 优先 COALESCE）——与列表 Tag 展示
+    // （displayRootCause manual 优先）、cause-stats 聚合口径同源自洽；修复总览跳转计数漂移。
+    if (q.rootCauseL1) {
+      where.push(`COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = ?`)
+      params.push(q.rootCauseL1)
+    }
+    if (q.rootCauseL2) {
+      where.push(`COALESCE(NULLIF(g.root_cause_l2_manual, ''), g.root_cause_l2) = ?`)
+      params.push(q.rootCauseL2)
+    }
+    // 11-19 诊断能力需求页下钻参数（通用）：poolName 等值；apiPathExact 精确匹配
+    // （防 LIKE 子串误伤——/bind 与 /unbind 路径前缀重叠场景）
+    if (q.poolName) { where.push('g.pool_name = ?'); params.push(q.poolName) }
+    if (q.apiPathExact) { where.push('g.api_path = ?'); params.push(q.apiPathExact) }
     // 11-18 拍板：「其他」= 仿真/测试账号以外的真实客户（customer_type 空值或非标注值）
     if (q.customerType === '__others__') {
       where.push(`(g.customer_type IS NULL OR g.customer_type = '' OR (g.customer_type <> '仿真' AND g.customer_type <> '测试账号'))`)
@@ -620,6 +632,100 @@ export function registerPatrolQueryRoutes(app) {
   }
 
   // ⑤总览聚合 cause-stats（docs §7.2）：单一接口支撑总览五模块
+  // ⑦诊断能力需求池（11-19 拍板）：「诊断能力缺口」类失败组汇集——云网工作台 MCP 日志服务
+  // 诊断能力建设的需求输入。第一版只读；池接入分类从诊断产物自动推断（classifyGapKind，
+  // 不维护池清单——覆盖范围会变，静态清单必过时）。
+  // 口径：COALESCE 有效根因判定（人工修正为具体根因后自动退出需求池）。
+  app.get('/api/patrol/diagnosis-gaps/summary', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const range = parseRange(request.query)
+    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+    const db = getDb()
+    const GAP_WHERE = `g.group_date BETWEEN ? AND ?
+      AND g.root_cause_l1 IS NOT NULL
+      AND COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = '诊断能力缺口'`
+    // 组级明细（含最新诊断的 MCP 原始响应——gapKind 判定素材）
+    const groupRows = db.prepare(`
+      SELECT g.id, g.product_key, g.api_path, g.pool_name, g.pre_compress_count,
+             g.group_date, g.first_request_id, g.suppressed_request_ids, g.first_request_time,
+             d.mcp_raw_response AS mcpRaw
+      FROM api_patrol_failure_groups g
+      LEFT JOIN (
+        SELECT failure_group_id, mcp_raw_response FROM api_patrol_diagnoses
+        WHERE id IN (SELECT MAX(id) FROM api_patrol_diagnoses GROUP BY failure_group_id)
+      ) d ON d.failure_group_id = g.id
+      WHERE ${GAP_WHERE}
+    `).all(range.start, range.end)
+    // 组级 gapKind 判定（SQL 外做——SQLite 无 JSON 解析函数，JS 判定可单测）
+    const kinds = new Map() // id → gapKind
+    for (const r of groupRows) kinds.set(Number(r.id), classifyGapKind(r.mcpRaw))
+    const covered = groupRows.filter((r) => {
+      const k = kinds.get(Number(r.id))
+      return k === 'log_not_collected' || k === 'failure_log_missing'
+    })
+    const uncovered = groupRows.filter((r) => kinds.get(Number(r.id)) === 'pool_uncovered')
+
+    const PRODUCT_NAMES = productNameMap()
+    // 分区二：池已接入·诊断能力不足——产品×接口×池聚合
+    const aggMap = new Map()
+    for (const r of covered) {
+      const key = `${r.product_key}|${r.api_path}|${r.pool_name}`
+      if (!aggMap.has(key)) {
+        aggMap.set(key, {
+          aggregateKey: key,
+          productKey: r.product_key, productName: PRODUCT_NAMES[r.product_key] || r.product_key,
+          apiPath: r.api_path, poolName: r.pool_name,
+          gapKinds: { log_not_collected: 0, failure_log_missing: 0 },
+          groupCount: 0, preCompressTotal: 0,
+          firstDate: String(r.group_date), lastRequestTime: String(r.first_request_time || ''),
+          requestIds: [],
+        })
+      }
+      const a = aggMap.get(key)
+      const k = kinds.get(Number(r.id))
+      a.gapKinds[k] += 1
+      a.groupCount += 1
+      a.preCompressTotal += Number(r.pre_compress_count || 0)
+      if (String(r.group_date) < a.firstDate) a.firstDate = String(r.group_date)
+      if (String(r.first_request_time || '') > a.lastRequestTime) a.lastRequestTime = String(r.first_request_time)
+      for (const id of [String(r.first_request_id || ''), ...safeParseIds(r.suppressed_request_ids)]) {
+        if (id && !a.requestIds.includes(id)) a.requestIds.push(id)
+      }
+    }
+    const rows = [...aggMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal || b.groupCount - a.groupCount)
+    // 分区一：池未接入 MCP——池维度汇总（数据驱动；无实例=空数组，前端不渲染）
+    const uncMap = new Map()
+    for (const r of uncovered) {
+      if (!uncMap.has(r.pool_name)) {
+        uncMap.set(r.pool_name, {
+          poolName: r.pool_name, groupCount: 0, preCompressTotal: 0,
+          lastRequestTime: String(r.first_request_time || ''), requestIds: [],
+        })
+      }
+      const u = uncMap.get(r.pool_name)
+      u.groupCount += 1
+      u.preCompressTotal += Number(r.pre_compress_count || 0)
+      if (String(r.first_request_time || '') > u.lastRequestTime) u.lastRequestTime = String(r.first_request_time)
+      for (const id of [String(r.first_request_id || ''), ...safeParseIds(r.suppressed_request_ids)]) {
+        if (id && !u.requestIds.includes(id)) u.requestIds.push(id)
+      }
+    }
+    const uncoveredPools = [...uncMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
+    // stats：窗口统计（引导卡统计行数据源）
+    const apiSet = new Set(covered.map((r) => `${r.product_key}|${r.api_path}`))
+    const poolSet = new Set(groupRows.map((r) => r.pool_name))
+    return {
+      stats: {
+        groupCount: groupRows.length,
+        uncoveredCount: uncovered.length,
+        coveredCount: covered.length,
+        apiCount: apiSet.size,
+        poolCount: poolSet.size,
+      },
+      uncoveredPools,
+      rows: rows.map((a) => ({ ...a, jiraTicketId: null, jiraStatus: null })),
+    }
+  })
+
   // LLM 判定候选建议（11-19 拍板：候选回流——只读聚合，不自动写规则表；运营在规则面板人工纳入）
   // 语义：root_cause_source='llm' 的组按 L1×L2 聚合，出现 ≥2 次的场景列候选（孤例不列——
   // 单次判定不稳定不足以固化）；样例组供跳转复核，keywords 从诊断结论提取供「纳入为规则」预填。
@@ -924,6 +1030,28 @@ function safeParseIds(json) {
   } catch {
     return []
   }
+}
+
+/**
+ * 缺口类型判别（11-19 拍板）：从 MCP 原始响应推断池接入与缺口成因——
+ * 不维护池清单（覆盖范围会变，静态清单必过时），随诊断数据自动更新。
+ * - pool_uncovered：池未接入/调用异常（无响应 / 非 JSON / MCP 业务码非 0000）
+ * - log_not_collected：日志未采集（MCP 正常返回但 records=0）
+ * - failure_log_missing：失败日志缺失（有 records 但无 ERROR/WARN——失败请求只落了 INFO）
+ * - other：防御位（有失败语义却判了缺口——理论不出现，不入需求池分区）
+ * @param {string | null | undefined} mcpRawResponse
+ * @returns {'pool_uncovered' | 'log_not_collected' | 'failure_log_missing' | 'other'}
+ */
+export function classifyGapKind(mcpRawResponse) {
+  const raw = String(mcpRawResponse || '').trim()
+  if (!raw) return 'pool_uncovered'
+  let parsed = null
+  try { parsed = JSON.parse(raw) } catch { return 'pool_uncovered' }
+  if (String(parsed?.code || '') !== '0000') return 'pool_uncovered'
+  const recs = Array.isArray(parsed?.data?.records) ? parsed.data.records : []
+  if (recs.length === 0) return 'log_not_collected'
+  const hasFail = recs.some((r) => /\[(ERROR|WARN)\s*\]/i.test(String(r?.content || '')))
+  return hasFail ? 'other' : 'failure_log_missing'
 }
 
 /**

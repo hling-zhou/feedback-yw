@@ -139,12 +139,42 @@ describeQuery('patrol query API', () => {
     expect(pending.rootCauseL1Manual).toBe('参数无效/校验失败')
     expect(pending.rootCauseL2Manual).toBe('传参缺失')
 
-    // 根因 L1 筛选
+    // 根因 L1 筛选——11-19 升级 COALESCE 有效根因口径：fail-2 已被 manual 修正为
+    // 「参数无效/校验失败」，按业务冲突筛选不再命中（旧口径下命中=红绿证明点）
     const r1 = await app.inject({
       method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&rootCauseL1=业务冲突',
       headers: authHeader(),
     })
-    expect(r1.json().rows).toHaveLength(1)
+    expect(r1.json().rows).toHaveLength(0)
+    // 有效根因筛选：修正值可筛到（manual 优先）
+    const r1b = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&rootCauseL1=' + encodeURIComponent('参数无效/校验失败'),
+      headers: authHeader(),
+    })
+    expect(r1b.json().rows).toHaveLength(1)
+    expect(r1b.json().rows[0].firstRequestId).toBe('fail-2')
+    // L2 有效口径：manual L2（传参缺失）可筛，原 L2（绑定关系未解除）不再命中 fail-2
+    const r1c = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&rootCauseL2=' + encodeURIComponent('绑定关系未解除'),
+      headers: authHeader(),
+    })
+    expect(r1c.json().rows).toHaveLength(0)
+    // 下钻参数：poolName 等值 + apiPathExact 精确（与 rootCauseL1 组合）
+    const r1d = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&rootCauseL1=' + encodeURIComponent('诊断能力缺口') + '&poolName=' + encodeURIComponent('华南-广州3'),
+      headers: authHeader(),
+    })
+    expect(r1d.json().rows).toHaveLength(1) // 缺口组在华南-广州3（fail-1）
+    const r1e = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&rootCauseL1=' + encodeURIComponent('诊断能力缺口') + '&poolName=' + encodeURIComponent('华北-北京3'),
+      headers: authHeader(),
+    })
+    expect(r1e.json().rows).toHaveLength(0)
+    const r1f = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/groups?startDate=2026-08-10&endDate=2026-08-11&apiPathExact=' + encodeURIComponent('/customer/v3/order/create/floatingip') + '&poolName=' + encodeURIComponent('华南-广州3'),
+      headers: authHeader(),
+    })
+    expect(r1f.json().rows).toHaveLength(3) // fail-1(缺口)+fail-2(修正)+fail-3(未诊断) 同接口同池
 
     // 未诊断状态筛选（PENDING 组——11-17 加 slb 对照组后为 2：fail-3 + fail-s1）
     const r2 = await app.inject({

@@ -204,7 +204,8 @@ export default function ApiPatrolFailures() {
   const l1Counts = useMemo(() => {
     const m = {}
     for (const g of groups) {
-      const k = g.rootCauseL1 || '未诊断'
+      // 11-19 升级：displayRootCause 口径计数——下拉计数与筛选（后端 COALESCE）/列表 Tag 展示三方自洽
+      const k = displayRootCause(g).l1 || '未诊断'
       m[k] = (m[k] || 0) + 1
     }
     return m
@@ -927,3 +928,7 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
     </Drawer>
   )
 }
+
+// 11-19 具名导出：诊断能力需求页复用（readOnly 形态——不渲染反馈表单/footer）。
+// 寄生导出权衡：40+ 守卫锚点锚在本文件，提取独立文件成本高；Jira 版动抽屉前再提取（届时迁移锚点）。
+export { FailureGroupDrawer, displayRootCause }
