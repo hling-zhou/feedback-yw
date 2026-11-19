@@ -50,8 +50,9 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
       username: 'patrol@test.local', fromAddress: 'patrol@test.local', password: 'secret',
     })
     channelId = channel.id
-    const g1 = mailRepo.createMailGroup({ name: '产品组A', emails: ['a1@test.local', 'a2@test.local'] })
-    const g2 = mailRepo.createMailGroup({ name: '产品组B', emails: ['a2@test.local', 'b1@test.local'] })
+    // cc 覆盖两个分支：cc1 跨组重复（合并去重）、a1 同时在收件人和抄送（to 优先剔除）
+    const g1 = mailRepo.createMailGroup({ name: '产品组A', emails: ['a1@test.local', 'a2@test.local'], cc: ['cc1@test.local', 'a1@test.local'] })
+    const g2 = mailRepo.createMailGroup({ name: '产品组B', emails: ['a2@test.local', 'b1@test.local'], cc: ['cc1@test.local'] })
     groupId = [g1.id, g2.id]
     yesterday = mod.yesterdayStr(new Date())
   })
@@ -96,19 +97,24 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
     expect(t3.getDate()).toBe(8)
   })
 
-  it('② 收件人多群组合并去重', () => {
-    const emails = mod.resolveReportRecipients([groupId[0], groupId[1]])
-    expect(emails.sort()).toEqual(['a1@test.local', 'a2@test.local', 'b1@test.local'])
+  it('② 收件人/抄送多群组合并去重；抄送中已属收件人的剔除（2026-11-19 cc 修复回归）', () => {
+    const r = mod.resolveReportRecipients([groupId[0], groupId[1]])
+    expect(r.to.sort()).toEqual(['a1@test.local', 'a2@test.local', 'b1@test.local'])
+    // cc1 两群组重复 → 去重为一份；a1 已是收件人 → 从抄送剔除
+    expect(r.cc).toEqual(['cc1@test.local'])
   })
 
-  it('③ 全链路：schedule 触发 → 发送昨日报告（to 去重、subject 含日期、html 含产品与待处理），状态+审计落库', async () => {
+  it('③ 全链路：schedule 触发 → 发送昨日报告（to 去重、cc 随发、subject 含日期、html 含产品与待处理），状态+审计落库', async () => {
     seedYesterday()
     const r = await mod.sendPatrolDailyReport({ trigger: 'schedule' })
     expect(r.ok).toBe(true)
     expect(r.recipients).toBe(3)
+    expect(r.ccCount).toBe(1)
     expect(sent.length).toBe(1)
     // join 顺序不作断言（Set 迭代实现细节），按集合断言
     expect(sent[0].to.split(', ').sort()).toEqual(['a1@test.local', 'a2@test.local', 'b1@test.local'])
+    // 2026-11-19 cc 修复：抄送人必须出现在 SMTP 消息里（此前静默丢失）
+    expect(sent[0].cc).toBe('cc1@test.local')
     expect(sent[0].subject).toBe(`【AI巡检日报】${yesterday}`)
     expect(sent[0].html).toContain('待产品侧处理')
     expect(sent[0].html).toContain('华南-广州3')
@@ -119,6 +125,7 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
     const detail = JSON.parse(String(audit.d))
     expect(detail.result).toBe('sent')
     expect(detail.recipients).toBe(3)
+    expect(detail.ccCount).toBe(1)
   })
 
   it('④ 同日幂等：schedule 二次触发 → skipped，mock 只发过一封', async () => {

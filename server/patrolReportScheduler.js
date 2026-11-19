@@ -109,18 +109,23 @@ export function nextSendAt(now, sendTime) {
 }
 
 /**
- * 汇总收件人（多群组合并去重）。
+ * 汇总收件人与抄送（多群组合并去重；抄送中已属收件人的邮箱剔除——同人已收正件不再重复抄送）。
+ * 2026-11-19 修复：群组 cc_emails_json（11-09 拍板字段）此前从未被日报消费，抄送人静默丢失。
  * @param {string[]} groupIds
- * @returns {string[]}
+ * @returns {{ to: string[], cc: string[] }}
  */
 export function resolveReportRecipients(groupIds) {
   const groups = listMailGroups()
-  const set = new Set()
+  const toSet = new Set()
+  const ccSet = new Set()
   for (const g of groups) {
     if (!groupIds.includes(g.id)) continue
-    for (const e of g.emails) set.add(e)
+    for (const e of g.emails) toSet.add(e)
+    for (const c of g.cc || []) ccSet.add(c)
   }
-  return [...set]
+  const to = [...toSet]
+  const cc = [...ccSet].filter((email) => !toSet.has(email))
+  return { to, cc }
 }
 
 /**
@@ -129,7 +134,7 @@ export function resolveReportRecipients(groupIds) {
  * - manual：忽略 enabled 与幂等（立即发送=测试/补发）
  * - 无数据日：includeQuiet=true 发平静简报；false 记 quiet_skipped（同样占当日一次）
  * @param {{ trigger?: 'schedule' | 'catch-up' | 'manual', force?: boolean }} [options]
- * @returns {Promise<{ ok: boolean, skipped?: string, error?: string, recipients?: number, products?: number, date?: string }>}
+ * @returns {Promise<{ ok: boolean, skipped?: string, error?: string, recipients?: number, ccCount?: number, products?: number, date?: string }>}
  */
 export async function sendPatrolDailyReport(options = {}) {
   const trigger = options.trigger || 'manual'
@@ -144,7 +149,7 @@ export async function sendPatrolDailyReport(options = {}) {
   }
 
   const recipients = resolveReportRecipients(config.groupIds)
-  if (recipients.length === 0) {
+  if (recipients.to.length === 0) {
     const error = '收件人群组为空或群组内无邮箱'
     writePatrolReportState({ lastSentDate: today, lastSentAt: new Date().toISOString(), lastResult: 'error', lastError: error })
     logAudit({ username: 'system-scheduler', action: 'api_patrol.daily_report_send', detail: { trigger, result: 'error', error } })
@@ -180,18 +185,26 @@ export async function sendPatrolDailyReport(options = {}) {
     : `AI 巡检日报 ${date}：昨日无异常接口与失败请求。`
 
   try {
-    await sendSmtpMail(channel, { to: recipients, subject, html, text })
+    await sendSmtpMail(channel, {
+      to: recipients.to,
+      cc: recipients.cc.length ? recipients.cc : undefined,
+      subject,
+      html,
+      text,
+    })
     writePatrolReportState({ lastSentDate: today, lastSentAt: new Date().toISOString(), lastResult: 'sent' })
     logAudit({
       username: 'system-scheduler',
       action: 'api_patrol.daily_report_send',
       detail: {
-        trigger, result: 'sent', date, recipients: recipients.length,
+        trigger, result: 'sent', date,
+        recipients: recipients.to.length,
+        ccCount: recipients.cc.length,
         products: report.products.length, groups: report.products.reduce((a, p) => a + p.groups, 0),
         pendingGroups: report.products.reduce((a, p) => a + p.pendingGroups, 0),
       },
     })
-    return { ok: true, recipients: recipients.length, products: report.products.length, date }
+    return { ok: true, recipients: recipients.to.length, ccCount: recipients.cc.length, products: report.products.length, date }
   } catch (err) {
     const error = err instanceof Error ? err.message : '邮件发送失败'
     writePatrolReportState({ lastSentDate: today, lastSentAt: new Date().toISOString(), lastResult: 'error', lastError: error })
