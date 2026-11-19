@@ -58,6 +58,56 @@ export function isNoActionNeededConclusion(text) {
   return /无需优?改|无需优化/.test(value)
 }
 
+/**
+ * 11-19 晚拍板（按对象剔除）：复合句识别——文本既含"无实际不满"又含另一处不满信号
+ * （如"客户对于模型使用不满，对云监控无实际不满"）。此类句子正则无法识别"不满的宾语对象"，
+ * 正则层按"无实际不满"先剔保底，但必须送 LLM verdicts 复核（反序句会被正则误剔，LLM 可判 keep 拉回）。
+ */
+export function isCompoundDissatisfactionText(text) {
+  const value = normalizeEvidenceText(text)
+  if (!value.includes('无实际不满')) return false
+  const residual = value.replace(/无实际不满/g, '')
+  return /不满|未解决|仍有问题|还没改/.test(residual)
+}
+
+/**
+ * 11-19 晚拍板（按对象剔除）：判断回访文本中的"不满"是否指向产品目录内产品。
+ * 背景：复合句"客户对于模型使用不满，对云监控无实际不满"——不满对象是"模型使用"
+ * （非目录产品），对产品本身无实际不满 → 应剔除；若不满对象是目录内另一产品名
+ * （如"对弹性公网IP不满，对云监控无实际不满"）→ 产品范围内有真实不满，不剔。
+ * 实现：剥掉"无实际不满"语境后检测剩余"不满"信号句，并检查句内是否含目录产品名/别名。
+ * catalogNames = 目录产品名 + 规格 match 别名清单（扁平字符串数组）。
+ */
+export function dissatisfiedWithinCatalog(text, catalogNames = []) {
+  const value = normalizeEvidenceText(text)
+  if (!/不满|未解决|仍有问题|还没改/.test(value)) return false
+  // 剥掉"无实际不满"（含其后缀语境）后再测剩余不满信号，避免复合句误判
+  const residual = value.replace(/无实际不满/g, '')
+  if (!/不满|未解决|仍有问题|还没改/.test(residual)) return false
+  if (!catalogNames.length) return true
+  const names = catalogNames.map((name) => String(name || '').trim()).filter(Boolean)
+  return names.some((name) => residual.includes(name))
+}
+
+/**
+ * 目录产品名+规格 match 别名 → 扁平清单（11-19 按对象剔除的输入）。
+ * catalog = post_use_product_catalog 目录数组（name + specs[].match）。
+ */
+export function catalogProductNames(catalog = []) {
+  const names = []
+  for (const item of catalog || []) {
+    const name = String(item?.name || '').trim()
+    if (name) names.push(name)
+    for (const spec of item?.specs || []) {
+      for (const alias of spec?.match || []) {
+        const value = String(alias || '').trim()
+        if (value && !names.includes(value)) names.push(value)
+      }
+    }
+  }
+  return names
+}
+
 function sourceTexts(record) {
   const primary = extractValidCustomerTexts(record)
   const channel = String(record?.channel || record?.sourceSubType || '').trim()
@@ -136,7 +186,7 @@ function validSource(issue, source) {
 }
 
 /** The persisted decision has no effect if its source record was deleted or materially changed. */
-export function resolveReportIssues(occurrences, visits = [], traces = [], links = []) {
+export function resolveReportIssues(occurrences, visits = [], traces = [], links = [], catalogNames = []) {
   const visitById = new Map((visits || []).map((row) => [String(row?.id || ''), row]))
   const traceById = new Map((traces || []).map((row) => [String(row?.id || ''), row]))
   const linksByIssue = new Map()
@@ -178,9 +228,24 @@ export function resolveReportIssues(occurrences, visits = [], traces = [], links
     // 11-19 审查防御（用户拍板"不满意优先"）：矛盾回访对（同客户同产品既有"无实际不满"又有
     // 不满意措辞）不自动剔除——回访数据月粒度无法判时间序，自动剔除可能吞掉真实不满；
     // 回退人工 link 判定路径（verdict=no_issue 的 link 仍然生效）。
+    // 11-19 晚拍板（按对象剔除，用户细化规则）：不满信号按**对象**判——剥掉"无实际不满"
+    // 语境后剩余不满的对象是目录内产品名（如"对弹性公网IP不满"）→ 范围内有真实不满不剔；
+    // 不满对象非目录产品（如"对模型使用不满"）→ 产品范围外，剔除生效（复合句不再误触发防御）。
+    // 11-19 晚修正（正则无法可靠识别"不满的宾语对象"——剥句后残留产品名会被误当不满对象，
+    // 实测"对模型使用不满，对云监控无实际不满"误判保留）：复合句（同时含"无实际不满"与
+    // 剩余"不满"信号）不在此层判——交给 LLM verdicts 批按对象语义判定，未判前保持 open（不误剔）。
     const matchedVisits = (visits || []).filter((visit) => validSource(issue, visit))
-    const hasDissatisfiedVisit = matchedVisits.some((visit) =>
-      /(?<!无实际)不满|未解决|仍有问题|还没改/.test(String(visit?.visitResult || visit?.visitFeedbackDetail || '')))
+    const hasDissatisfiedVisit = matchedVisits.some((visit) => {
+      const text = String(visit?.visitResult || visit?.visitFeedbackDetail || '')
+      // 判定表（11-19 晚拍板按对象剔除）：
+      // ① keep 标记最优先：LLM 复核推翻正则先剔（复合句不满对象在产品范围内）→ 拦（拉回）；
+      // ② 含"无实际不满"的其他文本（含复合句）不在此层拦——单纯句正则直接剔，
+      //    复合句交 LLM verdicts 批按对象语义判（未判前正则先剔保底）；
+      // ③ 无"无实际不满"但有不满信号（纯不满意）→ 拦（矛盾防御）。
+      if (text.includes('LLM 判定：对产品仍有真实不满')) return true
+      if (text.includes('无实际不满')) return false
+      return /(?<!无实际)不满|未解决|仍有问题|还没改/.test(text)
+    })
     const noDissatisfactionVisit = !hasDissatisfiedVisit
       ? matchedVisits.find((visit) => isNoDissatisfactionVisit(visit)) || null : null
     const noActionConclusionVisit = !hasDissatisfiedVisit

@@ -29,6 +29,7 @@ import { buildPostUseStoryModel } from '../lib/postUseRating/storyModel.js'
 import { clipDepartmentStatusTrends, normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../lib/postUseRating/statusTrends.js'
 import { buildHtmlMonthlyReportModel } from '../lib/postUseRating/htmlReportModel.js'
 import { buildPostUseReportV2Model, validatePostUseReportV2 } from '../lib/postUseRating/reportV2Model.js'
+import { catalogProductNames } from '../lib/postUseRating/reportEvidence.js'
 import { REPORT_V2_CSS } from '../lib/postUseRating/reportV2Styles.js'
 import { generatePostUseReportV2Narrative } from '../lib/postUseRating/reportV2Narrative.js'
 import { loadHtmlReportOverlay, saveHtmlReportOverlay } from '../lib/postUseRating/htmlReportOverlay.js'
@@ -371,6 +372,8 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
       allRecords: allScopedItems,
       allCompanyRecords: (feedbacks || []).filter((record) => record.dataSourceType === 'post_use_rating'),
       visits, traces, issueLinks, actionItems, statusTrends, overlay,
+      // 11-19 按对象剔除：目录产品名+规格别名清单，供矛盾防御判"不满对象是否在产品范围内"
+      catalogNames: catalogProductNames(catalog),
     })
     if (!storyModel) return null
     const legacyModel = buildHtmlMonthlyReportModel({

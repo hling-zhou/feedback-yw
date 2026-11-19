@@ -52,7 +52,10 @@ export async function generatePostUseReportV2Narrative(settings, model) {
     ? llmChatCompletion(settings, {
         purpose: 'report',
         messages: [
-          { role: 'system', content: '你是客户反馈证据评估器。对每条省代表回访结果或产品部溯源文本判断客户真实状态：no_dissatisfaction=客户其实没有不满（误操作/情绪分/账户异常等，回访后客户确认无实际问题）；no_action_needed=问题存在但评估为无需优化（客户误操作/极小概率场景/统一规则限制等）；keep=有真实需求或问题待处理。只根据文本判断，不编造。只输出严格 JSON：{"verdicts":[{"id":"原文id","verdict":"no_dissatisfaction|no_action_needed|keep"}]}，id 必须与输入逐字一致。不要 Markdown，不要解释。' },
+          // 11-19 晚按对象剔除（用户拍板）：复合句必须按"不满的对象"判——不满对象不在
+          // 产品范围内（如对模型使用不满、对云监控无实际不满）→ no_dissatisfaction；
+          // 不满对象在产品范围内（如对弹性公网IP不满）→ keep（覆盖正则先剔的保底）。
+          { role: 'system', content: '你是客户反馈证据评估器。对每条省代表回访结果或产品部溯源文本判断客户真实状态：no_dissatisfaction=客户对该产品其实没有不满（误操作/情绪分/账户异常等，回访后确认无实际问题；或不满针对的是别的对象——如"对模型使用不满，对产品无实际不满"，不满对象不在产品范围内）；no_action_needed=问题存在但评估为无需优化（客户误操作/极小概率场景/统一规则限制等）；keep=有真实需求或问题待处理（含不满明确针对本产品或范围内另一产品）。只根据文本判断，不编造。只输出严格 JSON：{"verdicts":[{"id":"原文id","verdict":"no_dissatisfaction|no_action_needed|keep"}]}，id 必须与输入逐字一致。不要 Markdown，不要解释。' },
           { role: 'user', content: JSON.stringify({ verdictOptions: EVIDENCE_VERDICT_SET, evidence: pendingVerdicts.map((row) => ({ id: row.id, sourceKind: row.sourceKind, text: maskPhoneInText(String(row.text || '').slice(0, 200)) })) }) },
         ],
         temperature: 0,
@@ -188,8 +191,9 @@ export async function generatePostUseReportV2Narrative(settings, model) {
         for (const item of verdictResult.verdicts) {
           const id = String(item?.id || '').trim()
           const verdict = String(item?.verdict || '').trim()
-          // strictLabels 只选不造 + id 逐字命中候选清单；keep 判定不存储（默认语义即 keep）
-          if (!id || !verdict || !verdictSet.has(verdict) || !pendingIds.has(id) || verdict === 'keep') continue
+          // strictLabels 只选不造 + id 逐字命中候选清单；keep 也存储（11-19 晚按对象剔除：
+          // 复合句 LLM 复核推翻正则先剔时需持久化 keep 拉回，保存后重开不再被剔）
+          if (!id || !verdict || !verdictSet.has(verdict) || !pendingIds.has(id)) continue
           evidenceVerdicts[id] = verdict
         }
       }

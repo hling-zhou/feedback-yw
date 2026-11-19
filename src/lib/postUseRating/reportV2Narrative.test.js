@@ -208,10 +208,11 @@ describe('V2 report wording', () => {
     // verdicts 批输入含 id + 打码文本
     const verdictPayload = JSON.parse(llmChatCompletion.mock.calls[0][1].messages[1].content)
     expect(verdictPayload.evidence[0]).toMatchObject({ id: 'visit-1', sourceKind: 'visit' })
-    // keep 不存储；自造判定丢弃；不在 pending 清单的 id 丢弃
+    // 11-19 晚按对象剔除：keep 也存储（复合句 LLM 复核拉回需持久化）；自造判定丢弃；不在 pending 清单的 id 丢弃
     expect(result.evidenceVerdicts).toEqual({
       'visit-1': 'no_dissatisfaction',
       'visit-2': 'no_action_needed',
+      'visit-3': 'keep',
     })
   })
 

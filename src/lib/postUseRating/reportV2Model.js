@@ -1,5 +1,5 @@
 import { buildCustomerQuoteRegistry, isPraiseQuote } from './customerQuotes.js'
-import { buildReportIssueOccurrences, resolveReportIssues, isNoDissatisfactionVisit, isNoActionNeededConclusion } from './reportEvidence.js'
+import { buildReportIssueOccurrences, resolveReportIssues, isNoDissatisfactionVisit, isNoActionNeededConclusion, isCompoundDissatisfactionText } from './reportEvidence.js'
 import { isSubstantiveFeedbackReason, isValidCustomerText, REASON_TAXONOMY_EXCLUDE } from './reasonTaxonomy.js'
 import { postUsePeriodMonths } from './periodScope.js'
 import { computeInternalSatisfactionMetrics } from './metrics.js'
@@ -362,11 +362,11 @@ export function reportV2ProblemThemeRows(themes, productName, months, kind, grou
     || a.lowestScore - b.lowestScore || b.count - a.count)
 }
 
-function themeRows(records, allRecords, visits, traces, links, months, earlierMonths, kind) {
+function themeRows(records, allRecords, visits, traces, links, months, earlierMonths, kind, catalogNames = []) {
   const relevant = new Set([...months, ...earlierMonths])
   const issues = resolveReportIssues(
     buildReportIssueOccurrences(allRecords.filter((record) => relevant.has(monthOf(record)))),
-    visits, traces, links,
+    visits, traces, links, catalogNames,
   )
   const sourceById = new Map(allRecords.map((record) => [String(record.id || ''), record]))
   const current = new Set(months)
@@ -820,7 +820,7 @@ function dataFingerprint(model) {
 }
 
 /** Build one factual model for online display, offline HTML and print. */
-export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod, records = [], companyRecords = [], allRecords = [], allCompanyRecords = [], visits = [], traces = [], issueLinks = [], actionItems = [], statusTrends = null, overlay = null }) {
+export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod, records = [], companyRecords = [], allRecords = [], allCompanyRecords = [], visits = [], traces = [], issueLinks = [], actionItems = [], statusTrends = null, overlay = null, catalogNames = [] }) {
   const kind = reportKind === 'quarter' ? 'quarter' : 'month'
   const months = postUsePeriodMonths(reportPeriod)
   const monthSet = new Set(months)
@@ -876,15 +876,24 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     if (verdict === 'no_action_needed') {
       return { ...row, internalConclusion: `${String(row.internalConclusion || row.recommendedReason || '')}；LLM 判定：无需优改` }
     }
+    // 11-19 晚按对象剔除：keep = LLM 复核推翻正则先剔（复合句不满对象在产品范围内）→
+    // 追加"仍有真实不满"标记，矛盾防御信号正则吸收 → 不剔除（拉回）
+    if (verdict === 'keep') {
+      return { ...row, visitResult: `${String(row.visitResult || '')}；LLM 判定：对产品仍有真实不满` }
+    }
     return row
   })
   const visitsWithVerdicts = injectVerdicts(visits)
   const tracesWithVerdicts = injectVerdicts(traces)
-  const themes = themeRows(currentScored, allRecords, visitsWithVerdicts, tracesWithVerdicts, issueLinks, months, previous, kind)
+  const themes = themeRows(currentScored, allRecords, visitsWithVerdicts, tracesWithVerdicts, issueLinks, months, previous, kind, catalogNames)
   // LLM verdicts 批输入候选：正则未命中的本期回访/溯源文本（命中正则的已有确定性判定，无需 LLM）
   const inPeriodRow = (row) => String(row.importMonth || row.visitMonth || '').split('、').some((m) => monthSet.has(m.trim()))
   const evidenceVerdictPending = [
-    ...visits.filter(inPeriodRow).filter((row) => !isNoDissatisfactionVisit(row) && !isNoActionNeededConclusion(row.internalConclusion || row.internalEvaluationDetail))
+    // 11-19 晚按对象剔除：复合句（含"无实际不满"但 residual 另有不满信号）虽正则先剔保底，
+    // 仍必须送 LLM 按对象语义复核（反序句"对云监控很不满，对共享带宽无实际不满"正则会误剔，
+    // LLM 可判 keep 拉回）——isCompoundDissatisfaction 单列判定。
+    ...visits.filter(inPeriodRow).filter((row) => (!isNoDissatisfactionVisit(row) && !isNoActionNeededConclusion(row.internalConclusion || row.internalEvaluationDetail))
+      || isCompoundDissatisfactionText(row.visitResult || row.visitFeedbackDetail))
       .map((row) => ({ id: String(row.id || ''), sourceKind: 'visit', text: String(row.visitResult || row.visitFeedbackDetail || row.internalConclusion || '') })),
     ...traces.filter(inPeriodRow).filter((row) => !isNoActionNeededConclusion(row.recommendedReason || row.progress || row.customerFeedback))
       .map((row) => ({ id: String(row.id || ''), sourceKind: 'trace', text: String(row.recommendedReason || row.progress || row.customerFeedback || '') })),

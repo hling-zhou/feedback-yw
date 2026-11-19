@@ -164,4 +164,27 @@ describe('report evidence', () => {
     const resolved = resolveReportIssues(issues, visits, [])
     expect(resolved[0].status).toBe('open')
   })
+
+  // 11-19 晚拍板（按对象剔除，真机 bug 复盘）：复合句"不满对象在产品范围外"→ 剔除。
+  // 真实先例：Q3 季报"客户对于模型使用不满，对云监控无实际不满"被矛盾防御误判保留进关注项。
+  it('excludes compound sentences whose dissatisfaction targets an out-of-scope object', () => {
+    const issues = buildReportIssueOccurrences([record])
+    const visit = {
+      id: 'visit-compound', importMonth: '2026-06', productName: '弹性公网IP', customerCode: 'C1',
+      visitResult: '客户对于模型使用不满，对弹性公网IP无实际不满',
+    }
+    const resolved = resolveReportIssues(issues, [visit], [])
+    expect(resolved[0].status).toBe('excluded_no_issue')
+  })
+
+  it('keeps the issue when an LLM keep verdict overrides the compound-sentence baseline (11-19)', () => {
+    // 反序句"对本产品很不满，对其他对象无实际不满"正则会先剔误杀——LLM 复核 keep 拉回
+    const issues = buildReportIssueOccurrences([record])
+    const visit = {
+      id: 'visit-reverse', importMonth: '2026-06', productName: '弹性公网IP', customerCode: 'C1',
+      visitResult: '客户对弹性公网IP非常不满，对共享带宽无实际不满；LLM 判定：对产品仍有真实不满',
+    }
+    const resolved = resolveReportIssues(issues, [visit], [])
+    expect(resolved[0].status).toBe('open')
+  })
 })
