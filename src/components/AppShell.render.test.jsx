@@ -115,8 +115,8 @@ describe('AppShell 左导航两级结构（真渲染守卫）', () => {
     for (const key of ['/workbench', '/topics', '/feedbacks']) {
       expect(html).toMatch(new RegExp(`data-menu-id="[^"]*${key.replace(/\//g, '\\/')}"`))
     }
-    // API巡检 分组两个子项 key
-    for (const key of ['/api-patrol/overview', '/api-patrol/failures']) {
+    // API巡检 分组三个子项 key（11-19 加诊断能力需求）
+    for (const key of ['/api-patrol/overview', '/api-patrol/failures', '/api-patrol/diagnosis-gaps']) {
       expect(html).toMatch(new RegExp(`data-menu-id="[^"]*${key.replace(/\//g, '\\/')}"`))
     }
     // 平级项仍在（抽样 4 个）

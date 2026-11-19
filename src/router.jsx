@@ -18,6 +18,7 @@ import TopicReportDetail from './pages/TopicReportDetail.jsx'
 import Operations from './pages/Operations.jsx'
 import ApiPatrolOverview from './pages/ApiPatrolOverview.jsx'
 import ApiPatrolFailures from './pages/ApiPatrolFailures.jsx'
+import ApiPatrolDiagnosisGaps from './pages/ApiPatrolDiagnosisGaps.jsx'
 import McpGuide from './pages/McpGuide.jsx'
 import Login from './pages/Login.jsx'
 import ChangePassword from './pages/ChangePassword.jsx'
@@ -64,6 +65,7 @@ const routes = [
           { path: 'feedbacks', element: <Feedbacks /> },
           { path: 'api-patrol/overview', element: <ApiPatrolOverview /> },
           { path: 'api-patrol/failures', element: <ApiPatrolFailures /> },
+          { path: 'api-patrol/diagnosis-gaps', element: <ApiPatrolDiagnosisGaps /> },
           { path: 'actions', element: <Actions /> },
           { path: 'themes', element: <Navigate to="/workbench/analysis" replace /> },
           { path: 'import', element: <ImportHub /> },

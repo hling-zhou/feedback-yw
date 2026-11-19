@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
   MoreOutlined,
   SettingOutlined,
+  ToolOutlined,
   TagOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -64,6 +65,8 @@ const VOC_NAV_CHILDREN = [
 const API_PATROL_NAV_CHILDREN = [
   { type: 'leaf', key: '/api-patrol/overview', label: '总览', icon: <DashboardOutlined /> },
   { type: 'leaf', key: '/api-patrol/failures', label: '异常接口溯源', icon: <BugOutlined /> },
+  // 11-19 诊断能力需求池：缺口组汇集为 MCP 日志服务诊断能力建设的需求输入（默认全角色可见）
+  { type: 'leaf', key: '/api-patrol/diagnosis-gaps', label: '诊断能力需求', icon: <ToolOutlined /> },
 ]
 
 /** @type {(NavGroup | NavLeaf | NavDivider)[]} */
