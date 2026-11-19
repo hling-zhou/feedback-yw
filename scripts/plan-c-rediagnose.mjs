@@ -23,6 +23,9 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
 const DRY_RUN = process.argv.includes('--dry-run')
+// 11-19 补刷模式：只捞 pending_diagnosis 组（上轮 LLM 5 连败/中断遗留——
+// 诊断逻辑没变时不该全量重刷制造边界类抖动，只补刷没刷上的组）
+const PENDING_ONLY = process.argv.includes('--pending-only')
 const datesIdx = process.argv.indexOf('--dates')
 const DATES_ARG = datesIdx > -1 ? String(process.argv[datesIdx + 1] || '') : ''
 
@@ -207,8 +210,10 @@ async function main() {
   // 11-18 晚拍板（用户指令「存量 117 组全部重跑刷新」）：筛选放开 src——诊断逻辑更新
   // （错误码喂 LLM 现场判类、L2 场景化）后旧 LLM 产物同样需要重刷；人工痕迹三重保护不变。
   // src 沿留仅作日志参考，不再作为过滤条件。
+  // --pending-only（11-19）：补刷模式——只捞 pending_diagnosis（上轮 LLM 5 连败/中断遗留组）。
   const rerun = targets.filter((g) =>
-    !MANUAL_FLOW_STATUSES.has(g.product_action_status)
+    (!PENDING_ONLY || g.product_action_status === 'pending_diagnosis')
+    && !MANUAL_FLOW_STATUSES.has(g.product_action_status)
     && !(g.root_cause_confirmed_check)               // 防御位（下方 SQL 已过滤主条件）
   )
   // 人工痕迹过滤（root_cause_confirmed / measure_feedback 非空不重跑）

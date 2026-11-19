@@ -373,6 +373,22 @@ describe('parseLlmMessageContent 批结果容器契约（82742ef 剥包装回归
     expect(parsed.themeGroups[1].theme).toBe('烂到极致，我要退款')
   })
 
+  // 11-19 两档剔除·evidenceVerdicts 容器入表同先例：reportV2Narrative verdicts 批承诺键
+  it('证据评估容器（verdicts）与文案容器同批保留', () => {
+    const content = JSON.stringify({
+      focus: [{ index: 0, title: '待回应', detail: '客户反馈功能缺失' }],
+      products: [{ index: 0, conclusion: '需核实。' }],
+      verdicts: [
+        { id: 'visit-1', verdict: 'no_dissatisfaction' },
+        { id: 'trace-2', verdict: 'no_action_needed' },
+      ],
+    })
+    const parsed = asResults(parseLlmMessageContent(content))
+    expect(Array.isArray(parsed?.verdicts)).toBe(true)
+    expect(parsed?.verdicts?.length).toBe(2)
+    expect(parsed.verdicts[1].verdict).toBe('no_action_needed')
+  })
+
   // 11-18 llmBrief 叙事容器入表：输出契约 {"narrative":...,"whyHappenedNarrative":...,
   // "recommendations":[...],"sourceIds":[...]}，不入白名单时被「取最后对象」剥成最后一个
   // {"id":"r2","text":...} 子对象 → narrative/whyHappenedNarrative 整体丢失（真实链路

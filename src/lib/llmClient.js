@@ -310,7 +310,7 @@ function pickBatchResultContainer(values) {
   // narrative/recommendations：专题分析叙事扩写（llmBrief polishTopicAnalysisWithLlm）
   // 的输出契约键——11-18 同日真实链路实证同款形态：完整输出被剥成最后一个
   // {"id":"r2","text":...} 子对象，narrative/whyHappenedNarrative 整体丢失。
-  const BATCH_KEYS = ['results', 'items', 'keep', 'words', 'cards', 'focus', 'products', 'todos', 'themeGroups', 'narrative', 'recommendations']
+  const BATCH_KEYS = ['results', 'items', 'keep', 'words', 'cards', 'focus', 'products', 'todos', 'themeGroups', 'verdicts', 'narrative', 'recommendations']
   for (let i = values.length - 1; i >= 0; i -= 1) {
     const value = values[i]
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue
