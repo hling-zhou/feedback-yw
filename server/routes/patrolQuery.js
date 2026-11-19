@@ -620,6 +620,47 @@ export function registerPatrolQueryRoutes(app) {
   }
 
   // ⑤总览聚合 cause-stats（docs §7.2）：单一接口支撑总览五模块
+  // LLM 判定候选建议（11-19 拍板：候选回流——只读聚合，不自动写规则表；运营在规则面板人工纳入）
+  // 语义：root_cause_source='llm' 的组按 L1×L2 聚合，出现 ≥2 次的场景列候选（孤例不列——
+  // 单次判定不稳定不足以固化）；样例组供跳转复核，keywords 从诊断结论提取供「纳入为规则」预填。
+  app.get('/api/patrol/root-cause-llm-candidates', { preHandler: requirePermission('manageTags') }, async (_request, reply) => {
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT g.id, g.root_cause_l1 AS l1, g.root_cause_l2 AS l2, d.final_conclusion AS conclusion
+      FROM api_patrol_failure_groups g
+      JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
+      WHERE d.root_cause_source = 'llm' AND g.root_cause_l2 IS NOT NULL AND g.root_cause_l2 != ''
+      ORDER BY g.id
+    `).all()
+    // 聚合 L1×L2
+    const buckets = new Map()
+    for (const r of rows) {
+      const key = `${r.l1}\u0000${r.l2}`
+      if (!buckets.has(key)) {
+        buckets.set(key, { l1: String(r.l1 || ''), l2: String(r.l2 || ''), sampleGroupIds: [], conclusions: [] })
+      }
+      const b = buckets.get(key)
+      b.sampleGroupIds.push(Number(r.id))
+      if (r.conclusion && !b.conclusions.includes(String(r.conclusion))) b.conclusions.push(String(r.conclusion))
+    }
+    const candidates = []
+    for (const b of buckets.values()) {
+      if (b.sampleGroupIds.length < 2) continue
+      // 关键词素材：从结论提取 4-12 字中文短语片段（去标点切分，取最短可判别词组）
+      const keywords = [...new Set(
+        b.conclusions.join('，').split(/[，。；、,.;:！!？?\s]+/).filter((s) => s.length >= 3 && s.length <= 16),
+      )].slice(0, 8)
+      candidates.push({
+        l1: b.l1, l2: b.l2,
+        count: b.sampleGroupIds.length,
+        sampleGroupIds: b.sampleGroupIds.slice(0, 5),
+        keywords,
+      })
+    }
+    candidates.sort((a, b) => b.count - a.count)
+    return reply.send({ candidates })
+  })
+
   app.get('/api/patrol/cause-stats', { preHandler: requirePermission('view') }, async (request, reply) => {
     const q = /** @type {{startDate?: string, endDate?: string, pendingOnly?: string, includeBackfill?: string}} */ (request.query)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(q.startDate || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(q.endDate || ''))) {

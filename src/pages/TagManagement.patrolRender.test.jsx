@@ -1,6 +1,9 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * API 巡检两个新 Tab 真渲染冒烟测试（M5，对齐 Actions.render 先例）。
@@ -63,6 +66,22 @@ describe('API 巡检 Tab 组件真渲染冒烟', () => {
       React.createElement(ApiPatrolRootCauseRulesPanel, { readOnly: true }),
     )
     expect(html).not.toContain('新增规则')
+  })
+
+  it('ApiPatrolRootCauseRulesPanel LLM 判定候选区接线（11-19：端点拉取 + 纳入为规则预填编辑）', () => {
+    // renderToStaticMarkup 不跑 useEffect（候选异步加载后才有内容）——按源码断言先例锁接线形态
+    const src = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'tagManagement', 'ApiPatrolRootCauseRulesPanel.jsx'),
+      'utf-8',
+    )
+    // 候选端点拉取 + 失败静默降级（不阻塞规则维护）
+    expect(src).toContain("apiFetch('/api/patrol/root-cause-llm-candidates')")
+    expect(src).toContain('loadLlmCandidates')
+    // 只读模式不显示候选区（纳入动作是写操作）
+    expect(src).toMatch(/!readOnly && llmCandidates\.length > 0/)
+    // 纳入为规则：预填 l1/l2/keywords（anyOf）进 editing
+    expect(src).toContain('纳入为规则')
+    expect(src).toMatch(/anyOf: \(c\.keywords \|\| \[\]\)\.slice\(0, 4\)/)
   })
 })
 

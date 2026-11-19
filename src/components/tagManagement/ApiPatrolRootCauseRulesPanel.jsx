@@ -3,6 +3,7 @@ import { Alert, Button, Input, Popconfirm, Select, Space, Switch, Table, Tag, Ty
 import { ArrowDownOutlined, ArrowUpOutlined, PlusOutlined } from '@ant-design/icons'
 import { useInsights } from '../../context/InsightsContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
+import { apiFetch } from '../../lib/apiClient.js'
 import FieldLabel from '../FieldLabel.jsx'
 
 /**
@@ -22,6 +23,19 @@ export default function ApiPatrolRootCauseRulesPanel({ readOnly = false }) {
   /** @type {[Record<string, unknown> | null, Function]} */
   const [editing, setEditing] = useState(null)
   const [constraintError, setConstraintError] = useState('')
+  /** LLM 判定候选（11-19：≥2 次重复场景；只读建议，纳入由人工确认） */
+  const [llmCandidates, setLlmCandidates] = useState([])
+
+  const loadLlmCandidates = useCallback(async () => {
+    try {
+      const parsed = await apiFetch('/api/patrol/root-cause-llm-candidates')
+      setLlmCandidates(/** @type {{candidates: Array<Record<string, unknown>>}} */ (parsed)?.candidates || [])
+    } catch {
+      setLlmCandidates([]) // 候选加载失败不阻塞规则维护主功能
+    }
+  }, [])
+
+  useEffect(() => { loadLlmCandidates() }, [loadLlmCandidates])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -194,6 +208,44 @@ export default function ApiPatrolRootCauseRulesPanel({ readOnly = false }) {
       </div>
 
       {constraintError && <Alert className="!mb-3" type="error" showIcon message={constraintError} />}
+
+      {/* 11-19 候选回流建议（拍板：只读聚合不自动写）——LLM 自由判类反复出现的场景列候选，
+          运营点「纳入为规则」预填新增表单（l1/l2/关键词）→ 人工确认入库 */}
+      {!readOnly && llmCandidates.length > 0 && (
+        <Alert
+          className="!mb-3"
+          type="info"
+          showIcon
+          message="LLM 判定候选（规则未命中、由 LLM 现场判类的场景）"
+          description={(
+            <Space direction="vertical" size={4} className="!mt-1 w-full">
+              {llmCandidates.map((c) => (
+                <div key={`${c.l1}/${c.l2}`} className="flex flex-wrap items-center gap-2">
+                  <Tag color="blue">{c.l1}</Tag>
+                  <span className="text-sm">{c.l2}</span>
+                  <Typography.Text type="secondary" className="text-xs">出现 {c.count} 次</Typography.Text>
+                  <Typography.Text type="secondary" className="text-xs">
+                    样例组：{c.sampleGroupIds.join('、')}
+                  </Typography.Text>
+                  <Button
+                    type="link" size="small"
+                    onClick={() => setEditing({
+                      order: Math.max(...items.map((r) => Number(r.order) || 0)) + 1,
+                      l1: c.l1, l2: c.l2, productAction: '待处理',
+                      anyOf: (c.keywords || []).slice(0, 4), enabled: true,
+                    })}
+                  >
+                    纳入为规则
+                  </Button>
+                </div>
+              ))}
+              <Typography.Text type="secondary" className="text-xs">
+                纳入前请到失败请求列表复核样例组日志，确认判定稳定再固化（关键词已从诊断结论预填，可修改）。
+              </Typography.Text>
+            </Space>
+          )}
+        />
+      )}
 
       <Table
         rowKey={(r) => String(r.isFallback ? 'fallback' : r.order)}
