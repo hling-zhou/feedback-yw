@@ -1,9 +1,100 @@
 {
-  "generatedAt": "2026-11-18T14:42:14.485Z",
+  "generatedAt": "2026-11-19T09:54:33.984Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "847e827ead3e4d127dc02bf72f371ad3fbc0cf65",
+  "repoCommit": "42ffb7a13df2c049c3de3cb0330f91d1c613ee44",
   "items": [
+    {
+      "id": "497648662c2e3d24a544e3eee0d9b7991448d44a",
+      "title": "抽屉优化建议自动生成——省代表回访 + 产品部溯源两线落地",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "DESIGN-用后即评抽屉优化建议-20261119 全套拍板：机制复用工单既有优化\n建议链路（ticketOptimizationExtract/LLM，prompt 零漂移 + 场景前缀对齐）。\n\n- 语料口径：visit = 客户反馈 + 回访结果；trace = 客户反馈 +（投诉\n  回访类跨表拼原投诉工单处理意见）；内部评估/回溯结果/备注不进语料\n  （防反向污染）。KB 检索按目录 key，来源如实标注（llm/rule）。\n- 生成入口三路：抽屉单条（同步路由 + Section 共享组件两抽屉同源）、\n  批量后台任务（enrich 新 mode post_use_optimization，路由按实体存储\n  拉取 visit meta / trace jira 表）、待生成计数端点驱动按钮禁用态。\n- 写回防覆盖：re-read 最新库值只 merge optimization 三字段（禁止整条\n  覆盖在线编辑）；幂等（已有建议不重生成）；visit 不校验 updatedAt\n  （优化字段域与人工编辑字段域不相交）。\n- 导出加两列（产品/技术优化（自动）、服务/流程改进（自动），末位）；\n  导入不回导（额外列解析天然跳过，守卫测试锁定）；重导按模板列重建\n  时显式保留已生成建议（对齐 actionIds 保留先例）。\n- 生成后同源刷新：列表/抽屉/计数同一实体同步更新（Feedbacks 抽屉\n  onSaved 同步 setSelectedVisitRecord——防「生成成功后抽屉仍显旧数据」）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "443c7bf5b37770bdc91dfa5131ee7dc0029f300c",
+      "title": "LLM 判定候选回流——规则面板展示重复场景，运营一键纳入",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "11-19 拍板「候选回流」：LLM 现场判类（规则未命中）的组按 L1×L2 聚合，\n出现 ≥2 次的场景列候选（孤例不列——单次判定不稳定不足以固化）；\n新端点 /api/patrol/root-cause-llm-candidates 只读聚合不自动写规则表，\n规则面板候选区点「纳入为规则」预填新增表单（l1/l2/关键词从诊断结论\n提取）→ 人工确认入库。样例组 id 供跳转复核。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "950814b6d98634592a2f5d03af49a6299cf48a7e",
+      "title": "两档剔除 + L1/L2 分类体系 + 责任人未指定阻断 + LLM 优化自动化",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "11-19 报告 V2 四项拍板落地：\n\n- 两档剔除（用户拍板）：档 1 回访结果「无实际不满」五模块全剔除\n  （excluded_no_issue）；档 2 内部评估/溯源「无需优改」类半剔除\n  （excluded_no_action——进定量不进定性）。匹配按客户+产品+月份窗口\n  防误杀；矛盾回访对（同客户同产品既有无实际不满又有不满意措辞）\n  不自动剔除——不满意优先，回退人工 link 判定。LLM verdicts 批\n  （封闭集 no_dissatisfaction/no_action_needed/keep）兜底正则枚举外\n  句式，经 overlay.evidenceVerdicts 注入（正则优先、LLM 补充，\n  已判过的不再重送省 token）。\n- L1/L2 分类体系（用户拍板定稿）：L1 八类封闭（判定树语义）+ L2 细类\n  登记式（带产品适用域）；正则降级快捷锚命中即定省 token；旧 7 组名\n  经 legacy 映射迁移兼容；分类单一真源 classifyReportTheme，分产品\n  问题主题分布下沉模型层（reportV2ProblemThemeRows）与部门表共用。\n  归类批与文案批、verdicts 批三批并行发起（治 nginx 60s 网关 504：\n  串行总时长=两批之和，并行=max）。\n- 责任人未指定阻断：撤销「产品部经办人」假兜底（owner 空回退\n  「待指派」），validatePostUseReportV2 对关注项与编辑中待办的责任人\n  空/待指派报错，阻断导出与发送邮件——禁止假兜底掩盖未指派。\n- LLM 优化自动化：未保存报告打开时自动触发一次三批（同报告同数据\n  指纹只跑一次，失败不重试防风暴）；按钮常驻改「LLM 优化」/「重新\n  LLM 优化」。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "6d3d3511f387cce80053c8f34508cd1fe676226f",
+      "title": "verdicts 批容器入白名单 + 存量补刷模式 --pending-only",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "- pickBatchResultContainer 白名单 +verdicts：报告 V2 证据评估批\n  （reportV2Narrative 第三并行批）的承诺键，不入表会被「取末位子对象」\n  剥掉包装——11-18 同款先例（focus/products/todos 入表时真实链路实证）。\n- plan-c-rediagnose --pending-only 补刷模式：只捞 pending_diagnosis 组\n  （上轮 LLM 5 连败/中断遗留），诊断逻辑没变时不该全量重刷制造边界类抖动。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "6006058477e37f45cba09eebe1e59afe109167dc",
+      "title": "后台任务历史全留痕——服务端自动任务入史 + 客户端导入三类终态入史",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "打标任务抽屉此前只见手动批量任务，导入触发的留观/举一反三自动任务与\n用后即评导入（客户端阶段）出现又消失，无法追溯。\n\n- 服务端自动任务入史：留观自动识别（导入触发）、留观扫描、举一反三\n  识别在任务结束（success/failed/cancelled）写 appendTaskHistory 并\n  finally 释放锁（此前观察 autoTrigger 依赖心跳过期兜底，锁释放后\n  碎片残留）；buildTaskHistoryMeta 补 importMonth→dataMonth 映射，\n  客户端阶段任务的月份不再空。\n- 客户端导入三类终态入史：前端 endImportSession 收尾时把\n  { status, source, summary, error } touch 进锁 meta.finished，DELETE\n  释放路由读取后写历史（无 finished 的释放维持原行为）；工单导入\n  由服务端 enrich 路径写不冲突；取消路径不写 failed 防一天两条。\n  TaskHistoryPanel 隐藏过滤移除（现在有历史可看）；导入失败/成功\n  均留痕。路由级真实链路守卫 storage.releaseHistory.test 红绿证明。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7c44b32c2224de6dd0fc853e3494ce88b17eee4f",
+      "title": "AI巡检日报带上群组抄送人",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "群组 cc 字段（11-09 拍板）自上线以来从未被日报发送链消费，\n配置了抄送人也不会随日报发出。resolveReportRecipients 改为同时\n汇总 to/cc（跨组去重、cc 中已属收件人的剔除），发送与审计补\nccCount。守卫测试同步断言 SMTP 消息里必须出现 cc。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "7830ed2ba484b61b39abac3d9d7b5606cfa8671e",
+      "title": "待办空表但有候选时改引导语指出生成入口",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "口径说明报\"溯源 N 条、回访 M 条\"与空表\"无转为待办跟进的事项\"\n并排出现会让读者困惑：候选计数与表格为空是两段式设计的两个阶段\n（候选需点「生成报告文案」合成草稿后复核保存），但页面上没有一句\n话把它们连起来。空表且有候选时改为：暂无已确认待办——候选 N 条\n（溯源 X、回访 Y、举措 Z），点击「生成报告文案」生成待办草稿后\n复核保存。无候选时维持原结论。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "488e971ff16140b16022db5c220b5fd4693b3727",
       "title": "举措 product_key 写入口径修正——中文名直塞改目录 key + 选择器归一层 + 存量迁移",
@@ -2482,83 +2573,6 @@
       "publishedAt": "2026-09-17",
       "appVersion": null,
       "summary": "normalized 对象和 mergeCatalogProduct 未保留这两个字段，导致非种子\n产品保存后重载时字段被丢弃，用后即评开关退回未开启状态。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "641933714808bb299d629327624d98bcc7180eac",
-      "title": "产品删除/分析类型开关被 normalize 种子补全覆盖",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-17",
-      "appVersion": null,
-      "summary": "ensureTargetProductsInCatalog 每次读取都会无条件补回种子产品并强制开启\nanalysisPostUseRating，导致用户保存删除/关闭后立即被 getOrInit 重载\n覆盖。引入 deletedKeys 记录用户主动删除的种子产品 key，normalize 时\n跳过这些 key 的补全与强制开启，导入路径同步清理 deletedKeys。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0678c385b2ea63bcccc2593694d4aaffb5b7067c",
-      "title": "buildTicketStoryModel 返回值缺少 records 字段导致详情抽屉工单为空",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "TicketStoryView 传 records={model.records || []} 给 ActionRecsPanel，\n但 model 中没有 records 字段，始终传空数组，ProblemDetailDrawer 无法\n按 evidenceTicketIds 查到工单。在返回值中补上 records 透传。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "6af9634566b0878a82be626c83c3332c9f3053d1",
-      "title": "去掉洞察工作台首页\"跨源月度趋势（工单类合计）\"卡片",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "用户要求移除该卡片，各数据来源概览从两列布局改为全宽单列。\n清理不再使用的 TrendChart 等 5 个 import 和 4 个中间变量。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "aaf7f2161c46203a7f8e1d09e80062412e94bbb9",
-      "title": "行动建议门禁 evidence 跨产品混杂 + 环比显示 + 跨产品详情工单合并",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "Q1: runGate 中 records[+i] 用全局索引取行但 rowStatus 按产品子集\n索引，改为 s.rows[+i]；GateDetailDrawer evidence 表增加产品列。\nQ2: ProblemCard 环比条件去掉 !== 0，moMPct=0 显示\"0%\"，null 显示\"—\"。\nQ3: CrossProductCompare 点击详情合并该家族所有 rec 的 evidenceTicketIds，\n而非只取工单数最多的一条 rec。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "5ec9d96a4ddd476f424c4dec0b99143677aa49c0",
-      "title": "导入列映射按 dataSourceType 过滤，修复工单与用后即评字段双向串味",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "STANDARD_FIELDS 混装所有来源字段且无来源标记，Import.jsx 的 filter\n仅用 ticketSource ? true : 6-key 白名单，导致投诉/咨询界面混入回访\n专有字段、用后即评界面混入工单流水号和处理意见。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "708e615a4335234954ce9a4b58f648afe90a9683",
-      "title": "list 投影不再裁剪 sourceColumns，修复首屏导出客户信息列全空",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "首屏加载走 fields=list 投影裁剪了 sourceColumns，导致导出分析结果时\n客户信息列全空；刷新按钮走全量加载不裁剪，导出正常。sourceColumns 体量\n小且导出依赖它回显客户基础信息列，不应与大文本字段一同裁剪。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0e0a06e08a1e1ed638c3fb19991bf32f356e6edb",
-      "title": "sync 保留已加载的 post_use_rating 记录，避免合并替换丢失",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-16",
-      "appVersion": null,
-      "summary": "syncSharedDataFromServer 改为只拉工单记录后，setFeedbacks 全量替换\n会导致已加载的 post_use_rating 从列表消失。改为合并：保留内存中已\n有的 post_use_rating，只更新工单记录。",
       "commitUrl": null,
       "source": "git"
     }
