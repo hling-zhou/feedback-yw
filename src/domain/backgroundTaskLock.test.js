@@ -213,7 +213,7 @@ describe('backgroundTaskLock domain', () => {
       meta: { dataMonth: '2026-03', dataSourceType: 'post_use_rating' },
     })).toBe(false)
     expect(formatOwnedBackgroundTaskBanner(journey)).toBe(
-      '2026-09 · 用后即评 · 正在补全用户旅程 (2/8)',
+      '2026年9月 · 用后即评 · 正在补全用户旅程 (2/8)',
     )
     expect(
       formatOwnedBackgroundTaskBanner({
@@ -221,7 +221,7 @@ describe('backgroundTaskLock domain', () => {
         progress: '正在补全用户旅程 (12/40)',
         meta: { dataMonth: '2026-08', dataSourceType: 'post_use_rating' },
       }),
-    ).toBe('2026-08 · 用后即评 · 正在补全用户旅程 (12/40)')
+    ).toBe('2026年8月 · 用后即评 · 正在补全用户旅程 (12/40)')
     expect(backgroundTaskTypeLabel('post_use_journey')).toBe('补全用户旅程')
   })
 
@@ -233,7 +233,7 @@ describe('backgroundTaskLock domain', () => {
         progress: '正在规则打标 (12/300)…',
         meta: { dataMonth: '2026-08' },
       }),
-    ).toBe('2026-08 · 数据导入 · 正在规则打标 (12/300)…')
+    ).toBe('2026年8月 · 数据导入 · 正在规则打标 (12/300)…')
     expect(formatBackgroundTaskRemoteBanner(sampleLock)).toBe(
       'alice · 投诉咨询工单 · 批量重新打标 · LLM 增强 (3/10)',
     )
@@ -247,16 +247,16 @@ describe('backgroundTaskLock domain', () => {
   })
 
   it('formats task target line for in-progress locks and flattened history entries', () => {
-    // 进行中任务：月份/类型取自 lock.meta
+    // 进行中任务：月份/类型取自 lock.meta（11-19 起周期显示粒度化中文标签）
     expect(
       formatTaskTargetLine({
         type: 'retag',
         meta: { dataMonth: '2026-07', dataSourceType: 'complaint_ticket' },
       }),
-    ).toBe('2026-07 · 投诉工单')
+    ).toBe('2026年7月 · 投诉工单')
     // retag 无 dataSourceType 时回退「投诉咨询工单」
     expect(formatTaskTargetLine({ type: 'retag', meta: { dataMonth: '2026-07' } })).toBe(
-      '2026-07 · 投诉咨询工单',
+      '2026年7月 · 投诉咨询工单',
     )
     // 历史条目：meta 字段平铺（buildTaskHistoryMeta 产物）
     expect(
@@ -265,13 +265,48 @@ describe('backgroundTaskLock domain', () => {
         dataMonth: '2026-08',
         dataSourceType: 'consultation_ticket',
       }),
-    ).toBe('2026-08 · 咨询工单')
+    ).toBe('2026年8月 · 咨询工单')
     // 历史条目只有 periodStart 也能反推月份
     expect(
       formatTaskTargetLine({ type: 'retag', periodStart: '2026-07-16' }),
-    ).toBe('2026-07 · 投诉咨询工单')
+    ).toBe('2026年7月 · 投诉咨询工单')
     // 旧历史条目无任何对象字段：空串（不渲染对象行）
     expect(formatTaskTargetLine({ type: 'retag' })).toBe('')
     expect(formatTaskTargetLine(null)).toBe('')
+  })
+
+  it('formats period-granular target lines for quarter/year/custom/multi-month tasks (11-19 修复)', () => {
+    // 季度周期发起：显示 2026年Q3，不再是季度首月
+    expect(
+      formatTaskTargetLine({
+        type: 'retag',
+        meta: { periodId: 'period:quarter:2026-Q3', periodStart: '2026-07-01' },
+      }),
+    ).toBe('2026年Q3 · 投诉咨询工单')
+    // 年度周期：显示 2026年，不再截成 2026-01
+    expect(
+      formatTaskTargetLine({
+        type: 'retag',
+        meta: { periodId: 'period:year:2026', dataMonth: '2026-01、2026-02', dataSourceType: 'post_use_rating' },
+      }),
+    ).toBe('2026年 · 用后即评')
+    // 优化建议（月份串 dataMonth）：聚合为 7月–9月
+    expect(
+      formatTaskTargetLine({
+        type: 'retag',
+        meta: { dataMonth: '2026-07、2026-08、2026-09' },
+      }),
+    ).toBe('2026年7月–9月 · 投诉咨询工单')
+    // 自定义周期稳定 id
+    expect(formatTaskTargetLine({ type: 'retag', meta: { periodId: 'period:custom:2026-05_2026-07' } })).toBe(
+      '2026年5月–7月 · 投诉咨询工单',
+    )
+    // 月周期稳定 id 与纯 YYYY-MM 兼容形态
+    expect(
+      formatTaskTargetLine({ type: 'retag', meta: { periodId: 'period:month:2026-08', periodStart: '2026-08-01' } }),
+    ).toBe('2026年8月 · 投诉咨询工单')
+    expect(
+      formatTaskTargetLine({ type: 'import', periodId: '2026-08', dataSourceType: 'consultation_ticket' }),
+    ).toBe('2026年8月 · 咨询工单')
   })
 })

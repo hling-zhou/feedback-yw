@@ -106,6 +106,7 @@ export function formatBackgroundTaskBlockedTip(lock) {
 /**
  * 任务自己的数据月份。优先 dataMonth，否则从周期起日或周期 id 取 YYYY-MM；
  * 用后即评导入（importKind）锁的月份字段是 importMonth，作最终回退。
+ * 注意：周期粒度显示（季度/年度/多月份聚合）用 backgroundTaskPeriodLabel，本函数是月粒度兜底。
  * @param {Record<string, unknown> | null | undefined} meta
  */
 export function backgroundTaskMonth(meta) {
@@ -117,6 +118,83 @@ export function backgroundTaskMonth(meta) {
   if (/^\d{4}-\d{2}$/.test(periodId)) return periodId
   const importMonth = String(meta?.importMonth || '').trim()
   if (/^\d{4}-\d{2}/.test(importMonth)) return importMonth.slice(0, 7)
+  return ''
+}
+
+/**
+ * 周期 id（稳定格式）→ 粒度化显示标签。解析失败返回 ''。
+ * 与 insightPeriod.js 的 periodIdFromSpec 格式同源（period:month:2026-08 /
+ * period:quarter:2026-Q3 / period:year:2026 / period:custom:2026-05_2026-07）。
+ * @param {string} periodId
+ */
+function periodLabelFromStableId(periodId) {
+  const id = String(periodId || '').trim()
+  let m = /^period:month:(\d{4})-(\d{2})$/.exec(id)
+  if (m) return `${m[1]}年${Number(m[2])}月`
+  m = /^period:quarter:(\d{4})-Q([1-4])$/.exec(id)
+  if (m) return `${m[1]}年Q${m[2]}`
+  m = /^period:year:(\d{4})$/.exec(id)
+  if (m) return `${m[1]}年`
+  m = /^period:custom:(\d{4})-(\d{2})_(\d{4})-(\d{2})$/.exec(id)
+  if (m) {
+    return m[1] === m[3] && m[2] === m[4]
+      ? `${m[1]}年${Number(m[2])}月`
+      : `${m[1]}年${Number(m[2])}月–${Number(m[4])}月`
+  }
+  // 兼容：旧数据/旧约定可能存纯 YYYY-MM（backgroundTaskMonth 同分支语义）
+  m = /^(\d{4})-(\d{2})$/.exec(id)
+  if (m) return `${m[1]}年${Number(m[2])}月`
+  return ''
+}
+
+/**
+ * 多月份串（优化建议等传 importMonth/dataMonth="2026-07、2026-08、2026-09"）→ 聚合显示。
+ * 单月返回「2026年7月」；连续多月返回「2026年7月–9月」；跨年返回首末月。解析失败返回 ''。
+ * @param {string} joined
+ */
+function periodLabelFromMonthList(joined) {
+  const months = String(joined || '')
+    .split(/[、,，;；|]/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d{4}-\d{2}$/.test(s))
+  if (!months.length) return ''
+  const first = months[0]
+  const last = months[months.length - 1]
+  const [fy, fm] = first.split('-').map(Number)
+  const [ly] = last.split('-').map(Number)
+  if (fy !== ly) return `${first}–${last}`
+  if (months.length === 1) return `${fy}年${fm}月`
+  const [, lm] = last.split('-').map(Number)
+  return `${fy}年${fm}月–${lm}月`
+}
+
+/**
+ * 任务的周期显示标签（粒度感知）。优先级：
+ * ① periodId 稳定 id（period:month:/quarter:/year:/custom:）→ 按粒度显示；
+ * ② dataMonth / importMonth 多月份串 → 聚合显示（7月–9月）；
+ * ③ 单值 dataMonth / importMonth → 「2026年8月」；
+ * ④ periodStart 兜底 → 「2026年7月」（旧条目/仅起日）。
+ * 返回 '' 时消费方不渲染周期段。
+ * @param {Record<string, unknown> | null | undefined} meta
+ */
+export function backgroundTaskPeriodLabel(meta) {
+  const periodIdLabel = periodLabelFromStableId(String(meta?.periodId || ''))
+  if (periodIdLabel) return periodIdLabel
+  const joined = String(meta?.importMonth || meta?.dataMonth || '').trim()
+  if (joined) {
+    const listLabel = periodLabelFromMonthList(joined)
+    if (listLabel) return listLabel
+    const single = /^\d{4}-\d{2}/.test(joined) ? joined.slice(0, 7) : ''
+    if (single) {
+      const [y, m] = single.split('-').map(Number)
+      return `${y}年${m}月`
+    }
+  }
+  const start = String(meta?.periodStart || '').trim()
+  if (/^\d{4}-\d{2}/.test(start)) {
+    const [y, m] = start.slice(0, 7).split('-').map(Number)
+    return `${y}年${m}月`
+  }
   return ''
 }
 
@@ -146,13 +224,13 @@ export function formatTaskTargetLine(task) {
   const raw = /** @type {Record<string, unknown>} */ (task)
   const hasMeta = Boolean(raw.meta && typeof raw.meta === 'object')
   const metaView = /** @type {Record<string, unknown>} */ (hasMeta ? raw.meta : raw)
-  const month = backgroundTaskMonth(metaView)
-  if (!month && !String(metaView.dataSourceType || '').trim()) return ''
+  const periodLabel = backgroundTaskPeriodLabel(metaView)
+  if (!periodLabel && !String(metaView.dataSourceType || '').trim()) return ''
   const source = backgroundTaskSourceLabel({
     type: /** @type {string} */ (raw.type),
     meta: metaView,
   })
-  return [month, source].filter(Boolean).join(' · ')
+  return [periodLabel, source].filter(Boolean).join(' · ')
 }
 
 /**
@@ -168,7 +246,7 @@ export function formatBackgroundTaskProgressLine(lock) {
       ? progress
       : `${action} · ${progress}`
     : action
-  return [backgroundTaskMonth(lock.meta), backgroundTaskSourceLabel(lock), detail].filter(Boolean).join(' · ')
+  return [backgroundTaskPeriodLabel(lock.meta), backgroundTaskSourceLabel(lock), detail].filter(Boolean).join(' · ')
 }
 
 /**
