@@ -434,7 +434,8 @@ function buildPackage(db, dataDate) {
   // groups：当日新组 + 近 7 天诊断成功的历史 pending 组 + 收敛组（事实有变化的都要推）
   const windowStart = localDateStr(new Date(Date.now() - DIAGNOSIS_RETRY_WINDOW_DAYS * 24 * 3600 * 1000))
   const groups = /** @type {any[]} */ (db.prepare(`
-    SELECT g.*, d.final_conclusion, d.suggestion, d.direct_cause, d.evidence, d.root_cause_source, d.status AS diag_status
+    SELECT g.*, d.final_conclusion, d.suggestion, d.direct_cause, d.evidence, d.root_cause_source, d.status AS diag_status,
+           d.mcp_raw_response
     FROM api_patrol_failure_groups g
     LEFT JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
     WHERE g.group_date = ? OR (g.group_date >= ? AND g.updated_at >= datetime('now', '-2 days'))
@@ -454,6 +455,9 @@ function buildPackage(db, dataDate) {
       directCause: r.direct_cause == null ? null : String(r.direct_cause),
       evidence: r.evidence == null ? null : String(r.evidence),
       rootCauseSource: r.root_cause_source == null ? null : String(r.root_cause_source),
+      // 11-20 19:23 拍板：MCP 原始日志全文随包推——部署端「查看完整日志」数据源（曾断供致
+      // 抽屉「原始 0 行+点击无内容」）；完整原文不截断（包体积按组可接受——诊断成功组每日几十量级）
+      mcpRawResponse: r.mcp_raw_response == null ? null : String(r.mcp_raw_response),
       diagnosisStatus: r.product_action_status === '—' && r.root_cause_l1 === '诊断能力缺口'
         ? 'converged'
         : (r.diag_status === 'success' ? 'success' : 'failed'),

@@ -38,6 +38,10 @@ const PUSH_API_KEY = process.env.PLAN_C_PUSH_API_KEY || ''
 const MCP_TOKEN = process.env.PLAN_C_MCP_TOKEN || ''
 const MCP_ENDPOINT = process.env.PLAN_C_MCP_ENDPOINT || 'http://cni.mcp.server:31788/mcp-server/mcp'
 const DIAGNOSIS_RETRY_WINDOW_DAYS = 7
+// 11-20 20:04 拍板：定向补跑开关——只补「success 诊断但 mcp_raw_response 为空」的组（日包断供的
+// 存量形态），重跑后只回填诊断事实字段，product_action_status 一律不动（绕开状态覆盖风险）。
+// 用法：REDIAGNOSE_EMPTY_RAW=1 node scripts/plan-c-historical-push.mjs
+const REDIAGNOSE_EMPTY_RAW = process.env.REDIAGNOSE_EMPTY_RAW === '1'
 
 process.env.AUTH_DATABASE_PATH = LOCAL_DB
 process.env.SERVER_DATA_DIR = path.dirname(LOCAL_DB)
@@ -89,15 +93,29 @@ async function runDiagnose(db, dataDate) {
   const MCP_PRODUCT_NAMES = { eip: 'fip/vpc', vpc: 'fip/vpc', slb: 'slb-console' }
 
   const windowStart = localDateStr(new Date(Date.now() - DIAGNOSIS_RETRY_WINDOW_DAYS * 24 * 3600 * 1000))
-  const queue = db.prepare(`
-    SELECT id, group_date, pool_name, product_key, first_request_id, first_request_time
-    FROM api_patrol_failure_groups
-    WHERE product_action_status='pending_diagnosis'
-      AND (group_date = ? OR (group_date >= ? AND group_date < ?))
-    ORDER BY group_date, first_request_time
-  `).all(dataDate, windowStart, localDateStr(new Date()))
+  // 队列双模式（11-20 20:04 拍板）：
+  // 默认=pending_diagnosis 组（当日+近7天窗口）；REDIAGNOSE_EMPTY_RAW=1=success 诊断但 raw 为空的组
+  // （全窗口不限 7 天——日志保留期内都可补；断供期间落的组按 group_date 升序补）
+  const queue = REDIAGNOSE_EMPTY_RAW
+    ? db.prepare(`
+        SELECT g.id, g.group_date, g.pool_name, g.product_key, g.first_request_id, g.first_request_time
+        FROM api_patrol_failure_groups g
+        JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id AND d.status = 'success'
+        WHERE d.mcp_raw_response IS NULL OR TRIM(d.mcp_raw_response) = ''
+        ORDER BY g.group_date, g.first_request_time
+      `).all()
+    : db.prepare(`
+        SELECT id, group_date, pool_name, product_key, first_request_id, first_request_time
+        FROM api_patrol_failure_groups
+        WHERE product_action_status='pending_diagnosis'
+          AND (group_date = ? OR (group_date >= ? AND group_date < ?))
+        ORDER BY group_date, first_request_time
+      `).all(dataDate, windowStart, localDateStr(new Date()))
 
   if (queue.length === 0) return { total: 0, succeeded: 0, failed: 0 }
+  log(REDIAGNOSE_EMPTY_RAW
+    ? `定向补跑：${queue.length} 组（success 诊断但 raw 为空——只回填诊断事实，状态不动）`
+    : `重试队列：${queue.length} 组`)
 
   const fmt = (d, offsetMin) => {
     const t = new Date(d.getTime() + offsetMin * 60_000)
@@ -133,9 +151,20 @@ async function runDiagnose(db, dataDate) {
         INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, diagnosed_at)
         VALUES (?, ?, 'success', 'log_search', ?, ?, ?, ?, ?)
       `).run(g.id, g.first_request_id, res.text, text || null, classified.l1, classified.l2, now)
-      db.prepare(`
-        UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
-      `).run(classified.l1, classified.l2, classified.productAction, now, g.id)
+      if (REDIAGNOSE_EMPTY_RAW) {
+        // 定向补跑模式（11-20 20:04 拍板）：只回填诊断事实——product_action_status 与
+        // root_cause_l1/l2 的组级状态一律不动（绕开「已处理/处理中被打回待处理」的覆盖风险；
+        // 组的根因/状态当时已正确落库，本次补的只是日志原文与诊断行事实）。
+        // updated_at 必须 bump（真链路验证暴露的推送缺口）：buildPackageFor 按
+        // 「updated_at 近 2 天」判定事实变化——不 bump 则补的 raw 永远进不了日包。
+        // updated_at 不参与任何业务判定，仅作推送信号，语义安全。
+        db.prepare('UPDATE api_patrol_failure_groups SET updated_at=? WHERE id=?').run(now, g.id)
+        log('rediagnose', `组 #${g.id} 日志原文已回填（raw ${res.text.length} 字）——组状态未动`)
+      } else {
+        db.prepare(`
+          UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2=?, product_action_status=?, updated_at=? WHERE id=?
+        `).run(classified.l1, classified.l2, classified.productAction, now, g.id)
+      }
       succeeded += 1
     } catch {
       failed += 1
@@ -213,11 +242,13 @@ async function buildPackageFor(db, dataDate) {
   }
 
   const groups = db.prepare(`
-    SELECT g.*, d.final_conclusion, d.status AS diag_status
+    SELECT g.*, d.final_conclusion, d.status AS diag_status, d.mcp_raw_response
     FROM api_patrol_failure_groups g
     LEFT JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
     WHERE g.group_date = ? OR (g.group_date >= ? AND g.updated_at >= datetime('now', '-2 days'))
        OR g.product_action_status = '—' AND g.root_cause_l1 = '诊断能力缺口'
+       OR (d.status = 'success' AND d.mcp_raw_response IS NOT NULL AND TRIM(d.mcp_raw_response) != ''
+           AND g.updated_at >= datetime('now', '-2 days'))
   `).all(dataDate, windowStart).map((raw) => {
     const r = raw
     return {
@@ -228,6 +259,8 @@ async function buildPackageFor(db, dataDate) {
       customerType: r.customer_type,
       rootCauseL1: r.root_cause_l1, rootCauseL2: r.root_cause_l2,
       finalConclusion: r.final_conclusion,
+      // 11-20 19:23 拍板：MCP 原始日志全文随包推（与 plan-c-daily 同步——抽屉「查看完整日志」数据源）
+      mcpRawResponse: r.mcp_raw_response == null ? null : String(r.mcp_raw_response),
       diagnosisStatus: r.product_action_status === '—' && r.root_cause_l1 === '诊断能力缺口'
         ? 'converged'
         : (r.diag_status === 'success' ? 'success' : 'failed'),
@@ -238,12 +271,19 @@ async function buildPackageFor(db, dataDate) {
 }
 
 async function main() {
-  const targetDates = ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']
+  // targetDates 参数化（11-20 20:12）：默认原五天；PUSH_DATES=逗号分隔覆盖（补推全量历史用）；
+  // 定向补跑（REDIAGNOSE_EMPTY_RAW）时若未显式指定，自动覆盖本机库全部有组的日期
   const { getDb, closeDb } = await import('../server/db.js')
   getDb()
   const { initBusinessSchema } = await import('../server/businessDb.js')
   initBusinessSchema()
   const db = getDb()
+  let targetDates = (process.env.PUSH_DATES || '').split(',').map((s) => s.trim()).filter(Boolean)
+  if (targetDates.length === 0 && REDIAGNOSE_EMPTY_RAW) {
+    targetDates = db.prepare('SELECT DISTINCT group_date FROM api_patrol_failure_groups ORDER BY group_date').all().map((r) => String(r.group_date))
+    log(`定向补跑：自动覆盖本机库全部日期 ${targetDates[0]} ~ ${targetDates[targetDates.length - 1]}（${targetDates.length} 天）`)
+  }
+  if (targetDates.length === 0) targetDates = ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']
   const { compressPatrolDay } = await import('../server/patrolCompress.js')
 
   /** @type {{ date: string, groups: number, diagnosed: number, diagSucceeded: number, diagFailed: number, pushReceived?: number, pushError?: string }[]} */

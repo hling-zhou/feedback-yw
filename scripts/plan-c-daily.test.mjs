@@ -149,6 +149,9 @@ describe('Plan C 本机脚本全链', () => {
     expect(g.firstRequestId).toBe('req-pc-a')
     expect(g.rootCauseL1).toBe('业务冲突')       // mock 结论走真实分类链
     expect(g.diagnosisStatus).toBe('success')
+    // 11-20 19:23 拍板：MCP 原始日志全文随包推（部署端「查看完整日志」数据源——曾断供致空）
+    expect(typeof g.mcpRawResponse).toBe('string')
+    expect(g.mcpRawResponse.length).toBeGreaterThan(0)
 
     // 持久库验证：压缩组 + 诊断回填
     const { execSync } = await import('node:child_process')

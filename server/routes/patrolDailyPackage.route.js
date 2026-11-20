@@ -145,6 +145,8 @@ function upsertDiagnoses(db, g) {
       directCause: g.directCause == null ? null : String(g.directCause),
       evidence: g.evidence == null ? null : String(g.evidence),
       rootCauseSource: g.rootCauseSource == null ? null : String(g.rootCauseSource),
+      // 11-20 19:23 拍板：MCP 原始日志全文随包推——兜底合成路径同透传（曾断供致抽屉完整日志空）
+      mcpRawResponse: g.mcpRawResponse == null ? null : String(g.mcpRawResponse),
     }]
   for (const d of diags) {
     if (!d || typeof d !== 'object') continue

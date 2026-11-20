@@ -68,6 +68,8 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
         customerType: '仿真',
         rootCauseL1: '业务冲突', rootCauseL2: '绑定关系未解除',
         finalConclusion: '存在绑定关系，需先解绑',
+        // 11-20 19:23 拍板：MCP 原始日志全文随包推——部署端落 diagnoses.mcp_raw_response
+        mcpRawResponse: JSON.stringify({ code: '0000', data: { records: [{ content: '[2026-11-09 10:00:00] [ERROR] bind failed' }], total: 1 } }),
         diagnosisStatus: 'success',
       },
     ],
@@ -166,6 +168,9 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     expect(g.pre_compress_count).toBe(3)
     // 诊断行入库
     expect(db.prepare('SELECT COUNT(*) c FROM api_patrol_diagnoses').get().c).toBe(1)
+    // 11-20 19:23 拍板：MCP 原始日志全文随包落库（「查看完整日志」数据源——曾断供致空）
+    const diagRow = db.prepare('SELECT mcp_raw_response FROM api_patrol_diagnoses').get()
+    expect(String(diagRow.mcp_raw_response || '')).toContain('bind failed')
   })
 
   it('(1) 同包重推两次：行数不变、事实字段覆盖更新', async () => {
