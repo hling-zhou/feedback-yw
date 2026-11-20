@@ -1,9 +1,100 @@
 {
-  "generatedAt": "2026-11-20T13:37:49.088Z",
+  "generatedAt": "2026-11-20T19:42:02.181Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "5f7e2db8b4774e7e325afa5e1db26c16a26c5a79",
+  "repoCommit": "b2494d492fe70fbfbf207c8ea79d6bffddc67d4c",
   "items": [
+    {
+      "id": "b2494d492fe70fbfbf207c8ea79d6bffddc67d4c",
+      "title": "定向补推模式跳过重压缩——防诊断关联孤儿化 + 测试「今日」本地日期口径",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-21",
+      "appVersion": null,
+      "summary": "- REDIAGNOSE_EMPTY_RAW 补推模式跳过 compressPatrolDay：压缩无条件\n  DELETE 当日池旧组再重建（组 id 变化），diagnoses 按\n  failure_group_id 关联会全部孤儿化——补推依赖的既有诊断记录（含\n  raw）将被拆断关联，白补且毁本机库。组已存在且带全诊断，重压缩\n  纯害无利；默认模式（每日链语义）保持原样。（11-20 21:46 执行前\n  预检发现，未遂）\n- patrolQuery.test trapped 用例「今日」种子时间戳改本地日期拼串：\n  路由 SQL 用 date('now','localtime')，toISOString 是 UTC——CST\n  00:00-08:00 期间 UTC 日期比本地早一天，JOIN 不中（11-21 凌晨\n  跨午夜红实锤，种子时间戳禁 toISOString 纪律落地）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9c86e85733655e009f925abec6872d2b80aed944",
+      "title": "离线导出恢复在线 tab 交互形态 + 线上版链接 + clipPhrase 短前缀修复",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-21",
+      "appVersion": null,
+      "summary": "11-21 拍板（覆盖 11-20 纯平铺方案）：\n\n- 离线导出 tab 交互：约 20 行原生 vanilla JS 注入（离线产物无 React\n  运行时），产品目录按钮切换 is-active（data-product 锚点）；打印态\n  照旧 media print 平铺连续阅读；TOC 锚点导航降级保留。附录各\n  details 默认收起（含共享带宽附录 E，打印由 CSS 强制展开）。\n- 导出头部「线上版」链接：URL 真源与邮件正文同源（mail_public_app_url\n  库内配置 + V2 路由），经缓存懒取，未配置/失败静默不渲染（不显死链）；\n  仅导出渲染（在线页即线上版不自链）。\n- clipPhrase 短前缀修复（先例：云监控「1」标题）：客户原话以\n  「评分数字+逗号」开头（1，页面写明了…）时旧实现取「1」冒充问题名\n  ——边界前内容过短（≤2 字符且不足全文 1/4）跳到下一边界；新旧行为\n  全形态对拍，差异面全部集中于短前缀场景，无新增腰斩形态。\n- 图表数据点 hover 强化（title 原生提示 + opacity 反馈，无 JS）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9cec53b2bc1a0e26c7319789783ba1d7b54e9717",
+      "title": "P3 两 Tool——报告 V2 结构化透出 + 巡检失败组诊断透出",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-21",
+      "appVersion": null,
+      "summary": "- get_post_use_report_v2：月报/季报结构化数据。已保存报告（overlay\n  .snapshot）直接投影快照（与页面显示优先级同口径）；未保存按当前库内\n  数据实时组装——服务端拉齐与报告页相同输入，复用纯函数\n  buildPostUseReportV2Model 同函数同参数零口径分叉。叙事文本仅快照态\n  透出已保存 narratives（LLM 文案批属页面交互产物）。脱敏按密钥\n  scope 定（与数据来自快照还是实时组装无关——快照路径裸透传 focus\n  已在审计中纠正）；报告期参数 SCHEMA_VERSION 与页面同源 import。\n- get_patrol_diagnoses：失败组 + 最新 success 诊断五段（与页面抽屉\n  buildDiagnosisReport 同口径），近 7 天默认窗口，诊断失败/未诊断\n  如实标注不冒充有结论；客户账号默认脱敏；时间窗本地日期锚定\n  （不用 SQL localtime——宿主机时区漂移坑）。\n- get_post_use_visit/trace 补透优化建议三字段（11-19 上线）；\n  指南页 TOOLS 清单同步（含 P3 两 Tool 与真实审计口径文案）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "af8f9acef725f6926bc6d2b3c1100beedf45b2d0",
+      "title": "建议回访/溯源清单平铺成 tab——白名单门控 + 弹窗语义平移",
+      "category": "feature",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-11-21",
+      "appVersion": null,
+      "summary": "2026-11-21 拍板方案 A：工作台弹窗入口之外，反馈库·用后即评满意度\nlane 平铺「建议回访/溯源清单」视图（raw → callback → trace → visit）。\n\n- 可见性门控：admin 角色 或 登录名白名单（canViewPostUseCallbackListTab，\n  方案 A 用户名单源常量）；无权限直达 view=callback 一律 fallback raw；\n  Segmented 选项从 POST_USE_LANE_VIEWS 单源派生（受控 Tabs 纪律）。\n- PostUseCallbackListTab：行级勾选 + 周期包含语义 + 已纳入 Tag +\n  存档/导出/发送——与弹窗（rowLevel）同语义平移；产品下拉「先切后建」\n  （先筛 records 再 build）；卡片内嵌吸顶（11-09 方案 A）；列宽拖拽\n  接入。存档「立即查看」走同页视图切换非整页 navigate。\n- callbackListModel 共享构建层：tab 直调 + 弹窗经 storyModel 间接调\n  同两个 build 函数，两壳口径对拍锚点（改返回形态=改契约必跑对拍）。\n- FeedbackDrawer 挂载条件加 callback 视图例外（「原工单编号」跳转需\n  工单详情抽屉）；共享 chrome 排除 callback（自带工具条防双层 sticky）。\n- 守卫三件：chrome 渲染 + tab 形态锚 + 宿主接线（含 rawView 布局\n  测试更新）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "97959461c0f2ec27c22625aba056426dae1c0597",
+      "title": "埋点路由映射前后端单源 + Operations 页规范化",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-21",
+      "appVersion": null,
+      "summary": "11-20 运营分析模块迭代分析发现：useUsageTracking 与 usage.js 各持一份\n手工镜像映射（仅注释互指无机器对拍），11 月新增的 /api-patrol/* 与\n/mcp-guide 两侧均未同步——巡检域访问全部落入 other 被静默丢弃\n（usage.db 无任何巡检记录实证）。\n\n- usageModuleMap 单源：LABELS/GROUPS/PATH_RULES/resolveUsageModule\n  前后端共用 import；守卫测试四道对拍（导航 leaf + 路由表 + 双源镜像\n  回潮 + 模块键三处一致），新增页面未登记即红。\n- Operations 页随本次迭代整体规范化（UI 规范存量清单销项）：p-6 +\n  Title + antd Card → space-y-4 + PageHeader + page-card，移出\n  uiConventionsGuard 豁免清单。\n- AppShell：MCP 数据服务 badge 'NEW' 摘除（已过新页期）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "dc6c8d739b3789c5626a4c406336305ea147e0b1",
+      "title": "离线导出恢复屏幕浏览形态——锚点目录与图表自适应",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "导出 HTML 此前沿用打印形态（无导航/产品平铺/图表固定宽），屏幕阅读\n体验三缺陷（用户真机报）。TOC 恒渲染改纯锚点（v2-toc--offline，无 JS\n可用）；产品子目录锚点直达平铺面板（product-<name> id）；TrendSvg 补\nwidth:100%;height:auto 自适应（height 属性赢过 height:auto 的浏览器\n冲突形态）。打印态 CSS 不动——media print 下导航照旧隐藏，打印平铺\n形态保留原设计。守卫断言翻转锁三新行为防回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "14347a427e8eff801d2d5ea668f0cf49e5db4843",
+      "title": "报告链 300s 超时闸 + 前端已运行计时——半开挂死不再无限转圈",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "真机实证 narrative 链半开挂死（上游连接已断、服务端与前端两头干等，\n转圈数分钟无超时）。仅 purpose='report' 传 timeoutMs 300s（36k 预算\n阶梯内单请求够用，超时走既有回退链不丢数据）；打标链路不加超时——\n数据量每次不定，固定值会误杀大批量任务（用户拍板），该链自带批次\n切分与失败处理。LLM 优化按钮 loading 态显示已运行秒数，慢/挂死\n肉眼可辨。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "d76ca43fb420ef37f7df49ab990a6a6440777964",
       "title": "回访/回溯列表客户反馈列前移 + 行 hover 蓝字提示可点击",
@@ -2504,97 +2595,6 @@
       "publishedAt": "2026-09-19",
       "appVersion": null,
       "summary": "产品筛选与操作按钮原在同一 flex 行用 ml-auto 推右，按钮多时产品\n会被挤到下方。改用 justify-between 确保左右分立不受按钮数量影响；\n复合筛选 bar 加 w-full 撑满容器，与表格右缘对齐。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "5d9c181f62c58d9e4fda7a90d89ccd59b1b240d9",
-      "title": "工单分析角色开放数据导入权限",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-19",
-      "appVersion": null,
-      "summary": "partial_editor 此前只有 view/viewAudit/editRecord/export，导入页虽\n已放开路由但 step 0 按钮被 !can('import') 守卫卡住。加 import 权限码，\n工单分析角色可正常使用数据导入功能。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2031f4ca46b50c24befe2f83b92f776878d55d76",
-      "title": "导入页入口加权限守卫，无 import 权限即时禁用",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-19",
-      "appVersion": null,
-      "summary": "partial_editor 路由放开后能进入导入页、走完流程到最后一刻才被后端 403\n拦截，体验差且令人困惑。在 step 0\"下一步：上传文件\"按钮加 disabled\n守卫，入口即卡住，并保留三个确认按钮的守卫作为纵深防御。\n顺带清理 ApiKeyPanel 未使用的 useAuth import。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "eb0743c6f1e15cec7278acb38ede8bd9bc532982",
-      "title": "列表页筛选栏 sticky chrome 吸顶，避免滚动后筛选区不可见",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-19",
-      "appVersion": null,
-      "summary": "Actions/Feedbacks/PostUseJiraTab 三页筛选栏随表体滚动后会消失，用户需\n回滚才能操作筛选。为这三页筛选容器加 page-sticky-chrome 吸顶模式，\nPostUseJiraTab 额外用 ResizeObserver 测量吸顶高度并传入 Table sticky\noffsetHeader，保证表头与吸顶栏不重叠。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "be15445e18404ada5676a6adf696386cb5476b60",
-      "title": "系统管理模块对非管理员开放只读，写入仅管理员收口",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-19",
-      "appVersion": null,
-      "summary": "LLM 配置、班组设置/流水线/curated 分类法、需求工单同步/API Key、漂流瓶\n等模块的只读接口从写权限码降级为 view，设置页 Tab 对所有登录用户可见；\n各面板写入控件按对应写权限码 disabled。partial_editor 可见导入页（只读）。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "78a122ee734b7a2635c489e4da2beb412202b1e2",
-      "title": "补上遗漏的 userProfile 与 userInitialPassword 领域模块",
-      "category": "fix",
-      "modules": [
-        "settings"
-      ],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "前一个用户管理增强提交中，Users.jsx / config.js 引用了这两个模块但未被跟踪，\n导致生产构建失败。本次提交补录它们。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "b170149b29e522e4997bd2b1999376d033258b2c",
-      "title": "补上遗漏的用户导出模块 userExport.js",
-      "category": "fix",
-      "modules": [
-        "settings"
-      ],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "前一个用户管理增强提交中，Users.jsx 引用了此模块但未纳入暂存区，\n导致生产构建失败。本次提交补录该文件。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "8ec191d0e201283ec0aaaaeb47b49c9ead357d90",
-      "title": "会议待办负责人下拉拉宽与待办内容右缘对齐",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "负责人 Select 从 min-w-[180px] max-w-[280px] shrink-0 改为 min-w-[200px] flex-1，\n占满同行剩余空间，右缘与下方待办内容文本框对齐。",
       "commitUrl": null,
       "source": "git"
     }
