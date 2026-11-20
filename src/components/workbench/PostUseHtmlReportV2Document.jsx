@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import TrendChart from '../charts/TrendChart.jsx'
 import { scoreAxisDomain } from '../../lib/postUseRating/insights.js'
-import { reportV2QuoteCategory, reportV2ThemeGroupLabel, reportV2GroupedLifecycle, reportV2ProblemThemeRows } from '../../lib/postUseRating/reportV2Model.js'
+import { reportV2QuoteCategory, reportV2ThemeGroupLabel, reportV2GroupedLifecycle, reportV2ProblemThemeRows, clipPhrase } from '../../lib/postUseRating/reportV2Model.js'
 import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PREVIOUS_VISITS, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../../lib/postUseRating/htmlReportModel.js'
 import { isValidCustomerText } from '../../lib/postUseRating/reasonTaxonomy.js'
 import { displayCustomerText, maskCustomerName, maskPhoneInText } from '../../lib/customerMask.js'
@@ -122,7 +122,8 @@ function reasonDetailNode(row) {
   const quote = members.flatMap((member) => member.quotes || []).find((text) => !memberNames.has(String(text).trim()))
   if (quote) {
     const text = String(quote).replace(/\s+/g, ' ').trim()
-    detail.push(<div key="quote" className="v2-reason-detail">典型：「{text.length > 30 ? `${text.slice(0, 30)}…` : text}」· {row.lowestScore} 分</div>)
+    // 11-20 复盘修复：句读边界截断（clipPhrase 同源）——原 slice(0,30) 词中腰斩（同"这个问题很"先例）
+    detail.push(<div key="quote" className="v2-reason-detail">典型：「{clipPhrase(text, 30)}」· {row.lowestScore} 分</div>)
   }
   return detail.length ? <>{detail}</> : null
 }

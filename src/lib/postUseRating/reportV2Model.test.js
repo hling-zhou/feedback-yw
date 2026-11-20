@@ -523,4 +523,30 @@ describe('V2 report facts', () => {
       [{ id: 'todo-1', productName: '云监控', content: '跟进回访评估', owner: '李四' }])
       .filter((error) => error.includes('责任人未指定'))).toEqual([])
   })
+
+  // 11-20 用户反馈修复：列举分隔符用分号（问题文本含顿号造成歧义）；超长问题在句读
+  // 边界截断不腰斩（先例"这个问题很"）；类目名不进主句与列举；同频代表按输入序稳定
+  it('clips problems at punctuation boundaries and separates listings with semicolons', () => {
+    const records = [
+      rating('cp-a', '2026-08', 1, '功能缺失/不完善', '弹性公网IP'),
+      rating('cp-c', '2026-08', 1, '普通年年套餐无法移入共享带宽，这个问题很奇怪', '弹性公网IP'),
+      rating('cp-d', '2026-08', 2, '退订了云主机和带宽，为什么IP不能一起退', '弹性公网IP'),
+      rating('cp-e', '2026-08', 5, '不支持按标签批量筛选', '弹性公网IP'),
+    ]
+    // rating(id, month, score, reason, product) 无 commentText——直接以 reason 为问题文本
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-08', reportKind: 'month', reportPeriod: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    const title = model.focus[0].title
+    // 分号分隔（非顿号）+ 类目名不出现
+    expect(title).toContain('；')
+    expect(title).not.toContain('功能缺失/不完善；')
+    expect(title).not.toContain('、')
+    const detail = String(model.focus[0].detail)
+    // 截断在句读边界：逗号后内容整段保留或整段截去，不出现"这个问题很"式腰斩残词
+    if (detail.includes('普通年年套餐无法移入共享带宽')) {
+      expect(detail).not.toMatch(/普通年年套餐无法移入共享带宽，这个问题很(?!奇怪)/)
+    }
+  })
 })

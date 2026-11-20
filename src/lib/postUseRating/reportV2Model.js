@@ -608,20 +608,20 @@ function todoCandidateFacts(candidate) {
   // 11-18 口径：候选事实文本同时供 LLM 输入与兜底文案渲染，统一手机号打码（姓名已由 customerMaskedName 脱敏）
   const customer = candidate.customerMaskedName ? `客户 ${candidate.customerMaskedName}` : ''
   if (candidate.sourceKind === 'trace') {
-    if (customer) facts.push(`${customer}反馈「${maskPhoneInText(String(candidate.customerFeedback || '')).slice(0, 60)}」`)
-    if (candidate.progress) facts.push(`回溯进展：${maskPhoneInText(String(candidate.progress)).slice(0, 80)}`)
-    if (!candidate.progress && candidate.recommendedReason) facts.push(`建议回溯：${maskPhoneInText(String(candidate.recommendedReason)).slice(0, 80)}`)
+    if (customer) facts.push(`${customer}反馈「${clipPhrase(maskPhoneInText(String(candidate.customerFeedback || '')), 60)}」`)
+    if (candidate.progress) facts.push(`回溯进展：${clipPhrase(maskPhoneInText(String(candidate.progress)), 80)}`)
+    if (!candidate.progress && candidate.recommendedReason) facts.push(`建议回溯：${clipPhrase(maskPhoneInText(String(candidate.recommendedReason)), 80)}`)
     // 跨源合并（11-18）：同客户回访待办并入后，一行同时呈现回溯与回访评估两件事
     if (candidate.mergedVisit) {
-      const visitText = maskPhoneInText(String(candidate.mergedVisit.visitResult || '')).slice(0, 80)
+      const visitText = clipPhrase(maskPhoneInText(String(candidate.mergedVisit.visitResult || '')), 80)
       if (visitText) facts.push(`省代表回访：${visitText}`)
       if (candidate.mergedVisit.evaluationState === '评估中') facts.push('回访内部评估已暂存，待提交完结')
     }
   } else if (candidate.sourceKind === 'visit') {
-    if (customer) facts.push(`${customer}的回访记录：${maskPhoneInText(String(candidate.visitResult || '')).slice(0, 80)}`)
+    if (customer) facts.push(`${customer}的回访记录：${clipPhrase(maskPhoneInText(String(candidate.visitResult || '')), 80)}`)
     if (candidate.evaluationState === '评估中') facts.push('内部评估已暂存，待提交完结')
   } else if (candidate.sourceKind === 'action') {
-    if (candidate.actionContent) facts.push(`举措内容：${maskPhoneInText(String(candidate.actionContent)).slice(0, 100)}`)
+    if (candidate.actionContent) facts.push(`举措内容：${clipPhrase(maskPhoneInText(String(candidate.actionContent)), 100)}`)
     if (candidate.actionStatus === '待评估') facts.push('举措待评估推进')
   }
   return facts
@@ -732,27 +732,45 @@ function focusActionType(row, trace, visit) {
   return '回访跟进'
 }
 
+/**
+ * 短语截断（11-20 用户反馈"信息截断有问题"）：超长文本**不在词中间硬切**——
+ * 优先取首个句读边界（，。！？；、）前的完整短语；边界前无内容则按长度切但避开
+ * 尾部残词（回退原长度截断兜底）。用于主句代表名与 detail 具体问题列举。
+ */
+/** 导出（11-20 复盘：报告链统一截断口径——典型行/事实行/LLM 输入侧同源防腰斩） */
+export function clipPhrase(text, max = 16) {
+  const value = String(text || '').trim().replace(/[。！？!?\s]+$/g, '')
+  if (value.length <= max) return value
+  // 首个句读边界前的短语（长度>0 即取——哪怕远短于 max，完整短语优于残句）
+  const boundary = value.search(/[，。！？；、,.!?;:：]/)
+  if (boundary > 0) return value.slice(0, boundary)
+  return value.slice(0, max)
+}
+
 function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null, groupMembers = null) {
   const facts = []
   // 11-18 口径：LLM 输入侧自由文本统一手机号打码（姓名脱敏已有 maskCustomerName，此处补电话维度）
   const visitText = maskPhoneInText(String(visit?.visitResult || visit?.visitFeedbackDetail || '').trim())
-  if (visitText) facts.push(`${visitInferred ? '同客户省代表回访' : '省代表回访'}：「${visitText.slice(0, 100)}」`)
+  if (visitText) facts.push(`${visitInferred ? '同客户省代表回访' : '省代表回访'}：「${clipPhrase(visitText, 100)}」`)
   const traceText = maskPhoneInText(String(trace?.recommendedReason || trace?.progress || '').trim())
-  if (traceText) facts.push(`产品部溯源：${traceText.slice(0, 140)}`)
+  if (traceText) facts.push(`产品部溯源：${clipPhrase(traceText, 140)}`)
   const backgroundText = maskPhoneInText(String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim())
-  if (!traceText && backgroundText) facts.push(`产品部溯源背景：${backgroundText.slice(0, 140)}`)
+  if (!traceText && backgroundText) facts.push(`产品部溯源背景：${clipPhrase(backgroundText, 140)}`)
   // 11-19 P0-④：原话只取真实客户语言——commentText（lowestQuotes）优先；
   // 回退 occurrence 原文时过滤与主题名相同者（console 渠道 occurrence 文本恒等于主题名，标签冒充原话零信息量）
   const customerQuote = maskPhoneInText(String(row.lowestQuotes?.[0]
     || row.quotes.find((text) => String(text).trim() !== row.theme) || '').trim())
-  if (!visitText && customerQuote) facts.push(`客户原话：「${customerQuote.slice(0, 100)}」`)
+  if (!visitText && customerQuote) facts.push(`客户原话：「${clipPhrase(customerQuote, 100)}」`)
   // 11-20 拍板：类目名标签且组内具体问题较多时，detail 列举全貌（主句只挑 2 个代表）——
-  // 数据源 = 组成员清单（memberThemes，count/lowestScore 双维度），非最低分原话残集
+  // 数据源 = 组成员清单（memberThemes，count/lowestScore 双维度），非最低分原话残集。
+  // 11-20 用户反馈修复：列举分隔符用"；"（问题文本内含"、"造成歧义）；
+  // 超长问题用 clipPhrase 句读边界截断（不在词中间硬切）；每条上限 24 字。
   if (groupMembers && groupMembers.length > 2) {
-    const problemList = groupMembers
-      .map((m) => String(m.theme || '').trim())
-      .filter(Boolean)
-    facts.push(`具体问题（${problemList.length} 类）：${problemList.slice(0, 4).map((text) => text.slice(0, 20)).join('、')}${problemList.length > 4 ? ` 等 ${problemList.length} 类` : ''}`)
+    // 类目名自身不进列举（主句/detail 不出现类目名）；全量计数含它但列举跳过
+    const all = groupMembers.map((m) => String(m.theme || '').trim()).filter(Boolean)
+    const problemList = all.filter((text) => text !== row.theme)
+    const listed = problemList.slice(0, 4).map((text) => clipPhrase(text, 24))
+    facts.push(`具体问题（${all.length} 类）：${listed.join('；')}${all.length > 4 ? ` 等 ${all.length} 类` : ''}`)
   }
   if (kind === 'quarter') facts.push(`月度分布：${months.map((month) => `${Number(month.slice(5))}月 ${row.monthCounts[month] || 0} 条`).join('、')}`)
   else if (row.previousCount) facts.push(`上期 ${row.previousCount} 条，本期 ${row.count} 条`)
@@ -824,14 +842,16 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
     const representativeProblemNames = (() => {
       if (!groupMembers || !groupMembers.length) return []
       const clean = (text) => String(text || '').trim().replace(/[。！？!?\s]+$/g, '')
-      const members = groupMembers.map((m) => ({ name: clean(m.theme), count: m.count || 0, lowestScore: m.lowestScore }))
+      // 类目名自身不进代表/列举（主句不出现类目名是设计约束；11-20 复验发现混入）
+      const members = groupMembers.map((m, index) => ({ name: clean(m.theme), count: m.count || 0, lowestScore: m.lowestScore, index }))
         .filter((m) => m.name && m.name !== row.theme)
       if (!members.length) {
         const quotes = distinct(groupMembers.flatMap((m) => m.quotes || []).map((text) => clean(text)).filter(Boolean))
-        return quotes.slice(0, 3).map((text) => text.slice(0, 16))
+        return quotes.slice(0, 3).map((text) => clipPhrase(text, 16))
       }
-      const byFreq = [...members].sort((a, b) => b.count - a.count || (a.lowestScore ?? 99) - (b.lowestScore ?? 99))
-      const bySeverity = [...members].sort((a, b) => (a.lowestScore ?? 99) - (b.lowestScore ?? 99) || b.count - a.count)
+      // 同频稳定序：count 降序 → lowestScore 升序 → 输入序（防 localeCompare 中文序漂移）
+      const byFreq = [...members].sort((a, b) => b.count - a.count || (a.lowestScore ?? 99) - (b.lowestScore ?? 99) || a.index - b.index)
+      const bySeverity = [...members].sort((a, b) => (a.lowestScore ?? 99) - (b.lowestScore ?? 99) || b.count - a.count || a.index - b.index)
       const picked = []
       const pushIfNew = (member) => {
         if (member && !picked.some((p) => p.name === member.name)) picked.push(member)
@@ -845,12 +865,13 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
         pushIfNew(byFreq[1] || bySeverity[1])
         pushIfNew(byFreq[2] || bySeverity[2])
       }
-      return picked.slice(0, 3).map((m) => m.name.slice(0, 16))
+      return picked.slice(0, 3).map((m) => clipPhrase(m.name, 16))
     })()
     const problemName = !isCategoryTheme
       ? row.theme
       : representativeProblemNames.length
-        ? representativeProblemNames.join('、')
+        // 11-20 用户反馈修复：代表间分隔符用"；"（问题文本含"、"造成歧义）
+        ? representativeProblemNames.join('；')
         : row.theme
     const problemCore = `「${problemName}」`
     // 11-19 P1：标题按生命周期分支措辞——数量 + 时点 + 对产品/均分的影响 三要素（对齐原型洞察句式）。

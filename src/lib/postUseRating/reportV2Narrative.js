@@ -1,9 +1,11 @@
 import { getLlmCompletionText, llmChatCompletion, parseLlmMessageContent } from '../llmClient.js'
 import { maskPhoneInText } from '../customerMask.js'
-import { REPORT_V2_L1_GROUPS, REPORT_V2_L2_REGISTRY } from './reportV2Model.js'
+import { REPORT_V2_L1_GROUPS, REPORT_V2_L2_REGISTRY, clipPhrase } from './reportV2Model.js'
 
+// 11-20 复盘修复：LLM 输入侧同样不腰斩——超限文本在句读边界截断（clipPhrase 同源），
+// 防止 LLM 基于残句（如"这个问题很"）生成语义失真的文案
 function shortText(value, limit = 180) {
-  return String(value || '').trim().slice(0, limit)
+  return clipPhrase(value, limit)
 }
 
 /**
