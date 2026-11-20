@@ -55,7 +55,9 @@ export default function ApiPatrolFailures() {
   const { can, user } = useAuth()
   const [searchParams] = useSearchParams()
   const rootCauseFromUrl = searchParams.get('rootCauseL1') || ''
-  const readOnly = !can('manageTags')
+  // 11-20 拍板：处理反馈门控从 manageTags 收敛到 editRecord（对齐反馈库抽屉 canEdit 口径）——
+  // admin/editor/partial_editor 可编辑；viewer 也能看到分区三，只读展示已填反馈（不再整区隐藏）。
+  const readOnly = !can('editRecord')
   const [activeTab, setActiveTab] = useState(rootCauseFromUrl ? 'groups' : 'interfaces')
   // 列宽拖拽（11-18 拍板④：复用系统 useColumnResize 机制——localStorage 按 userId 持久化）
   const interfacesResize = useColumnResize({ tableKey: 'patrol.interfaces', userId: user?.id })
@@ -852,11 +854,37 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
             </div>
           </div>
 
-          {/* ── 分区三 处理反馈（!readOnly）── */}
-          {!readOnly && (
-            <div className="scroll-mt-2 drawer-section-gap">
-              <div className="section-title">产品侧处理反馈</div>
-              <div className="page-card-sm page-card-bordered">
+          {/* ── 分区三 处理反馈（11-20 拍板：两态渲染——editRecord 可编辑表单；viewer 只读展示已填反馈，不再整区隐藏）── */}
+          <div className="scroll-mt-2 drawer-section-gap">
+            <div className="section-title">产品侧处理反馈</div>
+            <div className="page-card-sm page-card-bordered">
+              {readOnly ? (
+                /* 只读态（viewer / 诊断能力需求页复用）：已填反馈结构化展示，未填显示空态提示 */
+                group && (String(group.productActionStatus || '') !== '' || String(group.measureFeedback || '').trim()) ? (
+                  <Descriptions size="small" column={1} bordered
+                    items={[
+                      { key: 'status', label: '处理状态', children: String(/** @type {{productActionStatus?: string}} */ (group).productActionStatus || '—') },
+                      { key: 'confirmed', label: '根因是否属实', children: String(/** @type {{rootCauseConfirmed?: string}} */ (group).rootCauseConfirmed || '—') },
+                      { key: 'realRootCause', label: '真实根因', children: String(/** @type {{realRootCause?: string}} */ (group).realRootCause || '—') },
+                      { key: 'measure', label: '备注', children: String(/** @type {{measureFeedback?: string}} */ (group).measureFeedback || '—') },
+                      { key: 'action', label: '确立举措', children: String(/** @type {{establishedAction?: string}} */ (group).establishedAction || '—') },
+                      { key: 'schedule', label: '举措排期', children: String(/** @type {{actionSchedule?: string}} */ (group).actionSchedule || '—') },
+                      { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
+                      { key: 'manualL1', label: '人工修正大类', children: (() => {
+                        const { l1 } = displayRootCause(group, 'list')
+                        return String(/** @type {{rootCauseL1Manual?: string}} */ (group).rootCauseL1Manual || l1 || '—')
+                      })() },
+                      { key: 'manualL2', label: '人工修正细分', children: String(/** @type {{rootCauseL2Manual?: string}} */ (group).rootCauseL2Manual || '—') },
+                      { key: 'feedbackBy', label: '反馈人/时间', children: [
+                        String(/** @type {{feedbackBy?: string}} */ (group).feedbackBy || ''),
+                        String(/** @type {{feedbackAt?: string}} */ (group).feedbackAt || ''),
+                      ].filter(Boolean).join(' · ') || '—' },
+                    ]}
+                  />
+                ) : (
+                  <Typography.Text type="secondary" className="text-xs">尚无处理反馈</Typography.Text>
+                )
+              ) : (
                 <Form form={form} layout="vertical">
                   {/* 根因分类人工修正（11-18 拍板）：manual 独立存储不覆盖 LLM 原判；
                       修正值即"根因不属实"时表单意义上的真实根因载体，列表立即按人工值展示（·人工 标识） */}
@@ -938,9 +966,9 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                     <Input placeholder="经办人（可修改）" />
                   </Form.Item>
                 </Form>
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* ── 分区四 关联请求明细（方案 B 拍板：数据明细独立分区，不是反馈的一部分）── */}
           <div className="scroll-mt-2 drawer-section-gap">

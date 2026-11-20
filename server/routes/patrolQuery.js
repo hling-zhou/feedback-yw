@@ -424,8 +424,8 @@ export function registerPatrolQueryRoutes(app) {
     }
   })
 
-  // ④处理闭环 PATCH
-  app.patch('/api/patrol/failures/groups/:id', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
+  // ④处理闭环 PATCH（11-20 拍板：manageTags → editRecord，与前端抽屉 canEdit 同口径）
+  app.patch('/api/patrol/failures/groups/:id', { preHandler: requirePermission('editRecord') }, async (request, reply) => {
     const id = Number((/** @type {{id: string}} */ (request.params)).id)
     const body = /** @type {{action?: string, rootCauseConfirmed?: string, realRootCause?: string,
       measureFeedback?: string, assignee?: string,

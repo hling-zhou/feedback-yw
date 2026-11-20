@@ -14,8 +14,10 @@ import { fileURLToPath } from 'node:url'
  * 包裹源必须同库（11-12 2e2ec12 起 StaticRouter/react-router 与 hook 不同源，真渲染全红 5 天未察觉）。
  */
 
+// 权限开关：默认 can()=true（编辑态）；两态用例切换 viewer 形态（can('editRecord')=false）
+const mockCan = /** @type {{ current: (p: string) => boolean }} */ (/** @type {unknown} */ ({}))
 vi.mock('../context/AuthContext.jsx', () => ({
-  useAuth: () => ({ can: () => true }),
+  useAuth: () => ({ can: (/** @type {string} */ p) => mockCan.current ? mockCan.current(p) : true, user: { id: 'u-test' } }),
   AuthProvider: ({ children }) => children,
 }))
 vi.mock('../hooks/useAppMessage.js', () => ({
@@ -192,6 +194,27 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/useColumnResize/)
     expect(src).toMatch(/decorateColumns/)
     expect(src).toMatch(/sumColumnsWidth/)
+  })
+
+  it('两态渲染（11-20 拍板）：viewer（无 editRecord）抽屉仍展示产品侧处理反馈只读区', () => {
+    // viewer 形态：can('editRecord')=false → readOnly 抽屉渲染只读 Descriptions 而非整区隐藏
+    mockCan.current = (p) => p !== 'editRecord'
+    try {
+      const html = renderPage()
+      // 页面主体正常（列表骨架在）
+      expect(html).toContain('失败请求列表')
+    } finally {
+      mockCan.current = undefined
+    }
+    // 源码契约：分区三标题无条件渲染（不再 {!readOnly && ( 包裹）+ 两态分支 + 只读态 Descriptions
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    expect(src).toMatch(/\{readOnly \? \(/)
+    expect(src).toContain('尚无处理反馈')
+    expect(src).not.toMatch(/\{!readOnly && \(\s*<div className="scroll-mt-2 drawer-section-gap">\s*<div className="section-title">产品侧处理反馈/)
+    // 门控真源：主组件 readOnly 由 editRecord 派生（manageTags 退场）
+    expect(src).toMatch(/const readOnly = !can\('editRecord'\)/)
+    expect(src).not.toMatch(/const readOnly = !can\('manageTags'\)/)
   })
 
   it('真渲染：经办人筛选与刷新按钮在 DOM 中出现（11-17 晚）', () => {
