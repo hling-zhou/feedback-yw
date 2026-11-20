@@ -734,16 +734,31 @@ function focusActionType(row, trace, visit) {
 
 /**
  * 短语截断（11-20 用户反馈"信息截断有问题"）：超长文本**不在词中间硬切**——
- * 优先取首个句读边界（，。！？；、）前的完整短语；边界前无内容则按长度切但避开
+ * 优先取句读边界（，。！？；、）前的完整短语；边界前无内容则按长度切但避开
  * 尾部残词（回退原长度截断兜底）。用于主句代表名与 detail 具体问题列举。
+ * 11-21 修复（先例：云监控「1」标题）：首个边界前片段过短（纯前缀如"1，页面写明了…"的"1"）
+ * 时跳到下一个边界——"完整短语优于残句"对"短前缀+主体"句式反着取，截出无语义的「1」
+ * 冒充问题名。判据：边界前长度 ≤ CLIP_PHRASE_MIN_PREFIX 字符，且明显短于全文（不足 1/4）。
+ * 新实现与旧实现全形态对拍：差异面全部集中在"短前缀被跳过后取更长边界段"——
+ * 截断结果永远以句读边界收尾，无新增腰斩形态（边界段允许超 max，与旧实现语义一致）。
  */
 /** 导出（11-20 复盘：报告链统一截断口径——典型行/事实行/LLM 输入侧同源防腰斩） */
+export const CLIP_PHRASE_MIN_PREFIX = 2
 export function clipPhrase(text, max = 16) {
   const value = String(text || '').trim().replace(/[。！？!?\s]+$/g, '')
   if (value.length <= max) return value
-  // 首个句读边界前的短语（长度>0 即取——哪怕远短于 max，完整短语优于残句）
-  const boundary = value.search(/[，。！？；、,.!?;:：]/)
-  if (boundary > 0) return value.slice(0, boundary)
+  // 依序找句读边界：首个边界前内容够长即取（完整短语优于残句——边界段允许超 max，
+  // 旧实现同语义：完整短语优先于长度上限，不腰斩）；
+  // 过短的纯前缀（如评分数字"1"）跳过，取下一个边界。
+  const boundaryRe = /[，。！？；、,.!?;:：]/g
+  let match
+  while ((match = boundaryRe.exec(value)) !== null) {
+    const boundary = match.index
+    if (boundary === 0) continue
+    if (boundary > CLIP_PHRASE_MIN_PREFIX || boundary * 4 >= value.length) {
+      return value.slice(0, boundary)
+    }
+  }
   return value.slice(0, max)
 }
 

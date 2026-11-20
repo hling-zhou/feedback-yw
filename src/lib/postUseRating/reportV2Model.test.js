@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildPostUseRatingRecord } from './buildRecords.js'
-import { buildPostUseReportV2Model, reportV2QuoteCategory, validatePostUseReportV2 } from './reportV2Model.js'
+import { buildPostUseReportV2Model, clipPhrase, reportV2QuoteCategory, validatePostUseReportV2 } from './reportV2Model.js'
 
 const period = (kind) => kind === 'quarter'
   ? { startDate: '2026-07-01', endDate: '2026-09-30', label: '2026年Q3' }
@@ -177,6 +177,29 @@ describe('V2 report facts', () => {
     expect(model.focus[0].actionType).toBe('回访跟进')
     expect(model.focus[0].title).toContain('客户回访明确不满')
     expect(model.focus[0].detail).toContain('同客户省代表回访')
+  })
+
+  // 11-21 修复（先例：云监控「1」标题）：客户原话以"评分数字+逗号"开头（如「1，页面写明了但反馈的还没改」）
+  // 时，clipPhrase 旧实现取首个边界前的「1」冒充问题名。修复后短前缀被跳过，取完整主体短语。
+  it('skips a bare score prefix when clipping the representative problem name (「1」 regression)', () => {
+    // console 渠道：标签 = L1 类目名（memberThemes 被过滤光 → quotes 兜底走 lowestQuotes=commentText）
+    const records = [{
+      ...rating('monitor-prefix', '2026-10', 1, '功能缺失/不完善', '云监控'),
+      commentText: '1，页面写明了但是反馈的还没改，挺不满意的',
+    }]
+    const visits = [{ id: 'visit-prefix', importMonth: '2026-10', productName: '云监控', customerCode: 'C-monitor-prefix', visitResult: '客户表示还没改，挺不满意' }]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
+    })
+    const prefixed = model.focus.find((row) => row.theme === '功能缺失/不完善')
+    expect(prefixed).toBeTruthy()
+    // 标题问题名不再是无语义的「1」，而是含主体的完整短语
+    expect(prefixed.title).not.toBe('云监控「1」客户回访明确不满，需跟进回应')
+    expect(prefixed.title).toContain('页面写明了')
+    // clipPhrase 直测：短前缀跳过取下一边界；正常首边界行为不变
+    expect(clipPhrase('1，页面写明了但是反馈的还没改，挺不满意的', 16)).toBe('1，页面写明了但是反馈的还没改')
+    expect(clipPhrase('普通年年套餐无法移入共享带宽，这个问题很奇怪', 16)).toBe('普通年年套餐无法移入共享带宽')
   })
 
   it('labels a product-level route fault as repair while stating it is background evidence', () => {

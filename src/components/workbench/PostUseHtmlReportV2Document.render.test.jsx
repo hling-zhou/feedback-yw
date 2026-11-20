@@ -38,13 +38,19 @@ describe('V2 offline document', () => {
     expect(html).toContain('1 条计入评分样本')
     expect(html).toContain('v2-mark-new')
     expect((html.match(/<details/g) || []).length).toBeGreaterThan(4)
-    expect((html.match(/<details[^>]*open/g) || []).length).toBe((html.match(/<details/g) || []).length)
-    // 11-20 用户反馈修复：离线导出右侧目录导航恢复（纯锚点无 JS）——锁 TOC 存在 +
-    // 产品子目录锚点（#product-<name> 跳转平铺面板）+ 打印态 CSS 隐藏规则（屏幕显示打印不出）
+    // 11-21 拍板：附录各项默认收起（打印展开由 media print CSS 强制兜底）——
+    // 产品面板内明细仍展开（离线 tab 形态阅读依赖），仅附录区 details 无 open
+    expect((html.match(/report-v2-appendix[\s\S]*?<details[^>]*open/g) || []).length).toBe(0)
+    // 11-21 拍板 A：离线导出 tab 交互形态——按钮带 data-product 供注入脚本切换
+    expect(html).toContain('data-product=')
+    // 11-20 修复保留：TOC 恒渲染 + 产品子目录锚点 + 图表自适应 CSS
     expect(html).toContain('v2-toc--offline')
     expect(html).toContain('href="#product-NAT')
     expect(REPORT_V2_CSS).toContain('.report-v2--print .v2-toc')
     expect(REPORT_V2_CSS).toContain('width:100%; height:auto')
+    // 11-21 拍板 A：导出态屏幕 tab 形态 CSS（非平铺）+ hover 强化
+    expect(REPORT_V2_CSS).toContain('.report-v2--print .v2-product-slot.is-active { display:block; }')
+    expect(REPORT_V2_CSS).toContain('cursor:help')
   })
 
   it('shows low scores without a theme as uncertain and retains visit evidence', () => {
@@ -459,5 +465,25 @@ describe('V2 offline document', () => {
     // 分产品表生命周期列照旧（同一渲染产物内）
     const themeTable = tableRowFor(html, '问题主题分布', '功能缺失/不完善')
     expect(themeTable).toContain('单月（8月）')
+  })
+
+  it('renders the online report link in export header only when URL provided (11-21 decision)', () => {
+    const records = [
+      { id: 'l-a', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+    })
+    // 导出 + 有 URL → 头部渲染线上版链接（与邮件正文同真源文案）
+    const withUrl = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll onlineReportUrl="http://10.64.3.250:81/workbench/post-use-report-v2/2026-10" />)
+    expect(withUrl).toContain('线上版：<a href="http://10.64.3.250:81/workbench/post-use-report-v2/2026-10"')
+    expect(withUrl).toContain('在用户反馈分析平台查看与编辑本报告')
+    // 导出 + 无 URL（管理员未配置）→ 不渲染（不显死链）
+    const noUrl = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll onlineReportUrl="" />)
+    expect(noUrl).not.toContain('线上版：')
+    // 在线页（printAll=false）不自链
+    const online = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} onlineReportUrl="http://10.64.3.250:81/workbench/post-use-report-v2/2026-10" />)
+    expect(online).not.toContain('线上版：')
   })
 })

@@ -32,7 +32,7 @@ import { downloadOfflineMonthlyReportHtml, offlineMonthlyReportFilename } from '
 import PostUseHtmlReportV2Document from '../components/workbench/PostUseHtmlReportV2Document.jsx'
 import SendMailModal from '../components/mail/SendMailModal.jsx'
 import { MAIL_PRESET_REPORT } from '../domain/mail.js'
-import { textToBase64 } from '../lib/mailClient.js'
+import { loadMailStatus, textToBase64 } from '../lib/mailClient.js'
 import './PostUseHtmlReport.css'
 import { REPORT_SHARED_CSS } from '../lib/postUseRating/reportSharedStyles.js'
 
@@ -560,8 +560,25 @@ export default function PostUseHtmlReport() {
     }
   }
 
-  const buildOfflineHtml = () => {
+  // 11-21 拍板（方案 1）：导出 HTML 头部线上报告链接——URL 真源与邮件正文同源
+  //（mail_public_app_url 库内配置 + V2 报告路由），导出/邮件附件经缓存懒取，失败静默不渲染（不显死链）。
+  const onlineReportUrlRef = useRef('')
+  const getOnlineReportUrl = async () => {
+    if (onlineReportUrlRef.current) return onlineReportUrlRef.current
+    try {
+      const status = await loadMailStatus()
+      const base = String(status?.publicAppUrl || '').trim()
+      if (!base) return ''
+      onlineReportUrlRef.current = `${base}/workbench/post-use-report-v2/${reportKey}`
+      return onlineReportUrlRef.current
+    } catch {
+      return ''
+    }
+  }
+
+  const buildOfflineHtml = async () => {
     if (!model) return ''
+    const onlineReportUrl = await getOnlineReportUrl()
     const content = renderToStaticMarkup(
       <PostUseHtmlReportV2Document
         model={model}
@@ -570,12 +587,31 @@ export default function PostUseHtmlReport() {
         actionOverrides={actionOverrides}
         todoItems={todoItems}
         hiddenSectionIds={hiddenSectionIds}
+        onlineReportUrl={onlineReportUrl}
       />,
     )
-    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${model.title}</title><style>${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}</style></head><body><div class="post-use-html-report"><div class="post-use-html-report-sheet">${content}</div></div></body></html>`
+    // 11-21 拍板 A：离线 HTML 注入轻量原生 JS——产品目录 tab 切换（离线产物无 React 运行时，
+    // renderToStaticMarkup 只出静态结构；约 20 行 vanilla JS 恢复在线页交互形态）。
+    // 双通道不冲突：TOC 子目录锚点跳区块仍可用（无 JS 环境降级为锚点导航）。
+    const offlineTabScript = `<script>
+(function () {
+  var buttons = document.querySelectorAll('.v2-product-list button[data-product]')
+  if (!buttons.length) return
+  var activate = function (name) {
+    buttons.forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-product') === name) })
+    document.querySelectorAll('.v2-product-slot').forEach(function (slot) {
+      slot.classList.toggle('is-active', slot.id === 'product-' + name)
+    })
+  }
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () { activate(btn.getAttribute('data-product')) })
+  })
+})()
+</script>`
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${model.title}</title><style>${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}</style></head><body><div class="post-use-html-report"><div class="post-use-html-report-sheet">${content}</div></div>${offlineTabScript}</body></html>`
   }
 
-  const handleExportOfflineHtml = () => {
+  const handleExportOfflineHtml = async () => {
     if (!model) return
     if (v2Validation.length) {
       message.error(`导出前请处理 ${v2Validation.length} 项校验差异`)
@@ -583,7 +619,7 @@ export default function PostUseHtmlReport() {
     }
     setExporting(true)
     try {
-      const html = buildOfflineHtml()
+      const html = await buildOfflineHtml()
       downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportKey, '用后即评' + (reportKind === 'quarter' ? '季报' : '月报')))
       message.success('已导出离线 HTML，可用浏览器直接打开')
     } catch (error) {
@@ -702,7 +738,7 @@ export default function PostUseHtmlReport() {
         canSend={canEdit && Boolean(model) && v2Validation.length === 0}
         buildAttachment={async () => {
           if (!model) return null
-          const html = buildOfflineHtml()
+          const html = await buildOfflineHtml()
           return {
             filename: offlineMonthlyReportFilename(reportKey, '用后即评' + (reportKind === 'quarter' ? '季报' : '月报')),
             mime: 'text/html;charset=utf-8',
