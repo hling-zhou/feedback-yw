@@ -176,7 +176,11 @@ export async function sendPatrolDailyReport(options = {}) {
     return { ok: true, skipped: 'quiet', date }
   }
 
-  const subject = `【AI巡检日报】${date}`
+  // 11-20 拍板：主题带关键数（真实口径=剥离仿真）——列表页即可扫读当日体量
+  const pendingTotal = report.overview?.pendingTotal ?? report.products.reduce((a, p) => a + p.pendingGroups, 0)
+  const subject = report.hasData
+    ? `【AI巡检日报】${date} · 真实失败 ${report.overview?.realFailTotal ?? report.products.reduce((a, p) => a + p.preTotal, 0)} 次 · 待处理 ${pendingTotal} 组`
+    : `【AI巡检日报】${date}`
   const html = report.hasData
     ? renderPatrolDailyReportHtml(report)
     : renderPatrolQuietReportHtml(date)

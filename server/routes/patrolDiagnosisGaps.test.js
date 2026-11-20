@@ -72,21 +72,27 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
 
   const authHeader = () => ({ authorization: `Bearer ${token}` })
 
-  it('classifyGapKind 纯函数：四形态判别（池未接入/日志未采集/失败日志缺失/防御位）', async () => {
+  it('classifyGapKind 纯函数：五形态判别（11-20 修复：undiagnosed 类 + 日志行迹象细分）', async () => {
     const { classifyGapKind } = await import('./patrolQuery.js')
-    expect(classifyGapKind(null)).toBe('pool_uncovered')            // 无响应=调用层失败
-    expect(classifyGapKind('')).toBe('pool_uncovered')
-    expect(classifyGapKind('not json at all')).toBe('pool_uncovered') // 非 JSON=错误页
-    expect(classifyGapKind(RAW_ERR)).toBe('pool_uncovered')         // MCP 业务码非 0000
-    expect(classifyGapKind(RAW_OK_EMPTY)).toBe('log_not_collected') // 0000+records=0
-    expect(classifyGapKind(RAW_OK_INFO)).toBe('failure_log_missing') // 0000+INFO only
+    // 无诊断记录=从未诊断（超龄收敛态）——不再兜底进 pool_uncovered（11-20 拍板不进需求池）
+    expect(classifyGapKind(null, false)).toBe('undiagnosed')
+    expect(classifyGapKind('anything', false)).toBe('undiagnosed')
+    // 有诊断记录无响应=调用层失败 → 池未接入
+    expect(classifyGapKind(null, true)).toBe('pool_uncovered')
+    expect(classifyGapKind('', true)).toBe('pool_uncovered')
+    // 非 JSON 旧文本形态：有日志行迹象=MCP 通（查不到失败日志）；无迹象=错误页未接入
+    expect(classifyGapKind('[2026-09-01 10:00:00] [ INFO] RequestIdFilter ok', true)).toBe('log_not_collected')
+    expect(classifyGapKind('plain error page without log lines', true)).toBe('pool_uncovered')
+    expect(classifyGapKind(RAW_ERR, true)).toBe('pool_uncovered')         // MCP 业务码非 0000
+    expect(classifyGapKind(RAW_OK_EMPTY, true)).toBe('log_not_collected') // 0000+records=0
+    expect(classifyGapKind(RAW_OK_INFO, true)).toBe('failure_log_missing') // 0000+INFO only
     const rawWithErr = JSON.stringify({ code: '0000', data: { records: [{ content: '[ERROR] boom' }] } })
-    expect(classifyGapKind(rawWithErr)).toBe('other')                // 防御位：有失败语义不该判缺口
+    expect(classifyGapKind(rawWithErr, true)).toBe('other')                // 防御位：有失败语义不该判缺口
   })
 
-  it('summary 聚合：分区二接口聚合（gapKinds 双值/requestIds 去重保序）+ 分区一池汇总 + stats', async () => {
+  it('summary 聚合（11-20 09:44 拍板：无时间窗口显示全部）：分区二接口聚合 + 分区一池汇总 + stats', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?startDate=2026-09-01&endDate=2026-09-02',
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
       headers: authHeader(),
     })
     expect(res.statusCode).toBe(200)
@@ -102,42 +108,35 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     // requestIds：A.first → B.first → B.suppressed（与 first 重复的去重，保序）
     expect(main.requestIds).toEqual(['gap-a-first', 'gap-b-first', 'gap-a-sup-1', 'gap-a-sup-2'])
     expect(main.jiraTicketId).toBeNull()                 // Jira 扩展占位
-    // 分区一：P9 池汇总（U 有 MCP 错误响应 + D 无诊断记录兜底）
+    // 分区一：P9 只含 U 组（MCP 错误响应）——D 组无诊断记录，11-20 修复后归 undiagnosed 不进未接入分区
     expect(data.uncoveredPools).toHaveLength(1)
     expect(data.uncoveredPools[0].poolName).toBe('P9')
-    expect(data.uncoveredPools[0].groupCount).toBe(2)
-    // stats：A+B+C+U+D = 5 缺口组（E 逃逸 F 无关 G 未诊断不计）
+    expect(data.uncoveredPools[0].groupCount).toBe(1)
+    // 未诊断清单（池维度汇总——复制交付补诊断）：D 组在列
+    expect(data.undiagnosedGroups).toHaveLength(1)
+    expect(data.undiagnosedGroups[0].poolName).toBe('P9')
+    expect(data.undiagnosedGroups[0].groupCount).toBe(1)
+    expect(data.undiagnosedGroups[0].requestIds).toEqual(['gap-d-first'])
+    // stats：A+B+C+U = 4 需求池组 + D=1 未诊断（E 逃逸 F 无关 G 未诊断不计）
     expect(data.stats.groupCount).toBe(5)
     expect(data.stats.coveredCount).toBe(3)
-    expect(data.stats.uncoveredCount).toBe(2)
+    expect(data.stats.uncoveredCount).toBe(1)
+    expect(data.stats.undiagnosedCount).toBe(1)
     expect(data.stats.poolCount).toBe(3)                  // P1/P2/P9
   })
 
   it('manual 逃逸：人工修正为具体根因的组不进任何分区', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?startDate=2026-09-01&endDate=2026-09-02',
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
       headers: authHeader(),
     })
     const data = res.json()
     const allRequestIds = [
       ...data.rows.flatMap((r) => r.requestIds),
       ...data.uncoveredPools.flatMap((r) => r.requestIds),
+      ...data.undiagnosedGroups.flatMap((r) => r.requestIds),
     ]
     expect(allRequestIds).not.toContain('gap-e-first')    // E 组逃逸（manual=业务冲突）
-  })
-
-  it('窗口过滤：单日窗口只含当日组', async () => {
-    const res = await app.inject({
-      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?date=2026-09-02',
-      headers: authHeader(),
-    })
-    expect(res.statusCode).toBe(200)
-    const data = res.json()
-    // 9/2 只有 C 组（log_not_collected）
-    expect(data.stats.groupCount).toBe(1)
-    expect(data.stats.coveredCount).toBe(1)
-    expect(data.rows).toHaveLength(1)
-    expect(data.rows[0].poolName).toBe('P2')
   })
 
   it('groups 联动：rootCauseL1=诊断能力缺口 过滤出 5 组（E 逃逸/F 无关/G 未诊断排除）', async () => {
@@ -150,16 +149,16 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     expect(res.json().rows.some((r) => r.firstRequestId === 'gap-e-first')).toBe(false)
   })
 
-  it('空窗口形态：无缺口 → stats 全 0 + 两分区空数组不 crash', async () => {
+  it('全量口径守卫（11-20 拍板）：任意日期参数被忽略——仍返回全部缺口组（防窗口回潮）', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?startDate=2026-01-01&endDate=2026-01-02',
       headers: authHeader(),
     })
     expect(res.statusCode).toBe(200)
     const data = res.json()
-    expect(data.stats.groupCount).toBe(0)
-    expect(data.rows).toEqual([])
-    expect(data.uncoveredPools).toEqual([])
+    // 传窄窗口参数也不缩小——种子全部 5 缺口组都在（窗口语义已删除）
+    expect(data.stats.groupCount).toBe(5)
+    expect(data.rows).toHaveLength(2)
   })
 })
 

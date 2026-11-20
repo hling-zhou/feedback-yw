@@ -115,7 +115,8 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
     expect(sent[0].to.split(', ').sort()).toEqual(['a1@test.local', 'a2@test.local', 'b1@test.local'])
     // 2026-11-19 cc 修复：抄送人必须出现在 SMTP 消息里（此前静默丢失）
     expect(sent[0].cc).toBe('cc1@test.local')
-    expect(sent[0].subject).toBe(`【AI巡检日报】${yesterday}`)
+    // 11-20 拍板：subject 带关键数（真实失败/待处理——列表页即可扫读）
+    expect(sent[0].subject).toBe(`【AI巡检日报】${yesterday} · 真实失败 5 次 · 待处理 1 组`)
     expect(sent[0].html).toContain('待产品侧处理')
     expect(sent[0].html).toContain('华南-广州3')
     // 状态 + 审计

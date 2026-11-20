@@ -636,33 +636,35 @@ export function registerPatrolQueryRoutes(app) {
   // 诊断能力建设的需求输入。第一版只读；池接入分类从诊断产物自动推断（classifyGapKind，
   // 不维护池清单——覆盖范围会变，静态清单必过时）。
   // 口径：COALESCE 有效根因判定（人工修正为具体根因后自动退出需求池）。
-  app.get('/api/patrol/diagnosis-gaps/summary', { preHandler: requirePermission('view') }, async (request, reply) => {
-    const range = parseRange(request.query)
-    if (!range) return reply.code(400).send({ error: '缺少 date 或 startDate/endDate（YYYY-MM-DD）' })
+  // 11-20 09:44 拍板：需求池显示全部——无时间窗口（parseRange/BETWEEN 已删）。
+  app.get('/api/patrol/diagnosis-gaps/summary', { preHandler: requirePermission('view') }, async (_request, reply) => {
     const db = getDb()
-    const GAP_WHERE = `g.group_date BETWEEN ? AND ?
-      AND g.root_cause_l1 IS NOT NULL
+    const GAP_WHERE = `g.root_cause_l1 IS NOT NULL
       AND COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = '诊断能力缺口'`
-    // 组级明细（含最新诊断的 MCP 原始响应——gapKind 判定素材）
+    // 组级明细（含最新诊断的 MCP 原始响应——gapKind 判定素材；hasDiagnosis 区分从未诊断）
     const groupRows = db.prepare(`
       SELECT g.id, g.product_key, g.api_path, g.pool_name, g.pre_compress_count,
              g.group_date, g.first_request_id, g.suppressed_request_ids, g.first_request_time,
-             d.mcp_raw_response AS mcpRaw
+             d.failure_group_id AS diagId, d.mcp_raw_response AS mcpRaw
       FROM api_patrol_failure_groups g
       LEFT JOIN (
         SELECT failure_group_id, mcp_raw_response FROM api_patrol_diagnoses
         WHERE id IN (SELECT MAX(id) FROM api_patrol_diagnoses GROUP BY failure_group_id)
       ) d ON d.failure_group_id = g.id
       WHERE ${GAP_WHERE}
-    `).all(range.start, range.end)
+    `).all()
     // 组级 gapKind 判定（SQL 外做——SQLite 无 JSON 解析函数，JS 判定可单测）
     const kinds = new Map() // id → gapKind
-    for (const r of groupRows) kinds.set(Number(r.id), classifyGapKind(r.mcpRaw))
+    for (const r of groupRows) {
+      kinds.set(Number(r.id), classifyGapKind(r.mcpRaw, r.diagId != null))
+    }
     const covered = groupRows.filter((r) => {
       const k = kinds.get(Number(r.id))
       return k === 'log_not_collected' || k === 'failure_log_missing'
     })
     const uncovered = groupRows.filter((r) => kinds.get(Number(r.id)) === 'pool_uncovered')
+    // 11-20 拍板：从未诊断的组（超龄收敛态）不进需求池——单独聚合供清单交付（用户补诊断）
+    const undiagnosed = groupRows.filter((r) => kinds.get(Number(r.id)) === 'undiagnosed')
 
     const PRODUCT_NAMES = productNameMap()
     // 分区二：池已接入·诊断能力不足——产品×接口×池聚合
@@ -710,7 +712,27 @@ export function registerPatrolQueryRoutes(app) {
       }
     }
     const uncoveredPools = [...uncMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
-    // stats：窗口统计（引导卡统计行数据源）
+    // 未诊断组聚合（池维度汇总——复制清单交付：每行 日期 池 requestID，用户自行补诊断）
+    const unMap = new Map()
+    for (const r of undiagnosed) {
+      if (!unMap.has(r.pool_name)) {
+        unMap.set(r.pool_name, {
+          poolName: r.pool_name, groupCount: 0, preCompressTotal: 0,
+          firstDate: String(r.group_date), lastRequestTime: String(r.first_request_time || ''),
+          requestIds: [],
+        })
+      }
+      const u = unMap.get(r.pool_name)
+      u.groupCount += 1
+      u.preCompressTotal += Number(r.pre_compress_count || 0)
+      if (String(r.group_date) < u.firstDate) u.firstDate = String(r.group_date)
+      if (String(r.first_request_time || '') > u.lastRequestTime) u.lastRequestTime = String(r.first_request_time)
+      for (const id of [String(r.first_request_id || ''), ...safeParseIds(r.suppressed_request_ids)]) {
+        if (id && !u.requestIds.includes(id)) u.requestIds.push(id)
+      }
+    }
+    const undiagnosedGroups = [...unMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
+    // stats：窗口统计（引导卡统计行数据源）——undiagnosedCount 单列（11-20：不进需求池计数）
     const apiSet = new Set(covered.map((r) => `${r.product_key}|${r.api_path}`))
     const poolSet = new Set(groupRows.map((r) => r.pool_name))
     return {
@@ -718,10 +740,12 @@ export function registerPatrolQueryRoutes(app) {
         groupCount: groupRows.length,
         uncoveredCount: uncovered.length,
         coveredCount: covered.length,
+        undiagnosedCount: undiagnosed.length,
         apiCount: apiSet.size,
         poolCount: poolSet.size,
       },
       uncoveredPools,
+      undiagnosedGroups,
       rows: rows.map((a) => ({ ...a, jiraTicketId: null, jiraStatus: null })),
     }
   })
@@ -1033,20 +1057,29 @@ function safeParseIds(json) {
 }
 
 /**
- * 缺口类型判别（11-19 拍板）：从 MCP 原始响应推断池接入与缺口成因——
+ * 缺口类型判别（11-19 拍板；11-20 修复加 undiagnosed）：从 MCP 原始响应推断池接入与缺口成因——
  * 不维护池清单（覆盖范围会变，静态清单必过时），随诊断数据自动更新。
- * - pool_uncovered：池未接入/调用异常（无响应 / 非 JSON / MCP 业务码非 0000）
- * - log_not_collected：日志未采集（MCP 正常返回但 records=0）
+ * - undiagnosed：从未诊断/超龄收敛（无 diagnoses 记录——11-20 拍板不进需求池，单独清单交付补诊断）
+ * - pool_uncovered：池未接入/调用异常（有诊断记录但无响应 / 非 JSON 无日志行迹象 / MCP 业务码非 0000）
+ * - log_not_collected：日志未采集（MCP 正常返回但 records=0；非 JSON 旧文本形态有日志行迹象同判此——MCP 通）
  * - failure_log_missing：失败日志缺失（有 records 但无 ERROR/WARN——失败请求只落了 INFO）
  * - other：防御位（有失败语义却判了缺口——理论不出现，不入需求池分区）
  * @param {string | null | undefined} mcpRawResponse
- * @returns {'pool_uncovered' | 'log_not_collected' | 'failure_log_missing' | 'other'}
+ * @param {boolean} [hasDiagnosis] 是否存在 diagnoses 记录（区分「从未诊断」vs「诊断无响应」）
+ * @returns {'undiagnosed' | 'pool_uncovered' | 'log_not_collected' | 'failure_log_missing' | 'other'}
  */
-export function classifyGapKind(mcpRawResponse) {
+export function classifyGapKind(mcpRawResponse, hasDiagnosis = true) {
+  // 11-20 修复：无诊断记录=从未诊断（超龄收敛态不写 diagnoses）——非池未接入，单独归类不进需求池
+  if (!hasDiagnosis) return 'undiagnosed'
   const raw = String(mcpRawResponse || '').trim()
   if (!raw) return 'pool_uncovered'
   let parsed = null
-  try { parsed = JSON.parse(raw) } catch { return 'pool_uncovered' }
+  try { parsed = JSON.parse(raw) } catch {
+    // 非 JSON 旧文本形态（fetchPatrolDiagnosticLogs 原样返回路径）：有日志行迹象=MCP 通，
+    // 内容无失败行即视为查不到失败日志；无迹象=错误页/异常 → 池未接入
+    const hasLogLines = /\[(INFO|ERROR|WARN|DEBUG)\s*\]/i.test(raw) || /\[\d{4}-\d{2}-\d{2}[\s]/.test(raw)
+    return hasLogLines ? 'log_not_collected' : 'pool_uncovered'
+  }
   if (String(parsed?.code || '') !== '0000') return 'pool_uncovered'
   const recs = Array.isArray(parsed?.data?.records) ? parsed.data.records : []
   if (recs.length === 0) return 'log_not_collected'
