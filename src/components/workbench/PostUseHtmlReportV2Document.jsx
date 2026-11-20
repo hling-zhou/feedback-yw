@@ -265,7 +265,9 @@ function ActionItem({ action, overrides, canEdit, onActionChange, isFocus = fals
   const value = actionValue(action, overrides)
   const actionTone = { 回访跟进: 'followup', 缺陷修复: 'repair', 诉求闭环: 'closure', 持续观察: 'observe' }[value.actionType] || 'observe'
   return <div className={`v2-action ${isFocus ? `v2-action--${actionTone}` : `v2-action--${value.priority.toLowerCase()}`}`}>
-    <div className="v2-action-main">{isFocus ? tag(value.actionType || '持续观察', `action-${actionTone}`) : tag(value.priority, value.priority.toLowerCase())} <b>{isFocus ? conclusionText(value.title || value.text, value.isNew ? value.theme : '') : value.text}</b>{value.lifecycle ? <span className="v2-inline-gap">{tag(value.lifecycle, lifecycleTagTone(value.lifecycle))}</span> : null}</div>
+    {/* 11-20 拍板（关注项行标签做减法）：去掉生命周期 tag——主句已含时点态势（集中出现于 X 月/贯穿全季），
+        tag 冗余；保留行动标签+优先级（驱动"谁、先做什么"）。分产品表/部门表的生命周期 tag 照旧。 */}
+    <div className="v2-action-main">{isFocus ? tag(value.actionType || '持续观察', `action-${actionTone}`) : tag(value.priority, value.priority.toLowerCase())} <b>{isFocus ? conclusionText(value.title || value.text, value.isNew ? value.theme : '') : value.text}</b></div>
     {isFocus ? <div className="v2-action-detail">{conclusionText(value.detail || `关联 ${value.sourceRecordCount} 条评分记录。`, value.isNew ? value.theme : '')}{value.isNew ? <span className="v2-inline-gap">{tag('NEW', 'warning')}</span> : null}</div> : null}
     <div className="v2-subtle">责任人：{value.owner || '待指派'}{value.team ? `（${value.team}）` : ''} · {isFocus ? `详见分产品—${value.productName}` : `验收：${value.check}`}</div>
     {canEdit ? <details className="v2-edit no-print"><summary>编辑举措</summary><div className="v2-edit-grid">

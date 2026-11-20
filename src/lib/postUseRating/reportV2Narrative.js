@@ -66,7 +66,7 @@ export async function generatePostUseReportV2Narrative(settings, model) {
   // 11-19 拆批（治本）：归类是"选词"任务混在文案批里会拖长整批 reasoning（深钻嫌疑源），
   // 独立成小批——文案批 prompt 瘦身，归类批 4000 预算 + 短指令；归类失败回退原文自成一档。
   const messages = [
-    { role: 'system', content: '你是用后即评月季报编辑。只根据输入事实改写文字，不编造数量、责任人、产品结论或处理进展。focus 的行动标签、优先级和责任人不可改。title 写一句洞察结论：优先体现数量与时点（新增 N 条/集中爆发月份），有季内低点或根因线索时点出影响（如"拖低 8 月均分至 X"）；detail 写一行补充事实：根因线索（溯源结论）+ 影响（低点/分布）+ 下一步动作，参考素材 customerQuote 为客户原话可引用。产品 conclusion 最多两句。todos 为每条待办写 content：一句动作短语开头（溯源未完结→跟进回溯闭环；回访未评估→完成回访评估；举措待推进→推进举措落地），后接事实依据，共不超过 120 字，不写【产品名】前缀，不编造客户姓名。每项保持原 index。输出严格 JSON：{"focus":[{"index":0,"title":"...","detail":"..."}],"products":[{"index":0,"conclusion":"..."}],"todos":[{"index":0,"content":"..."}]}。不要 Markdown。' },
+    { role: 'system', content: '你是用后即评月季报编辑。只根据输入事实改写文字，不编造数量、责任人、产品结论或处理进展。focus 的行动标签、优先级和责任人不可改。title 一句话洞察（30~45 字，言简意赅言之有物）：骨架=产品「具体问题」+态势（本季新增 N/集中爆发于 X 月/贯穿全季）+（最低分）+影响（有季内低点才说，如"拖低 8 月均分至 X"）+动作收尾；theme 为大类名（如"功能缺失/不完善"）时具体问题从 customerQuote 客户原话提取关键短语，多条原话时挑最有代表性的问题（常见或严重，最多列 3 个进主句）、其余在 detail 列举，theme 已是具体标签时直接用；不写"客户"开头、不用冒号拼接。detail 写一行补充事实：根因线索（溯源结论）+ 影响（低点/分布）+ 下一步动作；theme 为大类名且组内具体问题较多时，detail 先列举具体问题（"具体问题（N 类）：…"）再接其他事实，参考素材 customerQuote 为客户原话可引用。产品 conclusion 最多两句。todos 为每条待办写 content：一句动作短语开头（溯源未完结→跟进回溯闭环；回访未评估→完成回访评估；举措待推进→推进举措落地），后接事实依据，共不超过 120 字，不写【产品名】前缀，不编造客户姓名。每项保持原 index。输出严格 JSON：{"focus":[{"index":0,"title":"...","detail":"..."}],"products":[{"index":0,"conclusion":"..."}],"todos":[{"index":0,"content":"..."}]}。不要 Markdown。' },
     { role: 'user', content: JSON.stringify({ kind: model.kind, months: model.months, focus: focusFacts, products: productFacts, todos: todoFacts }) },
   ]
   // 11-18 实证：推理型模型（moma/deepseek-latest-flash）reasoning 与正文共享 max_tokens 预算，

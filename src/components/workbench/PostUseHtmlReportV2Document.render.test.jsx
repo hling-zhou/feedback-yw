@@ -177,17 +177,18 @@ describe('V2 offline document', () => {
     expect(grouped).toContain('· 不能批量退订非要移除共享带宽才可以批量五个退（共享带宽能力限制） 1')
     expect(grouped).toContain('· 功能缺失/不完善 1')
     expect(grouped).toContain('<b>3</b>')
-    // 11-19 L1/L2 体系：共享带宽类 quote 由 L2 锚归并进功能缺失/不完善组（EIP 3 条）
-    expect(grouped).toContain('弹性公网IP×3、NAT网关×1')
+    // 11-20 L1 归并层+记录级去重：共享带宽 quote 记录按标签组计 1 次——EIP×2（标签 2 条），quote 不双计
+    expect(grouped).toContain('弹性公网IP×2、NAT网关×1')
     expect(grouped).toContain('class="v2-row-danger"')
     const optionRow = tableRowFor(html, '部门低分原因汇总', '10 分反馈选项类')
     expect(optionRow).toContain('低风险')
     expect(optionRow).toContain('v2-option-text')
     expect(optionRow).toContain('购买时参数/配置选择错误 1')
     // 11-18 晚信息密度改造：典型原话行——与成员名相同者无信息增量自动省略。
-    // 11-19 L1/L2 体系：该原话经 L2 锚归并进组成为成员名（分布行已完整呈现+L2 括注），
-    // 典型行按"无信息增量省略"规则不重复展示
+    // 11-20 L1 归并：quote 命中共享带宽 L2 锚 → 与标签同组（同组非双计），作为成员在分布行呈现
+    //（带 L2 括注）；成员名=原话全文 → 典型行按省略规则不重复
     expect(grouped).not.toContain('典型：「不能批量退订')
+    expect(grouped).toContain('不能批量退订非要移除共享带宽才可以批量五个退（共享带宽能力限制） 1')
     const overlayModel = buildPostUseReportV2Model({
       reportKey: '2026-10', reportKind: 'month', reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
@@ -196,14 +197,14 @@ describe('V2 offline document', () => {
     const overlayHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={overlayModel} printAll todoItems={[]} />)
     const overlayGrouped = tableRowFor(overlayHtml, '部门低分原因汇总', '功能缺失/不完善')
     expect(overlayGrouped).toContain('烂到极致我要退款这产品没法用了 1')
-    // 11-19 L1/L2：原话经锚归并成为成员名（分布行呈现），典型行按省略规则不重复
+    // 11-20 归并层：quote 命中共享带宽锚与标签同组（成员名=原话在分布行呈现）→ 部门表典型行省略
     expect(overlayGrouped).not.toContain('典型：「不能批量退订')
     // 分产品"问题主题分布"同款 detail 行（成员带计数；组内原话带典型行）
     const themeGrouped = tableRowFor(html, '问题主题分布', '功能缺失/不完善')
     expect(themeGrouped).toContain('v2-reason-detail')
     expect(themeGrouped).toContain('分布：')
     const overlayTheme = tableRowFor(overlayHtml, '问题主题分布', '功能缺失/不完善')
-    expect(overlayTheme).not.toContain('典型：「不能批量退订')
+    expect(overlayTheme).toContain('典型：「不能批量退订')
     expect(html).toContain('不构成低分风险')
     expect(html).toContain('同记录多标签的产品已在分产品模块标注')
     expect(html).not.toContain('有效正反馈')
@@ -432,5 +433,26 @@ describe('V2 offline document', () => {
     // 由组件代码结构保证（months/series 同源传参），此处校验在线态确实切到了 recharts 轨道
     const onlineHtml = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} />)
     expect((onlineHtml.match(/recharts-responsive-container/g) || []).length).toBe(3)
+  })
+
+  // 11-20 拍板（关注项行标签做减法）：focus 行不再挂生命周期 tag（主句已含时点态势），
+  // 分产品表/部门表的生命周期 tag 保留——此用例锁两态防回潮
+  it('keeps lifecycle tags off focus rows but on theme tables', () => {
+    const allRecords = [
+      { id: 'lc-a', dataSourceType: 'post_use_rating', importMonth: '2026-08', product: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' },
+      { id: 'lc-b', dataSourceType: 'post_use_rating', importMonth: '2026-08', product: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '无法绑定' },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: { startDate: '2026-07-01', endDate: '2026-09-30' },
+      records: allRecords, companyRecords: allRecords, allRecords, allCompanyRecords: allRecords,
+    })
+    const html = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll />)
+    const focusStart = html.indexOf('本季关注')
+    const focusBlock = html.slice(focusStart, html.indexOf('</div>', html.indexOf('v2-action-detail', focusStart)))
+    expect(focusBlock).not.toContain('单月（')
+    expect(focusBlock).not.toContain('v2-tag--lc-')
+    // 分产品表生命周期列照旧（同一渲染产物内）
+    const themeTable = tableRowFor(html, '问题主题分布', '功能缺失/不完善')
+    expect(themeTable).toContain('单月（8月）')
   })
 })
