@@ -171,7 +171,10 @@ export default function PostUseJiraTab({ months = [], periodLabel = '', onStartO
       },
       { title: '客户编码', dataIndex: 'customerCode', width: 220 },
       { title: '产品名称', dataIndex: 'productName', width: 100, ellipsis: true },
-      { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true },
+      // 2026-11-20 拍板：客户反馈列统一放在产品名称后；行 hover 时文字变蓝（提示行可点击打开详情）。
+      // 变色锚在 td（feedback-hover-cell）：antd ellipsis 的省略号用 td 自身 color 渲染，
+      // 只染内层 span 会出"蓝字+灰省略号"割裂（用户拍板：省略号也要蓝）。
+      { title: '客户反馈', dataIndex: 'customerFeedback', ellipsis: true, className: 'feedback-hover-cell' },
       { title: '经办人', dataIndex: 'assigneeName', width: 120, ellipsis: true,
         render: (v, row) => v || assigneeMap.get(row.assigneeId) || '—' },
       {

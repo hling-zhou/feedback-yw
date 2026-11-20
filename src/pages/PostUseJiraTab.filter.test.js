@@ -14,7 +14,8 @@ describe('PostUseJiraTab composite filter', () => {
 
   it('supports period months filtering (view 2)', () => {
     // 视图 2 跟随当前周期：months prop + importMonth 按「、」拆分交集过滤
-    expect(source).toContain('export default function PostUseJiraTab({ months = [], periodLabel = \'\' })')
+    // 2026-11-20 修正：签名含 onStartOptimization（11-19 优化建议自动生成，4976486 落地时漏更新本断言）
+    expect(source).toContain("export default function PostUseJiraTab({ months = [], periodLabel = '', onStartOptimization })")
     expect(source).toContain("String(item.importMonth || '')\n          .split('、')")
   })
 

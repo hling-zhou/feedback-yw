@@ -1955,6 +1955,11 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
       { title: '数据月份', dataIndex: '数据月份', width: 100, fixed: 'left' },
       // 2026-11-09 用户拍板：产品名称前置到数据月份后一列；评估状态/数据月份/产品名称/客户名称 4 列固定
       { title: '产品名称', dataIndex: '产品名称', width: 150, fixed: 'left', ellipsis: true },
+      // 2026-11-20 拍板：客户反馈列统一放在产品名称后（与产品部回溯 tab 同序）；
+      // 行 hover 时文字变蓝（含截断省略号），进一步提示行可点击打开详情。
+      // 变色锚在 td（feedback-hover-cell）：antd ellipsis 省略号用 td 自身 color 渲染，
+      // 只染内层 span 会出"蓝字+灰省略号"割裂。
+      { title: '客户反馈', dataIndex: '客户反馈', width: 260, ellipsis: true, className: 'feedback-hover-cell' },
       // 2026-11-10 拍板：截断列 hover 气泡显示完整（参考投诉咨询工单列表 Tooltip 形态）；
       // 客户编码主流 20 字符（E+19 位数字）→ 宽 220 保完整不截断
       {
@@ -1969,7 +1974,7 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
           </Tooltip>
         ),
       },
-      // ↓ 以下按导入模板列序原样（客户编码/登录账号名称/相应投诉工单/客户反馈/回访结果/内部评估/备注/经办人）
+      // ↓ 以下按导入模板列序原样（客户编码/登录账号名称/相应投诉工单/回访结果/内部评估/备注/经办人）
       // 2026-11-10 拍板：集团名称列从列表与模板一并去掉；列宽优化（内容长列加宽/短列收窄）
       { title: '客户编码', dataIndex: '客户编码', width: 220 },
       {
@@ -1984,7 +1989,6 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
         ),
       },
       { title: '相应投诉工单', dataIndex: '相应投诉工单', width: 150, ellipsis: true },
-      { title: '客户反馈', dataIndex: '客户反馈', width: 260, ellipsis: true },
       { title: '回访结果', dataIndex: '回访结果', width: 260, ellipsis: true },
       { title: '内部评估', dataIndex: '内部评估', width: 260, ellipsis: true },
       { title: '备注', dataIndex: '备注', width: 170, ellipsis: true },

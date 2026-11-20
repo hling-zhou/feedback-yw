@@ -521,6 +521,19 @@
 }
 
 /* ------------------------------------------------------------------
+ * 表格行 hover：客户反馈列文字变蓝（2026-11-20 拍板）
+ * 用后即评·产品部回溯/省代表回访列表——行可点击打开详情，hover 时
+ * 「客户反馈」单元格文字变蓝，进一步提示行可点击。
+ * 变色锚在 td.feedback-hover-cell 上而非内层 span：antd ellipsis 的
+ * 省略号取 td 自身 color 渲染，锚 span 会出"蓝字+灰省略号"割裂
+ *（用户拍板：省略号也要蓝）。
+ * ------------------------------------------------------------------ */
+.ant-table-tbody > tr:hover > .feedback-hover-cell,
+.ant-table-tbody > tr.ant-table-row:hover > .feedback-hover-cell {
+  color: #2563eb; /* blue-600，与链接色同族 */
+}
+
+/* ------------------------------------------------------------------
  * 表格列宽拖拽（2026-11-10 方案 v2）
  * 手柄 = 表头单元格右侧 8px 命中区（与 useColumnResize RESIZER_HIT_ZONE 同值，
  * 守卫：useColumnResize.render.test.js 同值守卫）
