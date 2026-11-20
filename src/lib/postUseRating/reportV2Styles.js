@@ -91,4 +91,13 @@ body { margin:0; }
 @media print { .post-use-html-report-toolbar,.post-use-html-report-status,.v2-toc,.v2-product-list,.no-print { display:none!important; }.report-v2 .report-modules { width:100%; }.v2-product-layout { display:block; }.v2-product-slot { display:block!important; margin-bottom:24px; }.v2-details > * { display:block; }.v2-details-content { display:block!important; }.v2-table thead { display:table-header-group; }.v2-table tr { break-inside:avoid; }.report-module,.v2-panel,.v2-action,.v2-product-panel { print-color-adjust:exact; -webkit-print-color-adjust:exact; }.v2-action { break-inside:avoid; }.post-use-html-report-sheet { display:block; padding:0; }.post-use-html-report { background:#fff; } }
 @media print { .v2-chart-grid { grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; } }
 .report-v2--print .v2-product-layout { display:block; }.report-v2--print .v2-product-slot { display:block; margin-bottom:24px; }.report-v2--print .v2-product-list { display:none; }.report-v2--print .v2-details > .v2-details-content { display:block; }
+/* 11-20 用户反馈修复（离线 HTML 屏幕浏览形态）：导出态右侧 TOC 在屏幕显示（纯锚点导航），
+   仅打印隐藏——原 .report-v2--print 无区分，TOC 在屏幕浏览也消失；产品目录同样恢复为
+   顶部锚点条（点击跳转到平铺面板 #product-<name>），无 JS 也可用；svg 高度自适应补齐
+   （max-width:100% 时 height 属性在部分浏览器赢过 height:auto，导致横向压缩纵向不变）。 */
+.report-v2--print .v2-toc { flex-shrink:0; width:210px; max-height:calc(100vh - 72px); overflow-y:auto; position:sticky; top:56px; }
+.report-v2--print .v2-product-list--offline { display:none; }
+.report-v2--print .v2-chart-wrap svg { max-width:100%; width:100%; height:auto; }
+@media(max-width:1000px) { .report-v2--print .v2-toc { display:none; } }
+@media print { .v2-toc { display:none!important; } }
 `

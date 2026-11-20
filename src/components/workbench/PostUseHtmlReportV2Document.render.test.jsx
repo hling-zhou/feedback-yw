@@ -39,7 +39,12 @@ describe('V2 offline document', () => {
     expect(html).toContain('v2-mark-new')
     expect((html.match(/<details/g) || []).length).toBeGreaterThan(4)
     expect((html.match(/<details[^>]*open/g) || []).length).toBe((html.match(/<details/g) || []).length)
-    expect(html).not.toContain('class="report-toc')
+    // 11-20 用户反馈修复：离线导出右侧目录导航恢复（纯锚点无 JS）——锁 TOC 存在 +
+    // 产品子目录锚点（#product-<name> 跳转平铺面板）+ 打印态 CSS 隐藏规则（屏幕显示打印不出）
+    expect(html).toContain('v2-toc--offline')
+    expect(html).toContain('href="#product-NAT')
+    expect(REPORT_V2_CSS).toContain('.report-v2--print .v2-toc')
+    expect(REPORT_V2_CSS).toContain('width:100%; height:auto')
   })
 
   it('shows low scores without a theme as uncertain and retains visit evidence', () => {
