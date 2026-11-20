@@ -388,7 +388,11 @@ describeQuery('patrol query API', () => {
     db.prepare(`UPDATE api_patrol_failure_groups SET product_action_status='待处理' WHERE first_request_id='fail-2'`).run()
     const g2 = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='fail-2'`).get()
     const g1 = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='fail-1'`).get()
-    const todayIso = new Date().toISOString()
+    // 今日诊断时间戳：必须与路由 SQL 的 date('now','localtime') 同口径（本地日期）——
+    // new Date().toISOString() 是 UTC，CST 00:00-08:00 期间日期比本地早一天 → JOIN 不中（11-21 跨午夜红实锤）
+    const now = new Date()
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const todayIso = `${localDate}T${now.toISOString().slice(11)}`
     const insDiag = db.prepare(`
       INSERT INTO api_patrol_diagnoses
         (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, root_cause_source, diagnosed_at)

@@ -292,13 +292,21 @@ async function main() {
   for (const dataDate of targetDates) {
     log(`--- ${dataDate} ---`)
 
-    // ② 压缩
-    const pools = [...new Set(db.prepare('SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?').all(dataDate).map((r) => String(r.p)))]
+    // ② 压缩——定向补推模式跳过（11-20 21:46 执行前预检发现）：compressPatrolDay 无条件
+    // DELETE 当日池旧组再重建（组 id 变化），diagnoses 按 failure_group_id 关联会全部孤儿化——
+    // 补推依赖的 139 组既有诊断记录（含 raw）将被拆断关联，白补且毁本机库。
+    // 组已存在且带全诊断，重压缩纯害无利；默认模式（每日链语义：压缩→诊断→组包）保持原样。
     let totalGroups = 0
-    for (const pool of pools) {
-      const r = compressPatrolDay(dataDate, pool)
-      totalGroups += r.groups
-      log(`  compress ${pool}: ${r.groups} 组（压缩自 ${r.compressedFrom} 失败行）`)
+    if (REDIAGNOSE_EMPTY_RAW) {
+      const existing = db.prepare('SELECT COUNT(*) c FROM api_patrol_failure_groups WHERE group_date=?').get(dataDate).c
+      log(`  compress: 跳过（定向补推——沿用既有 ${existing} 组，防 DELETE 重建拆断诊断关联）`)
+    } else {
+      const pools = [...new Set(db.prepare('SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?').all(dataDate).map((r) => String(r.p)))]
+      for (const pool of pools) {
+        const r = compressPatrolDay(dataDate, pool)
+        totalGroups += r.groups
+        log(`  compress ${pool}: ${r.groups} 组（压缩自 ${r.compressedFrom} 失败行）`)
+      }
     }
 
     // ③ 诊断（可选跳过）
