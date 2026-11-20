@@ -64,11 +64,18 @@ export function registerLlmRoutes(app) {
     const { baseUrl: _b, model: _m, apiKey: _k, purpose, ...chatBody } = body
     const model = purpose === 'report' ? resolveReportLlmModel() : resolveLlmModel()
 
+    // 11-20 拍板加闸（用户裁定范围）：仅报告 narrative 链（purpose='report'，36k 预算
+    // 阶梯续跑）加 300s 超时——真机实证半开连接挂死场景即此链（前端无尽转圈）。
+    // 超时走既有失败回退链（文案批失败不阻塞、待办 fallbackContent、归类回退原文自成一档）。
+    // 打标链路（未传 purpose 的一切调用）不加：数据量每次不定、大批量耗时长不可预测，
+    // 固定超时会误杀；该链自带批次切分与失败重试，维持无限等待（用户拍板）。
+    const timeoutMs = purpose === 'report' ? 300_000 : undefined
     try {
       return await forwardLlmChatCompletion({
         baseUrl,
         apiKey,
         body: { ...chatBody, model },
+        timeoutMs,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

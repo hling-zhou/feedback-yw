@@ -138,6 +138,8 @@ export default function PostUseHtmlReport() {
   const [mailOpen, setMailOpen] = useState(false)
   const [regeneratingKey, setRegeneratingKey] = useState('')
   const [narrativeGenerating, setNarrativeGenerating] = useState(false)
+  // 11-20 拍板：loading 态加"已运行 Xs"计时——LLM 批慢/挂死一目了然（半开挂死真机实证）
+  const [narrativeElapsed, setNarrativeElapsed] = useState(0)
   // 11-19 拍板：未保存报告打开时自动触发一次 LLM 优化（三批）。ref 防重：同报告+同数据指纹
   // 只自动跑一次，失败不重试（用户可手动点按钮）；已保存报告永不自动触发（显示上次结果）。
   const narrativeAutoRunRef = useRef('')
@@ -445,6 +447,10 @@ export default function PostUseHtmlReport() {
     if (!model || !canEdit) return
     const requestedKey = reportKey
     setNarrativeGenerating(true)
+    // 11-20 计时器：每秒刷新已运行秒数；结束时清理（finally 兜底防泄漏）
+    setNarrativeElapsed(0)
+    const startedAt = Date.now()
+    const elapsedTimer = setInterval(() => setNarrativeElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
     try {
       const draft = await generatePostUseReportV2Narrative(settings, model)
       if (activeReportRef.current !== requestedKey) return
@@ -513,6 +519,7 @@ export default function PostUseHtmlReport() {
     } catch (error) {
       message.error(error?.message || '报告文案生成失败')
     } finally {
+      clearInterval(elapsedTimer)
       setNarrativeGenerating(false)
     }
   }
@@ -659,7 +666,9 @@ export default function PostUseHtmlReport() {
             <Button disabled={!isLlmAvailable(settings)} loading={narrativeGenerating} onClick={() => void handleGenerateV2Narrative()}>
               {/* 11-19 拍板：按钮常驻（不再只未保存态显示）；已保存报告显示"重新 LLM 优化"， */}
               {/* 未保存显示"LLM 优化"。重开后默认展示上次保存结果，需要时手动重新触发。 */}
+              {/* 11-20 计时提示：运行中显示已运行秒数，慢/挂死一目了然 */}
               {overlay?.snapshot ? '重新 LLM 优化' : 'LLM 优化'}
+              {narrativeGenerating ? `（已运行 ${narrativeElapsed}s）` : ''}
             </Button>
           ) : null}
           {model ? <Typography.Text type="secondary" className="text-xs">

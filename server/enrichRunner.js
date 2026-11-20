@@ -177,6 +177,9 @@ export function buildInProcessLlmForwardArgs(body) {
     baseUrl,
     apiKey,
     body: { ...chatBody, model },
+    // 11-20 用户裁定：打标链路不加超时——数据量每次不定，固定超时会误杀大批量任务；
+    // 该链自带批次切分与失败处理，维持无限等待。半开挂死闸门只加在报告 narrative 链
+    //（server/routes/llm.js purpose='report' → 300s）。
   }
 }
 
