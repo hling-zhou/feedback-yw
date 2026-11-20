@@ -1,9 +1,139 @@
 {
-  "generatedAt": "2026-11-19T13:57:58.979Z",
+  "generatedAt": "2026-11-20T13:37:49.088Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "657a55d0aa2b0fc39dee957be2ff305415c84154",
+  "repoCommit": "5f7e2db8b4774e7e325afa5e1db26c16a26c5a79",
   "items": [
+    {
+      "id": "d76ca43fb420ef37f7df49ab990a6a6440777964",
+      "title": "回访/回溯列表客户反馈列前移 + 行 hover 蓝字提示可点击",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "11-20 拍板：两视图「客户反馈」列统一放在产品名称后（列序对齐）；\n行 hover 时该列文字变蓝（含截断省略号）提示行可点击打开详情。\n变色锚在 td.feedback-hover-cell（antd ellipsis 省略号取 td 自身\ncolor 渲染，锚内层 span 会出「蓝字+灰省略号」割裂——用户拍板省略\n号也要蓝）。filter 断言同步补 onStartOptimization 签名（11-19\n落地时漏更新本守卫）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ae7e89594d602a739477ebd269c4a14bb2ddfb47",
+      "title": "左导航外链组——官网内容质量巡检首成员，站外跳转整项 <a target=_blank>",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "external 类型导航项（2026-11-20）：整项 label 渲染为 <a target=\"_blank\">，\n不参与摊平/选中匹配/前端路由；labelSuffix 跳转图标提示外链身份；\nhandleMenuClick 外链分支兜底 window.open（防结构回退时跳转失效，\n且绝不把外部 URL 交给 navigate 污染 Router）。外链组与站内项以\ndivider-external-links 横线分隔；孤线清理规则适配（外链组常驻）。\n首个成员：官网内容质量巡检（10.64.3.250:1001）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b3af6acef0f7f3c0e7f00d1b9d3eb1e4a264a9d1",
+      "title": "clipPhrase 句读边界截断——报告链统一截断口径防腰斩",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "11-20 用户反馈「信息截断有问题」复盘：裸 slice(0,N) 词中腰斩（先例\n「这个问题很」）。\n\n- clipPhrase 共享函数：超长文本优先取首个句读边界前的完整短语（哪怕\n  远短于上限——完整短语优于残句），无边界回退原长度截断。\n- 全链接线：关注项 facts/具体问题列举/代表名、待办候选 facts、V2 文档\n  典型行、LLM 输入侧 shortText 同源替换——防 LLM 基于残句编造语义。\n- 分隔符纪律：自由文本列表 join 禁顿号用分号（问题文本内含顿号造成\n  歧义）；类目名不进主句与列举（11-20 复验发现混入）；同频代表按输入\n  序稳定（防 localeCompare 中文序漂移）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "2f5c45dcaa2177b038140cbf390e00b4f52d1b6a",
+      "title": "权限码语义判据体系——07 文档 + 同构守卫 + 处理反馈门控 editRecord 收敛",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "11-20 复盘：「产品侧处理反馈」误用 manageTags 门控，partial_editor/\nviewer 13 天看不到反馈表单。真因 = 动作客体是业务记录（一次性处理\n事件）却套了配置资产的权限码——选码靠直觉、无判据层拦截。\n\n- 07-权限码语义判据.md：16 权限码 × 客体身份判据表（editRecord=业务\n  记录 / manageTags=配置资产分界）、同构动作判据（第二把尺）、选码\n  三步（查判据表 → grep 同组件宿主核对 → 新宿主登记）。\n- gateConsistencyGuard 守卫：登记表驱动（共享组件 × 全部宿主的预期门控\n  码），未登记宿主检测兜底（扫描 import 发现新宿主即红）；已红绿自证\n  （回潮 manageTags 两端都红）。\n- 巡检处理反馈门控收敛：PATCH /failures/groups/:id manageTags→\n  editRecord（与反馈库抽屉同口径）；前端 readOnly 同步换码；抽屉分区\n  三两态渲染——viewer 只读展示已填反馈（不再整区隐藏），真渲染守卫\n  切 mockCan 双态断言。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "abface358168d0ea8a23207d20827349d0edcefd",
+      "title": "需求池判定真源升级 + 仿真豁免 + 历史 pending 双提醒 + 原始日志弹窗",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "- 需求池分区一真源升级（11-20 14:48 拍板）：= MCP tools/list 的 poolName\n  枚举清单（patrolMcpPoolRegistry：内存→meta 24h 缓存→现拉，stale 时\n  fire-and-forget 刷新）。实测确证：枚举外池调 log_search 不报错而静默\n  返回空 records（曾伪装「日志未采集」误进分区二）；「调 MCP 报错」反\n  而不证明未接入——枚举才是准确判据。误判修复案：华南-广州3/华北-\n  北京3 曾被误报「池未接入」。\n- classifyGapKind 四参矩阵：diagnoses 按 status 分态（只认 success 最新\n  记录）；新增 diagnosis_failed（只有 failed 记录——不进池，次日自动\n  重试）与 mcp_error（枚举内池临时故障——复制清单交付补跑）；{\"error\":...}\n  形态判定优先于枚举态（防重试失败被读成池属性）。分区一加「判定依据」\n  列（响应样例 + requestId）；页面标注判定模式与获取时间，降级时显式提示。\n- 仿真/测试账号免产品侧处理（11-20 14:30 拍板）：isSimOrTestAccount\n  共享谓词 + 管线统一出口豁免（单一出口覆盖全部成功分支，三消费方同源\n  ——报表/列表/筛选自动同口径）；actionReason 追加豁免理由；红绿三用例。\n- 历史 pending 转待处理双提醒（11-20 15:09 拍板）：今日诊断成功且转\n  待处理、但失败发生在历史日期的组不在 T-1 窗口易漏——日报 subject 追加\n  「历史转待处理 K 组」+ 总览橙黄提示条 + 产品块 ⚡角标/chips；列表页顶部\n  Alert + 一键切「近7日+需产品侧处理」筛选。判定锚 diagnoses 今日\n  success（不受手工改状态污染），次日自动失配零维护。\n- 抽屉原始日志弹窗（11-20 19:39/19:51/19:57 拍板）：核心行内联展开\n  退场（日志过长撑爆抽屉），Modal 全宽承载全文（78vh 内部滚动 + 尺寸对齐\n  反馈库先例 + 复制全文 + 框选快捷复制气泡）；rawCount=0/原文空按钮隐藏\n  （曾恒显「原始 0 行」误导）。\n- 总览默认窗口 T-1 → 近7天（11-20 拍板，守卫防回潮）；需求池分区二删\n  「压缩前失败次数」列（排序口径保留）、下钻加根因细分 L2 列；stats 补\n  preCompressTotal（前端引导卡曾引用恒显 '—'）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "59fa0289d8c5fdc86b8ca93d8a305daedf8296b1",
+      "title": "MCP 原始日志全文随包推 + 定向补跑断供存量",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "11-20 断供复盘（详见 docs 05 §2.5）：日包契约推了 5 个结论性字段、漏了\nmcp_raw_response——本机直连链直写全量掩盖中继链透传缺口，服务器静默\nnull 断供 10 天，部署端抽屉「查看完整日志」误显「原始 0 行」才暴露。\n\n- 日包补字段：buildPackage/upsertDiagnoses 全链透传 mcpRawResponse\n  （源库列→包字段→落库列三列对拍补齐；完整原文不截断——按组数十 KB，\n  诊断成功组每日几十量级，包体增量可接受）。\n- 定向补跑开关 REDIAGNOSE_EMPTY_RAW=1：只补「success 诊断但 raw 空」\n  的组（全窗口），重跑只回填诊断事实字段，product_action_status 一律\n  不动（绕开已处理/处理中被打回的覆盖风险）；组 updated_at bump +\n  包 groups WHERE 第四条件（success+raw 非空+近 2 天变化）双保险，\n  保证补的数据进得了日包——两跳缺一即白补（真链路验证暴露的缺口）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "5768f9fdc0d842e7c8650b6c391e383da76ba3c2",
+      "title": "需求池页面适配显示全部——时间范围控件移除（防回潮守卫）",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "ApiPatrolDiagnosisGapsContent 去时间范围筛选（11-20 09:44 拍板：\n需求池显示全部），明细下钻用宽区间承载\"全部\"语义；页面提示文案\n同步。源码契约+真渲染双守卫锁\"无 RangePicker/近 N 天\"防回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "042e5b248332a4b3c7ab22c080578fa8882c8f40",
+      "title": "日报根因分布与状态分区——接口行补 L1 计数与待处理列",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "buildPatrolDailyReport 接口级聚合扩 pending/L1 计数（表格根因分布+\n待产品处理列素材）；状态按组全量口径闭环计数（statusByProduct）；\n未诊断组按 pool 分区（undiagByPool 缺口素材）。诊断能力需求池\nsummary 端点去时间窗口（11-20 拍板显示全部——COALESCE 有效根因\n判定不变，hasDiagnosis 区分从未诊断），组级明细下钻宽区间承载\n\"全部\"语义。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ee1e7fae79c6c2b701d1a3cd61939bcb398588c1",
+      "title": "关注项主句点到具体问题+标签减法——LLM 文案批同步骨架",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "主题句骨架定稿：产品「具体问题」+态势（本季新增 N/集中爆发于 X 月/\n贯穿全季）+（最低分）+影响（低点才说）+动作收尾，30~45 字言简意赅；\n类目名不再以标签形态出现在「」内，具体问题由代表挑选从成员账本取。\n关注行标签做减法：去掉生命周期 tag（主句已含时点态势，tag 冗余；\nQ3 真库三条关注项全员\"单月（8月）\"同标失去区分力），保留行动标签+\n优先级；分产品表/部门表生命周期 tag 照旧（守卫用例锁两态防回潮）。\nLLM 文案批 prompt 同步骨架与代表规则；渲染断言适配归并层新口径\n（典型原话省略规则在\"同组 quote 成员名=原话\"场景维持）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d45e65029b6c4926a6d52fe27d6d717200b97cb4",
+      "title": "主题行按 L1 归并——跨组双计消除、代表挑选入主句",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-20",
+      "appVersion": null,
+      "summary": "themeRows 输出过 mergeThemeRowsByL1（产品×L1 合并 count/月度/记录集，\n成员账本 memberThemes 带标签粒度）；同 record 跨组时保留标签组、原话组\n剔除——\"一问题归两类\"（KCS 先例：标签+原话跨 L1 各计 1 条）从数据层\n消除。NEW 0→N 双轨按成员行 isNew 分桶（归并后行级 isNew 失真），\n组级 previousCount 不错桶；部门表\"分布\"灰字展开归并行成员保标签\n粒度。focus 主句挑代表改用自带成员账本：常见且严重优先、补维度\n第二、频次补位第三（上限 3），类目名不再冒充具体问题。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "657a55d0aa2b0fc39dee957be2ff305415c84154",
       "title": "总览指标成功率趋势支持展开收起并移至最末",
@@ -2465,120 +2595,6 @@
       "publishedAt": "2026-09-18",
       "appVersion": null,
       "summary": "负责人 Select 从 min-w-[180px] max-w-[280px] shrink-0 改为 min-w-[200px] flex-1，\n占满同行剩余空间，右缘与下方待办内容文本框对齐。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "7b84469bb46cbfe275fc9fe1d51584c1045f64f5",
-      "title": "统一初始密码 + 班组枚举迁移 + 导入岗位/班组必填校验 + 用户管理页增强",
-      "category": "feature",
-      "modules": [
-        "settings"
-      ],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "- 新增 resolveUserInitialPassword，新建/导入账号密码留空时统一使用系统初始密码\n- users 表新增 position/team/must_change_password 列，班组旧值按 TEAM_MIGRATION_MAP 迁移\n- 导入模板表头标注岗位/班组必填，导入时做枚举校验并回传可选清单\n- 用户管理页增加岗位/班组筛选、首次改密标记、重置筛选按钮\n- 改密页面适配 must_change_password 状态",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "9a2db54a05b7ed5eb8347074b888d4949e31e554",
-      "title": "登录页增加「首次登录」默认密码查看 + 用户管理 API 补全",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "- 登录页底部增加「首次登录？」链接，点击后调公开接口展示系统统一初始密码\n- 新增 GET /api/auth/default-password 公开接口（无需认证）\n- 新增 GET /api/users/default-password 管理端接口（需 manageUsers 权限）\n- 新增 POST /api/users/reset-passwords 批量重置密码接口\n- 用户创建/批量创建/编辑路由补齐 position 字段透传\n- 中间件白名单放行 /api/auth/default-password",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2065812bac9652282b9453f241210e4253030f77",
-      "title": "设置页容器宽度改用窄名单，修复含表格 tab 被压进 672px",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "宽名单式枚举要求每新增一个含表格的 tab 都记得登记，漏配就会把表格压成竖排单字，\naudit 与 pipeline 已各踩一次；改为默认撑满、仅窄表单类收窄，从写法上消除复发可能。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "e1150668aed36234f5a28764c14cf01fd47f3007",
-      "title": "审计日志表格补横向滚动并按字段结构化展示详情",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "表格缺少 scroll 配置导致列被容器挤压遮挡，现对齐其他管理面板的行为；\n详情弹窗原先只有基础信息加原始 JSON，新增中文标签映射让原始键值对可读。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2c5c4c8196ee2b9dabc181f448a2aae669d08642",
-      "title": "补齐 page-sticky-chrome 未闭合标签导致的构建失败",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "上一条改造删除 page-card 外层闭合 div 时误删了 sticky-chrome 自身的闭合，\nJSX 结构错位使 esbuild 在 CustomerVisitTable 处报 Unexpected const。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "31d5792c0bdede7966fa8b6648b795915e7d436f",
-      "title": "反馈库筛选吸顶恢复 + 工单列精简",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "- Feedbacks: 恢复 page-sticky-chrome 吸顶容器，c5e92f3 误改为 page-card 导致筛选不吸顶、表头不固定\n- FeedbackTable: 新增 stickyOffset prop，>0 时传 sticky={{ offsetHeader }}\n- 工单列去掉工单日期/时间/数据月份附属行，仅保留工单号与产品规格",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "fef4c4de822d150b9db0a4e5e1374d7c86357b10",
-      "title": "请求节点解析收敛为单一入口 + 连通性与质量节点双向修正",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "- pathSegments: 新增 parseRequestNodeSegments，先截断模板字段名再切分 --，消除 5 处重复正则\n- ticketTagging: 连通症状词（不通/ping/互访）与质量度量词（丢包/延迟/时延）双向修正\n  - correctQualityWinnerToConnectivity: 质量节点抢走连通症状时改判同 L1 连通节点\n  - correctConnectivityWinnerToQuality: 混合表述时连通节点改判同 L1 质量节点\n  - hasExplicitQualitySignal: 慢类不计质量信号，建连层超时不计（lookbehind）\n- 12 条单测覆盖灰区与反向守卫",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "ff1062a99abb575b78884fa060c3bcb227ab1bc4",
-      "title": "产品 key 零宽字符自愈 + 兄弟记录显示名保护",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "- keyHygiene: stripInvisibleChars 剥离 U+200C 等零宽字符，validateProductKey 录入拦截\n- migrateProductCatalogKeys: 迁移路径调 keyHygiene 自愈历史脏数据\n- productCenterSync: syncCatalogProductsToTaxonomy 加 owner 显示名保护，兄弟记录只贡献 match 词\n- 旧 taxonomySnapshotContentEqual 测试替换为 3 条新测试（兄弟记录不覆盖名/零宽字符自愈）",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "d8ac800e6852579df4528fad6e107e4e70880f37",
-      "title": "新增 9 产品预置用户旅程（域名注册/云解析/内网DNS/VPC终端节点/云端口/全局流量管理/场景化加速/云迁移中心/AI巡考）",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-18",
-      "appVersion": null,
-      "summary": "基于 776 条历史工单设计，L1 七段式与现有产品一致：\n- service L1 仅保留有实质语义的 L2（域名注册: 账号受限+催办；云端口: 催办）\n- resolveTaxonomyKey 改为最长匹配优先，防止 vpc 贪婪匹配 VPC终端节点\n- vpc_endpoint 种子 taxonomyKey 纠偏为自身 key，不再借道 vpc 模板",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "5f3ee721cd2662f294f45c08f9e794abed72c4cb",
-      "title": "门禁明细产品列与检查项标题不同源",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-17",
-      "appVersion": null,
-      "summary": "证据行只存 id/text，抽屉再用实时 DB 反查产品，快照生成后工单被改标\n就会出现标题写「未归类率·A」而列表显示 B 的矛盾。改为在证据行冻结\n门禁时点的 product/status/fam/sub，使产品列与标题同源；新增归类结果\n列与改标漂移提示，并把 fam/sub 的内部 key 回查为中文展示名。",
       "commitUrl": null,
       "source": "git"
     }
