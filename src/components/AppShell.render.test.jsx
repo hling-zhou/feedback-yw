@@ -127,7 +127,7 @@ describe('AppShell 左导航两级结构（真渲染守卫）', () => {
 
   it('分组闭合线：API巡检 与 问题与举措 之间必须有 divider（层级误读修复的核心断言）', () => {
     const html = renderShell('/workbench')
-    expect(countDividers(html)).toBe(2)
+    expect(countDividers(html)).toBe(3)
     // 顺序断言：异常接口溯源（API巡检组尾）→ divider → 问题与举措（首个平级项）
     const patrolEnd = html.indexOf('异常接口溯源')
     const actionsStart = html.indexOf('问题与举措')
@@ -139,23 +139,31 @@ describe('AppShell 左导航两级结构（真渲染守卫）', () => {
     const mcpStart = html.indexOf('MCP 数据服务')
     expect(mcpStart).toBeGreaterThan(-1)
     expect(html.slice(actionsStart, mcpStart)).toContain('ant-menu-item-divider')
+    // 11-20 外链组：MCP 与 官网内容质量巡检 之间必须有 divider（外链组与站内项横线分隔）
+    const externalStart = html.indexOf('官网内容质量巡检')
+    expect(externalStart).toBeGreaterThan(-1)
+    expect(html.slice(mcpStart, externalStart)).toContain('ant-menu-item-divider')
   })
 
-  it('孤线清理：全部平级项隐藏时组后闭合线必须被清掉，不得残留尾随 divider', () => {
+  it('孤线清理：全部平级项隐藏时组后闭合线因外链组常驻而保留，仅清中段孤线', () => {
     const html = renderShell('/workbench', {
       canRoute: (path) => ['/workbench', '/topics', '/feedbacks'].includes(path),
     })
-    // VOC 组保留，但其后的两条 divider 因后续节点全部隐藏而必须被 prune
+    // VOC 组保留；站内平级项全隐藏后「组后闭合线→divider-before-mcp」连续孤线必须被
+    // prune 掉一条，但外链组（11-20 起）不参与角色过滤、常驻渲染，其与 VOC 之间
+    // 保留恰好 1 条 divider——不再是全清 0 基线。
     expect(html).toMatch(/ant-menu-item-group-title[^>]*>\s*线上VOC/)
-    expect(countDividers(html)).toBe(0)
+    expect(countDividers(html)).toBe(1)
   })
 
-  it('孤线清理：仅剩 MCP 项时开头 divider 必须被清掉（不渲染无前项的 divider）', () => {
+  it('孤线清理：仅剩 MCP 项时，开头孤线被清、外链组前 divider 保留（外链常驻）', () => {
     const html = renderShell('/mcp-guide', {
       canRoute: (path) => path === '/mcp-guide',
     })
     expect(html).toMatch(new RegExp(`data-menu-id="[^"]*${'/mcp-guide'.replace(/\//g, '\\/')}"`))
-    expect(countDividers(html)).toBe(0)
+    // VOC/API巡检/平级项全隐藏：divider-before-mcp 前无节点成孤线被清；
+    // 但外链组常驻，MCP 与外链之间的 divider-external-links 保留
+    expect(countDividers(html)).toBe(1)
   })
 
   it('孤线清理：中段平级项全隐藏但 MCP 可见时，MCP 前 divider 正常保留', () => {
@@ -163,10 +171,39 @@ describe('AppShell 左导航两级结构（真渲染守卫）', () => {
       canRoute: (path) =>
         ['/workbench', '/topics', '/feedbacks', '/api-patrol/overview', '/api-patrol/failures', '/mcp-guide'].includes(path),
     })
-    // 组后闭合线因 MCP 仍存在而不属于孤线；MCP 前 divider 同理保留
-    expect(countDividers(html)).toBe(1)
+    // 组后闭合线因 MCP 仍存在而不属于孤线；MCP 前 divider 同理保留；
+    // 加上外链组 divider-external-links（11-20），全量基线 1→2
+    expect(countDividers(html)).toBe(2)
+    // MCP 与外链之间有 divider，外链之后到菜单尾部无 divider
     const afterMcp = html.slice(html.indexOf('MCP 数据服务'))
-    expect(afterMcp).not.toContain('ant-menu-item-divider')
+    const externalStart = afterMcp.indexOf('官网内容质量巡检')
+    expect(externalStart).toBeGreaterThan(-1)
+    expect(afterMcp.slice(0, externalStart)).toContain('ant-menu-item-divider')
+    expect(afterMcp.slice(externalStart)).not.toContain('ant-menu-item-divider')
+  })
+
+  it('外链项：官网内容质量巡检 渲染为整项新标签页外链，位于 MCP 之下且有横线分隔', () => {
+    const html = renderShell('/workbench')
+    // 整项 label 为 <a target="_blank">，href 指向站外巡检入口
+    expect(html).toContain('href="http://10.64.3.250:1001/"')
+    expect(html).toContain('target="_blank"')
+    expect(html).toContain('官网内容质量巡检')
+    // 顺序断言：MCP 数据服务 → divider → 官网内容质量巡检（外链组在 MCP 区块下方）
+    const mcpStart = html.indexOf('MCP 数据服务')
+    const externalStart = html.indexOf('官网内容质量巡检')
+    expect(mcpStart).toBeGreaterThan(-1)
+    expect(externalStart).toBeGreaterThan(mcpStart)
+    expect(html.slice(mcpStart, externalStart)).toContain('ant-menu-item-divider')
+    // 名称尾部带跳转图标（ActionJumpIcon 渲染为 16×16 内联 svg）
+    const itemAfter = html.slice(externalStart, externalStart + 1200)
+    expect(itemAfter).toMatch(/<svg[^>]*width="16"[^>]*height="16"/)
+  })
+
+  it('外链项不参与前端路由：菜单项 key 非路由地址，选中态不可落在外链', () => {
+    const html = renderShell('/workbench')
+    // 外链 key 是 external-* 命名，不是路由路径
+    expect(html).toMatch(/data-menu-id="[^"]*external-website-content-patrol"/)
+    expect(html).not.toMatch(/data-menu-id="[^"]*http:\/\//)
   })
 
   it('选中态：/api-patrol/failures 精确高亮（最长前缀匹配，不误高亮总览）', () => {

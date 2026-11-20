@@ -39,6 +39,7 @@ import WhatsNewFab from './WhatsNewFab.jsx'
 import WhatsNewDrawer from './WhatsNewDrawer.jsx'
 import ReminderFab from './ReminderFab.jsx'
 import ReminderSendModal from './ReminderSendModal.jsx'
+import ActionJumpIcon from './common/ActionJumpIcon.jsx'
 import { useUsageTracking } from '../hooks/useUsageTracking.js'
 
 /** @typedef {import('react').ReactElement} ReactNavIcon */
@@ -49,9 +50,13 @@ import { useUsageTracking } from '../hooks/useUsageTracking.js'
  * 菜单项；divider 渲染为 antd Menu divider——分组结尾必须有闭合线，否则分组后的
  * 第一个平级项会被误读成上一组的子项（2026-11-07 层级误读修复）。
  * 菜单选中、角色过滤、折叠态展平、孤线清理均由此结构派生。
+ * external 为站外外链项（2026-11-20）：渲染为整项 <a target="_blank">（新标签页
+ * 打开），不参与摊平/选中匹配/前端路由；后续新增外链一律放 external 组，由
+ * divider-external-links 与上方站内项隔开。
  * @typedef {{ type: 'leaf', key: string, label: string, icon: ReactNavIcon, badge?: string }} NavLeaf
  * @typedef {{ type: 'group', key: string, label: string, children: NavLeaf[] }} NavGroup
  * @typedef {{ type: 'divider', key: string }} NavDivider
+ * @typedef {{ type: 'external', key: string, label: string, href: string, icon?: ReactNavIcon, labelSuffix?: ReactNavIcon }} NavExternal
  */
 
 /** @type {NavLeaf[]} */
@@ -69,7 +74,7 @@ const API_PATROL_NAV_CHILDREN = [
   { type: 'leaf', key: '/api-patrol/diagnosis-gaps', label: '诊断能力需求', icon: <ToolOutlined /> },
 ]
 
-/** @type {(NavGroup | NavLeaf | NavDivider)[]} */
+/** @type {(NavGroup | NavLeaf | NavDivider | NavExternal)[]} */
 const ALL_NAV = [
   { type: 'group', key: 'group-voc', label: '线上VOC', children: VOC_NAV_CHILDREN },
   {
@@ -88,14 +93,23 @@ const ALL_NAV = [
   { type: 'leaf', key: '/settings', label: '设置', icon: <SettingOutlined /> },
   { type: 'divider', key: 'divider-before-mcp' },
   { type: 'leaf', key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined />, badge: 'NEW' },
+  // 外链组：站外跳转项统一放此组（2026-11-20 官网内容质量巡检首个成员），与上方站内项以横线分隔
+  { type: 'divider', key: 'divider-external-links' },
+  {
+    type: 'external',
+    key: 'external-website-content-patrol',
+    label: '官网内容质量巡检',
+    href: 'http://10.64.3.250:1001/',
+    labelSuffix: <ActionJumpIcon className="!text-[12px]" />,
+  },
 ]
 
-/** 递归收集全部叶子导航项（分组摊平；divider 不可点击，不参与摊平与路由匹配）。 */
+/** 递归收集全部叶子导航项（分组摊平；external 外链项与 divider 不可导航，不参与摊平与路由匹配）。 */
 function collectNavLeaves(items) {
   return items.flatMap((item) =>
     item.type === 'group'
       ? collectNavLeaves(/** @type {NavGroup} */ (item).children)
-      : item.type === 'divider'
+      : item.type === 'divider' || item.type === 'external'
         ? []
         : [item],
   )
@@ -210,6 +224,34 @@ export default function AppShell() {
   })
 
   /**
+   * 外链项 → antd 菜单项：整项 label 为 <a target="_blank">，名称尾部渲染
+   * labelSuffix（跳转图标）；点击交给浏览器原生 a 标签新标签页打开，链接触发
+   * 时 antd Menu onClick 也会收到 key，由 handleMenuClick 的外链分支兜底
+   * stopPropagation + window.open（防外层 a 缺失/结构回退时跳转失效）。
+   * 外链无前导 icon 时 antd 折叠态会渲染首字占位（ant-menu-inline-collapsed-noicon），
+   * 这是可接受形态（内站路由受 React Router 保护，外链非路由项）。
+   * @param {NavExternal} item
+   */
+  const buildExternalMenuItem = ({ key, label, href, icon, labelSuffix }) => ({
+    key,
+    label: (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="!text-inherit"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Space size={4}>
+          <span>{label}</span>
+          {labelSuffix}
+        </Space>
+      </a>
+    ),
+    icon,
+  })
+
+  /**
    * 展开态菜单 items：分组保留 group 形态、divider 直通、隐藏项滤 null。
    * filter(Boolean) 无法静态收窄 null，末端 cast 对齐 antd Menu items 类型。
    * 顺序纪律：先滤掉隐藏项的 null，再 pruneStrayDividers——null 会干扰孤线判定。
@@ -226,6 +268,7 @@ export default function AppShell() {
       }
     }
     if (item.type === 'divider') return { type: 'divider', key: item.key }
+    if (item.type === 'external') return buildExternalMenuItem(item)
     return canRoute(item.key) ? buildLeafMenuItem(item) : null
   }).filter(Boolean)
 
@@ -246,6 +289,21 @@ export default function AppShell() {
   const handleLogout = async () => {
     await logout()
     navigate('/login')
+  }
+
+  /**
+   * 菜单点击分发：站内叶子项走前端路由；外链项由 label 内的 <a> 原生打开
+   * （stopPropagation 挡掉本回调），此分支仅为兜底——a 缺失/结构回退时仍保证
+   * 新标签页跳转，且绝不能把外链 key 交给 navigate（外部 URL 会污染 Router）。
+   * @param {{ key: string }} info
+   */
+  const handleMenuClick = ({ key }) => {
+    const external = ALL_NAV.find((item) => item.type === 'external' && item.key === key)
+    if (external) {
+      window.open(/** @type {NavExternal} */ (external).href, '_blank', 'noopener')
+      return
+    }
+    navigate(key)
   }
 
   return (
@@ -299,7 +357,7 @@ export default function AppShell() {
             inlineCollapsed={collapsed}
             selectedKeys={[selectedKey]}
             items={navItems}
-            onClick={({ key }) => navigate(key)}
+            onClick={handleMenuClick}
           />
 
           {collapsed && user ? (
