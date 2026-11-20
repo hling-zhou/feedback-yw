@@ -440,6 +440,8 @@ function themeRows(records, allRecords, visits, traces, links, months, earlierMo
       isNew: previousCount === 0, previousCount, dissatisfied, nonActionable,
       noAction,
       recordIds: [...row.recordIds], customerKeys: [...row.customerKeys],
+      // 11-20 归并层双计去重需要：occurrence 主类型（option 标签 / quote 原话）随行带出
+      occurrences: row.occurrences,
       linkedTraceIds: distinct(row.occurrences.flatMap((item) => item.linkedTraceIds || [])),
       linkedVisitIds,
       quotes: distinct(row.occurrences.filter((item) => item.kind === 'quote').map((item) => item.text)).slice(0, 3),
@@ -455,6 +457,114 @@ function themeRows(records, allRecords, visits, traces, links, months, earlierMo
         .sort((a, b) => b.length - a.length).slice(0, 2),
     }
   }).sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority])
+    || a.lowestScore - b.lowestScore || b.count - a.count || a.theme.localeCompare(b.theme, 'zh'))
+}
+
+/**
+ * 主题行 L1 归并层（11-20 用户拍板）：themeRows 输出的 low 行按 产品×L1 归并——
+ * 同组 count/记录集/月度/quotes 合并，成员账本 memberThemes（{theme,count,lowestScore,quotes}）带上，
+ * theme=类目名。解决三件同根问题：①原话行命中锚后独立成行的跨组双计（KCS 先例）；
+ * ②focus"标签行+原话行"多行并列；③主句挑代表的数据源残缺。
+ * 语义细则：noAction 取全成员 AND（同两档剔除原语义）；dissatisfied/priority 取组内最强；
+ * isNew = 组内任一成员 isNew（NEW 0→N 语义看记录集）；ten-option 行不归并（原样过）。
+ */
+function mergeThemeRowsByL1(rows, months, kind, groupLabelOverrides) {
+  const byGroup = new Map()
+  const passthrough = []
+  for (const row of rows) {
+    if (row.type !== 'low') { passthrough.push(row); continue }
+    const label = reportV2ThemeGroupLabel(row.theme, 'low', row.productName, groupLabelOverrides)
+    const key = `${row.productName}\0${label}`
+    const entry = byGroup.get(key) || {
+      key, productName: row.productName, theme: label, type: 'low',
+      lowestScore: null, priority: 'P2', recordIds: new Set(), pieceIds: new Set(), customerKeys: new Set(),
+      monthRecordIds: new Map(), previousIds: new Set(), newRecordIds: new Set(),
+      linkedTraceIds: new Set(), linkedVisitIds: new Set(),
+      quotes: new Set(), lowestQuotes: new Set(), memberThemes: [],
+      dissatisfied: false, nonActionable: true, noAction: true, hasNoActionMember: false,
+      lifecycleRows: [],
+      // 记录级双计去重（11-20 用户拍板）：kindOf = 组内 occurrence 主类型（option 标签 / quote 原话）
+      kindOf: null, recordIdKinds: new Map(),
+    }
+    entry.lowestScore = entry.lowestScore == null ? row.lowestScore : Math.min(entry.lowestScore, row.lowestScore)
+    const rank = { P0: 0, P1: 1, P2: 2 }
+    if (rank[row.priority] < rank[entry.priority]) entry.priority = row.priority
+    for (const id of row.recordIds || []) entry.recordIds.add(id)
+    for (const id of row.pieceIds || []) entry.pieceIds.add(id)
+    for (const id of row.customerKeys || []) entry.customerKeys.add(id)
+    for (const [month, ids] of Object.entries(row.monthRecordIds || {})) {
+      const set = entry.monthRecordIds.get(month) || new Set()
+      for (const id of ids) set.add(id)
+      entry.monthRecordIds.set(month, set)
+    }
+    // NEW 双轨记账（11-20 修正）：按**成员行的 isNew** 判定记录归属——归并行整体 isNew=false
+    // 时，其中本期新增成员的记录仍属"新增"（原 themeRows 行级 isNew 由 previousCount 推导；
+    // 上期有记录的成员 isNew=false → 记录归 previous）。双轨以记录为粒度，不随组整体翻转。
+    if (row.isNew) for (const id of row.recordIds || []) entry.newRecordIds.add(id)
+    if (!row.isNew) for (const id of row.recordIds || []) entry.previousIds.add(id)
+    for (const id of row.linkedTraceIds || []) entry.linkedTraceIds.add(id)
+    for (const id of row.linkedVisitIds || []) entry.linkedVisitIds.add(id)
+    for (const quote of row.quotes || []) entry.quotes.add(quote)
+    for (const quote of row.lowestQuotes || []) entry.lowestQuotes.add(quote)
+    entry.dissatisfied = entry.dissatisfied || row.dissatisfied
+    entry.nonActionable = entry.nonActionable && row.nonActionable
+    entry.hasNoActionMember = entry.hasNoActionMember || row.noAction
+    if (!row.noAction) entry.noAction = false
+    entry.lifecycleRows.push(row)
+    entry.memberThemes.push({ theme: row.theme, count: row.count, lowestScore: row.lowestScore, quotes: [...(row.lowestQuotes || [])] })
+    byGroup.set(key, entry)
+  }
+  // 记录级双计去重（11-20 用户拍板"一问题归两类"修复）：同 recordId 跨组时保留 option 组
+  //（客户/打标员勾选的标签是正式归因），quote 组（原话机器解析）剔除该记录；quote 组清空整组不生成。
+  // 判定依据 = themeRows 行的 occurrences kind（option 标签 / quote 原话）。
+  const kindOfGroup = new Map()
+  const recordGroups = new Map()
+  for (const [key, entry] of byGroup) {
+    const kinds = new Set(entry.lifecycleRows.flatMap((row) => (row.occurrences || []).map((item) => item.kind)))
+    kindOfGroup.set(key, kinds.has('option') ? 'option' : 'quote')
+    for (const id of entry.recordIds) {
+      const list = recordGroups.get(id) || []
+      list.push(key)
+      recordGroups.set(id, list)
+    }
+  }
+  for (const [recordId, keys] of recordGroups) {
+    if (keys.length < 2) continue
+    const optionKeys = keys.filter((key) => kindOfGroup.get(key) === 'option')
+    if (!optionKeys.length) continue
+    for (const key of keys) {
+      if (kindOfGroup.get(key) !== 'option') byGroup.get(key).recordIds.delete(recordId)
+    }
+  }
+  const merged = [...byGroup.values()].filter((entry) => entry.recordIds.size > 0).map((entry) => {
+    // 双计去重后：月度记账/NEW 记账按保留记录集重算（被剔除记录不留月度痕迹）
+    const keptRecordIds = new Set(entry.recordIds)
+    const monthRecordIds = Object.fromEntries(months.map((month) => [month,
+      [...(entry.monthRecordIds.get(month) || [])].filter((id) => keptRecordIds.has(id))]))
+    const monthCounts = Object.fromEntries(months.map((month) => [month, monthRecordIds[month].length]))
+    const life = kind === 'quarter' ? lifecycle(monthCounts, months) : ''
+    const newRecordIds = new Set([...entry.newRecordIds].filter((id) => keptRecordIds.has(id)))
+    const previousIds = new Set([...entry.previousIds].filter((id) => keptRecordIds.has(id)))
+    return {
+      key: entry.key, productName: entry.productName, theme: entry.theme, type: 'low',
+      count: entry.recordIds.size, segmentCount: entry.pieceIds.size, customerCount: entry.customerKeys.size,
+      lowestScore: entry.lowestScore, monthCounts,
+      monthRecordIds,
+      lifecycle: life, priority: entry.priority,
+      isNew: entry.recordIds.size > 0 && newRecordIds.size === entry.recordIds.size,
+      previousCount: previousIds.size,
+      // 11-20 归并层 NEW 双轨随行带出：reasonsMap 的组级 previousCount = Σ成员 previousIds（去重）
+      newRecordIds: [...newRecordIds], previousIds: [...previousIds],
+      dissatisfied: entry.dissatisfied, nonActionable: entry.nonActionable,
+      noAction: entry.noAction,
+      recordIds: [...entry.recordIds], customerKeys: [...entry.customerKeys],
+      linkedTraceIds: [...entry.linkedTraceIds], linkedVisitIds: [...entry.linkedVisitIds],
+      quotes: [...entry.quotes].slice(0, 3),
+      lowestQuotes: [...entry.lowestQuotes].slice(0, 2),
+      memberThemes: entry.memberThemes,
+    }
+  })
+  return [...merged, ...passthrough].sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority])
     || a.lowestScore - b.lowestScore || b.count - a.count || a.theme.localeCompare(b.theme, 'zh'))
 }
 
@@ -622,7 +732,7 @@ function focusActionType(row, trace, visit) {
   return '回访跟进'
 }
 
-function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null) {
+function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null, groupMembers = null) {
   const facts = []
   // 11-18 口径：LLM 输入侧自由文本统一手机号打码（姓名脱敏已有 maskCustomerName，此处补电话维度）
   const visitText = maskPhoneInText(String(visit?.visitResult || visit?.visitFeedbackDetail || '').trim())
@@ -636,6 +746,14 @@ function focusFacts(row, trace, visit, months, kind, visitInferred = false, back
   const customerQuote = maskPhoneInText(String(row.lowestQuotes?.[0]
     || row.quotes.find((text) => String(text).trim() !== row.theme) || '').trim())
   if (!visitText && customerQuote) facts.push(`客户原话：「${customerQuote.slice(0, 100)}」`)
+  // 11-20 拍板：类目名标签且组内具体问题较多时，detail 列举全貌（主句只挑 2 个代表）——
+  // 数据源 = 组成员清单（memberThemes，count/lowestScore 双维度），非最低分原话残集
+  if (groupMembers && groupMembers.length > 2) {
+    const problemList = groupMembers
+      .map((m) => String(m.theme || '').trim())
+      .filter(Boolean)
+    facts.push(`具体问题（${problemList.length} 类）：${problemList.slice(0, 4).map((text) => text.slice(0, 20)).join('、')}${problemList.length > 4 ? ` 等 ${problemList.length} 类` : ''}`)
+  }
   if (kind === 'quarter') facts.push(`月度分布：${months.map((month) => `${Number(month.slice(5))}月 ${row.monthCounts[month] || 0} 条`).join('、')}`)
   else if (row.previousCount) facts.push(`上期 ${row.previousCount} 条，本期 ${row.count} 条`)
   return facts.join('；') || `本期关联 ${row.count} 条评分记录，最低 ${row.lowestScore} 分。`
@@ -686,6 +804,55 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
                 : `核查「${row.theme}」并明确处理结论`)
     const actionType = focusActionType(row, trace || backgroundTrace, visit)
     const severity = `${row.count} 条，最低 ${row.lowestScore} 分`
+    // 11-20 拍板（言简意赅·言之有物，主句结构由 AI 设计定稿）：
+    // 骨架 = 产品「具体问题」+ 态势（本季新增 N / 集中爆发于 X 月 / 贯穿全季）+（最低分）+ 影响（低点才说）+ 动作。
+    // 具体问题名 problemName（用户拍板修正版——不只看次数也不只取最高频一个，主句最多 3 个代表）：
+    // ① 标签非类目名 → 标签本身；② 标签是类目名 → 组内成员问题挑代表进主句（上限 3）：
+    //   代表 1 = 常见且严重（count 高优先，同 count 取 lowestScore 低）；
+    //   代表 2 = 补不同维度（代表 1 偏频次则补评分最低的、代表 1 偏严重则补次高频）；
+    //   代表 3 = 按频次序补位（兼顾组内多样貌，防"高频+最低分"双极端后仍漏常见问题）。
+    //   count=1 但评分极低的"严重性代表"同样可入选。③ 无成员回退标签名。
+    // detail（focusFacts）列举具体问题全貌兜底；LLM 批 prompt 同款规则。
+    const isCategoryTheme = REPORT_V2_L1_GROUPS.includes(row.theme)
+    // 11-20 L1 归并层后：focus 行自带组员清单 memberThemes（{theme,count,lowestScore,quotes}）——
+    // 代表挑选直接消费，无原话成员时回退 lowestQuotes 关键短语
+    const groupMembers = isCategoryTheme
+      ? (row.memberThemes && row.memberThemes.length
+        ? row.memberThemes
+        : [{ theme: row.theme, count: row.count, lowestScore: row.lowestScore, quotes: [...(row.lowestQuotes || [])] }])
+      : null
+    const representativeProblemNames = (() => {
+      if (!groupMembers || !groupMembers.length) return []
+      const clean = (text) => String(text || '').trim().replace(/[。！？!?\s]+$/g, '')
+      const members = groupMembers.map((m) => ({ name: clean(m.theme), count: m.count || 0, lowestScore: m.lowestScore }))
+        .filter((m) => m.name && m.name !== row.theme)
+      if (!members.length) {
+        const quotes = distinct(groupMembers.flatMap((m) => m.quotes || []).map((text) => clean(text)).filter(Boolean))
+        return quotes.slice(0, 3).map((text) => text.slice(0, 16))
+      }
+      const byFreq = [...members].sort((a, b) => b.count - a.count || (a.lowestScore ?? 99) - (b.lowestScore ?? 99))
+      const bySeverity = [...members].sort((a, b) => (a.lowestScore ?? 99) - (b.lowestScore ?? 99) || b.count - a.count)
+      const picked = []
+      const pushIfNew = (member) => {
+        if (member && !picked.some((p) => p.name === member.name)) picked.push(member)
+      }
+      pushIfNew(byFreq[0])
+      if (byFreq[0] && bySeverity[0] && bySeverity[0].name !== byFreq[0].name) {
+        // 代表 2 补不同维度；代表 3 按频次序补位
+        pushIfNew(bySeverity[0])
+        pushIfNew(byFreq[1] || bySeverity[1])
+      } else {
+        pushIfNew(byFreq[1] || bySeverity[1])
+        pushIfNew(byFreq[2] || bySeverity[2])
+      }
+      return picked.slice(0, 3).map((m) => m.name.slice(0, 16))
+    })()
+    const problemName = !isCategoryTheme
+      ? row.theme
+      : representativeProblemNames.length
+        ? representativeProblemNames.join('、')
+        : row.theme
+    const problemCore = `「${problemName}」`
     // 11-19 P1：标题按生命周期分支措辞——数量 + 时点 + 对产品/均分的影响 三要素（对齐原型洞察句式）。
     // isNew（上期 0）时点出「Q3 新增」；单月/集中爆发点出爆发月份；低点拖累时点出该产品季内低点均分。
     const productMonthly = products.find((item) => item.name === row.productName)?.monthly || []
@@ -693,23 +860,23 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
       .sort((a, b) => a.value - b.value)[0] || null
     const lowPointNote = quarterLow && quarterLow.value < 9
       ? `，${Number(quarterLow.month.slice(5))} 月均分跌至 ${quarterLow.value}` : ''
-    const peakMonth = kind === 'quarter' ? Object.entries(row.monthCounts || {}).sort((a, b) => b[1] - a[1])[0] : null
-    const peakNote = peakMonth && peakMonth[1] ? `，${Number(peakMonth[0].slice(5))} 月集中出现` : ''
+    const peakMonthRaw = kind === 'quarter' ? Object.entries(row.monthCounts || {}).sort((a, b) => b[1] - a[1])[0] : null
+    const peakNote = peakMonthRaw && peakMonthRaw[1] ? `，${Number(peakMonthRaw[0].slice(5))} 月集中出现` : ''
     const title = customerDissatisfied
-      ? `${row.productName}「${row.theme}」客户回访明确不满，需跟进回应`
+      ? `${row.productName}${problemCore}客户回访明确不满，需跟进回应`
       : kind === 'quarter' && row.lifecycle === '贯穿全季'
-        ? `${row.productName}「${row.theme}」贯穿全季（${severity}），需根因治理`
+        ? `${row.productName}${problemCore}贯穿全季 ${severity}，需根因治理`
         : kind === 'quarter' && row.lifecycle.includes('集中爆发')
-          ? `${row.productName}「${row.theme}」${row.lifecycle}（${severity}），需定位该月事件${lowPointNote}`
+          ? `${row.productName}${problemCore}${row.isNew ? '本季新增 ' : ''}${row.count} 条集中爆发于 ${peakMonthRaw && peakMonthRaw[1] ? `${Number(peakMonthRaw[0].slice(5))} 月` : '季内'}（最低 ${row.lowestScore} 分）${lowPointNote}，需定位该月事件`
           : kind === 'quarter' && row.lifecycle.startsWith('单月')
-            ? `${row.productName}「${row.theme}」${row.isNew ? '本季新增 ' : ''}${row.count} 条（最低 ${row.lowestScore} 分）${peakNote}${lowPointNote}，需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
+            ? `${row.productName}${problemCore}${row.isNew ? '本季新增 ' : ''}${row.count} 条（最低 ${row.lowestScore} 分）${peakMonthRaw && peakMonthRaw[1] ? `，集中出现于 ${Number(peakMonthRaw[0].slice(5))} 月` : ''}${lowPointNote}，需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
             : kind === 'quarter' && row.lifecycle
-              ? `${row.productName}「${row.theme}」${row.lifecycle}（${severity}），需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
-              : `${row.productName}「${row.theme}」${row.previousCount ? '连续两期出现，' : ''}本期 ${severity}，需${actionType === '缺陷修复' ? '定位修复' : '明确处理结论'}`
+              ? `${row.productName}${problemCore}${row.lifecycle} ${severity}，需${actionType === '缺陷修复' ? '定位并修复' : '回应诉求'}`
+              : `${row.productName}${problemCore}${row.previousCount ? '连续两期出现，' : ''}本期 ${severity}，需${actionType === '缺陷修复' ? '定位修复' : '明确处理结论'}`
     return {
       id: row.key, productName: row.productName, theme: row.theme, priority: row.priority,
       lifecycle: row.lifecycle, text: String(verb).trim(), actionType, title,
-      detail: focusFacts(row, trace, visit, months, kind, visitInferred, backgroundTrace)
+      detail: focusFacts(row, trace, visit, months, kind, visitInferred, backgroundTrace, groupMembers)
         // 11-19 P1：detail 补第三要素"影响"——该产品季内低点均分（拖累判断的量化线索）
         + (quarterLow && quarterLow.value < 9 ? `；${row.productName} ${Number(quarterLow.month.slice(5))} 月均分 ${quarterLow.value} 为季内低点` : ''),
       customerDissatisfied,
@@ -885,7 +1052,6 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
   })
   const visitsWithVerdicts = injectVerdicts(visits)
   const tracesWithVerdicts = injectVerdicts(traces)
-  const themes = themeRows(currentScored, allRecords, visitsWithVerdicts, tracesWithVerdicts, issueLinks, months, previous, kind, catalogNames)
   // LLM verdicts 批输入候选：正则未命中的本期回访/溯源文本（命中正则的已有确定性判定，无需 LLM）
   const inPeriodRow = (row) => String(row.importMonth || row.visitMonth || '').split('、').some((m) => monthSet.has(m.trim()))
   const evidenceVerdictPending = [
@@ -901,6 +1067,19 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     // 11-19 审查修复 #2：已有 LLM verdict 的记录不再重复送判定批（幂等省 token）
     && !evidenceVerdicts[String(row.id)])
   const reportVisits = visits.filter((row) => monthSet.has(row.importMonth || row.visitMonth))
+  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"LLM 优化"管线写入；
+  // 11-19 L1/L2 体系：值 = L1 名（旧 7 组名经 classifyReportTheme 内 legacy 映迁移兼容）。
+  // L2 细类覆盖表：展示"分布"灰字用，不进聚合键。两者须在 themes 归并层之前。
+  const groupLabelOverrides = overlay?.narratives?.themeGroupLabels && typeof overlay.narratives.themeGroupLabels === 'object'
+    ? overlay.narratives.themeGroupLabels : {}
+  const themeL2Labels = overlay?.narratives?.themeL2Labels && typeof overlay.narratives.themeL2Labels === 'object'
+    ? overlay.narratives.themeL2Labels : {}
+  // 主题行（11-20 拍板 L1 归并层）：themeRows 输出过 mergeThemeRowsByL1——同产品同 L1 合并
+  // （KCS 双计/focus 多行并列/代表挑选数据源三问题一次解决）。
+  const themes = mergeThemeRowsByL1(
+    themeRows(currentScored, allRecords, visitsWithVerdicts, tracesWithVerdicts, issueLinks, months, previous, kind, catalogNames),
+    months, kind, groupLabelOverrides,
+  )
   const productNames = [...groups.keys()]
   const productTrendMonths = monthRange(months.at(-1) || '', kind === 'quarter' ? 14 : 5)
   const overviewTrendMonths = monthRange(months.at(-1) || '', 6)
@@ -940,18 +1119,11 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
   }).sort((a, b) => Number(b.belowNine) - Number(a.belowNine)
     || Number(b.status === '重点改善') - Number(a.status === '重点改善')
     || b.sample - a.sample || a.name.localeCompare(b.name, 'zh'))
+  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"LLM 优化"管线写入，
   const rawActions = actionRows(themes, traces, visits, actionItems, months, kind, products)
   const focus = selectFocus(rawActions, kind, products)
   const allActions = capActionsByProduct(rawActions, focus)
   const todoCandidates = buildTodoCandidates({ months, visits, traces, actionItems })
-  // LLM 语义归类覆盖表（11-18 拍板）：overlay.narratives.themeGroupLabels 由"LLM 优化"管线写入，
-  // 未命中正则的标签 → LLM 归入封闭组；旧快照无该字段时回退纯正则（groupLabelOverrides 为空对象）
-  // 11-19 L1/L2 体系：themeGroupLabels 值 = L1 名（旧 7 组名经 classifyReportTheme 内 legacy 映迁移兼容）
-  const groupLabelOverrides = overlay?.narratives?.themeGroupLabels && typeof overlay.narratives.themeGroupLabels === 'object'
-    ? overlay.narratives.themeGroupLabels : {}
-  // L2 细类覆盖表：展示"分布"灰字用，不进聚合键
-  const themeL2Labels = overlay?.narratives?.themeL2Labels && typeof overlay.narratives.themeL2Labels === 'object'
-    ? overlay.narratives.themeL2Labels : {}
   const registry = reportQuotes(records)
   const positiveRegistry = registry.filter(isReportV2PraiseQuote)
   const reasonsMap = new Map()
@@ -967,8 +1139,14 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     }
     for (const recordId of row.recordIds) {
       entry.recordIds.add(recordId)
-      if (row.isNew) entry.newRecordIds.add(recordId)
-      else entry.priorRecordIds.add(recordId)
+      // 11-20 归并层后：行级 isNew 失真（组含上期记录即 false）——NEW 双轨改吃行携带的
+      // newRecordIds/previousIds（按成员行 isNew 分桶），组级 0→N 语义不漂移
+      if (row.newRecordIds?.includes(recordId)) entry.newRecordIds.add(recordId)
+      if (row.previousIds?.includes(recordId)) entry.priorRecordIds.add(recordId)
+      if (!row.newRecordIds && !row.previousIds) {
+        if (row.isNew) entry.newRecordIds.add(recordId)
+        else entry.priorRecordIds.add(recordId)
+      }
       const month = Object.keys(row.monthRecordIds || {}).find((m) => (row.monthRecordIds[m] || []).includes(recordId))
       const monthSet = entry.monthRecordIds.get(month) || new Set()
       monthSet.add(recordId)
@@ -978,18 +1156,24 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     entry.segmentCount += row.segmentCount || 0
     entry.lowestScore = entry.lowestScore == null ? row.lowestScore : Math.min(entry.lowestScore, row.lowestScore)
     entry.productCounts.set(row.productName, (entry.productCounts.get(row.productName) || 0) + row.count)
-    const members = entry.memberThemes.get(row.theme) || { count: 0, lowestScore: null, quotes: [], l2: '' }
-    members.count += row.count
-    // 11-19 L1/L2：成员 L2 细类判定——themeL2Labels 覆盖优先，锚点判定按成员来源产品
-    if (!members.l2) {
-      members.l2 = themeL2Labels[row.theme]
-        || classifyReportTheme(row.theme, 'low', row.productName, groupLabelOverrides).l2
-        || ''
+    // 11-20 L1 归并层后：行 theme 已是类目名，标签粒度成员在行 memberThemes 里——
+    // 部门表"分布"灰字需要标签粒度，展开归并行的 memberThemes 记账（count 取成员 count）
+    const subMembers = (row.memberThemes && row.memberThemes.length)
+      ? row.memberThemes
+      : [{ theme: row.theme, count: row.count, lowestScore: row.lowestScore }]
+    for (const sub of subMembers) {
+      const members = entry.memberThemes.get(sub.theme) || { count: 0, lowestScore: null, quotes: [], l2: '' }
+      members.count += sub.count || 0
+      members.lowestScore = members.lowestScore == null ? sub.lowestScore : Math.min(members.lowestScore, sub.lowestScore ?? 99)
+      // 11-19 L1/L2：成员 L2 细类判定——themeL2Labels 覆盖优先，锚点判定按成员来源产品
+      if (!members.l2) {
+        members.l2 = themeL2Labels[sub.theme]
+          || classifyReportTheme(sub.theme, 'low', row.productName, groupLabelOverrides).l2
+          || ''
+      }
+      members.quotes = distinct([...(members.quotes || []), ...(sub.quotes || [])])
+      entry.memberThemes.set(sub.theme, members)
     }
-    members.lowestScore = members.lowestScore == null ? row.lowestScore : Math.min(members.lowestScore, row.lowestScore)
-    // 成员级典型原话（11-18 信息密度改造）：来自最低分记录，渲染层选主导成员的原话展示
-    members.quotes = distinct([...(members.quotes || []), ...(row.lowestQuotes || [])])
-    entry.memberThemes.set(row.theme, members)
     entry.themeKeys.set(row.theme, row.key)
     reasonsMap.set(key, entry)
   }

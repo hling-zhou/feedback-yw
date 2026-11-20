@@ -216,7 +216,8 @@ describe('V2 report facts', () => {
       reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
     })
-    const theme = model.themes.find((row) => row.theme === '功能有缺失')
+    // 11-20 L1 归并层：'功能有缺失' 命中功能缺失锚 → 归并行 theme = 类目名，记录不重复计
+    const theme = model.themes.find((row) => row.theme === '功能缺失/不完善')
     expect(theme).toMatchObject({ count: 3, lifecycle: '贯穿全季', priority: 'P0' })
     expect(Object.values(theme.monthCounts)).toEqual([1, 1, 1])
     expect(model.products[0].monthly.map((row) => row.sample)).toEqual([1, 1, 1])
@@ -242,17 +243,15 @@ describe('V2 report facts', () => {
       reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
     })
-    const feature = model.themes.find((row) => row.theme === '功能有缺失')
-    expect(feature.lowestQuotes).toEqual([])
-    // 标签成员的最低分记录带 commentText → 典型原话取 commentText（标签本身无信息增量）
-    const bindTheme = model.themes.find((row) => row.theme === '无法绑定')
+    // 11-20 L1 归并层：'功能有缺失'/'无法绑定'（NAT）命中功能缺失锚 → 归并行 theme = 类目名。
+    // lowestQuotes 取最低分记录 commentText；组行 memberThemes 携带成员账本 quotes
+    const feature = model.themes.find((row) => row.theme === '功能缺失/不完善' && row.productName === '弹性公网IP')
+    expect(feature.memberThemes.map((m) => m.theme)).toContain('功能有缺失')
+    const bindTheme = model.themes.find((row) => row.theme === '功能缺失/不完善' && row.productName === 'NAT网关')
     expect(bindTheme.lowestQuotes).toEqual(['绑定一直转圈失败'])
+    expect(bindTheme.memberThemes.map((m) => m.theme)).toContain('无法绑定')
     const longQuote = model.themes.find((row) => row.theme === '不能批量退订非要移除共享带宽才可以批量五个退')
     expect(longQuote.lowestQuotes).toEqual(['不能批量退订非要移除共享带宽才可以批量五个退'])
-    // 组行成员账本携带 quotes（部门表典型原话来源）；LLM 归类后原话并入组，典型原话仍可追溯
-    const merged = model.reasons.find((row) => row.name === '功能缺失/不完善')
-    const member = merged.memberThemes.find((m) => m.theme === '功能有缺失')
-    expect(member.quotes).toEqual([])
   })
 
   it('merges alias reasons into one department row with member/period facts', () => {
@@ -271,7 +270,8 @@ describe('V2 report facts', () => {
     expect(merged.count).toBe(3)
     expect(merged.previousCount).toBe(0)
     expect(merged.isNew).toBe(true)
-    expect(merged.memberThemes.map((member) => member.theme)).toEqual(['功能有缺失', '功能缺失/不完善'])
+    // 11-20 L1 归并层：部门表成员展开归并行 memberThemes → 标签粒度保留
+    expect(merged.memberThemes.map((member) => member.theme).sort()).toEqual(['功能有缺失', '功能缺失/不完善'])
     expect(merged.products).toEqual([{ name: '弹性公网IP', count: 2 }, { name: 'NAT网关', count: 1 }])
     const option = model.reasons.find((row) => row.type === 'ten-option')
     expect(option.name).toBe('10 分反馈选项类')
@@ -359,10 +359,13 @@ describe('V2 report facts', () => {
       reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
       records: allRecords, companyRecords: allRecords, allRecords, allCompanyRecords: allRecords,
     })
-    const spanRow = model.focus.find((row) => row.theme === '功能有缺失')
-    expect(spanRow.title).toContain('贯穿全季（3 条，最低 1 分），需根因治理')
-    const singleRow = model.focus.find((row) => row.theme === '稳定性不足故障频发')
-    expect(singleRow.title).toContain('本季新增 1 条（最低 2 分），8 月集中出现')
+    // 11-20 L1 归并层：'功能有缺失'/'稳定性不足故障频发'归并为类目行；主句挑代表用标签成员名
+    const spanRow = model.focus.find((row) => row.theme === '功能缺失/不完善')
+    // 11-20 主题句骨架定稿：产品「具体问题」+ 态势 +（最低分）+ 动作——「」内点具体问题，类目名不出现
+    expect(spanRow.title).toContain('弹性公网IP「功能有缺失」贯穿全季 3 条，最低 1 分，需根因治理')
+    const singleRow = model.focus.find((row) => row.theme === '服务资源性能/稳定性不足')
+    expect(singleRow.title).toContain('本季新增 1 条（最低 2 分）')
+    expect(singleRow.title).toContain('集中出现于 8 月')
     // 低点拖累：低分记录拉低产品季内均分 → detail 附低点线索（低点月与爆发月可能不同月）
     const singleProduct = model.products.find((row) => row.name === singleRow.productName)
     const lowMonth = singleProduct?.monthly.filter((row) => row.value != null).sort((a, b) => a.value - b.value)[0]
@@ -417,7 +420,7 @@ describe('V2 report facts', () => {
     // 档 1：弹性公网IP 的问题全剔除——themes/reasons/focus 全无
     expect(model.themes.filter((row) => row.productName === '弹性公网IP')).toHaveLength(0)
     expect(model.reasons.find((row) => row.memberThemes?.some((m) => m.theme === '功能有缺失'))).toBeUndefined()
-    expect(model.focus.find((row) => row.theme === '功能有缺失')).toBeUndefined()
+    expect(model.focus.find((row) => row.theme === '功能缺失/不完善' && row.productName === '弹性公网IP')).toBeUndefined()
     // 云监控不受影响
     expect(model.themes.find((row) => row.productName === '云监控')).toBeTruthy()
   })
@@ -435,15 +438,15 @@ describe('V2 report facts', () => {
       reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
       records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
     })
-    // 档 2：进定量——themes/reasons 仍在
-    const theme = model.themes.find((row) => row.productName === '弹性公网IP' && row.theme === '功能有缺失')
+    // 档 2：进定量——themes/reasons 仍在（11-20 归并层后 theme=类目名）
+    const theme = model.themes.find((row) => row.productName === '弹性公网IP' && row.theme === '功能缺失/不完善')
     expect(theme).toBeTruthy()
     expect(theme.noAction).toBe(true)
     expect(model.reasons.find((row) => row.name === '功能缺失/不完善')).toBeTruthy()
-    // 不进定性——focus 无该主题
-    expect(model.focus.find((row) => row.theme === '功能有缺失')).toBeUndefined()
+    // 不进定性——focus 无该组
+    expect(model.focus.find((row) => row.theme === '功能缺失/不完善' && row.productName === '弹性公网IP')).toBeUndefined()
     // 未判定的云监控正常进定性
-    expect(model.focus.find((row) => row.theme === '无法绑定')).toBeTruthy()
+    expect(model.focus.find((row) => row.productName === '云监控')).toBeTruthy()
   })
 
   it('assigns an owner only when the trace is linked to that issue', () => {
@@ -461,9 +464,10 @@ describe('V2 report facts', () => {
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
       traces,
     })
-    expect(model.actions.find((row) => row.theme === '功能有缺失')).toMatchObject({ owner: '经办甲', text: '核查缺失能力' })
+    expect(model.actions.find((row) => row.theme === '功能缺失/不完善')).toMatchObject({ owner: '经办甲', text: '核查缺失能力' })
     // 11-19 撤销兜底（用户拍板）：无溯源经办人回退"待指派"，由 v2Validation 阻断保存/导出/发邮件
-    expect(model.actions.find((row) => row.theme === '页面打开慢')).toMatchObject({ owner: '待指派', text: '核查「页面打开慢」并明确处理结论' })
+    // 11-20 归并层：'页面打开慢'命中操作执行性能锚 → 类目行；主句挑代表回退标签成员名
+    expect(model.actions.find((row) => row.theme === '操作执行性能/稳定性不足')).toMatchObject({ owner: '待指派' })
   })
 
   it('puts a dissatisfied customer first and keeps the focus across products', () => {
@@ -492,8 +496,9 @@ describe('V2 report facts', () => {
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
     })
     const actions = model.actions.filter((row) => row.productName === '弹性公网IP')
+    // 11-20 L1 归并层：7 标签 → 5 组（操作与帮助体验 3 成员合并）——cap=5 生效且不截断 focus
     expect(actions).toHaveLength(5)
-    expect(actions.some((row) => row.mergedThemeCount > 1)).toBe(true)
+    expect(model.themes.find((row) => row.theme === '操作与帮助体验')?.memberThemes.length).toBe(3)
     expect(model.focus.every((row) => actions.some((action) => action.id === row.id))).toBe(true)
     // 11-19 责任人未指定阻断：本用例关注 cap 逻辑，过滤新旧两版责任人提示后应无其他差异
     expect(validatePostUseReportV2(model).filter((error) => !error.includes('责任人'))).toEqual([])
@@ -506,8 +511,8 @@ describe('V2 report facts', () => {
       reportKey: '2026-10', reportKind: 'month', reportPeriod: period('month'),
       records, companyRecords: records, allRecords: records, allCompanyRecords: records,
     })
-    // 关注项 owner=待指派（无溯源经办人）→ 阻断
-    expect(validatePostUseReportV2(model)).toContain('弹性公网IP「功能有缺失」责任人未指定，请补齐经办人')
+    // 关注项 owner=待指派（无溯源经办人）→ 阻断（11-20 归并层：theme=类目名）
+    expect(validatePostUseReportV2(model)).toContain('弹性公网IP「功能缺失/不完善」责任人未指定，请补齐经办人')
     // 补齐经办人后放行；页面编辑中待办 owner 空 → 阻断，补齐后放行
     const fixed = validatePostUseReportV2(model, { [model.focus[0].id]: { owner: '张三' } })
     expect(fixed.filter((error) => error.includes('责任人未指定'))).toEqual([])
