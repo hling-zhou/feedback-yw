@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Checkbox, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from 'antd'
-import { DownloadOutlined, FolderAddOutlined, LinkOutlined, MailOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FolderAddOutlined, MailOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   downloadPostUseCallbackRecommendationsExcel,
 } from '../lib/postUseRating/callbackRecommendationsExport.js'
@@ -66,14 +66,12 @@ function EllipsisHover({ value }) {
 
 /**
  * 反馈库 · 用后即评满意度 ·「建议回访/溯源清单」视图（2026-11-21 平铺需求）。
- * 由工作台弹窗（PostUseCallbackProcessModal）平移而来，业务逻辑原样保留；
- * 两壳并存期（弹窗暂不清理，待本视图验证 OK 后下线弹窗）：
- * - 服务端真源共用（decisions/dispatch/jira 挂载即重拉），内存不共享；
- * - 修本域 bug 必须双处同步，清理弹窗后恢复单处；
- * - 口径一致性由 callbackListModel.test.js 对拍守卫锚定。
+ * 由工作台弹窗（PostUseCallbackProcessModal，已删除）平移而来，业务逻辑原样保留；
+ * 工作台双入口与弹窗已于同日拍板下线——本视图是清单功能唯一入口（单处维护）。
+ * 口径一致性由 callbackListModel.test.js 对拍守卫锚定（storyModel 两字段 vs 本视图直调同源）。
  *
- * 数据链（与工作台弹窗同口径）：周期切片 → 目录 scope → 产品「先切后建」→ 共享构建函数。
- * 产品下拉语义 = 弹窗同款「先切 records 再 build」——改变进入构建的评价记录范围，
+ * 数据链（与原弹窗同口径）：周期切片 → 目录 scope → 产品「先切后建」→ 共享构建函数。
+ * 产品下拉语义 = 先切 records 再 build——改变进入构建的评价记录范围，
  * 不是对清单行做后过滤；跨产品高频低分累计随所选范围重算。
  *
  * @param {object} props
@@ -751,7 +749,8 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
         ref={stickyChromeRef}
         // 布局一致性（11-09 方案 A 用户拍板）：卡片内嵌吸顶形态——与溯源/原始数据
         // 视图同款（白底 + -mx-4/px-4 抵消宿主 page-card 的 p-4），禁页面级 page-sticky-chrome
-        className="sticky top-0 z-20 -mx-4 space-y-2 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
+        // 2026-11-21 用户反馈：操作按钮行与筛选行间距太小——space-y-2(8px) → space-y-4(16px)
+        className="sticky top-0 z-20 -mx-4 space-y-4 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Space wrap>
@@ -794,11 +793,8 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
                 存档「产品部溯源」
               </Button>
             </Tooltip>
-            <Tooltip title="切换到产品部溯源视图">
-              <Button icon={<LinkOutlined />} onClick={() => onNavigateToTrace?.()}>
-                产品部溯源
-              </Button>
-            </Tooltip>
+            {/* 2026-11-21 用户拍板：删除「产品部溯源」跳转按钮——同 lane 内直接切
+                Segmented 即达；存档成功的「立即查看」跳转保留（onNavigateToTrace 单消费点） */}
           </Space>
         </div>
         <div className="flex w-full flex-wrap items-center gap-4">

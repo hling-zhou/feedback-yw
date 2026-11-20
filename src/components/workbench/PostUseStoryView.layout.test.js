@@ -3,10 +3,6 @@ import { describe, expect, it } from 'vitest'
 
 describe('PostUseStoryView narrative hierarchy', () => {
   const source = fs.readFileSync(new URL('./PostUseStoryView.jsx', import.meta.url), 'utf8')
-  const callbackEntrySource = fs.readFileSync(
-    new URL('../../lib/postUseRating/callbackEntry.js', import.meta.url),
-    'utf8',
-  )
 
   it('keeps the decision story in the required order', () => {
     const headings = [
@@ -24,15 +20,12 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(indexes).toEqual([...indexes].sort((a, b) => a - b))
   })
 
-  it('keeps callback recommendation download entry in customer evidence section', () => {
-    expect(source).toContain('canUsePostUseCallbackList')
-    expect(source).toContain('查看并处理建议回访/溯源清单')
-    // 2026-11-09 双入口：disabled 判定收敛共享 helper（callbackEntry.js），弹窗实例上提至 DashboardView
-    expect(source).toContain('isCallbackEntryDisabled(model)')
-    expect(source).toContain('CALLBACK_ENTRY_DISABLED_REASON')
-    expect(source).toContain('disabled={callbackDownloadDisabled}')
-    // 禁用文案收敛到共享 helper（2026-11-09 双入口同源），守卫锚到 helper 源文件
-    expect(callbackEntrySource).toContain('当前范围内暂无命中“官网问卷类建议回访”或“投诉回访非10分”的记录')
+  it('callback entry removed from customer evidence section (2026-11-21 下线)', () => {
+    // 2026-11-21 拍板：入口下线，功能平移至反馈库「建议回访/溯源清单」tab；防回潮
+    expect(source).not.toContain('查看并处理建议回访/溯源清单')
+    expect(source).not.toContain('onOpenCallbackProcess')
+    expect(source).not.toContain('canUsePostUseCallbackList')
+    expect(source).not.toContain('isCallbackEntryDisabled')
     expect(source).toContain('dataSource={drivers.customers}')
     expect(source).toContain("title: '客户特征'")
     expect(source).toContain("title: '反馈原因'")
@@ -40,14 +33,6 @@ describe('PostUseStoryView narrative hierarchy', () => {
     expect(source).toContain('当前范围内暂无命中 高频低分原因规则 的记录')
     expect(source).toContain('const highFreqRows = drivers.highFrequencyLowScoreReasons || []')
     expect(source).toContain('dataSource={highFreqRows}')
-  })
-
-  it('delegates callback modal to DashboardView via prop (double-entry single modal)', () => {
-    // 弹窗状态与实例不在 StoryView（上提后双入口共用同一实例，避免状态漂移）
-    expect(source).not.toContain('PostUseCallbackProcessModal')
-    expect(source).not.toContain('callbackProcessOpen')
-    expect(source).toContain('onOpenCallbackProcess')
-    expect(source).toContain('onClick={() => onOpenCallbackProcess?.()}')
   })
 
   it('does not restore customer visit or satisfaction as a standalone top-level module', () => {

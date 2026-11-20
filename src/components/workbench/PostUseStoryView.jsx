@@ -14,13 +14,7 @@ import { withPostUseTrendDomains } from '../../lib/postUseRating/insights.js'
 import { listExperienceStatusProducts } from '../../lib/postUseRating/storyModel.js'
 import { qualityAnomaliesToCsv } from '../../lib/postUseRating/qualityStore.js'
 import { buildFeedbacksUrl } from '../../lib/feedbackFilters.js'
-import {
-  CALLBACK_ENTRY_DISABLED_REASON,
-  isCallbackEntryDisabled,
-} from '../../lib/postUseRating/callbackEntry.js'
 import PostUseJourneyMap from './PostUseJourneyMap.jsx'
-import { useAuth } from '../../context/AuthContext.jsx'
-import { canUsePostUseCallbackList } from '../../domain/auth/permissions.js'
 import { paginationShowTotal } from '../../lib/paginationTotal.js'
 
 const stateColor = { healthy: 'green', watch: 'gold', critical: 'red', small_sample: 'default' }
@@ -164,15 +158,12 @@ function customerFeedbackHref(customerName) {
  * @param {string} props.creatingSignalKey
  * @param {(signal: object) => void} props.onCreateAction
  * @param {(originalTicketId: string) => void} [props.onOpenTicket]
- * @param {() => void} [props.onOpenCallbackProcess] 打开「建议回访/溯源清单」弹窗（弹窗实例由 DashboardView 持有，双入口同弹窗）
  * @param {string} [props.selectedProduct]
  * @param {(product: string) => void} [props.onProductChange]
  * @param {{ value: string, label: string }[]} [props.products]
  * @param {string} [props.periodId]
  */
-export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket, onOpenCallbackProcess, selectedProduct = '', onProductChange, products = [], periodId = '' }) {
-  const { user } = useAuth()
-  const canOpenCallbackList = canUsePostUseCallbackList(user?.role)
+export default function PostUseStoryView({ model, creatingSignalKey, onCreateAction, onOpenTicket, selectedProduct = '', onProductChange, products = [], periodId = '' }) {
   const { metrics, productOverview, trendsAndChanges, drivers, actionsAndRecovery, quality } = model
   const exp = metrics.internalExperience
   const sat = metrics.satisfaction
@@ -201,9 +192,6 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
     ...(metrics.scoreDistribution?.[productName] || {}),
   }))
   const actionStatusLabel = (status) => status === 'recommended' ? '待创建' : ACTION_ITEM_STATUS_LABELS[status] || status
-  // 2026-11-09 双入口：disabled 判定收敛到共享 helper（与 DashboardView 头部入口同源）
-  const callbackDownloadDisabled = isCallbackEntryDisabled(model)
-  const callbackDownloadDisabledReason = CALLBACK_ENTRY_DISABLED_REASON
   const scoreTrendChart = withPostUseTrendDomains(trendsAndChanges.scoreTrend, { kind: 'score' })
   const satisfactionTrendChart = withPostUseTrendDomains(trendsAndChanges.satisfactionTrend, { kind: 'rate' })
 
@@ -399,22 +387,8 @@ export default function PostUseStoryView({ model, creatingSignalKey, onCreateAct
 
       <div className="page-card">
       <SectionHeading title="客户与证据" summary="识别受影响客户，并合并反馈原因与省代表回访结论" id="post-use-customers" />
-      <div className="page-card-header"><div>{
-          canOpenCallbackList ? (
-          <Tooltip title={callbackDownloadDisabled ? callbackDownloadDisabledReason : ''}>
-            <span>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                disabled={callbackDownloadDisabled}
-                onClick={() => onOpenCallbackProcess?.()}
-              >
-                查看并处理建议回访/溯源清单
-              </Button>
-            </span>
-          </Tooltip>
-          ) : null
-        }</div></div>
+      {/* 2026-11-21 清单入口迁移：原居右操作按钮已下线——功能平移至
+          反馈库 · 用后即评满意度 · 清单 tab（PostUseCallbackListTab） */}
         <LimitedTable
           size="small"
           rowKey={(row) => row.customerCode || `${row.customerName}-${row.products.join(',')}`}

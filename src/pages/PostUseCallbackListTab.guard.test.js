@@ -78,4 +78,16 @@ describe('PostUseCallbackListTab 页面形态守卫（2026-11-21）', () => {
     expect(source).not.toContain("navigate('/feedbacks")
     expect(source).not.toContain('useNavigate')
   })
+
+  it('「产品部溯源」跳转按钮已删（2026-11-21 拍板）：同 lane 切 Segmented 即达，不得回潮', () => {
+    expect(source).not.toContain('LinkOutlined')
+    expect(source).not.toContain('切换到产品部溯源视图')
+    // 存档「立即查看」是 onNavigateToTrace 唯一消费点（grep 单点）
+    expect(source.split('onNavigateToTrace?.()').length).toBe(2)
+  })
+
+  it('操作行与筛选行间距 space-y-4（2026-11-21 用户反馈间距太小）', () => {
+    expect(source).not.toContain('space-y-2 rounded-t-lg')
+    expect(source).toContain('space-y-4 rounded-t-lg')
+  })
 })
