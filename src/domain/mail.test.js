@@ -55,8 +55,9 @@ describe('mail domain', () => {
     expect(
       resolveMailContentUrl(MAIL_PRESET_CALLBACK_VISIT, 'month', '2026-06', 'https://example.com'),
     ).toBe('https://example.com/workbench?tab=post_use_rating')
+    // 11-20 V1 下线：邮件链接恒指 V2 路由（默认与显式参数同结果）
     expect(resolveMailContentUrl(MAIL_PRESET_REPORT, 'quarter', '2026-Q2', 'https://example.com')).toBe(
-      'https://example.com/workbench/post-use-report/2026-Q2',
+      'https://example.com/workbench/post-use-report-v2/2026-Q2',
     )
     expect(resolveMailContentUrl(MAIL_PRESET_REPORT, 'quarter', '2026-Q3', 'https://example.com', 'v2')).toBe(
       'https://example.com/workbench/post-use-report-v2/2026-Q3',

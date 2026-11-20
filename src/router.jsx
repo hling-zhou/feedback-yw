@@ -32,18 +32,11 @@ const routes = [
     element: <RequireAuth />,
     children: [
       {
-        path: 'workbench/post-use-report/:month',
-        element: (
-          <InsightsProvider hydrateTickets={false}>
-            <PostUseHtmlReport />
-          </InsightsProvider>
-        ),
-      },
-      {
+        // 11-20 拍板：V1 报告路由已下线（不重定向，彻底 404）；唯一入口为 -v2
         path: 'workbench/post-use-report-v2/:month',
         element: (
           <InsightsProvider hydrateTickets={false}>
-            <PostUseHtmlReport version="v2" />
+            <PostUseHtmlReport />
           </InsightsProvider>
         ),
       },

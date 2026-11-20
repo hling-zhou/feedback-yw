@@ -1,10 +1,7 @@
-export const META_KEY_POST_USE_HTML_REPORTS = 'post_use_html_reports_v1'
+// 11-20 拍板 V1 彻底下线：v1 store 键（post_use_html_reports_v1）读写分支删除；
+// META_KEY_POST_USE_HTML_REPORTS_V2 是 V2 早期 store 形态的存量键，直键 miss 后回退读取保留。
 export const META_KEY_POST_USE_HTML_REPORTS_V2 = 'post_use_html_reports_v2'
 export const META_KEY_POST_USE_HTML_REPORT_V2_PREFIX = 'post_use_html_report_v2_'
-
-function metaKeyForVersion(version) {
-  return version === 'v2' ? META_KEY_POST_USE_HTML_REPORTS_V2 : META_KEY_POST_USE_HTML_REPORTS
-}
 
 /**
  * @typedef {{
@@ -22,6 +19,9 @@ function metaKeyForVersion(version) {
  *     todoItems?: { id: string, content: string, owner: string, team: string, source: 'manual' | 'auto' }[]
  *     actionOverrides?: Record<string, { text?: string, title?: string, detail?: string, actionType?: string, owner?: string, team?: string }>
  *     visitSupplements?: Record<string, { visitResult: string, internalConclusion: string, remark: string }>
+ *     themeGroupLabels?: Record<string, string>
+ *     themeL2Labels?: Record<string, string>
+ *     evidenceVerdicts?: Record<string, string>
  *   }
  * }} HtmlReportOverlay
  */
@@ -118,13 +118,12 @@ function normalizeOverlay(raw, month) {
  * @param {string} month
  * @returns {Promise<HtmlReportOverlay | null>}
  */
-export async function loadHtmlReportOverlay(adapter, month, version = 'v1') {
+export async function loadHtmlReportOverlay(adapter, month) {
   if (!adapter?.getMeta || !month) return null
-  if (version === 'v2') {
-    const direct = await adapter.getMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`)
-    if (direct) return normalizeOverlay(direct, month)
-  }
-  const store = normalizeStore(await adapter.getMeta(metaKeyForVersion(version)))
+  const direct = await adapter.getMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`)
+  if (direct) return normalizeOverlay(direct, month)
+  // V2 早期 store 形态存量回退（直键 miss 时读旧聚合 store）
+  const store = normalizeStore(await adapter.getMeta(META_KEY_POST_USE_HTML_REPORTS_V2))
   return normalizeOverlay(store.reports[month], month)
 }
 
@@ -132,7 +131,7 @@ export async function loadHtmlReportOverlay(adapter, month, version = 'v1') {
  * @param {{ getMeta: (k: string) => Promise<unknown>; putMeta: (k: string, v: unknown) => Promise<void> }} adapter
  * @param {Partial<HtmlReportOverlay> & {month: string}} overlay
  */
-export async function saveHtmlReportOverlay(adapter, overlay, version = 'v1') {
+export async function saveHtmlReportOverlay(adapter, overlay) {
   if (!adapter?.putMeta) throw new Error('当前存储不支持保存月报叙述')
   const month = String(overlay?.month || '')
   if (!month) throw new Error('缺少报告月份')
@@ -140,19 +139,7 @@ export async function saveHtmlReportOverlay(adapter, overlay, version = 'v1') {
     ...overlay,
     updatedAt: overlay.updatedAt || new Date().toISOString(),
   }, month)
-  if (version === 'v2') {
-    await adapter.putMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`, nextOverlay)
-    return nextOverlay
-  }
-  const key = metaKeyForVersion(version)
-  const prev = normalizeStore(await adapter.getMeta?.(key))
-  await adapter.putMeta(key, {
-    version: 1,
-    updatedAt: nextOverlay.updatedAt,
-    reports: {
-      ...prev.reports,
-      [month]: nextOverlay,
-    },
-  })
+  // V1 下线后唯一写路径：V2 直键（不再写任何聚合 store）
+  await adapter.putMeta(`${META_KEY_POST_USE_HTML_REPORT_V2_PREFIX}${month}`, nextOverlay)
   return nextOverlay
 }

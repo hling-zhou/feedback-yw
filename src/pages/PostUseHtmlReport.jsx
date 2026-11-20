@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Link, useParams } from 'react-router-dom'
-import { Alert, Button, Space, Spin, Typography, message } from 'antd'
+import { Alert, Button, Checkbox, Space, Spin, Typography, message } from 'antd'
 import { MailOutlined } from '@ant-design/icons'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -17,31 +17,18 @@ import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 import { listActionItems } from '../lib/actionItemClient.js'
 import { listAllPostUseJiraItems } from '../lib/postUseJiraClient.js'
 import { isLlmAvailable } from '../lib/llmClient.js'
-import { listReportDrafts, listReportIssueLinks, saveReportDraft } from '../lib/postUseRating/reportClient.js'
-import { mergeGeneratedReportDraft, runReportDraftQueue } from '../lib/postUseRating/reportDraftAuto.js'
-import { generateReportProductDraft } from '../lib/postUseRating/reportNarrative.js'
-import { initialReportIssueNarratives, mergeManualReportIssueNarratives } from '../lib/postUseRating/reportNarrativeState.js'
+import { listReportIssueLinks } from '../lib/postUseRating/reportClient.js'
 import { loadVisitRecords } from '../lib/postUseRating/visitRecords.js'
-import { loadPostUseTrend } from '../lib/postUseRating/trendStore.js'
-import { loadPostUsePeriodQuality } from '../lib/postUseRating/qualityStore.js'
 import { postUsePeriodMonths, postUseVisitMonthsForPeriod } from '../lib/postUseRating/periodScope.js'
-import { buildPostUseStoryModel } from '../lib/postUseRating/storyModel.js'
 import { clipDepartmentStatusTrends, normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../lib/postUseRating/statusTrends.js'
-import { buildHtmlMonthlyReportModel } from '../lib/postUseRating/htmlReportModel.js'
 import { buildPostUseReportV2Model, validatePostUseReportV2 } from '../lib/postUseRating/reportV2Model.js'
 import { catalogProductNames } from '../lib/postUseRating/reportEvidence.js'
+import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PREVIOUS_VISITS, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../lib/postUseRating/htmlReportModel.js'
 import { REPORT_V2_CSS } from '../lib/postUseRating/reportV2Styles.js'
 import { generatePostUseReportV2Narrative } from '../lib/postUseRating/reportV2Narrative.js'
 import { loadHtmlReportOverlay, saveHtmlReportOverlay } from '../lib/postUseRating/htmlReportOverlay.js'
-import {
-  buildOfflineMonthlyReportHtml,
-  downloadOfflineMonthlyReportHtml,
-  offlineMonthlyReportFilename,
-} from '../lib/postUseRating/htmlReportOffline.js'
-import { loadMonthlyReportLearnings } from '../lib/postUseRating/monthlyReportDocxImport.js'
-import PostUseHtmlReportDocument, {
-  ReportSectionToggles,
-} from '../components/workbench/PostUseHtmlReportDocument.jsx'
+// 11-20 拍板：旧版报告彻底下线——页面收敛为 V2 单形态（原 V1 分支/legacyModel/学习笔记全删）
+import { downloadOfflineMonthlyReportHtml, offlineMonthlyReportFilename } from '../lib/postUseRating/htmlReportOffline.js'
 import PostUseHtmlReportV2Document from '../components/workbench/PostUseHtmlReportV2Document.jsx'
 import SendMailModal from '../components/mail/SendMailModal.jsx'
 import { MAIL_PRESET_REPORT } from '../domain/mail.js'
@@ -52,6 +39,44 @@ import { REPORT_SHARED_CSS } from '../lib/postUseRating/reportSharedStyles.js'
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const QUARTER_RE = /^\d{4}-Q[1-4]$/
 const WORKBENCH_HREF = '/workbench?tab=post_use_rating'
+
+/**
+ * 11-20 V1 下线：ReportSectionToggles 由已删的 PostUseHtmlReportDocument.jsx 迁入本页
+ *（V2 报告区块显隐开关，V1/V2 共用件随 V1 文档删除迁移保活）。
+ */
+function ReportSectionToggles({ hiddenSectionIds, onToggleSection, showPreviousVisits = true }) {
+  const hidden = new Set(hiddenSectionIds || [])
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Checkbox
+        checked={!hidden.has(REPORT_SECTION_PRODUCTS)}
+        onChange={(event) => onToggleSection(REPORT_SECTION_PRODUCTS, event.target.checked)}
+      >
+        显示分产品情况
+      </Checkbox>
+      <Checkbox
+        checked={!hidden.has(REPORT_SECTION_TODO)}
+        onChange={(event) => onToggleSection(REPORT_SECTION_TODO, event.target.checked)}
+      >
+        显示待办事项及进展
+      </Checkbox>
+      {showPreviousVisits ? (
+        <Checkbox
+          checked={!hidden.has(REPORT_SECTION_PREVIOUS_VISITS)}
+          onChange={(event) => onToggleSection(REPORT_SECTION_PREVIOUS_VISITS, event.target.checked)}
+        >
+          显示上期回访补充
+        </Checkbox>
+      ) : null}
+      <Checkbox
+        checked={!hidden.has(REPORT_SECTION_APPENDIX)}
+        onChange={(event) => onToggleSection(REPORT_SECTION_APPENDIX, event.target.checked)}
+      >
+        显示附录
+      </Checkbox>
+    </div>
+  )
+}
 
 function resolveReportRoute(param) {
   if (MONTH_RE.test(param || '')) {
@@ -65,9 +90,11 @@ function resolveReportRoute(param) {
   return null
 }
 
-/** @param {{ version?: 'v1' | 'v2' }} props */
-export default function PostUseHtmlReport({ version = 'v1' }) {
-  const isV2 = version === 'v2'
+/**
+ * 11-20 拍板：旧版（V1）报告彻底下线——组件收敛为 V2 单形态。
+ * 历史 URL /workbench/post-use-report/:month 已从路由移除（不重定向，彻底 404）。
+ */
+export default function PostUseHtmlReport() {
   const { month } = useParams()
   const { can, user } = useAuth()
   const canEdit = can('editRecord')
@@ -85,16 +112,12 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   const [visits, setVisits] = useState([])
   const [traces, setTraces] = useState([])
   const [issueLinks, setIssueLinks] = useState([])
-  const [generatedDrafts, setGeneratedDrafts] = useState([])
   const [autoDraftStatus, setAutoDraftStatus] = useState({ reportKey: '', phase: 'idle', completed: 0, total: 0, failures: [] })
   const autoDraftRunRef = useRef(null)
   const manualIssueFieldsRef = useRef({})
   const overlayRef = useRef(null)
   const activeReportRef = useRef('')
   const [actionItems, setActionItems] = useState([])
-  const [trendSnap, setTrendSnap] = useState(null)
-  const [quality, setQuality] = useState(null)
-  const [learnings, setLearnings] = useState([])
   const [overlay, setOverlay] = useState(null)
   const [sideLoading, setSideLoading] = useState(true)
   const [loadedReportKey, setLoadedReportKey] = useState('')
@@ -126,7 +149,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   const reportKind = route?.kind || ''
   const reportPeriod = route?.period || null
   const regenerating = regeneratingKey === reportKey && Boolean(reportKey)
-  const savedV2Snapshot = Boolean(isV2 && !regenerating && overlay?.snapshot?.reportKey === reportKey)
+  const savedV2Snapshot = !regenerating && overlay?.snapshot?.reportKey === reportKey
   const loadMonthIds = useMemo(() => {
     if (!reportPeriod) return []
     const months = new Set(postUsePeriodMonths(reportPeriod))
@@ -137,10 +160,10 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
 
   useEffect(() => {
     if (!storageReady || !loadMonthIds.length) return undefined
-    if (isV2 && (loadedReportKey !== reportKey || savedV2Snapshot)) return undefined
+    if (loadedReportKey !== reportKey || savedV2Snapshot) return undefined
     for (const periodId of loadMonthIds) void loadPostUseRatingForPeriod(periodId)
     return undefined
-  }, [storageReady, loadMonthIds, loadPostUseRatingForPeriod, postUseCacheGeneration, isV2, loadedReportKey, reportKey, savedV2Snapshot])
+  }, [storageReady, loadMonthIds, loadPostUseRatingForPeriod, postUseCacheGeneration, loadedReportKey, reportKey, savedV2Snapshot])
 
   useEffect(() => {
     let cancelled = false
@@ -159,9 +182,9 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           completeForAi = false
           return fallback
         })
-        const overlaySnap = await requiredForAi(loadHtmlReportOverlay(adapter, reportKey, version), null)
-        if (isV2 && !completeForAi) throw new Error('已保存报告读取失败，请刷新重试。')
-        if (isV2 && overlaySnap?.snapshot && !regenerating) {
+        const overlaySnap = await requiredForAi(loadHtmlReportOverlay(adapter, reportKey), null)
+        if (!completeForAi) throw new Error('已保存报告读取失败，请刷新重试。')
+        if (overlaySnap?.snapshot && !regenerating) {
           if (!cancelled) {
             setOverlay(overlaySnap)
             setStatusTrendsReady(true)
@@ -170,18 +193,14 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           }
           return
         }
-        const [v, actionsRes, trend, qualityStore, learningSnap, traceRows, links, drafts] = await Promise.all([
+        const [v, actionsRes, traceRows, links] = await Promise.all([
           loadVisitRecords(adapter),
           requiredForAi(listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 }), { items: [] }),
-          isV2 ? Promise.resolve(null) : loadPostUseTrend(adapter).catch(() => null),
-          isV2 ? Promise.resolve(null) : loadPostUsePeriodQuality(adapter).catch(() => null),
-          isV2 ? Promise.resolve([]) : loadMonthlyReportLearnings(adapter).catch(() => []),
           requiredForAi(listAllPostUseJiraItems(), []),
           requiredForAi(listReportIssueLinks(), []),
-          isV2 ? Promise.resolve([]) : requiredForAi(listReportDrafts(reportKey), []),
         ])
         if (!cancelled) {
-          if (isV2 && !completeForAi) {
+          if (!completeForAi) {
             setSideLoadError({ reportKey, message: '报告所需的回访、溯源或行动数据未完整加载，请刷新重试。' })
             setLoadedReportKey('')
             return
@@ -189,12 +208,8 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           setVisits(v)
           setTraces(traceRows)
           setIssueLinks(links)
-          setGeneratedDrafts(drafts)
           setActionItems(actionsRes?.items || [])
-          setTrendSnap(trend)
-          setQuality(qualityStore)
           setOverlay(overlaySnap)
-          setLearnings(learningSnap)
           setLoadedReportKey(reportKey)
           setAutoEvidenceReady(completeForAi)
         }
@@ -211,7 +226,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
     return () => {
       cancelled = true
     }
-  }, [adapter, reportKey, reportKind, version, isV2, regenerating])
+  }, [adapter, reportKey, reportKind, regenerating])
 
   const endMonth = useMemo(
     () => (reportPeriod ? postUsePeriodMonths(reportPeriod).at(-1) || '' : ''),
@@ -219,14 +234,14 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   )
 
   useEffect(() => {
-    if (isV2 && (loadedReportKey !== reportKey || savedV2Snapshot)) {
+    if (loadedReportKey !== reportKey || savedV2Snapshot) {
       setStatusTrendsReady(savedV2Snapshot)
       return undefined
     }
     if (!adapter || typeof adapter.listPostUseStatusTrends !== 'function' || !endMonth) {
       setStatusTrends(null)
       setStatusTrendsReady(true)
-      if (isV2 && endMonth) setSideLoadError({ reportKey, message: '报告历史趋势服务不可用，请刷新重试。' })
+      if (endMonth) setSideLoadError({ reportKey, message: '报告历史趋势服务不可用，请刷新重试。' })
       return undefined
     }
     let cancelled = false
@@ -245,14 +260,14 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         if (!cancelled) {
           setStatusTrends(null)
           setStatusTrendsReady(true)
-          if (isV2) setSideLoadError({ reportKey, message: '报告历史趋势计算失败，请刷新重试。' })
+          setSideLoadError({ reportKey, message: '报告历史趋势计算失败，请刷新重试。' })
         }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [adapter, endMonth, isV2, reportKey, postUseCacheGeneration, loadedReportKey, savedV2Snapshot])
+  }, [adapter, endMonth, reportKey, postUseCacheGeneration, loadedReportKey, savedV2Snapshot])
 
   const catalog = useMemo(() => getCatalogProducts(), [feedbacks, productCatalogMeta])
   const productNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
@@ -290,82 +305,26 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
     () => (reportPeriod ? postUsePeriodMonths(reportPeriod) : []),
     [reportPeriod],
   )
-  const monthReasons = useMemo(() => {
-    if (!trendSnap || !periodMonths.length) return []
-    const monthSet = new Set(periodMonths)
-    const grouped = new Map()
-    for (const row of trendSnap.reasons || []) {
-      if (!monthSet.has(row.month)) continue
-      const key = `${row.reason || ''}\0${row.channel || ''}`
-      const current = grouped.get(key) || {
-        reason: row.reason,
-        count: 0,
-        ...(row.channel != null && row.channel !== '' ? { channel: row.channel } : {}),
-      }
-      current.count += Number(row.count) || 0
-      grouped.set(key, current)
-    }
-    return [...grouped.values()].sort((a, b) => b.count - a.count)
-  }, [trendSnap, periodMonths])
-  const periodQuality = quality?.periods?.[endMonth] || null
+  // 11-20 V1 下线：monthReasons/periodQuality/trendSnap/learnings 为 V1 legacyModel 专属输入，随下线移除
 
   const remoteCompanyMetrics = useMemo(
-    () => isV2 && Array.isArray(statusTrends?.companyMetrics)
+    () => Array.isArray(statusTrends?.companyMetrics)
       ? rollupCompanyMetrics(statusTrends.companyMetrics, reportPeriod)
       : null,
-    [isV2, statusTrends, reportPeriod],
+    [statusTrends, reportPeriod],
   )
   const useRemoteCompany = Number(remoteCompanyMetrics?.totalSample) > 0
-
-  const storyModel = useMemo(() => {
-    if (!reportPeriod || isV2) return null
-    return buildPostUseStoryModel({
-      records: scopedItems,
-      allRecords: allScopedItems,
-      companyRecords: useRemoteCompany ? undefined : items,
-      companyMetrics: useRemoteCompany ? remoteCompanyMetrics : null,
-      visits: scopedVisits,
-      productNames,
-      focusNames,
-      actions: actionItems,
-      trend: trendSnap,
-      quality: periodQuality,
-      period: reportPeriod,
-      settings,
-      ticketRecords,
-      statusTrends,
-      nowMonth: endMonth,
-    })
-  }, [
-    reportPeriod,
-    isV2,
-    scopedItems,
-    allScopedItems,
-    items,
-    scopedVisits,
-    productNames,
-    focusNames,
-    actionItems,
-    trendSnap,
-    periodQuality,
-    settings,
-    ticketRecords,
-    statusTrends,
-    endMonth,
-    useRemoteCompany,
-    remoteCompanyMetrics,
-  ])
 
   const ratingsPending = !savedV2Snapshot &&
     postUseRatingOnDemand &&
     loadMonthIds.some((periodId) => !postUseSettledPeriodIds.includes(periodId))
 
-  // The two report versions have distinct document models and separate render branches.
+  // 11-20 V1 下线：唯一文档模型 = V2（原 V1 legacyModel 分支删除）
   const model = /** @type {any} */ (useMemo(() => {
     if (!reportKey || !storageReady || sideLoading || loadedReportKey !== reportKey) return null
     if (savedV2Snapshot) return overlay.snapshot
-    if (ratingsPending || (isV2 && !statusTrendsReady)) return null
-    if (isV2) return buildPostUseReportV2Model({
+    if (ratingsPending || !statusTrendsReady) return null
+    return buildPostUseReportV2Model({
       reportKey, reportKind, reportPeriod,
       records: scopedItems,
       companyRecords: items,
@@ -375,42 +334,19 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
       // 11-19 按对象剔除：目录产品名+规格别名清单，供矛盾防御判"不满对象是否在产品范围内"
       catalogNames: catalogProductNames(catalog),
     })
-    if (!storyModel) return null
-    const legacyModel = buildHtmlMonthlyReportModel({
-      reportMonth: reportKey,
-      reportPeriod,
-      storyModel,
-      records: scopedItems,
-      allRecords: allScopedItems,
-      productNames,
-      visits,
-      traces,
-      issueLinks,
-      generatedDrafts,
-      actionItems,
-      reasons: monthReasons,
-      quality: periodQuality,
-      learnings,
-      overlay,
-      statusTrends,
-      trend: trendSnap,
-    })
-    return legacyModel
-  }, [reportKey, reportKind, reportPeriod, storyModel, storageReady, ratingsPending, sideLoading, loadedReportKey, scopedItems, items, allScopedItems, feedbacks, productNames, visits, traces, issueLinks, generatedDrafts, actionItems, monthReasons, periodQuality, learnings, overlay, statusTrends, statusTrendsReady, trendSnap, isV2, savedV2Snapshot]))
+  }, [reportKey, reportKind, reportPeriod, storageReady, ratingsPending, sideLoading, loadedReportKey, scopedItems, items, allScopedItems, feedbacks, visits, traces, issueLinks, actionItems, overlay, statusTrends, statusTrendsReady, savedV2Snapshot]))
 
   useEffect(() => {
     if (!model) return
     setJudgment(model.judgment)
     setTodoNote(model.todoNote)
-    setTodoItems(isV2 ? overlay?.narratives?.todoItems || model.todoRows || [] : model.todoItems || [])
-    setHiddenSectionIds(isV2 ? overlay?.hiddenSectionIds || model.hiddenSectionIds || [] : model.hiddenSectionIds || [])
-    setIssueNarratives(isV2
-      ? Object.fromEntries(model.products.map((product) => [
-        `product:${product.name}`,
-        overlay?.narratives?.issues?.[`product:${product.name}`] || { conclusion: '', action: '' },
-      ]))
-      : initialReportIssueNarratives(model))
-    setActionOverrides(isV2 ? overlay?.narratives?.actionOverrides || {} : {})
+    setTodoItems(overlay?.narratives?.todoItems || model.todoRows || [])
+    setHiddenSectionIds(overlay?.hiddenSectionIds || model.hiddenSectionIds || [])
+    setIssueNarratives(Object.fromEntries(model.products.map((product) => [
+      `product:${product.name}`,
+      overlay?.narratives?.issues?.[`product:${product.name}`] || { conclusion: '', action: '' },
+    ])))
+    setActionOverrides(overlay?.narratives?.actionOverrides || {})
     setManualIssueFields({})
     manualIssueFieldsRef.current = {}
     setVisitSupplements(
@@ -425,45 +361,14 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         ]),
       ),
     )
-  }, [model?.dataFingerprint, overlay?.updatedAt, isV2])
+  }, [model?.dataFingerprint, overlay?.updatedAt])
 
   useEffect(() => {
-    if (isV2 || !model || !reportKey || !canEdit || !autoEvidenceReady || !isLlmAvailable(settings)) {
-      if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
-      autoDraftRunRef.current = null
-      setAutoDraftStatus((prev) => prev.phase === 'running' ? { reportKey: '', phase: 'idle', completed: 0, total: 0, failures: [] } : prev)
-      return
-    }
-    const key = `${reportKey}\0${model.productCards.map((card) => `${card.productName}:${card.evidenceFingerprint}`).join('\0')}`
-    if (autoDraftRunRef.current?.key === key) return
+    // 11-20 V1 下线：autoDraft（V1 产品文字稿自动生成队列）随 legacyModel 一并移除
     if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
-    const run = { key, cancelled: false }
-    autoDraftRunRef.current = run
-    const isCurrent = () => autoDraftRunRef.current === run && !run.cancelled
-
-    void runReportDraftQueue({
-      cards: model.productCards,
-      savedDrafts: generatedDrafts,
-      reportKey,
-      settings,
-      generate: generateReportProductDraft,
-      save: saveReportDraft,
-      isCurrent,
-      onSaved: (card, item) => {
-        setGeneratedDrafts((prev) => [...prev.filter((row) => row.productName !== card.productName), item])
-        setIssueNarratives((prev) => {
-          const manual = overlayRef.current?.narratives?.issues?.[card.conclusionKey]
-          const edited = manualIssueFieldsRef.current[card.conclusionKey]
-          return mergeGeneratedReportDraft(prev, card.conclusionKey, item, manual, edited)
-        })
-      },
-      onProgress: ({ completed, total, failures }) => {
-        if (isCurrent()) setAutoDraftStatus({ reportKey, phase: completed === total ? 'done' : 'running', completed, total, failures })
-      },
-    }).catch(() => {
-      if (isCurrent()) setAutoDraftStatus({ reportKey, phase: 'done', completed: 0, total: 0, failures: [{ productName: '报告', message: '生成队列失败' }] })
-    })
-  }, [model, reportKey, canEdit, autoEvidenceReady, settings, generatedDrafts, isV2])
+    autoDraftRunRef.current = null
+    setAutoDraftStatus((prev) => prev.phase === 'running' ? { reportKey: '', phase: 'idle', completed: 0, total: 0, failures: [] } : prev)
+  }, [])
 
   useEffect(() => () => {
     if (autoDraftRunRef.current) autoDraftRunRef.current.cancelled = true
@@ -473,7 +378,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   // + 数据齐 + LLM 可用 + 有编辑权；同报告同数据指纹只跑一次（narrativeAutoRunRef 幂等键）。
   // 已保存报告（重开/保存后）不触发——显示上次结果，需手动点「重新 LLM 优化」。
   useEffect(() => {
-    if (!isV2 || !model || !canEdit || !autoEvidenceReady || !isLlmAvailable(settings)) return
+    if (!model || !canEdit || !autoEvidenceReady || !isLlmAvailable(settings)) return
     if (overlay?.snapshot) return
     const autoKey = `${reportKey}\0${model.dataFingerprint || ''}`
     if (narrativeAutoRunRef.current === autoKey || narrativeAutoRunRef.current === 'failed:' + autoKey) return
@@ -483,9 +388,9 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
       narrativeAutoRunRef.current = 'failed:' + autoKey
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleGenerateV2Narrative 引用同批 state；autoKey 已含指纹防重复
-  }, [isV2, model, canEdit, autoEvidenceReady, settings, overlay?.snapshot, reportKey])
+  }, [model, canEdit, autoEvidenceReady, settings, overlay?.snapshot, reportKey])
 
-  const loading = !storageReady || sideLoading || ratingsPending || (isV2 && !statusTrendsReady)
+  const loading = !storageReady || sideLoading || ratingsPending || !statusTrendsReady
     || (Boolean(reportKey) && loadedReportKey !== reportKey)
 
   const onIssueChange = (key, field, value) => {
@@ -513,7 +418,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   }
 
   // 11-19 拍板：责任人未指定阻断保存/导出/发邮件——校验含页面当前编辑中的待办（未保存也能拦住）
-  const v2Validation = isV2 && model ? validatePostUseReportV2(model, actionOverrides, todoItems) : []
+  const v2Validation = model ? validatePostUseReportV2(model, actionOverrides, todoItems) : []
 
   const onVisitSupplementChange = (id, field, value) => {
     setVisitSupplements((prev) => ({
@@ -537,7 +442,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
   }
 
   const handleGenerateV2Narrative = async () => {
-    if (!isV2 || !model || !canEdit) return
+    if (!model || !canEdit) return
     const requestedKey = reportKey
     setNarrativeGenerating(true)
     try {
@@ -614,7 +519,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
 
   const handleSave = async () => {
     if (!canEdit || !model) return
-    if (isV2 && v2Validation.length) {
+    if (v2Validation.length) {
       message.error(`保存前请处理 ${v2Validation.length} 项校验差异`)
       return
     }
@@ -624,25 +529,23 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         month: reportKey,
         updatedBy: user?.username || user?.id || '',
         dataFingerprint: model.dataFingerprint,
-        ...(isV2 ? { snapshot: { ...model, todoRows: todoItems, hiddenSectionIds } } : {}),
+        snapshot: { ...model, todoRows: todoItems, hiddenSectionIds },
         hiddenSectionIds,
         narratives: {
           judgment,
-          issues: isV2 ? issueNarratives : mergeManualReportIssueNarratives(
-            overlay?.narratives?.issues, issueNarratives, manualIssueFields,
-          ),
+          issues: issueNarratives,
           todoNote,
           todoItems,
-          ...(isV2 ? { actionOverrides } : {}),
-          ...(isV2 ? { themeGroupLabels: overlay?.narratives?.themeGroupLabels || {} } : {}),
-          ...(isV2 ? { themeL2Labels: overlay?.narratives?.themeL2Labels || {} } : {}),
-          ...(isV2 ? { evidenceVerdicts: overlay?.narratives?.evidenceVerdicts || {} } : {}),
+          actionOverrides,
+          themeGroupLabels: overlay?.narratives?.themeGroupLabels || {},
+          themeL2Labels: overlay?.narratives?.themeL2Labels || {},
+          evidenceVerdicts: overlay?.narratives?.evidenceVerdicts || {},
           visitSupplements,
         },
-      }, version)
+      })
       setOverlay(saved)
-      if (isV2) setRegeneratingKey('')
-      message.success(isV2 ? '已保存本期报告，其他用户打开将直接显示此版本' : reportKind === 'quarter' ? '已保存本季叙述' : '已保存本月叙述')
+      setRegeneratingKey('')
+      message.success('已保存本期报告，其他用户打开将直接显示此版本')
     } catch (error) {
       message.error(error?.message || '保存失败')
     } finally {
@@ -652,42 +555,29 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
 
   const buildOfflineHtml = () => {
     if (!model) return ''
-    if (isV2) {
-      const content = renderToStaticMarkup(
-        <PostUseHtmlReportV2Document
-          model={model}
-          printAll
-          issueNarratives={issueNarratives}
-          actionOverrides={actionOverrides}
-          todoItems={todoItems}
-          hiddenSectionIds={hiddenSectionIds}
-        />,
-      )
-      return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${model.title}</title><style>${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}</style></head><body><div class="post-use-html-report"><div class="post-use-html-report-sheet">${content}</div></div></body></html>`
-    }
-    return buildOfflineMonthlyReportHtml({
-      model,
-      judgment,
-      todoNote,
-      todoItems,
-      issueNarratives,
-      visitSupplements,
-      hiddenSectionIds,
-      keyCustomers: settings?.postUseKeyCustomers,
-      exportedAt: new Date().toISOString(),
-    })
+    const content = renderToStaticMarkup(
+      <PostUseHtmlReportV2Document
+        model={model}
+        printAll
+        issueNarratives={issueNarratives}
+        actionOverrides={actionOverrides}
+        todoItems={todoItems}
+        hiddenSectionIds={hiddenSectionIds}
+      />,
+    )
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${model.title}</title><style>${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}</style></head><body><div class="post-use-html-report"><div class="post-use-html-report-sheet">${content}</div></div></body></html>`
   }
 
   const handleExportOfflineHtml = () => {
     if (!model) return
-    if (isV2 && v2Validation.length) {
+    if (v2Validation.length) {
       message.error(`导出前请处理 ${v2Validation.length} 项校验差异`)
       return
     }
     setExporting(true)
     try {
       const html = buildOfflineHtml()
-      downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportKey, isV2 ? `用后即评${reportKind === 'quarter' ? '季报' : '月报'}-新版` : model.copy?.filenamePrefix))
+      downloadOfflineMonthlyReportHtml(html, offlineMonthlyReportFilename(reportKey, '用后即评' + (reportKind === 'quarter' ? '季报' : '月报')))
       message.success('已导出离线 HTML，可用浏览器直接打开')
     } catch (error) {
       message.error(error?.message || '导出失败')
@@ -714,7 +604,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         <Spin size="large" tip={reportKind === 'quarter' ? '正在加载季报…' : '正在加载月报…'} />
       </div>
     )
-  } else if (isV2 ? !model?.kpis?.totalSample : !storyModel?.scoredRows?.length) {
+  } else if (!model?.kpis?.totalSample) {
     body = (
       <Alert
         type="warning"
@@ -724,7 +614,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
       />
     )
   } else if (model) {
-    body = isV2 ? (
+    body = (
       <PostUseHtmlReportV2Document
         model={model}
         canEdit={canEdit}
@@ -737,72 +627,52 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         onTodoItemsChange={setTodoItems}
         keyCustomers={settings?.postUseKeyCustomers}
       />
-    ) : (
-      <PostUseHtmlReportDocument
-        model={model}
-        canEdit={canEdit}
-        judgment={judgment}
-        todoNote={todoNote}
-        todoItems={todoItems}
-        issueNarratives={issueNarratives}
-        visitSupplements={visitSupplements}
-        hiddenSectionIds={hiddenSectionIds}
-        onJudgmentChange={setJudgment}
-        onTodoNoteChange={setTodoNote}
-        onTodoItemsChange={setTodoItems}
-        onIssueChange={onIssueChange}
-        onVisitSupplementChange={onVisitSupplementChange}
-        keyCustomers={settings?.postUseKeyCustomers}
-      />
     )
   }
 
-  const showEvidenceWarning = Boolean(!isV2 && model && canEdit && !autoEvidenceReady)
+  const showEvidenceWarning = false
   const showDraftProgress = autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'running'
   const showDraftFailures = autoDraftStatus.reportKey === reportKey && autoDraftStatus.phase === 'done' && autoDraftStatus.failures.length > 0
 
   return (
     <div className="post-use-html-report">
-      <style>{isV2 ? `${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}` : REPORT_SHARED_CSS}</style>
+      <style>{`${REPORT_SHARED_CSS}\n${REPORT_V2_CSS}`}</style>
       <header className="post-use-html-report-toolbar">
         <Space wrap>
           <Link to={WORKBENCH_HREF}>返回工作台</Link>
           <Typography.Text strong>{reportKind === 'quarter' ? '用后即评季报' : '用后即评月报'} {reportKey || month || ''}</Typography.Text>
-          {route ? <Link to={isV2 ? `/workbench/post-use-report/${reportKey}` : `/workbench/post-use-report-v2/${reportKey}`}>
-            {isV2 ? '查看旧版' : '查看新版'}
-          </Link> : null}
         </Space>
         <Space wrap>
           {model ? (
             <ReportSectionToggles
               hiddenSectionIds={hiddenSectionIds}
-              showPreviousVisits={isV2 ? reportKind === 'month' : model.showPreviousVisits !== false}
+              showPreviousVisits={reportKind === 'month'}
               onToggleSection={onToggleSection}
             />
           ) : null}
-          {isV2 && model && overlay?.snapshot && !regenerating && canEdit ? (
+          {model && overlay?.snapshot && !regenerating && canEdit ? (
             <Button onClick={() => { setLoadedReportKey(''); setRegeneratingKey(reportKey) }}>
               重新生成草稿
             </Button>
           ) : null}
-          {isV2 && model && canEdit ? (
+          {model && canEdit ? (
             <Button disabled={!isLlmAvailable(settings)} loading={narrativeGenerating} onClick={() => void handleGenerateV2Narrative()}>
               {/* 11-19 拍板：按钮常驻（不再只未保存态显示）；已保存报告显示"重新 LLM 优化"， */}
               {/* 未保存显示"LLM 优化"。重开后默认展示上次保存结果，需要时手动重新触发。 */}
               {overlay?.snapshot ? '重新 LLM 优化' : 'LLM 优化'}
             </Button>
           ) : null}
-          {isV2 && model ? <Typography.Text type="secondary" className="text-xs">
+          {model ? <Typography.Text type="secondary" className="text-xs">
             {overlay?.snapshot && !regenerating ? `已保存 · ${overlay.updatedAt || ''}` : '未保存草稿 · 请复核后保存'}
           </Typography.Text> : null}
           <Button disabled={!canEdit || !model} loading={saving} type="primary" onClick={() => void handleSave()}>
             保存
           </Button>
-          <Button disabled={!model || (isV2 && v2Validation.length > 0)} loading={exporting} onClick={handleExportOfflineHtml}>
+          <Button disabled={!model || v2Validation.length > 0} loading={exporting} onClick={handleExportOfflineHtml}>
             导出离线 HTML
           </Button>
           <Button
-            disabled={!canEdit || !model || (isV2 && v2Validation.length > 0)}
+            disabled={!canEdit || !model || v2Validation.length > 0}
             icon={<MailOutlined />}
             onClick={() => setMailOpen(true)}
           >
@@ -815,17 +685,17 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
         onClose={() => setMailOpen(false)}
         defaultTemplateId={MAIL_PRESET_REPORT}
         dataSourceType="post_use_rating"
-        periodLabel={isV2 ? reportPeriod?.label || reportKey : storyModel?.scope?.periodLabel || reportKey}
+        periodLabel={reportPeriod?.label || reportKey}
         reportKey={reportKey}
         reportKind={reportKind === 'quarter' ? 'quarter' : 'month'}
-        reportVersion={version}
+        reportVersion="v2"
         linkKind="report"
-        canSend={canEdit && Boolean(model) && (!isV2 || v2Validation.length === 0)}
+        canSend={canEdit && Boolean(model) && v2Validation.length === 0}
         buildAttachment={async () => {
           if (!model) return null
           const html = buildOfflineHtml()
           return {
-            filename: offlineMonthlyReportFilename(reportKey, isV2 ? `用后即评${reportKind === 'quarter' ? '季报' : '月报'}-新版` : model.copy?.filenamePrefix),
+            filename: offlineMonthlyReportFilename(reportKey, '用后即评' + (reportKind === 'quarter' ? '季报' : '月报')),
             mime: 'text/html;charset=utf-8',
             contentBase64: textToBase64(html),
           }
@@ -859,7 +729,7 @@ export default function PostUseHtmlReport({ version = 'v1' }) {
           ) : null}
         </div>
       ) : null}
-      {isV2 && model && v2Validation.length ? <div className="post-use-html-report-status no-print">
+      {model && v2Validation.length ? <div className="post-use-html-report-status no-print">
         <Alert type="warning" showIcon message="新版报告导出校验待处理" description={v2Validation.join('；')} />
       </div> : null}
       <div className="post-use-html-report-sheet">

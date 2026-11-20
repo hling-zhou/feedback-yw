@@ -155,15 +155,16 @@ export function joinPublicAppUrl(publicAppUrl, path) {
  * @param {'month' | 'quarter' | string} reportKind
  * @param {string} reportKey
  */
-export function resolveMailContentUrl(templateId, reportKind, reportKey, publicAppUrl, reportVersion = 'v1') {
+/**
+ * 11-20 V1 下线：邮件链接恒指 V2 路由（/workbench/post-use-report-v2/…），
+ * reportVersion 参数保留仅为兼容旧调用方签名，值不再影响链接。
+ */
+export function resolveMailContentUrl(templateId, reportKind, reportKey, publicAppUrl, _reportVersion = 'v2') {
   if (templateId === MAIL_PRESET_CALLBACK_VISIT) {
     return joinPublicAppUrl(publicAppUrl, '/workbench?tab=post_use_rating')
   }
-  if (reportKind === 'quarter' && reportKey) {
-    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report${reportVersion === 'v2' ? '-v2' : ''}/${reportKey}`)
-  }
   if (reportKey) {
-    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report${reportVersion === 'v2' ? '-v2' : ''}/${reportKey}`)
+    return joinPublicAppUrl(publicAppUrl, `/workbench/post-use-report-v2/${reportKey}`)
   }
   return joinPublicAppUrl(publicAppUrl, '/workbench?tab=post_use_rating')
 }

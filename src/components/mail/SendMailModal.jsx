@@ -12,7 +12,7 @@ import { parseEmailList } from '../../domain/mail.js'
  *   periodLabel: string
  *   reportKey?: string
  *   reportKind?: 'month' | 'quarter'
- *   reportVersion?: 'v1' | 'v2'
+ *   reportVersion?: 'v2' // 11-20 V1 下线：链接恒指 V2，参数保留仅为调用方兼容
  *   linkKind: 'report' | 'workbench'
  *   canSend: boolean
  *   disabledReason?: string
@@ -28,7 +28,7 @@ export default function SendMailModal({
   periodLabel,
   reportKey = '',
   reportKind = 'month',
-  reportVersion = 'v1',
+  reportVersion = 'v2',
   linkKind,
   canSend,
   disabledReason = '',

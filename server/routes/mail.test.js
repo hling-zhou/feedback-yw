@@ -235,7 +235,7 @@ describeApi('mail API', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0].from).toBe('postuse@example.com')
     expect(sent[0].subject).toBe('自定义 2026-06')
-    expect(sent[0].text).toContain('2026年6月 月报 https://insights.example.com/workbench/post-use-report/2026-06')
+    expect(sent[0].text).toContain('2026年6月 月报 https://insights.example.com/workbench/post-use-report-v2/2026-06')
     expect(sent[0].attachments[0].filename).toBe('用后即评月报-2026-06.html')
 
     const sendV2 = await app.inject({
@@ -303,7 +303,7 @@ describeApi('mail API', () => {
     })
     expect(send.statusCode).toBe(200)
     expect(sent[0].attachments[0].filename).toMatch(/\.html$/)
-    expect(sent[0].text).toContain('/workbench/post-use-report/2026-06')
+    expect(sent[0].text).toContain('/workbench/post-use-report-v2/2026-06')
   })
 
   it('returns 503 without a public URL or post-use channel, and 403 for viewers', async () => {

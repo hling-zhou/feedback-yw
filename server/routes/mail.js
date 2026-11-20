@@ -305,7 +305,7 @@ export function registerMailRoutes(app) {
             body.reportKind || 'month',
             body.reportKey || '',
             publicAppUrl,
-            body.reportVersion === 'v2' ? 'v2' : 'v1',
+            'v2',
           ),
         }
         let subject = applyMailPlaceholders(template.subject, vars)
