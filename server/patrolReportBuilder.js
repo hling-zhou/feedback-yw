@@ -5,6 +5,11 @@ import { getPublicAppUrl } from './mailRepository.js'
 /** 推送阈值口径（与溯源页/总览一致） */
 const PUSH_THRESHOLD = 99.5
 
+/** 本地日期串（yyyy-MM-dd）——trapped 判定的「今日」锚点（diagnosed_at 为 ISO 文本，取前 10 位比对）。 */
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** @typedef {{ productKey: string, productName: string, poolsCount: number, groups: number, preTotal: number, pendingGroups: number, pendingPre: number, simTaggedGroups: number, simTaggedPre: number, closedGroups: number, causeDist: Array<{ l1: string, count: number, pre: number }>, l2Top: Array<never>, interfaces: Array<{ pool: string, metric: string, apiPath: string, bizType: string, successRate: number, belowThreshold: boolean, pendingGroups: number, causeTop: Array<{ l1: string, count: number }> }}> }} PatrolReportProduct */
 
 /** 产品 key→中文名（目录优先，缺则回退 key）。 */
@@ -181,7 +186,6 @@ export function buildPatrolDailyReport(date, options = {}) {
     p.closedGroups = Number(sm.get('处理中') || 0) + Number(sm.get('已处理') || 0)
     return p
   }).sort((a, b) => b.pendingGroups - a.pendingGroups || b.groups - a.groups)
-
   // 总起概况（2026-11-07 启发落地：邮件第一段=整体概况+最严重+环比前日；口径与产品块正文同源）
   const groupsTotal = products.reduce((a, p) => a + p.groups, 0)
   const failTotalPre = products.reduce((a, p) => a + p.preTotal, 0)
@@ -238,11 +242,54 @@ export function buildPatrolDailyReport(date, options = {}) {
   }
   const gapGroups = [...gapL1ByProduct.values()].reduce((a, n) => a + n, 0)
 
+  // 11-20 15:09 拍板：历史 pending 转待处理（trapped）——今日诊断成功且转待产品处理、
+  // 但失败发生在报告日之前（历史日期）的组。不在日报窗口内易漏处理，需显式提醒。
+  // 判定锚点=diagnoses 表（status='success' AND 今日 diagnosed_at）——精确锚定「今日诊断成功」
+  // 动作，不受 groups.updated_at 手工改状态污染；次日自动失配退出（零维护）。
+  const todayStr = localDateStr(new Date())
+  const trappedRows = db.prepare(`
+    SELECT g.product_key pk, COUNT(*) n, SUM(g.pre_compress_count) pre
+    FROM api_patrol_failure_groups g
+    JOIN (SELECT DISTINCT failure_group_id FROM api_patrol_diagnoses
+          WHERE status='success' AND substr(diagnosed_at, 1, 10) = ?) d
+      ON d.failure_group_id = g.id
+    WHERE g.product_action_status='待处理' AND g.group_date < ?
+    GROUP BY g.product_key
+  `).all(todayStr, date)
+  /** @type {Map<string, { groups: number, pre: number }>} */
+  const trappedByProduct = new Map()
+  let trappedTotal = 0
+  let trappedPreTotal = 0
+  for (const t of trappedRows) {
+    const pk = String(t.pk)
+    const n = Number(t.n || 0)
+    const pre = Number(t.pre || 0)
+    trappedByProduct.set(pk, { groups: n, pre })
+    trappedTotal += n
+    trappedPreTotal += pre
+  }
+  // 产品级 trapped 角标素材（11-20 15:09 拍板：产品块标题行角标 + chips 行）
+  for (const p of products) {
+    const tp = trappedByProduct.get(p.productKey)
+    if (tp) p.trappedPendingGroups = tp.groups
+  }
+  // 总览分布素材（产品分布文案数据源）：从 trappedByProduct 全量取——不依赖 products 数组
+  // （trapped 组的产品当日可能无数据无产品块，如仅历史日有失败——分布仍须完整）
+  const names2 = productNameMap()
+
   return {
     date,
     hasData: statRows.length > 0 || groupRows.length > 0,
     products,
-    overview,
+    overview: {
+      ...overview,
+      // 11-20 15:09：trapped 提示素材（总览提示条 + subject 追加段）
+      trappedPendingGroups: trappedTotal,
+      trappedPreTotal: trappedPreTotal,
+      trappedByProduct: [...trappedByProduct.entries()].map(([pk, v]) => ({
+        productName: names2[pk] || pk, groups: v.groups,
+      })).sort((a, b) => b.groups - a.groups),
+    },
     simTaggedGroups: simTaggedTotal,
     undiagnosedGroups: undiagnosedTotal,
     // 缺口分区素材（11-20）：诊断能力缺口组数 + 从未诊断组池分布
@@ -275,6 +322,20 @@ export function renderPatrolDailyReportHtml(report) {
     lines.push(`</p>`)
   }
 
+  // ①b 历史 pending 转待处理提示条（11-20 15:09 拍板：橙黄提示条——今日诊断转出但不在窗口内易漏处理）
+  const base = getPublicAppUrl()
+  const trapped = report.overview?.trappedPendingGroups || 0
+  if (trapped > 0) {
+    // 产品分布文案（EIP 3 组 / SLB 1 组）——从 overview.trappedByProduct 全量取（含当日无产品块的产品）
+    const distStr = (report.overview?.trappedByProduct || [])
+      .map((t) => `${esc(t.productName)} ${t.groups} 组`)
+      .join(' / ')
+    lines.push(`<p style="margin:0 0 10px;padding:8px 10px;background:#fff7e8;border-left:3px solid #d48806;border-radius:0 6px 6px 0;">`)
+    lines.push(`<strong style="color:#d48806;">⚡ ${trapped} 组历史遗留失败今日完成诊断并转待产品处理${distStr ? `（${distStr}）` : ''}</strong>`)
+    lines.push(`<div style="color:#d48806;font-size:12px;">——不在本日报窗口内，请前往「失败请求列表」-近7日 处理${base ? `（<a href="${esc(base)}/api-patrol/failures?status=${encodeURIComponent('需产品侧处理')}" style="color:#165dff;">按状态查看待处理组清单</a>）` : ''}</div>`)
+    lines.push(`</p>`)
+  }
+
   if (report.products.length === 0) {
     lines.push('<p style="margin:0 0 12px;color:#4e5969;">昨日无异常接口与失败请求，各产品运行平稳。</p>')
   }
@@ -301,11 +362,19 @@ export function renderPatrolDailyReportHtml(report) {
   for (const p of report.products) {
     lines.push(`<div style="margin:14px 0;padding:10px 12px;border:1px solid #e5e6eb;border-radius:6px;">`)
     lines.push(`<p style="margin:0 0 6px;"><strong>■ ${esc(p.productName)}</strong>`)
+    // 11-20 15:09 拍板：trapped 角标（历史遗留失败今日转待产品处理——不在本日报窗口内）
+    if (Number(p.trappedPendingGroups || 0) > 0) {
+      lines.push(` <strong style="color:#d48806;">⚡${p.trappedPendingGroups}</strong>`)
+    }
     if (p.poolsCount > 0) lines.push(` <span style="color:#4e5969;font-size:12px;">（${p.poolsCount} 个资源池）</span>`)
     lines.push('</p>')
     const chips = []
     chips.push(`失败请求 <strong>${p.preTotal}</strong> 次（压缩 ${p.groups} 组）`)
     chips.push(`待产品侧处理 <strong style="color:#d4380d;">${p.pendingGroups}</strong> 组（压缩前 ${p.pendingPre} 次）`)
+    // 11-20 15:09 拍板文案：历史遗留失败今日完成诊断并转待产品处理 N 组
+    if (Number(p.trappedPendingGroups || 0) > 0) {
+      chips.push(`<span style="color:#d48806;">历史遗留失败今日完成诊断并转待产品处理 <strong>${p.trappedPendingGroups}</strong> 组</span>`)
+    }
     if (p.simTaggedGroups > 0) {
       const simPct = p.preTotal > 0 ? Math.round((p.simTaggedPre / p.preTotal) * 100) : 0
       chips.push(`仿真/测试 ${p.simTaggedGroups} 组（${p.simTaggedPre} 次，${simPct}%）<span style="color:#86909c;font-size:12px;">［不计入以上数字］</span>`)
@@ -360,8 +429,7 @@ export function renderPatrolDailyReportHtml(report) {
     lines.push(`</div>`)
   }
 
-  // ⑤ 尾链分流（11-20 拍板：按意图带参直达）
-  const base = getPublicAppUrl()
+  // ⑤ 尾链分流（11-20 拍板：按意图带参直达）——base 已在 ①b 声明（trapped>0 时也用）
   if (base) {
     const q = `startDate=${encodeURIComponent(report.date)}&endDate=${encodeURIComponent(report.date)}`
     lines.push(`<p style="margin:12px 0 0;">`)

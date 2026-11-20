@@ -21,6 +21,7 @@
  */
 import { analyzeFailureByLlm } from './patrolDiagnosisLlmAnalyzer.js'
 import { classifyPatrolRootCause, extractDiagnosticText } from './patrolRootCauseClassifier.js'
+import { isSimOrTestAccount } from './patrolCompress.js'
 
 /**
  * LLM 产物文本 → 规则表分类输入（11-18 拍板口径：基于 LLM 结论文本对照规则）。
@@ -58,6 +59,25 @@ function buildClassificationText(llmReport) {
  *   status='success' 但 rootCauseSource='rule' = LLM 未配置/未产出的降级链路（合法状态）。
  */
 export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = {}) {
+  const outcome = await runPatrolDiagnosisPipelineInner(mcpText, groupCtx, deps)
+  // 11-20 14:30 拍板：仿真/测试账号免产品侧处理——统一出口豁免（单一出口覆盖快速路径/
+  // 降级规则/LLM 规则命中/LLM 兜底全部成功分支；三消费方共享：部署端 + plan-c 两脚本）。
+  // 管线层硬规则（数据层一致），非消费层过滤——报表/列表/筛选全链路自动同口径。
+  if (outcome.status === 'success' && outcome.productAction === '待处理' && isSimOrTestAccount(groupCtx.userName)) {
+    outcome.productAction = '—'
+    const reason = '仿真/测试账号，不占用产品侧处理'
+    outcome.actionReason = outcome.actionReason ? `${outcome.actionReason}；${reason}` : reason
+  }
+  return outcome
+}
+
+/**
+ * 管线主体（原 runPatrolDiagnosisPipeline 实现——豁免包装的内层，勿直接调用）。
+ * @param {string} mcpText
+ * @param {{ apiPath?: string, poolName?: string, userName?: string, productKey?: string, isElb?: boolean }} groupCtx
+ * @param {{ rules: import('./patrolSeeds.js').PatrolRootCauseRule[], llm?: { apiKey?: string, baseUrl?: string, model?: string, forward?: typeof import('./llmProxy.js').forwardLlmChatCompletion }, onStage?: (stage: string, msg: string) => void }} deps
+ */
+async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}) {
   const { rules } = deps
   const onStage = typeof deps.onStage === 'function' ? deps.onStage : null
   const isElb = Boolean(groupCtx.isElb)

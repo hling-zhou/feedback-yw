@@ -241,6 +241,8 @@ describeQuery('patrol query API', () => {
     const data = res.json()
     expect(data.group).toBeTruthy()
     expect(data.diagnosis.finalConclusion).toContain('存在绑定关系')
+    // 11-20 19:23 修复：rawCount 语义——seed 诊断 raw='{}'（非标准形态）→ null（行数未知，非 0）
+    expect(data.diagnosisReport.directCause.rawCount).toBeNull()
   })
 
   // ── ②'经办人筛选 + 选项端点（11-17）──
@@ -369,6 +371,93 @@ describeQuery('patrol query API', () => {
     })
     expect(res.statusCode).toBe(400)
     expect(res.json().error).toContain('真实根因')
+  })
+
+  // ── ③c 历史 pending 转待处理端点（11-20 15:09 拍板）──
+  it('trapped-pending：今日诊断转出的历史待处理组返回；报告日内/无今日诊断/非待处理组排除；清诊断后空', async () => {
+    // seed 态：fail-2（业务冲突·待处理·2026-08-11 历史日期）有 success 诊断但 diagnosed_at='t'（非今日）→ 不返回
+    const res0 = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/trapped-pending',
+      headers: authHeader(),
+    })
+    expect(res0.statusCode).toBe(200)
+    expect(res0.json().rows).toEqual([])       // 无今日诊断——空（改前红：判定漏 diagnoses 锚点会带出 fail-2）
+
+    // 构造 trapped 场景：fail-2（前序用例已流转为「处理中」）重置回「待处理」+ 追加今日 success 诊断；
+    // fail-1（'—' 状态）加今日诊断（非待处理→排除）
+    db.prepare(`UPDATE api_patrol_failure_groups SET product_action_status='待处理' WHERE first_request_id='fail-2'`).run()
+    const g2 = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='fail-2'`).get()
+    const g1 = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='fail-1'`).get()
+    const todayIso = new Date().toISOString()
+    const insDiag = db.prepare(`
+      INSERT INTO api_patrol_diagnoses
+        (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, root_cause_source, diagnosed_at)
+      VALUES (?, ?, 'success', 'log_search', '{}', '结论', '业务冲突', '绑定关系未解除', 'llm', ?)
+    `)
+    insDiag.run(g2.id, 'fail-2', todayIso)
+    insDiag.run(g1.id, 'fail-1', todayIso)    // fail-1 是 '—'——今日诊断但不待处理，须排除
+    // 另插一个「报告日内待处理组 + 今日诊断」——group_date=今日 → 不 trapped（日期窗口内属正常流转）
+    db.prepare(`
+      INSERT INTO api_patrol_failure_groups
+        (group_date, product_key, pool_name, api_path, metric_name, user_name,
+         first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
+         customer_type, root_cause_l1, root_cause_l2, product_action_status, assignee, created_at, updated_at)
+      VALUES (date('now','localtime'), 'eip', '华南-广州3', '/acl/v3/floatingip/bind', '绑定', 'u9',
+              'fail-today', 't', 1, '[]', '', '业务冲突', '绑定关系未解除', '待处理', null, 't', 't')
+    `).run()
+    const gToday = db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='fail-today'`).get()
+    insDiag.run(gToday.id, 'fail-today', todayIso)
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/trapped-pending',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()
+    expect(data.count).toBe(1)                // 只有 fail-2（fail-1 非'待处理'、fail-today 日期=今日）
+    expect(data.rows).toHaveLength(1)
+    const row = data.rows[0]
+    expect(row.firstRequestId).toBe('fail-2')
+    expect(row.productName).toBeTruthy()      // productName 解析（目录回退 key）
+    expect(row.groupDate).toBe('2026-08-11')
+    expect(row.preCompressCount).toBe(1)
+    expect(row.poolName).toBe('华南-广州3')
+
+    // 负例：清今日诊断 → 空（次日自动消失语义——判定锚定 diagnoses 今日 success）
+    db.prepare(`DELETE FROM api_patrol_diagnoses WHERE diagnosed_at = ?`).run(todayIso)
+    const res2 = await app.inject({
+      method: 'GET', url: '/api/patrol/failures/trapped-pending',
+      headers: authHeader(),
+    })
+    expect(res2.statusCode).toBe(200)
+    expect(res2.json().rows).toEqual([])
+  })
+
+  // ── ③b 处理闭环权限（11-20 拍板：manageTags → editRecord）──
+  it('partial_editor 可提交处理反馈；viewer 403（editRecord 门控红绿）', async () => {
+    const { createUser: createUser2 } = await import('../users.js')
+    const { signAccessToken } = await import('../auth.js')
+    const groups = db.prepare(`SELECT * FROM api_patrol_failure_groups LIMIT 1`).get()
+    expect(groups).toBeTruthy() // 权限验证不依赖起始状态——draft 直接置「处理中」；前序用例已消费种子组
+
+    // partial_editor（无 manageTags、有 editRecord）→ 200：证明门控已从 manageTags 收敛
+    const pe = await createUser2({ username: 'patrol_query_pe', password: 'PePass12345!', team: '综合管理组', role: 'partial_editor' })
+    const peRes = await app.inject({
+      method: 'PATCH', url: `/api/patrol/failures/groups/${groups.id}`,
+      headers: { authorization: `Bearer ${signAccessToken(pe)}` },
+      payload: { action: 'draft', measureFeedback: '部分编辑暂存', assignee: '部分编辑' },
+    })
+    expect(peRes.statusCode).toBe(200)
+    expect(peRes.json().group.productActionStatus).toBe('处理中')
+
+    // viewer（无 editRecord）→ 403
+    const viewer = await createUser2({ username: 'patrol_query_viewer', password: 'ViewerPass12345!', team: '综合管理组', role: 'viewer' })
+    const viewerRes = await app.inject({
+      method: 'PATCH', url: `/api/patrol/failures/groups/${groups.id}`,
+      headers: { authorization: `Bearer ${signAccessToken(viewer)}` },
+      payload: { action: 'draft', measureFeedback: '查看者不应成功' },
+    })
+    expect(viewerRes.statusCode).toBe(403)
   })
 })
 

@@ -222,8 +222,25 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     // 结论浅红 + 建议浅蓝高亮（tailwind bg 类）
     expect(src).toMatch(/bg-red-50/)
     expect(src).toMatch(/bg-blue-50/)
-    // 日志原文双层展开：核心行默认 + 查看完整日志
-    expect(src).toMatch(/查看完整日志/)
+    // 11-20 19:39 拍板：核心行内联展开退场（日志过长撑爆抽屉）——原始日志走 Modal 弹窗全文显示
+    expect(src).toMatch(/查看原始日志/)
+    // 4000 截断退场（全文不截断）
+    expect(src).not.toMatch(/slice\(0, 4000\)/)
+    // rawCount=0/原文空 → 按钮隐藏（曾恒显「原始 0 行」误导）；行数未知（null）不显数字
+    expect(src).toMatch(/Number\(report\.directCause\.rawCount\) > 0/)
+    // 弹窗承载：Modal 受控 open + 70vh 内部滚动（长日志防撑爆）
+    expect(src).toMatch(/rawLogModalOpen/)
+    // 11-20 19:51 拍板：尺寸对齐反馈库处理意见弹窗（centered + min(96vw,1280px) + 78vh）
+    expect(src).toMatch(/width="min\(96vw, 1280px\)"/)
+    expect(src).toMatch(/centered/)
+    expect(src).toMatch(/maxHeight: '78vh'/)
+    // 11-20 19:57 拍板：快捷复制——footer「复制全文」+ 框选浮动气泡「复制选中」
+    expect(src).toMatch(/复制全文/)
+    expect(src).toMatch(/复制选中/)
+    expect(src).toMatch(/captureLogSelection/)
+    // 旧内联展开形态退场（防回潮：核心行按钮/内联完整日志不得再出现）
+    expect(src).not.toMatch(/展开日志核心行/)
+    expect(src).not.toMatch(/收起完整日志/)
     // 数据源：diagnosisReport 服务端切分单源（前端不做行清洗——cleanLogLine 不得出现在前端）
     expect(src).toMatch(/diagnosisReport/)
     expect(src).not.toMatch(/cleanLogLine/)

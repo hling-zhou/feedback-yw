@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
-import { InfoCircleOutlined } from '@ant-design/icons'
+import { Alert, Button, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Collapse } from 'antd'
+import { CopyOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiClient.js'
@@ -12,6 +12,7 @@ import PatrolCompositeFilter from './PatrolCompositeFilter.jsx'
 import EstablishedActionFields, { getActionItemDisplayScheduleAt } from '../actions/EstablishedActionFields.jsx'
 import { useColumnResize } from '../../hooks/useColumnResize.js'
 import { sumColumnsWidth } from '../../lib/columnWidths.js'
+import { copyTextToClipboard } from '../../lib/clipboard.js'
 
 const { RangePicker } = DatePicker
 
@@ -83,6 +84,11 @@ export default function ApiPatrolFailures() {
   const [drawerId, setDrawerId] = useState(null)
   const [drawerData, setDrawerData] = useState(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
+
+  // 历史 pending 转待处理（11-20 15:09 拍板）：今日诊断转出但失败发生在历史日期的组——
+  // 不在当前日期范围易漏处理，顶部条件提示条 + 查看清单跳转（status=需产品侧处理）。
+  /** @type {[Array<Record<string, unknown>> | null, Function]} */
+  const [trappedPending, setTrappedPending] = useState(null)
 
   const rangeParams = useMemo(() => ({
     startDate: range[0].format('YYYY-MM-DD'),
@@ -167,6 +173,16 @@ export default function ApiPatrolFailures() {
       .catch(() => { if (!cancelled) setProductCounts([]) })
     return () => { cancelled = true }
   }, [rangeParams])
+
+  // 历史 pending 转待处理加载（11-20 15:09 拍板）：只拉一次（与日期范围无关——判定锚定「今日」）；
+  // 失败静默降级（null=不渲染提示条）
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/patrol/failures/trapped-pending')
+      .then((data) => { if (!cancelled) setTrappedPending(data?.rows || []) })
+      .catch(() => { if (!cancelled) setTrappedPending(null) })
+    return () => { cancelled = true }
+  }, [])
 
   const openDrawer = useCallback(async (id) => {
     setDrawerId(id)
@@ -335,6 +351,33 @@ export default function ApiPatrolFailures() {
 
   return (
     <div className="space-y-4">
+      {/* ── 历史 pending 转待处理提示条（11-20 15:09 拍板）：今日诊断转出但失败发生在历史日期的组，
+          不在当前日期范围易漏处理——提示 + 一键切筛选查看；无匹配不渲染，次日自动消失（零维护）── */}
+      {trappedPending != null && trappedPending.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          message={`今日有 ${trappedPending.length} 组历史失败请求完成诊断、转待产品处理（最早 ${String(trappedPending[0]?.groupDate || '')}）`}
+          description={(
+            <Space wrap size="small" className="!mt-1">
+              <span className="text-xs text-ink-500">
+                这些组不在当前日期范围内，容易被漏处理——可切换近7日 + 需产品侧处理筛选举查看。
+              </span>
+              <Button
+                type="link" size="small"
+                onClick={() => {
+                  setActiveTab('groups')
+                  setFilters((current) => ({ ...current, status: PRODUCT_ACTION_FILTER }))
+                  setRange([dayjs().subtract(6, 'day'), dayjs()])
+                }}
+              >
+                查看清单（{trappedPending.length}）
+              </Button>
+            </Space>
+          )}
+        />
+      )}
       <div className="page-card">
         <div className="page-card-header flex-wrap">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -591,15 +634,53 @@ export default function ApiPatrolFailures() {
  * @param {(id: number, payload: Record<string, unknown>, isSubmit: boolean) => Promise<void>} props.onSubmit
  */
 function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmit }) {
+  const message = useAppMessage()
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmSubmit, setConfirmSubmit] = useState(true)
   // 压缩前全部记录：默认收起（11-17 拍板）
   const [allRecordsOpen, setAllRecordsOpen] = useState([])
-  // 直接原因日志：第一层默认收起；展开后显示核心行；「查看完整日志」第二层（11-17 拍板）
-  const [logLinesOpen, setLogLinesOpen] = useState(false)
-  const [rawLogOpen, setRawLogOpen] = useState(false)
+  // 直接原因日志：11-20 19:39 拍板——核心行内联展开退场（日志过长撑爆抽屉），
+  // 原始日志弹窗承载（Modal 全宽+内部滚动+全文不截断）；19:51 拍板尺寸对齐反馈库处理意见弹窗；
+  // 19:57 拍板：框选快捷复制（浮动气泡「复制选中」——FeedbackDrawer HandlingOriginalTextModal 同款交互）
+  const [rawLogModalOpen, setRawLogModalOpen] = useState(false)
+  const [selectionBubble, setSelectionBubble] = useState(/** @type {{ top: number, left: number } | null} */ (null))
+  const rawLogPaneRef = useRef(/** @type {HTMLDivElement | null} */ (null))
+
+  // 框选捕获（轻量版 readHandlingTextSelection：选区非空 → 气泡定位到选区下方）
+  const captureLogSelection = useCallback(() => {
+    const sel = window.getSelection()
+    const text = sel ? String(sel.toString() || '') : ''
+    if (!text.trim()) { setSelectionBubble(null); return }
+    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+    const rect = range?.getBoundingClientRect()
+    if (!rect || (rect.width === 0 && rect.height === 0)) { setSelectionBubble(null); return }
+    const bubbleWidth = 120
+    setSelectionBubble({
+      top: Math.min(rect.bottom + 8, window.innerHeight - 48),
+      left: Math.min(Math.max(8, rect.left + rect.width / 2 - bubbleWidth / 2), window.innerWidth - bubbleWidth - 8),
+    })
+  }, [])
+
+  const copyLogSelection = useCallback(() => {
+    const text = String(window.getSelection()?.toString() || '')
+    if (!text.trim()) return
+    copyTextToClipboard(text).then(
+      (ok) => ok ? message.success(`已复制选中 ${text.length} 字`) : message.error('复制失败，请手动选择复制'),
+      () => message.error('复制失败，请手动选择复制'),
+    )
+    setSelectionBubble(null)
+  }, [message])
+
+  // 弹窗滚动/关闭时隐藏气泡（先例同款）
+  useEffect(() => {
+    if (!rawLogModalOpen) return
+    const hide = () => setSelectionBubble(null)
+    window.addEventListener('scroll', hide, true)
+    return () => { window.removeEventListener('scroll', hide, true) }
+  }, [rawLogModalOpen])
+  useEffect(() => { if (!rawLogModalOpen) setSelectionBubble(null) }, [rawLogModalOpen])
   // 关键证据：默认收起可展开（11-18 拍板）
   const [evidenceOpen, setEvidenceOpen] = useState([])
   const group = data?.group
@@ -724,7 +805,8 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                   <span>客户 {String(/** @type {{userName?: string}} */ (group).userName || '—')}</span>
                 </Space>
               </div>
-              {/* ③ 直接原因——默认收起；展开显示核心行；「查看完整日志」第二层（日志 13px 等宽） */}
+              {/* ③ 直接原因——11-20 19:39 拍板：核心行内联展开退场（日志过长），返回体片段照常 +
+                  「查看原始日志」按钮开 Modal 弹窗（全文不截断、内部滚动） */}
               <div>
                 <div className="sub-section-label">直接原因（含日志原文、返回体）</div>
                 {report && (report.directCause?.logLines?.length || report.directCause?.returnFragments?.length) ? (
@@ -732,26 +814,11 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                     {(report.directCause.returnFragments || []).map((f, i) => (
                       <div key={`ret-${i}`} className="text-xs text-ink-500">{f}</div>
                     ))}
-                    <Button type="link" size="small" className="!px-0"
-                      onClick={() => setLogLinesOpen(!logLinesOpen)}>
-                      {logLinesOpen ? '收起日志' : `展开日志核心行（${(report.directCause.logLines || []).length} 条）`}
-                    </Button>
-                    {logLinesOpen && (
-                      <div className="mt-1">
-                        {(report.directCause.logLines || []).map((l, i) => (
-                          <div key={`log-${i}`} className="font-mono text-[13px] bg-ink-50/60 rounded p-2 mb-1 whitespace-pre-wrap break-all">{l}</div>
-                        ))}
-                        <Button type="link" size="small" className="!px-0"
-                          onClick={() => setRawLogOpen(!rawLogOpen)}>
-                          {rawLogOpen ? '收起完整日志' : `查看完整日志（原始 ${report.directCause.rawCount} 行，本页仅核心 10 条）`}
-                        </Button>
-                        {rawLogOpen && (
-                          <div className="font-mono text-[13px] bg-ink-50/60 rounded p-2 mt-1 whitespace-pre-wrap break-all">
-                            {String(diagnosis?.mcpRawResponse || '').slice(0, 4000)}
-                            {String(diagnosis?.mcpRawResponse || '').length > 4000 ? '\n…（超过 4000 字截断）' : ''}
-                          </div>
-                        )}
-                      </div>
+                    {(Number(report.directCause.rawCount) > 0 || String(diagnosis?.mcpRawResponse || '').length > 0) && (
+                      <Button type="link" size="small" className="!px-0"
+                        onClick={() => setRawLogModalOpen(true)}>
+                        查看原始日志{Number.isFinite(Number(report.directCause.rawCount)) && report.directCause.rawCount > 0 ? `（原始 ${report.directCause.rawCount} 行）` : ''}
+                      </Button>
                     )}
                   </>
                 ) : (
@@ -924,6 +991,48 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
         {confirmSubmit
           ? '提交后该失败组标记为已处理，变更将写入审计日志。'
           : '暂存后该失败组保持处理中，后续可继续完善反馈。'}
+      </Modal>
+
+      {/* 原始日志弹窗（11-20 19:39 拍板：Modal 承载全文；19:51 拍板：尺寸对齐反馈库处理意见弹窗
+          先例（min(96vw,1280px)+centered+78vh 内部滚动）+ footer「复制全文」快捷复制） */}
+      <Modal
+        open={rawLogModalOpen}
+        title={`原始日志${Number.isFinite(Number(report?.directCause?.rawCount)) && Number(report.directCause.rawCount) > 0 ? `（${report.directCause.rawCount} 行）` : ''}${group?.firstRequestId ? ` · ${group.firstRequestId}` : ''}`}
+        centered
+        width="min(96vw, 1280px)"
+        destroyOnClose
+        footer={[
+          <Button key="copy" icon={<CopyOutlined />}
+            onClick={() => copyTextToClipboard(String(diagnosis?.mcpRawResponse || ''))
+              .then(() => message.success('已复制日志全文'), () => message.error('复制失败，请手动选择复制'))}>
+            复制全文
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setRawLogModalOpen(false)}>
+            关闭
+          </Button>,
+        ]}
+        styles={{ body: { maxHeight: '78vh', overflowY: 'auto' } }}
+        onCancel={() => setRawLogModalOpen(false)}
+      >
+        <div
+          ref={rawLogPaneRef}
+          className="font-mono text-[13px] leading-relaxed bg-ink-50/60 rounded p-3 whitespace-pre-wrap break-all select-text cursor-text"
+          onMouseUp={captureLogSelection}
+        >
+          {String(diagnosis?.mcpRawResponse || '')}
+        </div>
+        {/* 框选快捷复制气泡（FeedbackDrawer 处理意见弹窗同款交互——选中日志片段后浮动「复制选中」） */}
+        {selectionBubble && (
+          <div
+            className="fixed z-[1200] flex gap-1 rounded-md border border-ink-200 bg-white p-1 shadow-lg"
+            style={{ top: selectionBubble.top, left: selectionBubble.left }}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <Button size="small" type="primary" icon={<CopyOutlined />} onClick={copyLogSelection}>
+              复制选中
+            </Button>
+          </div>
+        )}
       </Modal>
     </Drawer>
   )

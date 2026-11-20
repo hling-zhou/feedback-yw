@@ -391,6 +391,30 @@ Tab「接口失败根因分类」：有序规则表 CRUD + 拖拽排序 + 启用
 - 「产品接口」：§5 注册表维护（34 项种子已灌）
 - 「接口失败根因分类」：§6 规则表维护（17 条种子已灌）
 
+### 7.4 诊断能力需求池 `/api-patrol/diagnosis-gaps`（2026-11-19 建立；11-20 三轮升级定稿）
+
+**定位**：根因=「诊断能力缺口」的失败组汇集（`COALESCE(NULLIF(root_cause_l1_manual,''), root_cause_l1)='诊断能力缺口'` 有效口径——人工修正为具体根因自动退出），作为云网工作台 MCP 日志服务**诊断能力建设的需求输入**；第一版只读；**无时间窗口显示全部**（11-20 09:44 拍板）。
+
+**缺口类型判定矩阵（classifyGapKind，四参；11-20 14:48 拍板枚举真源口径）**——判定素材=该组最新一条 `status='success'` 诊断的 `mcp_raw_response`（diagnoses 按 status 分态消费，failed 是重试失败非池属性）：
+
+| # | 条件 | gapKind | 去向 |
+|---|---|---|---|
+| 1 | 无任何诊断记录 | undiagnosed | 未诊断清单（复制交付补诊断，不进池） |
+| 2 | 只有 failed 诊断 / raw 为 {"error":...} 形态 | diagnosis_failed | 不进任何分区（组保持 pending_diagnosis 次日自动重试） |
+| 3 | 有 success 诊断 + **池不在 MCP 枚举清单** | pool_uncovered | 分区一「池未接入 MCP 日志服务」 |
+| 4 | 池在枚举内 + raw 为空 | mcp_error | 补跑清单（复制交付——临时故障重诊断可愈） |
+| 5 | 池在枚举内 + 非 JSON 无日志行迹象 / JSON 业务码≠'0000' | mcp_error | 同上 |
+| 6 | code='0000' + records=[] | log_not_collected | 分区二「查不到失败日志」 |
+| 7 | code='0000' + 有 records 但无 ERROR/WARN | failure_log_missing | 分区二 |
+
+`{"error":...}` 形态判定**优先于**枚举态（防重试失败记录被读成池属性——先例：华南-广州3/华北-北京3 误报）。非 JSON 旧文本有日志行迹象 → 同判 log_not_collected（MCP 通）。
+
+**分区一真源（11-20 14:48 拍板）**：= MCP `tools/list` 返回的 `log_search.poolName` **enum 枚举清单**（`patrolMcpPoolRegistry.js`：成功即写 meta `api_patrol_mcp_pool_enum_v1` 缓存，24h 视为 stale、summary 调用时 fire-and-forget 后台刷新；不可达降级回退文本推断并在页面标注）。实测依据（cni.mcp.server:31788）：**枚举外池名调 log_search 不报错**——静默返回 `code:'0000'+空 records`（与「日志未采集」同形态，曾致误进分区二）；「调 MCP 报错」**不**证明池未接入（接入的池也会临时故障报错）——故「池不在枚举」才是未接入的准确判据。分区一表格带「判定依据」列（该池首个 uncovered 组响应截断 200 字符 + 样例 requestId，悬浮全文）。
+
+**页面结构**：引导卡（统计行：缺口组/接口/合计失败次数 + retryPendingCount/mcpErrorCount 条件句）→ 未诊断提示条（黄色 Alert + 复制清单按钮）→ MCP 报错提示条（复制补跑清单）→ 分区一（池维度汇总：资源池/组数/压缩前失败次数/最近出现/判定依据/操作）→ 分区二（产品×接口×池聚合：产品/接口/资源池/**缺口类型 Tag**（日志未采集×N/失败日志缺失×N）/组数/首次出现/最近出现/操作；11-20 18:02 拍板**删「压缩前失败次数」列**，排序仍按其降序——口径与展示解耦）→ 下钻明细（RequestID/数据日期/首次请求时间/产品/接口/资源池/**根因细分 L2 列**（11-20 18:02 拍板加）/客户名称/压缩前失败次数）→ FailureGroupDrawer（readOnly）。缺口类型≠L2：前者=MCP 响应形态推断，后者=分类器根因细分标注（root_cause_l2）。
+
+**端点**：`GET /api/patrol/diagnosis-gaps/summary`（view 权限；无日期参数）——响应 `{ stats, uncoveredPools, undiagnosedGroups, mcpErrorGroups, poolEnum:{fetchedAt,stale,degraded,count}, rows }`；组级下钻走共享 groups 端点（宽区间 2000-01-01~2099-12-31 承载「全部」）。
+
 ---
 
 ## 8. AI 巡检日报自动发送（2026-11-07 拍板定稿）
@@ -616,6 +640,14 @@ MIME 解析（mailparser）
       "customerType": "仿真",            // 弱标签（cmic 前缀/测试账号判定）
       "rootCauseL1": "业务冲突", "rootCauseL2": "绑定关系未解除",
       "finalConclusion": "诊断结论原文",
+      "suggestion": "处理建议原文",              // 11-17 五段结构化随包透传
+      "directCause": "[\"[ERROR] ...\", ...]",  // LLM 直接原因核心行（JSON 数组字符串）
+      "evidence": "[\"证据句\", ...]",          // LLM 关键证据（JSON 数组字符串）
+      "rootCauseSource": "llm",                 // llm=LLM 结构化诊断 / rule=规则引擎 / null=旧数据
+      "mcpRawResponse": "{\"code\":\"0000\",...}", // 11-20 20:56 补录：MCP 日志原文全文——诊断结论的证据真源，
+                                                  // 部署端落 diagnoses.mcp_raw_response（抽屉「查看原始日志」数据源）。
+                                                  // 曾因契约漏推断供 10 天（服务器恒 null、UI 误显「原始 0 行」）——
+                                                  // 契约字段清单必须「源库列→包字段→落库列」三列对拍，见约定 05
       "diagnosisStatus": "success"       // success | failed | converged
     }
   ]
@@ -623,7 +655,8 @@ MIME 解析（mailparser）
 ```
 
 - `diagnosisStatus` 三态：`success`（结论+分类正常回填）；`failed`（结论空，部署端组保持 pending_diagnosis）；**`converged`（超龄收敛——rootCauseL1=诊断能力缺口/L2=日志缺失，finalConclusion="日志缺失/超出 7 天重试窗口"，部署端 status 更新为「—」**，复用现有分类语义不新增状态机——评审#4）
-- 大小预期：明细日千行级 → JSON 数 MB，走现有 16MB bodyLimit（联调确认 Nginx `client_max_body_size ≥16m` 已在 Plan A 清单）
+- **补推存量断供**（11-20 20:04 拍板）：`REDIAGNOSE_EMPTY_RAW=1 node scripts/plan-c-historical-push.mjs --skip-diagnose`——队列=「success 诊断但 raw 空」的组（全窗口），只回填诊断事实不动组状态（绕开已处理/处理中被打回的覆盖风险）；组 updated_at bump + 包 groups WHERE 第四条件（success+raw 非空+updated_at 近 2 天）保证补的数据进得了日包（两跳缺一=白补）
+- 大小预期：明细日千行级 → JSON 数 MB，走现有 16MB bodyLimit（联调确认 Nginx `client_max_body_size ≥16m` 已在 Plan A 清单）；mcpRawResponse 按组数十 KB 内——诊断成功组每日几十量级，包体增量可接受（11-20 19:23 拍板）
 - **行数上限（评审#9）**：requests 每批次 ≤5000（与 /push/requests 同）、stats 每 product ≤5000、groups ≤2000、日包总行 ≤50,000——超限 413 拒收（真实日量 883 行，余量 50 倍）
 - 幂等：全字段 upsert（唯一键同 §2.1/§2.2/§2.3），重推/补跑安全
 
@@ -724,6 +757,11 @@ groups 段 upsert 到 `api_patrol_failure_groups` 时按字段分两类：
 | 11-10 | Plan B 授权码入库 | IMAP 授权码改前端配置入 meta（对齐 SMTP 通道 password 口径：留空保留原值、GET 只回 authCodeConfigured 布尔）；环境变量 PATROL_EMAIL_AUTH_CODE 降为兜底 |
 | 11-10 | Plan C 数据代理 | §10 定稿：部署环境出向受限→本机 WorkBuddy 跑全链（拉邮件→本机**持久库**压缩→MCP 诊断→组日包推 81 反代）；**stats 随包推**（页面①列表数据源）；**日报改为包到达后触发**（fire-and-forget 不阻塞端点响应；10:30 定时器保留兜底，同日第二包不重发）；**automation 只跑 09:15 一次**（邮件晚到次日自然补）；诊断重试=包内两轮+次日兜底+**7 天 pending 重试窗口**（超龄收敛 diagnosisStatus=converged 随包推、status 收敛「—」）；groups 人工状态保护（处理中/已处理不打回，诊断事实照常覆盖）；密钥走本机 env 文件不进 automation prompt |
 | 11-10 | Plan C 评审修正 10 项 | 架构决策评审（dev-expert architecture-decision 框架）：①临时库→**本机持久库** plan-c-local.db（7 天重试窗口前提，30 天滚动清理）②断供可观测（lastPackageReceivedAt+横幅判据扩展）③包晚到接受不齐版（不 force 双发）④收敛组随包推（converged 三态复用分类语义）⑤每日跑批⓪步**同步注册表**消漂移 ⑥日报 fire-and-forget ⑦退出码 0-4 分级 ⑧admin/process 手动触发注明可预期 ⑨日包行数上限（批 5000/总 50000）⑩撤销条件=部署机出向打通即回归 Plan A/B |
+| 11-19 | 诊断能力需求池 | §7.4 建立：缺口组汇集为 MCP 日志服务诊断能力建设需求输入；分区一池未接入/分区二查不到失败日志；**不维护静态池清单**（覆盖会变必过时），classifyGapKind 从 MCP 响应推断；下钻走共享 groups 端点宽区间承载「全部」 |
+| 11-20 | 需求池误判修复 | diagnoses 按 status 分态消费（只认 success 最新记录——failed 是重试失败非池属性，先例华南-广州3/华北-北京3 误报「池未接入」）；undiagnosed（从未诊断）不进池单独清单交付；新增 diagnosis_failed（只有 failed 记录——不进池，次日自动重试） |
+| 11-20 | 判定真源升级 | 分区一真源=tools/list 的 poolName 枚举（实测 23 池：**枚举外池静默空返回不报错**——「报错」不证未接入；枚举外曾伪装成日志未采集误进分区二）；新类 mcp_error=枚举内报错（临时故障，复制清单补跑）；降级模式回退文本推断并页面标注；{"error":...} 判定优先于枚举态 |
+| 11-20 | 仿真豁免+历史pending提醒 | 仿真/测试账号诊断回填强制 '—'（isSimOrTestAccount 同源谓词+管线统一出口豁免+actionReason 追加理由）；历史 pending 转待处理双提醒：日报 subject 追加「历史转待处理 K 组」+总览橙黄提示条+产品块⚡角标/chips，列表页 T-1 顶部 Alert+「查看清单」（切 groups+需产品侧处理+近7日）；判定=diagnoses 今日 success 锚定（不依赖 updated_at），次日自动失配零维护 |
+| 11-20 | 分区二列表调整 | 聚合列表**保持缺口类型列**（缺口类型≠L2：前者 MCP 响应形态推断、后者分类器细分标注）；**删压缩前失败次数列**（排序口径解耦保留）；下钻明细加**根因细分 L2 列**（数据源已返回 rootCauseL2，后端零改动）；**不加判定依据列**（判定形态单一 0000/空 records 信息量低，复核走下钻→抽屉 MCP 原文；多组各自 mcpRaw 单样例无代表性） |
 
 ## 12. 实施顺序
 

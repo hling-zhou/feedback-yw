@@ -60,6 +60,16 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     registerPatrolQueryRoutes(app)
     await app.ready()
 
+    // 预置 MCP 池枚举缓存（11-20 14:48 判定真源）：P1/P2/P8=枚举内，P9/测试池-不存在=枚举外。
+    // 测试不真连 MCP——meta 预置 + 内存缓存复位（patrolMcpPoolRegistry 读取链 内存→meta）。
+    const registry = await import('../patrolMcpPoolRegistry.js')
+    registry.clearPatrolMcpPoolEnumCache()
+    const { storageRepository } = await import('../storageRepository.js')
+    storageRepository.putMeta(registry.META_KEY_PATROL_MCP_POOL_ENUM, {
+      pools: ['P1', 'P2', 'P8', '华南-广州3', '华北-北京3'],
+      fetchedAt: new Date().toISOString(),
+    })
+
     seedGaps()
   })
 
@@ -72,22 +82,38 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
 
   const authHeader = () => ({ authorization: `Bearer ${token}` })
 
-  it('classifyGapKind 纯函数：五形态判别（11-20 修复：undiagnosed 类 + 日志行迹象细分）', async () => {
+  it('classifyGapKind 纯函数：四参矩阵（11-20 14:48 拍板：枚举真源 + mcp_error + 降级兜底）', async () => {
     const { classifyGapKind } = await import('./patrolQuery.js')
-    // 无诊断记录=从未诊断（超龄收敛态）——不再兜底进 pool_uncovered（11-20 拍板不进需求池）
+    // 无诊断记录=从未诊断（超龄收敛态）——不进需求池（11-20 拍板）
     expect(classifyGapKind(null, false)).toBe('undiagnosed')
     expect(classifyGapKind('anything', false)).toBe('undiagnosed')
-    // 有诊断记录无响应=调用层失败 → 池未接入
+    // 只有 failed 记录=诊断调用失败待重试——枚举态不影响此分类
+    expect(classifyGapKind(null, false, true)).toBe('diagnosis_failed')
+    expect(classifyGapKind(JSON.stringify({ error: 'MCP HTTP 412' }), true, true, true)).toBe('diagnosis_failed')
+    expect(classifyGapKind(JSON.stringify({ error: 'MCP 调用超时（300000ms）' }), true, true, false)).toBe('diagnosis_failed') // error 形态优先于枚举态——防历史脏数据误报
+    // 11-20 14:48 拍板：池不在枚举=未接入真源（静默空返回/任何 raw 形态都判未接入）
+    expect(classifyGapKind(RAW_OK_EMPTY, true, true, false)).toBe('pool_uncovered')   // 枚举外池静默空返回——改前误进分区二
+    expect(classifyGapKind(null, true, true, false)).toBe('pool_uncovered')
+    expect(classifyGapKind(RAW_ERR, true, true, false)).toBe('pool_uncovered')
+    // 枚举内池 + MCP 报错 → mcp_error（临时故障，补跑可愈，不进分区一）
+    expect(classifyGapKind(null, true, true, true)).toBe('mcp_error')
+    expect(classifyGapKind('plain error page without log lines', true, true, true)).toBe('mcp_error')
+    expect(classifyGapKind(RAW_ERR, true, true, true)).toBe('mcp_error')                 // 枚举内池业务码非 0000
+    // 枚举内池正常形态（不变）
+    expect(classifyGapKind(RAW_OK_EMPTY, true, true, true)).toBe('log_not_collected')
+    expect(classifyGapKind(RAW_OK_INFO, true, true, true)).toBe('failure_log_missing')
+    expect(classifyGapKind('[2026-09-01 10:00:00] [ INFO] RequestIdFilter ok', true, true, true)).toBe('log_not_collected')
+    const rawWithErr = JSON.stringify({ code: '0000', data: { records: [{ content: '[ERROR] boom' }] } })
+    expect(classifyGapKind(rawWithErr, true, true, true)).toBe('other')                  // 防御位
+    // 降级模式（poolInMcpEnum=null，MCP 清单不可达）——回退 11-20 修复后文本推断（保守方向）
     expect(classifyGapKind(null, true)).toBe('pool_uncovered')
     expect(classifyGapKind('', true)).toBe('pool_uncovered')
-    // 非 JSON 旧文本形态：有日志行迹象=MCP 通（查不到失败日志）；无迹象=错误页未接入
-    expect(classifyGapKind('[2026-09-01 10:00:00] [ INFO] RequestIdFilter ok', true)).toBe('log_not_collected')
     expect(classifyGapKind('plain error page without log lines', true)).toBe('pool_uncovered')
-    expect(classifyGapKind(RAW_ERR, true)).toBe('pool_uncovered')         // MCP 业务码非 0000
-    expect(classifyGapKind(RAW_OK_EMPTY, true)).toBe('log_not_collected') // 0000+records=0
-    expect(classifyGapKind(RAW_OK_INFO, true)).toBe('failure_log_missing') // 0000+INFO only
-    const rawWithErr = JSON.stringify({ code: '0000', data: { records: [{ content: '[ERROR] boom' }] } })
-    expect(classifyGapKind(rawWithErr, true)).toBe('other')                // 防御位：有失败语义不该判缺口
+    expect(classifyGapKind(RAW_ERR, true)).toBe('pool_uncovered')
+    expect(classifyGapKind(RAW_OK_EMPTY, true)).toBe('log_not_collected')
+    expect(classifyGapKind(RAW_OK_INFO, true)).toBe('failure_log_missing')
+    // 兼容性：三参调用（历史消费方）默认降级模式，不误抛
+    expect(classifyGapKind(RAW_OK_EMPTY, true, true)).toBe('log_not_collected')
   })
 
   it('summary 聚合（11-20 09:44 拍板：无时间窗口显示全部）：分区二接口聚合 + 分区一池汇总 + stats', async () => {
@@ -97,32 +123,54 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     })
     expect(res.statusCode).toBe(200)
     const data = res.json()
-    // 分区二：2 个聚合键（eip|I1|P1 与 eip|I1|P2——C 组异池）
-    expect(data.rows).toHaveLength(2)
+    // 分区二：4 个聚合键（eip|I1|P1 / eip|I1|P2——C 组异池 / eip|I8|P8——H 组按成功诊断归位 / eip|IJ|P1——J 组为枚举内池改造后不进分区二）
+    expect(data.rows).toHaveLength(3)
     const main = data.rows.find((r) => r.poolName === 'P1')
     expect(main).toBeTruthy()
     expect(main.productName).toBeTruthy()
-    expect(main.groupCount).toBe(2)                       // A+B（E 已 manual 逃逸、D 未接入分区一）
+    expect(main.groupCount).toBe(2)                       // A+B（E 已 manual 逃逸）
     expect(main.preCompressTotal).toBe(4)                 // A(1)+B(3)
     expect(main.gapKinds).toEqual({ log_not_collected: 1, failure_log_missing: 1 })
     // requestIds：A.first → B.first → B.suppressed（与 first 重复的去重，保序）
     expect(main.requestIds).toEqual(['gap-a-first', 'gap-b-first', 'gap-a-sup-1', 'gap-a-sup-2'])
     expect(main.jiraTicketId).toBeNull()                 // Jira 扩展占位
-    // 分区一：P9 只含 U 组（MCP 错误响应）——D 组无诊断记录，11-20 修复后归 undiagnosed 不进未接入分区
-    expect(data.uncoveredPools).toHaveLength(1)
-    expect(data.uncoveredPools[0].poolName).toBe('P9')
-    expect(data.uncoveredPools[0].groupCount).toBe(1)
+    // 分区一（11-20 14:48 枚举真源）：P9（枚举外）只含 U 组——按「池不在枚举」判定，
+    // 与 raw 形态无关；J 组（枚举外+静默空返回 records=[]）也在此——改前误进分区二
+    expect(data.uncoveredPools).toHaveLength(2)
+    const p9 = data.uncoveredPools.find((r) => r.poolName === 'P9')
+    expect(p9.groupCount).toBe(1)
+    expect(p9.sampleRequestId).toBe('gap-u-first')
+    const pj = data.uncoveredPools.find((r) => r.poolName === '测试池-不存在')
+    expect(pj.groupCount).toBe(1)
+    expect(pj.requestIds).toEqual(['gap-j-first'])
+    // 判定依据（11-20 拍板加列）：U 组的 MCP 错误响应样例
+    expect(p9.sampleMcpRaw).toContain('pool not supported')
+    // mcp_error 补跑清单（11-20 14:48 拍板）：K 组（枚举内池 P1+业务报错 RAW_ERR）——不进分区一/分区二
+    expect(data.mcpErrorGroups).toHaveLength(1)
+    expect(data.mcpErrorGroups[0].poolName).toBe('P1')
+    expect(data.mcpErrorGroups[0].groupCount).toBe(1)
+    expect(data.mcpErrorGroups[0].requestIds).toEqual(['gap-k-first'])
+    expect(data.mcpErrorGroups[0].sampleMcpRaw).toContain('pool not supported')
+    // poolEnum 响应字段（判定模式标注素材）
+    expect(data.poolEnum.degraded).toBe(false)
+    expect(data.poolEnum.count).toBe(5)
+    expect(data.poolEnum.stale).toBe(false)
+    expect(data.poolEnum.fetchedAt).toBeTruthy()
     // 未诊断清单（池维度汇总——复制交付补诊断）：D 组在列
     expect(data.undiagnosedGroups).toHaveLength(1)
     expect(data.undiagnosedGroups[0].poolName).toBe('P9')
     expect(data.undiagnosedGroups[0].groupCount).toBe(1)
     expect(data.undiagnosedGroups[0].requestIds).toEqual(['gap-d-first'])
-    // stats：A+B+C+U = 4 需求池组 + D=1 未诊断（E 逃逸 F 无关 G 未诊断不计）
-    expect(data.stats.groupCount).toBe(5)
-    expect(data.stats.coveredCount).toBe(3)
-    expect(data.stats.uncoveredCount).toBe(1)
+    // stats：A+B+C+U+H+J = 6 需求池组 + D=1 未诊断 + I=1 诊断失败待重试 + K=1 mcp_error 补跑
+    // （E 逃逸 F 无关 G 未诊断不计）
+    expect(data.stats.groupCount).toBe(9)
+    expect(data.stats.coveredCount).toBe(4)
+    expect(data.stats.uncoveredCount).toBe(2)
     expect(data.stats.undiagnosedCount).toBe(1)
-    expect(data.stats.poolCount).toBe(3)                  // P1/P2/P9
+    expect(data.stats.retryPendingCount).toBe(1)
+    expect(data.stats.mcpErrorCount).toBe(1)
+    expect(data.stats.preCompressTotal).toBe(12)          // A1+B3+C1+U1+D1+H2+I1+J1+K1
+    expect(data.stats.poolCount).toBe(5)                  // P1/P2/P9/P8/测试池-不存在
   })
 
   it('manual 逃逸：人工修正为具体根因的组不进任何分区', async () => {
@@ -137,15 +185,54 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
       ...data.undiagnosedGroups.flatMap((r) => r.requestIds),
     ]
     expect(allRequestIds).not.toContain('gap-e-first')    // E 组逃逸（manual=业务冲突）
+    expect(allRequestIds).not.toContain('gap-i-first')    // I 组只有 failed 诊断——11-20 拍板不纳入需求池（次日自动重试）
+    expect(allRequestIds).not.toContain('gap-k-first')    // K 组枚举内池报错——mcp_error 补跑清单交付，不进需求池分区
   })
 
-  it('groups 联动：rootCauseL1=诊断能力缺口 过滤出 5 组（E 逃逸/F 无关/G 未诊断排除）', async () => {
+  it('11-20 误判修复红绿：success 后 failed 重试的组按成功诊断归分区二，不误报「池未接入」', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
+      headers: authHeader(),
+    })
+    const data = res.json()
+    // H 组（P8/I8）：先 success（records=0 → 日志未采集）后 failed（{"error":"MCP HTTP 412"}，id 更大）——
+    // 改前 MAX(id) 取 failed 记录 → 误进分区一（华南-广州3/华北-北京3 误判场景）；改后按成功诊断进分区二
+    expect(data.uncoveredPools.some((r) => r.poolName === 'P8')).toBe(false)
+    const hRow = data.rows.find((r) => r.poolName === 'P8')
+    expect(hRow).toBeTruthy()
+    expect(hRow.apiPath).toBe('I8')
+    expect(hRow.groupCount).toBe(1)
+    expect(hRow.gapKinds).toEqual({ log_not_collected: 1, failure_log_missing: 0 })
+    expect(hRow.requestIds).toEqual(['gap-h-first'])
+    // I 组（P8/I8）：只有 failed 诊断——不进分区一/分区二/未诊断清单，仅 retryPendingCount 计数
+    expect(data.uncoveredPools.flatMap((r) => r.requestIds)).not.toContain('gap-i-first')
+    expect(data.stats.retryPendingCount).toBe(1)
+  })
+
+  it('11-20 14:48 枚举真源红绿：枚举外池静默空返回进分区一（改前误进分区二「查不到失败日志」）', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
+      headers: authHeader(),
+    })
+    const data = res.json()
+    // J 组（测试池-不存在，枚举外）：MCP 静默返回 {code:'0000', records:[]}（实测形态——池未接入不报错）。
+    // 改前按 records=[] 判 log_not_collected 误进分区二；改后「池不在枚举」判 pool_uncovered 进分区一
+    expect(data.uncoveredPools.some((r) => r.poolName === '测试池-不存在')).toBe(true)
+    const jRow = data.rows.find((r) => r.poolName === '测试池-不存在')
+    expect(jRow).toBeUndefined()
+    // 枚举内池（P1）+业务报错（K 组）→ mcp_error 补跑清单；分区一不含 P1（池是接入的——报错≠未接入）
+    expect(data.uncoveredPools.some((r) => r.poolName === 'P1')).toBe(false)
+    expect(data.mcpErrorGroups.some((r) => r.poolName === 'P1')).toBe(true)
+    expect(data.mcpErrorGroups.flatMap((r) => r.requestIds)).toEqual(['gap-k-first'])
+  })
+
+  it('groups 联动：rootCauseL1=诊断能力缺口 过滤出 9 组（E 逃逸/F 无关/G 未诊断排除）', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/patrol/failures/groups?startDate=2026-09-01&endDate=2026-09-02&rootCauseL1=' + encodeURIComponent('诊断能力缺口'),
       headers: authHeader(),
     })
-    expect(res.json().rows).toHaveLength(5)
+    expect(res.json().rows).toHaveLength(9)
     expect(res.json().rows.some((r) => r.firstRequestId === 'gap-e-first')).toBe(false)
   })
 
@@ -156,14 +243,19 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     })
     expect(res.statusCode).toBe(200)
     const data = res.json()
-    // 传窄窗口参数也不缩小——种子全部 5 缺口组都在（窗口语义已删除）
-    expect(data.stats.groupCount).toBe(5)
-    expect(data.rows).toHaveLength(2)
+    // 传窄窗口参数也不缩小——种子全部 9 缺口组都在（窗口语义已删除）
+    expect(data.stats.groupCount).toBe(9)
+    expect(data.rows).toHaveLength(3)
   })
 })
 
-/** seed：A/B 同键双形态 / C 异池 / U MCP错误 / D 无诊断记录 / E manual逃逸 / F 无关 / G 未诊断 */
+/** seed：A/B 同键双形态 / C 异池 / U MCP错误(枚举外池) / D 无诊断记录 / E manual逃逸 / F 无关 / G 未诊断 /
+ * H success后failed重试（误判修复红绿）/ I 只有failed诊断（待自动重试）/
+ * J 枚举外池+静默空返回（11-20 14:48 枚举真源红绿——改前误进分区二）/ K 枚举内池+业务报错（→mcp_error 补跑清单） */
 function seedGaps() {
+  // 预置 MCP 池枚举 meta 缓存（11-20 14:48 拍板判定真源）——测试不真连 MCP；
+  // P1/P2/P8=枚举内，P9/测试池-不存在=枚举外。ESM 下 require 不可用——动态 import 后同步预置。
+  // （vitest ESM 顶层 await 可用；seedGaps 保持同步签名，内部用已 import 的模块引用——见 beforeAll 的模块级缓存）
   const db = require_getDb()
   const insertGroup = db.prepare(`
     INSERT INTO api_patrol_failure_groups
@@ -189,6 +281,16 @@ function seedGaps() {
   insertGroup.run('2026-09-01', 'P1', 'IF', 'userF', 'gap-f-first', '2026-09-01 15:00:00', 1, '[]', '业务冲突', null, null)
   // G：未诊断
   insertGroup.run('2026-09-01', 'P1', 'IG', 'userG', 'gap-g-first', '2026-09-01 16:00:00', 1, '[]', null, null, null)
+  // H：先 success 诊断（日志未采集）后 failed 重试（MCP HTTP 412）——池 P8 实际已接入（误判修复红绿）
+  insertGroup.run('2026-09-01', 'P8', 'I8', 'userH', 'gap-h-first', '2026-09-01 12:30:00', 2, '[]', '诊断能力缺口', null, null)
+  // I：只有 failed 诊断（MCP 超时）——组保持 pending_diagnosis 次日自动重试，不纳入需求池
+  insertGroup.run('2026-09-01', 'P8', 'I8', 'userI', 'gap-i-first', '2026-09-01 13:30:00', 1, '[]', '诊断能力缺口', null, null)
+  // J：枚举外池 + MCP 静默空返回（11-20 14:48 实测形态——池未接入不报错，code 0000+records=[]）。
+  // 枚举真源红绿组：改前按 records=[] 误进分区二；改后「池不在枚举」判 pool_uncovered 进分区一
+  insertGroup.run('2026-09-01', '测试池-不存在', 'IJ', 'userJ', 'gap-j-first', '2026-09-01 17:00:00', 1, '[]', '诊断能力缺口', null, null)
+  // K：枚举内池（P1）+ MCP 业务报错（code 5000）——11-20 14:48 拍板新类 mcp_error（临时故障补跑清单），
+  // 不再误进分区一（报错≠未接入）
+  insertGroup.run('2026-09-01', 'P1', 'IK', 'userK', 'gap-k-first', '2026-09-01 18:00:00', 1, '[]', '诊断能力缺口', null, null)
 
   const insertDiag = db.prepare(`
     INSERT INTO api_patrol_diagnoses
@@ -202,10 +304,30 @@ function seedGaps() {
     ['gap-b-first', RAW_OK_INFO],
     ['gap-c-first', RAW_OK_EMPTY],
     ['gap-u-first', RAW_ERR],
-    // gap-d-first 无诊断记录（D 组兜底 pool_uncovered）
+    // gap-d-first 无诊断记录（D 组从未诊断）
     ['gap-e-first', RAW_OK_EMPTY],
+    // H 组先插 success 记录（随后追加 failed 重试记录——id 更大，复现 MAX(id) 不分成败的误判形态）
+    ['gap-h-first', RAW_OK_EMPTY],
+    // J 组：枚举外池静默空返回（实测：池未接入不报错——与 RAW_OK_EMPTY 形态相同，靠枚举判定区分）
+    ['gap-j-first', RAW_OK_EMPTY],
+    // K 组：枚举内池业务报错 → mcp_error
+    ['gap-k-first', RAW_ERR],
   ]) {
     const g = byFirst.get(firstId)
     insertDiag.run(g.id, firstId, raw)
+  }
+  // 诊断失败记录（patrolDiagnose 失败路径形态：status='failed' + {"error":...}）——H 追加重试失败、I 仅此一条
+  const insertDiagFailed = db.prepare(`
+    INSERT INTO api_patrol_diagnoses
+      (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion,
+       root_cause_l1, root_cause_l2, root_cause_source, diagnosed_at)
+    VALUES (?, ?, 'failed', 'log_search', ?, NULL, NULL, NULL, NULL, 't')
+  `)
+  for (const [firstId, raw] of [
+    ['gap-h-first', JSON.stringify({ error: 'MCP HTTP 412' })],
+    ['gap-i-first', JSON.stringify({ error: 'MCP 调用超时（300000ms）' })],
+  ]) {
+    const g = byFirst.get(firstId)
+    insertDiagFailed.run(g.id, firstId, raw)
   }
 }

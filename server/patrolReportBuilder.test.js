@@ -38,6 +38,7 @@ describe.skipIf(!sqliteAvailable)('patrolReportBuilder 口径守卫', () => {
     db.prepare('DELETE FROM api_patrol_stats').run()
     db.prepare('DELETE FROM api_patrol_failure_groups').run()
     db.prepare('DELETE FROM api_patrol_requests').run()
+    db.prepare('DELETE FROM api_patrol_diagnoses').run() // ⑧ 用例插入今日诊断——seed 必清防跨用例残留
     // 尾链渲染依赖（11-20 新增断言）：meta 里设平台地址
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('mail_public_app_url', 'http://test.example.com')").run()
     const insStat = db.prepare(`
@@ -228,5 +229,52 @@ describe.skipIf(!sqliteAvailable)('patrolReportBuilder 口径守卫', () => {
     const html = renderPatrolDailyReportHtml(r)
     expect(html).toContain('资源锁定/并发冲突×')  // 表格根因分布列有内容
     expect(html).toContain('已闭环 7 组')
+  })
+
+  // ---------- 11-20 15:09 拍板：历史 pending 转待处理（trapped）双提醒 ----------
+  it('⑧ trapped 红绿：今日诊断转出的历史待处理组 → 总览数字+提示条+产品角标/chips；K=0 全不渲染', async () => {
+    seed()
+    // 构造 trapped 场景：r1（eip 待处理，报告日内——不 trapped）之外的组改成历史日期+今日诊断成功。
+    // r5（eip 仿真待处理）改历史日期+今日 success 诊断 → trapped 1 组（仿真豁免只在诊断管线层，
+    // 手工构造状态不经过管线——builder 如实按 product_action_status 聚合，不重复豁免）。
+    const OLD_DATE = '2026-10-30'
+    const todayIso = new Date().toISOString()
+    db.prepare("UPDATE api_patrol_failure_groups SET group_date=? WHERE first_request_id IN ('r5','r6')").run(OLD_DATE)
+    const insDiag = db.prepare(`
+      INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, root_cause_source, diagnosed_at)
+      VALUES (?, ?, 'success', 'log_search', '{}', '结论', '资源锁定/并发冲突', '锁定机制待查', 'llm', ?)
+    `)
+    for (const rid of ['r5', 'r6']) {
+      const g = db.prepare('SELECT id FROM api_patrol_failure_groups WHERE first_request_id=?').get(rid)
+      insDiag.run(g.id, rid, todayIso)
+    }
+    // 调试定位（临时）已移除——根因已定：builder 首版 SQL 漏 GROUP BY（聚合退化为整表一行）
+    // 无今日诊断的待处理历史组（r1 改历史日期但无 diagnoses 记录）→ 不 trapped（判定锚=diagnoses 今日 success）
+    db.prepare("UPDATE api_patrol_failure_groups SET group_date=? WHERE first_request_id='r1'").run(OLD_DATE)
+
+    const { buildPatrolDailyReport, renderPatrolDailyReportHtml } = await import('./patrolReportBuilder.js')
+    const r = buildPatrolDailyReport(D, {})
+    // 总览：r5(eip)+r6(slb) = 2 组 trapped（r1 不算——无今日 success 诊断）
+    expect(r.overview.trappedPendingGroups).toBe(2)
+    expect(r.overview.trappedPreTotal).toBe(9 + 4)
+    // 产品级角标素材
+    const eip = r.products.find((p) => p.productKey === 'eip')
+    const slb = r.products.find((p) => p.productKey === 'slb')
+    expect(eip.trappedPendingGroups).toBe(1)
+    expect(slb.trappedPendingGroups).toBe(1)
+    // HTML：提示条 + 角标 + chips（11-20 15:09 修订文案）齐备
+    const html = renderPatrolDailyReportHtml(r)
+    expect(html).toContain('2 组历史遗留失败今日完成诊断并转待产品处理')
+    expect(html).toContain('历史遗留失败今日完成诊断并转待产品处理 <strong>1</strong> 组')
+    expect(html).toContain('近7日 处理')
+    expect(html).toContain('⚡1')
+
+    // K=0 回归：删除今日诊断 → 全部不渲染（改前红：空场景若仍渲染提示条）
+    db.prepare("DELETE FROM api_patrol_diagnoses").run()
+    const r2 = buildPatrolDailyReport(D, {})
+    expect(r2.overview.trappedPendingGroups).toBe(0)
+    const html2 = renderPatrolDailyReportHtml(r2)
+    expect(html2).not.toContain('历史遗留失败今日完成诊断')
+    expect(html2).not.toContain('⚡')
   })
 })

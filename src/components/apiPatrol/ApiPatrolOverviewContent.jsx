@@ -22,7 +22,7 @@ const HEAT_COLORS = ['#fff7e6', '#ffe7ba', '#ffd591', '#ffc069', '#fa8c16', '#d4
 export default function ApiPatrolOverviewContent() {
   const message = useAppMessage()
   const navigate = useNavigate()
-  const [range, setRange] = useState([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')]) // 默认 T-1（11-18 拍板），与快捷按钮同语义
+  const [range, setRange] = useState([dayjs().subtract(6, 'day'), dayjs()]) // 默认近7天（11-20 拍板），与快捷按钮同语义
   /** @type {[any, any]} */
   const [data, setData] = useState(null)
   /** @type {[any, any]} */

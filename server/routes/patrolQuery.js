@@ -13,6 +13,7 @@ import { getDb } from '../db.js'
 import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConfig.js'
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
+import { fetchPatrolMcpPoolEnum, getPatrolMcpPoolEnum, poolInMcpEnum as poolInMcpEnumFn } from '../patrolMcpPoolRegistry.js'
 import { productNameMap } from '../patrolReportBuilder.js'
 import { cleanLogLine } from '../patrolRootCauseClassifier.js'
 import {
@@ -641,30 +642,49 @@ export function registerPatrolQueryRoutes(app) {
     const db = getDb()
     const GAP_WHERE = `g.root_cause_l1 IS NOT NULL
       AND COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = '诊断能力缺口'`
-    // 组级明细（含最新诊断的 MCP 原始响应——gapKind 判定素材；hasDiagnosis 区分从未诊断）
+    // 组级明细（含最新成功诊断的 MCP 原始响应——gapKind 判定素材）。
+    // 11-20 误判修复：d 只取 status='success' 的最新记录（诊断失败路径写 {"error":...}
+    // failed 记录且组可重试——曾因 MAX(id) 不分成败，把「重试失败」误读成「池未接入」，
+    // 先例：华南-广州3/华北-北京3 实际已接入）；e 提供维度区分「从未诊断」vs「只有失败记录待重试」。
     const groupRows = db.prepare(`
       SELECT g.id, g.product_key, g.api_path, g.pool_name, g.pre_compress_count,
              g.group_date, g.first_request_id, g.suppressed_request_ids, g.first_request_time,
-             d.failure_group_id AS diagId, d.mcp_raw_response AS mcpRaw
+             d.failure_group_id AS diagId, d.mcp_raw_response AS mcpRaw,
+             e.failure_group_id AS anyDiagId
       FROM api_patrol_failure_groups g
       LEFT JOIN (
         SELECT failure_group_id, mcp_raw_response FROM api_patrol_diagnoses
-        WHERE id IN (SELECT MAX(id) FROM api_patrol_diagnoses GROUP BY failure_group_id)
+        WHERE id IN (SELECT MAX(id) FROM api_patrol_diagnoses WHERE status='success' GROUP BY failure_group_id)
       ) d ON d.failure_group_id = g.id
+      LEFT JOIN (
+        SELECT DISTINCT failure_group_id FROM api_patrol_diagnoses
+      ) e ON e.failure_group_id = g.id
       WHERE ${GAP_WHERE}
     `).all()
-    // 组级 gapKind 判定（SQL 外做——SQLite 无 JSON 解析函数，JS 判定可单测）
+    // 组级 gapKind 判定（SQL 外做——SQLite 无 JSON 解析函数，JS 判定可单测）。
+    // 11-20 14:48 拍板：分区一真源=MCP tools/list 的 poolName 枚举（patrolMcpPoolRegistry）——
+    // 读取链 内存→meta(24h)→现拉；stale 时 fire-and-forget 后台刷新（本次响应用旧值不阻塞）。
+    const poolEnum = getPatrolMcpPoolEnum()
+    if (poolEnum.pools && poolEnum.stale) {
+      void fetchPatrolMcpPoolEnum().catch(() => { /* 后台刷新失败静默——下次调用再试 */ })
+    }
     const kinds = new Map() // id → gapKind
     for (const r of groupRows) {
-      kinds.set(Number(r.id), classifyGapKind(r.mcpRaw, r.diagId != null))
+      kinds.set(Number(r.id), classifyGapKind(r.mcpRaw, r.diagId != null, r.anyDiagId != null, poolInMcpEnumFn(r.pool_name, poolEnum)))
     }
     const covered = groupRows.filter((r) => {
       const k = kinds.get(Number(r.id))
       return k === 'log_not_collected' || k === 'failure_log_missing'
     })
     const uncovered = groupRows.filter((r) => kinds.get(Number(r.id)) === 'pool_uncovered')
+    // 11-20 拍板：诊断调用失败（只有 failed 记录——MCP 超时/重试失败/LLM 全败）不纳入需求池——
+    // 组保持 pending_diagnosis 次日自动重试，也不进未诊断清单（那类只收「从未诊断」）
+    const retryPending = groupRows.filter((r) => kinds.get(Number(r.id)) === 'diagnosis_failed')
     // 11-20 拍板：从未诊断的组（超龄收敛态）不进需求池——单独聚合供清单交付（用户补诊断）
     const undiagnosed = groupRows.filter((r) => kinds.get(Number(r.id)) === 'undiagnosed')
+    // 11-20 14:48 拍板：池在 MCP 枚举内但调用报错（raw 空/非JSON无日志迹象/业务码非0000）——
+    // 临时故障重诊断可愈；复制清单交付补跑（与未诊断同款出口），不进分区一
+    const mcpErrored = groupRows.filter((r) => kinds.get(Number(r.id)) === 'mcp_error')
 
     const PRODUCT_NAMES = productNameMap()
     // 分区二：池已接入·诊断能力不足——产品×接口×池聚合
@@ -701,6 +721,9 @@ export function registerPatrolQueryRoutes(app) {
         uncMap.set(r.pool_name, {
           poolName: r.pool_name, groupCount: 0, preCompressTotal: 0,
           lastRequestTime: String(r.first_request_time || ''), requestIds: [],
+          // 判定依据样例（11-20 拍板加「判定依据」列）：该池首个 uncovered 组的 MCP 响应片段
+          sampleMcpRaw: String(r.mcpRaw || '').slice(0, 200),
+          sampleRequestId: String(r.first_request_id || ''),
         })
       }
       const u = uncMap.get(r.pool_name)
@@ -732,6 +755,28 @@ export function registerPatrolQueryRoutes(app) {
       }
     }
     const undiagnosedGroups = [...unMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
+    // mcp_error 聚合（池维度汇总——复制清单交付补跑：每行 日期 池 requestID + 响应样例）
+    const errMap = new Map()
+    for (const r of mcpErrored) {
+      if (!errMap.has(r.pool_name)) {
+        errMap.set(r.pool_name, {
+          poolName: r.pool_name, groupCount: 0, preCompressTotal: 0,
+          firstDate: String(r.group_date), lastRequestTime: String(r.first_request_time || ''),
+          requestIds: [],
+          sampleMcpRaw: String(r.mcpRaw || '').slice(0, 200),
+          sampleRequestId: String(r.first_request_id || ''),
+        })
+      }
+      const u = errMap.get(r.pool_name)
+      u.groupCount += 1
+      u.preCompressTotal += Number(r.pre_compress_count || 0)
+      if (String(r.group_date) < u.firstDate) u.firstDate = String(r.group_date)
+      if (String(r.first_request_time || '') > u.lastRequestTime) u.lastRequestTime = String(r.first_request_time)
+      for (const id of [String(r.first_request_id || ''), ...safeParseIds(r.suppressed_request_ids)]) {
+        if (id && !u.requestIds.includes(id)) u.requestIds.push(id)
+      }
+    }
+    const mcpErrorGroups = [...errMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
     // stats：窗口统计（引导卡统计行数据源）——undiagnosedCount 单列（11-20：不进需求池计数）
     const apiSet = new Set(covered.map((r) => `${r.product_key}|${r.api_path}`))
     const poolSet = new Set(groupRows.map((r) => r.pool_name))
@@ -741,13 +786,60 @@ export function registerPatrolQueryRoutes(app) {
         uncoveredCount: uncovered.length,
         coveredCount: covered.length,
         undiagnosedCount: undiagnosed.length,
+        // 诊断调用失败待自动重试组数（11-20 拍板不纳入需求池——前端统计行条件展示）
+        retryPendingCount: retryPending.length,
+        // MCP 报错待补跑组数（11-20 14:48 拍板——枚举内池临时故障，复制清单交付）
+        mcpErrorCount: mcpErrored.length,
+        // 顺手修复：前端引导卡引用 stats.preCompressTotal 但后端从未返回（恒显示 '—'）——
+        // 口径对齐 groupCount（全部缺口组）的 pre_compress_count 合计
+        preCompressTotal: groupRows.reduce((s, r) => s + Number(r.pre_compress_count || 0), 0),
         apiCount: apiSet.size,
         poolCount: poolSet.size,
       },
       uncoveredPools,
       undiagnosedGroups,
+      mcpErrorGroups,
+      // 判定模式标注素材（11-20 14:48 拍板）：分区一真源=枚举清单——展示获取时间；降级时标注
+      poolEnum: {
+        fetchedAt: poolEnum.fetchedAt,
+        stale: poolEnum.stale,
+        degraded: poolEnum.degraded,
+        count: poolEnum.pools ? poolEnum.pools.length : 0,
+      },
       rows: rows.map((a) => ({ ...a, jiraTicketId: null, jiraStatus: null })),
     }
+  })
+
+  // 历史 pending 转待处理清单（11-20 15:09 拍板）：今日诊断成功且转待产品处理、但失败发生在
+  // 历史日期的组——不在列表 T-1 窗口内易漏处理，提示条引导跳转。判定锚点=diagnoses
+  // （status='success' AND 今日 diagnosed_at）——精确「今日诊断成功」动作，不受手工改状态污染；
+  // 次日自动失配退出（零维护，无已读状态）。
+  app.get('/api/patrol/failures/trapped-pending', { preHandler: requirePermission('view') }, async (_request, reply) => {
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT g.product_key, g.pool_name, g.api_path, g.metric_name,
+             g.pre_compress_count, g.group_date, g.first_request_id, g.first_request_time
+      FROM api_patrol_failure_groups g
+      JOIN (SELECT DISTINCT failure_group_id FROM api_patrol_diagnoses
+            WHERE status='success' AND substr(diagnosed_at, 1, 10) = date('now', 'localtime')) d
+        ON d.failure_group_id = g.id
+      WHERE g.product_action_status = '待处理' AND g.group_date < date('now', 'localtime')
+      ORDER BY g.group_date, g.first_request_time
+      LIMIT 100
+    `).all()
+    const PRODUCT_NAMES = productNameMap()
+    reply.send({
+      count: rows.length,
+      rows: rows.map((r) => ({
+        productKey: r.product_key,
+        productName: PRODUCT_NAMES[r.product_key] || r.product_key,
+        poolName: r.pool_name, apiPath: r.api_path, metricName: r.metric_name,
+        preCompressCount: Number(r.pre_compress_count || 0),
+        groupDate: String(r.group_date || ''),
+        firstRequestId: String(r.first_request_id || ''),
+        firstRequestTime: String(r.first_request_time || ''),
+      })),
+    })
   })
 
   // LLM 判定候选建议（11-19 拍板：候选回流——只读聚合，不自动写规则表；运营在规则面板人工纳入）
@@ -1057,30 +1149,63 @@ function safeParseIds(json) {
 }
 
 /**
- * 缺口类型判别（11-19 拍板；11-20 修复加 undiagnosed）：从 MCP 原始响应推断池接入与缺口成因——
- * 不维护池清单（覆盖范围会变，静态清单必过时），随诊断数据自动更新。
- * - undiagnosed：从未诊断/超龄收敛（无 diagnoses 记录——11-20 拍板不进需求池，单独清单交付补诊断）
- * - pool_uncovered：池未接入/调用异常（有诊断记录但无响应 / 非 JSON 无日志行迹象 / MCP 业务码非 0000）
- * - log_not_collected：日志未采集（MCP 正常返回但 records=0；非 JSON 旧文本形态有日志行迹象同判此——MCP 通）
+ * 缺口类型判别（11-19 拍板；11-20 两轮升级：undiagnosed/diagnosis_failed + 枚举真源）：
+ * 从 MCP 原始响应 + tools/list 池枚举推断池接入与缺口成因——不维护池清单
+ * （覆盖范围会变，静态清单必过时），随诊断数据与 MCP 枚举自动更新。
+ * - undiagnosed：从未诊断/超龄收敛（无 diagnoses 记录——不进需求池，单独清单交付补诊断）
+ * - diagnosis_failed：诊断调用失败（只有 failed 记录 / raw 为 {"error":...}——MCP 超时/重试失败/
+ *   LLM 全败）——组保持 pending_diagnosis 次日自动重试，不纳入需求池任何分区
+ * - pool_uncovered：池未接入（**11-20 14:48 拍板判定真源=tools/list 的 poolName 枚举**——
+ *   实测枚举外池不报错而静默返回空 records，故「池不在枚举」才是未接入的准确判据；
+ *   「调 MCP 报错」反而不证明未接入——接入的池也会临时故障。降级模式（poolInMcpEnum=null，
+ *   MCP 清单不可达）回退文本推断：raw 空且池判定降级时保守归此类）
+ * - mcp_error：池在枚举内但 MCP 调用报错（raw 空 / 非 JSON 无日志行迹象 / 业务码非 0000）——
+ *   临时故障，重诊断可愈；复制清单交付补跑，不进分区一
+ * - log_not_collected：日志未采集（code='0000' 但 records=0；非 JSON 旧文本有日志行迹象同判）
  * - failure_log_missing：失败日志缺失（有 records 但无 ERROR/WARN——失败请求只落了 INFO）
  * - other：防御位（有失败语义却判了缺口——理论不出现，不入需求池分区）
+ * 11-20 误判修复案：华南-广州3/华北-北京3 实际已接入（枚举内）曾被误报「池未接入」。
  * @param {string | null | undefined} mcpRawResponse
- * @param {boolean} [hasDiagnosis] 是否存在 diagnoses 记录（区分「从未诊断」vs「诊断无响应」）
- * @returns {'undiagnosed' | 'pool_uncovered' | 'log_not_collected' | 'failure_log_missing' | 'other'}
+ * @param {boolean} [hasSuccessDiagnosis] 是否存在 success 诊断记录（判定素材来源）
+ * @param {boolean} [hasAnyDiagnosis] 是否存在任何 diagnoses 记录（区分「从未诊断」vs「诊断失败待重试」）
+ * @param {boolean | null} [poolInMcpEnum] 池是否在 MCP log_search 枚举内：
+ *   true=在 / false=不在（分区一真源）/ null=清单不可达（降级文本推断）
+ * @returns {'undiagnosed' | 'diagnosis_failed' | 'pool_uncovered' | 'mcp_error' | 'log_not_collected' | 'failure_log_missing' | 'other'}
  */
-export function classifyGapKind(mcpRawResponse, hasDiagnosis = true) {
-  // 11-20 修复：无诊断记录=从未诊断（超龄收敛态不写 diagnoses）——非池未接入，单独归类不进需求池
-  if (!hasDiagnosis) return 'undiagnosed'
+export function classifyGapKind(mcpRawResponse, hasSuccessDiagnosis = true, hasAnyDiagnosis = hasSuccessDiagnosis, poolInMcpEnum = null) {
+  // 无诊断记录=从未诊断（超龄收敛态不写 diagnoses）——非池未接入，单独归类不进需求池
+  if (!hasAnyDiagnosis) return 'undiagnosed'
+  // 只有 failed 记录=诊断调用失败（MCP 超时/重试失败/LLM 全败）——组保持
+  // pending_diagnosis 次日自动重试，不纳入需求池（也不进未诊断清单——那类只收「从未诊断」）
+  if (!hasSuccessDiagnosis) return 'diagnosis_failed'
   const raw = String(mcpRawResponse || '').trim()
-  if (!raw) return 'pool_uncovered'
+  // {"error":...} 形态优先于枚举态判定（11-20 修复沿袭）：该形态是诊断调用层失败
+  // （超时/HTTP 层）留下的可重试记录——若被枚举外池误读成「池未接入」，会重蹈
+  // 华南-广州3 覆辙（重试失败被读成池属性）。成功诊断记录不该有此形态，防历史脏数据。
+  if (raw) {
+    let early = null
+    try { early = JSON.parse(raw) } catch { /* 非 JSON 走下方判定 */ }
+    if (early && typeof early === 'object' && early.code == null && early.error != null) {
+      return 'diagnosis_failed'
+    }
+  }
+  // 分区一判定真源（11-20 14:48 拍板）：池不在 MCP 枚举=未接入（数据驱动事实；
+  // 实测枚举外池静默返回空 records——曾伪装成「日志未采集」混进分区二）
+  if (poolInMcpEnum === false) return 'pool_uncovered'
+  // raw 空：枚举内=调用异常（mcp_error）；降级模式=保守归 pool_uncovered（11-20 修复沿袭）
+  if (!raw) return poolInMcpEnum === true ? 'mcp_error' : 'pool_uncovered'
   let parsed = null
   try { parsed = JSON.parse(raw) } catch {
     // 非 JSON 旧文本形态（fetchPatrolDiagnosticLogs 原样返回路径）：有日志行迹象=MCP 通，
-    // 内容无失败行即视为查不到失败日志；无迹象=错误页/异常 → 池未接入
+    // 内容无失败行即视为查不到失败日志；无迹象=错误页/异常 → 枚举内 mcp_error / 降级 pool_uncovered
     const hasLogLines = /\[(INFO|ERROR|WARN|DEBUG)\s*\]/i.test(raw) || /\[\d{4}-\d{2}-\d{2}[\s]/.test(raw)
-    return hasLogLines ? 'log_not_collected' : 'pool_uncovered'
+    if (hasLogLines) return 'log_not_collected'
+    return poolInMcpEnum === true ? 'mcp_error' : 'pool_uncovered'
   }
-  if (String(parsed?.code || '') !== '0000') return 'pool_uncovered'
+  if (String(parsed?.code || '') !== '0000') {
+    // 业务错误（枚举内池的临时故障）→ mcp_error；降级模式=pool_uncovered（11-20 修复沿袭）
+    return poolInMcpEnum === true ? 'mcp_error' : 'pool_uncovered'
+  }
   const recs = Array.isArray(parsed?.data?.records) ? parsed.data.records : []
   if (recs.length === 0) return 'log_not_collected'
   const hasFail = recs.some((r) => /\[(ERROR|WARN)\s*\]/i.test(String(r?.content || '')))
@@ -1100,8 +1225,11 @@ export function classifyGapKind(mcpRawResponse, hasDiagnosis = true) {
 function buildDiagnosisReport(group, diag) {
   const conclusion = String(diag.final_conclusion || '').trim() || null
   const suggestion = String(diag.suggestion || '').trim() || null
-  /** @type {{logLines: string[], returnFragments: string[], rawCount: number}} */
-  const directCause = { logLines: [], returnFragments: [], rawCount: 0 }
+  /** @type {{logLines: string[], returnFragments: string[], rawCount: number | null}} */
+  // 11-20 19:23 修复：rawCount 语义三分——数字（标准响应可数行）/ null（行数未知：raw 为空或
+  // 非标准形态——Plan C 日包曾不推 mcp_raw_response 致部署端恒 0 误显「原始 0 行」）/ 0（确知无内容）。
+  // null 时前端不显行数，避免把「未知」当「0 行」误导。
+  const directCause = { logLines: [], returnFragments: [], rawCount: null }
   /** @type {string[]} */
   let evidence = []
   const raw = String(diag.mcp_raw_response || '')
@@ -1116,8 +1244,9 @@ function buildDiagnosisReport(group, diag) {
       if (d?.code === '0000' && Array.isArray(d?.data?.records)) {
         directCause.rawCount = d.data.records.length
       }
-    } catch { /* raw 非 JSON（LLM 时代前的旧数据）——rawCount 留 0 */
-    }
+    } catch { /* raw 非 JSON（LLM 时代前的旧数据）——rawCount 保持 null */ }
+    // raw 确为空（部署端日包断供的存量形态）→ 0：前端按钮隐藏（无内容可展开）
+    if (directCause.rawCount === null && !raw) directCause.rawCount = 0
   }
   if (llmEvidence.length > 0) evidence = llmEvidence.map((e) => e.slice(0, 200))
 

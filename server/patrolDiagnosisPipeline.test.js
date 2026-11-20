@@ -208,4 +208,42 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(r.evidence).toEqual([])
     expect(r.suggestion).toBeNull() // 调用方走建议生成器兜底
   })
+
+  // ---------- 11-20 14:30 拍板：仿真/测试账号免产品侧处理（管线统一出口豁免） ----------
+  it('⑥ 豁免红绿：仿真账号（cmic 前缀）判出待处理 → 强制 — 且 actionReason 标注（规则命中分支）', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'cmic_sim' }, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.status).toBe('success')
+    expect(r.l1).toBe('资源锁定/并发冲突')     // 分类不受豁免影响
+    expect(r.productAction).toBe('—')          // 待处理被豁免（改前红：此断言为 '待处理'）
+    expect(r.actionReason).toContain('仿真/测试账号，不占用产品侧处理')
+  })
+
+  it('⑥b 豁免：测试账号（含 test）LLM 兜底分支 needsProductAction=true 仍强制 —；llm_failed 不受豁免', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    const forward = vi.fn(makeForward(JSON.stringify({ ...LLM_REPORT_ENUM, needsProductAction: true, actionReason: '平台故障需产品修复' })))
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'user_test_01' }, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.status).toBe('success')
+    expect(r.productAction).toBe('—')
+    expect(r.actionReason).toContain('平台故障需产品修复')  // 原理由保留
+    expect(r.actionReason).toContain('仿真/测试账号')       // 追加豁免理由
+  })
+
+  it('⑥c 豁免边界：非仿真非测试账号（改前红）不受影响；豁免只改 productAction 不碰分类', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'zhangsan_gongsi' }, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.productAction).toBe('待处理')       // 普通账号不豁免
+    expect(String(r.actionReason || '')).not.toContain('仿真/测试账号') // 规则命中分支 actionReason 可为 null——String() 归一
+  })
 })

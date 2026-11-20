@@ -77,4 +77,17 @@ describe('ApiPatrolOverview 真渲染冒烟（五模块）', () => {
     expect(trendIdx).toBeGreaterThan(trackIdx) // 位于跨日轨迹之后
     expect(alertIdx).toBeGreaterThan(trendIdx)  // 暂无数据 Alert 仍在其后（页面末尾）
   })
+
+  it('④默认时间窗口=近7天（11-20 拍板；源码契约防回潮 T-1——renderToStaticMarkup 不跑 useEffect 无法断言运行时值）', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    const src = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolOverviewContent.jsx'),
+      'utf-8',
+    )
+    expect(src).toContain("useState([dayjs().subtract(6, 'day'), dayjs()])")
+    expect(src).toContain('默认近7天（11-20 拍板）')
+    expect(src).not.toContain("useState([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])")
+  })
 })

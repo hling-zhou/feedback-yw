@@ -32,7 +32,7 @@ const GAP_KIND_LABELS = {
 export default function ApiPatrolDiagnosisGapsContent() {
   const message = useAppMessage()
   const { user } = useAuth()
-  /** @type {[{stats: Record<string, number>, uncoveredPools: Array<Record<string, unknown>>, undiagnosedGroups: Array<Record<string, unknown>>, rows: Array<Record<string, unknown>>} | null, Function]} */
+  /** @type {[{stats: Record<string, number>, uncoveredPools: Array<Record<string, unknown>>, undiagnosedGroups: Array<Record<string, unknown>>, mcpErrorGroups: Array<Record<string, unknown>>, poolEnum: Record<string, unknown> | undefined, rows: Array<Record<string, unknown>>} | null, Function]} */
   const [summary, setSummary] = useState(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
   /** @type {[Array<Record<string, unknown>>, Function]} */
@@ -128,7 +128,7 @@ export default function ApiPatrolDiagnosisGapsContent() {
       ),
     },
     { title: '组数', dataIndex: 'groupCount', key: 'groupCount', width: 70, align: 'right' },
-    { title: '压缩前失败次数', dataIndex: 'preCompressTotal', key: 'preCompressTotal', width: 110, align: 'right', render: (v) => <span className="text-red-600">{v}</span> },
+    // 11-20 18:02 拍板：删「压缩前失败次数」列（需求池只看缺口面数与组数；失败次数仍在引导卡合计与下钻明细）
     { title: '首次出现', dataIndex: 'firstDate', key: 'firstDate', width: 100 },
     { title: '最近出现', dataIndex: 'lastRequestTime', key: 'lastRequestTime', width: 150, ellipsis: true },
     {
@@ -163,6 +163,8 @@ export default function ApiPatrolDiagnosisGapsContent() {
     { title: '产品', dataIndex: 'productKey', key: 'productKey', width: 90 },
     { title: '接口名称', dataIndex: 'apiPath', key: 'apiPath', width: 200, ellipsis: true },
     { title: '资源池', dataIndex: 'poolName', key: 'poolName', width: 110, ellipsis: true },
+    // 根因细分 L2（11-20 18:02 拍板：明细同步加列——诊断分类器的细分标注；数据源已返回 rootCauseL2）
+    { title: '根因细分', dataIndex: 'rootCauseL2', key: 'rootCauseL2', width: 130, ellipsis: true, render: (v) => (v ? <span title={v}>{v}</span> : '—') },
     {
       title: '客户名称', dataIndex: 'userName', key: 'userName', width: 130, ellipsis: true,
       render: (v, r) => (
@@ -181,6 +183,8 @@ export default function ApiPatrolDiagnosisGapsContent() {
   const rows = summary?.rows || []
   const uncoveredPools = summary?.uncoveredPools || []
   const undiagnosedGroups = summary?.undiagnosedGroups || []
+  const mcpErrorGroups = summary?.mcpErrorGroups || []
+  const poolEnum = summary?.poolEnum
   const stats = summary?.stats
   const activeDrillKey = drill && drill !== 'all' ? String(drill.aggregateKey || `${drill.productKey}|${drill.apiPath}|${drill.poolName}`) : (drill === 'all' ? 'all' : null)
   // 未诊断清单复制内容：每行「日期 池 requestID」——用户拿清单自行补诊断（11-20 拍板：页面不提供触发按钮）
@@ -195,6 +199,22 @@ export default function ApiPatrolDiagnosisGapsContent() {
     if (lines.length === 0) return
     copyTextToClipboard(lines.join('\n')).then(
       () => message.success(`已复制 ${lines.length} 个未诊断组的请求ID清单`),
+      () => message.error('复制失败，请手动选择文本'),
+    )
+  }
+
+  // MCP 报错组复制清单（11-20 14:48 拍板）：每行「日期 池 requestID」——枚举内池临时故障，补跑可愈
+  const copyMcpErrorList = () => {
+    const lines = []
+    for (const u of mcpErrorGroups) {
+      const ids = Array.isArray(u.requestIds) ? u.requestIds.map(String) : []
+      for (const id of ids) {
+        lines.push(`${String(u.firstDate || '')}~${String(u.lastRequestTime || '').slice(0, 10)} ${String(u.poolName || '')} ${id}`)
+      }
+    }
+    if (lines.length === 0) return
+    copyTextToClipboard(lines.join('\n')).then(
+      () => message.success(`已复制 ${lines.length} 个 MCP 报错组的请求ID清单`),
       () => message.error('复制失败，请手动选择文本'),
     )
   }
@@ -214,6 +234,8 @@ export default function ApiPatrolDiagnosisGapsContent() {
               <div className="mt-1 text-xs text-ink-400">
                 共 {stats.groupCount} 个缺口组 · {stats.apiCount} 个接口 · 合计 {stats.preCompressTotal ?? '—'} 次失败
                 {stats.uncoveredCount > 0 ? ` · 其中 ${stats.uncoveredCount} 组池未接入 MCP 日志服务` : ''}
+                {Number(stats.retryPendingCount || 0) > 0 ? ` · 另有 ${stats.retryPendingCount} 组诊断调用失败，次日自动重试` : ''}
+                {Number(stats.mcpErrorCount || 0) > 0 ? ` · 另有 ${stats.mcpErrorCount} 组 MCP 调用报错，可补跑诊断` : ''}
               </div>
             )}
           </div>
@@ -241,13 +263,37 @@ export default function ApiPatrolDiagnosisGapsContent() {
         />
       )}
 
+      {/* ── MCP 报错提示条（11-20 14:48 拍板：枚举内池临时故障——复制清单交付补跑，不进分区一）── */}
+      {mcpErrorGroups.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`另有 ${mcpErrorGroups.reduce((s, u) => s + Number(u.groupCount || 0), 0)} 组因 MCP 日志服务调用报错（临时故障）无法判定`}
+          description={(
+            <Space wrap size="small" className="!mt-1">
+              <span className="text-xs text-ink-500">
+                所涉资源池均在 MCP 支持清单内——非接入问题；补跑诊断可恢复。可先复制清单（日期/池/请求ID）用于补跑。
+              </span>
+              <Button type="link" size="small" icon={<CopyOutlined />} onClick={copyMcpErrorList}>
+                复制补跑清单
+              </Button>
+            </Space>
+          )}
+        />
+      )}
+
       {/* ── 分区一：池未接入 MCP 日志服务（数据驱动；无实例整卡不渲染）── */}
       {uncoveredPools.length > 0 && (
         <div className="page-card">
           <div className="page-card-header">
             <div className="min-w-0">
               <div className="page-card-title">池未接入 MCP 日志服务</div>
-              <div className="mt-1 text-xs text-ink-500">以下资源池调用 MCP 日志服务失败——需推动池接入日志服务。</div>
+              {/* 11-20 14:48 拍板：分区一真源=tools/list 枚举——标注清单规模与获取时间；降级时标注文本推断模式 */}
+              <div className="mt-1 text-xs text-ink-500">
+                {poolEnum && !poolEnum.degraded
+                  ? `按 MCP 支持清单判定（共 ${poolEnum.count} 池 · 获取于 ${String(poolEnum.fetchedAt || '').slice(0, 16).replace('T', ' ')}${poolEnum.stale ? ' · 已超 24h 待刷新' : ''}）——以下资源池不在清单内，需推动池接入日志服务。`
+                  : 'MCP 支持清单暂不可达，当前按响应文本推断（判定保守，清单恢复后自动校正）——以下资源池疑似未接入。'}
+              </div>
             </div>
           </div>
           <Table
@@ -259,6 +305,11 @@ export default function ApiPatrolDiagnosisGapsContent() {
               { title: '组数', dataIndex: 'groupCount', key: 'groupCount', width: 80, align: 'right' },
               { title: '压缩前失败次数', dataIndex: 'preCompressTotal', key: 'preCompressTotal', width: 120, align: 'right', render: (v) => <span className="text-red-600">{v}</span> },
               { title: '最近出现', dataIndex: 'lastRequestTime', key: 'lastRequestTime', width: 160, ellipsis: true },
+              {
+                // 判定依据（11-20 拍板）：该池被判未接入所依据的 MCP 响应样例——复核不再查库
+                title: '判定依据', dataIndex: 'sampleMcpRaw', key: 'sampleMcpRaw', width: 220, ellipsis: true,
+                render: (v) => (v ? <span title={v} className="text-xs text-ink-500">{v}</span> : '—'),
+              },
               {
                 title: '操作', key: 'actions', width: 170,
                 render: (r) => (
