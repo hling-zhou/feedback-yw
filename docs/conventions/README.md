@@ -18,8 +18,9 @@
 | [02-Git提交约定.md](02-Git提交约定.md) | 结合本项目更新动态机制的 commit hygiene、不自动提交、Changelog: skip 规则 | 提交前 |
 | [03-数据真源与口径.md](03-数据真源与口径.md) | 数据真源清单、product/productName 双字段、打标闸门与阈值公式、LLM 契约 | 读/写任何数据相关代码 |
 | [04-测试与验证约定.md](04-测试与验证约定.md) | vitest 子集、真实链路验证、typecheck 纪律、本地 E2E 需指令 | 改完代码后、交付声明前 |
-| [05-设计拍板与已知坑.md](05-设计拍板与已知坑.md) | 已拍板设计、已知坑与先例、**待拍板清单** | 动数据模型/键粒度/UI 结构前 |
+| [05-设计拍板与已知坑.md](05-设计拍板与已知坑.md) | 已拍板设计、已知坑与先例（含 **2.5 中继/契约链类**——三列对拍/静默兜底可观测/定向修复过推送链）、**待拍板清单** | 动数据模型/键粒度/UI 结构/中继契约链路前 |
 | [06-环境启动与部署.md](06-环境启动与部署.md) | dev:clean、端口、部署缓存三件套、MCP/Mail | 起服务、发版、排障时 |
+| [07-权限码语义判据.md](07-权限码语义判据.md) | 16 权限码客体身份判据表、editRecord vs manageTags 分界、同构动作一致性三步选码 | 写任何 can()/requirePermission() 门控前 |
 | [防缺陷触发规则.md](防缺陷触发规则.md) | 13 条"做 X 时必答 Y"触发规则 + 排查约定（11-06 起持续补充；12/13 为 11-18 复盘新增） | 写删除/计数/共享层/来源标注/构造测试前置前 |
 | [页面UI规范.md](页面UI规范.md) | 三级间距/卡片/标题/表单标签体系 + 守卫清单（11-07 复盘产物） | 写任何 UI 前必读 |
 
@@ -33,6 +34,7 @@
 | sticky chrome 守卫 | `src/pages/PostUseJiraTab.chrome.render.test.jsx` | page-sticky-chrome 误入卡片内 / bg-ink-50 灰底回潮 |
 | 分页总数守卫 | `src/lib/paginationTotal.guard.test.js` | 活跃分页缺 showTotal、内联回调回潮、消费方 import 路径断裂（11-11 部署机构建炸后补） |
 | LLM 批容器契约守卫 | `src/lib/llmClient.test.js`（批容器用例组） | 解析层剥掉 {results:[...]} 包装；截断态思考草稿冒充正文（11-18）；报告 V2 focus/products/todos 容器（11-18） |
+| 同构权限一致性守卫 | `src/lib/gateConsistencyGuard.test.js` | 共享组件宿主门控码漂移、处理反馈写路由权限码回潮 manageTags、未登记新宿主（11-20 复盘产物） |
 | 列宽拖拽守卫 | `src/lib/columnWidths.test.js` 等（11-11 新增） | scroll.x 硬编码回潮、直接写 th.style.width |
 | 目录缓存守卫 | `catalogCacheCoverageGuard`（reminders/MCP/patrol 线） | 新消费方读目录缓存前漏刷新 |
 
