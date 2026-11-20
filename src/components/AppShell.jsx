@@ -92,7 +92,7 @@ const ALL_NAV = [
   { type: 'leaf', key: '/operations', label: '运营分析', icon: <BarChartOutlined /> },
   { type: 'leaf', key: '/settings', label: '设置', icon: <SettingOutlined /> },
   { type: 'divider', key: 'divider-before-mcp' },
-  { type: 'leaf', key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined />, badge: 'NEW' },
+  { type: 'leaf', key: '/mcp-guide', label: 'MCP 数据服务', icon: <ApiOutlined /> },
   // 外链组：站外跳转项统一放此组（2026-11-20 官网内容质量巡检首个成员），与上方站内项以横线分隔
   { type: 'divider', key: 'divider-external-links' },
   {

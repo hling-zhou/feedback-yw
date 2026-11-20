@@ -69,9 +69,9 @@ AppShell 外壳 → .app-shell-content 统一提供页面四周 padding
 
 | 存量 | 位置 | 处置 |
 |---|---|---|
-| `p-6` 自包容器 | `src/pages/Operations.jsx` | 守卫豁免（整体异类页：p-6 + Title level={3} + antd Card + 无 page-card——单摘 p-6 会半吊子，该页下次功能改动时整体规范化后移出豁免） |
+| ~~`p-6` 自包容器~~ | ~~`src/pages/Operations.jsx`~~ | 已清（2026-11-20 埋点映射迭代时整体规范化：space-y-4 + PageHeader + page-card，移出守卫豁免） |
 | `Title level={5}` 卡片标题 | Import / TopicBriefView / JourneyFeedbackSection / PostUseMonthlyReportPreview / ProblemDetailDrawer / ProductDrillDown / InsightFeedbackList / WhatsNewDrawer | 随改随清（其中 ProblemDetailDrawer 属抽屉场景，对齐时以抽屉规范 D2 为准） |
-| antd Card 页面卡片 | McpGuide / Operations / Feedbacks | 随改随清 |
+| antd Card 页面卡片 | McpGuide / Feedbacks | 随改随清（Operations 已于 2026-11-20 清） |
 
 ## 7. 机器守卫
 

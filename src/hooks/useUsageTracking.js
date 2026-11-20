@@ -1,28 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getStoredToken } from '../lib/apiClient.js'
+import { resolveUsageModule } from '../lib/usageModuleMap.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
-
-/**
- * 路由→模块映射（与服务端 resolveModuleFromPath 保持一致）
- * @param {string} pathname
- * @returns {string}
- */
-function resolveModule(pathname) {
-  const page = pathname.split('?')[0]
-  if (page === '/' || page.startsWith('/workbench/post-use')) return 'workbench'
-  if (page.startsWith('/workbench/analysis') || page === '/themes') return 'themes'
-  if (page.startsWith('/topics')) return 'topics'
-  if (page.startsWith('/feedbacks')) return 'feedbacks'
-  if (page.startsWith('/actions')) return 'actions'
-  if (page.startsWith('/import')) return 'import'
-  if (page.startsWith('/tags')) return 'tags'
-  if (page.startsWith('/users')) return 'users'
-  if (page.startsWith('/settings')) return 'settings'
-  if (page.startsWith('/operations')) return 'operations'
-  return 'other'
-}
 
 /**
  * 发送页面访问记录到服务端。
@@ -33,7 +14,7 @@ function resolveModule(pathname) {
  */
 function trackPageView(pathname, userInfo) {
   try {
-    const module = resolveModule(pathname)
+    const module = resolveUsageModule(pathname)
     if (module === 'other') return
 
     const payload = JSON.stringify({

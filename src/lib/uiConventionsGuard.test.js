@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  *   2026-11-01 用户拍板字号终版），不得用 `Typography.Title level={5}`（16px）。
  *
  * 检测范围：API 巡检前端全域（pages/ApiPatrol* + components/apiPatrol + tagManagement/ApiPatrol*）。
- * 历史存量（Operations 的 p-6、Import 等 10 文件的 Title level={5}、McpGuide/Operations/Feedbacks
+ * 历史存量（Import 等 10 文件的 Title level={5}、McpGuide/Feedbacks
  * 的页面级 Card）不在本守卫范围——是否统一由用户另行拍板；**新写的巡检前端文件**必须守规。
  *
  * 豁免（弹窗标题白名单）：自定义 Modal 的标题用 Typography.Title level={5}（16px/600）
@@ -87,11 +87,10 @@ function collectAllPageFiles() {
 /**
  * 断言① 文件级豁免（人工判定"整体异类页待专项规范化"——p-6 之外 Title/Card/间距
  * 全套偏离，单摘 p-6 会造成半吊子视觉；该页做功能改动时整体规范化后移出豁免）：
- * - src/pages/Operations.jsx：整体异类页（p-6 + Title level={3} + antd Card + 无 page-card）
+ * - src/pages/Operations.jsx 已于 2026-11-20 整体规范化（space-y-4 + PageHeader +
+ *   page-card）后移出豁免——当前无豁免项，保留结构防未来回潮登记。
  */
-const P6_FILE_EXEMPTIONS = new Set([
-  'src/pages/Operations.jsx',
-])
+const P6_FILE_EXEMPTIONS = new Set([])
 
 describe('UI 规范守卫（apiPatrol 前端全域 · 11-07 复盘产物）', () => {
   const files = collectPatrolFrontendFiles()

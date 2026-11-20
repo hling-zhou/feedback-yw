@@ -35,6 +35,7 @@
 | 分页总数守卫 | `src/lib/paginationTotal.guard.test.js` | 活跃分页缺 showTotal、内联回调回潮、消费方 import 路径断裂（11-11 部署机构建炸后补） |
 | LLM 批容器契约守卫 | `src/lib/llmClient.test.js`（批容器用例组） | 解析层剥掉 {results:[...]} 包装；截断态思考草稿冒充正文（11-18）；报告 V2 focus/products/todos 容器（11-18） |
 | 同构权限一致性守卫 | `src/lib/gateConsistencyGuard.test.js` | 共享组件宿主门控码漂移、处理反馈写路由权限码回潮 manageTags、未登记新宿主（11-20 复盘产物） |
+| 埋点映射守卫 | `src/lib/usageModuleMapGuard.test.js` | 导航/路由表新增页面未登记埋点映射（落入 other 静默丢弃）、前后端镜像映射表回潮（11-20 运营分析迭代产物） |
 | 列宽拖拽守卫 | `src/lib/columnWidths.test.js` 等（11-11 新增） | scroll.x 硬编码回潮、直接写 th.style.width |
 | 目录缓存守卫 | `catalogCacheCoverageGuard`（reminders/MCP/patrol 线） | 新消费方读目录缓存前漏刷新 |
 

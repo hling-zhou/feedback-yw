@@ -1,25 +1,16 @@
 import { requireAdmin } from '../middleware.js'
 import { getUsageDb, getUsageStatsByMonth, getUsageMonths } from '../usageDb.js'
 import { randomId } from '../../src/lib/randomId.js'
+import { resolveUsageModule } from '../../src/lib/usageModuleMap.js'
 
 /**
- * 路由→模块映射
+ * 路由→模块映射：真源在 src/lib/usageModuleMap.js（前后端共用，守卫测试对拍路由表）。
  * @param {string} pathname
  * @returns {{ module: string, page: string }}
  */
 function resolveModuleFromPath(pathname) {
   const page = pathname.split('?')[0]
-  if (page === '/' || page.startsWith('/workbench/post-use')) return { module: 'workbench', page }
-  if (page.startsWith('/workbench/analysis') || page === '/themes') return { module: 'themes', page }
-  if (page.startsWith('/topics')) return { module: 'topics', page }
-  if (page.startsWith('/feedbacks')) return { module: 'feedbacks', page }
-  if (page.startsWith('/actions')) return { module: 'actions', page }
-  if (page.startsWith('/import')) return { module: 'import', page }
-  if (page.startsWith('/tags')) return { module: 'tags', page }
-  if (page.startsWith('/users')) return { module: 'users', page }
-  if (page.startsWith('/settings')) return { module: 'settings', page }
-  if (page.startsWith('/operations')) return { module: 'operations', page }
-  return { module: 'other', page }
+  return { module: resolveUsageModule(page), page }
 }
 
 /**
