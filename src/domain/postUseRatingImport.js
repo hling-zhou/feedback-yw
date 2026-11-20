@@ -101,17 +101,19 @@ export function isPostUseNon10LibraryRecord(record) {
 }
 
 /**
- * 用后即评满意度 tab 内的三视图。
- * raw=原始数据 / trace=产品部溯源 / visit=省代表回访
+ * 用后即评满意度 tab 内的四视图。
+ * raw=原始数据 / callback=建议回访/溯源清单 / trace=产品部溯源 / visit=省代表回访
+ * callback 视图可见性受 canViewPostUseCallbackListTab 门控（domain/auth/permissions.js）。
  */
 export const POST_USE_VIEW_RAW = /** @type {const} */ ('raw')
+export const POST_USE_VIEW_CALLBACK = /** @type {const} */ ('callback')
 export const POST_USE_VIEW_TRACE = /** @type {const} */ ('trace')
 export const POST_USE_VIEW_VISIT = /** @type {const} */ ('visit')
 
-/** @typedef {typeof POST_USE_VIEW_RAW | typeof POST_USE_VIEW_TRACE | typeof POST_USE_VIEW_VISIT} PostUseLaneView */
+/** @typedef {typeof POST_USE_VIEW_RAW | typeof POST_USE_VIEW_CALLBACK | typeof POST_USE_VIEW_TRACE | typeof POST_USE_VIEW_VISIT} PostUseLaneView */
 
 /** @type {PostUseLaneView[]} */
-export const POST_USE_LANE_VIEWS = [POST_USE_VIEW_RAW, POST_USE_VIEW_TRACE, POST_USE_VIEW_VISIT]
+export const POST_USE_LANE_VIEWS = [POST_USE_VIEW_RAW, POST_USE_VIEW_CALLBACK, POST_USE_VIEW_TRACE, POST_USE_VIEW_VISIT]
 
 /**
  * 解析用后即评 lane 内的子视图；非法值回落 raw。

@@ -120,6 +120,8 @@ import {
   FEEDBACK_LANE_TICKETS,
   FEEDBACK_LANE_CUSTOMER_VISITS,
   POST_USE_LANE_HINT,
+  POST_USE_LANE_VIEWS,
+  POST_USE_VIEW_CALLBACK,
   POST_USE_VIEW_RAW,
   POST_USE_VIEW_TRACE,
   POST_USE_VIEW_VISIT,
@@ -146,6 +148,8 @@ import {
 } from '../lib/postUseRating/customerVisitExport.js'
 import { downloadPostUseRatingExcel } from '../lib/postUseRating/postUseRatingExport.js'
 import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { canViewPostUseCallbackListTab } from '../domain/auth/permissions.js'
+import PostUseCallbackListTab from './PostUseCallbackListTab.jsx'
 
 /** 列表「自定义显示列」可切换的列。默认全部显示，用户可取消勾选。 */
 const FEEDBACK_LIST_COLUMN_OPTIONS = [
@@ -157,6 +161,17 @@ const FEEDBACK_LIST_COLUMN_OPTIONS = [
   { key: 'loginAccountName', label: '登录账号名称' },
   { key: 'resourcePool', label: '资源池' },
 ]
+
+/**
+ * 用后即评 lane 视图标签映射（Segmented 单源派生，2026-11-21）：
+ * key 真源 = domain/postUseRatingImport.js 的 POST_USE_LANE_VIEWS 白名单。
+ */
+const POST_USE_VIEW_LABELS = /** @type {Record<string, string>} */ ({
+  [POST_USE_VIEW_RAW]: '原始数据',
+  [POST_USE_VIEW_CALLBACK]: '建议回访/溯源清单',
+  [POST_USE_VIEW_TRACE]: '产品部溯源',
+  [POST_USE_VIEW_VISIT]: '省代表回访',
+})
 
 export default function Feedbacks() {
   const {
@@ -227,7 +242,15 @@ export default function Feedbacks() {
 
   const feedbackLane = useMemo(() => resolveFeedbackLane(searchParams), [searchParams])
   const isPostUseLane = feedbackLane === FEEDBACK_LANE_POST_USE
-  const postUseLaneView = useMemo(() => resolvePostUseLaneView(searchParams), [searchParams])
+  const resolvedPostUseLaneView = useMemo(() => resolvePostUseLaneView(searchParams), [searchParams])
+  // 2026-11-21 建议回访/溯源清单视图：可见性 = admin 或用户名白名单（canViewPostUseCallbackListTab）；
+  // 无权限直达 view=callback 一律按 raw 处理（域层只管解析，权限 fallback 在本层）
+  const canViewCallbackListTab = canViewPostUseCallbackListTab(user)
+  const postUseLaneView =
+    resolvedPostUseLaneView === POST_USE_VIEW_CALLBACK && !canViewCallbackListTab
+      ? POST_USE_VIEW_RAW
+      : resolvedPostUseLaneView
+  const isPostUseCallbackView = isPostUseLane && postUseLaneView === POST_USE_VIEW_CALLBACK
   const isPostUseVisitView = isPostUseLane && postUseLaneView === POST_USE_VIEW_VISIT
   const isPostUseTraceView = isPostUseLane && postUseLaneView === POST_USE_VIEW_TRACE
 
@@ -1102,6 +1125,10 @@ export default function Feedbacks() {
           <>
             产品部溯源：周期{activePeriod ? `（${activePeriod.label}）` : ''}内按 importMonth 交集过滤，存档条目来自建议回访/溯源清单。
           </>
+          ) : isPostUseCallbackView ? (
+          <>
+            建议回访/溯源清单：周期{activePeriod ? `（${activePeriod.label}）` : ''}内命中「官网问卷类建议回访」或「投诉回访非10分」规则的记录，勾选后可导出、发送或存档到产品部溯源。
+          </>
           ) : (
           <>
             库内 {laneTotalInDb} 条 · 本大类周期内 {laneVisiblePeriodCount} 条 · 当前筛选{' '}
@@ -1232,11 +1259,15 @@ export default function Feedbacks() {
           className="page-section-sm mb-1"
           value={postUseLaneView}
           onChange={(value) => switchPostUseLaneView(value)}
-          options={[
-            { label: '原始数据', value: POST_USE_VIEW_RAW },
-            { label: '产品部溯源', value: POST_USE_VIEW_TRACE },
-            { label: '省代表回访', value: POST_USE_VIEW_VISIT },
-          ]}
+          // 受控单源（11-04 拍板）：选项从 POST_USE_LANE_VIEWS 白名单派生 + label 映射，
+          // 禁止另写独立数组（2026-11-21 callback 视图接入时收敛）；
+          // callback 项受 canViewCallbackListTab 门控，无权限不渲染
+          options={POST_USE_LANE_VIEWS.filter(
+            (view) => view !== POST_USE_VIEW_CALLBACK || canViewCallbackListTab,
+          ).map((view) => ({
+            label: POST_USE_VIEW_LABELS[view],
+            value: view,
+          }))}
         />
       )}
 
@@ -1489,8 +1520,11 @@ export default function Feedbacks() {
           PostUseJiraTab 自带同款卡片内嵌吸顶工具条（白底 -mx-4/px-4），
           保留外层会形成双层 sticky top-0 叠压、工具条盖住提示文字。
           stickyChromeRef 的测量随之悬空，但溯源视图不消费 stickyChromeHeight
-          （FeedbackTable/CustomerVisitTable 均不在此分支渲染），无副作用。 */}
-      {!isPostUseTraceView && (
+          （FeedbackTable/CustomerVisitTable 均不在此分支渲染），无副作用。
+          2026-11-21 建议回访/溯源清单视图同款排除——PostUseCallbackListTab 自带
+          工具条+产品筛选；共享 chrome 的导出/表格卡片切换/自定义显示列/评价筛选
+          均不作用于清单，保留外层会双层叠压且按钮误导。 */}
+      {!isPostUseTraceView && !isPostUseCallbackView && (
       <div
         ref={stickyChromeRef}
         className="sticky top-0 z-20 -mx-4 rounded-t-lg border-b border-ink-100 bg-white px-4 pb-3 pt-4"
@@ -1789,6 +1823,11 @@ export default function Feedbacks() {
           <div className="flex min-h-[320px] items-center justify-center py-16">
             <Spin size="large" description={libraryLoadingTip} />
           </div>
+        ) : isPostUseCallbackView ? (
+          <PostUseCallbackListTab
+            onOpenTicket={(record) => selectFeedback(record)}
+            onNavigateToTrace={() => switchPostUseLaneView(POST_USE_VIEW_TRACE)}
+          />
         ) : isPostUseTraceView ? (
           <PostUseJiraTab
             months={postUseTraceMonths}
@@ -1837,9 +1876,10 @@ export default function Feedbacks() {
         )}
       </div>
 
-      {/* 2026-11-09 拍板：用后即评 lane（原始数据/溯源/回访三视图）不挂详情抽屉——原始数据行不可点击，
-          溯源/回访有各自抽屉；工单 lane（!isCustomerVisitLane 的投诉/咨询视图）照常 */}
-      {!isCustomerVisitLane && !isPostUseLane ? (
+      {/* 2026-11-09 拍板：用后即评 lane（原始数据/溯源/回访视图）不挂详情抽屉——原始数据行不可点击，
+          溯源/回访有各自抽屉；工单 lane（!isCustomerVisitLane 的投诉/咨询视图）照常。
+          2026-11-21 例外：建议回访/溯源清单视图（原工单编号跳转）需要工单详情抽屉。 */}
+      {!isCustomerVisitLane && (!isPostUseLane || isPostUseCallbackView) ? (
         <FeedbackDrawer
           feedback={selected}
           onClose={requestCloseDrawer}

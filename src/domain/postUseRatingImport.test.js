@@ -12,10 +12,16 @@ import {
   isPostUseRatingLibraryRecord,
   normalizeFeedbackLaneDataSource,
   periodIdFromImportMonth,
+  POST_USE_LANE_VIEWS,
   POST_USE_RATING_SUBTYPE_CUSTOMER_VISIT,
   POST_USE_RATING_SUBTYPE_SATISFACTION_CALLBACK,
   POST_USE_RATING_SUBTYPE_CHANNEL_BUNDLE,
+  POST_USE_VIEW_CALLBACK,
+  POST_USE_VIEW_RAW,
+  POST_USE_VIEW_TRACE,
+  POST_USE_VIEW_VISIT,
   resolveFeedbackLane,
+  resolvePostUseLaneView,
 } from './postUseRatingImport.js'
 
 describe('postUseRatingImport', () => {
@@ -93,6 +99,25 @@ describe('postUseRatingImport', () => {
       FEEDBACK_LANE_POST_USE,
     )
     expect(resolveFeedbackLane({})).toBe(FEEDBACK_LANE_TICKETS)
+  })
+
+  it('post-use lane views include callback tab between raw and trace (2026-11-21)', () => {
+    // 白名单单源：Segmented 选项从本数组派生，顺序 = raw → callback → trace → visit
+    expect(POST_USE_LANE_VIEWS).toEqual([
+      POST_USE_VIEW_RAW,
+      POST_USE_VIEW_CALLBACK,
+      POST_USE_VIEW_TRACE,
+      POST_USE_VIEW_VISIT,
+    ])
+  })
+
+  it('resolvePostUseLaneView parses callback view and falls back to raw', () => {
+    expect(resolvePostUseLaneView(new URLSearchParams('lane=post_use&view=callback'))).toBe(
+      POST_USE_VIEW_CALLBACK,
+    )
+    // 非法值回落 raw（无权限直达的 fallback 在 Feedbacks.jsx 层做，域层只管解析）
+    expect(resolvePostUseLaneView(new URLSearchParams('view=whatever'))).toBe(POST_USE_VIEW_RAW)
+    expect(resolvePostUseLaneView(null)).toBe(POST_USE_VIEW_RAW)
   })
 
   it('constrains data sources to the active feedback lane', () => {

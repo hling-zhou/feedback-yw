@@ -3,6 +3,7 @@ import {
   canAccessRoute,
   canBulkRetagScope,
   canUsePostUseCallbackList,
+  canViewPostUseCallbackListTab,
   hasPermission,
   ROLE_LABELS,
   ROLE_PERMISSIONS,
@@ -109,6 +110,28 @@ describe('auth permissions', () => {
     expect(canUsePostUseCallbackList('editor')).toBe(true)
     expect(canUsePostUseCallbackList('partial_editor')).toBe(false)
     expect(canUsePostUseCallbackList('viewer')).toBe(false)
+  })
+
+  it('post-use callback list tab: admin or username allowlist (2026-11-21 方案A)', () => {
+    // admin 角色：任意用户名可见
+    expect(canViewPostUseCallbackListTab({ role: 'admin', username: 'someone' })).toBe(true)
+    expect(canViewPostUseCallbackListTab({ role: 'admin', username: '' })).toBe(true)
+    // 白名单用户：各角色均可见（可见性只认用户名）
+    for (const role of ['admin', 'editor', 'partial_editor', 'viewer']) {
+      expect(canViewPostUseCallbackListTab({ role, username: 'liangdan' })).toBe(true)
+    }
+    // 白名单用户名 trim 后匹配
+    expect(canViewPostUseCallbackListTab({ role: 'viewer', username: ' liangdan ' })).toBe(true)
+    // 非白名单用户：仅 admin 可见，其余角色不可见
+    expect(canViewPostUseCallbackListTab({ role: 'editor', username: 'editorA' })).toBe(false)
+    expect(canViewPostUseCallbackListTab({ role: 'partial_editor', username: 'pp' })).toBe(false)
+    expect(canViewPostUseCallbackListTab({ role: 'viewer', username: 'guest' })).toBe(false)
+    // 空值与大小写：user 为空 / 用户名空白 / 大小写敏感（登录名精确匹配）
+    expect(canViewPostUseCallbackListTab(null)).toBe(false)
+    expect(canViewPostUseCallbackListTab(undefined)).toBe(false)
+    expect(canViewPostUseCallbackListTab({ role: 'viewer', username: '   ' })).toBe(false)
+    expect(canViewPostUseCallbackListTab({ role: 'viewer', username: 'Liangdan' })).toBe(false)
+    expect(canViewPostUseCallbackListTab({})).toBe(false)
   })
 
   it('manageKnowledgeBase is admin + 体验运营 only', () => {

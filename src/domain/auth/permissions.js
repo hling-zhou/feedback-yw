@@ -133,10 +133,31 @@ export function canAccessRoute(role, path) {
 }
 
 /**
- * 用后即评看板「建议回访/溯源清单」：管理员与体验运营可打开并处理。
+ * 用后即评看板「建议回访/溯源清单」弹窗：管理员与体验运营可打开并处理。
  *
  * @param {UserRole | string | undefined | null} role
  */
 export function canUsePostUseCallbackList(role) {
   return role === 'admin' || role === 'editor'
+}
+
+/**
+ * 反馈库 · 用后即评满意度 ·「建议回访/溯源清单」tab（2026-11-21 拍板方案 A）：
+ * 用户名白名单授权——admin 角色 或 登录名在白名单内可见。
+ * 与弹窗的 canUsePostUseCallbackList（角色级）并存：tab 是新入口（可见性更严），
+ * 弹窗入口暂留（待反馈库侧验证 OK 后清理）。
+ * 白名单维护：换名/离职改此常量；username 取 user.username（登录名）。
+ *
+ * @type {string[]}
+ */
+export const POST_USE_CALLBACK_LIST_TAB_USER_ALLOWLIST = ['liangdan']
+
+/**
+ * @param {{ role?: string; username?: string } | null | undefined} user
+ */
+export function canViewPostUseCallbackListTab(user) {
+  if (!user) return false
+  if (user.role === 'admin') return true
+  const username = String(user.username || '').trim()
+  return username.length > 0 && POST_USE_CALLBACK_LIST_TAB_USER_ALLOWLIST.includes(username)
 }

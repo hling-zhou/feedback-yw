@@ -13,8 +13,9 @@ describe('Feedbacks post-use raw view（原始数据 tab 去详情抽屉，2026-
     expect(source).toContain('onSelect={isPostUseLane ? undefined : selectFeedback}')
     // 出现两处（FeedbackTable + CardGrid）——split N 次得 N+1 段，锁死防止一处漏改回潮
     expect(source.split('onSelect={isPostUseLane ? undefined : selectFeedback}').length).toBe(3)
-    // FeedbackDrawer 渲染条件收窄到工单 lane
-    expect(source).toContain('{!isCustomerVisitLane && !isPostUseLane ? (')
+    // FeedbackDrawer 渲染条件收窄到工单 lane（2026-11-21 更新：post_use lane 增加建议回访/溯源清单
+    // 视图例外——该视图「原工单编号」跳转需要工单详情抽屉；原始数据/溯源/回访仍不挂）
+    expect(source).toContain('{!isCustomerVisitLane && (!isPostUseLane || isPostUseCallbackView) ? (')
     expect(source).toContain('<FeedbackDrawer')
   })
 
