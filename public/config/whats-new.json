@@ -1,9 +1,48 @@
 {
-  "generatedAt": "2026-11-19T09:54:33.984Z",
+  "generatedAt": "2026-11-19T13:57:58.979Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "42ffb7a13df2c049c3de3cb0330f91d1c613ee44",
+  "repoCommit": "657a55d0aa2b0fc39dee957be2ff305415c84154",
   "items": [
+    {
+      "id": "657a55d0aa2b0fc39dee957be2ff305415c84154",
+      "title": "总览指标成功率趋势支持展开收起并移至最末",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "默认收起只显示标题行（含指标条数提示），点击「展开」才渲染口径说明、明细补算开关与\n图表列表——页面加载不再被长图表列表撑开；模块从第 3 位移到五模块末尾（跨日轨迹之后）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "617ee48deed0ad0abeb97d4f4d0f930b1b25a534",
+      "title": "不满判定按对象剔除——复合句不再误触发矛盾防御，LLM keep 复核可拉回",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "真机 bug 复盘：Q3 季报复合句\"客户对于模型使用不满，对云监控无实际不满\"被矛盾防御\n误判保留进关注项。正则无法识别不满的宾语对象，改为分层判定：单纯\"无实际不满\"正则\n先剔保底；复合句（同含两信号）交 LLM verdicts 按对象语义判——不满对象在产品范围外\nno_dissatisfaction、在范围内 keep；keep 判定改为持久化并在 visitResult 注入标记，\n复核推翻正则先剔时拉回不再剔除。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "f359c310897b2806cb12515fdc3806543602bc9d",
+      "title": "诊断能力需求池页面——缺口组汇集为 MCP 日志服务诊断能力建设输入",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-19",
+      "appVersion": null,
+      "summary": "新导航 leaf（默认全角色可见）+ 只读页面：引导卡（窗口统计）→ 分区一池未接入（数据驱动）\n→ 分区二池已接入按产品×接口×池聚合（缺口类型 Tag + 复制交付）→ 明细下钻（poolName/\napiPathExact 参数）+ FailureGroupDrawer readOnly 复用。池接入分类从 MCP 响应自动推断\n（classifyGapKind），不维护会过时的静态池清单；人工修正为具体根因的组自动退出需求池。\nJira 提单扩展预留（端点命名空间 + aggregateKey 身份键 + 占位字段）。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "497648662c2e3d24a544e3eee0d9b7991448d44a",
       "title": "抽屉优化建议自动生成——省代表回访 + 产品部溯源两线落地",
@@ -2540,39 +2579,6 @@
       "publishedAt": "2026-09-17",
       "appVersion": null,
       "summary": "证据行只存 id/text，抽屉再用实时 DB 反查产品，快照生成后工单被改标\n就会出现标题写「未归类率·A」而列表显示 B 的矛盾。改为在证据行冻结\n门禁时点的 product/status/fam/sub，使产品列与标题同源；新增归类结果\n列与改标漂移提示，并把 fam/sub 的内部 key 回查为中文展示名。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "29b9f975e1f554b494f19d375f021cd998f316d0",
-      "title": "种子产品用后即评开关被 ensureTargetProducts 强制覆盖",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-17",
-      "appVersion": null,
-      "summary": "ensureTargetProductsInCatalog 对种子产品无条件强制开启\nanalysisPostUseRating，用户关闭后保存重载即被覆盖。引入\ndisabledAnalysisKeys 记录用户主动关闭的种子产品 key，normalize\n时跳过强制开启并恢复 mergeCatalogProduct OR 语义导致的覆盖。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "4d9c67fc0c16ede8d32391f87f11e23050f2adb3",
-      "title": "用后即评子产品降为父产品规格，数据统一归属父产品",
-      "category": "feature",
-      "modules": [],
-      "publishedAt": "2026-09-17",
-      "appVersion": null,
-      "summary": "SSL VPN/IPSec VPN 合为融合VPN，云互联并入云组网，对等连接/安全组并入虚拟私有云，\n数据快递并入新建的场景化加速。原先每组合并逻辑在目录种子和业务库快照迁移里各写一份，\n新增 specMergeRules.js 规则表统一驱动两端；线上手工配置的 key 与种子字面不一致时改为\n按产品名归一化兜底，避免种子补全补出重名产品造成评分归属不确定。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2813cfe8a65f126c348910940eec070d49719912",
-      "title": "migrateProductCatalogKeys 丢失 analysisPostUseRating 和 focusTracked",
-      "category": "fix",
-      "modules": [],
-      "publishedAt": "2026-09-17",
-      "appVersion": null,
-      "summary": "normalized 对象和 mergeCatalogProduct 未保留这两个字段，导致非种子\n产品保存后重载时字段被丢弃，用后即评开关退回未开启状态。",
       "commitUrl": null,
       "source": "git"
     }
