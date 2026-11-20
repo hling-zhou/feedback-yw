@@ -90,8 +90,22 @@ const TOOLS = [
     name: 'get_post_use_trace',
     label: '回访/溯源记录',
     scope: 'mcp:read',
-    desc: 'visit=省代表回访，trace=产品部溯源，按月份/产品/客户/状态筛选',
+    desc: 'visit=省代表回访，trace=产品部溯源，含自动生成的优化建议；按月份/产品/客户/状态筛选',
     phase: 'P1+P2',
+  },
+  {
+    name: 'get_post_use_report_v2',
+    label: '用后即评报告',
+    scope: 'mcp:read',
+    desc: '月报/季报结构化数据：KPI、产品块（重点改善/低分主题）、关注项、待办、已保存结论叙事',
+    phase: 'P3',
+  },
+  {
+    name: 'get_patrol_diagnoses',
+    label: '巡检失败组诊断',
+    scope: 'mcp:read',
+    desc: 'API 巡检失败组+最新成功诊断五段（结论/事实/直接原因/证据/建议），近 7 天默认窗口，客户账号默认脱敏',
+    phase: 'P3',
   },
 ]
 
@@ -437,7 +451,7 @@ export default function McpGuide() {
             '脱敏优先：脱敏模式密钥下客户信息自动脱敏，完整模式密钥可选择性关闭',
             '结果集上限：limit 参数最大 200 条，防止拉取全量数据影响性能',
             'HTTPS 加密：服务器部署后建议配置 TLS 证书，确保传输加密',
-            '审计日志：每次调用记录 API Key ID + Tool 名 + 时间戳',
+            '调用留痕：每次调用在服务端进程日志记录 Tool 名与异常信息（失败时含错误详情），不写业务审计库',
           ].map((item) => (
             <div key={item} className="flex items-start gap-2">
               <CheckCircleOutlined className="mt-0.5 shrink-0 text-green-600" />

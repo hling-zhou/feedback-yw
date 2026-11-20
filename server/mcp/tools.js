@@ -1,5 +1,5 @@
 /**
- * MCP P0+P1 Tool handler 实现（9 个）。
+ * MCP P0-P3 Tool handler 实现（11 个）。
  *
  * 每个 handler 接收 (params, apiKey) 两个参数：
  * - params: Agent 传入的 Tool 参数对象
@@ -14,7 +14,18 @@ import { actionItemRepository } from '../actionItemRepository.js'
 import { postUseJiraRepository } from '../postUseJiraRepository.js'
 import { readTaxonomyManagedMetaHydrated } from '../taxonomyMetaHygiene.js'
 import { getCatalogProducts } from '../../src/lib/productCatalogLoader.js'
+import { getPostUseRatingProductNames } from '../../src/lib/productCatalog/postUseRatingProducts.js'
 import { META_KEY_POST_USE_VISITS } from '../../src/lib/postUseRating/visitRecords.js'
+import { META_KEY_POST_USE_TREND } from '../../src/lib/postUseRating/trendStore.js'
+import { loadHtmlReportOverlay } from '../../src/lib/postUseRating/htmlReportOverlay.js'
+import { filterRecordsForScope } from '../../src/snapshots/recordScope.js'
+import { resolveInsightPeriod, resolvePreviousInsightPeriod } from '../../src/domain/insightPeriod.js'
+import { SCHEMA_VERSION } from '../../src/domain/constants.js'
+import { normalizeDepartmentStatusTrends, clipDepartmentStatusTrends } from '../../src/lib/postUseRating/statusTrends.js'
+import { buildPostUseReportV2Model } from '../../src/lib/postUseRating/reportV2Model.js'
+import { postUsePeriodMonths } from '../../src/lib/postUseRating/periodScope.js'
+import { getDb } from '../db.js'
+import { productNameMap } from '../patrolReportBuilder.js'
 import {
   createAllDesensitizeOptions,
   createNoDesensitizeOptions,
@@ -823,6 +834,10 @@ function getPostUseVisitMode(params, limit, offset, opts, desensitizeCustomerFie
       assigneeName: r.assigneeName || '',
       actionId: r.actionId || '',
       scoreSource: r.scoreSource || '',
+      // 优化建议（自动生成，11-19 上线）：LLM 优先/规则兜底，来源如实标注（llm/rule）
+      optimizationProduct: r.optimizationProduct || '',
+      optimizationService: r.optimizationService || '',
+      optimizationSource: r.optimizationSource || '',
       updatedAt: r.updatedAt || '',
     })),
   }
@@ -933,9 +948,491 @@ function getPostUseTraceMode(params, apiKey, limit, offset, opts, desensitizeCus
         progress: item.progress || '',
         actionId: item.actionId || '',
         actionItem: action || null,
+        // 优化建议（自动生成，11-19 上线）：LLM 优先/规则兜底，来源如实标注（llm/rule）
+        optimizationProduct: item.optimizationProduct || '',
+        optimizationService: item.optimizationService || '',
+        optimizationSource: item.optimizationSource || '',
         updatedAt: item.updatedAt || '',
       }
     }),
+  }
+}
+
+// ============================================================
+// P3 Tool：报告 V2 / 巡检诊断结果透出（2026-11-20 拍板）
+// ============================================================
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const QUARTER_RE = /^\d{4}-Q[1-4]$/
+
+/**
+ * 报告期参数解析（与前端 PostUseHtmlReport.resolveReportRoute 同口径：YYYY-MM 月报 / YYYY-Qn 季报）。
+ * schemaVersion 与页面同源 import（src/domain/constants.js SCHEMA_VERSION='2.0'）——
+ * 手写 '2' 曾致 period 标识漂移（11-21 审计实锤），常量双写违例已纠。
+ * @param {string} param
+ * @returns {{ key: string, kind: 'month' | 'quarter', periodId: string, period: object } | null}
+ */
+function resolveReportRouteForMcp(param) {
+  const p = String(param || '').trim()
+  if (MONTH_RE.test(p)) {
+    const periodId = `period:month:${p}`
+    return { key: p, kind: 'month', periodId, period: resolveInsightPeriod(periodId, null, SCHEMA_VERSION) }
+  }
+  if (QUARTER_RE.test(p)) {
+    const periodId = `period:quarter:${p}`
+    return { key: p, kind: 'quarter', periodId, period: resolveInsightPeriod(periodId, null, SCHEMA_VERSION) }
+  }
+  return null
+}
+
+/**
+ * storageRepository 适配为报告链所需 adapter 形态（getMeta/putMeta——htmlReportOverlay 与 trendStore 均此二法）。
+ */
+const metaAdapter = {
+  getMeta: (key) => storageRepository.getMeta(key),
+  putMeta: (key, value) => storageRepository.putMeta(key, value),
+}
+
+/**
+ * P3 Tool：报告 V2 透出。
+ *
+ * 已保存报告（overlay.snapshot 存在）→ 直接投影快照（与页面显示优先级同口径：保存态即用户审阅过的定稿）。
+ * 未保存 → 服务端拉齐与报告页相同的输入（records/visits/traces/actionItems/issueLinks/statusTrends），
+ * 复用纯函数 buildPostUseReportV2Model 组装（同函数同参数，零口径分叉），投影结构化结果。
+ * 叙事文本（结论/行动）：仅快照态透出已保存的 narratives——未保存态不服务端生成（LLM 文案批属页面交互产物）。
+ *
+ * @param {{ month?: string, desensitize?: boolean }} params
+ * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
+ */
+async function getPostUseReportV2(params, apiKey) {
+  const route = resolveReportRouteForMcp(params.month)
+  if (!route) {
+    return { error: 'month 参数格式非法：月报 YYYY-MM（如 2026-10），季报 YYYY-Qn（如 2026-Q3）' }
+  }
+  // 脱敏契约按密钥 scope 定（与数据来自快照还是实时组装无关）：默认脱敏，
+  // mcp:full + 显式 desensitize:false 才关——与其他 Tool 走 resolveDesensitizeOptions 完全同构
+  // （11-21 审计实锤：首版 params.desensitize 声明未读 + 快照路径裸透传 focus 泄漏客户原话，已纠）
+  const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
+
+  const overlay = await loadHtmlReportOverlay(metaAdapter, route.key)
+  const months = postUsePeriodMonths(route.period)
+  if (months.length === 0) {
+    return { error: `报告期 ${route.key} 无有效月份范围` }
+  }
+  const monthIds = new Set(months.map((m) => `period:month:${m}`))
+  const previous = resolvePreviousInsightPeriod(route.period)
+  for (const m of postUsePeriodMonths(previous)) monthIds.add(`period:month:${m}`)
+
+  // records：用后即评分记录。窗口=本期+上期全部月份（报告页两期输入：filterRecordsForScope
+  // 只负责 period 内过滤，历史趋势月份走 statusTrends 快照；allCompanyRecords 供趋势对比）。
+  // parseRecordPagination 对 limit<1 置 DEFAULT 1000——上限 5000 足以覆盖单期用后即评量级。
+  const windowMonths = [...monthIds].map((id) => id.replace('period:month:', '')).sort()
+  const monthFrom = windowMonths[0]
+  const monthTo = windowMonths[windowMonths.length - 1]
+  const listResult = storageRepository.listRecords({
+    dataSourceType: 'post_use_rating',
+    importMonthFrom: monthFrom,
+    importMonthTo: monthTo,
+    limit: 5000,
+  })
+  const allRecords = listResult?.records || []
+  const records = filterRecordsForScope(allRecords, route.period, 'post_use_rating')
+
+  // visits / traces / actionItems / issueLinks：与页面 sideLoad 同源
+  const visitStore = normalizeVisitStore(await storageRepository.getMeta(META_KEY_POST_USE_VISITS))
+  const visits = visitStore.records || []
+  const traces = postUseJiraRepository.list({ limit: 0 }).items
+  const actionItems = actionItemRepository.listActionItems({ linkedDataSources: 'post_use_rating', limit: 500 })?.items || []
+  const issueLinks = (await import('../postUseReportRepository.js')).postUseReportRepository.listLinks()
+
+  // statusTrends：trendStore 单源（页面 adapter.listPostUseStatusTrends 的服务端同源数据）
+  const endMonth = months.at(-1) || ''
+  let statusTrends = null
+  try {
+    statusTrends = clipDepartmentStatusTrends(
+      normalizeDepartmentStatusTrends(await storageRepository.getMeta(META_KEY_POST_USE_TREND)),
+      endMonth,
+    )
+  } catch { /* 趋势缺失不阻塞报告主体（buildPostUseReportV2Model 允许 statusTrends=null） */ }
+
+  if (overlay?.snapshot) {
+    return projectReportSnapshot(route, overlay, opts)
+  }
+
+  const model = buildPostUseReportV2Model({
+    reportKey: route.key,
+    reportKind: route.kind,
+    reportPeriod: route.period,
+    records,
+    companyRecords: records,
+    allRecords: records,
+    allCompanyRecords: allRecords,
+    visits,
+    traces,
+    issueLinks,
+    actionItems,
+    statusTrends,
+    overlay,
+    catalogNames: getPostUseRatingProductNames(getCatalogProducts()),
+  })
+  return projectReportModel(route, model, overlay, opts)
+}
+
+/** visit meta store 归一化（与 getPostUseTrace visit 路径同口径）。 */
+function normalizeVisitStore(raw) {
+  if (!raw || typeof raw !== 'object') return { records: [] }
+  const records = Array.isArray(raw.records) ? raw.records : []
+  return { records }
+}
+
+/**
+ * 报告快照投影（已保存态）：KPI/产品块/主题/关注项/待办 + 已保存叙事。
+ * 文本字段（focus 引用/产品 quotes 样例）一律过 desensitizeText(opts)——脱敏按密钥 scope 定，
+ * 与数据来自快照还是实时组装无关（11-21 审计实锤快照路径曾裸透传）。
+ * @param {{ key: string, kind: string }} route
+ * @param {{ snapshot?: Record<string, unknown> | null, narratives?: Record<string, unknown>, updatedAt?: string, updatedBy?: string }} overlay
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ */
+function projectReportSnapshot(route, overlay, opts) {
+  const snap = /** @type {Record<string, unknown>} */ (overlay.snapshot) || {}
+  const narratives = overlay.narratives || {}
+  const products = Array.isArray(snap.products) ? snap.products : []
+  return {
+    reportKey: route.key,
+    kind: route.kind,
+    saved: true,
+    updatedAt: overlay.updatedAt || '',
+    updatedBy: overlay.updatedBy || '',
+    title: String(snap.title || `用后即评${route.kind === 'quarter' ? '季' : '月'}报（${route.key}）`),
+    kpis: projectKpis(snap.kpis),
+    products: products.map((/** @type {Record<string, unknown>} */ p) => projectProduct(p, opts)),
+    focus: (Array.isArray(snap.focus) ? snap.focus : []).map((/** @type {Record<string, unknown>} */ f) => projectFocus(f, opts)),
+    themes: (Array.isArray(snap.themes) ? snap.themes : []).map((/** @type {Record<string, unknown>} */ t) => projectTheme(t)),
+    todos: projectTodos(narratives.todoItems || snap.todoRows, narratives.todoNote || snap.todoNote || ''),
+    narratives: {
+      judgment: desensitizeText(String(narratives.judgment || snap.judgment || ''), opts),
+      issues: desensitizeIssueNarratives(narratives.issues, opts),
+    },
+    note: '已保存报告快照（页面「保存报告」后的定稿数据）；未保存月份调用时按当前数据实时组装（narratives 为空，结论需在页面生成）。',
+  }
+}
+
+/**
+ * 报告模型投影（未保存态）：与快照投影同字段形态（saved=false，叙事为空）。
+ * @param {{ key: string, kind: string }} route
+ * @param {Record<string, unknown>} model
+ * @param {{ narratives?: Record<string, unknown>, updatedAt?: string } | null} overlay
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ */
+function projectReportModel(route, model, overlay, opts) {
+  return {
+    reportKey: route.key,
+    kind: route.kind,
+    saved: false,
+    updatedAt: overlay?.updatedAt || '',
+    updatedBy: '',
+    title: String(model.title || ''),
+    kpis: projectKpis(model.kpis),
+    products: (model.products || []).map((/** @type {Record<string, unknown>} */ p) => projectProduct(p, opts)),
+    focus: (model.focus || []).map((/** @type {Record<string, unknown>} */ f) => projectFocus(f, opts)),
+    themes: (model.themes || []).map((/** @type {Record<string, unknown>} */ t) => projectTheme(t)),
+    todos: projectTodos(overlay?.narratives?.todoItems || model.todoRows, overlay?.narratives?.todoNote || model.todoNote || ''),
+    narratives: {
+      judgment: desensitizeText(String(overlay?.narratives?.judgment || ''), opts),
+      issues: desensitizeIssueNarratives(overlay?.narratives?.issues, opts),
+    },
+    note: '未保存态：按当前库内数据实时组装（与报告页同函数同输入）；叙事文本（结论/行动）为页面 LLM 交互产物，未保存时为空。',
+  }
+}
+
+/** KPI 投影：纯数值，无脱敏需求。 */
+function projectKpis(kpis) {
+  if (!kpis || typeof kpis !== 'object') return {}
+  const k = /** @type {Record<string, unknown>} */ (kpis)
+  return {
+    avg: k.avg ?? null,
+    companyAvg: k.companyAvg ?? null,
+    previousAvg: k.previousAvg ?? null,
+    experienceAvg: k.experienceAvg ?? null,
+    totalSample: k.totalSample ?? 0,
+    companySample: k.companySample ?? 0,
+    productCount: k.productCount ?? 0,
+    belowNineCount: k.belowNineCount ?? 0,
+    belowNineNames: Array.isArray(k.belowNineNames) ? k.belowNineNames : [],
+  }
+}
+
+/** 产品块投影：评分/状态/低分主题/回访溯源计数 + 引用样例（文本过 desensitizeText(opts)）。 */
+function projectProduct(p, opts) {
+  const quotes = Array.isArray(p.quotes) ? p.quotes : []
+  const themes = Array.isArray(p.themes) ? p.themes : []
+  return {
+    name: String(p.name || ''),
+    avg: p.avg ?? null,
+    sample: p.sample ?? 0,
+    belowNine: Boolean(p.belowNine),
+    status: String(p.status || ''),
+    p0ThemeCount: themes.filter((/** @type {Record<string, unknown>} */ t) => t.priority === 'P0').length,
+    lowThemeCount: themes.filter((/** @type {Record<string, unknown>} */ t) => t.type === 'low').length,
+    lowThree: p.lowThree ?? 0,
+    callbackRate: p.callbackRate ?? null,
+    visitCount: Array.isArray(p.visits) ? p.visits.length : 0,
+    traceCount: Array.isArray(p.traces) ? p.traces.length : 0,
+    positiveCount: p.positiveCount ?? 0,
+    quotesSample: quotes.slice(0, 3).map((/** @type {Record<string, unknown>} */ q) => ({
+      text: desensitizeText(String(q.text || ''), opts),
+      score: q.score ?? null,
+      channel: String(q.channel || ''),
+    })),
+  }
+}
+
+/**
+ * 关注项投影（11-21 审计缺陷 1 修复）：脱敏按列级语义分字段处理——
+ * - 纯客户标识字段无（focus 不直接带客户名/编码列）；
+ * - text/title/detail/check/judgment 等自由文本过 desensitizeText（正文级：密码/IP 正则）——
+ *   与 search_tickets 的 summary 同语义边界：正文内公司名/账号字样不在列级替换能力内
+ *   （列级工具只认「整个值就是客户标识」的字段，拼接句不适用），属既有脱敏体系设计边界；
+ * - quotes/lowestQuotes 是客户原话列表，同正文级处理，**高频客户名场景下建议配 mcp:full 消费**。
+ * recordIds/monthCounts 等内部 ID 与计数不敏感保留。
+ * @param {Record<string, unknown>} f
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ */
+function projectFocus(f, opts) {
+  const desensitizeList = (v) =>
+    Array.isArray(v) ? v.map((/** @type {unknown} */ x) => desensitizeText(String(x || ''), opts)).filter(Boolean) : []
+  return {
+    id: String(f.id || ''),
+    productName: String(f.productName || ''),
+    theme: String(f.theme || ''),
+    priority: String(f.priority || ''),
+    lifecycle: String(f.lifecycle || ''),
+    text: desensitizeText(String(f.text || ''), opts),
+    actionType: String(f.actionType || ''),
+    title: desensitizeText(String(f.title || ''), opts),
+    detail: desensitizeText(String(f.detail || ''), opts),
+    customerDissatisfied: Boolean(f.customerDissatisfied),
+    isNew: Boolean(f.isNew),
+    previousCount: Number(f.previousCount ?? 0),
+    lowestScore: f.lowestScore ?? null,
+    owner: String(f.owner || ''),
+    team: String(f.team || ''),
+    status: String(f.status || ''),
+    check: desensitizeText(String(f.check || ''), opts),
+    sourceRecordCount: Number(f.sourceRecordCount ?? 0),
+    recordIds: Array.isArray(f.recordIds) ? f.recordIds : [],
+    monthCounts: f.monthCounts && typeof f.monthCounts === 'object' ? f.monthCounts : {},
+    quotes: desensitizeList(f.quotes),
+    lowestQuotes: desensitizeList(f.lowestQuotes),
+  }
+}
+
+/** 主题投影：生命周期/优先级/计数，剔除 recordIds 长列表。 */
+function projectTheme(t) {
+  return {
+    productName: String(t.productName || ''),
+    theme: String(t.theme || ''),
+    type: String(t.type || ''),
+    lifecycle: String(t.lifecycle || ''),
+    priority: String(t.priority || ''),
+    count: Number(t.count ?? (Array.isArray(t.recordIds) ? t.recordIds.length : 0)),
+    lowestScore: t.lowestScore ?? null,
+    l1: String(t.l1 || ''),
+    l2: String(t.l2 || ''),
+  }
+}
+
+/**
+ * 产品块叙事脱敏：issues 形如 { 'product:<名>': { conclusion, action } }——文本值过脱敏，键保留。
+ * @param {Record<string, unknown> | undefined | null} issues
+ * @param {import('../../src/lib/ticketAnalysisDesensitize.js').DesensitizeOptions} opts
+ */
+function desensitizeIssueNarratives(issues, opts) {
+  if (!issues || typeof issues !== 'object') return {}
+  const out = /** @type {Record<string, { conclusion: string, action: string }>} */ ({})
+  for (const [key, value] of Object.entries(issues)) {
+    const v = /** @type {Record<string, unknown>} */ (value)
+    if (!v || typeof v !== 'object') continue
+    out[key] = {
+      conclusion: desensitizeText(String(v.conclusion || ''), opts),
+      action: desensitizeText(String(v.action || ''), opts),
+    }
+  }
+  return out
+}
+
+/** 待办投影。 */
+function projectTodos(rows, note) {
+  const list = Array.isArray(rows) ? rows : []
+  return {
+    note: String(note || ''),
+    items: list.map((/** @type {Record<string, unknown>} */ r) => ({
+      id: String(r.id || ''),
+      content: String(r.content || ''),
+      owner: String(r.owner || ''),
+      team: String(r.team || ''),
+      source: String(r.source || ''),
+    })),
+  }
+}
+
+/**
+ * P3 Tool：API 巡检失败组与诊断结果透出。
+ *
+ * 组级查询（默认近 7 天，startDate/endDate 可覆盖）+ 每组带最新一次 success 诊断的
+ * 结构化五段（结论/失败事实/直接原因/证据/建议）——语义与页面抽屉 buildDiagnosisReport
+ * 同口径（LLM 结构化产物优先、原始日志降级切分）；诊断失败/未诊断组如实标注
+ * （diagnosisStatus: success/failed/none），不冒充有结论。
+ *
+ * @param {{ startDate?: string, endDate?: string, product?: string, poolName?: string,
+ *   apiPath?: string, metricName?: string, rootCauseL1?: string, status?: string,
+ *   limit?: number, offset?: number, includeRawLog?: boolean, desensitize?: boolean }} params
+ * @param {import('../apiKeyRepository.js').ApiKeyRecord | null} apiKey
+ */
+function getPatrolDiagnoses(params, apiKey) {
+  const db = getDb()
+  const limit = clampLimit(params.limit)
+  const offset = clampOffset(params.offset)
+  // userName 是失败请求的客户账号（YDY… 编码/名称形态）——脱敏是默认承诺（11-21 审计问题 5 修复）
+  const opts = resolveDesensitizeOptions(params.desensitize, apiKey)
+
+  // 时间窗默认近 7 天（含当日）。「今日」以 Node 进程本地日期锚定——与种子/测试/巡检页
+  // 三处口径一致；不用 SQL date('now','localtime')（宿主机时区依赖 + 跨环境漂移，
+  // trapped-pending 测试 11-21 凌晨 UTC/localtime 跨午夜红同族坑）
+  let start = String(params.startDate || '').trim()
+  let end = String(params.endDate || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    const today = new Date()
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    end = fmt(today)
+    start = fmt(new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000))
+  }
+
+  /** @type {string[]} */
+  const where = ['g.group_date BETWEEN ? AND ?']
+  /** @type {Array<string | number>} */
+  const sqlParams = [start, end]
+  if (params.product) { where.push('g.product_key = ?'); sqlParams.push(String(params.product)) }
+  if (params.poolName) { where.push('g.pool_name = ?'); sqlParams.push(String(params.poolName)) }
+  if (params.apiPath) { where.push('g.api_path LIKE ?'); sqlParams.push(`%${String(params.apiPath)}%`) }
+  if (params.metricName) { where.push('g.metric_name LIKE ?'); sqlParams.push(`%${String(params.metricName)}%`) }
+  if (params.rootCauseL1) {
+    where.push(`COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = ?`)
+    sqlParams.push(String(params.rootCauseL1))
+  }
+  if (params.status) { where.push('g.product_action_status = ?'); sqlParams.push(String(params.status)) }
+
+  const rows = db.prepare(`
+    SELECT g.id, g.group_date AS groupDate, g.product_key AS productKey, g.pool_name AS poolName,
+           g.api_path AS apiPath, g.metric_name AS metricName, g.user_name AS userName,
+           g.first_request_id AS firstRequestId, g.pre_compress_count AS preCompressCount,
+           g.customer_type AS customerType, g.root_cause_l1 AS rootCauseL1, g.root_cause_l2 AS rootCauseL2,
+           g.root_cause_l1_manual AS rootCauseL1Manual, g.root_cause_l2_manual AS rootCauseL2Manual,
+           g.product_action_status AS productActionStatus, g.assignee,
+           g.root_cause_confirmed AS rootCauseConfirmed, g.measure_feedback AS measureFeedback,
+           (SELECT d.status FROM api_patrol_diagnoses d WHERE d.failure_group_id = g.id
+             AND d.status = 'success' ORDER BY d.id DESC LIMIT 1) AS diagSuccessStatus,
+           (SELECT d.status FROM api_patrol_diagnoses d WHERE d.failure_group_id = g.id
+             ORDER BY d.id DESC LIMIT 1) AS diagAnyStatus
+    FROM api_patrol_failure_groups g
+    WHERE ${where.join(' AND ')}
+    ORDER BY g.group_date DESC, g.first_request_time DESC
+    LIMIT 500
+  `).all(...sqlParams)
+
+  const total = rows.length
+  const paged = rows.slice(offset, offset + limit)
+  const PRODUCT_NAMES = productNameMap()
+  const includeRaw = Boolean(params.includeRawLog)
+
+  const items = paged.map((g) => {
+    const group = /** @type {Record<string, unknown>} */ (g)
+    // 有效根因口径（manual 优先 COALESCE）——与页面列表/筛选同源
+    const l1 = String(group.rootCauseL1Manual || group.rootCauseL1 || '')
+    const l2 = String(group.rootCauseL2Manual || group.rootCauseL2 || '')
+    const diagStatus = group.diagSuccessStatus === 'success'
+      ? 'success'
+      : group.diagAnyStatus ? 'failed' : 'none'
+    const report = diagStatus === 'success' ? buildPatrolDiagnosisReportForMcp(db, group, includeRaw) : null
+    return {
+      id: group.id,
+      groupDate: group.groupDate,
+      productKey: group.productKey,
+      productName: PRODUCT_NAMES[String(group.productKey || '')] || group.productKey,
+      poolName: group.poolName,
+      apiPath: group.apiPath,
+      metricName: group.metricName,
+      userName: desensitizeColumnValue(String(group.userName || ''), 'groupName', opts),
+      firstRequestId: group.firstRequestId,
+      preCompressCount: group.preCompressCount,
+      customerType: group.customerType || '',
+      rootCauseL1: l1,
+      rootCauseL2: l2,
+      productActionStatus: group.productActionStatus || '',
+      assignee: group.assignee || '',
+      rootCauseConfirmed: group.rootCauseConfirmed || '',
+      diagnosisStatus: diagStatus,
+      diagnosis: report,
+    }
+  })
+
+  return {
+    range: { startDate: start, endDate: end },
+    total,
+    limit,
+    offset,
+    items,
+    diagnosisStatusNote: 'success=最新一次成功诊断（诊断结论可信）；failed=仅有失败诊断记录（MCP 调用/LLM 失败，次日自动重试，结论不可用）；none=从未诊断（超龄收敛或未到诊断环节）。',
+  }
+}
+
+/** 诊断五段投影（与页面 buildDiagnosisReport 同语义：LLM 结构化优先、原文降级切分）。 */
+function buildPatrolDiagnosisReportForMcp(db, group, includeRaw) {
+  const diag = db.prepare(`
+    SELECT request_id, status, tool_name, mcp_raw_response, final_conclusion, suggestion,
+           root_cause_l1, root_cause_l2, direct_cause, evidence, root_cause_source, action_reason, diagnosed_at
+    FROM api_patrol_diagnoses WHERE failure_group_id = ? AND status = 'success'
+    ORDER BY id DESC LIMIT 1
+  `).get(group.id)
+  if (!diag) return null
+  const d = /** @type {Record<string, unknown>} */ (diag)
+  const raw = String(d.mcp_raw_response || '')
+  /** @type {string[]} */
+  let directLines = []
+  /** @type {string[]} */
+  let evidence = []
+  let rawCount = /** @type {number | null} */ (null)
+  try {
+    const parsed = JSON.parse(d.direct_cause || '')
+    if (Array.isArray(parsed)) directLines = parsed.map(String).filter(Boolean).map((l) => l.slice(0, 300))
+  } catch { /* 非数组形态留空 */ }
+  try {
+    const parsed = JSON.parse(d.evidence || '')
+    if (Array.isArray(parsed)) evidence = parsed.map(String).filter(Boolean).map((l) => l.slice(0, 200))
+  } catch { /* 同上 */ }
+  // rawCount 三态（11-20 口径）：数字=标准响应可数；null=行数未知；0=确无内容
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?.code === '0000' && Array.isArray(parsed?.data?.records)) rawCount = parsed.data.records.length
+  } catch { /* 非 JSON 原文 → null */ }
+  if (rawCount === null && !raw) rawCount = 0
+  return {
+    conclusion: String(d.final_conclusion || '').trim() || null,
+    suggestion: String(d.suggestion || '').trim() || null,
+    failureFacts: {
+      apiPath: String(group.apiPath || ''),
+      poolName: String(group.poolName || ''),
+      userName: String(group.userName || ''),
+      metricName: String(group.metricName || ''),
+    },
+    directCause: {
+      logLines: directLines.slice(0, 10),
+      rawCount,
+    },
+    evidence: [...new Set(evidence)].slice(0, 10),
+    rootCauseSource: d.root_cause_source == null ? null : String(d.root_cause_source),
+    diagnosedAt: d.diagnosed_at || '',
+    ...(includeRaw ? { rawLog: raw.slice(0, 20000) } : {}),
   }
 }
 
@@ -1069,7 +1566,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'get_post_use_trace',
-    description: '回访/溯源记录：查询用后即评回访/溯源记录。viewType=visit 查询省代表回访记录（含内部评估结论、备注），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
+    description: '回访/溯源记录：查询用后即评回访/溯源记录。viewType=visit 查询省代表回访记录（含内部评估结论、备注、优化建议），viewType=trace 查询产品部溯源记录（含客户反馈、推荐理由、处理进展、关联举措、优化建议）。两种模式均含自动生成的产品/服务优化建议（optimizationProduct/optimizationService，optimizationSource 标注来源 llm 或 rule）。支持按月份、产品、客户名称、经办人、状态、关键词筛选。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1086,5 +1583,40 @@ export const MCP_TOOLS = [
       },
     },
     handler: getPostUseTrace,
+  },
+  {
+    name: 'get_post_use_report_v2',
+    description: '用后即评报告 V2：透出月报/季报的结构化数据（KPI 均分与样本量、产品块主句与低分主题、关注项、主题清单、待办、已保存的结论叙事）。已保存报告返回定稿快照（saved=true，含结论/行动叙事）；未保存月份按当前库内数据实时组装（saved=false，叙事为空——结论由页面 LLM 交互生成）。产品引用样例默认脱敏。',
+    inputSchema: {
+      type: 'object',
+      required: ['month'],
+      properties: {
+        month: { type: 'string', description: '报告期：月报 YYYY-MM（如 2026-10）或季报 YYYY-Qn（如 2026-Q3）' },
+        desensitize: { type: 'boolean', description: '是否脱敏文本中的客户信息（关注项引用/产品引用样例/叙事文本），默认 true。传 false 需 API Key 具备 mcp:full scope' },
+      },
+    },
+    handler: getPostUseReportV2,
+  },
+  {
+    name: 'get_patrol_diagnoses',
+    description: 'API 巡检失败组与诊断结论：查询巡检发现的失败请求组（默认近 7 天），每组带最新一次成功诊断的结构化五段（结论/失败事实/直接原因/关键证据/处理建议）与有效根因（人工修正优先）。诊断状态如实标注：success=结论可信；failed=诊断调用失败（次日自动重试，结论不可用）；none=从未诊断。仿真/测试账号组的处理动作见 productActionStatus。客户账号（userName）默认脱敏。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        startDate: { type: 'string', description: '起始日期（格式：YYYY-MM-DD，默认近 7 天前）' },
+        endDate: { type: 'string', description: '结束日期（格式：YYYY-MM-DD，默认今日）' },
+        product: { type: 'string', description: '产品 key（如 eip、slb）' },
+        poolName: { type: 'string', description: '资源池名称（精确匹配）' },
+        apiPath: { type: 'string', description: '接口路径（模糊匹配）' },
+        metricName: { type: 'string', description: '指标名称（模糊匹配）' },
+        rootCauseL1: { type: 'string', description: '有效根因一级分类（人工修正优先口径）' },
+        status: { type: 'string', description: '处理状态：pending_diagnosis/待处理/处理中/已处理 等' },
+        includeRawLog: { type: 'boolean', description: '是否附诊断时的 MCP 原始日志（默认 false；原文最长 20000 字符）' },
+        limit: { type: 'number', description: '返回条数上限，默认 50，最大 200' },
+        offset: { type: 'number', description: '分页偏移量，默认 0' },
+        desensitize: { type: 'boolean', description: '是否脱敏客户账号，默认 true。传 false 需 API Key 具备 mcp:full scope' },
+      },
+    },
+    handler: getPatrolDiagnoses,
   },
 ]
