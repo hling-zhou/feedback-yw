@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Alert, Button, DatePicker, Drawer, Empty, Space, Table, Tag, Tooltip, Typography,
+  Alert, Button, Empty, Space, Table, Tag, Tooltip, Typography,
 } from 'antd'
 import {
   CopyOutlined, InfoCircleOutlined, ReloadOutlined,
 } from '@ant-design/icons'
-import dayjs from 'dayjs'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
 import { apiFetch } from '../../lib/apiClient.js'
@@ -14,8 +13,6 @@ import { paginationShowTotal } from '../../lib/paginationTotal.js'
 import { useColumnResize } from '../../hooks/useColumnResize.js'
 import { sumColumnsWidth } from '../../lib/columnWidths.js'
 import { FailureGroupDrawer } from './ApiPatrolFailuresContent.jsx'
-
-const { RangePicker } = DatePicker
 
 /** 缺口类型 Tag 语义（与服务端 classifyGapKind 对应——11-19 拍板：MCP 响应推断，不维护池清单） */
 const GAP_KIND_LABELS = {
@@ -35,9 +32,7 @@ const GAP_KIND_LABELS = {
 export default function ApiPatrolDiagnosisGapsContent() {
   const message = useAppMessage()
   const { user } = useAuth()
-  // 默认近30天（需求池滚动语义——非巡检 T-1 口径）
-  const [range, setRange] = useState(/** @type {[import('dayjs').Dayjs, import('dayjs').Dayjs]} */ ([dayjs().subtract(29, 'day'), dayjs()]))
-  /** @type {[{stats: Record<string, number>, uncoveredPools: Array<Record<string, unknown>>, rows: Array<Record<string, unknown>>} | null, Function]} */
+  /** @type {[{stats: Record<string, number>, uncoveredPools: Array<Record<string, unknown>>, undiagnosedGroups: Array<Record<string, unknown>>, rows: Array<Record<string, unknown>>} | null, Function]} */
   const [summary, setSummary] = useState(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
   /** @type {[Array<Record<string, unknown>>, Function]} */
@@ -52,28 +47,26 @@ export default function ApiPatrolDiagnosisGapsContent() {
   const aggResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.agg', userId: user?.id })
   const detailResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.detail', userId: user?.id })
 
-  const rangeParams = useMemo(() => ({
-    startDate: range[0].format('YYYY-MM-DD'),
-    endDate: range[1].format('YYYY-MM-DD'),
-  }), [range])
+  // 11-20 09:44 拍板：需求池显示全部——summary 无时间窗口；明细下钻走 groups 共享端点
+  // （其 startDate/endDate 必填契约不动——溯源页依赖），传极宽区间承载「全部」语义。
+  const DETAIL_ALL_RANGE = { startDate: '2000-01-01', endDate: '2099-12-31' }
 
   const loadSummary = useCallback(async () => {
     setLoadingSummary(true)
     try {
-      const qs = new URLSearchParams(rangeParams).toString()
-      const data = await apiFetch(`/api/patrol/diagnosis-gaps/summary?${qs}`)
+      const data = await apiFetch('/api/patrol/diagnosis-gaps/summary')
       setSummary(data)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载诊断能力需求池失败')
     } finally {
       setLoadingSummary(false)
     }
-  }, [rangeParams, message])
+  }, [message])
 
   const loadDetail = useCallback(async (drillState) => {
     setLoadingDetail(true)
     try {
-      const qs = new URLSearchParams({ ...rangeParams, rootCauseL1: '诊断能力缺口' })
+      const qs = new URLSearchParams({ ...DETAIL_ALL_RANGE, rootCauseL1: '诊断能力缺口' })
       if (drillState && drillState !== 'all') {
         qs.set('product', drillState.productKey)
         qs.set('apiPathExact', drillState.apiPath)
@@ -86,7 +79,7 @@ export default function ApiPatrolDiagnosisGapsContent() {
     } finally {
       setLoadingDetail(false)
     }
-  }, [rangeParams, message])
+  }, [message])
 
   useEffect(() => { loadSummary() }, [loadSummary])
   useEffect(() => {
@@ -187,8 +180,24 @@ export default function ApiPatrolDiagnosisGapsContent() {
 
   const rows = summary?.rows || []
   const uncoveredPools = summary?.uncoveredPools || []
+  const undiagnosedGroups = summary?.undiagnosedGroups || []
   const stats = summary?.stats
   const activeDrillKey = drill && drill !== 'all' ? String(drill.aggregateKey || `${drill.productKey}|${drill.apiPath}|${drill.poolName}`) : (drill === 'all' ? 'all' : null)
+  // 未诊断清单复制内容：每行「日期 池 requestID」——用户拿清单自行补诊断（11-20 拍板：页面不提供触发按钮）
+  const copyUndiagnosedList = () => {
+    const lines = []
+    for (const u of undiagnosedGroups) {
+      const ids = Array.isArray(u.requestIds) ? u.requestIds.map(String) : []
+      for (const id of ids) {
+        lines.push(`${String(u.firstDate || '')}~${String(u.lastRequestTime || '').slice(0, 10)} ${String(u.poolName || '')} ${id}`)
+      }
+    }
+    if (lines.length === 0) return
+    copyTextToClipboard(lines.join('\n')).then(
+      () => message.success(`已复制 ${lines.length} 个未诊断组的请求ID清单`),
+      () => message.error('复制失败，请手动选择文本'),
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -203,20 +212,34 @@ export default function ApiPatrolDiagnosisGapsContent() {
             </div>
             {stats && (
               <div className="mt-1 text-xs text-ink-400">
-                当前窗口 {stats.groupCount} 个缺口组 · {stats.apiCount} 个接口 · 合计 {stats.preCompressTotal ?? '—'} 次失败
+                共 {stats.groupCount} 个缺口组 · {stats.apiCount} 个接口 · 合计 {stats.preCompressTotal ?? '—'} 次失败
                 {stats.uncoveredCount > 0 ? ` · 其中 ${stats.uncoveredCount} 组池未接入 MCP 日志服务` : ''}
               </div>
             )}
           </div>
+          {/* 11-20 09:44 拍板：显示全部——无时间范围选择，仅保留刷新 */}
           <Space wrap size="small">
-            <RangePicker value={range} onChange={(v) => v && setRange(v)} allowClear={false} />
-            <Button size="small" onClick={() => setRange([dayjs().subtract(6, 'day'), dayjs()])}>近7天</Button>
-            <Button size="small" onClick={() => setRange([dayjs().subtract(29, 'day'), dayjs()])}>近30天</Button>
-            <Button size="small" onClick={() => setRange([dayjs().subtract(1, 'day'), dayjs().subtract(1, 'day')])}>T-1</Button>
             <Button size="small" icon={<ReloadOutlined />} onClick={() => { loadSummary(); if (drill) loadDetail(drill) }}>刷新</Button>
           </Space>
         </div>
       </div>
+
+      {/* ── 未诊断提示条（11-20 拍板：从未诊断的组不进需求池——清单交付用户自行补诊断）── */}
+      {Number(stats?.undiagnosedCount || 0) > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`另有 ${stats.undiagnosedCount} 个失败组从未执行 MCP 日志诊断（超龄收敛态），未纳入需求池`}
+          description={(
+            <Space wrap size="small" className="!mt-1">
+              <span className="text-xs text-ink-500">补诊断后自动归入对应分区；可先复制清单（日期/池/请求ID）用于补跑。</span>
+              <Button type="link" size="small" icon={<CopyOutlined />} onClick={copyUndiagnosedList}>
+                复制未诊断组清单
+              </Button>
+            </Space>
+          )}
+        />
+      )}
 
       {/* ── 分区一：池未接入 MCP 日志服务（数据驱动；无实例整卡不渲染）── */}
       {uncoveredPools.length > 0 && (
@@ -224,7 +247,7 @@ export default function ApiPatrolDiagnosisGapsContent() {
           <div className="page-card-header">
             <div className="min-w-0">
               <div className="page-card-title">池未接入 MCP 日志服务</div>
-              <div className="mt-1 text-xs text-ink-500">以下资源池调用 MCP 日志服务失败或无诊断记录——需推动池接入日志服务。</div>
+              <div className="mt-1 text-xs text-ink-500">以下资源池调用 MCP 日志服务失败——需推动池接入日志服务。</div>
             </div>
           </div>
           <Table
