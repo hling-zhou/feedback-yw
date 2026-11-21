@@ -14,6 +14,7 @@ import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConf
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
 import { fetchPatrolMcpPoolEnum, getPatrolMcpPoolEnum, poolInMcpEnum as poolInMcpEnumFn } from '../patrolMcpPoolRegistry.js'
+import { isExemptFromProductAction, listPatrolActionExemptions, putPatrolActionExemptions, clearPatrolActionExemptionsCache } from '../patrolActionExemptions.js'
 import { productNameMap } from '../patrolReportBuilder.js'
 import { cleanLogLine } from '../patrolRootCauseClassifier.js'
 import {
@@ -649,6 +650,7 @@ export function registerPatrolQueryRoutes(app) {
     const groupRows = db.prepare(`
       SELECT g.id, g.product_key, g.api_path, g.pool_name, g.pre_compress_count,
              g.group_date, g.first_request_id, g.suppressed_request_ids, g.first_request_time,
+             g.user_name,
              d.failure_group_id AS diagId, d.mcp_raw_response AS mcpRaw,
              e.failure_group_id AS anyDiagId
       FROM api_patrol_failure_groups g
@@ -672,11 +674,15 @@ export function registerPatrolQueryRoutes(app) {
     for (const r of groupRows) {
       kinds.set(Number(r.id), classifyGapKind(r.mcpRaw, r.diagId != null, r.anyDiagId != null, poolInMcpEnumFn(r.pool_name, poolEnum)))
     }
+    // 11-21 10:38 拍板：豁免白名单命中组不进需求池分区（豁免组既不占产品处理、也不该出现在
+    // 「诊断能力需求」池——那是给产品看的建设需求，豁免组不是需求）。分区一/二同口径过滤；
+    // undiagnosed/mcp_error 清单保留豁免组（补诊断是事实动作，与豁免正交）。
+    const notExempt = (r) => !isExemptFromProductAction(r.user_name, r.api_path, r.pool_name)
     const covered = groupRows.filter((r) => {
       const k = kinds.get(Number(r.id))
-      return k === 'log_not_collected' || k === 'failure_log_missing'
+      return (k === 'log_not_collected' || k === 'failure_log_missing') && notExempt(r)
     })
-    const uncovered = groupRows.filter((r) => kinds.get(Number(r.id)) === 'pool_uncovered')
+    const uncovered = groupRows.filter((r) => kinds.get(Number(r.id)) === 'pool_uncovered' && notExempt(r))
     // 11-20 拍板：诊断调用失败（只有 failed 记录——MCP 超时/重试失败/LLM 全败）不纳入需求池——
     // 组保持 pending_diagnosis 次日自动重试，也不进未诊断清单（那类只收「从未诊断」）
     const retryPending = groupRows.filter((r) => kinds.get(Number(r.id)) === 'diagnosis_failed')
@@ -881,6 +887,28 @@ export function registerPatrolQueryRoutes(app) {
     }
     candidates.sort((a, b) => b.count - a.count)
     return reply.send({ candidates })
+  })
+
+  // ── 处理豁免白名单（11-21 10:38 拍板：精确组合豁免——配置资产，读 view 写 manageTags）──
+  app.get('/api/patrol/action-exemptions', { preHandler: requirePermission('view') }, async (_request, reply) => {
+    reply.send({ rules: listPatrolActionExemptions() })
+  })
+
+  app.put('/api/patrol/action-exemptions', { preHandler: requirePermission('manageTags') }, async (request, reply) => {
+    const body = /** @type {{ rules?: unknown }} */ (request.body || {})
+    if (!body || !Array.isArray(body.rules)) {
+      return reply.code(400).send({ error: 'rules 数组必传（全量覆盖写）' })
+    }
+    // 重复组合校验（同 userName×apiPath 双全等重复=配置错误）
+    const seen = new Set()
+    for (const r of body.rules) {
+      const key = `${String(r?.userName || '').trim()}\u0000${String(r?.apiPath || '').trim()}`
+      if (seen.has(key)) return reply.code(400).send({ error: `重复规则：${String(r?.userName || '')} × ${String(r?.apiPath || '')}` })
+      seen.add(key)
+    }
+    const saved = putPatrolActionExemptions(body.rules, { username: request.user?.username || 'system' })
+    clearPatrolActionExemptionsCache() // 写后即时失效缓存（PUT 内已更新，双保险）
+    reply.send({ rules: saved })
   })
 
   app.get('/api/patrol/cause-stats', { preHandler: requirePermission('view') }, async (request, reply) => {

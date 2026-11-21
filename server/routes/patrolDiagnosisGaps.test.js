@@ -226,6 +226,40 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     expect(data.mcpErrorGroups.flatMap((r) => r.requestIds)).toEqual(['gap-k-first'])
   })
 
+  it('11-21 豁免白名单红绿：命中组退出分区二/分区一；同客户其他接口不受影响', async () => {
+    // 前置：A 组（userA×I1 在分区二 P1 聚合行）设为豁免组合——A 退出分区二；B 组（userB×I1 同接口不同客户）保留
+    const { putPatrolActionExemptions, clearPatrolActionExemptionsCache } = await import('../patrolActionExemptions.js')
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't1', userName: 'userA', apiPath: 'I1', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
+      headers: authHeader(),
+    })
+    const data = res.json()
+    // 分区二 P1|I1 聚合行：只剩 B 组（A 被豁免过滤——改前红：groupCount=2）
+    const p1Row = data.rows.find((r) => r.poolName === 'P1' && r.apiPath === 'I1')
+    expect(p1Row).toBeTruthy()
+    expect(p1Row.groupCount).toBe(1)
+    expect(p1Row.requestIds).not.toContain('gap-a-first')
+    expect(p1Row.requestIds).toContain('gap-b-first')
+    // 分区一：若把豁免组合指向 U 组（userU×I9 枚举外池）——U 退出分区一（防豁免组混入未接入池清单）
+    putPatrolActionExemptions([{ id: 't2', userName: 'userU', apiPath: 'I9', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
+    const res2 = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
+      headers: authHeader(),
+    })
+    const data2 = res2.json()
+    // P9 在分区一本只有 U 组（D 是 undiagnosed 不进分区一）——U 被豁免后该池无未接入组，整行消失
+    const p9 = data2.uncoveredPools.find((r) => r.poolName === 'P9')
+    expect(p9).toBeUndefined()                      // 豁免组不进分区一（改前红：P9 行存在且含 gap-u-first）
+    expect(JSON.stringify(data2.uncoveredPools)).not.toContain('gap-u-first')
+    // 同池其他客户的组不受影响：D 组（userD）仍在未诊断清单（豁免过滤只作用于分区一/二）
+    expect(data2.undiagnosedGroups.some((r) => r.poolName === 'P9' && r.requestIds.includes('gap-d-first'))).toBe(true)
+    // 清理：测试豁免规则不泄漏到其他用例
+    putPatrolActionExemptions([], { username: 'test' })
+    clearPatrolActionExemptionsCache()
+  })
+
   it('groups 联动：rootCauseL1=诊断能力缺口 过滤出 9 组（E 逃逸/F 无关/G 未诊断排除）', async () => {
     const res = await app.inject({
       method: 'GET',

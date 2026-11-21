@@ -21,7 +21,7 @@
  */
 import { analyzeFailureByLlm } from './patrolDiagnosisLlmAnalyzer.js'
 import { classifyPatrolRootCause, extractDiagnosticText } from './patrolRootCauseClassifier.js'
-import { isSimOrTestAccount } from './patrolCompress.js'
+import { isExemptFromProductAction } from './patrolActionExemptions.js'
 
 /**
  * LLM 产物文本 → 规则表分类输入（11-18 拍板口径：基于 LLM 结论文本对照规则）。
@@ -60,12 +60,13 @@ function buildClassificationText(llmReport) {
  */
 export async function runPatrolDiagnosisPipeline(mcpText, groupCtx = {}, deps = {}) {
   const outcome = await runPatrolDiagnosisPipelineInner(mcpText, groupCtx, deps)
-  // 11-20 14:30 拍板：仿真/测试账号免产品侧处理——统一出口豁免（单一出口覆盖快速路径/
-  // 降级规则/LLM 规则命中/LLM 兜底全部成功分支；三消费方共享：部署端 + plan-c 两脚本）。
-  // 管线层硬规则（数据层一致），非消费层过滤——报表/列表/筛选全链路自动同口径。
-  if (outcome.status === 'success' && outcome.productAction === '待处理' && isSimOrTestAccount(groupCtx.userName)) {
+  // 11-21 10:38 拍板：豁免白名单精确匹配（客户名×接口路径双全等）替代 11-20 全量仿真豁免
+  // （面太大——真实客户账号名意外含 test 会被静默豁免）。统一出口豁免覆盖全部成功分支；
+  // 三消费方共享：部署端 + plan-c 两脚本。管线层硬规则（数据层一致），非消费层过滤。
+  if (outcome.status === 'success' && outcome.productAction === '待处理'
+      && isExemptFromProductAction(groupCtx.userName, groupCtx.apiPath, groupCtx.poolName)) {
     outcome.productAction = '—'
-    const reason = '仿真/测试账号，不占用产品侧处理'
+    const reason = '命中处理豁免白名单（客户×接口精确组合），不占用产品侧处理'
     outcome.actionReason = outcome.actionReason ? `${outcome.actionReason}；${reason}` : reason
   }
   return outcome

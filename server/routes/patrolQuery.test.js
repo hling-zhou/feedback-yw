@@ -437,6 +437,51 @@ describeQuery('patrol query API', () => {
     expect(res2.json().rows).toEqual([])
   })
 
+  // ── ③d 处理豁免白名单（11-21 10:38 拍板：精确组合豁免配置资产）──
+  it('action-exemptions：GET 全员读 + PUT manageTags 门控红绿 + 重复组合 400', async () => {
+    const { clearPatrolActionExemptionsCache } = await import('../patrolActionExemptions.js')
+    clearPatrolActionExemptionsCache()
+    // GET（view 权限）——种子规则可见（migration 式写入 cmic_sim×L7POLICY/CREATE）
+    const res1 = await app.inject({
+      method: 'GET', url: '/api/patrol/action-exemptions',
+      headers: authHeader(),
+    })
+    expect(res1.statusCode).toBe(200)
+    const rules = res1.json().rules
+    expect(Array.isArray(rules)).toBe(true)
+    // PUT 新增规则（admin 有 manageTags）
+    const res2 = await app.inject({
+      method: 'PUT', url: '/api/patrol/action-exemptions',
+      headers: authHeaderJson(),
+      payload: { rules: [...rules, { id: 'rule-t', userName: 'userX', apiPath: '/api/x', note: '测试', enabled: true, createdAt: 't' }] },
+    })
+    expect(res2.statusCode).toBe(200)
+    expect(res2.json().rules.some((r) => r.userName === 'userX')).toBe(true)
+    // 重复组合 400（同 userName×apiPath）
+    const res3 = await app.inject({
+      method: 'PUT', url: '/api/patrol/action-exemptions',
+      headers: authHeaderJson(),
+      payload: { rules: [
+        { id: 'a', userName: 'userX', apiPath: '/api/x', enabled: true },
+        { id: 'b', userName: 'userX', apiPath: '/api/x', enabled: true },
+      ] },
+    })
+    expect(res3.statusCode).toBe(400)
+    expect(res3.json().error).toContain('重复规则')
+    // viewer（无 manageTags）PUT → 403（权限红绿）
+    const { createUser: createViewer } = await import('../users.js')
+    const { signAccessToken: signViewer } = await import('../auth.js')
+    const viewer = await createViewer({ username: 'exempt_viewer', password: 'ViewerPass12345!', team: '综合管理组', role: 'viewer' })
+    const res4 = await app.inject({
+      method: 'PUT', url: '/api/patrol/action-exemptions',
+      headers: { authorization: `Bearer ${signViewer(viewer)}`, 'content-type': 'application/json' },
+      payload: { rules: [] },
+    })
+    expect(res4.statusCode).toBe(403)
+    // 清理：恢复种子态（防泄漏到前序后跑用例）
+    clearPatrolActionExemptionsCache()
+  })
+
   // ── ③b 处理闭环权限（11-20 拍板：manageTags → editRecord）──
   it('partial_editor 可提交处理反馈；viewer 403（editRecord 门控红绿）', async () => {
     const { createUser: createUser2 } = await import('../users.js')

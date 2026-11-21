@@ -209,41 +209,76 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(r.suggestion).toBeNull() // 调用方走建议生成器兜底
   })
 
-  // ---------- 11-20 14:30 拍板：仿真/测试账号免产品侧处理（管线统一出口豁免） ----------
-  it('⑥ 豁免红绿：仿真账号（cmic 前缀）判出待处理 → 强制 — 且 actionReason 标注（规则命中分支）', async () => {
+  // ---------- 11-21 10:38 拍板：豁免白名单精确匹配（替代 11-20 全量仿真豁免——面太大误伤） ----------
+  it('⑥ 豁免红绿：白名单命中组合（cmic_sim×L7POLICY/CREATE）判出待处理 → 强制 — 且 actionReason 标注', async () => {
+    const { putPatrolActionExemptions, clearPatrolActionExemptionsCache } = await import('./patrolActionExemptions.js')
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't1', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
-    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'cmic_sim' }, {
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE' }, {
       rules: RULES,
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
     expect(r.status).toBe('success')
     expect(r.l1).toBe('资源锁定/并发冲突')     // 分类不受豁免影响
-    expect(r.productAction).toBe('—')          // 待处理被豁免（改前红：此断言为 '待处理'）
-    expect(r.actionReason).toContain('仿真/测试账号，不占用产品侧处理')
+    expect(r.productAction).toBe('—')          // 白名单命中豁免（改前红：全量仿真豁免时代断言口径不同）
+    expect(r.actionReason).toContain('命中处理豁免白名单')
   })
 
-  it('⑥b 豁免：测试账号（含 test）LLM 兜底分支 needsProductAction=true 仍强制 —；llm_failed 不受豁免', async () => {
+  it('⑥b 豁免边界：同客户不同接口 / 同接口不同客户 / 停用规则 / 真实客户——均不豁免（11-21 精确匹配红绿）', async () => {
+    const { putPatrolActionExemptions, clearPatrolActionExemptionsCache } = await import('./patrolActionExemptions.js')
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
-    const forward = vi.fn(makeForward(JSON.stringify({ ...LLM_REPORT_ENUM, needsProductAction: true, actionReason: '平台故障需产品修复' })))
-    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'user_test_01' }, {
-      rules: RULES,
-      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    const mk = async (userName, apiPath) => {
+      const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
+      return runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName, apiPath }, {
+        rules: RULES,
+        llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+      })
+    }
+    // 白名单只有 cmic_sim×L7POLICY/CREATE；cmic_sim 其他接口不豁免（11-21 用户拍板核心边界）
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't1', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
+    const r1 = await mk('cmic_sim', 'MEMBER/CREATE')
+    expect(r1.productAction).toBe('待处理')     // 同客户不同接口——不豁免（改前红：全量仿真豁免会豁免）
+    const r2 = await mk('cmic_chinamobile', 'L7POLICY/CREATE')
+    expect(r2.productAction).toBe('待处理')     // 同接口不同客户——不豁免
+    const r3 = await mk('zhangsan_gongsi', '/acl/v3/floatingip/bind')
+    expect(r3.productAction).toBe('待处理')     // 真实客户——不豁免
+    expect(String(r3.actionReason || '')).not.toContain('豁免白名单')
+    // 停用规则不豁免
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't1', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', note: '', enabled: false, createdAt: 't' }], { username: 'test' })
+    const r4 = await mk('cmic_sim', 'L7POLICY/CREATE')
+    expect(r4.productAction).toBe('待处理')     // enabled=false——不豁免
+    // 11-21 11:14 拍板：接口名称空=匹配该客户任意接口（字段级通配）
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't2', userName: 'cmic_sim', apiPath: '', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
+    const r5 = await mk('cmic_sim', 'MEMBER/CREATE')
+    expect(r5.productAction).toBe('—')          // 空接口规则——任意接口豁免（改前红：全等时代不豁免）
+    // 资源池限定的规则：非匹配池不豁免
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't3', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', poolName: '华北-北京3', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
+    const r6 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', poolName: '华南-广州3' }, {
+      rules: RULES, llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK))) },
     })
-    expect(r.status).toBe('success')
-    expect(r.productAction).toBe('—')
-    expect(r.actionReason).toContain('平台故障需产品修复')  // 原理由保留
-    expect(r.actionReason).toContain('仿真/测试账号')       // 追加豁免理由
+    expect(r6.productAction).toBe('待处理')     // 池不匹配——不豁免
+    clearPatrolActionExemptionsCache()
   })
 
-  it('⑥c 豁免边界：非仿真非测试账号（改前红）不受影响；豁免只改 productAction 不碰分类', async () => {
+  it('⑥c 豁免边界：11-20 全量仿真语义退役——含 test 的真实客户不因账号名被豁免', async () => {
+    const { putPatrolActionExemptions, clearPatrolActionExemptionsCache } = await import('./patrolActionExemptions.js')
+    clearPatrolActionExemptionsCache()
+    putPatrolActionExemptions([{ id: 't1', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', note: '', enabled: true, createdAt: 't' }], { username: 'test' })
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
-    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'zhangsan_gongsi' }, {
+    // 账号名含 test 但不在白名单——不豁免（11-20 全量语义下会误豁免，11-21 收敛后不受影响）
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, { userName: 'user_test_01', apiPath: 'L7POLICY/CREATE' }, {
       rules: RULES,
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
-    expect(r.productAction).toBe('待处理')       // 普通账号不豁免
-    expect(String(r.actionReason || '')).not.toContain('仿真/测试账号') // 规则命中分支 actionReason 可为 null——String() 归一
+    expect(r.productAction).toBe('待处理')
+    expect(String(r.actionReason || '')).not.toContain('豁免')
+    clearPatrolActionExemptionsCache()
   })
 })

@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
   MoreOutlined,
   SettingOutlined,
+  StopOutlined,
   ToolOutlined,
   TagOutlined,
   TeamOutlined,
@@ -72,6 +73,8 @@ const API_PATROL_NAV_CHILDREN = [
   { type: 'leaf', key: '/api-patrol/failures', label: '异常接口溯源', icon: <BugOutlined /> },
   // 11-19 诊断能力需求池：缺口组汇集为 MCP 日志服务诊断能力建设的需求输入（默认全角色可见）
   { type: 'leaf', key: '/api-patrol/diagnosis-gaps', label: '诊断能力需求', icon: <ToolOutlined /> },
+  // 11-21 处理豁免白名单：客户×接口精确组合豁免（前端可维护配置——默认全角色可见，写权限后端门控）
+  { type: 'leaf', key: '/api-patrol/action-exemptions', label: '处理豁免白名单', icon: <StopOutlined /> },
 ]
 
 /** @type {(NavGroup | NavLeaf | NavDivider | NavExternal)[]} */
