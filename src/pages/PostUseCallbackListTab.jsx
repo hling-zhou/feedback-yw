@@ -570,14 +570,18 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
       dataIndex: 'feedbackReasonSummary',
       width: 170,
       ellipsis: true,
-      render: (value) => value ? <span>【原话】<EllipsisHover value={value} /></span> : '—',
+      // 11-23 需求一步骤 3：该列是问卷选项串（forDisplay 过滤后的原因域），
+      // 不是客户打的原话——去掉误标的【原话】前缀（用户例句现场）。
+      render: (value) => value ? <EllipsisHover value={value} /> : '—',
     },
     {
       title: '建议回访原因',
       dataIndex: 'recommendedReason',
       width: 340,
       ellipsis: true,
-      render: (value) => value ? <span>【原话】<EllipsisHover value={value} /></span> : '—',
+      // 11-23 需求一步骤 3：recommendedReason 是系统生成的建议文案（非客户原话），
+      // 去掉误标的【原话】前缀。
+      render: (value) => value ? <EllipsisHover value={value} /> : '—',
     },
     flagColumn('needCustomerVisit', '省代表回访'),
     rowFlagColumn('needInternalTrace', '产品部溯源'),

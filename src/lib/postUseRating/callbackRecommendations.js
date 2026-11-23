@@ -4,7 +4,7 @@ import {
 } from '../../domain/postUseRatingImport.js'
 import { getEffectiveRootCauseReview } from '../../domain/rootCauseReview.js'
 import { POST_USE_RATING_PRODUCT_NAMES } from '../productCatalog/postUseRatingProducts.js'
-import { isSubstantiveFeedbackReason, splitFeedbackReasonPieces } from './reasonTaxonomy.js'
+import { FEEDBACK_REASON_PLACEHOLDERS, isSubstantiveFeedbackReason, splitFeedbackReasonPieces } from './reasonTaxonomy.js'
 import { normalizeTicketId } from '../desensitize.js'
 import { buildTicketRecordIndex } from '../followUpSatisfactionImport.js'
 import { normalizePostUseKeyCustomers } from '../storage.js'
@@ -96,7 +96,16 @@ function pickLatestSurveyRecord(records) {
   return latest
 }
 
-export function getFeedbackReasonValues(record) {
+/**
+ * 11-23 需求一（原话精准分域）：opts.forDisplay=true 时按「列位语义」过滤——
+ * ① 剔除与 commentText 完全相等的片段（导入链末位自由文本列在 feedbackReasonTexts 里的重复存储，
+ *    真库实证 74dd874d：槽3=commentText 复读——它属于【原话】域不属于「反馈原因」域）；
+ * ② 剔除占位词整值（无/不涉及 等——FEEDBACK_REASON_PLACEHOLDERS 单源）。
+ * 判负等场景（recordHasNegativeFeedback）不传 forDisplay，全量候选语义不变。
+ * @param {object} [opts]
+ * @param {boolean} [opts.forDisplay]
+ */
+export function getFeedbackReasonValues(record, opts = {}) {
   const explicit = Array.isArray(record.feedbackReasonTexts)
     ? record.feedbackReasonTexts
     : []
@@ -109,9 +118,12 @@ export function getFeedbackReasonValues(record) {
     ]
   const seen = new Set()
   const values = []
+  const commentText = opts.forDisplay ? normalizeText(record.commentText) : ''
   for (const candidate of fallback) {
     const text = normalizeText(candidate)
     if (!text || seen.has(text)) continue
+    if (opts.forDisplay && text === commentText) continue
+    if (opts.forDisplay && FEEDBACK_REASON_PLACEHOLDERS.has(text)) continue
     seen.add(text)
     values.push(text)
   }
@@ -372,12 +384,18 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
       )
       const quotes = orderedRecords.map(getEffectiveQuote).filter(Boolean)
       const reasons = orderedRecords.map(getEffectiveReason).filter(Boolean)
-      const feedbackReasons = orderedRecords.flatMap((record) => getFeedbackReasonValues(record))
-      const feedbackReasonSummary = summarizeRepeatedValues(feedbackReasons)
+      // 11-23 需求一：展示域 reason 汇总启用列位分域过滤（forDisplay）——
+      // 与 commentText 重复的自由文本片段、占位词不再混入「反馈原因」展示段；
+      // negativeSummary 的判负过滤不受影响（它自带 isSubstantiveFeedbackReason 判定）。
+      // feedbackReasons 原始数组字段（零消费方的数据完整性字段）保持全量不动——
+      // 展示链只消费 feedbackReasonSummary，双轨分离不互相污染。
+      const feedbackReasonsAll = orderedRecords.flatMap((record) => getFeedbackReasonValues(record))
+      const feedbackReasonsDisplay = orderedRecords.flatMap((record) => getFeedbackReasonValues(record, { forDisplay: true }))
+      const feedbackReasonSummary = summarizeRepeatedValues(feedbackReasonsDisplay)
       // 2026-11-04 拆双字段：负面文案只用「判负命中」的文本，占位词（无/不涉及 等）不再混入
       // 「反馈原因含负面表述（…）」的括号里；「反馈原因」展示列继续用全量 feedbackReasonSummary。
       const negativeFeedbackSummary = summarizeRepeatedValues(
-        feedbackReasons.filter((text) =>
+        feedbackReasonsAll.filter((text) =>
           splitFeedbackReasonPieces(text).some((piece) => isSubstantiveFeedbackReason(piece))),
       )
       const related = relatedByKey.get(group.key) || group.triggerRecords
@@ -402,7 +420,7 @@ export function buildPostUseCallbackRecommendations(records, keyCustomers = [], 
         reasonCount: reasons.length,
         quotes,
         reasons,
-        feedbackReasons,
+        feedbackReasons: feedbackReasonsAll,
         quoteSummary: summarizeRepeatedValues(quotes),
         reasonSummary: summarizeRepeatedValues(reasons),
         feedbackReasonSummary,

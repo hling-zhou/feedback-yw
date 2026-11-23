@@ -28,9 +28,17 @@ function joinLabeledParts(parts) {
 }
 
 export function buildQuestionnaireFollowupFeedback(item) {
+  // 11-23 需求一步骤 2：【原话】段接入（quoteSummary=commentText 域真原话）+
+  // 防冒充闸：quote 与反馈原因片段完全相等时不标（导入链 comment 回退取了选项列的
+  // 病态记录——是选项复读不是客户打的话，宁缺勿假）。
+  const reasonBits = String(item?.feedbackReasonSummary || '').split('；').flatMap((bit) =>
+    bit.split('（')[0].split(';'))
+  const quote = String(item?.quoteSummary || '').replace(/（\d+）$/, '')
+  const isQuoteImpersonation = quote && reasonBits.some((bit) => bit.trim() === quote.trim())
   return joinLabeledParts([
     item?.scoreBreakdown ? `7分以下分布：${item.scoreBreakdown}` : '',
     item?.feedbackReasonSummary ? `反馈原因：${item.feedbackReasonSummary}` : '',
+    quote && !isQuoteImpersonation ? `【原话】${item.quoteSummary}` : '',
   ])
 }
 
