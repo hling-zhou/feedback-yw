@@ -72,7 +72,7 @@ export default function PostUseReportIssueLinker({ sourceType, sourceId, open, c
 
   return (
     <div className="space-y-2">
-      <Typography.Text strong>关联原始负反馈的具体问题</Typography.Text>
+      <Typography.Text strong>负反馈稽核</Typography.Text>
       <Typography.Paragraph type="secondary" className="!mb-2">
         仅匹配同客户、同产品及对应数据月份。判定语义：「问题存在」保留并挂回访/溯源结论；
         「无实际不满」该问题不进报告分析；「产品部评估无需优改」不进定性分析（关注项/核心结论）、进定量统计。
