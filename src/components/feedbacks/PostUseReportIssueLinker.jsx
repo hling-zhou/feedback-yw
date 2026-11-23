@@ -55,8 +55,10 @@ export default function PostUseReportIssueLinker({ sourceType, sourceId, open, c
     try {
       const result = await autoJudgeReportIssueLinks(sourceType, sourceId)
       setData(await listSourceReportIssues(sourceType, sourceId))
-      const judged = (result?.verdicts || []).filter((row) => row.verdict && row.verdict !== 'uncertain').length
-      message.success(`LLM 判定完成：${judged} 个候选已给出结论（不确定的留待人工）`)
+      // 11-23 晚修复：后端三触发点重构后契约={saved,skippedManual,judged,message}（旧 verdicts
+      // 数组已废）——旧读法 result.verdicts 恒 undefined → 计数恒 0（用户实报"0 个候选"根因）。
+      // 直接透传后端 message（已区分"无候选/全 uncertain/人工不覆盖"三态）。
+      message.success(result?.message || 'LLM 判定完成')
     } catch (error) {
       message.error(error?.message || 'LLM 自动判定失败，请稍后重试')
     } finally {

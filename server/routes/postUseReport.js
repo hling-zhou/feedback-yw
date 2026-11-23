@@ -151,9 +151,12 @@ export function registerPostUseReportRoutes(app) {
     return {
       saved: result.saved,
       skippedManual: result.skippedManual,
+      judged: result.judged,
       message: result.saved
         ? `LLM 判定完成：${result.saved} 个候选已给出结论${result.skippedManual ? `（${result.skippedManual} 个人工判定不覆盖）` : ''}`
-        : '无可写入的判定（候选问题为空或均为不确定/人工已判）',
+        : result.judged
+          ? `LLM 已判定 ${result.judged} 个候选，但均为不确定或无需写入——留待人工确认`
+          : '无可判定的候选问题（该来源记录无关联的低分反馈问题）',
     }
   })
 }
