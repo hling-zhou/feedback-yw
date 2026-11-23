@@ -1,15 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Select, Spin, Typography, message } from 'antd'
+import { Alert, Button, Select, Spin, Typography, message } from 'antd'
 import {
+  autoJudgeReportIssueLinks,
   deleteReportIssueLink,
   listSourceReportIssues,
   saveReportIssueLink,
 } from '../../lib/postUseRating/reportClient.js'
 
+// 11-23 拍板：verdict 四值语义（closed 值域，表意直白）
+// - related：问题存在——本次回访/溯源处理/响应的正是该问题
+// - no_dissatisfaction：无实际不满——回访核实客户根本没不满（误操作/情绪分），报告全模块不进（仅回访）
+// - no_action：核实无问题，无需优改——溯源结论/回访内部评估判定不成立，不进定性（关注项/核心结论）、进定量（低分原因汇总/主题分布）
+const VERDICT_LABELS = {
+  related: '问题存在',
+  no_dissatisfaction: '无实际不满（不进分析）',
+  no_action: '核实无问题，无需优改（不进定性）',
+}
+
 export default function PostUseReportIssueLinker({ sourceType, sourceId, open, canEdit }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [savingId, setSavingId] = useState('')
+  const [autoJudging, setAutoJudging] = useState(false)
 
   useEffect(() => {
     if (!open || !sourceId) return undefined
@@ -30,7 +42,7 @@ export default function PostUseReportIssueLinker({ sourceType, sourceId, open, c
       if (verdict) await saveReportIssueLink(sourceType, sourceId, issueId, verdict)
       else await deleteReportIssueLink(sourceType, sourceId, issueId)
       setData(await listSourceReportIssues(sourceType, sourceId))
-      message.success(verdict ? '已关联具体问题' : '已解除问题关联')
+      message.success(verdict ? '已保存关联判定' : '已解除问题关联')
     } catch (error) {
       message.error(error?.message || '保存问题关联失败')
     } finally {
@@ -38,38 +50,63 @@ export default function PostUseReportIssueLinker({ sourceType, sourceId, open, c
     }
   }
 
-  const options = [
-    { value: 'related', label: '关联问题' },
-    ...(data?.noProblemEligible ? [{ value: 'no_issue', label: '回访确认无问题，排除该问题' }] : []),
-  ]
+  const runAutoJudge = async () => {
+    setAutoJudging(true)
+    try {
+      const result = await autoJudgeReportIssueLinks(sourceType, sourceId)
+      setData(await listSourceReportIssues(sourceType, sourceId))
+      const judged = (result?.verdicts || []).filter((row) => row.verdict && row.verdict !== 'uncertain').length
+      message.success(`LLM 判定完成：${judged} 个候选已给出结论（不确定的留待人工）`)
+    } catch (error) {
+      message.error(error?.message || 'LLM 自动判定失败，请稍后重试')
+    } finally {
+      setAutoJudging(false)
+    }
+  }
+
+  const options = Object.entries(VERDICT_LABELS)
+    .filter(([value]) => value !== 'no_dissatisfaction' || sourceType === 'visit')
+    .map(([value, label]) => ({ value, label }))
 
   return (
     <div className="space-y-2">
       <Typography.Text strong>关联原始负反馈的具体问题</Typography.Text>
       <Typography.Paragraph type="secondary" className="!mb-2">
-        仅匹配同客户、同产品及对应数据月份。确认无问题仅排除所选具体问题，原始评分与原话统计保留。
+        仅匹配同客户、同产品及对应数据月份。判定语义：「问题存在」保留并挂回访/溯源结论；
+        「无实际不满」该问题不进报告分析；「核实无问题，无需优改」不进定性分析（关注项/核心结论）、进定量统计。
       </Typography.Paragraph>
       {loading ? <Spin size="small" /> : null}
       {!loading && !data?.items?.length ? <Alert type="info" showIcon message="未找到可关联的原始负反馈" /> : null}
-      {!loading && (data?.items || []).map((issue) => (
-        <div key={issue.id} className="rounded border border-slate-200 p-3">
-          <div>{issue.issueName} · {issue.month}{issue.score == null ? '' : ` · ${issue.score} 分`}</div>
-          <Typography.Text type="secondary">原话：{issue.text}</Typography.Text>
-          <div className="mt-2">
-            <Select
-              aria-label={`${issue.issueName}的关联结论`}
-              className="w-full"
-              allowClear
-              placeholder="未关联"
-              disabled={!canEdit || Boolean(savingId)}
-              loading={savingId === issue.id}
-              value={links.get(issue.id)?.verdict || undefined}
-              options={options}
-              onChange={(value) => void change(issue.id, value)}
-            />
+      {!loading && (data?.items || []).length && canEdit ? (
+        <Button size="small" loading={autoJudging} onClick={() => void runAutoJudge()}>
+          LLM 自动判定
+        </Button>
+      ) : null}
+      {!loading && (data?.items || []).map((issue) => {
+        const link = links.get(issue.id)
+        return (
+          <div key={issue.id} className="rounded border border-slate-200 p-3">
+            <div>{issue.issueName} · {issue.month}{issue.score == null ? '' : ` · ${issue.score} 分`}</div>
+            <Typography.Text type="secondary">{issue.kind === 'option' ? '选项' : '原话'}：{issue.text}</Typography.Text>
+            <div className="mt-2">
+              <Select
+                aria-label={`${issue.issueName}的关联结论`}
+                className="w-full"
+                allowClear
+                placeholder="未判定"
+                disabled={!canEdit || Boolean(savingId)}
+                loading={savingId === issue.id}
+                value={link?.verdict || undefined}
+                options={options}
+                onChange={(value) => void change(issue.id, value)}
+              />
+              {link?.verdictSource === 'llm' && link?.verdict ? (
+                <Typography.Text type="secondary" className="mt-1 block text-xs">LLM 自动判定（可修正）</Typography.Text>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
