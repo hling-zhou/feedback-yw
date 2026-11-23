@@ -4,27 +4,34 @@ export const postUseReportRepository = {
   listLinks() {
     return getDb().prepare(`SELECT issue_id AS issueId, source_type AS sourceType,
       source_id AS sourceId, source_fingerprint AS sourceFingerprint, verdict,
+      verdict_source AS verdictSource,
       updated_at AS updatedAt, updated_by AS updatedBy FROM post_use_report_issue_links`).all()
   },
 
   listLinksForSource(sourceType, sourceId) {
     return getDb().prepare(`SELECT issue_id AS issueId, source_type AS sourceType,
       source_id AS sourceId, source_fingerprint AS sourceFingerprint, verdict,
+      verdict_source AS verdictSource,
       updated_at AS updatedAt, updated_by AS updatedBy FROM post_use_report_issue_links
       WHERE source_type = ? AND source_id = ?`).all(sourceType, sourceId)
   },
 
-  saveLink({ issueId, sourceType, sourceId, sourceFingerprint, verdict, updatedBy }) {
+  /**
+   * 11-23 拍板：verdict 四值（related/no_dissatisfaction/no_action，兼容存量 no_issue）
+   * + verdictSource 来源标注（llm/manual——LLM 自动判定写入 'llm'，人工修正/手选写 'manual'）。
+   */
+  saveLink({ issueId, sourceType, sourceId, sourceFingerprint, verdict, verdictSource = 'manual', updatedBy }) {
     const updatedAt = new Date().toISOString()
     getDb().prepare(`INSERT INTO post_use_report_issue_links
-      (issue_id, source_type, source_id, source_fingerprint, verdict, updated_at, updated_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (issue_id, source_type, source_id, source_fingerprint, verdict, verdict_source, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(issue_id, source_type, source_id) DO UPDATE SET
         source_fingerprint = excluded.source_fingerprint, verdict = excluded.verdict,
+        verdict_source = excluded.verdict_source,
         updated_at = excluded.updated_at, updated_by = excluded.updated_by`).run(
-      issueId, sourceType, sourceId, sourceFingerprint, verdict, updatedAt, updatedBy,
+      issueId, sourceType, sourceId, sourceFingerprint, verdict, verdictSource, updatedAt, updatedBy,
     )
-    return { issueId, sourceType, sourceId, sourceFingerprint, verdict, updatedAt, updatedBy }
+    return { issueId, sourceType, sourceId, sourceFingerprint, verdict, verdictSource, updatedAt, updatedBy }
   },
 
   deleteLink(issueId, sourceType, sourceId) {

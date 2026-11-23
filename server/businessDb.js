@@ -416,6 +416,45 @@ function migratePatrolDiagnosesSuggestionColumn(db) {
 }
 
 /**
+ * 11-23 拍板：issue-links verdict 值域扩四值（related/no_issue/no_dissatisfaction/no_action）
+ * + verdict_source 来源标注列（llm/manual）。SQLite CHECK 不可改——旧表重建迁移
+ * （存量 no_issue 语义 = 今天的 no_dissatisfaction，随迁映射）。
+ */
+function migrateIssueLinksVerdictV2(db) {
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name='post_use_report_issue_links'").get()
+  if (!schema?.sql || !schema.sql.includes("('related', 'no_issue')")) return
+  db.exec('BEGIN')
+  try {
+    db.exec(`CREATE TABLE post_use_report_issue_links_new (
+      issue_id TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK(source_type IN ('visit', 'trace')),
+      source_id TEXT NOT NULL,
+      source_fingerprint TEXT NOT NULL,
+      verdict TEXT NOT NULL CHECK(verdict IN ('related', 'no_issue', 'no_dissatisfaction', 'no_action')),
+      verdict_source TEXT NOT NULL DEFAULT 'manual' CHECK(verdict_source IN ('llm', 'manual')),
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (issue_id, source_type, source_id)
+    )`)
+    // 存量 no_issue → no_dissatisfaction（11-23 语义细分：旧值仅回访可用，语义即"无实际不满"全剔除档）
+    db.exec(`INSERT INTO post_use_report_issue_links_new
+      (issue_id, source_type, source_id, source_fingerprint,
+       verdict, verdict_source, updated_at, updated_by)
+      SELECT issue_id, source_type, source_id, source_fingerprint,
+       CASE WHEN verdict = 'no_issue' THEN 'no_dissatisfaction' ELSE verdict END,
+       'manual', updated_at, updated_by
+      FROM post_use_report_issue_links`)
+    db.exec('DROP TABLE post_use_report_issue_links')
+    db.exec('ALTER TABLE post_use_report_issue_links_new RENAME TO post_use_report_issue_links')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_post_use_report_links_source ON post_use_report_issue_links (source_type, source_id)')
+    db.exec('COMMIT')
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+}
+
+/**
  * 11-18 确立举措列迁移：api_patrol_failure_groups 加 action_id/established_action/action_schedule 三列
  * （巡检抽屉「确立举措」子模块——与投诉咨询单抽屉同语义：action_id 关联举措库，
  * established_action 手填内容，action_schedule 排期可空=待评估）。
@@ -761,7 +800,8 @@ export function initBusinessSchema() {
       source_type TEXT NOT NULL CHECK(source_type IN ('visit', 'trace')),
       source_id TEXT NOT NULL,
       source_fingerprint TEXT NOT NULL,
-      verdict TEXT NOT NULL CHECK(verdict IN ('related', 'no_issue')),
+      verdict TEXT NOT NULL CHECK(verdict IN ('related', 'no_issue', 'no_dissatisfaction', 'no_action')),
+      verdict_source TEXT NOT NULL DEFAULT 'manual' CHECK(verdict_source IN ('llm', 'manual')),
       updated_at TEXT NOT NULL,
       updated_by TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (issue_id, source_type, source_id)
@@ -1060,6 +1100,7 @@ export function initBusinessSchema() {
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
   migratePatrolDiagnosesSuggestionColumn(db)
+  migrateIssueLinksVerdictV2(db)
   migratePatrolGroupActionColumns(db)
   migratePatrolGroupManualCauseColumns(db)
   migratePatrolDiagnosesFiveSegColumns(db)

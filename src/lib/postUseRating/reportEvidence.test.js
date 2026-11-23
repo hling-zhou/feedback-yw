@@ -125,6 +125,35 @@ describe('report evidence', () => {
     expect(resolvedTrace[0].resolutionSource).toBe('no_action_trace')
   })
 
+  it('consumes 11-23 four-value verdict links: no_dissatisfaction full-excludes, no_action half-excludes', () => {
+    const issues = buildReportIssueOccurrences([record])
+    // LLM/人工判 no_dissatisfaction（回访 link）→ 档 1 全剔除（同旧 no_issue 语义）
+    const visit = {
+      id: 'visit-v4', importMonth: '2026-06', productName: '弹性公网IP', customerCode: 'C1',
+      visitResult: '客户解释了使用场景',
+    }
+    const fullLinks = [{
+      issueId: issues[0].id, sourceType: 'visit', sourceId: visit.id,
+      sourceFingerprint: visitSourceFingerprint(visit), verdict: 'no_dissatisfaction', verdictSource: 'llm',
+    }]
+    const resolvedFull = resolveReportIssues(issues, [visit], [], fullLinks)
+    expect(resolvedFull[0].status).toBe('excluded_no_issue')
+    expect(resolvedFull[0].resolutionSource).toBe('manual_visit')
+
+    // LLM/人工判 no_action（溯源 link）→ 档 2 半剔除（不进定性进定量），正则未命中文本也可半剔除
+    const trace = {
+      id: 'trace-v4', importMonth: '2026-06', productName: '弹性公网IP', customerCode: 'C1',
+      recommendedReason: '已核实客户场景',
+    }
+    const halfLinks = [{
+      issueId: issues[0].id, sourceType: 'trace', sourceId: trace.id,
+      sourceFingerprint: traceSourceFingerprint(trace), verdict: 'no_action', verdictSource: 'llm',
+    }]
+    const resolvedHalf = resolveReportIssues(issues, [], [trace], halfLinks)
+    expect(resolvedHalf[0].status).toBe('excluded_no_action')
+    expect(resolvedHalf[0].resolutionSource).toBe('no_action_link')
+  })
+
   it('does not exclude issues of another product or month for the same customer', () => {
     // 误杀对照（Q2 拍板：保留客户+产品匹配）：同客户其他产品/其他月的问题不受回访剔除影响
     const otherProductRecord = {

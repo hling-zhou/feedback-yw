@@ -254,14 +254,20 @@ export function resolveReportIssues(occurrences, visits = [], traces = [], links
       : null
     const noActionTrace = (traces || []).find((trace) => validSource(issue, trace)
       && isNoActionNeededConclusion(trace?.recommendedReason || trace?.progress || trace?.customerFeedback)) || null
-    const excluded = validLinks.some((row) => row.sourceType === 'visit' && row.verdict === 'no_issue') || Boolean(autoVisit) || Boolean(noDissatisfactionVisit)
-    const halfExcluded = !excluded && Boolean(noActionConclusionVisit || noActionTrace)
+    // 11-23 拍板 verdict 四值消费：no_issue（存量兼容）与 no_dissatisfaction 同义（回访核实
+    // 无实际不满→档 1 全剔除）；no_action（核实无问题无需优改——溯源结论/回访内部评估）→
+    // 与既有正则半剔除同档（不进定性进定量），link 人工/LLM 判定优先于正则自动判定。
+    const fullExcludedLink = validLinks.some((row) => row.sourceType === 'visit'
+      && (row.verdict === 'no_issue' || row.verdict === 'no_dissatisfaction'))
+    const noActionLink = validLinks.some((row) => row.verdict === 'no_action')
+    const excluded = fullExcludedLink || Boolean(autoVisit) || Boolean(noDissatisfactionVisit)
+    const halfExcluded = !excluded && Boolean(noActionConclusionVisit || noActionTrace || noActionLink)
     return {
       ...issue,
       status: excluded ? 'excluded_no_issue' : halfExcluded ? 'excluded_no_action' : 'open',
       resolutionSource: excluded
-        ? (autoVisit && !linkedVisitIds.length ? 'exact_visit' : linkedVisitIds.length || noDissatisfactionVisit ? 'no_dissatisfaction_visit' : 'manual_visit')
-        : halfExcluded ? (noActionConclusionVisit ? 'no_action_conclusion' : 'no_action_trace') : '',
+        ? (fullExcludedLink ? 'manual_visit' : autoVisit && !linkedVisitIds.length ? 'exact_visit' : linkedVisitIds.length || noDissatisfactionVisit ? 'no_dissatisfaction_visit' : 'manual_visit')
+        : halfExcluded ? (noActionLink ? 'no_action_link' : noActionConclusionVisit ? 'no_action_conclusion' : 'no_action_trace') : '',
       linkedVisitIds: autoVisit || noDissatisfactionVisit
         ? [...new Set([...linkedVisitIds, String((autoVisit || noDissatisfactionVisit).id)])]
         : noActionConclusionVisit

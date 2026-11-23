@@ -22,6 +22,15 @@ export function deleteReportIssueLink(sourceType, sourceId, issueId) {
   })
 }
 
+/**
+ * 11-23 拍板：LLM 语义自动判定候选问题关联（服务端跑，verdictSource='llm'；uncertain 不写留人工）。
+ */
+export function autoJudgeReportIssueLinks(sourceType, sourceId) {
+  return apiFetch('/api/post-use-report/links/auto', {
+    method: 'POST', body: JSON.stringify({ sourceType, sourceId }),
+  })
+}
+
 export async function listReportDrafts(reportKey) {
   const response = await apiFetch(`/api/post-use-report/drafts?reportKey=${encodeURIComponent(reportKey)}`)
   return response?.items || []
