@@ -90,7 +90,7 @@ export const GENERALIZATION_FILTER_OPTIONS = /** @type {const} */ ([
 export const FEEDBACK_FILTER_GROUPS = [
   {
     label: '用后即评',
-    keys: ['ratingScore', 'channel', 'commentKeyword'],
+    keys: ['ratingScore', 'channel', 'commentKeyword', 'product'],
   },
   {
     label: '工单',
@@ -174,6 +174,7 @@ export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */
 /** 省代表回访 Tab 复合筛选（2026-11-05：myReview 随个人标记体系下线移除） */
 export const FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'customerNames',
+  'product',
 ])
 
 /** @type {Record<FeedbackFilterKey, string>} */

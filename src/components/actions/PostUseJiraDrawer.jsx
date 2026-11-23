@@ -92,7 +92,7 @@ export default function PostUseJiraDrawer({
               <Descriptions.Item label="客户编码">{item.customerCode || '—'}</Descriptions.Item>
               <Descriptions.Item label="登录账号名称">{item.loginAccountName || '—'}</Descriptions.Item>
               <Descriptions.Item label="产品名称">{item.productName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="客户反馈">{item.customerFeedback || '—'}</Descriptions.Item>
+              <Descriptions.Item label="客户反馈">{item.customerFeedback ? <span>【原话】{item.customerFeedback}</span> : '—'}</Descriptions.Item>
               {item.scoreSource === '投诉回访' && (
                 <Descriptions.Item label="相应投诉工单">{item.originalTicketId || '—'}</Descriptions.Item>
               )}

@@ -1531,34 +1531,26 @@ export default function Feedbacks() {
       >
         <div className="flex w-full flex-wrap items-start gap-2">
         {isCustomerVisitLane ? (
-          <div className="flex w-full flex-wrap items-center gap-2">
-            <Typography.Text className="shrink-0 text-sm text-ink-600">产品</Typography.Text>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder="全部产品"
-              className="min-w-[180px]"
-              value={filters.product || undefined}
-              options={products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))}
-              onChange={(value) => {
-                const next = { ...filters, product: value || '' }
-                handleFiltersChange(next, { syncUrl: true })
-              }}
-            />
-            <div className="min-w-0 flex-1">
-              <FeedbackCompositeFilter
-                filters={filters}
-                onFiltersChange={handleFiltersChange}
-                onClearFilters={handleClearFilters}
-                options={{
-                  filterKeys: FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
-                  customerNameOptions: visitCustomerNameOptions,
-                  emptyPlaceholder: '选择属性筛选（客户名称）',
-                }}
-              />
-            </div>
-            <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+          <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Space wrap>
+              <span className="inline-flex items-center gap-1">
+                <Typography.Text className="shrink-0 text-sm text-ink-600">产品</Typography.Text>
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="全部产品"
+                  className="min-w-[180px]"
+                  value={filters.product || undefined}
+                  options={products.map((item) => ({ value: item.name, label: `${item.name} (${item.count})` }))}
+                  onChange={(value) => {
+                    const next = { ...filters, product: value || '' }
+                    handleFiltersChange(next, { syncUrl: true })
+                  }}
+                  getPopupContainer={() => document.body}
+                />
+              </span>
               {/* 2026-11-19 优化建议（自动生成）：批量入口（retag 权限；待生成计数驱动） */}
               <PermissionGate permission="retag">
                 <Tooltip
@@ -1607,8 +1599,23 @@ export default function Feedbacks() {
               >
                 刷新
               </Button>
-            </div>
+            </Space>
           </div>
+          <div className="flex w-full flex-wrap items-start gap-2">
+            <FeedbackCompositeFilter
+              className="min-w-0 flex-1"
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearFilters={handleClearFilters}
+              options={{
+                filterKeys: FEEDBACK_CUSTOMER_VISIT_COMPOSITE_KEYS,
+                customerNameOptions: visitCustomerNameOptions,
+                products: products.filter((item) => item.count > 0),
+                emptyPlaceholder: '选择属性筛选（客户名称、产品）',
+              }}
+            />
+          </div>
+          </>
         ) : (
         <div className="w-full space-y-2">
           {ticketIdSet ? (
@@ -1999,7 +2006,8 @@ function CustomerVisitTable({ rows, onSelect, stickyOffset = 0, canDelete = fals
       // 行 hover 时文字变蓝（含截断省略号），进一步提示行可点击打开详情。
       // 变色锚在 td（feedback-hover-cell）：antd ellipsis 省略号用 td 自身 color 渲染，
       // 只染内层 span 会出"蓝字+灰省略号"割裂。
-      { title: '客户反馈', dataIndex: '客户反馈', width: 260, ellipsis: true, className: 'feedback-hover-cell' },
+      { title: '客户反馈', dataIndex: '客户反馈', width: 260, ellipsis: true, className: 'feedback-hover-cell',
+        render: (value) => value ? <span>【原话】{value}</span> : '—' },
       // 2026-11-10 拍板：截断列 hover 气泡显示完整（参考投诉咨询工单列表 Tooltip 形态）；
       // 客户编码主流 20 字符（E+19 位数字）→ 宽 220 保完整不截断
       {
@@ -2160,7 +2168,7 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
             {hasOpenTicketTodos(fb) ? <Tag color="orange">有待办</Tag> : null}
           </div>
           <Typography.Paragraph className="!mb-0 !mt-2 line-clamp-2 text-sm font-medium">
-            {fb.problemSummary || fb.customerQuote || '—'}
+            {fb.problemSummary ? fb.problemSummary : fb.customerQuote ? <span>【原话】{fb.customerQuote}</span> : '—'}
           </Typography.Paragraph>
           {fb.journeyL2 && (
             <Typography.Text type="secondary" className="mt-1 block text-xs">

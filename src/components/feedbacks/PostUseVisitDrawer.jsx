@@ -171,7 +171,7 @@ export default function PostUseVisitDrawer({ record, open, onClose, onSaved, onP
               <Descriptions.Item label="客户编码">{record.customerCode || '—'}</Descriptions.Item>
               <Descriptions.Item label="登录账号名称">{record.loginAccountName || '—'}</Descriptions.Item>
               <Descriptions.Item label="产品名称">{record.productName || '—'}</Descriptions.Item>
-              <Descriptions.Item label="用户反馈原文">{record.userFeedbackText || '—'}</Descriptions.Item>
+              <Descriptions.Item label="用户反馈原文">{record.userFeedbackText ? <span>【原话】{record.userFeedbackText}</span> : '—'}</Descriptions.Item>
               <Descriptions.Item label="回访结果">{record.visitResult || '—'}</Descriptions.Item>
               {record.scoreSource === '投诉回访' && (
                 <Descriptions.Item label="相应投诉工单">{record.originalTicketId || '—'}</Descriptions.Item>
