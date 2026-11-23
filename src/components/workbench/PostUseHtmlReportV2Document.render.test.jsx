@@ -369,9 +369,10 @@ describe('V2 offline document', () => {
 
   it('applies the 11-18 display masking policy: customer names plain, personal names and phones masked', () => {
     // 11-18 用户口径：客户名（企业/机构/账号）明文；客户姓名（聚类标记）、省代表/内部员工姓名、电话号码脱敏；LLM 输入侧另行保持。
-    const records = [{ id: 'rating', dataSourceType: 'post_use_rating', importMonth: '2026-09', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' }]
+    // 11-23 拍板：上期回访补充表删除——脱敏断言迁到产品正文「省代表回访」行（当期回访渲染位，脱敏链同源）
+    const records = [{ id: 'rating', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: 'NAT网关', productName: 'NAT网关', channel: 'console', ratingScore: 1, feedbackReasonPrimary: '功能有缺失' }]
     const visits = [{
-      id: 'prev-visit', importMonth: '2026-09', productName: 'NAT网关',
+      id: 'cur-visit', importMonth: '2026-10', productName: 'NAT网关',
       customerName: '2000546349-（聚类客户）周英雯',
       visitResult: '已回访客户 13812345678，问题已解释',
       internalConclusion: '客户 13987654321 表示认可方案',
@@ -381,14 +382,14 @@ describe('V2 offline document', () => {
       records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
     })
     const html = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll todoItems={[]} />)
-    // 上期回访表：企业客户名明文、聚类人名脱敏、正文手机号打码
-    const visitRow = tableRowFor(html, '上期省代表回访结果补充', '2000546349')
-    expect(visitRow).toContain('2000546349-（聚类客户）周****雯')
-    expect(visitRow).not.toContain('周英雯')
-    expect(visitRow).toContain('138****5678')
-    expect(visitRow).not.toContain('13812345678')
-    expect(visitRow).toContain('139****4321')
-    expect(visitRow).not.toContain('13987654321')
+    // 产品正文省代表回访行：企业客户名明文、聚类人名脱敏、正文手机号打码
+    const visitPara = html.slice(html.indexOf('省代表回访（'))
+    expect(visitPara).toContain('2000546349-（聚类客户）周****雯')
+    expect(visitPara).not.toContain('周英雯')
+    expect(visitPara).toContain('138****5678')
+    expect(visitPara).not.toContain('13812345678')
+    // 模块删除防回潮：整份文档不再渲染上期回访补充区块
+    expect(html).not.toContain('上期省代表回访结果补充')
   })
 
   it('masks internal trace assignee names in evidence blocks', () => {

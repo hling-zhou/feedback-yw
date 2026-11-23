@@ -82,7 +82,7 @@ describe('V2 report facts', () => {
     expect(validatePostUseReportV2(model).filter((error) => !error.includes('责任人'))).toEqual([])
   })
 
-  it('builds the appendix, previous visits, and follow-up count directly from records', () => {
+  it('builds the appendix and follow-up count directly from records (11-23: previous visits module removed)', () => {
     const records = [{ ...rating('low', '2026-10', 8, '功能有缺失'), customerName: '测试客户' }]
     const visits = [
       { id: 'previous', importMonth: '2026-09', customerName: '上期客户', productName: '弹性公网IP', visitResult: '需要优化', internalConclusion: '专项优化中' },
@@ -93,7 +93,8 @@ describe('V2 report facts', () => {
       records, companyRecords: records, allRecords: records, allCompanyRecords: records, visits,
     })
     expect(model.customers).toMatchObject([{ customerName: '测试客户', nonTenCount: 1, products: ['弹性公网IP'] }])
-    expect(model.previousVisits).toMatchObject([{ id: 'previous', category: '专项优化' }])
+    // 11-23 拍板：上期回访补充模块删除——model 不再产出 previousVisits 字段
+    expect(model.previousVisits).toBeUndefined()
     expect(model.recommendedFeedbackCount).toBe(1)
     expect(model.todoRows).toEqual([])
   })
@@ -422,6 +423,39 @@ describe('V2 report facts', () => {
     const faded = model.reasons.find((row) => row.name === '购买与配置决策')
     // [1,1,0] 两个月出现末月消失 → 已收敛
     expect(faded.lifecycle).toBe('已收敛（末月无）')
+  })
+
+  it('labels concentrated burst only when peak month count >= 3 (11-23 threshold ruling)', () => {
+    // 场景一：峰值 4 条且 >=3、>= 2×其余月合计，且未贯穿全季 → 集中爆发（8月）
+    const burstRecords = [
+      rating('b2', '2026-08', 1, '连接不稳定'),
+      rating('b3', '2026-08', 2, '连接不稳定'),
+      rating('b4', '2026-08', 3, '连接不稳定'),
+      rating('b5', '2026-08', 1, '连接不稳定'),
+      rating('b6', '2026-09', 1, '连接不稳定'),
+    ]
+    const burstModel = buildPostUseReportV2Model({
+      reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
+      records: burstRecords, companyRecords: burstRecords, allRecords: burstRecords, allCompanyRecords: burstRecords,
+    })
+    const burst = burstModel.reasons.find((row) => row.name === '服务资源性能/稳定性不足')
+    expect(burst.monthCounts).toEqual({ '2026-07': 0, '2026-08': 4, '2026-09': 1 })
+    expect(burst.lifecycle).toBe('8月集中爆发')
+
+    // 场景二：峰值 2 条 <3 但占比达标（2 >= 2×1）→ 旧判据会误判爆发，新判据不判
+    // （11-23 拍板：低频主题不拔高态势）。[0,1,2]：两个月出现、末月非 0、峰值 2。
+    const lowRecords = [
+      rating('l1', '2026-08', 1, '连接不稳定'),
+      rating('l2', '2026-09', 1, '连接不稳定'),
+      rating('l3', '2026-09', 2, '连接不稳定'),
+    ]
+    const lowModel = buildPostUseReportV2Model({
+      reportKey: '2026-Q3', reportKind: 'quarter', reportPeriod: period('quarter'),
+      records: lowRecords, companyRecords: lowRecords, allRecords: lowRecords, allCompanyRecords: lowRecords,
+    })
+    const low = lowModel.reasons.find((row) => row.name === '服务资源性能/稳定性不足')
+    expect(low.monthCounts).toEqual({ '2026-07': 0, '2026-08': 1, '2026-09': 2 })
+    expect(low.lifecycle).toBe('')
   })
 
   // 11-19 两档剔除（用户拍板）：档 1 回访"无实际不满"五模块全不进；

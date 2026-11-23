@@ -23,7 +23,7 @@ import { postUsePeriodMonths, postUseVisitMonthsForPeriod } from '../lib/postUse
 import { clipDepartmentStatusTrends, normalizeDepartmentStatusTrends, rollupCompanyMetrics } from '../lib/postUseRating/statusTrends.js'
 import { buildPostUseReportV2Model, validatePostUseReportV2 } from '../lib/postUseRating/reportV2Model.js'
 import { catalogProductNames } from '../lib/postUseRating/reportEvidence.js'
-import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PREVIOUS_VISITS, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../lib/postUseRating/htmlReportModel.js'
+import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../lib/postUseRating/htmlReportModel.js'
 import { REPORT_V2_CSS } from '../lib/postUseRating/reportV2Styles.js'
 import { generatePostUseReportV2Narrative } from '../lib/postUseRating/reportV2Narrative.js'
 import { loadHtmlReportOverlay, saveHtmlReportOverlay } from '../lib/postUseRating/htmlReportOverlay.js'
@@ -44,7 +44,7 @@ const WORKBENCH_HREF = '/workbench?tab=post_use_rating'
  * 11-20 V1 下线：ReportSectionToggles 由已删的 PostUseHtmlReportDocument.jsx 迁入本页
  *（V2 报告区块显隐开关，V1/V2 共用件随 V1 文档删除迁移保活）。
  */
-function ReportSectionToggles({ hiddenSectionIds, onToggleSection, showPreviousVisits = true }) {
+function ReportSectionToggles({ hiddenSectionIds, onToggleSection }) {
   const hidden = new Set(hiddenSectionIds || [])
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -60,14 +60,7 @@ function ReportSectionToggles({ hiddenSectionIds, onToggleSection, showPreviousV
       >
         显示待办事项及进展
       </Checkbox>
-      {showPreviousVisits ? (
-        <Checkbox
-          checked={!hidden.has(REPORT_SECTION_PREVIOUS_VISITS)}
-          onChange={(event) => onToggleSection(REPORT_SECTION_PREVIOUS_VISITS, event.target.checked)}
-        >
-          显示上期回访补充
-        </Checkbox>
-      ) : null}
+      {/* 11-23 拍板：上期回访补充复选框随模块彻底删除 */}
       <Checkbox
         checked={!hidden.has(REPORT_SECTION_APPENDIX)}
         onChange={(event) => onToggleSection(REPORT_SECTION_APPENDIX, event.target.checked)}
@@ -351,18 +344,8 @@ export default function PostUseHtmlReport() {
     setActionOverrides(overlay?.narratives?.actionOverrides || {})
     setManualIssueFields({})
     manualIssueFieldsRef.current = {}
-    setVisitSupplements(
-      Object.fromEntries(
-        (model.previousVisits || []).map((row) => [
-          row.id,
-          {
-            visitResult: row.visitResult || '',
-            internalConclusion: row.internalConclusion || '',
-            remark: row.remark || '',
-          },
-        ]),
-      ),
-    )
+    // 11-23 拍板：上期回访补充模块删除——visitSupplements 初始化随 model.previousVisits 一并移除
+    setVisitSupplements({})
   }, [model?.dataFingerprint, overlay?.updatedAt])
 
   useEffect(() => {
@@ -422,17 +405,7 @@ export default function PostUseHtmlReport() {
   // 11-19 拍板：责任人未指定阻断保存/导出/发邮件——校验含页面当前编辑中的待办（未保存也能拦住）
   const v2Validation = model ? validatePostUseReportV2(model, actionOverrides, todoItems) : []
 
-  const onVisitSupplementChange = (id, field, value) => {
-    setVisitSupplements((prev) => ({
-      ...prev,
-      [id]: {
-        visitResult: prev[id]?.visitResult || '',
-        internalConclusion: prev[id]?.internalConclusion || '',
-        remark: prev[id]?.remark || '',
-        [field]: value,
-      },
-    }))
-  }
+  // 11-23 拍板：onVisitSupplementChange 随上期回访补充模块删除（唯一消费方是已删 Section）
 
   const onToggleSection = (sectionId, visible) => {
     setHiddenSectionIds((prev) => {
@@ -689,7 +662,6 @@ export default function PostUseHtmlReport() {
           {model ? (
             <ReportSectionToggles
               hiddenSectionIds={hiddenSectionIds}
-              showPreviousVisits={reportKind === 'month'}
               onToggleSection={onToggleSection}
             />
           ) : null}

@@ -159,7 +159,9 @@ function lifecycle(monthCounts, months) {
   if (counts.at(-1) === 0 && counts.slice(0, -1).some(Boolean)) return '已收敛（末月无）'
   const max = Math.max(...counts)
   const peak = counts.indexOf(max)
-  if (max >= 2 * (counts.reduce((sum, value) => sum + value, 0) - max)) {
+  // 11-23 拍板：集中爆发加绝对量门槛——单月峰值 ≥3 条才算（防止 0/1/0 类低频主题
+  // 仅凭"占比过半"被拔高为爆发态势）；占比判据（峰值 ≥ 其余月合计 2 倍）保留。
+  if (max >= 3 && max >= 2 * (counts.reduce((sum, value) => sum + value, 0) - max)) {
     return `${Number(months[peak].slice(5))}月集中爆发`
   }
   return ''
@@ -577,23 +579,7 @@ function visitCategory(visit) {
   return '待核实'
 }
 
-function previousVisitRows(visits, reportKey) {
-  const previousMonth = previousMonths([reportKey], 'month')[0]
-  return visits.filter((visit) => (visit.importMonth || visit.visitMonth) === previousMonth)
-    .map((visit) => {
-      const customerName = String(visit.customerName || visit.userInfoDetail || visit.userInfo || '').trim() || '未标注客户'
-      const visitResult = String(visit.visitResult || visit.visitFeedbackDetail || visit.feedbackSummary || '').trim()
-      return {
-        id: String(visit.id || `${customerName}-${productOf(visit)}-${visitResult}`),
-        customerName,
-        productName: productOf(visit),
-        visitResult,
-        internalConclusion: String(visit.internalConclusion || visit.internalEvaluationDetail || '').trim(),
-        remark: String(visit.remark || '').trim(),
-        category: visitCategory(visit),
-      }
-    })
-}
+// 11-23 拍板：previousVisitRows 随「上期省代表回访结果补充」月报模块彻底删除
 
 /**
  * V2 待办候选收集（11-18 需求）：三路来源，只收本周期未完结项。
@@ -1015,7 +1001,7 @@ function dataFingerprint(model) {
     model.themes.map((row) => [row.key, row.count, row.lowestScore, row.monthCounts]),
     model.positiveCount,
     model.actions.map((row) => [row.id, row.text, row.title, row.detail, row.owner, row.status]),
-    model.previousVisits.map((row) => [row.id, row.visitResult, row.internalConclusion]),
+    // 11-23 拍板：previousVisits 行随模块删除，不再计入 dataFingerprint
   ])
   let hash = 2166136261
   for (let index = 0; index < facts.length; index += 1) hash = Math.imul(hash ^ facts.charCodeAt(index), 16777619)
@@ -1293,7 +1279,7 @@ export function buildPostUseReportV2Model({ reportKey, reportKind, reportPeriod,
     positiveCount: positiveRegistry.length,
     quoteRegistry: registry,
     lowScoreRecordCount: distinct(themes.filter((row) => row.type === 'low' && row.lowestScore <= 5).flatMap((row) => row.recordIds)).length,
-    previousVisits: kind === 'month' ? previousVisitRows(visits, reportKey) : [],
+    // 11-23 拍板：previousVisits（上期省代表回访结果补充）随月报模块彻底删除
     customers: buildCustomerInsights(
       currentScored.map((row) => ({ ...row, productName: productOf(row) })),
       reportVisits.filter((visit) => productNames.includes(productOf(visit)))
