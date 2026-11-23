@@ -1,7 +1,11 @@
 const TOKEN_KEY = 'fi_access_token'
 
+// 11-23 拍板（方案 A）：token 迁 localStorage——sessionStorage 每 tab 独立 session，
+// 报告页 target=_blank 链接（溯源/举措）新 tab 必丢会话跳登录页（真机报障）。
+// localStorage 同 origin 跨 tab 共享：在线页新 tab 直达、邮件链接在常用浏览器直达。
+// token 有效期不变（7 天 JWT）；退出登录 clearStoredToken 全局登出，其他 tab 刷新即跳登录。
 export function getStoredToken() {
-  return sessionStorage.getItem(TOKEN_KEY) || ''
+  return localStorage.getItem(TOKEN_KEY) || ''
 }
 
 /** @param {string} token */
@@ -9,7 +13,7 @@ export function setStoredToken(token) {
   sessionStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(TOKEN_KEY)
   if (!token) return
-  sessionStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearStoredToken() {

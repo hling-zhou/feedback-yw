@@ -18,7 +18,9 @@ export default function RequireAuth({ permission }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    // 11-23 修复：登录回跳携带完整地址（pathname + search）——否则 /feedbacks?source=...&lane=...
+    // 这类带视图参数的链接登录后只回 /feedbacks，溯源/举措视图状态丢失（邮件链接场景实测报障）
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   }
 
   if (!canRoute(location.pathname)) {

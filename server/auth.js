@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken'
 import { resolveJwtSecret } from './config.js'
 
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d'
+// 11-23 拍板：token 有效期 7 天 → 48 小时（token 迁 localStorage 后跨 tab 长效共享，
+// 失窃窗口相应收紧；2 天覆盖工作日 + 周末补登录一次的频率，内网可接受）
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '48h'
 
 function getJwtSecret() {
   return resolveJwtSecret()
