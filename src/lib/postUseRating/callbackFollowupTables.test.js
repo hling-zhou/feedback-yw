@@ -124,7 +124,7 @@ describe('callbackFollowupTables', () => {
       登录账号名称: '',
       产品名称: '弹性公网IP',
       相应投诉工单: '',
-      客户反馈: '7分以下分布：旧问卷*6分*1次；反馈原因：功能有缺失（1）',
+      客户反馈: '【原话】7分以下分布：旧问卷*6分*1次；反馈原因：功能有缺失（1）',
     })
     expect(toJiraArchivePayload(traceRows[0])).toMatchObject({
       itemKey: 'q:C1:弹性公网IP:2026-06',

@@ -82,7 +82,7 @@ export function buildFollowupTableExportRows(rows) {
     登录账号名称: item.登录账号名称 || '',
     产品名称: item.产品名称 || '',
     相应投诉工单: item.相应投诉工单 || '',
-    客户反馈: item.客户反馈 || '',
+    客户反馈: item.客户反馈 ? '【原话】' + item.客户反馈 : '',
   }))
 }
 

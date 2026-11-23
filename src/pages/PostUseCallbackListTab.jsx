@@ -125,17 +125,6 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
     () => scopePostUseRatingRecords(periodItems, catalog),
     [periodItems, catalog],
   )
-  // 产品下拉选项 = scopedItems 按产品计数（口径同工作台 DashboardView 头部下拉）
-  const productOptions = useMemo(() => {
-    const counts = new Map()
-    for (const record of scopedItems) {
-      const name = String(record.product || '').trim()
-      if (name) counts.set(name, (counts.get(name) || 0) + 1)
-    }
-    return [...counts].map(([name, count]) => ({ value: name, label: `${name} (${count})` }))
-      .sort((a, b) => a.value.localeCompare(b.value, 'zh'))
-  }, [scopedItems])
-
   const allProductNames = useMemo(() => getPostUseRatingProductNames(catalog), [catalog])
   // 工单记录（投诉+咨询）：列表构建 + 工单跳转共用同源输入（index 各建各，成本 O(n) 忽略）
   const ticketRecords = useMemo(
@@ -148,6 +137,37 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
     [feedbacks],
   )
 
+  // 全产品清单（无产品筛选）：供产品下拉统计 + 未选产品时直接复用（2026-11-23 口径修正：
+  // 计数必须反映 tab 内实际显示的行数 = recommendations + nonTenRecords，而非原始 scopedItems
+  // 记录数——后者含被 buildPostUseCallbackLists 内部多道过滤排除的记录）
+  const allLists = useMemo(
+    () =>
+      buildPostUseCallbackLists({
+        records: scopedItems,
+        productNames: allProductNames,
+        keyCustomers: settings?.postUseKeyCustomers,
+        ticketRecords,
+      }),
+    [scopedItems, allProductNames, settings?.postUseKeyCustomers, ticketRecords],
+  )
+
+  // 产品下拉选项 = 全产品清单内容计数（每产品 tab 内可见行数 = recommendations + nonTenRecords）
+  const productOptions = useMemo(() => {
+    const counts = new Map()
+    for (const item of allLists.recommendations) {
+      const name = String(item.productName || '').trim()
+      if (name) counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    for (const item of allLists.nonTenRecords) {
+      const name = String(item.productName || '').trim()
+      if (name) counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    return [...counts].map(([name, count]) => ({ value: name, label: `${name} (${count})` }))
+      .sort((a, b) => a.value.localeCompare(b.value, 'zh'))
+  }, [allLists])
+
+  const totalRowCount = allLists.recommendations.length + allLists.nonTenRecords.length
+
   const selectedItems = useMemo(
     () => (selectedProduct ? scopedItems.filter((record) => record.product === selectedProduct) : scopedItems),
     [scopedItems, selectedProduct],
@@ -155,13 +175,15 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
 
   const { recommendations, nonTenRecords } = useMemo(
     () =>
-      buildPostUseCallbackLists({
-        records: selectedItems,
-        productNames: allProductNames,
-        keyCustomers: settings?.postUseKeyCustomers,
-        ticketRecords,
-      }),
-    [selectedItems, allProductNames, settings?.postUseKeyCustomers, ticketRecords],
+      selectedProduct
+        ? buildPostUseCallbackLists({
+            records: selectedItems,
+            productNames: allProductNames,
+            keyCustomers: settings?.postUseKeyCustomers,
+            ticketRecords,
+          })
+        : allLists,
+    [selectedProduct, selectedItems, allProductNames, settings?.postUseKeyCustomers, ticketRecords, allLists],
   )
 
   const scopeLabel = currentPeriod?.label || '当前范围'
@@ -379,7 +401,7 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
           __groupSpan: span,
         }
       }
-      i += 1
+      i = j
     }
     return sorted
   }, [recommendations])
@@ -416,7 +438,7 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
       for (let k = i; k < j; k++) {
         kept[k] = { ...kept[k], __groupKeys: keys, __isGroupFirst: k === i, __groupSpan: span }
       }
-      i += 1
+      i = j
     }
     return kept
   }, [questionnaireRows, filterArchivedOnly, filterDispatchedOnly, isArchived, isDispatched])
@@ -500,6 +522,7 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
           value={current?.id || undefined}
           options={assigneeOptions}
           filterOption={userOptionFilterOption}
+          getPopupContainer={() => document.body}
           onChange={(value) => {
             const person = assignees.find((p) => p.id === value)
             setAssigneeOverrides((prev) => {
@@ -547,14 +570,14 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
       dataIndex: 'feedbackReasonSummary',
       width: 170,
       ellipsis: true,
-      render: (value) => <EllipsisHover value={value} />,
+      render: (value) => value ? <span>【原话】<EllipsisHover value={value} /></span> : '—',
     },
     {
       title: '建议回访原因',
       dataIndex: 'recommendedReason',
       width: 340,
       ellipsis: true,
-      render: (value) => <EllipsisHover value={value} />,
+      render: (value) => value ? <span>【原话】<EllipsisHover value={value} /></span> : '—',
     },
     flagColumn('needCustomerVisit', '省代表回访'),
     rowFlagColumn('needInternalTrace', '产品部溯源'),
@@ -580,8 +603,10 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
     { title: '投诉整体服务评价', dataIndex: 'score', width: 140 },
     { title: '客户名称', dataIndex: 'customerName', width: 150, ellipsis: true, render: (value, row) => <span>{value}<KeyCustomerStar isKeyCustomer={row.isKeyCustomer} /></span> },
     { title: '集团客户编码', dataIndex: 'customerCode', width: 140, ellipsis: true },
-    { title: '不满原因', dataIndex: 'dissatisfactionReason', width: 180, ellipsis: true },
-    { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true },
+    { title: '不满原因', dataIndex: 'dissatisfactionReason', width: 180, ellipsis: true,
+      render: (value) => value ? <span>【原话】{value}</span> : '—' },
+    { title: '客户请求内容', dataIndex: 'customerRequest', width: 200, ellipsis: true,
+      render: (value) => value ? <span>【原话】{value}</span> : '—' },
     { title: '问题原因', dataIndex: 'problemCause', width: 200, ellipsis: true },
     flagColumn('needCustomerVisit', '省代表回访'),
     {
@@ -805,8 +830,9 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
               optionFilterProp="label"
               className="min-w-[220px]"
               value={selectedProduct}
-              options={[{ value: '', label: `全部产品 (${scopedItems.length})` }, ...productOptions]}
+              options={[{ value: '', label: `全部产品 (${totalRowCount})` }, ...productOptions]}
               onChange={(value) => setSelectedProduct(value || '')}
+              getPopupContainer={() => document.body}
             />
           </Space>
           <Checkbox checked={filterArchivedOnly} onChange={(e) => setFilterArchivedOnly(e.target.checked)}>
