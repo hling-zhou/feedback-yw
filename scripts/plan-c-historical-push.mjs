@@ -258,6 +258,8 @@ async function buildPackageFor(db, dataDate) {
       preCompressCount: r.pre_compress_count, suppressedRequestIds: r.suppressed_request_ids,
       customerType: r.customer_type,
       rootCauseL1: r.root_cause_l1, rootCauseL2: r.root_cause_l2,
+      // 11-23 修复：组状态随包透传（与 plan-c-daily 同步——豁免 '—' 防部署端重映射丢失）
+      productAction: r.product_action_status == null ? null : String(r.product_action_status),
       finalConclusion: r.final_conclusion,
       // 11-20 19:23 拍板：MCP 原始日志全文随包推（与 plan-c-daily 同步——抽屉「查看完整日志」数据源）
       mcpRawResponse: r.mcp_raw_response == null ? null : String(r.mcp_raw_response),

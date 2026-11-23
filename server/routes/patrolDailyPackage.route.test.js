@@ -309,6 +309,31 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     expect(g.root_cause_l2).toBe('日志缺失/无数据')
   })
 
+  it('(7) 11-23 豁免透传红绿：包显式 productAction=「—」优先落库（L1 非缺口时防重映射回待处理）', async () => {
+    // 先例：cmic_sim×L7POLICY 组 L1=参数无效——修复前部署端按 L1 映射「待处理」，
+    // 本机管线豁免的 '—' 在中继第二跳丢失，日报误报「待产品侧处理」。
+    // 清库重建（前序用例已给该组写过状态）
+    db.prepare('DELETE FROM api_patrol_failure_groups').run()
+    const pkg = buildPackage()
+    pkg.groups[0].productAction = '—'          // 本机豁免产物显式透传
+    pkg.groups[0].rootCauseL1 = '参数无效/校验失败'  // 非缺口 L1——回退映射会给「待处理」
+    pkg.groups[0].diagnosisStatus = 'success'
+    await pushPackage(pkg)
+    const g = db.prepare('SELECT * FROM api_patrol_failure_groups').get()
+    expect(g.product_action_status).toBe('—')   // 包值优先（改前红：'待处理'）
+  })
+
+  it('(7b) productAction 非法值回退 L1 映射（向后兼容护栏）', async () => {
+    db.prepare('DELETE FROM api_patrol_failure_groups').run()
+    const pkg = buildPackage()
+    pkg.groups[0].productAction = '乱写的值'
+    pkg.groups[0].rootCauseL1 = '业务冲突'
+    pkg.groups[0].diagnosisStatus = 'success'
+    await pushPackage(pkg)
+    const g = db.prepare('SELECT * FROM api_patrol_failure_groups').get()
+    expect(g.product_action_status).toBe('待处理')  // 非白名单值 → L1 映射兜底
+  })
+
   it('(6) converged 不打回已处理组（人工保护优先于收敛）', async () => {
     await pushPackage(buildPackage())
     db.prepare("UPDATE api_patrol_failure_groups SET product_action_status='已处理' WHERE first_request_id='req-pc-001'").run()

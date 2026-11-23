@@ -449,6 +449,9 @@ function buildPackage(db, dataDate) {
       preCompressCount: r.pre_compress_count, suppressedRequestIds: r.suppressed_request_ids,
       customerType: r.customer_type,
       rootCauseL1: r.root_cause_l1, rootCauseL2: r.root_cause_l2,
+      // 11-23 修复：组状态随包透传——本机管线豁免产物（'—'）曾被部署端按 L1 重映射成
+      // 「待处理」丢失（先例 cmic_sim×L7POLICY 组）；显式字段优先，旧包无此字段走回退映射
+      productAction: r.product_action_status == null ? null : String(r.product_action_status),
       finalConclusion: r.final_conclusion,
       suggestion: r.suggestion,
       // 11-17 五段结构化（LLM 主路径产物——directCause/evidence 数组 JSON，部署端落 diagnoses 表）

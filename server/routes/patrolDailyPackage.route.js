@@ -59,6 +59,13 @@ function upsertGroup(db, g) {
     nextStatus = existing.product_action_status
   } else if (status === 'failed') {
     nextStatus = 'pending_diagnosis'
+  } else if (typeof g.productAction === 'string' && g.productAction.trim() !== '') {
+    // 11-23 修复：包显式组状态优先（源端管线产物——豁免白名单的 '—' 曾被下方 L1 重映射
+    // 丢成「待处理」，先例 cmic_sim×L7POLICY 组日报误报待产品侧处理）。白名单校验，
+    // 非法值回退 L1 映射；旧包无此字段同样回退——向后兼容。
+    const passed = String(g.productAction).trim()
+    nextStatus = ['—', '待处理', '处理中', '已处理', 'pending_diagnosis'].includes(passed) ? passed
+      : rootCauseL1 === '诊断能力缺口' ? '—' : '待处理'
   } else if (status === 'converged') {
     nextStatus = '—'
   } else {
