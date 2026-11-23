@@ -21,7 +21,7 @@
 | [05-设计拍板与已知坑.md](05-设计拍板与已知坑.md) | 已拍板设计、已知坑与先例（含 **2.5 中继/契约链类**——三列对拍/静默兜底可观测/定向修复过推送链）、**待拍板清单** | 动数据模型/键粒度/UI 结构/中继契约链路前 |
 | [06-环境启动与部署.md](06-环境启动与部署.md) | dev:clean、端口、部署缓存三件套、MCP/Mail | 起服务、发版、排障时 |
 | [07-权限码语义判据.md](07-权限码语义判据.md) | 16 权限码客体身份判据表、editRecord vs manageTags 分界、同构动作一致性三步选码 | 写任何 can()/requirePermission() 门控前 |
-| [防缺陷触发规则.md](防缺陷触发规则.md) | 13 条"做 X 时必答 Y"触发规则 + 排查约定（11-06 起持续补充；12/13 为 11-18 复盘新增） | 写删除/计数/共享层/来源标注/构造测试前置前 |
+| [防缺陷触发规则.md](防缺陷触发规则.md) | 18 条"做 X 时必答 Y"触发规则 + 排查约定（11-06 起持续补充；15-18 为 11-23 复盘新增：平移核心算法/计数统计对象/API 判别字段透传/定位类 bug 全量扫描） | 写删除/计数/共享层/来源标注/构造测试前置前 |
 | [页面UI规范.md](页面UI规范.md) | 三级间距/卡片/标题/表单标签体系 + 守卫清单（11-07 复盘产物） | 写任何 UI 前必读 |
 
 ## 机器守卫与审计脚本索引
@@ -38,6 +38,8 @@
 | 埋点映射守卫 | `src/lib/usageModuleMapGuard.test.js` | 导航/路由表新增页面未登记埋点映射（落入 other 静默丢弃）、前后端镜像映射表回潮（11-20 运营分析迭代产物） |
 | 列宽拖拽守卫 | `src/lib/columnWidths.test.js` 等（11-11 新增） | scroll.x 硬编码回潮、直接写 th.style.width |
 | 目录缓存守卫 | `catalogCacheCoverageGuard`（reminders/MCP/patrol 线） | 新消费方读目录缓存前漏刷新 |
+| rowSpan 合并组链路守卫 | `src/pages/PostUseCallbackListTab.rowSpan.render.test.jsx`（11-23） | 清单 tab 分组循环步进手抄偏差（i+=1 回潮）→ 组内非首行被重标组首、rowSpan:0 吞行失效列错位；红绿自证 |
+| 产品计数口径守卫 | `src/pages/PostUseCallbackListTab.productCount.render.test.jsx`（11-23） | 清单 tab 产品下拉计数回潮"从 scopedItems 输入记录计数"（应为 buildPostUseCallbackLists 产出聚合）；源码层锚 allLists 数据源 + 渲染层喂真实输入断言产出计数；红绿自证 |
 
 守卫清单以本 README 为登记表——**新增守卫时在本表登记一行**（名称 / 文件 / 拦截什么）。
 Vitest 守卫随 `npm test` 在 CI 运行；审计脚本需按需显式执行，未接入 CI 的脚本不应视为自动拦截。
