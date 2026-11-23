@@ -221,7 +221,19 @@ export function registerPostUseVisitRoutes(app) {
       fields: Object.keys(body).filter((k) => k !== 'baseUpdatedAt'),
       syncedSnapshots,
     })
-    return { item: result.record, syncedSnapshots }
+    // 11-23 拍板：抽屉保存尾部自动刷新 LLM 关联判定（失败静默不阻塞保存主流程；
+    // 人工修正保护在共享层——verdictSource='manual' 不覆盖）。
+    let autoJudged = null
+    try {
+      const { autoJudgeIssueLinks } = await import('../issueLinkAutoJudge.js')
+      autoJudged = await autoJudgeIssueLinks({
+        sourceType: 'visit', sourceId: id,
+        updatedBy: request.user?.username || '',
+      })
+    } catch (err) {
+      request.log.warn({ err }, 'post-use-visit save auto-judge failed')
+    }
+    return { item: result.record, syncedSnapshots, autoJudged }
   })
 
   // 2026-11-10 需求（用户拍板）：建议回访清单勾选行导出/发送成功 → 同步写入回访 tab（预导入态）。

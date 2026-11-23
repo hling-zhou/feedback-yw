@@ -66,8 +66,8 @@ export function registerPostUseReportRoutes(app) {
   app.put('/api/post-use-report/links', async (request, reply) => {
     if (!canEdit(request, reply)) return
     const { issueId, sourceType, sourceId, verdict } = request.body || {}
-    // 11-23 拍板四值域：related（问题存在）/ no_dissatisfaction（无实际不满，仅回访）/
-    // no_action（核实无问题无需优改——溯源结论或回访内部评估）；no_issue 为存量兼容值（读取层已映射）
+    // 11-23 拍板四值域（午后文案统一）：related（问题存在）/ no_dissatisfaction（无实际不满，仅回访）/
+    // no_action（产品部评估无需优改——溯源结论或回访内部评估皆可）；no_issue 为存量兼容值（读取层已映射）
     if (typeof issueId !== 'string' || issueId.length > 5000
       || !['visit', 'trace'].includes(sourceType)
       || typeof sourceId !== 'string' || !sourceId || sourceId.length > 200
@@ -129,7 +129,7 @@ export function registerPostUseReportRoutes(app) {
 
   // 11-23 拍板：关联具体问题 LLM 语义自动判定——单条来源记录的全部候选问题一次判定并写 link
   //（verdictSource='llm'；uncertain 不写留人工）。判定语义：related（问题存在）/
-  // no_dissatisfaction（无实际不满，仅回访）/ no_action（核实无问题无需优改——溯源或回访内部评估）。
+  // no_dissatisfaction（无实际不满，仅回访）/ no_action（产品部评估无需优改——溯源结论或回访内部评估）。
   // LLM 判 no_dissatisfaction 时绕过旧正则硬门槛（语义层放宽，报告消费按既有档位机制走）。
   app.post('/api/post-use-report/links/auto', async (request, reply) => {
     if (!canEdit(request, reply)) return
@@ -137,58 +137,23 @@ export function registerPostUseReportRoutes(app) {
     if (!['visit', 'trace'].includes(sourceType) || typeof sourceId !== 'string' || !sourceId || sourceId.length > 200) {
       return reply.code(400).send({ error: '关联判定参数无效' })
     }
-    const source = sourceRecord(sourceType, sourceId)
-    if (!source) return reply.code(404).send({ error: '来源记录不存在' })
-    const issues = sourceIssues(source)
-    if (!issues.length) return { items: [], verdicts: [], message: '无候选问题，无需判定' }
-
-    // 服务端进程内 LLM（postUseOptimization 同款 transport 注入，跑完复位）
-    const { setLlmTransport, resolveSettingsForLlm } = await import('../../src/lib/llmClient.js')
-    const { forwardLlmChatCompletion } = await import('../llmProxy.js')
-    const { buildInProcessLlmForwardArgs } = await import('../enrichRunner.js')
-    const { isLlmConfigured } = await import('../llmConfig.js')
-    const { generateIssueLinkVerdicts } = await import('../../src/lib/postUseRating/issueLinkVerdict.js')
-    const serverConfigured = isLlmConfigured()
-    setLlmTransport(async (body) => forwardLlmChatCompletion(buildInProcessLlmForwardArgs(body)), {
-      ...(settings || {}), llmServerConfigured: serverConfigured,
+    // 11-23 共享判定入口（issueLinkAutoJudge）：抽屉按钮 / 导入尾部 / 保存尾部三触发点单源；
+    // 人工修正保护（verdictSource='manual' 不覆盖）在共享层统一实施。
+    const { autoJudgeIssueLinks } = await import('../issueLinkAutoJudge.js')
+    const result = await autoJudgeIssueLinks({
+      sourceType, sourceId, settings: settings || {},
+      updatedBy: request.user?.username || '',
     })
-    let result
-    try {
-      const resolved = await resolveSettingsForLlm(settings || {})
-      result = await generateIssueLinkVerdicts(resolved, {
-        sourceType,
-        sourceResult: sourceType === 'visit'
-          ? String(source.visitResult || source.visitFeedbackDetail || '')
-          : String(source.recommendedReason || source.progress || source.customerFeedback || ''),
-        sourceConclusion: sourceType === 'visit'
-          ? String(source.internalConclusion || source.internalEvaluationDetail || '')
-          : String(source.progress || source.recommendedReason || ''),
-      }, issues.map((issue) => ({
-        id: issue.id, issueName: issue.issueName, text: issue.text, score: issue.score, month: issue.month,
-      })))
-    } finally {
-      setLlmTransport(null, null)
-    }
-
-    const sourceFingerprint = sourceType === 'visit' ? visitSourceFingerprint(source) : traceSourceFingerprint(source)
-    const savedItems = []
-    for (const row of result.verdicts) {
-      if (row.verdict === 'uncertain' || !row.verdict) continue
-      // 档位语义约束（与 PUT 同口径）：no_dissatisfaction 仅回访
-      if (row.verdict === 'no_dissatisfaction' && sourceType !== 'visit') continue
-      savedItems.push(postUseReportRepository.saveLink({
-        issueId: row.issue.id, sourceType, sourceId, sourceFingerprint,
-        verdict: row.verdict, verdictSource: 'llm', updatedBy: request.user?.username || '',
-      }))
-    }
+    if (result.error) return reply.code(404).send({ error: result.error })
     logAuditFromRequest(request, 'post_use_report.issue_link_auto', {
-      sourceType, sourceId, judged: result.verdicts.length, saved: savedItems.length,
+      sourceType, sourceId, judged: result.judged, saved: result.saved, skippedManual: result.skippedManual,
     })
     return {
-      items: savedItems,
-      verdicts: result.verdicts.map((row) => ({
-        issueId: row.issue.id, issueName: row.issue.issueName, verdict: row.verdict, reason: row.reason,
-      })),
+      saved: result.saved,
+      skippedManual: result.skippedManual,
+      message: result.saved
+        ? `LLM 判定完成：${result.saved} 个候选已给出结论${result.skippedManual ? `（${result.skippedManual} 个人工判定不覆盖）` : ''}`
+        : '无可写入的判定（候选问题为空或均为不确定/人工已判）',
     }
   })
 }

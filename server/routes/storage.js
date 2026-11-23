@@ -767,7 +767,7 @@ export function registerStorageRoutes(app) {
 
       const mode = body.mode || 'import'
       const writePermissions =
-        mode === 'post_use_journey' || mode === 'post_use_optimization' || mode === 'sentiment_retag'
+        mode === 'post_use_journey' || mode === 'post_use_optimization' || mode === 'sentiment_retag' || mode === 'issue_link_auto'
           ? ['retag']
           : ['import', 'editRecord']
       if (!assertWritePermission(request, reply, writePermissions)) return
@@ -777,8 +777,9 @@ export function registerStorageRoutes(app) {
 
       // 2026-11-19 优化建议（自动生成）：visit/trace 实体不在 records 表，
       // 由路由按实体存储拉取后传给 runner（runner 内 re-read merge 写回）。
+      // 11-23 LLM 问题关联判定批量任务复用同款拉取（两类实体都判——月过滤缺省跑全量）。
       let optimizationEntities = null
-      if (mode === 'post_use_optimization') {
+      if (mode === 'post_use_optimization' || mode === 'issue_link_auto') {
         const entityType = /** @type {any} */ (body.retagOptions)?.entityType === 'trace' ? 'trace' : 'visit'
         const ids = new Set((recordIds || []).map((id) => String(id || '')))
         const months = String(body.dataMonth || '')
@@ -820,6 +821,8 @@ export function registerStorageRoutes(app) {
               ? '生成优化建议'
               : mode === 'sentiment_retag'
               ? '只重打用户情绪'
+              : mode === 'issue_link_auto'
+                ? 'LLM 自动判定问题关联'
               : mode === 'single_retag'
                 ? '单条重新打标'
                 : '批量重新打标'
@@ -836,6 +839,8 @@ export function registerStorageRoutes(app) {
                 ? '正在生成优化建议…'
                 : mode === 'sentiment_retag'
                   ? '正在重打用户情绪…'
+                  : mode === 'issue_link_auto'
+                    ? '正在 LLM 判定问题关联…'
                   : mode === 'import'
                     ? '正在准备分析…'
                     : '正在准备…',
@@ -870,7 +875,7 @@ export function registerStorageRoutes(app) {
             mode,
             taskId,
             // post_use_optimization：实体已由路由从各实体存储拉取（visit meta / trace jira 表）
-            records: (mode === 'post_use_optimization' ? optimizationEntities : records) || undefined,
+            records: (mode === 'post_use_optimization' || mode === 'issue_link_auto' ? optimizationEntities : records) || undefined,
             recordIds: recordIds || undefined,
             rows: rows || undefined,
             dataSourceType: body.dataSourceType,

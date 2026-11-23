@@ -159,7 +159,18 @@ export function registerPostUseJiraRoutes(app) {
       id,
       fields: Object.keys(patch),
     })
-    return { item }
+    // 11-23 拍板：抽屉保存尾部自动刷新 LLM 关联判定（失败静默；人工判定不覆盖——共享层保护）
+    let autoJudged = null
+    try {
+      const { autoJudgeIssueLinks } = await import('../issueLinkAutoJudge.js')
+      autoJudged = await autoJudgeIssueLinks({
+        sourceType: 'trace', sourceId: id,
+        updatedBy: request.user?.username || '',
+      })
+    } catch (err) {
+      request.log.warn({ err }, 'post-use-jira save auto-judge failed')
+    }
+    return { item, autoJudged }
   })
 
   app.delete('/api/post-use-jira/:id', async (request, reply) => {

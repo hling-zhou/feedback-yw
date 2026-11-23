@@ -962,6 +962,24 @@ export default function Import({ embedded = false }) {
       })
       importFinishedNotified = true
 
+      // 11-23 拍板：导入完成后自动触发一次 LLM 问题关联判定批量任务（visit+trace 两类，
+      // 后台异步跑不阻塞导入结果页；人工判定不覆盖——共享层保护）。失败静默（手动按钮可补跑）。
+      try {
+        for (const entityType of ['visit', 'trace']) {
+          await apiFetch('/api/storage/records/enrich', {
+            method: 'POST',
+            body: JSON.stringify({
+              mode: 'issue_link_auto',
+              retagOptions: { entityType },
+              dataMonth,
+              settings,
+            }),
+          })
+        }
+      } catch (autoErr) {
+        console.warn('[import] issue-link auto-judge trigger failed:', autoErr)
+      }
+
       if (importPageMountedRef.current) {
         setChannelBundleResult(res)
         setStep(4)

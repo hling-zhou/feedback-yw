@@ -577,6 +577,45 @@ export async function runEnrichment(opts) {
       return { records: written, warnings: [], stats: { total, processed: written.length } }
     }
 
+    if (mode === 'issue_link_auto') {
+      // 11-23 拍板：「关联具体问题」LLM 自动判定批量任务——导入完成后前端触发一次。
+      // 共享判定入口（issueLinkAutoJudge.autoJudgeIssueLinks）与抽屉按钮/保存尾部单源同链；
+      // 人工修正保护在共享层（verdictSource='manual' 不覆盖）；逐条独立 try（单条失败不拖垮整批）。
+      const { autoJudgeIssueLinks } = await import('./issueLinkAutoJudge.js')
+      const total = records.length
+      const actor = { userId, username }
+      let processed = 0
+      let savedTotal = 0
+      let skippedManualTotal = 0
+      const failures = []
+      touch(`正在 LLM 判定问题关联 (0/${total})`)
+      for (let i = 0; i < total; i += 1) {
+        if (cancelled()) {
+          return { records: [], warnings: ['任务已被用户取消'], stats: { total, cancelled: true, processed, saved: savedTotal } }
+        }
+        const entity = records[i]
+        const sourceType = retagOptions.entityType === 'trace' ? 'trace' : 'visit'
+        const sourceId = String(entity.id || '')
+        try {
+          const result = await autoJudgeIssueLinks({
+            sourceType, sourceId, updatedBy: actor.username || '',
+          })
+          savedTotal += result.saved || 0
+          skippedManualTotal += result.skippedManual || 0
+        } catch (err) {
+          failures.push(`${sourceType}:${sourceId} ${err instanceof Error ? err.message : String(err)}`)
+        }
+        processed += 1
+        touch(`正在 LLM 判定问题关联 (${processed}/${total})`)
+        onProgress?.(`LLM 判定问题关联`, processed, total)
+      }
+      return {
+        records: [],
+        warnings: failures,
+        stats: { total, processed, saved: savedTotal, skippedManual: skippedManualTotal, failed: failures.length },
+      }
+    }
+
     if (mode === 'post_use_optimization') {
       // 2026-11-19 优化建议（自动生成）批量链路（DESIGN-用后即评抽屉优化建议 §5）：
       // entityType = visit（省代表回访 meta 整包）| trace（产品部溯源 jira 表）。
