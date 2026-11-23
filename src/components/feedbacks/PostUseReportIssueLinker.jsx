@@ -7,14 +7,14 @@ import {
   saveReportIssueLink,
 } from '../../lib/postUseRating/reportClient.js'
 
-// 11-23 拍板：verdict 四值语义（closed 值域，表意直白）
-// - related：问题存在——本次回访/溯源处理/响应的正是该问题
+// 11-23 拍板（午后修订）：no_action 文案统一「产品部评估无需优改」——溯源结论与回访内部评估
+// 两类来源共用（回访保持 3 选项：内部评估环节可承载无需优改结论）
 // - no_dissatisfaction：无实际不满——回访核实客户根本没不满（误操作/情绪分），报告全模块不进（仅回访）
-// - no_action：核实无问题，无需优改——溯源结论/回访内部评估判定不成立，不进定性（关注项/核心结论）、进定量（低分原因汇总/主题分布）
+// - no_action：产品部评估无需优改——不进定性（关注项/核心结论）、进定量（低分原因汇总/主题分布）
 const VERDICT_LABELS = {
   related: '问题存在',
   no_dissatisfaction: '无实际不满（不进分析）',
-  no_action: '核实无问题，无需优改（不进定性）',
+  no_action: '产品部评估无需优改（不进定性）',
 }
 
 export default function PostUseReportIssueLinker({ sourceType, sourceId, open, canEdit }) {
@@ -73,7 +73,7 @@ export default function PostUseReportIssueLinker({ sourceType, sourceId, open, c
       <Typography.Text strong>关联原始负反馈的具体问题</Typography.Text>
       <Typography.Paragraph type="secondary" className="!mb-2">
         仅匹配同客户、同产品及对应数据月份。判定语义：「问题存在」保留并挂回访/溯源结论；
-        「无实际不满」该问题不进报告分析；「核实无问题，无需优改」不进定性分析（关注项/核心结论）、进定量统计。
+        「无实际不满」该问题不进报告分析；「产品部评估无需优改」不进定性分析（关注项/核心结论）、进定量统计。
       </Typography.Paragraph>
       {loading ? <Spin size="small" /> : null}
       {!loading && !data?.items?.length ? <Alert type="info" showIcon message="未找到可关联的原始负反馈" /> : null}

@@ -6,7 +6,7 @@ import { llmChatCompletion } from '../llmClient.js'
  * 语义四值（与 link 表 verdict 值域一致）：
  * - related：本次回访/溯源处理/响应的正是该问题（问题存在）
  * - no_dissatisfaction：回访核实客户根本无实际不满（误操作/情绪分）——仅回访
- * - no_action：核实后问题不成立/无需优改（账户异常、极小概率场景等）——溯源结论或回访内部评估
+ * - no_action：产品部评估无需优改（账户异常、极小概率场景等核实不成立）——溯源结论或回访内部评估
  * - uncertain：语义不足以判定——不写 link（留人工）
  *
  * 设计边界（与用户拍板对齐）：
@@ -36,7 +36,7 @@ export async function generateIssueLinkVerdicts(settings, source, issues) {
 判定值（封闭清单，只选不造）：
 - "related"：${sourceTypeLabel}处理/响应的正是该问题（问题存在）；
 - "no_dissatisfaction"：客户经核实根本无实际不满（误操作/情绪分/误解）——仅当${sourceTypeLabel}结果明确表达客户无不满时使用；
-- "no_action"：核实后问题不成立或无需优改（如账户异常、极小概率场景、客户自身环境问题），客户可能有表述但核实不成立；
+- "no_action"：产品部评估无需优改（如账户异常、极小概率场景、客户自身环境问题——核实后问题不成立），客户可能有表述但核实不成立；
 - "uncertain"：信息不足以判断（回访未提及该问题、语义模糊）。
 
 只输出严格 JSON：{"verdicts":[{"index":0,"verdict":"related","reason":"一句理由"}…]}，index 对应输入候选顺序，verdict 只能取上述四值。不要 Markdown，不要解释。`

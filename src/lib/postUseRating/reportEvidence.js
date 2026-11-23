@@ -255,7 +255,7 @@ export function resolveReportIssues(occurrences, visits = [], traces = [], links
     const noActionTrace = (traces || []).find((trace) => validSource(issue, trace)
       && isNoActionNeededConclusion(trace?.recommendedReason || trace?.progress || trace?.customerFeedback)) || null
     // 11-23 拍板 verdict 四值消费：no_issue（存量兼容）与 no_dissatisfaction 同义（回访核实
-    // 无实际不满→档 1 全剔除）；no_action（核实无问题无需优改——溯源结论/回访内部评估）→
+    // 无实际不满→档 1 全剔除）；no_action（产品部评估无需优改——溯源结论/回访内部评估）→
     // 与既有正则半剔除同档（不进定性进定量），link 人工/LLM 判定优先于正则自动判定。
     const fullExcludedLink = validLinks.some((row) => row.sourceType === 'visit'
       && (row.verdict === 'no_issue' || row.verdict === 'no_dissatisfaction'))
