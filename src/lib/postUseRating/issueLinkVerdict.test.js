@@ -4,6 +4,15 @@ import { describe, expect, it, vi } from 'vitest'
 // 不依赖 mockResolvedValueOnce（对 vi.fn 的类型推断在 --checkJs 下也报 TS2339，见基线惯例）
 const unparseableQueue = []
 vi.mock('../llmClient.js', () => ({
+  // 11-23 修复后解析链走 getLlmCompletionText——mock 两侧同源（与真实 llmClient 同形：
+  // content 字符串正常路径 / 推理型数组形态也覆盖）
+  getLlmCompletionText: (data) => {
+    const choice = data?.data?.choices ? data.data.choices[0] : data?.choices?.[0]
+    const content = choice?.message?.content
+    if (typeof content === 'string') return content
+    if (Array.isArray(content)) return content.filter((part) => part?.type === 'text').map((part) => part.text).join('')
+    return ''
+  },
   llmChatCompletion: vi.fn(async () => {
     if (unparseableQueue.length) return unparseableQueue.shift()
     return {

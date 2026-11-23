@@ -712,9 +712,12 @@ function buildTodoCandidates({ months, visits = [], traces = [], actionItems = [
 
 function focusActionType(row, trace, visit) {
   if (row.dissatisfied || (visit && /(?<!无实际)不满|未解决|仍有问题|还没改/.test(String(visit.visitResult || visit.visitFeedbackDetail || '')))) return '回访跟进'
-  if (/故障|不通|稳定性|网络质量|卡单|缺陷/.test(`${row.theme} ${trace?.recommendedReason || ''}`)) return '缺陷修复'
+  // 11-23 晚修复：行动标签判据同样消费人工回溯结论（progress 优先）——
+  // "页面设计不通域…需要全部退订"类缺陷描述在 progress 里也应判"缺陷修复"
+  const traceConclusion = traceConclusionTextOf(trace)
+  if (/故障|不通|稳定性|网络质量|卡单|缺陷/.test(`${row.theme} ${traceConclusion}`)) return '缺陷修复'
   if (/功能|能力|接口|API|配置|批量|指标|诉求|界面|布局|体验|操作/.test(row.theme)) return '诉求闭环'
-  if (/回访/.test(String(trace?.recommendedReason || ''))) return '回访跟进'
+  if (/回访/.test(traceConclusion)) return '回访跟进'
   return '回访跟进'
 }
 
@@ -763,6 +766,18 @@ export function visitConclusionText(visit) {
   return [...new Set(parts)].join('；')
 }
 
+/**
+ * 11-23 晚修复（NAT 案例实证）：溯源结论文本取值单源——progress（人工「回溯结果」，
+ * 抽屉必填字段 11-05 起）优先于 recommendedReason（导入时机器生成的建议回访句）。
+ * 旧序 (recommendedReason||progress) 让模板句永远压住人工结论，报告展示机器文案
+ * （用户报"溯源未生效"的根因）。全消费方统一走本函数。
+ * @param {any} trace
+ * @returns {string}
+ */
+function traceConclusionTextOf(trace) {
+  return String(trace?.progress || trace?.recommendedReason || '').trim()
+}
+
 function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null, groupMembers = null) {
   const facts = []
   // 11-18 口径：LLM 输入侧自由文本统一手机号打码（姓名脱敏已有 maskCustomerName，此处补电话维度）
@@ -772,9 +787,12 @@ function focusFacts(row, trace, visit, months, kind, visitInferred = false, back
   // LLM 优化管线同源受益（输入素材含内部评估，"不编造"闸约束下改写不失真）。
   const internalConclusionText = maskPhoneInText(visitConclusionText(visit))
   if (visit && internalConclusionText) facts.push(`内部评估：${clipPhrase(internalConclusionText, 100)}`)
-  const traceText = maskPhoneInText(String(trace?.recommendedReason || trace?.progress || '').trim())
+  // 11-23 晚修复（NAT 案例实证）：progress=人工「回溯结果」（抽屉必填字段）优先于
+  // recommendedReason=导入时机器生成的建议回访句——旧序 (recommendedReason||progress) 让
+  // 模板句永远压住人工结论，报告展示机器文案（用户报"未生效"的根因）。人工域优先。
+  const traceText = maskPhoneInText(traceConclusionTextOf(trace))
   if (traceText) facts.push(`产品部溯源：${clipPhrase(traceText, 140)}`)
-  const backgroundText = maskPhoneInText(String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim())
+  const backgroundText = maskPhoneInText(traceConclusionTextOf(backgroundTrace))
   if (!traceText && backgroundText) facts.push(`产品部溯源背景：${clipPhrase(backgroundText, 140)}`)
   // 11-19 P0-④：原话只取真实客户语言——commentText（lowestQuotes）优先；
   // 回退 occurrence 原文时过滤与主题名相同者（console 渠道 occurrence 文本恒等于主题名，标签冒充原话零信息量）
@@ -835,7 +853,7 @@ function actionRows(themes, traces, visits, actions, months, kind, products = []
     const verb = row.nonActionable ? '无法回访，无需跟进'
       : row.priority === 'P2' ? '纳入常规运营关注，下期仅观察计数变化，不单独推动'
       : row.lifecycle.startsWith('已收敛') ? '下季度验证问题是否持续收敛'
-        : trace?.recommendedReason || action?.content
+        : traceConclusionTextOf(trace) || action?.content
           || (row.lifecycle === '贯穿全季' ? `治理「${row.theme}」的根因并复核效果`
             : row.lifecycle.includes('集中爆发') ? `定位「${row.theme}」集中月份的事件并明确治理时点`
               : row.lifecycle.startsWith('单月') ? `回访核实「${row.theme}」并观察是否再现`

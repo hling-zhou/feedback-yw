@@ -1,4 +1,4 @@
-import { llmChatCompletion } from '../llmClient.js'
+import { getLlmCompletionText, llmChatCompletion } from '../llmClient.js'
 
 /**
  * 11-23 拍板：回访/溯源 vs 原反馈的「关联具体问题」LLM 语义自动判定。
@@ -76,11 +76,11 @@ export async function generateIssueLinkVerdicts(settings, source, issues) {
 /** @returns {any | null} */
 function parseVerdictPayload(data) {
   try {
-    const content = data?.data?.choices?.[0]?.message?.content
-      ?? data?.choices?.[0]?.message?.content
-      ?? (typeof data === 'string' ? data : null)
-    if (!content) return null
-    const text = String(content).trim()
+    // 11-23 修复：复用平台既有 getLlmCompletionText（处理推理型模型 content 数组/
+    // 思考草稿全部形态）——自写简化版在 content 为数组时 String() 成 [object Object]
+    // 找不到 { 导致部署环境「LLM 判定返回无法解析」（共享层契约纪律先例）。
+    const text = getLlmCompletionText(data)
+    if (!text) return null
     const start = text.indexOf('{')
     const end = text.lastIndexOf('}')
     if (start < 0 || end <= start) return null

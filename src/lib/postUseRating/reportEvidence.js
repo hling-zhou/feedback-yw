@@ -253,6 +253,7 @@ export function resolveReportIssues(occurrences, visits = [], traces = [], links
         && !isNoDissatisfactionVisit(visit) && isNoActionNeededConclusion(visit?.internalConclusion || visit?.internalEvaluationDetail)) || null
       : null
     const noActionTrace = (traces || []).find((trace) => validSource(issue, trace)
+      // 11-23 晚修复：progress（人工回溯结果）优先参与判定——结论写在 progress 的"无需优改"不再漏判
       && isNoActionNeededConclusion(trace?.recommendedReason || trace?.progress || trace?.customerFeedback)) || null
     // 11-23 拍板 verdict 四值消费：no_issue（存量兼容）与 no_dissatisfaction 同义（回访核实
     // 无实际不满→档 1 全剔除）；no_action（产品部评估无需优改——溯源结论/回访内部评估）→

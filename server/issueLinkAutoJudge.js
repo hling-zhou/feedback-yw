@@ -72,7 +72,9 @@ export async function autoJudgeIssueLinks({ sourceType, sourceId, settings, upda
       sourceType,
       sourceResult: sourceType === 'visit'
         ? String(source.visitResult || source.visitFeedbackDetail || '')
-        : String(source.recommendedReason || source.progress || source.customerFeedback || ''),
+        // 11-23 晚修复：trace 的 sourceResult 与 progress 取值反转——人工「回溯结果」(progress)
+        // 优先于机器模板 recommendedReason（与报告消费链同口径，NAT 案例实证）
+        : String(source.progress || source.recommendedReason || source.customerFeedback || ''),
       sourceConclusion: sourceType === 'visit'
         ? String(source.internalConclusion || source.internalEvaluationDetail || '')
         : String(source.progress || source.recommendedReason || ''),

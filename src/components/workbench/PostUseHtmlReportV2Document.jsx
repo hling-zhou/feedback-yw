@@ -150,9 +150,10 @@ export function lifecycleTagTone(lifecycle) {
 
 function evidenceText(item, type) {
   // 11-18 口径：回访/溯源自由文本出口统一手机号打码
+  // 11-23 晚修复：溯源取值反转——progress（人工回溯结果）优先于 recommendedReason（机器模板句）
   const text = type === 'visit'
     ? String(item?.visitResult || item?.visitFeedbackDetail || '').trim()
-    : String(item?.recommendedReason || item?.progress || '').trim()
+    : String(item?.progress || item?.recommendedReason || '').trim()
   return text ? maskPhoneInText(text) : ''
 }
 
