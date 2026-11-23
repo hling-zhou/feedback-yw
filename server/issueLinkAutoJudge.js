@@ -1,13 +1,15 @@
-import { postUseReportRepository } from '../postUseReportRepository.js'
-import { storageRepository } from '../storageRepository.js'
-import { META_KEY_POST_USE_VISITS, normalizeVisitRecords } from '../../src/lib/postUseRating/visitRecords.js'
-import { buildReportIssueOccurrences, reportProductName, reportCustomerMatches, traceSourceFingerprint, visitSourceFingerprint } from '../../src/lib/postUseRating/reportEvidence.js'
-import { postUseJiraRepository } from '../postUseJiraRepository.js'
-import { setLlmTransport, resolveSettingsForLlm } from '../../src/lib/llmClient.js'
-import { forwardLlmChatCompletion } from '../llmProxy.js'
-import { buildInProcessLlmForwardArgs } from '../enrichRunner.js'
-import { isLlmConfigured } from '../llmConfig.js'
-import { generateIssueLinkVerdicts } from '../../src/lib/postUseRating/issueLinkVerdict.js'
+// 11-23 修复：本文件在 server/ 根——server 内依赖是同级 ./ 而非上级 ../
+//（初版误抄 routes/ 目录的 import 深度，部署环境 Cannot find module 实锤，本地同型复现）
+import { postUseReportRepository } from './postUseReportRepository.js'
+import { storageRepository } from './storageRepository.js'
+import { META_KEY_POST_USE_VISITS, normalizeVisitRecords } from '../src/lib/postUseRating/visitRecords.js'
+import { buildReportIssueOccurrences, reportProductName, reportCustomerMatches, traceSourceFingerprint, visitSourceFingerprint } from '../src/lib/postUseRating/reportEvidence.js'
+import { postUseJiraRepository } from './postUseJiraRepository.js'
+import { setLlmTransport, resolveSettingsForLlm } from '../src/lib/llmClient.js'
+import { forwardLlmChatCompletion } from './llmProxy.js'
+import { buildInProcessLlmForwardArgs } from './enrichRunner.js'
+import { isLlmConfigured } from './llmConfig.js'
+import { generateIssueLinkVerdicts } from '../src/lib/postUseRating/issueLinkVerdict.js'
 
 /**
  * 11-23 拍板：「关联具体问题」LLM 自动判定的共享入口——三个触发点单源复用：
