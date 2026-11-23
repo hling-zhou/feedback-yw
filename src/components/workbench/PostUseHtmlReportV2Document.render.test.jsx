@@ -487,4 +487,29 @@ describe('V2 offline document', () => {
     const online = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} onlineReportUrl="http://10.64.3.250:81/workbench/post-use-report-v2/2026-10" />)
     expect(online).not.toContain('线上版：')
   })
+
+  it('renders internal conclusion annotations on visit evidence (11-23 需求二)', () => {
+    // 展示链补齐：内部评估在产品面板回访行与折叠明细中以〔内部评估：…〕灰字括注出现；
+    // 无内部评估的回访不渲染括注（三点位 ①② + 关注项 ③ 在 model 层单测另锁）。
+    const records = [
+      { id: 'ic-low', dataSourceType: 'post_use_rating', importMonth: '2026-10', product: '弹性负载均衡', productName: '弹性负载均衡', channel: 'console', ratingScore: 4, feedbackReasonTexts: ['功能有缺失'] },
+    ]
+    const model = buildPostUseReportV2Model({
+      reportKey: '2026-10', reportKind: 'month',
+      reportPeriod: { startDate: '2026-10-01', endDate: '2026-10-31' },
+      records, companyRecords: records, allRecords: records, allCompanyRecords: records,
+      visits: [
+        { id: 'v-ic', product: '弹性负载均衡', importMonth: '2026-10', visitResult: '已回访客户，问题已解释', internalConclusion: '专项优化跟进中，预计11月底完成', internalEvaluationDetail: '专项优化跟进中，预计11月底完成' },
+        { id: 'v-no-ic', product: 'NAT网关', importMonth: '2026-10', visitResult: '仅回访确认' },
+      ],
+    })
+    const html = renderToStaticMarkup(<PostUseHtmlReportV2Document model={model} printAll todoItems={[]} />)
+    // ①产品面板回访行 + ②折叠明细：括注出现且两字段去重（同文本只出现一次）
+    expect(html).toContain('〔内部评估：专项优化跟进中，预计11月底完成〕')
+    expect(html.match(/专项优化跟进中/g)?.length || 0).toBeGreaterThanOrEqual(1)
+    // 无内部评估的回访行不渲染括注
+    expect(html).not.toContain('〔内部评估：仅回访确认')
+    // 关注项证据句（focusFacts ③）：内部评估进事实列表
+    expect(html).toContain('内部评估：专项优化跟进中，预计11月底完成')
+  })
 })

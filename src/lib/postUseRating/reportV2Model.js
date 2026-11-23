@@ -748,11 +748,30 @@ export function clipPhrase(text, max = 16) {
   return value.slice(0, max)
 }
 
+/**
+ * 11-23 需求二：省代表回访的内部评估文本（internalConclusion / internalEvaluationDetail
+ * 两字段取非空、去重拼接）——展示链共享取值单源。判定链（档位剔除/LLM 判定/visitCategory）
+ * 早已消费该域；本函数只补展示链（关注项证据句/产品面板/折叠明细），不含脱敏
+ * （各出口自行走 maskPhoneInText——渲染层 evidenceText 同源）。
+ * @param {any} visit
+ * @returns {string}
+ */
+export function visitConclusionText(visit) {
+  const parts = [visit?.internalConclusion, visit?.internalEvaluationDetail]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+  return [...new Set(parts)].join('；')
+}
+
 function focusFacts(row, trace, visit, months, kind, visitInferred = false, backgroundTrace = null, groupMembers = null) {
   const facts = []
   // 11-18 口径：LLM 输入侧自由文本统一手机号打码（姓名脱敏已有 maskCustomerName，此处补电话维度）
   const visitText = maskPhoneInText(String(visit?.visitResult || visit?.visitFeedbackDetail || '').trim())
   if (visitText) facts.push(`${visitInferred ? '同客户省代表回访' : '省代表回访'}：「${clipPhrase(visitText, 100)}」`)
+  // 11-23 需求二：内部评估进关注项证据句——展示层补齐（判定链早已消费该域）；
+  // LLM 优化管线同源受益（输入素材含内部评估，"不编造"闸约束下改写不失真）。
+  const internalConclusionText = maskPhoneInText(visitConclusionText(visit))
+  if (visit && internalConclusionText) facts.push(`内部评估：${clipPhrase(internalConclusionText, 100)}`)
   const traceText = maskPhoneInText(String(trace?.recommendedReason || trace?.progress || '').trim())
   if (traceText) facts.push(`产品部溯源：${clipPhrase(traceText, 140)}`)
   const backgroundText = maskPhoneInText(String(backgroundTrace?.recommendedReason || backgroundTrace?.progress || '').trim())

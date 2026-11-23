@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import TrendChart from '../charts/TrendChart.jsx'
 import { scoreAxisDomain } from '../../lib/postUseRating/insights.js'
-import { reportV2QuoteCategory, reportV2ThemeGroupLabel, reportV2GroupedLifecycle, reportV2ProblemThemeRows, clipPhrase } from '../../lib/postUseRating/reportV2Model.js'
+import { reportV2QuoteCategory, reportV2ThemeGroupLabel, reportV2GroupedLifecycle, reportV2ProblemThemeRows, clipPhrase, visitConclusionText } from '../../lib/postUseRating/reportV2Model.js'
 import { REPORT_SECTION_APPENDIX, REPORT_SECTION_PRODUCTS, REPORT_SECTION_TODO } from '../../lib/postUseRating/htmlReportModel.js'
 import { isValidCustomerText } from '../../lib/postUseRating/reasonTaxonomy.js'
 import { displayCustomerText, maskCustomerName, maskPhoneInText } from '../../lib/customerMask.js'
@@ -285,7 +285,7 @@ function EvidenceNote({ product }) {
   const trace = representativeEvidence(product.traces, product.themes, 'trace')
   if (!visit && !trace) return null
   return <div className="v2-note v2-evidence-summary">
-    {visit ? <p><b>省代表回访{visit.customerName ? `（${customer(visit.customerName)}）` : ''}：</b><span className={/不满|未解决|仍有问题/.test(evidenceText(visit, 'visit')) ? 'v2-danger' : ''}>{evidenceText(visit, 'visit')}</span>{product.visits.length > 1 ? <span className="v2-subtle">（其余 {product.visits.length - 1} 条见折叠明细）</span> : null}</p> : null}
+    {visit ? <p><b>省代表回访{visit.customerName ? `（${customer(visit.customerName)}）` : ''}：</b><span className={/不满|未解决|仍有问题/.test(evidenceText(visit, 'visit')) ? 'v2-danger' : ''}>{evidenceText(visit, 'visit')}</span>{visitConclusionText(visit) ? <span className="v2-subtle">〔内部评估：{evidenceText({ visitResult: visitConclusionText(visit) }, 'visit')}〕</span> : null}{product.visits.length > 1 ? <span className="v2-subtle">（其余 {product.visits.length - 1} 条见折叠明细）</span> : null}</p> : null}
     {trace ? <p><b>产品部溯源{trace.assigneeName ? `（${mask(trace.assigneeName)}）` : ''}：</b>{evidenceText(trace, 'trace')}{product.traces.length > 1 ? <span className="v2-subtle">（其余 {product.traces.length - 1} 条见折叠明细）</span> : null}</p> : null}
     <small>未关联具体问题的记录仅作为产品层背景，不作为任一问题的排除或闭环依据。</small>
   </div>
@@ -294,7 +294,7 @@ function EvidenceNote({ product }) {
 function EvidenceDetails({ product }) {
   if (!product.visits.length && !product.traces.length) return null
   return <div className="v2-evidence-details">
-    {product.visits.length ? <><h4>省代表回访记录（{product.visits.length} 条）</h4>{product.visits.map((visit, index) => <p key={visit.id || index}><b>{visit.customerName ? `${customer(visit.customerName)}：` : ''}</b>{evidenceText(visit, 'visit') || '—'}</p>)}</> : null}
+    {product.visits.length ? <><h4>省代表回访记录（{product.visits.length} 条）</h4>{product.visits.map((visit, index) => <p key={visit.id || index}><b>{visit.customerName ? `${customer(visit.customerName)}：` : ''}</b>{evidenceText(visit, 'visit') || '—'}{visitConclusionText(visit) ? <span className="v2-subtle">〔内部评估：{evidenceText({ visitResult: visitConclusionText(visit) }, 'visit')}〕</span> : null}</p>)}</> : null}
     {product.traces.length ? <><h4>产品部溯源记录（{product.traces.length} 条）</h4>{product.traces.map((trace, index) => <p key={trace.id || index}><b>{trace.assigneeName ? `${mask(trace.assigneeName)}：` : ''}</b>{evidenceText(trace, 'trace') || '—'}</p>)}</> : null}
   </div>
 }
