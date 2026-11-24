@@ -113,8 +113,16 @@ export default function CompositeFilter({
   const [specialOpen, setSpecialOpen] = useState(false)
   const pendingKeyRef = useRef(pendingKey)
   pendingKeyRef.current = pendingKey
-  /** 特殊编辑器弹层锚 = 触发元素（chip 编辑按钮/属性按钮；无则回退 bar 容器） */
-  const specialAnchorRef = useRef(/** @type {HTMLElement | null} */ (null))
+  /**
+   * 特殊编辑器弹层锚：打开瞬间快照的触发元素相对 bar 偏移（{left, top, bottom, width}）。
+   * 11-24 修复：触发元素（属性按钮/被编辑 chip）在弹层打开的同一次 commit 里会被卸载，
+   * 持有元素引用会在重定位时读到全零 rect → 弹层飘到视口左上角（b9686b8 修复的遗漏面，
+   * 真机取证 popover 落在 (8,4)、距触发元素 475px）。改为快照偏移 + 始终在文档中的
+   * bar 容器实时 rect 联合定位：弹层落在点击处，滚动/尺寸变化跟随 bar。
+   */
+  const anchorOffsetRef = useRef(/** @type {{ left: number; top: number; bottom: number; width: number } | null} */ (null))
+  /** 属性按钮显式 ref——菜单点击时 document.activeElement 实测是下拉面板搜索输入框，不可用 */
+  const attributeTriggerRef = useRef(/** @type {HTMLButtonElement | null} */ (null))
 
   const activeChipKeys = useMemo(() => config.listActiveChipKeys(filters), [config, filters])
   const activeCount = config.countActive(filters)
@@ -180,13 +188,27 @@ export default function CompositeFilter({
     [config, filters, onFiltersChange, resetPending],
   )
 
+  const captureAnchorOffset = (anchorEl) => {
+    const barRect = barRef.current?.getBoundingClientRect()
+    const triggerRect = anchorEl?.getBoundingClientRect()
+    anchorOffsetRef.current =
+      barRect && triggerRect
+        ? {
+            left: triggerRect.left - barRect.left,
+            top: triggerRect.top - barRect.top,
+            bottom: triggerRect.bottom - barRect.top,
+            width: triggerRect.width,
+          }
+        : null
+  }
+
   const openSpecialEditor = (key, anchorEl) => {
     const normalized = config.normalizeEditorKey(key)
     setPendingKey(normalized)
     setSpecialDraft(config.readDraftValue(normalized, filters))
-    // 11-18 修复：弹层锚定触发元素（chip 编辑按钮/属性按钮）——此前锚整条 bar，
-    // 工具条 flex-wrap 下 bar 左缘远离复合筛选组件，文本输入框出现在离点击很远的位置
-    specialAnchorRef.current = anchorEl || null
+    // 11-24 修复：触发元素（属性按钮/被编辑 chip）会在本次 setState 引发的重渲染中被
+    // 卸载，不能持有元素引用——在重渲染发生前先快照其相对 bar 的几何偏移
+    captureAnchorOffset(anchorEl)
     setSpecialOpen(true)
   }
 
@@ -302,8 +324,10 @@ export default function CompositeFilter({
               className: 'composite-filter-attribute-menu',
               onClick: ({ key }) => {
                 if (String(key).startsWith('group-') || String(key).startsWith('divider-')) return
-                // 属性按钮是 Dropdown child，点击后为 activeElement——弹层锚定它而非整条 bar
-                handleSelectAttribute(key, /** @type {HTMLElement} */ (document.activeElement))
+                // 11-24：菜单点击时 document.activeElement 实测是下拉面板里的搜索输入框
+                // （菜单关闭后即被卸载），不可作锚点——属性按钮用显式 ref 直取，
+                // 且此刻 pendingKey 尚未置位、按钮仍在文档中
+                handleSelectAttribute(key, attributeTriggerRef.current)
               },
               style: { maxHeight: 280, overflow: 'auto', minWidth: 200 },
             }}
@@ -331,6 +355,7 @@ export default function CompositeFilter({
             )}
           >
             <button
+              ref={attributeTriggerRef}
               type="button"
               className="min-w-[120px] flex-1 border-0 bg-transparent px-1 py-0.5 text-left text-sm text-ink-400 outline-none"
             >
@@ -362,7 +387,8 @@ export default function CompositeFilter({
       {pendingKey && config.getEditorKind(pendingKey) !== 'enum' ? (
         <SpecialFilterPopover
           open={specialOpen}
-          anchorRef={specialAnchorRef.current ? specialAnchorRef : barRef}
+          barRef={barRef}
+          anchorOffsetRef={anchorOffsetRef}
           label={config.labels[pendingKey]}
           filterKey={pendingKey}
           editorKind={config.getEditorKind(pendingKey)}
@@ -438,7 +464,8 @@ function CompositeFilterChip({ label, value, onRemove, onEdit, active }) {
  */
 function SpecialFilterPopover({
   open,
-  anchorRef,
+  barRef,
+  anchorOffsetRef,
   label,
   filterKey,
   editorKind,
@@ -462,14 +489,18 @@ function SpecialFilterPopover({
   useLayoutEffect(() => {
     if (!open) return undefined
     const sync = () => {
-      const rect = anchorRef?.current?.getBoundingClientRect()
-      if (!rect) return
-      const width = Math.min(420, Math.max(280, rect.width))
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+      // 11-24 修复：锚 = bar 实时 rect + 打开瞬间快照的触发元素偏移。触发元素（属性
+      // 按钮/被编辑 chip）此时多半已被卸载，不能持有其引用——detached 元素的 rect 全零
+      // 会把弹层摆到视口左上角。无快照时回退为 bar 左缘下方（打开前的兜底行为）。
+      const barRect = barRef?.current?.getBoundingClientRect()
+      if (!barRect) return
+      const offset = anchorOffsetRef?.current || { left: 0, top: 0, bottom: barRect.height, width: barRect.width }
+      const width = Math.min(420, Math.max(280, offset.width))
+      const left = Math.max(8, Math.min(barRect.left + offset.left, window.innerWidth - width - 8))
       const panelHeight = Math.max(panelRef.current?.offsetHeight || 0, 280)
-      const below = rect.bottom + 4
+      const below = barRect.top + offset.bottom + 4
       const fitsBelow = below + panelHeight <= window.innerHeight - 8
-      const top = fitsBelow ? below : Math.max(8, rect.top - panelHeight - 4)
+      const top = fitsBelow ? below : Math.max(8, barRect.top + offset.top - panelHeight - 4)
       setPos({ top, left, width })
     }
     sync()
@@ -479,7 +510,7 @@ function SpecialFilterPopover({
       window.removeEventListener('scroll', sync, true)
       window.removeEventListener('resize', sync)
     }
-  }, [open, anchorRef, draft, editorKind])
+  }, [open, barRef, anchorOffsetRef, draft, editorKind])
 
   useEffect(() => {
     if (!open) return undefined
