@@ -152,16 +152,29 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
   if (classified.l1 !== '其他/未归类' && classified.l1 !== '诊断能力缺口') {
     // 规则命中（对 LLM 语义文本）——规则表=归类真源
     onStage?.('diagnose', `规则命中（LLM 语义文本）→「${classified.l1}」`)
+    // 11-24 拍板：productAction 统一 LLM 现场判定优先（needsProductAction）——消除双路径矛盾
+    // （#377 枚举路径判「—」vs #378 规则路径硬编码「待处理」，业务实质同为规则限制结论却相反）。
+    // analyzer 对缺失字段保守归一 true（analyzer.js:230），LLM 产物恒有判定——与枚举分支
+    // （:174）同语义；规则表 productAction 仅在 LLM 未产出（降级链路 byLlm=false 分支）时生效。
+    // 两值不一致时 actionReason 如实标注，供抽屉人工复核。
+    const llmAction = analysis.needsProductAction === false ? '—' : '待处理'
+    const productAction = analysis.byLlm ? llmAction : classified.productAction
+    let actionReason = analysis.byLlm ? analysis.actionReason ?? null : null
+    if (analysis.byLlm && llmAction !== classified.productAction) {
+      const note = `规则表倾向 ${classified.productAction}，LLM 现场判 ${llmAction}`
+      actionReason = actionReason ? `${actionReason}；${note}` : note
+    }
     return {
       status: 'success',
       l1: classified.l1,
       l2: classified.l2,
-      productAction: classified.productAction,
+      productAction,
       rootCauseSource: 'llm', // 五段是 LLM 产的（类是规则定的——标注只描述五段产出方）
       conclusion: analysis.conclusion,
       directCause: analysis.directCause,
       evidence: analysis.evidence,
       suggestion: analysis.suggestion,
+      actionReason,
       llmAttempts: analysis.attempts,
       llmFailed: false,
     }

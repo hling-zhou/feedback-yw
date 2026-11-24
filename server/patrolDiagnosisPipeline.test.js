@@ -184,6 +184,56 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(r3.productAction).toBe('待处理')
   })
 
+  // ---------- 11-24 拍板：productAction 双路径统一（规则命中分支 LLM 判定优先——A1） ----------
+  it('②c（11-24 A1）规则命中 + LLM needsProductAction=false → — 优先于规则表硬编码（改前红：#378 型矛盾）', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    // 业务冲突规则（计费/订单策略限制——#378 先例同形态）+ LLM 判不需产品侧处理（#377 同语义）
+    const rules = [
+      { order: 20, l1: '业务冲突', l2: '计费/订单策略限制', productAction: '待处理', anyOf: ['不支持续订'] },
+      { order: 99, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+    const report = {
+      conclusion: '该资源属于按量计费订单，产品规则本身不支持续订，请求被拦截，非平台故障',
+      directCause: ['[ERROR] FOREVER_DENY'], evidence: ['订单规则限制'], suggestion: '按需选择支持续订的资源',
+      rootCauseL1: '业务冲突', rootCauseL2: '计费/订单策略限制',
+      needsProductAction: false, actionReason: '产品规则明确拒绝且提示清晰，属规则限制非平台故障',
+    }
+    const forward = vi.fn(makeForward(JSON.stringify(report)))
+    const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.l1).toBe('业务冲突')            // 规则仍定类（归类真源不变）
+    expect(r.l2).toBe('计费/订单策略限制')
+    expect(r.productAction).toBe('—')        // 改前红：旧逻辑用规则表硬编码「待处理」——#378 矛盾本体
+    expect(r.actionReason).toContain('规则表倾向 待处理，LLM 现场判 —')  // 不一致如实标注
+    expect(r.actionReason).toContain('属规则限制非平台故障')
+  })
+
+  it('②d（11-24 A1）规则命中 + LLM needsProductAction=true → 待处理且不标不一致；LLM 无该字段 → 规则值兜底（降级链路行为不变）', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    const rules = [
+      { order: 1, l1: '资源锁定/并发冲突', l2: '并发进行中', productAction: '—', anyOf: ['IS_LOCKING', '锁定'] },
+      { order: 99, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+    // LLM 判需处理 → 与规则「—」不一致 → 待处理 + 标注
+    const r1 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: vi.fn(makeForward(JSON.stringify({ ...LLM_REPORT_LOCK, needsProductAction: true, actionReason: '锁定长时间不释放需排查' }))) },
+    })
+    expect(r1.l1).toBe('资源锁定/并发冲突')
+    expect(r1.productAction).toBe('待处理')   // LLM true 优先（规则值 — 被覆盖）
+    expect(r1.actionReason).toContain('规则表倾向 —，LLM 现场判 待处理')
+    // LLM 无 needsProductAction 字段（旧形态 fixture）→ analyzer 保守归一 true → 待处理
+    // （保守默认语义与枚举分支一致——analyzer.js:230「判断不了取 true」；规则值「—」被覆盖并标注）
+    const r2 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
+      rules,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK))) },
+    })
+    expect(r2.productAction).toBe('待处理')   // analyzer 归一 true → LLM 判定优先
+    expect(r2.actionReason).toContain('规则表倾向 —，LLM 现场判 待处理')
+  })
+
   it('④ LLM 全败（5 次——11-18 拍板 3→5）→ status=no_diagnosis（调用方保持组 pending）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(async () => ({ choices: [{ message: { role: 'assistant', content: '不是JSON' } }] }))
