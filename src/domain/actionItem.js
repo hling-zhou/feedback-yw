@@ -41,7 +41,7 @@ export {
  * @property {string} content
  * @property {string} [detail] - 举措详情（可选）
  * @property {ActionItemStatus} status
- * @property {'ticket' | 'post_use' | 'observation'} [source] - 举措来源（ticket=投诉/咨询，post_use=用后即评，observation=留观问题升级）
+ * @property {'ticket' | 'post_use' | 'observation' | 'api_patrol'} [source] - 举措来源（ticket=投诉/咨询，post_use=用后即评，observation=留观问题升级，api_patrol=API巡检）
  * @property {string} [firstProposedAt] - ISO date (YYYY-MM-DD)
  * @property {string} [scheduleAt] - 排期展示文本
  * @property {string} [painPointSnapshot]
@@ -83,6 +83,19 @@ export const ACTION_ITEM_STATUS_LABELS = {
   suspended: '挂起',
   not_implemented: '不予实施',
   abnormal_terminated: '异常终止',
+}
+
+/**
+ * 举措档位（source）展示名单源：「产品举措与进展」下的档名（2026-11-24 拍板）。
+ * 导入模板填写说明 / 导出 Excel「来源」列 / 页面档切换与添加弹窗共用，禁各处自写。
+ * observation（留观问题升级）不在手动档选项内，仅供导出回显与导入往返识别。
+ * @type {Record<NonNullable<ActionItem['source']>, string>}
+ */
+export const ACTION_ITEM_SOURCE_LABELS = {
+  ticket: '投诉/咨询',
+  post_use: '用后即评',
+  observation: '留观问题',
+  api_patrol: 'API巡检',
 }
 
 /**
@@ -231,7 +244,7 @@ export function normalizeActionItem(input) {
     content: String(input.content ?? '').trim(),
     detail: String(input.detail ?? '').trim().slice(0, ACTION_ITEM_DETAIL_MAX_LENGTH),
     status,
-    source: input.source === 'post_use' || input.source === 'observation' ? input.source : 'ticket',
+    source: input.source === 'post_use' || input.source === 'observation' || input.source === 'api_patrol' ? input.source : 'ticket',
     firstProposedAt: String(input.firstProposedAt ?? '').trim(),
     scheduleAt,
     painPointSnapshot: String(input.painPointSnapshot ?? '').trim(),

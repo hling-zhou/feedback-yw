@@ -10,6 +10,8 @@
 import { requirePermission, requireAdmin } from '../middleware.js'
 import { logAuditFromRequest } from '../audit.js'
 import { getDb } from '../db.js'
+import { actionItemRepository } from '../actionItemRepository.js'
+import { validateActionItemCreate, mergeActionItemPatch } from '../../src/domain/actionItem.js'
 import { resolveLlmApiKey, resolveLlmBaseUrl, resolveLlmModel } from '../llmConfig.js'
 import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
@@ -454,6 +456,50 @@ export function registerPatrolQueryRoutes(app) {
     }
     const status = body.action === 'submit' ? '已处理' : '处理中'
     const now = new Date().toISOString()
+
+    // 11-24 拍板（拉齐工单抽屉先例）：手填新建举措同步进举措库（api_patrol 档）。
+    // 语义边界：establishedAction 非空且无 actionId（请求与组表都空）= 手填新建 → 建库；
+    //   已有 actionId 且内容/排期变化 → 同步更新库记录（不换档）；清空 establishedAction 且无 actionId → 不动库。
+    // 建库与失败组 UPDATE 同事务（UPDATE 异常时建库回滚，不产生孤儿举措）；目录加载是 async，留在事务外。
+    const handWrittenAction = String(body.establishedAction || '').trim()
+    const priorActionId = String(body.actionId || before.action_id || '').trim()
+    let actionIdForGroup = priorActionId
+    let catalogProduct = null
+    if (handWrittenAction && !priorActionId) {
+      const { loadPatrolCatalogShared } = await import('../patrolIngestion.js')
+      const catalog = await loadPatrolCatalogShared()
+      catalogProduct = catalog.find((p) => p.key === String(before.product_key || '')) || null
+    }
+    const actor = request.user?.id
+      ? { userId: request.user.id, username: request.user.username || request.user.id }
+      : null
+    /** 建库/同步 + 失败组 UPDATE，同事务执行（校验失败抛错 → 整体回滚，库无孤儿举措） */
+    const runGroupUpdateWithActionLibrary = () => {
+      if (handWrittenAction && !priorActionId) {
+        const scheduleAt = String(body.actionSchedule || '').trim()
+        const validated = validateActionItemCreate({
+          content: handWrittenAction,
+          productKey: String(before.product_key || ''),
+          productName: catalogProduct?.name || String(before.product_key || ''),
+          scheduleAt,
+          status: scheduleAt ? 'in_progress' : 'pending_evaluation',
+          source: 'api_patrol',
+        })
+        if (!validated.ok) throw new Error(`举措入库失败：${validated.error}`)
+        actionItemRepository.putActionItem(validated.item, { actor })
+        actionIdForGroup = validated.item.id
+      } else if (priorActionId && handWrittenAction) {
+        // 已关联库记录：内容/排期变化时同步库（与工单抽屉手填更新同语义，跳过冲突检查——组表文本为唯一编辑入口）
+        const existing = actionItemRepository.getActionItem(priorActionId)
+        if (existing) {
+          const merged = mergeActionItemPatch(existing, {
+            content: handWrittenAction,
+            scheduleAt: String(body.actionSchedule || '').trim() || '',
+          })
+          if (!merged.ok) throw new Error(`举措同步失败：${merged.error}`)
+          actionItemRepository.putActionItem(merged.item, { actor })
+        }
+      }
     // 11-18 确立举措三列（与投诉咨询线同语义：不强制必填；actionId 关联举措库，手填内容与排期可独立）
     // 11-18 人工修正根因三列（独立存储不覆盖 LLM 原判——两值并存供对比/算准确率）；
     // real_root_cause 同时补历史丢数据洞（旧版前端收了但 UPDATE 没存）
@@ -473,7 +519,8 @@ export function registerPatrolQueryRoutes(app) {
       body.rootCauseConfirmed ?? null,
       body.measureFeedback ?? null,
       body.assignee ?? null,
-      body.actionId ?? null,
+      // 11-24：手填新建建库后用新 actionId 回填组表（COALESCE 语义保留——显式传 null 不覆盖旧值）
+      actionIdForGroup || body.actionId || null,
       body.establishedAction ?? null,
       body.actionSchedule ?? null,
       body.rootCauseL1Manual ?? null,
@@ -482,6 +529,15 @@ export function registerPatrolQueryRoutes(app) {
       /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown',
       now, now, id,
     )
+    }
+    try {
+      db.transaction(() => {
+        runGroupUpdateWithActionLibrary()
+      })()
+    } catch (err) {
+      // 建库/同步校验失败（事务已回滚，库无孤儿）：回 400 带原因
+      return reply.code(400).send({ error: err instanceof Error ? err.message : '处理失败' })
+    }
     const after = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE id=?`).get(id)
     logAuditFromRequest(request, 'api_patrol.group_update', {
       groupId: id,

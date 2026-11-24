@@ -3,12 +3,12 @@ import * as XLSX from 'xlsx'
 import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
+  ACTION_ITEM_SOURCE_LABELS,
   aggregateActionItemsByProductStatus,
   actionItemStatusLinkedFeedbackLabel,
   createEmptyActionItemStatusCounts,
   resolveActionItemProductDisplayName,
 } from '../domain/actionItem.js'
-import { DATA_SOURCE_LABELS } from '../domain/enums.js'
 import { linkedTicketIdsInPeriod } from '../domain/actionItemPeriodFilter.js'
 import {
   formatLinkedTicketIdsGroupedForExport,
@@ -152,9 +152,8 @@ export function buildActionItemStatsRows(byProduct) {
  */
 export function buildActionItemListRows(items, periodTicketIdSet, feedbackByTicketId, productNameByKey) {
   return (items || []).map((item) => {
-    const sources = (item.linkedDataSources || [])
-      .map((s) => DATA_SOURCE_LABELS[s] || s)
-      .join('、')
+    // 来源列输出档名（11-24 拍板）：与「产品举措与进展」档名一致，导出→导入往返闭环
+    const sources = ACTION_ITEM_SOURCE_LABELS[item.source || 'ticket'] || ACTION_ITEM_SOURCE_LABELS.ticket
     const linkedInPeriod = linkedTicketIdsInPeriod(item.linkedTicketIds, periodTicketIdSet)
     const linkedGrouped = formatLinkedTicketIdsGroupedForExport(
       groupLinkedTicketIdsByMonth(linkedInPeriod, feedbackByTicketId),
@@ -254,6 +253,110 @@ export function downloadActionItemsExcel({
 }
 
 /**
+ * Excel sheet 名安全化：禁字符（/ \ ? * [ ]）替换为全角斜杠，长度截 31（Excel 上限）。
+ * @param {string} name
+ */
+function sheetNameSafe(name) {
+  return String(name || '').replace(/[/\\?*[\]]/g, '／').slice(0, 31)
+}
+
+/**
+ * 按来源档分 sheet 组装 workbook（纯函数，node 可直测）。
+ * @param {Object} options
+ * @param {ActionItem[]} options.items
+ * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
+ * @param {Map<string, string>} [options.productNameByKey]
+ * @returns {XLSX.WorkBook} - 首个 sheet 为跨来源汇总「全部·分产品统计」（总览）；其后每个有数据的档一组「{档名}·分产品统计」「{档名}·举措清单」
+ */
+export function buildActionItemsWorkbookBySource({
+  items,
+  periodTicketIdSet,
+  feedbackByTicketId,
+  productNameByKey,
+}) {
+  const wb = XLSX.utils.book_new()
+  /** @type {NonNullable<ActionItem['source']>[]} */
+  const sourceOrder = ['ticket', 'post_use', 'observation', 'api_patrol']
+
+  // 跨来源汇总总览 sheet（11-24 追加拍板）：全量举措分产品统计，置于首个位置
+  const allByProduct = aggregateActionItemsByProductStatus(items || [], {
+    periodTicketIdSet,
+    productNameByKey,
+  })
+  const allStatsSheet = XLSX.utils.json_to_sheet(buildActionItemStatsRows(allByProduct), {
+    header: ACTION_ITEM_STATS_HEADERS,
+  })
+  XLSX.utils.book_append_sheet(wb, allStatsSheet, sheetNameSafe('全部·分产品统计'))
+
+  for (const source of sourceOrder) {
+    const scoped = (items || []).filter((item) => (item.source || 'ticket') === source)
+    if (!scoped.length) continue
+
+    const label = ACTION_ITEM_SOURCE_LABELS[source]
+    const byProduct = aggregateActionItemsByProductStatus(scoped, {
+      periodTicketIdSet,
+      productNameByKey,
+    })
+    const statsRows = buildActionItemStatsRows(byProduct)
+    const listRows = buildActionItemListRows(
+      scoped,
+      periodTicketIdSet,
+      feedbackByTicketId,
+      productNameByKey,
+    )
+
+    const statsSheet = XLSX.utils.json_to_sheet(statsRows, { header: ACTION_ITEM_STATS_HEADERS })
+    const listSheet = XLSX.utils.json_to_sheet(
+      listRows.length ? listRows : [{ 提示: '无数据' }],
+      { header: ACTION_ITEM_LIST_HEADERS },
+    )
+    XLSX.utils.book_append_sheet(wb, statsSheet, sheetNameSafe(`${label}·分产品统计`))
+    XLSX.utils.book_append_sheet(wb, listSheet, sheetNameSafe(`${label}·举措清单`))
+  }
+
+  if (!wb.SheetNames.length) {
+    const emptySheet = XLSX.utils.json_to_sheet([{ 提示: '无数据' }])
+    XLSX.utils.book_append_sheet(wb, emptySheet, '举措清单')
+  }
+  return wb
+}
+
+/**
+ * 按来源档分 sheet 导出（11-24 拍板：「所有来源全部」导出时每档一组 统计+清单 sheet）。
+ * 档顺序固定（投诉/咨询 → 用后即评 → 留观问题 → API巡检），空档不出 sheet。
+ *
+ * @param {Object} options
+ * @param {ActionItem[]} options.items - 全量举措（未按 source 过滤）
+ * @param {Set<string> | null | undefined} [options.periodTicketIdSet]
+ * @param {Map<string, import('./types.js').FeedbackRecord>} [options.feedbackByTicketId]
+ * @param {Map<string, string>} [options.productNameByKey]
+ * @param {string} [options.filename]
+ */
+export function downloadActionItemsExcelBySource({
+  items,
+  periodTicketIdSet,
+  feedbackByTicketId,
+  productNameByKey,
+  filename,
+}) {
+  const wb = buildActionItemsWorkbookBySource({
+    items,
+    periodTicketIdSet,
+    feedbackByTicketId,
+    productNameByKey,
+  })
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  triggerDownload(
+    new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    filename || `举措与进展-按来源分表-${new Date().toISOString().slice(0, 10)}.xlsx`,
+  )
+  return (items || []).length
+}
+
+/**
  * @param {Object} options
  * @param {ActionItemListQuery} options.query
  * @param {ActionItemProductStatusRow[]} [options.statsByProduct]
@@ -262,6 +365,7 @@ export function downloadActionItemsExcel({
  * @param {Map<string, string>} [options.productNameByKey]
  * @param {string} [options.scopeLabel]
  * @param {string} [options.periodLabel]
+ * @param {boolean} [options.bySource] - true=按来源档分 sheet（忽略 statsByProduct，每档自带统计）
  */
 export async function exportActionItemsWithQuery({
   query,
@@ -271,11 +375,21 @@ export async function exportActionItemsWithQuery({
   productNameByKey,
   scopeLabel,
   periodLabel,
+  bySource,
 }) {
   const { items } = await fetchAllActionItems(query)
   const datePart = new Date().toISOString().slice(0, 10)
   const scopePart = scopeLabel ? scopeLabel.replace(/\s+/g, '') : '导出'
   const periodPart = periodLabel ? `-${periodLabel.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')}` : ''
+  if (bySource) {
+    return downloadActionItemsExcelBySource({
+      items,
+      periodTicketIdSet,
+      feedbackByTicketId,
+      productNameByKey,
+      filename: `举措与进展-${scopePart}${periodPart}-${datePart}.xlsx`,
+    })
+  }
   downloadActionItemsExcel({
     items,
     statsByProduct,

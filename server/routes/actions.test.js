@@ -505,6 +505,36 @@ describeActions('actions API (P4-1)', () => {
     expect(multiIds).not.toContain(complaintItem.id)
   })
 
+  it('creates and filters api_patrol source items（11-24：schema enum 放行 + 档位过滤）', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '巡检失败治理举措', source: 'api_patrol' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+    // 归一层不再把 api_patrol 吞回 ticket
+    expect(created.source).toBe('api_patrol')
+
+    const bySource = await app.inject({
+      method: 'GET',
+      url: '/api/actions?source=api_patrol',
+      headers: authHeader('viewer'),
+    })
+    const sourceItems = JSON.parse(bySource.body).items
+    expect(sourceItems.some((item) => item.id === created.id)).toBe(true)
+
+    const ticketScope = await app.inject({
+      method: 'GET',
+      url: '/api/actions?sources=ticket,observation',
+      headers: authHeader('viewer'),
+    })
+    expect(
+      JSON.parse(ticketScope.body).items.some((item) => item.id === created.id),
+    ).toBe(false)
+  })
+
   it('stats byProduct uses catalog product name instead of stored spec name', async () => {
     const createRes = await app.inject({
       method: 'POST',

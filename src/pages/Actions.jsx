@@ -33,6 +33,7 @@ import { PageHeader } from './Dashboard.shared.jsx'
 import {
   ACTION_ITEM_STATUSES,
   ACTION_ITEM_STATUS_LABELS,
+  ACTION_ITEM_SOURCE_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
   ACTION_ITEM_DETAIL_MAX_LENGTH,
   ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
@@ -158,6 +159,19 @@ const FILTER_STATUS_OPTIONS = ACTION_ITEM_STATUSES.map((value) => ({
   value,
 }))
 
+/** 「产品举措与进展」三个档（tab）单源：Segmented / 添加弹窗来源下拉 / 列表查询共用（2026-11-24 拍板） */
+const ACTION_SOURCE_SEGMENTS = [
+  { label: ACTION_ITEM_SOURCE_LABELS.ticket, value: 'ticket' },
+  { label: ACTION_ITEM_SOURCE_LABELS.post_use, value: 'post_use' },
+  { label: ACTION_ITEM_SOURCE_LABELS.api_patrol, value: 'api_patrol' },
+]
+
+/** 添加弹窗「来源」下拉选项（档名单源派生；observation 是留观升级专属入口，不进手动档选项） */
+const ACTION_SOURCE_SELECT_OPTIONS = ACTION_SOURCE_SEGMENTS.map(({ label, value }) => ({
+  label,
+  value,
+}))
+
 /**
  * @param {ActionItem['warningLevel']} level
  * @returns {string | undefined}
@@ -168,8 +182,12 @@ function scheduleWarningClass(level) {
   return undefined
 }
 
-const LINKED_FEEDBACK_HEADER_HINT =
-  '用户原始反馈（投诉/咨询工单、用后即评等）'
+/** 「关联反馈」表头提示：按当前档各写精准语义（11-24 拍板，只需覆盖本档内容） */
+const LINKED_FEEDBACK_HEADER_HINTS = {
+  ticket: '关联的投诉/咨询工单：在工单详情「确立举措」处选择本举措后自动建立关联，点击工单号可跳转原单。',
+  post_use: '关联的用后即评记录：产品部溯源与省代表回访中关联本举措的条数，悬停查看明细。',
+  api_patrol: '关联的失败请求 RequestID：在「API巡检 → 失败请求」抽屉确立本举措后，按失败组回填关联的请求标识。',
+}
 const REQUIREMENT_TICKET_HEADER_HINT = `需求工单号：${REQUIREMENT_TICKET_FIELD_TIP}`
 
 /**
@@ -262,11 +280,12 @@ function ProductActionsTab() {
   const [searchParams] = useSearchParams()
   const canEditAction = can('editRecord')
   const isAdmin = user?.role === 'admin'
-  const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTasks, reprocessing } =
+  const { feedbacks, updateFeedback, retagSession, importSession, sharedBackgroundTasks, reprocessing, productCatalogMeta } =
     useInsights()
   const [items, setItems] = useState(/** @type {ActionItem[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [allTotal, setAllTotal] = useState(0)
+  const [allSourcesTotal, setAllSourcesTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -604,12 +623,21 @@ function ProductActionsTab() {
 
   useEffect(() => {
     let cancelled = false
+    // 当前来源全部（allTotal）与所有来源全部（allSourcesTotal，去掉 sources 过滤）双计数
     listActionItems({ ...baseScopeQuery, limit: 1, offset: 0 })
       .then((result) => {
         if (!cancelled) setAllTotal(result.total)
       })
       .catch(() => {
         if (!cancelled) setAllTotal(0)
+      })
+    const { sources: _drop, ...scopeWithoutSource } = baseScopeQuery
+    listActionItems({ ...scopeWithoutSource, limit: 1, offset: 0 })
+      .then((result) => {
+        if (!cancelled) setAllSourcesTotal(result.total)
+      })
+      .catch(() => {
+        if (!cancelled) setAllSourcesTotal(0)
       })
     return () => {
       cancelled = true
@@ -618,8 +646,14 @@ function ProductActionsTab() {
 
   const handleExport = async (scope) => {
     const filtered = scope === 'filtered'
+    // 11-24 拍板：'all' = 当前来源全部（档位过滤保留）；'all_sources' = 所有来源全部（去掉 sources 过滤）
     const query = filtered ? listQuery : baseScopeQuery
-    const count = filtered ? total : allTotal
+    const allSourcesQuery = {
+      ...baseScopeQuery,
+      sources: undefined,
+    }
+    const effectiveQuery = scope === 'all_sources' ? allSourcesQuery : query
+    const count = filtered ? total : scope === 'all_sources' ? allSourcesTotal : allTotal
     if (!count) {
       message.warning('当前范围无可导出举措')
       return
@@ -627,17 +661,19 @@ function ProductActionsTab() {
 
     setExporting(true)
     try {
-      const statsData = await getActionItemStats(query)
+      const statsData = await getActionItemStats(effectiveQuery)
       const exported = await exportActionItemsWithQuery({
-        query,
+        query: effectiveQuery,
         statsByProduct: statsData.byProduct?.length ? statsData.byProduct : undefined,
         periodTicketIdSet: periodTicketIdSet,
         feedbackByTicketId,
         productNameByKey,
-        scopeLabel: filtered ? '当前筛选' : '全部',
+        scopeLabel: filtered ? '当前筛选' : scope === 'all_sources' ? '所有来源全部' : '当前来源全部',
         periodLabel: selectedPeriod?.label,
+        // 所有来源全部：按来源档分 sheet（每档自带 统计+清单，11-24 拍板）
+        bySource: scope === 'all_sources',
       })
-      message.success(`已导出 ${exported} 条举措（分产品统计 + 举措清单）`)
+      message.success(`已导出 ${exported} 条举措（${scope === 'all_sources' ? '按来源分表' : '分产品统计 + 举措清单'}）`)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '导出失败')
     } finally {
@@ -922,6 +958,8 @@ function ProductActionsTab() {
   const openAdd = () => {
     addForm.resetFields()
     addForm.setFieldsValue({
+      // 来源默认跟随当前档（11-24 拍板：确定后按所选档落库，不再统一进投诉/咨询）
+      source: actionSource,
       status: 'pending_evaluation',
       requirementLinkEnabled: false,
       requirementTicketIds: [''],
@@ -961,8 +999,8 @@ function ProductActionsTab() {
         problemTypeSnapshot: values.problemTypeSnapshot?.trim() || '',
         scheduleAt,
         status,
-        // API巡检档新增的举措归属 api_patrol source（其他档缺省=后端归一为 ticket）
-        ...(actionSource === 'api_patrol' ? { source: 'api_patrol' } : {}),
+        // 来源按表单选择落档（11-24 拍板；旧版仅 API巡检档隐式传 source，其余全落投诉/咨询）
+        source: values.source === 'post_use' || values.source === 'api_patrol' ? values.source : 'ticket',
         linkedTicketIds: [],
         linkedRequirementTicketIds,
         linkedDataSources: [],
@@ -1090,7 +1128,7 @@ function ProductActionsTab() {
       title: (
         <ColumnTitleWithHint
           title="关联反馈"
-          hint={LINKED_FEEDBACK_HEADER_HINT}
+          hint={LINKED_FEEDBACK_HEADER_HINTS[actionSource]}
           extra={
             periodFilterActive ? (
               <Typography.Text type="secondary" className="text-[10px] font-normal">
@@ -1298,8 +1336,13 @@ function ProductActionsTab() {
               items: [
                 {
                   key: 'all',
-                  label: `全部（${allTotal} 条）`,
+                  label: `当前来源全部（${allTotal} 条）`,
                   disabled: allTotal === 0,
+                },
+                {
+                  key: 'all_sources',
+                  label: `所有来源全部（${allSourcesTotal} 条，按来源分表）`,
+                  disabled: allSourcesTotal === 0,
                 },
                 {
                   key: 'filtered',
@@ -1307,7 +1350,7 @@ function ProductActionsTab() {
                   disabled: total === 0,
                 },
               ],
-              onClick: ({ key }) => handleExport(/** @type {'all' | 'filtered'} */ (key)),
+              onClick: ({ key }) => handleExport(/** @type {'all' | 'filtered' | 'all_sources'} */ (key)),
             }}
           >
             <Button loading={exporting} icon={<UploadOutlined />}>
@@ -1324,11 +1367,7 @@ function ProductActionsTab() {
           setActionSource(/** @type {'ticket' | 'post_use' | 'api_patrol'} */ (value))
           setPage(1)
         }}
-        options={[
-          { label: '投诉/咨询', value: 'ticket' },
-          { label: '用后即评', value: 'post_use' },
-          { label: 'API巡检', value: 'api_patrol' },
-        ]}
+        options={ACTION_SOURCE_SEGMENTS}
       />
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -1458,9 +1497,12 @@ function ProductActionsTab() {
         styles={ACTION_FORM_MODAL_STYLES}
       >
         <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
-          问题、问题类型、来源、关联反馈、需求工单均可留空；首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」及来源自动补齐。
+          来源决定举措归属的档位，默认跟随当前档；问题、问题类型、关联反馈、需求工单均可留空，首次提出时间记为今天。后续在工单详情中首次关联该举措时，空字段将从该工单的「需求痛点」「问题类型」及来源自动补齐。
         </Typography.Paragraph>
         <Form form={addForm} layout="vertical">
+          <Form.Item name="source" label="来源" rules={[{ required: true, message: '请选择来源' }]}>
+            <Select placeholder="选择举措归属档位" options={ACTION_SOURCE_SELECT_OPTIONS} />
+          </Form.Item>
           <Form.Item name="productKey" label="产品">
             <Select allowClear placeholder="可选" options={productOptions} />
           </Form.Item>
@@ -1549,7 +1591,7 @@ function ProductActionsTab() {
           <Button type="link" className="!h-auto !p-0 !text-xs" onClick={downloadActionItemImportTemplate}>
             下载模板
           </Button>
-          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联反馈后自动补齐。填写需求工单时排期/状态列将被忽略。首次提出时间统一记为导入当天。
+          ；仅「举措*（必填）」必填。问题等可选列留空时，首次关联反馈后自动补齐。填写需求工单时排期/状态列将被忽略。首次提出时间统一记为导入当天。「关联反馈」「需求工单」填多个单号时用换行、逗号或分号分隔（顿号会被当成一个整体单号）。
         </Typography.Paragraph>
         {importPreview ? (
           <>

@@ -71,6 +71,19 @@ describe('actionItem', () => {
     if (created.ok) expect(created.item.source).toBe('post_use')
   })
 
+  it('keeps api_patrol source when creating a library action（11-24：归一层放行，不再回落 ticket）', () => {
+    const created = validateActionItemCreate({ content: '巡检举措', source: 'api_patrol' })
+    expect(created.ok).toBe(true)
+    if (created.ok) expect(created.item.source).toBe('api_patrol')
+  })
+
+  it('normalizes unknown source values back to ticket', () => {
+    // @ts-expect-error 测试意图即传入非法值验证兜底归一
+    const created = validateActionItemCreate({ content: '兜底举措', source: 'bogus' })
+    expect(created.ok).toBe(true)
+    if (created.ok) expect(created.item.source).toBe('ticket')
+  })
+
   it('does not derive status from schedule when requirement tickets are linked', () => {
     const base = validateActionItemCreate({
       id: 'act-req',

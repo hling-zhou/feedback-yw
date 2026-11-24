@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx'
 import {
   ACTION_ITEM_STATUS_LABELS,
   ACTION_ITEM_STATUSES,
+  ACTION_ITEM_SOURCE_LABELS,
   deriveActionItemStatusFromSchedule,
   isActionItemStatus,
   validateActionItemCreate,
@@ -102,6 +103,36 @@ export function parseLinkedDataSourcesCell(text) {
 }
 
 /**
+ * 「来源」单元格 → 举措档位（source）解析（2026-11-24 拍板：来源列口径与「产品举措与进展」档名一致）。
+ *
+ * 解析规则（单值单元格整体匹配，不做多值拆分）：
+ * - 档名（投诉/咨询、用后即评、API巡检、留观问题）→ 对应 source 档；
+ * - 旧枚举标签（投诉工单、咨询工单）→ 投诉/咨询 档（ticket）；
+ * - 旧枚举标签「用后即评」既是档名也是数据源标签，两者同档不冲突；
+ * - 其他内容（用户调研、其他、未知文本）→ 不指定档位，落默认投诉/咨询档（后端归一）。
+ *
+ * 注意：与 parseLinkedDataSourcesCell（多值拆分、写 linkedDataSources）职责不同——
+ * 本函数只决定举措归属档位；「来源」列同时写入 linkedDataSources 保持数据源语义
+ * （工单关联后自动补齐/筛选依赖），两者并存。
+ *
+ * @param {string} text
+ * @returns {import('../domain/actionItem.js').ActionItem['source']}
+ */
+export function parseActionItemSourceCell(text) {
+  const token = String(text ?? '').trim()
+  if (!token) return 'ticket'
+  if (token === ACTION_ITEM_SOURCE_LABELS.post_use) return 'post_use'
+  if (token === ACTION_ITEM_SOURCE_LABELS.api_patrol) return 'api_patrol'
+  if (token === ACTION_ITEM_SOURCE_LABELS.observation) return 'observation'
+  if (token === ACTION_ITEM_SOURCE_LABELS.ticket) return 'ticket'
+  // 旧枚举标签 → 投诉/咨询档（2026-11-24 拍板）
+  if (token === DATA_SOURCE_BY_LABEL.complaint_ticket || token === DATA_SOURCE_BY_LABEL.consultation_ticket) {
+    return 'ticket'
+  }
+  return 'ticket'
+}
+
+/**
  * @param {Record<string, unknown>} row
  * @param {string} header
  */
@@ -164,6 +195,9 @@ export function parseActionItemImportRow(row, options = {}) {
     }
   }
   const linkedDataSources = parseLinkedDataSourcesCell(cell(row, '来源'))
+  // 来源列口径（11-24 拍板）：与「产品举措与进展」档名一致，决定举措归属档位；
+  // 旧枚举标签（投诉工单、咨询工单等）映射到对应档。linkedDataSources 保留原数据源语义不变。
+  const source = parseActionItemSourceCell(cell(row, '来源'))
 
   const problemTypeSnapshot = cell(row, '问题类型')
 
@@ -176,6 +210,7 @@ export function parseActionItemImportRow(row, options = {}) {
     problemTypeSnapshot,
     scheduleAt,
     status,
+    source,
     linkedTicketIds,
     linkedRequirementTicketIds,
     linkedDataSources,

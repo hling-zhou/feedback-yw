@@ -19,19 +19,18 @@ describe('actionItemFilterModel', () => {
       productKeys: ['vpc', 'eip'],
       statuses: ['pending_evaluation'],
       ticketId: 'T-001',
-      linkedDataSources: ['complaint_ticket', 'consultation_ticket'],
       problemType: '故障',
       journeyL1: '使用',
     }
+    // 「数据来源」筛选项已删（11-24 拍板：档位入口单源=Segmented tab，列表筛选不再重复档维度）
     expect(listActiveActionItemFilterChipKeys(values)).toEqual([
       'ticketId',
-      'linkedDataSources',
       'productKeys',
       'statuses',
       'problemType',
       'journeyL1',
     ])
-    expect(countActiveActionItemFilters(values)).toBe(6)
+    expect(countActiveActionItemFilters(values)).toBe(5)
     expect(
       formatActionItemFilterChipLabel('productKeys', values, {
         productNameByKey: new Map([
@@ -42,25 +41,15 @@ describe('actionItemFilterModel', () => {
     ).toBe('2 个')
     expect(formatActionItemFilterChipLabel('statuses', values)).toBe('待评估')
     expect(formatActionItemFilterChipLabel('ticketId', values)).toBe('T-001')
-    expect(formatActionItemFilterChipLabel('linkedDataSources', values)).toBe('2 个')
     expect(formatActionItemFilterChipLabel('problemType', values)).toBe('故障')
     expect(formatActionItemFilterChipLabel('journeyL1', values)).toBe('使用')
     expect(actionItemFiltersToListQuery(values)).toEqual({
       productKeys: 'vpc,eip',
       statuses: 'pending_evaluation',
       ticketId: 'T-001',
-      linkedDataSources: 'complaint_ticket,consultation_ticket',
       problemType: '故障',
       journeyL1: '使用',
     })
-  })
-
-  it('formats single linkedDataSources chip label', () => {
-    const values = {
-      ...createEmptyActionItemFilters(),
-      linkedDataSources: ['post_use_rating'],
-    }
-    expect(formatActionItemFilterChipLabel('linkedDataSources', values)).toBe('用后即评')
   })
 })
 
@@ -97,17 +86,17 @@ describe('buildActionItemProductFilterOptions', () => {
 })
 
 describe('actionItemFilterEditors', () => {
-  it('validates and builds linkedDataSources draft', () => {
-    expect(isActionItemFilterDraftValid('linkedDataSources', ['complaint_ticket'])).toBe(true)
-    expect(isActionItemFilterDraftValid('linkedDataSources', [])).toBe(false)
+  it('validates and builds statuses draft（数据来源筛选项已删，11-24）', () => {
+    expect(isActionItemFilterDraftValid('statuses', ['pending_evaluation'])).toBe(true)
+    expect(isActionItemFilterDraftValid('statuses', [])).toBe(false)
     expect(
-      buildActionItemFilterPatchFromDraft('linkedDataSources', [
-        'complaint_ticket',
-        'invalid_source',
-        'consultation_ticket',
+      buildActionItemFilterPatchFromDraft('statuses', [
+        'pending_evaluation',
+        'invalid_status',
+        'in_progress',
       ]),
     ).toEqual({
-      linkedDataSources: ['complaint_ticket', 'consultation_ticket'],
+      statuses: ['pending_evaluation', 'in_progress'],
     })
   })
 })

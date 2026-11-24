@@ -373,6 +373,49 @@ describeQuery('patrol query API', () => {
     expect(res.json().error).toContain('真实根因')
   })
 
+  // ── ③b 手填举措同步进举措库（11-24 拍板：拉齐工单抽屉先例，api_patrol 档）──
+  it('手填新建举措 → 建库（api_patrol 档）+ 组表回填 actionId；二次 PATCH 改内容 → 库同步更新', async () => {
+    const group = db.prepare(`SELECT * FROM api_patrol_failure_groups WHERE first_request_id='fail-3'`).get()
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+
+    // ① 手填新建（establishedAction 有值 + 无 actionId）→ 建库 + 回填
+    const res1 = await app.inject({
+      method: 'PATCH', url: `/api/patrol/failures/groups/${group.id}`,
+      headers: authHeader(),
+      payload: { action: 'submit', establishedAction: '退订前绑定关系预检', actionSchedule: '2026-12-01' },
+    })
+    expect(res1.statusCode).toBe(200)
+    const after1 = res1.json().group
+    expect(String(after1.actionId || '').trim()).not.toBe('')
+
+    const created = actionItemRepository.getActionItem(String(after1.actionId))
+    expect(created).toBeTruthy()
+    expect(created.source).toBe('api_patrol')
+    expect(created.content).toBe('退订前绑定关系预检')
+    expect(created.status).toBe('in_progress')
+    expect(created.scheduleAt).toBe('2026-12-01')
+
+    // ② 幂等回查：组表 action_id 已回填（二次 PATCH 不再新建）
+    const groupRow = db.prepare(`SELECT action_id FROM api_patrol_failure_groups WHERE id=?`).get(group.id)
+    expect(String(groupRow.action_id || '').trim()).toBe(String(after1.actionId))
+
+    // ③ 二次 PATCH 改内容 → 同步更新既有库记录（不新建）
+    const res2 = await app.inject({
+      method: 'PATCH', url: `/api/patrol/failures/groups/${group.id}`,
+      headers: authHeader(),
+      payload: { action: 'draft', establishedAction: '退订前绑定关系预检（增强版）', actionSchedule: '2026-12-15' },
+    })
+    expect(res2.statusCode).toBe(200)
+    const updated = actionItemRepository.getActionItem(String(after1.actionId))
+    expect(updated.content).toBe('退订前绑定关系预检（增强版）')
+    expect(updated.scheduleAt).toBe('2026-12-15')
+    // 未新建第二条（content 在 payload JSON 里——action_items 表无 content 列）
+    const count = db.prepare(
+      `SELECT COUNT(*) n FROM action_items WHERE payload LIKE '%退订前绑定关系预检%'`,
+    ).get()
+    expect(Number(count.n)).toBe(1)
+  })
+
   // ── ③c 历史 pending 转待处理端点（11-20 15:09 拍板）──
   it('trapped-pending：今日诊断转出的历史待处理组返回；报告日内/无今日诊断/非待处理组排除；清诊断后空', async () => {
     // seed 态：fail-2（业务冲突·待处理·2026-08-11 历史日期）有 success 诊断但 diagnosed_at='t'（非今日）→ 不返回

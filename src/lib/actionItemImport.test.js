@@ -5,6 +5,7 @@ import {
   normalizeActionItemImportRow,
   parseActionItemImportRow,
   parseActionItemImportWorkbook,
+  parseActionItemSourceCell,
   parseLinkedDataSourcesCell,
   parseLinkedTicketIdsCell,
 } from './actionItemImport.js'
@@ -20,6 +21,49 @@ describe('actionItemImport', () => {
       'complaint_ticket',
       'consultation_ticket',
     ])
+  })
+
+  describe('parseActionItemSourceCell（来源列 → 档位，2026-11-24 拍板）', () => {
+    it('档名解析为对应 source', () => {
+      expect(parseActionItemSourceCell('投诉/咨询')).toBe('ticket')
+      expect(parseActionItemSourceCell('用后即评')).toBe('post_use')
+      expect(parseActionItemSourceCell('API巡检')).toBe('api_patrol')
+      expect(parseActionItemSourceCell('留观问题')).toBe('observation')
+    })
+
+    it('旧枚举标签映射到 投诉/咨询 档（用户拍板）', () => {
+      expect(parseActionItemSourceCell('投诉工单')).toBe('ticket')
+      expect(parseActionItemSourceCell('咨询工单')).toBe('ticket')
+    })
+
+    it('其他数据源标签与未知文本落默认 投诉/咨询 档', () => {
+      expect(parseActionItemSourceCell('用户调研')).toBe('ticket')
+      expect(parseActionItemSourceCell('其他')).toBe('ticket')
+      expect(parseActionItemSourceCell('')).toBe('ticket')
+      expect(parseActionItemSourceCell('随便写的')).toBe('ticket')
+    })
+
+    it('parseActionItemImportRow 将来源列写入 source（linkedDataSources 语义保留）', () => {
+      const parsed = parseActionItemImportRow(
+        { 举措: '巡检优化', 来源: 'API巡检', 产品名称: 'VPC' },
+        { firstProposedAt: '2026-11-24' },
+      )
+      expect(parsed.ok).toBe(true)
+      if (parsed.ok) {
+        expect(parsed.item.source).toBe('api_patrol')
+      }
+
+      const legacy = parseActionItemImportRow(
+        { 举措: '旧口径行', 来源: '投诉工单、咨询工单', 产品名称: 'VPC' },
+        { firstProposedAt: '2026-11-24' },
+      )
+      expect(legacy.ok).toBe(true)
+      if (legacy.ok) {
+        expect(legacy.item.source).toBe('ticket')
+        // linkedDataSources 原数据源语义不变（工单关联自动补齐/筛选依赖）
+        expect(legacy.item.linkedDataSources).toEqual(['complaint_ticket', 'consultation_ticket'])
+      }
+    })
   })
 
   it('parseActionItemImportRow allows empty optional fields', () => {
