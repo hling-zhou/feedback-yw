@@ -76,6 +76,24 @@ export const mailSendBodySchema = {
     to: { ...emailArray, minItems: 1 },
     cc: emailArray,
     note: { type: 'string', maxLength: 2000 },
+    // 2026-11-24 原子标记：发送成功后服务端同请求写"已纳入"标记（邮件与标记原子完成，
+    // 杜绝"邮件已发但标记写失败→重发重复"）；不传则维持旧语义（仅发邮件）。
+    dispatchItems: {
+      type: 'array',
+      maxItems: 2000,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['itemKey'],
+        properties: {
+          itemKey: { type: 'string', minLength: 1, maxLength: 500 },
+          sourceType: { type: 'string', maxLength: 40 },
+          customerName: { type: 'string', maxLength: 200 },
+          productName: { type: 'string', maxLength: 120 },
+          importMonth: { type: 'string', maxLength: 20 },
+        },
+      },
+    },
     attachment: {
       type: 'object',
       additionalProperties: false,

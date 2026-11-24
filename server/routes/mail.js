@@ -40,6 +40,7 @@ import {
   updateMailGroup,
   updateMailTemplate,
 } from '../mailRepository.js'
+import { postUseVisitDispatchRepository } from '../postUseVisitDispatchRepository.js'
 
 function sendError(reply, code, error) {
   reply.code(code)
@@ -338,7 +339,40 @@ export function registerMailRoutes(app) {
           filename: body.attachment.filename,
           bytes: buffer.length,
         })
-        return { ok: true }
+        // 2026-11-24 原子标记：发送成功后同请求写"已纳入"标记（邮件与标记原子完成）。
+        // 写失败时内部重试一次；仍失败不报 500（邮件已发出，报错会误导用户重发造成重复邮件），
+        // 而是返回 markError 让前端引导用户"仅补标不重发"。
+        let marked = 0
+        let markError = ''
+        const dispatchItems = Array.isArray(body.dispatchItems) ? body.dispatchItems : []
+        if (dispatchItems.length) {
+          for (let attempt = 0; attempt < 2 && !marked; attempt += 1) {
+            try {
+              marked = postUseVisitDispatchRepository.markMany(
+                dispatchItems.map((item) => ({
+                  itemKey: item.itemKey,
+                  sourceType: item.sourceType || '',
+                  dispatchedVia: 'mail',
+                  customerName: item.customerName || '',
+                  productName: item.productName || '',
+                  importMonth: item.importMonth || '',
+                })),
+              ).length
+            } catch (markErr) {
+              request.log.error({ err: markErr, attempt }, 'mail.send dispatch mark failed')
+              if (attempt === 1) markError = markErr instanceof Error ? markErr.message : '标记写入异常'
+            }
+          }
+          if (marked) {
+            logAuditFromRequest(request, 'post_use_visit_dispatch.mark', {
+              count: marked,
+              via: 'mail.send_atomic',
+            })
+          }
+        }
+        return markError
+          ? { ok: true, marked, markError }
+          : { ok: true, marked: marked || undefined }
       } catch (err) {
         request.log.error(err)
         const message = err instanceof Error ? err.message : '发送失败'

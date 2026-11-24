@@ -69,6 +69,9 @@ describe('PostUseCallbackListTab 渲染形态', () => {
     expect(html).toContain('存档「产品部溯源」')
     expect(html).toContain('发送待省代表回访')
     expect(html).toContain('下载原始清单')
+    // 2026-11-24 拍板：两导出按钮下线（下载无成功回调、被吞后标记写死无解）——防回潮
+    expect(html).not.toContain('导出待省代表回访表')
+    expect(html).not.toContain('导出待产品部溯源表')
   })
 
   it('空数据空态文案存在（无假数据）', () => {

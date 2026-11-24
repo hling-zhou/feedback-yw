@@ -7,7 +7,6 @@ import {
 import {
   buildFollowupTableWorkbook,
   collectFollowupExportRows,
-  downloadFollowupTableExcel,
   followupTableFilename,
   followupWorkbookToBase64,
   toJiraArchivePayload,
@@ -300,6 +299,15 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
   )
 
   const visitCount = currentKeys.filter((key) => decisionOf(decisions, key).needCustomerVisit).length
+
+  // 2026-11-24 单一真源：待省代表回访行（勾选且未纳入）——邮件附件 / 原子标记 / 弹窗数量提示
+  // 三处共用；曾三处各写一份 collectFollowupExportRows + filter（同源判定纪律）
+  const pendingVisitRows = useMemo(
+    () =>
+      collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needCustomerVisit')
+        .filter((row) => !isDispatched(row.itemKey)),
+    [recommendations, nonTenRecords, decisions, isDispatched],
+  )
 
   const pendingAssigneeQuestionnaire = useMemo(() => {
     return recommendations
@@ -692,25 +700,9 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
     }
   }
 
-  const exportVisit = () => {
-    const rows = collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needCustomerVisit')
-      .filter((row) => !isDispatched(row.itemKey))
-    if (!rows.length) {
-      message.info('请先勾选需要省代表回访的记录（已纳入的不再重复导出）')
-      return
-    }
-    downloadFollowupTableExcel(rows, '待省代表回访表', scopeLabel)
-    void markVisitDispatched(rows, 'export')
-  }
-
-  const exportTrace = () => {
-    const rows = collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needInternalTrace')
-    if (!rows.length) {
-      message.info('请先勾选需要产品部溯源的记录')
-      return
-    }
-    downloadFollowupTableExcel(rows, '待产品部溯源表', scopeLabel)
-  }
+  // 2026-11-24 用户拍板：「导出待省代表回访表」「导出待产品部溯源表」两按钮下线——
+  // 交付统一走「发送待省代表回访」（邮件链路有服务端确认，失败不标记）与「存档产品部溯源」。
+  // 旧导出按钮的缺陷（浏览器下载无成功回调、被吞后标记已写死无解）随入口移除而消解。
 
   const archiveTrace = async () => {
     const allRows = collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needInternalTrace')
@@ -796,9 +788,6 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
                 下载原始清单
               </Button>
             </Tooltip>
-            <Button icon={<DownloadOutlined />} onClick={exportVisit}>
-              导出待省代表回访表
-            </Button>
             <Tooltip title={visitCount ? '' : '请先勾选需要省代表回访的记录'}>
               <Button
                 icon={<MailOutlined />}
@@ -808,9 +797,6 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
                 发送待省代表回访
               </Button>
             </Tooltip>
-            <Button icon={<DownloadOutlined />} onClick={exportTrace}>
-              导出待产品部溯源表
-            </Button>
             <Tooltip title={canEdit ? '' : '仅管理员与体验运营可处理清单并存档'}>
               <Button
                 type="primary"
@@ -906,9 +892,10 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
         linkKind="workbench"
         canSend={canEdit && visitCount > 0}
         disabledReason={visitCount ? '' : '请先勾选需要省代表回访的记录'}
+        defaultGroupKeyword="用后即评回访"
+        dispatchSummary={`本次将发送「待省代表回访」清单 ${pendingVisitRows.length} 条`}
         buildAttachment={async () => {
-          const rows = collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needCustomerVisit')
-            .filter((row) => !isDispatched(row.itemKey))
+          const rows = pendingVisitRows
           if (!rows.length) return null
           const wb = buildFollowupTableWorkbook(rows, '待省代表回访表')
           return {
@@ -917,10 +904,23 @@ export default function PostUseCallbackListTab({ onOpenTicket, onNavigateToTrace
             contentBase64: followupWorkbookToBase64(wb),
           }
         }}
+        // 2026-11-24 原子标记：勾选上下文随发送请求提交，服务端 SMTP 成功后同请求写标记；
+        // 附件与标记同源（pendingVisitRows），杜绝两份数据不一致
+        buildDispatchItems={() =>
+          pendingVisitRows.map((row) => ({
+            itemKey: row.itemKey,
+            sourceType: row.sourceType,
+            customerName: row.客户名称 || '',
+            productName: row.产品名称 || '',
+            importMonth: row.数据月份 || '',
+          }))
+        }
+        onMarkOnly={async () => {
+          await markVisitDispatched(pendingVisitRows, 'mail')
+        }}
         onSent={async () => {
-          const rows = collectFollowupExportRows(recommendations, nonTenRecords, decisions, 'needCustomerVisit')
-            .filter((row) => !isDispatched(row.itemKey))
-          await markVisitDispatched(rows, 'mail')
+          // 服务端原子标记已成功时 markVisitDispatched 内部按 isDispatched 跳过（幂等兜底）
+          await markVisitDispatched(pendingVisitRows, 'mail')
         }}
       />
     </div>

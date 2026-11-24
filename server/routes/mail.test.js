@@ -262,6 +262,82 @@ describeApi('mail API', () => {
     expect(sent[1].text).toContain('https://insights.example.com/workbench/post-use-report-v2/2026-10')
   })
 
+  it('2026-11-24 原子标记：发送成功同请求写"已纳入"（marked 返回）；不传 dispatchItems 维持旧语义', async () => {
+    const { postUseVisitDispatchRepository } = await import('../postUseVisitDispatchRepository.js')
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/mail/public-url',
+      headers: authHeader('admin'),
+      payload: { publicAppUrl: 'https://insights.example.com' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/api/mail/channels',
+      headers: authHeader('admin'),
+      payload: {
+        name: '用后即评原子标记',
+        dataSourceType: 'post_use_rating',
+        host: 'smtp.atomic.example',
+        fromAddress: 'atomic@example.com',
+        password: 'atomic-secret',
+      },
+    })
+
+    const send = await app.inject({
+      method: 'POST',
+      url: '/api/mail/send',
+      headers: authHeader('editor'),
+      payload: {
+        templateId: 'callback_visit_list',
+        dataSourceType: 'post_use_rating',
+        periodLabel: '2026年10月',
+        linkKind: 'workbench',
+        to: ['visit-team@example.com'],
+        attachment: {
+          filename: '待省代表回访表-2026-10.xlsx',
+          mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          contentBase64: Buffer.from('xlsx').toString('base64'),
+        },
+        dispatchItems: [
+          { itemKey: 'q:C1:弹性公网IP:2026-10', sourceType: 'questionnaire', customerName: '甲', productName: '弹性公网IP', importMonth: '2026-10' },
+          { itemKey: 'c:T-001', sourceType: 'callback_non_ten', customerName: '乙', productName: '云监控', importMonth: '2026-10' },
+        ],
+      },
+    })
+    expect(send.statusCode).toBe(200)
+    expect(send.json().marked).toBe(2)
+
+    // 服务端写入可被既有标记接口读到（幂等消费方闭环）；via=mail
+    const items = postUseVisitDispatchRepository.list()
+    const keys = items.map((item) => item.itemKey)
+    expect(keys).toContain('q:C1:弹性公网IP:2026-10')
+    expect(keys).toContain('c:T-001')
+    expect(items.every((item) => item.dispatchedVia === 'mail')).toBe(true)
+
+    // 不传 dispatchItems（旧调用方）：不写标记，返回无 marked 字段
+    const sendLegacy = await app.inject({
+      method: 'POST',
+      url: '/api/mail/send',
+      headers: authHeader('editor'),
+      payload: {
+        templateId: 'callback_visit_list',
+        dataSourceType: 'post_use_rating',
+        periodLabel: '2026年10月',
+        linkKind: 'workbench',
+        to: ['visit-team@example.com'],
+        attachment: {
+          filename: '待省代表回访表-legacy.xlsx',
+          mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          contentBase64: Buffer.from('xlsx').toString('base64'),
+        },
+      },
+    })
+    expect(sendLegacy.statusCode).toBe(200)
+    expect(sendLegacy.json().marked).toBeUndefined()
+    expect(postUseVisitDispatchRepository.list()).toHaveLength(2)
+  })
+
   it('keeps the report attachment when sending with the callback template', async () => {
     await app.inject({
       method: 'PUT',
