@@ -497,7 +497,11 @@ function SpecialFilterPopover({
       const offset = anchorOffsetRef?.current || { left: 0, top: 0, bottom: barRect.height, width: barRect.width }
       const width = Math.min(420, Math.max(280, offset.width))
       const left = Math.max(8, Math.min(barRect.left + offset.left, window.innerWidth - width - 8))
-      const panelHeight = Math.max(panelRef.current?.offsetHeight || 0, 280)
+      // 11-24 修复：fitsBelow 按面板实际高度判断——此前 Math.max(实际高, 280) 的虚假预估
+      // 让 88px 高的产品/状态 multiEnum 小编辑器在矮视口（760px 实测）下也按 280px 判
+      // "下方放不下"→ 翻到组件上方 280px 处（用户报告"在组件上方偏离走了"）。
+      // 仅首帧未渲染（offsetHeight=0）时回退 280 预估。
+      const panelHeight = panelRef.current?.offsetHeight || 280
       const below = barRect.top + offset.bottom + 4
       const fitsBelow = below + panelHeight <= window.innerHeight - 8
       const top = fitsBelow ? below : Math.max(8, barRect.top + offset.top - panelHeight - 4)

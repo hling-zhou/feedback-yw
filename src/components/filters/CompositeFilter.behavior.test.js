@@ -24,6 +24,14 @@ describe('CompositeFilter special popover', () => {
     expect(source).toContain('fitsBelow')
   })
 
+  it('fitsBelow judges by actual panel height, not a 280px floor (11-24: low viewport flipped small editors far above the bar)', () => {
+    // 11-24 根因（760px 视口真机取证）：Math.max(实际高度, 280) 让 88px 高的产品/状态
+    // multiEnum 小编辑器也按 280px 判断"下方放不下"→ 翻到组件上方 280px 处（实测偏移 -308px，
+    // 用户报告"在组件上方，偏离走了"）。修复：实际高度优先，仅未渲染（0）时回退 280 预估。
+    expect(source).toContain('panelRef.current?.offsetHeight || 280')
+    expect(source).not.toContain('Math.max(panelRef.current?.offsetHeight || 0, 280)')
+  })
+
   it('special popover anchors via bar rect + click-time offset snapshot, immune to trigger unmount (11-24: editor drifted to viewport top-left)', () => {
     // 11-24 根因（Playwright 真机取证，反馈库页）：属性按钮/被编辑 chip 在弹层打开的
     // 同一次 commit 里被卸载，持有元素引用后 getBoundingClientRect() 返回全零 →
