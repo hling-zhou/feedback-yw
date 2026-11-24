@@ -455,6 +455,63 @@ function migrateIssueLinksVerdictV2(db) {
 }
 
 /**
+ * 11-24 拍板：api_patrol_requests 唯一键 V2——(request_date, pool_name, request_id)
+ * → 追加 external_row_id 四列。背景：批量校验类接口（preDelete 先例）同 reqId 多子
+ * 任务行被旧键去重只剩末行（"末行代表制"），批内混合结果时失败子行被成功末行
+ * 整个吞掉（11-23 preDelete stats 94.12% vs 明细失败 0 的矛盾根源）。
+ * external_row_id = 上游 CSV 行 id，全库实证逐日 100% 唯一且零空值——子行可靠身份。
+ * SQLite UNIQUE 不可改 → 旧表重建迁移（migrateIssueLinksVerdictV2 同型）。
+ * 存量行是已去重数据，子行不可恢复（如需恢复走 IMAP 历史重拉，独立决策）；迁移幂等。
+ */
+function migratePatrolRequestsUniqueV2(db) {
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name='api_patrol_requests'").get()
+  if (!schema?.sql) return
+  // 幂等守卫：已是四列键（含 external_row_id）则跳过
+  if (schema.sql.includes('UNIQUE(request_date, pool_name, request_id, external_row_id)')) return
+  // 旧键守卫：不是三列键形态则不动（防未知形态误迁移）
+  if (!schema.sql.includes('UNIQUE(request_date, pool_name, request_id)')) return
+  db.exec('BEGIN')
+  try {
+    db.exec(`CREATE TABLE api_patrol_requests_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_row_id INTEGER,
+      request_date TEXT NOT NULL,
+      pool_name TEXT NOT NULL,
+      product_key TEXT,
+      request_id TEXT NOT NULL,
+      api_path TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      is_success INTEGER NOT NULL,
+      duration_ms INTEGER,
+      request_time TEXT NOT NULL,
+      end_time TEXT,
+      biz_category TEXT,
+      biz_target TEXT,
+      biz_no TEXT,
+      error_message TEXT,
+      pushed_diagnose TEXT,
+      app_id TEXT,
+      daily_report TEXT,
+      realtime_report TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(request_date, pool_name, request_id, external_row_id)
+    )`)
+    db.exec(`INSERT INTO api_patrol_requests_new SELECT * FROM api_patrol_requests`)
+    db.exec('DROP TABLE api_patrol_requests')
+    db.exec('ALTER TABLE api_patrol_requests_new RENAME TO api_patrol_requests')
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_patrol_requests_scope
+      ON api_patrol_requests(request_date, product_key, api_path)`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_patrol_requests_compress
+      ON api_patrol_requests(request_date, api_path, pool_name, user_name, request_time)`)
+    db.exec('COMMIT')
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+}
+
+/**
  * 11-18 确立举措列迁移：api_patrol_failure_groups 加 action_id/established_action/action_schedule 三列
  * （巡检抽屉「确立举措」子模块——与投诉咨询单抽屉同语义：action_id 关联举措库，
  * established_action 手填内容，action_schedule 排期可空=待评估）。
@@ -1034,7 +1091,7 @@ export function initBusinessSchema() {
       daily_report TEXT,
       realtime_report TEXT,
       created_at TEXT NOT NULL,
-      UNIQUE(request_date, pool_name, request_id)
+      UNIQUE(request_date, pool_name, request_id, external_row_id)
     );
     CREATE INDEX IF NOT EXISTS idx_patrol_requests_scope
       ON api_patrol_requests(request_date, product_key, api_path);
@@ -1100,6 +1157,7 @@ export function initBusinessSchema() {
   migrateRecordsIndexColumns(db)
   migrateRecordsTicketIdColumn(db)
   migratePatrolDiagnosesSuggestionColumn(db)
+  migratePatrolRequestsUniqueV2(db)
   migrateIssueLinksVerdictV2(db)
   migratePatrolGroupActionColumns(db)
   migratePatrolGroupManualCauseColumns(db)

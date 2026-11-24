@@ -138,13 +138,23 @@ export function buildPatrolDailyReport(date, options = {}) {
     countAgg.set(`${c.pool_name}\u0000${c.api_path}`, { total: Number(c.ok || 0) + Number(c.fail || 0), fail: Number(c.fail || 0) })
   }
 
-  // 异常接口明细（stats 推送值原样）+ 纯仿真推导 + 待产品处理组数 + 根因 Top3（11-20 拍板两新列）
+  // 异常接口明细 + 纯仿真推导 + 待产品处理组数 + 根因 Top3（11-20 拍板两新列）
+  // 11-24 拍板：成功率列改「明细重算优先、stats 兜底」——与溯源页单日口径同源
+  // （patrolQuery computeFailureInterfaces 同语义）；存子行后两侧自然对齐，真上游
+  // 不一致时也保持单一真源（requests 表），stats 仅作明细缺失兜底。
+  // 阈值计数（KPI「异常接口」）用同一重算口径但按 statRows 全量计——不随表格
+  // maxInterfacesPerProduct 截断缩水（先攒后用，防口径耦合）。
+  let lowRateTotal = 0
   for (const s of statRows) {
     const pk = String(s.pk)
     const p = ensure(pk)
-    const rate = Number(s.rate)
+    const statsRate = Number(s.rate)
     const si = simAggByInterface.get(`${s.pool}\u0000${s.api}`) || { groups: 0, sim: 0, pending: 0, l1: new Map() }
     const ca = countAgg.get(`${s.pool}\u0000${s.api}`) || { total: 0, fail: 0 }
+    const rate = ca.total > 0
+      ? Math.round(((ca.total - ca.fail) / ca.total) * 10000) / 100
+      : statsRate
+    if (Number.isFinite(rate) && rate < PUSH_THRESHOLD) lowRateTotal += 1
     // 根因分布 Top3：L1 计数降序（11-20 拍板：L1 Top3+组数；未诊断组如实标注）
     const causeTop = [...si.l1.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -189,11 +199,13 @@ export function buildPatrolDailyReport(date, options = {}) {
   // 总起概况（2026-11-07 启发落地：邮件第一段=整体概况+最严重+环比前日；口径与产品块正文同源）
   const groupsTotal = products.reduce((a, p) => a + p.groups, 0)
   const failTotalPre = products.reduce((a, p) => a + p.preTotal, 0)
-  const belowThresholdCount = statRows.filter((s) => Number.isFinite(Number(s.rate)) && Number(s.rate) < PUSH_THRESHOLD).length
   const allInterfaces = []
   for (const p of products) {
     for (const it of p.interfaces) allInterfaces.push({ productName: p.productName, ...it })
   }
+  // 11-24：阈值计数 = 明细重算口径 × statRows 全量（独立于表格截断——KPI 数字不随
+  // maxInterfacesPerProduct 缩水；同口径不耦合呈现）
+  const belowThresholdCount = lowRateTotal
   allInterfaces.sort((a, b) => {
     const pa = a.pureSim ? 1 : 0
     const pb = b.pureSim ? 1 : 0

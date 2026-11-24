@@ -37,8 +37,9 @@ const SAMPLE_DIR = path.join(process.cwd(), 'data', 'API 巡检', '原始数据�
 const GOLDEN = {
   statsRows: 92,
   sourceRows: 8406,        // 源 CSV 总行数
-  requestRows: 8398,        // distinct (date,pool,requestId)——样例含 8 个批内重复（全为成功行，后者覆盖）
-  successRows: 4301,
+  requestRows: 8406,        // 11-24 键 V2：源行全量入库（旧三列键去重后 8398——8 个同 reqId 子行曾
+                            // 被"批内重复"误判吞掉，实为批量接口子任务行，V2 后按 external_row_id 各自存活）
+  successRows: 4309,        // 11-24 键 V2：+8 = 8 个同 reqId 成功子行不再被去重吞掉
   failRows: 4097,
   l2Counts: {
     '诊断能力缺口/日志缺失/无数据': 1968,
@@ -217,7 +218,7 @@ describe.skipIf(!sqliteAvailable)('API 巡检端到端（样例全量走真实�
     expect(map['0']).toBe(GOLDEN.failRows)
     const totalIgnored = [...pushLog.values()].reduce((a, j) => a + (j.ignored || 0), 0)
     expect(totalIgnored).toBe(0)
-    // 守恒：入库 distinct 行 + 批内去重数 = 源行数（8 个批内重复）
+    // 守恒（11-24 键 V2）：入库行数 = 源行数（子行全量存活，无批内吞行）
     expect(/** @type {{n: number}} */ (reqCount).n + (GOLDEN.sourceRows - GOLDEN.requestRows)).toBe(GOLDEN.sourceRows)
   })
 

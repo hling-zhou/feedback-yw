@@ -409,13 +409,16 @@ export function registerPatrolQueryRoutes(app) {
     const detailRows = []
     const g = /** @type {{first_request_id: string, suppressed_request_ids: string, pool_name: string, request_id?: string}} */ (group)
     const ids = [g.first_request_id, ...safeParseIds(g.suppressed_request_ids)]
+    // 11-24 键 V2：同 reqId 批量子任务行全部返回（单行 get 会吞子行）；按组日期过滤防跨日混入
     const reqQuery = db.prepare(`
       SELECT request_id, request_time, end_time, is_success, duration_ms, error_message
-      FROM api_patrol_requests WHERE request_id = ?
+      FROM api_patrol_requests
+      WHERE request_id = ? AND request_date = ?
+      ORDER BY external_row_id
     `)
     for (const rid of ids) {
-      const r = reqQuery.get(rid)
-      if (r) detailRows.push(r)
+      const rs = reqQuery.all(rid, group.group_date)
+      for (const r of rs) detailRows.push(r)
     }
     return {
       group: rowToCamel(group),

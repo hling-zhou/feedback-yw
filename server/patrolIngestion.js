@@ -116,7 +116,8 @@ export function ingestPatrolStats({ date, productKey, rows }) {
 
 /**
  * 写入请求明细数据（等价于 POST /api/patrol/push/requests 的核心逻辑）。
- * 幂等：唯一键 (request_date, pool_name, request_id) upsert 后到覆盖；批内去重后者覆盖前者。
+ * 幂等：唯一键 (request_date, pool_name, request_id, external_row_id) upsert 后到覆盖（11-24 V2——
+ * 批量校验接口同 reqId 子任务行各自存活）；批内完全同键去重后者覆盖前者。
  *
  * @param {{ date: string, pool: string, pkg: 'eip_vpc' | 'elb', rows: Record<string, string>[] }} params
  * @returns {{ inserted: number, overwritten: number, ignored: number, unregistered: string[] }}
@@ -132,7 +133,7 @@ export function ingestPatrolRequests({ date, pool, pkg, rows }) {
        biz_category, biz_target, biz_no, error_message, pushed_diagnose,
        app_id, daily_report, realtime_report, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(request_date, pool_name, request_id)
+    ON CONFLICT(request_date, pool_name, request_id, external_row_id)
     DO UPDATE SET
       external_row_id=excluded.external_row_id,
       product_key=excluded.product_key,
@@ -159,7 +160,8 @@ export function ingestPatrolRequests({ date, pool, pkg, rows }) {
   let overwritten = 0
   let ignored = 0
   const unregistered = new Set()
-  /** 批内去重（§3.5：后者覆盖前者） */
+  /** 批内去重（§3.5；11-24 键 V2：唯一身份 = reqId+externalRowId——批量校验接口
+   *  同 reqId 多子任务行各自存活，仅完全同键重推才算批内重复） */
   const seen = new Set()
 
   for (const raw of rows) {
@@ -170,8 +172,9 @@ export function ingestPatrolRequests({ date, pool, pkg, rows }) {
       ignored += 1
       continue
     }
-    const firstInBatch = !seen.has(normalized.requestId)
-    if (firstInBatch) seen.add(normalized.requestId)
+    const dedupKey = `${normalized.requestId}\u0000${normalized.externalRowId == null ? '' : String(normalized.externalRowId)}`
+    const firstInBatch = !seen.has(dedupKey)
+    if (firstInBatch) seen.add(dedupKey)
 
     let productKey = null
     if (pkg === 'elb') {
@@ -184,9 +187,19 @@ export function ingestPatrolRequests({ date, pool, pkg, rows }) {
       }
     }
 
+    // external_row_id 空值行：SQLite UNIQUE 对 NULL 不判重 → ON CONFLICT 不命中，重推会重复插。
+    // 显式先删后插保幂等（全库实证零空值，此分支是防御不是常态路径）。
+    if (normalized.externalRowId == null) {
+      db.prepare(`
+        DELETE FROM api_patrol_requests
+        WHERE request_date=? AND pool_name=? AND request_id=? AND external_row_id IS NULL
+      `).run(date, pool, normalized.requestId)
+    }
+
     const existed = db.prepare(`
-      SELECT 1 FROM api_patrol_requests WHERE request_date=? AND pool_name=? AND request_id=?
-    `).get(date, pool, normalized.requestId)
+      SELECT 1 FROM api_patrol_requests
+      WHERE request_date=? AND pool_name=? AND request_id=? AND external_row_id IS ?
+    `).get(date, pool, normalized.requestId, normalized.externalRowId)
 
     upsert.run(
       normalized.externalRowId, date, pool, productKey, normalized.requestId,
