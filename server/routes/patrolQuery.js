@@ -359,8 +359,13 @@ export function registerPatrolQueryRoutes(app) {
              root_cause_l1_manual AS rootCauseL1Manual, root_cause_l2_manual AS rootCauseL2Manual,
              product_action_status AS productActionStatus, assignee,
              root_cause_confirmed AS rootCauseConfirmed, measure_feedback AS measureFeedback,
-             feedback_by AS feedbackBy, feedback_at AS feedbackAt
+             feedback_by AS feedbackBy, feedback_at AS feedbackAt,
+             d.action_reason AS actionReason
       FROM api_patrol_failure_groups g
+      LEFT JOIN (
+        SELECT failure_group_id, action_reason FROM api_patrol_diagnoses
+        WHERE id IN (SELECT MAX(id) FROM api_patrol_diagnoses WHERE status='success' GROUP BY failure_group_id)
+      ) d ON d.failure_group_id = g.id
       WHERE ${where.join(' AND ')}
       ORDER BY g.group_date DESC, g.first_request_time DESC
       LIMIT 500

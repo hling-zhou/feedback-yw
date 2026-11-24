@@ -313,6 +313,17 @@ export function registerPatrolDailyPackageRoutes(app) {
     })
     writeGroups()
 
+    // ---------- 11-24 B3：豁免白名单同步（可选段——旧包无此段不动部署端值）
+    // 覆盖写走 putPatrolActionExemptions 同一归一层（normalizeRule + 缓存失效 + 审计）；
+    // 部署端需求池过滤（patrolQuery notExempt）读的就是这份 meta——两端同值。
+    let exemptionsWritten = 0
+    if (body.exemptions && Array.isArray(body.exemptions.rules)) {
+      const { putPatrolActionExemptions } = await import('../patrolActionExemptions.js')
+      // 归一层返回 normalizeRule 过滤后的实际写入集（userName 空=非法行被滤）——计数用过滤后真值
+      const written = putPatrolActionExemptions(body.exemptions.rules, { username: 'plan-c-package-sync' })
+      exemptionsWritten = written.length
+    }
+
     // ---------- 断供可观测 + 日报包触发（fire-and-forget）
     touchPackageReceived()
     const reportAction = triggerDailyReportAfterPackage()
@@ -323,6 +334,7 @@ export function registerPatrolDailyPackageRoutes(app) {
       stats: statsSummary.inserted + statsSummary.overwritten,
       requests: requestsSummary.inserted + requestsSummary.overwritten,
       groups: groupsWritten,
+      exemptions: exemptionsWritten,   // 11-24 B3：白名单同步可观测（0=旧包无段）
       reportAction,
     })
 
@@ -331,6 +343,7 @@ export function registerPatrolDailyPackageRoutes(app) {
       stats: statsSummary,
       requests: requestsSummary,
       groups: { written: groupsWritten },
+      exemptions: { written: exemptionsWritten },
       reportAction,
     }
   })

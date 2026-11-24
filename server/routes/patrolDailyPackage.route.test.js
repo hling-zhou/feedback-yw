@@ -334,6 +334,35 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     expect(g.product_action_status).toBe('待处理')  // 非白名单值 → L1 映射兜底
   })
 
+  it('(8) 11-24 B3 豁免白名单随包同步：exemptions 段覆盖写 meta；旧包无段不动既有值；响应计数', async () => {
+    const { storageRepository, putMeta } = await import('../storageRepository.js')
+    const { META_KEY_ACTION_EXEMPTIONS } = await import('../patrolActionExemptions.js')
+    // ① 旧包（无 exemptions 段）——先种一条既有值，推旧包后应原样保留
+    storageRepository.putMeta(META_KEY_ACTION_EXEMPTIONS, { version: 1, updatedAt: 't', rules: [{ id: 'r-old', userName: 'old_user', apiPath: '', poolName: '', note: '', enabled: true, createdAt: 't' }] })
+    const pkgPlain = buildPackage()
+    const resPlain = await pushPackage(pkgPlain)
+    expect(resPlain?.json().exemptions).toEqual({ written: 0 })   // 无段 → written=0
+    expect(JSON.parse(String(storageRepository.getMeta(META_KEY_ACTION_EXEMPTIONS)?.rules ? JSON.stringify(storageRepository.getMeta(META_KEY_ACTION_EXEMPTIONS)) : '{}')).rules?.[0]?.userName).toBe('old_user')
+    // ② 带 exemptions 段 → 覆盖写（归一层 normalize + 换人）
+    const pkg = buildPackage()
+    pkg.exemptions = { rules: [
+      { id: 'r1', userName: 'cmic_sim', apiPath: 'L7POLICY/CREATE', poolName: '', note: '同步测试', enabled: true, createdAt: 't' },
+    ] }
+    const res = await pushPackage(pkg)
+    expect(res?.json().exemptions).toEqual({ written: 1 })
+    const stored = storageRepository.getMeta(META_KEY_ACTION_EXEMPTIONS)
+    expect(Array.isArray(stored?.rules)).toBe(true)
+    expect(stored.rules).toHaveLength(1)
+    expect(stored.rules[0]?.userName).toBe('cmic_sim')
+    expect(stored.rules[0]?.apiPath).toBe('L7POLICY/CREATE')
+    // ③ 非法规则行（userName 空）被归一层过滤——不崩、不同步
+    const pkgBad = buildPackage()
+    pkgBad.exemptions = { rules: [{ id: 'bad', userName: '', apiPath: 'x', poolName: '', note: '', enabled: true, createdAt: 't' }] }
+    const resBad = await pushPackage(pkgBad)
+    expect(resBad?.json().exemptions).toEqual({ written: 0 })     // normalizeRule 过滤后 0 条
+    expect(storageRepository.getMeta(META_KEY_ACTION_EXEMPTIONS)?.rules).toHaveLength(0)
+  })
+
   it('(6) converged 不打回已处理组（人工保护优先于收敛）', async () => {
     await pushPackage(buildPackage())
     db.prepare("UPDATE api_patrol_failure_groups SET product_action_status='已处理' WHERE first_request_id='req-pc-001'").run()

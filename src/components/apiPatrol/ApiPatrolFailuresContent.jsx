@@ -335,12 +335,20 @@ export default function ApiPatrolFailures() {
     },
     {
       title: '产品侧处理状态', dataIndex: 'productActionStatus', key: 'productActionStatus', width: 120,
-      render: (v) => {
-        if (v === '待处理') return <Tag color="orange">待处理</Tag>
-        if (v === '处理中') return <Tag color="processing">处理中</Tag>
-        if (v === '已处理') return <Tag color="green">已处理</Tag>
-        if (v === 'pending_diagnosis' || v === '未诊断') return <Tag>未诊断</Tag>
-        return <Tag>{v || '—'}</Tag>
+      render: (v, record) => {
+        // 11-24 B4 豁免标记：与管线出口标注文案同锚（「命中处理豁免白名单」前缀）——
+        // 判定源单一（后端 actionReason），不另建豁免判定点
+        const exempt = String(record?.actionReason || '').includes('豁免白名单')
+        return (
+          <Space size={4} wrap>
+            {v === '待处理' ? <Tag color="orange">待处理</Tag>
+              : v === '处理中' ? <Tag color="processing">处理中</Tag>
+              : v === '已处理' ? <Tag color="green">已处理</Tag>
+              : (v === 'pending_diagnosis' || v === '未诊断') ? <Tag>未诊断</Tag>
+              : <Tag>{v || '—'}</Tag>}
+            {exempt ? <Tag className="!m-0" color="default">豁免</Tag> : null}
+          </Space>
+        )
       },
     },
     { title: '经办人', dataIndex: 'assignee', key: 'assignee', width: 90,

@@ -33,6 +33,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listPatrolActionExemptions } from '../server/patrolActionExemptions.js'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
@@ -467,12 +468,18 @@ function buildPackage(db, dataDate) {
     }
   })
 
+  // 11-24 B3：处理豁免白名单随包同步（本机页面的唯一维护源 → 部署端需求池过滤同值）。
+  // 可选段——旧部署端（未升级）未知字段被忽略不破坏接收；无规则时省略（不空覆盖）。
+  // 静态 import（listPatrolActionExemptions 内部走 storageRepository——本脚本 db.js 同库连接）。
+  const exemptions = listPatrolActionExemptions()
+
   return {
     date: dataDate,
     fetchedAt: new Date().toISOString(),
     stats: [...statsByProduct.entries()].map(([productKey, rows]) => ({ productKey, rows })),
     requests,
     groups,
+    ...(exemptions.length > 0 ? { exemptions: { rules: exemptions } } : {}),
   }
 }
 

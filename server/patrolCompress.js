@@ -29,18 +29,9 @@ export function classifyCustomerType(userName) {
 }
 
 /**
- * 仿真/测试账号判定共享谓词（11-20 14:30 拍板：免产品侧处理——单源抽取防两处正则漂移）。
- * 与 classifyCustomerType 同源语义（'仿真'/'测试账号' 两类）；消费方：诊断管线豁免回填。
- * @param {string | null | undefined} userName
- * @returns {boolean}
- */
-export function isSimOrTestAccount(userName) {
-  const t = classifyCustomerType(userName)
-  return t === '仿真' || t === '测试账号'
-}
-
-/**
  * 时间字符串比较辅助：'YYYY-MM-DD HH:MM:SS' → 毫秒（本地时区语义与推送数据一致）。
+ * （11-24 清理：isSimOrTestAccount 死代码已删——11-20 全量仿真豁免时代的共享谓词，
+ *  11-21 拍板收敛为 patrolActionExemptions 白名单精确豁免后全仓零消费方。）
  * @param {string} timeStr
  */
 function toMs(timeStr) {
