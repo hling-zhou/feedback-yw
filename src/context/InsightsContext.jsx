@@ -242,6 +242,15 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
   /** 导入进行中：阻止版本轮询用旧库覆盖刚写入的记录 */
   const importLockRef = useRef(false)
   const importDepthRef = useRef(0)
+  /**
+   * 客户端导入锁心跳（2026-11-24 排障产物）：用后即评导入的 put_records/snapshot
+   * 长阶段无进度文本变化 → 锁超 BACKGROUND_TASK_STALE_MS(10min) 被服务端
+   * listBackgroundTasks 静默清扫 → 任务从面板消失 + 收尾 touch/DELETE 双 404
+   * 不写历史（11-19 修复未覆盖的前置层）。会话活跃期间每 3 分钟 touch 一次
+   * 刷新 updatedAt；结束时清除。
+   * @type {import('react').MutableRefObject<ReturnType<typeof setInterval> | null>}
+   */
+  const importLockHeartbeatRef = useRef(null)
   /** 批量重新打标进行中：避免轮询同步覆盖内存结果 */
   const reprocessingRef = useRef(false)
   /** 补全用户旅程进行中：与打标一样，避免轮询把列表换成全量加载 */
@@ -2065,8 +2074,18 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       }
       importSessionRef.current = next
       setImportSession(next)
+      // 客户端锁心跳（11-24 排障）：长阶段无进度变化也保活，防 stale 静默清扫
+      if (importLockHeartbeatRef.current == null) {
+        importLockHeartbeatRef.current = setInterval(() => {
+          const clientTask = tasksRef.current.find(
+            (task) => task.meta?.phase === 'client' && isBackgroundTaskLockHeldByUser(task, user?.id),
+          )
+          if (!clientTask) return
+          void touchSharedBackgroundTask({ taskId: clientTask.id })
+        }, 3 * 60 * 1000)
+      }
     },
-    [],
+    [touchSharedBackgroundTask, user?.id],
   )
 
   const setImportSessionProgress = useCallback(
@@ -2096,6 +2115,11 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       importDepthRef.current = Math.max(0, importDepthRef.current - 1)
       if (importDepthRef.current > 0) return
       importLockRef.current = false
+      // 客户端锁心跳随会话结束清除（11-24 排障：防 stale 静默清扫）
+      if (importLockHeartbeatRef.current != null) {
+        clearInterval(importLockHeartbeatRef.current)
+        importLockHeartbeatRef.current = null
+      }
       const next = {
         active: false,
         progress: '',

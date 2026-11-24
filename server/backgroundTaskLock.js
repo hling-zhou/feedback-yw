@@ -45,20 +45,47 @@ function saveTasks(tasks) {
 
 /**
  * 丢掉过期任务，返回仍有效的列表。
+ *
+ * 2026-11-24 排障补丁：客户端阶段锁（用后即评导入等）被 stale 清扫时写
+ * 「已中断」历史——否则长导入（put_records/snapshot 段超 10 分钟无进度）
+ * 的锁被静默丢弃后：任务从面板消失、前端收尾 touch/DELETE 双 404、
+ * 历史永久丢失（用户报障"导入记录消失"的根因之一）。服务端阶段锁不写
+ * （服务端任务有心跳保活 + 重启孤儿有 releaseOrphanedServerBackgroundTasks
+ * 专门留痕，不重复）。锁被丢弃后不再出现在 stored 列表，天然只写一次。
  * @returns {BackgroundTaskLock[]}
  */
 export function listBackgroundTasks() {
   const stored = readStoredTasks()
   const active = []
+  /** @type {BackgroundTaskLock[]} */
+  const droppedClientTasks = []
   let dropped = false
   for (const task of stored) {
     if (isBackgroundTaskLockActive(task) && !isBackgroundTaskLockStale(task)) {
       active.push(task)
     } else {
       dropped = true
+      if (task.meta?.phase === 'client') droppedClientTasks.push(task)
     }
   }
   if (dropped || stored.length !== active.length) saveTasks(active)
+  for (const task of droppedClientTasks) {
+    try {
+      appendTaskHistory({
+        id: task.id,
+        type: task.type,
+        source: backgroundTaskTypeLabel(task.type),
+        startedAt: task.startedAt,
+        endedAt: new Date().toISOString(),
+        status: 'failed',
+        error: '任务超时未响应，已中断（导入仍在后台运行，结果以数据落盘为准）',
+        username: task.username,
+        ...buildTaskHistoryMeta(task.meta),
+      })
+    } catch (err) {
+      console.warn('[backgroundTask] stale 客户端锁中断历史写入失败:', err)
+    }
+  }
   return active
 }
 

@@ -268,4 +268,70 @@ describeLock('background task lock server', () => {
     expect(remaining[0].meta?.phase).toBe('client')
     expect(getTaskHistory()[0]?.error).toBe('服务重启，打标任务已中断')
   })
+
+  it('2026-11-24 守卫：stale 客户端锁被清扫时写「超时中断」历史（防导入记录凭空消失回潮）', async () => {
+    const { storageRepository } = await import('./storageRepository.js')
+    const {
+      acquireBackgroundTaskLock,
+      listBackgroundTasks,
+      getTaskHistory,
+    } = await import('./backgroundTaskLock.js')
+
+    // ① 渠道包导入真实形态的客户端锁
+    acquireBackgroundTaskLock('import', {
+      id: 'u1',
+      username: 'tester',
+      progress: '正在保存…',
+      meta: {
+        phase: 'client',
+        importKind: 'postUseChannel',
+        importMonth: '2026-11',
+        dataSourceType: 'post_use_rating',
+      },
+    })
+    // ② 等效超时：锁 updatedAt 拨回 11 分钟前（put_records/snapshot 长阶段无进度 touch 的形态）
+    const raw = storageRepository.getMeta('background_tasks')
+    storageRepository.putMeta(
+      'background_tasks',
+      (Array.isArray(raw) ? raw : []).map((task) => ({
+        ...task,
+        updatedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+      })),
+    )
+    // ③ 任意读取（面板刷新即触发）→ 清扫 + 写中断历史
+    expect(listBackgroundTasks()).toHaveLength(0)
+    const history = getTaskHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0].status).toBe('failed')
+    expect(String(history[0].error)).toContain('任务超时未响应，已中断')
+    // 任务对象字段随锁 meta 入史（importMonth → dataMonth 映射）
+    expect(history[0].dataMonth).toBe('2026-11')
+    expect(history[0].dataSourceType).toBe('post_use_rating')
+  })
+
+  it('2026-11-24 守卫：stale 服务端阶段锁不写中断历史（有心跳 + 重启孤儿专门留痕，防双写）', async () => {
+    const { storageRepository } = await import('./storageRepository.js')
+    const {
+      acquireBackgroundTaskLock,
+      listBackgroundTasks,
+      getTaskHistory,
+    } = await import('./backgroundTaskLock.js')
+
+    acquireBackgroundTaskLock('retag', {
+      id: 'u1',
+      username: 'tester',
+      progress: '正在规则重打标…',
+      meta: { phase: 'server', scope: 'period_all' },
+    })
+    const raw = storageRepository.getMeta('background_tasks')
+    storageRepository.putMeta(
+      'background_tasks',
+      (Array.isArray(raw) ? raw : []).map((task) => ({
+        ...task,
+        updatedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+      })),
+    )
+    expect(listBackgroundTasks()).toHaveLength(0)
+    expect(getTaskHistory()).toHaveLength(0)
+  })
 })
