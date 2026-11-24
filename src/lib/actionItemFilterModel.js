@@ -194,11 +194,20 @@ export function clearAllActionItemFilters() {
  * 举措筛选/表单用产品选项：value 必须是唯一 productKey（禁止 taxonomy generic 塌缩）。
  * 优先产品目录名，再用举措库中的 productKey 补齐未入库项。
  *
+ * 11-24 口径：传入 catalogProducts 时选项收窄到「分析范围内」产品
+ * （enabled || analysisPostUseRating，与专题分析 analysisScope 同判据）——
+ * 云主机/云硬盘等双开关全关的产品不进复合搜索（先例：用户报告部署环境
+ * 复合搜索出现范围外产品）。库内举措存量若含范围外 key（历史数据），
+ * 目录给出的范围外 key 一并排除，杜绝"筛了但永远筛不出有意义的集合"。
+ * 未传 catalogProducts 时保持旧行为（全部 productNameByKey + scopeItems），
+ * 兼容旧调用方与测试。
+ *
  * @param {{ productKey?: string; productName?: string }[]} [scopeItems]
  * @param {Map<string, string> | Record<string, string>} [productNameByKey]
+ * @param {CatalogProduct[]} [catalogProducts]
  * @returns {{ label: string; value: string }[]}
  */
-export function buildActionItemProductFilterOptions(scopeItems = [], productNameByKey) {
+export function buildActionItemProductFilterOptions(scopeItems = [], productNameByKey, catalogProducts) {
   /** @type {Map<string, string>} */
   const map = new Map()
 
@@ -216,6 +225,12 @@ export function buildActionItemProductFilterOptions(scopeItems = [], productName
     }
   }
 
+  /** 11-24：分析范围内 key 白名单（目录 key 精确匹配） */
+  const inScopeKeys =
+    Array.isArray(catalogProducts) && catalogProducts.length
+      ? new Set(catalogProducts.filter(isAnalysisEnabledProduct).map((p) => String(p.key || '').trim()))
+      : null
+
   for (const item of scopeItems) {
     const k = item?.productKey?.trim()
     if (!k || map.has(k)) continue
@@ -223,6 +238,7 @@ export function buildActionItemProductFilterOptions(scopeItems = [], productName
   }
 
   return [...map.entries()]
+    .filter(([value]) => !inScopeKeys || inScopeKeys.has(value))
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
 }

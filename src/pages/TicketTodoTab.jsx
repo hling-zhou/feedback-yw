@@ -61,6 +61,7 @@ import { buildFeedbackIndexByTicketId } from '../lib/actionItemLinkedFeedback.js
 import { apiFetch } from '../lib/apiClient.js'
 import { buildUserOption } from '../lib/userSelectOptions.js'
 import { paginationShowTotal } from '../lib/paginationTotal.js'
+import { getCatalogProducts } from '../lib/productCatalogLoader.js'
 
 /** @typedef {import('../domain/ticketTodo.js').TicketTodoRow} TicketTodoRow */
 
@@ -74,7 +75,7 @@ const FILTER_STATUS_OPTIONS = TICKET_TODO_RESOLUTIONS.map((value) => ({
 export default function TicketTodoTab() {
   const { user, can } = useAuth()
   const canEdit = can('editRecord')
-  const { feedbacks, updateFeedback, adapter } = useInsights()
+  const { feedbacks, updateFeedback, adapter, productCatalogMeta } = useInsights()
   const [items, setItems] = useState(/** @type {TicketTodoRow[]} */ ([]))
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -221,6 +222,15 @@ export default function TicketTodoTab() {
     void loadItems()
   }, [loadItems])
 
+  // 11-24：目录快照（productCatalogMeta.loadedAt 变化重取——Feedbacks.jsx:591 先例）。
+  // 传给 buildTicketTodoProductFilterOptions 按分析范围收窄——工单表实测含范围外
+  // 产品记录（elb 负载均衡 74 条），不收窄会进复合搜索下拉。
+  const catalogProductsForFilters = useMemo(
+    () => getCatalogProducts(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feedbacks, productCatalogMeta?.loadedAt],
+  )
+
   const productOptions = useMemo(
     () =>
       buildTicketTodoProductFilterOptions(
@@ -228,8 +238,9 @@ export default function TicketTodoTab() {
           productKey: item.productKey,
           productName: item.productName,
         })),
+        catalogProductsForFilters,
       ),
-    [filterFacets.products],
+    [filterFacets.products, catalogProductsForFilters],
   )
   const assigneeFilterOptions = useMemo(
     () =>

@@ -83,6 +83,42 @@ describe('buildActionItemProductFilterOptions', () => {
     const values = options.map((item) => item.value)
     expect(new Set(values).size).toBe(values.length)
   })
+
+  it('excludes out-of-analysis-scope catalog products when catalog provided (11-24: 云主机/云硬盘等不该出现在复合搜索)', () => {
+    // 分析范围口径 = enabled || analysisPostUseRating（与专题分析 analysisScope 同判据）
+    /** @type {import('./productCatalogLoader.js').CatalogProduct[]} */
+    const catalog = [
+      { key: 'eip', name: '弹性公网IP', enabled: true, analysisPostUseRating: true, taxonomyKey: 'eip', specs: [] },
+      { key: 'cvm', name: '云主机', enabled: false, analysisPostUseRating: false, taxonomyKey: 'cvm', specs: [] },
+      { key: 'shared_bw', name: '共享带宽', enabled: false, analysisPostUseRating: true, taxonomyKey: 'shared_bw', specs: [] },
+    ]
+    const options = buildActionItemProductFilterOptions(
+      [
+        { productKey: 'eip', productName: '弹性公网IP' },
+        { productKey: 'cvm', productName: '云主机' },
+        { productKey: 'shared_bw', productName: '共享带宽' },
+        { productKey: 'custom_legacy', productName: '库内历史遗留' },
+      ],
+      new Map(),
+      catalog,
+    )
+    const values = options.map((item) => item.value)
+    expect(values).toContain('eip')
+    expect(values).toContain('shared_bw')
+    expect(values).not.toContain('cvm')
+    // 目录给出的范围外 key 一并排除（库内存量历史数据）
+    expect(values).not.toContain('custom_legacy')
+  })
+
+  it('falls back to legacy behavior (no filtering) when catalog not provided', () => {
+    const options = buildActionItemProductFilterOptions(
+      [
+        { productKey: 'elb', productName: '负载均衡' },
+      ],
+      new Map(),
+    )
+    expect(options.map((item) => item.value)).toEqual(['elb'])
+  })
 })
 
 describe('actionItemFilterEditors', () => {

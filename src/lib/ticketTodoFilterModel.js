@@ -214,14 +214,29 @@ export function ticketTodoFiltersToListQuery(filters) {
 }
 
 /**
+ * 11-24 口径：传入 catalogProducts 时按分析范围（enabled || analysisPostUseRating，
+ * analysisScope 同判据）收窄——工单表实测含范围外产品记录（本地 elb 负载均衡 74 条），
+ * 不收窄则「负载均衡」等会进复合搜索下拉。未传目录保持旧行为（全部 facets）。
+ * `_unknown` 兜底键（未标注产品）不在目录键集内，永远保留——未标注记录本身合法。
+ *
  * @param {import('../domain/ticketTodo.js').TicketTodoRow[]} rows
+ * @param {import('./productCatalogLoader.js').CatalogProduct[]} [catalogProducts]
  */
-export function buildTicketTodoProductFilterOptions(rows) {
+export function buildTicketTodoProductFilterOptions(rows, catalogProducts) {
   /** @type {Map<string, { label: string; value: string }>} */
   const map = new Map()
+  const inScopeKeys =
+    Array.isArray(catalogProducts) && catalogProducts.length
+      ? new Set(
+          catalogProducts
+            .filter((p) => p?.enabled || p?.analysisPostUseRating)
+            .map((p) => String(p.key || '').trim()),
+        )
+      : null
   for (const row of rows || []) {
     const value = row.productKey?.trim() || '_unknown'
     if (map.has(value)) continue
+    if (inScopeKeys && value !== '_unknown' && !inScopeKeys.has(value)) continue
     map.set(value, { value, label: row.productName?.trim() || value })
   }
   return [...map.values()]

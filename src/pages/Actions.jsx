@@ -83,7 +83,7 @@ import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplat
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
 import { hasRequirementTicketLinks } from '../domain/requirementTicketProgress.js'
 import { listProducts } from '../lib/productTaxonomy.js'
-import { buildProductNameByKeyMap } from '../lib/productCatalog.js'
+import { buildProductNameByKeyMap, getCatalogProducts } from '../lib/productCatalog.js'
 import { filterRecordsForScope } from '../snapshots/recordScope.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useInsights } from '../context/InsightsContext.jsx'
@@ -486,9 +486,18 @@ function ProductActionsTab() {
     [periodFilterActive, periodTicketIdSet],
   )
 
+  // 11-24：目录快照（productCatalogMeta.loadedAt 变化时重取——Feedbacks.jsx:591 同款先例）。
+  // 传给 buildActionItemProductFilterOptions 做分析范围过滤（enabled || analysisPostUseRating）——
+  // 云主机/云硬盘等范围外产品不再进复合搜索产品下拉（用户报告部署环境出现范围外产品）。
+  const catalogProductsForFilters = useMemo(
+    () => getCatalogProducts(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feedbacks, productCatalogMeta?.loadedAt],
+  )
+
   const productOptions = useMemo(
-    () => buildActionItemProductFilterOptions(scopeItemsForFilters, buildProductNameByKeyMap()),
-    [scopeItemsForFilters],
+    () => buildActionItemProductFilterOptions(scopeItemsForFilters, buildProductNameByKeyMap(), catalogProductsForFilters),
+    [scopeItemsForFilters, catalogProductsForFilters],
   )
 
   const productNameByKey = useMemo(() => {
