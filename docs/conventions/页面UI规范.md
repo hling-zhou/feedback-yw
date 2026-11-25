@@ -32,6 +32,9 @@ AppShell 外壳 → .app-shell-content 统一提供页面四周 padding
 
 **禁止：`<Card>`（antd）当页面卡片**——body 24px、title 16px，与 page-card 体系（16px/14px）
 两套间距字号。历史存量：McpGuide / Operations / Feedbacks 三页（见 §6）。
+**迁移纪律（11-25 万投比 tab 复盘产物）**：把存量 Card 迁到 page-card 前必盘点其行为
+props（tabList/extra/hoverable/styles/onClick）——div 没有等价物，须先给迁移方案
+（如 tabList → antd Tabs items）或显式声明放弃；触发规则全文见 `防缺陷触发规则.md` 规则 24。
 
 ## 3. 标题体系（字号 2026-11-01 用户拍板终版：14px 足够、15 过大）
 
