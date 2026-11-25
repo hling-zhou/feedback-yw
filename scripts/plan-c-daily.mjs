@@ -33,7 +33,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { listPatrolActionExemptions } from '../server/patrolActionExemptions.js'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
@@ -178,7 +177,7 @@ async function main() {
   }
 
   // ---------- ④ 组装日包
-  const pkg = buildPackage(db, dataDate)
+  const pkg = await buildPackage(db, dataDate)
   log('package', `日包组装：stats ${pkg.stats.reduce((a, s) => a + s.rows.length, 0)} 行 / requests ${pkg.requests.reduce((a, r) => a + r.rows.length, 0)} 行 / groups ${pkg.groups.length} 组`)
 
   // 测试/重推钩子：PLAN_C_DUMP_PACKAGE=<path> 把组好的包写到指定路径（不推送，供断言与手动重推）
@@ -197,6 +196,9 @@ async function main() {
       return
     }
     log('push', `推送成功：${JSON.stringify(pushResult.summary)}`)
+    if (pushResult.summary.rootCauseRules === 'conflict') {
+      log('push', '⚠️ 规则表同步冲突：部署端规则被单独编辑过，本次包内规则未覆盖（部署端编辑已保护）——将部署端改动重新应用到本机后自然合流')
+    }
   } else {
     log('push', 'dry-run：跳过推送')
   }
@@ -383,8 +385,8 @@ function toElbPkgRow(r) {
   }
 }
 
-/** ④ 组装日包（§10.2 契约）。 */
-function buildPackage(db, dataDate) {
+/** ④ 组装日包（§10.2 契约）。11-25 修复B：async 化——豁免白名单动态 import 在内（见下）。 */
+async function buildPackage(db, dataDate) {
   // stats：当日全部（唯一键含日期）
   const statsRows = db.prepare(`
     SELECT product_key, pool_name, metric_name, api_path, biz_type, success_rate, duration_normal_ratio, avg_duration
@@ -470,8 +472,17 @@ function buildPackage(db, dataDate) {
 
   // 11-24 B3：处理豁免白名单随包同步（本机页面的唯一维护源 → 部署端需求池过滤同值）。
   // 可选段——旧部署端（未升级）未知字段被忽略不破坏接收；无规则时省略（不空覆盖）。
-  // 静态 import（listPatrolActionExemptions 内部走 storageRepository——本脚本 db.js 同库连接）。
+  // 11-25 修复：动态 import（原顶层静态 import 链式加载 db.js，先于 main() 内 env 赋值完成
+  // 模块求值 → DB_PATH 固化默认 auth.db，Run #16 整批数据误写业务主库——ESM 顶层静态
+  // import 的求值时序先于本文件任何语句，server 模块一律 main 内动态加载是本脚本的既定纪律）。
+  const { listPatrolActionExemptions } = await import('../server/patrolActionExemptions.js')
   const exemptions = listPatrolActionExemptions()
+
+  // 11-25 规则表随包同步：本机 = 唯一维护源（分类在本机跑批读本机表），部署端副本
+  // （面板展示 + Plan B 重诊断）与之合流。部署端冲突保护：其本地编辑偏离基线时跳过覆盖、
+  // 响应 rootCauseRules.action='conflict'（跑批 stdout 可见），运营改动重应用到本机后自然合流。
+  const { readPatrolRootCauseRules } = await import('../server/patrolRepository.js')
+  const rootCauseRulesItems = readPatrolRootCauseRules()
 
   return {
     date: dataDate,
@@ -480,6 +491,7 @@ function buildPackage(db, dataDate) {
     requests,
     groups,
     ...(exemptions.length > 0 ? { exemptions: { rules: exemptions } } : {}),
+    ...(rootCauseRulesItems.length > 0 ? { rootCauseRules: { items: rootCauseRulesItems } } : {}),
   }
 }
 
@@ -500,7 +512,15 @@ async function pushPackage(pkg) {
       })
       if (res.ok) {
         const body = await res.json().catch(() => ({}))
-        return { ok: true, summary: { received: body.received, reportAction: body.reportAction } }
+        return {
+          ok: true,
+          summary: {
+            received: body.received, reportAction: body.reportAction,
+            // 11-25 规则表同步动作：applied=已覆盖 / conflict=部署端被单独编辑、本次跳过待人工合流 /
+            // absent=旧部署端未升级（未知段忽略）。conflict 时提醒（不改变退出码——数据主体已推走）。
+            ...(body.rootCauseRules ? { rootCauseRules: body.rootCauseRules.action } : {}),
+          },
+        }
       }
       lastError = `HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`
       // 4xx 语义错误重试无意义——直接失败
