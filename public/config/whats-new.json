@@ -1,9 +1,100 @@
 {
-  "generatedAt": "2026-11-24T13:41:55.567Z",
+  "generatedAt": "2026-11-25T07:22:16.095Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "3bece72f140a0190925a84c08b32e1f082252c33",
+  "repoCommit": "b66e6c90b90e084b2b6de76447eaee49a4e409c0",
   "items": [
+    {
+      "id": "9256030a695afe23c1a2fec13598870c842d9d1e",
+      "title": "万投比产品页签恢复 + 无消费死代码守卫——72 天复盘防复发",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "c5e92f3（9/13 卡片规范重构）把 antd Card 换成 div.page-card 时，\nCard 挂着的 tabList/activeTabKey/onTabChange 行为 props 无处可挂被\n静默丢弃——tabList 的 useMemo、activeProductKey 的 useState 全都\n存活但零消费，设置页只剩第一个产品，72 天后用户进页面才发现。\ntypecheck/既有测试对该形态天然失明（无未定义引用无语法错误）。\n\n- 页签恢复：antd Tabs 裸挂对齐 lane-tabs 样式（11-18 拍板同款），\n  items 从 tabList useMemo 派生；真渲染守卫锁「每个启用产品一个\n  tab、停用不出现」。\n- deadHookBindingGuard 守卫（登记制豁免）：扫描 hooks 绑定\n  （useState/useMemo/useCallback/useRef 产物）文件内零引用即红\n  ——正是「声明活着、消费被吞」的事故残骸形态；内嵌 c5e92f3\n  历史 blob 红证；豁免清单：PostUseHtmlReport 六处（V1 下线孤儿，\n  V2 等价在）+ InsightsContext reprocessAllTagsCore（服务端化绕过）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "3dd36d1b9f1c3a977b1fdf0b7b4b4aeb6d1e6519",
+      "title": "举措删除限制放开 + 三路生命周期联动清理 + promotedTo 双形态修复",
+      "category": "feature",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "11-25 拍板：删除不再按「已关联反馈工单」拦截，全部可删（前端二次\n确认兜底）。历史判据 canDeleteActionItem 废除——linkedDataSources 是\n来源标签而非反馈关联（TicketDashboardView 无工单路径也塞值），曾\n造成「关联反馈列为空却提示已关联」误报（先例：配额申请与提升）。\n\n- 生命周期联动（删除时同步清理三路引用，防悬挂死链）：\n  ① observation issues 的 promotedTo 指向摘除（「已升级」状态不再\n  指向不存在举措；兼容 JSON 字符串/对象双形态——生产 json_set 传\n  字符串参数的实证坑，promote 路由同步改 json() 包写入修复新数据）；\n  ② 溯源/回访记录 actionIds 摘除（removeAllPostUseActionLinks，\n  防 listPostUseActions 出 missing 悬挂）；③ 既有 clearRecordAction\n  References 工单引用清理不变。\n- domain 层 canDeleteActionItem → countActionItemLinkedFeedback\n  Tickets（删除确认文案「将解除 N 条反馈工单关联」——判据与\n  「关联反馈」展示列同源）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ed674ab91078007fb33622c61e20717fe63d067f",
+      "title": "举措锚点仅认 scheduleAt + 月度竖线聚合角标——重叠治理",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "11-25 拍板（问题压降视图两项）：\n\n- 锚点口径：resolveActionAnchor 不再 firstProposedAt 兜底——它是\n  批量导入日不是实施日，拿它上图会把「导入即治理」的假象画进趋势。\n  无排期举措 = 不画线不进前后对比，列表尾部如实标注「未设排期」。\n- 月度竖线聚合（重叠治理）：同月多举措合并一条竖线（buildMonthly\n  ActionMarkers 单源：x 取月内最早锚点日，badge=当月条数，ordinal\n  按月升序）；图上文字标签退场换数量角标（TrendChart RefLineBadge\n  ——recharts ReferenceLine label content 自绘 SVG 徽标，文字互叠\n  不可读）；举措列表徽标序号与图上竖线月份一一对应；排序有排期在前。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "29518eb34775f0c01604c81c115b1d110ce6ce91",
+      "title": "导入排期写法归一 + 导出月份前缀剥离——往返断裂修复",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "P2-A 断裂复盘（真库实测 133 条举措失联 46 天）：导出格式为\n「${month}: ${ids}」分组前缀，再导入按分隔符切分后前缀残留\n（「未知月份: 202608…X918103377」），与 records 裸工单号 join\n不上——问题压降视图/抽屉补拉/周期过滤等 19 处消费方整体失联。\n形态断裂在展示层不可见（无报错无空值），靠 join 率抽查才抓到。\n\n- 导入端解析修复：parseLinkedTicketIdsCell 每段剥「YYYY-MM: /\n  未知月份:」（全半角冒号）前缀 + 去重；守卫测试锁真库 133 条\n  同款形态。存量迁移脚本 migrate-strip-linked-ticket-prefix\n  （幂等 + dry-run + 备份 + 单事务；剥后 join 不上的号保留关联\n  痕迹但单列统计报告，不静默丢弃）。\n- 排期写法归一（同批拍板）：normalizeActionScheduleInput 把\n  Excel 常见写法统一 YYYY-MM-DD（2026.9.30 / 2026/09/30 /\n  2026年9月30日，分隔符混用容忍）；真历法校验拦 2026-2-31；\n  真日期对象（cellDates）本地时区安全转换（UTC 偏移差一天坑）；\n  识别不了保持原样不阻塞导入。导入行取原生值不走 String()——\n  Date 对象归一分支才接得到。\n- 导入失败明细（11-25 拍板）：批量创建部分失败时行号+摘要+原因\n  在弹窗内展示（_excelRow 前端追踪，提交前剥掉防 STRICT 拒收），\n  弹窗保持打开修正后可重导。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "067e85c4c9475ed6eb9bfd38f310e6f2e3e940e5",
+      "title": "L1 值分隔符 / → & + 日报豁免剥离口径 + 网段路由规则 + L2 二级呈现",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "11-25 四项拍板落地：\n\n- L1 分隔符改名（11:28 拍板）：四个复合类目「参数无效/校验失败、\n  权限/授权不足、资源锁定/并发冲突、其他/未归类」内部分隔符 / → &\n  ——与「L1/L2 层级分隔」消歧义。migration v3 覆盖三处存量\n  （groups/diagnoses/规则表行），无标记裸跑幂等（值级替换 WHERE\n  旧值不匹配=0 变更；标记跳过模式有「标记先于旧值入库」时序风险，\n  测试重放实证）；v4 补 appendSdnRouteRule（v2 标记模式放走后增\n  order 的补丁形态，按 order 判重裸跑）。\n- 规则补强（13:21 拍板，#115 误命中实证）：SDN 路由网段冲突\n  错误码（CIDR_USED_IN_SDN_ROUTE 等）是业务冲突强语义，插位\n  order 1.5 先于泛词组——原「冲突」泛词把网段重叠误劫持进锁定类。\n- 日报剥离口径升级（10:15 拍板）：剔除对象=豁免白名单命中组\n  （替代 11-20 全量仿真剥离——豁免 11-21 收敛白名单后两套口径\n  脱节，白名单外仿真组是需关注的真实失败）；配置面板文案同步；\n  主题行去「真实」字样（口径注正文）。\n- L2 复合键二级呈现（11:08 拍板）：产品级聚合键扩 L2，总览句\n  「待处理根因」带 L2；接口行根因 Top3 按 L1 去重（三席位给三\n  个不同大类，防单一大类的 L2 拆分霸榜），L2 席位内并列。\n- 抽屉只读态「人工修正大类」空值契约修复：manual 空显 — 不再\n  兜底 AI 原判（冒充人工修正），守卫防回潮；E2E mock map 键\n  前缀对齐（reqId- 剥离比对兜底）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "e1bf7420a4536e9519813c5755ebec752959b53e",
+      "title": "needsProductAction 判定边界补两条 true 通道——提示缺失与数据不一致",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "11-18 的 true 通道只覆盖「能力不支持」与「提示误导」，两类真实缺陷\n形态漏判为不需处理：①操作失败但客户侧零错误信息（无从得知原因与\n正确做法）——提示能力缺失；②平台多组件数据/状态不一致导致客户误\n操作或校验误判（列表显示与实际状态矛盾、绑定关系记录与实际不符）\n——一致性缺陷。真 LLM 压测两条通道均可正确判待处理。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "90ff3e3704d13779c1b76e63546d0819985ed7dc",
+      "title": "弹层翻转按实际高度判断——矮视口小编辑器不再误翻到组件上方",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-24",
+      "appVersion": null,
+      "summary": "760px 笔记本视口真机取证：产品/状态 multiEnum 面板实际仅 88px 高，却被\nMath.max(实际高, 280) 的虚假预估判\"下方放不下\"翻转到组件上方 280px 处\n（偏移 -308px，用户报告\"在组件上方偏离走了\"）。按实际高度判断后 760px\n全部贴合按钮下方 4px；660px 真放不下时仍正确翻转、贴上方 4px。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "3bece72f140a0190925a84c08b32e1f082252c33",
       "title": "客户端导入锁 stale 清扫双保险——中断留痕 + 会话期心跳",
@@ -2508,97 +2599,6 @@
       "publishedAt": "2026-10-08",
       "appVersion": null,
       "summary": "详情和列表增加「问题分类（自定义）」；导出包含该列，导入模板不收，再次导入时保留手填值。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "84929cd563ebecf802a094be9e8642638675767a",
-      "title": "投诉没有态度词时记为中性，不再把故障现象当成不满",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-08",
-      "appVersion": null,
-      "summary": "情绪改看受理原话里的态度词；客服结束语、「不满足」和英文资源 ID 不再误伤。投诉单没有满意或不满时记为中性。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0a46c09752f38f9ac5ed197a6ae9034e7bb469fa",
-      "title": "登录后可问洞察周期经营情况并跳到原文",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-08",
-      "appVersion": null,
-      "summary": "右下角增加只读 AI 助手，用现有大模型代理查快照、举措和工单原文；答案带来源和现有页面深链，会话按用户存在服务端，换设备登录可以接着问。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "d8887e1ee7a61d3b18bcfbf68ff28de9df82aa86",
-      "title": "用后即评列表只展示分析范围内的产品，范围外仍只参与公司满意度",
-      "category": "fix",
-      "modules": [
-        "feedbacks"
-      ],
-      "publishedAt": "2026-09-28",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "6ae8a5b50e551c847e984e39fc30b469318d8a1d",
-      "title": "补全用户旅程进行中不再把列表换成全量加载",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-28",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "f331becf412f111754df78e8af6c42a7bcd8d8a6",
-      "title": "用后即评补旅程不再按分数过滤，只保留分析范围内的产品",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-28",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "e3553c95fe6c50186a8320597299f760c8b0e13e",
-      "title": "各 Tab 的旅程统计只算本类，用后即评排除分析范围外产品",
-      "category": "fix",
-      "modules": [
-        "feedbacks"
-      ],
-      "publishedAt": "2026-09-28",
-      "appVersion": null,
-      "summary": "投诉咨询页的未识别条数不再混入用后即评；未开启用后即评分析的产品不进入待补全。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "ca45f30f1a13f5b905704581df28ed2a2f073346",
-      "title": "用后即评旅程按产品模板打标，旧关键词结果默认保留",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-09-28",
-      "appVersion": null,
-      "summary": "补全改为服务端任务，与工单打标共用门闸和后台锁；需要时再勾选覆盖六组关键词写出的环节。",
       "commitUrl": null,
       "source": "git"
     }
