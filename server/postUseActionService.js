@@ -174,6 +174,30 @@ export function listPostUseActionSources(actionId) {
 }
 
 /**
+ * 举措删除时联动清理（2026-11-25）：把溯源/回访记录里指向该举措的
+ * actionIds 引用全部摘除，防 listPostUseActions 出现 { id, missing: true } 悬挂。
+ * @param {string} actionId
+ * @param {{ id: string; username: string; displayName?: string }} actor
+ * @returns {number} 清理的关联条数
+ */
+export function removeAllPostUseActionLinks(actionId, actor) {
+  const id = String(actionId ?? '').trim()
+  if (!id) return 0
+  const { traces, visits } = listPostUseActionSources(id)
+  let cleared = 0
+  for (const trace of traces) {
+    const next = updateOwner('trace', trace.id, id, 'remove', actor)
+    // 返回记录的 actionIds 已不含该举措 = 真实清理；null = 记录已不存在
+    if (next && !normalizePostUseActionIds(next.actionIds, next.actionId).includes(id)) cleared += 1
+  }
+  for (const visit of visits) {
+    const next = updateOwner('visit', visit.id, id, 'remove', actor)
+    if (next && !normalizePostUseActionIds(next.actionIds, next.actionId).includes(id)) cleared += 1
+  }
+  return cleared
+}
+
+/**
  * 旧版 validateActionItemCreate 曾丢失 source；把已关联用后即评且未关联工单的
  * 存量举措归回 post_use，使它们可继续在举措库选择器里被复用。
  */

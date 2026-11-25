@@ -1,10 +1,8 @@
 import { hasPermission } from '../../src/domain/auth/permissions.js'
 import {
-  canDeleteActionItem,
   isActionItemStatus,
   mergeActionItemPatch,
   validateActionItemCreate,
-  ACTION_ITEM_DELETE_BLOCKED_CODE,
 } from '../../src/domain/actionItem.js'
 import {
   createActionBodySchema,
@@ -19,7 +17,7 @@ import { actionItemRepository } from '../actionItemRepository.js'
 import { ACTION_ITEM_CONFLICT_CODE } from '../../src/domain/actionItemRevision.js'
 import { loadManagedProductCatalog } from '../../src/storage/productCatalogStore.js'
 import { storageRepository } from '../storageRepository.js'
-import { listPostUseActionSources } from '../postUseActionService.js'
+import { removeAllPostUseActionLinks } from '../postUseActionService.js'
 
 /**
  * @param {Record<string, unknown>} body
@@ -258,6 +256,9 @@ export function registerActionRoutes(app) {
     },
   )
 
+  // 2026-11-25 拍板：删除限制放开——不再按「已关联反馈工单」拦截，全部可删（前端二次确认兜底）。
+  // 历史拦截判据 canDeleteActionItem 已移除：linkedDataSources 是来源标签而非反馈关联，
+  // 曾造成「关联反馈列为空却提示已关联工单」的误报（TicketDashboardView createAction 无工单路径塞值）。
   app.delete(
     '/api/actions/:id',
     { schema: { params: actionIdParamsSchema }, preHandler: requireAdmin() },
@@ -269,29 +270,19 @@ export function registerActionRoutes(app) {
       return
     }
 
-    const deleteCheck = canDeleteActionItem(existing)
-    if (!deleteCheck.ok) {
-      reply.code(409).send({
-        error: deleteCheck.error,
-        code: deleteCheck.code || ACTION_ITEM_DELETE_BLOCKED_CODE,
-      })
-      return
-    }
-
-    const postUseLinks = listPostUseActionSources(id)
-    if (postUseLinks.traces.length || postUseLinks.visits.length) {
-      reply.code(409).send({
-        error: '该举措已关联用后即评记录，无法删除',
-        code: ACTION_ITEM_DELETE_BLOCKED_CODE,
-      })
-      return
-    }
-
     const deleted = actionItemRepository.deleteActionItem(id)
     if (!deleted) {
       reply.code(404).send({ error: '举措不存在' })
       return
     }
+    // 生命周期联动（2026-11-25）：摘除溯源/回访记录里指向该举措的 actionIds 引用，
+    // 防详情抽屉出现 missing 悬挂。放路由层调用，避免 actionItemRepository 循环依赖。
+    const user = request.user
+    removeAllPostUseActionLinks(id, {
+      id: user?.id || 'system',
+      username: user?.username || 'system',
+      displayName: user?.displayName,
+    })
     logAuditFromRequest(request, 'action.delete', { actionId: id })
     return { ok: true }
   })

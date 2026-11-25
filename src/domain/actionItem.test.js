@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   ACTION_ITEM_STATUS_LABELS,
   aggregateActionItemsByProductStatus,
-  canDeleteActionItem,
   computeActionItemCompletionRate,
   computeScheduleChanged,
+  countActionItemLinkedFeedbackTickets,
   deriveActionItemStatusFromSchedule,
   linkTicketToActionItem,
   mergeActionItemPatch,
@@ -170,28 +170,30 @@ describe('actionItem', () => {
     expect(unlinked.painPointSnapshot).toBe('')
   })
 
-  it('canDeleteActionItem blocks when feedback tickets linked', () => {
-    const created = validateActionItemCreate({
-      content: '不可删',
-      linkedTicketIds: ['T-1'],
+  it('countActionItemLinkedFeedbackTickets counts only real ticket links (2026-11-25 删除放开)', () => {
+    // 红证锚点：linkedDataSources 非空但 linkedTicketIds 为空（误报形态，先例：
+    // TicketDashboardView createAction 无工单路径塞来源标签）不得计入关联数
+    const sourceOnly = validateActionItemCreate({
+      content: '改善「配额申请与提升」相关问题',
+      linkedTicketIds: [],
+      linkedDataSources: ['consultation_ticket'],
+    })
+    expect(sourceOnly.ok).toBe(true)
+    if (sourceOnly.ok) {
+      expect(countActionItemLinkedFeedbackTickets(sourceOnly.item)).toBe(0)
+    }
+
+    const linked = validateActionItemCreate({
+      content: '已关联反馈',
+      linkedTicketIds: ['T-1', ''],
       linkedDataSources: ['complaint_ticket'],
     })
-    expect(created.ok).toBe(true)
-    if (!created.ok) return
-    expect(canDeleteActionItem(created.item).ok).toBe(false)
+    expect(linked.ok).toBe(true)
+    if (linked.ok) {
+      expect(countActionItemLinkedFeedbackTickets(linked.item)).toBe(1)
+    }
 
-    const empty = validateActionItemCreate({ content: '可删' })
-    expect(empty.ok).toBe(true)
-    if (!empty.ok) return
-    expect(canDeleteActionItem(empty.item).ok).toBe(true)
-
-    const reqOnly = validateActionItemCreate({
-      content: '仅需求',
-      linkedRequirementTicketIds: ['REQ-1'],
-    })
-    expect(reqOnly.ok).toBe(true)
-    if (!reqOnly.ok) return
-    expect(canDeleteActionItem(reqOnly.item).ok).toBe(true)
+    expect(countActionItemLinkedFeedbackTickets(null)).toBe(0)
   })
 
   it('recomputeActionItemLinkedDataSources keeps remaining ticket sources', () => {

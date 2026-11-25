@@ -149,8 +149,13 @@ export function normalizeObservationPayload(value) {
       .slice(0, 20)
   }
   if (typeof raw.notes === 'string' && raw.notes.trim()) out.notes = raw.notes.trim()
-  if (raw.promotedTo && typeof raw.promotedTo === 'object') {
-    const p = /** @type {Record<string, unknown>} */ (raw.promotedTo)
+  // 兼容历史字符串形态（2026-11-25 生产实证）：promote 写入口曾用 json_set 传字符串参数，
+  // 把 promotedTo 存成 JSON 字符串；新写入已是对象形态，此处兼容两种读法
+  const promotedToRaw = typeof raw.promotedTo === 'string'
+    ? parsePromotedToString(raw.promotedTo)
+    : raw.promotedTo
+  if (promotedToRaw && typeof promotedToRaw === 'object') {
+    const p = /** @type {Record<string, unknown>} */ (promotedToRaw)
     out.promotedTo = {
       actionItemId: String(p.actionItemId ?? '').trim(),
       promotedAt: String(p.promotedAt ?? '').trim(),
@@ -158,6 +163,16 @@ export function normalizeObservationPayload(value) {
     }
   }
   return out
+}
+
+/** @param {string} text */
+function parsePromotedToString(text) {
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' ? parsed : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**

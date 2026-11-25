@@ -747,6 +747,46 @@ export const observationRepository = {
     out.sort((a, b) => Number(b.sameProduct) - Number(a.sameProduct))
     return out.slice(0, cappedLimit)
   },
+
+  /**
+   * 举措删除时联动清理（2026-11-25 生命周期联动）：把指向该举措的 promotedTo
+   * 引用摘除，避免悬挂死链（「已升级」状态指向不存在的举措）。issue 本体保留，
+   * 用户可重新升级。与 deleteIssue 显式级联同构——本库无 FK，联动必须在写入口做。
+   *
+   * 兼容双形态（2026-11-25 生产实证）：json_set 传字符串参数会把 promotedTo 存成
+   * JSON 字符串（`"promotedTo":"{\"actionItemId\"...}"`）而非对象——生产写入口
+   * observation.js promote 路由正是此形态；新写入口已改 json_object 对象形态。
+   * @param {string} actionItemId
+   * @returns {number} 清理的 issue 条数
+   */
+  clearPromotedToByActionItemId(actionItemId) {
+    const id = String(actionItemId ?? '').trim()
+    if (!id) return 0
+    const db = getDb()
+    // 对象形态：$.promotedTo.actionItemId；字符串形态：promotedTo 值含该 id
+    const rows = db
+      .prepare(`SELECT id, payload FROM observation_issues
+        WHERE json_extract(payload, '$.promotedTo.actionItemId') = ?
+           OR json_extract(payload, '$.promotedTo') LIKE ?`)
+      .all(id, `%${id}%`)
+    let cleared = 0
+    for (const row of rows) {
+      let payload
+      try {
+        payload = JSON.parse(String(row.payload || '{}'))
+      } catch {
+        continue
+      }
+      if (!payload?.promotedTo) continue
+      delete payload.promotedTo
+      db.prepare('UPDATE observation_issues SET payload = ? WHERE id = ?').run(
+        JSON.stringify(payload),
+        String(row.id),
+      )
+      cleared += 1
+    }
+    return cleared
+  },
 }
 
 /** @param {string} message */

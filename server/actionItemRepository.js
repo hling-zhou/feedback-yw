@@ -24,6 +24,7 @@ import {
 } from '../src/domain/requirementTicketProgress.js'
 import { requirementTicketProgressRepository } from './requirementTicketProgressRepository.js'
 import { storageRepository } from './storageRepository.js'
+import { observationRepository } from './observationRepository.js'
 import {
   actionItemMatchesJourneyL1Filter,
   actionItemMatchesProblemTypeFilter,
@@ -378,6 +379,8 @@ function deleteActionItem(id) {
   if (!trimmed) return false
 
   storageRepository.clearRecordActionReferences(trimmed)
+  // 生命周期联动（2026-11-25）：摘除留观问题指向该举措的 promotedTo 引用，防悬挂死链
+  observationRepository.clearPromotedToByActionItemId(trimmed)
 
   const result = getDb().prepare('DELETE FROM action_items WHERE id = ?').run(trimmed)
   if (result.changes > 0) bumpDataRevision()

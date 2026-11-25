@@ -570,33 +570,16 @@ export function aggregateActionItemsByProductStatus(items, options = {}) {
     })
 }
 
-export const ACTION_ITEM_DELETE_BLOCKED_CODE = 'ACTION_ITEM_DELETE_BLOCKED'
-
-export const ACTION_ITEM_DELETE_BLOCKED_MESSAGE = '该举措已关联反馈工单，无法删除'
-
 /**
- * 管理员删除举措：仅当无反馈工单关联时可删。
- * @param {ActionItem | null | undefined} item
- * @returns {{ ok: true } | { ok: false; error: string; code: string }}
+ * 举措删除确认提示（2026-11-25 拍板：删除限制放开，全部可删但走二次确认）。
+ * 关联反馈工单数 = linkedTicketIds 长度；「关联反馈」展示列同源（Actions.jsx resolveLinkedTicketIds
+ * 在无周期过滤时即 linkedTicketIds）。禁用判据已移除——linkedDataSources 是来源标签
+ * （TicketDashboardView createAction 等路径在无工单时也会塞值），把它当删除判据
+ * 产生过「关联反馈列为空却提示已关联」的误报（先例：改善「配额申请与提升」，11-24 数据实证）。
+ *
+ * @param {ActionItem} item
+ * @returns {number} 该举措关联的反馈工单数（用于删除确认文案）
  */
-export function canDeleteActionItem(item) {
-  if (!item) {
-    return { ok: false, error: '举措不存在', code: ACTION_ITEM_DELETE_BLOCKED_CODE }
-  }
-  const ids = (item.linkedTicketIds || []).map((id) => String(id).trim()).filter(Boolean)
-  if (ids.length > 0) {
-    return {
-      ok: false,
-      error: ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
-      code: ACTION_ITEM_DELETE_BLOCKED_CODE,
-    }
-  }
-  if ((item.linkedDataSources || []).length > 0) {
-    return {
-      ok: false,
-      error: ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
-      code: ACTION_ITEM_DELETE_BLOCKED_CODE,
-    }
-  }
-  return { ok: true }
+export function countActionItemLinkedFeedbackTickets(item) {
+  return (item?.linkedTicketIds || []).map((id) => String(id).trim()).filter(Boolean).length
 }

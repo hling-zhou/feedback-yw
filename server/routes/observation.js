@@ -372,8 +372,10 @@ export function registerObservationRoutes(app) {
         status: 'promoted',
       })
       const { getDb: _g } = await import('../db.js')
+      // json_set 直接传字符串参数会把 promotedTo 存成 JSON 字符串而非对象
+      // （2026-11-25 生产实证），必须用 json() 包装修复写入形态
       _g()
-        .prepare(`UPDATE observation_issues SET payload = json_set(payload, '$.promotedTo', ?) WHERE id = ?`)
+        .prepare(`UPDATE observation_issues SET payload = json_set(payload, '$.promotedTo', json(?)) WHERE id = ?`)
         .run(
           JSON.stringify({ actionItemId, promotedAt: now, promotedBy: request.user?.username || '' }),
           id,
