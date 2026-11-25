@@ -185,7 +185,7 @@ export function ProblemDetail({ row }) {
               { dataKey: 'count', name: '工单数', stroke: '#4F46E5' },
               { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
             ]}
-            referenceLines={markers.map((m) => ({ x: m.x, badge: m.badge, stroke: '#F59E0B' }))}
+            referenceLines={markers.map((m) => ({ x: m.x, badge: m.badge, tooltip: m.tooltip, stroke: '#F59E0B' }))}
           />
         </div>
 

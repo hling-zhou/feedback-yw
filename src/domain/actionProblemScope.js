@@ -292,22 +292,26 @@ export function buildProblemCentricView(actions, feedbacks, productNameByKey) {
  * 有排期的举措按 anchorMonth 聚合，每月一条竖线 ——
  *   x 取该月最早锚点日（月点趋势图上月内精确到日仅影响线位，不影响可读性）；
  *   badge 顶标 = 该月举措条数（1 条不标数字、标序号徽标起点）；
- *   ordinal 序号 = 按月升序 1 起，与举措时间线列表的编号徽标一一对应。
+ *   ordinal 序号 = 按月升序 1 起，与举措时间线列表的编号徽标一一对应；
+ *   tooltip = 当月举措明细（排期日 + 内容截断），供竖线/角标 hover 显示。
  * 无排期举措不进标记（不画线，详见 resolveActionAnchor 注释）。
- * @param {(ActionItem | { anchorDate?: string; anchorMonth?: string })[]} actions 问题签名下的举措行（或其投影）
- * @returns {{ x: string; badge: number; ordinal: number; month: string }[]}
+ * @param {(ActionItem | { anchorDate?: string; anchorMonth?: string; scheduleAt?: string; content?: string })[]} actions 问题签名下的举措行（或其投影）
+ * @returns {{ x: string; badge: number; ordinal: number; month: string; tooltip: string }[]}
  */
 export function buildMonthlyActionMarkers(actions) {
-  /** @type {Map<string, { dates: string[]; count: number }>} */
+  /** @type {Map<string, { dates: string[]; count: number; details: string[] }>} */
   const byMonth = new Map()
   for (const action of Array.isArray(actions) ? actions : []) {
     const anchorDate = String(action?.anchorDate ?? '').trim()
     const anchorMonth = String(action?.anchorMonth ?? '').trim()
     if (!anchorDate && !anchorMonth) continue
     let entry = byMonth.get(anchorMonth)
-    if (!entry) { entry = { dates: [], count: 0 }; byMonth.set(anchorMonth, entry) }
+    if (!entry) { entry = { dates: [], count: 0, details: [] }; byMonth.set(anchorMonth, entry) }
     entry.count += 1
     if (anchorDate) entry.dates.push(anchorDate)
+    const content = String(action?.content ?? '').trim()
+    const when = String(action?.scheduleAt ?? '').trim() || anchorDate || `${anchorMonth}-01`
+    entry.details.push(`· ${when} ${content.length > 20 ? `${content.slice(0, 20)}…` : content}`)
   }
   const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   return months.map(([month, entry], index) => ({
@@ -315,6 +319,7 @@ export function buildMonthlyActionMarkers(actions) {
     badge: entry.count,
     ordinal: index + 1,
     month,
+    tooltip: `${month} 实施 ${entry.count} 项：\n${entry.details.join('\n')}`,
   }))
 }
 

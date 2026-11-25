@@ -86,10 +86,21 @@ describe('ProblemDetail 竖线聚合渲染形态', () => {
     const m = html.match(/data-reference-lines="([^"]*)"/)
     expect(m).toBeTruthy()
     const lines = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))
-    expect(lines).toEqual([
+    expect(lines.map(({ tooltip, ...rest }) => rest)).toEqual([
       { x: '2026-03-15', badge: 3, stroke: '#F59E0B' },
       { x: '2026-04-10', badge: 1, stroke: '#F59E0B' },
     ])
+  })
+
+  it('竖线含 tooltip 传参（当月举措明细，hover 可见——11-25 真机反馈补齐）', () => {
+    const m = html.match(/data-reference-lines="([^"]*)"/)
+    const lines = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))
+    // 2026-03 竖线 tooltip 应列出该月 3 条举措与实施日
+    const march = lines.find((l) => l.x === '2026-03-15')
+    expect(march.tooltip).toBeTruthy()
+    expect(march.tooltip).toContain('2026-03')
+    expect(march.tooltip).toContain('优化连接')
+    expect(march.tooltip).toContain('2026-03-20') // 升级内核的排期日
   })
 
   it('竖线不含文字 label（旧逐条标签回潮即红）', () => {

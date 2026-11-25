@@ -195,11 +195,21 @@ describe('buildMonthlyActionMarkers（竖线重叠治理 2026-11-25）', () => {
       { anchorDate: '2026-04-15', anchorMonth: '2026-04' }, // 同月更早 → x 应取 04-15
       { anchorDate: '2026-07-02', anchorMonth: '2026-07' },
     ])
-    expect(markers).toEqual([
+    expect(markers.map(({ tooltip, ...rest }) => rest)).toEqual([
       { x: '2026-04-15', badge: 2, ordinal: 1, month: '2026-04' },
       { x: '2026-05-31', badge: 10, ordinal: 2, month: '2026-05' },
       { x: '2026-07-02', badge: 1, ordinal: 3, month: '2026-07' },
     ])
+    // tooltip 形态：月份 + 条数 + 明细行
+    expect(markers[0].tooltip).toBe('2026-04 实施 2 项：\n· 2026-04-30 \n· 2026-04-15 ')
+  })
+
+  it('tooltip 明细带内容截断（>20 字）与排期日', () => {
+    const markers = buildMonthlyActionMarkers([
+      { anchorDate: '2026-03-15', anchorMonth: '2026-03', scheduleAt: '2026-03-15', content: '优化EIP连接稳定性并增加自动重连机制超长内容测试' },
+    ])
+    expect(markers[0].tooltip).toContain('2026-03-15')
+    expect(markers[0].tooltip).toContain('优化EIP连接稳定性并增加自动重连机制超…')
   })
   it('无排期举措不产生标记', () => {
     expect(buildMonthlyActionMarkers([

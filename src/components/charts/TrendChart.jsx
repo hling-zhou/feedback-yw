@@ -13,21 +13,25 @@ import {
 import ChartTooltip from './ChartTooltip.jsx'
 
 /**
- * 竖线顶部数量角标（问题压降图同月多举措合并后使用，2026-11-25 重叠治理）：
- * 替代图内文字标签——文字互叠不可读，改小圆形徽标只标数量，明细看图下举措列表。
- * recharts ReferenceLine label content 拿到的 props 含 viewBox（线两端点），
- * 这里用 viewBox.x 定位、画布顶端对齐；值本身不渲染文本（badge 由父层渲染图例说明）。
- * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number }} props
+ * 竖线顶部数量角标（问题压降图同月多举措合并后使用，2026-11-25 重叠治理；
+ * 11-25 晚真机反馈修复：角标画在 plot 顶上方会被 SVG 边界裁掉——改画 plot 内侧顶部；
+ * 补 hover：内嵌 <title> 显示当月举措明细，加透明命中区让整条竖线可 hover）。
+ * recharts ReferenceLine label content 拿到的 props.viewBox 含线两端点（x1,y1）(x2,y2)：
+ * y1 = plot 顶部 y 坐标，角标贴其内侧往下画，永不越出 SVG 可视区。
+ * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number; tooltip?: string }} props
  */
 function RefLineBadge(props) {
-  const { viewBox, badge } = props
+  const { viewBox, badge, tooltip } = props
   if (!viewBox || !Number.isFinite(viewBox.x) || badge == null) return null
   const x = viewBox.x
-  const y = (viewBox.y ?? 0) - 2
+  const y = (viewBox.y ?? 0) + 2
   const text = String(badge)
   const w = Math.max(18, 10 + text.length * 7)
   return (
-    <g transform={`translate(${x - w / 2}, ${y - 16})`}>
+    <g transform={`translate(${x - w / 2}, ${y})`}>
+      <title>{tooltip || `${badge} 项举措`}</title>
+      {/* 透明命中区：横向覆盖角标宽度，纵向延伸到线底，hover 竖线即出 title */}
+      <rect x={0} y={0} width={w} height={(viewBox.height ?? 0) + 16} fill="transparent" />
       <rect x={0} y={0} width={w} height={16} rx={8} fill="#F59E0B" fillOpacity={0.16} stroke="#F59E0B" strokeWidth={1} />
       <text x={w / 2} y={11.5} textAnchor="middle" fontSize={10} fill="#B45309">{text}</text>
     </g>
@@ -137,6 +141,10 @@ export default function TrendChart({
   const chartData = timeScale
     ? data.map((row) => ({ ...row, ts: parseChartXToTs(row.ts ?? row.date) }))
     : data
+  // 有数量角标时给图顶部留内侧空间（角标 16px 高 + 2px 内边），避免压折线/被裁
+  const topMargin = Array.isArray(referenceLines) && referenceLines.some((r) => r?.badge != null)
+    ? 26
+    : 8
 
   const resolveRefX = (x) => (timeScale ? parseChartXToTs(x) : x)
   const refXs = []
@@ -213,7 +221,7 @@ export default function TrendChart({
           strokeDasharray={r.strokeDasharray || '6 4'}
           label={
             r.badge != null
-              ? { content: <RefLineBadge badge={r.badge} viewBox={undefined} />, position: 'top' }
+              ? { content: <RefLineBadge badge={r.badge} tooltip={r.tooltip} />, position: 'top' }
               : {
                 value: r.label || String(r.x),
                 position: 'insideTopRight',
@@ -244,7 +252,7 @@ export default function TrendChart({
   if (variant === 'line') {
     return (
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 8, right: dualAxis ? 16 : 8, left: 0, bottom: 0 }}>
+        <LineChart data={chartData} margin={{ top: topMargin, right: dualAxis ? 16 : 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
           {xAxis}
           {yAxes}
@@ -271,7 +279,7 @@ export default function TrendChart({
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={chartData} margin={{ top: 8, right: dualAxis ? 16 : 8, left: 0, bottom: stacked ? 4 : 0 }}>
+      <AreaChart data={chartData} margin={{ top: topMargin, right: dualAxis ? 16 : 8, left: 0, bottom: stacked ? 4 : 0 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#6366F1" stopOpacity={0.3} />
