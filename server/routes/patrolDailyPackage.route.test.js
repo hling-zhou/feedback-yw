@@ -283,6 +283,65 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     }
   })
 
+  // ================== (2c) 同 (date,pool,reqId) 双用户组——诊断行归属（11-25 事故红证）
+  // 11-24 生产实证：preDelete 批量校验链跨用户共用 reqId，压缩出 YHKJBJGF + yidongyunyjy 两组。
+  // 旧实现 upsertDiagnoses 定位组用三元组键（缺 user_name）→ 两组诊断全写到先建组头上，
+  // 另一组诊断行恒空 → 抽屉「诊断结论（尚未完成 AI 诊断）」vs「AI 判定」有值的矛盾形态。
+
+  it('(2c) 同 reqId 双用户组：各组诊断行各归其位（11-25 定位键断裂红绿）', async () => {
+    const pkg = buildPackage()
+    // 复制单组形态：同 date/pool/apiPath/reqId，仅 user_name 不同（11-24 真实形态）
+    pkg.groups = [
+      {
+        ...pkg.groups[0],
+        userName: 'userA',
+        firstRequestTime: '2026-11-09 10:00:00',
+        finalConclusion: '结论A（userA 组）',
+        suggestion: '建议A',
+      },
+      {
+        ...pkg.groups[0],
+        userName: 'userB',
+        firstRequestTime: '2026-11-09 10:00:01',
+        finalConclusion: '结论B（userB 组）',
+        suggestion: '建议B',
+      },
+    ]
+    const res = await pushPackage(pkg)
+    expect(res?.statusCode).toBe(200)
+    expect(res?.json().groups.written).toBe(2)
+
+    // 两组都存在（六元组唯一键含 user_name）
+    const groups = db.prepare(`
+      SELECT id, user_name, root_cause_l1, product_action_status
+      FROM api_patrol_failure_groups ORDER BY user_name
+    `).all()
+    expect(groups).toHaveLength(2)
+
+    // 各组诊断行各归其位：一行一结论，且结论归属正确（旧实现红：全写先建组、另一组空）
+    for (const g of groups) {
+      const diags = db.prepare(`
+        SELECT final_conclusion, suggestion, root_cause_l1, root_cause_l2 FROM api_patrol_diagnoses WHERE failure_group_id=?
+      `).all(g.id)
+      expect(diags, `组(${g.user_name}) 诊断行数`).toHaveLength(1)
+      const expectConclusion = g.user_name === 'userA' ? '结论A（userA 组）' : '结论B（userB 组）'
+      expect(diags[0].final_conclusion).toBe(expectConclusion)
+      expect(diags[0].root_cause_l1).toBe('业务冲突')
+    }
+
+    // 重推幂等：两组诊断行仍各归其位（先删后插覆盖语义不因重推错位）
+    const res2 = await pushPackage(pkg)
+    expect(res2?.statusCode).toBe(200)
+    for (const g of db.prepare('SELECT id, user_name FROM api_patrol_failure_groups ORDER BY user_name').all()) {
+      const diags = db.prepare(`
+        SELECT final_conclusion FROM api_patrol_diagnoses WHERE failure_group_id=?
+      `).all(g.id)
+      expect(diags, `重推后组(${g.user_name}) 诊断行数`).toHaveLength(1)
+      const expectConclusion = g.user_name === 'userA' ? '结论A（userA 组）' : '结论B（userB 组）'
+      expect(diags[0].final_conclusion).toBe(expectConclusion)
+    }
+  })
+
   // ================== (5)(6) failed / converged 语义
 
   it('(5) diagnosisStatus=failed → 组保持 pending_diagnosis、结论空', async () => {
@@ -361,6 +420,82 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     const resBad = await pushPackage(pkgBad)
     expect(resBad?.json().exemptions).toEqual({ written: 0 })     // normalizeRule 过滤后 0 条
     expect(storageRepository.getMeta(META_KEY_ACTION_EXEMPTIONS)?.rules).toHaveLength(0)
+  })
+
+  it('(9) 11-25 规则表随包同步（冲突保护）：首次覆盖 + 未编辑副本更新 + 编辑后冲突跳过；旧包无段不动', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+    const RULES_KEY = 'api_patrol_root_cause_rules_v1'
+    const BASELINE_KEY = 'api_patrol_root_cause_rules_sync_baseline_v1'
+    beforeEach(() => {}) // 占位——防 lint 未用告警（本用例用例内自查清理）
+    db.prepare("DELETE FROM meta WHERE key IN (?, ?)").run(RULES_KEY, BASELINE_KEY)
+
+    const rulesPkg = (items) => {
+      const pkg = buildPackage()
+      pkg.rootCauseRules = { items }
+      return pkg
+    }
+    const itemsV1 = [
+      { order: 0, l1: '业务冲突', l2: '测试规则A', productAction: '待处理', anyOf: ['关键词A'] },
+      { order: 1, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+    const itemsV2 = [
+      { order: 0, l1: '业务冲突', l2: '测试规则A2', productAction: '待处理', anyOf: ['关键词A2'] },
+      { order: 1, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+
+    // ① 旧包（无 rootCauseRules 段）→ 不动既有值、响应 action=absent
+    storageRepository.putMeta(RULES_KEY, { version: 1, updatedAt: 't', items: itemsV1 })
+    const resPlain = await pushPackage(buildPackage())
+    expect(resPlain?.json().rootCauseRules).toEqual({ action: 'absent' })
+    expect(storageRepository.getMeta(RULES_KEY)?.items).toHaveLength(2)
+
+    // ② 首次同步（无基线）→ 覆盖 + 基线落库
+    const res1 = await pushPackage(rulesPkg(itemsV2))
+    expect(res1?.json().rootCauseRules).toEqual({ action: 'applied' })
+    expect(storageRepository.getMeta(RULES_KEY)?.items[0]?.l2).toBe('测试规则A2')
+    expect(storageRepository.getMeta(BASELINE_KEY)?.hash).toBeTruthy()
+
+    // ③ 副本未被编辑（与基线一致）→ 再次同步正常覆盖
+    const itemsV3 = [
+      { order: 0, l1: '业务冲突', l2: '测试规则A3', productAction: '待处理', anyOf: ['关键词A3'] },
+      { order: 1, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+    const res2 = await pushPackage(rulesPkg(itemsV3))
+    expect(res2?.json().rootCauseRules).toEqual({ action: 'applied' })
+    expect(storageRepository.getMeta(RULES_KEY)?.items[0]?.l2).toBe('测试规则A3')
+
+    // ④ 部署端被单独编辑（副本偏离基线）→ conflict 跳过、编辑保留、审计留痕
+    storageRepository.putMeta(RULES_KEY, {
+      version: 1, updatedAt: 't', items: [
+        { order: 0, l1: '业务冲突', l2: '部署端人工改的规则', productAction: '待处理', anyOf: ['人工'] },
+        { order: 1, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+      ],
+    })
+    const res3 = await pushPackage(rulesPkg(itemsV2))
+    expect(res3?.json().rootCauseRules).toEqual({ action: 'conflict' })
+    expect(storageRepository.getMeta(RULES_KEY)?.items[0]?.l2).toBe('部署端人工改的规则')   // 编辑未丢
+    const conflictAudit = db.prepare(
+      "SELECT COUNT(*) c FROM audit_log WHERE action='api_patrol.root_cause_rules_sync' AND detail_json LIKE '%conflict%'",
+    ).get()
+    expect(conflictAudit.c).toBe(1)
+
+    // ⑤ 冲突后副本未再动 → 仍 conflict（基线未更新，只要副本≠基线就保护）
+    const res4 = await pushPackage(rulesPkg(itemsV2))
+    expect(res4?.json().rootCauseRules).toEqual({ action: 'conflict' })
+
+    // ⑥ 部署端编辑被重新应用回本机后（本机值经人工合流 = 新包）→ 基线刷新、冲突解除
+    //    模拟运营把部署端改动应用到本机：新包 items = 部署端编辑值
+    const itemsMerged = [
+      { order: 0, l1: '业务冲突', l2: '部署端人工改的规则', productAction: '待处理', anyOf: ['人工'] },
+      { order: 1, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+    ]
+    const res5 = await pushPackage(rulesPkg(itemsMerged))
+    expect(res5?.json().rootCauseRules).toEqual({ action: 'applied' })   // 副本=包值 → 哈希一致视为合流
+    expect(storageRepository.getMeta(RULES_KEY)?.items[0]?.l2).toBe('部署端人工改的规则')
+
+    // 清理（不污染其他用例）
+    db.prepare("DELETE FROM meta WHERE key IN (?, ?)").run(RULES_KEY, BASELINE_KEY)
+    db.prepare("DELETE FROM audit_log WHERE action='api_patrol.root_cause_rules_sync'").run()
   })
 
   it('(6) converged 不打回已处理组（人工保护优先于收敛）', async () => {
