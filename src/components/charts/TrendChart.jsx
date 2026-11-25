@@ -13,6 +13,28 @@ import {
 import ChartTooltip from './ChartTooltip.jsx'
 
 /**
+ * 竖线顶部数量角标（问题压降图同月多举措合并后使用，2026-11-25 重叠治理）：
+ * 替代图内文字标签——文字互叠不可读，改小圆形徽标只标数量，明细看图下举措列表。
+ * recharts ReferenceLine label content 拿到的 props 含 viewBox（线两端点），
+ * 这里用 viewBox.x 定位、画布顶端对齐；值本身不渲染文本（badge 由父层渲染图例说明）。
+ * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number }} props
+ */
+function RefLineBadge(props) {
+  const { viewBox, badge } = props
+  if (!viewBox || !Number.isFinite(viewBox.x) || badge == null) return null
+  const x = viewBox.x
+  const y = (viewBox.y ?? 0) - 2
+  const text = String(badge)
+  const w = Math.max(18, 10 + text.length * 7)
+  return (
+    <g transform={`translate(${x - w / 2}, ${y - 16})`}>
+      <rect x={0} y={0} width={w} height={16} rx={8} fill="#F59E0B" fillOpacity={0.16} stroke="#F59E0B" strokeWidth={1} />
+      <text x={w / 2} y={11.5} textAnchor="middle" fontSize={10} fill="#B45309">{text}</text>
+    </g>
+  )
+}
+
+/**
  * 把 YYYY-MM / YYYY-MM-DD / 时间戳解析为毫秒。无法解析返回 NaN。
  * @param {unknown} value
  */
@@ -56,8 +78,8 @@ function formatTsLabel(ts) {
  *        time：X 轴按日历时间，参考线可落在月内某天（工单量仍按月点）
  * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string } | Array<{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }> | null} [props.referenceLine]
  *        y=水平基准线；可传数组画多条；x=X 轴某值处的垂直线（月份或 YYYY-MM-DD）
- * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }[]} [props.referenceLines]
- *        多条垂直参考线（如同一问题上多个举措的实施日）
+ * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string; badge?: number }[]} [props.referenceLines]
+ *        多条垂直参考线（如同一问题上多个举措的实施日）；badge 传数量时顶部渲染圆形角标替代文字标签
  * @param {((value: unknown, name: string) => unknown[]) | null} [props.tooltipFormatter] tooltip 数值格式化（V1 StatusOverviewChart 先例：[值, 名]）
  * @param {((label: unknown) => string) | null} [props.tooltipLabelFormatter] tooltip 轴标签格式化
  */
@@ -189,12 +211,16 @@ export default function TrendChart({
           x={timeScale ? x : String(r.x)}
           stroke={r.stroke || '#F59E0B'}
           strokeDasharray={r.strokeDasharray || '6 4'}
-          label={{
-            value: r.label || String(r.x),
-            position: 'insideTopRight',
-            fill: '#B45309',
-            fontSize: 11,
-          }}
+          label={
+            r.badge != null
+              ? { content: <RefLineBadge badge={r.badge} viewBox={undefined} />, position: 'top' }
+              : {
+                value: r.label || String(r.x),
+                position: 'insideTopRight',
+                fill: '#B45309',
+                fontSize: 11,
+              }
+          }
         />,
       )
     })

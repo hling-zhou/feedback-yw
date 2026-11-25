@@ -17,12 +17,13 @@ const UNKNOWN_JOURNEY_L1 = '未识别环节'
 const UNKNOWN_JOURNEY_L2 = '未识别子环节'
 
 /**
- * 解析举措锚点日期：scheduleAt 优先，空则 firstProposedAt 兜底。
+ * 解析举措锚点日期：仅认 scheduleAt（排期/实施日）；无排期一律不画线、不进前后对比
+ * （2026-11-25 拍板：firstProposedAt 是批量导入日，不是真实实施日，不再兜底上图）。
  * @param {ActionItem} action
  * @returns {{ anchorDate: string; anchorMonth: string }}
  */
 export function resolveActionAnchor(action) {
-  const raw = String(action?.scheduleAt ?? '').trim() || String(action?.firstProposedAt ?? '').trim()
+  const raw = String(action?.scheduleAt ?? '').trim()
   return { anchorDate: raw, anchorMonth: raw ? raw.slice(0, 7) : '' }
 }
 
@@ -284,5 +285,36 @@ export function buildProblemCentricView(actions, feedbacks, productNameByKey) {
   }
   problems.sort((a, b) => b.totalTicketCount - a.totalTicketCount || a.key.localeCompare(b.key, 'zh-CN'))
   return { problems }
+}
+
+/**
+ * 月度竖线标记（趋势图竖线聚合口径，2026-11-25 重叠治理）：
+ * 有排期的举措按 anchorMonth 聚合，每月一条竖线 ——
+ *   x 取该月最早锚点日（月点趋势图上月内精确到日仅影响线位，不影响可读性）；
+ *   badge 顶标 = 该月举措条数（1 条不标数字、标序号徽标起点）；
+ *   ordinal 序号 = 按月升序 1 起，与举措时间线列表的编号徽标一一对应。
+ * 无排期举措不进标记（不画线，详见 resolveActionAnchor 注释）。
+ * @param {(ActionItem | { anchorDate?: string; anchorMonth?: string })[]} actions 问题签名下的举措行（或其投影）
+ * @returns {{ x: string; badge: number; ordinal: number; month: string }[]}
+ */
+export function buildMonthlyActionMarkers(actions) {
+  /** @type {Map<string, { dates: string[]; count: number }>} */
+  const byMonth = new Map()
+  for (const action of Array.isArray(actions) ? actions : []) {
+    const anchorDate = String(action?.anchorDate ?? '').trim()
+    const anchorMonth = String(action?.anchorMonth ?? '').trim()
+    if (!anchorDate && !anchorMonth) continue
+    let entry = byMonth.get(anchorMonth)
+    if (!entry) { entry = { dates: [], count: 0 }; byMonth.set(anchorMonth, entry) }
+    entry.count += 1
+    if (anchorDate) entry.dates.push(anchorDate)
+  }
+  const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  return months.map(([month, entry], index) => ({
+    x: entry.dates.length ? entry.dates.sort()[0] : `${month}-01`,
+    badge: entry.count,
+    ordinal: index + 1,
+    month,
+  }))
 }
 

@@ -4,6 +4,7 @@ import TrendChart from '../components/charts/TrendChart.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { getProblemReductionView } from '../lib/actionItemClient.js'
 import { ACTION_ITEM_STATUS_LABELS } from '../domain/actionItem.js'
+import { buildMonthlyActionMarkers } from '../domain/actionProblemScope.js'
 
 /** @typedef {import('../domain/actionProblemScope.js').ProblemCentricRow} ProblemCentricRow */
 
@@ -126,20 +127,21 @@ export default function ProblemReductionTab() {
 }
 
 /**
+ * 问题详情面板（含趋势图竖线聚合与举措时间线）。命名导出供渲染测试直接注入 props。
  * @param {{ row: ProblemCentricRow }} props
  */
-function ProblemDetail({ row }) {
-  const referenceLines = useMemo(
-    () =>
-      row.actions
-        .filter((a) => a.anchorDate || a.anchorMonth)
-        .map((a) => ({
-          x: a.anchorDate || a.anchorMonth,
-          label: `${a.anchorDate || a.anchorMonth} ${a.content.length > 8 ? `${a.content.slice(0, 8)}…` : a.content}`,
-          stroke: '#F59E0B',
-        })),
-    [row.actions],
-  )
+export function ProblemDetail({ row }) {
+  // 竖线重叠治理（2026-11-25）：有排期举措按月聚合，每月一条竖线+数量角标；
+  // 无排期举措不画线（firstProposedAt 是导入日，不上图）。
+  const markers = useMemo(() => buildMonthlyActionMarkers(row.actions), [row.actions])
+  const scheduledCount = markers.reduce((s, m) => s + m.badge, 0)
+  const unscheduledCount = row.actions.length - scheduledCount
+  // 图上竖线序号 → 举措列表按月分组编号，列表徽标与图一一对应
+  const ordinalByMonth = useMemo(() => {
+    const map = new Map()
+    markers.forEach((m) => map.set(m.month, m.ordinal))
+    return map
+  }, [markers])
 
   return (
     <div className="page-card-sm flex h-full min-h-0 flex-col overflow-hidden">
@@ -171,7 +173,8 @@ function ProblemDetail({ row }) {
 
         <div className="rounded-lg bg-white p-2">
           <Typography.Text type="secondary" className="mb-1 block text-xs">
-            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=各举措实施日
+            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=举措实施月（角标=当月举措数）
+            {unscheduledCount > 0 ? `，另有 ${unscheduledCount} 条无排期举措未上图` : ''}
           </Typography.Text>
           <TrendChart
             variant="line"
@@ -182,18 +185,27 @@ function ProblemDetail({ row }) {
               { dataKey: 'count', name: '工单数', stroke: '#4F46E5' },
               { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
             ]}
-            referenceLines={referenceLines}
+            referenceLines={markers.map((m) => ({ x: m.x, badge: m.badge, stroke: '#F59E0B' }))}
           />
         </div>
 
         <div>
           <Typography.Text type="secondary" className="mb-2 block text-xs">
-            举措时间线（按实施升序）
+            举措时间线（{scheduledCount} 条有排期按实施升序，徽标序号对应图上竖线月份
+            {unscheduledCount > 0 ? `；${unscheduledCount} 条无排期未上图` : ''}）
           </Typography.Text>
           <Space direction="vertical" size={8} className="w-full">
-            {row.actions.map((action) => (
-              <ActionTimelineRow key={action.actionId} action={action} />
-            ))}
+            {[...row.actions]
+              .sort((a, b) => Boolean(a.anchorDate) === Boolean(b.anchorDate)
+                ? (a.anchorDate || '').localeCompare(b.anchorDate || '')
+                : a.anchorDate ? -1 : 1)
+              .map((action) => (
+                <ActionTimelineRow
+                  key={action.actionId}
+                  action={action}
+                  ordinal={action.anchorMonth ? ordinalByMonth.get(action.anchorMonth) ?? null : null}
+                />
+              ))}
           </Space>
         </div>
         <Typography.Text type="secondary" className="block !text-[11px]">
@@ -205,14 +217,24 @@ function ProblemDetail({ row }) {
 }
 
 /**
- * @param {{ action: any }} props
+ * @param {{ action: any; ordinal?: number | null }} props
  */
-function ActionTimelineRow({ action }) {
+function ActionTimelineRow({ action, ordinal = null }) {
   const r = action.reduction
   return (
     <div className="rounded-md border border-ink-100 px-3 py-2">
       <div className="flex items-start justify-between gap-2">
-        <Typography.Text className="!text-sm">{action.content}</Typography.Text>
+        <Typography.Text className="!text-sm">
+          {ordinal != null ? (
+            <span
+              aria-label={`第 ${ordinal} 个实施月`}
+              className="mr-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-amber-500 bg-amber-100 px-1 align-middle text-[10px] leading-none text-amber-700"
+            >
+              {ordinal}
+            </span>
+          ) : null}
+          {action.content}
+        </Typography.Text>
         <Tag className="!m-0 !text-xs">{ACTION_ITEM_STATUS_LABELS[action.status] || action.status}</Tag>
       </div>
       <Typography.Text type="secondary" className="!text-xs block">
@@ -227,7 +249,7 @@ function ActionTimelineRow({ action }) {
         </Typography.Text>
       ) : (
         <Typography.Text type="warning" className="!text-xs">
-          {r ? '数据不足' : '未设排期，无法对比'}
+          {r ? '数据不足' : '未设排期，未上图'}
         </Typography.Text>
       )}
     </div>

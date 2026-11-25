@@ -4,6 +4,7 @@ import {
   computeReduction,
   buildActionProblemScope,
   buildProblemCentricView,
+  buildMonthlyActionMarkers,
 } from './actionProblemScope.js'
 
 /** @typedef {import('../lib/types.js').FeedbackRecord} FeedbackRecord */
@@ -43,9 +44,9 @@ describe('resolveActionAnchor', () => {
     expect(resolveActionAnchor(makeAction({ scheduleAt: '2026-03-15', firstProposedAt: '2026-02-01' })))
       .toEqual({ anchorDate: '2026-03-15', anchorMonth: '2026-03' })
   })
-  it('scheduleAt 空则 firstProposedAt 兜底', () => {
+  it('无排期不兜底 firstProposedAt（2026-11-25 拍板：导入日≠实施日，不上图）', () => {
     expect(resolveActionAnchor(makeAction({ scheduleAt: '', firstProposedAt: '2026-02-01' })))
-      .toEqual({ anchorDate: '2026-02-01', anchorMonth: '2026-02' })
+      .toEqual({ anchorDate: '', anchorMonth: '' })
   })
   it('两者皆空返回空', () => {
     expect(resolveActionAnchor(makeAction({ scheduleAt: '', firstProposedAt: '' })))
@@ -168,5 +169,46 @@ describe('buildProblemCentricView', () => {
     const actions = [makeAction({ linkedTicketIds: ['t1'] })]
     const { problems } = buildProblemCentricView(actions, fb)
     expect(problems[0].overallTrend).toBe('up') // 2 → 3
+  })
+  it('无排期举措：anchorDate 空、reduction null，但举措仍留在列表（口径与展示分工）', () => {
+    const fb = [
+      makeRecord({ ticketId: 't1', importMonth: '2026-01', journeyL1: '使用', journeyL2: '连接' }),
+      makeRecord({ ticketId: 't2', importMonth: '2026-02', journeyL1: '使用', journeyL2: '连接' }),
+    ]
+    const actions = [makeAction({ id: 'a-no-schedule', scheduleAt: '', firstProposedAt: '2026-02-01', linkedTicketIds: ['t1', 't2'] })]
+    const { problems } = buildProblemCentricView(actions, fb)
+    expect(problems).toHaveLength(1)
+    const row = problems[0]
+    expect(row.actions).toHaveLength(1)
+    expect(row.actions[0].anchorDate).toBe('')
+    expect(row.actions[0].anchorMonth).toBe('')
+    expect(row.actions[0].reduction).toBeNull()
+  })
+})
+
+describe('buildMonthlyActionMarkers（竖线重叠治理 2026-11-25）', () => {
+  it('按月聚合：同月多举措合并一条竖线，x 取月内最早锚点日，badge=条数，ordinal 按月升序', () => {
+    const markers = buildMonthlyActionMarkers([
+      { anchorDate: '2026-05-31', anchorMonth: '2026-05' }, // 10 条同日 → 真库形态
+      ...Array.from({ length: 9 }, (_, i) => ({ anchorDate: `2026-05-31`, anchorMonth: '2026-05', id: `dup${i}` })),
+      { anchorDate: '2026-04-30', anchorMonth: '2026-04' }, // 月末
+      { anchorDate: '2026-04-15', anchorMonth: '2026-04' }, // 同月更早 → x 应取 04-15
+      { anchorDate: '2026-07-02', anchorMonth: '2026-07' },
+    ])
+    expect(markers).toEqual([
+      { x: '2026-04-15', badge: 2, ordinal: 1, month: '2026-04' },
+      { x: '2026-05-31', badge: 10, ordinal: 2, month: '2026-05' },
+      { x: '2026-07-02', badge: 1, ordinal: 3, month: '2026-07' },
+    ])
+  })
+  it('无排期举措不产生标记', () => {
+    expect(buildMonthlyActionMarkers([
+      { anchorDate: '', anchorMonth: '' },
+      { anchorDate: '', anchorMonth: '', firstProposedAt: '2026-02-01' },
+    ])).toEqual([])
+  })
+  it('空数组/非数组安全', () => {
+    expect(buildMonthlyActionMarkers([])).toEqual([])
+    expect(buildMonthlyActionMarkers(null)).toEqual([])
   })
 })
