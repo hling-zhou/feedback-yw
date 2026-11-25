@@ -8,6 +8,8 @@ import {
   parseActionItemSourceCell,
   parseLinkedDataSourcesCell,
   parseLinkedTicketIdsCell,
+  normalizeActionItemContentKey,
+  buildActionItemUpsertIndex,
 } from './actionItemImport.js'
 import { normalizeActionScheduleInput } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_IMPORT_TEMPLATE_HEADERS } from './actionItemImportTemplate.js'
@@ -241,5 +243,59 @@ describe('actionItemImport', () => {
     expect(result.rows[0].linkedRequirementTicketIds).toEqual(['REQ-1'])
     expect(result.warnings).toHaveLength(2)
     expect(result.warnings[0].row).toBe(2)
+  })
+})
+
+describe('导入 upsert 判定键（11-25 拍板：NFKC 全半角 + 小写折叠 + 空白折叠）', () => {
+  it('normalizeActionItemContentKey：全半角/大小写/空白差异折叠为同键', () => {
+    expect(normalizeActionItemContentKey('带宽超限')).toBe(normalizeActionItemContentKey('带宽超限'))
+    // 全角冒号→半角、全角逗号→半角（三写法同键）
+    expect(normalizeActionItemContentKey('优化ＡＰＩ：接口，提升性能')).toBe(normalizeActionItemContentKey('优化ＡＰＩ:接口,提升性能'))
+    expect(normalizeActionItemContentKey('优化ＡＰＩ:接口,提升性能')).toBe(normalizeActionItemContentKey('优化ＡＰＩ：接口，提升性能'))
+    // NFKC 全角ＡＰＩ折成 ASCII 后小写：全角输入与半角小写同键
+    expect(normalizeActionItemContentKey('优化ＡＰＩ：接口')).toBe(normalizeActionItemContentKey('优化api:接口'))
+    // 连续空白折叠 + 首尾 trim
+    expect(normalizeActionItemContentKey('  帮助中心   增加  说明 \n')).toBe('帮助中心 增加 说明')
+    // 圆圈数字 NFKC ①→1
+    expect(normalizeActionItemContentKey('①期上线')).toBe(normalizeActionItemContentKey('1期上线'))
+    // 全角空格 U+3000 折叠
+    expect(normalizeActionItemContentKey('冻结\u3000提示')).toBe('冻结 提示')
+  })
+
+  it('normalizeActionItemContentKey：不同内容不得误合并（防误伤边界）', () => {
+    expect(normalizeActionItemContentKey('带宽超限')).not.toBe(normalizeActionItemContentKey('带宽超限处理'))
+    expect(normalizeActionItemContentKey('删除子网校验')).not.toBe(normalizeActionItemContentKey('删除子網校验')) // 繁简不折叠
+  })
+
+  it('buildActionItemUpsertIndex：键=内容+产品，多条命中取最新，duplicates 计数', () => {
+    const { index, keyOf } = buildActionItemUpsertIndex([
+      { id: 'a1', content: '确认轻载申请与绑定流程是否存在不合理', productKey: 'eip', updatedAt: '2026-11-01T00:00:00Z' },
+      { id: 'a2', content: '确认轻载申请与绑定流程是否存在不合理', productKey: 'eip', updatedAt: '2026-11-10T00:00:00Z' },
+      { id: 'a3', content: '确认轻载申请与绑定流程是否存在不合理', productKey: 'eip', updatedAt: '2026-11-05T00:00:00Z' },
+      { id: 'b1', content: '带宽超限', productKey: 'eip', updatedAt: '2026-10-01T00:00:00Z' },
+      { id: 'b2', content: '带宽超限', productKey: 'vpc', updatedAt: '2026-10-02T00:00:00Z' },
+    ])
+    // 同键 3 条 → 最新 a2 为落点，duplicates=2
+    const hit = index.get(keyOf({ content: '确认轻载申请与绑定流程是否存在不合理', productKey: 'eip' }))
+    expect(hit?.id).toBe('a2')
+    expect(hit?.duplicates).toBe(2)
+    // 同内容不同产品 → 不同键（各自命中）
+    expect(index.get(keyOf({ content: '带宽超限', productKey: 'eip' }))?.id).toBe('b1')
+    expect(index.get(keyOf({ content: '带宽超限', productKey: 'vpc' }))?.id).toBe('b2')
+    // productKey 空时回退 productName
+    const idx2 = buildActionItemUpsertIndex([
+      { id: 'c1', content: '无键举措', productName: '弹性IP', updatedAt: '2026-01-01T00:00:00Z' },
+    ])
+    const hit2 = idx2.index.get(idx2.keyOf({ content: '无键举措', productKey: '', productName: '弹性IP' }))
+    expect(hit2?.id).toBe('c1')
+  })
+
+  it('buildActionItemUpsertIndex：全半角差异的既有举措可被命中（往返场景红证）', () => {
+    // 场景：库里是全角「：」，Excel 重敲成半角「:」——旧规则判不同，NFKC 后判相同
+    const { index, keyOf } = buildActionItemUpsertIndex([
+      { id: 'f1', content: '自研网关：在IPv6带宽恢复接口中增加放大规则判定', productKey: 'eip', updatedAt: '2026-10-01T00:00:00Z' },
+    ])
+    const hit = index.get(keyOf({ content: '自研网关:在IPv6带宽恢复接口中增加放大规则判定', productKey: 'eip' }))
+    expect(hit?.id).toBe('f1')
   })
 })

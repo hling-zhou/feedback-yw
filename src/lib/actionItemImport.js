@@ -178,7 +178,7 @@ function cellAny(row, headers) {
 /**
  * @param {Record<string, unknown>} row
  * @param {{ productNameToKey?: Map<string, string>; firstProposedAt?: string }} [options]
- * @returns {{ ok: true; item: Partial<ActionItem> } | { ok: false; error: string }}
+ * @returns {{ ok: true; item: Partial<ActionItem>; warnings?: string[] } | { ok: false; error: string }}
  */
 export function parseActionItemImportRow(row, options = {}) {
   const content = cell(row, '举措')
@@ -195,7 +195,7 @@ export function parseActionItemImportRow(row, options = {}) {
 
   // 排期取原生值（不走 cell() 的 String 转换）——cellDates 模式下真日期单元格是 Date 对象，
   // String() 会变成 "Wed Sep 30 2026..." 导致归一函数 Date 分支接不到。
-  const scheduleRaw = row['排期时间']
+  const scheduleRaw = /** @type {string | Date | undefined} */ (row['排期时间'])
   const statusLabel = cell(row, '状态')
   /** @type {string[]} */
   const warnings = []
@@ -248,9 +248,10 @@ export function parseActionItemImportRow(row, options = {}) {
 
 /**
  * @typedef {Object} ActionItemImportWorkbookResult
- * @property {(Partial<ActionItem> & { _excelRow?: number })[]} rows - 可导入行（_excelRow=Excel 行号，前端追踪用）
+ * @property {(Partial<ActionItem> & { _excelRow?: number; _matchId?: string })[]} rows - 可导入行（_excelRow=Excel 行号；_matchId=命中既有举措 id，由前端 upsert 分流时写入）
  * @property {{ row: number; error: string }[]} errors - 解析失败行（row=Excel 行号）
  * @property {{ row: number; message: string }[]} warnings - 解析提示（row=Excel 行号）
+ * @property {{ createCount: number; updateCount: number }} [upsert] - 分流统计（前端比对后写入；预览展示用）
  */
 
 /**
@@ -312,4 +313,59 @@ export function buildProductNameToKeyMap(products) {
     if (product.name) map.set(product.name, product.key)
   }
   return map
+}
+
+/**
+ * 导入 upsert 判定键的内容归一（2026-11-25 拍板，含全半角/大小写折叠）：
+ * NFKC（Ａ→A、０→0、（）→()、：→:、全角空格→空格、①→1）→ 小写 → 空白折叠。
+ * NFKC+小写在全库 136 条实测零误合并；「举措」单元格文本专用。
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function normalizeActionItemContentKey(text) {
+  return String(text ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+}
+
+/**
+ * 构建导入 upsert 比对索引：键 = 归一内容 + 产品（productKey，空则回退 productName）。
+ * 同键多条时保留 updatedAt 最新的为更新落点，duplicates 记录其余存量数（UI 明示待清理）。
+ *
+ * @param {(Partial<ActionItem> & { updatedAt?: string })[]} existingItems
+ * @returns {{ index: Map<string, { id: string; updatedAt: string; duplicates: number }>; keyOf: (item: Partial<ActionItem>) => string }}
+ */
+export function buildActionItemUpsertIndex(existingItems) {
+  /** @type {Map<string, { id: string; updatedAt: string }[]>} */
+  const byKey = new Map()
+  /**
+   * @param {Partial<ActionItem>} item
+   */
+  const keyOf = (item) => {
+    const product =
+      String(item?.productKey ?? '').trim() || String(item?.productName ?? '').trim()
+    return `${normalizeActionItemContentKey(item?.content ?? '')}::${product}`
+  }
+  for (const item of existingItems || []) {
+    const key = keyOf(item)
+    if (!key.startsWith('::') || key.length > 2) {
+      if (!byKey.has(key)) byKey.set(key, [])
+      byKey.get(key).push({
+        id: String(item.id ?? ''),
+        updatedAt: String(item.updatedAt ?? ''),
+      })
+    }
+  }
+  /** @type {Map<string, { id: string; updatedAt: string; duplicates: number }>} */
+  const index = new Map()
+  for (const [key, group] of byKey) {
+    // updatedAt 最新一条为更新落点；同键多条时 duplicates 记其余存量（供 UI 提示）
+    const sorted = [...group].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    index.set(key, { ...sorted[0], duplicates: group.length - 1 })
+  }
+  return { index, keyOf }
 }

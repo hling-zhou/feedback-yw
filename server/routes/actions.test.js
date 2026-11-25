@@ -471,6 +471,37 @@ describeActions('actions API (P4-1)', () => {
     expect(sources.visits.length).toBe(0)
   })
 
+  it('patch rejects updates on locked action items (upsert 导入链路的锁定纪律同权)', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '已锁定举措', status: 'completed', scheduleAt: '' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    // 导入 upsert 场景：非空字段才发 patch——锁定后改内容/排期应 400
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { scheduleAt: '2026-12-01' },
+    })
+    expect(patchRes.statusCode).toBe(400)
+    expect(JSON.parse(patchRes.body).error).toContain('已结束')
+
+    // 空列（patch 不发该字段）不影响——只更新 detail 这类非锁定字段可过
+    const patchDetailRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { detail: '补充说明' },
+    })
+    expect(patchDetailRes.statusCode).toBe(200)
+    expect(JSON.parse(patchDetailRes.body).item.detail).toBe('补充说明')
+  })
+
   it('filters action items by problemType and journeyL1 with snapshot and ticket fallback', async () => {
     const { storageRepository } = await import('../storageRepository.js')
 

@@ -77,6 +77,7 @@ import {
   buildProductNameToKeyMap,
   parseActionItemImportWorkbook,
   parseLinkedTicketIdsCell,
+  buildActionItemUpsertIndex,
 } from '../lib/actionItemImport.js'
 import { downloadActionItemImportTemplate } from '../lib/actionItemImportTemplate.js'
 import { syncLinkedTicketCopies } from '../lib/actionItemTicketSync.js'
@@ -355,7 +356,7 @@ function ProductActionsTab() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState(
-    /** @type {{ rows: (Partial<ActionItem> & { _excelRow?: number })[]; errors: { row: number; error: string }[]; warnings: { row: number; message: string }[] } | null} */ (null),
+    /** @type {import('../lib/actionItemImport.js').ActionItemImportWorkbookResult | null} */ (null),
   )
   /** 批量创建阶段失败明细（11-25）：行号+摘要+原因，弹窗内展示供修正 */
   const [importBatchFailures, setImportBatchFailures] = useState(
@@ -1052,9 +1053,41 @@ function ProductActionsTab() {
         message.warning('未解析到有效举措行')
         return
       }
+      // upsert 分流（11-25 拍板）：与既有举措按「归一内容+产品」比对，
+      // 命中 → 更新（标 matchId），未命中 → 新增。比对失败时退化为全新增（尽力而为）。
+      let upsertIndex = null
+      let upsertKeyOf = null
+      try {
+        const existing = await listActionItems({ limit: 500, offset: 0 })
+        const built = buildActionItemUpsertIndex(existing.items || [])
+        upsertIndex = built.index
+        upsertKeyOf = built.keyOf
+      } catch {
+        upsertIndex = null
+      }
+      let createCount = 0
+      let updateCount = 0
+      const matchWarnings = []
+      for (const row of preview.rows) {
+        const hit = upsertIndex?.get(upsertKeyOf?.(row) ?? '')
+        if (hit) {
+          row._matchId = hit.id
+          updateCount += 1
+          if (hit.duplicates > 0) {
+            const brief = String(row.content || '').slice(0, 16)
+            matchWarnings.push(`「${brief}…」库中已有 ${hit.duplicates + 1} 条同内容举措，本次更新最近一条，其余 ${hit.duplicates} 条请在页面手动清理`)
+          }
+        } else {
+          createCount += 1
+        }
+      }
+      preview.upsert = { createCount, updateCount }
       setImportBatchFailures([])
       setImportPreview(preview)
       setImportOpen(true)
+      if (matchWarnings.length) {
+        message.warning(matchWarnings.slice(0, 3).join('；'))
+      }
     } catch (err) {
       message.error(err instanceof Error ? err.message : '读取文件失败')
     }
@@ -1064,27 +1097,64 @@ function ProductActionsTab() {
     if (!importPreview?.rows.length) return
     setImporting(true)
     try {
-      // 剥掉行号元数据再提交（_excelRow 仅前端追踪用，服务端 STRICT_OBJECT 不认）
-      const submitRows = importPreview.rows.map(({ _excelRow, ...item }) => item)
-      const result = await createActionItemsBatch(submitRows)
-      const failed = result.errors?.length ?? 0
-      if (failed) {
-        // 失败明细（11-25 拍板）：批次 index → Excel 行号映射 + 举措摘要，弹窗内展示修正依据；
-        // 弹窗保持打开，toast 只报概要。全部失败时后端 400 走 catch，不会到这里。
-        const rowByIndex = new Map(importPreview.rows.map((r, i) => [i, r]))
-        const batchFailures = (result.errors || []).map((e) => {
-          const src = rowByIndex.get(e.index)
+      // 分流提交（11-25 拍板）：_matchId 行走 PATCH（非空字段才覆盖），其余走批量新增。
+      // 更新失败不阻断新增——失败行进 batchFailures 明细（Excel 行号 + 原因）。
+      const createRows = []
+      /** @type {{ id: string; patch: Partial<import('../domain/actionItem.js').ActionItem>; excelRow: number; content: string }[]} */
+      const updateRows = []
+      for (const { _excelRow, _matchId, ...item } of importPreview.rows) {
+        if (_matchId) updateRows.push({ id: _matchId, patch: item, excelRow: _excelRow ?? 0, content: String(item.content || '') })
+        else createRows.push(item)
+      }
+
+      let createdCount = 0
+      /** @type {{ row: number; error: string }[]} */
+      const batchFailures = []
+
+      if (createRows.length) {
+        const result = await createActionItemsBatch(createRows)
+        createdCount = result.items.length
+        // 失败明细（11-25 拍板）：批次 index → Excel 行号映射 + 举措摘要
+        const excelRowByIndex = new Map(
+          importPreview.rows
+            .filter((r) => !r._matchId)
+            .map((r, i) => [i, r]),
+        )
+        for (const e of result.errors || []) {
+          const src = excelRowByIndex.get(e.index)
           const summary = String(src?.content || '').trim()
           const brief = summary.length > 24 ? `${summary.slice(0, 24)}…` : summary || '（无内容）'
-          return {
-            row: src?._excelRow ?? 0,
-            error: `「${brief}」${e.error}`,
+          batchFailures.push({ row: src?._excelRow ?? 0, error: `「${brief}」${e.error}` })
+        }
+      }
+
+      let updatedCount = 0
+      for (const row of updateRows) {
+        try {
+          // 非空才覆盖（11-25 拍板）：空单元格 = 保留库内现值；状态/排期为空不动（不套创建派生逻辑）
+          const patch = /** @type {Partial<import('../domain/actionItem.js').ActionItem>} */ ({})
+          for (const key of ['content', 'detail', 'scheduleAt', 'status', 'source', 'painPointSnapshot', 'problemTypeSnapshot', 'linkedTicketIds', 'linkedRequirementTicketIds', 'linkedDataSources', 'productName', 'productKey']) {
+            const value = row.patch[key]
+            if (Array.isArray(value) ? value.length > 0 : String(value ?? '').trim() !== '') {
+              patch[key] = value
+            }
           }
-        })
+          if (Object.keys(patch).length) {
+            await updateActionItem(row.id, patch)
+            updatedCount += 1
+          }
+        } catch (err) {
+          const brief = row.content.length > 24 ? `${row.content.slice(0, 24)}…` : row.content
+          const reason = err instanceof Error ? err.message : '更新失败'
+          batchFailures.push({ row: row.excelRow, error: `「${brief}」更新失败：${reason}` })
+        }
+      }
+
+      if (batchFailures.length) {
         setImportBatchFailures(batchFailures)
-        message.warning(`已导入 ${result.items.length} 条，${failed} 条失败——明细见下方列表，修正文件后可重新导入`)
+        message.warning(`新增 ${createdCount} 条、更新 ${updatedCount} 条，${batchFailures.length} 条失败——明细见下方列表，修正文件后可重新导入`)
       } else {
-        message.success(`已导入 ${result.items.length} 条举措`)
+        message.success(`已导入：新增 ${createdCount} 条，更新 ${updatedCount} 条举措`)
         setImportOpen(false)
         setImportPreview(null)
         setImportBatchFailures([])
@@ -1618,10 +1688,21 @@ function ProductActionsTab() {
               type={importPreview.errors.length ? 'warning' : 'info'}
               showIcon
               className="!mb-3"
-              message={`解析到 ${importPreview.rows.length} 条可导入举措${
-                importPreview.errors.length ? `，${importPreview.errors.length} 行有误将跳过` : ''
-              }${importPreview.warnings?.length ? `，${importPreview.warnings.length} 条提示` : ''}`}
+              message={
+                importPreview.upsert
+                  ? `解析到 ${importPreview.rows.length} 条举措：新增 ${importPreview.upsert.createCount} 条，更新 ${importPreview.upsert.updateCount} 条（与库中「内容+产品」相同的举措）${
+                      importPreview.errors.length ? `，${importPreview.errors.length} 行有误将跳过` : ''
+                    }${importPreview.warnings?.length ? `，${importPreview.warnings.length} 条提示` : ''}`
+                  : `解析到 ${importPreview.rows.length} 条可导入举措${
+                      importPreview.errors.length ? `，${importPreview.errors.length} 行有误将跳过` : ''
+                    }${importPreview.warnings?.length ? `，${importPreview.warnings.length} 条提示` : ''}`
+              }
             />
+            {importPreview.upsert?.updateCount > 0 ? (
+              <Typography.Paragraph type="secondary" className="!mb-3 !text-xs">
+                将更新的举措：仅覆盖文件中非空的列，留空的列保留库内现值；已锁定（已完成/不予实施/异常终止）的举措会更新失败并在明细中提示。
+              </Typography.Paragraph>
+            ) : null}
             {importPreview.warnings?.length > 0 ? (
               <ul className="mb-3 max-h-32 overflow-y-auto pl-5 text-xs text-amber-700">
                 {importPreview.warnings.slice(0, 8).map((warn) => (
