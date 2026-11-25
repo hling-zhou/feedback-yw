@@ -106,7 +106,7 @@ export default function PatrolDailyReportPanel({ canEdit }) {
       <Typography.Text type="secondary" className="block text-xs">
         每日按配置时刻自动发送<strong>昨日全天</strong>的 AI 巡检日报（按产品：异常接口统计 + 待产品侧处理请求与根因分布）；
         报告窗口=T-1、成功率取推送值、明细上限每产品 {draft.maxInterfacesPerProduct} 行、&lt;99.5% 排序在前；
-        仿真/测试流量默认计入并在列表中打标记、排至末尾。发信通道（SMTP/发件地址）在上方「发信通道」卡片维护，
+        仿真/测试流量默认计入并在列表中打标记、排至末尾；开启「剔除豁免白名单命中」后，白名单命中的失败组（精确客户×接口组合）从统计中剔除。发信通道（SMTP/发件地址）在上方「发信通道」卡片维护，
         在此选择日报使用哪个通道。
       </Typography.Text>
 
@@ -166,7 +166,8 @@ export default function PatrolDailyReportPanel({ canEdit }) {
           />
         </div>
         <div>
-          <FieldLabel hint="默认不排除（计入并打标）">排除仿真/测试流量</FieldLabel>
+          {/* 11-25 口径升级：剥离对象=豁免白名单命中组（配置名 excludeSimTagged 向后兼容保留） */}
+          <FieldLabel hint="剔除「处理豁免白名单」命中的失败组（精确组合，非全部仿真账号）——默认不剔除（计入并打标）">剔除豁免白名单命中</FieldLabel>
           <Switch
             checked={draft.excludeSimTagged === true}
             onChange={(v) => setDraft((prev) => ({ ...prev, excludeSimTagged: v }))}

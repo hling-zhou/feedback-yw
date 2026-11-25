@@ -64,13 +64,19 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
   //      黄金回放 4097 反向校准：组 A 只收强拒绝词（Forbidden/Unauthorized/未授权/无权限/没有权限），
   //      不收「权限不足/需要授权」弱词——配额主因样本的日志附注常带角色权限措辞（先例 8月7日_西南-成都：
   //      CSLQUOTA 配额样本尾部带「服务关联角色权限不足」），弱词入组会把配额样本反劫持进权限类；
-  //      用户拍板新增类目「权限/授权不足」----
-  { order: 0, l1: '权限/授权不足', l2: 'RAM/子账号鉴权拒绝', productAction: '待处理',
+  //      用户拍板新增类目「权限&授权不足」----
+  { order: 0, l1: '权限&授权不足', l2: 'RAM/子账号鉴权拒绝', productAction: '待处理',
     requiresAll: [
       ['Forbidden', 'Unauthorized', '未授权', '无权限', '没有权限'],
       ['RAM', '鉴权', '授权', '子用户', '角色', 'action', 'Action'],
     ] },
   { order: 1, l1: '业务冲突', l2: 'DNAT规则冲突', productAction: '待处理', anyOf: ['DNAT'] },
+  // ---- 11-25 13:21 拍板（#115 误命中实证）：SDN 路由网段冲突错误码是业务冲突强语义，
+  //      必须先于 order 6/7「锁定/冲突」泛词组——组 #115「CIDR_USED_IN_SDN_ROUTE」日志
+  //      含「冲突」字样被锁定类劫持，真实语义是网段与既有路由重叠的业务规则拒绝。
+  //      错误码级匹配精确度最高，插位 order 1.5（泛词规则之前全部让位）。----
+  { order: 1.5, l1: '业务冲突', l2: '网段与路由冲突', productAction: '待处理',
+    anyOf: ['CIDR_USED_IN_SDN_ROUTE', 'has overlapped with', 'SDN_ROUTE', '网段与既有路由冲突', '路由表规则目的地址'] },
   { order: 2, l1: '诊断能力缺口', l2: '日志缺失/无数据', productAction: '—',
     anyOf: ['缺少后续', '日志不完整', '日志查询异常', '无数据'] },
   { order: 3, l1: '诊断能力缺口', l2: '日志无ERROR/WARN', productAction: '—',
@@ -86,19 +92,19 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
       ['配额', 'GLOBAL_BANDWIDTH'],
       ['超限', '用完', '不足', '用尽', '耗尽', '订购限制', '达到上限', 'QUOTA', 'GLOBAL_BANDWIDTH'],
     ] },
-  { order: 6, l1: '资源锁定/并发冲突', l2: '并发进行中', productAction: '—',
+  { order: 6, l1: '资源锁定&并发冲突', l2: '并发进行中', productAction: '—',
     orGroups: [['锁定'], ['冲突'], ['IS_LOCKING'], ['正处于', '绑定'], ['正处于', '解绑']],
     requiresAll: [['正在执行', '正在进行', '并发']] },
-  { order: 7, l1: '资源锁定/并发冲突', l2: '锁定机制待查', productAction: '待处理',
+  { order: 7, l1: '资源锁定&并发冲突', l2: '锁定机制待查', productAction: '待处理',
     orGroups: [['锁定'], ['冲突'], ['IS_LOCKING'], ['正处于', '绑定'], ['正处于', '解绑']] },
   { order: 8, l1: '业务冲突', l2: '资源被他人占用', productAction: '待处理',
     anyOf: ['回收站', 'BELONGS_TO_OTHERS'] },
-  { order: 9, l1: '参数无效/校验失败', l2: 'IP/资源ID/地址类', productAction: '—',
+  { order: 9, l1: '参数无效&校验失败', l2: 'IP/资源ID/地址类', productAction: '—',
     requiresAll: [
       ['ipId', 'IP ID', '浮动IP', 'IP地址', 'IPv4地址', '可用区'],
       ['不存在', '无效', 'null', '已被占用', '不在子网', '为空', '空字符串', '命名规则'],
     ] },
-  { order: 10, l1: '参数无效/校验失败', l2: '域名与比较类型成对', productAction: '—',
+  { order: 10, l1: '参数无效&校验失败', l2: '域名与比较类型成对', productAction: '—',
     anyOf: ['hostNameCompareType', 'PolicyDomainName', 'l7PolicyDomainName', '要么都为空'] },
   { order: 11, l1: '业务冲突', l2: 'HAVIP绑定业务校验', productAction: '待处理',
     anyOf: ['HA VIP', 'havip', 'HAVIP'] },
@@ -116,7 +122,7 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
     anyOf: ['存在绑定关系', 'UNBIND_THEN_DELETE', '已绑定其他', 'NO_BOUND_EXCEPT_BANDWIDTH', '重复绑定'] },
   // ---- 11-17 补强（真实 MCP 日志 64 兜底组语义分析产物；类目边界见 docs/DESIGN-API巡检.md §6.2）----
   // A桶 19 组：资源忙/操作进行中（无「锁定」字样的并发拒绝——时间维度：稍后重试可成功）
-  { order: 18, l1: '资源锁定/并发冲突', l2: '资源忙/稍后重试', productAction: '—',
+  { order: 18, l1: '资源锁定&并发冲突', l2: '资源忙/稍后重试', productAction: '—',
     anyOf: ['正在执行其他操作', '正在执行操作', '请稍后重试', '请稍后操作', '需要一段时间，请稍后',
             '正在进行绑定或者解绑', '不可以进行重复操作'] },
   // B桶 6 组：资源实例状态不满足（时间维度：不改状态必失败）——含 port 未绑定的资源侧状态
@@ -126,11 +132,11 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
   { order: 20, l1: '业务冲突', l2: '计费/订单策略限制', productAction: '待处理',
     anyOf: ['不支持续订', '不支持IP与关联的共享带宽一起退订', '一次性订单不支持'] },
   // D桶 4 组：请求侧传参缺失（PARAM_INCOMPLETE 码 + 必填/为空措辞）
-  { order: 21, l1: '参数无效/校验失败', l2: '必填参数缺失', productAction: '—',
+  { order: 21, l1: '参数无效&校验失败', l2: '必填参数缺失', productAction: '—',
     anyOf: ['字段为必填参数', 'PARAM_INCOMPLETE', '的类型不能为空'] },
   // E桶 1 组：资源实例不存在（状态维度的极端——实例已消亡）
   { order: 22, l1: '资源状态异常', l2: '资源不存在', productAction: '—',
     requiresAll: [['路由器', 'port', '网络', '子网', 'IP', '实例', '资源', '负载均衡'],
                   ['不存在', '已删除', '已释放']] },
-  { order: 99, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+  { order: 99, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
 ]

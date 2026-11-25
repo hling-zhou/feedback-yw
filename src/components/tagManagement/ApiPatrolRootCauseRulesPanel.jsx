@@ -77,7 +77,7 @@ export default function ApiPatrolRootCauseRulesPanel({ readOnly = false }) {
     if (fallback.length !== 1) return '兜底规则必须恰好一条'
     if (nextItems[nextItems.length - 1] !== fallback[0]) return '兜底规则必须排在末位'
     const dnatIdx = nonFallback.findIndex((r) => JSON.stringify(r).includes('DNAT'))
-    const lockIdx = nonFallback.findIndex((r) => r.l1 === '资源锁定/并发冲突')
+    const lockIdx = nonFallback.findIndex((r) => r.l1 === '资源锁定&并发冲突')
     if (dnatIdx >= 0 && lockIdx >= 0 && dnatIdx > lockIdx) {
       return 'DNAT 规则必须排在锁定类之前（否则 HAS_BEEN_ATTACHED_DNAT 会被误判为锁定）'
     }
@@ -282,7 +282,7 @@ function RuleEditModal({ initial, saving, isNew, onCancel, onOk }) {
     Array.isArray(initial.anyOf) ? /** @type {string[]} */ (initial.anyOf).join(',') : '',
   )
   const L1_OPTIONS = [
-    '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '权限/授权不足', '诊断能力缺口', '其他/未归类',
+    '业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '权限&授权不足', '诊断能力缺口', '其他&未归类',
   ]
   const isFallback = !!initial.isFallback
   return (

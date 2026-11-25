@@ -316,7 +316,7 @@ describe.skipIf(!sqliteAvailable)('Plan C 日包接收端点守卫', () => {
     db.prepare('DELETE FROM api_patrol_failure_groups').run()
     const pkg = buildPackage()
     pkg.groups[0].productAction = '—'          // 本机豁免产物显式透传
-    pkg.groups[0].rootCauseL1 = '参数无效/校验失败'  // 非缺口 L1——回退映射会给「待处理」
+    pkg.groups[0].rootCauseL1 = '参数无效&校验失败'  // 非缺口 L1——回退映射会给「待处理」
     pkg.groups[0].diagnosisStatus = 'success'
     await pushPackage(pkg)
     const g = db.prepare('SELECT * FROM api_patrol_failure_groups').get()

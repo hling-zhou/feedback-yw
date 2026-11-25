@@ -117,8 +117,8 @@ export function classifyPatrolRootCause(text, rules) {
       }
     }
   }
-  // 无兜底规则配置（异常防御）：归其他/未归类
-  return { l1: '其他/未归类', l2: '兜底', productAction: '待处理' }
+  // 无兜底规则配置（异常防御）：归其他&未归类
+  return { l1: '其他&未归类', l2: '兜底', productAction: '待处理' }
 }
 
 /**

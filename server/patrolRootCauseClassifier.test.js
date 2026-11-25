@@ -63,22 +63,22 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
     // 黄金表（设计 §6.3，2026-11-07 回放定稿；2026-11-18 修订：+order 0 权限/授权类——
     // 2 条双因样本（Unauthorized+配额，鉴权为直接触发因）从「配额不足/通用配额」转入权限类，配额 16→14、待处理 204→206）
     expect(counts['诊断能力缺口/日志缺失/无数据']).toBe(1968)
-    expect(counts['参数无效/校验失败/域名与比较类型成对']).toBe(1786)
-    expect(counts['资源锁定/并发冲突/锁定机制待查']).toBe(113)
-    expect(counts['资源锁定/并发冲突/并发进行中']).toBe(96)
+    expect(counts['参数无效&校验失败/域名与比较类型成对']).toBe(1786)
+    expect(counts['资源锁定&并发冲突/锁定机制待查']).toBe(113)
+    expect(counts['资源锁定&并发冲突/并发进行中']).toBe(96)
     expect(counts['业务冲突/绑定关系未解除']).toBe(38)
     expect(counts['资源状态异常/负载均衡器本体']).toBe(18)
-    expect(counts['其他/未归类/兜底']).toBe(16)
+    expect(counts['其他&未归类/兜底']).toBe(16)
     expect(counts['配额不足/通用配额']).toBe(14)
     expect(counts['业务冲突/HAVIP绑定业务校验']).toBe(12)
     expect(counts['诊断能力缺口/日志无ERROR/WARN']).toBe(11)
-    expect(counts['参数无效/校验失败/IP/资源ID/地址类']).toBe(6)
+    expect(counts['参数无效&校验失败/IP/资源ID/地址类']).toBe(6)
     expect(counts['配额不足/HAVIP数量上限']).toBe(5)
     expect(counts['诊断能力缺口/仅WARN结论不明']).toBe(5)
     expect(counts['资源状态异常/后端服务器组']).toBe(2)
     expect(counts['业务冲突/资源被他人占用']).toBe(4)
     expect(counts['业务冲突/DNAT规则冲突']).toBe(1)
-    expect(counts['权限/授权不足/RAM/子账号鉴权拒绝']).toBe(2)
+    expect(counts['权限&授权不足/RAM/子账号鉴权拒绝']).toBe(2)
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(4097)
     expect(pending).toBe(206)
   })
@@ -119,7 +119,7 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
   it('9.4 规则可配：停用规则1后 DNAT 文本落兜底', () => {
     const disabled = rules.map((r) => (r.order === 1 ? { ...r, enabled: false } : r))
     const r = classifyPatrolRootCause('已绑定DNAT规则禁止再绑定', disabled)
-    expect(r.l1).toBe('其他/未归类')
+    expect(r.l1).toBe('其他&未归类')
   })
 
   it('产品侧映射挂 L2 行：规则6并发进行中=—、规则7机制待查=待处理', () => {
@@ -131,14 +131,14 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
 
   // ================== 11-17 规则表补强（真实 MCP 日志措辞，64 兜底组分析产物）
 
-  it('11-17 资源忙/操作进行中（A桶 19 组措辞）→ 资源锁定/并发冲突', () => {
+  it('11-17 资源忙/操作进行中（A桶 19 组措辞）→ 资源锁定&并发冲突', () => {
     // 「正在执行其他操作」但无「锁定」字样——规则 6/7 原关键词不覆盖
     const r1 = classifyPatrolRootCause('虚拟网卡正在执行其他操作，请稍后重试；code=CSLOPENSTACK_NETWORK_VPORT', rules)
-    expect(r1.l1).toBe('资源锁定/并发冲突')
+    expect(r1.l1).toBe('资源锁定&并发冲突')
     const r2 = classifyPatrolRootCause('公网IP正在执行其他操作，请稍后重试', rules)
-    expect(r2.l1).toBe('资源锁定/并发冲突')
+    expect(r2.l1).toBe('资源锁定&并发冲突')
     const r3 = classifyPatrolRootCause('网卡绑定和解绑需要一段时间，请稍后操作！', rules)
-    expect(r3.l1).toBe('资源锁定/并发冲突')
+    expect(r3.l1).toBe('资源锁定&并发冲突')
   })
 
   it('11-17 绑定状态类（B桶 6 组措辞）→ 资源状态异常', () => {
@@ -155,11 +155,11 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
     expect(r2.l1).toBe('业务冲突')
   })
 
-  it('11-17 参数缺失（D桶 4 组措辞）→ 参数无效/校验失败', () => {
+  it('11-17 参数缺失（D桶 4 组措辞）→ 参数无效&校验失败', () => {
     const r1 = classifyPatrolRootCause('resourceId字段为必填参数，请重新输入；code=GLOBAL_REST_BIZ_PARAM_INCOMPLETE', rules)
-    expect(r1.l1).toBe('参数无效/校验失败')
+    expect(r1.l1).toBe('参数无效&校验失败')
     const r2 = classifyPatrolRootCause('公网IP的类型不能为空；code=GLOBAL_REST_BIZ_PARAM_INCOMPLETE', rules)
-    expect(r2.l1).toBe('参数无效/校验失败')
+    expect(r2.l1).toBe('参数无效&校验失败')
   })
 
   it('11-17 资源不存在（E桶措辞）→ 资源状态异常', () => {

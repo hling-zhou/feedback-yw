@@ -79,16 +79,16 @@ describe.skipIf(!sqliteAvailable)('api patrol seeds migration', () => {
 
   it('2.3 根因规则有序灌入（11-18 v2：+order 0 RAM 鉴权最优先 + 18~22 补强），兜底末位', () => {
     const rules = readRules()
-    // 种子 24 条：order 0（RAM/权限）+ 1~17 + 18~22（11-17 补强）+ 99 兜底
-    expect(rules.items).toHaveLength(24)
+    // 种子 25 条：order 0（RAM/权限）+ 1~17 + 1.5（11-25 网段与路由冲突）+ 18~22（11-17 补强）+ 99 兜底
+    expect(rules.items).toHaveLength(25)
     // 11-18：强语义（鉴权）全局最优先——#288 劫持先例（被 order 11 HAVIP 接口名泛匹配抢先）
-    expect(rules.items[0]).toMatchObject({ order: 0, l1: '权限/授权不足', l2: 'RAM/子账号鉴权拒绝' })
+    expect(rules.items[0]).toMatchObject({ order: 0, l1: '权限&授权不足', l2: 'RAM/子账号鉴权拒绝' })
     expect(rules.items[1]).toMatchObject({ l1: '业务冲突', l2: 'DNAT规则冲突', productAction: '待处理' })
     const fallback = rules.items[rules.items.length - 1]
-    expect(fallback).toMatchObject({ l1: '其他/未归类', l2: '兜底', isFallback: true, productAction: '待处理' })
+    expect(fallback).toMatchObject({ l1: '其他&未归类', l2: '兜底', isFallback: true, productAction: '待处理' })
     // 顺序连续性（order 升序；order 99 兜底恒尾）
     const orders = rules.items.map((r) => r.order)
-    expect(orders).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 99])
+    expect(orders).toEqual([0, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 99])
   })
 
   it('2.4 锁定二分：规则6 并发进行中=—、规则7 机制待查=待处理', () => {
@@ -113,9 +113,11 @@ describe.skipIf(!sqliteAvailable)('api patrol seeds migration', () => {
     migrateApiPatrolSeeds(db)
     expect(readRegistry().items).toHaveLength(35) // 手工项保留
     const rulesAfter = readRules().items
-    // v2 幂等：v2 标记已打（beforeAll 首跑）——重跑不追加不覆盖：运营删的 order 9 不复活（尊重运营编辑）
-    expect(rulesAfter).toHaveLength(23)
+    // v2 幂等：v2 标记已打（beforeAll 首跑）——重跑不追加不覆盖：运营删的 order 9 不复活（尊重运营编辑）；
+    // v4（11-25）裸跑追加 order 1.5——23 基础 +1（v4 对运营编辑无副作用：只追加缺失 order，删的 9 不复活）
+    expect(rulesAfter).toHaveLength(24)
     expect(rulesAfter.some((r) => r.order === 9)).toBe(false)
+    expect(rulesAfter.some((r) => r.order === 1.5)).toBe(true) // v4 追加新种子规则
     expect(rulesAfter.find((r) => r.order === 6).enabled).toBe(false) // 运营编辑保留
     // migration 标记存在
     const flag = db.prepare(`SELECT value FROM meta WHERE key='migrate_api_patrol_seeds_v1'`).get()

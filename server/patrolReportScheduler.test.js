@@ -83,7 +83,7 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
         first_request_id, first_request_time, pre_compress_count, suppressed_request_ids, customer_type,
         root_cause_l1, root_cause_l2, product_action_status, created_at, updated_at)
       VALUES (?, 'eip', '华南-广州3', '/customer/v3/order/delete', '退订', 'u1', 'sch-1', '10:00', 5, '[]', '普通',
-        '资源锁定/并发冲突', '锁定机制待查', '待处理', 't', 't')
+        '资源锁定&并发冲突', '锁定机制待查', '待处理', 't', 't')
     `).run(yesterday)
   }
 
@@ -115,8 +115,8 @@ describe.skipIf(!sqliteAvailable)('patrolReportScheduler 发送链守卫', () =>
     expect(sent[0].to.split(', ').sort()).toEqual(['a1@test.local', 'a2@test.local', 'b1@test.local'])
     // 2026-11-19 cc 修复：抄送人必须出现在 SMTP 消息里（此前静默丢失）
     expect(sent[0].cc).toBe('cc1@test.local')
-    // 11-20 拍板：subject 带关键数（真实失败/待处理——列表页即可扫读）
-    expect(sent[0].subject).toBe(`【AI巡检日报】${yesterday} · 真实失败 5 次 · 待处理 1 组`)
+    // 11-25 拍板：subject 去「真实」突出（口径注在正文）——失败/待处理关键数保留
+    expect(sent[0].subject).toBe(`【AI巡检日报】${yesterday} · 失败 5 次 · 待处理 1 组`)
     expect(sent[0].html).toContain('待产品侧处理')
     expect(sent[0].html).toContain('华南-广州3')
     // 状态 + 审计

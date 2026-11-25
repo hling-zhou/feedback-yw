@@ -16,10 +16,10 @@ const apiDeps = (answer) => ({
 })
 
 describe('patrolRootCauseLlmClassifier', () => {
-  it('枚举值域 = 8 类（与规则表 L1 值域一致——11-18 新增「权限/授权不足」）', () => {
+  it('枚举值域 = 8 类（与规则表 L1 值域一致——11-18 新增「权限&授权不足」）', () => {
     expect(LLM_ROOT_CAUSE_L1_OPTIONS).toHaveLength(8)
-    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('权限/授权不足')
-    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('其他/未归类')
+    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('权限&授权不足')
+    expect(LLM_ROOT_CAUSE_L1_OPTIONS).toContain('其他&未归类')
   })
 
   it('LLM 选类：正常调用日志 → 诊断能力缺口（byLlm=true）', async () => {
@@ -34,15 +34,15 @@ describe('patrolRootCauseLlmClassifier', () => {
     expect(r.byLlm).toBe(true)
   })
 
-  it('LLM 判「其他/未归类」→ byLlm=false（保持兜底语义）', async () => {
-    const r = await classifyRootCauseByLlm('含糊文本', apiDeps('其他/未归类'))
-    expect(r.l1).toBe('其他/未归类')
+  it('LLM 判「其他&未归类」→ byLlm=false（保持兜底语义）', async () => {
+    const r = await classifyRootCauseByLlm('含糊文本', apiDeps('其他&未归类'))
+    expect(r.l1).toBe('其他&未归类')
     expect(r.byLlm).toBe(false)
   })
 
   it('LLM 输出不在枚举内（编造类目）→ 拒绝，保持兜底', async () => {
     const r = await classifyRootCauseByLlm('含糊文本', apiDeps('网络抖动类'))
-    expect(r.l1).toBe('其他/未归类')
+    expect(r.l1).toBe('其他&未归类')
     expect(r.byLlm).toBe(false)
   })
 
@@ -50,7 +50,7 @@ describe('patrolRootCauseLlmClassifier', () => {
     const r = await classifyRootCauseByLlm('任意文本', {
       llm: { apiKey: 'k', forward: async () => { throw new Error('timeout') } },
     })
-    expect(r.l1).toBe('其他/未归类')
+    expect(r.l1).toBe('其他&未归类')
     expect(r.byLlm).toBe(false)
   })
 
@@ -63,7 +63,7 @@ describe('patrolRootCauseLlmClassifier', () => {
     vi.resetModules()
     const { classifyRootCauseByLlm: fresh } = await import('./patrolRootCauseLlmClassifier.js')
     const r = await fresh('任意文本', {})
-    expect(r.l1).toBe('其他/未归类')
+    expect(r.l1).toBe('其他&未归类')
     expect(r.byLlm).toBe(false)
     vi.doUnmock('./llmConfig.js')
     vi.resetModules()
@@ -72,7 +72,7 @@ describe('patrolRootCauseLlmClassifier', () => {
   it('空文本 → 直接兜底不调 LLM', async () => {
     const forward = vi.fn(async () => ({ data: { choices: [{ message: { content: '业务冲突' } }] } }))
     const r = await classifyRootCauseByLlm('', { llm: { apiKey: 'k', forward } })
-    expect(r.l1).toBe('其他/未归类')
+    expect(r.l1).toBe('其他&未归类')
     expect(forward).not.toHaveBeenCalled()
   })
 })

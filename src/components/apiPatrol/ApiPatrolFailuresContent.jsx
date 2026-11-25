@@ -24,7 +24,7 @@ const { RangePicker } = DatePicker
  * 数据来自 /api/patrol/failures/*（camelCase 返回）。
  */
 const ROOT_CAUSE_L1_OPTIONS = [
-  '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '权限/授权不足', '诊断能力缺口', '其他/未归类',
+  '业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '权限&授权不足', '诊断能力缺口', '其他&未归类',
 ]
 const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断']
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
@@ -878,10 +878,7 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                       { key: 'action', label: '确立举措', children: String(/** @type {{establishedAction?: string}} */ (group).establishedAction || '—') },
                       { key: 'schedule', label: '举措排期', children: String(/** @type {{actionSchedule?: string}} */ (group).actionSchedule || '—') },
                       { key: 'assignee', label: '经办人', children: String(/** @type {{assignee?: string}} */ (group).assignee || '—') },
-                      { key: 'manualL1', label: '人工修正大类', children: (() => {
-                        const { l1 } = displayRootCause(group, 'list')
-                        return String(/** @type {{rootCauseL1Manual?: string}} */ (group).rootCauseL1Manual || l1 || '—')
-                      })() },
+                      { key: 'manualL1', label: '人工修正大类', children: String(/** @type {{rootCauseL1Manual?: string}} */ (group).rootCauseL1Manual || '—') },
                       { key: 'manualL2', label: '人工修正细分', children: String(/** @type {{rootCauseL2Manual?: string}} */ (group).rootCauseL2Manual || '—') },
                       { key: 'feedbackBy', label: '反馈人/时间', children: [
                         String(/** @type {{feedbackBy?: string}} */ (group).feedbackBy || ''),

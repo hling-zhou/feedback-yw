@@ -75,7 +75,7 @@ describeCand('patrol LLM 判定候选建议接口', () => {
     // 「RAM 子用户无此操作权限」出现 2 次（组1、组2）→ 候选
     const ram = candidates.find((c) => c.l2 === 'RAM 子用户无此操作权限')
     expect(ram).toBeTruthy()
-    expect(ram.l1).toBe('权限/授权不足')
+    expect(ram.l1).toBe('权限&授权不足')
     expect(ram.count).toBe(2)
     // 样例组 id 双份（供面板跳转）
     expect(Array.isArray(ram.sampleGroupIds)).toBe(true)
@@ -110,8 +110,8 @@ function seedCandidates() {
     VALUES (?, 'eip', 'p1', '/acl/v3/port/attach', '绑定', ?, ?, ?, ?, ?, '', ?, ?, '待处理', 't', 't')
   `)
   // 组1/组2：同场景出现 2 次（llm 来源）→ 候选
-  insertGroup.run('2026-09-01', 'userA', 'f-1', '2026-09-01 10:00:00', 1, '[]', '权限/授权不足', 'RAM 子用户无此操作权限')
-  insertGroup.run('2026-09-01', 'userB', 'f-2', '2026-09-01 11:00:00', 1, '[]', '权限/授权不足', 'RAM 子用户无此操作权限')
+  insertGroup.run('2026-09-01', 'userA', 'f-1', '2026-09-01 10:00:00', 1, '[]', '权限&授权不足', 'RAM 子用户无此操作权限')
+  insertGroup.run('2026-09-01', 'userB', 'f-2', '2026-09-01 11:00:00', 1, '[]', '权限&授权不足', 'RAM 子用户无此操作权限')
   // 组3：孤例（llm 来源）→ 不列候选
   insertGroup.run('2026-09-01', 'userC', 'f-3', '2026-09-01 12:00:00', 1, '[]', '业务冲突', '孤例场景')
   // 组4：rule 来源 → 不进候选聚合

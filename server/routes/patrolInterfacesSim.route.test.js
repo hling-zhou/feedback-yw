@@ -63,7 +63,7 @@ describe.skipIf(!sqliteAvailable)('异常接口列表：仿真/测试排后守�
       INSERT INTO api_patrol_failure_groups (group_date, product_key, pool_name, api_path, metric_name, user_name,
         first_request_id, first_request_time, pre_compress_count, suppressed_request_ids, customer_type,
         root_cause_l1, root_cause_l2, product_action_status, created_at, updated_at)
-      VALUES (?, 'eip', '华南-广州3', ?, ?, ?, ?, ?, 1, '[]', ?, '资源锁定/并发冲突', '锁定机制待查', '待处理', 't', 't')
+      VALUES (?, 'eip', '华南-广州3', ?, ?, ?, ?, ?, 1, '[]', ?, '资源锁定&并发冲突', '锁定机制待查', '待处理', 't', 't')
     `)
     insGroup.run(D, '/customer/v3/order/create', '订购', 'real-user', 'if-1', '10:00', '普通')
     insGroup.run(D, '/sim/only/path', '批量', 'cmic_sim', 'if-2', '11:00', '仿真')       // 纯仿真接口
@@ -120,7 +120,7 @@ describe.skipIf(!sqliteAvailable)('异常接口列表：仿真/测试排后守�
     expect(facts.productCount).toBe(1)
     expect(facts.poolCount).toBe(1)
     expect(facts.focus).toMatchObject({ apiPath: '/mixed/real/sim', pre: 2, groups: 2, simPre: 1 })
-    expect(facts.causeTop3[0]).toMatchObject({ l1: '资源锁定/并发冲突', count: 4, ratio: 100 })
+    expect(facts.causeTop3[0]).toMatchObject({ l1: '资源锁定&并发冲突', count: 4, ratio: 100 })
     expect(facts.closure).toMatchObject({ pending: 4, processed: 0, undiagnosed: 0, simGroups: 2 })
     // 环比：上一日无数据 → 失败 +3、接口 +3
     expect(facts.delta).toMatchObject({ prevFailTotal: 0, failDelta: 3, interfaceDelta: 3 })
@@ -137,7 +137,7 @@ describe.skipIf(!sqliteAvailable)('异常接口列表：仿真/测试排后守�
     expect(summary.text).toContain('API 巡检概况')
     expect(summary.text).toContain(`${facts.failTotal} 次`)
     expect(summary.text).toContain('仿真/测试')       // 纯仿真最差接口标注
-    expect(summary.text).toContain('资源锁定/并发冲突 100%')
+    expect(summary.text).toContain('资源锁定&并发冲突 100%')
     expect(summary.text).toContain('待产品侧处理 4 组')
     expect(summary.text).toContain('较上一等长周期')
     expect(summary.text).toContain('\n') // 分行排版（2026-11-07 拍板：每行一个焦点）

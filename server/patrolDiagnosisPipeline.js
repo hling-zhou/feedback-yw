@@ -29,7 +29,7 @@ import { isExemptFromProductAction } from './patrolActionExemptions.js'
  * 【排除 directCause——真实链路实证（#288）】：directCause 是原始日志行摘录，
  * 同一请求的日志常含其他校验阶段的关键词（如 RAM 鉴权失败组的日志行里混着
  * 「IPv4地址不存在」），拼进分类文本会让规则表被日志噪声劫持、归错大类
- * （实测：结论明说 RAM 鉴权拒绝，规则却判「参数无效/校验失败」）。
+ * （实测：结论明说 RAM 鉴权拒绝，规则却判「参数无效&校验失败」）。
  * @param {{ conclusion: string | null, evidence: string[] }} llmReport
  * @returns {string}
  */
@@ -118,7 +118,7 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
     onStage?.('diagnose', `LLM ${analysis.attempts} 次全失败——视为未诊断（保持 pending，明日重试）`)
     return {
       status: 'no_diagnosis',
-      l1: '其他/未归类', l2: '', // 11-18 拍板：L2 是场景不是来源标注——未诊断无场景，置空
+      l1: '其他&未归类', l2: '', // 11-18 拍板：L2 是场景不是来源标注——未诊断无场景，置空
       productAction: '待处理',
       rootCauseSource: null,
       conclusion: null, directCause: [], evidence: [], suggestion: null,
@@ -149,7 +149,7 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
   // ---------- ③④ LLM 已产出：规则表对 LLM 产物文本定类；未命中 → LLM 枚举兜底
   const classificationText = buildClassificationText(analysis)
   const classified = classifyPatrolRootCause(classificationText, rules)
-  if (classified.l1 !== '其他/未归类' && classified.l1 !== '诊断能力缺口') {
+  if (classified.l1 !== '其他&未归类' && classified.l1 !== '诊断能力缺口') {
     // 规则命中（对 LLM 语义文本）——规则表=归类真源
     onStage?.('diagnose', `规则命中（LLM 语义文本）→「${classified.l1}」`)
     // 11-24 拍板：productAction 统一 LLM 现场判定优先（needsProductAction）——消除双路径矛盾
@@ -180,7 +180,7 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
     }
   }
   // 规则未命中 → LLM 枚举判断（analyzeFailureByLlm 已产 rootCauseL1——同一调用产物直接用，不二次调用）
-  const l1 = analysis.rootCauseL1 || '其他/未归类'
+  const l1 = analysis.rootCauseL1 || '其他&未归类'
   onStage?.('diagnose', `规则未命中——LLM 枚举判断 →「${l1}」`)
   // 11-18 拍板：productAction 由 LLM 现场判定（needsProductAction）——客户侧使用问题/瞬时冲突=—，
   // 产品缺陷/平台故障=待处理；保守默认 true。L2 优先 LLM 生成场景，缺失时从结论提取兜底。

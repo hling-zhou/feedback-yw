@@ -43,16 +43,16 @@ const GOLDEN = {
   failRows: 4097,
   l2Counts: {
     '诊断能力缺口/日志缺失/无数据': 1968,
-    '参数无效/校验失败/域名与比较类型成对': 1786,
-    '资源锁定/并发冲突/锁定机制待查': 113,
-    '资源锁定/并发冲突/并发进行中': 96,
+    '参数无效&校验失败/域名与比较类型成对': 1786,
+    '资源锁定&并发冲突/锁定机制待查': 113,
+    '资源锁定&并发冲突/并发进行中': 96,
     '业务冲突/绑定关系未解除': 38,
     '资源状态异常/负载均衡器本体': 18,
-    '其他/未归类/兜底': 16,
+    '其他&未归类/兜底': 16,
     '配额不足/通用配额': 16,
     '业务冲突/HAVIP绑定业务校验': 12,
     '诊断能力缺口/日志无ERROR/WARN': 11,
-    '参数无效/校验失败/IP/资源ID/地址类': 6,
+    '参数无效&校验失败/IP/资源ID/地址类': 6,
     '配额不足/HAVIP数量上限': 5,
     '诊断能力缺口/仅WARN结论不明': 5,
     '资源状态异常/后端服务器组': 2,
@@ -122,8 +122,12 @@ describe.skipIf(!sqliteAvailable)('API 巡检端到端（样例全量走真实�
         try { parsed = JSON.parse(body) } catch { /* ignore */ }
         const args = /** @type {{ arguments?: { filter?: string, requestId?: string } }} */ (parsed.params || {})
         const rid = String(args.arguments?.filter || args.arguments?.requestId || '')
-        // 从 pushed_diagnose 反查：diagMap 在模块级由 seedMcpMap 注入
-        const text = mcpDiagMap.get(rid) || JSON.stringify({ final_conclusion: '日志查询异常/无数据-mock' })
+        // 从 pushed_diagnose 反查：mcpDiagMap key=完整 reqId-xxx；诊断链 filter 剥了 reqId- 前缀
+        // 只传 hex 段（patrolDiagnose.js L236——下游 412 子查询连字符坑）——两端对齐：
+        // 先精确命中（历史形态），再按 hex 段反查（剥前缀比对），全不中才回无数据（快速路径走真形态）
+        const text = mcpDiagMap.get(rid)
+          || [...mcpDiagMap.entries()].find(([k]) => k.replace(/^reqId-/, '') === rid)?.[1]
+          || JSON.stringify({ final_conclusion: '日志查询异常/无数据-mock' })
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({
           jsonrpc: '2.0', id: parsed.id,

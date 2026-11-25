@@ -287,6 +287,19 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     expect(src).toMatch(/pageSize: 10/)
   })
 
+  it('只读态「人工修正大类」空值契约（11-25 修复防回潮）：manual 空显 — 不得兜底 AI 原判', () => {
+    const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
+    const src = fs.readFileSync(contentPath, 'utf-8')
+    // 修复前形态：manualL1 行用 displayRootCause(group,'list') 兜底（AI 原判冒充人工修正）
+    // ——修复后直接 manual || '—'（与 manualL2 同款）。防回潮：兜底调用不得再出现在 manualL1 行。
+    const manualL1Line = src.split('\n').find((l) => l.includes("key: 'manualL1'"))
+    expect(manualL1Line).toBeTruthy()
+    expect(manualL1Line).toMatch(/rootCauseL1Manual/)
+    expect(manualL1Line).not.toMatch(/displayRootCause/)
+    // 「AI 判定：」对照行仍取 ai-original（list/ai-original 两模式语义各归其位）
+    expect(src).toMatch(/displayRootCause\(group, 'ai-original'\)/)
+  })
+
   it('详情抽屉样式对齐反馈库 D1-D5 规范（11-17 晚拍板：方案 B + bordered 保留）', () => {
     const contentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'components', 'apiPatrol', 'ApiPatrolFailuresContent.jsx')
     const src = fs.readFileSync(contentPath, 'utf-8')

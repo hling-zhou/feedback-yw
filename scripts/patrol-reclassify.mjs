@@ -1,5 +1,5 @@
 /**
- * 存量「其他/未归类」失败组重分类脚本（11-17 一次性工具）。
+ * 存量「其他&未归类」失败组重分类脚本（11-17 一次性工具）。
  * 链路：读 mcp_raw_response → extractDiagnosticText（新提取层）→ 规则表（新 5 条）
  *      → 规则仍兜底且文本非空 → LLM 语义兜底 → 更新 groups/diagnoses。
  * 用法：
@@ -41,10 +41,10 @@ const rows = db.prepare(`
   SELECT g.id, g.product_key, g.pool_name, g.api_path, g.product_action_status, d.mcp_raw_response
   FROM api_patrol_failure_groups g
   JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
-  WHERE g.root_cause_l1 = '其他/未归类'
+  WHERE g.root_cause_l1 = '其他&未归类'
   ORDER BY g.id
 `).all()
-console.log(`[reclassify] 目标 ${rows.length} 组（当前 其他/未归类）${DRY_RUN ? '（dry-run）' : ''}`)
+console.log(`[reclassify] 目标 ${rows.length} 组（当前 其他&未归类）${DRY_RUN ? '（dry-run）' : ''}`)
 
 const counts = {}
 const updates = []
@@ -53,13 +53,13 @@ for (const r of rows) {
   const text = extractDiagnosticText(String(r.mcp_raw_response || ''), '', isElb)
   let classified = classifyPatrolRootCause(text, API_PATROL_ROOT_CAUSE_RULES_SEED)
   let byLlm = false
-  if (classified.l1 === '其他/未归类' && text) {
+  if (classified.l1 === '其他&未归类' && text) {
     const llm = await classifyRootCauseByLlm(text)
     if (llm.byLlm) { classified = { l1: llm.l1, l2: '' }; byLlm = true } // 11-18 拍板：L2 场景置空待 LLM 主链补（此脚本只兜 L1）
   }
   const key = classified.l1 + '/' + classified.l2 + (byLlm ? ' (LLM)' : '')
   counts[key] = (counts[key] || 0) + 1
-  if (classified.l1 !== '其他/未归类' || classified.l2 !== '兜底') {
+  if (classified.l1 !== '其他&未归类' || classified.l2 !== '兜底') {
     updates.push({ id: r.id, l1: classified.l1, l2: classified.l2, text: text.slice(0, 60) })
   }
 }

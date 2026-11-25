@@ -45,8 +45,8 @@ const MCP_TEXT_NORMAL_ONLY = JSON.stringify({
 
 /** 规则表（种子形态最小集——含锁定规则与兜底）。 */
 const RULES = [
-  { order: 1, l1: '资源锁定/并发冲突', l2: '并发进行中', productAction: '待处理', anyOf: ['IS_LOCKING', '锁定'] },
-  { order: 2, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+  { order: 1, l1: '资源锁定&并发冲突', l2: '并发进行中', productAction: '待处理', anyOf: ['IS_LOCKING', '锁定'] },
+  { order: 2, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
 ]
 
 /** LLM 五段产物（锁定关键词在结论文本中——11-18 拍板口径：分类输入=结论，directCause 不进分类）。 */
@@ -55,7 +55,7 @@ const LLM_REPORT_LOCK = {
   directCause: ['[ERROR] resource IS_LOCKING, please retry later'],
   evidence: ['资源 IS_LOCKING，稍后重试可能成功'],
   suggestion: '稍后重试',
-  rootCauseL1: '资源锁定/并发冲突',
+  rootCauseL1: '资源锁定&并发冲突',
 }
 
 /** LLM 五段产物（规则不可命中——走枚举兜底）。 */
@@ -101,7 +101,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     })
     expect(r.status).toBe('success')
     // 规则表=归类真源：「锁定」在 LLM 结论文本中命中 → 规则 L1/L2
-    expect(r.l1).toBe('资源锁定/并发冲突')
+    expect(r.l1).toBe('资源锁定&并发冲突')
     expect(r.l2).toBe('并发进行中')
     expect(r.productAction).toBe('待处理')
     expect(r.rootCauseSource).toBe('llm')
@@ -119,7 +119,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
       directCause: ['[WARN] checking resource IS_LOCKING before unbind'],
       evidence: ['Forbidden：未授权 action'],
       suggestion: '主账号 RAM 授权后重试',
-      rootCauseL1: '参数无效/校验失败',
+      rootCauseL1: '参数无效&校验失败',
     }
     const forward = vi.fn(makeForward(JSON.stringify(report)))
     const r = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
@@ -127,7 +127,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
     expect(r.status).toBe('success')
-    expect(r.l1).toBe('参数无效/校验失败') // LLM 枚举兜底，非规则「锁定」劫持
+    expect(r.l1).toBe('参数无效&校验失败') // LLM 枚举兜底，非规则「锁定」劫持
     // 11-18 拍板：l2=结论首句核心语义（场景），不再是来源标注
     expect(r.l2).toBe('RAM 子用户未被授权该操作，鉴权阶段直接拒绝')
     expect(forward).toHaveBeenCalledTimes(1)
@@ -155,7 +155,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     const report = {
       conclusion: '客户传入的参数不满足校验规则，请求被拒绝',
       directCause: ['[ERROR] invalid param'], evidence: ['参数校验失败'], suggestion: '修正参数后重试',
-      rootCauseL1: '参数无效/校验失败', rootCauseL2: '参数校验拒绝',
+      rootCauseL1: '参数无效&校验失败', rootCauseL2: '参数校验拒绝',
       needsProductAction: false, actionReason: '客户侧传参错误，产品无缺陷',
     }
     const forward = vi.fn(makeForward(JSON.stringify(report)))
@@ -163,7 +163,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
       rules: RULES,
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
-    expect(r.l1).toBe('参数无效/校验失败')
+    expect(r.l1).toBe('参数无效&校验失败')
     expect(r.l2).toBe('参数校验拒绝') // LLM 生成值优先（不再走结论首句提取）
     expect(r.productAction).toBe('—') // needsProductAction=false → 不需产品侧处理
     expect(r.actionReason).toBe('客户侧传参错误，产品无缺陷')
@@ -190,7 +190,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     // 业务冲突规则（计费/订单策略限制——#378 先例同形态）+ LLM 判不需产品侧处理（#377 同语义）
     const rules = [
       { order: 20, l1: '业务冲突', l2: '计费/订单策略限制', productAction: '待处理', anyOf: ['不支持续订'] },
-      { order: 99, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+      { order: 99, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
     ]
     const report = {
       conclusion: '该资源属于按量计费订单，产品规则本身不支持续订，请求被拦截，非平台故障',
@@ -213,15 +213,15 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
   it('②d（11-24 A1）规则命中 + LLM needsProductAction=true → 待处理且不标不一致；LLM 无该字段 → 规则值兜底（降级链路行为不变）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const rules = [
-      { order: 1, l1: '资源锁定/并发冲突', l2: '并发进行中', productAction: '—', anyOf: ['IS_LOCKING', '锁定'] },
-      { order: 99, l1: '其他/未归类', l2: '兜底', productAction: '待处理', isFallback: true },
+      { order: 1, l1: '资源锁定&并发冲突', l2: '并发进行中', productAction: '—', anyOf: ['IS_LOCKING', '锁定'] },
+      { order: 99, l1: '其他&未归类', l2: '兜底', productAction: '待处理', isFallback: true },
     ]
     // LLM 判需处理 → 与规则「—」不一致 → 待处理 + 标注
     const r1 = await runPatrolDiagnosisPipeline(MCP_TEXT_WITH_ERROR, {}, {
       rules,
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward: vi.fn(makeForward(JSON.stringify({ ...LLM_REPORT_LOCK, needsProductAction: true, actionReason: '锁定长时间不释放需排查' }))) },
     })
-    expect(r1.l1).toBe('资源锁定/并发冲突')
+    expect(r1.l1).toBe('资源锁定&并发冲突')
     expect(r1.productAction).toBe('待处理')   // LLM true 优先（规则值 — 被覆盖）
     expect(r1.actionReason).toContain('规则表倾向 —，LLM 现场判 待处理')
     // LLM 无 needsProductAction 字段（旧形态 fixture）→ analyzer 保守归一 true → 待处理
@@ -271,7 +271,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
     expect(r.status).toBe('success')
-    expect(r.l1).toBe('资源锁定/并发冲突')     // 分类不受豁免影响
+    expect(r.l1).toBe('资源锁定&并发冲突')     // 分类不受豁免影响
     expect(r.productAction).toBe('—')          // 白名单命中豁免（改前红：全量仿真豁免时代断言口径不同）
     expect(r.actionReason).toContain('命中处理豁免白名单')
   })

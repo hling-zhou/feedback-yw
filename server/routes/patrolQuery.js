@@ -29,8 +29,8 @@ import {
 import { getLlmCompletionText } from '../../src/lib/llmClient.js'
 
 const PATROL_L1_SET = new Set([
-  '业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败',
-  '资源状态异常', '诊断能力缺口', '其他/未归类',
+  '业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败',
+  '资源状态异常', '诊断能力缺口', '其他&未归类',
 ])
 
 /**
@@ -999,7 +999,7 @@ export function registerPatrolQueryRoutes(app) {
     `).all(start, end)
 
     // ④L1 趋势（七类全画，缺类 0）
-    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类']
+    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '诊断能力缺口', '其他&未归类']
     /** @type {Array<Record<string, unknown>>} */
     const dailyTrend = []
     const trendRows = db.prepare(`

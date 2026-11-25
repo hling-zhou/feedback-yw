@@ -92,7 +92,7 @@ describeStats('patrol cause-stats 聚合接口', () => {
     })
     const data = res.json()
     expect(data.dailyTrend).toHaveLength(2) // 两天
-    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定/并发冲突', '参数无效/校验失败', '资源状态异常', '诊断能力缺口', '其他/未归类']
+    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '诊断能力缺口', '其他&未归类']
     for (const day of data.dailyTrend) {
       for (const k of L1_KEYS) expect(day[k]).toBeGreaterThanOrEqual(0) // 七类全画
     }

@@ -1,6 +1,7 @@
 import { getDb } from './db.js'
 import { storageRepository } from './storageRepository.js'
 import { getPublicAppUrl } from './mailRepository.js'
+import { isExemptFromProductAction } from './patrolActionExemptions.js'
 
 /** 推送阈值口径（与溯源页/总览一致） */
 const PUSH_THRESHOLD = 99.5
@@ -47,7 +48,8 @@ export function buildPatrolDailyReport(date, options = {}) {
   ).all(date)
   const groupRows = db.prepare(
     `SELECT product_key pk, product_action_status status, customer_type ctype,
-            root_cause_l1 l1, root_cause_l2 l2, pre_compress_count pre, pool_name pool, api_path AS apiPath
+            root_cause_l1 l1, root_cause_l2 l2, pre_compress_count pre, pool_name pool, api_path AS apiPath,
+            user_name AS userName
      FROM api_patrol_failure_groups WHERE group_date = ?`,
   ).all(date)
 
@@ -78,6 +80,7 @@ export function buildPatrolDailyReport(date, options = {}) {
   /** @type {Map<string, { groups: number, sim: number, pending: number, l1: Map<string, number> }>} */
   const simAggByInterface = new Map() // pool\0api → 组数/仿真数/待处理数/L1 计数（11-20 拍板：表格根因分布+待产品处理列）
   /** @type {Map<string, Map<string, {count: number, pre: number}>>} */ const l1ByProduct = new Map()
+  /** @type {Map<string, {l1: string, l2: string}>} */ const l1MetaByProduct = new Map() // 11-25：复合键 → {l1,l2}（总览句二级渲染）
   /** @type {Map<string, number>} */ const statusByProduct = new Map() // pk -> {待处理/处理中/已处理...} 组数（11-20 全组口径闭环计数）
   let simTaggedTotal = 0
   let undiagnosedTotal = 0
@@ -85,6 +88,10 @@ export function buildPatrolDailyReport(date, options = {}) {
   for (const g of groupRows) {
     const pk = String(g.pk)
     const isSim = g.ctype === '仿真' || g.ctype === '测试账号'
+    // 11-25 10:15 拍板：剥离口径=豁免白名单命中组（替代 11-20 全量仿真标签剥离——豁免 11-21
+    // 收敛白名单后两套口径脱节：白名单外仿真组是需关注的真实失败，不该被剔除）。
+    // isSim 仅保留展示语义（chips 仿真/测试标识、simTagged 计数），不再参与剥离。
+    const isExempt = isExemptFromProductAction(String(g.userName || ''), String(g.apiPath || ''), String(g.pool || ''))
     const undiagnosed = g.l1 == null
     if (isSim) simTaggedTotal += 1
     if (undiagnosed) {
@@ -93,18 +100,26 @@ export function buildPatrolDailyReport(date, options = {}) {
       undiagByPool.set(poolKey, (undiagByPool.get(poolKey) || 0) + 1)
     }
     const ikey = `${g.pool}\u0000${g.apiPath || ''}`
-    if (!simAggByInterface.has(ikey)) simAggByInterface.set(ikey, { groups: 0, sim: 0, pending: 0, l1: new Map() })
+    if (!simAggByInterface.has(ikey)) simAggByInterface.set(ikey, { groups: 0, sim: 0, pending: 0, exempt: 0, l1: new Map() })
     const si = simAggByInterface.get(ikey)
     si.groups += 1
     if (isSim) si.sim += 1
+    if (isExempt) si.exempt += 1
     if (g.status === '待处理') si.pending += 1
+    // 11-25 拍板：根因分布显示到二级（L1/L2）——聚合键扩 L2（L2 空值按 '—' 归并，
+    // 与缺口类 L2 空值「/」展示口径一致由渲染层处理）
     const l1Key = String(g.l1 || '未诊断')
-    si.l1.set(l1Key, (si.l1.get(l1Key) || 0) + 1)
-    if (excludeSim && isSim) continue // 排除口径：不进任何统计（含待处理）
+    const l2Key = String(g.l2 || '')
+    const l1l2Key = `${l1Key}\u0000${l2Key}`
+    si.l1.set(l1l2Key, (si.l1.get(l1l2Key) || 0) + 1)
+    si.l1Meta = si.l1Meta || new Map() // l1l2Key → {l1, l2}（渲染层不重复解析）
+    si.l1Meta.set(l1l2Key, { l1: l1Key, l2: l2Key })
+    if (excludeSim && isExempt) continue // 剥离口径（11-25 拍板）：豁免白名单命中组不进产品统计
     const p = ensure(pk)
     p.groups += 1
     p.preTotal += Number(g.pre || 0)
     if (isSim) { p.simTaggedGroups += 1; p.simTaggedPre += Number(g.pre || 0) }
+    if (isExempt) p.exemptPre = (p.exemptPre || 0) + Number(g.pre || 0) // 11-25：豁免口径独立计数（realFailTotal 数据源）
     const pool = String(g.pool || '')
     if (!poolsSeen.has(pk)) poolsSeen.set(pk, new Set())
     poolsSeen.get(pk).add(pool)
@@ -116,7 +131,9 @@ export function buildPatrolDailyReport(date, options = {}) {
     statusByProduct.set(pk, sm)
     if (!l1ByProduct.has(pk)) l1ByProduct.set(pk, new Map())
     const l1m = l1ByProduct.get(pk)
-    const l1key2 = String(g.l1 || '未分类')
+    // 11-25 拍板：产品级聚合键同步扩 L2（总览句二级呈现）；meta 并存防渲染层重复解析
+    const l1key2 = `${String(g.l1 || '未分类')}\u0000${String(g.l2 || '')}`
+    l1MetaByProduct.set(l1key2, { l1: String(g.l1 || '未分类'), l2: String(g.l2 || '') })
     const cur = l1m.get(l1key2) || { count: 0, pre: 0 }
     cur.count += 1; cur.pre += Number(g.pre || 0)
     l1m.set(l1key2, cur)
@@ -155,11 +172,26 @@ export function buildPatrolDailyReport(date, options = {}) {
       ? Math.round(((ca.total - ca.fail) / ca.total) * 10000) / 100
       : statsRate
     if (Number.isFinite(rate) && rate < PUSH_THRESHOLD) lowRateTotal += 1
-    // 根因分布 Top3：L1 计数降序（11-20 拍板：L1 Top3+组数；未诊断组如实标注）
-    const causeTop = [...si.l1.entries()]
+    // 根因分布 Top3：11-25 11:08 拍板——按 L1 去重（三席位给三个不同 L1，防单一大类
+    // 的 L2 拆分霸榜），L2 在席位内并列显示；L1 计数=该大类组合计（L2 拆分前口径）
+    const l1Totals = new Map() // l1 → 总组数（席位排序用）
+    const l1L2s = new Map() // l1 → [{l2, count}]（席位内并列展示用）
+    for (const [l1l2Key, n] of si.l1.entries()) {
+      const meta = (si.l1Meta && si.l1Meta.get(l1l2Key)) || { l1: l1l2Key, l2: '' }
+      l1Totals.set(meta.l1, (l1Totals.get(meta.l1) || 0) + n)
+      if (!l1L2s.has(meta.l1)) l1L2s.set(meta.l1, [])
+      l1L2s.get(meta.l1).push({ l2: meta.l2, count: n })
+    }
+    const causeTop = [...l1Totals.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([l1, n]) => ({ l1, count: n }))
+      .map(([l1, total]) => ({
+        l1,
+        l2s: (l1L2s.get(l1) || [])
+          .sort((a, b) => b.count - a.count)
+          .map((x) => ({ l2: x.l2, count: x.count })),
+        count: total,
+      }))
     p.interfaces.push({
       pool: String(s.pool || ''),
       metric: String(s.metric || ''),
@@ -169,7 +201,7 @@ export function buildPatrolDailyReport(date, options = {}) {
       totalCount: ca.total,
       failCount: ca.fail,
       belowThreshold: Number.isFinite(rate) && rate < PUSH_THRESHOLD,
-      pureSim: si.groups > 0 && si.sim === si.groups,
+      pureSim: si.groups > 0 && si.exempt === si.groups, // 11-25 口径：全豁免接口排底（原全仿真口径）
       pendingGroups: si.pending,
       causeTop,
     })
@@ -187,8 +219,13 @@ export function buildPatrolDailyReport(date, options = {}) {
     })
     p.interfaces = p.interfaces.slice(0, maxInterfaces)
     // 11-20 拍板：根因分布全组口径（l1m 已在组循环里全量聚合）；l2Top 段落删除（信息进表格列）
+    // 11-25 拍板：复合键解包 L1/L2（总览句与 dist 消费方二级呈现）
     const l1m = l1ByProduct.get(p.productKey)
-    if (l1m) p.causeDist = [...l1m.entries()].map(([l1, v]) => ({ l1, count: v.count, pre: v.pre }))
+    if (l1m) p.causeDist = [...l1m.entries()]
+      .map(([l1l2Key, v]) => {
+        const meta = l1MetaByProduct.get(l1l2Key) || { l1: l1l2Key, l2: '' }
+        return { l1: meta.l1, l2: meta.l2, count: v.count, pre: v.pre }
+      })
       .sort((a, b) => b.count - a.count)
     p.l2Top = []
     // 已闭环组数（处理中+已处理——11-20 KPI 副注「已闭环 C 组」）
@@ -231,7 +268,8 @@ export function buildPatrolDailyReport(date, options = {}) {
     worst: allInterfaces.length ? allInterfaces[0] : null,
     // 11-20 拍板：真实口径（剥离仿真）——KPI 卡/结论行用；realWorst 排除纯仿真接口
     simFailTotal: products.reduce((a, p) => a + p.simTaggedPre, 0),
-    realFailTotal: failTotalPre - products.reduce((a, p) => a + p.simTaggedPre, 0),
+    // 11-25 10:15 拍板：真实口径=剔除豁免白名单命中（原全量仿真剥离口径废弃）——exemptPre 数据源
+    realFailTotal: failTotalPre - products.reduce((a, p) => a + (p.exemptPre || 0), 0),
     realWorst: allInterfaces.find((it) => !it.pureSim) || null,
     pendingTotal: products.reduce((a, p) => a + p.pendingGroups, 0),
     closedTotal: products.reduce((a, p) => a + (p.closedGroups || 0), 0),
@@ -249,8 +287,12 @@ export function buildPatrolDailyReport(date, options = {}) {
   // 从未诊断组（undiagnosedTotal/undiagByPool）单列，两者都不进待处理数字
   const gapL1ByProduct = new Map()
   for (const [pk, l1m] of l1ByProduct.entries()) {
-    const gap = l1m.get('诊断能力缺口')
-    if (gap) gapL1ByProduct.set(pk, gap.count)
+    // 11-25 复合键适配：L1='诊断能力缺口' 的任意 L2 前缀聚合（缺口组 L2 常为空或'日志缺失/无数据'）
+    let gapCount = 0
+    for (const [l1l2Key, v] of l1m.entries()) {
+      if (l1l2Key.startsWith('诊断能力缺口\u0000')) gapCount += v.count
+    }
+    if (gapCount > 0) gapL1ByProduct.set(pk, gapCount)
   }
   const gapGroups = [...gapL1ByProduct.values()].reduce((a, n) => a + n, 0)
 
@@ -326,11 +368,11 @@ export function renderPatrolDailyReportHtml(report) {
   if (report.overview && report.products.length > 0) {
     const o = report.overview
     lines.push(`<p style="margin:0 0 10px;padding:8px 10px;background:#f7f8fa;border-left:3px solid #534ab7;border-radius:0 6px 6px 0;">`)
-    lines.push(`<strong>昨日失败（真实口径，剥离仿真/测试）${o.realFailTotal} 次</strong>（压缩 ${o.groupsTotal} 组）；`)
+    lines.push(`<strong>昨日失败（剔除豁免白名单命中）${o.realFailTotal} 次</strong>（压缩 ${o.groupsTotal} 组）；`)
     if (o.realWorst) {
       lines.push(`最严重 ${esc(o.realWorst.productName)}·${esc(o.realWorst.metric)}（${esc(o.realWorst.pool)}，成功率 ${o.realWorst.successRate}%、失败 ${o.realWorst.failCount} 次）；`)
     }
-    lines.push(`待产品侧处理 <strong style="color:#d4380d;">${o.pendingTotal}</strong> 组${o.pendingTotal > 0 && report.products.some((p) => p.causeDist.length > 0) ? '，待处理根因：' + esc(report.products.flatMap((p) => p.causeDist.filter((d) => d.l1 !== '未分类').map((d) => `${d.l1} ${d.count}`)).slice(0, 4).join('、')) : ''}。`)
+    lines.push(`待产品侧处理 <strong style="color:#d4380d;">${o.pendingTotal}</strong> 组${o.pendingTotal > 0 && report.products.some((p) => p.causeDist.length > 0) ? '，待处理根因：' + esc(report.products.flatMap((p) => p.causeDist.filter((d) => d.l1 !== '未分类').map((d) => `${d.l1}${d.l2 ? ' / ' + d.l2 : ''} ${d.count}`)).slice(0, 4).join('、')) : ''}。`)
     lines.push(`</p>`)
   }
 
@@ -365,7 +407,7 @@ export function renderPatrolDailyReportHtml(report) {
     lines.push('<table style="border-collapse:separate;border-spacing:8px 8px;margin:-8px -8px 4px;width:100%;" cellspacing="0" cellpadding="0"><tr>')
     lines.push(`<td style="${kpiTd}"><div style="${kpiLabel}">失败请求（真实）</div><div style="${kpiValue}">${o.realFailTotal}<span style="font-size:12px;font-weight:normal;"> 次</span></div><div style="${kpiSub}">${[failDeltaStr, simStr].filter(Boolean).join(' · ') || '压缩 ' + o.groupsTotal + ' 组'}</div></td>`)
     lines.push(`<td style="${kpiTd}"><div style="${kpiLabel}">待产品侧处理</div><div style="${kpiValue}color:#d4380d;">${o.pendingTotal}<span style="font-size:12px;font-weight:normal;"> 组</span></div><div style="${kpiSub}">已闭环 ${o.closedTotal} 组</div></td>`)
-    lines.push(`<td style="${kpiTd}"><div style="${kpiLabel}">异常接口（&lt;99.5%）</div><div style="${kpiValue}">${o.belowThresholdCount}</div><div style="${kpiSub}">真实口径 ${o.realBelowThresholdCount} 个</div></td>`)
+    lines.push(`<td style="${kpiTd}"><div style="${kpiLabel}">异常接口（&lt;99.5%）</div><div style="${kpiValue}">${o.belowThresholdCount}</div><div style="${kpiSub}">剔除豁免后 ${o.realBelowThresholdCount} 个</div></td>`)
     lines.push(`<td style="${kpiTd}"><div style="${kpiLabel}">涉及产品 / 资源池</div><div style="${kpiValue}">${o.productCount}<span style="font-size:12px;font-weight:normal;"> / </span>${report.products.reduce((a, p) => a + p.poolsCount, 0)}</div><div style="${kpiSub}">检测覆盖</div></td>`)
     lines.push('</tr></table>')
   }
@@ -405,7 +447,12 @@ export function renderPatrolDailyReportHtml(report) {
         const rateColor = it.belowThreshold ? 'color:#d4380d;font-weight:bold;' : ''
         // 根因分布列（11-20 拍板：L1 Top3+组数；未诊断/缺口如实标注；无失败组「—」）
         const causeStr = (it.causeTop || []).length > 0
-          ? it.causeTop.map((c) => `${esc(c.l1)}×${c.count}`).join(' · ')
+          ? it.causeTop.map((c) => {
+            const l2Part = (c.l2s || []).length > 0
+              ? '[' + c.l2s.map((x) => `${x.l2 ? esc(x.l2) : '—'}×${x.count}`).join('·') + ']'
+              : ''
+            return `${esc(c.l1)}${l2Part}×${c.count}`
+          }).join(' · ')
           : '—'
         // 待产品处理列（11-20 拍板：该接口×池的待处理组数；0 显「—」；纯仿真接口并列标识）
         const pendingStr = it.pendingGroups > 0
