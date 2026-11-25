@@ -291,7 +291,7 @@ describeActions('actions API (P4-1)', () => {
     expect(delRes.statusCode).toBe(403)
   })
 
-  it('admin cannot delete action linked to feedback tickets', async () => {
+  it('admin can delete action linked to feedback tickets (2026-11-25 删除放开)', async () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/actions',
@@ -310,15 +310,38 @@ describeActions('actions API (P4-1)', () => {
       url: `/api/actions/${encodeURIComponent(created.id)}`,
       headers: authHeader('admin'),
     })
-    expect(delRes.statusCode).toBe(409)
-    expect(JSON.parse(delRes.body).code).toBe('ACTION_ITEM_DELETE_BLOCKED')
+    expect(delRes.statusCode).toBe(200)
 
     const getRes = await app.inject({
       method: 'GET',
       url: `/api/actions/${encodeURIComponent(created.id)}`,
       headers: authHeader('viewer'),
     })
-    expect(getRes.statusCode).toBe(200)
+    expect(getRes.statusCode).toBe(404)
+  })
+
+  it('admin can delete action whose linkedDataSources is set but has no ticket links (误报红证)', async () => {
+    // 历史误报形态：linkedDataSources 非空（来源标签）但 linkedTicketIds 为空——
+    // 曾被 canDeleteActionItem 拦截并提示「已关联反馈工单，无法删除」而「关联反馈」列为空
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: {
+        content: '改善「配额申请与提升」相关问题',
+        linkedTicketIds: [],
+        linkedDataSources: ['consultation_ticket'],
+      },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('admin'),
+    })
+    expect(delRes.statusCode).toBe(200)
   })
 
   it('admin can delete action with only requirement ticket links', async () => {
@@ -340,6 +363,112 @@ describeActions('actions API (P4-1)', () => {
       headers: authHeader('admin'),
     })
     expect(delRes.statusCode).toBe(200)
+  })
+
+  it('delete clears promotedTo on observation issues referencing the action (生命周期联动)', async () => {
+    const { observationRepository } = await import('../observationRepository.js')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '留观升级后删除' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    observationRepository.putIssue({
+      productKey: 'eip',
+      productName: '弹性IP',
+      title: '会被升级的留观问题',
+      summary: '测试联动清理',
+    })
+    const issues = observationRepository.listIssues({})
+    const issue = issues.issues.find((item) => item.title === '会被升级的留观问题')
+    expect(issue).toBeTruthy()
+    const db = (await import('../db.js')).getDb()
+    // 生产同款写入（observation.js promote 路由）：promotedTo 历史上以 JSON 字符串
+    // 形态落库（json_set 字符串参数），测试锚定真实形态验证清理兼容双形态
+    db.prepare(
+      `UPDATE observation_issues SET status = 'promoted',
+       payload = json_set(payload, '$.promotedTo', ?) WHERE id = ?`,
+    ).run(
+      JSON.stringify({ actionItemId: created.id, promotedAt: new Date().toISOString(), promotedBy: 'admin' }),
+      issue.id,
+    )
+    // 锚定前提：该引用真实存在（防恒绿——清理函数失效时此行先红）
+    const before = observationRepository.getIssue(issue.id)
+    expect(before?.payload?.promotedTo?.actionItemId).toBe(created.id)
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('admin'),
+    })
+    expect(delRes.statusCode).toBe(200)
+
+    const after = observationRepository.getIssue(issue.id)
+    expect(after?.payload?.promotedTo).toBeUndefined()
+  })
+
+  it('delete removes post-use actionIds links on traces/visits (生命周期联动)', async () => {
+    const { storageRepository } = await import('../storageRepository.js')
+    const { listPostUseActionSources } = await import('../postUseActionService.js')
+    const { META_KEY_POST_USE_VISITS } = await import('../../src/lib/postUseRating/visitRecords.js')
+    const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/actions',
+      headers: { ...authHeader('editor'), 'content-type': 'application/json' },
+      payload: { content: '被溯源关联后删除', source: 'post_use' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const created = JSON.parse(createRes.body).item
+
+    // importMany 的 fields 白名单不含 actionIds（导入语义），关联走生产方同款 updateActionLink：
+    // 先 importMany 落行，再以 add 关联举措（与 importMany 内部 actionsCreated 完成后的形态一致）
+    postUseJiraRepository.importMany([{
+      itemKey: `pu-link-test-${created.id}`,
+      importMonth: '2026-10',
+      customerName: '联动测试客户',
+      productName: '弹性IP',
+      status: '已回复',
+      actions: [],
+      rowNumber: 1,
+    }], { id: 'test-editor', username: 'test-editor' })
+    const savedTrace = postUseJiraRepository
+      .list({ importMonth: '2026-10' })
+      .items.find((item) => item.customerName === '联动测试客户')
+    expect(savedTrace?.id).toBeTruthy()
+    postUseJiraRepository.updateActionLink(savedTrace.id, created.id, 'add', {
+      id: 'test-editor', username: 'test-editor',
+    })
+    storageRepository.putMeta(META_KEY_POST_USE_VISITS, {
+      records: [{
+        id: 'visit-link-test-1',
+        customerName: '联动测试客户',
+        importMonth: '2026-10',
+        product: '弹性IP',
+        visitResult: '已回访',
+        actionIds: [created.id],
+      }],
+    })
+
+    let sources = listPostUseActionSources(created.id)
+    expect(sources.traces.length).toBe(1)
+    expect(sources.visits.length).toBe(1)
+
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/actions/${encodeURIComponent(created.id)}`,
+      headers: authHeader('admin'),
+    })
+    expect(delRes.statusCode).toBe(200)
+
+    sources = listPostUseActionSources(created.id)
+    expect(sources.traces.length).toBe(0)
+    expect(sources.visits.length).toBe(0)
   })
 
   it('filters action items by problemType and journeyL1 with snapshot and ticket fallback', async () => {

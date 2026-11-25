@@ -9,7 +9,7 @@ import {
   toActionItemCreateBody,
 } from '../domain/actionItem.js'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
-import { normalizeActionSchedule } from '../domain/actionSchedule.js'
+import { normalizeActionScheduleInput } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_LIST_SHEET_NAME } from './actionItemExport.js'
 
 export const REQUIREMENT_LINKED_IMPORT_IGNORED_FIELDS_HINT =
@@ -67,14 +67,35 @@ export function normalizeActionItemImportRow(row) {
 }
 
 /**
+ * 剥掉导出分组带的月份前缀（P2-A，2026-11-25 导出→导入往返断裂修复）。
+ * 导出格式为 `${month}: ${ids}`（actionItemLinkedFeedback.formatLinkedTicketIdsGroupedForExport），
+ * 按分隔符切分后前缀残留在首段（如 "未知月份: 2026…X918103377" / "2026-05: T-1"），
+ * 与 records 裸工单号 join 不上。此处剥 "YYYY-MM: "、"未知月份: "（全/半角冒号）两种前缀。
+ * 幂等：裸号不含前缀，原样保留。
+ * @param {string} part
+ * @returns {string}
+ */
+export function stripLinkedTicketIdMonthPrefix(part) {
+  return String(part ?? '')
+    .replace(/^\s*(?:\d{4}-\d{1,2}|未知月份)\s*[:：]\s*/, '')
+    .trim()
+}
+
+/**
  * @param {string} text
  * @returns {string[]}
  */
 export function parseLinkedTicketIdsCell(text) {
-  return String(text ?? '')
-    .split(/[\n,，;；]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+  const seen = new Set()
+  /** @type {string[]} */
+  const out = []
+  for (const part of String(text ?? '').split(/[\n,，;；]+/)) {
+    const id = stripLinkedTicketIdMonthPrefix(part)
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
 }
 
 /**
@@ -172,16 +193,20 @@ export function parseActionItemImportRow(row, options = {}) {
   )
   const requirementLinked = linkedRequirementTicketIds.length > 0
 
-  const scheduleRaw = cell(row, '排期时间')
+  // 排期取原生值（不走 cell() 的 String 转换）——cellDates 模式下真日期单元格是 Date 对象，
+  // String() 会变成 "Wed Sep 30 2026..." 导致归一函数 Date 分支接不到。
+  const scheduleRaw = row['排期时间']
   const statusLabel = cell(row, '状态')
   /** @type {string[]} */
   const warnings = []
 
-  let scheduleAt = normalizeActionSchedule(scheduleRaw)
+  // 排期写法归一（11-25 拍板）：2026.9.30 / 2026/09/30 / 2026年9月30日 等统一转 YYYY-MM-DD，
+  // 识别不了保持原样（自由文本语义）；真日期单元格（cellDates 的 Date）也在此转换。
+  let scheduleAt = normalizeActionScheduleInput(scheduleRaw)
   /** @type {import('../domain/actionItem.js').ActionItemStatus | undefined} */
   let status
   if (requirementLinked) {
-    if (scheduleRaw) warnings.push('已填需求工单，排期时间列已忽略')
+    if (String(scheduleRaw ?? '').trim()) warnings.push('已填需求工单，排期时间列已忽略')
     if (statusLabel) warnings.push('已填需求工单，状态列已忽略')
     scheduleAt = ''
     status = 'pending_evaluation'
@@ -222,15 +247,23 @@ export function parseActionItemImportRow(row, options = {}) {
 }
 
 /**
+ * @typedef {Object} ActionItemImportWorkbookResult
+ * @property {(Partial<ActionItem> & { _excelRow?: number })[]} rows - 可导入行（_excelRow=Excel 行号，前端追踪用）
+ * @property {{ row: number; error: string }[]} errors - 解析失败行（row=Excel 行号）
+ * @property {{ row: number; message: string }[]} warnings - 解析提示（row=Excel 行号）
+ */
+
+/**
  * @param {ArrayBuffer} buffer
  * @param {{ productNameToKey?: Map<string, string>; firstProposedAt?: string }} [options]
+ * @returns {ActionItemImportWorkbookResult}
  */
 export function parseActionItemImportWorkbook(buffer, options = {}) {
   const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
   const sheetName =
     wb.SheetNames.find((name) => name === ACTION_ITEM_LIST_SHEET_NAME) || wb.SheetNames[0]
   if (!sheetName) {
-    return { rows: [], errors: [{ row: 0, error: '文件中没有工作表' }] }
+    return { rows: [], errors: [{ row: 0, error: '文件中没有工作表' }], warnings: [] }
   }
 
   const rawRows = /** @type {Record<string, unknown>[]} */ (
@@ -261,7 +294,9 @@ export function parseActionItemImportWorkbook(buffer, options = {}) {
     for (const message of parsed.warnings || []) {
       warnings.push({ row: excelRow, message })
     }
-    rows.push(parsed.item)
+    // 行号随行携带（_excelRow 元数据）：批量创建阶段失败时映射回 Excel 行号展示给用户。
+    // 不进创建 body——toActionItemCreateBody 白名单裁剪后的附加字段，服务端 STRICT_OBJECT 也会拦。
+    rows.push({ ...parsed.item, _excelRow: excelRow })
   })
 
   return { rows, errors, warnings }

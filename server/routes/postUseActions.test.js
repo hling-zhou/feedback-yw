@@ -163,27 +163,32 @@ describeApi('post-use multiple actions API', () => {
     })
     expect(linked.json().traces.map((item) => item.id)).toContain(traceId)
     expect(linked.json().visits.map((item) => item.id)).toContain('action-visit-1')
-    const blockedDelete = await app.inject({
+    // 2026-11-25 拍板：删除限制放开——被溯源/回访关联的举措也可删（前端二次确认兜底），
+    // 删除时联动摘除全部 actionIds 引用（防详情抽屉出现 missing 悬挂）
+    const deleteRes = await app.inject({
       method: 'DELETE', url: `/api/actions/${firstId}`, headers: adminHeaders(),
     })
-    expect(blockedDelete.statusCode).toBe(409)
+    expect(deleteRes.statusCode).toBe(200)
+
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    expect(actionItemRepository.getActionItem(firstId)).toBeNull()
+    const after = await app.inject({
+      method: 'GET', url: `/api/post-use-actions/linked/${firstId}`, headers: viewerHeaders(),
+    })
+    expect(after.json().traces).toHaveLength(0)
+    expect(after.json().visits).toHaveLength(0)
+    // trace/visit 上的其余举措关联（secondId）不受牵连——反向查证 secondId 的关联方仍在
+    const secondLinked = await app.inject({
+      method: 'GET', url: `/api/post-use-actions/linked/${secondId}`, headers: viewerHeaders(),
+    })
+    expect(secondLinked.json().traces.map((item) => item.id)).toContain(traceId)
+    expect(secondLinked.json().visits.map((item) => item.id)).toContain('action-visit-1')
 
     const removed = await app.inject({
       method: 'DELETE', url: `${url}/${firstId}`, headers: editorHeaders(),
     })
     expect(removed.statusCode).toBe(200)
     expect(removed.json().item.actionIds).toEqual([secondId])
-    const { actionItemRepository } = await import('../actionItemRepository.js')
-    expect(actionItemRepository.getActionItem(firstId)?.content).toBe('完善开通校验')
-    const after = await app.inject({
-      method: 'GET', url: `/api/post-use-actions/linked/${firstId}`, headers: viewerHeaders(),
-    })
-    expect(after.json().traces).toHaveLength(0)
-    expect(after.json().visits).toHaveLength(1)
-    const stillBlocked = await app.inject({
-      method: 'DELETE', url: `/api/actions/${firstId}`, headers: adminHeaders(),
-    })
-    expect(stillBlocked.statusCode).toBe(409)
 
     const visitUrl = '/api/post-use-actions/visit/action-visit-1'
     for (const id of [firstId, secondId]) {

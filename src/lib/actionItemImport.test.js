@@ -9,11 +9,72 @@ import {
   parseLinkedDataSourcesCell,
   parseLinkedTicketIdsCell,
 } from './actionItemImport.js'
+import { normalizeActionScheduleInput } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_IMPORT_TEMPLATE_HEADERS } from './actionItemImportTemplate.js'
+
+describe('normalizeActionScheduleInput 排期写法归一（11-25 拍板）', () => {
+  it('常见分隔符与中文写法归一为 YYYY-MM-DD', () => {
+    expect(normalizeActionScheduleInput('2026.9.30')).toBe('2026-09-30')
+    expect(normalizeActionScheduleInput('2026/09/30')).toBe('2026-09-30')
+    expect(normalizeActionScheduleInput('2026年9月30日')).toBe('2026-09-30')
+    expect(normalizeActionScheduleInput('2026-9-3')).toBe('2026-09-03')
+    expect(normalizeActionScheduleInput(' 2026.9.30 ')).toBe('2026-09-30')
+  })
+
+  it('越界/非法日期保持原样（不静默纠错）', () => {
+    expect(normalizeActionScheduleInput('2026.13.40')).toBe('2026.13.40')
+    expect(normalizeActionScheduleInput('2026-2-31')).toBe('2026-2-31')
+    expect(normalizeActionScheduleInput('9.30')).toBe('9.30')
+    expect(normalizeActionScheduleInput('下个迭代')).toBe('下个迭代')
+    expect(normalizeActionScheduleInput('')).toBe('')
+  })
+
+  it('真日期对象走本地时区安全转换', () => {
+    expect(normalizeActionScheduleInput(new Date(2026, 8, 30))).toBe('2026-09-30')
+  })
+
+  it('导入行解析走归一链路：点分排期入库已是标准格式', () => {
+    const parsed = parseActionItemImportRow(
+      { 举措: '点分排期', 排期时间: '2026.9.30', 产品名称: 'VPC' },
+      { firstProposedAt: '2026-11-25' },
+    )
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.item.scheduleAt).toBe('2026-09-30')
+      expect(parsed.item.status).toBe('in_progress')
+    }
+  })
+})
 
 describe('actionItemImport', () => {
   it('parseLinkedTicketIdsCell splits by newline and comma', () => {
     expect(parseLinkedTicketIdsCell('T-1\nT-2,T-3')).toEqual(['T-1', 'T-2', 'T-3'])
+  })
+
+  describe('parseLinkedTicketIdsCell 剥导出月份前缀（P2-A，2026-11-25 导出→导入往返断裂修复）', () => {
+    it('剥"未知月份: "前缀——真库 133 条断裂同款形态', () => {
+      expect(parseLinkedTicketIdsCell('未知月份: 20260811180838X918103377'))
+        .toEqual(['20260811180838X918103377'])
+    })
+    it('剥"YYYY-MM: "正常月份前缀（导出分组格式）', () => {
+      expect(parseLinkedTicketIdsCell('2026-05: T-1'))
+        .toEqual(['T-1'])
+    })
+    it('多个月份分组、组内分号分隔：全剥前缀', () => {
+      expect(parseLinkedTicketIdsCell('2026-05: T-1; T-2\n2026-06: T-3; 未知月份: T-4'))
+        .toEqual(['T-1', 'T-2', 'T-3', 'T-4'])
+    })
+    it('裸号不受影响；全角冒号同样剥', () => {
+      expect(parseLinkedTicketIdsCell('T-1\n未知月份： T-2\n2026-05： T-3'))
+        .toEqual(['T-1', 'T-2', 'T-3'])
+    })
+    it('去重：剥前缀后重复的裸号只留一个', () => {
+      expect(parseLinkedTicketIdsCell('2026-05: T-1\n未知月份: T-1'))
+        .toEqual(['T-1'])
+    })
+    it('前缀后为空（"未知月份: "）整段丢弃', () => {
+      expect(parseLinkedTicketIdsCell('未知月份: ')).toEqual([])
+    })
   })
 
   it('parseLinkedDataSourcesCell maps labels', () => {
@@ -99,6 +160,18 @@ describe('actionItemImport', () => {
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0].content).toBe('优化控制台')
     expect(result.rows[0].firstProposedAt).toBe('2026-05-11')
+  })
+
+  it('parseActionItemImportWorkbook 每行携带 _excelRow 元数据（批量失败映射回 Excel 行号，11-25）', () => {
+    const wb = XLSX.utils.book_new()
+    const sheet = XLSX.utils.json_to_sheet([
+      { 举措: '第一行数据', 产品名称: 'VPC' },
+      { 举措: '第二行数据', 产品名称: 'VPC' },
+    ])
+    XLSX.utils.book_append_sheet(wb, sheet, '举措清单')
+    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const result = parseActionItemImportWorkbook(buffer, { firstProposedAt: '2026-11-25' })
+    expect(result.rows.map((r) => r._excelRow)).toEqual([2, 3])
   })
 
   it('normalizeActionItemImportHeader strips template suffixes', () => {

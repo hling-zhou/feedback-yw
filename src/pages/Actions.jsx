@@ -36,10 +36,9 @@ import {
   ACTION_ITEM_SOURCE_LABELS,
   ACTION_ITEM_CONTENT_MAX_LENGTH,
   ACTION_ITEM_DETAIL_MAX_LENGTH,
-  ACTION_ITEM_DELETE_BLOCKED_MESSAGE,
   aggregateActionItemsByProductStatus,
-  canDeleteActionItem,
   computeActionItemCompletionRate,
+  countActionItemLinkedFeedbackTickets,
   createEmptyActionItemStatusCounts,
   getActionItemStatusSelectOptions,
   isActionItemLocked,
@@ -356,7 +355,11 @@ function ProductActionsTab() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [importPreview, setImportPreview] = useState(
-    /** @type {{ rows: Partial<ActionItem>[]; errors: { row: number; error: string }[]; warnings: { row: number; message: string }[] } | null} */ (null),
+    /** @type {{ rows: (Partial<ActionItem> & { _excelRow?: number })[]; errors: { row: number; error: string }[]; warnings: { row: number; message: string }[] } | null} */ (null),
+  )
+  /** 批量创建阶段失败明细（11-25）：行号+摘要+原因，弹窗内展示供修正 */
+  const [importBatchFailures, setImportBatchFailures] = useState(
+    /** @type {{ row: number; error: string }[]} */ ([]),
   )
   const [importing, setImporting] = useState(false)
   const [scopeItemsForFilters, setScopeItemsForFilters] = useState(/** @type {ActionItem[]} */ ([]))
@@ -1049,6 +1052,7 @@ function ProductActionsTab() {
         message.warning('未解析到有效举措行')
         return
       }
+      setImportBatchFailures([])
       setImportPreview(preview)
       setImportOpen(true)
     } catch (err) {
@@ -1060,15 +1064,31 @@ function ProductActionsTab() {
     if (!importPreview?.rows.length) return
     setImporting(true)
     try {
-      const result = await createActionItemsBatch(importPreview.rows)
+      // 剥掉行号元数据再提交（_excelRow 仅前端追踪用，服务端 STRICT_OBJECT 不认）
+      const submitRows = importPreview.rows.map(({ _excelRow, ...item }) => item)
+      const result = await createActionItemsBatch(submitRows)
       const failed = result.errors?.length ?? 0
-      message.success(
-        failed
-          ? `已导入 ${result.items.length} 条，${failed} 条失败`
-          : `已导入 ${result.items.length} 条举措`,
-      )
-      setImportOpen(false)
-      setImportPreview(null)
+      if (failed) {
+        // 失败明细（11-25 拍板）：批次 index → Excel 行号映射 + 举措摘要，弹窗内展示修正依据；
+        // 弹窗保持打开，toast 只报概要。全部失败时后端 400 走 catch，不会到这里。
+        const rowByIndex = new Map(importPreview.rows.map((r, i) => [i, r]))
+        const batchFailures = (result.errors || []).map((e) => {
+          const src = rowByIndex.get(e.index)
+          const summary = String(src?.content || '').trim()
+          const brief = summary.length > 24 ? `${summary.slice(0, 24)}…` : summary || '（无内容）'
+          return {
+            row: src?._excelRow ?? 0,
+            error: `「${brief}」${e.error}`,
+          }
+        })
+        setImportBatchFailures(batchFailures)
+        message.warning(`已导入 ${result.items.length} 条，${failed} 条失败——明细见下方列表，修正文件后可重新导入`)
+      } else {
+        message.success(`已导入 ${result.items.length} 条举措`)
+        setImportOpen(false)
+        setImportPreview(null)
+        setImportBatchFailures([])
+      }
       setPage(1)
       loadItems()
       loadStats()
@@ -1088,9 +1108,7 @@ function ProductActionsTab() {
       loadStats()
     } catch (err) {
       const e = /** @type {Error & { status?: number; code?: string }} */ (err)
-      if (e.status === 409) {
-        message.warning(e.message || ACTION_ITEM_DELETE_BLOCKED_MESSAGE)
-      } else if (e.status === 403) {
+      if (e.status === 403) {
         message.error('仅管理员可删除举措')
       } else {
         message.error(e instanceof Error ? e.message : '删除失败')
@@ -1262,8 +1280,12 @@ function ProductActionsTab() {
       fixed: 'right',
       render: (_, record) => {
         const locked = isActionItemLocked(record.status)
-        const deleteCheck = canDeleteActionItem(record)
-        const deleteBlocked = !deleteCheck.ok
+        // 2026-11-25 拍板：删除限制放开，全部举措可删；关联数用于二次确认文案。
+        // 判据与「关联反馈」展示列同源（无周期过滤时同为 linkedTicketIds）。
+        const linkedFeedbackCount = countActionItemLinkedFeedbackTickets(record)
+        const deleteConfirmDescription = linkedFeedbackCount
+          ? `删除后无法恢复，并将解除 ${linkedFeedbackCount} 条反馈工单的关联。`
+          : '删除后无法恢复。'
         return (
           <Space size={4} onClick={(event) => event.stopPropagation()}>
             <Tooltip title={locked ? '查看详情（已结束，不可编辑）' : '查看 / 编辑举措'}>
@@ -1276,38 +1298,25 @@ function ProductActionsTab() {
               />
             </Tooltip>
             {isAdmin ? (
-              deleteBlocked ? (
-                <Tooltip title={ACTION_ITEM_DELETE_BLOCKED_MESSAGE}>
+              <Popconfirm
+                title="确定删除该举措？"
+                description={deleteConfirmDescription}
+                okText="删除"
+                okButtonProps={{ danger: true }}
+                cancelText="取消"
+                onConfirm={() => handleDelete(record)}
+              >
+                <Tooltip title="删除举措">
                   <Button
                     type="link"
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
                     className="!px-0"
-                    disabled
+                    loading={deletingId === record.id}
                   />
                 </Tooltip>
-              ) : (
-                <Popconfirm
-                  title="确定删除该举措？"
-                  description="删除后无法恢复。"
-                  okText="删除"
-                  okButtonProps={{ danger: true }}
-                  cancelText="取消"
-                  onConfirm={() => handleDelete(record)}
-                >
-                  <Tooltip title="删除举措">
-                    <Button
-                      type="link"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      className="!px-0"
-                      loading={deletingId === record.id}
-                    />
-                  </Tooltip>
-                </Popconfirm>
-              )
+              </Popconfirm>
             ) : null}
           </Space>
         )
@@ -1589,6 +1598,7 @@ function ProductActionsTab() {
         onCancel={() => {
           setImportOpen(false)
           setImportPreview(null)
+          setImportBatchFailures([])
         }}
         onOk={handleImportConfirm}
         confirmLoading={importing}
@@ -1635,6 +1645,23 @@ function ProductActionsTab() {
                   <li>另有 {importPreview.errors.length - 8} 行错误未展示</li>
                 ) : null}
               </ul>
+            ) : null}
+            {importBatchFailures.length > 0 ? (
+              <>
+                <Alert
+                  type="error"
+                  showIcon
+                  className="!mt-3"
+                  message={`本次导入 ${importBatchFailures.length} 条失败——请按下方明细修正文件后重新导入`}
+                />
+                <ul className="mb-0 mt-2 max-h-32 overflow-y-auto pl-5 text-xs text-red-600">
+                  {importBatchFailures.map((fail) => (
+                    <li key={`${fail.row}-${fail.error}`}>
+                      第 {fail.row} 行：{fail.error}
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
           </>
         ) : null}
