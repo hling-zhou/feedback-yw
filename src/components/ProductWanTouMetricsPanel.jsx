@@ -7,6 +7,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Typography } from 'antd'
 import { useAppMessage } from '../hooks/useAppMessage.js'
 import { getEnabledProducts } from '../lib/productCatalog.js'
@@ -277,8 +278,8 @@ export default function ProductWanTouMetricsPanel({
     [products, activeProductKey],
   )
 
-  const tabList = useMemo(
-    () => products.map((product) => ({ key: product.key, tab: product.name })),
+  const tabItems = useMemo(
+    () => products.map((product) => ({ key: product.key, label: product.name })),
     [products],
   )
 
@@ -293,6 +294,14 @@ export default function ProductWanTouMetricsPanel({
   return (
     <div className="space-y-4">
       <Alert type="info" showIcon title={METRICS_HINT_TITLE} description={METRICS_HINT_DESCRIPTION} />
+      {/* c5e92f3 卡片规范重构误吞 Card.tabList 产品页签（tabList/activeProductKey 沦为死代码，
+          设置只剩第一个产品）。按 11-18 拍板：Tabs 裸挂对齐 lane-tabs 样式，内容另挂 page-card。 */}
+      <Tabs
+        className="feedback-lane-tabs mb-2 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-tab]:text-[14px] [&_.ant-tabs-tab]:font-bold [&_.ant-tabs-tab-btn]:text-[14px] [&_.ant-tabs-tab-btn]:font-bold"
+        activeKey={activeProductKey || products[0]?.key}
+        onChange={setActiveProductKey}
+        items={tabItems}
+      />
       <div className="page-card">
         {activeProduct ? (
           <ProductWanTouMetricsTabContent
