@@ -4,6 +4,10 @@
  */
 
 import { DATA_SOURCE_LABELS, DATA_SOURCE_TYPES } from '../domain/enums.js'
+import {
+  matchesDiscussionStatusFilter,
+  normalizeDiscussionStatusFilter,
+} from '../domain/discussionStatus.js'
 import { getProblemCauseDisplay } from '../domain/rootCauseReview.js'
 import { parseMyReviewFilterParam } from '../domain/userTicketReview.js'
 import {
@@ -55,8 +59,18 @@ export const TODO_STATUS_FILTER_OPTIONS = [
 
 export const LISTENING_REVIEWED_FILTER_OPTIONS = [
   { label: '全部听音状态', value: '' },
-  { label: '是', value: 'yes' },
-  { label: '否', value: 'no' },
+  { label: '已纳入', value: 'yes' },
+  { label: '未纳入', value: 'no' },
+]
+
+/** @typedef {import('../domain/discussionStatus.js').DiscussionStatusFilterValue} DiscussionStatusFilterValue */
+
+/** 反馈库「讨论状态」筛选（优化建议·人工复核标记，三态单向；与听音筛选同组「会议跟进」） */
+export const DISCUSSION_STATUS_FILTER_OPTIONS = [
+  { label: '全部讨论状态', value: '' },
+  { label: '未标记', value: 'none' },
+  { label: '待讨论', value: 'pending' },
+  { label: '已讨论', value: 'done' },
 ]
 
 /** 反馈库「问题原因」筛选：按来源区分人工复核 / 自动生成 */
@@ -173,6 +187,23 @@ export function matchesListeningReviewedFilter(record, listeningReviewed = '') {
   if (listeningReviewed === 'yes') return listened
   if (listeningReviewed === 'no') return !listened
   return true
+}
+
+/**
+ * 反馈库「讨论状态」筛选：委托域模块单源判定（normalize + 四态匹配）。
+ * @param {FeedbackRecord | null | undefined} record
+ * @param {DiscussionStatusFilterValue} discussionStatus
+ */
+export function matchesDiscussionStatusFeedbackFilter(record, discussionStatus = '') {
+  return matchesDiscussionStatusFilter(record, discussionStatus)
+}
+
+/**
+ * @param {string | null | undefined} raw
+ * @returns {DiscussionStatusFilterValue}
+ */
+export function parseDiscussionStatusFilterParam(raw) {
+  return normalizeDiscussionStatusFilter(raw)
 }
 
 /**
@@ -365,6 +396,7 @@ export function parseFeedbackSearchParams(searchParams) {
     myReview: parseMyReviewFilterParam(searchParams.get('myReview')),
     todoStatus: parseTodoStatusFilterParam(searchParams.get('todoStatus')),
     listeningReviewed: parseListeningReviewedFilterParam(searchParams.get('listeningReviewed')),
+    discussionStatus: parseDiscussionStatusFilterParam(searchParams.get('discussionStatus')),
     handlingKeyword: searchParams.get('handlingKeyword')?.trim() || '',
     ratingScore: searchParams.get('ratingScore')?.trim() || '',
     channel: searchParams.get('channel')?.trim() || '',
@@ -403,6 +435,7 @@ export function patchFeedbackSearchParams(base, patch) {
     'myReview',
     'todoStatus',
     'listeningReviewed',
+    'discussionStatus',
     'handlingKeyword',
     'ratingScore',
     'channel',
@@ -516,6 +549,7 @@ export function buildFeedbacksUrl(params = {}) {
     'lane',
     'todoStatus',
     'listeningReviewed',
+    'discussionStatus',
     'handlingKeyword',
     'ratingScore',
     'channel',

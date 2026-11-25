@@ -67,7 +67,8 @@
  * @property {string[]} themes - 由 journeyL1/journeyL2 同步，与二级环节名一致（无二级时取一级）
  * @property {FeedbackStatus} status
  * @property {string} [note]
- * @property {boolean} [listeningReviewed] - 是否听音（人工维护，再导入保留）
+ * @property {boolean} [listeningReviewed] - 是否纳入听音（人工维护，再导入保留；OR 闩锁一旦 true 不可取消）
+ * @property {import('../domain/discussionStatus.js').DiscussionStatus} [discussionStatus] - 讨论状态三态单向（''未标记/pending待讨论/done已讨论；max 闩锁不可回退，再导入保留）
  * @property {('requestScene' | 'problemType' | 'journey' | 'sentiment' | 'urgency' | 'optimization' | 'customerRequest' | 'painPoint' | 'rootCauseReview')[]} [manualTagFields] - 人工维护维度；见 fieldRegistry.js
  * @property {{ requestScene?: string; problemType?: string; journeyL1?: string; journeyL2?: string; taggedAt?: string }} [lastAutoTags] - 最近一次系统打标快照，改标学习对照用
  * @property {string} [importMonth] - 数据月份，格式 YYYY-MM，用于按月导入后的历史趋势分析

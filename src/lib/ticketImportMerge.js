@@ -1,4 +1,5 @@
 import { preserveManualTags } from './manualTagFields.js'
+import { mergeDiscussionStatus } from '../domain/discussionStatus.js'
 import { buildDedupeKey, buildGlobalTicketDedupeKey } from '../domain/records.js'
 
 /** @typedef {import('./types.js').FeedbackRecord} FeedbackRecord */
@@ -97,6 +98,11 @@ export function preserveUserEditedTicketFields(existing, processed) {
     ticketTodo: existing.ticketTodo,
     ticketTodoIncoming: existing.ticketTodoIncoming,
     listeningReviewed: Boolean(existing.listeningReviewed) || Boolean(processed.listeningReviewed),
+    // 讨论状态三态单向：再导入取更深者，不回退（与听音 OR 保留同款闩锁语义）
+    discussionStatus: mergeDiscussionStatus(
+      existing.discussionStatus,
+      processed.discussionStatus,
+    ),
     establishedAction: existing.establishedAction,
     establishedActionDetail: existing.establishedActionDetail,
     actionId: existing.actionId,

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { DATA_SOURCE_LABELS, IMPORTABLE_DATA_SOURCE_TYPES } from '../domain/enums.js'
 import {
+  DISCUSSION_STATUS_FILTER_OPTIONS,
   FOLLOW_UP_FILTER_OPTIONS,
   FOLLOW_UP_RESOLVED_FILTER_OPTIONS,
   LISTENING_REVIEWED_FILTER_OPTIONS,
@@ -38,6 +39,7 @@ export const FEEDBACK_FILTER_EDITOR_KIND = {
   myReview: 'enum',
   todoStatus: 'enum',
   listeningReviewed: 'enum',
+  discussionStatus: 'enum',
   ratingScore: 'enum',
   channel: 'enum',
   commentKeyword: 'text',
@@ -180,6 +182,8 @@ export function listEnumOptionsForFilterKey(filterKey, filters, options, showCom
       return TODO_STATUS_FILTER_OPTIONS.filter((item) => item.value)
     case 'listeningReviewed':
       return LISTENING_REVIEWED_FILTER_OPTIONS.filter((item) => item.value)
+    case 'discussionStatus':
+      return DISCUSSION_STATUS_FILTER_OPTIONS.filter((item) => item.value)
     case 'ratingScore':
       return options.ratingScoreOptions || []
     case 'channel':

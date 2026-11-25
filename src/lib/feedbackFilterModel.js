@@ -11,7 +11,11 @@ import {
 } from './feedbackFilters.js'
 import { MY_REVIEW_FILTER_OPTIONS } from '../domain/userTicketReview.js'
 import { TICKET_LLM_FILTER_OPTIONS } from './ticketAnalysis/ticketAnalysisSources.js'
-import { TODO_STATUS_FILTER_OPTIONS, LISTENING_REVIEWED_FILTER_OPTIONS } from './feedbackFilters.js'
+import {
+  TODO_STATUS_FILTER_OPTIONS,
+  LISTENING_REVIEWED_FILTER_OPTIONS,
+  DISCUSSION_STATUS_FILTER_OPTIONS,
+} from './feedbackFilters.js'
 import {
   getPostUseChannelLabel,
   POST_USE_RATING_BAND_OPTIONS,
@@ -41,6 +45,7 @@ import {
  * @property {import('../domain/userTicketReview.js').MyReviewFilterValue} myReview
  * @property {import('./feedbackFilters.js').TodoStatusFilterValue | ''} todoStatus
  * @property {import('./feedbackFilters.js').ListeningReviewedFilterValue} listeningReviewed
+ * @property {import('./feedbackFilters.js').DiscussionStatusFilterValue} discussionStatus
  * @property {string} handlingKeyword
  * @property {string} ratingScore
  * @property {string} channel
@@ -72,6 +77,7 @@ export const FEEDBACK_FILTER_KEYS = /** @type {FeedbackFilterKey[]} */ ([
   'myReview',
   'todoStatus',
   'listeningReviewed',
+  'discussionStatus',
   'ratingScore',
   'channel',
   'commentKeyword',
@@ -109,7 +115,7 @@ export const FEEDBACK_FILTER_GROUPS = [
   },
   {
     label: '会议跟进',
-    keys: ['todoStatus', 'listeningReviewed'],
+    keys: ['todoStatus', 'listeningReviewed', 'discussionStatus'],
   },
   {
     label: '分析增强',
@@ -167,6 +173,7 @@ export const FEEDBACK_TICKET_COMPOSITE_KEYS = /** @type {FeedbackFilterKey[]} */
   'followUpResolved',
   'todoStatus',
   'listeningReviewed',
+  'discussionStatus',
   'myReview',
   'problemCauseSource',
 ])
@@ -198,7 +205,8 @@ export const FEEDBACK_FILTER_LABELS = {
   reasonDim: '不满意原因',
   myReview: '我的处理状态',
   todoStatus: '会议待办',
-  listeningReviewed: '是否听音',
+  listeningReviewed: '是否纳入听音',
+  discussionStatus: '讨论状态',
   ratingScore: '评分',
   channel: '渠道',
   commentKeyword: '原文',
@@ -228,6 +236,7 @@ export function createEmptyFeedbackFilters() {
     myReview: '',
     todoStatus: '',
     listeningReviewed: '',
+    discussionStatus: '',
     handlingKeyword: '',
     ratingScore: '',
     channel: '',
@@ -272,6 +281,7 @@ export function isFeedbackFilterActive(values, key) {
     case 'myReview':
     case 'todoStatus':
     case 'listeningReviewed':
+    case 'discussionStatus':
     case 'handlingKeyword':
     case 'ratingScore':
     case 'channel':
@@ -307,6 +317,7 @@ export function listActiveFeedbackFilterChipKeys(values) {
   if (values.myReview) keys.push('myReview')
   if (values.todoStatus) keys.push('todoStatus')
   if (values.listeningReviewed) keys.push('listeningReviewed')
+  if (values.discussionStatus) keys.push('discussionStatus')
   if (values.ratingScore) keys.push('ratingScore')
   if (values.channel) keys.push('channel')
   return keys
@@ -393,6 +404,11 @@ export function formatFeedbackFilterChipLabel(key, values) {
       return (
         LISTENING_REVIEWED_FILTER_OPTIONS.find((item) => item.value === values.listeningReviewed)?.label ||
         values.listeningReviewed
+      )
+    case 'discussionStatus':
+      return (
+        DISCUSSION_STATUS_FILTER_OPTIONS.find((item) => item.value === values.discussionStatus)?.label ||
+        values.discussionStatus
       )
     case 'ratingScore':
       return (
@@ -539,6 +555,7 @@ export function feedbackFiltersToUrlPatch(filters) {
     myReview: filters.myReview,
     todoStatus: filters.todoStatus,
     listeningReviewed: filters.listeningReviewed,
+    discussionStatus: filters.discussionStatus,
     postUseQuickScope: filters.postUseQuickScope === 'all' ? 'all' : '',
   }
 }

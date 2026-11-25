@@ -1,5 +1,6 @@
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import { getFieldByKey } from '../domain/fieldRegistry.js'
+import { normalizeDiscussionStatus, DISCUSSION_STATUS_LABELS } from '../domain/discussionStatus.js'
 import {
   getCustomerRequestDraftDisplay,
   getPainPointDraftDisplay,
@@ -47,6 +48,13 @@ const DETAIL_CONFLICT_FIELDS = [
     key: 'rootCauseReview',
     label: getFieldByKey('rootCauseReview')?.displayName || '根因排查',
     read: (r) => getRootCauseReviewDraftDisplay(r) || '—',
+  },
+  // 2026-11-25 补：复核标记两字段（既有缺口——此前两人并发只改听音时冲突 diff 为空；讨论状态随本次新增）
+  { key: 'listeningReviewed', label: '纳入听音', read: (r) => (r.listeningReviewed ? '已纳入' : '未纳入') },
+  {
+    key: 'discussionStatus',
+    label: '讨论状态',
+    read: (r) => DISCUSSION_STATUS_LABELS[normalizeDiscussionStatus(r.discussionStatus)] || '未标记',
   },
   { key: 'note', label: '备注', read: (r) => r.note?.trim() || '—' },
 ]

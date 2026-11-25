@@ -1,4 +1,5 @@
 import { DEFAULT_TENANT_ID, SCHEMA_VERSION } from '../domain/constants.js'
+import { normalizeDiscussionStatus } from '../domain/discussionStatus.js'
 import { randomId } from './randomId.js'
 
 /** @typedef {import('../domain/enums.js').DataSourceType} DataSourceType */
@@ -85,6 +86,7 @@ export function createTicketRecord(input, opts = {}) {
     status: input.status || 'open',
     note: input.note,
     listeningReviewed: Boolean(input.listeningReviewed),
+    discussionStatus: normalizeDiscussionStatus(input.discussionStatus),
   }
 }
 

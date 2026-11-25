@@ -78,6 +78,7 @@ import ComplaintCauseReviewAdminModal from '../components/ComplaintCauseReviewAd
 import { getEstablishedActionDisplay } from '../domain/establishedAction.js'
 import {
   matchesCustomerNamesFilter,
+  matchesDiscussionStatusFeedbackFilter,
   matchesFollowUpFilters,
   matchesHandlingKeywordFilter,
   matchesListeningReviewedFilter,
@@ -95,6 +96,7 @@ import {
   matchesPostUseRatingFilter,
 } from '../lib/postUseRating/libraryFilters.js'
 import { hasOpenTicketTodos } from '../domain/ticketTodo.js'
+import { normalizeDiscussionStatus } from '../domain/discussionStatus.js'
 import {
   applyFeedbackFilterPatch,
   clearAllFeedbackFilters,
@@ -160,6 +162,8 @@ const FEEDBACK_LIST_COLUMN_OPTIONS = [
   { key: 'groupName', label: '客户名称' },
   { key: 'loginAccountName', label: '登录账号名称' },
   { key: 'resourcePool', label: '资源池' },
+  // 2026-11-25 拍板：复核标记列（纳入听音/讨论状态）可隐藏；dataIndex 对齐 FeedbackTable 列
+  { key: 'reviewFlags', label: '复核标记' },
 ]
 
 /**
@@ -1002,6 +1006,7 @@ export default function Feedbacks() {
       }
       if (!matchesTodoStatusFilter(fb, filters.todoStatus, { userId: user?.id })) return false
       if (!matchesListeningReviewedFilter(fb, filters.listeningReviewed)) return false
+      if (!matchesDiscussionStatusFeedbackFilter(fb, filters.discussionStatus)) return false
       if (!matchesHandlingKeywordFilter(fb, filters.handlingKeyword)) return false
       if (!matchesCommentKeywordFilter(fb, filters.commentKeyword)) return false
       if (!matchesPostUseRatingFilter(fb, filters.ratingScore)) return false
@@ -2166,6 +2171,9 @@ function CardGrid({ items, onSelect, postUseMode = false }) {
             <Tag>{fb.problemType || '未分类'}</Tag>
             {fb.journeyL1 && <Tag color="blue">{fb.journeyL1}</Tag>}
             {hasOpenTicketTodos(fb) ? <Tag color="orange">有待办</Tag> : null}
+            {fb.listeningReviewed ? <Tag color="success">纳入听音</Tag> : null}
+            {normalizeDiscussionStatus(fb.discussionStatus) === 'pending' ? <Tag color="processing">待讨论</Tag> : null}
+            {normalizeDiscussionStatus(fb.discussionStatus) === 'done' ? <Tag color="success">已讨论</Tag> : null}
           </div>
           <Typography.Paragraph className="!mb-0 !mt-2 line-clamp-2 text-sm font-medium">
             {fb.problemSummary ? fb.problemSummary : fb.customerQuote ? <span>【原话】{fb.customerQuote}</span> : '—'}

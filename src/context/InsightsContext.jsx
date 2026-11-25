@@ -96,6 +96,7 @@ import {
 } from '../domain/backgroundTaskLock.js'
 import { SCHEMA_VERSION } from '../domain/constants.js'
 import { getRecordRevision, applyRecordWriteMetadata } from '../domain/recordRevision.js'
+import { mergeDiscussionStatus } from '../domain/discussionStatus.js'
 import { buildIdempotencyKey } from '../domain/analysisRun.js'
 import { createPipeline, listPipelineDescriptors, getPipelineDescriptor } from '../analysis/registry.js'
 import { getComparableMetrics, getMetricsForSource, listMetricDescriptors } from '../metrics/registry.js'
@@ -2456,6 +2457,11 @@ export function InsightsProvider({ children, hydrateTickets = true }) {
       // 是否听音：一旦为 true，全局不可再取消（含其他用户）
       merged.listeningReviewed =
         Boolean(existing.listeningReviewed) || Boolean(merged.listeningReviewed)
+      // 讨论状态：三态单向（未标记→待讨论→已讨论），取更深者，落库后不可回退（含其他用户）
+      merged.discussionStatus = mergeDiscussionStatus(
+        existing.discussionStatus,
+        merged.discussionStatus,
+      )
       const expectedRevision =
         options.expectedRevision ??
         (options.skipConflictCheck ? undefined : getRecordRevision(existing))

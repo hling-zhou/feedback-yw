@@ -130,4 +130,48 @@ describe('ticketImportMerge', () => {
     expect(merged[0].id).toBe('rec-existing')
     expect(merged[0].rawText).toBe('新受理')
   })
+
+  // 2026-11-25 拍板：讨论状态三态单向——再导入 max 闩锁保留，与听音 OR 保留同款语义
+  it('再导入保留讨论状态：导入表无此列（undefined）不回退已落库深度', () => {
+    const outDone = mergeTicketImportOverExisting(
+      { ...existing, discussionStatus: 'done' },
+      incoming,
+    )
+    expect(outDone.discussionStatus).toBe('done')
+    const outPending = mergeTicketImportOverExisting(
+      { ...existing, discussionStatus: 'pending' },
+      incoming,
+    )
+    expect(outPending.discussionStatus).toBe('pending')
+    // existing 也未标记时维持未标记
+    const outNone = mergeTicketImportOverExisting(
+      { ...existing, discussionStatus: '' },
+      incoming,
+    )
+    expect(outNone.discussionStatus).toBe('')
+  })
+
+  it('再导入讨论状态 max 闩锁：incoming 带更深状态时推进，带更浅/非法值时不回退', () => {
+    // pending → done（推进）
+    expect(
+      mergeTicketImportOverExisting(
+        { ...existing, discussionStatus: 'pending' },
+        { ...incoming, discussionStatus: 'done' },
+      ).discussionStatus,
+    ).toBe('done')
+    // done → pending（回退被拦）
+    expect(
+      mergeTicketImportOverExisting(
+        { ...existing, discussionStatus: 'done' },
+        { ...incoming, discussionStatus: 'pending' },
+      ).discussionStatus,
+    ).toBe('done')
+    // done → 非法值（回退被拦，归一处理）
+    expect(
+      mergeTicketImportOverExisting(
+        { ...existing, discussionStatus: 'done' },
+        { ...incoming, discussionStatus: 'garbage' },
+      ).discussionStatus,
+    ).toBe('done')
+  })
 })

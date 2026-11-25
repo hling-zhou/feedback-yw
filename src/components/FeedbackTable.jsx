@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button, Empty, Modal, Table, Tag, Tooltip, Typography } from 'antd'
 import { ExpandOutlined } from '@ant-design/icons'
 import { DATA_SOURCE_LABELS } from '../domain/enums.js'
+import { normalizeDiscussionStatus } from '../domain/discussionStatus.js'
 import { buildImportUrl } from '../lib/importRoute.js'
 import { formatFollowUpSatisfactionDisplay } from '../domain/followUpSatisfaction.js'
 import { recordSourceType } from '../snapshots/recordScope.js'
@@ -209,6 +210,27 @@ function buildTicketColumns(reviewEnabled, doneRecordIds) {
           },
         ]
       : []),
+    // 2026-11-25 拍板：复核标记列——纳入听音（二态闩锁）× 讨论状态（三态单向）；无标记「—」
+    {
+      title: '复核标记',
+      dataIndex: 'reviewFlags',
+      width: 96,
+      render: (_, fb) => {
+        const discussion = normalizeDiscussionStatus(fb.discussionStatus)
+        if (!fb.listeningReviewed && !discussion) return '—'
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {fb.listeningReviewed ? <Tag color="success" className="!m-0">纳入听音</Tag> : null}
+            {discussion === 'pending' ? (
+              <Tag color="processing" className="!m-0">待讨论</Tag>
+            ) : null}
+            {discussion === 'done' ? (
+              <Tag color="success" className="!m-0">已讨论</Tag>
+            ) : null}
+          </div>
+        )
+      },
+    },
     {
       title: '客户名称',
       dataIndex: 'groupName',

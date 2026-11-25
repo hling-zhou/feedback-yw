@@ -72,6 +72,7 @@
  *   status: FeedbackStatus
  *   note?: string
  *   listeningReviewed?: boolean
+ *   discussionStatus?: import('./discussionStatus.js').DiscussionStatus
  *   followUpSatisfaction?: import('./followUpSatisfaction.js').FollowUpSatisfaction
  *   lastAutoTags?: { requestScene?: string; problemType?: string; journeyL1?: string; journeyL2?: string; taggedAt?: string }
  * }} TicketRecord

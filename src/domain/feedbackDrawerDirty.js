@@ -9,6 +9,7 @@ import {
   normalizeEstablishedActionInput,
 } from './establishedAction.js'
 import { normalizeRootCauseReviewInput, getRootCauseReviewDraftDisplay } from './rootCauseReview.js'
+import { normalizeDiscussionStatus } from './discussionStatus.js'
 import {
   getCustomerRequestDraftDisplay,
   getPainPointDraftDisplay,
@@ -32,9 +33,19 @@ function norm(value) {
 }
 
 /**
+ * 讨论状态档位（单向推进 dirty 判定用；''0 < pending1 < done2）。
+ * @param {unknown} value
+ */
+function discussionRank(value) {
+  const status = normalizeDiscussionStatus(value)
+  return status === 'done' ? 2 : status === 'pending' ? 1 : 0
+}
+
+/**
  * @typedef {Object} FeedbackDrawerFormSnapshot
  * @property {string} [note]
  * @property {boolean} [listeningReviewed]
+ * @property {import('./discussionStatus.js').DiscussionStatus} [discussionStatus]
  * @property {import('../lib/sentiment.js').Sentiment} [sentiment]
  * @property {import('../lib/sentiment.js').UrgencyLevel} [urgencyLevel]
  * @property {string} [requestScene]
@@ -70,6 +81,8 @@ export function isFeedbackDrawerFormDirty(record, form) {
 
   if (norm(form.note) !== norm(record.note)) return true
   if (Boolean(form.listeningReviewed) !== Boolean(record.listeningReviewed)) return true
+  // 讨论状态单向推进：表单态比记录态「深」才算 dirty（不可逆字段不因展示归一误报）
+  if (discussionRank(form.discussionStatus) > discussionRank(record.discussionStatus)) return true
   if (normalizeSentiment(form.sentiment) !== normalizeSentiment(record.sentiment)) return true
   if (
     normalizeUrgencyLevel(form.urgencyLevel, form.sentiment)
@@ -172,6 +185,7 @@ export function isFeedbackDrawerFormDirty(record, form) {
 export function areFeedbackDrawerFormSnapshotsEqual(a, b) {
   if (norm(a.note) !== norm(b.note)) return false
   if (Boolean(a.listeningReviewed) !== Boolean(b.listeningReviewed)) return false
+  if (discussionRank(a.discussionStatus) !== discussionRank(b.discussionStatus)) return false
   if (normalizeSentiment(a.sentiment) !== normalizeSentiment(b.sentiment)) return false
   if (
     normalizeUrgencyLevel(a.urgencyLevel, a.sentiment)

@@ -15,6 +15,7 @@ import {
   message,
   Select,
   Switch,
+  Tag,
   Tooltip,
   Typography } from 'antd'
 import { ExpandOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
@@ -116,6 +117,7 @@ import { shouldShowRemoteRecordStale } from '../domain/recordRemoteStale.js'
 import { formatBackgroundTaskProgressLine } from '../domain/backgroundTaskLock.js'
 import { formatRecordUpdatedByLine } from '../lib/recordConflictDiff.js'
 import { areFeedbackDrawerFormSnapshotsEqual } from '../domain/feedbackDrawerDirty.js'
+import { normalizeDiscussionStatus } from '../domain/discussionStatus.js'
 import {
   applyTicketTodoAssigneeScalars,
   applyTicketTodoResolutionToItem,
@@ -968,6 +970,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   const [journeyEnriching, setJourneyEnriching] = useState(false)
   const [note, setNote] = useState(feedback?.note || '')
   const [listeningReviewed, setListeningReviewed] = useState(Boolean(feedback?.listeningReviewed))
+  // 讨论状态三态单向：''未标记 / 'pending'待讨论 / 'done'已讨论；本地态仅允许「推进」
+  const [discussionStatus, setDiscussionStatus] = useState(() =>
+    normalizeDiscussionStatus(feedback?.discussionStatus))
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),
   )
@@ -1114,6 +1119,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     if (!record) return
     setNote(record.note || '')
     setListeningReviewed(Boolean(record.listeningReviewed))
+    setDiscussionStatus(normalizeDiscussionStatus(record.discussionStatus))
     setSentiment(normalizeSentiment(record.sentiment))
     setUrgencyLevel(normalizeUrgencyLevel(record.urgencyLevel, record.sentiment))
     setRequestScene(record.requestScene || '')
@@ -1299,6 +1305,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     () => ({
       note,
       listeningReviewed,
+      discussionStatus,
       sentiment,
       urgencyLevel,
       requestScene,
@@ -1324,6 +1331,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
     [
       note,
       listeningReviewed,
+      discussionStatus,
       sentiment,
       urgencyLevel,
       requestScene,
@@ -1400,6 +1408,13 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
       note,
       // 一旦保存为已听音，不可再取消
       listeningReviewed: Boolean(feedback.listeningReviewed) || Boolean(listeningReviewed),
+      // 讨论状态三态单向：本地只允许推进，服务写链再 max 闩锁兜底（跨用户不可回退）
+      discussionStatus:
+        discussionStatus === 'done'
+          ? 'done'
+          : discussionStatus === 'pending'
+            ? (feedback.discussionStatus === 'done' ? 'done' : 'pending')
+            : normalizeDiscussionStatus(feedback.discussionStatus),
       themes: themesFromJourney(journey),
       sentiment,
       urgencyLevel,
@@ -1727,18 +1742,7 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 已处理
               </Checkbox>
             ) : null}
-            {!isPostUseLibrary && (canEdit || Boolean(feedback?.listeningReviewed)) ? (
-              <Checkbox
-                checked={Boolean(listeningReviewed || feedback?.listeningReviewed)}
-                disabled={Boolean(feedback?.listeningReviewed) || !canEdit}
-                onChange={(event) => {
-                  if (feedback?.listeningReviewed) return
-                  setListeningReviewed(event.target.checked)
-                }}
-              >
-                听音
-              </Checkbox>
-            ) : null}
+            {/* 2026-11-25 拍板：听音 Checkbox 移入「优化建议→人工复核」标记行（与待讨论并排），footer 不再展示 */}
             {canDeleteTicket && (
               <Button
                 type="text"
@@ -2194,6 +2198,53 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                   {!isPostUseLibrary ? (
                     <div>
                       <div className="sub-section-label">人工复核</div>
+                      {/* 2026-11-25 拍板：双标记行——纳入听音（二态单向闩锁）× 讨论状态（三态单向）。
+                          勾选仅本地态，随「保存」落库即锁；标记对所有人可见（非个人态）。 */}
+                      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md bg-ink-50/60 px-2.5 py-1.5">
+                        {feedback.listeningReviewed ? (
+                          <Tag color="success" className="!m-0">纳入听音</Tag>
+                        ) : (
+                          <Tooltip title="确认纳入听音后不可取消">
+                            <Checkbox
+                              checked={listeningReviewed}
+                              onChange={(event) => setListeningReviewed(event.target.checked)}
+                            >
+                              纳入听音
+                            </Checkbox>
+                          </Tooltip>
+                        )}
+                        {discussionStatus === 'done' ? (
+                          <Tag color="success" className="!m-0">已讨论</Tag>
+                        ) : discussionStatus === 'pending' ? (
+                          <>
+                            <Tag color="processing" className="!m-0">待讨论</Tag>
+                            <Tooltip title="确认已讨论后不可回退">
+                              <Checkbox
+                                checked={false}
+                                onChange={(event) => {
+                                  if (event.target.checked) setDiscussionStatus('done')
+                                }}
+                              >
+                                已讨论
+                              </Checkbox>
+                            </Tooltip>
+                          </>
+                        ) : (
+                          <Tooltip title="标记待讨论后不可取消，讨论完成可推进为已讨论">
+                            <Checkbox
+                              checked={false}
+                              onChange={(event) => {
+                                if (event.target.checked) setDiscussionStatus('pending')
+                              }}
+                            >
+                              待讨论
+                            </Checkbox>
+                          </Tooltip>
+                        )}
+                        <Typography.Text type="secondary" className="text-xs">
+                          标记对所有人可见
+                        </Typography.Text>
+                      </div>
                       <Form layout="vertical">
                         <Form.Item label="产品组优化建议" className="!mb-3">
                           <Input.TextArea
@@ -2229,32 +2280,52 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                 </div>
               ) : (
                 <>
-                  {!isPostUseLibrary && hasDetailOptimizationContent(feedback) && (
+                  {!isPostUseLibrary
+                    && (hasDetailOptimizationContent(feedback)
+                      || feedback.listeningReviewed
+                      || normalizeDiscussionStatus(feedback.discussionStatus)) && (
                     <div className="mt-4">
                       <div className="sub-section-label">人工复核</div>
-                      <Descriptions
-                        column={1}
-                        size="small"
-                        bordered
-                        items={[
-                          ...(feedback.productGroupOptimization?.trim()
-                            ? [
-                                {
-                                  key: 'productGroup',
-                                  label: '产品组优化建议',
-                                  children: feedback.productGroupOptimization.trim() },
-                              ]
-                            : []),
-                          ...(feedback.designerOptimization?.trim()
-                            ? [
-                                {
-                                  key: 'designer',
-                                  label: '设计师优化建议',
-                                  children: feedback.designerOptimization.trim() },
-                              ]
-                            : []),
-                        ]}
-                      />
+                      {/* E1：标记存在但建议内容为空时，人工复核区仍需渲染标记（否则只读用户看不到已落库标记） */}
+                      {(feedback.listeningReviewed
+                        || normalizeDiscussionStatus(feedback.discussionStatus)) && (
+                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                          {feedback.listeningReviewed ? (
+                            <Tag color="success" className="!m-0">纳入听音</Tag>
+                          ) : null}
+                          {discussionStatus === 'pending' ? (
+                            <Tag color="processing" className="!m-0">待讨论</Tag>
+                          ) : null}
+                          {discussionStatus === 'done' ? (
+                            <Tag color="success" className="!m-0">已讨论</Tag>
+                          ) : null}
+                        </div>
+                      )}
+                      {hasDetailOptimizationContent(feedback) && (
+                        <Descriptions
+                          column={1}
+                          size="small"
+                          bordered
+                          items={[
+                            ...(feedback.productGroupOptimization?.trim()
+                              ? [
+                                  {
+                                    key: 'productGroup',
+                                    label: '产品组优化建议',
+                                    children: feedback.productGroupOptimization.trim() },
+                                ]
+                              : []),
+                            ...(feedback.designerOptimization?.trim()
+                              ? [
+                                  {
+                                    key: 'designer',
+                                    label: '设计师优化建议',
+                                    children: feedback.designerOptimization.trim() },
+                                ]
+                              : []),
+                          ]}
+                        />
+                      )}
                     </div>
                   )}
                 </>

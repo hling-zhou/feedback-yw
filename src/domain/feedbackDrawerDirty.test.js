@@ -94,4 +94,65 @@ describe('isFeedbackDrawerFormDirty', () => {
       areFeedbackDrawerFormSnapshotsEqual(baseForm, { ...baseForm, note: 'changed' }),
     ).toBe(false)
   })
+
+  // 2026-11-25 拍板：讨论状态三态单向——dirty 只认「推进」，表单态浅于记录态不算 dirty
+  it('discussionStatus 单向 dirty：推进才算修改，浅于记录态不报 dirty', () => {
+    // 推进：未标记 → 待讨论
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord, discussionStatus: '' },
+        { ...baseForm, discussionStatus: 'pending' },
+      ),
+    ).toBe(true)
+    // 推进：待讨论 → 已讨论
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord, discussionStatus: 'pending' },
+        { ...baseForm, discussionStatus: 'done' },
+      ),
+    ).toBe(true)
+    // 记录已是 done，表单保持 done（UI 不允许降级，保存链 max 兜底）→ 不 dirty
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord, discussionStatus: 'done' },
+        { ...baseForm, discussionStatus: 'done' },
+      ),
+    ).toBe(false)
+    // 防御形态：外部灌入更浅值（不可逆字段不因展示归一误报）
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord, discussionStatus: 'done' },
+        { ...baseForm, discussionStatus: 'pending' },
+      ),
+    ).toBe(false)
+    // 未标记对未标记（undefined 老数据归一）
+    expect(
+      isFeedbackDrawerFormDirty(
+        { ...baseRecord },
+        { ...baseForm, discussionStatus: '' },
+      ),
+    ).toBe(false)
+  })
+
+  it('discussionStatus 快照相等性按档位比较', () => {
+    expect(
+      areFeedbackDrawerFormSnapshotsEqual(
+        { ...baseForm, discussionStatus: 'pending' },
+        { ...baseForm, discussionStatus: 'pending' },
+      ),
+    ).toBe(true)
+    expect(
+      areFeedbackDrawerFormSnapshotsEqual(
+        { ...baseForm, discussionStatus: 'pending' },
+        { ...baseForm, discussionStatus: 'done' },
+      ),
+    ).toBe(false)
+    // undefined 与 '' 同档（老数据 vs 归一）
+    expect(
+      areFeedbackDrawerFormSnapshotsEqual(
+        { ...baseForm },
+        { ...baseForm, discussionStatus: '' },
+      ),
+    ).toBe(true)
+  })
 })

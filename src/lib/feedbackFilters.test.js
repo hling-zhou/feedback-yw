@@ -5,9 +5,12 @@ import {
   buildFollowUpDrillDownUrl,
   buildTicketWorkbenchDrillDownUrl,
   drillDownFieldParam,
+  DISCUSSION_STATUS_FILTER_OPTIONS,
   EMPTY_FILTER_TOKEN,
   isFollowUpEnrichableRecord,
+  LISTENING_REVIEWED_FILTER_OPTIONS,
   matchesCustomerNamesFilter,
+  matchesDiscussionStatusFeedbackFilter,
   matchesFollowUpFilters,
   matchesOptionalTextFilter,
   matchesProblemCauseSourceFilter,
@@ -202,6 +205,64 @@ describe('feedbackFilters', () => {
     expect(parseFeedbackSearchParams(new URLSearchParams('listeningReviewed=maybe')).listeningReviewed).toBe(
       '',
     )
+  })
+
+  it('matchesDiscussionStatusFeedbackFilter by none/pending/done（四态匹配）', () => {
+    // 全部（''）恒匹配
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'pending' }, '')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({}, '')).toBe(true)
+    // 未标记：undefined / 空串 / 非法值归一后都算未标记
+    expect(matchesDiscussionStatusFeedbackFilter({}, 'none')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: '' }, 'none')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'garbage' }, 'none')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'pending' }, 'none')).toBe(false)
+    // 待讨论 / 已讨论
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'pending' }, 'pending')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'done' }, 'pending')).toBe(false)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'done' }, 'done')).toBe(true)
+    expect(matchesDiscussionStatusFeedbackFilter({ discussionStatus: 'pending' }, 'done')).toBe(false)
+  })
+
+  it('parseFeedbackSearchParams includes discussionStatus（含非法值归一）', () => {
+    expect(
+      parseFeedbackSearchParams(new URLSearchParams('discussionStatus=pending')).discussionStatus,
+    ).toBe('pending')
+    expect(
+      parseFeedbackSearchParams(new URLSearchParams('discussionStatus=none')).discussionStatus,
+    ).toBe('none')
+    expect(
+      parseFeedbackSearchParams(new URLSearchParams('discussionStatus=done')).discussionStatus,
+    ).toBe('done')
+    // 非法值归一为全部（旧书签兼容）
+    expect(
+      parseFeedbackSearchParams(new URLSearchParams('discussionStatus=xxx')).discussionStatus,
+    ).toBe('')
+    expect(parseFeedbackSearchParams(new URLSearchParams('')).discussionStatus).toBe('')
+  })
+
+  it('discussionStatus URL 往返：patchFeedbackSearchParams / buildFeedbacksUrl / feedbackFiltersToUrlPatch 同源', () => {
+    const patched = patchFeedbackSearchParams(new URLSearchParams(), { discussionStatus: 'pending' })
+    expect(patched.get('discussionStatus')).toBe('pending')
+    const cleared = patchFeedbackSearchParams(patched, { discussionStatus: '' })
+    expect(cleared.get('discussionStatus')).toBe(null)
+    const url = buildFeedbacksUrl({ discussionStatus: 'done' })
+    expect(url).toContain('discussionStatus=done')
+    expect(buildFeedbacksUrl({ discussionStatus: '' })).not.toContain('discussionStatus')
+  })
+
+  it('听音筛选选项文案 = 已纳入/未纳入（2026-11-25 拍板，param 值 yes/no 不变）', () => {
+    expect(LISTENING_REVIEWED_FILTER_OPTIONS.find((o) => o.value === 'yes')?.label).toBe('已纳入')
+    expect(LISTENING_REVIEWED_FILTER_OPTIONS.find((o) => o.value === 'no')?.label).toBe('未纳入')
+  })
+
+  it('讨论状态筛选选项四态（全部/未标记/待讨论/已讨论）', () => {
+    expect(DISCUSSION_STATUS_FILTER_OPTIONS.map((o) => o.value)).toEqual(['', 'none', 'pending', 'done'])
+    expect(DISCUSSION_STATUS_FILTER_OPTIONS.map((o) => o.label)).toEqual([
+      '全部讨论状态',
+      '未标记',
+      '待讨论',
+      '已讨论',
+    ])
   })
 
   it('matchesCustomerNamesFilter by substring match (case-insensitive)', () => {

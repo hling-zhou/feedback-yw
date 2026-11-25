@@ -75,7 +75,14 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain("{ id: 'rating-detail-classification', label: '评价分类' }")
     expect(src).toContain("{postUse ? '评价详情' : '工单详情'}")
     expect(src).toContain('isPostUseLibrary ? (\n            canEdit ? (')
-    expect(src).toContain('!isPostUseLibrary && hasDetailOptimizationContent(feedback)')
+    // 2026-11-25 双标记：只读态人工复核区渲染条件扩展为「内容非空 或 任一标记」(E1)
+    expect(src).toContain('!isPostUseLibrary\n                    && (hasDetailOptimizationContent(feedback)')
+    expect(src).toContain('|| feedback.listeningReviewed')
+    // 双标记行（编辑态）与 footer 听音块下线
+    expect(src).toContain('纳入听音')
+    expect(src).toContain('待讨论')
+    expect(src).toContain('标记对所有人可见')
+    expect(src).toContain("听音 Checkbox 移入「优化建议→人工复核」标记行")
   })
 
   it('exposes scroll helper and keeps a single vertical scrollbar on drawer body', () => {
