@@ -63,6 +63,8 @@ describe.skipIf(!sqliteAvailable)('patrol compress', () => {
       ORDER BY first_request_time
     `).all(date, pool, api, user)
 
+  // 首用例显式 20s timeout：本文件首用例承担动态 import 链开销（better-sqlite3 + 临时库
+  // 初始化 collect 5s+），vitest 默认 5s 临界超时（11-26 并发红/单跑绿的实锤形态）。
   it('6.1 链式窗口：10:00/10:30/11:15 三笔 → 1 组（相邻各≤1h，首尾75min）', async () => {
     const { compressPatrolDay } = await import('./patrolCompress.js')
     insertRequest('2026-08-01', 'p1', '/api/x', 'r1', 'userA', '2026-08-01 10:00:00')
@@ -75,7 +77,7 @@ describe.skipIf(!sqliteAvailable)('patrol compress', () => {
       first_request_id: 'r1', pre_compress_count: 3,
       suppressed_request_ids: JSON.stringify(['r2', 'r3']),
     })
-  })
+  }, 20000)
 
   it('6.2 断链：10:00/11:30 相邻 90min → 2 组各 count=1', async () => {
     const { compressPatrolDay } = await import('./patrolCompress.js')

@@ -77,6 +77,9 @@ function makeForward(content) {
 describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', () => {
   afterAll(() => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
 
+  // 首用例显式 20s timeout：本文件首用例承担动态 import 链开销（better-sqlite3 + db 初始化
+  // collect 5s+），vitest 默认 5s 临界超时——①/①b/④/⑥ 系（11-21~11-26 三轮"并发红单跑绿"实锤，
+  // 最小真链路 7ms 证明管线本身健康）。非首用例不受影响。
   it('① 快速路径·分界线（11-26 拆类拍板）：records 在但无失败语义 → 产品可观测性不足（产品的锅）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
@@ -91,7 +94,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(forward).not.toHaveBeenCalled() // 不烧 LLM 调用
     expect(r.rootCauseSource).toBeNull()
     expect(r.conclusion).toBeNull()
-  })
+  }, 20000)
 
   it('①b 快速路径·records 空（MCP 查无数据）→ 诊断能力缺口（诊断链路的锅），且不调 LLM', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
@@ -263,7 +266,7 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
     expect(r.llmFailed).toBe(true)
     expect(r.llmAttempts).toBe(5)
     expect(forward).toHaveBeenCalledTimes(5)
-  })
+  }, 20000)
 
   it('⑤ LLM 未配置 → 降级旧链路：规则对日志原文，结论=原文，源=rule', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
