@@ -3,11 +3,11 @@ import {
   Alert, Button, Empty, Space, Table, Tag, Tooltip, Typography,
 } from 'antd'
 import {
-  CopyOutlined, InfoCircleOutlined, ReloadOutlined,
+  CopyOutlined, DownloadOutlined, InfoCircleOutlined, ReloadOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useAppMessage } from '../../hooks/useAppMessage.js'
-import { apiFetch } from '../../lib/apiClient.js'
+import { apiFetch, getStoredToken } from '../../lib/apiClient.js'
 import { copyTextToClipboard } from '../../lib/clipboard.js'
 import { paginationShowTotal } from '../../lib/paginationTotal.js'
 import { useColumnResize } from '../../hooks/useColumnResize.js'
@@ -47,9 +47,9 @@ export default function ApiPatrolDiagnosisGapsContent() {
   const aggResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.agg', userId: user?.id })
   const detailResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.detail', userId: user?.id })
 
-  // 11-20 09:44 拍板：需求池显示全部——summary 无时间窗口；明细下钻走 groups 共享端点
-  // （其 startDate/endDate 必填契约不动——溯源页依赖），传极宽区间承载「全部」语义。
-  const DETAIL_ALL_RANGE = { startDate: '2000-01-01', endDate: '2099-12-31' }
+  // 11-20 09:44 拍板「显示全部」→ 11-25 23:59 收窄：窗口下界 2026-11-10（与 summary 端点
+  // GAP_DATE_FLOOR 同步——8 月 E2E 样例数据不进需求池，消除分区一误报污染）；上界保持极宽。
+  const DETAIL_ALL_RANGE = { startDate: '2026-11-10', endDate: '2099-12-31' }
 
   const loadSummary = useCallback(async () => {
     setLoadingSummary(true)
@@ -219,6 +219,36 @@ export default function ApiPatrolDiagnosisGapsContent() {
     )
   }
 
+  // 一键导出 xlsx（11-25 23:59 拍板）：能力提供方拿去分析/补齐能力——blob 下载
+  // （apiFetch 是 JSON 专用，下载走原生 fetch + 同源 token；后端进程内自调 summary 同源判定）
+  const [exporting, setExporting] = useState(false)
+  const exportXlsx = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/patrol/diagnosis-gaps/export', {
+        headers: { Authorization: `Bearer ${getStoredToken() || ''}` },
+      })
+      if (!res.ok) throw new Error(`导出失败（${res.status}）`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // 本地日期命名（toISOString 走 UTC 会偏一天——与后端 L927 同口径）
+      const d = new Date()
+      const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      a.download = `诊断能力需求池_${localToday}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      message.success('已导出诊断能力需求池')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* ── 引导卡（页面上方通栏）：定位 + 窗口统计 + 全局日期控件（11-19 拍板：无三步用法）── */}
@@ -239,9 +269,10 @@ export default function ApiPatrolDiagnosisGapsContent() {
               </div>
             )}
           </div>
-          {/* 11-20 09:44 拍板：显示全部——无时间范围选择，仅保留刷新 */}
+          {/* 11-20 09:44 拍板：显示全部——无时间范围选择，仅保留刷新；11-25 加导出（窗口下界 11-10 后端裁） */}
           <Space wrap size="small">
             <Button size="small" icon={<ReloadOutlined />} onClick={() => { loadSummary(); if (drill) loadDetail(drill) }}>刷新</Button>
+            <Button size="small" icon={<DownloadOutlined />} loading={exporting} onClick={exportXlsx}>一键导出</Button>
           </Space>
         </div>
       </div>

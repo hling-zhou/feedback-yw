@@ -36,7 +36,7 @@ let token = ''
 
 // MCP 响应素材（seed 用）
 const RAW_OK_EMPTY = JSON.stringify({ code: '0000', data: { records: [], total: 0 } })
-const RAW_OK_INFO = JSON.stringify({ code: '0000', data: { records: [{ content: '[2026-09-01 10:00:00] [ INFO] [1] RequestIdHeaderFilter ok' }] } })
+const RAW_OK_INFO = JSON.stringify({ code: '0000', data: { records: [{ content: '[2026-11-10 10:00:00] [ INFO] [1] RequestIdHeaderFilter ok' }] } })
 const RAW_ERR = JSON.stringify({ code: '5000', msg: 'pool not supported' })
 
 describeGaps('patrol diagnosis-gaps 需求池端点', () => {
@@ -102,7 +102,7 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     // 枚举内池正常形态（不变）
     expect(classifyGapKind(RAW_OK_EMPTY, true, true, true)).toBe('log_not_collected')
     expect(classifyGapKind(RAW_OK_INFO, true, true, true)).toBe('failure_log_missing')
-    expect(classifyGapKind('[2026-09-01 10:00:00] [ INFO] RequestIdFilter ok', true, true, true)).toBe('log_not_collected')
+    expect(classifyGapKind('[2026-11-10 10:00:00] [ INFO] RequestIdFilter ok', true, true, true)).toBe('log_not_collected')
     const rawWithErr = JSON.stringify({ code: '0000', data: { records: [{ content: '[ERROR] boom' }] } })
     expect(classifyGapKind(rawWithErr, true, true, true)).toBe('other')                  // 防御位
     // 降级模式（poolInMcpEnum=null，MCP 清单不可达）——回退 11-20 修复后文本推断（保守方向）
@@ -263,23 +263,59 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
   it('groups 联动：rootCauseL1=诊断能力缺口 过滤出 9 组（E 逃逸/F 无关/G 未诊断排除）', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/patrol/failures/groups?startDate=2026-09-01&endDate=2026-09-02&rootCauseL1=' + encodeURIComponent('诊断能力缺口'),
+      url: '/api/patrol/failures/groups?startDate=2026-11-10&endDate=2026-11-11&rootCauseL1=' + encodeURIComponent('诊断能力缺口'),
       headers: authHeader(),
     })
     expect(res.json().rows).toHaveLength(9)
     expect(res.json().rows.some((r) => r.firstRequestId === 'gap-e-first')).toBe(false)
   })
 
-  it('全量口径守卫（11-20 拍板）：任意日期参数被忽略——仍返回全部缺口组（防窗口回潮）', async () => {
+  it('一键导出（11-25 23:59 拍板）：xlsx 两 sheet 与 summary 同源（分区一/分区二），8 月组不进', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?startDate=2026-01-01&endDate=2026-01-02',
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/export',
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(String(res.headers['content-type'] || '')).toContain('spreadsheetml')
+    // xlsx 二进制可解析且两 sheet 齐
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(res.rawPayload, { type: 'buffer' })
+    expect(wb.SheetNames).toEqual(['分区一-池未接入MCP', '分区二-诊断能力不足'])
+    const unc = XLSX.utils.sheet_to_json(wb.Sheets['分区一-池未接入MCP'])
+    const cov = XLSX.utils.sheet_to_json(wb.Sheets['分区二-诊断能力不足'])
+    // 与 summary 同源：分区一含枚举外池 P9（seed J/U 组），分区二 3 聚合；8 月组不进
+    expect(unc.some((r) => r['资源池'] === 'P9')).toBe(true)
+    expect(cov.length).toBe(3)
+    expect(JSON.stringify(cov)).not.toContain('I8-aug')
+  })
+
+  it('时间窗口守卫（11-25 23:59 拍板：下界 2026-11-10）：8 月 E2E 样例组不进需求池（11-20「显示全部」废止）', async () => {
+    // 种一个 8 月缺口组（E2E 样例数据形态——8月10日/8月11日 CSV 导入的组）
+    const db = require_getDb()
+    db.prepare(`
+      INSERT INTO api_patrol_failure_groups
+        (group_date, product_key, pool_name, api_path, metric_name, user_name,
+         first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
+         customer_type, root_cause_l1, root_cause_l2, product_action_status, created_at, updated_at)
+      VALUES ('2026-08-10', 'eip', 'P8', 'I8-aug', '绑定', 'userAug', 'gap-aug-first', '2026-08-10 10:00:00', 2, '[]',
+              '', '诊断能力缺口', null, '—', 't', 't')
+    `).run()
+    const insertDiagAug = db.prepare(`
+      INSERT INTO api_patrol_diagnoses
+        (failure_group_id, request_id, status, tool_name, mcp_raw_response, diagnosed_at)
+      VALUES (?, 'gap-aug-first', 'success', 'log_search', ?, 't')
+    `)
+    insertDiagAug.run(db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id='gap-aug-first'`).get().id, '{"code":"0000","msg":null,"data":{"records":[],"total":0}}')
+    const res = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary?startDate=2026-01-01&endDate=2026-12-31',
       headers: authHeader(),
     })
     expect(res.statusCode).toBe(200)
     const data = res.json()
-    // 传窄窗口参数也不缩小——种子全部 9 缺口组都在（窗口语义已删除）
+    // 窗口内 seed 9 组不变；8 月组被下界挡掉——组数与分区不含它（改前红：显示全部口径会含 8 月组=10）
     expect(data.stats.groupCount).toBe(9)
-    expect(data.rows).toHaveLength(3)
+    expect(data.rows.some((r) => r.apiPath === 'I8-aug')).toBe(false)
+    expect(data.uncoveredPools.some((p) => p.poolName === 'P8')).toBe(false)
   })
 })
 
@@ -300,31 +336,31 @@ function seedGaps() {
     VALUES (?, 'eip', ?, ?, '绑定', ?, ?, ?, ?, ?, '', ?, ?, '—', ?, 't', 't')
   `)
   // A：日志未采集（records=0），pre=1 无 suppressed
-  insertGroup.run('2026-09-01', 'P1', 'I1', 'userA', 'gap-a-first', '2026-09-01 10:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P1', 'I1', 'userA', 'gap-a-first', '2026-11-10 10:00:00', 1, '[]', '诊断能力缺口', null, null)
   // B：失败日志缺失（INFO only），pre=3 = first + 2 suppressed（其中 1 个与 first 重复——测去重）
-  insertGroup.run('2026-09-01', 'P1', 'I1', 'userB', 'gap-b-first', '2026-09-01 11:00:00', 3, '["gap-b-first","gap-a-sup-1","gap-a-sup-2"]', '诊断能力缺口', null, null)
-  // C：异池（2026-09-02）
-  insertGroup.run('2026-09-02', 'P2', 'I1', 'userC', 'gap-c-first', '2026-09-02 10:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P1', 'I1', 'userB', 'gap-b-first', '2026-11-10 11:00:00', 3, '["gap-b-first","gap-a-sup-1","gap-a-sup-2"]', '诊断能力缺口', null, null)
+  // C：异池（2026-11-11）
+  insertGroup.run('2026-11-11', 'P2', 'I1', 'userC', 'gap-c-first', '2026-11-11 10:00:00', 1, '[]', '诊断能力缺口', null, null)
   // U：MCP 错误响应（池 P9 未接入）
-  insertGroup.run('2026-09-01', 'P9', 'I9', 'userU', 'gap-u-first', '2026-09-01 12:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P9', 'I9', 'userU', 'gap-u-first', '2026-11-10 12:00:00', 1, '[]', '诊断能力缺口', null, null)
   // D：无诊断记录（fetch 失败形态）池 P9
-  insertGroup.run('2026-09-01', 'P9', 'I9', 'userD', 'gap-d-first', '2026-09-01 13:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P9', 'I9', 'userD', 'gap-d-first', '2026-11-10 13:00:00', 1, '[]', '诊断能力缺口', null, null)
   // E：manual 逃逸（原始缺口 + 人工修正业务冲突）
-  insertGroup.run('2026-09-01', 'P1', 'I1', 'userE', 'gap-e-first', '2026-09-01 14:00:00', 1, '[]', '诊断能力缺口', null, '业务冲突')
+  insertGroup.run('2026-11-10', 'P1', 'I1', 'userE', 'gap-e-first', '2026-11-10 14:00:00', 1, '[]', '诊断能力缺口', null, '业务冲突')
   // F：无关组（业务冲突）
-  insertGroup.run('2026-09-01', 'P1', 'IF', 'userF', 'gap-f-first', '2026-09-01 15:00:00', 1, '[]', '业务冲突', null, null)
+  insertGroup.run('2026-11-10', 'P1', 'IF', 'userF', 'gap-f-first', '2026-11-10 15:00:00', 1, '[]', '业务冲突', null, null)
   // G：未诊断
-  insertGroup.run('2026-09-01', 'P1', 'IG', 'userG', 'gap-g-first', '2026-09-01 16:00:00', 1, '[]', null, null, null)
+  insertGroup.run('2026-11-10', 'P1', 'IG', 'userG', 'gap-g-first', '2026-11-10 16:00:00', 1, '[]', null, null, null)
   // H：先 success 诊断（日志未采集）后 failed 重试（MCP HTTP 412）——池 P8 实际已接入（误判修复红绿）
-  insertGroup.run('2026-09-01', 'P8', 'I8', 'userH', 'gap-h-first', '2026-09-01 12:30:00', 2, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P8', 'I8', 'userH', 'gap-h-first', '2026-11-10 12:30:00', 2, '[]', '诊断能力缺口', null, null)
   // I：只有 failed 诊断（MCP 超时）——组保持 pending_diagnosis 次日自动重试，不纳入需求池
-  insertGroup.run('2026-09-01', 'P8', 'I8', 'userI', 'gap-i-first', '2026-09-01 13:30:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P8', 'I8', 'userI', 'gap-i-first', '2026-11-10 13:30:00', 1, '[]', '诊断能力缺口', null, null)
   // J：枚举外池 + MCP 静默空返回（11-20 14:48 实测形态——池未接入不报错，code 0000+records=[]）。
   // 枚举真源红绿组：改前按 records=[] 误进分区二；改后「池不在枚举」判 pool_uncovered 进分区一
-  insertGroup.run('2026-09-01', '测试池-不存在', 'IJ', 'userJ', 'gap-j-first', '2026-09-01 17:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', '测试池-不存在', 'IJ', 'userJ', 'gap-j-first', '2026-11-10 17:00:00', 1, '[]', '诊断能力缺口', null, null)
   // K：枚举内池（P1）+ MCP 业务报错（code 5000）——11-20 14:48 拍板新类 mcp_error（临时故障补跑清单），
   // 不再误进分区一（报错≠未接入）
-  insertGroup.run('2026-09-01', 'P1', 'IK', 'userK', 'gap-k-first', '2026-09-01 18:00:00', 1, '[]', '诊断能力缺口', null, null)
+  insertGroup.run('2026-11-10', 'P1', 'IK', 'userK', 'gap-k-first', '2026-11-10 18:00:00', 1, '[]', '诊断能力缺口', null, null)
 
   const insertDiag = db.prepare(`
     INSERT INTO api_patrol_diagnoses
