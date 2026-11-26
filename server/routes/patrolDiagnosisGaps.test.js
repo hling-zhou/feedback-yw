@@ -291,6 +291,44 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     expect(JSON.stringify(cov)).not.toContain('I8-aug')
   })
 
+  it('导出 32767 单元格上限红绿（11-26 线上 500 修复）：超量 requestId 分块续行不炸 write', async () => {
+    // 种一个聚合内 1000+ id 的缺口组（真实链路规模——线上 500 复现形态：id 清单整列 join 超 xlsx 单元格上限）
+    const db = require_getDb()
+    const ids = Array.from({ length: 1200 }, (_, i) => `reqId-${String(i).padStart(32, 'x')}`)
+    db.prepare(`
+      INSERT INTO api_patrol_failure_groups
+        (group_date, product_key, pool_name, api_path, metric_name, user_name,
+         first_request_id, first_request_time, pre_compress_count, suppressed_request_ids,
+         customer_type, root_cause_l1, root_cause_l2, product_action_status, created_at, updated_at)
+      VALUES ('2026-11-15', 'eip', 'P1', 'I-many', '绑定', 'userMany', ?, '2026-11-15 10:00:00', 1, ?,
+              '', '诊断能力缺口', null, '—', 't', 't')
+    `).run(ids[0], JSON.stringify(ids.slice(1)))
+    db.prepare(`
+      INSERT INTO api_patrol_diagnoses
+        (failure_group_id, request_id, status, tool_name, mcp_raw_response, diagnosed_at)
+      VALUES (?, ?, 'success', 'log_search', ?, 't')
+    `).run(
+      db.prepare(`SELECT id FROM api_patrol_failure_groups WHERE first_request_id=?`).get(ids[0]).id,
+      ids[0],
+      '{"code":"0000","msg":null,"data":{"records":[],"total":0}}',
+    )
+    const res = await app.inject({ method: 'GET', url: '/api/patrol/diagnosis-gaps/export', headers: authHeader() })
+    // 改前红：write 抛「Text length must not exceed 32767」→ 500；改后 200 + id 分块续行
+    expect(res.statusCode).toBe(200)
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(res.rawPayload, { type: 'buffer' })
+    const cov = XLSX.utils.sheet_to_json(wb.Sheets['分区二-诊断能力不足'])
+    const manyRows = cov.filter((r) => r['接口'] === 'I-many' || (!r['接口'] && r['requestId 清单']))
+    // 1200 id ÷ 约12/块 ≈ 100 块：首行带维度、续行维度空 id 列续接——单格均 < 上限
+    expect(manyRows.length).toBeGreaterThan(80)
+    for (const r of manyRows) {
+      expect(String(r['requestId 清单'] || '').length).toBeLessThan(32767)
+    }
+    // 自清理（防污染后序用例的 groupCount 断言——顺序耦合教训）
+    db.prepare(`DELETE FROM api_patrol_diagnoses WHERE request_id LIKE 'reqId-x%'`).run()
+    db.prepare(`DELETE FROM api_patrol_failure_groups WHERE first_request_id LIKE 'reqId-x%'`).run()
+  })
+
   it('时间窗口守卫（11-25 23:59 拍板：下界 2026-11-10）：8 月 E2E 样例组不进需求池（11-20「显示全部」废止）', async () => {
     // 种一个 8 月缺口组（E2E 样例数据形态——8月10日/8月11日 CSV 导入的组）
     const db = require_getDb()

@@ -900,26 +900,53 @@ export function registerPatrolQueryRoutes(app) {
     const data = summaryRes.json()
     const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
-    // sheet1 分区一：池未接入 MCP——每池一行
+    // requestId 清单分块（11-26 线上 500 修复）：xlsx 单元格上限 32767 字符——真库单聚合
+    // 可含数百 id（每个 32 字符），整列 join 一格必超限（先例：分区二 2139 组聚合的 id 列
+    // 直接炸 write）。分块续行：首块带维度列，余块维度列留空、id 列续接；块宽按 400 字符
+    // （约 12 个 id/块）留足余量，禁裸 Math.floor(32767/32) 贴上限——header/逗号占用另计。
+    const CELL_TEXT_LIMIT = 32767
+    const chunkIds = (ids, chunkChars = 400) => {
+      const list = (ids || []).map(String).filter(Boolean)
+      if (list.length === 0) return ['']
+      const chunks = []
+      let cur = []
+      let curLen = 0
+      for (const id of list) {
+        const addLen = id.length + (cur.length > 0 ? 2 : 0)
+        if (curLen + addLen > chunkChars && cur.length > 0) { chunks.push(cur); cur = []; curLen = 0 }
+        cur.push(id); curLen += addLen
+      }
+      if (cur.length > 0) chunks.push(cur)
+      // 防御：单 id 本身超限（理论不可达）截断保 write 不炸
+      return chunks.map((c) => c.join(', ').slice(0, CELL_TEXT_LIMIT))
+    }
+    /** 展开为分块续行：首行带维度值，续行维度空 */
+    const expandRows = (dimCells, ids) => {
+      const chunks = chunkIds(ids)
+      return chunks.map((text, i) => (i === 0 ? [...dimCells, text] : [...dimCells.map(() => ''), text]))
+    }
+    // sheet1 分区一：池未接入 MCP——每池一行（id 清单分块续行）
     const uncRows = [
       ['资源池', '失败组数', '压缩前失败次数', '最近失败时间', 'requestId 清单'],
-      ...(data.uncoveredPools || []).map((p) => [
-        String(p.poolName || ''), Number(p.groupCount || 0), Number(p.preCompressTotal || 0),
-        String(p.lastRequestTime || ''), (p.requestIds || []).join(', '),
-      ]),
+      ...(data.uncoveredPools || []).flatMap((p) => expandRows(
+        [String(p.poolName || ''), Number(p.groupCount || 0), Number(p.preCompressTotal || 0), String(p.lastRequestTime || '')],
+        p.requestIds,
+      )),
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(uncRows), '分区一-池未接入MCP')
-    // sheet2 分区二：池已接入·诊断能力不足——每聚合键一行
+    // sheet2 分区二：池已接入·诊断能力不足——每聚合键一行（id 清单分块续行）
     const gapKindLabel = { log_not_collected: '日志未采集', failure_log_missing: '失败日志缺失' }
     const covRows = [
       ['产品', '接口', '资源池', '缺口类型分布', '失败组数', '压缩前失败次数', '首次发现', '最近失败时间', 'requestId 清单'],
-      ...(data.rows || []).map((r) => [
-        String(r.productName || r.productKey || ''), String(r.apiPath || ''), String(r.poolName || ''),
-        Object.entries(r.gapKinds || {}).map(([k, n]) => `${gapKindLabel[k] || k}:${n}`).join('，'),
-        Number(r.groupCount || 0), Number(r.preCompressTotal || 0),
-        String(r.firstDate || ''), String(r.lastRequestTime || ''),
-        (r.requestIds || []).join(', '),
-      ]),
+      ...(data.rows || []).flatMap((r) => expandRows(
+        [
+          String(r.productName || r.productKey || ''), String(r.apiPath || ''), String(r.poolName || ''),
+          Object.entries(r.gapKinds || {}).map(([k, n]) => `${gapKindLabel[k] || k}:${n}`).join('，'),
+          Number(r.groupCount || 0), Number(r.preCompressTotal || 0),
+          String(r.firstDate || ''), String(r.lastRequestTime || ''),
+        ],
+        r.requestIds,
+      )),
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(covRows), '分区二-诊断能力不足')
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
