@@ -2,6 +2,7 @@ import {
   hasRequirementTicketLinks,
   normalizeRequirementTicketId,
 } from './requirementTicketProgress.js'
+import { ACTION_ITEM_STATUS_LABELS } from './actionItem.js'
 
 /** @typedef {import('./actionItem.js').ActionItem} ActionItem */
 /** @typedef {import('./actionItem.js').ActionItemStatus} ActionItemStatus */
@@ -147,6 +148,9 @@ export function validateActionItemPatchAllowed(existing, patch) {
   const requirementLinkError = validateActionItemRequirementLinkPatchAllowed(existing, patch)
   if (requirementLinkError) return requirementLinkError
 
+  const completedAtError = validateActionItemCompletedAtPatchAllowed(existing, patch)
+  if (completedAtError) return completedAtError
+
   if (!isActionItemLocked(existing.status)) return null
 
   if (patch.content != null && String(patch.content).trim() !== existing.content) {
@@ -161,6 +165,36 @@ export function validateActionItemPatchAllowed(existing, patch) {
     if (next !== prev) {
       return '该举措已结束，不能修改排期'
     }
+  }
+  return null
+}
+
+/**
+ * completedAt 实际完成时间校验（2026-11-25 拍板）：
+ * 仅 completed 态可填——
+ *   ① 已是 completed：允许人工修正（B 通道），禁止清空（终态防误清）；
+ *   ② 非 completed 态：任何 completedAt 传入即拒绝（完成时间只在完成时产生语义）；
+ *   ③ patch.status === 'completed'（本次切换）：completedAt 可带可不带——
+ *      不带由副作用自动写今天，带则作为人工修正值采纳（同一次 PATCH 允许）。
+ * @param {ActionItem} existing
+ * @param {Partial<ActionItem>} patch
+ * @returns {string | null}
+ */
+export function validateActionItemCompletedAtPatchAllowed(existing, patch) {
+  if (patch.completedAt === undefined) return null
+  const value = String(patch.completedAt ?? '').trim()
+  const nextStatus = patch.status ?? existing.status
+  if (nextStatus !== 'completed') {
+    return `「${ACTION_ITEM_STATUS_LABELS[nextStatus] ?? nextStatus}」不能填写实际完成时间（仅已完成举措可填）`
+  }
+  if (!value) {
+    if (existing.status === 'completed') {
+      return '已完成举措的实际完成时间不能清空'
+    }
+    return '实际完成时间不能为空'
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return '实际完成时间格式须为 YYYY-MM-DD'
   }
   return null
 }
@@ -184,6 +218,15 @@ export function validateActionItemStatusTransition(from, to) {
  * @returns {Partial<ActionItem>}
  */
 export function applyActionItemStatusSideEffects(patch, nextStatus) {
+  if (nextStatus === 'completed') {
+    // 切入 completed 自动记录实际完成时间（A 通道，11-25 拍板）；
+    // patch 显式带合法 completedAt 时不覆盖（同次 PATCH 的人工修正值优先）。
+    const explicit = String(patch.completedAt ?? '').trim()
+    return {
+      ...patch,
+      completedAt: /^\d{4}-\d{2}-\d{2}$/.test(explicit) ? explicit : localIsoDate(),
+    }
+  }
   if (!ACTION_ITEM_TERMINAL_CLEAR_SCHEDULE_STATUSES.includes(nextStatus)) {
     return patch
   }
@@ -193,4 +236,13 @@ export function applyActionItemStatusSideEffects(patch, nextStatus) {
     scheduleChanged: false,
     warningLevel: 'none',
   }
+}
+
+/** 本地时区 YYYY-MM-DD（禁 toISOString 当"今天"——UTC 在 CST 00:00-08:00 比本地早一天，11-21 实锤） */
+function localIsoDate() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }

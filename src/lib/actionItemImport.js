@@ -226,6 +226,18 @@ export function parseActionItemImportRow(row, options = {}) {
 
   const problemTypeSnapshot = cell(row, '问题类型')
 
+  // 实际完成时间（11-25 拍板）：仅状态=已完成时采纳，其余状态填了即忽略并警告（与领域层口径一致）。
+  // 真日期单元格同排期处理（cellDates 的 Date 对象走归一）。
+  const completedRaw = /** @type {string | Date | undefined} */ (row['实际完成时间'])
+  let completedAt = ''
+  if (String(completedRaw ?? '').trim()) {
+    completedAt = normalizeActionScheduleInput(completedRaw)
+    if (status !== 'completed') {
+      warnings.push('状态非「已完成」，实际完成时间列已忽略')
+      completedAt = ''
+    }
+  }
+
   const validated = validateActionItemCreate({
     content,
     detail: cell(row, '举措详情'),
@@ -234,6 +246,7 @@ export function parseActionItemImportRow(row, options = {}) {
     painPointSnapshot: cell(row, '问题'),
     problemTypeSnapshot,
     scheduleAt,
+    completedAt,
     status,
     source,
     linkedTicketIds,

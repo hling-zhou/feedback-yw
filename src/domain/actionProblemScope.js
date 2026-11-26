@@ -17,13 +17,19 @@ const UNKNOWN_JOURNEY_L1 = '未识别环节'
 const UNKNOWN_JOURNEY_L2 = '未识别子环节'
 
 /**
- * 解析举措锚点日期：仅认 scheduleAt（排期/实施日）；无排期一律不画线、不进前后对比
- * （2026-11-25 拍板：firstProposedAt 是批量导入日，不是真实实施日，不再兜底上图）。
+ * 解析举措锚点日期（压降分析时间轴口径）：
+ * ① 已完成（status=completed）且有实际完成时间 → 锚点 = completedAt（真实完成日，最准）；
+ * ② 其余 → 锚点 = scheduleAt（排期=计划实施日）；无排期一律不画线、不进前后对比
+ *    （firstProposedAt 是批量导入日≠实施日，2026-11-25 拍板永不兜底上图）；
+ * ③ 存量 completed 无 completedAt（真实完成时间不存在）→ 回退排期（如实，不猜）。
  * @param {ActionItem} action
  * @returns {{ anchorDate: string; anchorMonth: string }}
  */
 export function resolveActionAnchor(action) {
-  const raw = String(action?.scheduleAt ?? '').trim()
+  const completedAt = String(action?.completedAt ?? '').trim()
+  const raw = action?.status === 'completed' && completedAt
+    ? completedAt
+    : String(action?.scheduleAt ?? '').trim()
   return { anchorDate: raw, anchorMonth: raw ? raw.slice(0, 7) : '' }
 }
 
@@ -249,6 +255,7 @@ export function buildProblemCentricView(actions, feedbacks, productNameByKey) {
         actionId: String(action.id ?? ''),
         content: String(action.content ?? ''),
         scheduleAt: String(action.scheduleAt ?? ''),
+        completedAt: String(action.completedAt ?? '').trim(),
         status: String(action.status ?? ''),
         anchorDate,
         anchorMonth,
@@ -293,33 +300,87 @@ export function buildProblemCentricView(actions, feedbacks, productNameByKey) {
  *   x 取该月最早锚点日（月点趋势图上月内精确到日仅影响线位，不影响可读性）；
  *   badge 顶标 = 该月举措条数（1 条不标数字、标序号徽标起点）；
  *   ordinal 序号 = 按月升序 1 起，与举措时间线列表的编号徽标一一对应；
- *   tooltip = 当月举措明细（排期日 + 内容截断），供竖线/角标 hover 显示。
+ *   tooltip = 当月举措明细（排期日 + 内容截断 + 状态前缀），供竖线/角标 hover 显示；
+ *   tone = 该月状态构成（S1 方案 11-25 拍板）——done 全部完成(绿) / mixed 混合(橙) /
+ *          pending 全未完成(灰) / overdue 含逾期未完成(红，最醒目)。
+ *   逾期定义：scheduleAt < today 且 status ∉ {completed, not_implemented, abnormal_terminated}
+ *   （挂起算逾期）；竖线位置未完成用排期月、完成跳实际完成月（resolveActionAnchor 已处理）。
  * 无排期举措不进标记（不画线，详见 resolveActionAnchor 注释）。
- * @param {(ActionItem | { anchorDate?: string; anchorMonth?: string; scheduleAt?: string; content?: string })[]} actions 问题签名下的举措行（或其投影）
- * @returns {{ x: string; badge: number; ordinal: number; month: string; tooltip: string }[]}
+ * @param {(ActionItem | { anchorDate?: string; anchorMonth?: string; scheduleAt?: string; content?: string; status?: string; completedAt?: string })[]} actions 问题签名下的举措行（或其投影）
+ * @param {{ today?: string }} [options] 逾期判定基准日（YYYY-MM-DD；测试注入用，缺省=系统当天）
+ * @returns {{ x: string; badge: number; ordinal: number; month: string; tooltip: string; tone: 'done' | 'mixed' | 'pending' | 'overdue' }[]}
  */
-export function buildMonthlyActionMarkers(actions) {
-  /** @type {Map<string, { dates: string[]; count: number; details: string[] }>} */
+export function buildMonthlyActionMarkers(actions, options = {}) {
+  const today = String(options.today ?? '').trim() || formatLocalDate(new Date())
+  /** @type {Map<string, { dates: string[]; count: number; details: string[]; statuses: string[]; hasOverdue: boolean }>} */
   const byMonth = new Map()
   for (const action of Array.isArray(actions) ? actions : []) {
     const anchorDate = String(action?.anchorDate ?? '').trim()
     const anchorMonth = String(action?.anchorMonth ?? '').trim()
     if (!anchorDate && !anchorMonth) continue
     let entry = byMonth.get(anchorMonth)
-    if (!entry) { entry = { dates: [], count: 0, details: [] }; byMonth.set(anchorMonth, entry) }
+    if (!entry) { entry = { dates: [], count: 0, details: [], statuses: [], hasOverdue: false }; byMonth.set(anchorMonth, entry) }
+    const status = String(action?.status ?? '').trim()
     entry.count += 1
+    entry.statuses.push(status)
     if (anchorDate) entry.dates.push(anchorDate)
+
+    const scheduleAt = String(action?.scheduleAt ?? '').trim()
+    // 逾期判定（S1）：排期已过 + 未到终态（挂起算逾期）；status 缺失的投影行不参与判定（无法断言）
+    const isOverdue = Boolean(status) && Boolean(scheduleAt) && scheduleAt < today &&
+      !['completed', 'not_implemented', 'abnormal_terminated'].includes(status)
+    if (isOverdue) entry.hasOverdue = true
+
     const content = String(action?.content ?? '').trim()
-    const when = String(action?.scheduleAt ?? '').trim() || anchorDate || `${anchorMonth}-01`
-    entry.details.push(`· ${when} ${content.length > 20 ? `${content.slice(0, 20)}…` : content}`)
+    const when = scheduleAt || anchorDate || `${anchorMonth}-01`
+    const prefix = status === 'completed'
+      ? '✓'
+      : isOverdue
+        ? '⚠逾期'
+        : '●'
+    const statusSuffix = status === 'completed'
+      ? '（已完成）'
+      : isOverdue
+        ? `（逾期 ${daysBetween(scheduleAt, today)} 天）`
+        : ''
+    entry.details.push(`${prefix} ${when} ${content.length > 20 ? `${content.slice(0, 20)}…` : content}${statusSuffix}`)
   }
   const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  return months.map(([month, entry], index) => ({
-    x: entry.dates.length ? entry.dates.sort()[0] : `${month}-01`,
-    badge: entry.count,
-    ordinal: index + 1,
-    month,
-    tooltip: `${month} 实施 ${entry.count} 项：\n${entry.details.join('\n')}`,
-  }))
+  return months.map(([month, entry], index) => {
+    const knownStatuses = entry.statuses.filter(Boolean)
+    const allDone = knownStatuses.length > 0 && knownStatuses.every((s) => s === 'completed')
+    const anyDone = knownStatuses.includes('completed')
+    const tone = entry.hasOverdue
+      ? 'overdue'
+      : allDone
+        ? 'done'
+        : anyDone
+          ? 'mixed'
+          : 'pending'
+    return {
+      x: entry.dates.length ? entry.dates.sort()[0] : `${month}-01`,
+      badge: entry.count,
+      ordinal: index + 1,
+      month,
+      tone,
+      tooltip: `${month} 实施 ${entry.count} 项：\n${entry.details.join('\n')}`,
+    }
+  })
+}
+
+/** 本地时区 YYYY-MM-DD（禁 toISOString 当"今天"——UTC 在 CST 00:00-08:00 比本地早一天） */
+function formatLocalDate(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** @param {string} from @param {string} to 两个 YYYY-MM-DD 的天数差（to - from，向下取整） */
+function daysBetween(from, to) {
+  const a = Date.parse(`${from}T00:00:00`)
+  const b = Date.parse(`${to}T00:00:00`)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0
+  return Math.floor((b - a) / 86400000)
 }
 

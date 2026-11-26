@@ -28,6 +28,69 @@ describe('actionItemStatusRules', () => {
     expect(isActionItemLocked('in_progress')).toBe(false)
   })
 
+  describe('completedAt 实际完成时间（11-25 拍板：A 自动记录 + B 人工修正，仅 completed 态可填）', () => {
+    const inProgress = () => {
+      const created = validateActionItemCreate({
+        content: '举措X',
+        status: 'in_progress',
+        scheduleAt: '2026-06-01',
+      })
+      if (!created.ok) throw new Error(created.error)
+      return created.item
+    }
+
+    it('切换到 completed 时自动写入 completedAt（YYYY-MM-DD）', () => {
+      const merged = mergeActionItemPatch(inProgress(), { status: 'completed' })
+      expect(merged.ok).toBe(true)
+      if (!merged.ok) return
+      expect(merged.item.status).toBe('completed')
+      expect(merged.item.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    })
+
+    it('completed 态允许人工修正 completedAt（B 通道）', () => {
+      const done = mergeActionItemPatch(inProgress(), { status: 'completed' })
+      if (!done.ok) return
+      const fixed = mergeActionItemPatch(done.item, { completedAt: '2026-06-15' })
+      expect(fixed.ok).toBe(true)
+      if (fixed.ok) expect(fixed.item.completedAt).toBe('2026-06-15')
+    })
+
+    it('非 completed 态填 completedAt 被拒绝（拍板：仅 completed 态可填）', () => {
+      const result = mergeActionItemPatch(inProgress(), { completedAt: '2026-06-15' })
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toMatch(/完成时间/)
+    })
+
+    it('创建时非 completed 态带 completedAt 被拒绝', () => {
+      const created = validateActionItemCreate({
+        content: '举措Y',
+        status: 'in_progress',
+        scheduleAt: '2026-06-01',
+        completedAt: '2026-06-15',
+      })
+      expect(created.ok).toBe(false)
+      if (!created.ok) expect(created.error).toMatch(/完成时间/)
+    })
+
+    it('创建时 completed 态带 completedAt 采纳', () => {
+      const created = validateActionItemCreate({
+        content: '举措Z',
+        status: 'completed',
+        scheduleAt: '2026-06-01',
+        completedAt: '2026-06-15',
+      })
+      expect(created.ok).toBe(true)
+      if (created.ok) expect(created.item.completedAt).toBe('2026-06-15')
+    })
+
+    it('completed 态清空 completedAt 被拒绝（终态锁定，防误清）', () => {
+      const done = mergeActionItemPatch(inProgress(), { status: 'completed' })
+      if (!done.ok) return
+      const cleared = mergeActionItemPatch(done.item, { completedAt: '' })
+      expect(cleared.ok).toBe(false)
+    })
+  })
+
   it('merge clears schedule and blocks edits on locked items', () => {
     const created = validateActionItemCreate({
       content: '举措A',

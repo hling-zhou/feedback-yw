@@ -10,30 +10,53 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { Tooltip } from 'antd'
 import ChartTooltip from './ChartTooltip.jsx'
 
 /**
+ * 竖线状态色（S1 方案 11-25 拍板）：角标与竖线按当月举措构成着色——
+ * done 全部完成(绿) / mixed 混合(橙) / pending 全未完成(灰) / overdue 含逾期(红)。
+ */
+const REF_TONE_COLORS = {
+  done: '#16A34A',
+  mixed: '#F59E0B',
+  pending: '#6B7280',
+  overdue: '#DC2626',
+}
+
+/** tone 缺省（旧调用方/无状态投影）回退既有橙色形态 */
+function resolveRefToneColor(tone, fallback = '#F59E0B') {
+  return REF_TONE_COLORS[tone] ?? fallback
+}
+
+/**
  * 竖线顶部数量角标（问题压降图同月多举措合并后使用，2026-11-25 重叠治理；
- * 11-25 晚真机反馈修复：角标画在 plot 顶上方会被 SVG 边界裁掉——改画 plot 内侧顶部；
- * 补 hover：内嵌 <title> 显示当月举措明细，加透明命中区让整条竖线可 hover）。
- * recharts ReferenceLine label content 拿到的 props.viewBox 含线两端点（x1,y1）(x2,y2)：
+ * 11-25 晚两轮真机反馈修复：①角标画在 plot 顶上方会被 SVG 边界裁掉 → 改画 plot 内侧顶部；
+ * ②原生 <title> hover 是浏览器默认样式体验差 → 换系统内统一 antd Tooltip 气泡
+ * （先例 CompositeFilter.jsx / DefinitionSelectOption.jsx 同款）；
+ * ③角标/竖线按状态构成着色（done 绿/mixed 橙/pending 灰/overdue 红）。
+ * recharts ReferenceLine label content 拿到的 props.viewBox 含线两端点 (x1,y1)(x2,y2)：
  * y1 = plot 顶部 y 坐标，角标贴其内侧往下画，永不越出 SVG 可视区。
- * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number; tooltip?: string }} props
+ * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number; tooltip?: string; tone?: string }} props
  */
 function RefLineBadge(props) {
-  const { viewBox, badge, tooltip } = props
+  const { viewBox, badge, tooltip, tone } = props
   if (!viewBox || !Number.isFinite(viewBox.x) || badge == null) return null
   const x = viewBox.x
   const y = (viewBox.y ?? 0) + 2
   const text = String(badge)
   const w = Math.max(18, 10 + text.length * 7)
+  const color = resolveRefToneColor(tone)
   return (
     <g transform={`translate(${x - w / 2}, ${y})`}>
-      <title>{tooltip || `${badge} 项举措`}</title>
-      {/* 透明命中区：横向覆盖角标宽度，纵向延伸到线底，hover 竖线即出 title */}
-      <rect x={0} y={0} width={w} height={(viewBox.height ?? 0) + 16} fill="transparent" />
-      <rect x={0} y={0} width={w} height={16} rx={8} fill="#F59E0B" fillOpacity={0.16} stroke="#F59E0B" strokeWidth={1} />
-      <text x={w / 2} y={11.5} textAnchor="middle" fontSize={10} fill="#B45309">{text}</text>
+      <Tooltip title={tooltip || `${badge} 项举措`} mouseEnterDelay={0.15}>
+        {/* 角标本体 + 透明命中区：hover 角标/竖线即出 antd 气泡 */}
+        <g>
+          <rect x={0} y={0} width={w} height={16} rx={8} fill={color} fillOpacity={0.16} stroke={color} strokeWidth={1} />
+          <text x={w / 2} y={11.5} textAnchor="middle" fontSize={10} fill={tone === 'done' ? '#15803D' : tone === 'overdue' ? '#B91C1C' : tone === 'pending' ? '#4B5563' : '#B45309'}>{text}</text>
+          <rect x={0} y={16} width={w} height={(viewBox.height ?? 0)} fill="transparent" />
+        </g>
+      </Tooltip>
     </g>
   )
 }
@@ -82,8 +105,10 @@ function formatTsLabel(ts) {
  *        time：X 轴按日历时间，参考线可落在月内某天（工单量仍按月点）
  * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string } | Array<{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string }> | null} [props.referenceLine]
  *        y=水平基准线；可传数组画多条；x=X 轴某值处的垂直线（月份或 YYYY-MM-DD）
- * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string; badge?: number }[]} [props.referenceLines]
- *        多条垂直参考线（如同一问题上多个举措的实施日）；badge 传数量时顶部渲染圆形角标替代文字标签
+ * @param {{ y?: number; x?: string | number; label?: string; stroke?: string; strokeDasharray?: string; yAxisId?: string; position?: string; badge?: number; tooltip?: string; tone?: 'done' | 'mixed' | 'pending' | 'overdue' }[]} [props.referenceLines]
+ *        多条垂直参考线（如同一问题上多个举措的实施日）；badge 传数量时顶部渲染圆形角标替代文字标签，
+ *        tooltip 传文本时角标 hover 显示 antd 气泡（当月举措明细）；tone 传状态构成时
+ *        竖线/角标着色——done 全完成(绿) / mixed 混合(橙) / pending 全未完成(灰) / overdue 含逾期(红)
  * @param {((value: unknown, name: string) => unknown[]) | null} [props.tooltipFormatter] tooltip 数值格式化（V1 StatusOverviewChart 先例：[值, 名]）
  * @param {((label: unknown) => string) | null} [props.tooltipLabelFormatter] tooltip 轴标签格式化
  */
@@ -217,11 +242,11 @@ export default function TrendChart({
         <ReferenceLine
           key={`ref-x-${idx}-${r.x}`}
           x={timeScale ? x : String(r.x)}
-          stroke={r.stroke || '#F59E0B'}
+          stroke={r.tone ? resolveRefToneColor(r.tone, r.stroke || '#F59E0B') : (r.stroke || '#F59E0B')}
           strokeDasharray={r.strokeDasharray || '6 4'}
           label={
             r.badge != null
-              ? { content: <RefLineBadge badge={r.badge} tooltip={r.tooltip} />, position: 'top' }
+              ? { content: <RefLineBadge badge={r.badge} tooltip={r.tooltip} tone={r.tone} />, position: 'top' }
               : {
                 value: r.label || String(r.x),
                 position: 'insideTopRight',

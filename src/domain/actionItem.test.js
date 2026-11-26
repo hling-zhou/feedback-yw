@@ -51,6 +51,7 @@ describe('actionItem', () => {
       status: 'pending_evaluation',
       firstProposedAt: created.item.firstProposedAt,
       scheduleAt: '',
+      completedAt: '',
       painPointSnapshot: '',
       problemTypeSnapshot: '',
       journeyL1Snapshot: '',

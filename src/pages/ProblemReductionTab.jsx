@@ -173,7 +173,7 @@ export function ProblemDetail({ row }) {
 
         <div className="rounded-lg bg-white p-2">
           <Typography.Text type="secondary" className="mb-1 block text-xs">
-            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=举措实施月（角标=当月举措数）
+            工单量月度趋势（全量 {row.totalTicketCount} 单，{row.firstMonth}~{row.lastMonth}）· 竖线=举措实施月（角标=当月举措数：已完成绿 / 混合橙 / 未完成灰 / 含逾期红）
             {unscheduledCount > 0 ? `，另有 ${unscheduledCount} 条无排期举措未上图` : ''}
           </Typography.Text>
           <TrendChart
@@ -185,7 +185,7 @@ export function ProblemDetail({ row }) {
               { dataKey: 'count', name: '工单数', stroke: '#4F46E5' },
               { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
             ]}
-            referenceLines={markers.map((m) => ({ x: m.x, badge: m.badge, tooltip: m.tooltip, stroke: '#F59E0B' }))}
+            referenceLines={markers.map((m) => ({ x: m.x, badge: m.badge, tooltip: m.tooltip, tone: m.tone }))}
           />
         </div>
 
@@ -217,6 +217,24 @@ export function ProblemDetail({ row }) {
 }
 
 /**
+ * 举措行状态圆点（与图上竖线 tone 同色系，S1 方案）：
+ * completed 绿 / 逾期未完成（含挂起）红 / 其余灰橙。
+ * @param {{ status?: string; scheduleAt?: string; anchorDate?: string }} action
+ */
+function actionStatusDotClass(action) {
+  const status = String(action?.status ?? '')
+  if (status === 'completed') return 'bg-green-500'
+  const schedule = String(action?.scheduleAt ?? '').trim()
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const overdue = Boolean(schedule) && schedule < todayStr &&
+    !['completed', 'not_implemented', 'abnormal_terminated'].includes(status)
+  if (overdue) return 'bg-red-500'
+  if (status === 'in_progress') return 'bg-amber-500'
+  return 'bg-gray-400'
+}
+
+/**
  * @param {{ action: any; ordinal?: number | null }} props
  */
 function ActionTimelineRow({ action, ordinal = null }) {
@@ -225,6 +243,7 @@ function ActionTimelineRow({ action, ordinal = null }) {
     <div className="rounded-md border border-ink-100 px-3 py-2">
       <div className="flex items-start justify-between gap-2">
         <Typography.Text className="!text-sm">
+          <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${actionStatusDotClass(action)}`} aria-label="状态点" />
           {ordinal != null ? (
             <span
               aria-label={`第 ${ordinal} 个实施月`}
@@ -238,7 +257,7 @@ function ActionTimelineRow({ action, ordinal = null }) {
         <Tag className="!m-0 !text-xs">{ACTION_ITEM_STATUS_LABELS[action.status] || action.status}</Tag>
       </div>
       <Typography.Text type="secondary" className="!text-xs block">
-        实施：{action.scheduleAt || action.anchorDate || '—'}
+        实施：{action.completedAt ? `实际完成 ${action.completedAt}` : action.scheduleAt || action.anchorDate || '—'}
       </Typography.Text>
       {r && r.sufficient && r.changePct !== null ? (
         <Typography.Text className="!text-xs">

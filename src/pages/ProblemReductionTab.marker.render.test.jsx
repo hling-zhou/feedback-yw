@@ -38,12 +38,13 @@ const ROW = {
   ],
   actions: [
     // 同月 3 条（含同日 2 条）→ 图上只应有 1 条竖线、角标 3、徽标序号 1
+    // 状态形态：a1 已完成 + a2/a3 逾期未完成 → 该月 tone=overdue（红，含逾期优先）
     // reduction 形态对齐生产：有 anchorMonth 时 computeReduction 恒返回对象（此处 sufficient=false → “数据不足”）
-    { actionId: 'a1', content: '优化连接', scheduleAt: '2026-03-15', status: 'in_progress', anchorDate: '2026-03-15', anchorMonth: '2026-03', reduction: { sufficient: false } },
+    { actionId: 'a1', content: '优化连接', scheduleAt: '2026-03-15', status: 'completed', completedAt: '2026-03-15', anchorDate: '2026-03-15', anchorMonth: '2026-03', reduction: { sufficient: false } },
     { actionId: 'a2', content: '升级内核', scheduleAt: '2026-03-20', status: 'in_progress', anchorDate: '2026-03-20', anchorMonth: '2026-03', reduction: { sufficient: false } },
-    { actionId: 'a3', content: '扩容网关', scheduleAt: '2026-03-15', status: 'done', anchorDate: '2026-03-15', anchorMonth: '2026-03', reduction: { sufficient: false } },
-    // 有排期第 2 月 → 徽标序号 2（sufficient 数据 → 前后对比文案）
-    { actionId: 'a4', content: '增加冗余', scheduleAt: '2026-04-10', status: 'in_progress', anchorDate: '2026-04-10', anchorMonth: '2026-04', reduction: { sufficient: true, changePct: -50, beforeMonths: [{ date: '2026-01' }, { date: '2026-02' }, { date: '2026-03' }, { date: '2026-04' }], afterMonths: [{ date: '2026-05' }], beforeAvg: 1.5, afterAvg: 0 } },
+    { actionId: 'a3', content: '扩容网关', scheduleAt: '2026-03-15', status: 'suspended', anchorDate: '2026-03-15', anchorMonth: '2026-03', reduction: { sufficient: false } },
+    // 有排期第 2 月 → 徽标序号 2（sufficient 数据 → 前后对比文案）；状态 completed → tone=done（绿）
+    { actionId: 'a4', content: '增加冗余', scheduleAt: '2026-04-10', status: 'completed', completedAt: '2026-04-10', anchorDate: '2026-04-10', anchorMonth: '2026-04', reduction: { sufficient: true, changePct: -50, beforeMonths: [{ date: '2026-01' }, { date: '2026-02' }, { date: '2026-03' }, { date: '2026-04' }], afterMonths: [{ date: '2026-05' }], beforeAvg: 1.5, afterAvg: 0 } },
     // 无排期 → 不上图，列表行显示“未设排期，未上图”，reduction 恒 null（生产形态）
     { actionId: 'a5', content: '调研需求', scheduleAt: '', status: 'pending_evaluation', anchorDate: '', anchorMonth: '', reduction: null },
   ],
@@ -57,8 +58,8 @@ const ROW = {
 describe('ProblemDetail 竖线聚合渲染形态', () => {
   const html = renderToStaticMarkup(React.createElement(ProblemDetail, { row: ROW }))
 
-  it('图例文案标注“实施月+角标”，且披露无排期条数', () => {
-    expect(html).toContain('竖线=举措实施月（角标=当月举措数）')
+  it('图例文案标注“实施月+角标+状态色”，且披露无排期条数', () => {
+    expect(html).toContain('竖线=举措实施月（角标=当月举措数：已完成绿 / 混合橙 / 未完成灰 / 含逾期红）')
     expect(html).toContain('另有 1 条无排期举措未上图')
   })
 
@@ -86,10 +87,12 @@ describe('ProblemDetail 竖线聚合渲染形态', () => {
     const m = html.match(/data-reference-lines="([^"]*)"/)
     expect(m).toBeTruthy()
     const lines = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))
-    expect(lines.map(({ tooltip, ...rest }) => rest)).toEqual([
-      { x: '2026-03-15', badge: 3, stroke: '#F59E0B' },
-      { x: '2026-04-10', badge: 1, stroke: '#F59E0B' },
+    expect(lines.map(({ tooltip, tone, ...rest }) => rest)).toEqual([
+      { x: '2026-03-15', badge: 3 },
+      { x: '2026-04-10', badge: 1 },
     ])
+    // tone 按 fixture：2026-03 = completed+逾期未完成混合 → overdue（红）；2026-04 全完成 → done（绿）
+    expect(lines.map((l) => l.tone)).toEqual(['overdue', 'done'])
   })
 
   it('竖线含 tooltip 传参（当月举措明细，hover 可见——11-25 真机反馈补齐）', () => {

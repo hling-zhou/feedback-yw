@@ -44,6 +44,7 @@ export {
  * @property {'ticket' | 'post_use' | 'observation' | 'api_patrol'} [source] - 举措来源（ticket=投诉/咨询，post_use=用后即评，observation=留观问题升级，api_patrol=API巡检）
  * @property {string} [firstProposedAt] - ISO date (YYYY-MM-DD)
  * @property {string} [scheduleAt] - 排期展示文本
+ * @property {string} [completedAt] - 实际完成时间 YYYY-MM-DD（仅 completed 态有值；切换到 completed 时自动写入当天，允许人工修正；压降分析锚点优先用此值，2026-11-25 拍板）
  * @property {string} [painPointSnapshot]
  * @property {string} [problemTypeSnapshot]
  * @property {string} [journeyL1Snapshot]
@@ -145,6 +146,7 @@ export const ACTION_ITEM_CREATE_BODY_KEYS = [
   'status',
   'firstProposedAt',
   'scheduleAt',
+  'completedAt',
   'painPointSnapshot',
   'problemTypeSnapshot',
   'journeyL1Snapshot',
@@ -247,6 +249,7 @@ export function normalizeActionItem(input) {
     source: input.source === 'post_use' || input.source === 'observation' || input.source === 'api_patrol' ? input.source : 'ticket',
     firstProposedAt: String(input.firstProposedAt ?? '').trim(),
     scheduleAt,
+    completedAt: status === 'completed' ? String(input.completedAt ?? '').trim() : '',
     painPointSnapshot: String(input.painPointSnapshot ?? '').trim(),
     problemTypeSnapshot: String(input.problemTypeSnapshot ?? '').trim(),
     journeyL1Snapshot: String(input.journeyL1Snapshot ?? '').trim(),
@@ -289,6 +292,16 @@ export function validateActionItemCreate(input) {
   if (input.status != null && !isActionItemStatus(input.status)) {
     return { ok: false, error: '无效的举措状态' }
   }
+  // completedAt 口径（11-25 拍板）：仅 completed 态可带——校验必须看原始输入
+  // （normalize 会把非 completed 态的 completedAt 静默清空，先校验后归一否则漏检）。
+  const rawStatus = input.status ?? deriveActionItemStatusFromSchedule(String(input.scheduleAt ?? '').trim())
+  const rawCompletedAt = String(input.completedAt ?? '').trim()
+  if (rawStatus !== 'completed' && rawCompletedAt) {
+    return { ok: false, error: `「${ACTION_ITEM_STATUS_LABELS[rawStatus] ?? rawStatus}」不能填写实际完成时间（仅已完成举措可填）` }
+  }
+  if (rawStatus === 'completed' && rawCompletedAt && !/^\d{4}-\d{2}-\d{2}$/.test(rawCompletedAt)) {
+    return { ok: false, error: '实际完成时间格式须为 YYYY-MM-DD' }
+  }
   const item = normalizeActionItem({
     ...input,
     id: input.id || randomId(),
@@ -303,6 +316,14 @@ export function validateActionItemCreate(input) {
   }
   const scheduleRequiredError = validateActionItemScheduleForStatus(item.status, item.scheduleAt)
   if (scheduleRequiredError) return { ok: false, error: scheduleRequiredError }
+  // completedAt 口径（11-25 拍板）：仅 completed 态可带；completed 建议带（批量导入 B 通道），
+  // 不带则此处不自动补（切换态的自动记录走 PATCH 副作用），保持创建语义=导入如实。
+  if (item.status !== 'completed' && item.completedAt) {
+    return { ok: false, error: `「${ACTION_ITEM_STATUS_LABELS[item.status]}」不能填写实际完成时间（仅已完成举措可填）` }
+  }
+  if (item.status === 'completed' && item.completedAt && !/^\d{4}-\d{2}-\d{2}$/.test(item.completedAt)) {
+    return { ok: false, error: '实际完成时间格式须为 YYYY-MM-DD' }
+  }
   return { ok: true, item }
 }
 

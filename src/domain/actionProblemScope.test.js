@@ -52,6 +52,18 @@ describe('resolveActionAnchor', () => {
     expect(resolveActionAnchor(makeAction({ scheduleAt: '', firstProposedAt: '' })))
       .toEqual({ anchorDate: '', anchorMonth: '' })
   })
+  it('已完成且有 completedAt：锚点=实际完成时间（11-25 拍板，压降分析用真实完成日）', () => {
+    expect(resolveActionAnchor(makeAction({ status: 'completed', scheduleAt: '2026-05-31', completedAt: '2026-06-20' })))
+      .toEqual({ anchorDate: '2026-06-20', anchorMonth: '2026-06' })
+  })
+  it('已完成但 completedAt 空（存量 76 条）：回退排期时间', () => {
+    expect(resolveActionAnchor(makeAction({ status: 'completed', scheduleAt: '2026-05-31', completedAt: '' })))
+      .toEqual({ anchorDate: '2026-05-31', anchorMonth: '2026-05' })
+  })
+  it('非 completed 态带 completedAt（防御，normalize 已保证不出现）：仍按排期', () => {
+    expect(resolveActionAnchor(makeAction({ status: 'in_progress', scheduleAt: '2026-05-31', completedAt: '2026-04-01' })))
+      .toEqual({ anchorDate: '2026-05-31', anchorMonth: '2026-05' })
+  })
 })
 
 describe('computeReduction', () => {
@@ -195,13 +207,13 @@ describe('buildMonthlyActionMarkers（竖线重叠治理 2026-11-25）', () => {
       { anchorDate: '2026-04-15', anchorMonth: '2026-04' }, // 同月更早 → x 应取 04-15
       { anchorDate: '2026-07-02', anchorMonth: '2026-07' },
     ])
-    expect(markers.map(({ tooltip, ...rest }) => rest)).toEqual([
+    expect(markers.map(({ tooltip, tone, ...rest }) => rest)).toEqual([
       { x: '2026-04-15', badge: 2, ordinal: 1, month: '2026-04' },
       { x: '2026-05-31', badge: 10, ordinal: 2, month: '2026-05' },
       { x: '2026-07-02', badge: 1, ordinal: 3, month: '2026-07' },
     ])
-    // tooltip 形态：月份 + 条数 + 明细行
-    expect(markers[0].tooltip).toBe('2026-04 实施 2 项：\n· 2026-04-30 \n· 2026-04-15 ')
+    // tooltip 形态：月份 + 条数 + 明细行（status 缺省的投影行前缀 ●、无状态后缀）
+    expect(markers[0].tooltip).toBe('2026-04 实施 2 项：\n● 2026-04-30 \n● 2026-04-15 ')
   })
 
   it('tooltip 明细带内容截断（>20 字）与排期日', () => {
@@ -210,6 +222,69 @@ describe('buildMonthlyActionMarkers（竖线重叠治理 2026-11-25）', () => {
     ])
     expect(markers[0].tooltip).toContain('2026-03-15')
     expect(markers[0].tooltip).toContain('优化EIP连接稳定性并增加自动重连机制超…')
+  })
+
+  describe('状态构成与逾期标记（S1 方案，11-25 拍板）', () => {
+    // today 显式注入避免测试随真实日期漂移；未完成组排期设未来日期 → 不逾期
+    const TODAY = '2026-11-25'
+    const base = { anchorDate: '2026-12-30', anchorMonth: '2026-12', scheduleAt: '2026-12-30', content: '举措' }
+    it('全部已完成 → tone=done（绿）', () => {
+      const m = buildMonthlyActionMarkers(
+        [
+          { ...base, status: 'completed', completedAt: '2026-12-30' },
+          { ...base, status: 'completed', completedAt: '2026-12-21' },
+        ],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('done')
+      expect(m[0].tooltip).toContain('✓')
+    })
+    it('混合（完成+进行中）→ tone=mixed（橙）', () => {
+      const m = buildMonthlyActionMarkers(
+        [
+          { ...base, status: 'completed', completedAt: '2026-12-30' },
+          { ...base, status: 'in_progress' },
+        ],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('mixed')
+    })
+    it('全部未完成 → tone=pending（灰）', () => {
+      const m = buildMonthlyActionMarkers(
+        [
+          { ...base, status: 'in_progress' },
+          { ...base, status: 'suspended' },
+        ],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('pending')
+    })
+    it('含逾期（排期已过且未完成）→ tone=overdue（红），tooltip 标逾期天数', () => {
+      const m = buildMonthlyActionMarkers(
+        [{ ...base, anchorDate: '2026-06-30', anchorMonth: '2026-06', scheduleAt: '2026-06-30', status: 'in_progress' }],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('overdue')
+      expect(m[0].tooltip).toContain('逾期')
+    })
+    it('挂起且排期已过也算逾期（拍板：挂起算）', () => {
+      const m = buildMonthlyActionMarkers(
+        [{ ...base, anchorDate: '2026-06-30', anchorMonth: '2026-06', scheduleAt: '2026-06-30', status: 'suspended' }],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('overdue')
+    })
+    it('已完成不看逾期（排期过=过去完成，正常）', () => {
+      const m = buildMonthlyActionMarkers(
+        [{ ...base, status: 'completed', completedAt: '2026-12-30' }],
+        { today: TODAY },
+      )
+      expect(m[0].tone).toBe('done')
+    })
+    it('今天参数缺省 → 用系统当天', () => {
+      const m = buildMonthlyActionMarkers([{ ...base, status: 'in_progress', scheduleAt: '2099-01-01', anchorDate: '2099-01-01', anchorMonth: '2099-01' }])
+      expect(m[0].tone).toBe('pending') // 未来排期不逾期
+    })
   })
   it('无排期举措不产生标记', () => {
     expect(buildMonthlyActionMarkers([

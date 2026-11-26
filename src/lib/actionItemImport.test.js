@@ -13,6 +13,7 @@ import {
 } from './actionItemImport.js'
 import { normalizeActionScheduleInput } from '../domain/actionSchedule.js'
 import { ACTION_ITEM_IMPORT_TEMPLATE_HEADERS } from './actionItemImportTemplate.js'
+import { ACTION_ITEM_LIST_HEADERS } from './actionItemExport.js'
 
 describe('normalizeActionScheduleInput 排期写法归一（11-25 拍板）', () => {
   it('常见分隔符与中文写法归一为 YYYY-MM-DD', () => {
@@ -84,6 +85,51 @@ describe('actionItemImport', () => {
       'complaint_ticket',
       'consultation_ticket',
     ])
+  })
+
+  describe('实际完成时间列（11-25 拍板：导出→导入往返）', () => {
+    it('状态=已完成 + 完成时间 → 采纳', () => {
+      const r = parseActionItemImportRow({
+        '举措': '完成举措',
+        '排期时间': '2026-05-31',
+        '状态': '已完成',
+        '实际完成时间': '2026年6月20日',
+      })
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.item.status).toBe('completed')
+      expect(r.item.completedAt).toBe('2026-06-20')
+    })
+
+    it('状态≠已完成 + 完成时间 → 忽略并警告', () => {
+      const r = parseActionItemImportRow({
+        '举措': '进行中举措',
+        '排期时间': '2026-06-30',
+        '状态': '进行中',
+        '实际完成时间': '2026-06-15',
+      })
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.item.status).toBe('in_progress')
+      expect(r.item.completedAt).toBe('')
+      expect(r.warnings).toContain('状态非「已完成」，实际完成时间列已忽略')
+    })
+
+    it('已完成但完成时间留空 → completedAt 空且无警告（保持原值语义由 upsert 处理）', () => {
+      const r = parseActionItemImportRow({
+        '举措': '空完成时间',
+        '状态': '已完成',
+      })
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.item.status).toBe('completed')
+      expect(r.item.completedAt).toBe('')
+    })
+
+    it('导出→导入往返：completedAt 出现在导出行且可被导入读回', () => {
+      // 导出侧已带列；这里锚定往返关键形态——导出列名 = 导入读取列名
+      expect(ACTION_ITEM_LIST_HEADERS).toContain('实际完成时间')
+    })
   })
 
   describe('parseActionItemSourceCell（来源列 → 档位，2026-11-24 拍板）', () => {
