@@ -973,6 +973,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
   // 讨论状态三态单向：''未标记 / 'pending'待讨论 / 'done'已讨论；本地态仅允许「推进」
   const [discussionStatus, setDiscussionStatus] = useState(() =>
     normalizeDiscussionStatus(feedback?.discussionStatus))
+  // 已保存态（形态骨架唯一判据，2026-11-26 修正）：Tag 只渲染已落库状态，
+  // 本地勾选视觉仅体现在 Checkbox 的勾上——「页面上看到的」与「实际生效的」严格一致
+  const savedDiscussionStatus = normalizeDiscussionStatus(feedback?.discussionStatus)
   const [sentiment, setSentiment] = useState(
     () => normalizeSentiment(feedback?.sentiment),
   )
@@ -2199,7 +2202,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                     <div>
                       <div className="sub-section-label">人工复核</div>
                       {/* 2026-11-25 拍板：双标记行——纳入听音（二态单向闩锁）× 讨论状态（三态单向）。
-                          勾选仅本地态，随「保存」落库即锁；标记对所有人可见（非个人态）。 */}
+                          勾选仅本地态，随「保存」落库即锁；标记对所有人可见（非个人态）。
+                          2026-11-26 修正：形态骨架只看已保存态（feedback.discussionStatus）——
+                          勾选后立即显示的必须是「勾着的 Checkbox」，而不是终态 Tag（视觉与实际生效一致）；保存前可再点取消反悔。 */}
                       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md bg-ink-50/60 px-2.5 py-1.5">
                         {feedback.listeningReviewed ? (
                           <Tag color="success" className="!m-0">纳入听音</Tag>
@@ -2213,16 +2218,16 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                             </Checkbox>
                           </Tooltip>
                         )}
-                        {discussionStatus === 'done' ? (
+                        {savedDiscussionStatus === 'done' ? (
                           <Tag color="success" className="!m-0">已讨论</Tag>
-                        ) : discussionStatus === 'pending' ? (
+                        ) : savedDiscussionStatus === 'pending' ? (
                           <>
                             <Tag color="processing" className="!m-0">待讨论</Tag>
                             <Tooltip title="确认已讨论后不可回退">
                               <Checkbox
-                                checked={false}
+                                checked={discussionStatus === 'done'}
                                 onChange={(event) => {
-                                  if (event.target.checked) setDiscussionStatus('done')
+                                  setDiscussionStatus(event.target.checked ? 'done' : 'pending')
                                 }}
                               >
                                 已讨论
@@ -2232,9 +2237,9 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         ) : (
                           <Tooltip title="标记待讨论后不可取消，讨论完成可推进为已讨论">
                             <Checkbox
-                              checked={false}
+                              checked={discussionStatus === 'pending'}
                               onChange={(event) => {
-                                if (event.target.checked) setDiscussionStatus('pending')
+                                setDiscussionStatus(event.target.checked ? 'pending' : '')
                               }}
                             >
                               待讨论
@@ -2243,6 +2248,10 @@ export default function FeedbackDrawer({ feedback: selected, onClose, onSavedClo
                         )}
                         <Typography.Text type="secondary" className="text-xs">
                           标记对所有人可见
+                          {(savedDiscussionStatus !== discussionStatus
+                            || (!feedback.listeningReviewed && listeningReviewed)) && (
+                            <span className="ml-1 text-brand-600">（未保存）</span>
+                          )}
                         </Typography.Text>
                       </div>
                       <Form layout="vertical">

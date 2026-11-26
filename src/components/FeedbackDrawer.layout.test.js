@@ -83,6 +83,11 @@ describe('FeedbackDrawer layout', () => {
     expect(src).toContain('待讨论')
     expect(src).toContain('标记对所有人可见')
     expect(src).toContain("听音 Checkbox 移入「优化建议→人工复核」标记行")
+    // 2026-11-26 修正锚定：形态骨架只看已保存态 savedDiscussionStatus（勾选不立即变 Tag，随保存生效）
+    expect(src).toContain('const savedDiscussionStatus = normalizeDiscussionStatus(feedback?.discussionStatus)')
+    expect(src).toContain("savedDiscussionStatus === 'done' ?")
+    expect(src).toContain("checked={discussionStatus === 'pending'}")
+    expect(src).toContain('（未保存）')
   })
 
   it('exposes scroll helper and keeps a single vertical scrollbar on drawer body', () => {
