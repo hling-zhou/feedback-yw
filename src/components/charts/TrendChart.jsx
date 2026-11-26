@@ -42,7 +42,7 @@ function renderRefTooltip(tooltip, badge) {
   const [head, ...lines] = text.split('\n')
   if (!lines.length || !lines.some(Boolean)) return head || `${badge} 项举措`
   return (
-    <div className="max-w-[18rem]">
+    <div>
       <div className="mb-1 font-medium">{head}</div>
       <div className="flex flex-col gap-0.5">
         {lines.filter(Boolean).map((line, i) => (
@@ -74,7 +74,11 @@ function RefLineBadge(props) {
   const color = resolveRefToneColor(tone)
   return (
     <g transform={`translate(${x - w / 2}, ${y})`}>
-      <Tooltip title={renderRefTooltip(tooltip, badge)} mouseEnterDelay={0.15}>
+      <Tooltip
+        title={renderRefTooltip(tooltip, badge)}
+        mouseEnterDelay={0.15}
+        styles={{ root: { maxWidth: 360 } }}
+      >
         {/* 角标本体 + 透明命中区：hover 角标/竖线即出 antd 气泡 */}
         <g>
           <rect x={0} y={0} width={w} height={16} rx={8} fill={color} fillOpacity={0.16} stroke={color} strokeWidth={1} />
