@@ -77,7 +77,7 @@ function makeForward(content) {
 describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', () => {
   afterAll(() => { fs.rmSync(tmpDir, { recursive: true, force: true }) })
 
-  it('① 快速路径：无失败语义日志 → 诊断能力缺口，且不调 LLM', async () => {
+  it('① 快速路径·分界线（11-26 拆类拍板）：records 在但无失败语义 → 产品可观测性不足（产品的锅）', async () => {
     const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
     const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
     const r = await runPatrolDiagnosisPipeline(MCP_TEXT_NORMAL_ONLY, {}, {
@@ -85,11 +85,29 @@ describe('patrolDiagnosisPipeline（归类流程倒转——11-18 拍板）', ()
       llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
     })
     expect(r.status).toBe('success')
-    expect(r.l1).toBe('诊断能力缺口')
-    expect(r.productAction).toBe('—')
+    expect(r.l1).toBe('产品可观测性不足')   // 日志在但读不出失败原因——责任在产品（补错误码/提示）
+    expect(r.l2).toBe('失败原因未落日志')
+    expect(r.productAction).toBe('待处理')
     expect(forward).not.toHaveBeenCalled() // 不烧 LLM 调用
     expect(r.rootCauseSource).toBeNull()
     expect(r.conclusion).toBeNull()
+  })
+
+  it('①b 快速路径·records 空（MCP 查无数据）→ 诊断能力缺口（诊断链路的锅），且不调 LLM', async () => {
+    const { runPatrolDiagnosisPipeline } = await import('./patrolDiagnosisPipeline.js')
+    const forward = vi.fn(makeForward(JSON.stringify(LLM_REPORT_LOCK)))
+    const r = await runPatrolDiagnosisPipeline(JSON.stringify({
+      code: '0000',
+      data: { records: [], total: 0 },
+    }), {}, {
+      rules: RULES,
+      llm: { apiKey: 'k', baseUrl: 'http://t/v1', model: 'm', forward },
+    })
+    expect(r.status).toBe('success')
+    expect(r.l1).toBe('诊断能力缺口')        // 检索层面无数据——诊断提供方的锅
+    expect(r.productAction).toBe('—')
+    expect(forward).not.toHaveBeenCalled()
+    expect(r.rootCauseSource).toBeNull()
   })
 
   it('② 规则对 LLM 结论文本命中 → 规则定类，五段透传，源=llm；directCause 日志行不进分类（#288 噪声劫持先例）', async () => {

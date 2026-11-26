@@ -263,7 +263,13 @@ describe.skipIf(!sqliteAvailable)('patrolReportBuilder 口径守卫', () => {
     // r5（eip 仿真待处理）改历史日期+今日 success 诊断 → trapped 1 组（仿真豁免只在诊断管线层，
     // 手工构造状态不经过管线——builder 如实按 product_action_status 聚合，不重复豁免）。
     const OLD_DATE = '2026-10-30'
-    const todayIso = new Date().toISOString()
+    // 11-26 修复（时区脆弱性，11-21 patrolQuery trapped-pending 同型实锤）：「今日诊断」种子必须
+    // 本地日期拼串——builder 的 trapped 锚是 localDateStr(new Date())（本地日期），而 toISOString
+    // 是 UTC：CST 00:00-08:00 期间 UTC 日期比本地早一天 → 种子"今日"变"昨日"，trapped 判 0、用例
+    // 每晚必红 8 小时。与消费端同源：本地日期 + ISO 完整时间戳。
+    const now = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const todayIso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3, '0')}Z`
     db.prepare("UPDATE api_patrol_failure_groups SET group_date=? WHERE first_request_id IN ('r5','r6')").run(OLD_DATE)
     const insDiag = db.prepare(`
       INSERT INTO api_patrol_diagnoses (failure_group_id, request_id, status, tool_name, mcp_raw_response, final_conclusion, root_cause_l1, root_cause_l2, root_cause_source, diagnosed_at)

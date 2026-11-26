@@ -697,16 +697,21 @@ export function registerPatrolQueryRoutes(app) {
     }
   }
 
-  // ⑤总览聚合 cause-stats（docs §7.2）：单一接口支撑总览五模块
-  // ⑦诊断能力需求池（11-19 拍板）：「诊断能力缺口」类失败组汇集——云网工作台 MCP 日志服务
+  // ⑤总览聚合 cause-stats（docs §7.2）：单一接口支撑总览五模块  // ⑦诊断能力需求池（11-19 拍板）：「诊断能力缺口」类失败组汇集——云网工作台 MCP 日志服务
   // 诊断能力建设的需求输入。第一版只读；池接入分类从诊断产物自动推断（classifyGapKind，
   // 不维护池清单——覆盖范围会变，静态清单必过时）。
   // 口径：COALESCE 有效根因判定（人工修正为具体根因后自动退出需求池）。
   // 11-20 09:44 拍板：需求池显示全部——无时间窗口（parseRange/BETWEEN 已删）。
   app.get('/api/patrol/diagnosis-gaps/summary', { preHandler: requirePermission('view') }, async (_request, reply) => {
     const db = getDb()
+    // 11-25 23:59 拍板：时间窗口下界 2026-11-10（首批真实接入日）——8 月 E2E 样例数据
+    // （明细目录 8月10日/8月11日 CSV 导入）不进需求池：样例组诊断时 MCP 查不到 8 月日志
+    // （日志平台只存近期窗口），返回空/错误页在降级模式下被保守归「池未接入」——污染分区一
+    // （实际这些池都在 MCP 枚举内）。11-20「显示全部」拍板废止，窗口=下界常量一处维护。
+    const GAP_DATE_FLOOR = '2026-11-10'
     const GAP_WHERE = `g.root_cause_l1 IS NOT NULL
-      AND COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = '诊断能力缺口'`
+      AND COALESCE(NULLIF(g.root_cause_l1_manual, ''), g.root_cause_l1) = '诊断能力缺口'
+      AND g.group_date >= '${GAP_DATE_FLOOR}'`
     // 组级明细（含最新成功诊断的 MCP 原始响应——gapKind 判定素材）。
     // 11-20 误判修复：d 只取 status='success' 的最新记录（诊断失败路径写 {"error":...}
     // failed 记录且组可重试——曾因 MAX(id) 不分成败，把「重试失败」误读成「池未接入」，
@@ -880,6 +885,56 @@ export function registerPatrolQueryRoutes(app) {
     }
   })
 
+  // ⑦b 需求池一键导出（11-25 23:59 拍板）：能力提供方拿去分析/补齐能力——xlsx 两 sheet
+  // （分区一 池未接入 / 分区二 诊断能力不足）。数据绝对同源：进程内自调 summary 端点
+  // （同链 classifyGapKind/豁免过滤/时间窗口——复制 SQL 会口径分叉，自调零复制）。
+  // 权限 view（导出=读动作）；审计记录导出动作。
+  app.get('/api/patrol/diagnosis-gaps/export', { preHandler: requirePermission('view') }, async (request, reply) => {
+    const summaryRes = await app.inject({
+      method: 'GET', url: '/api/patrol/diagnosis-gaps/summary',
+      headers: { authorization: String(request.headers.authorization || '') },
+    })
+    if (summaryRes.statusCode !== 200) {
+      return reply.code(502).send({ error: '需求池数据获取失败' })
+    }
+    const data = summaryRes.json()
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    // sheet1 分区一：池未接入 MCP——每池一行
+    const uncRows = [
+      ['资源池', '失败组数', '压缩前失败次数', '最近失败时间', 'requestId 清单'],
+      ...(data.uncoveredPools || []).map((p) => [
+        String(p.poolName || ''), Number(p.groupCount || 0), Number(p.preCompressTotal || 0),
+        String(p.lastRequestTime || ''), (p.requestIds || []).join(', '),
+      ]),
+    ]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(uncRows), '分区一-池未接入MCP')
+    // sheet2 分区二：池已接入·诊断能力不足——每聚合键一行
+    const gapKindLabel = { log_not_collected: '日志未采集', failure_log_missing: '失败日志缺失' }
+    const covRows = [
+      ['产品', '接口', '资源池', '缺口类型分布', '失败组数', '压缩前失败次数', '首次发现', '最近失败时间', 'requestId 清单'],
+      ...(data.rows || []).map((r) => [
+        String(r.productName || r.productKey || ''), String(r.apiPath || ''), String(r.poolName || ''),
+        Object.entries(r.gapKinds || {}).map(([k, n]) => `${gapKindLabel[k] || k}:${n}`).join('，'),
+        Number(r.groupCount || 0), Number(r.preCompressTotal || 0),
+        String(r.firstDate || ''), String(r.lastRequestTime || ''),
+        (r.requestIds || []).join(', '),
+      ]),
+    ]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(covRows), '分区二-诊断能力不足')
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    // 文件名日期=本地日期（toISOString 走 UTC，CST 00:00-08:00 会标成昨天——11-21 测试种子同坑实锤）
+    const localToday = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+    const filename = encodeURIComponent(`诊断能力需求池_${localToday}.xlsx`)
+    logAuditFromRequest(request, 'api_patrol.diagnosis_gaps_export', {
+      uncoveredPools: (data.uncoveredPools || []).length, coveredRows: (data.rows || []).length,
+    })
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${filename}`)
+      .send(buf)
+  })
+
   // 历史 pending 转待处理清单（11-20 15:09 拍板）：今日诊断成功且转待产品处理、但失败发生在
   // 历史日期的组——不在列表 T-1 窗口内易漏处理，提示条引导跳转。判定锚点=diagnoses
   // （status='success' AND 今日 diagnosed_at）——精确「今日诊断成功」动作，不受手工改状态污染；
@@ -999,7 +1054,7 @@ export function registerPatrolQueryRoutes(app) {
     `).all(start, end)
 
     // ④L1 趋势（七类全画，缺类 0）
-    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '诊断能力缺口', '其他&未归类']
+    const L1_KEYS = ['业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '诊断能力缺口', '产品可观测性不足', '其他&未归类']
     /** @type {Array<Record<string, unknown>>} */
     const dailyTrend = []
     const trendRows = db.prepare(`

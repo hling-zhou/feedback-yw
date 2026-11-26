@@ -24,11 +24,22 @@ const { RangePicker } = DatePicker
  * 数据来自 /api/patrol/failures/*（camelCase 返回）。
  */
 const ROOT_CAUSE_L1_OPTIONS = [
-  '业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '权限&授权不足', '诊断能力缺口', '其他&未归类',
+  '业务冲突', '配额不足', '资源锁定&并发冲突', '参数无效&校验失败', '资源状态异常', '权限&授权不足', '诊断能力缺口', '产品可观测性不足', '其他&未归类',
 ]
 const STATUS_OPTIONS = ['待处理', '处理中', '已处理', '—', '未诊断']
 const PRODUCT_ACTION_FILTER = '需产品侧处理'
 const CUSTOMER_TYPE_LABELS = { 仿真: '仿真', 测试账号: '测试' }
+/**
+ * 「诊断能力缺口」归属提示（11-25 拍板：缺口 = 诊断链路/日志服务的可观测性不足，
+ * 是诊断能力提供方的问题，非产品功能缺陷——Tag 展示须自带该语境，
+ * 防「缺口组标待处理」被误读为产品侧缺陷）。单源：列表 Tag / 抽屉 AI 判定行共用。
+ */
+const DIAGNOSIS_GAP_TOOLTIP = '诊断能力缺口 = 日志/诊断链路查不到失败原因（诊断能力提供方问题，非产品功能缺陷）；若标「待处理」，诉求是补提示与可诊断日志，不是修复本次失败'
+/**
+ * 「产品可观测性不足」归属提示（11-26 拆类拍板）：日志在但失败未落错误码/提示——
+ * 责任在产品（补错误码与提示文案后此类自动消失）。与缺口类的分界线 = 日志在不在。
+ */
+const OBSERVABILITY_TOOLTIP = '产品可观测性不足 = 日志在但读不出失败原因（校验全 OK、无错误码、无异常堆栈）——平台未把失败写成可诊断形态，责任在产品：补错误码/提示文案后此类自动消失'
 
 /**
  * 根因分类展示派生（11-18 晚拍板：同源谓词——列表 Tag/抽屉 AI 判定行共用同一函数）。
@@ -320,7 +331,16 @@ export default function ApiPatrolFailures() {
         const { l1, l2, isManual } = displayRootCause(record)
         return (
           <Space size={4} wrap>
-            {l1 ? <Tag color={isManual ? 'geekblue' : 'blue'}>{isManual ? `${l1}·人工` : l1}</Tag> : null}
+            {l1 ? (
+              l1 === '诊断能力缺口' || l1 === '产品可观测性不足' ? (
+                // 11-25/11-26 拍板：两类归属提示（单源常量）——缺口=诊断链路问题、可观测性=产品问题
+                <Tooltip title={l1 === '诊断能力缺口' ? DIAGNOSIS_GAP_TOOLTIP : OBSERVABILITY_TOOLTIP}>
+                  <Tag color={isManual ? 'geekblue' : (l1 === '诊断能力缺口' ? 'blue' : 'orange')} className="cursor-help">{isManual ? `${l1}·人工` : l1}</Tag>
+                </Tooltip>
+              ) : (
+                <Tag color={isManual ? 'geekblue' : 'blue'}>{isManual ? `${l1}·人工` : l1}</Tag>
+              )
+            ) : null}
             {l2 ? <Tag>{l2}</Tag> : null}
             {!l1 && !l2 ? <Tag>未诊断</Tag> : null}
           </Space>
@@ -901,7 +921,13 @@ function FailureGroupDrawer({ groupId, data, loading, readOnly, onClose, onSubmi
                       AI 判定：{(() => {
                         if (!group) return '—'
                         const { l1, l2, hasManual } = displayRootCause(group, 'ai-original')
-                        return (l1 || '未诊断') + (l2 ? ` / ${l2}` : '') + (hasManual ? '（已被人工修正）' : '')
+                        // 11-25/11-26 拍板：两类归属提示内联——缺口=诊断链路问题；可观测性=产品问题（补错误码后自消）
+                        const gapNote = l1 === '诊断能力缺口'
+                          ? '（缺口=诊断链路查不到失败原因，属诊断能力提供方问题；若标「待处理」，诉求是补提示与可诊断日志，非修复产品缺陷）'
+                          : l1 === '产品可观测性不足'
+                            ? '（日志在但读不出失败原因——平台未把失败落成可诊断形态，责任在产品：补错误码/提示后此类自消）'
+                            : ''
+                        return (l1 || '未诊断') + (l2 ? ` / ${l2}` : '') + gapNote + (hasManual ? '（已被人工修正）' : '')
                       })()}
                     </Typography.Text>
                     {diagnosis?.actionReason ? (

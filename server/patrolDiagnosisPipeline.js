@@ -84,10 +84,35 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
   const isElb = Boolean(groupCtx.isElb)
   const text = extractDiagnosticText(mcpText, '', isElb)
 
-  // ---------- ① 快速路径：无失败语义 → 诊断能力缺口（不烧 LLM）
+  // ---------- ① 快速路径：无失败语义（不烧 LLM）——11-26 拍板按「日志在不在」分流：
+  //   records 空（MCP 查无数据）→「诊断能力缺口」（诊断链路的锅，'—'）；
+  //   records 在但读不出失败语义 →「产品可观测性不足」（产品的锅——失败未落错误码/提示，
+  //   待处理诉求 = 补可诊断日志与错误码，先例 #379/387/392/393/380 形态实证）。
   if (!text.trim()) {
+    let hasRecords = false
+    try {
+      const parsed = JSON.parse(String(mcpText || '{}'))
+      const recs = parsed?.data?.records
+      hasRecords = Array.isArray(recs) && recs.length > 0
+    } catch { /* 非 JSON 原文形态——保守按缺口（无法证明日志在） */ }
+    if (hasRecords) {
+      onStage?.('diagnose', '日志在但无失败语义（快速路径）→「产品可观测性不足」')
+      return {
+        status: 'success',
+        l1: '产品可观测性不足',
+        l2: '失败原因未落日志',
+        productAction: '待处理',
+        rootCauseSource: null, // 无 LLM 产物（不烧 LLM），形态判定是确定性的
+        conclusion: null,
+        directCause: [],
+        evidence: [],
+        suggestion: null,
+        llmAttempts: 0,
+        llmFailed: false,
+      }
+    }
     const classified = classifyPatrolRootCause('', rules) // → { l1: 诊断能力缺口, l2: 无诊断结论, productAction: '—' }
-    onStage?.('diagnose', '无失败语义（快速路径）→「诊断能力缺口」')
+    onStage?.('diagnose', '无失败语义·日志缺数据（快速路径）→「诊断能力缺口」')
     return {
       status: 'success',
       l1: classified.l1,
@@ -149,6 +174,8 @@ async function runPatrolDiagnosisPipelineInner(mcpText, groupCtx = {}, deps = {}
   // ---------- ③④ LLM 已产出：规则表对 LLM 产物文本定类；未命中 → LLM 枚举兜底
   const classificationText = buildClassificationText(analysis)
   const classified = classifyPatrolRootCause(classificationText, rules)
+  // 11-26 拆类注：白名单原排除「诊断能力缺口」（走枚举兜底）——规则 3/3.5/13 已挪新 L1
+  // 「产品可观测性不足」（精确语义规则，命中即采），只有规则表兜底类不采信走枚举。
   if (classified.l1 !== '其他&未归类' && classified.l1 !== '诊断能力缺口') {
     // 规则命中（对 LLM 语义文本）——规则表=归类真源
     onStage?.('diagnose', `规则命中（LLM 语义文本）→「${classified.l1}」`)

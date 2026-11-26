@@ -61,7 +61,9 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
       if (result.productAction === '待处理') pending += 1
     }
     // 黄金表（设计 §6.3，2026-11-07 回放定稿；2026-11-18 修订：+order 0 权限/授权类——
-    // 2 条双因样本（Unauthorized+配额，鉴权为直接触发因）从「配额不足/通用配额」转入权限类，配额 16→14、待处理 204→206）
+    // 2 条双因样本（Unauthorized+配额，鉴权为直接触发因）从「配额不足/通用配额」转入权限类，配额 16→14、待处理 204→206；
+    // 2026-11-26 修订：L1 拆类——规则 3/13 挪「产品可观测性不足」（日志在但读不出=产品的锅，缺省待处理），
+    // 缺口两类 11+5 迁出、待处理 206→222）
     expect(counts['诊断能力缺口/日志缺失/无数据']).toBe(1968)
     expect(counts['参数无效&校验失败/域名与比较类型成对']).toBe(1786)
     expect(counts['资源锁定&并发冲突/锁定机制待查']).toBe(113)
@@ -71,16 +73,16 @@ describe('rootCauseClassifier 黄金对拍（设计 §6.3 ±0）', () => {
     expect(counts['其他&未归类/兜底']).toBe(16)
     expect(counts['配额不足/通用配额']).toBe(14)
     expect(counts['业务冲突/HAVIP绑定业务校验']).toBe(12)
-    expect(counts['诊断能力缺口/日志无ERROR/WARN']).toBe(11)
+    expect(counts['产品可观测性不足/日志无ERROR/WARN']).toBe(11)   // 11-26 从缺口迁入
     expect(counts['参数无效&校验失败/IP/资源ID/地址类']).toBe(6)
     expect(counts['配额不足/HAVIP数量上限']).toBe(5)
-    expect(counts['诊断能力缺口/仅WARN结论不明']).toBe(5)
+    expect(counts['产品可观测性不足/仅WARN结论不明']).toBe(5)     // 11-26 从缺口迁入
     expect(counts['资源状态异常/后端服务器组']).toBe(2)
     expect(counts['业务冲突/资源被他人占用']).toBe(4)
     expect(counts['业务冲突/DNAT规则冲突']).toBe(1)
     expect(counts['权限&授权不足/RAM/子账号鉴权拒绝']).toBe(2)
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(4097)
-    expect(pending).toBe(206)
+    expect(pending).toBe(222)
   })
 
   it('9.2a 输入构造：ELB "null" 字符串 + errorMessage 域名成对 → 命中规则10', () => {

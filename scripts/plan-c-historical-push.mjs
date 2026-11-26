@@ -246,6 +246,8 @@ async function buildPackageFor(db, dataDate) {
     FROM api_patrol_failure_groups g
     LEFT JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
     WHERE g.group_date = ? OR (g.group_date >= ? AND g.updated_at >= datetime('now', '-2 days'))
+       -- 11-26 拆类注：缺口语义已收窄（查无数据——诊断链路的锅）；「日志在但读不出」已迁
+       -- 新 L1「产品可观测性不足」（待处理）——本行 converged 判定只收窄后的缺口语义组。
        OR g.product_action_status = '—' AND g.root_cause_l1 = '诊断能力缺口'
        OR (d.status = 'success' AND d.mcp_raw_response IS NOT NULL AND TRIM(d.mcp_raw_response) != ''
            AND g.updated_at >= datetime('now', '-2 days'))

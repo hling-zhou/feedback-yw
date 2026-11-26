@@ -8,6 +8,7 @@ import { API_PATROL_API_REGISTRY_SEED, API_PATROL_ROOT_CAUSE_RULES_SEED } from '
 const MIGRATION_KEY = 'migrate_api_patrol_seeds_v1'
 const MIGRATION_KEY_V2 = 'migrate_api_patrol_seeds_v2'
 const MIGRATION_KEY_V3 = 'migrate_api_patrol_seeds_v3_l1_ampersand'
+const MIGRATION_KEY_V5 = 'migrate_api_patrol_seeds_v5_observability_split'
 const REGISTRY_META_KEY = 'api_patrol_api_registry_v1'
 const RULES_META_KEY = 'api_patrol_root_cause_rules_v1'
 const UNREGISTERED_META_KEY = 'api_patrol_unregistered_apis_v1'
@@ -31,6 +32,115 @@ function appendSdnRouteRuleV4(db) {
     obj.updatedAt = new Date().toISOString()
     db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(RULES_META_KEY, JSON.stringify(obj))
   } catch { /* 规则表损坏不动（分类器有兜底） */ }
+}
+
+/**
+ * v5 升级（11-26 00:18 拍板·L1 拆类）：「日志在但读不出失败原因」从「诊断能力缺口」
+ * 拆到新 L1「产品可观测性不足」（责任归属分离——缺口=诊断链路查无数据，可观测性不足=
+ * 产品未把失败落成可诊断形态，待处理诉求=补错误码/提示）。三件事：
+ *   ① 规则表追加 order 3.5「失败原因未落日志」（v4 同模式裸跑按 order 判重）；
+ *   ② 规则表存量 order 3/13 行改类（旧 l1 值精确匹配——运营已改过的行 l1 非旧值天然不动；
+ *      productAction 同步改「待处理」）；
+ *   ③ 组/诊断存量迁移（v3 裸跑幂等模式）：规则 3/13 类的 L2（日志无ERROR/WARN、仅WARN结论不明）
+ *      + action_reason 含补提示/诊断信息语义 → 新类；L2=日志缺失/无数据 + 快速路径 records 空
+ *      → 保持缺口。判据见迁移 SQL。
+ * **无标记裸跑**（v3 教训同款）：值级条件替换旧值不匹配=0 变更，天然幂等。
+ * @param {import('better-sqlite3').Database} db
+ */
+function upgradeObservabilitySplitV5(db) {
+  const NEW_L1 = '产品可观测性不足'
+  const UPD_L2 = db.prepare(`
+    UPDATE api_patrol_failure_groups SET root_cause_l1=?, product_action_status='待处理', updated_at=?
+    WHERE root_cause_l1='诊断能力缺口' AND root_cause_l2 IN ('日志无ERROR/WARN', '仅WARN结论不明', '失败原因未落日志')
+  `)
+  // action_reason 语义判据（LLM 现场判「需补提示/诊断信息」= 产品侧可观测性工作诉求）
+  const UPD_REASON = db.prepare(`
+    UPDATE api_patrol_failure_groups SET root_cause_l1=?, product_action_status='待处理', updated_at=?
+    WHERE root_cause_l1='诊断能力缺口'
+      AND id IN (
+        SELECT g.id FROM api_patrol_failure_groups g
+        JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
+        WHERE (d.action_reason LIKE '%补提示%' OR d.action_reason LIKE '%补充诊断信息%'
+               OR d.action_reason LIKE '%补日志%' OR d.action_reason LIKE '%补齐%')
+          AND d.status='success'
+      )
+  `)
+  const UPD_DIAG = db.prepare(`
+    UPDATE api_patrol_diagnoses SET root_cause_l1=?
+    WHERE root_cause_l1='诊断能力缺口'
+      AND (root_cause_l2 IN ('日志无ERROR/WARN', '仅WARN结论不明', '失败原因未落日志')
+           OR final_conclusion LIKE '%未提取到平台错误码%' OR final_conclusion LIKE '%诊断能力缺口%'
+           OR final_conclusion LIKE '%诊断信息不足%' OR final_conclusion LIKE '%失败原因未落日志%'
+           OR final_conclusion LIKE '%失败点未落日志%')
+  `)
+  const updDiagReason = db.prepare(`
+    UPDATE api_patrol_diagnoses SET root_cause_l1=?
+    WHERE root_cause_l1='诊断能力缺口'
+      AND (action_reason LIKE '%补提示%' OR action_reason LIKE '%补充诊断信息%'
+           OR action_reason LIKE '%补日志%' OR action_reason LIKE '%补齐%')
+  `)
+  // 快速路径组（L2 空、无 action_reason 痕迹）——按「日志在不在」原始分界线判：
+  // mcp_raw_response JSON 的 records 非空 = 日志在但读不出 → 新类（管线快速路径同款判据；
+  // 先例 #379/380/387/392/393 形态实证）。json_valid 防非 JSON 原文行报错。
+  const UPD_RECORDS = db.prepare(`
+    UPDATE api_patrol_failure_groups SET root_cause_l1=?, root_cause_l2='失败原因未落日志',
+      product_action_status='待处理', updated_at=?
+    WHERE root_cause_l1='诊断能力缺口' AND (root_cause_l2 IS NULL OR root_cause_l2='')
+      AND id IN (
+        SELECT g.id FROM api_patrol_failure_groups g
+        JOIN api_patrol_diagnoses d ON d.failure_group_id = g.id
+        WHERE json_valid(d.mcp_raw_response)
+          AND COALESCE(json_array_length(json_extract(d.mcp_raw_response, '$.data.records')), 0) > 0
+      )
+  `)
+  const UPD_DIAG_RECORDS = db.prepare(`
+    UPDATE api_patrol_diagnoses SET root_cause_l1=?
+    WHERE root_cause_l1='诊断能力缺口' AND (root_cause_l2 IS NULL OR root_cause_l2 = '')
+      AND json_valid(mcp_raw_response)
+      AND COALESCE(json_array_length(json_extract(mcp_raw_response, '$.data.records')), 0) > 0
+  `)
+  let groups = 0, diagnoses = 0, rulesChanged = 0, appended = false
+  db.transaction(() => {
+    const now = new Date().toISOString()
+    groups += UPD_L2.run(NEW_L1, now).changes
+    groups += UPD_REASON.run(NEW_L1, now).changes
+    groups += UPD_RECORDS.run(NEW_L1, now).changes
+    diagnoses += UPD_DIAG.run(NEW_L1).changes
+    diagnoses += updDiagReason.run(NEW_L1).changes
+    diagnoses += UPD_DIAG_RECORDS.run(NEW_L1).changes
+    // 规则表：追加 3.5 + 存量 3/13 改类（l1 旧值精确匹配防覆盖运营编辑）
+    const raw = db.prepare('SELECT value FROM meta WHERE key = ?').get(RULES_META_KEY)
+    if (raw) {
+      try {
+        const obj = JSON.parse(String(raw.value))
+        const items = Array.isArray(obj.items) ? obj.items : []
+        if (!items.some((r) => Number(r?.order) === 3.5)) {
+          const seed35 = API_PATROL_ROOT_CAUSE_RULES_SEED.find((r) => Number(r.order) === 3.5)
+          if (seed35) { items.push({ ...seed35 }); appended = true }
+        }
+        for (const item of items) {
+          if (Number(item?.order) === 3 || Number(item?.order) === 13) {
+            if (item.l1 === '诊断能力缺口') {
+              item.l1 = NEW_L1
+              item.productAction = '待处理'
+              rulesChanged += 1
+            }
+          }
+        }
+        if (appended || rulesChanged > 0) {
+          items.sort((a, b) => Number(a?.order) - Number(b?.order))
+          obj.updatedAt = new Date().toISOString()
+          db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(RULES_META_KEY, JSON.stringify(obj))
+        }
+      } catch { /* 规则表损坏不动（分类器有兜底） */ }
+    }
+  })()
+  if (groups + diagnoses + rulesChanged > 0 || appended) {
+    db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
+      MIGRATION_KEY_V5,
+      JSON.stringify({ migratedAt: new Date().toISOString(), groups, diagnoses, rulesChanged, appended }),
+    )
+  }
 }
 
 /**
@@ -146,4 +256,6 @@ export function migrateApiPatrolSeeds(db) {
   upgradeL1AmpersandV3(db)
   // v4：规则表追加 order 1.5 网段与路由冲突（v2 标记模式放走后增 order 的补丁）
   appendSdnRouteRuleV4(db)
+  // v5：L1 拆类（11-26）——规则 3/13 挪「产品可观测性不足」+ 追加 3.5 + 组/诊断存量迁移（裸跑幂等）
+  upgradeObservabilitySplitV5(db)
 }

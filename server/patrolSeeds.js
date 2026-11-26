@@ -79,8 +79,14 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
     anyOf: ['CIDR_USED_IN_SDN_ROUTE', 'has overlapped with', 'SDN_ROUTE', '网段与既有路由冲突', '路由表规则目的地址'] },
   { order: 2, l1: '诊断能力缺口', l2: '日志缺失/无数据', productAction: '—',
     anyOf: ['缺少后续', '日志不完整', '日志查询异常', '无数据'] },
-  { order: 3, l1: '诊断能力缺口', l2: '日志无ERROR/WARN', productAction: '—',
+  // ---- 11-26 00:18 拍板（L1 拆类）：「日志在但读不出失败原因」从缺口阵营挪到新 L1「产品可观测性不足」——
+  //      责任归属分离：缺口=诊断链路查无数据（诊断提供方的锅）；可观测性不足=日志在但失败未落
+  //      错误码/提示（产品的锅，待处理诉求=补错误码与提示文案）。分界线 = 日志在不在。----
+  { order: 3, l1: '产品可观测性不足', l2: '日志无ERROR/WARN', productAction: '待处理',
     anyOf: ['按 ERROR/WARN 条件过滤后未发现'] },
+  { order: 3.5, l1: '产品可观测性不足', l2: '失败原因未落日志', productAction: '待处理',
+    anyOf: ['未提取到平台错误码', '无错误码', '失败原因未落日志', '失败点未落日志', '失败原因并未被捕获',
+            '无法定位失败原因', '失败原因无从得知', '诊断能力缺口', '诊断信息不足'] },
   { order: 4, l1: '配额不足', l2: 'HAVIP数量上限', productAction: '—',
     requiresAll: [
       ['配额'],
@@ -110,7 +116,8 @@ export const API_PATROL_ROOT_CAUSE_RULES_SEED = [
     anyOf: ['HA VIP', 'havip', 'HAVIP'] },
   { order: 12, l1: '业务冲突', l2: '重复/批量删除异常', productAction: '待处理',
     anyOf: ['重复执行', 'deleteNet'] },
-  { order: 13, l1: '诊断能力缺口', l2: '仅WARN结论不明', productAction: '—',
+  // 13 同批挪新类（11-26 拍板）：WARN 在但结论不明 = 日志在读不出
+  { order: 13, l1: '产品可观测性不足', l2: '仅WARN结论不明', productAction: '待处理',
     requiresAll: [['WARN'], ['未明确', '可能']] },
   { order: 14, l1: '资源状态异常', l2: '负载均衡器本体', productAction: '待处理',
     requiresAll: [['负载均衡器'], ['正在更新', '状态不正常', '非ACTIVE', '更新中']] },

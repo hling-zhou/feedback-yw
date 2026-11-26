@@ -176,6 +176,12 @@ describe('ApiPatrolFailures 真渲染冒烟', () => {
     // ⑨ 根因展示同源派生（11-18 晚拍板：列表与抽屉同一谓词——抽屉 AI 判定行不得显示来源标注旧值/缺口类 L2）
     expect(src).toMatch(/displayRootCause/)
     expect((src.match(/displayRootCause\(/g) || []).length).toBeGreaterThanOrEqual(2)  // 列 + 抽屉两消费方
+    // ⑩ 11-25 拍板：缺口类归属提示——「诊断能力缺口」呈现须自带归属语境（诊断链路问题非产品缺陷），
+    //    列表 Tag 挂 DIAGNOSIS_GAP_TOOLTIP、抽屉 AI 判定行 gapNote 内联；单源常量两消费方
+    expect(src).toMatch(/DIAGNOSIS_GAP_TOOLTIP/)
+    expect((src.match(/DIAGNOSIS_GAP_TOOLTIP/g) || []).length).toBeGreaterThanOrEqual(2)  // 常量定义 + 列表消费
+    expect(src).toMatch(/诊断能力提供方问题/)
+    expect(src).toMatch(/gapNote/)
   })
 
   it('11-18 中午四项：证据收起 + 压缩规则提示 icon + MCP 来源提示 + 列宽拖拽', () => {
