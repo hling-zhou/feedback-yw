@@ -146,6 +146,14 @@ async function main() {
       closeDb()
       return
     }
+    // 11-26 护栏①配套：数据日停滞（批次延迟/重复投递）——库内该数据日已处理过，
+    // 重灌会压缩重建灭失人工成果。中断跑批，不压缩/不诊断/不推送。
+    if (result.lastResult === 'skipped_stale_data') {
+      log('fetch', `邮件数据日 ${result.dataDate} ≤ 库内已处理数据日 ${result.lastDataDate}——拒绝重灌防重建灭失（批次延迟？人工确认后可 --package-only 补推）`)
+      process.exitCode = 1
+      closeDb()
+      return
+    }
     if (result.lastResult !== 'success') {
       fail('fetch', `拉取/解析失败：${result.lastError || result.lastResult}`, 2)
       closeDb()
@@ -161,10 +169,28 @@ async function main() {
     const { compressPatrolDay } = await import('../server/patrolCompress.js')
     const pools = [...new Set(db.prepare('SELECT DISTINCT pool_name AS p FROM api_patrol_requests WHERE request_date=?').all(dataDate).map((r) => String(/** @type {any} */ (r).p)))]
     let totalGroups = 0
+    let compressedAny = false
     for (const pool of pools) {
       const r = compressPatrolDay(dataDate, pool)
+      // 11-26 护栏②消费：already-processed = 该池当日已有诊断/人工痕迹，压缩被拒——
+      // 打日志但计为异常（跑批应有压缩产出；护栏①应在上游拦住，走到这说明状态异常）
+      if (r.skipped === 'already-processed') {
+        log('compress', `${dataDate} ${pool}: 压缩被拒——当日该池已有诊断/人工处理痕迹（护栏②防重建灭失）`)
+        continue
+      }
+      compressedAny = compressedAny || r.groups > 0
       totalGroups += r.groups
       log('compress', `${dataDate} ${pool}: ${r.groups} 组（压缩自 ${r.compressedFrom} 失败行）`)
+    }
+
+    // 11-26 护栏②收口：该数据日一个池都没压缩成（全被 already-processed 拒）+ requests 里有当日数据
+    // → 状态异常（护栏①本应在上游拦住）——退出码 1 提示人工看，不进诊断/推送半态。
+    const hasTodayRequests = db.prepare('SELECT COUNT(*) n FROM api_patrol_requests WHERE request_date=?').get(dataDate)?.n || 0
+    if (!compressedAny && hasTodayRequests > 0) {
+      log('compress', `数据日 ${dataDate} 全部池压缩被拒且库内有该日 requests——疑似重复灌库，中断（人工核对后可 --package-only 补推）`)
+      process.exitCode = 1
+      closeDb()
+      return
     }
 
     // ---------- ③ MCP 诊断（当日新组 + 近 7 天 pending 历史；两轮重试）

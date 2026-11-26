@@ -657,6 +657,31 @@ export async function runPatrolEmailIngestion(options = {}) {
   const fallbackDate = localDateStr(new Date(now.getTime() - 24 * 3600 * 1000))
   const dataDate = extractDataDateFromHtml(html) || fallbackDate
 
+  // 11-26 护栏①（重复拉取事故）：数据日单调校验——拉取防重只看拉取日不看数据日，
+  // 外部批次延迟时（先例：11-26 09:21 拉到 11-24 邮件）同一数据日被第二次灌库 →
+  // 压缩 DELETE+重建 → 人工修正/诊断成果全灭（组重置 pending、诊断行孤儿清理删除）。
+  // 防线 = 库内已有该数据日的失败组（已诊断/已人工处理痕迹）时拒绝重灌。
+  const state2 = readEmailIngestionState()
+  const lastDataDate = String(state2?.lastStats?.dataDate || '')
+  if (lastDataDate && String(dataDate) <= lastDataDate) {
+    logAudit({
+      username: 'system-scheduler',
+      action: 'api_patrol.email_ingestion_stale_data_rejected',
+      detail: {
+        trigger, dataDate: String(dataDate), lastDataDate,
+        reason: '数据日不晚于库内已处理数据日（批次延迟/重复投递）——拒绝重灌，防压缩重建灭失人工成果',
+      },
+    })
+    // 不覆盖 lastFetchDate（今日拉过的事实保留）；结果标 skipped，跑批按 §10.6 处理
+    writeEmailIngestionState({
+      ...state2,
+      lastFetchAt: new Date().toISOString(),
+      lastResult: 'skipped_stale_data',
+      lastError: `邮件数据日 ${dataDate} ≤ 库内已处理数据日 ${lastDataDate}（重复/延迟投递，未灌库）`,
+    })
+    return { ok: true, lastResult: 'skipped_stale_data', skipped: 'stale-data', dataDate: String(dataDate), lastDataDate }
+  }
+
   // P1-5a：HTML 统计表双路解析
   const segments = parseStatsHtml(html)
   // 双路失败段（识别到产品标记但表格 0 行）→ 告警（P1-5a：单产品段失败不阻断）

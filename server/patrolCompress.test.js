@@ -237,4 +237,43 @@ describe.skipIf(!sqliteAvailable)('patrol compress', () => {
     expect(g).toHaveLength(1)
     expect(g[0]).toMatchObject({ product_action_status: 'pending_diagnosis', assignee: null })
   })
+
+  // ---------- 11-26 护栏②：压缩防重建（重复灌库事故红绿） ----------
+  it('8.1 护栏②：当日该池已有非 pending 组 → 裸压缩拒绝（skipped=already-processed），人工痕迹不灭失', async () => {
+    const { compressPatrolDay } = await import('./patrolCompress.js')
+    // 种「已处理痕迹」组（模拟已诊断/人工修正——11-26 09:21 事故里被重建灭失的形态）
+    insertRequest('2026-08-12', 'p1', '/api/x', 'g1', 'userA', '2026-08-12 10:00:00')
+    compressPatrolDay('2026-08-12', 'p1')
+    db.prepare("UPDATE api_patrol_failure_groups SET product_action_status='已处理', root_cause_l1='业务冲突', root_cause_l2='绑定关系未解除' WHERE group_date='2026-08-12'").run()
+
+    // 裸压缩（rebuild 未开）→ 拒绝执行，已处理组原样保留
+    const r = compressPatrolDay('2026-08-12', 'p1')
+    expect(r.skipped).toBe('already-processed')
+    expect(r.groups).toBe(0)
+    const g = groupsOf('2026-08-12', 'p1', '/api/x', 'userA')
+    expect(g).toHaveLength(1)
+    expect(g[0]).toMatchObject({ product_action_status: '已处理', root_cause_l1: '业务冲突' })
+  })
+
+  it('8.2 护栏②豁免通道：rebuild=true（管理入口带人工状态带回）不受限', async () => {
+    const { compressPatrolDay } = await import('./patrolCompress.js')
+    insertRequest('2026-08-13', 'p1', '/api/x', 'g2', 'userA', '2026-08-13 10:00:00')
+    compressPatrolDay('2026-08-13', 'p1')
+    db.prepare("UPDATE api_patrol_failure_groups SET product_action_status='已处理', assignee='pm1' WHERE group_date='2026-08-13'").run()
+    const r = compressPatrolDay('2026-08-13', 'p1', { rebuild: true })
+    expect(r.skipped).toBeUndefined()
+    const g = groupsOf('2026-08-13', 'p1', '/api/x', 'userA')
+    expect(g).toHaveLength(1)
+    expect(g[0].product_action_status).toBe('已处理')   // rebuild 带回人工状态
+  })
+
+  it('8.3 护栏②不误伤：当日该池只有 pending 组（未诊断过）→ 裸压缩正常重建', async () => {
+    const { compressPatrolDay } = await import('./patrolCompress.js')
+    insertRequest('2026-08-14', 'p1', '/api/x', 'g3', 'userA', '2026-08-14 10:00:00')
+    compressPatrolDay('2026-08-14', 'p1')
+    // 全 pending（从未诊断）→ 裸压缩放行（正常跑批首日形态）
+    const r = compressPatrolDay('2026-08-14', 'p1')
+    expect(r.skipped).toBeUndefined()
+    expect(r.groups).toBe(1)
+  })
 })

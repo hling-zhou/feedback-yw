@@ -254,9 +254,11 @@ describe.skipIf(!sqliteAvailable)('Plan B 邮件拉取导入（§9 全链路守�
       expect(eip1.pool_name).toBe('华南-广州3')
       expect(eip1.product_key).toBe('eip')
 
-      // 幂等：同邮件再拉一次，行数不变
+      // 幂等（11-26 护栏①后语义更新）：同邮件再拉一次 → 数据日不晚于已处理日，拒绝重灌
+      //（旧行为「重复拉取照灌靠行级 upsert 幂等」正是 11-26 09:21 事故根源——组级 DELETE+重建
+      //  灭失人工成果，防线上移到数据日校验）；行数不变由「未重灌」保证。
       const result2 = await mod.runPatrolEmailIngestion({ trigger: 'manual', force: true })
-      expect(result2.lastResult).toBe('success')
+      expect(result2.lastResult).toBe('skipped_stale_data')
       const requests2 = db.prepare('SELECT COUNT(*) c FROM api_patrol_requests').get()
       expect(requests2.c).toBe(3)
     })
@@ -538,6 +540,58 @@ describe.skipIf(!sqliteAvailable)('Plan B 邮件拉取导入（§9 全链路守�
       expect(r1.lastResult).toBe('success')
       const r2 = await mod.runPatrolEmailIngestion({ trigger: 'schedule', force: false })
       expect(r2.lastResult).toBe('skipped')  // lastFetchDate=今日 → skip
+    })
+
+    // =============================================== 11-26 护栏①：数据日单调校验（重复拉取事故红绿）
+    it('护栏①：邮件数据日 ≤ 库内已处理数据日 → 拒绝重灌（重复投递防重建灭失）', async () => {
+      const makeMime = async (dataDate, reqTime) => {
+        const eipCsv = eipCsvRows([
+          `1,,guard-req-${dataDate},/acl/v3/floatingip/bind,u1,cmic_sim,绑定,IP,b1,0,100,${dataDate} ${reqTime},`,
+        ])
+        const zipBase64 = await buildZip({ csvs: [{ filename: `弹性公网IP_虚拟私有云/华南-广州3_${dataDate}.csv`, content: eipCsv }] })
+        return buildPatrolEmailMime({
+          dataDate,
+          html: buildHtmlBody({ dataDate, products: [
+            { name: '弹性公网IP', rows: [
+              { 资源池: '华南-广州3', 指标名称: '绑定', 接口名称: '/acl/v3/floatingip/bind', 业务类型: '绑定', 成功率: '96.72%', 正常比例: '-', 时长均值: '-' },
+            ] },
+          ] }),
+          zips: [{ filename: `EIP_VPC_${dataDate}.zip`, base64: zipBase64 }],
+        })
+      }
+      // 第一次：正常灌 11-07 数据（模拟已处理日）
+      mod.setImapClientFactory(makeImapClientFactory([await makeMime('2026-11-07', '10:00:00')]))
+      const r1 = await mod.runPatrolEmailIngestion({ trigger: 'manual', force: true })
+      expect(r1.lastResult).toBe('success')
+      expect(r1.lastStats.dataDate).toBe('2026-11-07')
+
+      // 灌库后种一个「已处理痕迹」组（护栏①判据锚 = lastStats.dataDate，但护栏②的组判据需要组存在；
+      // 这里同时种组让两个护栏的事实基础都在）
+      db.prepare(`INSERT INTO api_patrol_failure_groups
+        (group_date, product_key, pool_name, api_path, metric_name, user_name, first_request_id, first_request_time,
+         pre_compress_count, suppressed_request_ids, customer_type, root_cause_l1, root_cause_l2, product_action_status, assignee, created_at, updated_at)
+        VALUES ('2026-11-07', 'eip', '华南-广州3', '/acl/v3/floatingip/bind', '绑定', 'cmic_sim', 'guard-1', '10:00', 1, '[]', '仿真', '业务冲突', '绑定关系未解除', '已处理', NULL, 't', 't')`).run()
+
+      // 第二次：邮箱又来了一封数据日相同的邮件（批次延迟/重复投递——11-26 09:21 事故形态）
+      // 第二次：邮箱又来了一封数据日相同的邮件（批次延迟/重复投递——11-26 09:21 事故形态）
+      mod.setImapClientFactory(makeImapClientFactory([await makeMime('2026-11-07', '10:00:00')]))
+      const r2 = await mod.runPatrolEmailIngestion({ trigger: 'manual', force: true })
+      // 护栏①拦截：数据日不晚于已处理数据日 → skipped_stale_data，不重灌
+      expect(r2.lastResult).toBe('skipped_stale_data')
+      expect(r2.skipped).toBe('stale-data')
+      expect(r2.dataDate).toBe('2026-11-07')
+      // 人工痕迹组未被重建灭失（护栏①在上游拦住，根本没走到压缩）
+      const g = db.prepare("SELECT product_action_status, root_cause_l1 FROM api_patrol_failure_groups WHERE first_request_id='guard-1'").get()
+      expect(g.product_action_status).toBe('已处理')
+      expect(g.root_cause_l1).toBe('业务冲突')
+      // 审计留痕
+      const audit = db.prepare("SELECT COUNT(*) c FROM audit_log WHERE action='api_patrol.email_ingestion_stale_data_rejected'").get()
+      expect(audit.c).toBe(1)
+      // 更新数据日（11-08 邮件来时）→ 正常放行
+      // 更新数据日（11-08 邮件来时）→ 正常放行
+      mod.setImapClientFactory(makeImapClientFactory([await makeMime('2026-11-08', '10:00:00')]))
+      const r3 = await mod.runPatrolEmailIngestion({ trigger: 'manual', force: true })
+      expect(r3.lastResult).toBe('success')
     })
   })
 })

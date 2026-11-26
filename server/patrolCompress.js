@@ -73,6 +73,20 @@ export function compressPatrolDay(date, pool, options = {}) {
     }
   }
 
+  // 11-26 护栏②（压缩防重建）：当日该池已有诊断/人工处理痕迹的组 → 裸压缩（rebuild 未开）拒绝执行。
+  // 先例：11-26 09:21 重复拉取 11-24 邮件，DELETE+重建把已诊断/人工修正的 18 组重置 pending、
+  // 诊断行孤儿清理灭失。显式 rebuild（带人工状态带回的管理入口）不受此护栏限制。
+  // 痕迹判据 = 组存在且非 pending_diagnosis（已诊断/已豁免/已人工处理）。
+  if (!options.rebuild) {
+    const hasProcessed = db.prepare(`
+      SELECT COUNT(*) n FROM api_patrol_failure_groups
+      WHERE group_date=? AND pool_name=? AND product_action_status != 'pending_diagnosis'
+    `).get(date, pool)
+    if (Number(/** @type {{n: number}} */ (hasProcessed).n) > 0) {
+      return { groups: 0, compressedFrom: 0, skipped: 'already-processed', date, pool }
+    }
+  }
+
   // 2. 删除当日该池旧组（重推重建语义：覆盖写入）
   db.prepare(`DELETE FROM api_patrol_failure_groups WHERE group_date=? AND pool_name=?`).run(date, pool)
 
