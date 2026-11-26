@@ -30,11 +30,36 @@ function resolveRefToneColor(tone, fallback = '#F59E0B') {
 }
 
 /**
+ * tooltip 分条渲染（11-26 真机反馈）：领域层 tooltip 是 `${month} 实施 N 项：\n明细…` 的换行串，
+ * 纯文本 title 会被 HTML 折叠成一段——这里拆成标题行 + 逐条明细（先例 PostUseStoryView 多行 Tooltip）。
+ * @param {string | undefined} tooltip
+ * @param {number} badge
+ * @returns {import('react').ReactNode}
+ */
+function renderRefTooltip(tooltip, badge) {
+  const text = String(tooltip ?? '').trim()
+  if (!text) return `${badge} 项举措`
+  const [head, ...lines] = text.split('\n')
+  if (!lines.length || !lines.some(Boolean)) return head || `${badge} 项举措`
+  return (
+    <div className="max-w-[18rem]">
+      <div className="mb-1 font-medium">{head}</div>
+      <div className="flex flex-col gap-0.5">
+        {lines.filter(Boolean).map((line, i) => (
+          <div key={i} className="whitespace-pre-line break-words">{line}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
  * 竖线顶部数量角标（问题压降图同月多举措合并后使用，2026-11-25 重叠治理；
  * 11-25 晚两轮真机反馈修复：①角标画在 plot 顶上方会被 SVG 边界裁掉 → 改画 plot 内侧顶部；
  * ②原生 <title> hover 是浏览器默认样式体验差 → 换系统内统一 antd Tooltip 气泡
  * （先例 CompositeFilter.jsx / DefinitionSelectOption.jsx 同款）；
- * ③角标/竖线按状态构成着色（done 绿/mixed 橙/pending 灰/overdue 红）。
+ * ③角标/竖线按状态构成着色（done 绿/mixed 橙/pending 灰/overdue 红）；
+ * ④tooltip 分条渲染（11-26 真机反馈：一整段无分行 → 标题行+逐条明细）。
  * recharts ReferenceLine label content 拿到的 props.viewBox 含线两端点 (x1,y1)(x2,y2)：
  * y1 = plot 顶部 y 坐标，角标贴其内侧往下画，永不越出 SVG 可视区。
  * @param {{ viewBox?: { x?: number; y?: number; height?: number }; badge?: number; tooltip?: string; tone?: string }} props
@@ -49,7 +74,7 @@ function RefLineBadge(props) {
   const color = resolveRefToneColor(tone)
   return (
     <g transform={`translate(${x - w / 2}, ${y})`}>
-      <Tooltip title={tooltip || `${badge} 项举措`} mouseEnterDelay={0.15}>
+      <Tooltip title={renderRefTooltip(tooltip, badge)} mouseEnterDelay={0.15}>
         {/* 角标本体 + 透明命中区：hover 角标/竖线即出 antd 气泡 */}
         <g>
           <rect x={0} y={0} width={w} height={16} rx={8} fill={color} fillOpacity={0.16} stroke={color} strokeWidth={1} />

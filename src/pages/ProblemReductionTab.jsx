@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Empty, List, Select, Space, Tag, Typography, message } from 'antd'
+import { Empty, List, Select, Space, Tag, Tooltip, Typography, message } from 'antd'
 import TrendChart from '../components/charts/TrendChart.jsx'
 import { PageHeader } from './Dashboard.shared.jsx'
 import { getProblemReductionView } from '../lib/actionItemClient.js'
@@ -191,7 +191,7 @@ export function ProblemDetail({ row }) {
 
         <div>
           <Typography.Text type="secondary" className="mb-2 block text-xs">
-            举措时间线（{scheduledCount} 条有排期按实施升序，徽标序号对应图上竖线月份
+            举措时间线（{scheduledCount} 条有排期按实施升序，徽标月份对应图上竖线
             {unscheduledCount > 0 ? `；${unscheduledCount} 条无排期未上图` : ''}）
           </Typography.Text>
           <Space direction="vertical" size={8} className="w-full">
@@ -204,6 +204,7 @@ export function ProblemDetail({ row }) {
                   key={action.actionId}
                   action={action}
                   ordinal={action.anchorMonth ? ordinalByMonth.get(action.anchorMonth) ?? null : null}
+                  anchorMonth={action.anchorMonth || ''}
                 />
               ))}
           </Space>
@@ -235,22 +236,39 @@ function actionStatusDotClass(action) {
 }
 
 /**
- * @param {{ action: any; ordinal?: number | null }} props
+ * 徽标月份短标签（11-26 方案一）：anchorMonth "2026-03" → "3月"（当年内省年份；跨年显示 "26-12月" 防歧义）。
+ * @param {string} anchorMonth
  */
-function ActionTimelineRow({ action, ordinal = null }) {
+function formatBadgeMonthLabel(anchorMonth) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(anchorMonth ?? '').trim())
+  if (!m) return String(anchorMonth ?? '').slice(5) || ''
+  const year = m[1]
+  const mon = Number(m[2])
+  const now = new Date()
+  const sameYear = String(now.getFullYear()) === year
+  return sameYear ? `${mon}月` : `${year.slice(2)}-${mon}月`
+}
+
+/**
+ * @param {{ action: any; ordinal?: number | null; anchorMonth?: string }} props
+ */
+function ActionTimelineRow({ action, ordinal = null, anchorMonth = '' }) {
   const r = action.reduction
   return (
     <div className="rounded-md border border-ink-100 px-3 py-2">
       <div className="flex items-start justify-between gap-2">
         <Typography.Text className="!text-sm">
           <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${actionStatusDotClass(action)}`} aria-label="状态点" />
-          {ordinal != null ? (
-            <span
-              aria-label={`第 ${ordinal} 个实施月`}
-              className="mr-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-amber-500 bg-amber-100 px-1 align-middle text-[10px] leading-none text-amber-700"
-            >
-              {ordinal}
-            </span>
+          {anchorMonth ? (
+            <Tooltip title={`图上第 ${ordinal ?? '?'} 根竖线 · ${anchorMonth}`} mouseEnterDelay={0.15}>
+              <span
+                data-badge-month={anchorMonth}
+                aria-label={`实施月 ${anchorMonth}`}
+                className="mr-1.5 inline-flex h-[18px] min-w-[24px] items-center justify-center rounded-full border border-amber-500 bg-amber-100 px-1 align-middle text-[10px] leading-none text-amber-700"
+              >
+                {formatBadgeMonthLabel(anchorMonth)}
+              </span>
+            </Tooltip>
           ) : null}
           {action.content}
         </Typography.Text>

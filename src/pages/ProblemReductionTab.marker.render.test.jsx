@@ -68,14 +68,19 @@ describe('ProblemDetail 竖线聚合渲染形态', () => {
     expect(html).not.toContain('未设排期，无法对比')
   })
 
-  it('列表披露 4 条有排期 + 徽标序号说明', () => {
+  it('列表披露 4 条有排期 + 徽标月份说明（11-26 方案一：月份徽标替代序号）', () => {
     expect(html).toContain('4 条有排期按实施升序')
-    expect(html).toContain('徽标序号对应图上竖线月份')
+    expect(html).toContain('徽标月份对应图上竖线')
   })
 
-  it('编号徽标按月分布：2026-03 三条序号 1，2026-04 一条序号 2，无排期无徽标', () => {
-    expect((html.match(/第 1 个实施月/g) || []).length).toBe(3)
-    expect((html.match(/第 2 个实施月/g) || []).length).toBe(1)
+  it('月份徽标按月分布：2026-03 三条“3月”，2026-04 一条“4月”，无排期无徽标（11-26 方案一）', () => {
+    // 徽标形态从序号改为月份（aria-label 保留竖线序号信息供 hover/读屏）
+    expect((html.match(/data-badge-month="2026-03"/g) || []).length).toBe(3)
+    expect((html.match(/data-badge-month="2026-04"/g) || []).length).toBe(1)
+    expect(html).toContain('>3月</span>')
+    expect(html).toContain('>4月</span>')
+    // 旧序号徽标回潮即红：aria-label 不再是“第 N 个实施月”裸文案（月份徽标 aria 改为含月份与竖线序号）
+    expect(html).not.toContain('aria-label="第 1 个实施月"')
   })
 
   it('有排期但数据不足显示“数据不足”，与无排期的“未设排期，未上图”区分', () => {
