@@ -40,6 +40,8 @@ const RAW_OK_INFO = JSON.stringify({ code: '0000', data: { records: [{ content: 
 const RAW_ERR = JSON.stringify({ code: '5000', msg: 'pool not supported' })
 
 describeGaps('patrol diagnosis-gaps 需求池端点', () => {
+  // 并发跑批时 beforeAll 动态 import 链（better-sqlite3 + fastify + 种子）易撞 10s hook 默认超时——
+  // 显式 30s（单跑 <10s，2026-11-26 并发红实锤后治理）。
   beforeAll(async () => {
     const { closeDb, getDb } = await import('../db.js')
     closeDb()
@@ -71,7 +73,7 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     })
 
     seedGaps()
-  })
+  }, 30000)
 
   afterAll(async () => {
     await app?.close()

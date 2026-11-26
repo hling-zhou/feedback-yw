@@ -97,7 +97,7 @@ describe.skipIf(!sqliteAvailable)('patrolReportBuilder 口径守卫', () => {
     expect(distOf('资源锁定&并发冲突', '域名参数成对为空')).toEqual({ l1: '资源锁定&并发冲突', l2: '域名参数成对为空', count: 1, pre: 9 })
     expect(distOf('未分类', '')).toEqual({ l1: '未分类', l2: '', count: 1, pre: 1 })
     expect(r.hasData).toBe(true)
-  })
+  }, 20000)
 
   it('② 明细表：<99.5 优先 + 升序、截断 20、非数值不标低值', async () => {
     seed()
