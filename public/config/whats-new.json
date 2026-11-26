@@ -1,9 +1,126 @@
 {
-  "generatedAt": "2026-11-25T07:22:16.095Z",
+  "generatedAt": "2026-11-26T04:56:32.012Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "b66e6c90b90e084b2b6de76447eaee49a4e409c0",
+  "repoCommit": "eaf1aa987a0ce144ae26f8a97e52a361bcbc208d",
   "items": [
+    {
+      "id": "41d26b3ff1e3cc335cfd54c3dc67430ff4413632",
+      "title": "需求池时间窗口下界 11-10 + 一键导出 xlsx——样例污染消除",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "11-25 23:59 双拍板：\n\n- 窗口下界 GAP_DATE_FLOOR='2026-11-10'（首批真实接入日）：8 月\n  E2E 样例数据不进需求池——样例组诊断时 MCP 查不到 8 月历史日志 →\n  空/错误响应在降级模式被保守归「池未接入」→ 分区一误报污染\n  （实际华南-广州3/华北-北京3 都在 MCP 23 池枚举内）。11-20\n  「显示全部」拍板废止；前端下钻区间同步下界（同常量口径）。\n- 一键导出 xlsx（GET /api/patrol/diagnosis-gaps/export，view 权限）：\n  两 sheet——分区一每池一行（池/组数/次数/最近时间/requestId 全\n  清单）、分区二每聚合一行（产品/接口/池/缺口类型分布/组数/首次/\n  最近/requestId）。数据绝对同源=进程内 app.inject 自调 summary\n  （同链 classifyGapKind/豁免/窗口——复制 SQL 必口径分叉）；导出\n  记审计；前端 blob 下载（apiFetch 是 JSON 专用走原生 fetch）；\n  文件名日期本地拼串（toISOString UTC 偏一天坑）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "97028d364eb4d0cad02ac8b2b00b7ec5154d4bce",
+      "title": "completedAt 实际完成时间全链 + 压降图状态区分 S1",
+      "category": "feature",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "11-26 00:44 双拍板落地：\n\n- completedAt（来源 A+B）：切入 completed 时自动写当天（本地日期，\n  禁 toISOString——UTC 在 CST 凌晨偏一天）+ 允许人工修正；仅\n  completed 态可填（创建/PATCH 非 completed 带值即拒，终态防清空）；\n  normalize 层双保险；校验先于归一（防静默清空漏检）。导出\n  「实际完成时间」列与导入 parser 两端同步（仅已完成采纳，其他\n  状态忽略+警告——往返纪律）；存量 76 条已完成无值留空回退排期。\n- 压降锚点二次演进：resolveActionAnchor = completed 且有\n  completedAt 用真实完成日 → 其余 scheduleAt；firstProposedAt\n  永不兜底（11-25 拍板不变）。\n- 压降图状态色 S1：竖线/角标按当月举措构成着色——done 全完成绿 /\n  mixed 混合橙 / pending 全未完成灰 / overdue 含逾期红（最醒目）；\n  逾期=排期已过未到终态（挂起算逾期）；tooltip 每行状态前缀\n  （✓已完成 / ⚠逾期 N 天 / ●进行中）；列表行同色状态圆点；\n  hover 换 antd Tooltip 气泡（原生 title 体验差）。竖线位置：未\n  完成用排期月、完成后跳实际完成月（竖线移动本身是压降叙事）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "759b57320021e2739dd1259b358dcfaed0ea3a38",
+      "title": "L1 拆类「产品可观测性不足」——缺口责任归属分离",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "11-26 00:18 拍板：「日志在但读不出失败原因」从「诊断能力缺口」拆到\n新 L1「产品可观测性不足」。分界线=日志在不在——缺口=诊断链路查无数据\n（诊断提供方的锅，'—'）；可观测性不足=日志在但校验全 OK、无错误码、\n无异常堆栈，客户失败了平台没把失败落成可诊断形态（产品的锅，待处理\n诉求=补错误码与提示文案）。先例 #379/380/387/392/393 形态实证。\n\n- seeds：规则 3（日志无ERROR/WARN）/13（仅WARN结论不明）挪新类 +\n  productAction 改待处理；追加 order 3.5「失败原因未落日志」\n  （未提取到平台错误码等 8 强语义词）。\n- migration v5（裸跑幂等，v3 教训同款）：规则表追加 3.5 + 存量 3/13\n  行改类（旧值精确匹配防覆盖运营编辑）；组/诊断存量三判据迁移\n  （L2 白名单 / action_reason 补提示语义 / 快速路径 records 非空）。\n- pipeline 快速路径分流：records 空→缺口（原语义收窄）；records 在\n  读不出→可观测性不足（确定性形态判定不烧 LLM）。白名单注解更新\n  （3/3.5/13 已非缺口类，规则命中即采）。\n- LLM 枚举 8→9 类 + analyzer/llmClassifier prompt 边界重写（判定\n  顺序 1=查无日志、2=日志在读不出）；前端 ROOT_CAUSE_L1_OPTIONS、\n  L1 趋势、规则面板兜底约束同步；缺口类归属 tooltip（诊断链路问题\n  非产品缺陷，防误读）+ 可观测性 tooltip 单源两消费方。\n- plan-c 两脚本缺口过滤注释同步（converged 判定/重跑队列只收窄后\n  的缺口语义，新类组 status=待处理不命中）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "9ecda12e101573612f3a173c00d78bbca84bfcc3",
+      "title": "重复灌库事故双护栏——数据日单调校验 + 压缩防重建拒绝",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "11-26 09:21 事故复盘：Run #17 重复拉取 11-24 邮件（批次延迟投递），\n拉取防重只看拉取日不看数据日 → 同一数据日第二次灌库 → compressPatrolDay\nDELETE+重建 18 组 → 昨晚人工修正（双用户组归类）+ v5 迁移成果全灭、\n诊断行孤儿清理灭失。两道防线互补：\n\n- 护栏①（emailIngestion）：数据日单调校验——邮件数据日 ≤ 库内已处理\n  数据日 → 拒绝重灌（审计留痕 + skipped_stale_data 状态；lastFetchDate\n  保留今日拉取事实）。plan-c-daily 消费该状态退出码 1，不压缩不诊断\n  不推送；护栏②收口——当日全池压缩被拒且库内有该日 requests →\n  中断提示人工核对（--package-only 可补推）。\n- 护栏②（compressPatrolDay）：当日该池已有非 pending 组（诊断/人工\n  痕迹）→ 裸压缩拒绝（skipped=already-processed）；rebuild=true\n  （管理入口带人工状态带回）豁免。红绿三用例（拒/豁免/不误伤全\n  pending 池）。\n- 恢复脚本 restore-1124-groups-from-orphans：孤儿诊断行按\n  first_request_id×user_name 重挂新组回写分类（一次性事故恢复，\n  入库供审计追溯）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "877c3b8f3c2fca0a3ec04505551468a3a8ff36e3",
+      "title": "产品举措导入 upsert——同「归一内容+产品」更新而非重复新增",
+      "category": "feature",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "判定键 NFKC（全半角/①→1）+ 小写 + 空白折叠；同键多条取 updatedAt\n最新为落点并告警 duplicates。预览弹窗分新增/更新两态与说明；提交\n分流 PATCH（非空才覆盖，防误清 detail）+ 批量创建，锁定举措改排期\n400 进失败明细（与页面编辑同权，补 API 层锁定同权测试）。模板\n说明同步 upsert 语义与状态列差异。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8c01136e27584a9fa7080c73022da712b1a90599",
+      "title": "纳入听音归位 + 待讨论三态单向标记全链路落地",
+      "category": "feature",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "待讨论 discussionStatus（''→pending→done，max 闩锁不可回退，与\n听音 OR 闩锁同排同构）：抽屉人工复核区 Checkbox + Tag、列表复核\n标记列 + 四态筛选、reprocess/再导入 max 合并保留、冲突 diff 补\ndiscussionStatus 与 listeningReviewed 两字段、脏检查双向覆盖。\n听音文案统一「纳入听音」（Checkbox/Tag/筛选），footer 复选框\n归位人工复核区。真渲染守卫全六组合 + 域单测。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "a8936f53d5197dc8531a929eacf7e02eb922078d",
+      "title": "问题压降图月度角标防裁切 + hover 当月举措明细",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "真机反馈：角标画在 plot 顶上方被 SVG 边界裁掉——改画 plot 内侧\n顶部并给图预留顶距；竖线加透明命中区与 <title>，hover 显示\n当月举措明细（排期日 + 内容截断），buildMonthlyActionMarkers\n单源产出 tooltip 文本。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "c5097f9807cf3914ce731b9395d2c6119d06a6f4",
+      "title": "顶层静态 import 写错库修复 + 规则同步发送端 + 误写数据回迁工具",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "ESM 顶层静态 import（B3 引入的 listPatrolActionExemptions）先于 main()\n内 env 赋值完成模块求值，db.js 的 DB_PATH 固化为默认 auth.db——Run #16\n整批 11-24 巡检数据误写业务主库。改 buildPackage 内动态 import（server\n模块一律 main 内动态加载），buildPackage 顺带 async 化。随包新增\nrootCauseRules 可选段（对接收端冲突保护同步），conflict 时 stdout 显式\n警告。附迁移脚本：误写数据回迁 plan-c-local.db（dry-run 先行/幂等/\n单事务/备份防覆盖，11-24 批 + 11-09 双写残留已实迁，auth.db 清零）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "5a37efd8cb76da2c37539654c253ca65fd58c282",
+      "title": "日包组定位键断裂修复 + 规则表随包冲突保护同步",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-25",
+      "appVersion": null,
+      "summary": "组身份在 upsertGroup 单次解析（RETURNING id 直传诊断附推）——\n旧 upsertDiagnoses 三元组定位键缺 user_name，同 (date,pool,reqId)\n双用户组形态下诊断行全写先建组、另一组恒空（reqId-c6ee62c2 抽屉\n「结论空 vs AI 判定有值」矛盾先例）；人工状态保护查询同步补全\n六元组键，消灭跨组误保护。规则表同步段走基线哈希三分支：部署端\n编辑偏离基线时跳过覆盖并报 conflict（编辑永不静默丢失），人工\n合流（包值=副本）后自动刷基线解除冲突。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "9256030a695afe23c1a2fec13598870c842d9d1e",
       "title": "万投比产品页签恢复 + 无消费死代码守卫——72 天复盘防复发",
@@ -2482,123 +2599,6 @@
       "publishedAt": "2026-10-10",
       "appVersion": null,
       "summary": "负面反馈排除「满意/感谢」等明显正面词，并把「业务使用完毕无后续使用需求」\n纳入占位词；高频低分原因表改为按原因→产品聚合，新增均分列与客户名拼接，\n去掉集团客户编码列。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "7988689e57a6b1f0e54fe7ad140854d704c6bd0f",
-      "title": "检索词由服务端从原句拆出，模型写成推理时再要一次 JSON",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "query 不再只靠模型猜「完整词组」；空着或塞进整句时，从用户问题去掉时间和来源后检索。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "b91b3eb95f2d55528abaf821f107eb7dcd2cd05d",
-      "title": "检索词下限改为两个字，避免中文关键词被拆开后拒检",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "模型常把「体验账号」拆成「体验」，原先三字门槛会直接拒绝；单字扫描仍挡住。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "9b73fc814c3871e4ac7c8c9d0a79a957dc48f9c1",
-      "title": "只重打用户情绪时让出计算，打标任务抽屉显示进行中的任务",
-      "category": "fix",
-      "modules": [
-        "feedbacks"
-      ],
-      "publishedAt": "2026-10-09",
-      "appVersion": null,
-      "summary": "同步算完整批会堵住历史请求，抽屉只能停在加载遮罩；确认框也会一直等到任务结束。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "82742ef26d754791bf5675333d5d8c1971689304",
-      "title": "后一次调用不再被剩余时间掐断，粘连答案和查完工具后的结论都能返回",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-09",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "003592044ee13af4bbdaf6632ec213523813df0a",
-      "title": "只重打用户情绪，避免为了改情绪重算其他标签",
-      "category": "feature",
-      "modules": [
-        "feedbacks"
-      ],
-      "publishedAt": "2026-10-09",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "76b097b77078124660528e314554dbe4a454148e",
-      "title": "接受模型的工具 JSON，并让更新动态和删除会话能完成",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-09",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "a3e6777149e27928da20f2566c8b27b1adcb907b",
-      "title": "启动时只补缺失的检索索引，避免全量重建堵住登录",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-09",
-      "appVersion": null,
-      "summary": "",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "30b677c2193b20e1dc5d33fc261357bdfb4e1f27",
-      "title": "趋势改成工单量柱图，选定产品后叠加万投比并可下载",
-      "category": "feature",
-      "modules": [
-        "workbench"
-      ],
-      "publishedAt": "2026-10-08",
-      "appVersion": null,
-      "summary": "投诉把工单量、负向和万投比放在同一张图，选定产品后显示问题分类分布；咨询把工单量和负向占比合并，图表可下载数据表。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0730777a7d9bf0dfddef12de4ffe931b7338f85e",
-      "title": "投诉工单可手填问题分类，导入不覆盖",
-      "category": "feature",
-      "modules": [
-        "feedbacks"
-      ],
-      "publishedAt": "2026-10-08",
-      "appVersion": null,
-      "summary": "详情和列表增加「问题分类（自定义）」；导出包含该列，导入模板不收，再次导入时保留手填值。",
       "commitUrl": null,
       "source": "git"
     }
