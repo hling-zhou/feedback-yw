@@ -33,39 +33,68 @@ function toneToColor(tone) {
 /**
  * 举措详情里的压降验证面板：每个问题签名一个折叠面板，内含趋势图 + 前后对比。
  *
+ * 2026-11-27 起接收**预构建 scope**（调用方 = ActionItemDrawer 分区5 唯一消费点）：
+ * 工单举措传 buildActionProblemScope 产物，用后即评举措传 buildPostUseActionProblemScope
+ * 产物——两类举措共用本面板的锚点行/趋势图/ReductionDetail 展示形态；
+ * unitLabel/areaName/emptyText 按举措来源参数化（用后即评记录非"单"、无负向线）。
+ *
  * @param {Object} props
- * @param {ActionItem} props.action
+ * @param {ReturnType<typeof buildActionProblemScope>} [props.scope] 预构建聚合产物（优先）
+ * @param {ActionItem} [props.action] 兼容旧调用：scope 未传时现场构建（工单侧既有行为）
  * @param {Map<string, FeedbackRecord>} [props.feedbackByTicketId]
  * @param {Map<string, string>} [props.productNameByKey]
+ * @param {'单' | '条'} [props.unitLabel] 计数单位（工单=单；溯源/回访记录=条）
+ * @param {string} [props.areaName] 趋势线名称（工单数 / 反馈条数）
+ * @param {string} [props.emptyText] 空态文案
+ * @param {boolean} [props.showNegative] 是否画负向第二条线（工单侧 true；post_use 无该维度）
  */
-export default function ActionProblemScopePanel({ action, feedbackByTicketId, productNameByKey }) {
-  const scope = useMemo(
-    () => buildActionProblemScope(action, feedbackByTicketId, productNameByKey),
-    [action, feedbackByTicketId, productNameByKey],
+export default function ActionProblemScopePanel({
+  scope,
+  action,
+  feedbackByTicketId,
+  productNameByKey,
+  unitLabel = '单',
+  areaName = '工单数',
+  emptyText,
+  showNegative = true,
+}) {
+  const builtScope = useMemo(
+    () => (scope ?? (action ? buildActionProblemScope(action, feedbackByTicketId, productNameByKey) : null)),
+    [scope, action, feedbackByTicketId, productNameByKey],
   )
+  const countPredicate = scope
+    ? (p) => Number(p.monthlyTrend?.length) > 0 || Number(p.recordCount) > 0
+    : (p) => p.ticketCount > 0
 
-  if (!scope.problems.length || !scope.problems.some((p) => p.ticketCount > 0)) {
+  if (!builtScope?.problems.length || !builtScope.problems.some(countPredicate)) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="暂无关联工单，无法做效果验证"
+        description={emptyText || '暂无关联工单，无法做效果验证'}
         className="!my-4"
       />
     )
   }
 
-  const items = scope.problems.map((problem) => {
+  const items = builtScope.problems.map((problem) => {
+    // post_use face 与工单 face 字段差异在此归一（呈现层适配，不反向污染领域层）：
+    // 计数 = ticketCount（工单）| recordCount（溯源/回访）；副标题 = 旅程（工单）| 来源 Tag（post_use）
+    const count = scope ? Number(problem.recordCount) || 0 : problem.ticketCount
+    const subtitle = scope
+      ? String(problem.sourceKindLabel ?? '')
+      : `${problem.journeyL1 ?? ''}${problem.journeyL2 && problem.journeyL2 !== problem.journeyL1 ? ` / ${problem.journeyL2}` : ''}`
     const summary = reductionSummary(problem.reduction)
     const title = (
       <Space size={6} wrap>
         <Typography.Text strong className="!text-sm">
           {problem.productName}
         </Typography.Text>
-        <Typography.Text type="secondary" className="!text-xs">
-          {problem.journeyL1}
-          {problem.journeyL2 && problem.journeyL2 !== problem.journeyL1 ? ` / ${problem.journeyL2}` : ''}
-        </Typography.Text>
-        <Tag className="!m-0 !text-xs">{problem.ticketCount} 单</Tag>
+        {subtitle ? (
+          <Typography.Text type="secondary" className="!text-xs">
+            {subtitle}
+          </Typography.Text>
+        ) : null}
+        <Tag className="!m-0 !text-xs">{count} {unitLabel}</Tag>
         <Tag color={toneToColor(summary.tone)} className="!m-0 !text-xs">
           {summary.text}
         </Tag>
@@ -87,9 +116,9 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
               ) : null}
             </Space>
           )}
-          {problem.painPointSample ? (
-            <Typography.Paragraph type="secondary" className="!mb-0 !text-[13px]" ellipsis={{ rows: 2, tooltip: problem.painPointSample }}>
-              {problem.painPointSample}
+          {(problem.painPointSample || problem.feedbackSample) ? (
+            <Typography.Paragraph type="secondary" className="!mb-0 !text-[13px]" ellipsis={{ rows: 2, tooltip: problem.painPointSample || problem.feedbackSample }}>
+              {problem.painPointSample || problem.feedbackSample}
             </Typography.Paragraph>
           ) : null}
           <div className="rounded-lg bg-white p-2">
@@ -98,18 +127,20 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
               xType="time"
               height={200}
               data={problem.monthlyTrend}
-              areas={[
-                { dataKey: 'count', name: '工单数', stroke: '#4F46E5' },
-                { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
-              ]}
+              areas={showNegative
+                ? [
+                  { dataKey: 'count', name: areaName, stroke: '#4F46E5' },
+                  { dataKey: 'negative', name: '负向', stroke: '#EF4444' },
+                ]
+                : [{ dataKey: 'count', name: areaName, stroke: '#4F46E5' }]}
               referenceLine={
-                scope.anchorDate
-                  ? { x: scope.anchorDate, label: `实施 ${scope.anchorDate}`, stroke: '#F59E0B' }
+                builtScope.anchorDate
+                  ? { x: builtScope.anchorDate, label: `实施 ${builtScope.anchorDate}`, stroke: '#F59E0B' }
                   : null
               }
             />
           </div>
-          <ReductionDetail reduction={problem.reduction} anchorMonth={scope.anchorMonth} />
+          <ReductionDetail reduction={problem.reduction} anchorMonth={builtScope.anchorMonth} unitLabel={unitLabel} />
           <Typography.Text type="secondary" className="block !text-[11px]">
             关联趋势，非因果
           </Typography.Text>
@@ -121,7 +152,7 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
   return (
     <div className="space-y-2">
       <Typography.Text type="secondary" className="block text-xs">
-        锚点（实施）：{scope.anchorDate || '—'}
+        锚点（实施）：{builtScope.anchorDate || '—'}
       </Typography.Text>
       <Collapse size="small" items={items} />
     </div>
@@ -129,9 +160,9 @@ export default function ActionProblemScopePanel({ action, feedbackByTicketId, pr
 }
 
 /**
- * @param {{ reduction: any; anchorMonth: string }} props
+ * @param {{ reduction: any; anchorMonth: string; unitLabel?: '单' | '条' }} props
  */
-function ReductionDetail({ reduction, anchorMonth }) {
+function ReductionDetail({ reduction, anchorMonth, unitLabel = '单' }) {
   if (!reduction) {
     return (
       <Typography.Text type="secondary" className="!text-xs">
@@ -149,16 +180,16 @@ function ReductionDetail({ reduction, anchorMonth }) {
   if (reduction.changePct === null) {
     return (
       <Typography.Text type="secondary" className="!text-xs">
-        锚点前月均 0 单（基线为 0），无法计算变化
+        锚点前月均 0 {unitLabel}（基线为 0），无法计算变化
       </Typography.Text>
     )
   }
   const sign = reduction.changePct > 0 ? '↑' : '↓'
   return (
     <Typography.Text className="!text-xs">
-      锚点前 {reduction.beforeMonths.length} 月（共 {reduction.beforeCount} 单，月均{' '}
+      锚点前 {reduction.beforeMonths.length} 月（共 {reduction.beforeCount} {unitLabel}，月均{' '}
       <span className="font-medium">{reduction.beforeAvg}</span>）→ 锚点后 {reduction.afterMonths.length} 月（共{' '}
-      {reduction.afterCount} 单，月均 <span className="font-medium">{reduction.afterAvg}</span>），{' '}
+      {reduction.afterCount} {unitLabel}，月均 <span className="font-medium">{reduction.afterAvg}</span>），{' '}
       <Typography.Text type={reduction.changePct < 0 ? 'success' : 'danger'} strong>
         {sign}{Math.abs(reduction.changePct)}%
       </Typography.Text>

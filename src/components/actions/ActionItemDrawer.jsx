@@ -27,6 +27,8 @@ import ActionItemRequirementLinkFields from './ActionItemRequirementLinkFields.j
 import ActionItemStatusTag from '../tags/ActionItemStatusTag.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
 import PostUseLinkedSourceList from './PostUseLinkedSourceList.jsx'
+import PostUseProblemFaces from './PostUseProblemFaces.jsx'
+import { buildPostUseActionProblemScope } from '../../domain/postUseActionProblemScope.js'
 import ActionProblemScopePanel from './ActionProblemScopePanel.jsx'
 import { buildActionProblemScope } from '../../domain/actionProblemScope.js'
 import { useEffect, useMemo, useState } from 'react'
@@ -164,6 +166,14 @@ export default function ActionItemDrawer({
   }, [open, item?.id, item?.source])
 
   const fieldsDisabled = !canEdit || locked
+  // 用后即评聚合问题面（11-27 需求）：与分区4/5 共用同一份 postUseSources（同源判定纪律），
+  // 签名 = 产品×来源两类（11-27 拍板），月份进趋势轴不进签名（面碎成单月则压降失效）。
+  const postUseScope = useMemo(
+    () => (item?.source === 'post_use'
+      ? buildPostUseActionProblemScope(item, postUseSources)
+      : null),
+    [item, postUseSources],
+  )
   const coreDisabled = !canEdit || coreFieldsLocked
   const journey = item ? resolveJourneyDisplay(item, feedbackByTicketId) : null
   const sources = item?.linkedDataSources || []
@@ -365,7 +375,10 @@ export default function ActionItemDrawer({
             </div>
             <div className="page-card-sm">
               <div className="space-y-3">
-                {problemScope && problemScope.problems.some((p) => p.ticketCount > 0) ? (
+                {item.source === 'post_use' && postUseScope?.problems.length ? (
+                  /* 用后即评聚合问题面（11-27 需求，两类来源拍板）：产品×溯源/回访聚合，face 卡片与工单侧同构 */
+                  <PostUseProblemFaces problems={postUseScope.problems} />
+                ) : problemScope && problemScope.problems.some((p) => p.ticketCount > 0) ? (
                   <Space direction="vertical" size={6} className="w-full">
                     {problemScope.problems
                       .filter((p) => p.ticketCount > 0)
@@ -630,11 +643,23 @@ export default function ActionItemDrawer({
                   ) : null}
                 </div>
               ) : null}
-              <ActionProblemScopePanel
-                action={item}
-                feedbackByTicketId={feedbackByTicketId}
-                productNameByKey={productNameByKey}
-              />
+              {/* 11-27 用后即评聚合面：预构建 scope 传入（与分区3/4 共用 postUseSources），
+                  两类来源签名（拍板）、linked-only 趋势、评估状态 Tag 展示；记录非"单"、无负向线 */}
+              {item.source === 'post_use' ? (
+                <ActionProblemScopePanel
+                  scope={postUseScope}
+                  unitLabel="条"
+                  areaName="反馈条数"
+                  emptyText="暂无关联溯源/回访，无法做效果验证"
+                  showNegative={false}
+                />
+              ) : (
+                <ActionProblemScopePanel
+                  action={item}
+                  feedbackByTicketId={feedbackByTicketId}
+                  productNameByKey={productNameByKey}
+                />
+              )}
             </div>
           </div>
         </div>
