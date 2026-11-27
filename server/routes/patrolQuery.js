@@ -811,6 +811,11 @@ export function registerPatrolQueryRoutes(app) {
       }
     }
     const uncoveredPools = [...uncMap.values()].sort((a, b) => b.preCompressTotal - a.preCompressTotal)
+      // 反馈闭环（11-27 19:09 补：分区一池级反馈）——pool 级键注入 resolution
+      .map((p) => {
+        const fb = getGapFeedback('', '', p.poolName)
+        return fb ? { ...p, resolution: { reason: fb.reason, fixPlan: fb.fixPlan, scheduleAt: fb.scheduleAt, feedbackBy: fb.feedbackBy, feedbackAt: fb.feedbackAt } } : { ...p, resolution: null }
+      })
     // 未诊断组聚合（池维度汇总——复制清单交付：每行 日期 池 requestID，用户自行补诊断）
     const unMap = new Map()
     for (const r of undiagnosed) {

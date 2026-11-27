@@ -438,12 +438,50 @@ export default function ApiPatrolDiagnosisGapsContent() {
                 title: '判定依据', dataIndex: 'sampleMcpRaw', key: 'sampleMcpRaw', width: 220, ellipsis: true,
                 render: (v) => (v ? <span title={v} className="text-xs text-ink-500">{v}</span> : '—'),
               },
+              // 核实状态列（11-27 19:09 补：分区一同款——池级反馈记录）
               {
-                title: '操作', key: 'actions', width: 170,
+                title: '核实状态', key: 'resolution', width: 120,
+                render: (r) => {
+                  const fb = r.resolution
+                  if (!fb) return <Tag className="!m-0" color="default">待核实</Tag>
+                  const tip = (
+                    <div className="text-xs" style={{ maxWidth: 300 }}>
+                      <div className="font-medium mb-1">核实原因</div>
+                      <div className="whitespace-pre-line break-words">{fb.reason}</div>
+                      {fb.fixPlan ? <div className="mt-1">修复方案：{fb.fixPlan}</div> : null}
+                      {fb.scheduleAt ? <div>排期：{fb.scheduleAt}</div> : null}
+                      <div className="text-ink-400 mt-1">{fb.feedbackBy} · {String(fb.feedbackAt || '').slice(0, 10)}</div>
+                    </div>
+                  )
+                  return (
+                    <Tooltip title={tip}>
+                      <Tag className="!m-0" color="green">已核实</Tag>
+                      <div className="text-xs text-ink-400 mt-0.5">{fb.feedbackBy} · {String(fb.feedbackAt || '').slice(0, 10)}</div>
+                    </Tooltip>
+                  )
+                },
+              },
+              {
+                title: '操作', key: 'actions', width: 220,
                 render: (r) => (
-                  <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copyIds(r.requestIds || [], r.poolName)}>
-                    复制请求ID（{String((r.requestIds || []).length)}）
-                  </Button>
+                  <Space size={4} wrap>
+                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copyIds(r.requestIds || [], r.poolName)}>
+                      复制请求ID（{String((r.requestIds || []).length)}）
+                    </Button>
+                    {canFeedback && (
+                      <Button
+                        type="link" size="small" className="!px-0"
+                        onClick={() => openFeedback({ productKey: '', apiPath: '', poolName: r.poolName, resolution: r.resolution })}
+                      >
+                        {r.resolution ? '修改反馈' : '核实原因'}
+                      </Button>
+                    )}
+                    {canFeedback && r.resolution && (
+                      <Popconfirm title="撤销后该条目回到待核实，确认？" onConfirm={() => revokeFeedback({ productKey: '', apiPath: '', poolName: r.poolName })}>
+                        <Button type="link" size="small" className="!px-0">撤销</Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
                 ),
               },
             ]}
@@ -542,17 +580,20 @@ export default function ApiPatrolDiagnosisGapsContent() {
         {feedbackTarget && (
           <>
             <div className="text-xs text-ink-400 mb-3">
-              {feedbackTarget.productKey} · {feedbackTarget.apiPath} · {feedbackTarget.poolName}
+              {/* 池级反馈（分区一）productKey/apiPath 空——只显示池名 */}
+              {feedbackTarget.productKey || feedbackTarget.apiPath
+                ? `${feedbackTarget.productKey} · ${feedbackTarget.apiPath} · ${feedbackTarget.poolName}`
+                : `资源池：${feedbackTarget.poolName}`}
             </div>
             <Form form={feedbackForm} layout="vertical" className="text-[13px]">
               <Form.Item
                 label="核实原因"
                 name="reason"
-                rules={[{ required: true, message: '核实原因必填' }]}
+                rules={[{ required: true, message: '核实原因必填' }, { max: 500, message: '不超过 500 字符' }]}
               >
                 <Input.TextArea rows={3} placeholder="如：日志保留期已过 / 该接口日志未采集 / ERROR 级日志缺失……" />
               </Form.Item>
-              <Form.Item label="修复方案" name="fixPlan">
+              <Form.Item label="修复方案" name="fixPlan" rules={[{ max: 500, message: '不超过 500 字符' }]}>
                 <Input placeholder="选填——如何补齐该能力" />
               </Form.Item>
               <Form.Item label="排期时间" name="scheduleAt">
