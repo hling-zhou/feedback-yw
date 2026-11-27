@@ -113,6 +113,25 @@ function ownerFeedbackText(ownerType, owner) {
 }
 
 /**
+ * 剥离 enriched 响应的派生字段（补齐写回防污染，11-27 验证发现）：getActionItem 返回
+ * enrichActionItemWithRequirementProgress 的产物（requirementLinkMode/requirementTickets/
+ * derivedStatus/derivedWarningLevel 等运行时派生字段）——直接展开写回会把这些字段持久化
+ * 进 payload（先例 unlinkTicketsFromActionItems 无此问题：其 domain 层函数重建对象时
+ * 天然不带派生键）。补齐必须从「干净原始行 + 单字段」构建写回对象。
+ * @param {string} actionId
+ * @returns {Record<string, unknown> | null} 原始 payload 行（未 enrich）
+ */
+function getRawActionItemRow(actionId) {
+  const row = getDb().prepare('SELECT payload FROM action_items WHERE id = ?').get(actionId)
+  if (!row) return null
+  try {
+    return JSON.parse(row.payload)
+  } catch {
+    return null
+  }
+}
+
+/**
  * @param {'trace'|'visit'} ownerType
  * @param {string} ownerId
  * @param {{ actionId?: string; newAction?: { content?: string; detail?: string; scheduleAt?: string } }} input
@@ -151,16 +170,23 @@ export function addPostUseAction(ownerType, ownerId, input, actor) {
       if (isActionItemLocked(action.status) && !alreadyLinked) {
         throw new Error('该举措已结束，无法新增关联')
       }
-      // 问题快照补齐（11-27）：选库路径与新建路径语义同构（工单抽屉 buildSnapshotPatchOnTicketLink 先例）——
-      // 举措尚无任何溯源/回访关联（首关联）且问题为空时，从本次 owner 的客户反馈补齐；已有值不覆盖。
+      // 问题快照补齐（11-27 二次修复：fill-if-empty，对齐工单抽屉 buildSnapshotPatchForEmptyFields
+      // 的真实语义——空字段从记录补齐，非首关联限定）：问题为空时从本次 owner 的客户反馈补齐；
+      // 已有值不覆盖（补齐后固定，无多 owner 串扰）。首版"举措无任何关联才补"条件过严——
+      // 修复前建的存量举措带旧关联，从举措库选它关联新记录时永不补齐（用户实测命中）。
+      // 写回形态（11-27 验证修复）：从原始 payload 行 + 单字段构建——action 变量是 enriched
+      // 响应，直接展开会把 requirementTickets/derivedWarningLevel 等派生字段持久化进 payload
+      // （污染形态见 getRawActionItemRow 注释）。
       if (!alreadyLinked && !String(action.painPointSnapshot ?? '').trim()) {
         const feedback = ownerFeedbackText(ownerType, owner)
-        const { traces: linkedTraces, visits: linkedVisits } = listPostUseActionSources(id)
-        if (feedback && !linkedTraces.length && !linkedVisits.length) {
-          action = actionItemRepository.putActionItem(
-            { ...action, painPointSnapshot: feedback },
-            { actor: { userId: actor.id, username: actor.username } },
-          )
+        if (feedback) {
+          const rawRow = getRawActionItemRow(id)
+          if (rawRow && !String(rawRow.painPointSnapshot ?? '').trim()) {
+            action = actionItemRepository.putActionItem(
+              { ...rawRow, painPointSnapshot: feedback },
+              { actor: { userId: actor.id, username: actor.username } },
+            )
+          }
         }
       }
     }

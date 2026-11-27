@@ -385,18 +385,27 @@ describeApi('post-use multiple actions API', () => {
     })
   })
 
-  it('library link backfills empty painPointSnapshot only on first link (11-27 选库补齐)', async () => {
-    // 选库路径首关联补齐：举措问题为空且无任何溯源/回访关联 → 从本次 owner 客户反馈补齐；
-    // 已有问题不覆盖。身份全库唯一。
+  it('library link backfills empty painPointSnapshot even when legacy links exist (11-27 fill-if-empty 二次修复)', async () => {
+    // 选库路径 fill-if-empty 补齐（二次修复）：存量举措带旧关联（修复前建的，
+    // 问题为空）从举措库选它关联新溯源记录时也必须补齐——首版"无任何关联才补"
+    // 条件过严，部署库实测永不命中。已有值不覆盖。身份全库唯一。
     const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
     const { validateActionItemCreate } = await import('../../src/domain/actionItem.js')
     const { actionItemRepository } = await import('../actionItemRepository.js')
 
+    // 存量形态：修复前建的举措，问题为空，且已带旧溯源关联（直接 patch actionIds 模拟）
     const validated = validateActionItemCreate({ content: '选库补齐验证举措', source: 'post_use' })
     if (!validated.ok) throw new Error(validated.error)
     actionItemRepository.putActionItem(validated.item)
     const libraryId = validated.item.id
+    const legacyTrace = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-LINK-LEGACY:神秘产品LK:2026-09', importMonth: '2026-09',
+      productName: '神秘产品LK', customerName: '旧关联客户', customerCode: 'ACTION-LINK-LEGACY',
+      customerFeedback: '反馈原因：旧关联的反馈',
+    }])[0]
+    postUseJiraRepository.patch(legacyTrace.id, { actionId: libraryId })
 
+    // fill-if-empty：带旧关联的空问题举措关联新溯源 → 从本次 owner 客户反馈补齐
     const traceA = postUseJiraRepository.archiveMany([{
       itemKey: 'q:ACTION-LINK-FB-A:神秘产品LK:2026-10', importMonth: '2026-10',
       productName: '神秘产品LK', customerName: '选库客户A', customerCode: 'ACTION-LINK-FB-A',
@@ -425,16 +434,66 @@ describeApi('post-use multiple actions API', () => {
     expect(second.json().action.painPointSnapshot).toBe('反馈原因：控制台找不到退订入口（1）')
 
     // 清理
-    await app.inject({
-      method: 'DELETE', url: `/api/post-use-actions/trace/${traceA.id}/${libraryId}`,
-      headers: editorHeaders(),
-    })
-    await app.inject({
-      method: 'DELETE', url: `/api/post-use-actions/trace/${traceB.id}/${libraryId}`,
-      headers: editorHeaders(),
-    })
+    for (const trace of [legacyTrace, traceA, traceB]) {
+      await app.inject({
+        method: 'DELETE', url: `/api/post-use-actions/trace/${trace.id}/${libraryId}`,
+        headers: editorHeaders(),
+      })
+    }
     const { getDb } = await import('../db.js')
     getDb().prepare('DELETE FROM action_items WHERE id = ?').run(libraryId)
-    getDb().prepare('DELETE FROM post_use_jira_items WHERE id IN (?, ?)').run(traceA.id, traceB.id)
+    const ids = [legacyTrace.id, traceA.id, traceB.id]
+    getDb().prepare(`DELETE FROM post_use_jira_items WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids)
+  })
+
+  it('backfill writeback must not persist derived enrichment fields (11-27 污染守卫)', async () => {
+    // 11-27 验证轮发现：getActionItem 返回 enriched 形态（requirementLinkMode/
+    // requirementTickets/derivedStatus/derivedWarningLevel），补齐若直接 {...action} 展开
+    // 写回会把派生字段持久化进 payload——先例 unlinkTicketsFromActionItems（domain 层
+    // 重建对象）无此问题。守卫：补齐后原始 payload 不得新增派生键。身份全库唯一。
+    const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+    const { validateActionItemCreate } = await import('../../src/domain/actionItem.js')
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    const { getDb } = await import('../db.js')
+
+    const validated = validateActionItemCreate({
+      content: '污染守卫验证举措', source: 'post_use',
+      linkedRequirementTicketIds: ['REQ-GUARD-1127'],
+    })
+    if (!validated.ok) throw new Error(validated.error)
+    actionItemRepository.putActionItem(validated.item)
+    const guardId = validated.item.id
+    const beforeKeys = new Set(Object.keys(JSON.parse(
+      getDb().prepare('SELECT payload FROM action_items WHERE id = ?').get(guardId).payload,
+    )))
+
+    const guardTrace = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-GUARD-PT:神秘产品PT:2026-10', importMonth: '2026-10',
+      productName: '神秘产品PT', customerName: '守卫客户', customerCode: 'ACTION-GUARD-PT',
+      customerFeedback: '反馈原因：污染守卫用例反馈（1）',
+    }])[0]
+    const res = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${guardTrace.id}`, headers: editorHeaders(),
+      payload: { actionId: guardId },
+    })
+    expect(res.statusCode, res.body).toBe(200)
+    expect(res.json().action.painPointSnapshot).toBe('反馈原因：污染守卫用例反馈（1）')
+
+    const afterPayload = JSON.parse(
+      getDb().prepare('SELECT payload FROM action_items WHERE id = ?').get(guardId).payload,
+    )
+    const polluted = Object.keys(afterPayload).filter(
+      (k) => !beforeKeys.has(k)
+        && ['requirementLinkMode', 'requirementTickets', 'derivedStatus', 'derivedWarningLevel'].includes(k),
+    )
+    expect(polluted, `补齐写回污染了 payload: ${polluted.join(',')}`).toEqual([])
+
+    // 清理
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${guardTrace.id}/${guardId}`,
+      headers: editorHeaders(),
+    })
+    getDb().prepare('DELETE FROM action_items WHERE id = ?').run(guardId)
+    getDb().prepare('DELETE FROM post_use_jira_items WHERE id = ?').run(guardTrace.id)
   })
 })

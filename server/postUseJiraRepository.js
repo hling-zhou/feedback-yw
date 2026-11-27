@@ -420,6 +420,9 @@ export const postUseJiraRepository = {
             content: action.content,
             detail: action.detail,
             scheduleAt: action.scheduleAt,
+            // 问题快照（11-27 二次修复）：导入行的客户反馈作为问题带过来
+            // （与 addPostUseAction 新建路径同构；空反馈保持空）。
+            painPointSnapshot: String(row.customerFeedback || '').trim(),
           })
           if (!validated.ok) throw new Error(`第 ${row.rowNumber} 行举措无效：${validated.error}`)
           const created = actionItemRepository.putActionItem(validated.item, {

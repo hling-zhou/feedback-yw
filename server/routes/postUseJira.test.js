@@ -366,6 +366,11 @@ describeApi('post-use jira API', () => {
     expect(item.assigneeId).toBeTruthy()
     expect(item.actionIds).toHaveLength(1)
 
+    // 11-27 二次修复：导入创建的举措问题快照 = 导入行客户反馈（fill-if-empty 与 addPostUseAction 同构）
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    const importedAction = actionItemRepository.getActionItem(item.actionIds[0])
+    expect(importedAction?.painPointSnapshot).toBe('反馈内容')
+
     const repeated = await send([record])
     expect(repeated.statusCode).toBe(200)
     expect(repeated.json()).toMatchObject({ created: 0, updated: 0, unchanged: 1, actionsCreated: 0 })
