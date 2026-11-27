@@ -1,9 +1,100 @@
 {
-  "generatedAt": "2026-11-26T04:56:32.012Z",
+  "generatedAt": "2026-11-27T10:24:53.742Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "eaf1aa987a0ce144ae26f8a97e52a361bcbc208d",
+  "repoCommit": "582a81fa6ad86db67c8cd830571955af73b4a5ab",
   "items": [
+    {
+      "id": "582a81fa6ad86db67c8cd830571955af73b4a5ab",
+      "title": "举措抽屉关联溯源/回访展示 + 问题快照从客户反馈带过来",
+      "category": "feature",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "11-27 需求两件（同属用后即评举措的关联链补全）：\n\n- 抽屉关联溯源/回访：用后即评举措的关联反馈在 post_use_jira_items /\n  post_use_visit_records_v1 两实体上，与 linkedTicketIds（工单）是两条\n  数据链——列表「关联反馈」单元格有数量而抽屉恒空（断裂实测）。\n  修复：抽屉单次 fetch 同源接口（/api/post-use-actions/linked/:id，\n  与列表 PostUseLinkedFeedbackCell 同源判定纪律）传 rows 给纯展示\n  组件 PostUseLinkedSourceList——溯源条目展示客户反馈 + 回溯结果，\n  回访条目展示回访结果与内部评估；标题数量并列（溯源/回访 N · 工单\n  M）消灭\"列表有数量、抽屉为空/单报工单数\"矛盾。接线守卫 + 真渲染\n  冒烟（真实形态 props：normalizeJiraItem 字段名 / meta 原始记录）。\n- 问题快照从 owner 客户反馈带过来（用户拍板）：新建路径 painPoint\n  Snapshot = owner 反馈（trace=customerFeedback / visit=\n  userFeedbackText 显式分支——两实体字段名不同，03 文档双字段口径）；\n  选库路径首关联且问题为空时补齐（工单抽屉 buildSnapshotPatchOn\n  TicketLink 先例同构），已有值不覆盖；空反馈保持空不造占位文案。\n  真实链路测试三段（trace 带反馈 / 空反馈 / visit 字段名分支）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "d0ff3b253411b12243a2671ade9448e354cd6a43",
+      "title": "需求池反馈闭环——核实原因入口 + 记录闭环 + 导出联动",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "11-27 15:13 拍板：需求池把「查不到失败日志」的组汇集给工作台核实，\n但核实结果无处记录——分不清哪些已核实、原因是什么。\n\n- 粒度判据（对象身份建模）：反馈针对「产品×接口×池的日志查不到\n  能力需求」（跨日持续存在）而存在，不是某日失败组（一次性事件）——\n  组按日生成，写组表会重复记录 + 跨日漂移（昨天闭环今天新组又成\n  待核实）。键 = 聚合键（与 summary 分区二同构），存储 meta\n  api_patrol_gap_feedback_v1（对齐豁免白名单先例）；跨窗口持久——\n  条目暂退窗口后记录保留，复发自动带出历史核实结论。\n- patrolGapFeedback 模块：put/delete/get + 进程内缓存（写后失效，\n  30s TTL）；reason 必填、fixPlan/scheduleAt 非必填（16:36 定稿）；\n  记录人/时间；审计留痕。\n- 路由：POST 提交/更新 + DELETE 撤销回待核实，均 editRecord 门控\n  （07 判据：一次性处理事件，对齐 11-20 巡检处理反馈先例）；summary\n  rows 注入 resolution；导出分区二加 4 列（核实状态/原因/修复方案/\n  排期——能力提供方拿到即知哪些已定位）。\n- 前端：核实状态列（已核实绿标 hover 出详情 / 待核实灰标）；操作列\n  「核实原因」弹窗（三字段 + dayjs 排期选择）+ 撤销（Popconfirm 二次\n  确认可逆）；editRecord 门控——viewer 只读看状态列。dayjs/DatePicker\n  解禁（反馈弹窗排期是合法新用途；RangePicker 列表筛选仍禁）。\n- 路由级测试六段：提交→summary 注入→导出 4 列→viewer 403→空原因\n  400→撤销回待核实。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "80d0ba197f693aae2edb4d977e5278c92dc6d718",
+      "title": "万投比目标值不渲染——目录竞态下 catalog key 解析失败后永不重算",
+      "category": "fix",
+      "modules": [
+        "workbench"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "managed 目录异步加载晚于组件挂载时，enabledProducts/catalogReady 的空依赖\nuseMemo 缓存了未就绪目录，产品名解析不出 key，目标值/达标判断全空且不随目录\n就绪恢复；目录状态纳入四个 useMemo 依赖，挂守卫防空依赖回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "ce936408d7413b2a3bdb2b229c4f2e5e58b835ea",
+      "title": "需求池导出 id 清单分块续行——xlsx 单元格 32767 上限炸 write 致线上 500",
+      "category": "fix",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "真库单聚合可含数百 requestId，整列 join 进一格超 xlsx 上限直接抛错；\n400 字符/块分块续行（首行带维度列、续行续接），1200 id 规模红绿自证。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "8f4f900aa23fa40fe8b18b801d78f24749b43b45",
+      "title": "复核标记勾选视觉与实际生效状态对齐",
+      "category": "fix",
+      "modules": [
+        "feedbacks"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "形态骨架改用已保存态渲染 Tag，勾选只体现在 Checkbox 与（未保存）\n提示上；保存前可再点取消反悔，落库仍受 max 闩锁保护不可回退。\n此前勾选即切终态 Tag，页面看到的与未保存的实际状态不一致。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "b31b68a7bd44e418ae9977513d6f9140ec56b915",
+      "title": "竖线 hover 气泡宽度放宽 250→360",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "antd Tooltip 默认 250px 截住了 30 字明细行的单行显示；内容层残留的\nmax-w-[18rem] 从未生效（288 > 250），一并清掉，宽度约束单一来源=root。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "165f51d4bd9efd64f3adb6dac4615a93ab57e244",
+      "title": "压降图 hover 气泡分条 + 列表月份徽标替代序号",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-26",
+      "appVersion": null,
+      "summary": "真机反馈两处不可读：竖线气泡把 \n 拼的当月举措明细折叠成一整段\n（换行串拆标题行+逐条明细，先例 PostUseStoryView 多行 Tooltip）；\n列表序号徽标是\"图上第几根线\"的代理语言需要解码，直接显示月份与\n图上 X 轴同语言，hover 保留竖线序号信息。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "41d26b3ff1e3cc335cfd54c3dc67430ff4413632",
       "title": "需求池时间窗口下界 11-10 + 一键导出 xlsx——样例污染消除",
@@ -2508,97 +2599,6 @@
       "publishedAt": "2026-10-17",
       "appVersion": null,
       "summary": "宽表和分产品左右栏在 1120px 里挤，屏幕和离线导出一起放到 1300px。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "aac36021343271e88676f1b8259a25481346a725",
-      "title": "月报按概述、分产品和上期回访来写",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "在线稿可以改定性描述和回访补充，导出的离线页只留最终结果。月报页打开时不再拉全量工单。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "d3077c6259094ef2e3af293b7072c91ec530352a",
-      "title": "体验现状同时对照公司均分和投诉回访",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "部门三渠道均分、公司均分和投诉回访要画在同一张趋势上，9 分以下和不达标产品也要能点名。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "5dcc1ab3bad1a2c9ca4c5f720d804ff064ae55af",
-      "title": "客服部回访按内容保留多行，并带上备注",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "同一客户同一产品同一月会有多次回访。只按客户覆盖会丢掉后一次结果和备注。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "76de74040e959f96c4099afe46bab1d10a314199",
-      "title": "官网问卷类建议回访表按客户聚合、按产品分行",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "客户名称/客户编码/建议触发类型/客服回访/部门内溯源按客户合并单元格，产品相关\n列按产品分行；勾选改为按客户批量（一次 API 持久化该客户下所有产品 itemKey），\n带 indeterminate 半选态。高频低分判定维持跨产品合计口径不变。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "90bbac25eb92b3f4249435ad425cb59a3df3deeb",
-      "title": "投诉回访非10分原工单号可点击打开详情抽屉",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "原工单编号列去掉省略号并改为可点击，点击后按 ticketId/id 查找对应投诉/咨询\n工单并打开工单详情抽屉；工单匹配增加 byId 兜底，原工单编号命中工单 id 时也能\n带出客户请求内容与问题原因。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "0c4dcbe270ad355aac617d7bdbcfa92306a0a573",
-      "title": "负面反馈叠加 sentiment 兜底剔除正面词",
-      "category": "fix",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "精确集合扩到「可以/挺好/非常满意/好用/很好用」等，并叠加 analyzeSentiment\n判为正面则剔除，覆盖枚举外的正面长句；加否定式守卫避免「不太满意」被\nsentiment 误判为正面而漏剔。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "73b715d98a3c2fa4d1e08f11730025143260bb06",
-      "title": "收紧负面反馈判定，高频低分原因表按原因合并",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-10",
-      "appVersion": null,
-      "summary": "负面反馈排除「满意/感谢」等明显正面词，并把「业务使用完毕无后续使用需求」\n纳入占位词；高频低分原因表改为按原因→产品聚合，新增均分列与客户名拼接，\n去掉集团客户编码列。",
       "commitUrl": null,
       "source": "git"
     }
