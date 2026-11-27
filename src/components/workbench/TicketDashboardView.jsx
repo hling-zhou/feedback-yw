@@ -77,7 +77,7 @@ export default function TicketDashboardView({
   onProductChange,
   onOpenFeedback,
 }) {
-  const { feedbacks, currentPeriod, orderVolumes, wanTouTargets, adapter } = useInsights()
+  const { feedbacks, currentPeriod, orderVolumes, wanTouTargets, adapter, productCatalogMeta } = useInsights()
   const [productLocal, setProductLocal] = useState(productProp || '')
   const [actions, setActions] = useState([])
   const [creatingInsightId, setCreatingInsightId] = useState('')
@@ -89,8 +89,12 @@ export default function TicketDashboardView({
     const rows = workbenchTicketRecords(feedbacks, currentPeriod, snapshot)
     return complaintOnlyCx ? rows.filter(isCustomerExperienceComplaint) : rows
   }, [feedbacks, currentPeriod, snapshot, complaintOnlyCx])
-  const enabledProducts = useMemo(() => getEnabledProducts(), [])
-  const catalogReady = useMemo(() => isManagedCatalogLoaded(), [])
+  // 目录竞态修复（11-27 万投比目标值不渲染根因）：enabledProducts/catalogReady 原为空依赖
+  // useMemo——managed 目录异步加载晚于组件挂载时，产品名解析不出 catalog key →
+  // 万投比 productKey=null → 目标值/达标判断全空且永不重算。目录状态(productCatalogMeta)
+  // 纳入依赖：加载完成触发 model/聚合重算。
+  const enabledProducts = useMemo(() => getEnabledProducts(), [productCatalogMeta])
+  const catalogReady = useMemo(() => isManagedCatalogLoaded(), [productCatalogMeta])
   const products = useMemo(
     () => catalogReady ? filterProductsByCatalog(enabledProducts, listProducts(periodRecords)) : listProducts(periodRecords),
     [periodRecords, enabledProducts, catalogReady],
@@ -180,10 +184,10 @@ export default function TicketDashboardView({
     selectedProduct: product,
     periodEndMonth: String(currentPeriod?.endDate || '').slice(0, 7),
     driversEmptyState,
-  }), [sourceType, sourceLabel, currentPeriod, records, trendRecords, comparisonRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState])
+  }), [sourceType, sourceLabel, currentPeriod, records, trendRecords, comparisonRecords, trendWindow.months, trendWindow.baselineYear, snapshot, recommendations, actions, orderVolumes, wanTouTargets, product, driversEmptyState, productCatalogMeta])
   const storedModel = useMemo(
     () => applyTicketWorkbenchAggregate(model, snapshot?.aggregates?.workbench, product, orderVolumes, wanTouTargets, trendWindow.baselineYear),
-    [model, snapshot?.aggregates?.workbench, product, orderVolumes, wanTouTargets, trendWindow.baselineYear],
+    [model, snapshot?.aggregates?.workbench, product, orderVolumes, wanTouTargets, trendWindow.baselineYear, productCatalogMeta],
   )
 
   const createAction = async (row) => {
