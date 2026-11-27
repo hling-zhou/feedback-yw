@@ -1,9 +1,48 @@
 {
-  "generatedAt": "2026-11-27T10:24:53.742Z",
+  "generatedAt": "2026-11-27T13:28:43.917Z",
   "source": "git",
   "since": "cd90639575443379fec09d401aed9a167f59d4bc",
-  "repoCommit": "582a81fa6ad86db67c8cd830571955af73b4a5ab",
+  "repoCommit": "929f9dcc26007c07a0e1f6102ac9b1e4788bd959",
   "items": [
+    {
+      "id": "929f9dcc26007c07a0e1f6102ac9b1e4788bd959",
+      "title": "需求池池级反馈 + 服务端校验两态——反馈闭环补全",
+      "category": "feature",
+      "modules": [
+        "other"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "11-27 19:09 补丁组（首版验证暴露的两个面，规则 26/27 复盘入库）：\n\n- 分区一池级反馈（规则 27 案例）：DESIGN 明确写了 pool:池名 键形态，\n  实现只剩分区二聚合键——分区一「池未接入」反馈入口整个缺失，用户\n  验证才暴露。补齐：buildGapFeedbackKey 两态（productKey/apiPath\n  空 + poolName 在 = pool: 池级键）；summary 分区一注入 resolution；\n  前端分区一核实状态列 + 核实原因/撤销按钮（池级弹窗只显示池名）。\n- 服务端校验两态（规则 26 案例）：前端 Form 只是 UX 不是边界——\n  reason/fixPlan 长度上限 500（流入 xlsx 导出受 32767 单格坑制约，\n  实锤 21000 字符无校验入库）；scheduleAt 必须 yyyy-MM-dd（非法值\n  回填 DatePicker 前端形态破坏）。校验函数两态：写路径违规 throw\n  （400 回提交人），读路径违规丢弃返回 null（一条 meta 脏数据炸整个\n  需求池 summary 不可接受）。\n- 触发规则 26/27 入库：自由文本端点必答服务端校验在哪一行 / 设计\n  文档键形态实现 checklist 逐项对照落位（\"规格没提\"≠\"不需要\"）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "131067b4325a235927683752574fac8db5020111",
+      "title": "问题快照 fill-if-empty 二次修复 + 写回污染守卫 + 存量回填",
+      "category": "fix",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "11-27 首版（582a81f）三项验证发现的补全：\n\n- fill-if-empty 语义修正：首版\"举措无任何关联才补\"条件过严——修复前\n  建的存量举措带旧关联，从举措库选它关联新记录时永不补齐（用户实测\n  命中）。对齐工单抽屉 buildSnapshotPatchForEmptyFields 真实语义：\n  问题为空即补，已有值不覆盖。\n- 写回污染守卫：getActionItem 返回 enriched 产物（requirementTickets/\n  derivedWarningLevel 等运行时派生字段），直接展开写回会把派生字段\n  持久化进 payload——补齐必须从原始 payload 行 + 单字段构建\n  （getRawActionItemRow）。守卫测试锁\"写回不得持久化派生字段\"。\n- 导入路径补字段：postUseJiraRepository 导入建举措行补\n  painPointSnapshot=customerFeedback（与 addPostUseAction 新建路径\n  同构；空反馈保持空）。\n- 存量迁移脚本：post_use 举措问题列空值从已关联溯源/回访回填\n  （溯源优先，多条取信息量最大文本——回访预导入同判据；幂等 +\n  dry-run + 备份 + 单事务，先例 migrate-postuse-action-productkey）。",
+      "commitUrl": null,
+      "source": "git"
+    },
+    {
+      "id": "4351ad195ad6cc259c09efbda2fa5b4633a6f0b2",
+      "title": "用后即评举措聚合问题面——关联溯源/回访也聚出 face + 效果验证",
+      "category": "feature",
+      "modules": [
+        "actions"
+      ],
+      "publishedAt": "2026-11-27",
+      "appVersion": null,
+      "summary": "11-27 需求（DESIGN 文档同日拍板后实施）：post_use 举措「关联问题」\n恒走降级分支（快照 Tag）、「效果验证」恒空——关联的溯源/回访记录\n聚合出与工单侧同构的问题面。\n\n- buildPostUseActionProblemScope 新领域函数（独立文件——工单侧\n  actionProblemScope 的签名语义专属，复用其锚点/前后对比纯函数）：\n  签名 = 产品×来源两类（溯源/回访；细分进辅助 Tag 不进签名）；\n  月份进趋势轴不进签名（进签名则面碎成单月碎片、压降失效——\n  face 以 firstMonth/lastMonth 承载区间）；压降口径 linked-only\n  （本举措关联记录的月度分布，与工单抽屉一致不拉全量）；回访评估\n  状态 Tag 展示（visitEvaluationState 共享谓词）；多月份溯源行\n  按月拆分计数。\n- ActionProblemScopePanel 预构建 scope 化：两类举措共用锚点行/趋势\n  图/前后对比形态，unitLabel/areaName/emptyText/showNegative 按来源\n  参数化（记录非\"单\"、无负向线）。\n- 抽屉接线：与分区4 共用同一份 postUseSources（同源判定纪律零重复\n  请求）；分区3 face 卡片（PostUseProblemFaces）+ 分区5 效果验证；\n  接线守卫锁\"fetch 了但没接进聚合面\"回潮。",
+      "commitUrl": null,
+      "source": "git"
+    },
     {
       "id": "582a81fa6ad86db67c8cd830571955af73b4a5ab",
       "title": "举措抽屉关联溯源/回访展示 + 问题快照从客户反馈带过来",
@@ -2560,45 +2599,6 @@
       "publishedAt": "2026-10-17",
       "appVersion": null,
       "summary": "通道、群组和模板在设置里维护，发送时选模板并预填群组，本次改收件人不写回。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "2879bd26af050234117aa638d408a4858a662497",
-      "title": "洞察工作台支持年、季度整段汇总",
-      "category": "feature",
-      "modules": [
-        "workbench"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "指标与环比按当前周期对上期合计；趋势仍按月并在未结束周期停在当前月；用后即评按月加载避免未入库周期 id 拉全量。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "29015ff67d6f65d2a4fc10720687f69870df29d6",
-      "title": "支持按季度打开季报并对齐上季度对比",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "季度范围走现有月数据合计，去掉上期回访补充，看板对比文案与月报并排展示。",
-      "commitUrl": null,
-      "source": "git"
-    },
-    {
-      "id": "9cf503d2c8ad0e3d61c244bbd01b057b57ab6875",
-      "title": "月报内容区加宽到 1300px",
-      "category": "feature",
-      "modules": [
-        "other"
-      ],
-      "publishedAt": "2026-10-17",
-      "appVersion": null,
-      "summary": "宽表和分产品左右栏在 1120px 里挤，屏幕和离线导出一起放到 1300px。",
       "commitUrl": null,
       "source": "git"
     }
