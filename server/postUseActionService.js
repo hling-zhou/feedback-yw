@@ -99,6 +99,20 @@ function updateOwner(ownerType, ownerId, actionId, operation, actor) {
 }
 
 /**
+ * owner 记录的客户反馈（确立举措时作为问题快照来源；两实体字段名不同显式分支——
+ * trace=post_use_jira_items.customerFeedback，visit=userFeedbackText，见 03 文档 §2 双字段口径：
+ * visit/jira item 是独立领域实体，禁机械套 record 层字段名）。
+ * @param {'trace'|'visit'} ownerType
+ * @param {Record<string, unknown> | null} owner
+ * @returns {string}
+ */
+function ownerFeedbackText(ownerType, owner) {
+  if (!owner) return ''
+  const raw = ownerType === 'trace' ? owner.customerFeedback : owner.userFeedbackText
+  return String(raw ?? '').trim()
+}
+
+/**
  * @param {'trace'|'visit'} ownerType
  * @param {string} ownerId
  * @param {{ actionId?: string; newAction?: { content?: string; detail?: string; scheduleAt?: string } }} input
@@ -113,6 +127,7 @@ export function addPostUseAction(ownerType, ownerId, input, actor) {
       const productName = String(owner.product || owner.productName || '').trim()
       // 11-18 写入口径修正：productKey 通道走目录 key（ productName 保持中文名），
       // 历史行为是把中文名塞进 product_key——与 /api/actions 按目录 key 的查询口径错位。
+      // 问题快照（11-27）：客户反馈作为问题带过来（用户拍板；空反馈保持空，不造占位文案）。
       const validated = validateActionItemCreate({
         productKey: resolvePostUseProductKeyFromCatalog(productName),
         productName,
@@ -120,6 +135,7 @@ export function addPostUseAction(ownerType, ownerId, input, actor) {
         content: input.newAction.content,
         detail: input.newAction.detail,
         scheduleAt: input.newAction.scheduleAt,
+        painPointSnapshot: ownerFeedbackText(ownerType, owner),
       })
       if (!validated.ok) throw new Error(validated.error)
       action = actionItemRepository.putActionItem(validated.item, {
@@ -134,6 +150,18 @@ export function addPostUseAction(ownerType, ownerId, input, actor) {
       if (action.source !== 'post_use' && !alreadyLinked) throw new Error('请选择用后即评举措')
       if (isActionItemLocked(action.status) && !alreadyLinked) {
         throw new Error('该举措已结束，无法新增关联')
+      }
+      // 问题快照补齐（11-27）：选库路径与新建路径语义同构（工单抽屉 buildSnapshotPatchOnTicketLink 先例）——
+      // 举措尚无任何溯源/回访关联（首关联）且问题为空时，从本次 owner 的客户反馈补齐；已有值不覆盖。
+      if (!alreadyLinked && !String(action.painPointSnapshot ?? '').trim()) {
+        const feedback = ownerFeedbackText(ownerType, owner)
+        const { traces: linkedTraces, visits: linkedVisits } = listPostUseActionSources(id)
+        if (feedback && !linkedTraces.length && !linkedVisits.length) {
+          action = actionItemRepository.putActionItem(
+            { ...action, painPointSnapshot: feedback },
+            { actor: { userId: actor.id, username: actor.username } },
+          )
+        }
       }
     }
     const item = updateOwner(ownerType, ownerId, action.id, 'add', actor)

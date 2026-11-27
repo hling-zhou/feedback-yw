@@ -303,4 +303,138 @@ describeApi('post-use multiple actions API', () => {
     getDb().prepare('DELETE FROM action_items WHERE id = ?').run(createdId)
     getDb().prepare('DELETE FROM post_use_jira_items WHERE id = ?').run(customTrace.id)
   })
+
+  it('new action carries owner customer feedback as painPointSnapshot (11-27 问题字段带过来)', async () => {
+    // 真实链路（04 §2）：trace 带 customerFeedback → POST newAction → 落库 painPointSnapshot。
+    // 身份全库唯一（11 规则 §11）：独立 itemKey/产品名，不与前用例共用。
+    const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+    const feedbackTrace = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-PAIN-FB:神秘产品FB:2026-10', importMonth: '2026-10',
+      productName: '神秘产品FB', customerName: '反馈客户', customerCode: 'ACTION-PAIN-FB',
+      customerFeedback: '7分以下分布：神秘产品FB*1分*1次；反馈原因：功能有缺失（1）',
+    }])[0]
+
+    const created = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${feedbackTrace.id}`, headers: editorHeaders(),
+      payload: { newAction: { content: '问题快照验证举措' } },
+    })
+    expect(created.statusCode, created.body).toBe(200)
+    const createdId = created.json().action.id
+    // 响应与落库 payload 双通道断言（11-18 用例先例）
+    expect(created.json().action.painPointSnapshot).toBe(
+      '7分以下分布：神秘产品FB*1分*1次；反馈原因：功能有缺失（1）')
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+    expect(actionItemRepository.getActionItem(createdId)?.painPointSnapshot).toBe(
+      '7分以下分布：神秘产品FB*1分*1次；反馈原因：功能有缺失（1）')
+
+    // 空反馈路径：customerFeedback 缺失的 owner → 问题保持空，不造占位文案
+    const silentTrace = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-PAIN-SILENT:神秘产品FB:2026-10', importMonth: '2026-10',
+      productName: '神秘产品FB', customerName: '沉默客户', customerCode: 'ACTION-PAIN-SILENT',
+    }])[0]
+    const silent = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${silentTrace.id}`, headers: editorHeaders(),
+      payload: { newAction: { content: '空反馈验证举措' } },
+    })
+    expect(silent.statusCode, silent.body).toBe(200)
+    expect(silent.json().action.painPointSnapshot).toBe('')
+    const silentId = silent.json().action.id
+
+    // visit 路径：owner 字段名不同（userFeedbackText），显式分支验证
+    const { storageRepository } = await import('../storageRepository.js')
+    const visitMeta = storageRepository.getMeta('post_use_visit_records_v1')
+    storageRepository.putMeta('post_use_visit_records_v1', {
+      ...visitMeta,
+      records: [...visitMeta.records, {
+        id: 'action-visit-pain-fb', importMonth: '2026-10', visitMonth: '2026-10',
+        productName: '神秘产品FB', customerName: '回访反馈客户', customerCode: 'ACTION-PAIN-VISIT',
+        userFeedbackText: '客户反馈原文：批量导出缺入口',
+        actionIds: [], actionId: '', updatedAt: '2026-10-01T00:00:00.000Z',
+      }],
+    })
+    const visitCreated = await app.inject({
+      method: 'POST', url: '/api/post-use-actions/visit/action-visit-pain-fb',
+      headers: editorHeaders(), payload: { newAction: { content: '回访问题快照验证举措' } },
+    })
+    expect(visitCreated.statusCode, visitCreated.body).toBe(200)
+    expect(visitCreated.json().action.painPointSnapshot).toBe('客户反馈原文：批量导出缺入口')
+    const visitCreatedId = visitCreated.json().action.id
+
+    // 清理：移除关联行与举措行（构造型身份唯一纪律）
+    const { getDb } = await import('../db.js')
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${feedbackTrace.id}/${createdId}`,
+      headers: editorHeaders(),
+    })
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${silentTrace.id}/${silentId}`,
+      headers: editorHeaders(),
+    })
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/visit/action-visit-pain-fb/${visitCreatedId}`,
+      headers: editorHeaders(),
+    })
+    for (const id of [createdId, silentId, visitCreatedId]) {
+      getDb().prepare('DELETE FROM action_items WHERE id = ?').run(id)
+    }
+    getDb().prepare('DELETE FROM post_use_jira_items WHERE id IN (?, ?)').run(feedbackTrace.id, silentTrace.id)
+    const afterVisitMeta = storageRepository.getMeta('post_use_visit_records_v1')
+    storageRepository.putMeta('post_use_visit_records_v1', {
+      ...afterVisitMeta,
+      records: afterVisitMeta.records.filter((row) => row.id !== 'action-visit-pain-fb'),
+    })
+  })
+
+  it('library link backfills empty painPointSnapshot only on first link (11-27 选库补齐)', async () => {
+    // 选库路径首关联补齐：举措问题为空且无任何溯源/回访关联 → 从本次 owner 客户反馈补齐；
+    // 已有问题不覆盖。身份全库唯一。
+    const { postUseJiraRepository } = await import('../postUseJiraRepository.js')
+    const { validateActionItemCreate } = await import('../../src/domain/actionItem.js')
+    const { actionItemRepository } = await import('../actionItemRepository.js')
+
+    const validated = validateActionItemCreate({ content: '选库补齐验证举措', source: 'post_use' })
+    if (!validated.ok) throw new Error(validated.error)
+    actionItemRepository.putActionItem(validated.item)
+    const libraryId = validated.item.id
+
+    const traceA = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-LINK-FB-A:神秘产品LK:2026-10', importMonth: '2026-10',
+      productName: '神秘产品LK', customerName: '选库客户A', customerCode: 'ACTION-LINK-FB-A',
+      customerFeedback: '反馈原因：控制台找不到退订入口（1）',
+    }])[0]
+    const first = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${traceA.id}`, headers: editorHeaders(),
+      payload: { actionId: libraryId },
+    })
+    expect(first.statusCode, first.body).toBe(200)
+    expect(first.json().action.painPointSnapshot).toBe('反馈原因：控制台找不到退订入口（1）')
+    expect(actionItemRepository.getActionItem(libraryId)?.painPointSnapshot).toBe(
+      '反馈原因：控制台找不到退订入口（1）')
+
+    // 二次关联（另一 owner）：问题已有值不覆盖
+    const traceB = postUseJiraRepository.archiveMany([{
+      itemKey: 'q:ACTION-LINK-FB-B:神秘产品LK:2026-10', importMonth: '2026-10',
+      productName: '神秘产品LK', customerName: '选库客户B', customerCode: 'ACTION-LINK-FB-B',
+      customerFeedback: '反馈原因：另一个不相关的反馈（2）',
+    }])[0]
+    const second = await app.inject({
+      method: 'POST', url: `/api/post-use-actions/trace/${traceB.id}`, headers: editorHeaders(),
+      payload: { actionId: libraryId },
+    })
+    expect(second.statusCode, second.body).toBe(200)
+    expect(second.json().action.painPointSnapshot).toBe('反馈原因：控制台找不到退订入口（1）')
+
+    // 清理
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${traceA.id}/${libraryId}`,
+      headers: editorHeaders(),
+    })
+    await app.inject({
+      method: 'DELETE', url: `/api/post-use-actions/trace/${traceB.id}/${libraryId}`,
+      headers: editorHeaders(),
+    })
+    const { getDb } = await import('../db.js')
+    getDb().prepare('DELETE FROM action_items WHERE id = ?').run(libraryId)
+    getDb().prepare('DELETE FROM post_use_jira_items WHERE id IN (?, ?)').run(traceA.id, traceB.id)
+  })
 })

@@ -26,10 +26,12 @@ import { resolveJourneyDisplay } from '../../domain/actionItemDisplay.js'
 import ActionItemRequirementLinkFields from './ActionItemRequirementLinkFields.jsx'
 import ActionItemStatusTag from '../tags/ActionItemStatusTag.jsx'
 import LinkedTicketsInlineList from './LinkedTicketsInlineList.jsx'
+import PostUseLinkedSourceList from './PostUseLinkedSourceList.jsx'
 import ActionProblemScopePanel from './ActionProblemScopePanel.jsx'
 import { buildActionProblemScope } from '../../domain/actionProblemScope.js'
 import { useEffect, useMemo, useState } from 'react'
 import { getObservationIssue } from '../../lib/observationClient.js'
+import { listPostUseActionSources } from '../../lib/postUseActionClient.js'
 import GeneralizationUpgradeModal, {
   useActionGeneralizations,
 } from '../generalization/GeneralizationUpgradeModal.jsx'
@@ -135,6 +137,32 @@ export default function ActionItemDrawer({
       cancelled = true
     }
   }, [observationIssueId])
+
+  // 关联溯源/回访（11-27 需求）：用后即评举措的关联反馈在 post_use_jira_items /
+  // post_use_visit_records_v1 两实体上，与 linkedTicketIds（工单）是两条数据链。
+  // 取数上提到抽屉单次 fetch（与列表单元格 PostUseLinkedFeedbackCell 同源接口），
+  // 传 rows 给纯展示组件——标题数量与列表「N 条关联」同源，消灭"列表有数量、抽屉为空"。
+  const [postUseSources, setPostUseSources] = useState({ traces: [], visits: [] })
+  const postUseLinkedCount = postUseSources.traces.length + postUseSources.visits.length
+  useEffect(() => {
+    let cancelled = false
+    if (!open || item?.source !== 'post_use' || !item?.id) {
+      setPostUseSources({ traces: [], visits: [] })
+      return undefined
+    }
+    listPostUseActionSources(item.id)
+      .then((res) => {
+        if (cancelled) return
+        setPostUseSources({ traces: res?.traces || [], visits: res?.visits || [] })
+      })
+      .catch(() => {
+        if (!cancelled) setPostUseSources({ traces: [], visits: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, item?.id, item?.source])
+
   const fieldsDisabled = !canEdit || locked
   const coreDisabled = !canEdit || coreFieldsLocked
   const journey = item ? resolveJourneyDisplay(item, feedbackByTicketId) : null
@@ -399,14 +427,35 @@ export default function ActionItemDrawer({
 
           {/* ── 分区 4：关联反馈 ── */}
           <div className="drawer-section-gap">
-            <div className="section-title">关联反馈（{linkedTicketCount}）</div>
-            <div className="page-card-sm">
-              <LinkedTicketsInlineList
-                ticketIds={linkedTicketIds}
-                feedbackByTicketId={feedbackByTicketId}
-                onOpenTicket={onOpenTicket}
-              />
+            <div className="section-title">
+              {/* 数量同源（11-27）：工单数 + 溯源/回访数并列展示——列表「N 条关联」 =
+                  traces + visits（PostUseLinkedFeedbackCell），抽屉标题不再单报工单数造矛盾 */}
+              {item.source === 'post_use' && postUseLinkedCount
+                ? `关联反馈（溯源/回访 ${postUseLinkedCount}${linkedTicketCount ? ` · 工单 ${linkedTicketCount}` : ''}）`
+                : `关联反馈（${linkedTicketCount}）`}
             </div>
+            {linkedTicketCount ? (
+              <div className="page-card-sm">
+                <LinkedTicketsInlineList
+                  ticketIds={linkedTicketIds}
+                  feedbackByTicketId={feedbackByTicketId}
+                  onOpenTicket={onOpenTicket}
+                />
+              </div>
+            ) : null}
+
+            {/* 关联溯源/回访（11-27 需求）：每条展示客户反馈 + 回溯结果（溯源）/
+                回访结果与内部评估（回访）；数据由本抽屉单次 fetch 传入（同源判定纪律）。 */}
+            {item.source === 'post_use' ? (
+              <div className={linkedTicketCount ? 'mt-2' : ''}>
+                <div className="page-card-sm">
+                  <PostUseLinkedSourceList
+                    traces={postUseSources.traces}
+                    visits={postUseSources.visits}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {/* 举一反三（v3.1/v3.3 升级通路）：升级入口 / 已升级列表 */}
             <div className="mt-2">
