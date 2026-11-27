@@ -71,7 +71,24 @@ echo "  ✓ dist 权限已放开（Nginx 可读）"
 
 # ---- 4. 重启服务 ----
 echo ""
-echo "[4/5] 重启服务（PM2）..."
+echo "[4/5] 重启服务（PM2，错峰：前一个 health 就绪再起下一个）..."
+# 错峰原因（11-27 生产事故）：API 与 MCP 启动都执行 getDb() 同步迁移，
+# 背靠背重启会撞 SQLITE_BUSY——MCP 撞上 API 写锁即冻结（活而不 listen，
+# PM2 仍显示 online，nginx 502 三天无人察觉）。逐个就绪后再起下一个，
+# 把启动迁移的竞争窗口归零（db.js 已加 busy_timeout=30s 双保险）。
+wait_health() {
+  local url="$1" name="$2" timeout="${3:-30}" waited=0
+  while [ "$waited" -lt "$timeout" ]; do
+    if curl -fsS -m 3 "$url" &>/dev/null; then
+      echo "  ✓ $name 就绪 ($url)"
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "  ⚠ $name ${timeout}s 内未就绪: $url（不阻塞流程，用 pm2 logs $name 排查）"
+  return 0
+}
 PM2_APPS="${PM2_APPS:-feedback-api feedback-mcp}"
 if ! command -v pm2 &>/dev/null; then
   echo "  ⚠ 未检测到 pm2，请手动重启 API 与 MCP 进程"
@@ -80,6 +97,10 @@ else
   for app in $PM2_APPS; do
     if pm2 restart "$app" &>/dev/null; then
       echo "  ✓ pm2 restart $app"
+      case "$app" in
+        feedback-api) wait_health "http://127.0.0.1:${API_PORT:-3001}/health" "$app" 30 ;;
+        feedback-mcp) wait_health "http://127.0.0.1:${MCP_PORT:-3003}/health" "$app" 30 ;;
+      esac
     else
       echo "  ⚠ pm2 应用「$app」未纳管，跳过（首次纳管见 docs/DEPLOY.md §4.4）"
     fi
@@ -99,7 +120,7 @@ check_health() {
   fi
 }
 check_health "http://127.0.0.1:3001/health" "API (:3001)"
-check_health "http://127.0.0.1:3002/health" "MCP (:3002)"
+check_health "http://127.0.0.1:${MCP_PORT:-3003}/health" "MCP (:${MCP_PORT:-3003})"
 
 echo ""
 echo "======================================================"

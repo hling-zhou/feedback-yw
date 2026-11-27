@@ -17,6 +17,11 @@ export function getDb() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
   db = new Database(DB_PATH)
   db.pragma('journal_mode = WAL')
+  // SQLITE_BUSY 防线（11-27 生产事故）：MCP 启动期 getDb() 同步迁移撞上 API 进程
+  // 持有的写锁，better-sqlite3 默认 busy_timeout 5s 超时即抛——进程冻结在启动
+  // 初始化（活而不 listen，PM2 照常显示 online，nginx 502 长达 3 天无人察觉）。
+  // 30s 等待窗口覆盖 API 长写事务（导入/批量打标/快照重建），撞锁从「即崩」变「等待」。
+  db.pragma('busy_timeout = 30000')
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
