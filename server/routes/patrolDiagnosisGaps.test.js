@@ -329,6 +329,60 @@ describeGaps('patrol diagnosis-gaps 需求池端点', () => {
     db.prepare(`DELETE FROM api_patrol_failure_groups WHERE first_request_id LIKE 'reqId-x%'`).run()
   })
 
+  it('反馈闭环（11-27 拍板）：提交→summary 注入→viewer 403→空原因 400→撤销回待核实→导出带 4 列', async () => {
+    const key = { productKey: 'eip', apiPath: 'I1', poolName: 'P1' } // seed A/B 组聚合键（枚举内池）
+    // ① 提交反馈（admin token=editRecord 可用）
+    let res = await app.inject({
+      method: 'POST', url: '/api/patrol/diagnosis-gaps/feedback',
+      headers: authHeader(),
+      payload: { ...key, reason: '日志保留期已过', fixPlan: '延长保留', scheduleAt: '2026-12-15' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().ok).toBe(true)
+    // ② summary 注入：该聚合行带 resolution（已核实）
+    res = await app.inject({ method: 'GET', url: '/api/patrol/diagnosis-gaps/summary', headers: authHeader() })
+    const hit = res.json().rows.find((r) => r.productKey === 'eip' && r.apiPath === 'I1' && r.poolName === 'P1')
+    expect(hit.resolution).toMatchObject({ reason: '日志保留期已过', fixPlan: '延长保留', scheduleAt: '2026-12-15' })
+    // ③ 导出列联动：分区二 sheet 带反馈 4 列
+    res = await app.inject({ method: 'GET', url: '/api/patrol/diagnosis-gaps/export', headers: authHeader() })
+    expect(res.statusCode).toBe(200)
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(res.rawPayload, { type: 'buffer' })
+    const cov = XLSX.utils.sheet_to_json(wb.Sheets['分区二-诊断能力不足'])
+    const row = cov.find((r) => r['接口'] === 'I1' && r['资源池'] === 'P1')
+    expect(row['核实状态']).toBe('已核实')
+    expect(row['核实原因']).toBe('日志保留期已过')
+    expect(row['修复方案']).toBe('延长保留')
+    expect(row['排期时间']).toBe('2026-12-15')
+    // ④ viewer 403（editRecord 门控红绿——07 判据：一次性处理事件）
+    const { createUser } = await import('../users.js')
+    const { signAccessToken } = await import('../auth.js')
+    const viewer = await createUser({ username: 'gap_viewer', password: 'ViewerPass12345!', team: '综合管理组', role: 'viewer' })
+    res = await app.inject({
+      method: 'POST', url: '/api/patrol/diagnosis-gaps/feedback',
+      headers: { authorization: `Bearer ${signAccessToken(viewer)}` },
+      payload: { ...key, reason: 'x' },
+    })
+    expect(res.statusCode).toBe(403)
+    // ⑤ 空原因 400（双闸：Form 规则 + 服务端校验）
+    res = await app.inject({
+      method: 'POST', url: '/api/patrol/diagnosis-gaps/feedback',
+      headers: authHeader(),
+      payload: { ...key, reason: '  ' },
+    })
+    expect(res.statusCode).toBe(400)
+    // ⑥ 撤销→回待核实（resolution null）
+    res = await app.inject({
+      method: 'DELETE',
+      url: `/api/patrol/diagnosis-gaps/feedback?productKey=${key.productKey}&apiPath=${key.apiPath}&poolName=${key.poolName}`,
+      headers: authHeader(),
+    })
+    expect(res.statusCode).toBe(200)
+    res = await app.inject({ method: 'GET', url: '/api/patrol/diagnosis-gaps/summary', headers: authHeader() })
+    const hit2 = res.json().rows.find((r) => r.productKey === 'eip' && r.apiPath === 'I1' && r.poolName === 'P1')
+    expect(hit2.resolution).toBeNull()
+  })
+
   it('时间窗口守卫（11-25 23:59 拍板：下界 2026-11-10）：8 月 E2E 样例组不进需求池（11-20「显示全部」废止）', async () => {
     // 种一个 8 月缺口组（E2E 样例数据形态——8月10日/8月11日 CSV 导入的组）
     const db = require_getDb()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Alert, Button, Empty, Space, Table, Tag, Tooltip, Typography,
+  Alert, Button, DatePicker, Empty, Form, Input, Modal, Popconfirm, Space, Table, Tag, Tooltip, Typography,
 } from 'antd'
 import {
   CopyOutlined, DownloadOutlined, InfoCircleOutlined, ReloadOutlined,
@@ -12,6 +12,7 @@ import { copyTextToClipboard } from '../../lib/clipboard.js'
 import { paginationShowTotal } from '../../lib/paginationTotal.js'
 import { useColumnResize } from '../../hooks/useColumnResize.js'
 import { sumColumnsWidth } from '../../lib/columnWidths.js'
+import dayjs from 'dayjs'
 import { FailureGroupDrawer } from './ApiPatrolFailuresContent.jsx'
 
 /** 缺口类型 Tag 语义（与服务端 classifyGapKind 对应——11-19 拍板：MCP 响应推断，不维护池清单） */
@@ -31,7 +32,9 @@ const GAP_KIND_LABELS = {
  */
 export default function ApiPatrolDiagnosisGapsContent() {
   const message = useAppMessage()
-  const { user } = useAuth()
+  const { can, user } = useAuth()
+  // 反馈闭环门控（11-27 拍板）：editRecord 可提交反馈（对齐 11-20 巡检处理反馈先例）；viewer 只读看状态列
+  const canFeedback = can('editRecord')
   /** @type {[{stats: Record<string, number>, uncoveredPools: Array<Record<string, unknown>>, undiagnosedGroups: Array<Record<string, unknown>>, mcpErrorGroups: Array<Record<string, unknown>>, poolEnum: Record<string, unknown> | undefined, rows: Array<Record<string, unknown>>} | null, Function]} */
   const [summary, setSummary] = useState(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
@@ -43,6 +46,11 @@ export default function ApiPatrolDiagnosisGapsContent() {
   const [drawerId, setDrawerId] = useState(null)
   const [drawerData, setDrawerData] = useState(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
+
+  // 反馈闭环弹窗态（11-27 拍板）：feedbackTarget=当前编辑的聚合行；Form 受控
+  const [feedbackTarget, setFeedbackTarget] = useState(/** @type {{productKey: string, apiPath: string, poolName: string, resolution: {reason: string, fixPlan: string, scheduleAt: string, feedbackBy: string, feedbackAt: string} | null} | null} */ (null))
+  const [feedbackForm] = Form.useForm()
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const aggResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.agg', userId: user?.id })
   const detailResize = useColumnResize({ tableKey: 'patrol.diagnosisGaps.detail', userId: user?.id })
@@ -111,6 +119,57 @@ export default function ApiPatrolDiagnosisGapsContent() {
     }
   }, [message])
 
+  // ── 反馈闭环（11-27 拍板）──────────────────────────────────────────
+  // 打开弹窗：带出既有反馈（可改可更新）；记录弹窗打开时刻的快照避免编辑中数据漂移
+  const openFeedback = (r) => {
+    setFeedbackTarget({
+      productKey: String(r.productKey || ''), apiPath: String(r.apiPath || ''), poolName: String(r.poolName || ''),
+      resolution: r.resolution || null,
+    })
+    feedbackForm.setFieldsValue({
+      reason: r.resolution?.reason || '',
+      fixPlan: r.resolution?.fixPlan || '',
+      // DatePicker 值=dayjs（先例 ApiPatrolFailuresContent range.format）；存量字符串按日期段解析
+      scheduleAt: r.resolution?.scheduleAt ? dayjs(String(r.resolution.scheduleAt).slice(0, 10)) : undefined,
+    })
+  }
+  // 提交：reason 必填（Form 规则兜底+服务端 400 双闸）；fixPlan/scheduleAt 非必填
+  const submitFeedback = async () => {
+    if (!feedbackTarget) return
+    const values = await feedbackForm.validateFields()
+    setFeedbackSubmitting(true)
+    try {
+      await apiFetch('/api/patrol/diagnosis-gaps/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          productKey: feedbackTarget.productKey, apiPath: feedbackTarget.apiPath, poolName: feedbackTarget.poolName,
+          reason: String(values.reason || ''), fixPlan: String(values.fixPlan || ''),
+          // dayjs → yyyy-MM-dd（与失败组 actionSchedule 同形态）；空选不传
+          scheduleAt: values.scheduleAt ? values.scheduleAt.format('YYYY-MM-DD') : '',
+        }),
+      })
+      message.success('已提交核实反馈')
+      setFeedbackTarget(null)
+      loadSummary()
+      if (drill) loadDetail(drill)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '提交失败')
+    } finally {
+      setFeedbackSubmitting(false)
+    }
+  }
+  // 撤销反馈：清记录回待核实（误填可逆；Popconfirm 二次确认）
+  const revokeFeedback = async (r) => {
+    try {
+      await apiFetch(`/api/patrol/diagnosis-gaps/feedback?productKey=${encodeURIComponent(String(r.productKey || ''))}&apiPath=${encodeURIComponent(String(r.apiPath || ''))}&poolName=${encodeURIComponent(String(r.poolName || ''))}`, { method: 'DELETE' })
+      message.success('已撤销，该条目回到待核实')
+      loadSummary()
+      if (drill) loadDetail(drill)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '撤销失败')
+    }
+  }
+
   // 聚合清单列（分区二）
   const aggColumns = useMemo(() => aggResize.decorateColumns([
     { title: '产品', dataIndex: 'productName', key: 'productName', width: 110, ellipsis: true },
@@ -131,18 +190,56 @@ export default function ApiPatrolDiagnosisGapsContent() {
     // 11-20 18:02 拍板：删「压缩前失败次数」列（需求池只看缺口面数与组数；失败次数仍在引导卡合计与下钻明细）
     { title: '首次出现', dataIndex: 'firstDate', key: 'firstDate', width: 100 },
     { title: '最近出现', dataIndex: 'lastRequestTime', key: 'lastRequestTime', width: 150, ellipsis: true },
+    // 核实状态列（11-27 拍板）：已核实绿标（hover 出原因/修复方案/排期/人）+ 待核实灰标
     {
-      title: '操作', key: 'actions', width: 150,
+      title: '核实状态', key: 'resolution', width: 120,
+      render: (r) => {
+        const fb = r.resolution
+        if (!fb) return <Tag className="!m-0" color="default">待核实</Tag>
+        const tip = (
+          <div className="text-xs" style={{ maxWidth: 300 }}>
+            <div className="font-medium mb-1">核实原因</div>
+            <div className="whitespace-pre-line break-words">{fb.reason}</div>
+            {fb.fixPlan ? <div className="mt-1">修复方案：{fb.fixPlan}</div> : null}
+            {fb.scheduleAt ? <div>排期：{fb.scheduleAt}</div> : null}
+            <div className="text-ink-400 mt-1">{fb.feedbackBy} · {String(fb.feedbackAt || '').slice(0, 10)}</div>
+          </div>
+        )
+        return (
+          <Tooltip title={tip}>
+            <Tag className="!m-0" color="green">已核实</Tag>
+            <div className="text-xs text-ink-400 mt-0.5">{fb.feedbackBy} · {String(fb.feedbackAt || '').slice(0, 10)}</div>
+          </Tooltip>
+        )
+      },
+    },
+    {
+      title: '操作', key: 'actions', width: 220,
       render: (r) => (
-        <Button
-          type="link" size="small" icon={<CopyOutlined />}
-          onClick={(e) => { e.stopPropagation(); copyIds(r.requestIds || [], `${r.productName} ${r.apiPath}`) }}
-        >
-          复制请求ID（{String((r.requestIds || []).length)}）
-        </Button>
+        <Space size={4} wrap>
+          <Button
+            type="link" size="small" className="!px-0" icon={<CopyOutlined />}
+            onClick={(e) => { e.stopPropagation(); copyIds(r.requestIds || [], `${r.productName} ${r.apiPath}`) }}
+          >
+            复制请求ID（{String((r.requestIds || []).length)}）
+          </Button>
+          {canFeedback && (
+            <Button
+              type="link" size="small" className="!px-0"
+              onClick={(e) => { e.stopPropagation(); openFeedback(r) }}
+            >
+              {r.resolution ? '修改反馈' : '核实原因'}
+            </Button>
+          )}
+          {canFeedback && r.resolution && (
+            <Popconfirm title="撤销后该条目回到待核实，确认？" onConfirm={() => revokeFeedback(r)}>
+              <Button type="link" size="small" className="!px-0" onClick={(e) => e.stopPropagation()}>撤销</Button>
+            </Popconfirm>
+          )}
+        </Space>
       ),
     },
-  ]), [aggResize, copyIds])
+  ]), [aggResize, copyIds, canFeedback, openFeedback, revokeFeedback])
 
   // 明细列
   const detailColumns = useMemo(() => detailResize.decorateColumns([
@@ -430,6 +527,41 @@ export default function ApiPatrolDiagnosisGapsContent() {
         onClose={() => { setDrawerId(null); setDrawerData(null) }}
         onSubmit={undefined}
       />
+
+      {/* ── 反馈闭环弹窗（11-27 拍板）：三字段（核实原因必填/修复方案/排期非必填）+ 取消/提交 ── */}
+      <Modal
+        open={feedbackTarget != null}
+        title="核实原因"
+        onCancel={() => setFeedbackTarget(null)}
+        width={560}
+        footer={[
+          <Button key="cancel" onClick={() => setFeedbackTarget(null)}>取消</Button>,
+          <Button key="submit" type="primary" loading={feedbackSubmitting} onClick={submitFeedback}>提交</Button>,
+        ]}
+      >
+        {feedbackTarget && (
+          <>
+            <div className="text-xs text-ink-400 mb-3">
+              {feedbackTarget.productKey} · {feedbackTarget.apiPath} · {feedbackTarget.poolName}
+            </div>
+            <Form form={feedbackForm} layout="vertical" className="text-[13px]">
+              <Form.Item
+                label="核实原因"
+                name="reason"
+                rules={[{ required: true, message: '核实原因必填' }]}
+              >
+                <Input.TextArea rows={3} placeholder="如：日志保留期已过 / 该接口日志未采集 / ERROR 级日志缺失……" />
+              </Form.Item>
+              <Form.Item label="修复方案" name="fixPlan">
+                <Input placeholder="选填——如何补齐该能力" />
+              </Form.Item>
+              <Form.Item label="排期时间" name="scheduleAt">
+                <DatePicker className="w-full" placeholder="选填——预计修复日期" />
+              </Form.Item>
+            </Form>
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

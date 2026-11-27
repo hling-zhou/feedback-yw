@@ -17,6 +17,7 @@ import { forwardLlmChatCompletion } from '../llmProxy.js'
 import { getPatrolMcpConfigStatus, resolvePatrolMcpConfig } from '../patrolMcpConfig.js'
 import { fetchPatrolMcpPoolEnum, getPatrolMcpPoolEnum, poolInMcpEnum as poolInMcpEnumFn } from '../patrolMcpPoolRegistry.js'
 import { isExemptFromProductAction, listPatrolActionExemptions, putPatrolActionExemptions, clearPatrolActionExemptionsCache } from '../patrolActionExemptions.js'
+import { putGapFeedback, deleteGapFeedback, getGapFeedback } from '../patrolGapFeedback.js'
 import { productNameMap } from '../patrolReportBuilder.js'
 import { cleanLogLine } from '../patrolRootCauseClassifier.js'
 import {
@@ -881,8 +882,47 @@ export function registerPatrolQueryRoutes(app) {
         degraded: poolEnum.degraded,
         count: poolEnum.pools ? poolEnum.pools.length : 0,
       },
-      rows: rows.map((a) => ({ ...a, jiraTicketId: null, jiraStatus: null })),
+      rows: rows.map((a) => {
+        // 反馈闭环（11-27 拍板）：聚合键级核实记录注入——已核实条目带原因/修复方案/排期
+        const fb = getGapFeedback(a.productKey, a.apiPath, a.poolName)
+        return {
+          ...a, jiraTicketId: null, jiraStatus: null,
+          resolution: fb ? { reason: fb.reason, fixPlan: fb.fixPlan, scheduleAt: fb.scheduleAt, feedbackBy: fb.feedbackBy, feedbackAt: fb.feedbackAt } : null,
+        }
+      }),
     }
+  })
+
+  // ⑦c 需求池反馈闭环（11-27 15:13 拍板：核实原因入口+记录闭环）：
+  // POST 提交/更新（reason 必填；fixPlan/scheduleAt 非必填）；DELETE 撤销回待核实。
+  // editRecord 门控（07 判据：业务记录的一次性处理事件——对齐 11-20 巡检处理反馈先例）。
+  app.post('/api/patrol/diagnosis-gaps/feedback', { preHandler: requirePermission('editRecord') }, async (request, reply) => {
+    const body = /** @type {{ productKey?: string, apiPath?: string, poolName?: string, reason?: string, fixPlan?: string, scheduleAt?: string }} */ (request.body || {})
+    try {
+      const item = putGapFeedback(
+        {
+          productKey: String(body.productKey || ''), apiPath: String(body.apiPath || ''),
+          poolName: String(body.poolName || ''), reason: String(body.reason || ''),
+          fixPlan: String(body.fixPlan || ''), scheduleAt: String(body.scheduleAt || ''),
+        },
+        { username: /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown' },
+      )
+      return reply.send({ ok: true, item })
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : '提交失败' })
+    }
+  })
+
+  app.delete('/api/patrol/diagnosis-gaps/feedback', { preHandler: requirePermission('editRecord') }, async (request, reply) => {
+    const q = request.query
+    const removed = deleteGapFeedback(
+      String(/** @type {{productKey?: string}} */ (q).productKey || ''),
+      String(/** @type {{apiPath?: string}} */ (q).apiPath || ''),
+      String(/** @type {{poolName?: string}} */ (q).poolName || ''),
+      { username: /** @type {{user?: {username?: string}}} */ (request.user)?.username || 'unknown' },
+    )
+    if (!removed) return reply.code(404).send({ error: '该条目暂无反馈记录' })
+    return reply.send({ ok: true })
   })
 
   // ⑦b 需求池一键导出（11-25 23:59 拍板）：能力提供方拿去分析/补齐能力——xlsx 两 sheet
@@ -935,15 +975,20 @@ export function registerPatrolQueryRoutes(app) {
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(uncRows), '分区一-池未接入MCP')
     // sheet2 分区二：池已接入·诊断能力不足——每聚合键一行（id 清单分块续行）
+    // 11-27 拍板：反馈闭环 4 列（核实状态/核实原因/修复方案/排期）——能力提供方拿到即知哪些已定位
     const gapKindLabel = { log_not_collected: '日志未采集', failure_log_missing: '失败日志缺失' }
     const covRows = [
-      ['产品', '接口', '资源池', '缺口类型分布', '失败组数', '压缩前失败次数', '首次发现', '最近失败时间', 'requestId 清单'],
+      ['产品', '接口', '资源池', '缺口类型分布', '失败组数', '压缩前失败次数', '首次发现', '最近失败时间', '核实状态', '核实原因', '修复方案', '排期时间', 'requestId 清单'],
       ...(data.rows || []).flatMap((r) => expandRows(
         [
           String(r.productName || r.productKey || ''), String(r.apiPath || ''), String(r.poolName || ''),
           Object.entries(r.gapKinds || {}).map(([k, n]) => `${gapKindLabel[k] || k}:${n}`).join('，'),
           Number(r.groupCount || 0), Number(r.preCompressTotal || 0),
           String(r.firstDate || ''), String(r.lastRequestTime || ''),
+          r.resolution ? '已核实' : '待核实',
+          String(r.resolution?.reason || ''),
+          String(r.resolution?.fixPlan || ''),
+          String(r.resolution?.scheduleAt || ''),
         ],
         r.requestIds,
       )),

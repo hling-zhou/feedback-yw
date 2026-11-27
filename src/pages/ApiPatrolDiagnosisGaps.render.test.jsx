@@ -55,9 +55,9 @@ describe('ApiPatrolDiagnosisGaps 诊断能力需求池', () => {
     expect(src).toContain("qs.set('poolName'")
     // 明细下钻宽区间承载「全部」语义（groups 共享端点 startDate/endDate 必填契约不动）
     expect(src).toMatch(/DETAIL_ALL_RANGE/)
-    // 时间范围控件防回潮（源码级）
+    // 时间范围筛选控件防回潮（源码级）——11-27 修订：dayjs/DatePicker 解禁（反馈弹窗排期
+    // 选择是合法新用途）；RangePicker（列表时间筛选）仍禁。
     expect(src).not.toContain('RangePicker')
-    expect(src).not.toContain("from 'dayjs'")
     expect(src).not.toContain('近30天')
   })
 
@@ -65,6 +65,26 @@ describe('ApiPatrolDiagnosisGaps 诊断能力需求池', () => {
     expect(src).toContain("copyTextToClipboard")
     expect(src).toContain("ids.join('\\n')")
     expect(src).toContain('已复制 RequestID')
+  })
+
+  it('源码契约⑤反馈闭环（11-27 拍板）：editRecord 门控 + 核实状态列 + 弹窗三字段 + 撤销可逆', () => {
+    // 权限：editRecord（canFeedback）——viewer 无按钮只读看状态列
+    expect(src).toContain("can('editRecord')")
+    // 核实状态列：已核实绿标 + 待核实灰标（resolution 注入）
+    expect(src).toContain("title: '核实状态', key: 'resolution'")
+    expect(src).toContain('已核实')
+    expect(src).toContain('待核实')
+    // 弹窗三字段（reason 必填 / fixPlan / scheduleAt 非必填）+ 取消/提交
+    expect(src).toMatch(/name="reason"[\s\S]{0,120}required: true/)
+    expect(src).toContain('name="fixPlan"')
+    expect(src).toContain('name="scheduleAt"')
+    expect(src).toContain('核实原因')
+    expect(src).toMatch(/key="cancel"[^]*取消[^]*key="submit"[^]*提交/)
+    // 提交/撤销走 POST/DELETE（editRecord 门控端点）
+    expect(src).toContain("'/api/patrol/diagnosis-gaps/feedback'")
+    expect(src).toMatch(/method: 'DELETE'/)
+    // dayjs 排期格式化（yyyy-MM-dd——与失败组 actionSchedule 同形态）
+    expect(src).toContain("format('YYYY-MM-DD')")
   })
 
   it('源码契约③只读复用：FailureGroupDrawer 具名导入 + readOnly + 无 PATCH 写路径', () => {
